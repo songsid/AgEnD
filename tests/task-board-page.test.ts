@@ -1390,6 +1390,14 @@ describe("the columns that do not fit the window", () => {
     }
     for (const needle of [":is(.tb-head-back, .tb-bar-head .tb-head-actions .btn", ":is(.tb-search input)"]) expect(mediaOf(needle), needle).toEqual({ depth: 1, query: TOUCH });
     expect(mediaOf(".tb-btn-label { position: absolute"), "a phone under 390px keeps only the Instances icon").toEqual({ depth: 1, query: "@media (max-width: 389px)" });
+    // On: Filter / Display / the 🔍 keep the border transparent and the painted background at the padding edge, with the ring inside (the desk rule's
+    // accent border and its `background` shorthand would paint the whole 44px box); every grown control's corner is worked out for the painted shape
+    // (a half circle is --drawn / 2 across and --tap / 2 down once the 6px border is off), and the picker's too; the focus ring is the painted edge's.
+    expect(css).toMatch(/\.tb-view-bar \.tb-view-actions > \.menu > \.menu-text\.active, \.tb-view-bar \.tb-view-actions > \.tb-search-toggle\.active \{ border-color: transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1px var\(--accent\); \}/);
+    expect(css).toMatch(/border-radius: calc\(var\(--drawn, 36px\) \/ 2 \+ var\(--bx, 1px\)\) \/ calc\(var\(--tap\) \/ 2\);/);
+    expect(css).toMatch(/\.tb-status-seg \.tb-seg-btn \{[^}]*border-radius: calc\(var\(--drawn\) \/ 2\) \/ calc\(var\(--tap\) \/ 2\);/);
+    expect(css).toMatch(/:focus-visible::after \{\s*content: ""; position: absolute; inset: 0; border-radius: var\(--r-full\); outline: 2px solid var\(--focus\); outline-offset: 2px;/);
+    expect(readFileSync(join(UI, "shared", "app.css"), "utf8")).toMatch(/\.tb-sort-row \.tb-sort-pick \{[^}]*border-radius: calc\(\(var\(--tap\) - 12px\) \/ 2\) \/ calc\(var\(--tap\) \/ 2\);/);
     // a control is grown by a transparent border and a negative margin, never drawn bigger
     const grown = css.slice(css.indexOf(":is(.tb-head-back, .tb-bar-head .tb-head-actions .btn"), css.indexOf(":is(.tb-head-back, .tb-bar-head .tb-head-actions .btn") + 600);
     expect(grown).toMatch(/min-height: var\(--tap\); border-block: var\(--grow\) solid transparent; margin-block: calc\(-1 \* var\(--grow\)\); background-clip: padding-box;/);

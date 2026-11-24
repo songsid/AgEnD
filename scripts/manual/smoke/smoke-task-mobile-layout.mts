@@ -11,6 +11,11 @@
 //  5. Home: the title with Agent and "New project" in its row, the search under it;
 //  6. every control above measures at least the --tap size (44px) both ways as it is DRAWN into the page (hit box), and a
 //     control's visible shape is not drawn bigger (the head's buttons keep their 36px, the pills their 32px);
+//  6b. a control's painted shape is the desk's: each corner of a pill is a half circle and a field's corner is --r-sm — the horizontal and
+//     the vertical radius, worked out from getComputedStyle with the border taken off (the painted edge is the padding box), are equal
+//     (a 44px box with a 22px radius and a 6px transparent border leaves an oval 22 x 16: pointed); Filter / Display / 🔍 when on
+//     draw their ring at the painted height (34px), not on the 44px box: the accent-coloured pixels of a screenshot of the control
+//     start inside the transparent border, not at its edge; the keyboard focus ring hugs the painted edge.
 //  7. nothing scrolls the page sideways; no two controls' 44px boxes share any area (rectangles measured), and a tap at five points of
 //     each box (the centre and the four edge middles, 2px in) reaches that control itself (document.elementFromPoint): nothing covers it,
 //     no clip cuts it, so the box a number says is the box a finger gets.
@@ -109,6 +114,40 @@ const outlineScript = `(sels) => { const colors = ["#ff3d81", "#00b3ff", "#ffb30
     document.body.appendChild(d);
   } }`;
 
+/**
+ * The corners as they are drawn. getComputedStyle gives the radii as written (999px, "16px 22px"); the used radii are those scaled down
+ * so that neighbours do not overlap (CSS Backgrounds §5.5), and what is painted is the padding box, so the painted corner is the used radius
+ * less the border (sideways: the left / right border; up and down: the top / bottom one). A half circle is rx = ry = painted height / 2.
+ */
+const radiiScript = `(m) => Object.fromEntries(Object.entries(m).map(([k, s]) => {
+  const els = [...document.querySelectorAll(s)];
+  if (!els.length) return [k, null];
+  return [k, els.map((el) => {
+    const cs = getComputedStyle(el), r = el.getBoundingClientRect(), W = r.width, H = r.height;
+    const num = (x, ref) => (x.endsWith("%") ? parseFloat(x) / 100 * ref : parseFloat(x));
+    const corner = (name) => { const v = cs[name].split(" "); return [num(v[0], W), num(v[1] === undefined ? v[0] : v[1], H)]; };
+    const tl = corner("borderTopLeftRadius"), tr = corner("borderTopRightRadius"), br = corner("borderBottomRightRadius"), bl = corner("borderBottomLeftRadius");
+    const f = Math.min(1, W / ((tl[0] + tr[0]) || 1e9), W / ((bl[0] + br[0]) || 1e9), H / ((tl[1] + bl[1]) || 1e9), H / ((tr[1] + br[1]) || 1e9));
+    const bt = parseFloat(cs.borderTopWidth), bb = parseFloat(cs.borderBottomWidth), bL = parseFloat(cs.borderLeftWidth), bR = parseFloat(cs.borderRightWidth);
+    const inner = [[tl, bL, bt], [tr, bR, bt], [br, bR, bb], [bl, bL, bb]].map((c) => [Math.max(0, c[0][0] * f - c[1]), Math.max(0, c[0][1] * f - c[2])]);
+    return { ph: H - bt - bb, inner: inner.map((p) => [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]) };
+  })];
+}))`;
+
+/** The bounding box, in CSS pixels, of the pixels of a PNG that are one of the colours (a Manhattan distance of `tol` or less). Decoded in a page of its own (a canvas). */
+const inkScript = (a: { b64: string; colors: number[][]; cw: number; tol: number }) => `(async (a) => {
+  const img = new Image(); img.src = "data:image/png;base64," + a.b64; await img.decode();
+  const cv = document.createElement("canvas"); cv.width = img.width; cv.height = img.height;
+  const g = cv.getContext("2d"); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, img.width, img.height).data, k = img.width / a.cw;
+  let top = 1e9, bottom = -1, left = 1e9, right = -1;
+  for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) {
+    const o = (y * img.width + x) * 4;
+    if (a.colors.some((c) => Math.abs(d[o] - c[0]) + Math.abs(d[o + 1] - c[1]) + Math.abs(d[o + 2] - c[2]) <= a.tol)) { if (y < top) top = y; if (y > bottom) bottom = y; if (x < left) left = x; if (x > right) right = x; }
+  }
+  return bottom < 0 ? null : { top: top / k, bottom: (bottom + 1) / k, left: left / k, right: (right + 1) / k };
+})(${JSON.stringify(a)})`;
+
 /** What a control looks like: its border box less the transparent borders (the hit box a control grew), so "drawn bigger" is measured on the painted box. */
 const painted = (loc: any) => loc.evaluate((el: HTMLElement) => {
   const s = getComputedStyle(el) as any, r = el.getBoundingClientRect();
@@ -144,6 +183,36 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
     await page.screenshot({ path: shotPath(SMOKE, c, file) });
     await page.evaluate(() => { for (const d of document.querySelectorAll("[data-tap-box]")) d.remove(); });
   };
+  let inkPage: any = null;
+  /**
+   * Where the pixels of a CSS colour (a custom property of the page) are on a control, relative to its box: a screenshot of the box and 8px round
+   * it, decoded in a page of its own. `top` / `bottom` are measured from the box's top edge: a ring on the painted edge starts `--grow` px inside it.
+   */
+  async function ink(sel: string, vars: string[]) {
+    const b: any = await page.locator(sel).first().boundingBox();
+    const pad = 8, x0 = Math.max(0, b.x - pad), y0 = Math.max(0, b.y - pad);
+    const clip = { x: x0, y: y0, width: Math.min(b.x + b.width + pad, 390) - x0, height: b.height + 2 * pad };
+    const colors: number[][] = await page.evaluate((vs: any) => vs.map((v: any) => { const d = document.createElement("div"); d.style.setProperty("color", "var(" + v + ")"); document.body.appendChild(d); const m = getComputedStyle(d).color.match(/\d+(\.\d+)?/g)!.slice(0, 3).map(Number); d.remove(); return m; }), vars) as any;
+    const png = await page.screenshot({ clip });
+    inkPage = inkPage || await ctx.newPage();
+    const out: any = await inkPage.evaluate(inkScript({ b64: png.toString("base64"), colors, cw: clip.width, tol: 60 }));
+    if (!out) return null;
+    return { top: r1(clip.y + out.top - b.y), bottom: r1(clip.y + out.bottom - b.y), left: r1(clip.x + out.left - b.x), right: r1(clip.x + out.right - b.x), h: r1(out.bottom - out.top), w: r1(out.right - out.left), box: { h: r1(b.height), w: r1(b.width) } };
+  }
+  /** The corners of these controls (every match of each), as they are painted: a half circle (kind "pill") or the field's --r-sm (kind "field"). */
+  async function corners(sels: Record<string, string>, fields: string[] = []) {
+    const m: any = await page.evaluate(`(${radiiScript})(${JSON.stringify(sels)})`);
+    const rsm = (await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--r-sm")))) as number;
+    const bad: string[] = [];
+    for (const [k, list] of Object.entries(m)) {
+      if (!list) { bad.push(`${k}: not there`); continue; }
+      for (const e of list as any[]) {
+        const want = fields.includes(k) ? rsm : e.ph / 2;
+        if (!e.inner.every((p: number[]) => Math.abs(p[0] - p[1]) <= 0.75 && Math.abs(p[0] - want) <= 0.75)) bad.push(`${k} ${JSON.stringify(e.inner[0])} (want ${want})`);
+      }
+    }
+    return { bad, m };
+  }
   const unreached = (m: Record<string, boolean | null>) => Object.entries(m).filter(([, v]) => v !== true).map(([k]) => k);
   const overlaps = (boxes: Record<string, Box | null>) => {
     const names = Object.keys(boxes).filter((k) => boxes[k]);
@@ -177,6 +246,9 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
         chk.homeNoOverlap = overlaps(head).length === 0;
         r.homeUnreached = unreached(await reach({ agent: ".tb-home .tb-head-actions .btn:not(.btn-primary)", add: ".tb-home .tb-head-actions .btn-primary", search: ".tb-home .tb-search input" }));
         chk.homeBoxesReachTheControl = r.homeUnreached.length === 0;
+        const hc = await corners({ agent: ".tb-home .tb-head-actions .btn:not(.btn-primary)", add: ".tb-home .tb-head-actions .btn-primary", search: ".tb-home .tb-search input", pick: ".tb-sort-pick" }, ["search"]);
+        r.homeCorners = hc.m; r.homeCornersBad = hc.bad;
+        chk.homeCornersAreTheDesks = hc.bad.length === 0;
         await outlined("9b-tap-boxes-home", [".tb-home .tb-head-actions .btn", ".tb-home .tb-search input", ".tb-sort-row .tb-wait-title", ".tb-sort-row .tb-sort-pick", ".tb-wait-actions .btn"]);
         r.homeOverlaps = overlaps(head);
       } else {
@@ -266,6 +338,11 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
         r.unreached = unreached(await reach({ back: ".tb-head-back", agent: ".tb-head-actions .btn:not(.btn-primary)", add: ".tb-head-actions .btn-primary", insights: ".tb-insights", banner: ".tb-sort-link",
           board: ".tb-view-toggle .tb-seg-btn:nth-child(1)", list: ".tb-view-toggle .tb-seg-btn:nth-child(2)", filter: ".tb-filter-menu > button", display: ".tb-view-menu > button", find: ".tb-search-toggle", pills: ".tb-status-seg .tb-seg-btn" }));
         chk.boxesReachTheControl = r.unreached.length === 0;
+        // the corners as painted: every pill and button is a half circle at both ends, not an oval
+        const bc = await corners({ back: ".tb-head-back", agent: ".tb-head-actions .btn:not(.btn-primary)", add: ".tb-head-actions .btn-primary", insights: ".tb-insights", board: ".tb-view-toggle .tb-seg-btn:nth-child(1)", list: ".tb-view-toggle .tb-seg-btn:nth-child(2)",
+          filter: ".tb-filter-menu > button", display: ".tb-view-menu > button", find: ".tb-search-toggle", pills: ".tb-status-seg .tb-seg-btn" });
+        r.corners = bc.m; r.cornersBad = bc.bad;
+        chk.cornersAreTheDesks = bc.bad.length === 0;
         await page.locator(".tb-status-seg").evaluate((el: any) => { el.scrollLeft = 0; });
         await page.evaluate(() => window.scrollTo(0, 0));
         await outlined("9-tap-boxes-board", [".tb-head-back", ".tb-head-actions .btn", ".tb-insights", ".tb-sort-link", ".tb-view-toggle .tb-seg-btn", ".tb-view-actions .btn", ".tb-status-seg .tb-seg-btn", ".tb-col.is-current .tb-tile"]);
@@ -323,6 +400,14 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
         await page.locator(".tb-find input").blur();
         await page.locator(".tb-search-toggle").click(); await page.waitForTimeout(250);   // with words in it, the 🔍 does not shut the field
         chk.searchStaysWithWords = await page.locator(".tb-find input").isVisible();
+        {   // the 🔍 is on (words in the search): its blue is a ring on the painted 34px, not on the 44px box
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.mouse.move(195, 820); await page.waitForTimeout(200);
+          const fc = await corners({ field: ".tb-find input" }, ["field"]);
+          r.fieldCorners = fc.m; chk.fieldCornerIsTheDesks = fc.bad.length === 0;
+          const dr = (await painted(page.locator(".tb-view-menu > button"))).h, ring = await ink(".tb-search-toggle", ["--accent"]);
+          r.findRing = { ring, drawn: dr };
+          chk.findRingIsThePaintedShape = !!ring && Math.abs(ring.h - dr) <= 1.5 && Math.abs(ring.w - dr) <= 1.5 && ring.top >= (ring.box.h - dr) / 2 - 1.5 && ring.top <= (ring.box.h - dr) / 2 + 1.5;
+        }
         chk.findMarkedWithWords = await page.locator(".tb-search-toggle").evaluate((el: any) => el.classList.contains("active") || el.getAttribute("data-has-query") === "true");
         await page.screenshot({ path: shotPath(SMOKE, c, "5-board-search-words") });
         // a board read again from the address keeps the search (it is kept on the device) and opens the field
@@ -354,6 +439,27 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
         chk.chipUnderTheToolbar = !!chip && chip.y >= bottomOf(B.board!) - SLACK && chip.x + chip.w <= 390;
         chk.chipNoSidewaysScroll = await page.evaluate(OVERFLOW) as boolean;
         chk.filterButtonMarked = await page.locator(".tb-filter-menu > button").evaluate((el: any) => el.classList.contains("active"));
+        {   // Filter is on: its blue ring is drawn on the painted 34px (the same size as Display beside it), not on the 44px box
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.mouse.move(195, 820); await page.waitForTimeout(200);
+          // the reference is Display, beside it and not on: its painted height (34). Filter's own painted height would be 44 if the border were coloured.
+          const dr = (await painted(page.locator(".tb-view-menu > button"))).h, ring = await ink(".tb-filter-menu > button", ["--accent"]);
+          r.filterRing = { ring, drawn: dr };
+          chk.filterRingIsThePaintedShape = !!ring && Math.abs(ring.h - dr) <= 1.5 && ring.top >= (ring.box.h - dr) / 2 - 1.5 && ring.top <= (ring.box.h - dr) / 2 + 1.5 && ring.bottom <= ring.box.h - (ring.box.h - dr) / 2 + 1.5;
+          // no pixel of the accent in the grown (transparent) border: the rows from the box's edge to the painted edge are clear
+          chk.filterRingClearOfTheGrownBorder = !!ring && ring.top >= (ring.box.h - dr) / 2 - 1.5;
+          // the keyboard focus ring: on Display (not on) and on the first pill, it hugs the painted edge: painted + 2 x (offset + 2px line)
+          await page.locator(".tb-view-toggle .tb-seg-btn:nth-child(2)").focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Tab"); await page.waitForTimeout(200);
+          const onDisplay = await page.evaluate(() => document.activeElement === document.querySelector(".tb-view-menu > button"));
+          const dd = (await painted(page.locator(".tb-view-menu > button"))).h, fr = await ink(".tb-view-menu > button", ["--focus"]);
+          r.focusRing = { onDisplay, ring: fr, drawn: dd };
+          chk.focusRingHugsThePaintedEdge = onDisplay && !!fr && Math.abs(fr.h - (dd + 8)) <= 1.5 && fr.top >= (fr.box.h - dd) / 2 - 4 - 1.5;
+          await page.keyboard.press("Tab"); await page.keyboard.press("Tab"); await page.waitForTimeout(200);   // 🔍, then (the filter's chip: its three buttons, "Clear") — find the first pill by key
+          for (let i = 0; i < 8 && !(await page.evaluate(() => !!document.activeElement?.closest(".tb-status-seg"))); i++) await page.keyboard.press("Tab");
+          const pf = await ink(".tb-status-seg .tb-seg-btn:focus-visible", ["--focus"]).catch(() => null);
+          r.pillFocusRing = pf;
+          chk.pillFocusRingHugsThePaintedEdge = !!pf && Math.abs(pf.h - (32 + 6)) <= 1.5;
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        }
         await page.screenshot({ path: shotPath(SMOKE, c, "7b-board-filter-chip") });
         await page.locator(".tb-chip-x").first().click(); await page.waitForTimeout(350);
         // Insights: the button opens its dialog
@@ -400,6 +506,10 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
         r.tabletTaps = Object.fromEntries(Object.entries(T).map(([k, b]) => [k, b && tappable(b)]));
         chk.tabletTappable = Object.entries(T).every(([k, b]) => (k.startsWith("scroll") && !b) || tappable(b));
         chk.tabletScrollButtonsThere = !!T.scrollL && !!T.scrollR;
+        const tc = await corners({ back: ".tb-head-back", agent: ".tb-head-actions .btn:not(.btn-primary)", add: ".tb-head-actions .btn-primary", insights: ".tb-insights", board: ".tb-view-toggle .tb-seg-btn:nth-child(1)", list: ".tb-view-toggle .tb-seg-btn:nth-child(2)",
+          filter: ".tb-filter-menu > button", display: ".tb-view-menu > button", scrollL: ".tb-scroll-nav .tb-seg-btn:nth-child(1)", scrollR: ".tb-scroll-nav .tb-seg-btn:nth-child(2)", field: ".tb-find input" }, ["field"]);
+        r.tabletCorners = tc.m; r.tabletCornersBad = tc.bad;
+        chk.tabletCornersAreTheDesks = tc.bad.length === 0;
         r.tabletOverlaps = overlaps({ ...T, banner: await box(page.locator(".tb-sort-link")) });
         chk.tabletNoTapBoxesOverlap = r.tabletOverlaps.length === 0;
         r.tabletUnreached = unreached(await reach({ back: ".tb-head-back", agent: ".tb-head-actions .btn:not(.btn-primary)", add: ".tb-head-actions .btn-primary", insights: ".tb-insights", board: ".tb-view-toggle .tb-seg-btn:nth-child(1)",
@@ -407,6 +517,21 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
         chk.tabletBoxesReachTheControl = r.tabletUnreached.length === 0;
         chk.tabletNoSidewaysScroll = await page.evaluate(OVERFLOW) as boolean;
         await page.screenshot({ path: shotPath(SMOKE, c, "8-tablet-board") });
+        // 2x close-ups (the device pixel ratio is raised for these shots only, at the end): the toolbar and the pill row with Filter on, and Filter's menu open
+        await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(600);
+        const cdp = await ctx.newCDPSession(page);
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+        await page.waitForTimeout(700);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.locator(".tb-filter-menu > button").click(); await page.waitForTimeout(250);
+        await page.locator(".tb-filter-menu [role=menuitemcheckbox]").filter({ hasText: /^nightly$/ }).click(); await page.waitForTimeout(300);
+        await page.keyboard.press("Escape"); await page.waitForTimeout(250);
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.mouse.move(195, 830); await page.waitForTimeout(250);
+        const tbar: any = await box(page.locator(".tb-view-bar")), seg: any = await box(page.locator(".tb-status-seg"));
+        await page.screenshot({ path: shotPath(SMOKE, c, "10-closeup-2x-pills-filter-on"), clip: { x: 0, y: tbar.y - 8, width: 390, height: seg.y + seg.h - tbar.y + 16 } });
+        await page.locator(".tb-filter-menu > button").click(); await page.waitForTimeout(350);
+        await page.screenshot({ path: shotPath(SMOKE, c, "10b-closeup-2x-filter-menu-open"), clip: { x: 0, y: tbar.y - 8, width: 390, height: 380 } });
+        await page.keyboard.press("Escape"); await page.waitForTimeout(150);
       } else {
         // the desk, as it was: the head's buttons at the right of the title, the search open, no 🔍, no pill row, a framed column each
         chk.deskActionsAtTheRight = !!B.add && B.add.x > 1366 / 2;
@@ -420,6 +545,9 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
         chk.deskToolbarInARow = sameRow(B.board, B.filter, 14) && sameRow(B.board, B.display, 14);
         r.deskBtnH = { agent: B.agent!.h, filter: B.filter!.h };
         chk.deskStaysDense = B.agent!.h < TAP && B.filter!.h < TAP && B.back!.h < TAP;
+        const dc = await corners({ back: ".tb-head-back", agent: ".tb-head-actions .btn:not(.btn-primary)", add: ".tb-head-actions .btn-primary", insights: ".tb-insights", board: ".tb-view-toggle .tb-seg-btn:nth-child(1)", list: ".tb-view-toggle .tb-seg-btn:nth-child(2)",
+          filter: ".tb-filter-menu > button", display: ".tb-view-menu > button", field: ".tb-find input" }, ["field"]);
+        r.deskCorners = dc.m; chk.deskCornersAreRound = dc.bad.length === 0;
         chk.noSidewaysScroll = await page.evaluate(OVERFLOW) as boolean;
       }
     }

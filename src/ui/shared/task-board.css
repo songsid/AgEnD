@@ -444,22 +444,38 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 @media (pointer: coarse), (max-width: 899px) {
   :is(.tb-head-back, .tb-bar-head .tb-head-actions .btn, .tb-home .tb-head-actions .btn, .tb-stats > .tb-insights, .tb-view-toggle .tb-seg-btn, .tb-view-actions .btn, .tb-scroll-btn) {
     --grow: max(0px, calc((var(--tap) - var(--drawn, 36px)) / 2));
-    min-height: var(--tap); border-block: var(--grow) solid transparent; margin-block: calc(-1 * var(--grow)); background-clip: padding-box;
+    position: relative; min-height: var(--tap); border-block: var(--grow) solid transparent; margin-block: calc(-1 * var(--grow)); background-clip: padding-box;
+    /* The corners are worked out for the PAINTED shape, not the 44px box: a pill's painted end is a half circle (--drawn / 2 both ways).
+       The painted corner is the box's radius less the border (--bx sideways, --grow up and down), so the box's own radius is
+       (--drawn / 2 + --bx) across and --tap / 2 down. */
+    border-radius: calc(var(--drawn, 36px) / 2 + var(--bx, 1px)) / calc(var(--tap) / 2);
   }
   .tb-head-back { --drawn: 30px; }
   .tb-stats > .tb-insights { --drawn: 26px; }
-  .tb-view-toggle .tb-seg-btn, .tb-scroll-btn { --drawn: 30px; }
+  .tb-view-toggle .tb-seg-btn { --drawn: 30px; --bx: 0px; }
+  .tb-scroll-btn { --drawn: 30px; --bx: 2px; }
   .tb-view-actions .btn { --drawn: 30px; }
   /* a button that had an outline keeps it as a ring on the painted edge (the border that carried it is transparent now) */
   :is(.tb-bar-head .tb-head-actions .btn, .tb-home .tb-head-actions .btn, .tb-view-actions .btn):not(.btn-primary, .btn-ghost) { border-color: transparent; box-shadow: inset 0 0 0 1px var(--border); }
-  .tb-view-bar .tb-view-actions > .menu > .menu-text.active, .tb-view-actions > .tb-search-toggle.active { box-shadow: inset 0 0 0 1px var(--accent); }
+  /* Filter / Display and the 🔍 when they are on: the blue is a ring on the painted edge too — the border stays transparent and the
+     painted background stops at the padding edge (the desk rule's `background` shorthand would paint the whole 44px box) */
+  .tb-view-bar .tb-view-actions > .menu > .menu-text.active, .tb-view-bar .tb-view-actions > .tb-search-toggle.active { border-color: transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1px var(--accent); }
   .tb-scroll-btn { border-inline: 2px solid transparent; margin-inline: -1px; }   /* the pair's boxes meet in the 2px gap, they do not overlap */
   /* the picked one's lift is a shadow round its box, which is the grown one: the colour alone says it (it is drawn on the painted edge) */
   .tb-view-toggle .tb-seg-btn.active { box-shadow: none; }
-  /* the search fields: a text box is a control too (the 36px it is drawn at, a 44px box) */
-  :is(.tb-search input) { --grow: max(0px, calc((var(--tap) - 36px) / 2)); min-height: var(--tap); border-block: var(--grow) solid transparent; margin-block: calc(-1 * var(--grow)); background-clip: padding-box; }
-  .tb-search input:focus { box-shadow: none; outline: 2px solid var(--focus); outline-offset: calc(-1 * var(--grow)); }
-  :is(.tb-head-back, .tb-bar-head .tb-head-actions .btn, .tb-home .tb-head-actions .btn, .tb-stats > .tb-insights, .tb-view-toggle .tb-seg-btn, .tb-view-actions .btn, .tb-scroll-btn):focus-visible { outline-offset: calc(2px - var(--grow)); }
+  /* The keyboard focus ring is drawn on the painted edge too, as round and as far from it as on a desk: a pseudo-element the size of the
+     painted shape (the button's padding box) carries it, where the button's own outline would follow the 44px box. */
+  :is(.tb-head-back, .tb-bar-head .tb-head-actions .btn, .tb-home .tb-head-actions .btn, .tb-stats > .tb-insights, .tb-view-toggle .tb-seg-btn, .tb-view-actions .btn, .tb-scroll-btn):focus-visible { outline: none; }
+  :is(.tb-head-back, .tb-bar-head .tb-head-actions .btn, .tb-home .tb-head-actions .btn, .tb-stats > .tb-insights, .tb-view-toggle .tb-seg-btn, .tb-view-actions .btn, .tb-scroll-btn):focus-visible::after {
+    content: ""; position: absolute; inset: 0; border-radius: var(--r-full); outline: 2px solid var(--focus); outline-offset: 2px; pointer-events: none;
+  }
+  .tb-view-toggle .tb-seg-btn:focus-visible::after, .tb-scroll-btn:focus-visible::after { outline-offset: 1px; }
+  /* the search fields: a text box is a control too (the 36px it is drawn at, a 44px box); its corner is the desk's (--r-sm) once the border is taken off,
+     and its focus ring is the wrapper's (the field's footprint is the painted box), so it is the desk's ring */
+  :is(.tb-search input) { --grow: max(0px, calc((var(--tap) - 36px) / 2)); min-height: var(--tap); border-block: var(--grow) solid transparent; margin-block: calc(-1 * var(--grow)); background-clip: padding-box;
+    border-radius: var(--r-sm) / calc(var(--r-sm) + var(--grow)); }
+  .tb-search input:focus { box-shadow: none; outline: none; }
+  .tb-search:focus-within::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-sm); box-shadow: 0 0 0 2px var(--focus); pointer-events: none; }
 }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   /* A project's head: [← Projects … Agent + Main task], [name … Insights], the description, the progress (its bar across the width), the banner.
@@ -487,7 +503,7 @@ button.tb-row-progress:hover { background: var(--surface-2); }
   .tb-view-toggle { flex: none; }
   .tb-view-actions { display: flex; align-items: center; gap: var(--s-2); margin-left: auto; flex: none; }
   .tb-view-actions .btn { --drawn: 34px; padding-inline: var(--s-3); }
-  .tb-search-toggle { display: inline-flex; width: var(--tap); padding: 0; border-inline: var(--grow) solid transparent; margin-inline: calc(-1 * var(--grow)); }
+  .tb-search-toggle { --bx: var(--grow); display: inline-flex; width: var(--tap); padding: 0; border-inline: var(--grow) solid transparent; margin-inline: calc(-1 * var(--grow)); }
   .tb-view-bar .tb-view-actions .menu-list { left: auto; right: 0; }
   .tb-find { flex: 1 1 100%; order: 1; min-width: 0; }
   .tb-find.is-closed { display: none; }
@@ -497,13 +513,15 @@ button.tb-row-progress:hover { background: var(--surface-2); }
   .tb-status-seg { display: flex; gap: var(--s-2); width: auto; margin: 0 calc(-1 * var(--s-4)) var(--s-1); padding: 0 var(--s-4); scroll-padding-inline: var(--s-4); background: none; border-radius: 0;
     overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
   .tb-status-seg::-webkit-scrollbar { display: none; }
-  .tb-status-seg .tb-seg-btn { --grow: max(0px, calc((var(--tap) - 32px) / 2)); flex: none; min-height: var(--tap); padding: 0 var(--s-3); border-block: var(--grow) solid transparent; border-radius: var(--r-full);
+  .tb-status-seg .tb-seg-btn { --drawn: 32px; --grow: max(0px, calc((var(--tap) - var(--drawn)) / 2)); position: relative; flex: none; min-height: var(--tap); padding: 0 var(--s-3); border-block: var(--grow) solid transparent;
+    border-radius: calc(var(--drawn) / 2) / calc(var(--tap) / 2);   /* the painted end is a half circle (16 / 16), not the 22 / 16 oval the box's own 22px radius would leave */
     background-color: var(--surface); background-clip: padding-box; color: var(--text-2); font-size: var(--fs-sm); }
   .tb-status-seg .tb-seg-btn:hover { background-color: var(--surface-2); }
   .tb-status-seg .tb-seg-btn.active, .tb-status-seg .tb-seg-btn.active:hover { background-color: var(--accent-fill); color: var(--on-accent); box-shadow: none; font-weight: var(--fw-semibold); }
   .tb-status-seg .tb-seg-btn.is-empty:not(.active) { color: var(--text-3); }
   .tb-status-seg .tb-seg-btn.is-empty:not(.active) .tb-dot { opacity: 0.45; }
-  .tb-status-seg .tb-seg-btn:focus-visible { outline-offset: calc(2px - var(--grow)); }
+  .tb-status-seg .tb-seg-btn:focus-visible { outline: none; }
+  .tb-status-seg .tb-seg-btn:focus-visible::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-full); outline: 2px solid var(--focus); outline-offset: 1px; pointer-events: none; }
   /* No frame round the cards: the column's own box is not drawn (one status shows, so it frames nothing); the cards run the full width. */
   .tb-columns { gap: 0; }
   .tb-col { padding: 0; border-width: 0; border-radius: 0; background: none; }
@@ -513,7 +531,7 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 @media (max-width: 389px) {
   .tb-btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   /* Home's icon-only button is 36px wide drawn: its 44px box grows sideways into the gap (4px of the 8px) the same way */
-  .tb-home .tb-head-actions > .btn:not(.btn-primary) { border-inline: 4px solid transparent; margin-inline: -4px; }
+  .tb-home .tb-head-actions > .btn:not(.btn-primary) { --bx: 4px; border-inline: 4px solid transparent; margin-inline: -4px; }
 }
 /* ── what the agent is doing on a card ─────────────────────────────────────────────────────────────── */
 /* The mark beside a tile's or a row's number, and the state on the card's page: a dot that breathes only while the
