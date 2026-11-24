@@ -1,5 +1,5 @@
 {
-  "sourceHead": "fcb5b397a748f5d6881f208e84ef90f98ef33833",
+  "sourceHead": "01660923b0fd72102f06ef25eafe0e326a6fb180",
   "dirty": [],
   "checks": [
     {
@@ -158,11 +158,11 @@
   "pictures": [
     {
       "path": "m3533-r2c-desk-zh-TW-light-1-office.png",
-      "sha256": "caddb17a274ad9c87f4d58ab2794bbbee3337856d8206b046b29365f657746ff"
+      "sha256": "abe6d115f9b71ee2de7d8f9aa06d5a027eb9d08963d80d70ccca181edcc72c41"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-1z-office-close.png",
-      "sha256": "c56b8470a5488ace170d029185d4e7325f43ddac36a231f52e1bac14710ecbd5"
+      "sha256": "38bb8076cf3e91243652085126a7572b21ee5623d52106edef2a504e2c76a31a"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-1q-fox-close.png",
@@ -170,11 +170,11 @@
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-2-card-atlas.png",
-      "sha256": "7023296629579a053bff1f4f5e5f2b42af34e80f7a7ab43afe18e027345a3020"
+      "sha256": "384999c8c74150afa2ae9d5bb1440ee15ecd35c7e9efadadd2b3dd3c832351be"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-3-office-studio-large.png",
-      "sha256": "b9d69e4559d7a8935c77a6d0216a2a91c1f72dbd0c281e36b875b1dba41bcb0e"
+      "sha256": "c9f90a038f587d6a461bf06e822e5e0098f839ea9a48f514cd1ee9db480c28fe"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-3z-top-row-title-close.png",
@@ -182,15 +182,15 @@
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-4-my-agents-too-large.png",
-      "sha256": "eb26934e9232f6616d37e14e8a3eb23d3bca5c29c67c17e5854bc7551ac4f2a0"
+      "sha256": "b65fd255b826dd0aad561cbd72dd063ab516534deeb69802d64c491fde4bfc79"
     },
     {
       "path": "m3533-r2c-desk-en-dark-1-office.png",
-      "sha256": "0d2626df36f6697827ae770c2ce0cfb77b72cfaacbbc7c020c850f99eae2f85c"
+      "sha256": "7faed513784e9208ac240d7576157f83019b0cada5c8062d2fd46ad9eafe58e3"
     },
     {
       "path": "m3533-r2c-desk-en-dark-1z-office-close.png",
-      "sha256": "21edb1f311f16f8c9e74c06ffe4a46b438f1d059df205bb7f0127c26633a77fb"
+      "sha256": "a3d8bd9fb3445e7acdda7935b61b5e02798f979a46a41530d63aef429b852a7c"
     },
     {
       "path": "m3533-r2c-desk-en-dark-1q-fox-close.png",
@@ -198,11 +198,11 @@
     },
     {
       "path": "m3533-r2c-desk-en-dark-2-card-atlas.png",
-      "sha256": "f29934b635dcbf528ac962b8ac42356334c7fa44ba663b89f202efcbdcd555a9"
+      "sha256": "6cfafe2bd5f1e272e44b1c11883c0efaa98c2179fd9de6d6f098c7cf09c652e9"
     },
     {
       "path": "m3533-r2c-desk-en-dark-3-office-studio-large.png",
-      "sha256": "867f0f20c7bca3558ff2efcf1e84e6d6a37b786441204c038243709d57d0e908"
+      "sha256": "f405fb4a0d991f9a18e0d7510391f390e85f0bb7d524499acf67d714d864b7af"
     },
     {
       "path": "m3533-r2c-desk-en-dark-3z-top-row-title-close.png",
@@ -210,15 +210,15 @@
     },
     {
       "path": "m3533-r2c-desk-en-dark-4-my-agents-too-large.png",
-      "sha256": "45764ab5159b69ada8290ee4a40d35019793df3ab0c66a438143643d88582fa6"
+      "sha256": "3163cfbab95badbe07d6ccd2376508d0375d1ae8cc9ae87771b67de367c0b615"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-1-office.png",
-      "sha256": "dea105c7ce9f3c37d2d4e3712bba8b904a0d36ee19a9c44e7e7f52a552b2dcea"
+      "sha256": "515159336e72e9c07202867b1ceeefdaaadebb6d5b38921c8b5919914a75ff41"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-1z-office-close.png",
-      "sha256": "93a68a1080e0c54add1ccf2c462c8f1724bd8f17b5ad2a5e2f8fe5879ee51bd3"
+      "sha256": "d2fb6b395e4a027a4203e2e6342688584b6dcf4b80ccd6c00f9819d660bce118"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-1q-fox-close.png",
@@ -226,11 +226,11 @@
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-2-card-atlas.png",
-      "sha256": "7a9bf0f331dd5a94478cbb4ef5d55343c9c7ef64cf47256d211ec70c048c288e"
+      "sha256": "67a15a44278eec91c616dc0b344f2d8f2892d3cbee372822a74f9ad1e49dcaf8"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-3-office-studio-large.png",
-      "sha256": "c843e46f56ceb5572bfb8a053ae65f624ba28a0a96f42cf592f523a124223ad2"
+      "sha256": "ac317b546814c99914facc729002151ae7d8e408e66774f8487fbba404a84279"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-3z-top-row-title-close.png",
@@ -242,11 +242,11 @@
     },
     {
       "path": "m3533-r2c-phone-en-light-1-office.png",
-      "sha256": "c42edae1ae3ea4fd774812b5dea00290e6ec28cbde738fbf9dee4026da52f506"
+      "sha256": "d7dd5d25e4263421ac46d844184fb1ffbc4c68d0facd40b884c9f1ae81d6ef30"
     },
     {
       "path": "m3533-r2c-phone-en-light-1z-office-close.png",
-      "sha256": "35fd9ce3498c830fecab86d4dbbb9d7c1483b20a5f88328303a16d9341a15365"
+      "sha256": "de7f2726360f3b8de7e548ba5a4e917eb617aa9ce6062781774f14de929fdfad"
     },
     {
       "path": "m3533-r2c-phone-en-light-1q-fox-close.png",
@@ -254,11 +254,11 @@
     },
     {
       "path": "m3533-r2c-phone-en-light-2-card-atlas.png",
-      "sha256": "f5103d1dfd10fa3577f422096b548183ebee1dca9cbf50be45e81d067e09bccd"
+      "sha256": "b4c47d23d7a6fd4d713937f6ec8733b155bdc43dd9e7ca951321822dd61e8f55"
     },
     {
       "path": "m3533-r2c-phone-en-light-3-office-studio-large.png",
-      "sha256": "98ae03588db99055c3f56444358ecff4b9f6fd4d4dc4679ec56825abe18e7225"
+      "sha256": "ff54402961c7e0bde47a9624c409ba3b4557ed66f240b61935c3aeac2987a5d2"
     },
     {
       "path": "m3533-r2c-phone-en-light-3z-top-row-title-close.png",
