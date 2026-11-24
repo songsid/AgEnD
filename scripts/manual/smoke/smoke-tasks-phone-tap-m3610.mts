@@ -3,7 +3,8 @@ import { publicRoster } from "../smoke-fixture/public-roster.mts";
 // page and in a project; a desktop keeps its compact bar. Each case gets an empty board of its own (the fleet's scheduler
 // on a database of its own) with one project and one card, then Fleet → its Tasks tab, through visible UI.
 //   phone (zh-TW light, en dark): the Fleet tab pills, the search box, Instances, New project, a tile's ⋯; in the project:
-//     Back, Stats, Instances, New main task, Board/List, its search — each ≥44 px high (an icon button ≥44 px wide too).
+//     Back, Stats, Instances, New main task, Board/List, its search (opened from its 🔍 on a phone, the 🔍 measured too) — each
+//     ≥44 px high (an icon button ≥44 px wide too).
 //   desk (en light): the same controls stay compact (under 44 px): the desktop is unchanged.
 //   every case: no sideways scroll, no page errors. Pictures in $OUT/smoke-tasks-phone-tap-m3610/.
 //   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf [HP=19761] \
@@ -67,7 +68,11 @@ for (const c of CASES) {
     await page.screenshot({ path: shotPath(SMOKE, tag, "1-home") });
     await page.locator(".tb-home .tb-project-open").filter({ hasText: "Website" }).first().click();
     await page.waitForSelector(".tb-board-page", { timeout: 15000 }); await page.waitForTimeout(1200);
-    await check("project", PROJECT);
+    // On a phone the project's search opens from its 🔍 (#4394's phone layout): the 🔍 is a control too, and the field is measured open.
+    const findToggle = page.locator(".tb-board-page .tb-search-toggle");
+    const phoneToggle = c.device === "phone" && await findToggle.isVisible();
+    if (phoneToggle) { await findToggle.click(); await page.waitForSelector(".tb-board-page .tb-search input", { state: "visible", timeout: 5000 }); }
+    await check("project", phoneToggle ? [...PROJECT, ".p-fleet .tb-board-page .tb-search-toggle"] : PROJECT);
     await page.screenshot({ path: shotPath(SMOKE, tag, "2-project") });
     ok(res, "noOverflow", !(await page.evaluate(`document.documentElement.scrollWidth > document.documentElement.clientWidth`)));
     ok(res, "noPageErrors", p.errors.length === 0, p.errors);

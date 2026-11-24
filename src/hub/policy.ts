@@ -18,6 +18,22 @@ import { exposureOf, grantApplies, grantOf, readExposure, readGrant } from "./ca
 import { personFromString, type HubCore, type HubOperationPermit } from "./http/core.js";
 
 export const LEASE_MS = 5_000;
+/** M-3600: how long a member's authorize waits before its one retry of a transient refusal. */
+export const AUTHORIZE_RETRY_MS = 300;
+type AuthorizeStage = "message" | "asker-directory" | "owner-directory" | "grant" | "link";
+/** M-3600: the step an operation() was on when it threw, for authorize's log. The error itself is never replaced. */
+interface AuthorizeTrace { stage: AuthorizeStage }
+/** A refusal's cause for the Hub's log: stage + code only (never content, names or directory text). */
+function causeCode(e: unknown): string {
+  if (e instanceof HubProtocolError) return e.code;
+  const name = e instanceof Error ? e.name : typeof e;
+  return /^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(name) ? name : "error";
+}
+/** Worth one more try: the directory, the group/grant check or the database could not answer. A real refusal is not. */
+function transient(stage: AuthorizeStage, e: unknown): boolean {
+  if (stage === "message" || stage === "link") return false;
+  return !(e instanceof HubProtocolError) || e.code === "unavailable" || e.code === "backpressure";
+}
 /** P1 question lifetime (hub.md §2: at most 24 hours). */
 export const QUESTION_LIFETIME_MS = 24 * 60 * 60_000;
 export const TERMINAL = new Set(["rejected", "cancelled", "failed"]);
@@ -48,7 +64,8 @@ export function messageFacts(db: Database.Database, msg: MessageRow, now: number
 }
 
 export class HubPolicyService {
-  constructor(private readonly core: HubCore) {}
+  constructor(private readonly core: HubCore, private readonly log?: (level: "info" | "warn", message: string, meta?: Record<string, unknown>) => void,
+    private readonly retryMs = AUTHORIZE_RETRY_MS) {}
 
   /** Both people of a message are eligible in the directory now (two fresh lookups, bounded). */
   async peopleEligible(msg: Pick<MessageRow, "asker" | "owner">): Promise<boolean> {
@@ -56,14 +73,22 @@ export class HubPolicyService {
   }
 
   /** Group authority is re-resolved for this exact message, never borrowed from its admission lease. */
-  async operation(msg: MessageRow, link: HubLinkContext): Promise<HubOperationPermit> {
-    const row = this.core.atomic(db => readMessage(db, msg.id));
+  async operation(msg: MessageRow, link: HubLinkContext, trace: AuthorizeTrace = { stage: "message" }): Promise<HubOperationPermit> {
     const identity = (m: MessageRow) => JSON.stringify([m.id, m.fleet_id, m.asker, m.owner, m.grant_id, m.grant_revision, m.exposure_id, m.exposure_revision, m.content_digest]);
+    trace.stage = "message";
+    const row = this.core.atomic(db => readMessage(db, msg.id));
     if (!row || identity(row) !== identity(msg) || row.fleet_id !== link.fleetId || row.owner !== personKeyString(link.owner)) throw new HubProtocolError("stale");
     const image = identity(row), epoch = link.linkEpoch;
-    if (!(await this.peopleEligible(row))) throw new HubProtocolError("revoked");
+    // M-3600: each directory lookup is its own step, so a refusal's log names which one could not answer.
+    trace.stage = "asker-directory";
+    // A directory that could not answer is "unavailable" (retried once by authorize), never a revocation.
+    if (!(await this.core.eligibleOrUnavailable(personFromString(row.asker)))) throw new HubProtocolError("revoked");
+    trace.stage = "owner-directory";
+    if (!(await this.core.eligibleOrUnavailable(personFromString(row.owner)))) throw new HubProtocolError("revoked");
+    trace.stage = "grant";
     const permit = await this.core.exposureGrant(row.exposure_id, row.grant_id, personFromString(row.asker),
       { requestId: randomUUID(), current: () => link.current() });
+    trace.stage = "link";
     if (!link.current()) throw new HubProtocolError("stale");
     const assertCurrent = () => {
       permit.assertCurrent();
@@ -90,9 +115,30 @@ export class HubPolicyService {
     // Another fleet's message is "not-found": a member never learns what it was not sent.
     if (!first || first.fleet_id !== link.fleetId) return refuse("not-found");
     if (request.exposureRevision !== first.exposure_revision) return refuse("stale", first);
-    let permit: HubOperationPermit;
-    try { permit = await this.operation(first, link); }
-    catch (e) { return refuse(e instanceof HubProtocolError && (e.code === "revoked" || e.code === "denied") ? e.code : "unavailable", first); }
+    let permit!: HubOperationPermit;   // assigned by the first operation() or its one retry; every other path returns
+    const trace: AuthorizeTrace = { stage: "message" };
+    const meta = (e: unknown, attempt: number) => ({ phase: request.phase, messageId: request.messageId, fleetId: link.fleetId, attempt, stage: trace.stage, code: causeCode(e) });
+    const denial = (x: unknown) => x instanceof HubProtocolError && (x.code === "revoked" || x.code === "denied") ? x.code : null;
+    try { permit = await this.operation(first, link, trace); }
+    catch (e) {
+      // M-3600: a directory, grant or database step that could not answer gets one more try (a member's question was held for
+      // a link round-trip on a single slow lookup). A real refusal, a changed message or a dropped link never does.
+      let last: unknown = e, attempt = 1, retried = false;
+      if (!denial(e) && transient(trace.stage, e) && link.current()) {
+        this.log?.("info", "Hub authorize retrying after a transient refusal", meta(e, 1));
+        await new Promise(resolve => setTimeout(resolve, this.retryMs));
+        if (link.current()) {
+          attempt = 2;
+          try { permit = await this.operation(first, link, trace); retried = true; }
+          catch (again) { last = again; }
+        }
+      }
+      if (!retried) {
+        const code = denial(last);
+        if (!code) this.log?.("warn", "Hub authorize refused", meta(last, attempt));
+        return refuse(code ?? "unavailable", first);
+      }
+    }
     if (!link.current()) return { ok: false, reasonCode: "stale" };
     const now = this.core.now();
     try {
