@@ -34,3 +34,22 @@ npm run typecheck:tests
 Existing strict journal rows are unchanged. A rollback leaves close-pending work
 held; it must never be retried as a question merely to dismiss it. Closed Hub
 questions remain terminal. No live Fleet, account, vendor, model or CLI was used.
+
+
+## Finality wording revision
+
+`revised/` contains the requested 16 fresh held/confirmation images at
+`9f01404a318acce7f8102bd2257cddfe5783e74d`: eight desktop/phone, light/dark,
+EN/zh-TW combinations. English trigger/title/confirm consistently use Close.
+Both languages explain the action cannot be undone, the same message cannot be
+retried, and the asker may send a new question. Five originals were individually
+inspected, including both phone confirmations. All eight recipe cases pass,
+including no premature POST/busy state, Cancel/retry, one confirmed POST, success
+and no overflow. Only held and confirm screenshots were retaken; earlier
+`before/` and `after/` images remain historical, not current copy claims.
+
+The Hub/Fleet/API runtime is byte-identical to `06ed990a1`. The changed UI suite
+and an actual Hub HTTP retry-key control pass 26 tests in two suites; test
+TypeScript passes. Reusing a closed message's retry key returns that same
+cancelled receipt, creates no new message and sends no new question. This verifies
+the warning; there is no new runtime reopening restriction in this revision.
