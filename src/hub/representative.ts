@@ -539,6 +539,17 @@ export class HubRepresentativeExecution {
     if (row) this.hold(row, reasonCode);
   }
   /** Already handed-off model work only; future queued asks must not deadlock the room-person input ahead of them. */
+  /**
+   * M-3660: whether this agent's question on `correlationId` is no longer being answered — held (withdrawn, revoked,
+   * expired, replaced, uncertain) or released. null: not a question of this agent here. A held question asked again
+   * (Needs you → Try again) is open again.
+   */
+  questionSettled(correlationId: string, agent: string): boolean | null {
+    if (this.closed || !correlationId.startsWith("hub-")) return null;
+    const row = this.row("cid", correlationId);
+    if (!row || row.agent !== agent) return null;
+    return row.state === "held" || row.state === "released";
+  }
   hasOpenQuestion(agent:string):boolean {
     return !this.closed && !!this.options.db.prepare("SELECT 1 FROM hub_representative_questions WHERE agent=? AND state IN ('input','delivered','answering') LIMIT 1").get(agent);
   }
