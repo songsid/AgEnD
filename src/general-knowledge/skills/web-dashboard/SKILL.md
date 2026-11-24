@@ -391,7 +391,9 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   status, assignee or priority, ordered by board order, priority, last change, newest, assignee or title;
   **Sub tasks as rows of their own**; finished cards shown or hidden). **Finished work (M-3668):** the Done column shows its
   newest 20 (**Show 20 more**) with "N this week" beside its title; a main task done or cancelled is **archived**
-  `defaults.task_board.archive_after_days` after it finished (default 3; 0 = never: then "last 7 days / all" as before).
+  `defaults.task_board.archive_after_days` after it finished (default 3; 0 = never: then "last 7 days / all" as before;
+  Settings → Shared agent settings → Advanced → **Archive finished cards after**, in days). An archived main task's sub
+  tasks go with it.
   Archived cards leave the columns and the project's numbers; the header's **Archived · N** opens the project's Archive
   (newest first, by assignee); search marks them **Archived**, their number still opens them, and moving one to To do
   reopens it. Nothing is deleted by it. The list shows every row's priority,

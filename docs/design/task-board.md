@@ -177,7 +177,11 @@ changes in the database: the board read carries finished main tasks only until t
 the projects' numbers leave archived ones out and count them (`archived`, and `doneWeek`: done in the last 7 days),
 `GET /ui/tasks/archive?project=&before=&assignee=` pages a project's archived main tasks newest first, and search and a
 card's page say `archived`. Moving one to To do reopens it (its status, not its age, decides). The Done column shows its
-newest 20 at a time (fleet-task-archive.js). Either way a board read is a handful of statements whatever its size
+newest 20 at a time (fleet-task-archive.js). #4428 review: an archived main task's sub tasks leave the board with it; the
+Archive leaves out what the public link hides before it pages (`leaveOut`), so its cursor, total and assignees never tell
+of such a card; and a page's same-revision read (`?rev=`) is answered `unchanged` only with the `epoch` it read
+(`boardEpoch()`: how many finished cards have passed the archive line, this week's and the recent window's), since time
+moves a card across them with no write. Settings → Shared agent settings → Advanced has the archive age. Either way a board read is a handful of statements whatever its size
 (`views()`, `projectStats()`). A project: its main tasks by status (or as a list), the toolbar's search and filters, drag to move or reorder,
 a main task's sub tasks inside its tile. A card: every field edits in place with the version it started from; a 409
 shows the newer card with the draft still open, and saving again overwrites. `?card=M-3` opens a card. Bars are SVG rects (the CSP allows no style attribute); a bar fills with done work only — the percentage beside it (#2299: a project whose only card was blocked drew a full red bar at 0 %) — and the chips name what is blocked or waiting.
