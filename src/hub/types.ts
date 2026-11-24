@@ -60,7 +60,7 @@ export interface HubAnswer {
 }
 /** Group room delivery has its own durable per-agent ID; it is not a direct grant-backed question. */
 export interface HubRoomContextRow { author: string; text: string; at: Millis; repliedTo?: true }
-export interface HubRoomAsk { messageId: MessageId; roomId: RoomId; roomName: string; exposureId: ExposureId;
+export interface HubRoomAsk { askerIdentity?: import('./room-asker-identity-model.js').HubRoomAskerIdentity; messageId: MessageId; roomId: RoomId; roomName: string; exposureId: ExposureId;
   asker: { name: string }; text: string; context: readonly HubRoomContextRow[]; attachments?: HubAttachmentRef[];
   contextState?: import("./room-context-model.js").HubRoomContextState;brief?:import("./room-brief-model.js").RoomBrief }
 export interface HubRoomAnswer { notAnswered?:"finished-without-answer";messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string;

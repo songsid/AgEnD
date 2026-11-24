@@ -78,6 +78,10 @@ export interface HubRepresentativeDelivery {
   contactLimit?: boolean;
   /** M-3122: internal room-only generation; a daemon confirms the actual input independently of IPC acceptance. */
   roomContextGeneration?: string;
+  /** Signed historical room author, not authority or an active-turn claim. */
+  verifiedHubAsker?: import("./room-asker-identity-model.js").VerifiedHubAsker;
+  roomAskerMessageId?: string;
+  roomAskerDestination?: import("./room-asker-identity-model.js").RoomAskerDestination;
   /** Run by the fleet immediately before the IPC hand-off; false sends nothing. */
   beforeInput(): Promise<boolean>;
   /** The fleet's own fence through wake/idle/hand-off. */

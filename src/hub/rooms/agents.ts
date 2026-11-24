@@ -1,3 +1,6 @@
+import {roomPostAsker} from "./asker-identity.js";
+import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY,ROOM_ASKER_FRESH_MS} from "../room-asker-identity-model.js";
+import {roomAskIdentityDigest} from "../room-asker-identity.js";
 import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "../room-answer-status-model.js";
 import {HUB_ROOM_BRIEF_CAPABILITY} from "../room-brief-model.js";
 import {roomRoster,previousRoster,buildRoomBrief,confirmRoomBrief} from "./brief.js";
@@ -385,6 +388,15 @@ export class HubRoomAgents {
           if(ask.brief&&!link.features.has(HUB_ROOM_BRIEF_CAPABILITY))delete ask.brief;
           // M-3125: an older member's strict schema refuses `attachments`; it gets the words only.
           if (ask.attachments && !roomFilesNegotiated(link.features)) delete ask.attachments;
+          if(link.features.has(HUB_ROOM_ASKER_IDENTITY_CAPABILITY)){
+            const signer=this.core.deps.issuer.signRoomAsker;
+            const parent=db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=?").get(d.parent_id,d.room_id)as RoomPostRow|undefined;
+            const subject=parent?roomPostAsker(db,parent):null;
+            // Unknown authors retain the ordinary legacy ask; there is no verified/name fallback.
+            if(subject&&signer){const now=this.core.now();ask.askerIdentity=signer({v:1,issuer:this.core.deps.config.hubId,issuerKeyId:this.core.deps.issuer.keyId,
+              destinationFleetId:fleetId,messageId:ask.messageId,roomId:ask.roomId,exposureId:ask.exposureId,exposureRevision:d.exposure_revision,linkEpoch:link.linkEpoch,
+              subject,contentDigest:roomAskIdentityDigest(ask),issuedAt:now,expiresAt:Math.min(now+ROOM_ASKER_FRESH_MS,d.expires_at),retainedUntil:d.expires_at,nonce:randomUUID().replaceAll("-","")+randomUUID().replaceAll("-","")});}
+          }
           return ask;
         }, permit);
         if (!payload || !link.current()) continue;
