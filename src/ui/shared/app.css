@@ -5172,6 +5172,14 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-fleet .oc-bar > span:first-child, .p-fleet .oc-bar .org-counts { display: none; }
   .p-fleet .oc-bar .oc-tools { flex-wrap: nowrap; overflow-x: auto; width: 100%; }
 }
+/* M-3722 (#4453 review): eight 44 px tabs need 352 px. Under 384 px (the gutters would leave less: 360 px phones, 375 px
+   ones) the row runs edge to edge; under 352 px it is two rows of four. Every tab stays a 44 × 44 target. */
+@media (max-width: 383px) {
+  .p-fleet > .panel-head .fleet-phone-tabs { margin-left: calc(-1 * max(var(--s-4), env(safe-area-inset-left))); margin-right: calc(-1 * max(var(--s-4), env(safe-area-inset-right))); }
+}
+@media (max-width: 351px) {
+  .p-fleet > .panel-head .fleet-phone-tabs { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 /* M-3166 (Argon 2, the user's OK of round 2): on a phone a toast (an agent waiting for you, a result) is one line — a pill that a
    tap puts away — and none shows while the keyboard is up. */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {

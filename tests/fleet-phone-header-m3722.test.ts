@@ -50,6 +50,9 @@ describe("M-3722: Fleet's header on a phone names the page", () => {
     const css = readFileSync("src/ui/shared/app.css", "utf8");
     expect(css).toMatch(/\.p-fleet > \.panel-head \.fleet-phone-tabs \{[^}]*flex: 1 0 100%;[^}]*display: grid;[^}]*grid-auto-columns: minmax\(0, 1fr\)/);
     expect(css).toMatch(/\.p-fleet > \.panel-head \.fleet-phone-tabs \.seg-item \{[^}]*min-height: var\(--tap\)/);
+    // #4453 review: under 384 px edge to edge, under 352 px two rows of four (eight 44 px tabs need 352 px).
+    expect(css).toMatch(/@media \(max-width: 383px\) \{\s*\.p-fleet > \.panel-head \.fleet-phone-tabs \{ margin-left: calc\(-1 \* max\(var\(--s-4\)/);
+    expect(css).toMatch(/@media \(max-width: 351px\) \{\s*\.p-fleet > \.panel-head \.fleet-phone-tabs \{ grid-auto-flow: row; grid-template-columns: repeat\(4, minmax\(0, 1fr\)\); \}/);
     expect(css).not.toMatch(/\.p-fleet > \.panel-head \.panel-title h1, \.p-fleet > \.panel-head \.panel-actions \{ display: none/);
   });
 });

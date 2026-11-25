@@ -70,6 +70,26 @@ try {
       await shot(page, `${tag}`);
     } finally { await ctx.close(); }
   }
+  // (a2) #4453 review: narrower phones (375, 360, 320 px), en and zh-TW — every tab still a 44 × 44 target, inside the
+  // screen, none overlapping another, no sideways scroll.
+  for (const c of matrix("phone-light-en,phone-dark-zh-TW")) for (const width of [375, 360, 320]) {
+    const tag = `${caseName(c)}-${width}-org`;
+    const { page, ctx } = await fx.page(c, { host: true, storage: { agend_org_mode: "office" } });
+    try {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(`${fx.base}/ui/fleet/org`); check(`${tag}: mounted`, await mounted(page, 30000));
+      await page.waitForSelector(".fleet-phone-tabs .seg-item", { timeout: 15000 }); await page.waitForTimeout(1500);
+      const m = await page.evaluate(() => ({ W: innerWidth, scroll: document.documentElement.scrollWidth,
+        tabs: [...document.querySelectorAll(".fleet-phone-tabs .seg-item")].map((a: any) => { const r = a.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height, name: a.textContent.trim() }; }) }));
+      receipt[`narrow-${tag}`] = m;
+      const apart = m.tabs.every((x: any, i: number) => m.tabs.every((y: any, j: number) => i === j || x.r <= y.l + 0.5 || y.r <= x.l + 0.5 || x.b <= y.t + 0.5 || y.b <= x.t + 0.5));
+      check(`${tag}: every tab inside the screen`, m.tabs.length >= 8 && m.tabs.every((t: any) => t.l >= -0.5 && t.r <= m.W + 0.5), m.tabs.map((t: any) => [t.name, Math.round(t.l), Math.round(t.r)]));
+      check(`${tag}: each tab a 44 × 44 target`, m.tabs.every((t: any) => t.w >= 44 && t.h >= 44), m.tabs.map((t: any) => [t.name, Math.round(t.w * 10) / 10, Math.round(t.h)]));
+      check(`${tag}: no two tabs overlap`, apart);
+      check(`${tag}: no sideways scroll`, m.scroll <= m.W, m.scroll);
+      await shot(page, tag);
+    } finally { await ctx.close(); }
+  }
   // (b) one caller, every zoned style
   for (const c of matrix("desk-light-en,desk-dark-zh-TW")) for (const style of ["studio", "cozy", "guild", "school"]) {
     const tag = `${caseName(c)}-office-${style}`;
