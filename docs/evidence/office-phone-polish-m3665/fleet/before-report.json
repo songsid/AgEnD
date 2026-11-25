@@ -1,0 +1,522 @@
+{
+ "label": "before",
+ "cases": {
+  "desk-light-en-cozy": {
+   "errors": [],
+   "csp": [],
+   "style": "cozy",
+   "calls": 103,
+   "tagNames": [
+    "Paused one",
+    "Offline one",
+    "Stuck one",
+    "Worker",
+    "General"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": [],
+   "people": [
+    {
+     "t": "General",
+     "h": 30,
+     "w": 60,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Worker",
+     "h": 30,
+     "w": 56,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Paused one",
+     "h": 30,
+     "w": 85,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Offline one",
+     "h": 30,
+     "w": 81,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Stuck one",
+     "h": 30,
+     "w": 73,
+     "shown": true,
+     "inView": true
+    }
+   ],
+   "tagsOff": false,
+   "fs": null
+  },
+  "desk-light-en-studio": {
+   "errors": [],
+   "csp": [],
+   "style": "studio",
+   "calls": 97,
+   "tagNames": [
+    "Worker",
+    "General",
+    "Paused one",
+    "Offline one",
+    "Stuck one"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": [],
+   "people": [
+    {
+     "t": "General",
+     "h": 30,
+     "w": 60,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Worker",
+     "h": 30,
+     "w": 56,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Paused one",
+     "h": 30,
+     "w": 85,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Offline one",
+     "h": 30,
+     "w": 81,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Stuck one",
+     "h": 30,
+     "w": 73,
+     "shown": true,
+     "inView": true
+    }
+   ],
+   "tagsOff": false,
+   "fs": null
+  },
+  "desk-light-en-pixel": {
+   "errors": [],
+   "csp": [],
+   "style": "pixel",
+   "calls": 99,
+   "tagNames": [],
+   "tagCss": null,
+   "zoom": "100%",
+   "chips": [],
+   "people": [
+    {
+     "t": "General",
+     "h": 30,
+     "w": 60,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Worker",
+     "h": 30,
+     "w": 56,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Paused one",
+     "h": 30,
+     "w": 85,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Offline one",
+     "h": 30,
+     "w": 81,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Stuck one",
+     "h": 30,
+     "w": 73,
+     "shown": true,
+     "inView": true
+    }
+   ],
+   "tagsOff": false,
+   "fs": null
+  },
+  "desk-light-en-guild": {
+   "errors": [],
+   "csp": [],
+   "style": "guild",
+   "calls": 103,
+   "tagNames": [
+    "General",
+    "Worker",
+    "Paused one",
+    "Offline one",
+    "Stuck one"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": [],
+   "people": [
+    {
+     "t": "General",
+     "h": 30,
+     "w": 60,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Worker",
+     "h": 30,
+     "w": 56,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Paused one",
+     "h": 30,
+     "w": 85,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Offline one",
+     "h": 30,
+     "w": 81,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Stuck one",
+     "h": 30,
+     "w": 73,
+     "shown": true,
+     "inView": true
+    }
+   ],
+   "tagsOff": false,
+   "fs": null
+  },
+  "desk-light-en-school": {
+   "errors": [],
+   "csp": [],
+   "style": "school",
+   "calls": 104,
+   "tagNames": [
+    "Stuck one",
+    "General",
+    "Worker",
+    "Paused one",
+    "Offline one"
+   ],
+   "tagCss": 7.8,
+   "zoom": "86%",
+   "chips": [],
+   "people": [
+    {
+     "t": "General",
+     "h": 30,
+     "w": 60,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Worker",
+     "h": 30,
+     "w": 56,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Paused one",
+     "h": 30,
+     "w": 85,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Offline one",
+     "h": 30,
+     "w": 81,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Stuck one",
+     "h": 30,
+     "w": 73,
+     "shown": true,
+     "inView": true
+    }
+   ],
+   "tagsOff": false,
+   "fs": null
+  },
+  "desk-dark-zh-TW-cozy": {
+   "errors": [],
+   "csp": [],
+   "style": "cozy",
+   "calls": 106,
+   "tagNames": [
+    "Paused one",
+    "Offline one",
+    "Stuck one",
+    "Worker",
+    "General"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": [],
+   "people": [
+    {
+     "t": "General",
+     "h": 30,
+     "w": 60,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Worker",
+     "h": 30,
+     "w": 56,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Paused one",
+     "h": 30,
+     "w": 85,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Offline one",
+     "h": 30,
+     "w": 81,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Stuck one",
+     "h": 30,
+     "w": 73,
+     "shown": true,
+     "inView": true
+    }
+   ],
+   "tagsOff": false,
+   "fs": null
+  },
+  "phone-dark-zh-TW-cozy": {
+   "errors": [],
+   "csp": [],
+   "style": "cozy",
+   "calls": 106,
+   "tagNames": [
+    "Paused one",
+    "Offline one",
+    "Stuck one",
+    "Worker",
+    "General"
+   ],
+   "tagCss": 3,
+   "zoom": "30%",
+   "chips": [
+    {
+     "t": "總覽",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "工作區 1",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "休息區 1",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "求救區 1",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "午睡角 2",
+     "whole": true,
+     "inView": false
+    }
+   ],
+   "people": [
+    {
+     "t": "General",
+     "h": 30,
+     "w": 64,
+     "shown": true,
+     "inView": false
+    },
+    {
+     "t": "Worker",
+     "h": 30,
+     "w": 59,
+     "shown": true,
+     "inView": false
+    },
+    {
+     "t": "Paused one",
+     "h": 30,
+     "w": 89,
+     "shown": true,
+     "inView": false
+    },
+    {
+     "t": "Offline one",
+     "h": 30,
+     "w": 83,
+     "shown": true,
+     "inView": false
+    },
+    {
+     "t": "Stuck one",
+     "h": 30,
+     "w": 77,
+     "shown": true,
+     "inView": false
+    }
+   ],
+   "tagsOff": false,
+   "fs": {
+    "fs": "oo fs native phone",
+    "tagsOff": false,
+    "row": {
+     "w": 1,
+     "h": 1,
+     "clip": "rect(0px, 0px, 0px, 0px)"
+    },
+    "chipH": 30,
+    "pills": {
+     "top": 790,
+     "bottom": 844,
+     "shown": true
+    },
+    "overlap": false
+   }
+  },
+  "phone-light-en-cozy": {
+   "errors": [],
+   "csp": [],
+   "style": "cozy",
+   "calls": 101,
+   "tagNames": [
+    "Offline one",
+    "Stuck one",
+    "Worker",
+    "General",
+    "Paused one"
+   ],
+   "tagCss": 3,
+   "zoom": "30%",
+   "chips": [
+    {
+     "t": "Whole office",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "Work 1",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "Lounge 1",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "Help desk 1",
+     "whole": true,
+     "inView": false
+    },
+    {
+     "t": "Nap corner 2",
+     "whole": true,
+     "inView": false
+    }
+   ],
+   "people": [
+    {
+     "t": "General",
+     "h": 30,
+     "w": 64,
+     "shown": true,
+     "inView": false
+    },
+    {
+     "t": "Worker",
+     "h": 30,
+     "w": 59,
+     "shown": true,
+     "inView": false
+    },
+    {
+     "t": "Paused one",
+     "h": 30,
+     "w": 89,
+     "shown": true,
+     "inView": false
+    },
+    {
+     "t": "Offline one",
+     "h": 30,
+     "w": 83,
+     "shown": true,
+     "inView": false
+    },
+    {
+     "t": "Stuck one",
+     "h": 30,
+     "w": 77,
+     "shown": true,
+     "inView": false
+    }
+   ],
+   "tagsOff": false,
+   "fs": {
+    "fs": "oo fs native phone",
+    "tagsOff": false,
+    "row": {
+     "w": 1,
+     "h": 1,
+     "clip": "rect(0px, 0px, 0px, 0px)"
+    },
+    "chipH": 30,
+    "pills": {
+     "top": 790,
+     "bottom": 844,
+     "shown": true
+    },
+    "overlap": false
+   }
+  }
+ },
+ "source": "3ed153b1"
+}
