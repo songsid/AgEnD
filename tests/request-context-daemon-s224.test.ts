@@ -31,7 +31,7 @@ function rig(enabled = true) {
     daemon.bindRequestContextWrite(id, text, false); return daemon.requestContextTurnSnapshot();
   };
   const call = () => { daemon.handleOwnedToolCall({ type: "tool_call", tool: "send_to_instance", args: { instance_name: "target", message: "synthetic" }, requestId: 1 }, socket); return frames.at(-1)!; };
-  const fm: any = new FleetManager(root); fm.daemons.set("worker", daemon); const ipc = { send: vi.fn(() => true) }; fm.instanceIpcClients.set("worker", ipc);
+  const fm: any = new FleetManager(root); fm.daemons.set("worker", daemon); vi.spyOn(fm, "checkToolPermission").mockReturnValue({allowed:true}); const ipc = { send: vi.fn(() => true) }; fm.instanceIpcClients.set("worker", ipc);
   const clearTimers = () => { for (const cb of daemon.pendingIpcRequests.values()) cb({ result: { sent: false } }); daemon.pendingIpcRequests.clear(); };
   return { daemon, turns, bind, frames, call, fm, ipc, socket, clearTimers };
 }
@@ -81,4 +81,11 @@ it("an unknown or sibling helper socket never borrows this daemon's active reque
   const f = rig(); f.bind("a", "owner"); f.daemon.socketSessionNames.set(f.socket, "sibling");
   const frame = f.call(); const captured = f.daemon.requestContextCall(frame.requestContextCallId);
   expect(captured.admission).toEqual({ coverage: "not-covered", reason: "unbound-input" }); f.clearTimers();
+});
+
+it("S-224 captured local scope also loses its commit lease after role, IPC or published-daemon replacement",()=>{
+ const f=rig();f.bind("a");const frame=f.call();expect(f.fm.captureRequestContextIpcCall("worker",frame,f.ipc)).toBe(true);const captured=f.fm.requestContextCallOf(frame);
+ expect(captured.current()).toBe(true);f.fm.checkToolPermission.mockReturnValue({allowed:false,message:"revoked"});expect(captured.current()).toBe(false);
+ f.fm.checkToolPermission.mockReturnValue({allowed:true});f.fm.instanceIpcClients.set("worker",{});expect(captured.current()).toBe(false);
+ f.fm.instanceIpcClients.set("worker",f.ipc);f.fm.daemons.set("worker",{bootId:"replacement"});expect(captured.current()).toBe(false);f.clearTimers();
 });

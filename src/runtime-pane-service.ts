@@ -39,7 +39,10 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   const hostOptions: RuntimePaneHostOptions = { store, bootId, ...(systemBootId ? { systemBootId } : {}), online: () => !!current && current.readyState === WebSocket.OPEN && performance.now() < onlineUntil,
     ...(options.requestContextProtocol === 1 ? { requestContextNegotiated: () => requestContextNegotiated,
       installRequestContext: (owner: import("./runtime-pane-mcp-protocol.js").PaneMcpOwner, stamp: import("./request-context-call-protocol.js").RequestContextCallStamp) => relay.installRequestContext(owner, stamp) } : {}),
-    maxAgents: () => limit, mcpConnection: (owner, tools) => relay.connection(owner, tools), output: snapshot => { output.set(snapshot.paneId, snapshot); },
+    maxAgents: () => limit, mcpConnection: (owner, tools) => relay.connection(owner, tools), output: snapshot => {
+      if (options.requestContextProtocol === 1 && snapshot.state === "exited") relay.retire({ hostBootId: snapshot.hostBootId, paneId: snapshot.paneId, launchId: snapshot.launchId, agentId: snapshot.agentId, instance: snapshot.instance });
+      output.set(snapshot.paneId, snapshot);
+    },
     ...(options.credentialRoot ? {
       credentialHome: (cli: string, name: string) => requireCredentialProfile(options.credentialRoot!, cli, name),
       credentialLogin: async (cli: string, home: string, name: string) => {

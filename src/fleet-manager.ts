@@ -1518,7 +1518,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.instanceIpcClients.get(name) !== ipc || message.sourceDaemonBootId !== daemon.bootId || typeof message.requestContextCallId !== "string") return false;
     const captured = daemon.requestContextCall(message.requestContextCallId);
     if (!captured) return false;
-    this.requestContextIpcCalls.set(message, captured); return true;
+    const tool = message.type === "fleet_outbound" ? String(message.tool ?? "") : toolForIpcType(message.type);
+    const originalBoot = daemon.bootId;
+    const scoped = Object.freeze({ id: captured.id, admission: captured.admission,
+      current: () => captured.current() && this.instanceIpcClients.get(name) === ipc && this.getDaemonBootId(name) === originalBoot
+        && !!tool && this.checkToolPermission("ipc-outbound", name, tool === "hub_room_status" ? "hub_room_list" : tool).allowed });
+    this.requestContextIpcCalls.set(message, scoped); return true;
   }
   private paneManager: import("./native-pane-manager.js").NativePaneManager | null = null;
   private localPaneRelay: import("./local-pane-endpoint.js").LocalPaneEndpoint | null = null;
