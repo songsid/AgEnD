@@ -6050,6 +6050,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.error({ err }, "Contact outcome notice sweep failed; durable state will retry");
     }
   }
+  /**
+   * M-3710: how many contact requests wait, and since when — no ids, people or text. Needs you tells an admin session with
+   * no verified person behind it (contactActor null) that they exist, so a request is never silently missing there.
+   */
+  contactPendingCount(): { count: number; since: number } {
+    const pending = this.contactService().host.store.pending();
+    return { count: pending.length, since: pending.reduce((at, ticket) => Math.min(at, Date.parse(ticket.createdAt) || at), Date.now()) };
+  }
   contactNeeds(actor: ContactPerson): WebNeedsItem[] {
     const service = this.contactService();
     const pending: WebNeedsItem[] = service.host.store.pending()
@@ -20860,7 +20868,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (check.refusal) return { ok: false, refusal: check.refusal };
     const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
     store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
-    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer) };
+    const authorized = store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer);
+    // M-3710: Needs you is projected per session — this one now sees the contact requests it may decide, not just their count.
+    try { this.emitSseEvent("needs", { items: this.needsYouItems() }); } catch (err) { this.logger.warn({ err: (err as Error)?.message }, "Needs you refresh after a web authorization failed"); }
+    return { ok: true, ...authorized };
   }
 
   /**
@@ -28764,7 +28775,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, backend);
   }
 
-  /** Restricted is first. Free is present only for a fleet admin, and still has to be tapped. */
+  /** For a fleet admin, Free is first and labeled recommended. Restricted stays a button.
+   *  Anyone else sees only Restricted. Either way the room waits for a tap. */
   private async openClassicModeMenu(origin: {
     channelId: string;
     channelName: string;
@@ -28782,11 +28794,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const nonce = randomBytes(6).toString("hex");
-    const choices: Choice[] = [{
+    const restrictedChoice: Choice = {
       id: `${CLASSIC_MODE_CALLBACK_PREFIX}${nonce}:restricted`,
-      label: free ? t("classic.mode_restricted_recommended") : t("classic.mode_restricted"),
-    }];
-    if (free) choices.push({ id: `${CLASSIC_MODE_CALLBACK_PREFIX}${nonce}:free`, label: t("classic.mode_free") });
+      label: t("classic.mode_restricted"),
+    };
+    const choices: Choice[] = free
+      ? [{ id: `${CLASSIC_MODE_CALLBACK_PREFIX}${nonce}:free`, label: t("classic.mode_free_recommended") }, restrictedChoice]
+      : [restrictedChoice];
     const timer = setTimeout(() => {
       const pending = this.pendingClassicStarts.get(nonce);
       if (!pending) return;
