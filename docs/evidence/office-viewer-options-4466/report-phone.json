@@ -7,7 +7,8 @@
       "miniBack": false,
       "cardName": "陽奈",
       "deskName": "陽奈",
-      "cardState": "Crashed · Novice",
+      "cardState": "Paused · Novice",
+      "callerState": "Crashed · Novice",
       "errors": [],
       "csp": []
     },
@@ -17,7 +18,8 @@
       "miniBack": false,
       "cardName": "陽奈",
       "deskName": "陽奈",
-      "cardState": "已當掉 · 新手",
+      "cardState": "已暫停 · 新手",
+      "callerState": "已當掉 · 新手",
       "errors": [],
       "csp": []
     },
@@ -27,7 +29,8 @@
       "miniBack": false,
       "cardName": "陽奈",
       "deskName": "陽奈",
-      "cardState": "Crashed · Novice",
+      "cardState": "Paused · Novice",
+      "callerState": "Crashed · Novice",
       "errors": [],
       "csp": []
     },
@@ -37,7 +40,8 @@
       "miniBack": false,
       "cardName": "陽奈",
       "deskName": "陽奈",
-      "cardState": "已當掉 · 新手",
+      "cardState": "已暫停 · 新手",
+      "callerState": "已當掉 · 新手",
       "errors": [],
       "csp": []
     }

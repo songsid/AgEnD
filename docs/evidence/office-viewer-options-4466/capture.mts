@@ -1,7 +1,8 @@
 // #4466 captures: Office viewer options. Synthetic pack and fixture agents only (Alpha … Echo): no real names.
 // For each case: the ⚙ menu with the two new switches; names+levels and the minimap hidden; Alpha's card with ✎, the
-// field, the new name on the card and the tag; Alpha's card open while Alpha is told to walk (crashed → Help desk):
-// still in place 10 s later, and walked off once the card closes.
+// field, the new name on the card and the tag; Alpha's card open while Alpha is told to walk (paused → Nap corner):
+// still in place 10 s later, and walked off once the card closes; the card open again and Alpha calling (crashed): walks
+// to the Help desk all the same; then names hidden, the caller's tag kept.
 // REPO=<checkout> PW_DIR=<dir with playwright-core> CHROME=<chrome> OUT=<dir> DEV=desk|phone [PW_DPR=3 for the phone]
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -97,16 +98,30 @@ try {
     r.deskName = (await alpha.innerText()).trim();
     await shot("6-renamed");
 
-    // Card still open: Alpha is told to go to the Help desk, and must stay put until the card closes.
-    status.set("bot-alpha", "crashed");
-    const word = zh ? "當掉" : "rash";
-    await page.waitForFunction((w: string) => (document.querySelector(".oo-card-state")?.textContent || "").includes(w), word, { timeout: 30000 });
-    r.cardState = (await page.locator(".oo-card-state").innerText()).trim();
+    // The card's state line, once it is no longer `was` (the page polls the status).
+    const stateNot = async (was: string) => {
+      await page.waitForFunction((w: string) => { const s = (document.querySelector(".oo-card-state")?.textContent || "").trim(); return !!s && s !== w; }, was, { timeout: 30000 });
+      return (await page.locator(".oo-card-state").innerText()).trim();
+    };
+    const closeCard = async () => { await page.locator(".oo-card-close").click(); await page.locator(".oo-card").waitFor({ state: "hidden" }); };
+    // Card still open: Alpha is paused, due at the Nap corner, and stays put until the card closes.
+    let was = (await page.locator(".oo-card-state").innerText()).trim();
+    status.set("bot-alpha", "paused");
+    r.cardState = was = await stateNot(was);
     await sleep(500); await shot("7-carded-0s");
     await sleep(10000); await shot("8-carded-10s");
-    await page.locator(".oo-card-close").click();
-    await page.locator(".oo-card").waitFor({ state: "hidden" });
+    await closeCard();
     await sleep(10000); await shot("9-closed-walked");
+    // #4467 review: a caller is never kept from the Help desk. Card open again, Alpha now calling (crashed): walks there anyway.
+    await alpha.focus(); await alpha.press("Enter"); await page.locator(".oo-card").waitFor();
+    was = (await page.locator(".oo-card-state").innerText()).trim();
+    status.set("bot-alpha", "crashed");
+    r.callerState = await stateNot(was);
+    await sleep(12000); await shot("10-carded-caller-walked");
+    await closeCard();
+    // …and with names hidden, the caller keeps their tag (the others' go).
+    await menu(true); await page.locator(".oo-hide-names input").check(); await menu(false);
+    await sleep(1200); await shot("11-names-hidden-caller-tagged");
     report.cases[key] = { ...r, errors, csp: await csp() };
     await ctx.close();
   }
