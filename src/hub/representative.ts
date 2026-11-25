@@ -374,6 +374,9 @@ export class HubRepresentativeExecution {
       const request: HubAuthorizationRequest = { messageId: row.message_id, operationId: randomUUID(), exposureRevision: row.revision, phase: "begin" };
       const lease = await this.options.authorize(request);
       if (this.refresh(row) !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return false; }
+      // authorize is the Hub round trip. The fence can rise during that await. Re-read it with no await before the
+      // intent write. The row stays dispatching, so the caller queues it again: no input intent, and not uncertain.
+      if (this.options.updateHeld?.()) return false;
       this.options.journal.markInputIntent(row.message_id, request, lease, this.fenceOf(row));
       if (!this.setState(row, "input", ["dispatching"])) throw new HubProtocolError("uncertain");
       this.forgetRetry(row.id);

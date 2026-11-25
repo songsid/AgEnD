@@ -320,18 +320,21 @@ export class HubRoomAskAdapter {
         ...(verifiedHubAsker ? {verifiedHubAsker,roomAskerMessageId:id,roomAskerDestination:Object.freeze(this.accepted(saved).destination)} : {}),
         text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, { maxContextBytes: this.options.maxCrossInstanceMessageBytes?.(), react: !!source.features?.has(HUB_ROOM_REACT_CAPABILITY) && typeof source.sendReact === "function", fileLines }), stillCurrent: current,
         beforeInput: async () => {
-          if (!current() || this.row(id)?.state !== "dispatching") return false;
+          if (!current() || this.row(id)?.state !== "dispatching" || this.options.updateHeld?.()) return false;
           // Durable first-input intent BEFORE handing bytes to the ordinary Fleet delivery path.
           this.save(id, "input", saved); return current();
         } });
       if (this.closed) return;
       const latest = this.row(id);
-      if (latest?.state === "input") this.save(id, delivered ? "delivered" : "held", this.read(latest));
+      // A fence that rose during the hand-off refused the send. Nothing reached the agent: queue it again.
+      if (latest?.state === "input" && !delivered && this.options.updateHeld?.()) this.save(id, "queued", this.read(latest));
+      else if (latest?.state === "input") this.save(id, delivered ? "delivered" : "held", this.read(latest));
       else if (latest?.state === "dispatching") this.save(id, "queued", this.read(latest));
     } catch {
       if (this.closed) return;
       const latest = this.row(id);
-      if (latest?.state === "input") this.save(id, "held", this.read(latest));
+      if (latest?.state === "input" && this.options.updateHeld?.()) this.save(id, "queued", this.read(latest));
+      else if (latest?.state === "input") this.save(id, "held", this.read(latest));
       else if (latest?.state === "dispatching") this.save(id, "queued", this.read(latest));
     } finally { this.admitted.delete(id); }
   }

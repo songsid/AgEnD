@@ -821,6 +821,30 @@ describe("S-244 an armed barrier does not hand a Hub question off", () => {
     expect(f.authorize.mock.calls.filter(([request]) => request.phase === "begin")).toHaveLength(1);
     expect(intent).toHaveBeenCalledTimes(1);
   });
+
+  it("a flag that rises while authorize is pending leaves the row queued, with no intent", async () => {
+    let held = false;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const f = fixture({ updateHeld: () => held });
+    const intent = vi.spyOn(f.journal, "markInputIntent");
+    const real = f.authorize.getMockImplementation()!;
+    f.authorize.mockImplementation(async request => {
+      if (request.phase === "begin") { held = true; await gate; }
+      return real(request);
+    });
+    f.publish();
+    const q = f.question("a question that must stay encrypted");
+    await f.admission.admit(q);
+    await until(() => f.authorize.mock.calls.some(([request]) => request.phase === "begin"), "begin in flight");
+    expect(f.state(q.identity.messageId)?.state).toBe("dispatching");
+    expect(intent).not.toHaveBeenCalled();
+    release();
+    await until(() => f.state(q.identity.messageId)?.state === "queued", "queued again");
+    expect(intent).not.toHaveBeenCalled();
+    expect(f.state(q.identity.messageId)).toEqual({ state: "queued", reason: null });
+    expect(f.authorize.mock.calls.filter(([request]) => request.phase === "begin")).toHaveLength(1);
+  });
 });
 
 describe("S-231 accepted Hub snapshot",()=>{
