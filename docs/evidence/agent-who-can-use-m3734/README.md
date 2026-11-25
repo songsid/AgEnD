@@ -9,7 +9,7 @@
   - Each change writes one person's whole grant with Settings → Guests' own `PUT /api/settings/fleet/web`, built from the grant this page shows. The grant as shown goes with it as `if_grants` (Prism #4461 P2).
   - If that grant has changed since, the save is refused with 409 `guest_grant_changed`, either when it's admitted (before any confirmation is asked for) or when it applies. An edit made meanwhile in Settings → Guests is therefore never written over. Remove's question is about exactly what is written. The page then says nothing was saved and reads the list again.
   - The same Settings confirmation applies: adding someone, or making them Trusted, waits for a fleet admin; taking access away applies at once.
-  - Before any grant is saved (#1920's derived access), the list is read-only and offers **Start from today's guests**. The page says what that does: everyone keeps exactly the agents they can use now, and from then on you add people per agent. It is sent only while no grants are saved (`if_grants: "unset"`). A single grant would take everyone else's access away.
+  - Before any grant is saved (#1920's derived access), the list is read-only and offers **Start from today's guests**. The page says what that does: everyone keeps exactly the agents they can use now, and from then on you add people per agent. It is sent only while no grants are saved (`if_grants: "unset"`). The server takes it only while it equals each guest's derived access at that moment, checked at admission and again as it applies (Prism #4461 R1), so access narrowed since the page read it is never put back. A single grant would take everyone else's access away.
   - Add a person says who is listed, what to do when someone is missing (they send one of your agents a message once) and who confirms (you, on the confirm card at the top of the page, or an admin in General).
   - A person's level (Chat or Trusted) covers all their agents, and their row says so when they have more than this one.
 - **Hub:**
@@ -20,7 +20,7 @@
 
 Fleet admins can always use every agent. A bot's Discord or Telegram `allowed_users` is unchanged.
 
-**Captures.** From the real web app (`scripts/manual/smoke-fixture`), headless Chromium, at 8b7749243 (`src` clean). The script is `scripts/manual/agent-who-can-use-m3734/capture.mts`. The guests and people are made up and on Discord:
+**Captures.** From the real web app (`scripts/manual/smoke-fixture`), headless Chromium, at 6cb4ea444 (`src` clean). The script is `scripts/manual/agent-who-can-use-m3734/capture.mts`. The guests and people are made up and on Discord:
 - Alice: Chat, alpha.
 - Bob: beta only, so not listed.
 - Carol: Trusted, alpha and beta.
@@ -63,7 +63,7 @@ One read is left out of that last check: the Overview's board-work read (`/ui/ta
   - a widening refused at admission;
   - a change after admission (the confirmation's baseline goes stale);
   - the handler's own check;
-  - Start from today's guests once grants exist;
+  - Start from today's guests once grants exist, after a narrowing (at admission and on the replay), leaving someone out, adding someone, or with no readable scope;
   - and that an unchanged grant applies.
 - Mutations each fail a test:
   - the gate check, the handler check, "unset", and the page sending no `if_grants`;

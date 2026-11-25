@@ -1,5 +1,5 @@
 {
-  "sourceHead": "8b7749243a70e1bbc40f29adc789aaa546e62f5e",
+  "sourceHead": "6cb4ea44433bd433b3fb9a24eec5ff5809535ca7",
   "dirty": [],
   "checks": [
     {
@@ -310,7 +310,7 @@
   "pictures": [
     {
       "path": "m3734-desk-light-en-1-who.png",
-      "sha256": "3cd745aecbf6a316b914a8ba582d13a031d7f03e91f1a8c99d54a91c4f884895"
+      "sha256": "be5c269f14bccf53c3d280e4ed5f4e7bc5420a5b580b3f31de39212e6ee1fb85"
     },
     {
       "path": "m3734-desk-light-en-5-hub.png",
@@ -334,7 +334,7 @@
     },
     {
       "path": "m3734-desk-dark-zh-TW-5-hub.png",
-      "sha256": "51b0e0d630fcbf3beba5f014f82226e38118b0910ac28c347248007b8ec19e77"
+      "sha256": "3f1667f5c8c9ab23be86ec9449091818440e0f9a3c6c613c1afb6de4b1294477"
     },
     {
       "path": "m3734-desk-dark-zh-TW-2-add.png",
