@@ -2887,6 +2887,13 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .oc-tools:has(.oo-more-btn) .seg-inline { flex: none; }
   .oc-tools .oo-more-btn { flex: none; width: var(--tap); height: var(--tap); }
   @media (hover: none) { .oc-tools .oo-more-btn:hover { background: none; } }   /* a tap leaves :hover stuck on touch */
+  /* M-3727: Find (at least 88 px), the view switch and ⋯ need about 342 px (en) — more than a 320–360 px phone has: ⋯ went
+     off-screen. There, Find takes the first row and the switch and ⋯ (at the right) the second; every control stays whole. */
+  @media (max-width: 369px) {
+    .oc-office .oc-bar .oc-tools:has(.oo-more-btn) { flex-wrap: wrap; row-gap: var(--s-1); }
+    .oc-tools:has(.oo-more-btn) .oc-find { flex: 1 0 100%; }
+    .oc-tools .oo-more-btn { margin-left: auto; }
+  }
   .oo.phone > :not(.oo-stage):not(dialog) { margin-left: var(--s-3); margin-right: var(--s-3); }
   .oo.phone .oo-stage { min-height: 160px; }
   .oo.phone .oo-mini { display: none; }
