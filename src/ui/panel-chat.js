@@ -86,6 +86,7 @@ import { isUpdateLine, needsArgument, paletteFor, parseCommandLine, UPDATE_COMMA
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
+import { usageCreditsActions, usageCreditsTitle, usageCreditsDetail, kindClass, showRawLabel } from "./usage-credits-card.js";
 /**
  * M-2904: the working bar's Stop has its own stylesheet, linked once when this module loads (before the chat draws): a tab
  * opened before the change keeps its older app.css, which has no rule for it (Prism #3651: a 40×30 Stop on a phone).
@@ -705,11 +706,23 @@ function QuickActions({ name, inst, lease }) {
 function Prompts({ name }) {
   const list = store.promptsFor(name);
   if (!list.length) return null;
-  return html`<div data-trust="permission" class="prompts" aria-live="polite">${list.map(p => html`<div key=${p.nonce} class=${`prompt${p.resolved ? " done" : ""}`} role="group" aria-label=${p.text}>
+  return html`<div data-trust="permission" class="prompts" aria-live="polite">${list.map(p => p.view && p.view.kind === "usage-credits" && !p.resolved ? html`<${UsageCreditsPrompt} key=${p.nonce} p=${p} />` : html`<div key=${p.nonce} class=${`prompt${p.resolved ? " done" : ""}`} role="group" aria-label=${p.text}>
     <div class="txt">${p.resolved ? (p.outcome || t("chat.promptGone")) : textLinkSegments(p.text, p.links).map(sg => sg.href ? html`<a data-trust="link" class="st-link" href=${sg.href}>${sg.text}</a>` : sg.text)}</div>
-    ${p.resolved ? null : html`<div class="acts">${p.actions.filter(a => !a.input).map(a => html`<button key=${a.id} type="button" class="btn" disabled=${!!p.busy} onClick=${() => store.answerPrompt(p, a.id)}>${a.label}</button>`)}
+    ${p.resolved ? null : html`<div class="acts">${p.actions.filter(a => !a.input).map(a => html`<button key=${a.id} type="button" class="btn" disabled=${!!p.busy} onClick=${() => store.answerPrompt(p, a.id)}>${a.label}${a.hint ? html`<span class="btn-hint">${a.hint}</span>` : null}</button>`)}
       ${p.busy ? html`<span class="wait">${t("chat.promptAnswering")}</span>` : null}</div>`}
     ${p.resolved ? null : p.actions.filter(a => a.input).map(a => html`<${PromptText} key=${a.id} p=${p} action=${a} />`)}</div>`)}</div>`;
+}
+
+/** M-3757: Claude's usage-credits prompt, as in Needs you: the question naming the agent, one sentence on the bill, Claude's own words folded, its choices. */
+function UsageCreditsPrompt({ p }) {
+  const title = usageCreditsTitle(p.view);
+  return html`<div class="prompt prompt-usage-credits" role="group" aria-label=${title}>
+    <div class="txt"><strong>${title}</strong></div>
+    <div class="txt prompt-detail">${usageCreditsDetail(p.view)}</div>
+    <details class="n-raw"><summary>${showRawLabel()}</summary><pre class="n-raw-text">${p.view.raw || p.text}</pre></details>
+    <div class="acts">${usageCreditsActions(p.view, p.actions).filter(a => !a.input).map(a => html`<button key=${a.id} type="button" class=${`btn btn-sm${kindClass(a.kind)}`} disabled=${!!p.busy} onClick=${() => store.answerPrompt(p, a.id)}>${a.label}</button>`)}
+      ${p.busy ? html`<span class="wait">${t("chat.promptAnswering")}</span>` : null}</div>
+  </div>`;
 }
 
 /** #2675: a prompt's typed answer (a kiro question card's "answer in words"): a box and its send button. */

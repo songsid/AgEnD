@@ -222,6 +222,9 @@ tab title. Items, grouped by instance, oldest first:
 "Asking you a question" is a kiro V3 question card, posted to the instance's chat with a button per answer and a box
 for answering in words (on Discord/Telegram: reply to the post); an MCP input request offers Decline / Cancel and is
 filled in at the terminal (View).
+Claude Code's usage-credits prompt ("Fable 5.2 now uses usage credits", before a turn on a model the plan bills to
+usage credits) is "Waiting at a dialog": AgEnD never answers it (its default, and Esc, switch the model), and a signed-in
+administrator picks one of its own choices on the card.
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
 "Paused: AI account not connected" and "AI account needs connecting" have **Connect account** when the dashboard can run that login (#2233), in the group **AI accounts**; every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),

@@ -967,6 +967,22 @@ img.amb-p { object-fit: contain; }
 .st-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .st-link:hover { text-decoration-thickness: 2px; }
 .prompt .acts { display: flex; gap: var(--s-2); margin-top: var(--s-2); align-items: center; flex-wrap: wrap; }
+/* M-3757: a plain subtitle under a CLI choice's own words (what it means for the plan). */
+.btn:has(> .btn-hint) { flex-direction: column; align-items: flex-start; text-align: left; height: auto; }
+.btn .btn-hint { display: block; font-size: var(--fs-xs); font-weight: 400; color: var(--text-2); white-space: normal; }
+/* M-3757: Claude's text, folded under the detail line (Needs you and the chat). */
+.n-raw { margin-top: var(--s-1); font-size: var(--fs-xs); color: var(--text-2); }
+.n-raw > summary { cursor: pointer; width: fit-content; }
+.n-raw-text { margin: var(--s-1) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-xs); color: var(--text-2); }
+.prompt .prompt-detail { color: var(--text-2); }
+/* The bill sentence wraps at spaces and punctuation only (never inside 「另外」), balanced so no stub is left alone. */
+.n-usage-credits .n-detail, .prompt-usage-credits .prompt-detail { word-break: keep-all; overflow-wrap: anywhere; text-wrap: balance; }
+.prompt-usage-credits > .txt:first-child { text-wrap: balance; }
+/* Phone and touch: the fold and the chat prompt's choices are tap targets, as .n-actions buttons are. */
+@media (max-width: 899px), (pointer: coarse) {
+  .n-raw > summary { min-height: var(--tap); line-height: var(--tap); }
+  .prompt-usage-credits .acts .btn { min-height: var(--tap); }
+}
 .prompt .wait { font-size: var(--fs-xs); color: var(--text-3); }
 /* #2675: a prompt's typed answer. 16px keeps iOS from zooming in on focus (#1612). */
 .prompt .prompt-text { display: flex; gap: var(--s-2); margin-top: var(--s-2); }

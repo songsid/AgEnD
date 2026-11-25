@@ -52,7 +52,25 @@ describe("claude-flag-watch (M-3652)", () => {
   it("says so in one line when no profile has it", () => {
     const r = run(absent, noCache);
     expect(r.status).toBe(0);
-    expect(r.stdout).toBe("claude-flags: none of tengu_eager_brooks in 2 profile(s)\n");
+    expect(r.stdout).toBe("claude-flags: none of tengu_eager_brooks, tengu_saffron_lattice in 2 profile(s)\n");
+  });
+
+  it("M-3757: tengu_saffron_lattice is active when it bills a model to usage credits, and prints none of its settings", () => {
+    const billed = profile("eta", JSON.stringify({ cachedGrowthBookFeatures: { tengu_saffron_lattice: { overageConsentRequired: true, billsFrom: "2026-11-01SECRETDATE" } } }));
+    const perModel = profile("theta", JSON.stringify({ cachedGrowthBookFeatures: { tengu_saffron_lattice: { enabled: false, perModel: { "claude-fable-5-2": { enabled: true } } } } }));
+    const ends = profile("iota", JSON.stringify({ cachedGrowthBookFeatures: { tengu_saffron_lattice: { defaultValue: { planLimitsEndDate: "2026-12-01" } } } }));
+    const off = profile("kappa", JSON.stringify({ cachedGrowthBookFeatures: { tengu_saffron_lattice: { enabled: false, overageConsentRequired: true } } }));
+    const empty = profile("lambda", JSON.stringify({ cachedGrowthBookFeatures: { tengu_saffron_lattice: {} } }));
+    const r = run(billed, perModel, ends, off, empty);
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim().split("\n")).toEqual([
+      expect.stringMatching(/^WARN claude-flags eta: server flag tengu_saffron_lattice is present \(active\) - .*usage-credits prompt.*M-3757/),
+      expect.stringMatching(/^WARN claude-flags theta: server flag tengu_saffron_lattice is present \(active\) - /),
+      expect.stringMatching(/^WARN claude-flags iota: server flag tengu_saffron_lattice is present \(active\) - /),
+      expect.stringMatching(/^WARN claude-flags kappa: server flag tengu_saffron_lattice is present \(present, inactive\) - /),
+      expect.stringMatching(/^WARN claude-flags lambda: server flag tengu_saffron_lattice is present \(present, inactive\) - /),
+    ]);
+    for (const leak of ["SECRETDATE", "billsFrom", "claude-fable-5-2", "perModel", "2026-12-01"]) expect(r.stdout).not.toContain(leak);
   });
 
   it("an unreadable profile is a WARN, never a failure of the watch", () => {
