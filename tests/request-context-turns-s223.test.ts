@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { requestContextDigest } from "../src/request-context-store.js";
+import { deliveryContentDigest as wireDigest } from "../src/delivery-outbox.js";
 import { RequestContextLocalTurns, RequestContextInputDeferred, type PreparedRequestContextInput, type RequestContextRecoveryPointer,
   type RequestContextRuntimeOwner, type RequestContextTurnPorts } from "../src/request-context-turns.js";
 import type { RequestContextV1 } from "../src/request-context-protocol.js";
@@ -15,7 +15,7 @@ function rig() {
     retain: c => { contexts.set(c.ref.contextId, structuredClone(c)); }, canManage: () => admin,
     recovery: () => recovery, saveRecovery: p => { recovery = p; } };
   const prepare = (id: string, c = context(), proof: PreparedRequestContextInput["proof"] = { kind: "independent" }, text = "synthetic input") => {
-    inputs.set(id, { inputId: id, wireSha256: requestContextDigest(text), owner: { ...owner }, context: c, proof }); return requestContextDigest(text);
+    inputs.set(id, { inputId: id, wireSha256: wireDigest(text), owner: { ...owner }, context: c, proof }); return wireDigest(text);
   };
   return { turns: new RequestContextLocalTurns(ports), ports, inputs, contexts, prepare, recovery: () => recovery, admin: (value: boolean) => { admin = value; } };
 }
@@ -28,7 +28,7 @@ it("binds at the actual write, preserves immutable snapshots, and retries do not
 it("neither typed history, a correlation-like key nor changed wire bytes selects a context", () => {
   const r = rig(), digest = r.prepare("owned-input");
   expect(() => r.turns.beforeWrite("quoted-history", digest, owner)).toThrow(/admitted input unavailable/);
-  expect(() => r.turns.beforeWrite("owned-input", requestContextDigest("changed"), owner)).toThrow(/admitted input unavailable/);
+  expect(() => r.turns.beforeWrite("owned-input", wireDigest("changed"), owner)).toThrow(/admitted input unavailable/);
   expect(r.turns.current(owner)).toBeNull();
 });
 it("an unrelated administrator or outside input queues while outside work owns the turn", () => {
@@ -80,7 +80,7 @@ it("restart fallback keeps restrictions but creates an unknown distinct root wit
   const r = rig(); r.turns.beforeWrite("outside", r.prepare("outside"), owner);
   const restarted = new RequestContextLocalTurns(r.ports), nextOwner = { ...owner, daemonBootId: "boot-2" };
   expect(restarted.current(nextOwner)).toBeNull();
-  const next = restarted.beforeWrite(null, requestContextDigest("system recovery"), nextOwner);
+  const next = restarted.beforeWrite(null, wireDigest("system recovery"), nextOwner);
   expect(next.context.ingress).toBe("restricted-room"); expect(next.context.initiatingActor).toEqual({ kind: "unknown", reason: "unproved-recovery" });
   expect(next.context.ref.rootContextId).not.toBe(ROOT); expect(next.context.ref.parentContextId).toBeUndefined(); expect(next.unprovedRecoveryFrom).toBe(ROOT);
 });
@@ -89,7 +89,7 @@ it("an independent owner root ends fallback eligibility without rewriting earlie
   const c = { ...context(), ref: { version: 1 as const, contextId: OTHER, rootContextId: OTHER }, ingress: "owner" as const };
   const next = r.turns.beforeWrite("owner", r.prepare("owner", c), owner); r.turns.ended(next, owner);
   expect(r.recovery()).toBeNull(); expect(r.contexts.get(ROOT)).toEqual(context());
-  expect(() => r.turns.beforeWrite(null, requestContextDigest("unmapped resume"), owner)).toThrow(/no trustworthy parent/);
+  expect(() => r.turns.beforeWrite(null, wireDigest("unmapped resume"), owner)).toThrow(/no trustworthy parent/);
 });
 it.each(["daemonBootId", "incarnation", "workGeneration", "spawnGeneration", "launchFenceEpoch", "deliveryEpoch"] as const)("a changed %s retires active ownership and cannot validate an old snapshot", key => {
   const r = rig(), s = r.turns.beforeWrite("input", r.prepare("input"), owner);
@@ -99,8 +99,8 @@ it.each(["daemonBootId", "incarnation", "workGeneration", "spawnGeneration", "la
 });
 it("unproved recovery cannot cross a work generation or incarnation, or borrow an active approval", () => {
   const r = rig(); r.turns.beforeWrite("outside", r.prepare("outside"), owner);
-  expect(() => r.turns.beforeWrite(null, requestContextDigest("unknown"), owner)).toThrow(RequestContextInputDeferred);
-  r.turns.fence(); expect(() => r.turns.beforeWrite(null, requestContextDigest("unknown"), { ...owner, workGeneration: "new-session" })).toThrow(/no trustworthy parent/);
+  expect(() => r.turns.beforeWrite(null, wireDigest("unknown"), owner)).toThrow(RequestContextInputDeferred);
+  r.turns.fence(); expect(() => r.turns.beforeWrite(null, wireDigest("unknown"), { ...owner, workGeneration: "new-session" })).toThrow(/no trustworthy parent/);
 });
 it("an already prepared input cannot move into another daemon boot before its first paste", () => {
   const r = rig(), digest = r.prepare("prepared");
@@ -112,7 +112,7 @@ it("an owned recovery job keeps its captured parent even after an unrelated admi
   const c = { ...context(), ref: { version: 1 as const, contextId: OTHER, rootContextId: OTHER }, ingress: "owner" as const };
   const independent = r.turns.beforeWrite("admin", r.prepare("admin", c), owner); r.turns.ended(independent, owner);
   expect(r.recovery()).toBeNull();
-  const resumed = r.turns.beforeRecoveryWrite("owned-job", requestContextDigest("recovery prompt"), owner, original);
+  const resumed = r.turns.beforeRecoveryWrite("owned-job", wireDigest("recovery prompt"), owner, original);
   expect(resumed.context.ref.rootContextId).toBe(ROOT); expect(resumed.token).not.toBe(original.token);
 });
 it("only an initiating person's registered expected answer joins, independent of display-name changes", () => {

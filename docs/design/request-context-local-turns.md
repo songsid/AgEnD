@@ -19,7 +19,9 @@ later integration/cutover; this slice does not infer them from text.
 
 The real Daemon's common final `beforePaste` callback binds after the write lock,
 readiness checks and awaits, immediately before paste. It receives the final
-wire, including receipt preparation changes. A verified receipt key takes
+wire, including receipt preparation changes. Its digest is the shared raw UTF-8
+`deliveryContentDigest`, matching actual delivery/receipt byte hashes, not a JSON
+serialization of the string. A verified receipt key takes
 precedence over a durable attempt key. Unmapped system input is conservative
 recovery, never a fresh owner root. Failed or uncertain paste retains conservative
 ownership until an owned boundary; it is not proof that the input was consumed.
@@ -49,8 +51,12 @@ snapshot. Stop fences active state. Idle, a timeout, a published answer or a pen
 child does not retire it. There is no persistent agent-wide permission switch or
 awaiting-children lock.
 
-Automatic local retirement requires the existing transcript ledger to match this
-write and observe its actual complete/aborted/error end. The ledger starts at
+Automatic local retirement requires a unique server-owned receipt/delivery/input
+marker in the wire, plus the transcript ledger matching this write and observing
+its actual complete/aborted/error end. Unmarked repeated system text cannot prove
+ownership just because it matches an earlier prompt. A mapped reply-recovery job
+gets its own boot/job marker only when the dormant lifecycle port is installed;
+OFF recovery bytes are unchanged. The ledger starts at
 this write, separately from cached historical evidence; a withdrawn or unknown
 record does not count as completion. Stale monitors cannot settle a current write.
 This is not a claim of generalized owned completion for every CLI: a backend that

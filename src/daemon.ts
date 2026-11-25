@@ -68,7 +68,6 @@ import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
 import type { RequestContextLocalTurns, RequestContextRuntimeOwner, RequestContextTurnSnapshot } from "./request-context-turns.js";
-import { requestContextDigest } from "./request-context-store.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, InputBox, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog, SteerComposerMode } from "./backend/types.js";
 import { shellQuote, KiroCompatibilityError, UnsupportedCliError, ResumeBlockedError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
@@ -2656,7 +2655,7 @@ export class Daemon extends EventEmitter {
 
   /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
   private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string } };
-  private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger };
+  private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean };
   setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }): void {
     if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle) throw Error("Request context must be bound before local daemon startup");
     this.requestContextLifecycle = { turns, identity };
@@ -2680,15 +2679,22 @@ export class Daemon extends EventEmitter {
     // Native/composer queued input must bind at actual consumption, not at enqueue (slice D).
     if (queued) throw Error("request-context queued input consumption is not covered yet");
     if (recovery && !recovery.current()) throw Error("request-context recovery job is no longer current");
-    const snapshot = recovery ? this.requestContextLifecycle!.turns.beforeRecoveryWrite(recovery.inputId, requestContextDigest(text), owner, recovery.parent)
-      : this.requestContextLifecycle!.turns.beforeWrite(inputId, requestContextDigest(text), owner);
+    const snapshot = recovery ? this.requestContextLifecycle!.turns.beforeRecoveryWrite(recovery.inputId, deliveryContentDigest(text), owner, recovery.parent)
+      : this.requestContextLifecycle!.turns.beforeWrite(inputId, deliveryContentDigest(text), owner);
     if (this.requestContextWrite?.snapshot.token !== snapshot.token) {
-      this.requestContextWrite = { snapshot, text, at: Date.now(), ledger: new TranscriptTurnLedger() };
+      const id = snapshot.inputId;
+      const humanId = id.startsWith("human:") ? id.slice(6) : null;
+      const deliveryId = /^delivery:([^:]+):[0-9]+$/.exec(id)?.[1];
+      const endAnchor = !!humanId && /^[A-Za-z0-9_-]+$/.test(humanId) && text.split("\n").some(line =>
+        line.startsWith(`[hid:${humanId}]`) || line.startsWith(`[agend-human-id:${humanId}]`))
+        || !!deliveryId && text.startsWith(`[agend-delivery-id:${deliveryId}]\n`)
+        || /^[A-Za-z0-9:_-]+$/.test(id) && text.startsWith(`[agend-request-input:${id}]\n`);
+      this.requestContextWrite = { snapshot, text, at: Date.now(), ledger: new TranscriptTurnLedger(), endAnchor };
     }
   }
   private settleRequestContextFromTranscript(): void {
     const write = this.requestContextWrite, owner = this.requestContextOwner();
-    if (!write || !owner || !this.requestContextLifecycle!.turns.isCurrent(write.snapshot, owner)) return;
+    if (!write || !write.endAnchor || !owner || !this.requestContextLifecycle!.turns.isCurrent(write.snapshot, owner)) return;
     const verdict = write.ledger.verdict(write.text, write.at);
     if (verdict === "ended" || verdict === "aborted" || verdict === "error") {
       this.requestContextLifecycle!.turns.ended(write.snapshot, owner); this.requestContextWrite = undefined;
@@ -7679,6 +7685,7 @@ export class Daemon extends EventEmitter {
   private queueReplyRecoveryPrompt(turn: TurnReplySnapshot): void {
     const deliveryEpoch = this.deliveryEpoch;
     const parent = this.workingTurnRequestContext?.generation === turn.generation ? this.workingTurnRequestContext.snapshot : null;
+    const recoveryInputId = `reply-recovery:${this.bootId}:${turn.generation}:${deliveryEpoch}`;
     this.pasteQueueDepth++;
     this.pasteLock = this.pasteLock.then(async () => {
       try {
@@ -7693,9 +7700,10 @@ export class Daemon extends EventEmitter {
           });
           return;
         }
-        const delivered = await this.deliverMessage(REPLY_RECOVERY_PROMPT, undefined, {
+        const recoveryText = parent && this.requestContextLifecycle ? `[agend-request-input:${recoveryInputId}]\n${REPLY_RECOVERY_PROMPT}` : REPLY_RECOVERY_PROMPT;
+        const delivered = await this.deliverMessage(recoveryText, undefined, {
           deliveryEpoch,
-          ...(parent ? { requestContextRecovery: { inputId: `reply-recovery:${turn.generation}:${deliveryEpoch}`, parent,
+          ...(parent ? { requestContextRecovery: { inputId: recoveryInputId, parent,
             current: () => !!this.currentReplyRecovery(turn.generation, deliveryEpoch) } } : {}),
         });
         if (!this.currentReplyRecovery(turn.generation, deliveryEpoch)) return;

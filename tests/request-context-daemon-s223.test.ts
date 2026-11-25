@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
 import { RequestContextLocalTurns, type PreparedRequestContextInput, type RequestContextTurnPorts } from "../src/request-context-turns.js";
-import { requestContextDigest } from "../src/request-context-store.js";
+import { deliveryContentDigest as wireDigest } from "../src/delivery-outbox.js";
 const ROOT = "00000000-0000-4000-8000-000000000001", AUDIENCE = "00000000-0000-4000-8000-000000000002";
 const roots: string[] = [];
 afterEach(() => { vi.useRealTimers(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -35,7 +35,7 @@ function rig() {
     writes.push(args[0]); return true;
   });
   const prepare = (id: string, text: string) => {
-    inputs.set(id, { inputId: id, wireSha256: requestContextDigest(text), owner: daemon.requestContextOwner(), proof: { kind: "independent" }, context: {
+    inputs.set(id, { inputId: id, wireSha256: wireDigest(text), owner: daemon.requestContextOwner(), proof: { kind: "independent" }, context: {
       ref: { version: 1, contextId: ROOT, rootContextId: ROOT }, rootEvidenceRef: "accepted-fixture", ingress: "restricted-room",
       initiatingActor: { kind: "person", platform: "discord", userId: "demo-person" }, source: { instance: "worker", incarnation: "worker-generation" }, sourceAudience: { kind: "room", ref: AUDIENCE } } });
   };
@@ -83,7 +83,7 @@ it("the actual reply-recovery job carries the captured logical-turn parent, not 
   r.daemon.queueReplyRecoveryPrompt({ generation: 7 } as any);
   await vi.runAllTimersAsync(); await r.daemon.pasteLock;
   expect(r.writes).toHaveLength(2); expect(r.daemon.requestContextTurnSnapshot()?.context.ref.rootContextId).toBe(ROOT);
-  expect(r.daemon.requestContextTurnSnapshot()?.inputId).toBe(`reply-recovery:7:${r.daemon.deliveryEpoch}`);
+  expect(r.daemon.requestContextTurnSnapshot()?.inputId).toBe(`reply-recovery:${r.daemon.bootId}:7:${r.daemon.deliveryEpoch}`);
 });
 it("historical cached completion and transcript withdrawal do not prove that a new input ended", async () => {
   const r = rig(), text = "[hid:demo-receipt] Synthetic input";
@@ -100,9 +100,19 @@ it("the last common paste callback receives the final wire, including receipt pr
   r.prepare("human:demo-receipt", final);
   d.writeMessageToPane.mockImplementation(async (...args: any[]) => { args[10](final); r.writes.push(final); return true; });
   const first = d.deliverMessage(before, undefined, { humanVerificationId: "demo-receipt" }); await vi.runAllTimersAsync(); await first;
-  expect(d.requestContextTurnSnapshot()?.wireSha256).toBe(requestContextDigest(final)); expect(r.writes).toEqual([final]);
+  expect(d.requestContextTurnSnapshot()?.wireSha256).toBe(wireDigest(final)); expect(r.writes).toEqual([final]);
 });
 it("a native adapter cannot be added after the dormant local-only lifecycle was bound", () => {
   const r = rig(); r.daemon.tmux = undefined;
   expect(() => r.daemon.setNativePaneLifecycle({} as any)).toThrow(/before daemon startup/);
+});
+it("matching an unmarked repeated system prompt never proves an owned turn ended", async () => {
+  const r = rig(), firstText = "[hid:demo-receipt] Synthetic input"; r.prepare("human:demo-receipt", firstText);
+  const first = r.daemon.deliverMessage(firstText, undefined, { humanVerificationId: "demo-receipt" }); await vi.runAllTimersAsync(); await first;
+  r.turns.ended(r.daemon.requestContextTurnSnapshot(), r.daemon.requestContextOwner());
+  const resume = r.daemon.deliverMessage("Unmarked repeated system prompt"); await vi.runAllTimersAsync(); await resume;
+  const write = r.daemon.requestContextWrite, snapshot = r.daemon.requestContextTurnSnapshot();
+  expect(write.endAnchor).toBe(false);
+  write.ledger.observe([{ kind: "start", turnId: "same-text" }, { kind: "user", turnId: "same-text", text: write.text, at: write.at }, { kind: "end", turnId: "same-text", end: "complete" }]);
+  r.daemon.settleRequestContextFromTranscript(); expect(r.daemon.requestContextTurnCurrent(snapshot)).toBe(true);
 });

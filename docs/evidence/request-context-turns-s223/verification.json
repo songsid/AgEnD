@@ -4,12 +4,11 @@
   "productionLifecycleInstallerCalls": 0,
   "focused": {
     "files": 3,
-    "tests": 39
+    "tests": 40
   },
   "neighbors": {
     "files": 6,
-    "tests": 109,
-    "beforeFinalStaleCompletionAndLocalNativeExclusionRefinements": true
+    "tests": 112
   },
   "manifestAndLocalCoverageControls": {
     "passed": 2,
@@ -57,16 +56,26 @@
       "mutation": "native-local-exclusion",
       "result": "semantic red",
       "restored": true
+    },
+    {
+      "mutation": "raw-wire-digest",
+      "result": "semantic red",
+      "restored": true
+    },
+    {
+      "mutation": "owned-input-anchor",
+      "result": "semantic red",
+      "restored": true
     }
   ],
   "sourceSha256": {
-    "src/daemon.ts": "24d725f6563d16f62ff23d3f34588c82ceae274bcdf7a38fb2e15b299f92c814",
+    "src/daemon.ts": "8b09c64571ed9e20798f18041a6cf3e38d650cb9ab21770e10cce021af3e475c",
     "src/delivery-outbox.ts": "5c2172db232f5984e34018f64e3fd6f5586e18b15937df511e982fcce3495e7d",
     "src/request-context-turns.ts": "f80fe8b47a67b37b81f21e6cca9d28a5de2a6df20bc40e18c452ccf61fc57a4b",
     "src/request-context-recovery.ts": "2fc939dfb689d87058fc6b63f30215cea23095c953e2502a7f13fcd70b16e235",
-    "tests/request-context-turns-s223.test.ts": "ddc9b1162db277d72f473d99f3f28bffd3310147a7041ff5160f8d5b27568bd1",
-    "tests/request-context-daemon-s223.test.ts": "f6a2ff5a70c06a2b0aeb2affac1d1eaa8c0d11458d6b74d3b9a667f5fd165c77",
-    "tests/request-context-recovery-s223.test.ts": "092e7dac86cccde359adcf78391a185d110048a73f282b7a2633c626910d06ad"
+    "tests/request-context-turns-s223.test.ts": "056b8e2a6932ce004320aabfdfa5563d97ce3480ec2bef269a814dc41c04e06e",
+    "tests/request-context-daemon-s223.test.ts": "ad64f8c6fd36f16a95331eb4935e6287142208b0fa0ef584a0b79807a1af46bc",
+    "tests/request-context-recovery-s223.test.ts": "ec10eebbe0ff5c6d7d6a15a86f72ed1d87a7b181382d32b947a672128cff3c44"
   },
   "limits": [
     "The real deliverMessage path runs with synthetic probes and a stubbed low-level writer; this is not real CLI consumption proof.",

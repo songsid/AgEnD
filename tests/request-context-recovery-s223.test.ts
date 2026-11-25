@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { RequestContextLocalTurns, type PreparedRequestContextInput, type RequestContextRuntimeOwner } from "../src/request-context-turns.js";
-import { requestContextDigest } from "../src/request-context-store.js";
+import { deliveryContentDigest as wireDigest } from "../src/delivery-outbox.js";
 import type { RequestContextV1 } from "../src/request-context-protocol.js";
 const ROOT = "00000000-0000-4000-8000-000000000001", AUDIENCE = "00000000-0000-4000-8000-000000000002";
 const roots: string[] = [], boxes: DeliveryOutbox[] = [];
@@ -16,14 +16,14 @@ const context: RequestContextV1 = { ref: { version: 1, contextId: ROOT, rootCont
   initiatingActor: { kind: "person", platform: "discord", userId: "demo-person" }, ingress: "restricted-room", source: { instance: "worker", incarnation: "worker-generation" }, sourceAudience: { kind: "room", ref: AUDIENCE } };
 it("a fresh coordinator reads only the durable scope pointer, never a restored active turn or D1 parent", () => {
   const path = file(), first = open(path);
-  const inputs = new Map<string, PreparedRequestContextInput>([["human:fixture", { inputId: "human:fixture", owner, wireSha256: requestContextDigest("synthetic"), context, proof: { kind: "independent" } }]]);
+  const inputs = new Map<string, PreparedRequestContextInput>([["human:fixture", { inputId: "human:fixture", owner, wireSha256: wireDigest("synthetic"), context, proof: { kind: "independent" } }]]);
   const tracker = new RequestContextLocalTurns(first.requestContextRecovery.ports("worker", id => inputs.get(id) ?? null, () => true));
-  tracker.beforeWrite("human:fixture", requestContextDigest("synthetic"), owner);
+  tracker.beforeWrite("human:fixture", wireDigest("synthetic"), owner);
   const restartedStore = open(path).requestContextRecovery;
   const restarted = new RequestContextLocalTurns(restartedStore.ports("worker", () => null, () => true));
   const nextOwner = { ...owner, daemonBootId: "new-boot" };
   expect(restarted.current(nextOwner)).toBeNull();
-  const next = restarted.beforeWrite(null, requestContextDigest("unmapped resume"), nextOwner);
+  const next = restarted.beforeWrite(null, wireDigest("unmapped resume"), nextOwner);
   expect(next.context.ref.rootContextId).not.toBe(ROOT); expect(next.context.ref.parentContextId).toBeUndefined(); expect(next.context.initiatingActor.kind).toBe("unknown");
   expect(restartedStore.pointer("worker")?.contextId).toBe(next.context.ref.contextId);
   expect(first.requestContext(ROOT)).toEqual(context);
