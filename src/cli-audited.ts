@@ -28,7 +28,8 @@ export const AUDITED_CLI_VERSIONS: Readonly<Record<CliId, readonly string[]>> = 
   codex: Object.freeze(["0.165.0", "0.166.0", "0.167.0", "0.169.0", "0.170.0", "0.171.0"]),
   // tests/kiro-*-audit.test.ts: 2.29.0 … 3.1.0. 3.3.0: no detector change (M-3072, #3831), on the maintainer's ledger.
   // 3.5.0: its chat.defaultModel warning is excluded from model_error (M-3398, tests/kiro-model-unavailable.test.ts).
-  "kiro-cli": Object.freeze(["2.29.0", "2.29.1", "2.30.0", "2.33.0", "2.34.0", "2.37.0", "3.0.0", "3.1.0", "3.3.0", "3.5.0"]),
+  // 3.6.0: no detector change; it deleted the dead Classic (v1) harness (M-3752, tests/kiro-3.6.0-audit.test.ts).
+  "kiro-cli": Object.freeze(["2.29.0", "2.29.1", "2.30.0", "2.33.0", "2.34.0", "2.37.0", "3.0.0", "3.1.0", "3.3.0", "3.5.0", "3.6.0"]),
   // tests/fixtures/agy-1.3.5-audit, agy-1.3.6-audit; 1.5.3, 1.5.9, 1.5.12 and 1.5.13 on the maintainer's ledger (1.5.12/1.5.13 shipped in M-3477; 1.5.14 in M-3500; 1.5.15 in M-3550: static precheck against 1.5.14 MINOR, one more "esc to cancel" literal).
   antigravity: Object.freeze(["1.3.5", "1.3.6", "1.5.3", "1.5.9", "1.5.12", "1.5.13", "1.5.14", "1.5.15"]),
   // tests/grok-1.0.*-audit.test.ts: 1.0.52 … 1.0.89; 1.0.89 lands with its isolated real-binary evidence (M-3335); 1.0.92: precheck false alarm, switch rig identical (M-3500).

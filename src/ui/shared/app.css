@@ -2827,6 +2827,23 @@ button.oo-tile-label:focus-visible { outline: 2px solid var(--focus); outline-of
 .oo-desks:focus-within { position: absolute; z-index: 7; left: var(--s-2); bottom: var(--s-2); width: auto; height: auto; max-height: 40%; margin: 0; padding: var(--s-1); clip: auto; overflow-y: auto;
   display: inline-flex; flex-wrap: wrap; gap: 4px; max-width: calc(100% - 2 * var(--s-2)); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); white-space: normal; }
 .oo-desk { font-size: var(--fs-xs); padding: 2px 6px; border-radius: var(--r-sm); background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+/* M-3665: zoomed too far out to read the name tags (a phone's whole office, about 30 %: 3 px), the names show here — a row
+   of chips over the stage's foot, scrolling sideways, each a whole touch target that opens that person's card. */
+.oo[data-tags-off] .oo-desks { position: absolute; z-index: 5; left: var(--s-2); right: var(--s-2); bottom: var(--s-2); width: auto; height: auto; max-height: none;
+  margin: 0; padding: var(--s-1); clip: auto; overflow-x: auto; overflow-y: hidden; display: flex; flex-wrap: nowrap; gap: var(--s-1); max-width: none; white-space: nowrap;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-full); overscroll-behavior-x: contain; }   /* flat: no shadow (leader's check) */
+.oo[data-tags-off] .oo-desks > li { flex: none; }
+.oo[data-tags-off] .oo-desks > li[data-call] { order: -1; }   /* a call first, in view, its chip in the warning colour */
+.oo[data-tags-off] .oo-desks > li[data-call] .oo-desk { border-color: var(--warn); }
+/* More to scroll (data-more-left/right, desksCue): the row's edge fades, as the zone pills' does — never a chip cut short. */
+.oo[data-tags-off] .oo-desks[data-more-right] { -webkit-mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); }
+.oo[data-tags-off] .oo-desks[data-more-left] { -webkit-mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); }
+.oo[data-tags-off] .oo-desks[data-more-left][data-more-right] { -webkit-mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); }
+/* #4466 Hide names: the zoomed-out row keeps only the callers (as their tags do); nobody calling, no row. */
+.oo[data-tags-off][data-names-off] .oo-desks > li:not([data-call]) { display: none; }
+.oo[data-tags-off][data-names-off] .oo-desks:not(:has(> li[data-call])) { display: none; }
+.oo[data-tags-off] .oo-stage .oo-snacks { bottom: calc(var(--s-2) + var(--tap) + var(--s-4)); }   /* the snack tray above the row */
+.oo[data-tags-off] .oo-desk { display: inline-flex; align-items: center; min-height: var(--tap); padding: 0 var(--s-3); border-radius: var(--r-full); font-size: var(--fs-sm); }
 .oo-desk:focus-visible { outline: none; border-color: var(--focus); box-shadow: inset 0 -2px 0 var(--focus); }
 /* #2513: Edit layout (fleet-office-layout.js) — an SVG over the canvas (placed and sized through the CSSOM), its 1280×720
    grid, the areas, corridors and a handle for each seat, item, the door and waypoint; its bar sticks to the stage's foot. */
@@ -2946,6 +2963,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .oo-zone-pills[data-more-right] { -webkit-mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); }
   .oo-zone-pills[data-more-left] { -webkit-mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); }
   .oo-zone-pills[data-more-left][data-more-right] { -webkit-mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); }
+  /* M-3665: in the row under the stage the chips wrap to a second line rather than scroll off its edge ("Nap cor…"
+     was cut on a phone): every area's whole name and count is in view. */
+  .oo > .oo-zone-pills, .oo > .oo-zone-pills[data-more-left], .oo > .oo-zone-pills[data-more-right] { flex-wrap: wrap; overflow-x: visible; border-radius: var(--r-lg); -webkit-mask-image: none; mask-image: none; }
   .oo-snacks { left: var(--s-2); bottom: max(var(--s-2), env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 2 * var(--s-2)); }
   .oo-stage:has(.oo-zone-pills) .oo-snacks { bottom: calc(max(var(--s-2), env(safe-area-inset-bottom, 0px)) + 52px); }
 }
@@ -2959,7 +2979,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .oo-sheet :is(.oo-sheet-bar > *, .oo-sheet-live) { min-height: var(--tap); }
 .oo-sheet :is(.oo-pick, .check) { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text); }
 .oo-sheet .oo-pick { justify-content: space-between; }
-.oo-sheet .oo-pick .tb-select { width: 62%; min-height: var(--tap); font-size: var(--fs-md); }
+.oo-sheet .oo-pick .tb-select { width: 62%; max-width: none; min-height: var(--tap); font-size: var(--fs-md); }   /* M-3743: not the bar's 150 px cap ("Pop-up window" was cut) */
 .oo-sheet .dlg-x { width: var(--tap); height: var(--tap); }
 /* M-3556: more below the fold fades out at the sheet's foot, over the rows (data-more: set while not at the end). */
 .oo-sheet .dlg-body[data-more]::after { content: ""; position: sticky; bottom: calc(-1 * var(--s-4)); flex: none; display: block; height: 48px;

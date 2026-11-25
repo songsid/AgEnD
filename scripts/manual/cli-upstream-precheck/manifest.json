@@ -1066,7 +1066,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-usage-credits.ts",
-     "line": 61,
+     "line": 82,
      "symbol": "claudeUsageCreditsPrompt"
     },
     {
@@ -1074,7 +1074,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-usage-credits.ts",
-     "line": 68,
+     "line": 93,
      "symbol": "claudeUsageCreditsPrompt.card.question"
     },
     {
@@ -1106,7 +1106,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/daemon.ts",
-     "line": 1265,
+     "line": 1266,
      "symbol": "detectMalformedClaudeToolCall.closingTags"
     },
     {
@@ -2414,7 +2414,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2422,7 +2422,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2430,7 +2430,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2438,7 +2438,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/daemon.ts",
-     "line": 5901,
+     "line": 5951,
      "symbol": "Daemon.isCodexResumeScreen"
     },
     {
@@ -2570,7 +2570,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2578,7 +2578,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2586,7 +2586,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2594,7 +2594,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14777,
+     "line": 14849,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2602,7 +2602,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2610,7 +2610,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2618,7 +2618,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2626,7 +2626,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2634,7 +2634,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2642,7 +2642,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2650,7 +2650,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14779,
+     "line": 14851,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2658,7 +2658,7 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14881,
+     "line": 14953,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2666,7 +2666,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 15012,
+     "line": 15084,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2674,7 +2674,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 15012,
+     "line": 15084,
      "symbol": "Daemon.dismissDialogsUntilReady"
     }
    ]
@@ -3379,7 +3379,8 @@
      "surface": "other",
      "file": "src/backend/kiro.ts",
      "line": 253,
-     "symbol": "kiroTakeoverActive"
+     "symbol": "kiroTakeoverActive",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "the agent is waiting on you",
@@ -3435,7 +3436,8 @@
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
      "line": 362,
-     "symbol": "KIRO_MODEL_PICKER_HEADER"
+     "symbol": "KIRO_MODEL_PICKER_HEADER",
+     "embeddedIn": "tui.js"
     },
     {
      "text": "type to search",
@@ -3443,7 +3445,8 @@
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
      "line": 362,
-     "symbol": "KIRO_MODEL_PICKER_HEADER"
+     "symbol": "KIRO_MODEL_PICKER_HEADER",
+     "embeddedIn": "tui.js"
     },
     {
      "text": "Warning: Kiro is running in trust all tools mode",
@@ -3683,7 +3686,8 @@
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 725,
-     "symbol": "kiroUnavailableModelPickerActive"
+     "symbol": "kiroUnavailableModelPickerActive",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "The model you",
@@ -3733,7 +3737,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 843,
-     "symbol": "KIRO_V3_EASE_IN.options"
+     "symbol": "KIRO_V3_EASE_IN.options",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "Switch to 3.0 and upgrade my configs",
@@ -3774,7 +3779,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 858,
-     "symbol": "KIRO_CLASSIC_NUDGE.header"
+     "symbol": "KIRO_CLASSIC_NUDGE.header",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "Switch to 3.0 and upgrade my agent configs",
@@ -3790,7 +3796,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 872,
-     "symbol": "KIRO_CLASSIC_NUDGE_V3.options"
+     "symbol": "KIRO_CLASSIC_NUDGE_V3.options",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "You're using Kiro CLI V2",
@@ -3904,7 +3911,8 @@
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 1375,
-     "symbol": "KIRO_RATE_LIMIT_SCREEN"
+     "symbol": "KIRO_RATE_LIMIT_SCREEN",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "Please wait a moment and try again",
@@ -3912,7 +3920,8 @@
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 1376,
-     "symbol": "KIRO_RATE_LIMIT_SCREEN"
+     "symbol": "KIRO_RATE_LIMIT_SCREEN",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "Request quota exceeded",
@@ -3920,7 +3929,8 @@
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 1376,
-     "symbol": "KIRO_RATE_LIMIT_SCREEN"
+     "symbol": "KIRO_RATE_LIMIT_SCREEN",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "The limits reset on",
@@ -3928,7 +3938,8 @@
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 1382,
-     "symbol": "KIRO_REQUEST_LIMIT_SCREEN"
+     "symbol": "KIRO_REQUEST_LIMIT_SCREEN",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "request limit reached",
@@ -3936,7 +3947,8 @@
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 1382,
-     "symbol": "KIRO_REQUEST_LIMIT_SCREEN"
+     "symbol": "KIRO_REQUEST_LIMIT_SCREEN",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "Error: Session id",
@@ -3952,7 +3964,8 @@
      "surface": "resume",
      "file": "src/backend/kiro.ts",
      "line": 1388,
-     "symbol": "KIRO_AMBIGUOUS_RESUME_SCREEN"
+     "symbol": "KIRO_AMBIGUOUS_RESUME_SCREEN",
+     "embeddedIn": "tui.js + engine tar"
     },
     {
      "text": "/agent swap ",
@@ -3960,7 +3973,8 @@
      "surface": "other",
      "file": "src/backend/kiro.ts",
      "line": 2062,
-     "symbol": "KiroBackend.agentSwitch.command"
+     "symbol": "KiroBackend.agentSwitch.command",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "All tools are now trusted",
@@ -3984,7 +3998,8 @@
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
      "line": 2141,
-     "symbol": "KiroBackend.getPaneActivity.announcements"
+     "symbol": "KiroBackend.getPaneActivity.announcements",
+     "embeddedIn": "tui.js"
     },
     {
      "text": "Completed in",
@@ -3992,7 +4007,8 @@
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
      "line": 2149,
-     "symbol": "KiroBackend.getPaneActivity"
+     "symbol": "KiroBackend.getPaneActivity",
+     "embeddedIn": "tui.js"
     },
     {
      "text": "Please use '/model",
@@ -4072,7 +4088,8 @@
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 2214,
-     "symbol": "KiroBackend.getErrorPatterns.pattern"
+     "symbol": "KiroBackend.getErrorPatterns.pattern",
+     "embeddedIn": "engine tar"
     },
     {
      "text": "Authentication expired - please log in again",
@@ -4080,7 +4097,8 @@
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 2215,
-     "symbol": "KiroBackend.getErrorPatterns.pattern"
+     "symbol": "KiroBackend.getErrorPatterns.pattern",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "Your login session has expired. Please log in again using",
@@ -4088,7 +4106,8 @@
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 2216,
-     "symbol": "KiroBackend.getErrorPatterns.pattern"
+     "symbol": "KiroBackend.getErrorPatterns.pattern",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "No token",
@@ -4192,7 +4211,8 @@
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 2328,
-     "symbol": "KiroBackend.getErrorPatterns.pattern"
+     "symbol": "KiroBackend.getErrorPatterns.pattern",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "Are you sure",
@@ -4208,14 +4228,15 @@
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
      "line": 2480,
-     "symbol": "KiroBackend.getClearConfirmationDialog.pattern"
+     "symbol": "KiroBackend.getClearConfirmationDialog.pattern",
+     "retiredAfter": "3.5.0"
     },
     {
      "text": "no conversation found",
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4223,7 +4244,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4231,7 +4252,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4587,7 +4608,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4595,7 +4616,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4603,7 +4624,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4959,7 +4980,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4967,7 +4988,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4975,7 +4996,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {

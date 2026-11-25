@@ -1,0 +1,781 @@
+{
+  "sourceHead": "c2b0e389556824169b299f1b122eea6306173685",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the caller's bubble is drawn",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en right: the speaker is at the canvas's right edge",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en right: no bubble paper on the canvas's outer 3 px (nothing cut by the edge)",
+      "ok": false,
+      "detail": 119
+    },
+    {
+      "name": "desk-light-en right: the bubble wholly inside the canvas, 4 px or more in",
+      "ok": false,
+      "detail": {
+        "l": 1064,
+        "r": 1105,
+        "t": 432,
+        "b": 518,
+        "tip": {
+          "x": 1092,
+          "y": 518
+        },
+        "n": 1704
+      }
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the caller's bubble is drawn",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW right: the speaker is at the canvas's right edge",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW right: no bubble paper on the canvas's outer 3 px (nothing cut by the edge)",
+      "ok": false,
+      "detail": 55
+    },
+    {
+      "name": "desk-dark-zh-TW right: the bubble wholly inside the canvas, 4 px or more in",
+      "ok": false,
+      "detail": {
+        "l": 1065,
+        "r": 1105,
+        "t": 528,
+        "b": 583,
+        "tip": {
+          "x": 1092,
+          "y": 583
+        },
+        "n": 1220
+      }
+    },
+    {
+      "name": "desk-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: the caller's bubble is drawn",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en right: the speaker is at the canvas's right edge",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en right: no bubble paper on the canvas's outer 3 px (nothing cut by the edge)",
+      "ok": false,
+      "detail": 73
+    },
+    {
+      "name": "phone-light-en right: the bubble wholly inside the canvas, 4 px or more in",
+      "ok": false,
+      "detail": {
+        "l": 356,
+        "r": 389,
+        "t": 251,
+        "b": 313,
+        "tip": {
+          "x": 376,
+          "y": 313
+        },
+        "n": 966
+      }
+    },
+    {
+      "name": "phone-light-en left: the speaker is at the canvas's left edge",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en left: no bubble paper on the canvas's outer 3 px (nothing cut by the edge)",
+      "ok": false,
+      "detail": 97
+    },
+    {
+      "name": "phone-light-en left: the bubble wholly inside the canvas, 4 px or more in",
+      "ok": false,
+      "detail": {
+        "l": 0,
+        "r": 164,
+        "t": 251,
+        "b": 313,
+        "tip": {
+          "x": 14,
+          "y": 313
+        },
+        "n": 4396
+      }
+    },
+    {
+      "name": "phone-light-en: the Talk select shows \"Pop-up window\" whole (text 120 px ≤ room 108 px)",
+      "ok": false,
+      "detail": {
+        "value": "window",
+        "text": "Pop-up window",
+        "textW": 120,
+        "room": 132,
+        "width": 150,
+        "maxWidth": "150px",
+        "h": 44,
+        "row": 350
+      }
+    },
+    {
+      "name": "phone-light-en: the Talk select is a 44 px box",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: the caller's bubble is drawn",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW right: the speaker is at the canvas's right edge",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW right: no bubble paper on the canvas's outer 3 px (nothing cut by the edge)",
+      "ok": false,
+      "detail": 72
+    },
+    {
+      "name": "phone-light-zh-TW right: the bubble wholly inside the canvas, 4 px or more in",
+      "ok": false,
+      "detail": {
+        "l": 356,
+        "r": 389,
+        "t": 275,
+        "b": 313,
+        "tip": {
+          "x": 376,
+          "y": 313
+        },
+        "n": 698
+      }
+    },
+    {
+      "name": "phone-light-zh-TW left: the speaker is at the canvas's left edge",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW left: no bubble paper on the canvas's outer 3 px (nothing cut by the edge)",
+      "ok": false,
+      "detail": 96
+    },
+    {
+      "name": "phone-light-zh-TW left: the bubble wholly inside the canvas, 4 px or more in",
+      "ok": false,
+      "detail": {
+        "l": 0,
+        "r": 138,
+        "t": 275,
+        "b": 313,
+        "tip": {
+          "x": 14,
+          "y": 313
+        },
+        "n": 3346
+      }
+    },
+    {
+      "name": "phone-light-zh-TW: the Talk select shows \"彈出視窗\" whole (text 64 px ≤ room 108 px)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: the Talk select is a 44 px box",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: the caller's bubble is drawn",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en right: the speaker is at the canvas's right edge",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en right: no bubble paper on the canvas's outer 3 px (nothing cut by the edge)",
+      "ok": false,
+      "detail": 73
+    },
+    {
+      "name": "phone-dark-en right: the bubble wholly inside the canvas, 4 px or more in",
+      "ok": false,
+      "detail": {
+        "l": 356,
+        "r": 389,
+        "t": 251,
+        "b": 313,
+        "tip": {
+          "x": 376,
+          "y": 313
+        },
+        "n": 966
+      }
+    },
+    {
+      "name": "phone-dark-en left: the speaker is at the canvas's left edge",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en left: no bubble paper on the canvas's outer 3 px (nothing cut by the edge)",
+      "ok": false,
+      "detail": 97
+    },
+    {
+      "name": "phone-dark-en left: the bubble wholly inside the canvas, 4 px or more in",
+      "ok": false,
+      "detail": {
+        "l": 0,
+        "r": 164,
+        "t": 251,
+        "b": 313,
+        "tip": {
+          "x": 14,
+          "y": 313
+        },
+        "n": 4396
+      }
+    },
+    {
+      "name": "phone-dark-en: the Talk select shows \"Pop-up window\" whole (text 120 px ≤ room 108 px)",
+      "ok": false,
+      "detail": {
+        "value": "window",
+        "text": "Pop-up window",
+        "textW": 120,
+        "room": 132,
+        "width": 150,
+        "maxWidth": "150px",
+        "h": 44,
+        "row": 350
+      }
+    },
+    {
+      "name": "phone-dark-en: the Talk select is a 44 px box",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the caller's bubble is drawn",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW right: the speaker is at the canvas's right edge",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW right: no bubble paper on the canvas's outer 3 px (nothing cut by the edge)",
+      "ok": false,
+      "detail": 72
+    },
+    {
+      "name": "phone-dark-zh-TW right: the bubble wholly inside the canvas, 4 px or more in",
+      "ok": false,
+      "detail": {
+        "l": 356,
+        "r": 389,
+        "t": 275,
+        "b": 313,
+        "tip": {
+          "x": 376,
+          "y": 313
+        },
+        "n": 698
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW left: the speaker is at the canvas's left edge",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW left: no bubble paper on the canvas's outer 3 px (nothing cut by the edge)",
+      "ok": false,
+      "detail": 96
+    },
+    {
+      "name": "phone-dark-zh-TW left: the bubble wholly inside the canvas, 4 px or more in",
+      "ok": false,
+      "detail": {
+        "l": 0,
+        "r": 138,
+        "t": 275,
+        "b": 313,
+        "tip": {
+          "x": 14,
+          "y": 313
+        },
+        "n": 3346
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW: the Talk select shows \"彈出視窗\" whole (text 64 px ≤ room 108 px)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the Talk select is a 44 px box",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3743-desk-light-en-0-fit.png",
+      "sha256": "ff45add232a0ad059c7520cebe722723a3c281fac603f1367db477fae7722209"
+    },
+    {
+      "path": "m3743-desk-light-en-1-right.png",
+      "sha256": "1be6ca9c9925b9385c2f48e6ddecf2dfb43a8564feb334ddee26055fd7d63a02"
+    },
+    {
+      "path": "m3743-desk-dark-zh-TW-0-fit.png",
+      "sha256": "71824510d7003c89952b24046d31ae248d5951a2b70ca11a2adb06d5c920fc77"
+    },
+    {
+      "path": "m3743-desk-dark-zh-TW-1-right.png",
+      "sha256": "7bed5f88b56c3263128f0aed721309672fe391aa3671c303c2f8309b7aecdf98"
+    },
+    {
+      "path": "m3743-phone-light-en-0-fit.png",
+      "sha256": "f56c516ac2ca77bf2cce4f0de8d1cf943488fbbe4d8deea7573634b39b591985"
+    },
+    {
+      "path": "m3743-phone-light-en-1-right.png",
+      "sha256": "a4dcc6535aa02b80dd748dbe4e26bc2388ced02ee39736cb6fc0df681a0e2c91"
+    },
+    {
+      "path": "m3743-phone-light-en-2-left.png",
+      "sha256": "425e8eb755017ff8a1ce0b03620d44ad4b3b6d59309c8504ed997ec85c525e08"
+    },
+    {
+      "path": "m3743-phone-light-en-3-sheet.png",
+      "sha256": "274ca11fc49dfcf5bbfeadfbc9ac59d08b9a6db63ee503cd453b540e03b4e445"
+    },
+    {
+      "path": "m3743-phone-light-zh-TW-0-fit.png",
+      "sha256": "6930ac088a351c7df94ff92c78a00264bc8be47677e35ade8295095b28f1e11c"
+    },
+    {
+      "path": "m3743-phone-light-zh-TW-1-right.png",
+      "sha256": "b45c1f4fb089399021fef2e602a0f381694c8218b3dba9fbed38bcdf23079911"
+    },
+    {
+      "path": "m3743-phone-light-zh-TW-2-left.png",
+      "sha256": "2c755ff6b3df4e27d64a6954fa529746172fcb76ff7c6a917435ba3c68930c7e"
+    },
+    {
+      "path": "m3743-phone-light-zh-TW-3-sheet.png",
+      "sha256": "73ae0da1254ab8d933bd24029e139d2ee0446ce630fd74d1b05c02f536e16e14"
+    },
+    {
+      "path": "m3743-phone-dark-en-0-fit.png",
+      "sha256": "782cf1608f5cfab4a6b83345a9feee85b9722cfc2734cfaf97be3d7b5d185a7f"
+    },
+    {
+      "path": "m3743-phone-dark-en-1-right.png",
+      "sha256": "d22575f99d52e32f1ba1a60f63ff4c573bf8497290c6bf3dc69f43d040a42262"
+    },
+    {
+      "path": "m3743-phone-dark-en-2-left.png",
+      "sha256": "470e3e92230120d96b615fff3d6655dc3f8d6c5f04fdd2c94eadad3c9d0a64e3"
+    },
+    {
+      "path": "m3743-phone-dark-en-3-sheet.png",
+      "sha256": "2e0d1f260f84aea5fcd16b2a4537536908c28cb04cb98b32cecf3d87b136baba"
+    },
+    {
+      "path": "m3743-phone-dark-zh-TW-0-fit.png",
+      "sha256": "ff5a464e0d3012c377adba4ea230e6bc9542097e7e5a6532c1ae6b0a2ff28b8e"
+    },
+    {
+      "path": "m3743-phone-dark-zh-TW-1-right.png",
+      "sha256": "72427c8515eff2db8058255283970f7e022e626f32963747f386c3266d60fbc0"
+    },
+    {
+      "path": "m3743-phone-dark-zh-TW-2-left.png",
+      "sha256": "30746d40b0bd5483ea304ebad3c4f616505614fb6e79531c96787bfe524b8ada"
+    },
+    {
+      "path": "m3743-phone-dark-zh-TW-3-sheet.png",
+      "sha256": "2bab3014df027b005c2761cc5400b0e99b56c112d3ff42d5f53fc70749deaaf3"
+    }
+  ],
+  "measured": {
+    "desk-light-en-zoom": "254%",
+    "desk-light-en-right": {
+      "moved": {
+        "from": {
+          "x": 1104,
+          "y": 702
+        },
+        "to": {
+          "x": 1352,
+          "y": 702
+        }
+      },
+      "canvas": {
+        "W": 1106,
+        "H": 716
+      },
+      "bubble": {
+        "l": 1064,
+        "r": 1105,
+        "t": 432,
+        "b": 518,
+        "tip": {
+          "x": 1092,
+          "y": 518
+        },
+        "n": 1704
+      },
+      "edgePaper": 119
+    },
+    "desk-dark-zh-TW-zoom": "254%",
+    "desk-dark-zh-TW-right": {
+      "moved": {
+        "from": {
+          "x": 1103,
+          "y": 725
+        },
+        "to": {
+          "x": 1352,
+          "y": 725
+        }
+      },
+      "canvas": {
+        "W": 1106,
+        "H": 758
+      },
+      "bubble": {
+        "l": 1065,
+        "r": 1105,
+        "t": 528,
+        "b": 583,
+        "tip": {
+          "x": 1092,
+          "y": 583
+        },
+        "n": 1220
+      },
+      "edgePaper": 55
+    },
+    "phone-light-en-zoom": "184%",
+    "phone-light-en-right": {
+      "moved": {
+        "from": {
+          "x": 195,
+          "y": 469
+        },
+        "to": {
+          "x": 376,
+          "y": 469
+        }
+      },
+      "canvas": {
+        "W": 390,
+        "H": 626
+      },
+      "bubble": {
+        "l": 356,
+        "r": 389,
+        "t": 251,
+        "b": 313,
+        "tip": {
+          "x": 376,
+          "y": 313
+        },
+        "n": 966
+      },
+      "edgePaper": 73
+    },
+    "phone-light-en-left": {
+      "moved": {
+        "from": {
+          "x": 195,
+          "y": 469
+        },
+        "to": {
+          "x": 14,
+          "y": 469
+        }
+      },
+      "canvas": {
+        "W": 390,
+        "H": 626
+      },
+      "bubble": {
+        "l": 0,
+        "r": 164,
+        "t": 251,
+        "b": 313,
+        "tip": {
+          "x": 14,
+          "y": 313
+        },
+        "n": 4396
+      },
+      "edgePaper": 97
+    },
+    "phone-light-en-talk-select": {
+      "value": "window",
+      "text": "Pop-up window",
+      "textW": 120,
+      "room": 132,
+      "width": 150,
+      "maxWidth": "150px",
+      "h": 44,
+      "row": 350
+    },
+    "phone-light-zh-TW-zoom": "184%",
+    "phone-light-zh-TW-right": {
+      "moved": {
+        "from": {
+          "x": 195,
+          "y": 469
+        },
+        "to": {
+          "x": 376,
+          "y": 469
+        }
+      },
+      "canvas": {
+        "W": 390,
+        "H": 626
+      },
+      "bubble": {
+        "l": 356,
+        "r": 389,
+        "t": 275,
+        "b": 313,
+        "tip": {
+          "x": 376,
+          "y": 313
+        },
+        "n": 698
+      },
+      "edgePaper": 72
+    },
+    "phone-light-zh-TW-left": {
+      "moved": {
+        "from": {
+          "x": 195,
+          "y": 469
+        },
+        "to": {
+          "x": 14,
+          "y": 469
+        }
+      },
+      "canvas": {
+        "W": 390,
+        "H": 626
+      },
+      "bubble": {
+        "l": 0,
+        "r": 138,
+        "t": 275,
+        "b": 313,
+        "tip": {
+          "x": 14,
+          "y": 313
+        },
+        "n": 3346
+      },
+      "edgePaper": 96
+    },
+    "phone-light-zh-TW-talk-select": {
+      "value": "window",
+      "text": "彈出視窗",
+      "textW": 64,
+      "room": 132,
+      "width": 150,
+      "maxWidth": "150px",
+      "h": 44,
+      "row": 350
+    },
+    "phone-dark-en-zoom": "184%",
+    "phone-dark-en-right": {
+      "moved": {
+        "from": {
+          "x": 195,
+          "y": 469
+        },
+        "to": {
+          "x": 376,
+          "y": 469
+        }
+      },
+      "canvas": {
+        "W": 390,
+        "H": 626
+      },
+      "bubble": {
+        "l": 356,
+        "r": 389,
+        "t": 251,
+        "b": 313,
+        "tip": {
+          "x": 376,
+          "y": 313
+        },
+        "n": 966
+      },
+      "edgePaper": 73
+    },
+    "phone-dark-en-left": {
+      "moved": {
+        "from": {
+          "x": 195,
+          "y": 469
+        },
+        "to": {
+          "x": 14,
+          "y": 469
+        }
+      },
+      "canvas": {
+        "W": 390,
+        "H": 626
+      },
+      "bubble": {
+        "l": 0,
+        "r": 164,
+        "t": 251,
+        "b": 313,
+        "tip": {
+          "x": 14,
+          "y": 313
+        },
+        "n": 4396
+      },
+      "edgePaper": 97
+    },
+    "phone-dark-en-talk-select": {
+      "value": "window",
+      "text": "Pop-up window",
+      "textW": 120,
+      "room": 132,
+      "width": 150,
+      "maxWidth": "150px",
+      "h": 44,
+      "row": 350
+    },
+    "phone-dark-zh-TW-zoom": "184%",
+    "phone-dark-zh-TW-right": {
+      "moved": {
+        "from": {
+          "x": 195,
+          "y": 469
+        },
+        "to": {
+          "x": 376,
+          "y": 469
+        }
+      },
+      "canvas": {
+        "W": 390,
+        "H": 626
+      },
+      "bubble": {
+        "l": 356,
+        "r": 389,
+        "t": 275,
+        "b": 313,
+        "tip": {
+          "x": 376,
+          "y": 313
+        },
+        "n": 698
+      },
+      "edgePaper": 72
+    },
+    "phone-dark-zh-TW-left": {
+      "moved": {
+        "from": {
+          "x": 195,
+          "y": 469
+        },
+        "to": {
+          "x": 14,
+          "y": 469
+        }
+      },
+      "canvas": {
+        "W": 390,
+        "H": 626
+      },
+      "bubble": {
+        "l": 0,
+        "r": 138,
+        "t": 275,
+        "b": 313,
+        "tip": {
+          "x": 14,
+          "y": 313
+        },
+        "n": 3346
+      },
+      "edgePaper": 96
+    },
+    "phone-dark-zh-TW-talk-select": {
+      "value": "window",
+      "text": "彈出視窗",
+      "textW": 64,
+      "room": 132,
+      "width": 150,
+      "maxWidth": "150px",
+      "h": 44,
+      "row": 350
+    }
+  },
+  "summary": "34/56"
+}

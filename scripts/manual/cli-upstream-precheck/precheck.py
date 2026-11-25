@@ -467,11 +467,18 @@ def main(argv):
         for x in notes[:10]:
             print("  note (%s): %s" % (side, x))
 
+    if backend == "kiro-cli":
+        marked = sum(1 for l in literals if l.get("embeddedIn"))
+        print("  note: kiro-cli keeps its TUI (tui.js) and engine in zstd frames inside the binary; this stdlib-only precheck does not read them, so text only there is invisible here (%d literal(s) marked embedded-only)" % marked)
+
     present = [i for i, n in enumerate(c_old) if n]
     # A literal sources.json marks retired upstream (kept by AgEnD for hosts on older releases) is expected to go.
     gone = [i for i in present if not c_new[i]]
     retired = [i for i in gone if literals[i].get("retiredAfter")]
-    missing = [i for i in gone if not literals[i].get("retiredAfter")]
+    # M-3752 (leader D2): text sources.json marks embedded-only lives where this stdlib-only reader cannot look (kiro's
+    # zstd-framed tui.js and engine); its copy in the plain artifact going is listed, not judged.
+    embedded = [i for i in gone if not literals[i].get("retiredAfter") and literals[i].get("embeddedIn")]
+    missing = [i for i in gone if not literals[i].get("retiredAfter") and not literals[i].get("embeddedIn")]
     changed = [i for i in present if c_new[i] and c_new[i] != c_old[i]]
     appeared = [i for i, n in enumerate(c_old) if not n and c_new[i]]
     print("\nliterals in the old artifact: %d of %d (the rest are AgEnD's own text, or this CLI never had them)" % (len(present), len(literals)))
@@ -488,6 +495,11 @@ def main(argv):
         for i in retired:
             l = literals[i]
             print("  [%s] %d -> 0  %s   (%s; last in %s)" % (l["surface"], c_old[i], json.dumps(l["text"][:100], ensure_ascii=False), where(l), l["retiredAfter"]))
+    if embedded:
+        print("\nEMBEDDED ONLY (lives in a compressed part this precheck cannot read; not a finding): %d" % len(embedded))
+        for i in embedded:
+            l = literals[i]
+            print("  [%s] %d -> 0  %s   (%s; in %s)" % (l["surface"], c_old[i], json.dumps(l["text"][:100], ensure_ascii=False), where(l), l["embeddedIn"]))
     show("COUNT CHANGED", changed)
     show("APPEARED (not in old, in new)", appeared)
 
