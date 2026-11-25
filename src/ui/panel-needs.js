@@ -22,7 +22,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
-import { usageCreditsActions, usageCreditsTitle, showRawLabel } from "./usage-credits-card.js";
+import { usageCreditsActions, usageCreditsTitle, usageCreditsDetail, kindClass, showRawLabel } from "./usage-credits-card.js";
 
 register("app", {
   en: { needs_reason_stale_auth: "Codex needs a restart", needs_stale_auth_detail: "Codex cannot refresh this agent’s current sign-in. Restart the agent; sign in again only if Codex asks." },
@@ -213,16 +213,19 @@ function NeedsItem({ item, nowMs, owner }) {
     toast((body && (body.message || body.error)) || t("app.failed"), !!(res && res.ok));
   };
   const answering = p ? p.busy : fallback === "busy";
-  if (ucView) return html`<article data-trust="permission" class="n-item n-compact">
+  // M-3757: Claude's usage-credits prompt in the standard layout: the question, one sentence on the bill, Claude's own
+  // words folded, then its choices (named by what they do) and Open chat.
+  if (ucView) return html`<article data-trust="permission" class="n-item n-usage-credits">
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
       <div class="n-title"><strong>${usageCreditsTitle(ucView, { named: false })}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
-      <div class="n-stack">
-        ${shownActions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class=${`btn btn-sm${a.primary ? " btn-primary" : ""}`}
-            disabled=${promptBusy} onClick=${() => answer(a.id)}>${answering ? tn("answering") : a.label}</button>`)}
-      </div>
+      <p class="n-detail">${usageCreditsDetail(ucView)}</p>
       <details class="n-raw"><summary>${showRawLabel()}</summary><pre class="n-raw-text">${ucView.raw}</pre></details>
-      ${item.instance ? html`<a class="n-link" href=${chatPath(item.instance)}>${tn("open")}</a>` : null}
+      <div class="n-actions">
+        ${shownActions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class=${`btn btn-sm${kindClass(a.kind)}`}
+            disabled=${promptBusy} onClick=${() => answer(a.id)}>${answering ? tn("answering") : a.label}</button>`)}
+        ${item.instance ? html`<a class="btn btn-sm btn-ghost" href=${chatPath(item.instance)}>${tn("open")}</a>` : null}
+      </div>
     </div>
   </article>`;
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>

@@ -89,7 +89,7 @@ describe("the renderer's other shapes (2.1.332's own words)", () => {
   });
 });
 
-describe("the compact card (M-3757 redesign): one-line title, options by what they do, Claude's words folded", () => {
+describe("the card in the standard layout (M-3757 redesign): one-line title, the bill in one sentence, options by what they do, Claude's words folded", () => {
   it("the card carries the models and each option's role, read from Claude's words", async () => {
     const card = claudeUsageCreditsPrompt(LIVE)!.card;
     expect(card.usageCreditsPrompt).toEqual({ model: "Fable 5.2", target: "Opus 5.5", picker: false });
@@ -111,10 +111,18 @@ describe("the compact card (M-3757 redesign): one-line title, options by what th
     expect(card.usageCreditsPrompt!.target).toBe(target);
   });
 
+  it("the other variants are short secondary or ghost buttons, the plan-keeping choice primary", async () => {
+    const ui = await import("/ui/js/usage-credits-card.js");
+    const view = { kind: "usage-credits", agent: "Lumen", model: "Fable 5.2", target: null, picker: false, raw: "" };
+    const shown = ui.usageCreditsActions(view, ["keep", "not-now", "credits", "admin", "upgrade"].map((role, n) => ({ id: `opt-${n + 1}`, label: role, role })));
+    expect(shown.map((a: any) => [a.label, a.kind])).toEqual([["Keep current model", "primary"], ["Not now", "secondary"], ["Keep Fable 5.2", "secondary"], ["Ask admin for credits", "ghost"], ["Upgrade plan", "ghost"]]);
+    expect(ui.usageCreditsDetail(view)).toBe("Keeping Fable 5.2 bills usage credits.");
+  });
+
   it.each([
-    ["en", "Lumen: Fable 5.2 now costs extra. Switch model?", "Fable 5.2 costs extra. Switch model?", ["Switch to Opus 5.5 (uses your plan)", "Keep Fable 5.2 (billed to credits)"], "Keep Lumen on Fable 5.2?", "Continue on credits", "Show Claude's text"],
-    ["zh-TW", "Lumen：Fable 5.2 要另外收費，要換模型嗎？", "Fable 5.2 要另外收費，要換模型嗎？", ["換成 Opus 5.5（用方案額度）", "繼續用 Fable 5.2（另外扣點數）"], "讓 Lumen 繼續用 Fable 5.2？", "繼續（用點數）", "看 Claude 原文"],
-  ] as const)("%s: the page names the card and its choices in the UI's language", async (lang, title, short, labels, confirmTitle, confirmLabel, raw) => {
+    ["en", "Lumen: Fable 5.2 now costs extra. Switch model?", "Fable 5.2 costs extra. Switch model?", "Opus 5.5 uses your plan; keeping Fable 5.2 bills usage credits.", ["Switch to Opus 5.5", "Keep Fable 5.2"], "Keep Lumen on Fable 5.2?", "Continue on credits", "Show Claude's text"],
+    ["zh-TW", "Lumen：Fable 5.2 要另外收費，要換模型嗎？", "Fable 5.2 要另外收費，要換模型嗎？", "Opus 5.5 用方案額度；繼續用 Fable 5.2 會另外扣點數。", ["換成 Opus 5.5", "繼續用 Fable 5.2"], "讓 Lumen 繼續用 Fable 5.2？", "繼續（用點數）", "看 Claude 原文"],
+  ] as const)("%s: the page names the card and its choices in the UI's language", async (lang, title, short, detail, labels, confirmTitle, confirmLabel, raw) => {
     const i18n = await import("/assets/app-i18n.js");
     const ui = await import("/ui/js/usage-credits-card.js");
     i18n.setLang(lang);
@@ -124,10 +132,12 @@ describe("the compact card (M-3757 redesign): one-line title, options by what th
       const actions = prompt.choices.map(c => ({ id: c.action, label: c.label, role: c.role }));
       expect(ui.usageCreditsTitle(prompt.view)).toBe(title);
       expect(ui.usageCreditsTitle(prompt.view, { named: false })).toBe(short);     // under Needs you's agent group
+      expect(ui.usageCreditsDetail(prompt.view)).toBe(detail);
       const shown = ui.usageCreditsActions(prompt.view, actions);
       expect(shown.map((a: any) => a.label)).toEqual(labels);
       expect(shown.map((a: any) => a.id)).toEqual(["opt-1", "opt-2"]);                 // the server's ids, unchanged
-      expect(shown.map((a: any) => a.primary)).toEqual([true, false]);
+      expect(shown.map((a: any) => a.kind)).toEqual(["primary", "secondary"]);
+      expect(shown.map((a: any) => ui.kindClass(a.kind))).toEqual([" btn-primary", ""]);
       expect(shown[0].confirmation).toBeUndefined();
       expect(shown[1].confirmation).toMatchObject({ title: confirmTitle, confirmLabel, even: true });
       expect(ui.showRawLabel()).toBe(raw);
