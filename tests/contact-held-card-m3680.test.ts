@@ -5,7 +5,9 @@
  *  - only one who may decide the request (ContactAuthService.view(...).canDecide, read at the click) can act; anyone else
  *    is refused and the card stays;
  *  - the decision is the clicker's (decideContactAuthorization as that Discord/Telegram person, with the ticket's revision);
- *  - a request decided anywhere else retires its card; one card per request; ClassicBot rooms and web-only targets get none.
+ *  - a request decided anywhere else retires its card; one card per request; web-only targets get none.
+ *  - R21079937 (11-25): a ClassicBot room's request to a fleet agent gets the card too (in the General of the target's
+ *    connection), the room named by its display name; a room's request to anything but a fleet agent gets none.
  * The real FleetManager button posting, callbacks and timers; a synthetic adapter, people and contact store.
  */
 import { afterEach, expect, it, vi } from "vitest";
@@ -22,7 +24,7 @@ afterEach(() => { for (const r of rigs.splice(0)) { for (const e of r.fm.pending
 
 function rig(opts: { adapterType?: string } = {}) {
   const db = new Database(":memory:"), store = new ContactAuthStore(db);
-  const gen = new Map([["general", "g1"], ["lead", "l1"], ["worker", "w1"], ["room", "r1"]]);
+  const gen = new Map([["general", "g1"], ["lead", "l1"], ["worker", "w1"], ["room", "r1"], ["plain-room", "p1"], ["other-room", "o1"]]);
   const service = new ContactAuthService({ store, restricted: () => true, adminOf: () => false, defaultApprovers: () => [admin], generation: (n) => gen.get(n)!,
     hubRestricted: () => false, delivered: () => false, admit: vi.fn(() => "delivery-1"), changed: vi.fn() });
   const decide = vi.fn((id: string, input: any, actor: ContactPerson) => service.decide(id, input, actor));
@@ -33,10 +35,10 @@ function rig(opts: { adapterType?: string } = {}) {
     pendingNonceButtons: new Map(), adapters: new Map([["demo", adapter]]), webPromptClicks: new WeakSet(), webPromptClaims: new WeakSet(),
     logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn() }, renderPlaces: (_id: string, text: string) => ({ text, opts: {} }),
     webPromptGone: vi.fn(), collapseNoncePrompt: vi.fn(async () => {}), retireNonceButtons: vi.fn(async () => {}), lifecyclePin: () => () => true,
-    contactService: () => service, contactRoom: (n: string) => (n === "room" ? { restrictedMode: true } : undefined), contactGeneration: (n: string) => gen.get(n)!,
+    contactService: () => service, contactRoom: (n: string) => (n === "room" ? { restrictedMode: true, displayName: "classic: agend-limit", name: "agend-limit" } : n === "plain-room" ? { restrictedMode: true, name: "plain" } : undefined), contactGeneration: (n: string) => gen.get(n)!,
     decideContactAuthorization: decide, contactAdapter: () => adapter,
     settingsGeneralRoute: (n: string) => (n === "general" ? { adapterId: "demo", adapter, chatId: "channel", topic: "general-thread", current: () => true } : null) });
-  const hold = (source = "lead") => store.hold({ operationId: `op-${Math.random()}`, source, target: "worker", sourceGeneration: gen.get(source)!, targetGeneration: "w1",
+  const hold = (source = "lead", target = "worker") => store.hold({ operationId: `op-${Math.random()}`, source, target, sourceGeneration: gen.get(source)!, targetGeneration: gen.get(target)!,
     verb: "send_to_instance", origin: { kind: "unknown", people: [], chain: [source], receiptIds: [] }, message: "Please run the release checklist.",
     correlationId: "synthetic", resultRecipient: source, payload: {} });
   const r = { db, store, service, decide, adapter, fm, hold };
@@ -107,9 +109,21 @@ it("decided elsewhere (the dashboard): the card is retired and says so; a click 
   expect([r.decide.mock.calls.length, r.store.get(ticket.id)!.state]).toEqual([0, "approved"]);
 });
 
-it("no card for a ClassicBot room's request (its own flow), nor when the target's world is not Discord or Telegram", async () => {
+it("R21079937: a ClassicBot room's request to a fleet agent posts the card, the room named as Fleet names it; an admin approves it there", async () => {
+  const r = rig(), ticket = r.hold("room");
+  r.fm.syncHeldTicketCard(ticket); await settle();
+  expect(r.adapter.notifyAlert).toHaveBeenCalledTimes(1);
+  expect(r.adapter.notifyAlert.mock.calls[0]![1].message.split("\n")[0]).toBe("classic: agend-limit wants to contact Example worker. The message is held until an administrator decides.");
+  await click(r, cards(r)[0], "approve");
+  expect(r.store.get(ticket.id)!.state).toBe("approved");
+  const plain = rig();
+  plain.fm.syncHeldTicketCard(plain.hold("plain-room")); await settle();
+  expect(plain.adapter.notifyAlert.mock.calls[0]![1].message.split("\n")[0]).toMatch(/^plain wants to contact Example worker\./);   // no display name: its channel's name
+});
+
+it("no card for a room's request to anything but a fleet agent, nor when the target's world is not Discord or Telegram", async () => {
   const r = rig();
-  r.fm.syncHeldTicketCard(r.hold("room")); await settle();
+  r.fm.syncHeldTicketCard(r.hold("room", "other-room")); await settle();
   expect(r.adapter.notifyAlert).not.toHaveBeenCalled();
   const web = rig({ adapterType: "web" });
   web.fm.syncHeldTicketCard(web.hold()); await settle();

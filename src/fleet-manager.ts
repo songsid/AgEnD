@@ -6051,8 +6051,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       return;
     }
-    // A fleet agent's send only (a ClassicBot room is no fleet instance: its requests keep their own flow).
-    if (posted.has(ticket.id) || !this.fleetConfig?.instances[ticket.source]) return;
+    // A fleet agent's send, or (R21079937, 11-25: a room's request was in no list and had no card) a ClassicBot room's send
+    // to a fleet agent — the card goes to the General of the TARGET's connection either way (postHeldTicketCard).
+    const room = !this.fleetConfig?.instances[ticket.source] && !!this.contactRoom(ticket.source);
+    if (posted.has(ticket.id) || (!this.fleetConfig?.instances[ticket.source] && !room) || (room && !this.fleetConfig?.instances[ticket.target])) return;
     posted.add(ticket.id);
     for (const old of posted) { if (posted.size <= HELD_CARDS_KEPT) break; posted.delete(old); }
     void this.postHeldTicketCard(ticket).catch((err: unknown) => this.logger?.warn?.({ err: (err as Error)?.message, ticket: ticket.id },
@@ -6066,7 +6068,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return route && route.adapterId === adapter.id && route.adapter === adapter ? [{ name: n, ...route }] : [];
     });
     if (routes.length !== 1) { this.logger.info({ ticket: ticket.id, routes: routes.length }, "No single General for a held contact request's card"); return; }
-    const route = routes[0]!, label = (n: string) => this.fleetConfig?.instances[n]?.display_name || n;
+    // A ClassicBot room by its own name (its display name, else its channel's), as Fleet lists it.
+    const route = routes[0]!, label = (n: string) => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || this.contactRoom(n)?.name || n;
     const shortId = /^R[a-f0-9]{8}-/.test(ticket.id) ? ticket.id.slice(0, 9) : ticket.id;
     const left = Date.parse(ticket.expiresAt) - Date.now();
     const text = ticket.message.length > 300 ? `${ticket.message.slice(0, 299)}…` : ticket.message;
