@@ -137,7 +137,7 @@ export const TaskBoardArgs = z.object({
   limit: z.number().int().min(1).max(100).optional().describe("Page size, default20; maximum100"),
   cursor: z.string().min(1).max(128).optional().describe("next_cursor from the previous page; keep the same filters"),
 
-  action: z.enum(["create", "list", "claim", "done", "update", "get", "mine", "move", "projects", "create_project", "move_project", "watch", "unwatch"])
+  action: z.enum(["create", "list", "claim", "done", "update", "get", "mine", "move", "projects", "create_project", "move_project", "watch", "unwatch", "attach"])
     .describe("Operation to perform"),
   title: z.string().optional().describe("Task title (create/update)"),
   description: z.string().optional().describe("Task details; a board card's goal (create/update)"),
@@ -172,7 +172,8 @@ export const TaskBoardArgs = z.object({
   context: z.string().optional().describe("Pointers only: paths, related cards, decisions (create/update)"),
   state: z.string().optional().describe("Overwritten each time: done / next / watch out, at most 5 lines (update)"),
   log: z.string().optional().describe("One progress line appended to the card's log (update)"),
-  comment: z.string().optional().describe("A comment on the card (update/move)"),
+  comment: z.string().optional().describe("A comment on the card, Markdown (update/move/attach)"),
+  attach: z.array(z.string()).max(10).optional().describe("Files to put on the card (update/move/attach)"),
   needs_review: z.boolean().optional().describe("Stop at review when finished (create/update)"),
   size: z.enum(["S", "M", "L"]).optional().describe("S small, M one unit, L too big: split it (create/update)"),
   dispatcher: z.string().nullable().optional().describe("The instance that handed the work out; a blocked card's question goes to them (create/update)"),

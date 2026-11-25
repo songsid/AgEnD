@@ -8,6 +8,7 @@ import { html, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
+import { MdBody, commentHtml } from "./fleet-task-md.js";
 
 /**
  * Which version an edit started from: a save sends it, so an agent's newer write is caught (409). After a conflict
@@ -135,8 +136,14 @@ export function InlineTitle({ value, version, limit, onSave }) {
 /** A longer text: a block that opens as a box on a click. Its own limit counts as you type. */
 export function EditableText({ value, limit, placeholder, version, readOnly = false, onSave, open = false, onClose }) {
   const edit = useInlineEdit({ value, version, onSave, valid: (v) => [...v].length <= limit, open: open && !readOnly, onClose });
-  if (readOnly) return html`<p class=${`tc-text${value ? "" : " empty"}`}>${value || "—"}</p>`;
+  // a text that is there is read as Markdown (the chat's renderer: lines, lists, headings, code blocks, links; escaped first).
+  // The stored text is the same; the box that edits it is still plain text.
+  const md = value ? commentHtml(value) : null;
+  if (readOnly) return md ? html`<${MdBody} body=${md} cls="tc-text tc-md tl-body md" />` : html`<p class=${`tc-text${value ? "" : " empty"}`}>${value || "—"}</p>`;
   if (edit.draft === null) {
+    // A click on the text (not on a link or a code block's buttons) opens the box, as it always did; the button is the keyboard's way in.
+    if (md) return html`<div class="tc-md-wrap"><${MdBody} body=${md} cls="tc-text tc-md tl-body md" title=${t("taskcard.clickToEdit")} onActivate=${() => edit.start()} />
+      <button type="button" class="btn btn-ghost btn-sm tc-md-edit" onClick=${() => edit.start()}>${t("taskcard.edit")}</button></div>`;
     return html`<button type="button" class=${`tc-text${value ? "" : " empty"}`} title=${t("taskcard.clickToEdit")} onClick=${() => edit.start()}>${value || placeholder || t("taskcard.empty")}</button>`;
   }
   const length = [...edit.draft].length;

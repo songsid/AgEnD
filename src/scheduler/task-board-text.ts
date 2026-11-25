@@ -11,6 +11,13 @@ export const STATUS_WORD: Record<CardStatus, string> = {
 /** A card's status in words: an agent's card in review waits for its dispatcher, not the person (#2434). */
 const statusOf = (card: Pick<Card, "status" | "dispatcher">) => (card.status === "review" && !personConfirms(card) ? "waiting for confirmation" : STATUS_WORD[card.status]);
 
+/** A file's size as a person reads it: "812 B", "12 KB", "1.4 MB". */
+export function sizeText(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
+}
+
 /** Text on one line, at most `max` characters. */
 export function oneLine(text: string, max: number): string {
   const chars = [...text.replace(/\s+/g, " ").trim()];
@@ -78,6 +85,9 @@ export function cardText(board: TaskBoard, card: Card): string {
       lines.push(` ${e.author} ${e.at.slice(5, 16).replace("T", " ")}${tag}${seen.has(e.id) ? " [new]" : ""}: ${e.text}`);
     }
   }
+  // The files on the card: what the person can open there — and what to look at before saying a step is done.
+  const files = board.attachments(card.uuid);
+  if (files.length) lines.push(`files on the card (${files.length}): ${files.map((f) => `${f.name} (${sizeText(f.size)}, ${f.author})`).join(", ")}`);
   return lines.join("\n");
 }
 

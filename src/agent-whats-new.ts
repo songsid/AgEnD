@@ -19,7 +19,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { TASK_CARD_REF_HINT } from "./dashboard-permissions.js";
+import { TASK_CARD_REF_HINT, TASK_REPORT_HINT } from "./dashboard-permissions.js";
 
 /**
  * #2163: who an entry is for — General, an instance with the coordinator or full tool set, a fleet worker, a ClassicBot
@@ -141,6 +141,10 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // M-3733 (#4459 1A): beta.23 shipped without it. Creating an agent may set tool_set up to the creator's profile. Changing an existing agent stays General-only.
   { id: "2.4-tool-set-cap", since: "2.4.0-beta.24", tools: ["create_instance", "deploy_template"],
     text: "`create_instance` and `deploy_template` may set a new agent's `tool_set` up to your own profile. Highest privilege first: full, general, coordinator, worker, standard, minimal. You cannot set full or general, or anything above your own profile; the refusal names the cap. General may still set a writable profile (not the role-derived general). Changing an existing agent's `tool_set` through `update_instance_config` stays General-only. `skipPermissions` stays refused for everyone. No confirmation card and no reload: a new agent starts on that profile." },
+  // An agent finished with "design document: /data/workspaces/…" and the person could open nothing. `since` is this line's next beta
+  // (2.4.0-beta.23 is published without it); the sentence is TASK_REPORT_HINT.
+  { id: "2.4-task-card-files", since: "2.4.0-beta.24", tools: ["task"],
+    text: `Task cards: ${TASK_REPORT_HINT} \`task\` takes \`attach: ["./survivor.html"]\` on \`update\` and \`move\` (and the action \`attach\`): a file from your working directory goes on the card under that write's comment. Attach the finished thing, not your working files: usually one file, at most three, never source, logs or drafts; a web prototype is ONE .html with its CSS and JS inline (source stays in your workspace or branch; link the PR or repo in the comment); short text goes in the comment, not a file. Pass it even if your copy of the tool does not list it.` },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */
