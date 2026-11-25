@@ -1,0 +1,63 @@
+{
+  "sourceHead": "9209f292a46666a4cbf11927c831543c79baf8bb",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "en: one card posted, no \"Run: /update\" post",
+      "ok": true
+    },
+    {
+      "name": "en: a non-admin is told privately; the card stays offered",
+      "ok": true
+    },
+    {
+      "name": "en: Update when idle → waiting, edited in place",
+      "ok": true
+    },
+    {
+      "name": "en: the old message says cancelled; a fresh card is posted",
+      "ok": true
+    },
+    {
+      "name": "en: a newer version replaces the card",
+      "ok": true
+    },
+    {
+      "name": "en: Tonight → scheduled at 22:00",
+      "ok": true
+    },
+    {
+      "name": "en: Not now",
+      "ok": true
+    },
+    {
+      "name": "zh-TW: one card posted, no \"Run: /update\" post",
+      "ok": true
+    },
+    {
+      "name": "zh-TW: a non-admin is told privately; the card stays offered",
+      "ok": true
+    },
+    {
+      "name": "zh-TW: Update when idle → waiting, edited in place",
+      "ok": true
+    },
+    {
+      "name": "zh-TW: the old message says cancelled; a fresh card is posted",
+      "ok": true
+    },
+    {
+      "name": "zh-TW: a newer version replaces the card",
+      "ok": true
+    },
+    {
+      "name": "zh-TW: Tonight → scheduled at 22:00",
+      "ok": true
+    },
+    {
+      "name": "zh-TW: Not now",
+      "ok": true
+    }
+  ],
+  "summary": "14/14"
+}
