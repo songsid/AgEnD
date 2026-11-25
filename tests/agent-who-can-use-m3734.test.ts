@@ -248,7 +248,7 @@ describe("Hub: this agent's share, and the Hub page that chooses who may ask (M-
     expect(w.state()).toBe("shared");
     expect(w.link().getAttribute("href")).toBe(`https://hub.example.test/ui/hub/exposures?agent=${ID}&grant=1`);
     expect(w.link().getAttribute("target")).toBe("_blank");
-    expect(w.text()).toContain("“Choose who may ask on the Hub” opens the Hub's own page. That page opens only on the company network: outside it (for example, at home) it won't open.");
+    expect(w.text()).toContain("“Choose who may ask on the Hub” opens the Hub's own page. That page opens only on the internal network: it won't open outside the internal network (for example, at home).");
     expect(w.text()).toContain("people or AD groups, each until a date you choose");
   });
   it("no Hub: says so and reads nothing (never the stub client's made-up answers)", async () => {

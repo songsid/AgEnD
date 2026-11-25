@@ -126,7 +126,7 @@ category (「誰能用」), before Permissions. It lists and edits the same two 
   same confirmations. Before any grant is saved, the list is read-only and offers **Start from today's guests**.
 - **Hub:** whether the agent is shared on the Hub and, when it is, **Choose who may ask on the Hub**. That button opens the
   Hub's own page (people or AD groups, each until a chosen date), which only opens where the Hub can be reached (today, the
-  company network). The Fleet itself never reads or changes who may ask.
+  internal network). The Fleet itself never reads or changes who may ask.
 
 Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram (`allowed_users`) is unchanged.
 

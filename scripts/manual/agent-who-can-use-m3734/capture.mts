@@ -9,7 +9,7 @@
  *  2-add      Add a person open (Dan, Bob)
  *  3-remove   Remove Carol's question (nothing is written: Cancel)
  *  4-nohub    grants not saved yet (#1920's derived access: Start from today's guests) and no Hub
- *  5-hub      the Hub card on screen: shared, its button, and where the Hub page opens (not from outside the company network)
+ *  5-hub      the Hub card on screen: shared, its button, and where the Hub page opens (not from outside the internal network)
  *  phone also 0-index: the agent page's category list, Who can use before Permissions
  * Checks: the rows and levels, the Hub link (the Hub's own address, grant=1, new tab) and its "only where the Hub can be
  * reached" note, every control in the section at least 44 px tall, no sideways scroll, no console error.
@@ -84,7 +84,7 @@ const CASES: MatrixCase[] = [
   { device: "phone", theme: "light", lang: "zh-TW" }, { device: "phone", theme: "dark", lang: "en" },
 ];
 const L = {
-  where: { en: "That page opens only on the company network: outside it (for example, at home) it won't open.", zh: "這個頁面只在公司網路內打得開，在公司網路以外（例如在家）打不開。" },
+  where: { en: "That page opens only on the internal network: it won't open outside the internal network (for example, at home).", zh: "這個頁面只在內部網路內打得開，在內部網路以外（例如在家）打不開。" },
   button: { en: "Choose who may ask on the Hub", zh: "到 Hub 選擇誰可以問" },
   scope: { en: "Only affects Example lead", zh: "只影響 Example lead" },
   levelAll: { en: "Carol's level (Chat or Trusted) applies to all 2 agents they can use, not only this one.", zh: "Carol 的等級（聊天或信任）套用到他們能用的全部 2 個 Agent，不只這一個。" },
@@ -128,7 +128,7 @@ try {
       const carol = m.rows.find((r: any) => r.name === "Carol");
       check(`${tag}: Carol is Trusted and also uses beta`, !!carol && carol.pressed[0] === "trusted" && carol.text.includes(labelOf(c, L.also)), carol);
       check(`${tag}: Hub: shared, with the Hub page that chooses who may ask (grant=1, new tab)`, m.hub === "shared" && m.href === `https://hub.example.test/ui/hub/exposures?agent=${EXPOSURE_ID}&grant=1` && m.target === "_blank", [m.hub, m.href, m.target]);
-      check(`${tag}: says the Hub page only opens on the company network, not from outside (e.g. at home)`, m.text.includes(labelOf(c, L.where)), m.text);
+      check(`${tag}: says the Hub page only opens on the internal network, not from outside (e.g. at home)`, m.text.includes(labelOf(c, L.where)), m.text);
       check(`${tag}: Carol's row says her level covers both her agents`, !!carol && carol.text.includes(labelOf(c, L.levelAll)), carol?.text);
       const page_text = await page.evaluate(`document.querySelector(".agent-settings-heading")?.innerText || ""`);
       // The phone's heading has no scope line (the page names the agent above it).
