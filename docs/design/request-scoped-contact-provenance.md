@@ -301,7 +301,8 @@ Transport and deployment coverage:
 | Outside turn active; human input is accepted into it | Same outside context, irrespective of an administrator's wording or verification |
 | Outside turn active; administrator chooses a new independent request | Queue it; admit a new root only after owned end, explicit cancel or a fresh-runtime boundary |
 | Active binding ended; ordinary non-reply administrator input | New administrator root; old pending tickets/children remain untouched |
-| `/steer` or native/web reply points to an existing work message | Continuation from the server's exact message/work mapping; never a parsed quote, correlation string or model-selected parent |
+| Server-registered expected answer/return, or permitted administrator steer | Continue only its exact server-owned work mapping after checking the expected actor/return and current binding; an ordinary native/web reply pointer is insufficient |
+| New outside message replies to approved history, with a valid reply pointer but no registered expectation | New unendorsed root; never inherit the old request's D1 release merely from that pointer |
 | Idle `/steer` lacks an unambiguous mapped context | Ask which work to continue; do not guess an owner root or silently retry a held send |
 | Reply-recovery prompt | Exact recovery job's parent context; never “Agent's own work” |
 | Restart/resume prompt | Restored work's parent; starting a fresh runtime ends the old active binding but does not erase the resumed work's context |
@@ -501,6 +502,7 @@ a pending request, or reset an Agent's whole history to escape the mismatch.
 | Login verification silently executes an approval | Same card, final explicit decision; verification-only and expiry/race negatives |
 | Approval applies to different bytes, recipient or incarnation | Exact operation hash, current source/target, transactional once-only admission |
 | Same request asks repeatedly after Continue | Proven A→B→C→D positive needs only the first approval; each operation still has once-only admission and immutable bytes |
+| Outside reply borrows an old approved request | A new guest/non-admin message with a valid history reply pointer but no registered expected answer starts unendorsed and holds its own first contact; paired expected-answer/allowed-admin-steer positives continue only the proven root |
 | Approval leaks into another request or grants owner action authority | D1 follows only the committed root and server-owned descendants; same-person new-root, forged-root and unproved-recovery negatives, label/audience/Hub refusals remain |
 | Wrong bot elevates or misroutes a person | Platform-qualified identity, current central admin gate, original adapter callback/send binding |
 | Timer/restart washes an active Hub request | Actual turn/boot fencing, no elapsed-window release, late report keeps context without reviving turn |
@@ -555,7 +557,7 @@ Source: [independent review](https://github.com/songsid/AgEnD/pull/4456#issuecom
 
 | Point | Disposition |
 | --- | --- |
-| B1: idle/pending-child admin continuation versus new root | Adopted: §5 mechanical table uses active binding, exact reply/steer mapping, and idle non-reply root. Pending children never lock unrelated roots or replay on an admin message. |
+| B1: idle/pending-child admin continuation versus new root | Adopted: §5 mechanical table uses active binding, registered expected-answer/return or permitted administrator-steer mapping, and idle non-reply root. Pending children never lock unrelated roots or replay on an admin message. |
 | B2: approval must not strip Hub provenance/refusals | Adopted: §3 and §7 explicitly retain Hub label, authority-none and side-effect refusals through a contact approval. |
 | S1: ingress precedence | Adopted: §3 states `hub > guest > restricted-room > free-room > owner`, immutable down the single-parent tree. |
 | S2: pre-verification card reads require current manager identity | Adopted: §6 requires normalized PersonKey plus current target canManage/central admin gate, with awaited-role recheck; tier alone is insufficient. |
@@ -593,6 +595,12 @@ Source: [independent review](https://github.com/songsid/AgEnD/pull/4456#issuecom
 | Prove actual supported older executable barrier | Adopted in §8: not a version warning or optional companion field; enabling waits for zero-dispatch proof. |
 | Cut lifetime union/reset and a second relay engine | Adopted; use existing operation/ticket/outbox/obligation state. |
 | M-3661 can prepare disabled, not enable before shared receiver/continuation | Adopted in §7 and build split. |
+
+R3 scoped delta from Prism: [reply-pointer gap](https://github.com/songsid/AgEnD/pull/4456#issuecomment-7155151139).
+Resolved by narrowing the mechanical table to registered expected answers/returns
+or permitted administrator steering, matching the prose. A valid historical reply
+pointer alone never inherits D1; §9 now pins that negative beside the allowed
+continuation positives. No other policy or downgrade guard changes.
 
 ### GrokCore / Grok
 
