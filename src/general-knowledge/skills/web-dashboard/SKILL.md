@@ -1066,4 +1066,9 @@ For the Hub's **My shared agents → Who may ask** person/name search, AD group 
 
 ## General contact-change proposals
 
+A held message from an agent, or from a ClassicBot room to an agent, also gets its own card in General on the target's
+Discord or Telegram, with **Approve once** / **Decline**. Only someone who may decide it can use them (anyone else is
+told so, and the card stays). Deciding it anywhere else, on the web or with another card, closes the card. A proposal
+(below) is a separate path: General posts a card that the admin must **Confirm**.
+
 General can call `contact_state` (read-only) to see held messages, rules, room modes and restricting origins, and `propose_contact_change` with a structured `change`: room `mode` (`restricted` or `legacy`, which is unrestricted), `ticket-decision` (the ticket ID or the 9-character short ID people see, approve-once/decline, optionally exact originating-person keys and expiry/uses), `grant-adjust` (expiry/uses only), or `grant-revoke`. A refusal says why and what to do next. The daemon freezes the current revision and identities and posts its own confirmation in the target connection’s Discord/Telegram General. An authorized person must press Confirm; the tool call, a quoted approval, or General's own buttons never apply it. The card expires after five minutes; a changed revision, route or incarnation requires a new proposal. Unknown origins remain approve-once only. Host-only targets and unavailable platform routes use web Permissions/Authorizations. Contact approval never restricts what the receiving agent does afterward.

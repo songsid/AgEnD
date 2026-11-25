@@ -24,7 +24,7 @@ roles: [general]
 | Fleet settings | anything else (task board, notifications, access) | The person: Settings, then **/** to search the setting by name |
 | Teams, schedules, decisions, task board cards | all | Tool (`create_team`, `create_schedule`, `post_decision`, `task`) |
 | Contact permissions | what is held, and who it waits on | Tool `contact_state` (read-only) |
-| Contact permissions | approve or decline a held message | Proposal `propose_contact_change` kind `ticket-decision`; the short id people see (R + 8 characters) works |
+| Contact permissions | approve or decline a held message | The person: the held message's own card in General (**Approve once** / **Decline**), if it has one; else proposal `propose_contact_change` kind `ticket-decision` (the short id people see, R + 8 characters, works) |
 | Contact permissions | change or remove a standing rule | Proposal `grant-adjust` / `grant-revoke`; the grant_id comes from `contact_state` |
 | ClassicBot rooms | restricted or unrestricted | Proposal `mode`: `restricted`, or `legacy` (= unrestricted, 自由) |
 | Contact permissions | clear an agent's retained origin | The person: the agent's Permissions tab in the web dashboard |
@@ -37,6 +37,10 @@ roles: [general]
 
 ## Contact permissions, step by step
 
+0. A held message from an agent, or from a ClassicBot room to an agent, already has a card in General on the target's
+   Discord or Telegram: **Approve once** / **Decline**. An administrator who may decide clicks it there; that is the
+   decision, with no proposal and no second Confirm. Use the steps below when there is no card (the target is not on
+   Discord/Telegram, or the card has expired) or the admin asks you to.
 1. `contact_state` (optionally `agent`): `held` lists each waiting message with `short_id`, from, to, the people it
    came from and who decides.
 2. `propose_contact_change` with `{ kind: "ticket-decision", ticket_id: "<short_id>", decision: "approve-once" }`
