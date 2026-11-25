@@ -51,7 +51,7 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
       if (again.ok) onChange?.(again.data);
       return false;
     }
-    toast(ca(r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "decideFailed"), false);
+    toast(ca(r.code === "verification-required" ? "verifyFirst" : r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "decideFailed"), false);
   };
   const people = tk.origin?.people || [];
   const grantable = ["human", "mixed"].includes(tk.origin?.kind) && people.length > 0 && people.length <= 16;
@@ -131,7 +131,8 @@ export function ContactAuthorizations() {
     </div>
     ${focus ? html`<${TicketCard} ticket=${focus} focus=${true} onChange=${replace} onPerson=${setPerson} />` : null}
     ${page.loading ? html`<${Skeleton} variant="cards" lines=${2} label=${ca("loading")} />`
-      : page.error && !page.items.length ? (page.error === "forbidden" ? html`<p class="note">${ca("forbidden")}</p>` : html`<${ErrorState} message=${ca(page.error === "unavailable" ? "unavailable" : "loadFailed")} onRetry=${() => void read()} />`)
+      : page.error && !page.items.length ? (page.error === "verification-required" ? html`<p class="note contact-verify">${ca("verifyFirst")}</p>`
+        : page.error === "forbidden" ? html`<p class="note">${ca("forbidden")}</p>` : html`<${ErrorState} message=${ca(page.error === "unavailable" ? "unavailable" : "loadFailed")} onRetry=${() => void read()} />`)
       : !list.length && !focus ? html`<${Empty} icon="key" title=${ca(status === "pending" ? "emptyPending" : "empty")} hint=${ca("emptyHint")} action=${status === "pending" ? html`<button type="button" class="btn btn-sm" onClick=${() => setStatus("all")}>${ca("viewAll")}</button>` : null} />`
       : html`<div class="contact-ticket-list">${list.map((tk) => html`<${TicketCard} key=${tk.id} ticket=${tk} onChange=${replace} onPerson=${setPerson} />`)}</div>`}
     ${page.next ? html`<div class="field-row"><button type="button" class="btn btn-sm" onClick=${() => void read(page.next)}>${ca("more")}</button></div>` : null}

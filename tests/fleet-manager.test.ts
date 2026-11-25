@@ -1551,7 +1551,7 @@ describe("FleetManager", () => {
       const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
       classicChannels.setPrimaryAdapterId("telegram");
       fm.classicChannels = classicChannels;
-      vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
+      const start = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
       const promptUser = vi.fn().mockResolvedValue("menu-1");
       const adapter = {
         id: "telegram",
@@ -1578,6 +1578,17 @@ describe("FleetManager", () => {
         messageId: "menu-1",
         userId: "owner",
       });
+      expect(start).not.toHaveBeenCalled();
+      const mode = promptUser.mock.calls.at(-1)![2] as Array<{ id: string }>;
+      await (fm as any).handleClassicModeSelection({
+        callbackData: mode.find(choice => choice.id.endsWith(":restricted"))!.id,
+        chatId: "12345",
+        messageId: "menu-1",
+        userId: "owner",
+      });
+      expect(start).toHaveBeenCalledOnce();
+      expect(classicChannels.get("12345", "telegram")?.backend).toBe("codex");
+      expect(classicChannels.get("12345", "telegram")?.restrictedMode).toBe(true);
     } finally {
       process.env.PATH = originalPath;
     }
@@ -1599,6 +1610,8 @@ describe("FleetManager", () => {
       fm.classicChannels = classicChannels;
       const start = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
       const respond = vi.fn().mockResolvedValue(undefined);
+      const respondButtons = vi.fn().mockResolvedValue("mode-1");
+      const retireButtons = vi.fn().mockResolvedValue(undefined);
 
       await (fm as any).handleClassicStartSlash({
         command: "start",
@@ -1608,13 +1621,22 @@ describe("FleetManager", () => {
         userId: "owner",
         options: { backend: "opencode" },
         respond,
+        respondButtons,
+        retireButtons,
       }, "discord");
 
-      expect(respond.mock.calls[0][0]).toContain("opencode");
-      expect(respond.mock.calls[0][0]).toContain("curl -fsSL https://opencode.ai/install | bash");
-      expect(respond).toHaveBeenCalledTimes(2);
-      expect(respond.mock.calls.at(-1)?.[0]).toContain("opencode");
+      expect(start).not.toHaveBeenCalled();
+      expect(respondButtons.mock.calls[0][0]).toContain("opencode");
+      expect(respondButtons.mock.calls[0][0]).toContain("curl -fsSL https://opencode.ai/install | bash");
+      const restricted = (respondButtons.mock.calls[0][1] as Array<{ id: string }>).find(choice => choice.id.endsWith(":restricted"))!;
+      await (fm as any).handleClassicModeSelection({
+        callbackData: restricted.id,
+        chatId: "channel-1",
+        messageId: "mode-1",
+        userId: "owner",
+      });
       expect(start).toHaveBeenCalledWith(expect.any(String), "opencode", undefined, undefined, undefined);
+      expect(retireButtons.mock.calls.at(-1)?.[0]).toContain("opencode");
     } finally {
       process.env.PATH = originalPath;
     }
@@ -1695,7 +1717,24 @@ describe("FleetManager", () => {
       messageId: "menu-1",
       userId: "owner",
     });
+    expect(start).not.toHaveBeenCalled();
+    expect(classicChannels.get("12345", "telegram")).toBeUndefined();
+    const restricted = promptUser.mock.calls.at(-1)![2].find((choice: { id: string }) => choice.id.endsWith(":restricted"));
+    await (fm as any).handleClassicModeSelection({
+      callbackData: restricted.id,
+      chatId: "12345",
+      messageId: "menu-1",
+      userId: "someone-else",
+    });
+    expect(start).not.toHaveBeenCalled();
+    await (fm as any).handleClassicModeSelection({
+      callbackData: restricted.id,
+      chatId: "12345",
+      messageId: "menu-1",
+      userId: "owner",
+    });
     expect(classicChannels.get("12345", "telegram")?.backend).toBe("codex");
+    expect(classicChannels.get("12345", "telegram")?.restrictedMode).toBe(true);
     expect(start).toHaveBeenCalledOnce();
     expect(editMessageRemoveButtons).toHaveBeenCalledWith("12345", "menu-1", expect.any(String));
   });

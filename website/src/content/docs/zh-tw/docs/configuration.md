@@ -38,17 +38,17 @@ agend validate
 | Key | 預設 | 作用 |
 |---|---|---|
 | `web.usage_panel` | `true` | `false` 會隱藏所有訂閱用量顯示，並停用 `/api/ai-usage` |
-| `web.log_tab` | `false` | 開啟每個 instance 的 **Log**（紀錄）分頁。Claude Code 和 Codex 會顯示 agent transcript 裡的 prompt、回覆、工具呼叫和錯誤，機密值會遮蔽。其他後端（含 Kiro）只顯示 fleet 事件，並說明原因 |
+| `web.log_tab` | `false` | 開啟每個 instance 的 **Log**（紀錄）分頁。Claude Code、Codex、Antigravity 和 Grok 會顯示 agent transcript 裡的 prompt、回覆、工具呼叫和錯誤，機密值會遮蔽。其他後端（含 Kiro）只顯示 fleet 事件，並說明原因 |
 | `web.allowed_hosts` | — | 透過反向代理或 port forward 連線時，dashboard 額外接受的 `Host` 名稱。其他 `Host` 一律 403 |
 | `web.view_access` | `open` | `session` 會讓沒登入的人看不到 `/view` |
 | `web.notify_login` | `true` | `false` 就不會在 General 通知每次本機網頁登入 |
-| `web.session.local.absolute_hours` / `.idle_hours` | `48` / `48` | 直接連到 dashboard 時，一次登入能維持多久（最多 720）。公開連結的 session 固定 4 小時／閒置 30 分鐘 |
+| `web.session.local.absolute_hours` / `.idle_hours` | `48` / `48` | 直接連到 dashboard 時，一次登入能維持多久（最多 720）。公開連結的 session 最多 8 小時／閒置 30 分鐘，用自己的網域可延長（`web.session.public_link`：總共 1–168 小時，閒置 5–1440 分鐘） |
 | `web.preview` | `true` | `false` 會關掉網頁聊天裡的 HTML 預覽 |
 | `web.public_link.allow_public` | `true` | `false` 會從 `/web` 拿掉臨時公開連結，並關閉已開啟的連結 |
 | `web.public_link.ttl_minutes` | `120` | 公開連結的有效時間：快速 tunnel 為 1–480；用自己的網域時為 1–10080，或 `0` 代表不過期 |
 | `web.public_link.hostname` | — | 具名 Cloudflare tunnel 用的自己的網域。每次的網址都相同。tunnel token 在設定頁填入，填入後不會再顯示 |
 | `web.public_link.auto_open` | `false` | 用自己的網域時，fleet 重啟後替最後開啟連結的管理員重新打開公開連結 |
-| `web.verified_authority.named_link` | `false` | 讓你已驗證的瀏覽器以你的帳號行事，但只限於自己的網域。快速 tunnel 由 `quick_link` 決定 |
+| `web.verified_authority.named_link` | `true` | 讓你已驗證的瀏覽器以你的帳號行事，但只限於自己的網域。快速 tunnel 由 `quick_link` 決定 |
 | `web.verified_authority.quick_link` | `true` | 讓你已驗證的瀏覽器透過 `/web` 開出的臨時公開連結以你的帳號行事（每個瀏覽器仍須在私訊中確認）。設為 `false` 即關閉 |
 | `web.search.retention_days` | 2.3.0 為 `90`；從 2.3.1 起未設定（`0`） | 從 2.3.1 起，未設定與 `0` 都不限天數（仍上限 30 萬筆）；1–3650 依天數清理。2.3.0 預設仍是 90 天 |
 | `web.experimental.canvas_worker` | — | 已忽略：Canvas Worker 特效已移除（#2793），已存的值照常載入。內建的環境效果不受影響 |
@@ -256,7 +256,7 @@ defaults:
 
 ## 憑證 profile
 
-CLI 後端把登入資訊放在固定的一個地方，所以每個 instance 共用同一個帳號。**Kiro CLI、Codex 和 Claude Code** 可以用 `credential_profile` 給 instance 一個具名、獨立的登入。其他後端會忽略它，並出現警告。
+CLI 後端把登入資訊放在固定的一個地方，所以每個 instance 共用同一個帳號。**Kiro CLI、Codex、Claude Code 和 Antigravity** 可以用 `credential_profile` 給 instance 一個具名、獨立的登入。其他後端會忽略它，並出現警告。
 
 ```yaml
 instances:
@@ -272,7 +272,7 @@ instances:
         credential_profile: personal
 ```
 
-指到同一個 profile 的 instance 共用一個登入。Instance 未自行設定 `credential_profile` 時會繼承 fleet 預設；只有有效值為空或未設時，才使用共用登入且不建立 profile 目錄。Profile 放在 `~/.agend/credential-profiles/<backend>/<profile>`。
+指到同一個 profile 的 instance 共用一個登入。Instance 未自行設定 `credential_profile` 時會繼承 fleet 預設；只有有效值為空或未設時，才使用共用登入且不建立 profile 目錄。Profile 放在 `~/.agend/credential-profiles/<backend>/<profile>`。已保存的憑證放在主機私有的保存區，在**設定 → AI 帳號與金鑰 → 帳號**管理；它們的用量列不顯示訂閱額度表。
 
 每個 profile 先登入一次：
 
@@ -281,6 +281,7 @@ instances:
 | Claude Code | 在聊天用 `/login claude-code work`（手機也能完成），或在主機上：`CLAUDE_CONFIG_DIR=~/.agend/credential-profiles/claude-code/work claude auth login` |
 | Kiro CLI | 在主機上：`XDG_DATA_HOME=~/.agend/credential-profiles/kiro-cli/work kiro-cli login` |
 | Codex | 在主機上：`CODEX_HOME=~/.agend/credential-profiles/codex/work codex login` |
+| Antigravity | 在**設定 → AI 帳號與金鑰 → 帳號**（預設和具名帳號） |
 
 要幫既有 agent 換 profile，直接用自然語言跟 General 說，例如「把 research-a 換到個人訂閱」。AgEnD 會改設定並重啟執行中的 agent；暫停或停止的 agent 在下次啟動時使用。**設定變更若切換到從未登入過的 profile，會被拒絕**，錯誤訊息會附上登入指令。`credential_profile: null` 會清掉這個 agent 自己的設定，回到 fleet 的預設（通常是共用登入）。換回共用登入永遠不會被拒絕。
 
@@ -337,7 +338,7 @@ channels:
 | `auto_pause_after` / `tool_progress` | 同上 | 繼承 | 個別 channel 覆寫 |
 | `backend_options` | object | 合併預設 | Backend 選項與 credential profile |
 | `display_name` / `description` | string | — | Agent 名稱與說明 |
-| `web_echo` | boolean | `false` | 將此聊天室的 web chat 同步至平台，與 `web.echo_to_channel` 無關 |
+| `web_echo` | boolean | 跟著 `web.echo_to_channel` | 將此聊天室的 web chat 同步至平台。聊天室有設值就以它為準，蓋過全 fleet 的開關；沒設定的跟著全 fleet 的開關（預設 `true`）；設 `false` 就一定不同步 |
 | `pre_task_command` | string | — | 每則訊息前先貼上的指令 |
 | `reply_completion_guard` | boolean | 同 defaults | 這個頻道的覆寫 |
 | `reply_triggers` | boolean | 同 defaults | 這個 collab 聊天室的原生回覆觸發覆寫 |
