@@ -85,6 +85,13 @@ try {
         : ["讓 Lumen 繼續用 Fable 5.2？", "Lumen 之後的回覆可能會另外從用量點數扣款（不在方案內）。", "繼續（用點數）", "取消"];
       check(`${tag}: the credits choice asks to be confirmed first, naming the agent in plain words`, want.every(w => words.includes(w)) && !/回合|answers/.test(words), words);
       check(`${tag}: no key went to the pane before the confirmation`, answers === 0, answers);
+      // No widow: the body's last line is not a stub of the line above it (e.g. 「案內）。」 alone), in every language and size.
+      const lineWidths = await dialog.locator(".confirm-text").first().evaluate((e: Element) => {
+        const r = document.createRange(); r.selectNodeContents(e); const rows = new Map<number, number>();
+        for (const x of r.getClientRects()) { const k = Math.round(x.top); rows.set(k, (rows.get(k) ?? 0) + x.width); }
+        return [...rows.entries()].sort((a, b) => a[0] - b[0]).map(([, w]) => Math.round(w));
+      });
+      check(`${tag}: the confirmation's text leaves no lone last word`, lineWidths.length === 1 || lineWidths[lineWidths.length - 1]! >= 0.4 * lineWidths[lineWidths.length - 2]!, lineWidths);
       const cw = await dialog.locator(".dlg-actions .btn").evaluateAll((els: Element[]) => els.map(e => Math.round(e.getBoundingClientRect().width)));
       check(`${tag}: the confirmation's two buttons are one width`, cw.length === 2 && Math.abs(cw[0] - cw[1]) <= 1, cw);
       path = shotPath(smoke, tag, "2-confirm-credits"); await page.screenshot({ path }); receipt.pictures.push(path);
