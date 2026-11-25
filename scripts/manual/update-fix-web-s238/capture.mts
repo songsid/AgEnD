@@ -53,8 +53,8 @@ const toasts = async (page: any) => page.evaluate(`[...document.querySelectorAll
 // A toast shown in full: one with the whole text and no ellipsis (its box as wide as its text needs).
 const toastWhole = async (page: any, text: string) => page.evaluate(`[...document.querySelectorAll(".toasts .toast")].some((e) => e.innerText.trim() === ${JSON.stringify(text)} && e.scrollWidth <= e.clientWidth + 1 && getComputedStyle(e).textOverflow !== "ellipsis")`) as Promise<boolean>;
 // A word kept on one line in the checks: its text range's boxes share one top.
-const unsplit = async (page: any, word: string) => page.evaluate(`(() => { const w = ${JSON.stringify(word)};
-  const walk = document.createTreeWalker(document.querySelector("#settings-update .uc-checks"), NodeFilter.SHOW_TEXT);
+const unsplit = async (page: any, word: string, root = "#settings-update .uc-checks") => page.evaluate(`(() => { const w = ${JSON.stringify(word)};
+  const walk = document.createTreeWalker(document.querySelector(${JSON.stringify(root)}), NodeFilter.SHOW_TEXT);
   for (let n = walk.nextNode(); n; n = walk.nextNode()) { const i = n.data.indexOf(w); if (i < 0) continue;
     const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + w.length);
     return new Set([...r.getClientRects()].filter((b) => b.width).map((b) => Math.round(b.top))).size === 1; }
@@ -96,6 +96,7 @@ async function walk(c: any) {
     check(`${tag} 2: the fix ran once`, fixes.length === before + 1 && fixes[fixes.length - 1] === "linger", fixes);
     check(`${tag} 2: ✓ AgEnD can update itself here; the line and its button are gone`, m.includes(W(zh, "AgEnD can update itself here.", "AgEnD 可以在這裡自行更新。")) && !m.includes("example") && (await fixButtons(page)).length === 0, m);
     check(`${tag} 2: says it's done, in full`, await toastWhole(page, W(zh, "Done: AgEnD keeps running after example signs out.", "完成：使用者 example 登出後，AgEnD 仍會繼續執行。")), await toasts(page));
+    if (zh) check(`${tag} 2: the toast keeps 「執行」 whole`, await unsplit(page, "執行", ".toasts") === true, await unsplit(page, "執行", ".toasts"));
     await shot(page, `${tag}-2-fixed`);
     // 3 a fix that doesn't take
     setPreflight(LINGER_OFF); fixTakes = false;
@@ -106,6 +107,7 @@ async function walk(c: any) {
     m = await machine(page); b = await fixButtons(page);
     check(`${tag} 3: says AgEnD couldn't, and to run the command, in full`, await toastWhole(page, W(zh, "AgEnD couldn't fix it by itself. Run the command above in a terminal on that computer.", "AgEnD 無法自行修正。請在那台電腦的終端機執行上面的指令。")), await toasts(page));
     check(`${tag} 3: the line and its command stay; the button can be pressed again`, m.includes("example") && (await cmds(page)).join("|") === "sudo loginctl enable-linger example" && b.length === 1 && b[0]!.t === FIX, { m, b });
+    if (zh) for (const w of ["上面", "終端機", "執行"]) check(`${tag} 3: the toast keeps 「${w}」 whole`, await unsplit(page, w, ".toasts") === true, await unsplit(page, w, ".toasts"));
     await shot(page, `${tag}-3-failed`);
     // 4 not a service: How to fix, no button
     setPreflight(NOT_SERVICE);
