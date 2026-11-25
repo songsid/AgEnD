@@ -127,6 +127,8 @@ try {
       await chat.waitFor({ state: "visible", timeout: 20_000 });
       check(`${tag}: the chat names the agent in its title`, (await chat.locator(".txt strong").innerText()).trim() === (zh ? "Lumen：Fable 5.2 要另外收費，要換模型嗎？" : "Lumen: Fable 5.2 now costs extra. Switch model?"), await chat.locator(".txt strong").innerText());
       check(`${tag}: the chat carries the same bill sentence`, (await chat.locator(".prompt-detail").innerText()).trim() === W.detail, await chat.locator(".prompt-detail").innerText());
+      const ct = await detailLines(".txt:first-child", chat);
+      check(`${tag}: the chat's title leaves no stub last line`, wrapOk(ct), ct);
       const cd = await detailLines(".prompt-detail", chat);
       check(`${tag}: the chat's bill sentence leaves no stub last line`, wrapOk(cd), cd);
       const chatLabels = (await chat.locator(".acts > .btn").allInnerTexts()).map(x => x.trim());
