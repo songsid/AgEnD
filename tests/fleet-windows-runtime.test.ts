@@ -325,6 +325,20 @@ describe("S-224 exec admitted-input capture", () => {
     expect(f.turns.current(f.owner)?.inputId).toBe("b");
     expect(f.open).toHaveBeenCalledTimes(2); f.settle(thread);
   });
+  it("execute retires recovered confirmed A at claim without a prior status read, then accepts independent B", async () => {
+    const f=await scoped(); f.prepare("a"); f.prepare("b");
+    const first=f.runtime.execute(f.name,{requestId:id,content:"Question"},{requestContextInputId:"a"});
+    f.settle(id,{outcomeConfirmed:false}); await first;
+    const a=f.turns.current(f.owner); expect(a?.inputId).toBe("a");
+    await expect(f.runtime.execute(f.name,{requestId:thread,content:"Question"},{requestContextInputId:"b"})).rejects.toThrow(/must wait/);
+    expect(f.turns.current(f.owner)).toBe(a);
+    f.tasks.set(id,{...f.tasks.get(id)!,outcomeConfirmed:true});
+    const get=vi.spyOn(f.runtime,"get"),beforeStart=vi.fn(()=>expect(get).not.toHaveBeenCalled());
+    const next=f.runtime.execute(f.name,{requestId:thread,content:"Question"},{requestContextInputId:"b",beforeStart});
+    const accepted=next.then(()=>true,()=>false);
+    expect(f.turns.current(f.owner)?.inputId).toBe("b"); expect(beforeStart).toHaveBeenCalledOnce();
+    expect(f.start).toHaveBeenCalledTimes(2); f.settle(thread); expect(await accepted).toBe(true);
+  });
   it("defers independent B before any old-grant close or journal write, without laundering A", async () => {
     const f = await scoped(); f.prepare("a"); f.prepare("b");
     await f.runtime.deliver(f.name, { requestId: id, content: "Question" }, { requestContextInputId: "a" });

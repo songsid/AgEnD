@@ -96,15 +96,19 @@ export class FleetWindowsRuntime {
     const fleet = this.host.fleet();
     return !!fleet && windowsCliEnabled() && registerWindowsProfiles(fleet,this.store,this.host.save);
   }
-  get(name: string): (WindowsAgent & {blocked:boolean}) | null {
-    const config = this.config(name);
-    if (!isWindowsInstance(config)) return null;
-    const agent = this.store.get(this.id(name));
+  /** Reconcile the exact recovered run on both status reads and the direct durable execute/claim lane. */
+  private retireRecoveredRequestContext(name: string, agent: Pick<WindowsAgent, "activeId">): void {
     const run = this.requestContextRuns.get(name);
     if (run && agent.activeId !== run.requestId) {
       const recovered = this.bridge.get(run.requestId);
       if (recovered?.finishedAt && recovered.outcomeConfirmed === true) { run.retire(); this.requestContextRuns.delete(name); }
     }
+  }
+  get(name: string): (WindowsAgent & {blocked:boolean}) | null {
+    const config = this.config(name);
+    if (!isWindowsInstance(config)) return null;
+    const agent = this.store.get(this.id(name));
+    this.retireRecoveredRequestContext(name, agent);
     if (config.machine_id !== agent.machineId) throw new Error("The instance machine does not match its saved conversation");
     const blocked = config.native_adapter === "pane" && agent.paneLaunchId ? this.host.paneCurrent?.(name) !== true : agent.blocked;
     return {...agent,blocked,name:config.display_name ?? agent.name,description:config.description ?? "",instructions:config.systemPrompt ?? "",cwd:config.working_directory,model:config.model || undefined,sandbox:config.native_sandbox ?? agent.sandbox};
@@ -300,6 +304,7 @@ export class FleetWindowsRuntime {
     if (!config || !this.has(name)) throw new Error("Windows instance not found");
     if (!isNativeExecInstance(config)) throw new Error("Persistent native panes use the ordinary daemon delivery path");
     const agent=syncWindowsProfile(config,this.store);
+    this.retireRecoveredRequestContext(name, agent);
     if(!switchedOn(agent))throw new Error(agent.machineId ? "Other Windows computers are turned off. Turn them on in Settings → Runtime." : LOCAL_WINDOWS_CLI_OFF);
     if(agent.machineId && this.host.machineAvailable?.(agent.machineId)!==true)throw new Error("This runtime machine is offline. Reconnect it before sending a message.");
     // Fail closed before anything is journaled: a malformed profile never becomes "run on the computer's own account".
