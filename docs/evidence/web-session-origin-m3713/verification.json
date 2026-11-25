@@ -115,12 +115,28 @@
     "afterSource": "771114ae160055ea5476610a567e72c80aee51d5",
     "pageErrors": 0,
     "cspReports": 0,
-    "horizontalOverflow": false
+    "horizontalOverflow": false,
+    "recoveryNeeds": {
+      "count": 8,
+      "source": "0f2cb91aa60a617d322c7f909d236addb060ad8f",
+      "supersedes": "after/*-needs.png",
+      "permissionsUnchanged": true
+    }
   },
   "limits": [
     "Historical unknown origins are not inferred or automatically cleared.",
     "Phone English Needs-you lower actions are below the screenshot; the full recovery hint is visible.",
     "Existing disabled standing-grant labels are ellipsized.",
     "No live state, real account, provider, model or CLI calls."
-  ]
+  ],
+  "geminiFollowup": {
+    "identityCases": 16,
+    "identityAndContactUiTests": 54,
+    "verificationNeedsTests": 14,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0,
+    "identityEdgeCases": "Host-only chat-fleet and approved account-less device remain unidentified; neither borrows an administrator account.",
+    "recoveryFlow": "real poll + authorize + scoped read; mounted EN/zh count/Authorize to unknown-origin recovery card",
+    "phase2": "M-3718 request-scoped provenance, no scope expansion here"
+  }
 }

@@ -47,3 +47,35 @@ This adds recognition, not an authority kind, sandbox or tool grant. No body
 matching or DB hand edit repairs history. Optional JSON requires no migration;
 reverting may classify later plain-web input as unknown again. No live Fleet,
 real account, provider, model or CLI was used.
+
+## Independent-review follow-up
+
+The eight `recovery-needs/` PNGs supersede the earlier after-stage Needs you
+frames; the twenty-four other original frames are retained unchanged.
+The new receipt binds capture source `0f2cb91aa60a617d322c7f909d236addb060ad8f`.
+The hint now names the sending Agent by its display name and its full Settings →
+Permissions path, separately from Open in Authorizations. No confirmation is
+pressed. The source-administrator recovery action itself remains unchanged.
+
+Two edge cases remain deliberately unidentified: a host sign-in on a chat Fleet
+which names no chat account, and an approved device without a bound account or
+explicit host/TOTP sign-in. Neither borrows an administrator's identity from
+dashboard access or a display-only device-approval field. The new controls pin
+both; identity remains separate from go-ahead authority. The actual poll flow
+starts with a count and Authorize this browser, rejects the unverified scoped
+read, and returns the unknown-origin ticket after verification. Mounted EN/zh
+Needs you controls exercise Authorize then display the sender-named recovery
+hint. This uses the already-merged M-3710 path without widening contactActor.
+
+Identity/contact-UI controls pass 54 tests; the final verification/Needs-you file
+passes 14, including the two new locale transitions. Both TypeScript checks pass.
+The initial transition test exposed a fixture display-name property typo, fixed
+to the production `display_name`; no production identity role was changed.
+Revoking web authority leaves sign-in recognition, while signing out ends it.
+The simpler request-scoped provenance proposal is recorded on Phase 2 M-3718.
+
+Both final phone originals were individually inspected: English and Chinese
+show the complete sender-named recovery path without horizontal clipping or
+missing glyphs. The English lower Decline/card edge remains below the viewport;
+the Chinese card and Authorizations link fit. Existing disabled contact labels
+remain ellipsized. Only synthetic Demo identities and public example text appear.
