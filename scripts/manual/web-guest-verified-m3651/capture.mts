@@ -43,7 +43,7 @@ try {
         const role = page.locator(".session .pop .role strong");
         await role.waitFor({ state: "visible" });
         const text = (await role.innerText()).trim();
-        const want = verified ? (lang === "en" ? /^Guest · Verified until \d/ : /^訪客 · 已驗證到 /) : (lang === "en" ? /^Guest$/ : /^訪客$/);
+        const want = verified ? (lang === "en" ? /^Guest · Verified until \d/ : /^訪客 · 驗證有效至 /) : (lang === "en" ? /^Guest$/ : /^訪客$/);
         check(`${tag} ${name}: the session menu's role reads "${text}"`, want.test(text), text);
         const tops = await page.locator(".session .pop .role").evaluate((r: Element) => [r.querySelector(".sub")!.getBoundingClientRect().top, r.querySelector("strong")!.getBoundingClientRect().top]);
         check(`${tag} ${name}: the role starts beside its label (never under a lone "Role")`, Math.abs(tops[0]! - tops[1]!) < 6, tops);

@@ -6,7 +6,7 @@ The verified guest is made by the same call auth-api makes after a private code'
 
 | What | Capture |
 |---|---|
-| **Signed in with the private code: verified as the account.** The session menu's role reads **Guest · Verified until …** (zh-TW **訪客 · 已驗證到 …**). `/auth/session` gives the guest its `verifiedUntil`. Its messages would carry `web-guest`, never `web-verified` (checked). There's no Authorize line: a guest never gets a card. | `*-guest-verified.png` |
+| **Signed in with the private code: verified as the account.** The session menu's role reads **Guest · Verified until …** (zh-TW **訪客 · 驗證有效至 …**). `/auth/session` gives the guest its `verifiedUntil`. Its messages would carry `web-guest`, never `web-verified` (checked). There's no Authorize line: a guest never gets a card. | `*-guest-verified.png` |
 | **Not verified** (for example, a code that didn't go privately): **Guest** / **訪客**, as before. Its messages carry nothing. | `*-guest-not-verified.png` |
 
 Combinations: desk en light, desk zh-TW dark, phone en light, phone zh-TW dark.

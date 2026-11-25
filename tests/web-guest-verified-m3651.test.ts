@@ -250,5 +250,6 @@ describe("a guest's /web: its private code signs it in verified as its account (
     expect(codes.match(b.display, "e")).not.toHaveProperty("private");
     setLocale("zh-TW");
     expect(t("web_auth.signed_in_guest", "Firefox", "這台電腦", "18:00")).toContain("訪客");
+    expect(t("web_auth.signed_in_guest", "Firefox", "這台電腦", "18:00"), "until when, not a past status (the leader's copy pass)").toContain("有效至 18:00");
   });
 });

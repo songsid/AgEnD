@@ -2190,7 +2190,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "web_auth.card_not_saved": "⚠️ {0} 目前已登出，但這個變更無法儲存：Fleet 重新啟動後，那個瀏覽器的登入可能會回來。請修正 ~/.agend/web-sessions.json 的權限，再執行 /web revoke。",
     "web_auth.card_ended": "⌛ {0} 的授權已到期。如果仍需要，請從儀表板再授權一次，或用 /web 重新登入。",
     "web_auth.signed_in": "🔐 {0} · {1} 已用傳給你的登入碼登入，並已驗證到 {2}：它送出的訊息帶有你的授權。不是你嗎？按「不是我」會立即登出它。",
-    "web_auth.signed_in_guest": "🔐 {0} · {1} 已用傳給你的登入碼以訪客身分登入，並已驗證為你本人到 {2}：Agent 會知道它送出的訊息是你發的。不是你嗎？按「不是我」會立即登出它。",
+    "web_auth.signed_in_guest": "🔐 {0} · {1} 已用傳給你的登入碼以訪客身分登入，已驗證為你本人，有效至 {2}：Agent 會知道它送出的訊息是你發的。不是你嗎？按「不是我」會立即登出它。",
     "web_auth.signed_in_hint": "🔐 有瀏覽器用你的登入碼登入了 AgEnD 儀表板，但通知無法私訊給你。如果不是你，請執行 /web revoke。",
     "web_auth.general_hint": "🔐 網頁授權無法私訊給你。請先開放與這個 bot 的私訊，再到儀表板按一次「授權」。",
     "web_auth.confirm": "確認",
