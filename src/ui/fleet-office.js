@@ -519,10 +519,14 @@ export function officeBubbleAt(hits, x, y, minSize = 0) {
 export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false, defer = null, bubbleHits = null) {
   const sk = p.skin;
   const ls = layerScale(a, p.L.width, p.L.height);
-  if (!p.layers || p.layers.ls !== ls || p.layers.tagsOff !== tagsOff) p.layers = paintLayers(p, env, ls, tagsOff);
+  // Zones zoomed in past the layers' budget (a big pack): the layer would be coarser than the screen and the picture,
+  // so the background and foreground are drawn from their pictures instead (only the part on screen is rasterised).
+  const direct = !!p.zones && ls < a - 1e-6;
+  if (!direct && (!p.layers || p.layers.ls !== ls || p.layers.tagsOff !== tagsOff)) p.layers = paintLayers(p, env, ls, tagsOff);
   const T = () => ctx.setTransform(a, 0, 0, a, ox, oy);
   const blit = (c) => { if (!c) return; ctx.setTransform(a / ls, 0, 0, a / ls, ox, oy); ctx.drawImage(c, 0, 0); T(); };
-  blit(p.layers.back);
+  if (direct) { T(); ctx.fillStyle = env.pal.bg; ctx.fillRect(0, 0, p.L.width, p.L.height); sk.drawBackground(ctx, p.L, env); }
+  else blit(p.layers.back);
   T();
   const speakers = [], tags = [], titleBoxes = [];             // M-3539: the area names bubbles keep off too
   const titleDraws = [];                                         // M-3722: and redrawn over a bubble's tail that crosses one
@@ -667,7 +671,8 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     }
     for (const it of up) sk.drawProp(ctx, it, ms, env);
     for (const it of post) if (it.t > 0) sk.drawProp(ctx, it, ms, env);
-    if (p.layers.front) blit(p.layers.front);
+    if (direct) { if (sk.pack && sk.pack.foreground && sk.drawForeground) sk.drawForeground(ctx, p.L, env); }
+    else if (p.layers.front) blit(p.layers.front);
     // Who found no spot in an area: a count in its corner (never over its name).
     for (const [ar, n] of p.L.crowd || []) if (p.L.areas[ar] && sk.drawCrowd) sk.drawCrowd(ctx, p.L.areas[ar], n, env);
     // M-3539: an area's name a figure stands on is written again over the people (休息區 under a crowd's heads).
