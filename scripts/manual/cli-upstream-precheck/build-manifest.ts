@@ -19,9 +19,19 @@ export const SURFACES = ["dialog", "approval", "trust", "onboarding", "resume", 
 export type Surface = typeof SURFACES[number];
 /** retiredAfter: the last upstream release that had this text (sources.json `retired`): AgEnD keeps it for hosts still on
  * an older release, and precheck lists it as expected-missing instead of a hard finding. */
-export interface ManifestLiteral { text: string; kind: "string" | "template" | "regex"; surface: Surface; file: string; line: number; symbol: string; retiredAfter?: string }
+/** embeddedIn (sources.json `embedded`): where this text lives in the CLI when the plain artifact does not show it — kiro-cli
+ * keeps its TUI (tui.js) and engine in zstd frames the stdlib-only precheck cannot read (M-3752, leader D2). */
+export interface ManifestLiteral { text: string; kind: "string" | "template" | "regex"; surface: Surface; file: string; line: number; symbol: string; retiredAfter?: string; embeddedIn?: string }
 export interface Manifest { format: 1; source: string; backends: Record<string, { literals: ManifestLiteral[] }> }
-interface SourceEntry { file: string; symbols?: string[]; exclude?: string[]; surfaces?: Record<string, Surface>; retired?: Record<string, string> }
+/** `retired` / `embedded` are keyed by a top-level declaration: a release (or place) for all of its text, or — M-3752 — a map
+ * from exact texts to it, when only some of the declaration's text went (a method next to live detectors). */
+type PerDeclaration = Record<string, string | Record<string, string>>;
+interface SourceEntry { file: string; symbols?: string[]; exclude?: string[]; surfaces?: Record<string, Surface>; retired?: PerDeclaration; embedded?: PerDeclaration }
+const markOf = (map: PerDeclaration | undefined, names: string[], text: string): string | undefined => {
+  if (!map || names[0] === undefined || !Object.hasOwn(map, names[0])) return undefined;
+  const v = map[names[0]]!;
+  return typeof v === "string" ? v : Object.hasOwn(v, text) ? v[text] : undefined;
+};
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const ROOT = join(HERE, "..", "..", "..");
@@ -184,8 +194,9 @@ export function literalsOf(entry: SourceEntry, source?: string): ManifestLiteral
   collect(sf);
   const add = (t: string, kind: ManifestLiteral["kind"], at: ts.Node, names: string[]) => {
     const line = sf.getLineAndCharacterOfPosition(at.getStart(sf)).line + 1;
-    const retired = names[0] !== undefined && entry.retired && Object.hasOwn(entry.retired, names[0]) ? entry.retired[names[0]] : undefined;
-    out.push({ text: t, kind, surface: surfaceOf(names, entry.surfaces), file: entry.file, line, symbol: names.join(".") || "(top level)", ...(retired ? { retiredAfter: retired } : {}) });
+    const retired = markOf(entry.retired, names, t), embedded = markOf(entry.embedded, names, t);
+    out.push({ text: t, kind, surface: surfaceOf(names, entry.surfaces), file: entry.file, line, symbol: names.join(".") || "(top level)",
+      ...(retired ? { retiredAfter: retired } : {}), ...(embedded ? { embeddedIn: embedded } : {}) });
   };
   const isStringRaw = (n: ts.Node): n is ts.TaggedTemplateExpression =>
     ts.isTaggedTemplateExpression(n) && ts.isPropertyAccessExpression(n.tag) && ts.isIdentifier(n.tag.expression) && n.tag.expression.text === "String" && n.tag.name.text === "raw";
@@ -255,12 +266,18 @@ const newer = (a: string, b: string): string => {
  * is retired (then up to the newest release named): a detector still in use somewhere keeps it a real finding. */
 export function dedupeLiterals(all: readonly ManifestLiteral[]): ManifestLiteral[] {
   const seen = new Map<string, ManifestLiteral>(), live = new Set<string>(), last = new Map<string, string>();
+  // Embedded-only likewise: only when every declaration with the text says where it lives (the first place named).
+  const plain = new Set<string>(), place = new Map<string, string>();
   for (const l of all) {
-    if (!seen.has(l.text)) { const { retiredAfter: _r, ...first } = l; seen.set(l.text, first); }
+    if (!seen.has(l.text)) { const { retiredAfter: _r, embeddedIn: _e, ...first } = l; seen.set(l.text, first); }
     if (l.retiredAfter === undefined) live.add(l.text);
     else last.set(l.text, last.has(l.text) ? newer(last.get(l.text)!, l.retiredAfter) : l.retiredAfter);
+    if (l.embeddedIn === undefined) plain.add(l.text);
+    else if (!place.has(l.text)) place.set(l.text, l.embeddedIn);
   }
-  return [...seen.values()].map(l => (!live.has(l.text) && last.has(l.text) ? { ...l, retiredAfter: last.get(l.text)! } : l))
+  return [...seen.values()].map(l => ({ ...l,
+    ...(!live.has(l.text) && last.has(l.text) ? { retiredAfter: last.get(l.text)! } : {}),
+    ...(!plain.has(l.text) && place.has(l.text) ? { embeddedIn: place.get(l.text)! } : {}) }))
     .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line) || (a.text < b.text ? -1 : 1));
 }
 
@@ -282,7 +299,7 @@ export function manifestJson(m: Manifest): string { return JSON.stringify(m, nul
  */
 export function manifestKeys(m: Manifest): string[] {
   const out: string[] = [];
-  for (const [b, { literals }] of Object.entries(m.backends)) for (const l of literals) out.push(JSON.stringify([b, l.text, l.kind, l.surface, l.file, l.symbol, l.retiredAfter ?? null]));
+  for (const [b, { literals }] of Object.entries(m.backends)) for (const l of literals) out.push(JSON.stringify([b, l.text, l.kind, l.surface, l.file, l.symbol, l.retiredAfter ?? null, l.embeddedIn ?? null]));
   return out.sort();
 }
 

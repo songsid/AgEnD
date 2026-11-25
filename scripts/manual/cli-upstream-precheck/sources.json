@@ -7,7 +7,10 @@
     "Never pane text, so never kept: AgEnD's own fields of a dialog/error entry (description, message, …), the",
     "arguments of t(), logger calls and Error constructors.",
     "`retired` maps a declaration to the last upstream release that had its text: AgEnD keeps it for hosts still on an",
-    "older release, and precheck lists it as expected-missing (RETIRED UPSTREAM) instead of a hard finding."
+    "older release, and precheck lists it as expected-missing (RETIRED UPSTREAM) instead of a hard finding.",
+    "A value is a release for all of the declaration's text, or a map from exact texts to it (only those texts retired).",
+    "`embedded` marks text the CLI keeps where the stdlib-only precheck cannot read (kiro's zstd-framed tui.js and engine):",
+    "its plain copy going is listed (EMBEDDED ONLY), not a finding. Same keys and forms as `retired`."
   ],
   "backends": {
     "claude": [
@@ -79,7 +82,16 @@
           "kiroModelPickerAtTail": "dialog", "getClearConfirmationDialog": "dialog", "kiroUnavailableModelPickerActive": "error",
           "LEGACY_PROMPT_ROW": "input-box", "TUI_STATUS_ROW": "input-box", "RULE_ROW": "input-box", "TUI_HINT_ROW": "input-box",
           "readActiveKiroAgent": "input-box", "getPaneActivity": "idle-busy", "getStartupDialogs": "dialog", "getRuntimeDialogs": "dialog" },
-        "retired": { "KIRO_V3_EASE_IN": "3.0.0", "KIRO_V3_EASE_IN_V2_USER": "3.0.0" } },
+        "retired": { "KIRO_V3_EASE_IN": "3.0.0", "KIRO_V3_EASE_IN_V2_USER": "3.0.0",
+          "KIRO_CLASSIC_NUDGE": { "Classic is being deprecated with the Kiro CLI 3.0": "3.5.0", "Remind me later": "3.5.0" }, "KIRO_CLASSIC_NUDGE_V3": "3.5.0",
+          "KIRO_RATE_LIMIT_SCREEN": "3.5.0", "KIRO_REQUEST_LIMIT_SCREEN": "3.5.0",
+          "kiroTakeoverActive": { "q_prompt": "3.5.0" },
+          "kiroUnavailableModelPickerActive": { "Kiro is having trouble responding right now": "3.5.0" },
+          "KiroBackend": { "/agent swap ": "3.5.0", "Authentication expired - please log in again": "3.5.0",
+            "Your login session has expired. Please log in again using": "3.5.0", "having trouble responding": "3.5.0",
+            "This will erase the conversation history": "3.5.0" } },
+        "embedded": { "KIRO_MODEL_PICKER_HEADER": { "Select model": "tui.js", "type to search": "tui.js" }, "KIRO_AMBIGUOUS_RESUME_SCREEN": { "is ambiguous": "tui.js + engine tar" },
+          "KiroBackend": { "using tool": "tui.js", "Completed in": "tui.js", "bearer token": "engine tar" } } },
       { "file": "src/login-flows.ts", "symbols": ["KIRO_EXPIRED_LOGIN_SCREEN", "KIRO_LOGIN_REQUIRED_SCREEN", "KIRO_LOGIN_SCREEN", "kiro-cli"],
         "surfaces": { "KIRO_EXPIRED_LOGIN_SCREEN": "onboarding", "KIRO_LOGIN_REQUIRED_SCREEN": "onboarding", "KIRO_LOGIN_SCREEN": "onboarding", "kiro-cli": "onboarding" } },
       { "file": "src/daemon.ts", "symbols": ["LEGACY_NO_CONVERSATION"], "surfaces": { "LEGACY_NO_CONVERSATION": "resume" } },
