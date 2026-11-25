@@ -466,22 +466,28 @@ The user's input, extending C and D7. The agents' CLIs (Claude Code, Codex, Kiro
 
 For each CLI version its agents **actually run** (§5.2, T3: each instance's executable, and the paired Runtime's report):
 
-| Case | Notice |
-|---|---|
-| The version is **known high-impact**, and a newer AgEnD on this channel audits it (it is in that release's `auditedCli`, and the release meets §5.2's target rule) | "Your Claude Code 2.1.335 may not work well with AgEnD 2.4.0: *reason*. AgEnD 2.4.1 supports it." |
-| **Known high-impact**, and no AgEnD supports it yet | "Your Claude Code 2.1.335 may not work well with AgEnD yet: *reason*. No AgEnD version supports it yet. Consider holding Claude Code at 2.1.333 (Accounts → Claude Code)." |
-| **Newer than this build's audited versions**, and a newer AgEnD audits it (T3) | "Your Claude Code 2.1.336 is newer than AgEnD 2.4.0 has checked. AgEnD 2.4.1 supports it." |
-| Newer than audited, nothing covers it, and N or more versions past (T3b) | as T3b |
+Each notice **names the agents it affects**, by the agent's name ("Affects: Example helper, writer"; a paired PC's agents too). It never says "your Claude Code": a fleet may have several accounts and a paired PC.
+
+| Case | Where | Notice (en) | Its action |
+|---|---|---|---|
+| **Known high-impact**, and a newer AgEnD on this channel audits it (it is in that release's `auditedCli`, and the release meets §5.2's target rule) | Needs you + card reason line + Accounts badge | "AgEnD's publisher flagged Claude Code 2.1.335: agents on it can get stuck with AgEnD 2.4.0 (*reason*). AgEnD 2.4.1 supports it. Affects: Example helper, writer." | **Update when idle**: the same action as the card, not a second flow |
+| **Known high-impact**, and no AgEnD supports it yet | Needs you + Accounts badge | "AgEnD's publisher flagged Claude Code 2.1.335: agents on it can get stuck (*reason*). No AgEnD version supports it yet. Go back to Claude Code 2.1.333 and keep it there. Affects: …" | **Go back to 2.1.333**: opens the Accounts control for that CLI with 2.1.333 chosen; the admin confirms there |
+| **Newer than this build's audited versions**, and a newer AgEnD audits it (T3) | card reason line + Accounts badge (**not** Needs you) | "Claude Code 2.1.336 is newer than AgEnD 2.4.0 has checked; AgEnD 2.4.1 supports it. Affects: …" | the card's own buttons |
+| Newer than audited, nothing covers it, N or more versions past (T3b) | card reason line + Accounts badge (**not** Needs you) | as T3b | — |
 
 zh-TW:
-- 「你的 Claude Code 2.1.335 可能和 AgEnD 2.4.0 不太相容：*原因*。AgEnD 2.4.1 已支援。」
-- 「……目前還沒有支援它的 AgEnD 版本，建議先把 Claude Code 固定在 2.1.333（帳號 → Claude Code）。」
+- Confirmed: 「AgEnD 發行方標記了 Claude Code 2.1.335：使用它的 Agent 在 AgEnD 2.4.0 上可能會卡住（*原因*）。AgEnD 2.4.1 已支援。受影響：Example helper、writer。」
+- No AgEnD supports it yet: 「……目前還沒有支援它的 AgEnD 版本。請先退回 Claude Code 2.1.333 並固定。」 Its button: 「退回 2.1.333」.
+- Newer than checked: 「Claude Code 2.1.336 比 AgEnD 2.4.0 檢查過的版本新；AgEnD 2.4.1 已支援。受影響：……」 (「不太相容」 is not used for a confirmed break).
 
 **Where it shows**
-- The **update card** (§3.1) gets a reason line: "also: supports your Claude Code 2.1.335". The **Settings → Version and update** row shows the same.
-- **Needs you** gets one item per affected CLI version, naming the agents that run it. It is withdrawn by itself when the CLI moves to a supported version, an AgEnD that supports it is installed, or the flag is cleared.
-- The CLI's row in **Accounts** (and the Runtime page for a paired PC) shows a small "may not work well with this AgEnD" badge, linking to the same item.
-- **General** is told, with one fleet-context line while the item is open, so an agent asked "why is Claude stuck?" can point to it.
+- **Needs you is only for a confirmed break**: a known high-impact version, or an agent actually stuck on that CLI (the stuck signal AgEnD already raises). This is the same rule as §3.1. Claude Code ships about one version a day, so "newer than checked" never goes there.
+  - There is one item per affected CLI version, naming the agents.
+  - It is **closable**: **Got it** dismisses it for that CLI version, and it returns only if the reason changes or an AgEnD that supports it appears.
+  - It is withdrawn by itself when the agents move to a supported version, an AgEnD that supports it is installed, or the flag is cleared.
+- The **update card** (§3.1) and **Settings → Version and update** carry a reason line: "also: supports Claude Code 2.1.335 (Example helper, writer)".
+- The CLI's row in **Accounts** (and the Runtime page for a paired PC) shows a small badge: "can get stuck with this AgEnD" for a confirmed break, "newer than this AgEnD has checked" otherwise. It links to the item or the card.
+- **General** is told with one fleet-context line while a confirmed item is open, so an agent asked "why is Claude stuck?" can point to it.
 
 **Under *Ask me*** these are notices only. A supporting AgEnD is offered on the card as usual; it schedules itself only under *Automatically when idle* (D7). A high-impact flag is **never** a required update (T1/T2), so it can never force an install. Its worst case, even from a stolen key, is a misleading notice.
 
@@ -600,3 +606,4 @@ A rehearsal (like S-233's) proves phases 2–4 on real installs: a forced trial 
 | Under Ask me, notify only; scheduling as D7 | §5.4, D7. A high-impact flag is never a required update |
 | Offline fallback | §5.4: cached and labelled "as of"; with no index, only the local rule from this build's ledger |
 | Who raises a flag | D10 |
+| Lumen's review of §5.4 | Needs you only for a confirmed break, closable (Got it); "Go back to 2.1.333" as the item's action; the plain effect and the agents' names; "AgEnD's publisher flagged…"; zh wording for the confirmed case |
