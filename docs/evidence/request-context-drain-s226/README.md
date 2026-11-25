@@ -1,12 +1,30 @@
 # S-226: legacy shadow and root-drain evidence
 
-Source/test commit: `2112f28ffca9871b4b81cb58ac7db7d4cf2abac2`.
+Current R1 source/test commit: `a80c1ce491ba23f0e6ec1264343cbd63e636474d`.
+Initial source/test commit: `2112f28ffca9871b4b81cb58ac7db7d4cf2abac2`.
 Base: merged E, `80e9ffcd12801a60dbbc9fbb3e9f3a658e880efa`.
 [Design and review dispositions](../../design/request-context-migration-drain.md).
 Exact commands, digest rows, ten guard-reversal results and limitations are in
 [verification.json](verification.json). Logs remain private.
 
-## Result
+## R1 correction result
+
+All six review items are addressed. Explicitly uncovered rows reference no root;
+malformed/unreadable state remains unknown. The fence belongs to the durable Fleet
+identity under its current coordinator lease, and resume rotates the epoch after
+restart. IPC rows bind instance/boot/response and exact connection; replacement
+and disconnect purge them. The shadow can scan 10,000 rows/table within a separate
+16 MiB/table byte budget, in one transaction. Offline panes inspect only their
+registered local manifest/ledger, with no attachment or endpoint call. The legacy
+upgrade refusal is localized, with a separate stable machine code.
+
+The new regressions on reviewed source fail in 13 cases (one passes, 96 filtered
+out), across six files. Restoring R1 gives 734 passed / one existing skip across
+52 affected files, including dashboard i18n. Test typecheck and build pass. The
+JSON records the exact command, base, source binding and finding-by-finding
+resolution. Initial evidence below is retained as history, not a repeated claim.
+
+## Initial result
 
 The legacy decision lane produces context-less deliveries that a C-bound target
 cannot safely consume. The shadow reports each unresolved ticket as a cutover

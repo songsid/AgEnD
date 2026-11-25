@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceCommit": "2112f28ffca9871b4b81cb58ac7db7d4cf2abac2",
+  "sourceCommit": "a80c1ce491ba23f0e6ec1264343cbd63e636474d",
   "baseCommit": "80e9ffcd12801a60dbbc9fbb3e9f3a658e880efa",
   "productionFlow": "OFF; no production owner assembly, input port or retirement action installed",
   "scope": "Synthetic SQLite and in-process C/D/E owners; no live fleet, vendor, account, native CLI or remote-host execution.",
@@ -217,15 +217,19 @@
     },
     {
       "path": "src/delivery-outbox.ts",
-      "sha256": "69fa9fcc2fb870f8bd5cc4f296f0459eefef44186745507943176f499c107a69"
+      "sha256": "d419521cc40c79a66e330c3f44eb34c750816183b93c096ab2be6b2252ade86a"
     },
     {
       "path": "src/fleet-manager.ts",
-      "sha256": "69b5db520d5f06c89220246aa398c302ac422e363c4a342f873cd31e4a156e9c"
+      "sha256": "d8c0e4065e0e4517fc09d6cf68966ba7f2db86da214039fe96062daa834fe64c"
     },
     {
       "path": "src/fleet-windows-runtime.ts",
       "sha256": "c056c06cd95adbd271f03de8e181aa397592d25cdaf08123228eb9fed9e4eeb1"
+    },
+    {
+      "path": "src/locale.ts",
+      "sha256": "5042a7b487a8886972ebc2fb609a3f32c1ea804dfbf67ada6be0125cc03505de"
     },
     {
       "path": "src/native-mcp.ts",
@@ -233,7 +237,7 @@
     },
     {
       "path": "src/native-pane-manager.ts",
-      "sha256": "7c0ab6045da11c31984f7a98014ad0f7713644a6f2e979c6f8a60103ae1e6282"
+      "sha256": "371de607d1abd77bac6d190f3a2683cb36bd6158db9e4df675b71e1eb08c5e78"
     },
     {
       "path": "src/request-contact-gate.ts",
@@ -241,15 +245,15 @@
     },
     {
       "path": "src/request-context-drain.ts",
-      "sha256": "8b64297ecd2cd1fcc0bc726f8a23d8f33c713ab5814fbe45ab665fb9aced2465"
+      "sha256": "083bd5497dbb8be3506ae94a6d0b27abc539548f5776171324a50a91747cdec4"
     },
     {
       "path": "src/request-context-fence.ts",
-      "sha256": "8780fbb09b155c98af14e7007c7a8f324e8fcae4d4615b3039c96079186b866c"
+      "sha256": "2ab9ad42c0260f2e895c7e91247db2d6da931604a48769d08b175e41ebdaabb0"
     },
     {
       "path": "src/request-context-migration.ts",
-      "sha256": "964056404941461df0496ae9d2d293a29bd23a678c5c28a6f5e649847cf41334"
+      "sha256": "29f64017dea60497ce7103383906d53d4cd167f2b968fb60c7e231d14cc3a684"
     },
     {
       "path": "src/request-context-pane.ts",
@@ -269,42 +273,168 @@
     },
     {
       "path": "src/runtime-pane-mcp.ts",
-      "sha256": "057ab7f30559bba7367992e6f2ff6b813fc8a3d07fd4dd7a6a42e8d24c2d9a8f"
+      "sha256": "78eec7237494b05d4de39afc46b70b86a0abc376889cb40735ea569ccfbb50a1"
     },
     {
       "path": "src/windows-agents.ts",
-      "sha256": "bdaac47c40e4c160cef32243086ac3cb907a91d190791a412e7c7fc6efad69c0"
+      "sha256": "660dc3d5284bfb4325ae74f8d750c7d6ef57c8f228a6960a98ed9b653ace25d0"
     },
     {
       "path": "tests/fleet-windows-runtime.test.ts",
       "sha256": "b6b0a6685cca944b3d47a8598d8010f99e85e0610e25ccc1ea588f861cd66563"
     },
     {
+      "path": "tests/native-mcp.test.ts",
+      "sha256": "2f54853f0d32b794f3849d2d8d5797b1c15f484562502d9463b05acc8ef4244e"
+    },
+    {
       "path": "tests/request-context-daemon-s224.test.ts",
-      "sha256": "944c9959c6143f206857ffc1b7ca82e3de99694f865ef79c1b4c8823f5d98938"
+      "sha256": "774aaf8149bae496a896b7a9bb366c1a9cac2165649c59751408366227f64f1b"
     },
     {
       "path": "tests/request-context-drain-s226.test.ts",
-      "sha256": "35a1c36b2ea48bdce57b015d8d0a18c0975d46fa736569cec53736021088fb04"
+      "sha256": "f7e24a99cad5b743ac3e861665231b2a4352d02035ae15a48e273d16942bfff7"
     },
     {
       "path": "tests/request-context-legacy-guard-s226.test.ts",
-      "sha256": "dcf09285c034851a78a00de94e7fdd59fc544a28b7c5085ee2a7db556439778c"
+      "sha256": "e298dc1fc63f0ce916bdca78105bdacbed19f62d80adfefe8fd30632a771ea80"
     },
     {
       "path": "tests/request-context-migration-s226.test.ts",
-      "sha256": "a907365d7c84ba0ddb24d86d643b4a439afc06f644f69956a031ad0b77e930ff"
+      "sha256": "32d7d030f78fcbb22e3c5afbe25ab9e36fc4136766a9f5ce125a400f9785f0bf"
     },
     {
       "path": "tests/request-context-pane-s224.test.ts",
-      "sha256": "f3e633e7ffaf10e84ab060a7db233ec295eb15e15e437ea6dd75ca878c9b4a37"
+      "sha256": "562fb79fef973ff976eea0d9191082b4b0a8ccccb2001ac84021653f48f8425a"
     }
   ],
   "limits": [
-    "Shadow completion requires an initial untruncated transaction (max 64 rows per table); further pages never become a plan.",
+    "Shadow completion requires an initial untruncated transaction (10000 rows and 16 MiB raw bytes per table); further pages never become a plan.",
     "Unresolved legacy tickets block cutover unless a future per-ticket unendorsed input-proof lane is explicitly implemented.",
     "A last recovery pointer or persistent-launch ledger may retain a root indefinitely; this is GC, not permission.",
     "All eight participant families plus owned registration gates are required; later expected/Hub/derivative adapters remain unavailable, never default empty.",
-    "No UI/CSS change, live migration, activation, process cancellation, downgrade, restore, paid/model call or authority grant."
-  ]
+    "No UI/CSS change, live migration, activation, process cancellation, downgrade, restore, paid/model call or authority grant.",
+    "Durable Fleet fence identity and exclusive coordinator-lease ownership must be wired by L; no boot-id owner or automatic claim of dead-peer ownership is used."
+  ],
+  "initialSourceCommit": "2112f28ffca9871b4b81cb58ac7db7d4cf2abac2",
+  "guardReversalSourceCommit": "2112f28ffca9871b4b81cb58ac7db7d4cf2abac2",
+  "reviewCorrection": {
+    "reviewedHead": "5470f9c64ad6228fe356f16c23ab6e2bcdc998a4",
+    "sourceCommit": "a80c1ce491ba23f0e6ec1264343cbd63e636474d",
+    "findings": [
+      {
+        "id": 1,
+        "resolution": "Explicit null is no captured root, undefined/throw is unavailable; uncovered legacy/cancelled call/grant/ledger rows have no reference. Malformed ledger metadata remains unknown."
+      },
+      {
+        "id": 2,
+        "resolution": "Fence owner is the durable Fleet identity while its exclusive coordinator lease is current, never a boot id. A fresh coordinator explicitly resumes a retained fence by rotating its epoch; foreign identity and retired root refuse."
+      },
+      {
+        "id": 3,
+        "resolution": "IPC index key is instance/daemon boot/response key, with exact IPC ownership. Empty keys refuse; actual replacement/disconnect and global shutdown purge retired transport entries. Old responses cannot remove new rows."
+      },
+      {
+        "id": 4,
+        "resolution": "Single-transaction streaming scan defaults to 10000 rows/table, with 16 MiB raw bytes/table. Either limit exceeded is incomplete; 70 retained rows can be complete."
+      },
+      {
+        "id": 5,
+        "resolution": "Unbound/offline launches read only the exact owned private manifest and launch ledger, without writes, endpoint calls or reattachment. Strict scope/shape/file checks; missing or malformed stays unknown. Observed changes advance revision."
+      },
+      {
+        "id": 6,
+        "resolution": "Localized EN/zh held-upgrade reason with separate stable machine code; pending decision rolls back unchanged."
+      }
+    ],
+    "baseRegression": {
+      "base": "5470f9c64ad6228fe356f16c23ab6e2bcdc998a4",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-context-drain-s226.test.ts",
+        "tests/request-context-migration-s226.test.ts",
+        "tests/request-context-legacy-guard-s226.test.ts",
+        "tests/request-context-pane-s224.test.ts",
+        "tests/request-context-daemon-s224.test.ts",
+        "tests/native-mcp.test.ts",
+        "-t",
+        "R1",
+        "--maxWorkers=2"
+      ],
+      "exitCode": 1,
+      "expectedRed": true,
+      "failed": 13,
+      "passed": 1,
+      "skipped": 96,
+      "files": 6,
+      "note": "New R1 regressions, using reviewed production source and current tests; all source bytes restored afterwards."
+    },
+    "validation": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/fleet-windows-runtime.test.ts",
+        "tests/native-mcp.test.ts",
+        "tests/request-context-migration-s226.test.ts",
+        "tests/windows-agents.test.ts",
+        "tests/classic-contact-dispatch-3339.test.ts",
+        "tests/contact-person-identity-m3679.test.ts",
+        "tests/hub-contact-window-settles-m3660.test.ts",
+        "tests/web-contact-card-copy-m3385.test.ts",
+        "tests/web-contact-origin-clear-3366.test.ts",
+        "tests/web-needs-contact-suggestions-m3381.test.ts",
+        "tests/request-context-drain-s226.test.ts",
+        "tests/request-context-daemon-s223.test.ts",
+        "tests/classic-start-contact-notice-3339.test.ts",
+        "tests/request-context-recovery-s223.test.ts",
+        "tests/web-contact-later-m3410.test.ts",
+        "tests/classic-contact-api-3339.test.ts",
+        "tests/request-context-pane-s224.test.ts",
+        "tests/contact-outcome-notices-3372.test.ts",
+        "tests/runtime-pane-mcp-relay-2950.test.ts",
+        "tests/contact-origin-feedback-4213.test.ts",
+        "tests/task-board-contact-4367.test.ts",
+        "tests/native-pane-manager-2950.test.ts",
+        "tests/contact-origin-clear-3366.test.ts",
+        "tests/web-contact-grants-m3544.test.ts",
+        "tests/contact-auth-public-link-m3680.test.ts",
+        "tests/web-session-contact-origin-m3713.test.ts",
+        "tests/contact-change-proposals-m3544.test.ts",
+        "tests/classic-contact-auth-3339.test.ts",
+        "tests/request-context-store-s222.test.ts",
+        "tests/contact-held-card-m3680.test.ts",
+        "tests/needs-you-contact-suggestions-m3381.test.ts",
+        "tests/contact-approval-journey-m3709.test.ts",
+        "tests/contact-standing-grants-m3544.test.ts",
+        "tests/request-context-barrier-s221.test.ts",
+        "tests/request-context-legacy-guard-s226.test.ts",
+        "tests/request-context-call-s224.test.ts",
+        "tests/contact-held-outcome-m3716.test.ts",
+        "tests/request-context-commit-s224.test.ts",
+        "tests/request-context-daemon-s224.test.ts",
+        "tests/web-contact-auth-m3339.test.ts",
+        "tests/request-contact-gate-s225.test.ts",
+        "tests/contact-tool-groups-m3387.test.ts",
+        "tests/classic-contact-files-3339.test.ts",
+        "tests/native-mcp-policy-generation.test.ts",
+        "tests/runtime-pane-mcp-authority-2950.test.ts",
+        "tests/hub-contact-limit-3160.test.ts",
+        "tests/classic-contact-approvers-3339.test.ts",
+        "tests/request-context-turns-s223.test.ts",
+        "tests/contact-suggestion-later-m3410.test.ts",
+        "tests/request-context-protocol-s221.test.ts",
+        "tests/native-mcp-ui.test.ts",
+        "tests/dashboard-i18n.test.ts",
+        "--maxWorkers=2"
+      ],
+      "passed": 734,
+      "skipped": 1,
+      "failed": 0,
+      "files": 52,
+      "testTypecheckExitCode": 0,
+      "buildExitCode": 0,
+      "whitespaceExitCode": 0
+    }
+  }
 }
