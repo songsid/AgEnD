@@ -71,7 +71,7 @@ register("updatecard", {
     nowTitle: "立即更新？", nowBody: "有 {0} 個 Agent 正在工作。AgEnD 重新啟動時會停下幾分鐘，之後從原處繼續。",
     nowBodyIdle: "AgEnD 會重新啟動幾分鐘，Agent 之後從原處繼續。", nowGo: "立即更新",
     pickTitle: "要在什麼時候更新？", pickTonight: "今晚", pickMorning: "明天早上", pickOther: "其他時間", pickDay: "日期", pickAt: "時間",
-    pickHint: "到了那個時間，仍會等 Agent 閒置才開始。可選未來 7 天內。", pickGo: "排定", pickBad: "請選未來 7 天內的時間。",
+    pickHint: "到了那個時間，仍會等 Agent 閒置才開始。可排定在未來 7 天內。", pickGo: "排定", pickBad: "請選擇未來 7 天內的時間。",
     changed: "這個更新剛剛有變動，以下是最新狀態。", running: "已經有一個更新在進行中。",
     failedAnswer: "沒有成功：{0}",
     machine: "這台機器的更新", self: "AgEnD 可以在這裡自行更新。", adminOnly: "這裡的更新需要你來進行：",

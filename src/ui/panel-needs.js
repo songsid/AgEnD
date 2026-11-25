@@ -75,7 +75,7 @@ register("needs", {
     e_confirmation_not_pending: "This request was already decided or ran out.", e_not_found: "This request is no longer here.",
   },
   "zh-TW": {
-    otherEmpty: "沒有其他待處理事項。", title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
+    otherEmpty: "沒有其他待處理事項。", title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "Agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "Agent 在等你時，會出現在這裡。",
     open: "開啟聊天", kiroOpen: "開啟 Agent", kiroMigration: "遷移說明", openCard: "打開卡片", noAssignee: "任務看板（沒有負責人）", fleetSignIns: "AI 帳號", signIn: "連接帳號",
     gap: "還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapNoResult: "沒有產出總結", gapJoin: "、", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
     hubClose: "不處理這題", hubClosing: "結束中…", hubCloseTitle: "不處理這題？", hubCloseConfirm: "不處理這題", hubCloseDetail: "可以結束這題，不會再把問題送給 Agent。", hubCloseMessage: "Hub 會告訴提問者這題不會回答。關閉後無法復原。同一則訊息無法再試一次；提問者可以另問一題。已經送出的答案會保留。這不會停止 Agent 已經開始的工作。", hubCloseDone: "Hub 已確認結束這題。", hubCloseAnswered: "答案已經送達 Hub，原有答案會保留。", hubCloseVerify: "請先驗證管理員帳號，再結束這題。", hubCloseForbidden: "只有管理這個 Agent 的管理員可以結束這題。", hubCloseUnsupported: "請先更新 Hub，才能結束這題。目前仍保留暫停項目。", hubCloseUnavailable: "Hub 尚未確認結束。請檢查連線後再試；問題沒有重新送出。",

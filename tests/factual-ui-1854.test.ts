@@ -89,9 +89,9 @@ describe("#1854 rank 9: Needs you, empty, with and without a chat connection", (
   const mount = () => p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: "needs:|1|en" }));
   const hint = () => (p.root.querySelector(".empty") as any)?.textContent ?? "";
   for (const [connections, want, wantZh] of [
-    [0, "When an agent waits for you, it shows here.", "agent 在等你時，會出現在這裡。"],
-    [null, "When an agent waits for you, it shows here.", "agent 在等你時，會出現在這裡。"],
-    [2, "When an agent waits for you, it shows here — and in your chat app's General.", "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。"],
+    [0, "When an agent waits for you, it shows here.", "Agent 在等你時，會出現在這裡。"],
+    [null, "When an agent waits for you, it shows here.", "Agent 在等你時，會出現在這裡。"],
+    [2, "When an agent waits for you, it shows here — and in your chat app's General.", "Agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。"],
   ] as const) {
     it(`connections: ${connections} → ${connections ? "points at General" : "only here"}, never "Discord"`, async () => {
       app.appStore.set({ ready: true, needsLoaded: true, needs: [], instances: [], connections });
