@@ -26,8 +26,10 @@ const fm = fx.fm;
 let answers = 0;
 const presentation = { state: "awaiting_input", execution_state: "working", interaction_summary: "Waiting at a dialog",
   interaction: { phase: "waiting", kind: "dialog", episode: 1, owner: { bootId: "demo", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 }, since: Date.now(), observedAt: Date.now(), confirmedAt: Date.now(), stale: false, suspected: false } };
-fm.instancePresentation = () => presentation;
-fm.getInstanceInteraction = () => presentation.interaction;
+// Only Lumen waits; the other agent keeps the fleet's own presentation.
+const ownPresentation = fm.instancePresentation.bind(fm), ownInteraction = fm.getInstanceInteraction.bind(fm);
+fm.instancePresentation = (name: string, ...rest: unknown[]) => (name === "lumen" ? presentation : ownPresentation(name, ...rest));
+fm.getInstanceInteraction = (name: string, ...rest: unknown[]) => (name === "lumen" ? presentation.interaction : ownInteraction(name, ...rest));
 fm.daemons.set("lumen", { answerRemoteCard: async () => { answers++; return { outcome: "answered" }; } });
 fm.startNeedsYou();
 try {
