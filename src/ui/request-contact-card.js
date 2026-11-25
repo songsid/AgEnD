@@ -201,7 +201,7 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   const people = (card.grantCandidates || []).map((c) => ({ key: c.key, label: c.label, platform: c.platform }));
   const links = openHref ? html`<a class="btn btn-sm btn-ghost rc-open" href=${openHref}>${ca("needsOpen")}</a>` : null;
   const button = (which, cls) => html`<button type="button" class=${`btn btn-sm${cls}${choice === which ? " rc-chosen" : ""}`} aria-pressed=${needsVerify || choice ? (choice === which ? "true" : "false") : undefined}
-    disabled=${busy || (which === "always" && !grantable)} data-choice=${which} onClick=${() => press(which)}>${label(which)}</button>`;
+    disabled=${busy || (which === "always" && !grantable)} data-choice=${which} onClick=${() => press(which)}>${choice === which ? `✓ ${label(which)}` : label(which)}</button>`;
 
   // The one-card style the user approved for the credits card (the leader, #4492 merge note): a standard Needs-you item —
   // a one-line title, one line of detail (the reason), the rest folded, then normal-size buttons; no raised card.
@@ -209,8 +209,8 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   return html`<article data-trust="permission" class=${`n-item rc-card${focus ? " rc-focus" : ""}`} data-ticket=${tk.id} data-state=${st} data-engine=${card.engine}>
     <span class="n-icon"><${Icon} name="key" size=${18} /></span>
     <div class="n-body">
-      <div class="n-title"><strong>${ca("needsTitle", card.sourceLabel, card.targetLabel)}</strong>${st !== "pending" ? html`<span class=${`tag rc-state${TONE[st] === "ok" ? " s-state ok" : TONE[st] === "bad" ? " s-state bad" : ""}`}>${stateText}</span>` : null}<span class="n-age">${clockOf(tk.createdAt)}</span></div>
-      <p class="n-detail rc-reason" data-reason=${card.reason}>${card.continuedFrom ? tr("continuedFrom", shortId(card.continuedFrom)) : reasonText(card)}</p>
+      <div class="n-title"><strong>${ca("needsTitle", card.sourceLabel, card.targetLabel)}</strong><span class="n-age">${clockOf(tk.createdAt)}</span></div>
+      <p class="n-detail rc-reason" data-reason=${card.reason}>${st !== "pending" ? html`<span class=${`tag rc-state${TONE[st] === "ok" ? " s-state ok" : TONE[st] === "bad" ? " s-state bad" : ""}`}>${stateText}</span> ` : null}${card.continuedFrom ? tr("continuedFrom", shortId(card.continuedFrom)) : reasonText(card)}</p>
       <details class="n-raw rc-more"><summary>${ca("messageLabel")}</summary>
         ${tk.message ? html`<pre class="n-raw-text rc-message">${tk.message}</pre>` : null}
         <p class="rc-facts"><span class="rc-requester">${requesterText(card.requester)}</span>${INGRESS.has(card.ingress) ? html` · <span class="rc-ingress" data-ingress=${card.ingress}>${tr(`ingress_${card.ingress}`)}</span>` : null}${VERBS.has(tk.verb) ? html` · ${ca(`verb_${tk.verb}`)}` : null}</p>

@@ -1634,7 +1634,7 @@ img.amb-p { object-fit: contain; }
   .dlg-actions { padding-bottom: max(var(--s-5), env(safe-area-inset-bottom)); }
   .dlg-actions .btn { flex: 1; min-height: var(--tap); }
   .dlg-head .dlg-x { min-width: var(--tap); min-height: var(--tap); }
-  .row-item .btn, .s-row .btn, .n-actions .btn { min-height: var(--tap); }
+  .row-item .btn, .s-row .btn, .n-actions .btn, .rc-verify .btn { min-height: var(--tap); }
   /* Settings buttons share one phone target, including compact card actions. */
   .p-settings .btn { min-width: var(--tap); min-height: var(--tap); }
   /* Grow the clickable label around its text without moving the surrounding layout. */
@@ -5335,9 +5335,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .rc-verify > *, .rc-auth > *, .rc-more > p { margin: 0; }
 .rc-auth { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .rc-more > p { margin-top: var(--s-1); }
-.rc-card .n-title .rc-state { margin-left: var(--s-1); }
-.rc-card .btn.rc-chosen { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
-.rc-card .rc-reason, .rc-card .rc-scope { word-break: keep-all; overflow-wrap: anywhere; }
+.rc-card .rc-reason .rc-state { margin-right: var(--s-1); }
+/* The choice made before verification: "✓" in its label and an accent border — a selection, never a focus ring. */
+.rc-card .btn.rc-chosen:not(.btn-primary) { border-color: var(--accent); color: var(--accent); }
+.rc-card :is(.rc-reason, .rc-scope, .rc-ready, .rc-verify > span) { word-break: keep-all; overflow-wrap: anywhere; }
 .rc-unknown { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
 .rc-unknown > * { margin: 0; }
 .contact-allow .field { flex: 1; min-width: 10em; }

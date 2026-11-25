@@ -249,6 +249,7 @@ describe("J: not verified yet — the same card, then an explicit decision", () 
     expect(text(pg.root.querySelector(".rc-ready"))).toBe("This browser is verified. Your choice is marked: press it to finish, or choose another.");
     expect(choice(pg.root, "continue").getAttribute("aria-pressed")).toBe("true");
     expect(choice(pg.root, "continue").className).toContain("rc-chosen");
+    expect(text(choice(pg.root, "continue"))).toBe("✓ Continue (approve once)");                 // a selection, said in the label
     expect(pg.document.activeElement === choice(pg.root, "continue")).toBe(false);          // focus left alone
     choice(pg.root, "continue").click(); await settle(6);
     expect(decisions(calls).map((x) => x.body.decision)).toEqual(["approve-once"]);
