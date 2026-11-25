@@ -1,7 +1,7 @@
 // M-3770 slice 1.2 (design #4480 §4): the pre-flight's classes and checks P1, P3, P4, P5, P7, P9 and P10, on fake
 // probes (no npm, systemctl or filesystem of the host is touched), and the launch's refusal words.
 import { describe, expect, it, vi } from "vitest";
-import { mergePreflight, preflightAllows, preflightClass, preflightRefusal, runUpdatePreflight, summarize, type ReadinessDeps } from "../src/update-readiness.js";
+import { mergePreflight, preflightAllows, preflightClass, preflightRefusal, runUpdatePreflight, summarize, type PreflightCheck, type ReadinessDeps } from "../src/update-readiness.js";
 import { setLocale, t } from "../src/locale.js";
 
 const PREFIX = "/home/u/.nvm/versions/node/v22.14.0";
@@ -83,7 +83,7 @@ function rig(o: Opts = {}) {
 }
 
 /** One check's row without its time (the merge tests below are about the times). */
-const byId = (p: { checks: Array<{ id: string; checkedAt?: number }> }, id: string) => {
+const byId = (p: { checks: PreflightCheck[] }, id: string) => {
   const row = p.checks.find(c => c.id === id);
   if (!row) return undefined;
   const { checkedAt: _at, ...rest } = row;
