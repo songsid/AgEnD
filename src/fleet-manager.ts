@@ -6152,6 +6152,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.error({ err }, "Contact outcome notice sweep failed; durable state will retry");
     }
   }
+  /**
+   * M-3710: how many contact requests wait, and since when — no ids, people or text. Needs you tells an admin session with
+   * no verified person behind it (contactActor null) that they exist, so a request is never silently missing there.
+   */
+  contactPendingCount(): { count: number; since: number } {
+    const pending = this.contactService().host.store.pending();
+    return { count: pending.length, since: pending.reduce((at, ticket) => Math.min(at, Date.parse(ticket.createdAt) || at), Date.now()) };
+  }
   contactNeeds(actor: ContactPerson): WebNeedsItem[] {
     const service = this.contactService();
     const pending: WebNeedsItem[] = service.host.store.pending()
@@ -20946,7 +20954,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (check.refusal) return { ok: false, refusal: check.refusal };
     const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
     store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
-    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer) };
+    const authorized = store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer);
+    // M-3710: Needs you is projected per session — this one now sees the contact requests it may decide, not just their count.
+    try { this.emitSseEvent("needs", { items: this.needsYouItems() }); } catch (err) { this.logger.warn({ err: (err as Error)?.message }, "Needs you refresh after a web authorization failed"); }
+    return { ok: true, ...authorized };
   }
 
   /**

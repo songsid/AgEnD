@@ -309,8 +309,12 @@ function drawTitle() {
   document.title = `${titleCount ? `(${titleCount}) ` : ""}${titleBase ? `${titleBase} · AgEnD` : "AgEnD"}`;
 }
 export function setTitle(text) { titleBase = text || ""; drawTitle(); }
+// M-3710 (#4447 capture check): Needs you's "N contact requests need a verified browser" counts as its N requests, so a
+// count stays the same when the browser is verified and the requests replace the line.
+const needsWeight = (i) => (i?.type === "contact" && i.reason === "contact_verify_needed" ? Math.max(1, Math.floor(Number(i.contactVerify?.count) || 1)) : 1);
+const needsTotal = (needs) => needs.reduce((n, i) => n + needsWeight(i), 0);
 appStore.subscribe((s) => {
-  const n = Array.isArray(s.needs) ? s.needs.length : 0;
+  const n = Array.isArray(s.needs) ? needsTotal(s.needs) : 0;
   if (n !== titleCount) { titleCount = n; drawTitle(); }
 });
 
@@ -569,7 +573,7 @@ register("phoneNav", {
 export function needsCount(app) {
   const needs = Array.isArray(app.needs) ? app.needs : [], proposals = Array.isArray(app.proposals) ? app.proposals : [];
   const suggestions = needs.filter(i => i?.type === "contact" && i.reason === "contact_restricted_suggestion").length;
-  return needs.length - suggestions + (suggestions ? 1 : 0) + proposals.length;
+  return needsTotal(needs) - suggestions + (suggestions ? 1 : 0) + proposals.length;
 }
 
 export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions, back = null }) {

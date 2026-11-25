@@ -336,6 +336,11 @@ tab title. Items, grouped by instance, oldest first:
 for answering in words (on Discord/Telegram: reply to the post); an MCP input request offers Decline / Cancel and is
 filled in at the terminal (View).
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
+A held contact request (an agent or ClassicBot room asking another agent, waiting for approval) is shown only to a
+verified administrator: with **Approve once** / **Decline**. A browser not yet verified (Authorize this browser not
+done, or run out) sees one line instead — "N contact requests need a verified browser" with **Authorize this browser**
+(or why this browser can't be authorized here) — the count only, never who or what; once the account confirms in its
+DM, the requests replace the line. The same on the public link.
 "Paused: AI account not connected" and "AI account needs connecting" have **Connect account** when the dashboard can run that login (#2233), in the group **AI accounts**; every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
 `needs_you.dm` (default off), `needs_you.task_board` (default off: the task board's cards waiting
