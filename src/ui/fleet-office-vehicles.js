@@ -66,15 +66,16 @@ export const lapMs = (v) => legsOf(v).lap;
  * - `wants`: name → the vehicle id they want to ride, or null (`null` for everyone else in the office);
  * - `vehicles`: id → vehicle; `wall`: the wall clock; `posOf(name)`: where they are ({ x, y, walking }) or null;
  *   `homeOf(name)`: their seat (to pick the nearest platform); `sinceOf(name)`: when their ride began (wall clock), so
- *   a page opened long after shows them on board, not walking to a train they took long ago.
+ *   a page opened long after shows them on board, not walking to a train they took long ago; `urgent(name)`: they
+ *   must get off now (a call: #4415, nothing keeps a caller from the Help desk), where their seat is, between stops too.
  * Returns { targets: name → where to walk now (the platform), board: [{ name, vehicle, seat }], alight: [{ name, at }] };
- * `riding(name)` → { vehicle, seat } while on board.
+ * `riding(name)` → { vehicle, seat } while on board; `clear()` forgets everyone and returns who was on board.
  */
 export function createRiders() {
   const by = new Map();
   const near = (a, b) => !!a && !!b && Math.hypot(a.x - b.x, a.y - b.y) <= RIDE.NEAR;
   return {
-    step({ wants, vehicles, wall, posOf, homeOf, sinceOf = null }) {
+    step({ wants, vehicles, wall, posOf, homeOf, sinceOf = null, urgent = null }) {
       const targets = new Map(), board = [], alight = [];
       for (const name of [...by.keys()]) if (!wants.has(name)) by.delete(name);   // gone from the office
       const used = (vid) => new Set([...by.values()].filter((r) => r.phase === "riding" && r.vehicle === vid).map((r) => r.seat));
@@ -83,9 +84,14 @@ export function createRiders() {
         const v = vid ? vehicles.get(vid) : null;
         if (r && r.phase === "riding") {
           const rv = vehicles.get(r.vehicle);
-          if (!rv) { by.delete(name); continue; }                                  // its vehicle is gone: off where they are
-          if (v && vid === r.vehicle) continue;                                    // riding on
+          if (!rv) {                                                               // its vehicle is gone: off where they are
+            const p = posOf(name);
+            if (p) alight.push({ name, at: { x: p.x, y: p.y } });
+            by.delete(name); continue;
+          }
           const at = vehicleAt(rv, wall);
+          if (urgent && urgent(name)) { alight.push({ name, at: seatAt(rv, at, r.seat) }); by.delete(name); continue; }
+          if (v && vid === r.vehicle) continue;                                    // riding on
           if (at.stop !== null) { alight.push({ name, at: rv.stops[at.stop].platform }); by.delete(name); }
           continue;                                                                // off only at a stop
         }
@@ -119,6 +125,6 @@ export function createRiders() {
     },
     riding(name) { const r = by.get(name); return r && r.phase === "riding" ? { vehicle: r.vehicle, seat: r.seat } : null; },
     phase(name) { const r = by.get(name); return r ? r.phase : null; },
-    clear() { by.clear(); },
+    clear() { const on = [...by].filter(([, r]) => r.phase === "riding").map(([n]) => n); by.clear(); return on; },
   };
 }

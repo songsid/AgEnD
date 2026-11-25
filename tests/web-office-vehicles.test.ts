@@ -119,6 +119,37 @@ describe("riders (createRiders)", () => {
     expect(s.board).toEqual([{ name: "a", vehicle: "loop", seat: 0 }]);               // a lap (18 s) and the walk ago
     expect([r.phase("b"), s.targets.get("b")]).toEqual(["going", { x: 420, y: 10 }]);   // just set: walks to the platform
   });
+  it("a caller (#4415) gets off at once, where their seat is, between stops too; then walks to the Help desk", () => {
+    const r = createRiders(), w = createWalkers(), graph = { waypoints: [], edges: [], areas: {} }, at = { x: 420, y: 10, walking: false };
+    let calling = false;
+    const tick = (wall: number) => r.step({ ...world({ a: calling ? null : "loop" }, { a: w.at("a", wall) ?? at }), wall, urgent: () => calling });
+    w.sync(new Map([["a", at]]), 0, graph, true);
+    tick(0); tick(0);                                                                  // at the platform: waiting
+    const on = tick(4100).board[0], car = v();
+    w.ride("a", () => seatAt(car, vehicleAt(car, 9000), on.seat));
+    expect(w.at("a", 9000)).toMatchObject({ riding: true });
+    calling = true;                                                                    // between stops (9 s: on the far side)
+    const s = tick(9000), seat = seatAt(car, vehicleAt(car, 9000), on.seat);
+    expect(vehicleAt(car, 9000).stop).toBeNull();
+    expect(s.alight).toEqual([{ name: "a", at: seat }]);
+    expect(r.riding("a")).toBeNull();
+    for (const a of s.alight) w.place(a.name, a.at);
+    const desk = { x: 40, y: 600 };                                                    // the Help desk seat
+    w.sync(new Map([["a", desk]]), 9000, graph, false);
+    expect(w.at("a", 9001)).toMatchObject({ walking: true });
+    expect(w.at("a", 9001)).not.toHaveProperty("riding");
+  });
+  it("the vehicle gone, or the riders cleared: set down where they are; clear() says who was on board", () => {
+    const r = createRiders(), at = { x: 420, y: 10, walking: false }, there = { x: 380, y: 0, walking: false, riding: true };
+    r.step({ ...world({ a: "loop", b: "loop" }, { a: at, b: at }), wall: 0 });
+    r.step({ ...world({ a: "loop", b: "loop" }, { a: at, b: at }), wall: 4100 });
+    const s = r.step({ wants: new Map([["a", "loop"], ["b", "loop"]]), vehicles: new Map(), wall: 5000, posOf: () => there, homeOf: () => null });
+    expect(s.alight).toEqual([{ name: "a", at: { x: 380, y: 0 } }, { name: "b", at: { x: 380, y: 0 } }]);
+    expect([r.riding("a"), r.riding("b")]).toEqual([null, null]);
+    r.step({ ...world({ a: "loop" }, { a: at }), wall: 0 });
+    r.step({ ...world({ a: "loop" }, { a: at }), wall: 4100 });
+    expect([r.clear(), r.clear()]).toEqual([["a"], []]);
+  });
   it("gone from the office, or the vehicle gone: forgotten", () => {
     const r = createRiders(), at = { x: 420, y: 10, walking: false };
     r.step({ ...world({ a: "loop" }, { a: at }), wall: 0 });
@@ -141,6 +172,13 @@ describe("walkers that ride", () => {
     expect(w.at("a", 7)).toMatchObject({ x: 140, y: 50, riding: true });
     w.place("a", { x: 420, y: 10 });
     expect(w.at("a", 8)).toMatchObject({ x: 420, y: 10, walking: false });
+  });
+  it("a fresh sync (a new office or style) sets a rider down at their target: no gliding on a vehicle that is gone", () => {
+    const w = createWalkers(), graph = { waypoints: [], edges: [], areas: {} };
+    w.sync(new Map([["a", { x: 10, y: 10 }]]), 0, graph, true);
+    w.ride("a", () => ({ x: 100, y: 50 }));
+    w.sync(new Map([["a", { x: 10, y: 10 }]]), 5, graph, false, true);
+    expect(w.at("a", 6)).toEqual({ x: 10, y: 10, walking: false });
   });
 });
 

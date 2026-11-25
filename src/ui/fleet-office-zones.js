@@ -543,8 +543,8 @@ export function createWalkers() {
       for (const name of [...by.keys()]) if (!targets.has(name)) by.delete(name);
       for (const [name, to] of targets) {
         const w = by.get(name);
+        if (fresh) { by.set(name, { pts: null, to }); continue; }    // a rider too: a new office or style has no such vehicle
         if (w && w.ride) continue;                                   // a rider goes where the vehicle goes (place() gets them off)
-        if (fresh) { by.set(name, { pts: null, to }); continue; }
         if (!w || still) { if (!w || w.to.x !== to.x || w.to.y !== to.y) by.set(name, { pts: null, to }); continue; }
         if (w.to.x === to.x && w.to.y === to.y) continue;
         const here = posAt(w, now), via = routeVia(graph, { x: here.x, y: here.y }, { x: to.x, y: to.y });

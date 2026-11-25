@@ -446,10 +446,11 @@ export function actLive(a, state, at = Date.now(), seen = null) {
   return !seen.has(k) && (!a.state || a.state === "working");
 }
 /**
- * Whether an agent's ride (office_set `ride`) holds now: set and not past its end, the person not asleep. Working, a
- * new turn or a call do not end it (it is where they choose to be); clearing it, a new office_set or its end do.
+ * Whether an agent's ride (office_set `ride`) holds now: set and not past its end, the person neither asleep nor calling
+ * (#4415: nothing keeps a caller from the Help desk; the ride resumes when the call is over). Working or a new turn do
+ * not end it (it is where they choose to be); clearing it, a new office_set or its end do.
  */
-export const rideLive = (a, state, at = Date.now()) => !!a && !!a.ride && at < a.until && !ASLEEP.has(state);
+export const rideLive = (a, state, at = Date.now()) => !!a && !!a.ride && at < a.until && !ASLEEP.has(state) && !CALLING.has(state);
 /** How far beside the person an agent going to them stands. */
 const ACT_BESIDE = 48;
 /** Where an agent's act sends it at `t`: its point, beside the person it goes to (where they are now), or null. */
@@ -566,6 +567,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     carsOn = cars.length > 0;
     const band = [...furniture.filter((f) => f.depth === "y").map((f) => ({ y: f.y, k: 0, f })),
       ...cars.map((c) => ({ y: c.at.y, k: 0.8, car: c })),
+      ...cars.map((c) => ({ y: Math.max(c.at.y, ...people.filter((q) => q.at.riding && p.riding && (p.riding(q.look.name) || {}).vehicle === c.v.id).map((q) => q.at.y)), k: 1.5, front: c })),
       ...placedSnacks.map((sn) => ({ y: sn.y, k: 0.5, sn })),
       ...people.map((q) => ({ y: q.at.y, k: 1, p: q })),
       ...(p.ghosts ? ghostsOf(sk.pack, people).map((g) => ({ y: g.y, k: 1, g })) : []),
@@ -620,8 +622,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     for (const f of furniture) if (f.depth !== "y" && f.depth < CHAR_DEPTH) sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env);
     for (const it of post) if (it.t === 0) sk.drawProp(ctx, it, ms, env);        // a letter on the floor: under the people
     let heldPerson = null;
-    for (const { f, p: q, g, n, sn, car } of band) {
+    for (const { f, p: q, g, n, sn, car, front } of band) {
       if (car) { if (sk.drawVehicle) sk.drawVehicle(ctx, car.v, car.at, ms, env); continue; }
+      if (front) { if (sk.drawVehicleFront) sk.drawVehicleFront(ctx, front.v, front.at, ms, env); continue; }
       if (f) { sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env); continue; }
       if (sn) {
         const sdef = p.snacksById && p.snacksById.get(sn.snackId);
@@ -659,9 +662,6 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
         speakers.push({ look: q.look, ...speakerAt(sk, look, q.at), area: q.d.area });
       }
     }
-    // shortcut: a car's front edge goes over the whole band (its riders, and anyone walking just below it); per-rider
-    // depth if people ever stand right in front of a moving car.
-    for (const c of cars) if (sk.drawVehicleFront) sk.drawVehicleFront(ctx, c.v, c.at, ms, env);
     for (const f of furniture) if (f.depth !== "y" && f.depth >= CHAR_DEPTH) sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env);
     // M-3445 (#4267): the character currently being dragged renders lifted above furniture and other characters in its `dragged` pose.
     if (heldPerson) {
@@ -1495,25 +1495,30 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       // An act's walk; not someone in bed for the night (#2568: bedtime wins, as for mail).
       for (const d of desksOf(L)) { const a = actsHere.get(d.node.name), at = !d.night && actLive(a, d.node.state, Date.now(), actSeen.current) ? actTarget(a, L, walkers, t) : null; if (at) to.set(d.node.name, at); }
       for (const [name, at] of mail.targets(L, t)) to.set(name, at);
-      // A pack's vehicles: who wants to ride walks to the platform, boards when it stops there, gets off at a stop.
-      const vehicles = skin.pack.vehicles || [];
-      if (vehicles.length) {
-        const byId = new Map(vehicles.map((v) => [v.id, v])), wall = Date.now(), here = desksOf(L);
-        const wants = new Map(here.map((d) => { const a = actsHere.get(d.node.name); return [d.node.name, !d.night && rideLive(a, d.node.state, wall) ? a.ride : null]; }));
-        const r = riders.step({ wants, vehicles: byId, wall, posOf: (n) => walkers.at(n, t), homeOf: (n) => (here.find((d) => d.node.name === n) || {}).seat || null,
-          sinceOf: (n) => { const a = actsHere.get(n); return a && a.ride && typeof a.since === "number" ? a.since : null; } });
-        for (const [name, at] of r.targets) to.set(name, at);
-        for (const b of r.board) { const v = byId.get(b.vehicle); walkers.ride(b.name, () => seatAt(v, vehicleAt(v, Date.now()), b.seat)); }
-        for (const a of r.alight) walkers.place(a.name, a.at);
-      } else riders.clear();
-      for (const [name, at] of snacks.targets(t)) to.set(name, at);
-      const held = hold.held();                                     // M-3293: carried: where the pointer is, no walk
-      if (held) to.set(held.name, held.at);
       // M-3539: a new office or style (a room's office reads its style after it opens) puts everyone at their place at
       // once: walking there from the old one's seats drew the asleep standing in the help desk for seconds.
       const placed = `${officeKey}\n${skin.id}`, fresh = placedRef.current !== placed;
       placedRef.current = placed;
+      // A pack's vehicles: who wants to ride walks to the platform, boards when it stops there, gets off at a stop; a
+      // caller gets off at once. Riders are set down where they are when their vehicle goes (fresh: the sync does).
+      const vehicles = skin.pack.vehicles || [];
+      let boarding = [];
+      if (fresh) riders.clear();
+      if (vehicles.length) {
+        const byId = new Map(vehicles.map((v) => [v.id, v])), wall = Date.now(), here = desksOf(L);
+        const wants = new Map(here.map((d) => { const a = actsHere.get(d.node.name); return [d.node.name, !d.night && rideLive(a, d.node.state, wall) ? a.ride : null]; }));
+        const r = riders.step({ wants, vehicles: byId, wall, posOf: (n) => walkers.at(n, t), homeOf: (n) => (here.find((d) => d.node.name === n) || {}).seat || null,
+          sinceOf: (n) => { const a = actsHere.get(n); return a && a.ride && typeof a.since === "number" ? a.since : null; },
+          urgent: (n) => { const d = here.find((x) => x.node.name === n); return !!d && CALLING.has(d.node.state); } });
+        for (const [name, at] of r.targets) to.set(name, at);
+        boarding = r.board.map((b) => { const v = byId.get(b.vehicle); return [b.name, () => seatAt(v, vehicleAt(v, Date.now()), b.seat)]; });
+        for (const a of r.alight) walkers.place(a.name, a.at);
+      } else for (const n of riders.clear()) { const p = walkers.at(n, t); if (p) walkers.place(n, p); }
+      for (const [name, at] of snacks.targets(t)) to.set(name, at);
+      const held = hold.held();                                     // M-3293: carried: where the pointer is, no walk
+      if (held) to.set(held.name, held.at);
       walkers.sync(to, t, L, still, fresh);
+      for (const [name, seat] of boarding) walkers.ride(name, seat);
       // Reduced motion has no loop: drawn again here, or an act's walk (set after the scene was drawn) never shows.
       if (still) { if (scene.current && !globalThis.document?.hidden) draw(0); } else loop.current?.wake();
     };
@@ -1849,7 +1854,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       const parts = tiles.map((tl, i) => ({ ...partOf(tl.L, tileLooks[i], tl.skin, tl.zones, tl.walkers, tl.flights), night, key: tl.key, prefix: tl.prefix, tile: arranged.tiles[i], ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(tl.skin) }));
       scene.current = { ...base, overview: true, parts, lay: arranged };
     } else {
-      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin), reacts: reacts.current,
+      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin), reacts: reacts.current, riding: riders.riding,
         hold: play ? hold : null, seatDrop: seatDropRef,
         snacks: play ? snacks : null, snacksById, ownArea, snackDrop: snackDropRef, onSnackClaim, onSnacksChanged: () => walkNow.current?.() } };
     }

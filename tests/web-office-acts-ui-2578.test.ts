@@ -52,6 +52,12 @@ describe("actLive and actTarget", () => {
     const whileIdle = { ...ACT, since: 1, state: "idle" };
     expect(F.actLive(whileIdle, "working", 1_000, new Set())).toBe(false);    // acted while idle, now working: new work
   });
+  it("a ride (#4458): live until its end, through work; not while its person calls (#4415) or sleeps", () => {
+    const RIDE = { ...ACT, ride: "loop" };
+    expect([F.rideLive(RIDE, "idle", 9_999), F.rideLive(RIDE, "working", 5_000), F.rideLive(RIDE, "idle", 10_000)]).toEqual([true, true, false]);
+    expect(["needs", "crashed", "stuck", "paused"].map((s) => F.rideLive(RIDE, s, 5_000))).toEqual([false, false, false, false]);
+    expect(F.rideLive(ACT, "idle", 5_000)).toBe(false);                          // no ride in it
+  });
   it("a point; beside a person where they are (walking or seated); none for a person not here", () => {
     const L = { width: 1280, rooms: [{ desks: [{ node: { name: "quill" }, seat: { x: 400, y: 300 } }] }] };
     expect(F.actTarget({ ...ACT, x: 5, y: 6 }, L, null, 0)).toEqual({ x: 5, y: 6 });
