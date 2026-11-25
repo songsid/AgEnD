@@ -24,19 +24,20 @@ import { backendLabel, modelText, namesOf } from "/assets/instance-nav.js";
 import { badgeText, fixedOf, tierOf, titleOf, tokens, xpOf } from "./fleet-office-levels.js";
 import { CARD_ROWS, CARD_SECTIONS, contrastRatio, relativeLuminance } from "./fleet-office-pack.js";
 import { nineSlice } from "./fleet-office-dialogue.js";
+import { RENAME_LEN } from "./fleet-office-store.js";
 
 register("ocard", {
   en: {
     card: "{0}'s card", level: "Lv {0}", work: "{0} work tokens", estimated: "estimated", toNext: "{0} to Lv {1}", office: "Office", model: "Model", backend: "Backend",
     today: "Today", todayN: "{0} work tokens · {1} requests", firstSeen: "First seen", day: "Day {0}", now: "Now", nowLabel: "Now: ", find: "Find in office", chat: "Chat", pat: "Pat", feed: "Feed", tell: "Tell {0} (with their next message)", tellNote: "Off: only you see it. On: a line like “[Office] <your name> patted your head ×3” rides the next message they get anyway — it never wakes them.",
     chatWindow: "Open {0}’s chat in a new window",
-    close: "Close", xp: "Progress to Lv {0}",
+    close: "Close", xp: "Progress to Lv {0}", rename: "Rename (only you see it)", renameField: "Name you see",
   },
   "zh-TW": {
     card: "{0} 的名片", level: "Lv {0}", work: "{0} 工作 token", estimated: "估算", toNext: "再 {0} 到 Lv {1}", office: "辦公室", model: "模型", backend: "後端",
     today: "今天", todayN: "{0} 工作 token · {1} 次請求", firstSeen: "首次出現", day: "第 {0} 天", now: "現在", nowLabel: "現在：", find: "在辦公室找它", chat: "聊天", pat: "摸頭", feed: "餵點心", tell: "讓 {0} 知道（隨下一則訊息）", tellNote: "關閉：只有你看得到。開啟：下一則本來就會送給它的訊息會附上一行，例如「[Office] <你的名字> patted your head ×3」，不會叫醒它。",
     chatWindow: "在新視窗開啟 {0} 的聊天",
-    close: "關閉", xp: "升到 Lv {0} 的進度",
+    close: "關閉", xp: "升到 Lv {0} 的進度", rename: "改名（只有你看得到）", renameField: "你看到的名字",
   },
 });
 const tc = (k, ...v) => t(`ocard.${k}`, ...v);
@@ -334,7 +335,24 @@ function drawPortraitAvatar(cv, im, W) {
  * M-3533 R2b: `photo` (src) the agent's identity-card picture (a Hub room's), drawn as the pack portrait is, in place of
  * the figure once it loads; the figure while it loads or when it fails.
  */
-export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null, photo = null }) {
+/**
+ * The card's name, and with `rename` ({ value, save }) a pencil beside it: a field for the name this browser shows
+ * (Enter or leaving it keeps it, Escape does not; empty gives back their own).
+ */
+function CardName({ name, rename }) {
+  const [editing, setEditing] = useState(false);
+  const field = useRef(null);
+  // Filled once, as the field appears: a `value` prop would put the name back over what is typed at each redraw.
+  useLayoutEffect(() => { if (editing && field.current) { field.current.value = (rename && rename.value) || name; field.current.focus(); field.current.select(); } }, [editing]);
+  if (!rename) return html`<strong class="oo-card-name">${name}</strong>`;
+  const done = (keep) => { if (!editing) return; setEditing(false); if (keep && field.current) rename.save(field.current.value.trim()); };
+  if (editing) return html`<input ref=${field} class="oo-card-rename" maxlength=${RENAME_LEN} aria-label=${tc("renameField")}
+    onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); done(true); } else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(false); } }} onBlur=${() => done(true)} />`;
+  return html`<span class="oo-card-name-row"><strong class="oo-card-name">${name}</strong><button type="button" class="icon-btn oo-card-rename-btn"
+    aria-label=${tc("rename")} title=${tc("rename")} onClick=${() => setEditing(true)}>✎</button></span>`;
+}
+
+export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, rename = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null, photo = null }) {
   // `action`: one, or a list (M-3565: a Hub room's "@ it" and "Chat with it one-to-one"); the first is the primary button.
   const actions = Array.isArray(action) ? action.filter(Boolean) : action ? [action] : [];
   const actionButtons = actions.map((a, i) => html`<button key=${i} type="button" class=${`btn btn-sm ${i === 0 ? "btn-primary " : ""}oo-card-action`} title=${a.title || undefined} aria-label=${a.title || undefined} onClick=${a.run}>${a.label}</button>`);
@@ -449,7 +467,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
         <div class="oo-card-avatar"><canvas ref=${canvas} width="56" height="56" aria-hidden="true"></canvas>
           ${m.badge ? html`<span class=${`oo-badge tier-${m.badge.tier}${m.badge.mark ? " mark" : ""}`} aria-hidden="true">${m.badge.mark ? "" : m.badge.text}</span>` : null}</div>
         <div class="oo-card-names">
-          <strong class="oo-card-name">${m.name}</strong>
+          <${CardName} name=${m.name} rename=${rename} />
           ${m.instance ? html`<div class="oo-card-instance mono" title=${m.instance}>${m.instance}</div>` : null}
           <div class="oo-card-state">${m.stateLine}</div>
         </div>
@@ -493,7 +511,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
         <div class="oo-card-avatar"><canvas ref=${canvas} width=${avatarPx} height=${avatarPx} aria-hidden="true"></canvas>
           ${m.badge && !hide.has("badge") ? html`<span class=${`oo-badge tier-${m.badge.tier}${m.badge.mark ? " mark" : ""}`} aria-hidden="true">${m.badge.mark ? "" : m.badge.text}</span>` : null}</div>
         <div class="oo-card-names">
-          <strong class="oo-card-name">${m.name}</strong>
+          <${CardName} name=${m.name} rename=${rename} />
           ${!hide.has("instance") && m.instance ? html`<div class="oo-card-instance mono" title=${m.instance}>${m.instance}</div>` : null}
           <div class="oo-card-state">${stateLine}</div>
         </div>
