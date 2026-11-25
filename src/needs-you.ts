@@ -69,6 +69,8 @@ export interface NeedsYouItem {
    * which every panel already renders with its Sign in button; the chat line adds the detail.
    */
   keepAlive?: true;
+  /** M-3749: the missing MCP servers and the profiles, for each surface to word in its own language (detail is the fallback). */
+  mcpMissing?: { names: string[]; from: string; to: string };
 }
 
 export type NeedsYouReason =
@@ -309,7 +311,7 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     if (inst.mcpMissing?.names.length) {
       const m = inst.mcpMissing;
       items.push({ id: `mcp-missing:${inst.name}:${m.since}`, type: "instance", instance: inst.name, reason: "mcp_missing",
-        detail: oneLine(`${m.names.join(", ")} (${m.from} → ${m.to})`), since: m.since });
+        detail: oneLine(`${m.names.join(", ")} (${m.from} → ${m.to})`), since: m.since, mcpMissing: { names: [...m.names], from: m.from, to: m.to } });
     }
     if (inst.crashedAt != null && !inst.generalLocation && !inst.kiroCompatibility) {
       items.push({ id: `crashed:${inst.name}:${inst.crashedAt}`, type: "instance", instance: inst.name, reason: "crashed", detail: "", since: inst.crashedAt });

@@ -9,7 +9,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox, SYSTEM_NOTICE_KIND } from "../src/delivery-outbox.js";
 import { deriveNeedsYou } from "../src/needs-you.js";
-import { getLocale, setLocale } from "../src/locale.js";
+import { getLocale, setLocale, t as tr } from "../src/locale.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
 
@@ -216,7 +216,7 @@ describe("M-3749: a launch reports MCP servers that did not come along", () => {
       expect(notices).toHaveLength(1);
       expect(notices[0].targetInstance).toBe("agent");
       const text = notices[0].payload.content as string;
-      expect(text).toContain("m365, outline");
+      expect(text).toContain(locale === "en" ? "(old → new): m365, outline." : "（old → new）後缺少這些 MCP 伺服器：m365、outline。");
       expect(text).toContain("old → new");
       expect(text).toContain("claude mcp add -s local");
       expect(text).toContain(locale === "en" ? "MCP servers missing" : "缺少這些 MCP 伺服器");
@@ -225,7 +225,12 @@ describe("M-3749: a launch reports MCP servers that did not come along", () => {
 
       const items = deriveNeedsYou({ prompts: [], deliveries: [], ownerOf: () => undefined,
         instances: [{ name: "agent", mcpMissing: { names: ["m365", "outline"], from: "old", to: "new", since: 5 } }] });
-      expect(items).toEqual([expect.objectContaining({ type: "instance", instance: "agent", reason: "mcp_missing", detail: "m365, outline (old → new)", since: 5 })]);
+      expect(items).toEqual([expect.objectContaining({ type: "instance", instance: "agent", reason: "mcp_missing", detail: "m365, outline (old → new)", since: 5,
+        mcpMissing: { names: ["m365", "outline"], from: "old", to: "new" } })]);
+      // The chat list's line, in the list's language (zh: full-width 「：」「、」「（）」).
+      const hub: any = Object.create(NeedsYouHub.prototype); hub.ctx = { t: (k: string, ...a: unknown[]) => tr(k, ...(a as string[])) };
+      expect(hub.lineTitle(items[0])).toBe(locale === "en" ? "MCP servers missing after an AI account switch: m365, outline (old → new)"
+        : "切換 AI 帳號後缺少 MCP 伺服器：m365、outline（old → new）");
 
       daemon.checkClaudeMcpServers({ backendOptions: { credential_profile: "new" } });   // the next launch: still outstanding
       expect(events).toHaveLength(2);

@@ -20033,7 +20033,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const outbox = this.deliveryOutbox;
       if (!outbox) return;
       const digest = createHash("sha256").update(`${missing.fromConfigDir}\u0000${missing.toConfigDir}\u0000${missing.names.join(",")}`).digest("hex").slice(0, 16);
-      const text = t("inst.mcp_missing", this.claudeProfileLabel(missing.fromConfigDir), this.claudeProfileLabel(missing.toConfigDir), missing.names.join(", "));
+      const text = t("inst.mcp_missing", this.claudeProfileLabel(missing.fromConfigDir), this.claudeProfileLabel(missing.toConfigDir), missing.names.join(t("needs.mcp_missing_sep")));
       outbox.admitSystemNotice(name, `mcp-missing:${name}:${digest}`, text, new Date(missing.since));
     } catch (err) {
       this.logger.warn({ err, name }, "Could not queue the MCP-missing notice");

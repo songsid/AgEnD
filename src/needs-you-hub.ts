@@ -383,10 +383,16 @@ export class NeedsYouHub {
     }
     // M-3381: a world's restricted-mode suggestions, one line: how many rooms, and where to act.
     if (item.contactSuggestionCount) return this.ctx.t("needs.contact_suggestions", item.contactSuggestionCount);
+    // M-3749: names and profiles in the list's language (zh: 「：」「、」「（）」).
+    if (item.mcpMissing) {
+      const m = item.mcpMissing;
+      return this.ctx.t("needs.mcp_missing_line", this.ctx.t("needs.reason.mcp_missing"),
+        this.ctx.t("needs.mcp_missing_detail", m.names.join(this.ctx.t("needs.mcp_missing_sep")), m.from, m.to));
+    }
     const reason = item.runtimeUpdate ? this.ctx.t("runtime.update.attention") : item.reason === "usage_limit"
       ? this.ctx.t("needs.reason.usage_limit", item.detail || "Claude")
       : this.ctx.t(`needs.reason.${item.kiroChoice ? "kiro_choice" : item.reason}`);
-    return (item.type === "task" || item.type === "config" || item.type === "missed" || item.type === "runtime" || item.generalLocation || item.keepAlive || item.reason === "backend_missing" || item.reason === "mcp_missing") && item.detail ? `${reason}: ${item.detail}` : reason;
+    return (item.type === "task" || item.type === "config" || item.type === "missed" || item.type === "runtime" || item.generalLocation || item.keepAlive || item.reason === "backend_missing") && item.detail ? `${reason}: ${item.detail}` : reason;
   }
 
   /** #2352: a lane can carry a list here: its instance is this world's now, and has a channel of its own. */

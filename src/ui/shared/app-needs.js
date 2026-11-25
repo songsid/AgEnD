@@ -62,6 +62,8 @@ export async function setNotify(on, env = globalThis) {
 
 export const configDetail = (item) => {
   if (item.modelSwitch) return modelSwitchText(item.modelSwitch);
+  // M-3749: the missing MCP servers in the page's language (zh: 「、」 and 「（）」).
+  if (item.mcpMissing && Array.isArray(item.mcpMissing.names)) return t("app.needs_mcp_missing_detail", item.mcpMissing.names.join(t("app.needs_mcp_missing_sep")), item.mcpMissing.from, item.mcpMissing.to);
   const issue = item.configIssue;
   return issue ? t(`app.config_history_${issue.mode === "fallback" ? "fallback" : issue.time ? "edit" : "no_history"}`, issue.file, issue.line, issue.column, issue.reason, issue.time || "") : item.detail;
 };
