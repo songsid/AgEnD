@@ -1,0 +1,13 @@
+diff --git a/tests/hub-room-asker-source-m3664.test.ts b/tests/hub-room-asker-source-m3664.test.ts
+index 3374e1156..d338669d5 100644
+--- a/tests/hub-room-asker-source-m3664.test.ts
++++ b/tests/hub-room-asker-source-m3664.test.ts
+@@ -0,0 +1,2 @@
++import {mkdtempSync,rmSync} from "node:fs";import {tmpdir} from "node:os";import {join} from "node:path";
++import {HubRoomAskerStore} from "../src/hub/member/room-asker-store.js";
+@@ -26,0 +29,5 @@ it('actual Hub HTTP room routing signs only a negotiated projected payload, pres
++ // Persist the first bounded proof, advance an hour and require a later transport signature to preserve it.
++ const home=mkdtempSync(join(tmpdir(),'room-retention-'));close.push(()=>{rmSync(home,{recursive:true,force:true});});const companion=new HubRoomAskerStore({home,binding:'example-retention',encryptionKey:Buffer.alloc(32,4),identity:{hubId:r.hubId,fleetId,issuerKeyId:r.issuer.keyId,issuerPublicKey:r.keys.publicKey},now:()=>at});close.push(()=>companion.close());
++ const accepted={ask:legacy,destination:{agent:'example-agent',exposureId:e.id,incarnation:randomUUID()},journalDigest:'e'.repeat(64)};companion.prepare(capped,accepted,{linkEpoch:3,exposureRevision:1});companion.commit(ask.messageId,accepted);
++ at+=60*60*1000;modern.alive=false;const later=r.link(fleetId,r.admin,4,caps);await r.http.receive(r.frame('reconcile',{afterReceiptSequence:0,messages:[]},later)as never,later);await vi.waitFor(()=>expect(r.sent.filter(x=>x.frame.type==='room.ask')).toHaveLength(4));const {askerIdentity:reissued,...samePayload}=(r.sent.filter(x=>x.frame.type==='room.ask').at(-1)!.frame as any).payload;expect(samePayload).toEqual(legacy);
++ expect(()=>companion.prepare(reissued,accepted,{linkEpoch:4,exposureRevision:1})).not.toThrow();expect(reissued.retainedUntil).toBe(capped.retainedUntil);expect(companion.get(ask.messageId,accepted)?.id).toBe(personKeyString(who));

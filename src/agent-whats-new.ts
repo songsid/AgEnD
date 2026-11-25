@@ -132,8 +132,11 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // (2.4.0-beta.19 is published without it).
   { id: "2.4-card-refs", since: "2.4.0-beta.20", tools: ["task"],
     text: `Task cards: ${TASK_CARD_REF_HINT}` },
-  // M-3651: a guest's private /web code verifies who it is; `since` is this line's next beta (it merges after beta.21).
-  { id: "2.4-web-guest-verified", since: "2.4.0-beta.22",
+  // M-3716: a held agent did not learn its request was approved; the notice and this lookup are new in the next beta.
+  { id: "2.4-held-requests", since: "2.4.0-beta.23", tools: ["delivery_status"],
+    text: "Held messages: you now get a notice when one is approved (by whom, when, delivered or not), as well as declined or expired. To check your own held messages, call `delivery_status` with `held_requests: true`. Never resend a held message." },
+  // M-3651: a guest's private /web code verifies who it is; `since` is this line's next beta (it merges after beta.22).
+  { id: "2.4-web-guest-verified", since: "2.4.0-beta.23",
     text: "A web guest (`@web:g`) who signed in with the /web code sent privately to their own account now has a verified identity: their receipt says `authority.kind: web-guest` with their `authority.actor`. That tells you who they are; it is never a go-ahead or an admin's authority (the cross-instance-messaging skill's web-chat section)." },
 ];
 

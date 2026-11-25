@@ -71,7 +71,7 @@ import { nodeText, stateWords } from "./fleet-org.js";
 import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
-import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, pixelSkin, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint } from "./fleet-office-skin.js";
+import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, pixelSkin, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint, withCharacters } from "./fleet-office-skin.js";
 import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, routeStaysInArea, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
@@ -87,7 +87,7 @@ import { applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, sna
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { CAROUSEL_ID, INTERVALS, carouselHeld, carouselIdsOk, carouselKey, carouselOk, intervalOk, nextIndex, prevIndex } from "./fleet-office-carousel.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
-import { OK_MAX, clampPan, desksK, minK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
+import { OK_MAX, cardSpot, clampPan, desksK, minK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
   wholeInView, zoomLabel, zoomOffice } from "./fleet-office-view.js";
 
 register("orgo", {
@@ -106,7 +106,7 @@ register("orgo", {
     styleForAll: "The whole fleet's style, for everyone: every device and share link", styleHere: "The whole fleet's style in this browser",
     styleFailed: "The style was not saved for everyone ({0}).", styleBusy: "Too many changes. Try again in a minute.",
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
-    fill: "Fill", fillTitle: "Fill the panel (the scene's overflow is cropped; drag to see it)", zoomLevel: "Zoom {0}",
+    fill: "Fill", fillTitle: "Fill the panel (the scene's overflow is cropped; drag to see it)", zoomLevel: "Zoom {0}", view: "View", zoomIn: "Zoom in", zoomOut: "Zoom out", live: "Live",
     allOffices: "All offices", labelAll: "All offices: each office is a tile, drawn in its own style. Drag to pan; the wheel, a pinch, + and − zoom, 0 fits, F is fullscreen. Click a tile to open that office.",
     backAll: "← All offices",
     key: "Key", keyTitle: "What the items carried between desks are", keyLabel: "Carried between desks",
@@ -126,8 +126,8 @@ register("orgo", {
   },
   "zh-TW": {
     display: "顯示選項", playMotionOff: "已關閉：系統開了「減少動態效果」",
-    label: "辦公室：每個 team 是一間房間，每個 Agent 一張桌子；General 和未加入 team 的 Agent 在大廳。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示整個場景，F 切換全螢幕。",
-    office: "辦公室", allOffice: "整個 fleet", show: "顯示", allTeams: "所有 team", lobby: "大廳（General、未加入 team）", lobbyRoom: "大廳",
+    label: "辦公室：每個團隊是一間房間，每個 Agent 一張桌子；General 和未加入團隊的 Agent 在大廳。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示整個場景，F 切換全螢幕。",
+    office: "辦公室", allOffice: "整個 fleet", show: "顯示", allTeams: "所有團隊", lobby: "大廳（General、未加入團隊）", lobbyRoom: "大廳",
     people: "成員", peopleN: "成員（{0}）", findPerson: "尋找成員", everyone: "顯示全部", nobody: "沒有符合這個篩選的成員。",
     unseated: "{0} 位沒有座位", skinUnknown: "這裡沒有它的風格「{0}」：以辦公桌顯示。", closed: "休息中", desks: "桌子", tapAgain: "再點一下開啟聊天",
     capWorking: "埋頭打字中", capIdle: "喝茶休息", capPaused: "睡著了", capNeeds: "在呼叫你", capAway: "空位", capStarting: "剛到座位", capQueued: "等待啟動",
@@ -139,7 +139,7 @@ register("orgo", {
     styleForAll: "整個 fleet 的風格，所有人共用：每台裝置與分享連結都一樣", styleHere: "這個瀏覽器裡整個 fleet 的風格",
     styleFailed: "風格沒有替所有人儲存（{0}）。", styleBusy: "變更太頻繁，請一分鐘後再試。",
     fit: "顯示整個辦公室", overview: "總覽：點一下移到那裡", fullscreen: "全螢幕", exitFullscreen: "結束全螢幕",
-    fill: "填滿", fillTitle: "填滿整個面板（超出的部分會被裁切，拖曳即可看到）", zoomLevel: "縮放 {0}",
+    fill: "填滿", fillTitle: "填滿整個面板（超出的部分會被裁切，拖曳即可看到）", zoomLevel: "縮放 {0}", view: "檢視", zoomIn: "放大", zoomOut: "縮小", live: "即時",
     allOffices: "所有辦公室", labelAll: "所有辦公室：每間辦公室是一格，以它自己的風格顯示。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示全部，F 切換全螢幕。點一格即可開啟那間辦公室。",
     backAll: "← 返回全域",
     key: "圖例", keyTitle: "桌子之間傳遞的物品代表什麼", keyLabel: "桌子之間傳遞的物品",
@@ -256,6 +256,8 @@ const UP_MS = 1800;
 const FIND_K = 2;
 /** #2661: below this stage width (CSS px) the card is a bottom sheet. */
 const SHEET_W = 560;
+/** M-3633: the corner of an area its name takes (logical units, from the area's top left): a floating card keeps off it. */
+const AREA_LABEL = { w: 320, h: 44 };
 /**
  * M-3253 (Argon's phone review): the Office's phone layout — a phone's width (the shell's), or a phone turned sideways (a
  * coarse pointer in a short window: an iPhone's 956 × 440 is wider than 899 px). There the Office's tools are one ⋯ sheet,
@@ -408,6 +410,8 @@ export function speakerAt(sk, look, at) {
 }
 /** The pose an area's seats are for: the first state (asleep, working, calling, idle) the pack sends there. */
 const GHOST_POSE = [["paused", "paused"], ["stopped", "paused"], ["working", "working"], ["needs", "needs"], ["crashed", "needs"], ["stuck", "needs"], ["idle", "idle"]];
+/** M-3533 R2c: how far inside its area's top edge a room character's speech bubble stays (scene units). */
+const BUBBLE_IN_AREA = 8;
 /** How faint Edit layout's figures are: seen through, yet readable over a busy picture (a dimmed person is 0.35). */
 const GHOST_ALPHA = 0.6;
 /** Edit layout's faint figures: one on each seat no one is on, { x, y, look } (the pack's default set; drawn at GHOST_ALPHA). */
@@ -512,6 +516,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   blit(p.layers.back);
   T();
   const speakers = [], tags = [], titleBoxes = [];             // M-3539: the area names bubbles keep off too
+  const titleDraws = [];                                         // M-3722: and redrawn over a bubble's tail that crosses one
   const up = still ? [] : p.flights.frame(ms, p.L);
   // Mail from another office (#2564): flying in at the door, or on the floor until its person picks it up.
   const post = still || !p.mail || !p.zones ? [] : p.mail.frame(ms > 0 ? ms : now(), p.L, p.walkers);
@@ -661,7 +666,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const crowded = (q) => over.has(q.d.area) && !pinned(q);
     const tagged = (q) => pinned(q) || !(tagsOff || over.has(q.d.area));
     const keep = [...titles.map((x) => x.box), ...(env.keepClear || [])];
-    titleBoxes.push(...titles.map((x) => x.box));
+    titleBoxes.push(...titles.map((x) => x.box)); titleDraws.push(...titles);
     const taken = [];
     const touches = (b) => taken.some((o) => overlaps(b, o)) || keep.some((o) => overlaps(b, o));
     // Under an open card (`p.cover`, bitmap px; #4379 review): no tag, its level badge included, rather than a piece of one
@@ -770,7 +775,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   // Speech bubbles: a short line for the state, now and then (typed out; whole at once when still), placed so no two
   // overlap (placeBubbles; #2431).
   const bubbles = [], rp = p.reply, tSaid = Date.now(), replies = [];
-  for (const sp of speakers) {
+  for (let sp of speakers) {
     if (sp.look.dim || sp.look.pose === "away") continue;
     // Talk "Over their head": a live reply, in full (wrapped), in place of the state's line.
     const said = rp ? rp.chat.recent(sp.look.name, tSaid) : null;
@@ -788,21 +793,38 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const b = own ? { text: own, shown: [...own].length }
       : scText ? { text: scText, shown: [...scText].length }
       : bubbleAt(sp.look.name, says, ms, linesFor(says, p.lang, sk.pack, p.lines, sp.look.name));   // #3681: theirs, their set's, the pack's
+    // M-3533 R2c (Lumen): a room's own characters stand taller than the style's figures; their bubble stays inside the
+    // area's box, as a figure's does (the Fleet's own office is unchanged).
+    const ar = b && sk.ownCharacters && p.zones && sp.area != null ? p.L.areas && p.L.areas[sp.area] : null;
+    if (ar && ar.rect) { const bx = bubbleBox(ctx, sp.x, sp.y, b.text), min = ar.rect.y + BUBBLE_IN_AREA; if (bx.y < min) sp = { ...sp, y: sp.y + (min - bx.y) }; }
     if (b) bubbles.push({ key: sp.look.name, area: sp.area, state: sp.look.state, calling: CALLING.has(sp.look.state), rank: own ? 0 : scText ? 1 : bubbleRank(sp.look.state), shown: b.shown, ...(raSays ? { keep: true } : {}),
-      box: bubbleBox(ctx, sp.x, sp.y, b.text), tail: { x: sp.x, y: sp.y }, sp, b });
+      box: bubbleBox(ctx, sp.x, sp.y, b.text), ...(CALLING.has(sp.look.state) ? { flipBox: bubbleBox(ctx, sp.x, sp.y, b.text, 0, true) } : {}), tail: { x: sp.x, y: sp.y }, sp, b });
   }
   // A crowded area speaks less (thinBubbles: calls, then work, a few at most); no bubble covers a name tag. `defer`
   // (All offices): drawn after every tile, unclipped, so a bubble at a tile's edge is whole.
   // M-3648: an area's name blocks chatter; a call may cover it (placeBubbles' `soft`): a name never keeps a call out.
-  const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags, titleBoxes);
-  const say = () => { T(); for (const { sp, b, dy } of placed) {
-    const text = [...b.text].slice(0, b.shown).join("");
-    sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy);
+  // M-3722: and 3 px of air off a name, not just its plate (a call beside 求救區 touched its corner). A number here, not an
+  // import: a page still holding the older fleet-office-zones.js keeps linking (it just ignores it).
+  const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags, titleBoxes, 3);
+  // M-3533 R2c: and after placing (which lifts a bubble clear of another), a room character's bubble still stays in its area.
+  const inArea = (sp, text, dy, flip) => {
+    const ar = sk.ownCharacters && p.zones && sp.area != null ? p.L.areas && p.L.areas[sp.area] : null;
+    if (!ar || !ar.rect || !dy) return dy;
+    const over = ar.rect.y + BUBBLE_IN_AREA - bubbleBox(ctx, sp.x, sp.y, text, -dy, flip).y;
+    return over > 0 ? Math.max(0, dy - over) : dy;
+  };
+  const say = () => { T(); const tails = []; for (const { sp, b, dy: lifted, flip = false } of placed) {
+    const text = [...b.text].slice(0, b.shown).join(""), dy = inArea(sp, b.text, lifted, flip);
+    sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy, flip);
+    if (text) { const box = bubbleBox(ctx, sp.x, sp.y, text, -dy, flip); tails.push({ x: sp.x - 1, y: box.y + box.h, w: 9, h: Math.max(0, sp.y - (box.y + box.h)) }); }
     if (bubbleHits && text) {
-      const box = bubbleBox(ctx, sp.x, sp.y, text, -dy);
+      const box = bubbleBox(ctx, sp.x, sp.y, text, -dy, flip);
       bubbleHits.push({ name: sp.look.name, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
     }
   }
+  // M-3722: a bubble keeps its box off an area's name (placeBubbles); a tail that still crosses one has the name written
+  // again over it (as over a figure standing on it, M-3539), so the name always reads whole.
+  if (sk.drawAreaTitle) for (const { ar, box } of titleDraws) if (tails.some((t) => overlaps(t, box))) sk.drawAreaTitle(ctx, ar, env);
   const bl = sk.pack && sk.pack.dialogBox ? sk.pack.dialogBox.bubble : null;
   const im = bl && bl.frame && typeof sk.picture === "function" ? sk.picture(bl.frame, () => {}) : null;
   for (const { sp, said } of replies) {
@@ -944,7 +966,7 @@ function ensureDialogueStyle() {
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
 export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, chatUi = null, more = false, onMore = null, live = null, onLive = null,
-  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false, cardPhoto = null }) {
+  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false, cardPhoto = null, characters = null }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
   useLayoutEffect(ensureDialogueStyle, []);
@@ -1039,6 +1061,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // back there when it closes); the card's element and where it points (placed every frame: it follows them).
   const [card, setCard] = useState(null);
   const cardFrom = useRef(null), cardEl = useRef(null), cardDesk = useRef(null);
+  // M-3633: how much of the stage a bottom-sheet card covers (px from its foot); the scene is kept in the rest.
+  const sheetCover = useRef(0);
   const stageRef = useRef(null), canvasRef = useRef(null), tipRef = useRef(null), lastType = useRef("mouse");
   // Fullscreen: null, "native" (the Fullscreen API) or "immersive" (the CSS cover); per visit, never kept.
   const ooRef = useRef(null), [fs, setFs] = useState(null), fsRef = useRef(null), fsAsked = useRef(false), fsTarget = useRef(null);
@@ -1323,7 +1347,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (zones && layout && !layoutStale) return { skin: { ...baseSkin, pack: layout.draft }, ignored: false };
     return withOverrides(baseSkin, zones, custom);
   }, [baseSkin, zones, custom, layout, layoutStale]);
-  const skin = placed.skin;
+  // M-3533 R2c: a Hub room office's agents in their own characters (`characters`: { sets, images }), over its style.
+  const skin = useMemo(() => (characters ? withCharacters(placed.skin, characters.sets, characters.images) : placed.skin), [placed.skin, characters]);
   // While Edit layout is open: a faint figure on every seat, in the pose its area is for (#2558), so a seat is placed by
   // what will stand, sit or lie there, not by a dot.
   const ghosts = zones && !!layout && !layoutStale;
@@ -1513,16 +1538,54 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
    */
   const placeCard = () => {
     const el = cardEl.current, c = cardDesk.current;
-    if (!el || !c || !el.style || el.classList?.contains("sheet")) return;
+    if (!el || !c || !el.style) return;
+    if (el.classList?.contains("sheet")) { el.style.removeProperty("max-height"); liftOverSheet(el, c); return; }
     const v = view0(), sz = sizeRef.current;
     const w = c.walks ? walkers.at(c.name, now()) : null;
     const pt = w ? { x: w.x, y: w.y - 52, r: 16 } : { x: c.box.x + c.box.w / 2, y: c.box.y, r: (c.box.w / 2) * v.k };
-    const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = el.offsetHeight || 260, gap = (c.skin?.pack?.card?.layout?.gap ?? 12) + pt.r;
-    let x = p.x + gap;
-    if (x + cw > sz.w - 8) x = p.x - gap - cw;
-    x = Math.max(8, Math.min(x, sz.w - cw - 8));
-    const y = Math.max(8, Math.min(p.y - 24, sz.h - ch - 8));
+    // Its whole height (a card held shorter below an area's name scrolls: its content's height, not the box's).
+    const sc = (typeof el.querySelector === "function" && el.querySelector(".oo-card-body")) || el;
+    const natural = sc.scrollHeight ? sc.scrollHeight + ((el.offsetHeight || 0) - (sc.clientHeight || 0)) : 0;
+    const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = natural || el.offsetHeight || 260, gap = (c.skin?.pack?.card?.layout?.gap ?? 12) + pt.r;
+    // M-3633: clear of the areas' names — where the Office writes each one (areaTitleBox, a few px around it), else, on a
+    // pack's own picture, the corner a name painted there takes.
+    // The scene's own layout and skin (the draw loop's: this runs in it, where the render's may be an older one).
+    const sc0 = scene.current, part = sc0 && !sc0.overview ? sc0.part : null, sk0 = part && part.skin;
+    const titled = !!(sk0 && sk0.areaTitleBox && sc0.ctx && sc0.env);
+    const avoid = part && part.zones && part.L ? Object.values(part.L.areas || {}).map((ar) => {
+      const b = titled ? sk0.areaTitleBox(sc0.ctx, ar, sc0.env) : null;
+      const r = b ? { x: b.x - 4, y: b.y - 4, w: b.w + 8, h: b.h + 8 } : { x: ar.rect.x, y: ar.rect.y, w: Math.min(ar.rect.w, AREA_LABEL.w), h: Math.min(ar.rect.h, AREA_LABEL.h) };
+      const q = toScreen(v, r.x, r.y);
+      return { x: q.x, y: q.y, w: r.w * v.k, h: r.h * v.k };
+    }) : [];
+    const { x, y, maxH } = cardSpot({ px: p.x, py: p.y, gap, cw, ch, w: sz.w, h: sz.h, avoid });
+    if (maxH) el.style.setProperty("max-height", `${Math.round(maxH)}px`); else el.style.removeProperty("max-height");
     el.style.setProperty("transform", `translate(${Math.round(x)}px, ${Math.round(y)}px)`);
+  };
+  /**
+   * M-3633: a phone's bottom-sheet card covers the stage's foot. The scene is kept in the rest (setView's clampPan is
+   * given the uncovered height: a scene smaller than it is centred there), and the person is brought above the sheet —
+   * once each time the sheet's height changes, so a pan of their own is left alone. It closes: the whole stage again.
+   */
+  const visSize = () => { const z = sizeRef.current || size; return { w: z.w, h: Math.max(1, z.h - sheetCover.current) }; };
+  const liftOverSheet = (el, c) => {
+    const st = stageRef.current;
+    if (!st || typeof st.getBoundingClientRect !== "function" || typeof el.getBoundingClientRect !== "function") return;
+    const cover = Math.max(0, Math.round(st.getBoundingClientRect().bottom - el.getBoundingClientRect().top));
+    if (cover === sheetCover.current) return;
+    sheetCover.current = cover;
+    // The scene's current layout (this runs in the draw loop, where the render's `L` may be an older one).
+    const LL = (scene.current && !scene.current.overview && scene.current.part && scene.current.part.L) || L;
+    const v = view0(), w = c.walks ? walkers.at(c.name, now()) : null;
+    const p = toScreen(v, w ? w.x : c.box.x + c.box.w / 2, w ? w.y : c.box.y + c.box.h), room = (sizeRef.current || size).h - cover - 16;
+    vp.current = clampPan({ ...v, y: v.y - Math.max(0, p.y - room) }, LL.width, LL.height, visSize());
+    apply();
+  };
+  const unliftSheet = () => {
+    if (!sheetCover.current) return;
+    sheetCover.current = 0;
+    vp.current = clampPan(view0(), L.width, L.height, size);
+    apply();
   };
   /**
    * Put the view on everything that shows it beside the canvas: the overview's frame (the part of the scene in view;
@@ -1572,7 +1635,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
    * fit (a resize fits it again).
    */
   const setView = (v, user = true, fit = false) => {
-    vp.current = clampPan(v, L.width, L.height, size);
+    vp.current = clampPan(v, L.width, L.height, visSize());
     fitted.current = fit;
     apply();
     if (!user) return;
@@ -1612,7 +1675,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       else if (!touched.current) reopen();
       else { const v = vp.current, cx = (was.w / 2 - v.x) / v.k, cy = (was.h / 2 - v.y) / v.k; vp.current = { k: v.k, x: size.w / 2 - cx * v.k, y: size.h / 2 - cy * v.k }; }
     } else if (fitted.current) vp.current = fitL(fitMode);   // the scene's size changed
-    vp.current = clampPan(view0(), L.width, L.height, size);
+    vp.current = clampPan(view0(), L.width, L.height, visSize());
     raw.current = vp.current.k;
   }, [officeKey, size.w, size.h, ratio, L.width, L.height]);
   useEffect(() => () => flushSave(), []);
@@ -2608,7 +2671,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         ${tile("fitwidth", to("fill"), toggleFill, "oo-sheet-fill", fitMode === "cover")}
         ${tile("fullscreen", to("fullscreen"), () => { closeMore(); enterFs(); }, "oo-sheet-fs")}
       </div>` : null}
-      ${typeof onLive === "function" ? html`<label class="check oo-sheet-live"><input type="checkbox" checked=${!!live} onChange=${() => onLive(!live)} /><span>${t("orgc.live")}</span></label>` : null}
+      ${typeof onLive === "function" ? html`<label class="check oo-sheet-live"><input type="checkbox" checked=${!!live} onChange=${() => onLive(!live)} /><span>${to("live")}</span></label>` : null}
       <div class="oo-bar oo-sheet-bar" onClick=${sheetClick}>${barItems}</div>
     </${Dialog}>` : null}
     ${traffic && keyOpen ? html`<${OfficeKey} pal=${pal} />` : null}
@@ -2639,7 +2702,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen, rows: cardRows ? cardRows(cardOf.node.name) : null, display: cardName ? cardName(cardOf.node.name) : "",
           state: stateOf(cardOf.node), now: nowOf(cardOf.node),
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
-        avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { const was = cardEl.current; cardEl.current = el; placeCard();
+        avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { const was = cardEl.current; cardEl.current = el; if (!el || !el.classList?.contains("sheet")) unliftSheet(); placeCard();
           // #4379 review: the tags it covers (or uncovers) are judged at the next frame; a still scene draws one now.
           if (was !== el && scene.current) { scene.current.dirty = true; const go = () => (still ? draw(0) : loop.current?.wake()); if (typeof requestAnimationFrame === "function") requestAnimationFrame(go); else go(); } }}
         onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard}
@@ -2672,10 +2735,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
               onFocus=${() => setTip(d.key)} onBlur=${() => setTip(null)} onClick=${() => { cardFrom.current = d.key; setCard((cur) => (cur === d.key ? null : d.key)); }}>${nt.primary}</button>`
           : html`<span class="oo-desk" data-name=${d.node.name} data-key=${d.key}>${full}</span>`}</li>`;
       })}</ul>
-      <div class="oc-zoom oo-zoom" role="group" aria-label=${t("orgc.view")}>
+      <div class="oc-zoom oo-zoom" role="group" aria-label=${to("view")}>
         <output ref=${pctRef} class="oo-zoom-pct"></output>
-        <button type="button" class="icon-btn oo-zoom-in" aria-label=${t("orgc.zoomIn")} title=${t("orgc.zoomIn")} onClick=${() => zoomStep(1)}><${Icon} name="plus" size=${16} /></button>
-        <button type="button" class="icon-btn oo-zoom-out" aria-label=${t("orgc.zoomOut")} title=${t("orgc.zoomOut")} onClick=${() => zoomStep(-1)}><${Icon} name="minus" size=${16} /></button>
+        <button type="button" class="icon-btn oo-zoom-in" aria-label=${to("zoomIn")} title=${to("zoomIn")} onClick=${() => zoomStep(1)}><${Icon} name="plus" size=${16} /></button>
+        <button type="button" class="icon-btn oo-zoom-out" aria-label=${to("zoomOut")} title=${to("zoomOut")} onClick=${() => zoomStep(-1)}><${Icon} name="minus" size=${16} /></button>
         <button type="button" class="icon-btn oo-fit" aria-label=${to("fit")} title=${to("fit")} onClick=${() => fit()}><${Icon} name="fitwidth" size=${16} /></button>
         <button type="button" class=${`icon-btn oo-fill${fitMode === "cover" ? " on" : ""}`} aria-pressed=${fitMode === "cover" ? "true" : "false"} aria-label=${to("fillTitle")}
           title=${to("fillTitle")} onClick=${toggleFill}>${to("fill")}</button>

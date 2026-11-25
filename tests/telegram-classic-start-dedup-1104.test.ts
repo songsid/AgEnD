@@ -19,9 +19,13 @@ const PRIMARY_GROUP = "-1001111111111";
 const SECONDARY_GROUP = "-1002222222222";
 const dirs: string[] = [];
 const liveAdapters: TelegramAdapter[] = [];
+const fleets: FleetManager[] = [];
 
 afterEach(async () => {
   setLocale("en");
+  for (const fleet of fleets.splice(0)) {
+    for (const pending of (fleet as any).pendingClassicStarts.values()) clearTimeout(pending.timer);
+  }
   // No adapter.start/polling was called. Stop only the private in-memory
   // grammy object and its HTTP agents; never a fleet/process lifecycle.
   for (const adapter of liveAdapters.splice(0)) await adapter.stop();
@@ -35,6 +39,7 @@ function setup(sharedFleetGroup = false) {
   dirs.push(dir);
   writeFileSync(join(dir, "classicBot.yaml"), `defaults:\n  allowed_groups: ["${GROUP}"]\n  allowed_users: ["42"]\n  admin_users: ["42"]\n`);
   const fleet = new FleetManager(dir);
+  fleets.push(fleet);
   const state = fleet as any;
   const log = { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() };
   state.logger = log;
@@ -61,6 +66,8 @@ function setup(sharedFleetGroup = false) {
     // Every possible external call fails locally rather than reaching Telegram.
     bot.api.config.use(async () => { throw new Error("Unexpected Telegram API call in routing test"); });
     vi.spyOn(adapter, "sendText").mockImplementation(async chatId => ({ chatId, messageId: "reply" }));
+    vi.spyOn(adapter, "promptUser").mockResolvedValue("menu");
+    vi.spyOn(adapter, "editMessageRemoveButtons").mockResolvedValue(undefined);
     vi.spyOn(adapter, "react").mockResolvedValue(undefined);
     const world = new AdapterWorld(channel.id!, adapter, access, channel);
     world.botUsername = username;
@@ -107,6 +114,21 @@ function setup(sharedFleetGroup = false) {
   return { fleet, state, classic, start, select, deliver, inbound, primary: worlds[0]!, target: worlds[1]! };
 }
 
+/** The room waits for Restricted. The click is the same user's button on that bot's menu. */
+async function chooseRestricted(h: ReturnType<typeof setup>, world: ReturnType<typeof setup>["target"], userId = "42") {
+  const prompts = vi.mocked(world.adapter.promptUser);
+  const last = prompts.mock.calls.at(-1);
+  expect(last, "mode menu").toBeTruthy();
+  const choice = (last![2] as { id: string }[]).find(item => item.id.endsWith(":restricted"));
+  expect(choice).toBeTruthy();
+  await h.state.handleClassicModeSelection({
+    callbackData: choice!.id,
+    chatId: String(last![0]),
+    messageId: "menu",
+    userId,
+  });
+}
+
 describe("Telegram ClassicBot onboarding dedup (#1104)", () => {
   for (const order of ["sibling-first", "target-first"] as const) {
     it(`${order}: targeted /start registers/starts only the intended bot in an unregistered group`, async () => {
@@ -115,13 +137,18 @@ describe("Telegram ClassicBot onboarding dedup (#1104)", () => {
       const copies = order === "sibling-first" ? [h.primary, h.target] : [h.target, h.primary];
       for (const copy of copies) await copy.feed("/start@tArGeTbOt codex");
       expect(h.inbound.map(m => m.adapterId)).toEqual(copies.map(c => c.adapter.id));
+      expect(h.start).not.toHaveBeenCalled();
+      await chooseRestricted(h, h.target);
       expect(h.start).toHaveBeenCalledTimes(1);
       const name = h.classic.getInstanceByChannel(GROUP, "secondary");
       expect(name).toBeDefined();
       expect(h.classic.getInstanceByChannel(GROUP, "primary")).toBeUndefined();
       expect(h.classic.getAdapterIdByInstance(name!)).toBe("secondary");
       expect(h.state.getAdapterForInstance(name!)).toBe(h.target.adapter);
-      expect(h.target.adapter.sendText).toHaveBeenCalledTimes(2); // One disclosure plus the start reply; duplicates still start nothing.
+      expect(vi.mocked(h.target.adapter.promptUser)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(h.target.adapter.editMessageRemoveButtons)).toHaveBeenCalledTimes(1);
+      expect(h.target.adapter.sendText).not.toHaveBeenCalled();
+      expect(vi.mocked(h.primary.adapter.promptUser)).not.toHaveBeenCalled();
       expect(h.primary.adapter.sendText).not.toHaveBeenCalled();
     });
   }
@@ -140,9 +167,11 @@ describe("Telegram ClassicBot onboarding dedup (#1104)", () => {
   it("retransmission after registration does not change the dedup namespace", async () => {
     const h = setup();
     await h.target.feed("/start@TargetBot codex");
+    await chooseRestricted(h, h.target);
     await h.target.feed("/start@TargetBot codex");
     expect(h.start).toHaveBeenCalledTimes(1);
-    expect(h.target.adapter.sendText).toHaveBeenCalledTimes(2); // One disclosure plus the start reply; duplicates still start nothing.
+    expect(vi.mocked(h.target.adapter.promptUser)).toHaveBeenCalledTimes(1);
+    expect(h.target.adapter.sendText).not.toHaveBeenCalled();
   });
 
   it("two bot private chats with equal user/chat/message ids have independent onboarding selectors", async () => {
@@ -158,6 +187,8 @@ describe("Telegram ClassicBot onboarding dedup (#1104)", () => {
     const h = setup();
     await h.primary.feed("/start codex", 10, "42");
     await h.target.feed("/start codex", 10, "42");
+    await chooseRestricted(h, h.primary);
+    await chooseRestricted(h, h.target);
     expect(h.start).toHaveBeenCalledTimes(2);
     const primaryName = h.classic.getInstanceByChannel("42", "primary");
     const targetName = h.classic.getInstanceByChannel("42", "secondary");
@@ -199,6 +230,7 @@ describe("Telegram ClassicBot onboarding dedup (#1104)", () => {
     const h = setup();
     await h.primary.feed("/start@TargetBot codex", 10, GROUP, 30);
     await h.target.feed("/start@TargetBot codex", 10, GROUP, 30);
+    await chooseRestricted(h, h.target);
     expect(h.start).toHaveBeenCalledTimes(1);
     expect(h.deliver).not.toHaveBeenCalled();
     expect(h.classic.getInstanceByChannel(GROUP, "secondary")).toBeDefined();
@@ -235,11 +267,13 @@ describe("restricted Classic start disclosure", () => {
     const r = setup();
     const register = vi.spyOn(r.classic, "register");
     await r.target.feed("/start@TargetBot codex");
-    const sends = vi.mocked(r.target.adapter.sendText);
+    const prompts = vi.mocked(r.target.adapter.promptUser);
     const phrase = locale === "en" ? "only contact approval applies" : "只有聯絡申請需要核准";
-    const notice = sends.mock.calls.findIndex(call => String(call[1]).includes(phrase));
+    const notice = prompts.mock.calls.findIndex(call => String(call[1]).includes(phrase));
     expect(notice).toBeGreaterThanOrEqual(0);
+    expect(register).not.toHaveBeenCalled();
+    await chooseRestricted(r, r.target);
     expect(register).toHaveBeenCalledOnce();
-    expect(sends.mock.invocationCallOrder[notice]!).toBeLessThan(register.mock.invocationCallOrder[0]!);
+    expect(prompts.mock.invocationCallOrder[notice]!).toBeLessThan(register.mock.invocationCallOrder[0]!);
   });
 });

@@ -1,0 +1,375 @@
+{
+  "sourceHead": "a4af589593347e08eb05c23ab555adc97aa74c56",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "the Hub offers agents' characters with their pictures",
+      "ok": true
+    },
+    {
+      "name": "Atlas, Nova and Echo: the robot's seven room poses and the filled paused (a robot has its own)",
+      "ok": true
+    },
+    {
+      "name": "Quill: the fox has only idle — every room pose is drawn with it (one picture)",
+      "ok": true
+    },
+    {
+      "name": "Notes: its set is far over 512 KB — none is sent; Sage and Reports have none",
+      "ok": true
+    },
+    {
+      "name": "Notes's owner is told its character is too large",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the room office names Atlas, Echo, Nova and Quill's own characters, nobody else's",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the states shown are the member list's (Atlas idle, Quill working, Nova paused, Echo offline)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: each own character's every strip was loaded by the page (drawn whole)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the fox is found on the scene",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: Atlas's card shows its own character's stand (its orange robot), not the figure",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: Quill's card shows its own character, the fox (its orange), not the figure",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the room's style is Studio (large)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: Echo alone takes a top-row seat under its area's name",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: My agents tells the owner Notes's character is too large",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: the room office names Atlas, Echo, Nova and Quill's own characters, nobody else's",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: the states shown are the member list's (Atlas idle, Quill working, Nova paused, Echo offline)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: each own character's every strip was loaded by the page (drawn whole)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: the fox is found on the scene",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: Atlas's card shows its own character's stand (its orange robot), not the figure",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: Quill's card shows its own character, the fox (its orange), not the figure",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: the room's style is Studio (large)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: Echo alone takes a top-row seat under its area's name",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: My agents tells the owner Notes's character is too large",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the room office names Atlas, Echo, Nova and Quill's own characters, nobody else's",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the states shown are the member list's (Atlas idle, Quill working, Nova paused, Echo offline)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: each own character's every strip was loaded by the page (drawn whole)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the fox is found on the scene",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: Atlas's card shows its own character's stand (its orange robot), not the figure",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: Quill's card shows its own character, the fox (its orange), not the figure",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the room's style is Studio (large)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: Echo alone takes a top-row seat under its area's name",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: My agents tells the owner Notes's character is too large",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the room office names Atlas, Echo, Nova and Quill's own characters, nobody else's",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the states shown are the member list's (Atlas idle, Quill working, Nova paused, Echo offline)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: each own character's every strip was loaded by the page (drawn whole)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the fox is found on the scene",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: Atlas's card shows its own character's stand (its orange robot), not the figure",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: Quill's card shows its own character, the fox (its orange), not the figure",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the room's style is Studio (large)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: Echo alone takes a top-row seat under its area's name",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: My agents tells the owner Notes's character is too large",
+      "ok": true
+    },
+    {
+      "name": "no page or rig errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-1-office.png",
+      "sha256": "070217140747152930e44caef110053d8357366b66d6e330336d1aa6a54351b8"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-1z-office-close.png",
+      "sha256": "05516c3b84e128b24b9b6a64110ff2a7a1595a514fe8036c5e6db4c2a63cb204"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-1q-fox-close.png",
+      "sha256": "5541e9455dcc3956abe016ab7a6a0cb934e4e94cfb21ea4fbba509403ce4b0b3"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-2-card-atlas.png",
+      "sha256": "136892b4b9a5030d78e972aa08504e3abaffaf911092d0d206bf4c8d8a963dc1"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-2b-card-quill.png",
+      "sha256": "e724751a10c7f4a4a6cd7155056f468c704caadd4cae79dc9d77aea471929af0"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-3-office-studio-large.png",
+      "sha256": "1f979ee654bc0a2f4dd5bb06e8933394c49d422ab333588a0d138d161413c213"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-3z-top-row-title-close.png",
+      "sha256": "2c0a886a86b4ee82af7ba93b52ad26894148b4902cd383adbbf4a90f58b7e46b"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-4-my-agents-too-large.png",
+      "sha256": "6d3d8212d54c1acd125b2404c98c000562a00cc3fb78a90270f1ebd1e572c0df"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-1-office.png",
+      "sha256": "f44390dc0ede3b884decb5b985daadcb3bced1b3647997772702820a7cfd13b8"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-1z-office-close.png",
+      "sha256": "e09dc1c0a148be3eebba55bbb94cd83d43af60782550037a279bea49a5353056"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-1q-fox-close.png",
+      "sha256": "1d0c67883e3b83c0441ef1aee1b0f8fde2f8caf2fcecde708017d576a58af588"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-2-card-atlas.png",
+      "sha256": "b594f673eac3b7de5453a6fa6a374811466fe09695d65493ce25698707087e86"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-2b-card-quill.png",
+      "sha256": "92a53f6d4f8d9b83c2552d3e87f56d7fbf03dd6c5bab1084c177a918f0709bf3"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-3-office-studio-large.png",
+      "sha256": "93dfc2605b6465303547e983f8658130b5a671b7c12afed749fb852d04fdb809"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-3z-top-row-title-close.png",
+      "sha256": "381337d1658eadaa6a10b791c0e15a995dc5e17ad7ad6dc2e2cef20f8db287b5"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-4-my-agents-too-large.png",
+      "sha256": "a70cab6902390b5e85d1b100d4e39d81185f0b10363872363c499091dfdf86e7"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-1-office.png",
+      "sha256": "3e09d64af0aed85be97ab97cc13116ccd1611a0c1525b20ff48bc95cc3c37c3c"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-1z-office-close.png",
+      "sha256": "2bf18b06a867be375fb37568d42823fd8f5141f79562a2cc0e3fbf3a4b0adeff"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-1q-fox-close.png",
+      "sha256": "2a6a53bda8f105243605bcd98c5ad73420e66178f49346df75d37a55abe989e1"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-2-card-atlas.png",
+      "sha256": "33e5d494102d9e585317e726a85c6fa2905b47aa0f6e3a7c00067c2e82673178"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-2b-card-quill.png",
+      "sha256": "576d920159c0bc9b90f41b4a72b1c74a62796c309c77941894bc5af3883246a8"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-3-office-studio-large.png",
+      "sha256": "22354deb976d8460206c76ac68da4680a6bd009d8dc1785e4709ed23ebddf599"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-3z-top-row-title-close.png",
+      "sha256": "649eb25c79a1a8fb420a35f261c7bd399bd84bdfa33b8b035974f48d54b44bb9"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-4-my-agents-too-large.png",
+      "sha256": "8cdb0a90c546081a98884c62b3bfcec30d13c610824ca5019508e1d2e027c4b7"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-1-office.png",
+      "sha256": "ceee32e489d62996df499f75464574901d60c6ba1432707409744bd301eb5b42"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-1z-office-close.png",
+      "sha256": "cc51b817dd7f24c7ddfcd08ef39bf1a338d814f3f1770e3952a2e8dea77dcdd6"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-1q-fox-close.png",
+      "sha256": "cd75a12e126014607fa6887a5061265e3cc1c9593b327e2dbd9735833d9c2775"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-2-card-atlas.png",
+      "sha256": "e0eab89a947e89eed55f56f5cca074e24594682f4819afe9fd77fe4961a4503b"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-2b-card-quill.png",
+      "sha256": "f8380f8696771a0d9c857828e652b4805003ea383679a02f17fa453026e633a2"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-3-office-studio-large.png",
+      "sha256": "cdfa37bc3a7a2617a52e220b5168ea7aaa31bf3b4f5f9ec470741dacb210dcaf"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-3z-top-row-title-close.png",
+      "sha256": "0f8453f9ac97f89c60c47fd8979472c9f2a8e4f7ae56f6257f284d5d58b1a159"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-4-my-agents-too-large.png",
+      "sha256": "98e6133d15718cf905ec852cb1b7a01c8cc2a589bd4554659865428714df4f6f"
+    }
+  ],
+  "measured": {
+    "stripsPerAgent": {
+      "Atlas": [
+        "idle",
+        "paused",
+        "stand",
+        "walkDown",
+        "walkSide",
+        "walkUp",
+        "working"
+      ],
+      "Quill": [
+        "idle",
+        "paused",
+        "stand",
+        "working"
+      ],
+      "Nova": [
+        "idle",
+        "paused",
+        "stand",
+        "walkDown",
+        "walkSide",
+        "walkUp",
+        "working"
+      ],
+      "Echo": [
+        "idle",
+        "paused",
+        "stand",
+        "walkDown",
+        "walkSide",
+        "walkUp",
+        "working"
+      ],
+      "Notes": [],
+      "Sage": [],
+      "Reports": []
+    },
+    "bytesPerAgent": {
+      "Atlas": 2211,
+      "Quill": 1796,
+      "Nova": 2214,
+      "Echo": 2214
+    },
+    "desk-zh-TW-light-foxDesk": {
+      "x": 333.5,
+      "y": 346,
+      "w": 11.5,
+      "h": 4.5
+    },
+    "desk-en-dark-foxDesk": {
+      "x": 333.5,
+      "y": 346,
+      "w": 11.5,
+      "h": 4.5
+    },
+    "phone-zh-TW-dark-foxDesk": {
+      "x": 41.5,
+      "y": 357.5,
+      "w": 5.5,
+      "h": 1.5
+    },
+    "phone-en-light-foxDesk": {
+      "x": 41.5,
+      "y": 357.5,
+      "w": 5.5,
+      "h": 1.5
+    }
+  },
+  "summary": "42/42"
+}

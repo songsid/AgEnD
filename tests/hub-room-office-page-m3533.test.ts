@@ -280,6 +280,33 @@ describe("the room page", () => {
   });
 });
 
+describe("the zoom controls' names are words, never string keys (M-3695)", () => {
+  // The Hub serves only the Office's own modules: the org chart canvas (fleet-canvas.js, the "orgc" words) is not one.
+  const open = async (narrow: boolean, lang: string) => {
+    const r = await roomPage({ narrow, lang });
+    if (narrow) { const items = await openMenu(r.pg); fire(items[0], "click"); }
+    else fire(r.pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click");
+    await until(() => q(r.pg, ".hub-room-office .oo-zoom-in"));
+    return r;
+  };
+  for (const [narrow, lang, words] of [
+    [false, "en", ["View", "Zoom in", "Zoom out"]], [false, "zh-TW", ["檢視", "放大", "縮小"]],
+    [true, "en", ["View", "Zoom in", "Zoom out"]], [true, "zh-TW", ["檢視", "放大", "縮小"]],
+  ] as const) {
+    it(`${narrow ? "a phone" : "desktop"} (${lang}): ${words.join(" / ")}`, async () => {
+      const { pg, restore } = await open(narrow, lang);
+      try {
+        const zin = q(pg, ".hub-room-office .oo-zoom-in"), zout = q(pg, ".hub-room-office .oo-zoom-out");
+        expect([q(pg, ".hub-room-office .oo-zoom").getAttribute("aria-label"), zin.getAttribute("aria-label"), zout.getAttribute("aria-label")]).toEqual(words);
+        expect([zin.getAttribute("title"), zout.getAttribute("title")]).toEqual(words.slice(1));
+        const named = [...pg.root.querySelectorAll(".hub-room-office [aria-label], .hub-room-office [title]")]
+          .flatMap((e: any) => [e.getAttribute("aria-label"), e.getAttribute("title")]).filter(Boolean);
+        expect(named.filter((v: string) => /^[a-z]+[A-Za-z]*\.[a-zA-Z_]+$/.test(v))).toEqual([]);   // no raw key anywhere in it
+      } finally { restore(); }
+    });
+  }
+});
+
 describe("the office follows the room (Prism, #4355)", () => {
   it("an agent that joins is drawn and a renamed one keeps its place, without a remount", async () => {
     const p = page(); mounted.push(p); i18n.setLang("en", { store: false });

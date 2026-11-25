@@ -3,7 +3,7 @@
  * per existing ClassicBot room — "[room] — 建議將這個房間切換為受限模式 (148d)" — no word of what to do or where, one row per
  * room flooding the list, and the age counted from the room's creation. Now:
  * - the chat gets ONE line per world for its rooms' restricted-mode suggestions: how many rooms, where to act (/web → Needs
- *   you, or a room's Details → Permissions), that nothing changes on its own; it counts once in the header;
+ *   you, or a room's Settings → Permissions), that nothing changes on its own; it counts once in the header;
  * - each room's age counts from when its suggestion was first raised (recorded by the store), in the chat and on the web;
  * - the web keeps its own per-room cards (switch / preview / later), unchanged.
  */
@@ -116,10 +116,10 @@ describe("M-3381: the chat text (Telegram), en and zh-TW", () => {
     owner: "fake-bot", since: Date.now() - 5 * 60_000, detail: "", contactSuggestionCount: 5 } as NeedsYouItem;
   it("en: one line counted once — how many rooms, where to act, nothing automatic; no room-by-room rows", async () => {
     const text = await liveText("en", [group]);
-    expect(text).toBe("📥 Needs you — 1\n• 5 existing ClassicBot room(s) can switch to restricted mode — to review: /web → Needs you, or a room's Details → Permissions. Nothing changes on its own. (5m)");
+    expect(text).toBe("📥 Needs you — 1\n• 5 existing ClassicBot room(s) can switch to restricted mode — to review: /web → Needs you, or a room's Settings → Permissions. Nothing changes on its own. (5m)");
   });
   it("zh-TW: the same, in Traditional Chinese", async () => {
     const text = await liveText("zh-TW", [group]);
-    expect(text).toBe("📥 等你處理 — 1\n• 5 個既有 ClassicBot 房間可以切換為受限模式 — 查看方式：/web → 等你處理，或房間的詳細資料 → 權限。不會自動切換。 (5m)");
+    expect(text).toBe("📥 等你處理 — 1\n• 5 個既有 ClassicBot 房間可以切換為受限模式 — 查看方式：/web → 等你處理，或房間的設定 → 權限。不會自動切換。 (5m)");
   });
 });

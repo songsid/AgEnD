@@ -32,16 +32,18 @@ A fleet admin's style for **Whole fleet** is what every device and share link sh
 
 ## Set up offices
 
-A fleet admin, on the dashboard reached directly, uses **Edit offices** in the Office bar:
+A fleet admin, from an admin session, uses **Edit offices** in the Office bar:
 
 1. **Add office** and name it.
 2. **Who is in it:** **Everyone**, **Picked** (whole teams or single agents), or **Nobody (NPCs only)** for a room with only its style's characters.
-3. **Style:** Desks, Studio, Cozy or a kept skin pack.
+3. **Style:** Desks, Studio, Cozy, Guild, School or a kept skin pack.
 4. **Save.**
 
 Everyone on the fleet sees the same offices. The host keeps them in `web-offices.json` in the AgEnD home, never in fleet.yaml, so a change restarts nothing.
 
 **Edit layout** (Studio, Cozy or a zones pack) moves seats, furniture, the door, the mail drop and the walking paths for one office, reserves seats for particular agents, and gives furniture a night place. The pack itself stays as uploaded. See [Arrange the layout](https://github.com/songsid/AgEnD/blob/main/docs/office.md#arrange-the-layout).
+
+**Play.** **Display options** can show **Drag and pat** (per device, on by default): pick someone up, move them to another seat in their area, pat them or feed them a snack. Skin packs can add **Snacks** with their own words. It is yours alone on your own dashboard — never stored, never sent — unless you tick **Tell** on their card. See the [full guide](https://github.com/songsid/AgEnD/blob/main/docs/office.md) for the rules.
 
 ## Share a view
 
@@ -49,7 +51,7 @@ Everyone on the fleet sees the same offices. The host keeps them in `web-offices
 
 ## Levels
 
-Each agent has a level from its lifetime work (uncached input, cache writes and output; cache reads don't count), shown as a badge on its name tag and on its profile card. The numbers come from the usage report; nothing new is collected. **Settings → Web dashboard → Office levels** turns them off. See [Levels](https://github.com/songsid/AgEnD/blob/main/docs/office.md#levels).
+Each agent has a level from its lifetime work (uncached input, cache writes and output; cache reads don't count), shown as a badge on its name tag and on its profile card. The numbers come from the usage report; nothing new is collected. **Settings → Web dashboard → Office levels** turns them off. Fleet-wide titles live in **Settings → Web dashboard → Level titles for every office** (an admin session). See [Levels](https://github.com/songsid/AgEnD/blob/main/docs/office.md#levels).
 
 ## Agents in the office
 

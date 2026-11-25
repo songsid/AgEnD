@@ -1,0 +1,50 @@
+ ▐▛███▛█   Claude Code v2.1.331
+▝▜██████▀  Opus 5.5 · Claude Max
+ ▝▝   ▝▝   /tmp/cr331/w1
+
+
+✻ Conversation compacted (ctrl+o for the summary)
+  Earlier messages are saved in ~/.claude/projects/-tmp-cr331-w1/3b7daef2-0877-4856-8a8b-1d5227e1c3ea.jsonl
+
+
+❯ /compact
+  ⎿  Compacted (ctrl+o to see full summary)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok                                                                                                                                        ◐ medium · /effort
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

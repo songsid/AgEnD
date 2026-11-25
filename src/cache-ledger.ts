@@ -17,6 +17,7 @@
  *   38,551 real events on GPT-5.6+ models — so a write is estimated as the request's uncached input unless a real
  *   write count shows up. The model comes from the preceding `turn_context`.
  */
+import { createHash } from "node:crypto";
 import { objectAt, type ScanLine } from "./cache-scan.js";
 import { isLongPrompt } from "./cache-prices.js";
 
@@ -25,6 +26,10 @@ export type TranscriptKind = "claude" | "codex" | "kiro" | "grok" | "muse" | "op
 
 /** One model request, as the transcript records it. */
 export interface Turn {
+  /** Stable Codex request identity. Forked rollouts rewrite timestamps, but retain turn and usage. */
+  eventKey?: string;
+  /** The exact pending response associated with this count, if it has valid speed clocks; never persisted. */
+  codexPending?: CodexPending;
   t: number;
   model: string;
   /** Everything the request sent: uncached input + cache reads + cache writes. */
@@ -99,6 +104,10 @@ export interface FileCursor {
   /** Codex: the model of the latest turn_context; the last cumulative total (token_count repeats itself). */
   model?: string;
   total?: number;
+  turnId?: string;
+  sessionId?: string;
+  /** A complete sessions+archive listing could not find this fork's parent; dates are best available, not recovered. */
+  orphaned?: true;
   /** Claude: ids of the last messages counted (one message spans several lines). */
   ids?: string[];
   /** #3066 §2, Claude: the response being read, for its speed (its window ends at its last block). */
@@ -121,6 +130,13 @@ export interface Ledger {
   writesSeen?: boolean;
   /** M-2452: the speed method its speeds were measured with (SPEED_METHOD); absent: before it. */
   spv?: number;
+  /** Codex replay accounting generation; absent ledgers are rebuilt once from their sources. */
+  codexMethod?: 1;
+  codexEvents?: Record<string, { t: number; path: string }>;
+  /** Mixed-reader legacy gaps have no source tags: retain them, without adding the rebuilt historical gaps again. */
+  codexGapFloor?: number;
+  /** Durable in-progress rebuild. Reports continue to use the outer, previously published generation. */
+  codexRebuild?: Ledger;
 }
 
 /** A dictionary keyed by names from outside (paths, model ids): every key an own property (#1467 lesson). */
@@ -128,7 +144,7 @@ const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T
 export function emptyLedger(): Ledger { return { v: 2, files: dict(), hours: dict(), gaps: [], spv: SPEED_METHOD }; }
 
 /** A ledger read back from disk; anything that is not one is a fresh ledger. */
-export function reviveLedger(raw: unknown): Ledger {
+export function reviveLedger(raw: unknown, candidate = false): Ledger {
   const l = emptyLedger();
   if (!raw || typeof raw !== "object" || (raw as Ledger).v !== 2) return l;
   const r = raw as Ledger;
@@ -170,7 +186,42 @@ export function reviveLedger(raw: unknown): Ledger {
   }
   if (Array.isArray(r.gaps)) l.gaps = r.gaps.filter((g) => Array.isArray(g) && g.length === 9);
   if (r.writesSeen) l.writesSeen = true;
+  if (r.codexMethod === 1) {
+    l.codexMethod = 1;
+    l.codexEvents = dict();
+    for (const [key, event] of Object.entries(r.codexEvents ?? {})) if (/^[a-f0-9]{64}$/.test(key) && event && typeof event.t === "number" && Number.isFinite(event.t) && typeof event.path === "string") l.codexEvents[key] = event;
+    if (typeof r.codexGapFloor === "number" && Number.isFinite(r.codexGapFloor)) l.codexGapFloor = r.codexGapFloor;
+  }
+  if (!candidate && r.codexRebuild?.v === 2 && r.codexRebuild.codexMethod === 1) l.codexRebuild = reviveLedger(r.codexRebuild, true);
   return l;
+}
+
+/** Rebuild recent Codex contributions without changing durable daily/lifetime checkpoints or other readers. */
+export function codexRebuild(ledger: Ledger, cutoff: number): Ledger {
+  const raw = structuredClone(ledger);
+  delete raw.codexRebuild;
+  const next = reviveLedger(raw, true);
+  next.codexMethod = 1; next.codexEvents = dict();
+  const mixed = Object.values(next.files).some(f => f.kind !== "codex")
+    || Object.values(next.hours).some(h => Object.keys(h.src ?? {}).some(sk => !sk.startsWith("codex:")));
+  if (mixed) next.codexGapFloor = cutoff + KEEP_DAYS * 86400_000;
+  for (const [path, file] of Object.entries(next.files)) if (file.kind === "codex") delete next.files[path];
+  for (const [hk, hour] of Object.entries(next.hours)) {
+    // An old hour might not yet have been durably folded (for example a failed rollup write). Keep it until the
+    // existing checkpoint protocol can fold it; the repair is of the retained read horizon, not the lifetime archive.
+    if (Number(hk) + 3_600_000 <= cutoff) continue;
+    for (const [sk, models] of Object.entries(hour.src ?? {})) if (sk.startsWith("codex:")) {
+      for (const [mk, totals] of Object.entries(models)) {
+        const all = hour.m[mk];
+        if (all) { for (let i = 0; i < all.length; i++) all[i] = Math.max(0, all[i]! - totals[i]!); if (all.every(n => n === 0)) delete hour.m[mk]; }
+      }
+      delete hour.src![sk]; delete hour.rs?.[sk]; delete hour.cs?.[sk]; delete hour.sp?.[sk];
+    }
+    // Older mixed-reader gap records lack source tags. Preserve them rather than erase another reader's history.
+    if (!mixed) hour.g.fill(0);
+  }
+  if (!mixed) next.gaps = next.gaps.filter(g => g[0] < cutoff);
+  return next;
 }
 
 const HOUR = 3_600_000;
@@ -193,14 +244,14 @@ export function claudeTtlAfter(turn: Turn, current: number | undefined): number 
  * Fold one turn into the ledger, in file order. Turns older than `cutoff` only move the session's last point (the
  * next gap needs it); everything else is counted. Pure apart from mutating `ledger`.
  */
-export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: number, profile?: string): void {
+export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: number, profile?: string, account = true): void {
   const prev = file.last;
   const ttlBefore = file.kind === "claude" ? (file.ttl ?? CLAUDE_DEFAULT_TTL_SEC) : CODEX_TTL_SEC;
   if (file.kind === "claude") file.ttl = claudeTtlAfter(turn, file.ttl);
   file.first ??= turn.t;
   file.last = { t: turn.t, ctx: turn.prompt + turn.output, model: turn.model, ttl: file.kind === "claude" ? file.ttl! : CODEX_TTL_SEC };
   if (turn.write !== null && turn.write > 0) ledger.writesSeen = true;
-  if (turn.t < cutoff) return;
+  if (!account || turn.t < cutoff) return;
   const hk = String(hourOf(turn.t));
   const hour = ledger.hours[hk] ??= { m: dict<HourTotals>(), g: new Array<number>(GAP_BUCKETS).fill(0) };
   const mk = modelKey(turn.model, turn.prompt);
@@ -215,6 +266,7 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   if (turn.reasoning) { const rs = (hour.rs ??= dict<Record<string, number>>())[sk] ??= dict<number>(); rs[mk] = (rs[mk] ?? 0) + turn.reasoning; }
   if (turn.cost) { const cs = (hour.cs ??= dict<Record<string, number>>())[sk] ??= dict<number>(); cs[mk] = (cs[mk] ?? 0) + turn.cost; }
   // Only Claude and Codex are in the cache analysis (Kiro's turns are estimates; the others' analysis is not built).
+  if (file.kind === "codex" && turn.t <= (ledger.codexGapFloor ?? -Infinity)) return;
   if (!prev || (file.kind !== "claude" && file.kind !== "codex")) return;
   const gap = (turn.t - prev.t) / 1000;
   if (!(gap >= 0)) return;
@@ -340,7 +392,7 @@ const CX_TURN = /"turn_id":"([^"]+)"/;
 const CX_EVENT = /"type":"event_msg","payload":\{"type":"(task_started|task_complete|turn_aborted|error|stream_error|context_compacted)"/;
 const CX_PENDING_MAX = 64, CX_HOSTED_MAX = 256;
 /** One response closed by its record, waiting for its count (`counted`, the token_count's time) and its turn's end. */
-export interface CodexPending { start: number; end: number; out: number; prompt: number; model: string; counted?: number }
+export interface CodexPending { start: number; end: number; out: number; prompt: number; model: string; counted?: number; replay?: true }
 /** A turn being read: its id, the open response's clocks, its hosted tool intervals, its closed responses. */
 export interface CodexResponse { turn: string | null; start: number | null; end: number | null; bad?: true; hosted: Array<[number, number]>; pend: CodexPending[] }
 const newCx = (turn: string | null): CodexResponse => ({ turn, start: null, end: null, hosted: [], pend: [] });
@@ -356,6 +408,7 @@ export function clippedUnionMs(intervals: ReadonlyArray<readonly [number, number
 
 /** A counted response becomes a sample, its window less the turn's hosted tool time inside it. */
 function emitCodexSample(file: FileCursor, r: CodexResponse, p: CodexPending): void {
+  if (p.replay) return;
   if (typeof p.counted !== "number") return;                          // never counted: no one's usage
   const ms = p.end - p.start - clippedUnionMs(Array.isArray(r.hosted) ? r.hosted : [], p.start, p.end);
   if (!(ms > 0) || !(p.out > 0) || (p.out * 1000) / ms > CODEX_MAX_TOK_PER_S) return;
@@ -423,11 +476,11 @@ function observeCodexSpeed(line: ScanLine, file: FileCursor): void {
  * Each record drops the responses still waiting before it (observeCodexSpeed), so the latest waiting one is always the
  * latest record's — an untimed record leaves none waiting, and its count times nothing.
  */
-function codexCounted(file: FileCursor, t: number, usage: { input: number; output: number }): void {
+function codexCounted(file: FileCursor, t: number, usage: { input: number; output: number }): CodexPending | undefined {
   const pend = file.cx?.pend;
   if (!Array.isArray(pend)) return;
   const latest = pend.filter((x) => typeof x.counted !== "number").at(-1);
-  if (latest && latest.out === usage.output && latest.prompt === usage.input) latest.counted = t;
+  if (latest && latest.out === usage.output && latest.prompt === usage.input) { latest.counted = t; return latest; }
 }
 
 /**
@@ -508,7 +561,11 @@ export function codexLine(line: ScanLine, file: FileCursor): Turn | null {
   try { d = JSON.parse(w.toString("utf8")); } catch { return null; }
   const p = d.payload;
   if (!p) return null;
-  if (d.type === "turn_context") { if (typeof p.model === "string") file.model = p.model; return null; }
+  if (d.type === "turn_context") {
+    if (typeof p.model === "string") file.model = p.model;
+    file.turnId = typeof p.turn_id === "string" ? p.turn_id : undefined;
+    return null;
+  }
   if (d.type !== "event_msg" || p.type !== "token_count") return null;
   const info = p.info as { last_token_usage?: Record<string, unknown>; total_token_usage?: Record<string, unknown> } | null | undefined;
   const u = info?.last_token_usage;
@@ -520,10 +577,12 @@ export function codexLine(line: ScanLine, file: FileCursor): Turn | null {
   const t = Date.parse(d.timestamp);
   if (!Number.isFinite(t)) return null;
   const input = num(u.input_tokens), read = Math.min(num(u.cached_input_tokens), input), output = num(u.output_tokens);
-  codexCounted(file, t, { input, output });                 // #3066 §2: the waiting response this count is the usage of
+  const codexPending = codexCounted(file, t, { input, output }); // #3066 §2: the exact response this count is the usage of
   const write = typeof u.cache_write_input_tokens === "number" ? Math.min(num(u.cache_write_input_tokens), input - read) : null;
   // Reasoning is counted inside output_tokens (total_tokens = input + output): kept as its part, capped at output.
-  return { t, model: file.model ?? "unknown", prompt: input, uncached: input - read - (write ?? 0), read, write5m: 0, write1h: 0, write, output, reasoning: Math.min(num(u.reasoning_output_tokens), output) };
+  const vector = (usage: Record<string, unknown> | undefined): number[] => ["input_tokens", "cached_input_tokens", "cache_write_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens"].map(k => num(usage?.[k]));
+  const eventKey = file.turnId ? createHash("sha256").update(JSON.stringify([file.turnId, vector(info?.total_token_usage), vector(u)])).digest("hex") : undefined;
+  return { t, eventKey, codexPending, model: file.model ?? "unknown", prompt: input, uncached: input - read - (write ?? 0), read, write5m: 0, write1h: 0, write, output, reasoning: Math.min(num(u.reasoning_output_tokens), output) };
 }
 
 /**

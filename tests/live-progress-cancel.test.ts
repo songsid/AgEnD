@@ -251,7 +251,7 @@ describe("retiring a tool-progress bubble preserves its history", () => {
         "123",
       );
       const retainedText = editMessageRemoveButtons.mock.calls[0][2] as string;
-      expect(retainedText).toMatch(/^🧾 工具歷程 \(記錄至 /);
+      expect(retainedText).toMatch(/^🧾 工具歷程（記錄至 /);
       expect(retainedText).not.toContain("處理中");
       expect(deleteMessage).not.toHaveBeenCalled();
     } finally {

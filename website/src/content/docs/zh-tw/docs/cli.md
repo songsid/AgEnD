@@ -170,6 +170,12 @@ agend web --code     # 只印碼，不開瀏覽器
 
 `agend view` 開唯讀版 View 面板。
 
+把本機個人 App 用 stdio MCP 連上你的 fleet（只能聊天和讀取）：
+
+```bash
+agend connect
+```
+
 一次撤銷所有儀表板連結和瀏覽器 session：
 
 ```bash
@@ -240,7 +246,7 @@ agend schedule history <id>
 
 ## 設定確認
 
-敏感設定變更（來自網頁儀表板或 Settings）會成為待確認的提案。AgEnD 會先嘗試透過 General instance 向 fleet admin 發送確認（聊天軟體裡的 Confirm/Reject 按鈕）。若沒有可用的 General instance — 例如變更跨平台、或找不到合適的 General — 則退回主機 CLI 確認：
+敏感設定變更（來自網頁儀表板或 Settings）會成為待確認的提案。已登入的 fleet 管理員在任何裝置上按自己的 **Apply** 就能直接確認 — 除非該管理員開了**在其他裝置確認變更時，要我驗證器的代碼**，那就要先輸入自己的驗證器代碼。如果沒有合適的管理員 session 能確認 — 例如變更跨平台 — 則退回主機 CLI 確認：
 
 ```bash
 agend settings confirm <id>        # 檢視 diff，然後確認

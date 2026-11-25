@@ -81,6 +81,19 @@ describe("list_instances progressive disclosure", () => {
     };
   }
 
+  it("M-3674: each instance carries the last turn another agent started, beside last_activity (null when none)", async () => {
+    const { outboundHandlers } = await import("../src/outbound-handlers.js");
+    const handler = outboundHandlers.get("list_instances")!;
+    const ctx = { ...createMockContext({ "running-forge": { working_directory: "/a" }, "running-quiet": { working_directory: "/b" } }),
+      lastAgentTurnOf: (n: string) => (n === "running-forge" ? "2026-11-24T11:58:00.000Z" : null) };
+    let result: any;
+    await handler(ctx as any, {}, (r) => { result = r; }, { instanceName: "caller", requestId: 1, fleetRequestId: undefined, senderSessionName: undefined });
+    const by = Object.fromEntries(result.instances.map((i: any) => [i.name, i]));
+    expect(by["running-forge"].last_agent_turn).toBe("2026-11-24T11:58:00.000Z");
+    expect(by["running-quiet"].last_agent_turn).toBeNull();
+    expect(by["running-forge"]).toHaveProperty("last_activity");
+  });
+
   describe("tier selection based on output size", () => {
     it("returns full output when within budget", async () => {
       const { outboundHandlers } = await import("../src/outbound-handlers.js");

@@ -1,4 +1,4 @@
-export { ProposeContactChangeArgs } from "./contact-change-proposals.js";
+export { ProposeContactChangeArgs, ContactStateArgs } from "./contact-change-proposals.js";
 import {roomMemberOptions} from "./hub/room-members-model.js";
 /**
  * zod schemas for outbound tool-call args.
@@ -739,9 +739,10 @@ export const DeliveryStatusArgs = z.object({
   message_id: NonEmptyString.optional().describe("The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. On uncertain, it may already have arrived: confirm it, and resend only if it shows failed."),
   limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for operation/correlation queries (default 20, maximum 100)."),
   cursor: NonEmptyString.optional().describe("Opaque next-page cursor returned by the previous query."),
+  held_requests: z.literal(true).optional().describe("Your own messages that were held for approval: state, who decided, when. Use alone."),
 }).strict().refine(args => args.content_includes === undefined || args.message_id !== undefined, { message: "content_includes requires message_id" }).refine(args =>
-  [args.delivery_id, args.operation_id, args.correlation_id, args.message_id].filter(value => value !== undefined).length === 1,
-{ message: "Provide exactly one of delivery_id, operation_id, correlation_id, or message_id" })
+  [args.delivery_id, args.operation_id, args.correlation_id, args.message_id, args.held_requests].filter(value => value !== undefined).length === 1,
+{ message: "Provide exactly one of delivery_id, operation_id, correlation_id, message_id, or held_requests" })
   .refine(args => !args.cursor || !args.delivery_id, {
     message: "cursor is only valid with operation_id, correlation_id or message_id",
     path: ["cursor"],

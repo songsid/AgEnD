@@ -221,7 +221,43 @@ describe("migrateLegacyWindow", () => {
 
 const TMUX = (() => { try { return execFileSync("sh", ["-c", "command -v tmux"], { encoding: "utf8" }).trim() || null; } catch { return null; } })();
 
+/**
+ * A legacy window is an old agent's: its pane has long since exec'd the agent. A window this test just made has not
+ * always: `new-session -d` returns once tmux forked the pane, and until its shell has started the stand-in agent the
+ * tree runs no "agend-mock-cli" (tag CI 45453579485, ubuntu-26.04: "window @0 does not run agend-mock-cli"). So the
+ * test waits for its fixture to be what it stands for: the window's tree runs the stand-in agent.
+ */
+async function untilAgentRuns(t: (a: string[]) => string, windowId: string, binary: string, timeoutMs = 15_000): Promise<void> {
+  const deadline = performance.now() + timeoutMs;
+  for (;;) {
+    const pid = Number(t(["display-message", "-p", "-t", windowId, "#{pane_pid}"]).trim());
+    if (treeRuns(await realLegacyProbes.processes(), pid, binary)) return;
+    if (performance.now() > deadline) throw new Error(`window ${windowId} never ran ${binary}`);
+    await new Promise(r => setTimeout(r, 50));
+  }
+}
+
 describe.skipIf(!TMUX)("a real legacy window on a private socket", () => {
+  it("a window whose shell has not started the agent yet is held, and proven once the agent runs (the tag-CI race, forced)", async () => {
+    const socket = `agend-test-legacy-slow-${process.pid}`;
+    const bin = scratch(), mock = join(bin, "agend-mock-cli"), slowShell = join(bin, "slow-sh"), go = join(bin, "go");
+    writeFileSync(mock, "#!/bin/sh\nsleep 600\n", { mode: 0o755 });
+    // The pane's shell waits for a go file before it starts the agent: the gap between tmux's fork and the agent, held
+    // open on purpose (no timing: it stays open until the test opens it).
+    writeFileSync(slowShell, `#!/bin/sh\nwhile [ ! -e '${go}' ]; do sleep 0.05; done\nexec /bin/sh "$@"\n`, { mode: 0o755 });
+    const t = (a: string[]) => execFileSync(TMUX!, ["-L", socket, ...a], { encoding: "utf8", env: { ...process.env, SHELL: slowShell, TMUX: "" } });
+    t(["-f", "/dev/null", "new-session", "-d", "-s", "agend", "-n", "dev", mock]);
+    try {
+      const id = t(["list-windows", "-t", "agend", "-F", "#{window_id}"]).trim();
+      const p: LegacyProbes = { ...realLegacyProbes, systemTmux: async () => TMUX, tmux: (b, a) => realLegacyProbes.tmux(b, ["-L", socket, ...a]) };
+      // Asked at once, the window does not run the agent yet: a hold, never a migration of an unproven window.
+      await expect(migrateLegacyWindow({ ...args(inst(id), p), backendBinary: "agend-mock-cli" })).rejects.toThrow(/does not run agend-mock-cli/);
+      writeFileSync(go, "");
+      await untilAgentRuns(t, id, "agend-mock-cli");
+      expect(await migrateLegacyWindow({ ...args(inst(id), p), backendBinary: "agend-mock-cli" })).toBe("migrated");
+    } finally { try { execFileSync(TMUX!, ["-L", socket, "kill-server"], { stdio: "ignore" }); } catch { /* gone */ } }
+  }, 30_000);
+
   it("proves, closes and confirms an old agent window; a user's own session on that server survives", async () => {
     const socket = `agend-test-legacy-${process.pid}`;
     const t = (a: string[]) => execFileSync(TMUX!, ["-L", socket, ...a], { encoding: "utf8" });
@@ -234,6 +270,7 @@ describe.skipIf(!TMUX)("a real legacy window on a private socket", () => {
       const id = t(["list-windows", "-t", "agend", "-F", "#{window_id}"]).trim();
       expect(id).toMatch(/^@\d+$/);
       const x = inst(id);
+      await untilAgentRuns(t, id, "agend-mock-cli");
       const p: LegacyProbes = { ...realLegacyProbes, systemTmux: async () => TMUX, tmux: (bin, a) => realLegacyProbes.tmux(bin, ["-L", socket, ...a]) };
       expect(await migrateLegacyWindow({ ...args(x, p), backendBinary: "agend-mock-cli" })).toBe("migrated");
       expect(t(["list-sessions", "-F", "#{session_name}"]).split("\n").filter(Boolean)).toEqual(["mine"]);
@@ -241,6 +278,7 @@ describe.skipIf(!TMUX)("a real legacy window on a private socket", () => {
       t(["new-session", "-d", "-s", "agend", "-n", "dev", mock]);
       const id2 = t(["list-windows", "-t", "agend", "-F", "#{window_id}"]).trim();
       const y = inst(id2);
+      await untilAgentRuns(t, id2, "agend-mock-cli");
       const bare = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: tmpdir() };
       const noLocale: LegacyProbes = { ...p, tmux: (_bin, a) => Promise.resolve(execFileSync(TMUX!, ["-L", socket, ...a], { encoding: "utf8", env: bare })) };
       expect(execFileSync(TMUX!, ["-L", socket, "list-windows", "-a", "-F", "#{session_name}\t#{window_id}"], { encoding: "utf8", env: bare })).toMatch(/_@/);   // the hazard is real here

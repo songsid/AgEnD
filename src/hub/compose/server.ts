@@ -1,9 +1,12 @@
+import { HUB_QUESTION_CLOSE_CAPABILITY } from "../question-close-model.js";
+import {signRoomAsker} from "../room-asker-identity.js";
+import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY} from "../room-asker-identity-model.js";
 import { HUB_DIRECT_POST_CAPABILITY } from "../direct-posts-model.js";
 import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "../room-answer-status-model.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "../room-members-model.js";
 import {HUB_ROOM_BRIEF_CAPABILITY} from "../room-brief-model.js";
 import {HUB_AGENT_INTRO_CAPABILITY} from "../agent-intro-model.js";
-import { HUB_AGENT_PICTURES_CAPABILITY } from "../agent-pictures-model.js";
+import { HUB_AGENT_CHARACTERS_CAPABILITY, HUB_AGENT_PICTURES_CAPABILITY } from "../agent-pictures-model.js";
 import { HUB_AGENT_CATALOG_CAPABILITY, HUB_AGENT_CATALOG_LAPSE_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "../agent-catalog-model.js";
 import {HubPersonalRuntimeHost} from "../personal/runtime-host.js";
 import {HubPersonalOwnerHost} from "../personal/owner-host.js";
@@ -70,7 +73,7 @@ import { ensurePrivateDirectory, readPrivateFile } from "../private-files.js";
 import { HubServer, type HubLinkContext } from "../server.js";
 import { HUB_TRANSPORT_MIGRATION, HubTransportStore } from "../store.js";
 import { readHubMemberTls, readHubIdentity } from "../tls.js";
-import type { HubAskerEnvelope, HubMemberFrame, HubMode, HubPerson, HubServerFrame, HubServerTransport, HubUnitOfWork, PersonKey } from "../types.js";
+import type { HubMemberFrame, HubMode, HubPerson, HubServerFrame, HubServerTransport, HubUnitOfWork, PersonKey } from "../types.js";
 import { HubFileVersionFloor } from "../version-floor.js";
 import { HUB_NAME_RULE, type HubSettingsWriter } from "../settings-commit.js";
 import { browserCertificateMigration, createHubBrowserCertificateControl, type HubBrowserCertificateControl } from "../browser-certificate.js";
@@ -140,7 +143,7 @@ export interface HubHttpDeps {
   config: Readonly<{ hubId: string; name: string; memberOrigin: string; webOrigin: string; administrator: PersonKey; loginWithoutAt?: boolean }>;
   /** M-2682: Hub Administration → This Hub — what it is (read-only) and, with the host's writer, its rename. */
   hubSettings?: Readonly<{ info: Readonly<{ hubId: string; memberSpkiSha256: string; issuerKeyId: string; version: string | null; coexistence?: string | null }>; writer?: HubSettingsWriter }>;
-  issuer: { keyId: string; sign(envelope: Omit<HubAskerEnvelope, "signature">): HubAskerEnvelope };
+  issuer: import("../http/deps.js").HubIssuer;
   /** null before the member listener runs and after fence/close: S3 answers "unavailable", never queues. */
   transport(): Pick<HubServerTransport, "send"> | null;
 }
@@ -156,6 +159,7 @@ export interface HubHttp {
   memberReady?(link: HubLinkContext): void;
   readonly agentCatalogV1?: true;
   readonly exposureRequestsV1?: true;
+  readonly roomAskerIdentityV1?: true;
   /** #3298 S-89: what the Hub offers its pages ("group-policy-v1" with group permissions composed). Absent on an older entry. */
   readonly features?: readonly string[];
   /** Private adapter only; no token/ref lookup HTTP route or browser capability. */
@@ -588,7 +592,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         hubSettings: Object.freeze({ info: Object.freeze({ hubId: identity.hubId, memberSpkiSha256: identity.spkiSha256, issuerKeyId: identity.issuerKeyId, version: options.version ?? null,
           coexistence: typeof cfg.coexistence === "string" ? cfg.coexistence : null }),
           ...(options.settingsWriter ? { writer: options.settingsWriter } : {}) }),
-        issuer: { keyId: identity.issuerKeyId, sign: (envelope) => signAsker(envelope, issuerKey) },
+        issuer: { keyId: identity.issuerKeyId, sign: (envelope) => signAsker(envelope, issuerKey),signRoomAsker:envelope=>signRoomAsker(envelope,issuerKey) },
         transport: () => (live() && memberServer ? (memberServer as unknown as Pick<HubServerTransport, "send">) : null),
       });
       teardown.add("the Hub web service (S3)", () => http.close());
@@ -771,6 +775,6 @@ export type HubServerFactory = ReturnType<typeof createHubServerFactory>;
 export type { HubPerson };
 
 /** The member-link features this Hub offers (exported so M-3125's negotiation test uses the real list, Fable #3925). */
-export function hubLinkCapabilities(http: { memberConnected?: unknown; memberReady?: unknown; agentCatalogV1?: true; exposureRequestsV1?: true; agentIntroV1?:true; agentPicturesV1?: true; features?: readonly string[] }): string[] {
-  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.agentIntroV1 ? [HUB_AGENT_INTRO_CAPABILITY] : []), ...(http.agentPicturesV1 ? [HUB_AGENT_PICTURES_CAPABILITY] : []), ...(http.agentCatalogV1 ? [HUB_AGENT_CATALOG_CAPABILITY, ...(http.exposureRequestsV1 ? [HUB_EXPOSURE_REQUEST_CAPABILITY, HUB_AGENT_CATALOG_LAPSE_CAPABILITY] : [])] : []), ...(http.features?.includes("personal-agents-v1") ? [HUB_ROOM_MENTION_FEEDBACK_CAPABILITY] : []), ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), HUB_ASKER_NAME_CAPABILITY, ...(http.features?.includes(HUB_DIRECT_POST_CAPABILITY)?[HUB_DIRECT_POST_CAPABILITY]:[]), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY,...(http.features.includes(HUB_ROOM_ANSWER_STATUS_CAPABILITY)?[HUB_ROOM_ANSWER_STATUS_CAPABILITY]:[]), ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY,...(http.features.includes(HUB_ROOM_BRIEF_CAPABILITY)?[HUB_ROOM_BRIEF_CAPABILITY]:[])] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY,...(http.features.includes(HUB_ROOM_MEMBERS_CAPABILITY)?[HUB_ROOM_MEMBERS_CAPABILITY]:[])] : [])] : [])];
+export function hubLinkCapabilities(http: { roomAskerIdentityV1?: true; memberConnected?: unknown; memberReady?: unknown; agentCatalogV1?: true; exposureRequestsV1?: true; agentIntroV1?:true; agentPicturesV1?: true; agentCharactersV1?: true; features?: readonly string[] }): string[] {
+  return [HUB_QUESTION_CLOSE_CAPABILITY, ...HUB_OPTIONAL_CAPABILITIES, ...(http.agentIntroV1 ? [HUB_AGENT_INTRO_CAPABILITY] : []), ...(http.agentPicturesV1 ? [HUB_AGENT_PICTURES_CAPABILITY,...(http.agentCharactersV1?[HUB_AGENT_CHARACTERS_CAPABILITY]:[])] : []), ...(http.agentCatalogV1 ? [HUB_AGENT_CATALOG_CAPABILITY, ...(http.exposureRequestsV1 ? [HUB_EXPOSURE_REQUEST_CAPABILITY, HUB_AGENT_CATALOG_LAPSE_CAPABILITY] : [])] : []), ...(http.features?.includes("personal-agents-v1") ? [HUB_ROOM_MENTION_FEEDBACK_CAPABILITY] : []), ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), HUB_ASKER_NAME_CAPABILITY, ...(http.features?.includes(HUB_DIRECT_POST_CAPABILITY)?[HUB_DIRECT_POST_CAPABILITY]:[]), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY,...(http.roomAskerIdentityV1?[HUB_ROOM_ASKER_IDENTITY_CAPABILITY]:[]),...(http.features.includes(HUB_ROOM_ANSWER_STATUS_CAPABILITY)?[HUB_ROOM_ANSWER_STATUS_CAPABILITY]:[]), ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY,...(http.features.includes(HUB_ROOM_BRIEF_CAPABILITY)?[HUB_ROOM_BRIEF_CAPABILITY]:[])] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY,...(http.features.includes(HUB_ROOM_MEMBERS_CAPABILITY)?[HUB_ROOM_MEMBERS_CAPABILITY]:[])] : [])] : [])];
 }

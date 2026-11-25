@@ -1,0 +1,37 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts (20 tests | 1 failed | 19 skipped) 79ms
+     × forged timestamps cannot create an authenticated clock-warning card 75ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-asker-adapter-m3664.test.ts > M3664 real room journal/delivery seam > forged timestamps cannot create an authenticated clock-warning card
+AssertionError: expected [ { …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "agent": "example",
++     "detail": "This computer’s clock differs from the Hub’s, or the request arrived too late. Check both clocks; the Hub will retry. This question has not reached the agent.",
++     "exposureId": "f4fe45a0-3c7c-4eb4-b6bf-02286c527ca9",
++     "id": "room-clock:f4fe45a0-3c7c-4eb4-b6bf-02286c527ca9",
++     "kind": "hold",
++     "messageId": "d2b88903-6881-4510-a4c4-9ccf2467caff",
++     "since": 1795536239270,
++   },
++ ]
+
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts:24:249
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 19 skipped (20)
+   Start at  00:03:58
+   Duration  1.05s (transform 532ms, setup 96ms, import 674ms, tests 79ms, environment 0ms)

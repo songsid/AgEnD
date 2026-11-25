@@ -411,8 +411,32 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   const placeNow = useRef(place);
   placeNow.current = place;
   useEffect(() => () => { if (placeNow.current) placeNow.current(null); }, []);
-  // A bottom sheet closes on a swipe down (60 px or more).
-  const down = (e) => { if (sheet) swipe.current = e.clientY; };
+  // A bottom sheet closes on a swipe down (60 px or more). M-3633 (Prism #4414): a sheet whose content scrolls lets the
+  // browser scroll it (touch-action pan-y — and a browser that takes a touch for scrolling cancels the pointer, so a
+  // swipe there could never finish): it closes from its grip, a handle the browser leaves to the page (touch-action
+  // none, kept at its top). One that fits closes from anywhere, as before. `data-scrolls` says which (the CSS).
+  const scrolls = () => { const t = box.current, sc = t && ((typeof t.querySelector === "function" && t.querySelector(".oo-card-body")) || t); return !!sc && sc.scrollHeight > sc.clientHeight + 1; };
+  // …and (Leader #4414) a card whose content scrolls — a sheet, or a desk card held shorter under an area's name —
+  // says there is more below: `data-more` while it is not scrolled to its end, a fade over the pinned actions (the CSS).
+  useLayoutEffect(() => {
+    const t = box.current;
+    if (!t || typeof t.setAttribute !== "function") return undefined;
+    const sc = (typeof t.querySelector === "function" && t.querySelector(".oo-card-body")) || t;
+    const mark = () => {
+      if (sheet && scrolls()) t.setAttribute("data-scrolls", ""); else t.removeAttribute("data-scrolls");
+      if (sc.scrollHeight - sc.scrollTop - sc.clientHeight > 2) t.setAttribute("data-more", ""); else t.removeAttribute("data-more");
+    };
+    mark();
+    const RO = globalThis.ResizeObserver, ro = typeof RO === "function" ? new RO(mark) : null;
+    if (ro) { ro.observe(t); for (const el of t.querySelectorAll?.(".oo-card-body, .oo-card-body > *, .oo-card > *") ?? []) ro.observe(el); }
+    if (typeof sc.addEventListener === "function") sc.addEventListener("scroll", mark, { passive: true });
+    return () => { if (ro) ro.disconnect(); if (typeof sc.removeEventListener === "function") sc.removeEventListener("scroll", mark); };
+  });
+  const down = (e) => {
+    if (!sheet) return;
+    const onGrip = !!(e.target && typeof e.target.closest === "function" && e.target.closest(".oo-card-grip"));
+    swipe.current = onGrip || !scrolls() ? e.clientY : null;
+  };
   const up = (e) => { if (sheet && swipe.current !== null && e.clientY - swipe.current > 60) onClose(); swipe.current = null; };
 
   // Legacy default path (packs without `card`): preserve exact markup and classes.

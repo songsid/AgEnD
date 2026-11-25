@@ -1,0 +1,27 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-asker-store-m3664.test.ts (14 tests | 1 failed | 13 skipped) 100ms
+     × exposes nothing and permits no input until exact legacy commit, then returns a frozen kind-preserving snapshot 97ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-asker-store-m3664.test.ts > M3664 encrypted two-phase provenance > exposes nothing and permits no input until exact legacy commit, then returns a frozen kind-preserving snapshot
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hub-room-asker-store-m3664.test.ts:9:269
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 skipped (14)
+   Start at  23:37:34
+   Duration  2.35s (transform 1.37s, setup 263ms, import 1.69s, tests 100ms, environment 0ms)

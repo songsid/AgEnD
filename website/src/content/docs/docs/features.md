@@ -23,18 +23,18 @@ Instances run in tmux, so closing your terminal changes nothing.
 The fleet serves a dashboard on `127.0.0.1`, on `health_port` (default 19280). It is one app with a sidebar:
 
 - **Chat** (`/ui`) — talk to any instance from the browser. It is the same conversation as its Telegram or Discord topic: what you send is echoed there as `🌐 <your name>: …`, and the agent's replies show in both. Files and images, **Stop**, and ticks showing how far each message got all work. Reply to a message with ↩ or R; a reply sent from the web is a native reply on Discord and Telegram too. A fleet with no chat platform at all can be run from the dashboard alone.
-- **Fleet** (`/ui/fleet`) — the **Tasks** board (projects, main tasks and subtasks, with comments, dependencies and history), schedules and teams, an **Org chart** of General, teams and instances with their live state, which also has an **Office** view (the fleet drawn as a pixel-art office), a prompt-cache **Cache** analysis, and the fleet's config. **Docs** in its header opens this site.
-- **Search** (Ctrl+K, or ⌘K) — finds chat messages, messages between agents and tasks, grouped by agent. In a chat, Ctrl+F searches only that agent. Only signed-in admins can search; from 2.3.1 the index has no age limit by default (`web.search.retention_days` unset or 0; 300,000-row cap; 2.3.0 keeps 90 days).
+- **Fleet** (`/ui/fleet`) — the **Tasks** board (projects, main tasks and subtasks, with comments, dependencies and history), schedules and teams, an **Org chart** of General, teams and instances with their live state, which also has an **Office** view (the fleet drawn as a pixel-art office), and prompt-cache **Cache** analysis, **Usage**, **Authorizations** and **Host health**. **Docs** in its header opens this site.
+- **Search** (Ctrl+K, or ⌘K) — finds chat messages, messages between agents and tasks, grouped by agent. In a chat, Ctrl+F searches only that agent. Signed-in admins search everything; trusted guests search the chats they can see. From 2.3.1 the index has no age limit by default (`web.search.retention_days` unset or 0; 300,000-row cap; 2.3.0 keeps 90 days).
 - **Needs you** (`/ui/needs`) — everything waiting on you, from every bot, in one list: permission prompts, hang alerts, sign-ins, deliveries that could not be confirmed. Something handled anywhere leaves every list. Task Board cards that wait on you join it when `needs_you.task_board` is on.
 - **View** (`/view`) — every agent's live terminal, the roster, AI subscription usage, and each agent's profile and avatar.
-- **Log** — per instance: on Claude Code and Codex, each prompt, reply and tool call, read from the agent's transcript, plus fleet events such as crashes and restarts; other backends show the fleet events only. Off by default; a fleet admin turns it on in **Settings → Web dashboard** (`web.log_tab`).
-- **Settings** (`/settings`) — agents, connections, ClassicBot, agent defaults and the dashboard's own settings and the whole `fleet.yaml`, staged and applied together. Bot tokens are entered here and checked with the platform before anything is saved. Under **Web dashboard** you also find the app icon (what **Add to Home Screen** shows).
+- **Log** — per instance: on Claude Code, Codex, Antigravity and Grok, each prompt, reply and tool call, read from the agent's transcript, plus fleet events such as crashes and restarts; other backends show the fleet events only. Off by default; a fleet admin turns it on in **Settings → Web dashboard** (`web.log_tab`).
+- **Settings** (`/settings`) — agents, runtimes, AI accounts & keys, agent defaults, notifications, chat, web dashboard, access & security, hub and advanced, staged and applied together. Bot tokens are entered here and checked with the platform before anything is saved. Under **Web dashboard** you also find the app icon (what **Add to Home Screen** shows).
 
 On a cold start or a full restart the dashboard opens before every agent has started, and shows each agent's progress.
 
-**Signing in.** Send `/web` in General (fleet admins), or run `agend web` on the host, and type the one-time code on the sign-in page. A code works once and expires after five minutes. On the dashboard reached directly a session lasts 48 hours by default (configurable); one opened through the public link lasts at most 4 hours, ends after 30 minutes unused, and ends when the link closes. Signed in with a `/web` code, you are your Discord or Telegram account to the agent — for recognition only; it grants nothing.
+**Signing in.** Send `/web` in General (fleet admins), or run `agend web` on the host, and type the one-time code on the sign-in page. A code works once and expires after five minutes. On the dashboard reached directly a session lasts 48 hours by default (configurable); one opened through the public link lasts at most 8 hours, ends after 30 minutes unused, and ends when the link closes. Signed in with a `/web` code, you are your Discord or Telegram account to the agent — a browser that signed in with a privately delivered code starts verified, acting with its account's authority; otherwise recognition only, it grants nothing.
 
-**From a phone.** `/web` can also open a **temporary public link** through a Cloudflare Quick Tunnel: nothing is exposed until you choose it, the link and code come to you privately, and it closes after two hours by default (or with `/web revoke`). With your own domain (a named Cloudflare tunnel, set with `web.public_link.hostname`) the address stays the same every time, and it can stay open for up to seven days or until you close it. Whoever has it can use your chats, terminals, files and most of the dashboard — the public link only refuses a few changes (schedules, teams, Web settings, secrets) — so do not forward it.
+**From a phone.** `/web` can also open a **temporary public link** through a Cloudflare Quick Tunnel: nothing is exposed until you choose it, the link and code come to you privately, and it closes after two hours by default (or with `/web revoke`). With your own domain (a named Cloudflare tunnel, set with `web.public_link.hostname`) the address stays the same every time, and it can stay open for up to seven days or until you close it. Whoever has it can use your chats, terminals, files and most of the dashboard — an admin session over the public link can change schedules, teams and offices too; a read-only session or a guest can't — so do not forward it.
 
 Full guide: [web-dashboard.md](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md).
 
@@ -50,7 +50,7 @@ Three tools do most of the work:
 
 `delivery_status` tells an agent whether a message it sent was delivered. A shared **task board** (`Fleet → Tasks`) and fleet-wide **decisions** keep multi-step work in view. Agents are notified when a card is assigned to them, sent back, answered or confirmed, and each agent works on one card at a time. Only the cards you handed out wait for your confirmation; a card an agent handed out is confirmed by that agent.
 
-Starting and replacing instances needs a tool profile that allows it: `coordinator` and `full` (and the General instance's own profile) can `create_instance` and `start_instance`, and only `coordinator` and `full` can `replace_instance`. An ordinary worker can hand work to a peer and cannot spawn one. See [Tool profiles](/AgEnD/docs/configuration/#tool-profiles).
+Starting and replacing instances needs a tool profile that allows it: `coordinator` and `full` (and the General instance's own profile) can `create_instance` and `start_instance`, and `coordinator`, `full` and the General instance's own profile can `replace_instance`. An ordinary worker can hand work to a peer and cannot spawn one. See [Tool profiles](/AgEnD/docs/configuration/#tool-profiles).
 
 `create_instance` takes a `branch`, which puts the new agent in its own git worktree.
 
@@ -81,7 +81,7 @@ If the tmux server itself dies, every instance loses its window at once. The fle
 - `/model` and `/effort` change an instance's model and reasoning effort from a menu.
 - `/backend` moves an instance to another CLI backend installed on the host: backend → model → effort → confirm. The instance restarts once, in a fresh session — a conversation does not carry across backends.
 - `/login` signs a backend CLI in (and installs it if missing) without SSH: a device code in the chat for Codex and Grok, a one-time browser terminal for Claude Code and Kiro CLI.
-- **Credential profiles** give an instance its own login — a second subscription — for Kiro CLI, Codex and Claude Code (`backend_options.<backend>.credential_profile`). `/usage` and the dashboard show one row per subscription.
+- **Credential profiles** give an instance its own login — a second subscription — for Kiro CLI, Codex, Claude Code and Antigravity (`backend_options.<backend>.credential_profile`). `/usage` and the dashboard show one row per subscription.
 
 Details: [commands.md](https://github.com/songsid/AgEnD/blob/main/docs/commands.md), [credential profiles](https://github.com/songsid/AgEnD/blob/main/docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend).
 
@@ -107,7 +107,7 @@ You get a warning in the topic at the warn threshold. At the limit the instance 
 
 One row per instance. State combines paused, stopped or crashed with what the instance is doing.
 
-A summary of the same is posted daily at 21:00 by default.
+If `daily_summary` is on (it is off by default), a summary of the same is posted daily at 21:00.
 
 ## Rate limits
 

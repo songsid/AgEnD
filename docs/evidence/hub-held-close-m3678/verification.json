@@ -1,0 +1,115 @@
+{
+  "captureSource": "abec27a90a2e9d8bd2a6bcee8d6c49b2ba540596",
+  "captures": {
+    "before": 8,
+    "after": 24,
+    "matrix": "desktop/phone x light/dark x en/zh-TW"
+  },
+  "initial": {
+    "base": "3ed153b1541f020aa027781f905a615b2d3e63df",
+    "baseFailures": 5,
+    "suites": 10,
+    "tests": 144,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0
+  },
+  "integration": {
+    "incoming": "ed74e0782450d193fbb7002bc86abf54588251b1",
+    "suites": 8,
+    "tests": 150,
+    "finalOwnedSuites": 3,
+    "finalOwnedTests": 64,
+    "lateAnswerControl": true,
+    "staleLinkAckTestRedBefore": true,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0
+  },
+  "limits": [
+    "Dashboard capture uses a synthetic held-work callback; Hub settlement uses the real scratch HTTP/SQLite service.",
+    "Shared CSS includes incoming changes; these retained images are the original capture source, not a new browser run.",
+    "No live state edits, Retry, provider, account, CLI or deployment."
+  ],
+  "originalCaptureCarryAt06ed990a": {
+    "src/ui/panel-needs.js": true,
+    "src/ui/hub-room-strings.js": true,
+    "src/ui/hub-room-thread.js": true,
+    "scripts/manual/smoke/smoke-hub-held-close-m3678.mts": true
+  },
+  "copyRevision": {
+    "captureSource": "9f01404a318acce7f8102bd2257cddfe5783e74d",
+    "captures": 16,
+    "states": [
+      "held",
+      "confirm"
+    ],
+    "recipeResults": 8,
+    "originalCapturesHistorical": true,
+    "productChange": "EN Close labels and EN/zh-TW finality copy only; Hub/Fleet/API runtime unchanged",
+    "focusedSuites": 2,
+    "focusedTests": 26,
+    "testTypecheck": 0,
+    "sameRetryKeyRemainsClosed": true,
+    "individuallyInspected": [
+      "desk-light-en-confirm.png",
+      "desk-dark-zh-TW-confirm.png",
+      "phone-light-en-confirm.png",
+      "phone-dark-zh-TW-confirm.png",
+      "phone-light-en-held.png"
+    ],
+    "sha256": {
+      "desk-dark-en-confirm.png": "51512f5a7b3c71ca3c59b015438e26b480cee4abff4e3f0962e45492606bce00",
+      "desk-dark-en-held.png": "b54702d6c8c9f6ccf76d0c7d015120f8f3e8f260a7f9ddce1c10c71a86c2325a",
+      "desk-dark-zh-TW-confirm.png": "004a83dc47aadab9d3cbef55edb2361ca351776f456d9697af0739ab684234ff",
+      "desk-dark-zh-TW-held.png": "c02af8a2e1928c2697f9a34acc97cb22577c51d6066d03d78efc0b42e73e2106",
+      "desk-light-en-confirm.png": "97c7abf93695ce11ce78a1551f78f8e3841f51947ad248e205a716e3a265f731",
+      "desk-light-en-held.png": "559bb38eaefb701b69764173f97f4f395da90ccca5702f53d1d9c0cc0193f4b9",
+      "desk-light-zh-TW-confirm.png": "5dfb34458ef8819ea5ba29b51659e7957a57955e40c8b5a47c940230498317fa",
+      "desk-light-zh-TW-held.png": "47ef3fe47d91f9eefc7fb25957ebec9745d32b205429057e5cc70b1a382dc569",
+      "phone-dark-en-confirm.png": "f6bab57d0676d55d19ffdf794e0ff408c2a7514f03854173f45ac2c9cae7fbb7",
+      "phone-dark-en-held.png": "64eec95cffe6aa1fe574a0c043cbf0dc7e887fd8acaa4fd4d50e94420525c450",
+      "phone-dark-zh-TW-confirm.png": "4e2a154be8c29349bae790d0121773ed591ab651f9a7897ff53c37a53abc53f6",
+      "phone-dark-zh-TW-held.png": "de8930ce4efbddc638c7c4d23ec0dc202e3e28bef0cc458a396eb421485f0779",
+      "phone-light-en-confirm.png": "5d8ed1578dab1ec6af30c7e88c7bbb935ff33e469582e7c4f1361cb19d05ecaf",
+      "phone-light-en-held.png": "5c8fd2f75ba8a22e1042a4a3015f9e7dd0d7b08b69793fa685c779f039311a0b",
+      "phone-light-zh-TW-confirm.png": "8ae56e687b2737b00ade348e9fbb2162de7c40932e8847cb923fa232a0058f16",
+      "phone-light-zh-TW-held.png": "921ab54e04288d8b060d28dd5289198b6565a2e5cd4b91e9423c2fbf76419b33"
+    }
+  },
+  "ciCorrection": {
+    "baseHead": "518052560f5854577bc1259a642876a1a8c823ce",
+    "inlineTypeOnly": true,
+    "sharedPhoneQuery": true,
+    "approvedPngBlobsUnchanged": true,
+    "focusedSuites": 2,
+    "focusedTests": 15,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0,
+    "neighborTimingCorrection": "Existing 400ms startup/apply wait replaced with the actual mocked apply completion signal; no retries or timeout increase."
+  },
+  "linkCorrection": {
+    "sync": {
+      "reviewed": "a5bf6aa5481e54aa9dcad8ae89fe78ab49936b47",
+      "incoming": "af75175716ebf816237b573e6537114439a01945",
+      "merged": "a02e34bbfbcc3a6b2a36d078388eb34fd04c74ee",
+      "oldBase": "ed74e0782450d193fbb7002bc86abf54588251b1",
+      "ownedPaths": 83,
+      "orderedAddedRemovedLinesIdentical": true,
+      "pngBlobsIdentical": 48
+    },
+    "route": "POST /ui/needs/hub-close",
+    "baseAuditFailures": 4,
+    "finalAuditTests": 5,
+    "neighborTestsPassed": 45,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0,
+    "checks": [
+      "current admin over gateway and local",
+      "actual FleetManager.contactActor consumer",
+      "read-only refused",
+      "guest refused",
+      "unverified refused",
+      "missing CSRF refused"
+    ],
+    "capturesUnchanged": true
+  }
+}

@@ -1,0 +1,1179 @@
+{
+  "sourceHead": "2e9230d55b7289f879340e6eef7f5239cc0d149a",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "phone-light-en-320: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-320: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-320: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-320: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-320: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-320: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-320: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-320: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-320: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-320: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-320: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-320: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-320: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-320: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-320: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-320: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-320: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-320: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-320: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-320: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-320: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-360: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-360: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-360: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-360: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-360: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-360: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-360: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-360: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-360: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-360: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-360: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-360: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-360: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-360: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-375: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-375: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-375: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-375: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-375: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-375: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-375: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-375: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-375: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-375: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-375: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-375: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-375: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-375: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375: ⋯ is whole on screen, 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375: every bar control whole on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375: no two bar controls overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375: the area pills are there (Whole office, the work area, the lounge, the Help desk)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375: every pill reachable — all whole, or a scrolling row with its fade and the last one whole once scrolled",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: mounted",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3727-phone-light-en-320.png",
+      "sha256": "3a140473f28a25f741d91d276ef5fd5e5822f79255a0192850702d91b018f238"
+    },
+    {
+      "path": "m3727-phone-light-zh-TW-320.png",
+      "sha256": "54bd98838ad47b459b07dbd8584d846c053095183acc2db1a9df626b8a99c4f9"
+    },
+    {
+      "path": "m3727-phone-dark-en-320.png",
+      "sha256": "173873373d690f4d16d28af305b0f2eff107f31a6f1f7c7a14c3ffa7f607aa85"
+    },
+    {
+      "path": "m3727-phone-dark-zh-TW-320.png",
+      "sha256": "70f8509791adb132f8b03d01e9c518cb7d8a3492b0ef23822496bf9b72c14891"
+    },
+    {
+      "path": "m3727-phone-light-en-360.png",
+      "sha256": "87a0617c25f2bb720bcae16ab1312f638fda29adfdc9f0ef1da6e35c0c73d4db"
+    },
+    {
+      "path": "m3727-phone-light-zh-TW-360.png",
+      "sha256": "dfe3243de2a15691af7e81cf661ac4e861da20a2d64aed5c7ebb09ad09389964"
+    },
+    {
+      "path": "m3727-phone-dark-en-360.png",
+      "sha256": "368805c01fb8f733a15e71b64f3b8da5d07975df18386970cc67eaa1f4c3df46"
+    },
+    {
+      "path": "m3727-phone-dark-zh-TW-360.png",
+      "sha256": "751d03037700857eb944da0480950f76f7cc359c73a5c940d34067eea8fe6724"
+    },
+    {
+      "path": "m3727-phone-light-en-375.png",
+      "sha256": "2f861728be27ae7c4459d6f80bba49ec55c5e45dfcb8aae1d5e23feb1cdccee5"
+    },
+    {
+      "path": "m3727-phone-light-zh-TW-375.png",
+      "sha256": "3bb975958b5bb22636dcb3106d1f4b0fb05e7425fc77edbe04964d121de3b558"
+    },
+    {
+      "path": "m3727-phone-dark-en-375.png",
+      "sha256": "17b13563fda9e827bff4db48995669085f87b2fa853a2ff379fa617af69002ac"
+    },
+    {
+      "path": "m3727-phone-dark-zh-TW-375.png",
+      "sha256": "daca86dc92e0517d9d47bab118d05d7195fc83083c4f7cf2afccf4a49f527550"
+    },
+    {
+      "path": "m3727-desk-light-en.png",
+      "sha256": "78f17a7b32f9819c0fedd0264816378e7847cbae41393dc82506b733c008c6e8"
+    },
+    {
+      "path": "m3727-desk-dark-zh-TW.png",
+      "sha256": "abef39e725ef774ba37e4712ac18975480319623c241198e13cf7f3002fc610b"
+    }
+  ],
+  "measured": {
+    "phone-light-en-320": {
+      "W": 320,
+      "scroll": 320,
+      "items": [
+        {
+          "name": "Find an instance",
+          "l": 12,
+          "r": 308,
+          "t": 56,
+          "b": 88,
+          "w": 296,
+          "h": 32
+        },
+        {
+          "name": "Canvas",
+          "l": 12,
+          "r": 84.921875,
+          "t": 99,
+          "b": 129,
+          "w": 72.921875,
+          "h": 30
+        },
+        {
+          "name": "List",
+          "l": 88.921875,
+          "r": 137.40625,
+          "t": 99,
+          "b": 129,
+          "w": 48.484375,
+          "h": 30
+        },
+        {
+          "name": "Office",
+          "l": 141.40625,
+          "r": 205.71875,
+          "t": 99,
+          "b": 129,
+          "w": 64.3125,
+          "h": 30
+        },
+        {
+          "name": "More actions",
+          "l": 264,
+          "r": 308,
+          "t": 92,
+          "b": 136,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "Whole office",
+          "Work 1",
+          "Lounge 1",
+          "Help desk 1"
+        ],
+        "overflowX": "auto",
+        "over": true,
+        "fade": true,
+        "allWhole": false,
+        "lastWholeAfterScroll": true
+      }
+    },
+    "phone-light-zh-TW-320": {
+      "W": 320,
+      "scroll": 320,
+      "items": [
+        {
+          "name": "尋找 Agent",
+          "l": 12,
+          "r": 308,
+          "t": 56,
+          "b": 88,
+          "w": 296,
+          "h": 32
+        },
+        {
+          "name": "畫布",
+          "l": 12,
+          "r": 64,
+          "t": 99,
+          "b": 129,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "清單",
+          "l": 68,
+          "r": 120,
+          "t": 99,
+          "b": 129,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "辦公室",
+          "l": 124,
+          "r": 189,
+          "t": 99,
+          "b": 129,
+          "w": 65,
+          "h": 30
+        },
+        {
+          "name": "更多動作",
+          "l": 264,
+          "r": 308,
+          "t": 92,
+          "b": 136,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "總覽",
+          "工作區 1",
+          "休息區 1",
+          "求救區 1"
+        ],
+        "overflowX": "auto",
+        "over": false,
+        "fade": false,
+        "allWhole": true,
+        "lastWholeAfterScroll": true
+      }
+    },
+    "phone-dark-en-320": {
+      "W": 320,
+      "scroll": 320,
+      "items": [
+        {
+          "name": "Find an instance",
+          "l": 12,
+          "r": 308,
+          "t": 56,
+          "b": 88,
+          "w": 296,
+          "h": 32
+        },
+        {
+          "name": "Canvas",
+          "l": 12,
+          "r": 84.921875,
+          "t": 99,
+          "b": 129,
+          "w": 72.921875,
+          "h": 30
+        },
+        {
+          "name": "List",
+          "l": 88.921875,
+          "r": 137.40625,
+          "t": 99,
+          "b": 129,
+          "w": 48.484375,
+          "h": 30
+        },
+        {
+          "name": "Office",
+          "l": 141.40625,
+          "r": 205.71875,
+          "t": 99,
+          "b": 129,
+          "w": 64.3125,
+          "h": 30
+        },
+        {
+          "name": "More actions",
+          "l": 264,
+          "r": 308,
+          "t": 92,
+          "b": 136,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "Whole office",
+          "Work 1",
+          "Lounge 1",
+          "Help desk 1"
+        ],
+        "overflowX": "auto",
+        "over": true,
+        "fade": true,
+        "allWhole": false,
+        "lastWholeAfterScroll": true
+      }
+    },
+    "phone-dark-zh-TW-320": {
+      "W": 320,
+      "scroll": 320,
+      "items": [
+        {
+          "name": "尋找 Agent",
+          "l": 12,
+          "r": 308,
+          "t": 56,
+          "b": 88,
+          "w": 296,
+          "h": 32
+        },
+        {
+          "name": "畫布",
+          "l": 12,
+          "r": 64,
+          "t": 99,
+          "b": 129,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "清單",
+          "l": 68,
+          "r": 120,
+          "t": 99,
+          "b": 129,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "辦公室",
+          "l": 124,
+          "r": 189,
+          "t": 99,
+          "b": 129,
+          "w": 65,
+          "h": 30
+        },
+        {
+          "name": "更多動作",
+          "l": 264,
+          "r": 308,
+          "t": 92,
+          "b": 136,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "總覽",
+          "工作區 1",
+          "休息區 1",
+          "求救區 1"
+        ],
+        "overflowX": "auto",
+        "over": false,
+        "fade": false,
+        "allWhole": true,
+        "lastWholeAfterScroll": true
+      }
+    },
+    "phone-light-en-360": {
+      "W": 360,
+      "scroll": 360,
+      "items": [
+        {
+          "name": "Find an instance",
+          "l": 12,
+          "r": 348,
+          "t": 56,
+          "b": 88,
+          "w": 336,
+          "h": 32
+        },
+        {
+          "name": "Canvas",
+          "l": 12,
+          "r": 84.921875,
+          "t": 99,
+          "b": 129,
+          "w": 72.921875,
+          "h": 30
+        },
+        {
+          "name": "List",
+          "l": 88.921875,
+          "r": 137.40625,
+          "t": 99,
+          "b": 129,
+          "w": 48.484375,
+          "h": 30
+        },
+        {
+          "name": "Office",
+          "l": 141.40625,
+          "r": 205.71875,
+          "t": 99,
+          "b": 129,
+          "w": 64.3125,
+          "h": 30
+        },
+        {
+          "name": "More actions",
+          "l": 304,
+          "r": 348,
+          "t": 92,
+          "b": 136,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "Whole office",
+          "Work 1",
+          "Lounge 1",
+          "Help desk 1"
+        ],
+        "overflowX": "auto",
+        "over": true,
+        "fade": true,
+        "allWhole": false,
+        "lastWholeAfterScroll": true
+      }
+    },
+    "phone-light-zh-TW-360": {
+      "W": 360,
+      "scroll": 360,
+      "items": [
+        {
+          "name": "尋找 Agent",
+          "l": 12,
+          "r": 348,
+          "t": 56,
+          "b": 88,
+          "w": 336,
+          "h": 32
+        },
+        {
+          "name": "畫布",
+          "l": 12,
+          "r": 64,
+          "t": 99,
+          "b": 129,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "清單",
+          "l": 68,
+          "r": 120,
+          "t": 99,
+          "b": 129,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "辦公室",
+          "l": 124,
+          "r": 189,
+          "t": 99,
+          "b": 129,
+          "w": 65,
+          "h": 30
+        },
+        {
+          "name": "更多動作",
+          "l": 304,
+          "r": 348,
+          "t": 92,
+          "b": 136,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "總覽",
+          "工作區 1",
+          "休息區 1",
+          "求救區 1"
+        ],
+        "overflowX": "auto",
+        "over": false,
+        "fade": false,
+        "allWhole": true,
+        "lastWholeAfterScroll": true
+      }
+    },
+    "phone-dark-en-360": {
+      "W": 360,
+      "scroll": 360,
+      "items": [
+        {
+          "name": "Find an instance",
+          "l": 12,
+          "r": 348,
+          "t": 56,
+          "b": 88,
+          "w": 336,
+          "h": 32
+        },
+        {
+          "name": "Canvas",
+          "l": 12,
+          "r": 84.921875,
+          "t": 99,
+          "b": 129,
+          "w": 72.921875,
+          "h": 30
+        },
+        {
+          "name": "List",
+          "l": 88.921875,
+          "r": 137.40625,
+          "t": 99,
+          "b": 129,
+          "w": 48.484375,
+          "h": 30
+        },
+        {
+          "name": "Office",
+          "l": 141.40625,
+          "r": 205.71875,
+          "t": 99,
+          "b": 129,
+          "w": 64.3125,
+          "h": 30
+        },
+        {
+          "name": "More actions",
+          "l": 304,
+          "r": 348,
+          "t": 92,
+          "b": 136,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "Whole office",
+          "Work 1",
+          "Lounge 1",
+          "Help desk 1"
+        ],
+        "overflowX": "auto",
+        "over": true,
+        "fade": true,
+        "allWhole": false,
+        "lastWholeAfterScroll": true
+      }
+    },
+    "phone-dark-zh-TW-360": {
+      "W": 360,
+      "scroll": 360,
+      "items": [
+        {
+          "name": "尋找 Agent",
+          "l": 12,
+          "r": 348,
+          "t": 56,
+          "b": 88,
+          "w": 336,
+          "h": 32
+        },
+        {
+          "name": "畫布",
+          "l": 12,
+          "r": 64,
+          "t": 99,
+          "b": 129,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "清單",
+          "l": 68,
+          "r": 120,
+          "t": 99,
+          "b": 129,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "辦公室",
+          "l": 124,
+          "r": 189,
+          "t": 99,
+          "b": 129,
+          "w": 65,
+          "h": 30
+        },
+        {
+          "name": "更多動作",
+          "l": 304,
+          "r": 348,
+          "t": 92,
+          "b": 136,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "總覽",
+          "工作區 1",
+          "休息區 1",
+          "求救區 1"
+        ],
+        "overflowX": "auto",
+        "over": false,
+        "fade": false,
+        "allWhole": true,
+        "lastWholeAfterScroll": true
+      }
+    },
+    "phone-light-en-375": {
+      "W": 375,
+      "scroll": 375,
+      "items": [
+        {
+          "name": "Find an instance",
+          "l": 12,
+          "r": 109.28125,
+          "t": 62,
+          "b": 94,
+          "w": 97.28125,
+          "h": 32
+        },
+        {
+          "name": "Canvas",
+          "l": 117.28125,
+          "r": 190.203125,
+          "t": 63,
+          "b": 93,
+          "w": 72.921875,
+          "h": 30
+        },
+        {
+          "name": "List",
+          "l": 194.203125,
+          "r": 242.6875,
+          "t": 63,
+          "b": 93,
+          "w": 48.484375,
+          "h": 30
+        },
+        {
+          "name": "Office",
+          "l": 246.6875,
+          "r": 311,
+          "t": 63,
+          "b": 93,
+          "w": 64.3125,
+          "h": 30
+        },
+        {
+          "name": "More actions",
+          "l": 319,
+          "r": 363,
+          "t": 56,
+          "b": 100,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "Whole office",
+          "Work 1",
+          "Lounge 1",
+          "Help desk 1"
+        ],
+        "overflowX": "auto",
+        "over": true,
+        "fade": true,
+        "allWhole": false,
+        "lastWholeAfterScroll": true
+      }
+    },
+    "phone-light-zh-TW-375": {
+      "W": 375,
+      "scroll": 375,
+      "items": [
+        {
+          "name": "尋找 Agent",
+          "l": 12,
+          "r": 126,
+          "t": 62,
+          "b": 94,
+          "w": 114,
+          "h": 32
+        },
+        {
+          "name": "畫布",
+          "l": 134,
+          "r": 186,
+          "t": 63,
+          "b": 93,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "清單",
+          "l": 190,
+          "r": 242,
+          "t": 63,
+          "b": 93,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "辦公室",
+          "l": 246,
+          "r": 311,
+          "t": 63,
+          "b": 93,
+          "w": 65,
+          "h": 30
+        },
+        {
+          "name": "更多動作",
+          "l": 319,
+          "r": 363,
+          "t": 56,
+          "b": 100,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "總覽",
+          "工作區 1",
+          "休息區 1",
+          "求救區 1"
+        ],
+        "overflowX": "auto",
+        "over": false,
+        "fade": false,
+        "allWhole": true,
+        "lastWholeAfterScroll": true
+      }
+    },
+    "phone-dark-en-375": {
+      "W": 375,
+      "scroll": 375,
+      "items": [
+        {
+          "name": "Find an instance",
+          "l": 12,
+          "r": 109.28125,
+          "t": 62,
+          "b": 94,
+          "w": 97.28125,
+          "h": 32
+        },
+        {
+          "name": "Canvas",
+          "l": 117.28125,
+          "r": 190.203125,
+          "t": 63,
+          "b": 93,
+          "w": 72.921875,
+          "h": 30
+        },
+        {
+          "name": "List",
+          "l": 194.203125,
+          "r": 242.6875,
+          "t": 63,
+          "b": 93,
+          "w": 48.484375,
+          "h": 30
+        },
+        {
+          "name": "Office",
+          "l": 246.6875,
+          "r": 311,
+          "t": 63,
+          "b": 93,
+          "w": 64.3125,
+          "h": 30
+        },
+        {
+          "name": "More actions",
+          "l": 319,
+          "r": 363,
+          "t": 56,
+          "b": 100,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "Whole office",
+          "Work 1",
+          "Lounge 1",
+          "Help desk 1"
+        ],
+        "overflowX": "auto",
+        "over": true,
+        "fade": true,
+        "allWhole": false,
+        "lastWholeAfterScroll": true
+      }
+    },
+    "phone-dark-zh-TW-375": {
+      "W": 375,
+      "scroll": 375,
+      "items": [
+        {
+          "name": "尋找 Agent",
+          "l": 12,
+          "r": 126,
+          "t": 62,
+          "b": 94,
+          "w": 114,
+          "h": 32
+        },
+        {
+          "name": "畫布",
+          "l": 134,
+          "r": 186,
+          "t": 63,
+          "b": 93,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "清單",
+          "l": 190,
+          "r": 242,
+          "t": 63,
+          "b": 93,
+          "w": 52,
+          "h": 30
+        },
+        {
+          "name": "辦公室",
+          "l": 246,
+          "r": 311,
+          "t": 63,
+          "b": 93,
+          "w": 65,
+          "h": 30
+        },
+        {
+          "name": "更多動作",
+          "l": 319,
+          "r": 363,
+          "t": 56,
+          "b": 100,
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "pill": {
+        "names": [
+          "總覽",
+          "工作區 1",
+          "休息區 1",
+          "求救區 1"
+        ],
+        "overflowX": "auto",
+        "over": false,
+        "fade": false,
+        "allWhole": true,
+        "lastWholeAfterScroll": true
+      }
+    }
+  },
+  "summary": "86/86"
+}

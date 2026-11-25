@@ -1,0 +1,279 @@
+{
+ "label": "after",
+ "cases": {
+  "desk-dark-en": {
+   "errors": [],
+   "csp": [],
+   "sheet": false,
+   "card": {
+    "x": 565,
+    "y": 396,
+    "w": 340,
+    "h": 496
+   },
+   "vh": 900,
+   "sheetShare": null,
+   "labelOverlapPx": [
+    0,
+    0
+   ],
+   "peopleAboveSheet": null,
+   "actionsInView": true,
+   "scrolls": true,
+   "atRest": {
+    "more": true,
+    "scrollTop": 0,
+    "max": 21,
+    "tell": {
+     "top": 841,
+     "bottom": 860
+    },
+    "actionsTop": 851,
+    "boxBottom": 893,
+    "tellClear": false
+   },
+   "atEnd": {
+    "more": false,
+    "scrollTop": 21,
+    "max": 21,
+    "tell": {
+     "top": 820,
+     "bottom": 839
+    },
+    "actionsTop": 851,
+    "boxBottom": 893,
+    "tellClear": true
+   },
+   "touch": null
+  },
+  "desk-light-zh-TW": {
+   "errors": [],
+   "csp": [],
+   "sheet": false,
+   "card": {
+    "x": 565,
+    "y": 391,
+    "w": 340,
+    "h": 501
+   },
+   "vh": 900,
+   "sheetShare": null,
+   "labelOverlapPx": [
+    0,
+    0
+   ],
+   "peopleAboveSheet": null,
+   "actionsInView": true,
+   "scrolls": false,
+   "atRest": {
+    "more": false,
+    "scrollTop": 0,
+    "max": 0,
+    "tell": {
+     "top": 818,
+     "bottom": 837
+    },
+    "actionsTop": 849,
+    "boxBottom": 891,
+    "tellClear": true
+   },
+   "atEnd": {
+    "more": false,
+    "scrollTop": 0,
+    "max": 0,
+    "tell": {
+     "top": 818,
+     "bottom": 837
+    },
+    "actionsTop": 849,
+    "boxBottom": 891,
+    "tellClear": true
+   },
+   "touch": null
+  },
+  "phone-dark-zh-TW": {
+   "errors": [],
+   "csp": [],
+   "sheet": true,
+   "card": {
+    "x": 0,
+    "y": 422,
+    "w": 390,
+    "h": 422
+   },
+   "vh": 844,
+   "sheetShare": 50,
+   "labelOverlapPx": [
+    0,
+    0
+   ],
+   "peopleAboveSheet": [
+    "Alpha",
+    "Beta",
+    "Gamma"
+   ],
+   "actionsInView": true,
+   "scrolls": true,
+   "atRest": {
+    "more": true,
+    "scrollTop": 0,
+    "max": 158,
+    "tell": {
+     "top": 903,
+     "bottom": 923
+    },
+    "actionsTop": 777,
+    "boxBottom": 845,
+    "tellClear": false
+   },
+   "atEnd": {
+    "more": false,
+    "scrollTop": 158,
+    "max": 158,
+    "tell": {
+     "top": 745,
+     "bottom": 765
+    },
+    "actionsTop": 777,
+    "boxBottom": 845,
+    "tellClear": true
+   },
+   "touch": {
+    "start": {
+     "open": true,
+     "scrolls": true,
+     "scrollTop": 0,
+     "grip": {
+      "x": 179,
+      "y": 445,
+      "h": 44,
+      "w": 356,
+      "hit": [
+       true,
+       true,
+       true
+      ]
+     },
+     "mid": {
+      "x": 195,
+      "y": 676.2
+     }
+    },
+    "afterUpOnContent": {
+     "open": true,
+     "scrollTop": 158
+    },
+    "afterDownOnContentScrolled": {
+     "open": true,
+     "scrollTop": 18
+    },
+    "grip": {
+     "h": 44,
+     "w": 356,
+     "hit": [
+      true,
+      true,
+      true
+     ]
+    },
+    "afterGripDown": {
+     "open": false
+    }
+   }
+  },
+  "phone-light-en": {
+   "errors": [],
+   "csp": [],
+   "sheet": true,
+   "card": {
+    "x": 0,
+    "y": 422,
+    "w": 390,
+    "h": 422
+   },
+   "vh": 844,
+   "sheetShare": 50,
+   "labelOverlapPx": [
+    0,
+    0
+   ],
+   "peopleAboveSheet": [
+    "Alpha",
+    "Beta",
+    "Gamma"
+   ],
+   "actionsInView": true,
+   "scrolls": true,
+   "atRest": {
+    "more": true,
+    "scrollTop": 0,
+    "max": 178,
+    "tell": {
+     "top": 923,
+     "bottom": 943
+    },
+    "actionsTop": 777,
+    "boxBottom": 845,
+    "tellClear": false
+   },
+   "atEnd": {
+    "more": false,
+    "scrollTop": 178,
+    "max": 178,
+    "tell": {
+     "top": 745,
+     "bottom": 765
+    },
+    "actionsTop": 777,
+    "boxBottom": 845,
+    "tellClear": true
+   },
+   "touch": {
+    "start": {
+     "open": true,
+     "scrolls": true,
+     "scrollTop": 0,
+     "grip": {
+      "x": 179,
+      "y": 445,
+      "h": 44,
+      "w": 356,
+      "hit": [
+       true,
+       true,
+       true
+      ]
+     },
+     "mid": {
+      "x": 195,
+      "y": 676.2
+     }
+    },
+    "afterUpOnContent": {
+     "open": true,
+     "scrollTop": 145
+    },
+    "afterDownOnContentScrolled": {
+     "open": true,
+     "scrollTop": 4
+    },
+    "grip": {
+     "h": 44,
+     "w": 356,
+     "hit": [
+      true,
+      true,
+      true
+     ]
+    },
+    "afterGripDown": {
+     "open": false
+    }
+   }
+  }
+ },
+ "pack": {
+  "ok": true
+ },
+ "source": "bbb70b7023a3d5579ba6be812b13a8222f8b900c"
+}

@@ -10,14 +10,14 @@ import { join } from "node:path";
 import yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const hub = vi.hoisted(() => ({ imported: 0, created: 0, applied: [] as unknown[], events: [] as string[], options: null as any }));
+const hub = vi.hoisted(() => ({ imported: 0, created: 0, applied: [] as unknown[], events: [] as string[], options: null as any, appliedSignal: null as (() => void) | null }));
 vi.mock("../src/hub/runtime.js", () => {
   hub.imported += 1;
   return {
     HubRuntime: class {
       constructor(options: unknown) { hub.created += 1; hub.options = options; }
       refresh() { hub.events.push("refresh"); return Promise.resolve(); }
-      apply(config: unknown) { hub.applied.push(config); hub.events.push("apply"); return Promise.resolve(); }
+      apply(config: unknown) { hub.applied.push(config); hub.events.push("apply"); const signal = hub.appliedSignal; hub.appliedSignal = null; signal?.(); return Promise.resolve(); }
       fence() { hub.events.push("fence"); }
       close() { hub.events.push("close"); return Promise.resolve(); }
       currentHolds() { return []; }
@@ -30,7 +30,7 @@ const { FleetManager } = await import("../src/fleet-manager.js");
 const roots: string[] = [];
 afterEach(() => {
   for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
-  hub.created = 0; hub.applied = []; hub.events = [];
+  hub.created = 0; hub.applied = []; hub.events = []; hub.appliedSignal = null;
 });
 
 function harness(initial: Record<string, unknown>) {
@@ -69,12 +69,14 @@ describe("FleetManager Hub hooks (S-51)", () => {
   it("on: created once, applied with the raw sections, and again on every configuration change; stop fences then closes", async () => {
     const { fm, write } = harness({ hub_member: { enabled: true, hubId: "h1" } });
     fm.hubEffectsReady = true;
+    const firstApplied = new Promise<void>(resolve => { hub.appliedSignal = resolve; });
     fm.observeHubSwitches();
-    await settle();
+    await firstApplied;
     expect(hub.created).toBe(1);
     expect(hub.applied).toEqual([{ hub: undefined, hub_member: { enabled: true, hubId: "h1" } }]);
+    const nextApplied = new Promise<void>(resolve => { hub.appliedSignal = resolve; });
     write({ hub_member: { enabled: false } }); // switched off: the live runtime is told (it closes what it mounted)
-    await settle();
+    await nextApplied;
     expect(hub.created).toBe(1);
     expect(hub.applied.at(-1)).toEqual({ hub: undefined, hub_member: { enabled: false } });
 
