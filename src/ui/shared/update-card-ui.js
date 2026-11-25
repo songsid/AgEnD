@@ -9,6 +9,7 @@ import { register, t } from "./app-i18n.js";
 import { confirmDialog } from "./ui-confirm.js";
 import { Dialog } from "./ui-dialog.js";
 import { toast } from "./ui-toast.js";
+import { dateTimeText } from "./clock-text.js";
 
 register("updatecard", {
   en: {
@@ -23,7 +24,7 @@ register("updatecard", {
     starting: "Starting the update to {0}…", cantTitle: "AgEnD can't update itself on this machine.",
     nowTitle: "Update now?", nowBody: "{0} agents are working. They stop for a few minutes while AgEnD restarts, then pick up where they were.",
     nowBodyIdle: "AgEnD restarts for a few minutes; your agents pick up where they were.", nowGo: "Update now",
-    pickTitle: "When should AgEnD update?", pickTonight: "Tonight", pickMorning: "Tomorrow morning", pickOther: "Another time",
+    pickTitle: "When should AgEnD update?", pickTonight: "Tonight", pickMorning: "Tomorrow morning", pickOther: "Another time", pickDay: "Day", pickAt: "Time",
     pickHint: "It still waits until your agents are idle at that time. Within the next 7 days.", pickGo: "Schedule", pickBad: "Pick a time in the next 7 days.",
     changed: "The update changed while you were looking. Here it is again.", running: "An update is already running.",
     failedAnswer: "That didn't work: {0}",
@@ -42,7 +43,7 @@ register("updatecard", {
     c_unknown_owner: "AgEnD can't prove which install runs this fleet. Restart it as a service and check again.",
     c_other_install: "Another AgEnD install lives under this user. Updating one could affect the other.",
     c_not_service: "AgEnD isn't running as a service, so it can't bring itself back after an update.",
-    c_linger_off: "AgEnD stops when {user} signs out (lingering is off), so it can't restart itself.",
+    c_linger_off: "AgEnD stops when {user} signs out, so it can't restart itself.",
     c_system_unit_not_root: "AgEnD runs as a system service; updating it needs root.",
     c_unit_reload_pending: "The service definition changed and hasn't been reloaded. Run systemctl --user daemon-reload.",
     c_no_write: "Updating needs write access to {path}. Run sudo agend update in a terminal on that computer, or reinstall with the one-line installer.",
@@ -69,7 +70,7 @@ register("updatecard", {
     starting: "正在開始更新到 {0}…", cantTitle: "AgEnD 無法在這台機器上自行更新。",
     nowTitle: "立即更新？", nowBody: "有 {0} 個 Agent 正在工作。AgEnD 重新啟動時會停下幾分鐘，之後從原處繼續。",
     nowBodyIdle: "AgEnD 會重新啟動幾分鐘，Agent 之後從原處繼續。", nowGo: "立即更新",
-    pickTitle: "要在什麼時候更新？", pickTonight: "今晚", pickMorning: "明天早上", pickOther: "其他時間",
+    pickTitle: "要在什麼時候更新？", pickTonight: "今晚", pickMorning: "明天早上", pickOther: "其他時間", pickDay: "日期", pickAt: "時間",
     pickHint: "到了那個時間，仍會等 Agent 閒置才開始。可選未來 7 天內。", pickGo: "排定", pickBad: "請選未來 7 天內的時間。",
     changed: "這個更新剛剛有變動，以下是最新狀態。", running: "已經有一個更新在進行中。",
     failedAnswer: "沒有成功：{0}",
@@ -88,7 +89,7 @@ register("updatecard", {
     c_unknown_owner: "AgEnD 無法確認是哪一份安裝在執行這個 Fleet。請以服務方式重新啟動後再檢查。",
     c_other_install: "這個使用者底下還有另一份 AgEnD。更新其中一份可能影響另一份。",
     c_not_service: "AgEnD 不是以服務方式執行，更新後無法自己回來。",
-    c_linger_off: "{user} 登出時 AgEnD 會停止（lingering 未開啟），所以無法自行重新啟動。",
+    c_linger_off: "{user} 登出後 AgEnD 會停止，所以無法自行重新啟動。",
     c_system_unit_not_root: "AgEnD 以系統服務執行，更新需要 root。",
     c_unit_reload_pending: "服務定義已變更但尚未重新載入。請執行 systemctl --user daemon-reload。",
     c_no_write: "更新需要 {path} 的寫入權限。請在那台電腦的終端機執行 sudo agend update，或用單行安裝指令重新安裝。",
@@ -140,7 +141,11 @@ export function namesShown(names, max = 2) {
   return list.length <= max ? list.join(", ") : `${list.slice(0, max).join(", ")} ${tc("more", list.length - max)}`;
 }
 
-const fmtTime = (ms) => { try { return new Date(ms).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }); } catch { return String(ms); } };
+// M-3730: through the shared clock helper (24-hour in zh-TW); English is 24-hour here too, as the leader asked for this card.
+const fmtTime = (ms) => dateTimeText(ms, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const fmtDay = (ms) => dateTimeText(ms, { weekday: "short", month: "short", day: "numeric" }).replace(/\s*\d{1,2}:\d{2}(:\d{2})?$/, "");
+/** "HH:MM" every `step` minutes of a day: the 24-hour choices (never the browser's own time input, which shows AM/PM). */
+export function dayTimes(step = 15) { const out = []; for (let m = 0; m < 24 * 60; m += step) out.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`); return out; }
 
 /**
  * POST /ui/update/answer. The answer's card replaces the store's; 412 carries a fresh pre-flight; 409 card_changed reads
@@ -191,22 +196,28 @@ const pickSignal = new Set();
 export function PickTimeHost() {
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState("tonight");
-  const [other, setOther] = useState("");
-  useEffect(() => { const f = () => { setChoice("tonight"); setOther(""); setOpen(true); }; pickSignal.add(f); return () => pickSignal.delete(f); }, []);
+  const [day, setDay] = useState(0);
+  const [time, setTime] = useState("20:00");
+  useEffect(() => { const f = () => { setChoice("tonight"); setDay(0); setTime("20:00"); setOpen(true); }; pickSignal.add(f); return () => pickSignal.delete(f); }, []);
   if (!open) return null;
   const close = (v) => { setOpen(false); const r = pickResolve; pickResolve = null; if (r) r(v); };
-  const at = () => choice === "tonight" ? nextAt(22) : choice === "morning" ? tomorrowAt(8) : (other ? new Date(other).getTime() : NaN);
+  const otherAt = () => { const d = new Date(); d.setDate(d.getDate() + day); const [h, m] = time.split(":").map(Number); d.setHours(h, m, 0, 0); return d.getTime(); };
+  const at = () => choice === "tonight" ? nextAt(22) : choice === "morning" ? tomorrowAt(8) : otherAt();
   const go = () => { const v = at(); if (!Number.isFinite(v) || v <= Date.now() || v > Date.now() + WEEK) { toast(tc("pickBad"), false); return; } close(v); };
   const radio = (id, label) => html`<label class="check uc-pick-row"><input type="radio" name="uc-pick" checked=${choice === id} onChange=${() => setChoice(id)} /><span>${label}</span></label>`;
-  const min = new Date(Date.now() + 5 * 60_000), max = new Date(Date.now() + WEEK);
-  const local = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  const days = Array.from({ length: 8 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return { i, label: fmtDay(d.getTime()) }; });
   return html`<${Dialog} title=${tc("pickTitle")} onClose=${() => close(null)}
     actions=${html`<button type="button" class="btn" onClick=${() => close(null)}>${tc("cancel")}</button><button type="button" class="btn btn-primary" onClick=${go}>${tc("pickGo")}</button>`}>
     <div class="uc-pick">
       ${radio("tonight", `${tc("pickTonight")} · ${fmtTime(nextAt(22))}`)}
       ${radio("morning", `${tc("pickMorning")} · ${fmtTime(tomorrowAt(8))}`)}
       ${radio("other", tc("pickOther"))}
-      ${choice === "other" ? html`<div class="uc-pick-frame"><input type="datetime-local" class="input uc-pick-other" min=${local(min)} max=${local(max)} value=${other} onInput=${(e) => setOther(e.currentTarget.value)} /></div>` : null}
+      ${choice === "other" ? html`<div class="uc-pick-frame">
+        <label class="uc-pick-field"><span>${tc("pickDay")}</span><select class="input uc-pick-day" value=${String(day)} onChange=${(e) => setDay(Number(e.currentTarget.value))}>
+          ${days.map((d) => html`<option value=${String(d.i)}>${d.label}</option>`)}</select></label>
+        <label class="uc-pick-field"><span>${tc("pickAt")}</span><select class="input uc-pick-time" value=${time} onChange=${(e) => setTime(e.currentTarget.value)}>
+          ${dayTimes(15).map((x) => html`<option value=${x}>${x}</option>`)}</select></label>
+      </div>` : null}
       <p class="muted uc-pick-hint">${tc("pickHint")}</p>
     </div>
   </${Dialog}>`;
@@ -288,6 +299,9 @@ let currentVersion = "";
 export function noteCurrentVersion(v) { if (typeof v === "string") currentVersion = v; }
 const updateCurrentVersion = () => currentVersion;
 
+/** Half-hour choices, plus a saved value that isn't on the half hour (written by hand in fleet.yaml) so it is kept. */
+const timeChoices = (current) => { const all = dayTimes(30); return current && !all.includes(current) ? [...all, current].sort() : all; };
+
 /** The controls: when not to update (pause windows) and, under Advanced, the pin and the longest wait. PUT /api/settings/fleet/updates. */
 export function UpdatesControls() {
   const [cfg, setCfg] = useState(null);
@@ -328,8 +342,8 @@ export function UpdatesControls() {
       <p class="muted uc-hint">${tc("pauseHint")}</p>
       ${pause.map((w, i) => html`<div class="uc-pause-row" key=${i}>
         <div class="uc-days" role="group" aria-label=${tc("pauseTitle")}>${dayNames.map((n, d) => html`<label class="check uc-day"><input type="checkbox" checked=${w.days.includes(d)} onChange=${() => toggleDay(i, d)} /><span>${n}</span></label>`)}</div>
-        <label class="uc-time">${tc("from")} <input type="time" class="input" value=${w.from} onInput=${(e) => setRow(i, { from: e.currentTarget.value })} /></label>
-        <label class="uc-time">${tc("to")} <input type="time" class="input" value=${w.to} onInput=${(e) => setRow(i, { to: e.currentTarget.value })} /></label>
+        <label class="uc-time">${tc("from")} <select class="input" value=${w.from} onChange=${(e) => setRow(i, { from: e.currentTarget.value })}>${timeChoices(w.from).map((x) => html`<option value=${x}>${x}</option>`)}</select></label>
+        <label class="uc-time">${tc("to")} <select class="input" value=${w.to} onChange=${(e) => setRow(i, { to: e.currentTarget.value })}>${timeChoices(w.to).map((x) => html`<option value=${x}>${x}</option>`)}</select></label>
         <button type="button" class="btn btn-sm" onClick=${() => setPause((rows) => rows.filter((_, j) => j !== i))}>${tc("pauseRemove")}</button>
       </div>`)}
       <div class="uc-row-actions">

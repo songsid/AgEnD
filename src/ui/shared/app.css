@@ -2280,7 +2280,9 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .uc-pick { display: flex; flex-direction: column; gap: var(--s-2); }
 .uc-pick-row { font-size: var(--fs-sm); }
 .uc-pick-frame { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
-.uc-pick-frame .input { width: 100%; }
+.uc-pick-frame { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); }
+.uc-pick-field { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-2); }
+.uc-pick-field .input { width: auto; min-width: 7em; }
 .uc-how { margin-top: 2px; font-size: var(--fs-sm); }
 .uc-how summary { cursor: pointer; color: var(--accent); }
 .uc-how p { margin: var(--s-1) 0 0; color: var(--text-2); overflow-wrap: anywhere; }

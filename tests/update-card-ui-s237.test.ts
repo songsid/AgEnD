@@ -168,6 +168,27 @@ describe("M-3770 1.4: the leader's copy pass", () => {
     await mountShell();
     expect(line()).toBeNull();
   });
+  it("Another time: a day and a 24-hour time from selects (no datetime-local, no AM/PM)", async () => {
+    answer = r => (r.url === "/ui/update" ? { body: ADMIN() } : r.url === "/ui/update/answer" ? { body: { card: CARD({ state: "scheduled", scheduledAt: Date.now() + 864e5 }) } } : undefined);
+    await mountShell();
+    await press("Pick a time");
+    const radios = [...p.document.querySelectorAll('dialog input[type="radio"]')] as any[];
+    radios[2].checked = true; radios[2].dispatchEvent(new Event("change")); await settle(4);
+    expect(p.document.querySelectorAll('input[type="datetime-local"], input[type="time"]').length).toBe(0);
+    const times = [...p.document.querySelectorAll(".uc-pick-time option")].map((o: any) => o.textContent);
+    expect([times[0], times[1], times.at(-1), times.length]).toEqual(["00:00", "00:15", "23:45", 96]);
+    expect(uc.dayTimes(30).length).toBe(48);
+  });
+  it("Settings open: no top line (Settings has the card's own controls)", async () => {
+    const nav = await import("/assets/app-nav.js");
+    answer = r => (r.url === "/ui/update" ? { body: ADMIN() } : undefined);
+    await mountShell();
+    expect(line()).not.toBeNull();
+    nav.navStore.set({ route: { panel: "settings", section: "advanced" } }); await settle(6);
+    expect(line()).toBeNull();
+    nav.navStore.set({ route: { panel: "fleet" } }); await settle(6);
+    expect(line()).not.toBeNull();
+  });
   it("Tomorrow morning is always tomorrow's 08:00, never a morning that has begun", () => {
     const night = new Date(2026, 10, 26, 1, 0, 0);
     const d = new Date(uc.tomorrowAt(8, night));
@@ -187,10 +208,13 @@ describe("M-3770 1.4: Settings → Version and update", () => {
     expect(card()).toContain("You chose Not now. The card comes back on");
     expect(card()).toContain("Updates on this machine");
     expect(card()).toContain("Updates here need you:");
-    expect(card()).toContain("AgEnD stops when example signs out (lingering is off), so it can't restart itself.");
+    expect(card()).toContain("AgEnD stops when example signs out, so it can't restart itself.");
+    expect(card()).not.toContain("lingering");
     expect(card()).toContain("Don't update during");
     expect(p.root.querySelectorAll(".uc-pause-row").length).toBe(1);
     expect(button("Update when idle")).toBeDefined();                         // not-now: the admin can still answer here
+    expect(p.root.querySelectorAll('input[type="time"]').length).toBe(0);              // never the browser's AM/PM time input
+    expect(([...p.root.querySelectorAll(".uc-time select option")] as any[]).some((o) => o.textContent === "18:00")).toBe(true);
     const saves = () => reqs.filter(r => r.url === "/api/settings/fleet/updates");
     ([...p.root.querySelectorAll(".uc-pause .btn-primary")] as any[])[0].click(); await settle(6);
     expect(saves()[0]!.body).toEqual({ pause: [{ days: [1, 2, 3, 4, 5], from: "09:00", to: "18:00" }] });

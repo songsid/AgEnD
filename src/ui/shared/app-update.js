@@ -12,6 +12,7 @@ import { Icon } from "./ui-icons.js";
 import { toast } from "./ui-toast.js";
 // M-3770 1.4: the one update card (a module of its own: the module-skew rule).
 import { PickTimeHost, cardLine } from "./update-card-ui.js";
+import { navStore } from "./app-nav.js";
 
 register("update", {
   en: {
@@ -253,6 +254,7 @@ function LogDialog() {
 export function UpdateLine() {
   usePolling();
   const s = useStore(updateStore);
+  const nav = useStore(navStore);
   const [, tick] = useState(0);
   const info = s.info;
   const active = updateActive(info);
@@ -292,7 +294,8 @@ export function UpdateLine() {
   } else if (info.card !== undefined) {
     // M-3770 1.4: a server with the update card — its line (offered, waiting for idle, scheduled, can't), never the
     // per-browser Later below (Not now is the server's, for the whole fleet).
-    line = cardLine(info, { Line, busy: s.starting, deps: cardDeps });
+    // The leader (S-237): Settings has the card's own controls; the top line would say it twice there.
+    line = nav.route && nav.route.panel === "settings" ? null : cardLine(info, { Line, busy: s.starting, deps: cardDeps });
   } else if (info.offer && info.offer.installable && s.later !== info.offer.version && !hubNeed(info)) {
     const o = info.offer;
     line = html`<${Line} title=${t("update.available", o.version, info.current)} sub=${[t("update.availableSub", channelWord(o.channel))]}>
