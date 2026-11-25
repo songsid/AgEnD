@@ -20,6 +20,14 @@
       "detail": null
     },
     {
+      "name": "link-desk-light-en: folders show a collapsed (right-pointing) chevron",
+      "ok": false,
+      "detail": [
+        "none",
+        "none"
+      ]
+    },
+    {
       "name": "link-desk-light-en: no page errors",
       "ok": true
     },
@@ -46,6 +54,14 @@
       "detail": null
     },
     {
+      "name": "link-phone-dark-zh-TW: folders show a collapsed (right-pointing) chevron",
+      "ok": false,
+      "detail": [
+        "none",
+        "none"
+      ]
+    },
+    {
       "name": "link-phone-dark-zh-TW: no page errors",
       "ok": true
     },
@@ -67,6 +83,14 @@
       "detail": null
     },
     {
+      "name": "desk-light-en: folders show a collapsed (right-pointing) chevron",
+      "ok": false,
+      "detail": [
+        "none",
+        "none"
+      ]
+    },
+    {
       "name": "desk-light-en: no page errors",
       "ok": true
     },
@@ -86,6 +110,14 @@
       "name": "desk-dark-zh-TW: the toggle is there, off",
       "ok": false,
       "detail": null
+    },
+    {
+      "name": "desk-dark-zh-TW: folders show a collapsed (right-pointing) chevron",
+      "ok": false,
+      "detail": [
+        "none",
+        "none"
+      ]
     },
     {
       "name": "desk-dark-zh-TW: no page errors",
@@ -114,6 +146,14 @@
       "detail": null
     },
     {
+      "name": "phone-light-zh-TW: folders show a collapsed (right-pointing) chevron",
+      "ok": false,
+      "detail": [
+        "none",
+        "none"
+      ]
+    },
+    {
       "name": "phone-light-zh-TW: no page errors",
       "ok": true
     },
@@ -138,6 +178,14 @@
       "name": "phone-dark-en: the toggle is a 44 px row",
       "ok": false,
       "detail": null
+    },
+    {
+      "name": "phone-dark-en: folders show a collapsed (right-pointing) chevron",
+      "ok": false,
+      "detail": [
+        "none",
+        "none"
+      ]
     },
     {
       "name": "phone-dark-en: no page errors",
@@ -328,5 +376,5 @@
       }
     ]
   },
-  "summary": "18/33"
+  "summary": "18/39"
 }
