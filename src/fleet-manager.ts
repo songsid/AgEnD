@@ -53,7 +53,7 @@ import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notic
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
-import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
+import { humanOwnerObjectId, webHumanOrigin, isWebSessionIdentity, type WebSessionIdentity, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
 import { hubPilotTrustSettings } from "./hub-pilot-trust-settings.js";
 import { hubMembershipSettings } from "./hub-membership-settings.js";
@@ -6181,7 +6181,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const human = (item: DeliveryStatusItem): DeliveryStatusItem => {
       if (!item.authority || !state) return item;
       const authority = this.receiptAuthorityNow(item.authority, state);
-      return { ...item, authority, ...(authority.downgraded ? { source_instance: "human:web:unknown" } : {}) };
+      return { ...item, authority, ...(authority.downgraded && !isWebSessionIdentity(item.origin?.web_identity) ? { source_instance: "human:web:unknown" } : {}) };
     };
     // #1641: a sender that sees only `queued` cannot tell "next in line" from "the target is stuck": say which.
     return {
@@ -8789,10 +8789,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.contactRoom(instanceName)?.restrictedMode === true && !contactStore) throw Error("Contact origin storage unavailable");
     if (contactStore && (this.contactRoom(instanceName)?.restrictedMode === true || contactStore.origin(instanceName))) {
       const authority = origin.authority;
-      const actor = origin.platform === "web" ? (authority?.kind === "web-verified" ? authority.actor : null)
+      const identity = origin.platform === "web" && isWebSessionIdentity(origin.web_identity) ? origin.web_identity : undefined;
+      const actor = origin.platform === "web" ? identity ?? (authority?.kind === "web-verified" ? authority.actor : null)
         : { adapter_id: origin.adapter_id, user_id: origin.user_id };
       const adapter = actor?.adapter_id ? this.adapters.get(actor.adapter_id) : undefined;
-      const platform = origin.platform === "web" ? adapter?.type : origin.platform;
+      const platform = origin.platform === "web" ? identity?.platform ?? adapter?.type : origin.platform;
       const person: ContactPerson | undefined = actor?.adapter_id && actor.user_id
         && (platform === "discord" || platform === "telegram" || (actor.adapter_id === "host" && actor.user_id === "operator"))
         ? { platform: actor.adapter_id === "host" ? "host" : platform as "discord" | "telegram",
@@ -20364,7 +20365,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1266: a click on a reply's button in the web chat (the /ui gate is passed: a session, or the public link). On a
    * poll (#1823) it is `voter`'s vote: the page's session.
    */
-  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
+  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority; identity?: WebSessionIdentity }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
     const buttons = this.replyButtons();
     return buttons ? buttons.clickWeb(instance, id, index, voter) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
   }
@@ -20804,6 +20805,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1939 S1: the design's §3 for one web request (authority/web-authority.ts), with this fleet's admins, policy and
    * token; `instance` once the body has named it. Observe only: receipts record it, no agent acts on it yet.
    */
+  /** A signed-in account is recognizable before verification; this supplies no action authority. */
+  webSessionIdentity(session: SessionRecord): WebSessionIdentity | undefined {
+    const owner = session.owner;
+    if (owner) {
+      const adapter = this.adapters.get(owner.adapterId) ?? this.worlds?.get(owner.adapterId)?.adapter;
+      const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+      const platform = adapter?.type ?? channels.find(channel => (channel.id ?? channel.type) === owner.adapterId)?.type;
+      if (platform !== "discord" && platform !== "telegram") return;
+      return Object.freeze({ platform, adapter_id: owner.adapterId, user_id: owner.userId, session_handle: session.handle });
+    }
+    if (session.tier === "admin" && (session.host === true || session.remote === "totp") && this.isWebOnlyFleet()) {
+      return Object.freeze({ platform: "host", adapter_id: "host", user_id: "operator", session_handle: session.handle });
+    }
+    return;
+  }
+
   webAuthority(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string; authorization?: SessionAuthorization | null }): WebAuthorityResult {
     const state = this.webAuthorityState();
     return evaluateWebAuthority({
@@ -21602,14 +21619,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #2855: the platform an instance's channel is on, for the command table's cell (a web-only fleet: Discord's). */
   private commandPlatform(instance: string): Platform { return this.getAdapterForInstance(instance)?.type === "telegram" ? "telegram" : "discord"; }
 
-  webCommand(input: { instance: string; command: string; args?: string; confirm?: string; action?: import("./web-commands.js").WebModelAction }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; guest?: boolean }): Promise<WebCommandResult> {
+  webCommand(input: { instance: string; command: string; args?: string; confirm?: string; action?: import("./web-commands.js").WebModelAction }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; identity?: WebSessionIdentity; guest?: boolean }): Promise<WebCommandResult> {
     const webMeta = (instance: string) => {
       const topicId = this.fleetConfig?.instances[instance]?.topic_id;
       return {
         // #1827: a /steer or /btw reaches the agent as the web person who wrote it.
         chatId: this.getGroupIdForInstance(instance) || "", messageId: newWebMessageId(),
         username: opts.person?.name ?? WEB_NAME_FALLBACK, userId: opts.person?.userId ?? WEB_NAME_FALLBACK,
-        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true, opts.authority),
+        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true, opts.authority, opts.identity),
         ...(opts.guest ? { webGuest: true } : {}),       // #2855: a guest's /steer or /btw reaches the agent as a guest's
       };
     };

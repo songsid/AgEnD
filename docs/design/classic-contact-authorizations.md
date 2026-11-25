@@ -29,6 +29,26 @@ Contact authorization identifies a person by **platform + user id**, across bot
 connections on that platform. Adapter ids remain transport/proof metadata; a
 second bot observing the message does not create another person or remove their
 configured Fleet-admin role. Discord and Telegram ids remain separate namespaces.
+Signed-in web account identity is separate from go-ahead authority. The current
+session's bound account and platform are stamped by the server for typed messages,
+resends, reply-button choices and commands that enter the conversation. A web-only
+Fleet's explicitly identified host session is recognized as its host operator;
+unbound old/device sessions and header-token requests do not become the operator.
+Receipt `origin.web_identity` records recognition, while `authority` remains
+unchanged (`none` until the existing verification rules pass). Display names,
+message bodies, client metadata and voter keys never supply this identity.
+The central current-role gate still decides whether that person manages a target.
+
+Historical unverified receipts discarded their session-account join, and retained
+origins can lose older receipts or include a mode-switch seed. No speculative
+migration or automatic clear is possible. A verified managing administrator can
+use **Permissions → Clear retained origin**, with its existing revision/generation
+CAS and audit, to accept that conversation as their own work. Unknown still stays
+unknown after a later known admin input; old pending applications are not replayed.
+The held-contact refusal and Needs you card explicitly name the recovery action.
+The optional receipt JSON field requires no schema migration; an older build may
+ignore identity and conservatively treat later plain-web work as unknown again.
+
 Contact administrator checks retain the central `isFleetAdmin`/admin gate, evaluated
 against the target connection and configured connections on the same platform.
 This intentionally lets a configured secondary bot's Fleet administrator manage

@@ -323,6 +323,14 @@ The instance card and Details → Runtime show a localized original → fallback
 
 Needs you gets one item per new confirmed main-thread switch. Repeated blocks and resumed history do not announce it again; a fresh response returning to the configured/original model removes it. AgEnD does not switch models, restart the agent or change safeguards automatically. Intentional `/model` and next-spawn failover are separate; unresolved default/plan aliases are not guessed. No prompt, answer or refusal explanation is copied into the observation.
 
+A signed-in web account is identifiable for contact permissions even before the browser is verified.
+Its messages and reply-button choices still carry no go-ahead authority until verification; a known
+account is not a verified approval. Unidentified sources remain unknown. Older retained unknown origins
+cannot be inferred from today's session: a verified managing administrator can use the sending Agent's
+**Permissions → Clear retained origin**, accepting the current conversation as their own work. This is
+an explicit audited reset, not an automatic repair; existing contact applications are not replayed.
+Needs you's contact card and the refused contact response name this recovery path.
+
 ## Needs you
 
 `/ui/needs`, the sidebar row **Needs you** with a count, the phone tab of the same name, and "(N)" in the browser
