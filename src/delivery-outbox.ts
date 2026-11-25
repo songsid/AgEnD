@@ -1,3 +1,4 @@
+import type { QuiescenceGate } from "./update-quiescence.js";
 import { RequestContextDrain } from "./request-context-drain.js";
 import { RequestContextMigrationShadow, type RequestMigrationHost } from "./request-context-migration.js";
 import { RequestContactGate, type RequestContactGateHost } from "./request-contact-gate.js";
@@ -621,6 +622,9 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   readonly managerBootId: string;
+  /** S-244: while the barrier flag is up, claimNext journals references and claims nothing. Unset: today's claim. */
+  private quiescence: QuiescenceGate | null = null;
+  setQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
 
   /** Observational extension: its failure never participates in delivery admission. */
   observeWorkingState(instance: string, snapshot: Omit<WorkingStateSnapshot, "managerBootId">) {
@@ -1495,6 +1499,12 @@ export class DeliveryOutbox extends EventEmitter {
     return measureSyncWork("outbox.claimNext", () => this.claimNextSync(managerBootId, targetBootIdFor, blockedTargets, eligible));
   }
   private claimNextSync(managerBootId: string, targetBootIdFor: (target: string) => string | null, blockedTargets: ReadonlySet<string>, eligible?: (delivery: OutboxDelivery) => boolean): ClaimedOutboxDelivery | undefined {
+    const gate = this.quiescence;
+    if (gate?.armed()) {
+      const held = this.db.prepare(`SELECT delivery_id, created_seq FROM deliveries WHERE state IN ('queued','retry_wait') ORDER BY created_seq`).all() as Array<{ delivery_id: string; created_seq: number }>;
+      for (const row of held) gate.holdOutboxClaim(row.delivery_id, row.created_seq);
+      return undefined;
+    }
     const now = new Date().toISOString();
     const pending = this.db.prepare(`
       SELECT * FROM deliveries WHERE state IN ('queued','retry_wait')
@@ -1532,6 +1542,24 @@ export class DeliveryOutbox extends EventEmitter {
       if (claimed) return { ...claimed, targetDaemonBootId: targetBootId };
     }
     return undefined;
+  }
+
+  /**
+   * Hand-back claims one referenced row and no other (M-3770 §2.6). The update is conditional, so a second claim
+   * does not land. A retry still inside its backoff is `ineligible` and is left queued.
+   */
+  claimExact(deliveryId: string, managerBootId: string, targetBootId: string, now = new Date().toISOString()): "claimed" | "ineligible" | "missing" | "settled" {
+    const row = this.get(deliveryId);
+    if (!row) return "missing";
+    if (row.state !== "queued" && row.state !== "retry_wait") return "settled";
+    if (row.state === "retry_wait" && row.nextAttemptAt && row.nextAttemptAt > now) return "ineligible";
+    const result = this.db.prepare(`
+      UPDATE deliveries
+      SET state='delivering', target_daemon_boot_id=?, manager_boot_id=?,
+          attempt_no=attempt_no+1, updated_at=?, last_error=NULL, next_attempt_at=NULL
+      WHERE delivery_id=? AND state IN ('queued','retry_wait')
+    `).run(targetBootId, managerBootId, now, deliveryId);
+    return result.changes === 1 ? "claimed" : "settled";
   }
 
   /**

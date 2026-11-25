@@ -382,6 +382,7 @@ import { WebSettingsTools } from "./web-settings-tools.js";
 import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
+import type { QuiescenceGate } from "./update-quiescence.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateOfferReply, type UpdateCardView } from "./update-card.js";
 import { preflightAllows } from "./update-readiness.js";
@@ -1319,6 +1320,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Test seam: inject a spy to verify saveFleetConfig calls fsync. Default: fsyncSync. */
   fsyncForTest: ((fd: number) => void) | undefined = undefined;
+  /** S-244: the quiescence barrier. Unset, every pane write and admission proceeds as today. */
+  private quiescence: QuiescenceGate | null = null;
+  attachQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
 
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
@@ -6393,6 +6397,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       { ...inheritedOrigin, chain: [...inheritedOrigin.chain, input.targetInstance] });
     const sourceKey = `mcp:${input.sourceInstance}:${input.operationId}:${input.targetInstance}:${input.targetSession ?? ""}:${input.kind}`;
     const admitted = outbox.admit({ ...input, sourceDaemonBootId, sourceKey });
+    if (admitted.inserted) this.quiescence?.noteAdmission(admitted.delivery.deliveryId, admitted.delivery.createdSeq);
     if (admitted.inserted) this.publishTraffic(admitted.delivery);
     if (admitted.inserted) this.logger.info({
       deliveryId: admitted.delivery.deliveryId,
@@ -8630,6 +8635,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * Last synchronous commit of a pane write (S-244). True: the barrier journaled the turn, so it is not sent.
+   * There is no await between this and `ipc.send`. Unarmed, or not an agent turn: false, and the send proceeds.
+   */
+  private holdPaneSend(payload: Record<string, unknown>): boolean {
+    return this.quiescence?.commitTurn(payload) === true;
+  }
+
+  /**
    * Hand a payload to an instance's IPC, waiting out a *transient* disconnect.
    *
    * A daemon that is restarting — `/restart`, crash recovery, a model switch —
@@ -8662,7 +8675,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const ipc = this.instanceIpcClients.get(instanceName);
       if (ipc?.connected) {
         if (beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
-        if (ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
+        const wire = this.bindHumanReceiptPayload(instanceName, payload);
+        if (this.holdPaneSend(wire)) return true;
+        if (ipc.send(wire)) return true;
       }
     }
 
@@ -8699,7 +8714,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (privateToken === false || this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc?.connected || (privateToken && this.classicPrivacy().read(instanceName)?.token !== privateToken)) return false;
-    const sent = ipc.send(this.bindHumanReceiptPayload(instanceName, payload));
+    const wire = this.bindHumanReceiptPayload(instanceName, payload);
+    if (this.holdPaneSend(wire)) return true;
+    const sent = ipc.send(wire);
     if (sent && privateToken) {
       try {
         if (this.classicPrivacy().resume(instanceName, privateToken)) {
@@ -8732,7 +8749,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // so a cached reference would stay dead forever.
       const ipc = this.instanceIpcClients.get(instanceName);
       if (ipc?.connected && beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
-      if (ipc?.connected && ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
+      if (ipc?.connected) {
+        const wire = this.bindHumanReceiptPayload(instanceName, payload);
+        if (this.holdPaneSend(wire)) return true;
+        if (ipc.send(wire)) return true;
+      }
       // #2484: while the instance waits for (or runs) its own start retry, the grace runs from now — so the message is
       // delivered once a retry brings it up, and fails only after the retries stop (they gave up, or a person stopped
       // or paused it) and a last grace passes without it.
@@ -9142,7 +9163,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const admitted = this.humanReceiptPayload(instanceName, payload, origin, originalBody);
     const id = (admitted.meta as Record<string, string> | undefined)?.human_receipt_id;
     let sent = false;
-    try { sent = ipc.send(this.bindHumanReceiptPayload(instanceName, admitted)); return sent; }
+    try {
+      const wire = this.bindHumanReceiptPayload(instanceName, admitted);
+      if (this.holdPaneSend(wire)) { sent = true; return true; }
+      sent = ipc.send(wire);
+      return sent;
+    }
     finally { if (!sent && id) this.deliveryOutbox?.markHumanReceiptUncertain(id, instanceName); }
   }
 
