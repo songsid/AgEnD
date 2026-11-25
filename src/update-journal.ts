@@ -522,3 +522,50 @@ export function recoveryPlan(read: JournalRead, updater: UpdaterState, ownStart 
 
 /** The publication primitives, for the crash tests only. */
 export const journalPrimitivesForTests = { writeNew, writeAtomic, mkdirDurable };
+
+// ── §3.3, §4.3: fleet generations and the handoff claim (2.1b) ───────────────────────────────────────────────────
+
+export type GenerationName = "old" | "trial" | "rollback";
+export interface FleetGeneration { gen: GenerationName; nonce: string; plannedAt: string; pid?: number; consumed?: boolean; dead?: boolean }
+const generationsOf = (a: AttemptRecord): FleetGeneration[] => (Array.isArray(a.fleets) ? a.fleets as FleetGeneration[] : []);
+
+/** §3.3: journal a generation with a fresh nonce BEFORE it is started (substep `start-planned`). */
+export function planGeneration(home: string, attempt: AttemptRecord, gen: GenerationName, nonce: string, io: JournalIo = defaultJournalIo): AttemptRecord {
+  if (!/^[0-9a-f]{32}$/.test(nonce)) throw new Error("a handoff nonce is 32 hex digits");
+  if (generationsOf(attempt).some(g => g.nonce === nonce)) throw new Error("a nonce is never reused");
+  const fleets = [...generationsOf(attempt), { gen, nonce, plannedAt: io.now().toISOString() }];
+  return substep(home, { ...attempt, fleets }, "start-planned", io);
+}
+
+/** The generation a nonce names, if it is planned and not yet consumed or voided. */
+export function plannedGeneration(attempt: AttemptRecord, nonce: string): FleetGeneration | null {
+  return generationsOf(attempt).find(g => g.nonce === nonce && !g.consumed && !g.dead) ?? null;
+}
+
+/**
+ * §4.3 step 1: the single-use claim of a handoff. Only for the open attempt's planned, unconsumed nonce; created with
+ * O_EXCL and synced, so exactly one contender wins. Returns false when another holds it or the nonce isn't planned.
+ */
+export function claimHandoff(home: string, attemptId: string, nonce: string, claimant: { pid: number; start: ProcessStartRecord }, io: JournalIo = defaultJournalIo): boolean {
+  const read = readCurrent(home, io);
+  if (read.state !== "open" || read.attempt.id !== attemptId || !plannedGeneration(read.attempt, nonce)) return false;
+  const path = join(attemptDir(home, attemptId), `handoff-${nonce}.claim`);
+  try { writeNew(io, path, JSON.stringify({ pid: claimant.pid, start: claimant.start }) + "\n"); }
+  catch { return false; }
+  // An exact retry by the same claimant is fine; another claimant's bytes differ, and writeNew refused them above.
+  return true;
+}
+
+/** §4.3 step 3: the updater acknowledges a takeover: the generation's pid recorded, its nonce consumed. */
+export function ackGeneration(home: string, attempt: AttemptRecord, nonce: string, pid: number, opts: { dead?: boolean } = {}, io: JournalIo = defaultJournalIo): AttemptRecord {
+  if (!isPid(pid)) throw new Error("a generation's pid is a positive integer");
+  const fleets = generationsOf(attempt).map(g => (g.nonce === nonce ? { ...g, pid, consumed: true, ...(opts.dead ? { dead: true } : {}) } : g));
+  if (!fleets.some(g => g.nonce === nonce)) throw new Error("no generation was planned with that nonce");
+  return substep(home, { ...attempt, fleets }, opts.dead ? "start-dead" : "start-acknowledged", io);
+}
+
+/** A nonce whose claimant is proven gone with the update's fence still in place: void, never reused (§4.3). */
+export function voidGeneration(home: string, attempt: AttemptRecord, nonce: string, io: JournalIo = defaultJournalIo): AttemptRecord {
+  const fleets = generationsOf(attempt).map(g => (g.nonce === nonce ? { ...g, consumed: true, dead: true } : g));
+  return substep(home, { ...attempt, fleets }, "start-voided", io);
+}

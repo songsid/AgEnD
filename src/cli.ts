@@ -46,6 +46,9 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { randomBytes } from "node:crypto";
 import { acquireHomeUpdateLock, admitFleetStart, installPrefixOf } from "./home-update-lock.js";
+import { admitServiceCommand } from "./service-lock.js";
+import { claimHandoff } from "./update-journal.js";
+import { takeSharedLease } from "./state-lease.js";
 import { ensureAgendHome } from "./agend-home.js";
 import { spawnSync, execSync, execFileSync } from "node:child_process";
 import { spawn } from "./child-process.js";
@@ -212,11 +215,56 @@ function admitAgainstHomeUpdate(): { ok: true; release(): void } | { ok: false }
   }
 }
 
+/**
+ * M-3770 (design update-transaction §3.4): a service command takes the service lock for its run, and is refused at once
+ * while a live update holds it (admitted only with the updater's token). Released when this process exits.
+ */
+function guardServiceCommand(command: string): boolean {
+  try {
+    const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null };
+    const admitted = admitServiceCommand(DATA_DIR, command, {
+      pid: process.pid, processStart: admission.processStart, startTicks: admission.startTicks, bootId: admission.bootId,
+      newToken: () => randomBytes(16).toString("hex"), now: () => new Date(), log: message => console.log(message),
+    });
+    if (!admitted.ok) { console.error(admitted.reason); process.exitCode = 1; return false; }
+    process.once("exit", () => admitted.release());
+    return true;
+  } catch (err) {
+    console.error(`\`agend ${command}\` is refused: the service lock could not be checked (${(err as Error).message}).`);
+    process.exitCode = 1;
+    return false;
+  }
+}
+
+/**
+ * M-3770 (design update-transaction §4.2 step 3): a state-writing command holds the state lease for its whole run, and
+ * is refused while an update is in progress. Released when this process exits.
+ */
+function holdStateLease(command: string): void {
+  const taken = takeSharedLease(DATA_DIR, command);
+  if (!taken.ok) { console.error(taken.reason); process.exit(1); }
+  process.once("exit", () => taken.lease.release());
+}
+
+/** The CLI's only way to open scheduler.db (it migrates on open, so even a read writes): under the state lease. */
+function openCliSchedulerDb(): SchedulerDb {
+  holdStateLease("schedule");
+  return new SchedulerDb(join(DATA_DIR, "scheduler.db"));
+}
+
 function claimFleetSingleton(): boolean {
   const home = admitAgainstHomeUpdate();
   if (!home.ok) return false;
   try {
-    setProcessFleetLock(acquireFleetLock(DATA_DIR));
+    // M-3770 §4.3: a start holding an update's planned nonce (AGEND_UPDATE_HANDOFF) takes the fence over by the
+    // journal's single-use claim; every other start is refused while an update fences the home.
+    const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null };
+    setProcessFleetLock(acquireFleetLock(DATA_DIR, {
+      claimHandoff: (attemptId, nonce, pid) => {
+        const start = admission.processStart(pid);
+        return !!start && claimHandoff(DATA_DIR, attemptId, nonce, { pid, start: { processStart: start } });
+      },
+    }));
     home.release();
     process.once("exit", () => { releaseProcessFleetLock(); });
     // Before anything is spawned, so a tmux server the fleet starts inherits it
@@ -1252,6 +1300,7 @@ topic
       console.error(`Instance "${instance}" not found in fleet config`);
       process.exit(1);
     }
+    holdStateLease("topic");
     applyFleetYamlPatches(FLEET_CONFIG_PATH, [{ path: ["instances", instance, "topic_id"], value: topicId }]);
     console.log(`Bound ${instance} \u2192 topic #${topicId}`);
   });
@@ -1269,6 +1318,7 @@ topic
       console.error(`Instance "${instance}" not found in fleet config`);
       process.exit(1);
     }
+    holdStateLease("topic");
     applyFleetYamlPatches(FLEET_CONFIG_PATH, [{ path: ["instances", instance, "topic_id"], remove: true }]);
     console.log(`Unbound ${instance} from topic`);
   });
@@ -1876,6 +1926,7 @@ program
   .addOption(new Option("--activate").hideHelp())
   .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
+    if (!guardServiceCommand("install")) return;                    // M-3770: not while an update owns the service
     if (process.argv.includes("--activate")) {
       console.error(t("cli.install_activate_removed"));
     }
@@ -2069,6 +2120,7 @@ program
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .action(async (opts: { yes?: boolean }) => {
     if (!gateFleetControl(DATA_DIR, "stop", { yes: opts.yes })) process.exit(1);
+    if (!guardServiceCommand("stop")) return;                       // M-3770: not while an update owns the service
     // #2481: a deliberate stop — the start attempts so far are not a crash loop.
     { const { clearStartAttempts } = await import("./start-failure.js"); clearStartAttempts(DATA_DIR); }
     const { getServicePath, getSystemServicePath, stopService, stopSystemService, serviceStopReport } = await import("./service-installer.js");
@@ -2110,6 +2162,7 @@ program
   .command("start")
   .description("Start the AgEnD service, or start a detached fleet if no service is installed")
   .action(async () => {
+    if (!guardServiceCommand("start")) return;                      // M-3770: not while an update owns the service
     const { getServicePath, getSystemServicePath, startService, startSystemService } = await import("./service-installer.js");
     const userServicePath = getServicePath();
     const systemServicePath = getSystemServicePath();
@@ -2197,6 +2250,7 @@ program
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .option("--force", "Restart even when the loaded service does not start this install on its selected Node (operators only)")
   .action(async (instance: string | undefined, opts: { yes?: boolean; force?: boolean }) => {
+    if (!instance && !guardServiceCommand("restart")) return;       // M-3770: the whole service, not while an update owns it
     if (instance) {
       if (opts.force) { console.error(t("cli.force_whole_service")); process.exit(1); }
       await restartOneInstance(instance);
@@ -2870,7 +2924,7 @@ schedule
   .option("--target <instance>", "Filter by target instance")
   .option("--json", "Output as JSON")
   .action((opts) => {
-    const db = new SchedulerDb(join(DATA_DIR, "scheduler.db"));
+    const db = openCliSchedulerDb();
     try {
       const schedules = db.list(opts.target);
       if (opts.json) {
@@ -2904,7 +2958,7 @@ schedule
       console.error(`Invalid cron expression: ${(err as Error).message}`);
       process.exit(1);
     }
-    const db = new SchedulerDb(join(DATA_DIR, "scheduler.db"));
+    const db = openCliSchedulerDb();
     try {
       const s = db.create({
         cron: opts.cron,
@@ -2934,7 +2988,7 @@ schedule
   .option("--timezone <tz>", "New timezone")
   .option("--enabled <bool>", "Enable/disable (true/false)")
   .action((id, opts) => {
-    const db = new SchedulerDb(join(DATA_DIR, "scheduler.db"));
+    const db = openCliSchedulerDb();
     try {
       const params: Record<string, unknown> = {};
       if (opts.cron) params.cron = opts.cron;
@@ -2956,7 +3010,7 @@ schedule
   .description("Delete a schedule")
   .argument("<id>", "Schedule ID")
   .action((id) => {
-    const db = new SchedulerDb(join(DATA_DIR, "scheduler.db"));
+    const db = openCliSchedulerDb();
     try {
       db.delete(id);
       console.log(`Deleted schedule ${id}`);
@@ -2971,7 +3025,7 @@ schedule
   .description("Enable a schedule")
   .argument("<id>", "Schedule ID")
   .action((id) => {
-    const db = new SchedulerDb(join(DATA_DIR, "scheduler.db"));
+    const db = openCliSchedulerDb();
     try {
       db.update(id, { enabled: true });
       console.log(`Enabled schedule ${id}`);
@@ -2986,7 +3040,7 @@ schedule
   .description("Disable a schedule")
   .argument("<id>", "Schedule ID")
   .action((id) => {
-    const db = new SchedulerDb(join(DATA_DIR, "scheduler.db"));
+    const db = openCliSchedulerDb();
     try {
       db.update(id, { enabled: false });
       console.log(`Disabled schedule ${id}`);
@@ -3002,7 +3056,7 @@ schedule
   .argument("<id>", "Schedule ID")
   .option("--limit <n>", "Number of runs to show", "20")
   .action((id, opts) => {
-    const db = new SchedulerDb(join(DATA_DIR, "scheduler.db"));
+    const db = openCliSchedulerDb();
     try {
       const runs = db.getRuns(id, parseInt(opts.limit, 10));
       if (runs.length === 0) {
