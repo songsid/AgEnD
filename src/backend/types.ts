@@ -354,6 +354,13 @@ export interface RemoteCardOption {
   submitKey?: "q";
   /** Code-owned human confirmation before a session-changing choice. */
   confirmation?: { title: string; message: string; confirmLabel: string };
+  /** M-3757: a plain subtitle shown under the option's button (the CLI's own label stays the button's words). */
+  hint?: string;
+  /**
+   * M-3757: a usage-credits choice: asks to be confirmed in words that name the agent (remoteCardPrompt builds them,
+   * since only it knows whose card this is). `picker`: Claude's /model picker variant, where the choice moves the agent to `model`.
+   */
+  usageCredits?: { model: string; picker: boolean };
   /** Sub-options page only: whether its box is ticked. */
   checked?: boolean;
 }

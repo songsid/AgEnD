@@ -14,7 +14,7 @@ const git = (...a: string[]) => execFileSync("git", ["-C", REPO, "-c", "gc.auto=
 const receipt: any = { sourceHead: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain", "--", "src").split("\n").filter(Boolean), checks: [], pictures: [] };
 const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!ok, ...(ok ? {} : { detail }) }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : ` ${JSON.stringify(detail)}`}`); };
 const { claudeUsageCreditsPrompt } = await import(REPO + "/src/backend/claude-usage-credits.ts");
-const { setLocale } = await import(REPO + "/src/locale.ts");
+const { setLocale, t } = await import(REPO + "/src/locale.ts");
 const LIVE = readFileSync(join(REPO, "tests/fixtures/claude-2.1.332-usage-credits-consent-dialog.pane.txt"), "utf8");
 
 const fx = await bootFixture({ port: 0, classic: false, host: true, roster: [
@@ -31,9 +31,10 @@ fm.getInstanceInteraction = () => presentation.interaction;
 fm.daemons.set("lumen", { answerRemoteCard: async () => { answers++; return { outcome: "answered" }; } });
 fm.startNeedsYou();
 try {
-  for (const [device, lang, theme] of [["desk", "en", "light"], ["desk", "zh-TW", "dark"], ["phone", "en", "light"], ["phone", "zh-TW", "dark"]] as const) {
+  for (const [device, lang, theme] of [["desk", "en", "light"], ["desk", "zh-TW", "dark"], ["desk", "zh-TW", "light"], ["phone", "en", "light"], ["phone", "zh-TW", "dark"]] as const) {
     const c = { device, lang, theme } as const, tag = `${device}-${lang}-${theme}`;
-    setLocale(lang === "zh-TW" ? "zh-TW" : "en");                   // the card's confirmation words are the fleet's language
+    setLocale(lang === "zh-TW" ? "zh-TW" : "en");                   // the card's subtitles and confirmation are the fleet's language
+    presentation.interaction_summary = t("interactive.kind.dialog");
     const card = claudeUsageCreditsPrompt(LIVE)!.card;
     await fm.postRemoteCard("lumen", card); fm.needsYou.recompute();
     const { ctx, page } = await fx.page(c, { path: "/ui/needs", host: true });
@@ -45,17 +46,29 @@ try {
       const body = await page.locator("body").innerText();
       check(`${tag}: Needs you shows the prompt and both of its choices`, body.includes("Fable 5.2 now uses usage credits") && body.includes("Continue with Fable 5.2"), body.slice(0, 400));
       check(`${tag}: no Esc / Skip choice is offered`, !/\bSkip\b|略過/.test(body.split("Fable 5.2 now uses usage credits")[1] ?? ""), null);
+      const hints = lang === "en" ? ["Uses your plan", "Billed to usage credits, separate from your plan"] : ["用方案內的額度", "另外從用量點數扣款（不在方案內）"];
+      const shownHints = await page.locator(".n-actions .btn-hint").allInnerTexts();
+      check(`${tag}: a subtitle under each choice, in the UI language`, JSON.stringify(shownHints.map(h => h.trim())) === JSON.stringify(hints), shownHints);
       let path = shotPath(smoke, tag, "1-needs-card"); await page.screenshot({ path }); receipt.pictures.push(path);
-      await page.getByRole("button", { name: "2. Continue with Fable 5.2", exact: true }).first().click();
+      await page.getByRole("button", { name: /^2\. Continue with Fable 5\.2/ }).first().click();
       const dialog = page.getByRole("dialog");
       await dialog.waitFor({ state: "visible", timeout: 10_000 });
       const words = await dialog.innerText();
-      check(`${tag}: the credits choice asks to be confirmed first`, lang === "en" ? /Spend usage credits\?/.test(words) : /要使用用量點數嗎？/.test(words), words);
+      const want = lang === "en"
+        ? ["Keep Lumen on Fable 5.2?", "Lumen's replies may be billed to usage credits, separate from your plan.", "Continue on credits", "Cancel"]
+        : ["讓 Lumen 繼續用 Fable 5.2？", "Lumen 之後的回覆可能會另外從用量點數扣款（不在方案內）。", "繼續（用點數）", "取消"];
+      check(`${tag}: the credits choice asks to be confirmed first, naming the agent in plain words`, want.every(w => words.includes(w)) && !/回合|answers/.test(words), words);
       check(`${tag}: no key went to the pane before the confirmation`, answers === 0, answers);
       path = shotPath(smoke, tag, "2-confirm-credits"); await page.screenshot({ path }); receipt.pictures.push(path);
       await dialog.getByRole("button", { name: lang === "en" ? "Cancel" : "取消", exact: true }).click();
       await page.waitForTimeout(300);
       check(`${tag}: cancelled, still no answer sent`, answers === 0, answers);
+      // The dialog's ✕ is the same as Cancel: no answer, the card stays.
+      await page.getByRole("button", { name: "2. Continue with Fable 5.2", exact: false }).first().click();
+      await dialog.waitFor({ state: "visible", timeout: 10_000 });
+      await dialog.locator(".dlg-x").click();
+      await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+      check(`${tag}: the ✕ closes the confirmation like Cancel — no answer sent, the card stays`, answers === 0 && (await page.getByText("Continue with Fable 5.2").count()) > 0, answers);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       check(`${tag}: no horizontal overflow`, !overflow, overflow);
       check(`${tag}: cancelling the confirmation leaves the card (nothing answered)`, (await page.getByText("Continue with Fable 5.2").count()) > 0, null);

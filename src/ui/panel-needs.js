@@ -340,7 +340,7 @@ function NeedsItem({ item, nowMs, owner }) {
       ${item.type==='host'?(item.hostAlert?html`<${HostAlertActions} record=${item.hostAlert}/>`:html`<a class="btn btn-sm" href=${fleetPath('host-health')}>${hostAlertText('open')}</a>`):null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
-            disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy && !p.confirming : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
+            disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy && !p.confirming : fallback === "busy") ? tn("answering") : a.label}${a.hint ? html`<span class="btn-hint">${a.hint}</span>` : null}</button>`) : null}
         ${item.type === "hub" && item.hubRetry ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!!hubAck || !!closeAck} onClick=${retryHub}>
             <${Icon} name="restart" size=${14} />${hubAck === "busy" ? tn("hubRetrying") : tn("hubRetry")}</button>` : null}
         ${item.type === "hub" && item.hubClose ? html`<button type="button" class="btn btn-sm hub-close" disabled=${!!closeAck || !!hubAck} onClick=${closeHub}>${tn(closeAck === "busy" ? "hubClosing" : "hubClose")}</button>` : null}

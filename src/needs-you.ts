@@ -116,7 +116,7 @@ export interface PromptInput {
   prefix: string;
   instance: string;
   text: string;
-  actions: Array<{ id: string; label: string; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  actions: Array<{ id: string; label: string; hint?: string; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
   createdAt: number;
   adapterId: string;
   chatId: string;

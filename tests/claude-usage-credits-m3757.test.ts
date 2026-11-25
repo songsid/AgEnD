@@ -44,20 +44,9 @@ describe("the live 2.1.332 prompt", () => {
     expect(card).toMatchObject({ kind: "question", title: "Claude Code", page: "options", cursor: 0, freeText: false, noSkip: true, webOnly: true, humanOnly: true });
     expect(card.question).toBe("Fable 5.2 now uses usage credits\nFable 5.2 runs on usage credits, purchased separately from your plan.");
     expect(card.options.map(o => o.title)).toEqual(["Switch to Opus 5.5 and continue", "Continue with Fable 5.2"]);
-    // Switching changes nothing that costs money; continuing on Fable may spend credits: confirmed first.
-    expect(card.options[0]!.confirmation).toBeUndefined();
-    expect(card.options[1]!.confirmation).toMatchObject({ confirmLabel: "Continue with Fable 5.2" });
-    // Neutral words: the choice may bill usage credits; nothing promises which model the agent keeps (a picker's
-    // "Yes, buy usage credits" moves it to the picked model).
-    const { setLocale, t } = await import("../src/locale.js");
-    for (const lang of ["en", "zh-TW"] as const) {
-      setLocale(lang);
-      const message = t("claude.usage_credits.confirm_message", "Continue with Fable 5.2");
-      expect(message).toContain("Continue with Fable 5.2");
-      expect(message).toMatch(lang === "en" ? /may bill this agent's turns to usage credits/ : /可能讓這個 Agent 之後的回合從用量點數扣款/);
-      expect(message).not.toMatch(/keeps its|current model|維持目前的模型/);
-    }
-    setLocale("en");
+    // The subtitles say what each choice means for the plan; only the credits choice asks to be confirmed.
+    expect(card.options.map(o => o.hint)).toEqual(["Uses your plan", "Billed to usage credits, separate from your plan"]);
+    expect(card.options.map(o => o.usageCredits ?? null)).toEqual([null, { model: "Fable 5.2", picker: false }]);
     expect(acting(LIVE)[0]!.remoteCard!(LIVE)).toEqual(card);
   });
 
@@ -84,7 +73,7 @@ describe("the live 2.1.332 prompt", () => {
 describe("the renderer's other shapes (2.1.332's own words)", () => {
   it.each([
     ["Fable 5.2 now runs on usage credits", ["Switch to Opus 5.5 and continue", "Turn on usage credits and continue"], [false, true]],
-    ["Fable 5.2 now uses usage credits", ["Not now", "Request usage credits from your admin"], [false, true]],
+    ["Fable 5.2 now uses usage credits", ["Not now", "Request usage credits from your admin"], [false, false]],
     ["You've reached your Fable limit", ["Switch to Opus 5.5 and continue", "Continue with usage credits", "Upgrade to Max or Ultra"], [false, true, false]],
     ["Switch to Fable 5.2?", ["No, keep my current model", "Yes, buy usage credits"], [false, true]],
   ] as const)("%s → held; each option offered, the credits one confirmed", (title, options, confirmed) => {
@@ -92,7 +81,34 @@ describe("the renderer's other shapes (2.1.332's own words)", () => {
     expect(acting(p).map(d => d.holdOnly)).toEqual([true]);
     const card = claudeUsageCreditsPrompt(p)!.card;
     expect(card.options.map(o => o.title)).toEqual(options);
-    expect(card.options.map(o => o.confirmation !== undefined)).toEqual(confirmed);
+    expect(card.options.map(o => o.usageCredits !== undefined)).toEqual(confirmed);
+    expect(card.options.every(o => typeof o.hint === "string" || o.title.startsWith("Upgrade"))).toBe(true);
+  });
+});
+
+describe("the card as people see it (remoteCardPrompt, with the agent's shown name)", () => {
+  it.each([
+    ["en", "Keep Lumen on Fable 5.2?", "Lumen's replies may be billed to usage credits, separate from your plan.", "Continue on credits", ["Uses your plan", "Billed to usage credits, separate from your plan"]],
+    ["zh-TW", "讓 Lumen 繼續用 Fable 5.2？", "Lumen 之後的回覆可能會另外從用量點數扣款（不在方案內）。", "繼續（用點數）", ["用方案內的額度", "另外從用量點數扣款（不在方案內）"]],
+  ] as const)("%s: a subtitle under each choice; the credits choice's confirmation names the agent, in plain words", async (lang, title, message, label, hints) => {
+    const { setLocale } = await import("../src/locale.js");
+    const { remoteCardPrompt } = await import("../src/remote-card-prompt.js");
+    setLocale(lang);
+    try {
+      const prompt = remoteCardPrompt("hub-ux-agent", claudeUsageCreditsPrompt(LIVE)!.card, "Lumen");
+      expect(prompt.choices.map(c => c.label)).toEqual(["1. Switch to Opus 5.5 and continue", "2. Continue with Fable 5.2"]);
+      expect(prompt.choices.map(c => c.hint)).toEqual(hints);
+      expect(prompt.choices[0]!.confirmation).toBeUndefined();
+      expect(prompt.choices[1]!.confirmation).toEqual({ title, message, confirmLabel: label });
+      // Neutral and plain: no promise about the model, no jargon.
+      expect(JSON.stringify(prompt.choices)).not.toMatch(/回合|answers? (?:Claude|the prompt)|keeps its|current model|維持目前的模型/);
+    } finally { setLocale("en"); }
+  });
+
+  it("the /model picker's credits choice asks to move the agent, never to keep it", async () => {
+    const { remoteCardPrompt } = await import("../src/remote-card-prompt.js");
+    const card = claudeUsageCreditsPrompt(shape("Switch to Fable 5.2?", ["No, keep my current model", "Yes, buy usage credits"]))!.card;
+    expect(remoteCardPrompt("x", card, "Lumen").choices[1]!.confirmation?.title).toBe("Move Lumen to Fable 5.2?");
   });
 });
 

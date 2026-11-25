@@ -19,13 +19,19 @@ const clip = (text: string, max = LABEL_MAX) => (text.length > max ? `${text.sli
 export interface RemoteCardPrompt {
   message: string;
   /** The platform's buttons: `action` is the id after `<prefix><nonce>:`. */
-  choices: Array<{ action: string; label: string; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  choices: Array<{ action: string; label: string; hint?: string; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
   /** The dashboard's extra action: the typed answer, which the platform takes as a reply to the message instead. */
   webInput: { action: string; label: string } | null;
 }
 
-/** The message and buttons for `card`, asked by `instance`. */
-export function remoteCardPrompt(instance: string, card: RemoteCard): RemoteCardPrompt {
+/** M-3757: a usage-credits choice's confirmation, naming the agent (`agent`: its shown name). */
+function usageCreditsConfirmation(agent: string, u: { model: string; picker: boolean }) {
+  return { title: t(u.picker ? "claude.usage_credits.confirm_title_picker" : "claude.usage_credits.confirm_title", agent, u.model),
+    message: t("claude.usage_credits.confirm_message", agent), confirmLabel: t("claude.usage_credits.confirm_label") };
+}
+
+/** The message and buttons for `card`, asked by `instance` (`agent`: the name people know it by, for words that name it). */
+export function remoteCardPrompt(instance: string, card: RemoteCard, agent = instance): RemoteCardPrompt {
   if (card.kind === "input") {
     return {
       message: [t("card.input_intro", card.server, instance), ...card.rows.map(row => `  ${row}`), t("card.input_hint")].join("\n"),
@@ -54,7 +60,10 @@ export function remoteCardPrompt(instance: string, card: RemoteCard): RemoteCard
     return o.description ? `${title} — ${o.description}` : title;
   });
   const buttons = card.options.length <= REMOTE_CARD_MAX_OPTIONS
-    ? card.options.map(o => ({ action: `opt-${o.n}`, label: clip(`${o.n}. ${o.title}${o.recommended ? " ★" : ""}`), ...(o.confirmation ? { confirmation: o.confirmation } : {}) })) : [];
+    ? card.options.map(o => {
+      const confirmation = o.usageCredits ? usageCreditsConfirmation(agent, o.usageCredits) : o.confirmation;
+      return { action: `opt-${o.n}`, label: clip(`${o.n}. ${o.title}${o.recommended ? " ★" : ""}`), ...(o.hint ? { hint: o.hint } : {}), ...(confirmation ? { confirmation } : {}) };
+    }) : [];
   return {
     message: [t("card.question_intro", instance), card.question, ...listed,
       card.humanOnly && card.options.length === 0 ? "" : card.noSkip ? t("card.selection_hint") : card.freeText ? t("card.question_hint_text") : t("card.question_hint")].join("\n"),
