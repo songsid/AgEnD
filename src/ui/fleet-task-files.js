@@ -19,14 +19,14 @@ import { relTime } from "./fleet-task-common.js";
 
 register("taskfiles", {
   en: {
-    title: "Files", count: "{0}", download: "Download", show: "Show", hide: "Hide", preview: "Preview", stop: "Stop", loading: "Loading…",
+    title: "Files", count: "{0}", download: "Download", show: "Show", hide: "Hide", preview: "Preview", stop: "Stop preview", live: "This is a preview", loading: "Loading…",
     large: "This file is large ({0}). Preview anyway?", anyway: "Preview anyway", over: "This file is too large to show here. Download it.",
     gone: "This file is no longer available.", failed: "The file could not be read.", allow: "Allow previews on this device",
     optin: "Previews are off on this device. Allow them to run this file here, or download it.", lines: "Show all {0} lines", plain: "Shown as plain text.",
     by: "{0} · {1}", openImage: "Open the picture", fileOf: "File {0}, {1}",
   },
   "zh-TW": {
-    title: "檔案", count: "{0}", download: "下載", show: "顯示", hide: "收合", preview: "預覽", stop: "停止", loading: "讀取中…",
+    title: "檔案", count: "{0}", download: "下載", show: "顯示", hide: "收合", preview: "預覽", stop: "停止預覽", live: "這是預覽", loading: "讀取中…",
     large: "這個檔案很大（{0}）。還是要預覽嗎？", anyway: "仍要預覽", over: "這個檔案太大，無法在這裡顯示，請下載。",
     gone: "這個檔案已經不存在。", failed: "無法讀取這個檔案。", allow: "在這台裝置允許預覽",
     optin: "這台裝置沒有開啟預覽。允許後可以直接在這裡執行這個檔案，或直接下載。", lines: "顯示全部 {0} 行", plain: "以純文字顯示。",
@@ -90,8 +90,13 @@ function HtmlPreview({ f }) {
   const [state, setState] = useState("idle");
   const [note, setNote] = useState("");
   const [large, setLarge] = useState(null);
+  const [, redraw] = useState(0);
   const key = `taskfile:${f.id}`;
   useEffect(() => () => { try { if (P) P.stop(key, "stopped", ""); } catch { /* not running */ } }, [key]);
+  // "I understand" is kept by the preview module (per sign-in), not by this component, so a press changes nothing this component holds:
+  // it draws again on the press itself (below) and whenever the module says the acknowledgement changed (the chat's, another card's or
+  // another tab's press — the chat's own panel listens the same way).
+  useEffect(() => (P && typeof P.onChange === "function" ? P.onChange(() => redraw((n) => n + 1)) : undefined), [P]);
   if (!P || !htmlOffered()) return null;
   const going = state === "starting" || state === "running";
   // A reason no click can change (the server offers no preview at this address, the page is behind a proxy that rewrites its Host, this
@@ -119,15 +124,16 @@ function HtmlPreview({ f }) {
     P.start(key, holder.current, r.code, ui, { fill: true, ...(anyway ? { anyway: true } : {}) });
   }
   return html`<div class="tf-html">
-    <div class="tf-actions">
-      ${going ? html`<button type="button" class="btn btn-sm" onClick=${() => P.stop(key, "stopped", "")}>${t("taskfiles.stop")}</button>`
+    <div class=${`tf-actions${going ? " tf-live" : ""}`}>
+      ${going ? html`<button type="button" class="btn btn-sm tf-stop" onClick=${() => P.stop(key, "stopped", "")}>${t("taskfiles.stop")}</button>
+        <span class="tf-live-mark">${t("taskfiles.live")}</span>`
         : large ? html`<button type="button" class="btn btn-sm" onClick=${() => void run(true)}>${t("taskfiles.anyway")}</button>`
         : blocked ? null
         : html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => void run(false)}><${Icon} name="play" size=${14} />${t("taskfiles.preview")}</button>`}
     </div>
     <div class="pv-note tf-note" role="status">${note || (blocked ? here.reason : "")}</div>
     ${going && !P.bannerAcked() ? html`<div class="pv-banner" role="note"><span class="pv-banner-text">${P.banner()}</span>
-      <button type="button" class="btn btn-sm btn-ghost pv-ack" title=${P.bannerAckTitle()} onClick=${() => { P.ackBanner(); setState((s) => s); }}>${P.bannerAckLabel()}</button></div>` : null}
+      <button type="button" class="btn btn-sm btn-ghost pv-ack" title=${P.bannerAckTitle()} onClick=${() => { P.ackBanner(); redraw((n) => n + 1); }}>${P.bannerAckLabel()}</button></div>` : null}
     <div class="pv-holder tf-holder" ref=${holder}></div>
   </div>`;
 }

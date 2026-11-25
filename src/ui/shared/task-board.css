@@ -600,6 +600,9 @@ button.tb-owner-btn:hover { border-color: var(--border); background: var(--surfa
 .tc-md-wrap:hover .tc-md-edit, .tc-md-edit:focus-visible { opacity: 1; }
 .tp .tc-md-wrap .tc-text { padding-right: calc(var(--s-8) + var(--s-4)); }
 @media (pointer: coarse) { .tc-md-edit { opacity: 1; min-width: var(--tap); min-height: var(--tap); } }
+/* The Edit button is a quiet ghost button, easy to miss on the dark theme: its enabled state takes the accent token (the colour of links and
+   selected text, defined for every theme) in its text and border. Colour only: the size and the 44px touch box are the rules above. */
+.tc-md-edit.btn-ghost { color: var(--accent); border-color: var(--accent); }
 
 /* Files on a card (fleet-task-files.js): under the comment they came with, and together in the card's Files field. One row each — the
    name (the download), the size, who and when, the Download button — then what the page can show of it: the picture, the text, the preview. */
@@ -623,6 +626,11 @@ button.tb-owner-btn:hover { border-color: var(--border); background: var(--surfa
 .tf-count { margin-left: var(--s-1); font-weight: var(--fw-regular); color: var(--text-3); }
 .tf-html, .tf-text { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
 .tf-holder { margin-top: 0; }
+/* While a preview runs, its bar — "Stop preview" and the mark that this is a preview — stays at the top of the scrolling page for as long as the
+   preview's box is on screen, so a person using the embedded page never has to scroll back up to stop it or to remember what it is. (The page's
+   header sits above the scrolling area, so `top: 0` is directly under it.) The bar is opaque and above the frame; it keeps the 44px boxes below. */
+.tf-actions.tf-live { position: sticky; top: 0; z-index: 3; align-items: center; padding: var(--s-1) 0; background: var(--bg); border-bottom: 1px solid var(--border); }
+.tf-live-mark { display: inline-flex; align-items: center; padding: 2px var(--s-2); border-radius: var(--r-full); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
 /* A running preview has a place of its own: a frame that fills a box of fixed height (a page that lays itself out by the window's height — a
    canvas game — has no height of its own to report, and the automatic height left it a strip of 40px). A page taller than the box scrolls. */
 .tf-holder:not(:empty) { display: flex; flex-direction: column; height: min(75vh, 640px); min-height: 260px; }

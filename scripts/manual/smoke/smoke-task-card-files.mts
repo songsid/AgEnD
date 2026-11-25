@@ -5,12 +5,19 @@
 // acceptance — on the real Tasks tab, desk 1366 / phone 390, light / dark, English / zh-TW (MATRIX=full, the default).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> ROLE=before|after FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-task-card-files.mts
+// MATRIX=phone-844 (ROLE=after only): the standard-height phone frames instead — a 390x844 VIEWPORT (never the full page), light / dark x
+// English / zh-TW, scrolled the way a person scrolls: card top (Markdown Edit button), the comment's file, the Files field, Download / Preview,
+// a running preview (its notice, "I understand" taking the notice away at once, the bar with "Stop preview" staying on screen while the page
+// scrolls past the frame). Writes <OUT>/smoke-task-card-after/<case>-844-<n>-<state>.png and <OUT>/smoke-task-card-after-844-results.json.
+import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PICTURES, bootFixture, caseName, matrix, shotPath, VIEWPORTS } from "../smoke-fixture/index.mts";
 
 const ROLE = process.env.ROLE === "before" ? "before" : "after";
 const SMOKE = `smoke-task-card-${ROLE}`;
+const FRAMES_844 = process.env.MATRIX === "phone-844";
+if (FRAMES_844 && ROLE !== "after") throw new Error("MATRIX=phone-844 shoots this PR's card: ROLE=after");
 const roster = ["planner", "dev", "mastertest"].map((name) => ({ name, backend: "claude-code" as const, displayName: name }));
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48560), instances: 3, roster, classic: false });
 const REPO = process.env.REPO!;
@@ -75,7 +82,7 @@ db.board.moveCard(as("mastertest"), S3, "claimed", {});
 db.board.moveCard(as("mastertest"), S3, "done", { result: ROLE === "after" ? "## 驗收通過\n\n- `survivor.html` 存在，JS 語法檢查通過\n- 內容符合企劃的 MVP 範圍" : "驗收：index.html 存在（322 行），JS 語法檢查通過；內容符合企劃 MVP 範圍。" });
 db.board.updateCard(as("mastertest"), M, { state: ROLE === "after" ? "- 企劃 ✅\n- 原型 ✅\n- 驗收 ✅\n\n下一步：等你確認" : "企劃、原型、驗收都完成，等你確認" });
 
-const results: any = { role: ROLE, browser: fx.browser.version(), card: M, shots: [] as string[], checks: [] as Array<{ case: string; name: string; ok: boolean; detail?: unknown }> };
+const results: any = { role: ROLE, commit: execFileSync("git", ["-C", REPO, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), ...(FRAMES_844 ? { frames: "phone 390x844 viewport" } : {}), browser: fx.browser.version(), card: M, shots: [] as string[], checks: [] as Array<{ case: string; name: string; ok: boolean; detail?: unknown }> };
 const check = (c: string, name: string, ok: boolean, detail?: unknown) => { results.checks.push({ case: c, name, ok, ...(detail !== undefined ? { detail } : {}) }); };
 
 /** In the page: does the Edit button cover any line of the field's text, and how big is it? (text nodes' line boxes, not the blocks' own boxes) */
@@ -92,10 +99,115 @@ const EDIT_PROBE = `(() => {
 /** The smallest box among each selector's matches (a phone control is a 44px tap box), and how many there are. */
 const TAP_PROBE = (sels: string[]) => `(() => Object.fromEntries(${JSON.stringify(sels)}.map((s) => { const all = [...document.querySelectorAll(s)].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0); return [s, { n: all.length, minH: all.length ? Math.round(Math.min(...all.map((r) => r.height))) : 0 }]; })))()`;
 
-for (const c of matrix()) {
+/** The Edit button's text and border are the accent token's colour (a probe span resolves the token to the same rgb the button reports). */
+const ACCENT_PROBE = `(() => {
+  const btn = document.querySelector(".tp-body .tc-md-wrap .tc-md-edit"); if (!btn) return null;
+  const token = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  const probe = document.createElement("span"); probe.style.color = token; document.body.appendChild(probe);
+  const want = getComputedStyle(probe).color; probe.remove();
+  const cs = getComputedStyle(btn);
+  return { token, want, color: cs.color, border: cs.borderTopColor, borderWidth: cs.borderTopWidth };
+})()`;
+/** Scroll the card's scroller so the element's top sits `offset` px from the scroller's top (a negative offset: the element's top is above the scroller). */
+const SCROLL_EL = (sel: string, offset: number) => `(() => {
+  const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null;
+  let p = el.parentElement, sc = null;
+  while (p) { const o = getComputedStyle(p).overflowY; if ((o === "auto" || o === "scroll") && p.scrollHeight > p.clientHeight + 1) { sc = p; break; } p = p.parentElement; }
+  if (!sc) return null;
+  sc.scrollTop += el.getBoundingClientRect().top - sc.getBoundingClientRect().top - (${offset});
+  return { scroller: sc.className || sc.tagName, top: Math.round(sc.getBoundingClientRect().top) };
+})()`;
+/** Rectangles (rounded) of the given selectors, in viewport coordinates, plus the scroller's top and the viewport height. */
+const RECTS = (sels: string[]) => `(() => {
+  const out = { vh: innerHeight, scrollerTop: Math.round((document.querySelector(".panel-body") || document.body).getBoundingClientRect().top) };
+  for (const s of ${JSON.stringify(sels)}) { const e = document.querySelector(s); if (!e) { out[s] = null; continue; } const r = e.getBoundingClientRect(); out[s] = { top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height), w: Math.round(r.width) }; }
+  return out;
+})()`;
+
+/** MATRIX=phone-844: standard-height phone frames of the card as a person scrolls it (a viewport shot each, never the full page). */
+async function frames844(c: any, name: string, page: any, ctx: any) {
+  await page.setViewportSize({ width: VIEWPORTS.phone.width, height: 844 });
+  await page.waitForSelector(".tp", { timeout: 15000 });
+  await page.waitForTimeout(700);
+  let n = 0;
+  const snap = async (state: string, extra: Record<string, unknown> = {}) => {
+    const file = shotPath(SMOKE, c, `844-${++n}-${state}`);
+    await page.screenshot({ path: file, fullPage: false });
+    const vp: any = await page.evaluate(`({ w: innerWidth, h: innerHeight })`);
+    results.shots.push(file);
+    check(name, `${state}: the frame is a 390x844 viewport shot`, vp.w === 390 && vp.h === 844, vp);
+    return { ...extra };
+  };
+  const TAPS = (stop: any) => !!stop && stop.h >= 44 && stop.w >= 44;
+  // 1. card top: the Markdown field and its Edit button, a row of its own, in the accent token's colour
+  await snap("card-top");
+  const edit: any = await page.evaluate(EDIT_PROBE);
+  const rect: any = await page.evaluate(RECTS([".tp-body .tc-md-wrap .tc-md-edit"]));
+  const er = rect[".tp-body .tc-md-wrap .tc-md-edit"];
+  check(name, "card top: the Edit button is a 44px row under the text, inside the 844px frame", !!edit && edit.covers === false && edit.belowText && edit.h >= 44 && edit.w >= 44 && !!er && er.bottom <= 844, { edit, rect: er });
+  const acc: any = await page.evaluate(ACCENT_PROBE);
+  check(name, "card top: the Edit button's text and border are the accent token (dark and light alike)", !!acc && acc.color === acc.want && acc.border === acc.want && parseFloat(acc.borderWidth) >= 1, acc);
+  // 2-3. the comment's file, the Files field
+  await page.evaluate(SCROLL_EL(".tl-comment .tf-row", 12)); await page.waitForTimeout(250);
+  const r2: any = await page.evaluate(RECTS([".tl-comment .tf-row", ".tl-comment .tf-dl", ".tl-comment .tf-text .btn"]));
+  await snap("comment-file");
+  check(name, "comment file: its row, Download and Show fit the frame (44px)", [".tl-comment .tf-row", ".tl-comment .tf-dl", ".tl-comment .tf-text .btn"].every((k) => r2[k] && r2[k].top >= r2.scrollerTop && r2[k].bottom <= 844) && r2[".tl-comment .tf-dl"].h >= 44 && r2[".tl-comment .tf-text .btn"].h >= 44, r2);
+  await page.evaluate(SCROLL_EL(".tp-files", 12)); await page.waitForTimeout(250);
+  const r3: any = await page.evaluate(RECTS([".tp-files .tf-dl"]));
+  await snap("files-field");
+  check(name, "Files field: Download fits the frame (44px)", !!r3[".tp-files .tf-dl"] && r3[".tp-files .tf-dl"].bottom <= 844 && r3[".tp-files .tf-dl"].h >= 44, r3);
+  // 4. the developer's card: the prototype's Download / Preview
+  await page.goto(`${fx.base}/ui/fleet?card=${S2}`); await page.waitForSelector(".tp-files", { timeout: 15000 }); await page.waitForTimeout(700);
+  await page.evaluate(SCROLL_EL(".tp-files", 12)); await page.waitForTimeout(250);
+  const r4: any = await page.evaluate(RECTS([".tp-files .tf-dl", ".tp-files .tf-html .btn-primary"]));
+  await snap("dev-files-actions");
+  check(name, "dev card: Download and Preview fit the frame (44px)", [".tp-files .tf-dl", ".tp-files .tf-html .btn-primary"].every((k) => r4[k] && r4[k].bottom <= 844 && r4[k].h >= 44), r4);
+  // 5. Preview: the notice, the bar with "Stop preview" and the mark that this is a preview, the top of the frame
+  await page.click(".tp-files .tf-html .btn-primary");
+  await page.waitForSelector(".tp-files iframe", { timeout: 15000 });
+  await page.waitForTimeout(1800);
+  const frame = page.frames().find((f: any) => f !== page.mainFrame() && f.url().startsWith("http"));
+  const canvas = frame ? await frame.locator("canvas").count() : 0;
+  await page.evaluate(SCROLL_EL(".tp-files .tf-html", 0)); await page.waitForTimeout(250);
+  const r5: any = await page.evaluate(RECTS([".tf-actions.tf-live", ".tf-actions.tf-live .tf-stop", ".tf-live-mark", ".tp-files .pv-banner", ".tp-files .pv-ack", ".tp-files iframe"]));
+  const label: string = await page.evaluate(`(document.querySelector(".tf-actions.tf-live .tf-stop") || {}).textContent || ""`);
+  const mark: string = await page.evaluate(`(document.querySelector(".tf-live-mark") || {}).textContent || ""`);
+  await snap("preview-opened");
+  check(name, "Preview: the button is named \"Stop preview\" / \"停止預覽\" and the mark says this is a preview", label.trim() === (c.lang === "zh-TW" ? "停止預覽" : "Stop preview") && mark.trim() === (c.lang === "zh-TW" ? "這是預覽" : "This is a preview"), { label, mark });
+  check(name, "Preview: the prototype runs in the sandbox frame of the other origin (scripts only)", canvas === 1 && !!frame && new URL(frame.url()).origin !== fx.base && (await page.evaluate(`document.querySelector(".tp-files iframe").getAttribute("sandbox")`)) === "allow-scripts", { canvas, origin: frame ? new URL(frame.url()).origin : null });
+  check(name, "Preview: Stop preview is a 44px box in the frame, beside the mark; the notice and its \"I understand\" are up", TAPS(r5[".tf-actions.tf-live .tf-stop"]) && r5[".tf-actions.tf-live .tf-stop"].bottom <= 844 && !!r5[".tf-live-mark"] && !!r5[".tp-files .pv-banner"] && !!r5[".tp-files .pv-ack"], r5);
+  // 6. "I understand": the notice is gone at once (the next frame, not after some other redraw); the bar stays
+  await page.click(".tp-files .pv-ack");
+  let gone = true; try { await page.waitForSelector(".tp-files .pv-banner", { state: "detached", timeout: 400 }); } catch { gone = false; }
+  check(name, "I understand: the notice is gone at once", gone);
+  await page.waitForTimeout(150);
+  const r6: any = await page.evaluate(RECTS([".tf-actions.tf-live .tf-stop", ".tf-live-mark"]));
+  await snap("preview-understood");
+  check(name, "I understand: Stop preview and the preview mark stay", !!r6[".tf-actions.tf-live .tf-stop"] && !!r6[".tf-live-mark"], r6);
+  // 7. scrolled past the frame's top: the bar (Stop preview + the mark) stays at the top of the scrolling page, the frame under it
+  for (const [state, off] of [["preview-scrolled", -150], ["preview-scrolled-lower", -400]] as const) {
+    await page.evaluate(SCROLL_EL(".tp-files iframe", off)); await page.waitForTimeout(250);
+    const r: any = await page.evaluate(RECTS([".tf-actions.tf-live", ".tf-actions.tf-live .tf-stop", ".tf-live-mark", ".tp-files iframe"]));
+    if (state === "preview-scrolled") await snap(state);
+    const bar = r[".tf-actions.tf-live"], stop = r[".tf-actions.tf-live .tf-stop"], mk = r[".tf-live-mark"], fr = r[".tp-files iframe"];
+    check(name, `scrolled ${-off}px into the frame: the bar is stuck at the top of the scrolling page, Stop preview (44px) and the mark are on screen, the frame is under it`,
+      !!bar && Math.abs(bar.top - r.scrollerTop) <= 1 && TAPS(stop) && stop.top >= r.scrollerTop && stop.bottom <= 844 && !!mk && mk.top >= r.scrollerTop && mk.bottom <= 844 && !!fr && fr.top < r.scrollerTop && fr.bottom > bar.bottom + 40, r);
+  }
+  // the wheel over the running frame still scrolls the page, and Stop preview is pressed from here without scrolling back up
+  const SPOS = `(() => { const e = document.querySelector(".panel-body"); return e ? e.scrollTop : window.scrollY; })()`;
+  const before: number = await page.evaluate(SPOS);
+  await page.mouse.move(195, 500); await page.mouse.wheel(0, 120); await page.waitForTimeout(400);
+  check(name, "the wheel over the running frame still scrolls the page", (await page.evaluate(SPOS)) > before, { before, after: await page.evaluate(SPOS) });
+  await page.click(".tf-actions.tf-live .tf-stop"); await page.waitForTimeout(400);
+  check(name, "Stop preview, pressed from the scrolled position, closes the frame", (await page.locator(".tp-files iframe").count()) === 0 && (await page.locator(".tf-live-mark").count()) === 0);
+  await ctx.close();
+}
+
+for (const c of FRAMES_844 ? matrix("phone-light-en,phone-light-zh-TW,phone-dark-en,phone-dark-zh-TW") : matrix()) {
   const name = caseName(c);
   // This device allows previews (the host preference the chat's own opt-in writes).
   const { page, ctx } = await fx.page(c, { path: `/ui/fleet?card=${S1}`, prefs: { "preview.optIn": true } });
+  if (FRAMES_844) { await frames844(c, name, page, ctx); continue; }
   await page.setViewportSize({ width: VIEWPORTS[c.device].width, height: c.device === "phone" ? 1900 : 1250 });
   await page.waitForSelector(".tp", { timeout: 15000 });
   await page.waitForTimeout(600);
@@ -117,6 +229,8 @@ for (const c of matrix()) {
     if (edit) {
       check(name, "the Edit button covers no text", edit.covers === false, edit);
       if (c.device === "phone") check(name, "phone: the Edit button is a row under the text, a 44px box", edit.position === "static" && edit.belowText && edit.h >= 44 && edit.w >= 44, edit);
+      const acc: any = await page.evaluate(ACCENT_PROBE);
+      check(name, "the Edit button's text and border are the accent token", !!acc && acc.color === acc.want && acc.border === acc.want, acc);
     }
     check(name, "the file is under the comment and in the Files field", (await page.locator(".tl-comment .tf-row").count()) >= 1 && (await page.locator(".tp-files .tf-row").count()) === 1);
     if (c.device === "phone") {
@@ -142,6 +256,8 @@ for (const c of matrix()) {
     const preview = { ...box, origin: frame ? new URL(frame.url()).origin : null, dashboard: fx.base, canvasInFrame: frame ? await frame.locator("canvas").count() : 0 };
     check(name, "the prototype runs in the sandbox frame of the other origin", preview.sandbox === "allow-scripts" && preview.origin !== null && preview.origin !== fx.base && preview.canvasInFrame === 1, preview);
     check(name, "the running preview has a box of its own (not the 40px strip)", preview.fill && preview.h >= 300, preview);
+    const stopLabel: string = await page.evaluate(`(document.querySelector(".tf-actions.tf-live .tf-stop") || {}).textContent || ""`);
+    check(name, "the running preview's button is \"Stop preview\" / \"停止預覽\"", stopLabel.trim() === (c.lang === "zh-TW" ? "停止預覽" : "Stop preview"), stopLabel);
     const run = shotPath(SMOKE, c, "dev-card-preview-running");
     await page.screenshot({ path: run, fullPage: true });
     results.shots.push(run);
@@ -155,7 +271,7 @@ for (const c of matrix()) {
   await ctx.close();
 }
 const failed = results.checks.filter((k: any) => !k.ok);
-writeFileSync(join(process.env.OUT ?? "/tmp", `${SMOKE}-results.json`), JSON.stringify(results, null, 2) + "\n");
+writeFileSync(join(process.env.OUT ?? "/tmp", `${SMOKE}${FRAMES_844 ? "-844" : ""}-results.json`), JSON.stringify(results, null, 2) + "\n");
 console.log(`${ROLE}: ${results.shots.length} screenshots, ${results.checks.length - failed.length}/${results.checks.length} checks pass`);
 for (const k of failed) console.log("FAIL", k.case, k.name, JSON.stringify(k.detail));
 await fx.close();

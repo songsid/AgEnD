@@ -222,7 +222,58 @@ describe("files on the card", () => {
     expect(start.mock.calls[0]![0]).toBe(`taskfile:${ID.html}`);
     expect(start.mock.calls[0]![2]).toBe("<!doctype html><canvas id=g></canvas><script>/* game */</script>");
     expect(start.mock.calls[0]![4], "fills a box of its own, not the automatic strip").toEqual({ fill: true });
-    expect(text(row.querySelector(".tf-html .btn:not(.btn-primary)")), "running: Stop").toBe("Stop");
+    expect(text(row.querySelector(".tf-html .btn:not(.btn-primary)")), "running: the button says what it stops").toBe("Stop preview");
+    expect(text(row.querySelector(".tf-html .tf-actions.tf-live .tf-live-mark")), "…beside the mark that this is a preview, in the bar that stays on screen").toBe("This is a preview");
+    expect(row.querySelector(".tf-html .tf-actions.tf-live .tf-stop"), "the Stop button is in that bar").toBeTruthy();
+  });
+
+  /** A preview module as the card meets it, running at once on Preview; `acked` is the module's own record of "I understand" (per sign-in,
+   *  never held by the card), `listeners` the ones registered with onChange (the module tells them on a press, as preview.js does). */
+  function runningPreview(opts: { subscribe: boolean }) {
+    const listeners = new Set<() => void>();
+    const P: any = {
+      acked: false, listeners,
+      availability: () => ({ ok: true }),
+      start: vi.fn((_k: string, _h: any, _c: string, ui: any) => { ui.state("running", ""); return true; }),
+      stop: vi.fn(),
+      bannerAcked() { return P.acked; }, banner: () => "Previews run the agent's HTML in an isolated frame.", bannerAckLabel: () => "I understand", bannerAckTitle: () => "Hide this notice until you sign in again",
+      ackBanner: vi.fn(() => { P.acked = true; if (opts.subscribe) for (const fn of [...listeners]) fn(); }),
+    };
+    if (opts.subscribe) P.onChange = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
+    (globalThis as any).AgendPreview = P;
+    return P;
+  }
+  const startPreview = async () => {
+    FILE_BODIES.set(ID.html, "<!doctype html><canvas id=g></canvas>");
+    await mount(); await open();
+    const row = qa(".tp-files .tf-row").find((r) => text(r.querySelector(".tf-name")) === "index.html")!;
+    fire(row.querySelector(".tf-html .btn-primary"), "click"); await settle(14);
+    return row;
+  };
+
+  it("\"I understand\" takes the notice away at once: the press is the card's own redraw, whether or not the preview module tells it", async () => {
+    withFiles();
+    // a module that keeps the acknowledgement to itself and tells nobody (no onChange): only the press itself can redraw the card
+    const P = runningPreview({ subscribe: false });
+    const row = await startPreview();
+    expect(row.querySelector(".pv-banner"), "running and not yet understood: the notice is up").toBeTruthy();
+    fire(row.querySelector(".pv-banner .pv-ack"), "click"); await settle(3);
+    expect(P.ackBanner).toHaveBeenCalledTimes(1);
+    expect(row.querySelector(".pv-banner"), "…and gone on the press, with nothing else drawing the card").toBeNull();
+    expect(text(row.querySelector(".tf-live-mark")), "the mark that this is a preview stays, and so does the way to stop it").toBe("This is a preview");
+    expect(text(row.querySelector(".tf-stop"))).toBe("Stop preview");
+  });
+
+  it("…and an acknowledgement made elsewhere (the chat's notice, another card, another tab) takes it away here too: the card listens, and stops listening when it goes", async () => {
+    withFiles();
+    const P = runningPreview({ subscribe: true });
+    const row = await startPreview();
+    expect(row.querySelector(".pv-banner")).toBeTruthy();
+    expect(P.listeners.size, "the card listens").toBeGreaterThan(0);
+    P.ackBanner(); await settle(3);           // not this card's button
+    expect(row.querySelector(".pv-banner"), "heard it, drew again").toBeNull();
+    await p.unmount(); await settle(2);
+    expect(P.listeners.size, "a card that left leaves no listener behind").toBe(0);
   });
 
   it("…and not over the public link (as the chat): the HTML is a download there, unless an admin session; nor where the page has no preview at all", async () => {
@@ -282,7 +333,9 @@ describe("files on the card", () => {
     expect(text(q(".tp-files h3"))).toBe("檔案 4");
     expect(text(qa(".tp-files a.tf-dl")[0])).toBe("下載");
     expect(qa(".tp-files a.tf-dl")[0].getAttribute("aria-label")).toBe("下載: shot.png");
+    expect([i18n.t("taskfiles.stop"), i18n.t("taskfiles.live")], "a running preview, in Traditional Chinese").toEqual(["停止預覽", "這是預覽"]);
     i18n.setLang("en", { store: false });
+    expect([i18n.t("taskfiles.stop"), i18n.t("taskfiles.live")]).toEqual(["Stop preview", "This is a preview"]);
   });
 
   it("previewKind: a picture, Markdown, text, HTML; media, archives and anything unknown are downloads", () => {
@@ -311,6 +364,23 @@ describe("the sheet: nothing covers text, every control is a 44px box on a phone
     expect(decl(".tc-md-wrap", phone)).toMatch(/display: flex; flex-direction: column/);
     expect(decl(".tp .tc-md-wrap .tc-text", phone), "the room reserved on the desk is given back").toMatch(/padding-right: var\(--s-2\)/);
     expect(css).toMatch(/@media \(pointer: coarse\) \{ \.tc-md-edit \{ opacity: 1; min-width: var\(--tap\); min-height: var\(--tap\); \} \}/);
+  });
+
+  it("a running preview's bar (Stop preview, the mark that it is a preview) is sticky at the top of the scrolling page, opaque and above the frame, and stays a 44px box on a phone", () => {
+    const bar = decl(".tf-actions.tf-live", css) ?? "";
+    expect(bar).toMatch(/position: sticky; top: 0;/);
+    expect(bar, "above the frame, opaque (the frame must not show through it)").toMatch(/z-index: [1-9]\d*;.*background: var\(--bg\)/);
+    expect(decl(".tf-live-mark", css), "the mark is a token-coloured pill").toMatch(/background: var\(--warn-bg\); color: var\(--warn\)/);
+    expect(decl(".tf-dl, .tf-actions .btn, .tf-more", phone), "the Stop preview button is a .btn in .tf-actions: 44px on a phone").toMatch(/min-height: var\(--tap\)/);
+    expect(css, "the bar is the card's own rule: the chat's preview rules (pv-*) are not changed here").not.toMatch(/\.pv-[a-z-]+[^{]*\.tf-live|\.tf-live[^{]*\.pv-/);
+  });
+
+  it("the Edit button's enabled state takes the accent token in its text and border (every theme defines it), colour only: no one-off colour, no change of its 44px box", () => {
+    const edit = decl(".tc-md-edit.btn-ghost", css) ?? "";
+    expect(edit).toBe("color: var(--accent); border-color: var(--accent);");
+    expect(edit, "tokens only").not.toMatch(/#[0-9a-f]{3,8}\b|rgb|hsl/i);
+    expect(edit, "colour only: no size").not.toMatch(/width|height|padding/);
+    expect(decl(".tc-md-edit", phone)).toMatch(/min-width: var\(--tap\); min-height: var\(--tap\)/);
   });
 
   it("the file row's controls are 44px boxes on a phone; the card's preview has a fixed box, not the automatic strip", () => {
