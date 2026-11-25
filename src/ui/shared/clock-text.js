@@ -17,8 +17,15 @@ export function clockOptions(o) {
     return { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", ...(o?.timeZone ? { timeZone: o.timeZone } : {}) };
   }
   if (!hasTime(o)) return o;
-  const { hour12: _ignored, ...rest } = o;
-  return { ...rest, hourCycle: "h23" };
+  const { hour12: _ignored, dateStyle, timeStyle, ...rest } = o;
+  // ICU drops a dateStyle's words when an hourCycle comes with it (2026年12月2日 turns into 2026/12/2), so the styles
+  // become the parts they stand for.
+  const day = dateStyle === "full" ? { year: "numeric", month: "long", day: "numeric", weekday: "long" }
+    : dateStyle === "long" || dateStyle === "medium" ? { year: "numeric", month: "long", day: "numeric" }
+    : dateStyle === "short" ? { year: "numeric", month: "numeric", day: "numeric" } : {};
+  const time = !timeStyle ? {} : { hour: "2-digit", minute: "2-digit", ...(timeStyle === "short" ? {} : { second: "2-digit" }),
+    ...(timeStyle === "long" || timeStyle === "full" ? { timeZoneName: "short" } : {}) };
+  return { ...day, ...time, ...rest, hourCycle: "h23" };
 }
 
 /** An Intl.DateTimeFormat that follows the rule above. */

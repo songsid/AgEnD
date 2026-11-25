@@ -130,7 +130,7 @@ describe("M-2901 Settings → Hub → Hub address (the host owner's card)", () =
 
   it.each([
     ["en", "Change address", "Confirm change", "02:06 PM"],
-    ["zh-TW", "變更位址", "確認變更", "下午02:06"],
+    ["zh-TW", "變更位址", "確認變更", "14:06"],
   ])("%s: the join window shows local retry time and keeps the typed address", async (language, change, confirm, time) => {
     const retryAt = new Date(2026, 10, 14, 14, 5, 1).getTime();
     const f = await fixture({ language, commit: () => ({ status: 409, body: { ok: false, code: "joining", retryAt } }) });
