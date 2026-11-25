@@ -23,6 +23,7 @@ const receipt: any = { sourceHead: git("rev-parse", "HEAD"), dirty: git("status"
 const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!ok, ...(ok ? {} : { detail }) }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : ` ${JSON.stringify(detail)}`}`); };
 const shot = async (page: any, name: string) => {
   await page.waitForTimeout(300);
+  if (!name.endsWith("-sheet")) await settled(page);
   const path = `m3743-${name}.png`;
   await page.screenshot({ path: join(OUT, path) });
   receipt.pictures.push({ path, sha256: createHash("sha256").update(readFileSync(join(OUT, path))).digest("hex") });
@@ -60,6 +61,14 @@ const PAPER = `(() => {
 /** The caller's bubble: the biggest piece (the paper of its box and tail). */
 const caller = (m: any) => [...m.pieces].sort((a: any, b: any) => b.n - a.n)[0] ?? null;
 
+/** The caller's line typed out whole: its bubble's ink (dark pixels inside its paper box) the same in two reads 400 ms apart. */
+const INK = `(() => { const m = ${PAPER}; const c = [...m.pieces].sort((a, b) => b.n - a.n)[0]; if (!c) return -1;
+  const cv = document.querySelector(".oo-canvas"), d = cv.getContext("2d").getImageData(c.l, c.t, c.r - c.l + 1, c.b - c.t + 1).data; let n = 0;
+  for (let i = 0; i < d.length; i += 4) if (d[i] < 90 && d[i + 1] < 90 && d[i + 2] < 90) n++; return n; })()`;
+async function settled(page: any) {
+  let last = -2;
+  for (let i = 0; i < 12; i++) { const n = await page.evaluate(INK) as number; if (n === last) return; last = n; await page.waitForTimeout(400); }
+}
 /** Drag the scene by (dx, dy) CSS px, from a spot on the canvas the move keeps on it. */
 async function drag(page: any, m: any, dx: number, dy: number) {
   const fromX = dx > 0 ? m.rect.left + 30 : m.rect.left + m.rect.width - 30, fromY = dy > 0 ? m.rect.top + 30 : m.rect.top + m.rect.height - 30;
