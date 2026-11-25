@@ -69,7 +69,7 @@ async function walk(c: any, full: boolean) {
     await page.goto(fx.base + "/ui/needs"); check(`${tag}: mounted`, await mounted(page, 30000));
     await page.waitForSelector(".update-line", { timeout: 20000 });
     let t = await lineText(page), b = await buttons(page);
-    check(`${tag} 1: offered: the title and one line`, t.includes(NEXT) && t.includes(W(zh, `Your work continues; if it won't start, AgEnD rolls back to ${current}.`, `工作不會中斷；新版起不來會自動退回 ${current}。`)), t);
+    check(`${tag} 1: offered: the title and one line`, t.includes(NEXT) && t.includes(W(zh, `Your work continues; if it won't start, AgEnD tries to roll back to ${current}.`, `工作不會中斷；新版起不來時，AgEnD 會嘗試退回 ${current}。`)), t);
     check(`${tag} 1: Update when idle / Pick a time / Not now`, [W(zh, "Update when idle", "閒置時更新"), W(zh, "Pick a time", "選個時間"), W(zh, "Not now", "先不要")].every((x) => b.includes(x)), b);
     if (phone) check(`${tag} 1: 44 px buttons`, (await taps(page)).every((h: number) => h >= 44), await taps(page));
     const sc = await scroll(page); check(`${tag} 1: no sideways scroll`, sc.s <= sc.w, sc);
