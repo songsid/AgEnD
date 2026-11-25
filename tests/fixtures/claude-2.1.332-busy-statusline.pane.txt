@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.332
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /tmp/agend-audit/w/p332
+
+
+❯ hello from the audit
+
+● mock reply 2
+
+✻ Crunched for 0s · done 9:07 PM
+
+❯ SLOW turn please
+
+●
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+✶ Osmosing… (1s · ↓ 5 tokens)
+  ⎿  Tip: Start small, ask Claude for a plan, and check its edits
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt
