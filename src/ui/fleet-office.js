@@ -500,7 +500,7 @@ function paintLayers(p, env, ls, tagsOff = false) {
     for (const d of all) skin.drawDeskBack(g, d, looks.get(d.key), env);
   });
   const front = zones ? null : layer((g) => {
-    for (const d of all) { const lk = looks.get(d.key); skin.drawDeskFront(g, d, tagsOff && lk && !lk.match && !(tagsOff === "names" && CALLING.has(lk.state)) ? { ...lk, notag: true } : lk, env); }
+    for (const d of all) { const lk = looks.get(d.key); skin.drawDeskFront(g, d, !tagsOff || !lk || lk.match ? lk : tagsOff === "names" && CALLING.has(lk.state) ? { ...lk, badge: null } : { ...lk, notag: true }, env); }
   });
   return { ls, tagsOff, back, front };
 }
@@ -682,6 +682,8 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const crowded = (q) => over.has(q.d.area) && !pinned(q);
     // A caller keeps their tag with names hidden (#4467 review): the Help desk always says who needs you.
     const tagged = (q) => pinned(q) || (tagsOff === "names" && CALLING.has(q.look.state)) || !(tagsOff || over.has(q.d.area));
+    // Names hidden: a caller's tag is their name only; the level stays hidden (the one hovered or found keeps it).
+    const tagLook = (q) => (tagsOff === "names" && !pinned(q) && q.look.badge ? { ...q.look, badge: null } : q.look);
     const keep = [...titles.map((x) => x.box), ...(env.keepClear || [])];
     titleBoxes.push(...titles.map((x) => x.box)); titleDraws.push(...titles);
     const taken = [];
@@ -720,7 +722,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const FULL_TRIES = [[0, false], [TAG_ROW, false], [0, true], [COMPACT_ROW, true]];
     const tagOrder = people.filter((q) => !(live.hidden.has(q.look.name) && q.look.name !== heldName) && tagged(q))
       .map((q, i) => ({ q, i, rank: pinned(q) ? 0 : q.at.walking ? 2 : 1 })).sort((x, y) => x.rank - y.rank || x.i - y.i);
-    for (const { q, rank } of tagOrder) place(q.at.x, q.at.y, q.look, FULL_TRIES, rank === 0);
+    for (const { q, rank } of tagOrder) place(q.at.x, q.at.y, tagLook(q), FULL_TRIES, rank === 0);
     // A furniture item's own name (#2574: an NPC drawn as furniture), tagged like a person; none on a tile too small to read.
     // #2698: an item hiding its people carries their tags too, in one row at its tag point (its own first; each keeps
     // its place in the row while another's tag is left out), and their bubbles, over its picture. The tags drawn are
@@ -734,7 +736,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       }
       const order = new Map((f.activeFor || []).map((n, i) => [n, i]));
       on.sort((x, y) => (order.get(x.look.name) ?? 0) - (order.get(y.look.name) ?? 0));
-      const row = tagRow(ctx, f.x, f.y, [...(f.label ? [npcLook(p, f)] : []), ...on.map((q) => q.look)]);
+      const row = tagRow(ctx, f.x, f.y, [...(f.label ? [npcLook(p, f)] : []), ...on.map(tagLook)]);
       const top = f.sprite ? Math.min(f.y - 50, stripBox(f.activeSprite || f.sprite, f.x, f.y).y + 2) : f.y - 50;
       for (const [i, r] of row.entries()) {
         const q = f.label ? on[i - 1] : on[i];

@@ -59,7 +59,7 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 |---|---|---|
 | **Style** | **Desks**, **Studio**, **Cozy**, **Guild**, **School** or an uploaded skin pack (for Whole fleet; a stored office has its own) | for the whole fleet when a fleet admin picks it; anyone else's pick is their own browser's |
 | **Hide paused and stopped** | leaves the sleepers out | per browser |
-| **Hide names and levels** | no name tags or level badges over the people; the one hovered or found, and anyone calling for you, keeps theirs | per browser |
+| **Hide names and levels** | no name tags or level badges over the people; the one hovered or found keeps theirs, and anyone calling for you keeps their name (not the level) | per browser |
 | **Hide the minimap** | no minimap in the corner | per browser |
 | **Bedtime (0–6): idle agents sleep** | see [Bedtime](#bedtime-strolls-and-mail) (zones styles and All offices) | per device, off by default |
 | **Lobby tile** | in All offices, a tile for the instances in no office | per browser, on by default |

@@ -56,19 +56,31 @@ describe("cardStay: a carded person stays put, a caller does not", () => {
 });
 
 describe("Hide names and levels: a caller keeps their tag", () => {
-  /** Cozy as the page draws it (drawPart), Alpha in `state` and Beta idle: whose tags are drawn. */
-  const tags = (state: string, tagsOff: boolean | string) => {
-    const base = K.SKINS.get("cozy"), drawn: string[] = [];
+  /** Cozy as the page draws it (drawPart), Alpha in `state` and Beta idle, each with a level badge: the tags drawn
+   *  (name → whether its badge came with it). `hotAlpha`: Alpha hovered. */
+  const drawnTags = (state: string, tagsOff: boolean | string, hotAlpha = false) => {
+    const base = K.SKINS.get("cozy"), drawn = new Map<string, boolean>();
     const skin = { ...base, drawCharacter() {}, drawFurniture() {}, drawBackground() {}, drawBubble() {}, drawAreaTitle() {},
-      drawTag: (_c: any, _x: number, _y: number, look: any) => { drawn.push(look.name); } };
+      drawTag: (_c: any, _x: number, _y: number, look: any) => { if (look.name === "alpha" || look.name === "beta") drawn.set(look.name, !!look.badge); } };
     const L = layout(state);
-    const looks = new Map(desks(L).map((d: any) => [d.key, { name: d.node.name, label: d.node.name, state: d.node.state, pose: d.node.state }]));
+    const looks = new Map(desks(L).map((d: any) => [d.key, { name: d.node.name, label: d.node.name, state: d.node.state, pose: d.node.state, badge: { text: "4", tier: 1 } }]));
     const part = F.partOf(L, looks, skin, true, Z.createWalkers(), { frame: () => [], size: () => 0 });
     const ctx = new Proxy({ measureText: (t: string) => ({ width: t.length * 6 }), font: "" } as any,
       { get(o, k) { if (k in o) return o[k]; return () => {}; }, set(o, k, v) { o[k] = v; return true; } });
-    F.drawPart(ctx, part, 1, 0, 0, 0, true, null, { pal: { ...K.DEFAULT_PAL }, mode: "light", labels: { areas: {} } }, tagsOff, null, []);
-    return [...new Set(drawn)].filter((n) => n === "alpha" || n === "beta").sort();   // the people, not the style's NPCs
+    const hot = hotAlpha ? desks(L).find((d: any) => d.node.name === "alpha").key : null;
+    F.drawPart(ctx, part, 1, 0, 0, 0, true, hot, { pal: { ...K.DEFAULT_PAL }, mode: "light", labels: { areas: {} } }, tagsOff, null, []);
+    return drawn;
   };
+  const tags = (state: string, tagsOff: boolean | string) => [...drawnTags(state, tagsOff).keys()].sort();   // the people, not the style's NPCs
+  it("shown: everyone's tag, with their level", () => {
+    expect(Object.fromEntries(drawnTags("needs", false))).toEqual({ alpha: true, beta: true });
+  });
+  for (const state of CALLS) it(`hidden, Alpha ${state}: Alpha's name, still without the level`, () => {
+    expect(Object.fromEntries(drawnTags(state, "names"))).toEqual({ alpha: false });
+  });
+  it("hidden, Alpha hovered: their tag with the level, as before", () => {
+    expect(drawnTags("idle", "names", true).get("alpha")).toBe(true);
+  });
   it("shown: everyone's tag", () => { expect(tags("needs", false)).toEqual(["alpha", "beta"]); });
   for (const state of CALLS) it(`hidden, Alpha ${state}: Alpha's tag only`, () => { expect(tags(state, "names")).toEqual(["alpha"]); });
   it("hidden, nobody calling: no tag", () => { expect(tags("idle", "names")).toEqual([]); });
