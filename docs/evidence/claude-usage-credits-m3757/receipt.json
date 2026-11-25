@@ -1,5 +1,5 @@
 {
-  "sourceHead": "068d4e4909669f022fe3d897abe521a3a9d7b011",
+  "sourceHead": "fddd85bf2e361657c9845eaff4558938bf538967",
   "dirty": [],
   "checks": [
     {
@@ -446,15 +446,15 @@
     },
     {
       "path": "claude-usage-credits-m3757/desk-en-light-2-confirm-credits.png",
-      "sha256": "e8704779bb81827cefd01482323ebf1ca64cb5126b188b6157b773feb6865e27"
+      "sha256": "46b218e0e5818b7e13d8e3b430846ce4c8b8021736b6dade69c2d34582c31d2c"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-1-needs-card.png",
-      "sha256": "79ba5ea362f163390163ff57eb944a827ba9e1a3fb29d148c9f5d1966d0e3ffd"
+      "sha256": "3600dde4c7c97b2d536a9f41795057836e71f125c9bff77cddbc26c33f5c6f7e"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-3-claude-text.png",
-      "sha256": "6433fe05b8c2f63ded71db60bb2e4c9c7d347eb8256391f72f851501a26404fa"
+      "sha256": "9b60a2ce359d513b8ca21ebe90a5d2757dc22ceb10c79a2b075a8d3ca2fa97e9"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-2-confirm-credits.png",
@@ -462,15 +462,15 @@
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-1-needs-card.png",
-      "sha256": "6b32d085daaf2f2ad77d767a04de02aa3ecb10acb2b262854d2db70b1cb41cd9"
+      "sha256": "b97b3bc12548bb7dd61dc91a1c49f0c2076156e9d53e915cf33613c0950a638c"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-3-claude-text.png",
-      "sha256": "1a33529801a0b4509a69f366504534877f4ee3d9809781a0d3c7c4a94292586c"
+      "sha256": "9bc295dfcf82ac1fa20c6b57d44fcf69c40a9d5bf74e34155b3180774b764732"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-2-confirm-credits.png",
-      "sha256": "ebee912330d4bab324ec80454bd34ca0939dd921ae5b9adb25ba74d111282c40"
+      "sha256": "2714b310a0a3c644a414edd6e859a860118169dc61c05fff703e446c9aae27f8"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-1-needs-card.png",

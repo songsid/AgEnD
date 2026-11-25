@@ -1,6 +1,6 @@
 # Needs you: Claude Code's usage-credits prompt (M-3757)
 
-Real-app captures from `scripts/manual/claude-usage-credits-m3757/capture.mts` at source `068d4e490` (no uncommitted `src/` changes; see `receipt.json`). The card is the one AgEnD reads from the live Claude Code 2.1.332 capture (`tests/fixtures/claude-2.1.332-usage-credits-consent-dialog.pane.txt`), posted through `FleetManager.postRemoteCard` as the daemon's `remote_card` would be. The rig uses the real web HTTP, sessions and DOM, a host session, and inert agents; only Lumen waits at a dialog.
+Real-app captures from `scripts/manual/claude-usage-credits-m3757/capture.mts` at source `fddd85bf2` (no uncommitted `src/` changes; see `receipt.json`). The card is the one AgEnD reads from the live Claude Code 2.1.332 capture (`tests/fixtures/claude-2.1.332-usage-credits-consent-dialog.pane.txt`), posted through `FleetManager.postRemoteCard` as the daemon's `remote_card` would be. The rig uses the real web HTTP, sessions and DOM, a host session, and inert agents; only Lumen waits at a dialog.
 
 There are six cases: desktop 1366×900 and a 390×844 phone, each in English light, zh-TW dark and zh-TW light.
 
