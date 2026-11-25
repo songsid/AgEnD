@@ -77,7 +77,9 @@ agents, commands, skills, output styles and plugins are shared with it.
 A switch also merges the agent's own MCP servers (user scope, and local scope
 for its folder) into the new profile, never overwriting one it already has. If
 an agent still starts without some it had, it is told which, and Needs you
-lists them: re-add with `claude mcp add -s local …` in the new profile.
+lists them until they are back: re-add with `claude mcp add -s local …` in the
+new profile. Acknowledge there only dismisses the item; it does not restore
+anything.
 
 **When a switch was refused, relay the command from the refusal, character for
 character** — never one you assembled from the templates above. It carries the

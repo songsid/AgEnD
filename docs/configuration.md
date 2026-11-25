@@ -681,6 +681,8 @@ file history into the new profile, then dates the copy as the newest so the rela
 - The agent's own MCP servers go along too (M-3749): those added with `claude mcp add` at user scope, and at local
   scope for the instance's folder, are merged into the new profile's `.claude.json`. A server the new profile already
   has under that name is kept as it is, never overwritten. This happens whether or not the conversation is carried.
+  First the switch records which servers the agent has at that moment (added during its session included), so a later
+  launch can tell what did not come along.
 
 When the copy can't be made, the switch starts fresh with the same handover as Kiro, and the reply gives the reason in
 `carry_failed`. That happens when there is no session yet, when the new profile already holds a different version of

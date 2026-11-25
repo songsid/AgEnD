@@ -76,7 +76,8 @@ export type McpCarryResult =
 
 /**
  * Merge the source's user-scope and local-scope (this folder, any spelling) MCP servers into the target's `.claude.json`,
- * under its lock and by atomic rename (updateClaudeJson). Local servers go into the entry Claude reads for the folder;
+ * under its lock and by atomic rename (updateClaudeJson). Local servers go into the folder's real-path entry, the one
+ * Claude reads once a launch's preTrust has created it;
  * a name the target already has — in that scope, under any spelling of the folder — stays the target's (`keptTarget`).
  * Nothing of the target is removed or changed. The same config file on both sides, or nothing to carry: nothing written.
  */
@@ -114,8 +115,14 @@ export function carryClaudeMcpServers(req: { fromProfileDir: string | null; toPr
       const projects = cfg.projects;
       const theirs = new Set<string>();
       if (isObject(projects)) for (const key of equivalentKeys(cfg, req.workingDirectory)) for (const n of Object.keys(serversOf(projects[key]))) theirs.add(n);
-      const key = isObject(projects) ? effectiveKey(cfg, req.workingDirectory) : "";
-      if (isObject(projects) && projects[key] === undefined) projects[key] = {};
+      // Always the real path: a launch's preTrust creates that entry, and from then on it is the one Claude reads. A
+      // target that had the folder only under its unresolved spelling gets the real-path entry seeded with that entry's
+      // own servers first, so its definitions stay loaded once the real-path entry exists (M-3749 review R2).
+      const key = realOrResolved(req.workingDirectory), literal = resolve(req.workingDirectory);
+      if (isObject(projects) && projects[key] === undefined) {
+        const seed = key !== literal ? serversOf(projects[literal]) : {};
+        projects[key] = Object.keys(seed).length ? { mcpServers: structuredClone(seed) } : {};
+      }
       const entry = isObject(projects) ? projects[key] : undefined;
       if (isObject(entry) && entry.mcpServers === undefined) entry.mcpServers = {};
       const into = isObject(entry) ? entry.mcpServers : undefined;

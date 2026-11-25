@@ -10,6 +10,7 @@ import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox, SYSTEM_NOTICE_KIND } from "../src/delivery-outbox.js";
 import { deriveNeedsYou } from "../src/needs-you.js";
 import { getLocale, setLocale } from "../src/locale.js";
+import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
 
 // A fake value shaped like a key, to prove an MCP entry's env is copied but never printed.
@@ -316,6 +317,27 @@ describe("M-3749 review: target spellings, unreadable targets, the default login
     expect(carryClaudeMcpServers({ fromProfileDir: from, toProfileDir: to, workingDirectory: cwd }))
       .toEqual({ carried: true, user: [], local: ["extra", "m365"], keptTarget: [] });
     expect(Object.keys(read(to).projects[cwd].mcpServers).sort()).toEqual(["extra", "m365"]);
+  });
+
+  it("a target with the folder only under its symlink spelling keeps the carried and its own servers after the real launch's preTrust", () => {
+    vi.stubEnv("AGEND_HOME", join(root, "data"));
+    const link = join(root, "link"); symlinkSync(cwd, link);
+    const from = profile("old"), to = profile("new");
+    const mine = { type: "stdio", command: "their-own" };
+    write(from, { projects: { [link]: { mcpServers: { m365 } } } });
+    write(to, { oauthAccount: { accountUuid: "fake-account" }, projects: { [link]: { hasTrustDialogAccepted: true, mcpServers: { mine } } } });
+    expect(carryClaudeMcpServers({ fromProfileDir: from, toProfileDir: to, workingDirectory: link }))
+      .toEqual({ carried: true, user: [], local: ["m365"], keptTarget: [] });
+    // The actual launch order: the carry, then preTrust (which adds the real-path entry), then the launch check reads it.
+    new ClaudeCodeBackend(join(root, "instance")).preTrust(link, { backendOptions: { credential_profile: "new" } } as any);
+    const after = read(to);
+    expect(after.projects[cwd]).toEqual({ hasTrustDialogAccepted: true, mcpServers: { mine, m365 } });
+    expect(after.projects[link]).toEqual({ hasTrustDialogAccepted: true, mcpServers: { mine } });   // left as it was
+    expect(claudeMcpNames(join(to, ".claude.json"), link)).toEqual({ user: [], local: ["m365", "mine"] });
+    const instanceDir = join(root, "instance-order"); mkdirSync(instanceDir);
+    write(from, { projects: { [link]: { mcpServers: { m365 } } } });
+    checkClaudeMcpAtLaunch({ instanceDir, configDir: from, jsonPath: join(from, ".claude.json"), workingDirectory: link });
+    expect(checkClaudeMcpAtLaunch({ instanceDir, configDir: to, jsonPath: join(to, ".claude.json"), workingDirectory: link })).toBeNull();
   });
 
   it("switching back to the default login writes CLAUDE_CONFIG_DIR's .claude.json, or ~/.claude.json with it unset", () => {
