@@ -44,7 +44,9 @@ type RequestContactCardV1 = {
   ingress: 'owner'|'free-room'|'restricted-room'|'guest'|'hub'|'legacy';
   sourceAudience: RequestContextAudienceV1 | null;
   returnAudience: RequestContextAudienceV1 | null;
+  grantCandidates: Array<{key:string;label:string;platform:'discord'|'telegram'|'host'}>;
   reason: string;
+  continuedFrom?: string; // rootApprovalTicketId, informational; no actions on continued outcomes
   approvalScope: 'root-request' | 'operation';
   authority: 'none';
   snapshot: { ticketRevision: number; policyRevision: number;
@@ -61,7 +63,8 @@ Actor and audience types are the existing strict request-context-protocol.ts
 shapes. Labels are server-resolved display labels, escaped by the renderer.
 `requester` is the recorded initiating actor, never the approver or a later admin
 steer. Legacy records without one unambiguous person use null, not an invented
-person. No raw human receipt/forward ids, session handle, authorization material,
+person. grantCandidates is the server-owned selectable known-person list (empty
+when unsupported); personKeys selects only its keys, never names typed by the user. No raw human receipt/forward ids, session handle, authorization material,
 full private file paths or internal pending-grant bearer data is projected.
 `authority: none` describes the request, even after an admin continues it.
 
@@ -81,7 +84,7 @@ old decision semantics. J and K must use this field, not infer scope from names.
 
 - GET /ui/api/request-contact-authorizations?agent=…&status=…&cursor=…
   returns RequestContactCardPageV1. Default pending; bounded 32/page, max64.
-  Filter after target-role scoping; cursor binds the identity/filter snapshot.
+  Filter after target-role scoping; cursor binds the identity/filter AND target-role revision snapshot. A role-revision change invalidates the cursor.
   No person identity selector is accepted from the client in this first version.
 - GET /ui/api/request-contact-authorizations/R<uuid> returns one card.
 - POST /ui/api/request-contact-authorizations/R<uuid>/decision accepts:
@@ -204,3 +207,35 @@ confirm the E companion read and full-image CAS remain inside its owner; confirm
 409 plus same-card GET for duplicate decisions, the General-only proposal reader
 separate from human read/decision, and the unsupported Hub-person grant shape.
 These questions do not authorize a broader grant schema or a live activation.
+
+
+## 8. Fable design-review dispositions
+
+- Read resolver: evaluateWebRequest(touch:false), admitted admin session and
+  webSessionIdentity; current target contactAdminOf/canManage before and after
+  every await/serialization. Decisions still require contactActor/webAuthority
+  with actual gateway/peer. session_handle is never projected. Host-tier on a
+  chat Fleet without a recognized identity intentionally remains unreadable,
+  preserving M-3713's deliberate edge; use a bound native account. This never
+  infers an operator merely from tier. Recognized web-only host/TOTP and native
+  platform host operators use the existing central operator gate.
+- E exports a validated companion read and checks expected imageSha256 inside
+  its existing decide transaction. Legacy compares the digest of full stored
+  request_json and policy revision inside the same transaction as store.decide.
+- Duplicate/stale POST is409 followed by scoped GET, with no state in the error.
+  J/K render already-decided/expired as outcome-and-refresh, not a failed action
+  to retry. No extra replay ledger or optional200 replay shortcut.
+- Native proposal destination is the target's server-selected managing-admin
+  General topic/admin DM, never the source room or tool arguments. Text comes
+  from the server card. K pins platform interaction user, posting adapter/bot,
+  message id and nonce (ticket/snapshot/choice/target/incarnations); wrong-bot or
+  forwarded callbacks refuse before the shared writer. I exposes no model actor.
+- Continued D1 tickets expose continuedFrom and no decision actions. The cursor
+  additionally binds the current role revision. Tests include sibling-bot reads,
+  the deliberate host-tier/chat-Fleet denial, and K's real wrong-bot/forwarded
+  callback boundary against the shared writer (platform transport belongs to K).
+- Grant clarification resolved with Fable: representability only. Reuse E.person
+  for native identities, including a guest request whose initiating native person
+  is representable. Do not add an I-only guest-ingress exclusion or change E's
+  automatic grants. Hub/unknown/non-human or account actors with no mapped native
+  person remain unsupported. Legacy multi-person candidates keep explicit keys.
