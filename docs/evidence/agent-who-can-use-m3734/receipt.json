@@ -1,0 +1,567 @@
+{
+  "sourceHead": "776ff1e02289d3ce3161bcfdefba9e461de9bb61",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: lists the two people whose grant names this agent (not Bob)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Carol is Trusted and also uses beta",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Hub: shared, with the Hub page that chooses who may ask (grant=1, new tab)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: says the Hub page only opens where the Hub is reachable (company network)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Add a person offers those not listed yet (Bob, Dan)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: (add) every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: (add) no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Remove asks first, naming the person and the agent",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Cancel writes nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: before grants: Start from today's guests, no Remove or Add",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no Hub: said plainly, no Hub link",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: (no Hub) every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: (no Hub) no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no console error, no failed read (but the fixture's task board)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: lists the two people whose grant names this agent (not Bob)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: Carol is Trusted and also uses beta",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: Hub: shared, with the Hub page that chooses who may ask (grant=1, new tab)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: says the Hub page only opens where the Hub is reachable (company network)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: Add a person offers those not listed yet (Bob, Dan)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: (add) every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: (add) no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: Remove asks first, naming the person and the agent",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: Cancel writes nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: before grants: Start from today's guests, no Remove or Add",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no Hub: said plainly, no Hub link",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: (no Hub) every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: (no Hub) no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no console error, no failed read (but the fixture's task board)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: the category list has Who can use just before Permissions",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: lists the two people whose grant names this agent (not Bob)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: Carol is Trusted and also uses beta",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: Hub: shared, with the Hub page that chooses who may ask (grant=1, new tab)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: says the Hub page only opens where the Hub is reachable (company network)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: Add a person offers those not listed yet (Bob, Dan)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: (add) every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: (add) no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: Remove asks first, naming the person and the agent",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: Cancel writes nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: before grants: Start from today's guests, no Remove or Add",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: no Hub: said plainly, no Hub link",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: (no Hub) every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: (no Hub) no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: no console error, no failed read (but the fixture's task board)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: the category list has Who can use just before Permissions",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: lists the two people whose grant names this agent (not Bob)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: Carol is Trusted and also uses beta",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: Hub: shared, with the Hub page that chooses who may ask (grant=1, new tab)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: says the Hub page only opens where the Hub is reachable (company network)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: Add a person offers those not listed yet (Bob, Dan)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: (add) every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: (add) no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: Remove asks first, naming the person and the agent",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: Cancel writes nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: before grants: Start from today's guests, no Remove or Add",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: no Hub: said plainly, no Hub link",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: (no Hub) every control at least 44 px tall and on screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: (no Hub) no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: no console error, no failed read (but the fixture's task board)",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3734-desk-light-en-1-who.png",
+      "sha256": "593646633ca3af6554217e28bf891fbc1264ea0c0d9b9b9ff097342fe76c30ed"
+    },
+    {
+      "path": "m3734-desk-light-en-2-add.png",
+      "sha256": "7ad41027512e0b4ad74fb66e8d4ad0c6497c5b179def8eafbfdddc2326ecc479"
+    },
+    {
+      "path": "m3734-desk-light-en-3-remove.png",
+      "sha256": "3d5ef9b5d4f0a6a090326b45e3c3e892ef2472bfc258baf355caf28cfd3f64d9"
+    },
+    {
+      "path": "m3734-desk-light-en-4-nohub.png",
+      "sha256": "8f1ee561eb10be362e0561be97ebf9d0f7c2c0a51bc6a039ccdc49968486b1b0"
+    },
+    {
+      "path": "m3734-desk-dark-zh-TW-1-who.png",
+      "sha256": "5cdbb3bd81fb2d6ea3a110b1a5609a23d8de28ced735b4763b6db228b6a39cb5"
+    },
+    {
+      "path": "m3734-desk-dark-zh-TW-2-add.png",
+      "sha256": "1eb6508e75e11d2ce32e03d566a54f12ab15c1a1d85559930191b720afee85e6"
+    },
+    {
+      "path": "m3734-desk-dark-zh-TW-3-remove.png",
+      "sha256": "0a51fb6a2fc8ad69158a147d8d0c98b8e3601df924e58f19e434c1f198d44907"
+    },
+    {
+      "path": "m3734-desk-dark-zh-TW-4-nohub.png",
+      "sha256": "07891495f09de3c8762e4f70d5fa0e7d924a942e79badfd5ed3aeac1955e252f"
+    },
+    {
+      "path": "m3734-phone-light-zh-TW-0-index.png",
+      "sha256": "7305ddcb958c999883cfa270ee038b6cc13c33d25030f6847396932aaf48b8e1"
+    },
+    {
+      "path": "m3734-phone-light-zh-TW-1-who.png",
+      "sha256": "86eee2b61c3173cb306bf01e25dd3a69d566dcbcf70fcbe33ff92495adb2d581"
+    },
+    {
+      "path": "m3734-phone-light-zh-TW-2-add.png",
+      "sha256": "11402600c3b9578d4ced1c9c1908e7aafada0663ab3d3b123a2aa816787bcafb"
+    },
+    {
+      "path": "m3734-phone-light-zh-TW-3-remove.png",
+      "sha256": "a800c975818453548d54107d9a0a3c05e1997d62afd89f97a42efd6492ec38fe"
+    },
+    {
+      "path": "m3734-phone-light-zh-TW-4-nohub.png",
+      "sha256": "7e4c4a8d7617f922cba972f423c49940899001b2a24c7192ec3e2da581f940ad"
+    },
+    {
+      "path": "m3734-phone-dark-en-0-index.png",
+      "sha256": "1ca08f6457d42cd761bbbeac2204542af8f92351d073b2f0f173b89413354caa"
+    },
+    {
+      "path": "m3734-phone-dark-en-1-who.png",
+      "sha256": "d2fd9cddcc06478a47ea1bfcd882aee102883b505b0a5259430f7d84c18b5c16"
+    },
+    {
+      "path": "m3734-phone-dark-en-2-add.png",
+      "sha256": "3851c80818732cc5c17ccf0b55e9a582e0d1719197dafda74b4af76f10ff1c8e"
+    },
+    {
+      "path": "m3734-phone-dark-en-3-remove.png",
+      "sha256": "db4f92ea33e8218cc414161f77741d087d64b53d6ade6a4d04fd0f0d6222c5cf"
+    },
+    {
+      "path": "m3734-phone-dark-en-4-nohub.png",
+      "sha256": "638075ce5902fccffb282671ac4a64022cf97f326a4d2f81a75ba01ed7e29b2c"
+    }
+  ],
+  "measured": {
+    "desk-light-en-who": {
+      "W": 1366,
+      "scroll": 1366,
+      "small": [],
+      "rows": [
+        {
+          "name": "Alice",
+          "pressed": [
+            "chat"
+          ],
+          "text": "A\nAlice Discord\nNot signed in\nChat\nTrusted\nRemove"
+        },
+        {
+          "name": "Carol",
+          "pressed": [
+            "trusted"
+          ],
+          "text": "C\nCarol Discord\nNot signed in · Also uses: beta\nChat\nTrusted\nRemove"
+        }
+      ],
+      "hub": "shared",
+      "href": "https://hub.example.test/ui/hub/exposures?agent=aaaaaaaa-1111-4222-8333-444444444444&grant=1",
+      "target": "_blank",
+      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both. Open Settings → Guests\n\nA\nAlice Discord\nNot signed in\nChat\nTrusted\nRemove\nC\nCarol Discord\nNot signed in · Also uses: beta\nChat\nTrusted\nRemove\n\nTrusted adds watching these agents' screens (read-only) and searching their chats. The screen shows everything the agent's terminal does: other people's messages to it, commands and their output, which can include secrets. Chat and search stay limited to what this person may see.\n\nAdd a person\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nShared on the Hub.\n\nThat page is on the Hub's own address, so it only opens where the Hub can be reached — for now, on the company network. It doesn't open from outside.\n\nChoose who may ask on the Hub\n↗\nOpen Settings → Hub",
+      "nav": [
+        "overview",
+        "basic",
+        "runtime",
+        "work",
+        "channel",
+        "adv",
+        "access",
+        "permissions"
+      ]
+    },
+    "desk-light-en-nohub": {
+      "W": 1366,
+      "scroll": 1366,
+      "small": [],
+      "rows": [],
+      "hub": "none",
+      "href": null,
+      "target": null,
+      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both. Open Settings → Guests\n\nGuests still get the agents they talk to in chat. To choose who can use each agent, start from today's guests: each one keeps exactly the agents they can use now.\n\nStart from today's guests\n\nNo guest can use this agent.\n\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nThis Fleet isn't connected to a Hub.\n\nOpen Settings → Hub",
+      "nav": [
+        "overview",
+        "basic",
+        "runtime",
+        "work",
+        "channel",
+        "adv",
+        "access",
+        "permissions"
+      ]
+    },
+    "desk-dark-zh-TW-who": {
+      "W": 1366,
+      "scroll": 1366,
+      "small": [],
+      "rows": [
+        {
+          "name": "Alice",
+          "pressed": [
+            "chat"
+          ],
+          "text": "A\nAlice Discord\n未登入\n聊天\n信任\n移除"
+        },
+        {
+          "name": "Carol",
+          "pressed": [
+            "trusted"
+          ],
+          "text": "C\nCarol Discord\n未登入 · 也能用：beta\n聊天\n信任\n移除"
+        }
+      ],
+      "hub": "shared",
+      "href": "https://hub.example.test/ui/hub/exposures?agent=aaaaaaaa-1111-4222-8333-444444444444&grant=1",
+      "target": "_blank",
+      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和 bot 對話是 bot 本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。 開啟「設定 → 訪客」\n\nA\nAlice Discord\n未登入\n聊天\n信任\n移除\nC\nCarol Discord\n未登入 · 也能用：beta\n聊天\n信任\n移除\n\n信任多了：觀看這些 agent 的畫面（唯讀），以及搜尋它們的聊天。畫面會顯示 agent 終端上的一切：別人傳給它的訊息、指令和它們的輸出，其中可能有機密。聊天和搜尋仍只限這個人看得到的內容。\n\n新增人員\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n已在 Hub 上分享。\n\n那個頁面在 Hub 自己的網址上，只有連得到 Hub 的地方才打得開——目前是公司網路內。從外部打不開。\n\n到 Hub 選擇誰可以問\n↗\n開啟「設定 → Hub」",
+      "nav": [
+        "overview",
+        "basic",
+        "runtime",
+        "work",
+        "channel",
+        "adv",
+        "access",
+        "permissions"
+      ]
+    },
+    "desk-dark-zh-TW-nohub": {
+      "W": 1366,
+      "scroll": 1366,
+      "small": [],
+      "rows": [],
+      "hub": "none",
+      "href": null,
+      "target": null,
+      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和 bot 對話是 bot 本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。 開啟「設定 → 訪客」\n\n訪客目前仍會拿到他們在聊天中互動過的 Agent。若要逐一選擇誰能用哪個 Agent，請從現有訪客開始：每個人都保留他們現在能用的 Agent。\n\n從現有訪客開始\n\n目前沒有訪客可以使用這個 Agent。\n\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n這個 Fleet 沒有連接 Hub。\n\n開啟「設定 → Hub」",
+      "nav": [
+        "overview",
+        "basic",
+        "runtime",
+        "work",
+        "channel",
+        "adv",
+        "access",
+        "permissions"
+      ]
+    },
+    "phone-light-zh-TW-who": {
+      "W": 390,
+      "scroll": 390,
+      "small": [],
+      "rows": [
+        {
+          "name": "Alice",
+          "pressed": [
+            "chat"
+          ],
+          "text": "A\nAlice Discord\n未登入\n聊天\n信任\n移除"
+        },
+        {
+          "name": "Carol",
+          "pressed": [
+            "trusted"
+          ],
+          "text": "C\nCarol Discord\n未登入 · 也能用：beta\n聊天\n信任\n移除"
+        }
+      ],
+      "hub": "shared",
+      "href": "https://hub.example.test/ui/hub/exposures?agent=aaaaaaaa-1111-4222-8333-444444444444&grant=1",
+      "target": "_blank",
+      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和 bot 對話是 bot 本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。 開啟「設定 → 訪客」\n\nA\nAlice Discord\n未登入\n聊天\n信任\n移除\nC\nCarol Discord\n未登入 · 也能用：beta\n聊天\n信任\n移除\n\n信任多了：觀看這些 agent 的畫面（唯讀），以及搜尋它們的聊天。畫面會顯示 agent 終端上的一切：別人傳給它的訊息、指令和它們的輸出，其中可能有機密。聊天和搜尋仍只限這個人看得到的內容。\n\n新增人員\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n已在 Hub 上分享。\n\n那個頁面在 Hub 自己的網址上，只有連得到 Hub 的地方才打得開——目前是公司網路內。從外部打不開。\n\n到 Hub 選擇誰可以問\n↗\n開啟「設定 → Hub」",
+      "nav": [
+        "overview",
+        "basic",
+        "runtime",
+        "work",
+        "channel",
+        "adv",
+        "access",
+        "permissions"
+      ]
+    },
+    "phone-light-zh-TW-nohub": {
+      "W": 390,
+      "scroll": 390,
+      "small": [],
+      "rows": [],
+      "hub": "none",
+      "href": null,
+      "target": null,
+      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和 bot 對話是 bot 本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。 開啟「設定 → 訪客」\n\n訪客目前仍會拿到他們在聊天中互動過的 Agent。若要逐一選擇誰能用哪個 Agent，請從現有訪客開始：每個人都保留他們現在能用的 Agent。\n\n從現有訪客開始\n\n目前沒有訪客可以使用這個 Agent。\n\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n這個 Fleet 沒有連接 Hub。\n\n開啟「設定 → Hub」",
+      "nav": [
+        "overview",
+        "basic",
+        "runtime",
+        "work",
+        "channel",
+        "adv",
+        "access",
+        "permissions"
+      ]
+    },
+    "phone-dark-en-who": {
+      "W": 390,
+      "scroll": 390,
+      "small": [],
+      "rows": [
+        {
+          "name": "Alice",
+          "pressed": [
+            "chat"
+          ],
+          "text": "A\nAlice Discord\nNot signed in\nChat\nTrusted\nRemove"
+        },
+        {
+          "name": "Carol",
+          "pressed": [
+            "trusted"
+          ],
+          "text": "C\nCarol Discord\nNot signed in · Also uses: beta\nChat\nTrusted\nRemove"
+        }
+      ],
+      "hub": "shared",
+      "href": "https://hub.example.test/ui/hub/exposures?agent=aaaaaaaa-1111-4222-8333-444444444444&grant=1",
+      "target": "_blank",
+      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both. Open Settings → Guests\n\nA\nAlice Discord\nNot signed in\nChat\nTrusted\nRemove\nC\nCarol Discord\nNot signed in · Also uses: beta\nChat\nTrusted\nRemove\n\nTrusted adds watching these agents' screens (read-only) and searching their chats. The screen shows everything the agent's terminal does: other people's messages to it, commands and their output, which can include secrets. Chat and search stay limited to what this person may see.\n\nAdd a person\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nShared on the Hub.\n\nThat page is on the Hub's own address, so it only opens where the Hub can be reached — for now, on the company network. It doesn't open from outside.\n\nChoose who may ask on the Hub\n↗\nOpen Settings → Hub",
+      "nav": [
+        "overview",
+        "basic",
+        "runtime",
+        "work",
+        "channel",
+        "adv",
+        "access",
+        "permissions"
+      ]
+    },
+    "phone-dark-en-nohub": {
+      "W": 390,
+      "scroll": 390,
+      "small": [],
+      "rows": [],
+      "hub": "none",
+      "href": null,
+      "target": null,
+      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both. Open Settings → Guests\n\nGuests still get the agents they talk to in chat. To choose who can use each agent, start from today's guests: each one keeps exactly the agents they can use now.\n\nStart from today's guests\n\nNo guest can use this agent.\n\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nThis Fleet isn't connected to a Hub.\n\nOpen Settings → Hub",
+      "nav": [
+        "overview",
+        "basic",
+        "runtime",
+        "work",
+        "channel",
+        "adv",
+        "access",
+        "permissions"
+      ]
+    }
+  },
+  "summary": "66/66"
+}
