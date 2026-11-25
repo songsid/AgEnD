@@ -142,6 +142,8 @@ try {
     await field.scrollIntoViewIfNeeded(); await page.evaluate(() => document.querySelector("#g-archive")?.scrollIntoView({ block: "center" })); await page.waitForTimeout(400);
     const label = await field.locator(".s-lab label").innerText().catch(() => "");
     check(`${tag}: Settings has the archive age, 3 unless set`, (await page.locator("#g-archive-days").inputValue()) === "3" && /Archive finished cards after|完成的卡片封存於/.test(label), label);
+    // #4428 ui-gate: on a phone the field is a full touch target (44px).
+    if (phone) { const box = await page.locator("#g-archive-days").boundingBox(); check(`${tag}: the archive-days field is a 44px tap target`, !!box && box.height >= 44, box); }
     await shot("6-settings");
     await page.locator("#g-archive-days").fill("2.5"); await page.waitForTimeout(500);
     check(`${tag}: Settings refuses a fraction of a day`, /A whole number of days from 0 to 3650|0 到 3650 之間的整數天數/.test(await field.innerText()));
