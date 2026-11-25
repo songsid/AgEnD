@@ -89,7 +89,7 @@ async function mountWith(Comp: any, props: any, url = "http://127.0.0.1:19280/ui
 const text = (el: any) => (el?.textContent || "").replace(/\s+/g, " ").trim();
 const buttons = (root: any) => [...root.querySelectorAll(".rc-card button")] as any[];
 const choice = (root: any, which: string) => root.querySelector(`.rc-card button[data-choice="${which}"]`) as any;
-const decisions = (calls: Array<{ method: string; url: string }>) => calls.filter((c) => c.method === "POST" && c.url.endsWith("/decision"));
+const decisions = (calls: Array<{ method: string; url: string; body: any }>) => calls.filter((c) => c.method === "POST" && c.url.endsWith("/decision"));
 const toasts = (root: any) => [...root.querySelectorAll(".toasts .toast")].map(text);
 
 describe("J: the host decides which page (Sentinel #4492: only the collection's 404 is off)", () => {
