@@ -34,6 +34,7 @@ import { CacheReport } from "./fleet-cache.js";
 import { UsageTab } from "./fleet-usage.js";
 import { BackendSelect, ModelSelect } from "./settings-dialogs.js";
 import { TaskBoardTab } from "./fleet-tasks.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 /** #2015: one of the largest processes as text: "python3 18.1 GB (dev-a)". */
 export function memoryHogText(p) {
@@ -626,7 +627,7 @@ export function CreateInstanceDialog({ onClose }) {
   const cliLabel = productLabel(f.backend) || `${t("fleet.fleetDefault")} (${productLabel(defaultBackend)})`;
   const backendField = windows ? html`<div class="field"><div class="cli-discovery-heading"><span>${tr("backend")}</span>${native && !machineId ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${discovery.loading} onClick=${discovery.refresh}><${Icon} name="restart" size=${14} />${detectionText("refresh")}</button>` : null}</div>
     <div aria-busy=${!machineId && discovery.loading ? "true" : "false"}>${native ? html`<${CliPicker} label=${tr("backend")} value=${f.backend} choices=${nativeChoices} onChange=${value => { setCredentialProfile(""); setF(x => ({...x,backend:value,model:""})); }} disabled=${!nativeChoices.length || !!machineId && machine?.status !== "online"} />` : null}</div>
-    ${machineId ? html`<p class="note">${tr(!nativeChoices.length ? "noRemoteCli" : "remotePolicy")}</p>${machine?.inventoryUpdatedAt ? html`<p class="note">${t("runtime.inventoryAt",new Date(machine.inventoryUpdatedAt).toLocaleString())}</p>` : null}` : html`<${WindowsCliDiscoveryStatus} state=${discovery} />`}
+    ${machineId ? html`<p class="note">${tr(!nativeChoices.length ? "noRemoteCli" : "remotePolicy")}</p>${machine?.inventoryUpdatedAt ? html`<p class="note">${t("runtime.inventoryAt",dateTimeText(machine.inventoryUpdatedAt))}</p>` : null}` : html`<${WindowsCliDiscoveryStatus} state=${discovery} />`}
     ${!machineId && native && !discovery.loading && !discovery.error ? html`<p class="note">${!nativeChoices.length ? tr("noCli") : tr("nativeHint")}</p>` : null}
     ${machineId ? html`<${ClaudeAccountSelect} id="native-create-claude-account" machine=${machine} backend=${f.backend} value=${credentialProfile} onChange=${setCredentialProfile} disabled=${machine?.status !== "online"} />` : null}</div>`
     : html`${field(tr("backend"),backends ? html`<${CliPicker} label=${tr("backend")} value=${f.backend} choices=${[{value:"",label:t("fleet.fleetDefault")},...backends.filter(b => backendState(b) !== "not_installed" && !b.deprecated).map(b => ({value:b.name,label:productLabel(b.name),disabled:backendBlocked(b),description:backendNote(b)}))]} onChange=${value => { setCredentialProfile(""); setF(x => ({...x,backend:value,model:""})); }} />` : html`<div role="status" aria-busy="true"><${Skeleton} lines=${1} /><span class="note">${tr("loadingClis")}</span></div>`)}${hostAccount ? html`<${AccountSelect} id="create-host-account" backend=${hostBackend} value=${credentialProfile} onChange=${setCredentialProfile} creating=${true} />` : null}`;

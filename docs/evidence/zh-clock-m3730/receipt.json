@@ -1,0 +1,73 @@
+{
+  "sourceHead": "2cb24aae9f554ed05ce1eb689efa3c392e16532c",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-en-light: the browser's clock is in the midnight hour (Etc/GMT+4)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light chat: message times read [\"12:44 PM\",\"12:45 PM\"]",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light session menu: \"Ends by 12:48 AM at the latest, or after 48 h unused\"",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light Fleet → Usage: \"Updated 12:48 AM · read every 10 min · Not collected yet · Days in Asia/Taipei, whole hours. Scanning — totals may still grow.\nRefresh\"",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the browser's clock is in the midnight hour (Etc/GMT+4)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark chat: message times read [\"12:44\",\"12:45\"]",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark session menu: \"最晚 00:48 結束；閒置 48 小時 也會結束\"",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark Fleet → Usage: \"更新於 00:48 · 每 10 分鐘讀取一次 · 自 2026/10/25 起收集 · 日期依 Asia/Taipei，以整點小時計。\"",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "zh-clock-m3730/desk-en-light-1-chat-times.png",
+      "sha256": "fea34910adb74955b3f5c5c2c49fe84512ca09974f9da962edea2fa9cba719da"
+    },
+    {
+      "path": "zh-clock-m3730/desk-en-light-2-session-menu.png",
+      "sha256": "44e2eccf23d294ba18f468681e1b11cfb7f4e8094f46ad8ae3f7282cd3a07c34"
+    },
+    {
+      "path": "zh-clock-m3730/desk-en-light-3-fleet-usage.png",
+      "sha256": "b68cd12b8fe6a6fe264bc3aa40e1ff552ccbd618fc87381d8153a295c7894114"
+    },
+    {
+      "path": "zh-clock-m3730/desk-zh-TW-dark-1-chat-times.png",
+      "sha256": "9924bda7f57da8d9df1d95bac285c77e5c9c72fad120dd8b82d5a6dc06312726"
+    },
+    {
+      "path": "zh-clock-m3730/desk-zh-TW-dark-2-session-menu.png",
+      "sha256": "8d99d7c2ec916e8143498e4349c7c62ffddeda1820173c6633d4affa916b5503"
+    },
+    {
+      "path": "zh-clock-m3730/desk-zh-TW-dark-3-fleet-usage.png",
+      "sha256": "2de27ad0e0893ee4485fa40cc4c5c9f1f56381c804d40f1906a901598490bf82"
+    }
+  ],
+  "zone": "Etc/GMT+4"
+}

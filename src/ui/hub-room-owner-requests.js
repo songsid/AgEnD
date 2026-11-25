@@ -3,12 +3,13 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { RoomPicker } from "./hub-room-new.js";
 import { hrq } from "./hub-room-owner-requests-strings.js";
 import { hn } from "./hub-room-new-strings.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 export function ownerRequestError(result, owner) {
   if (result?.code === "owner-not-taking-requests") return hrq("ownerOff", owner);
   if (result?.code === "request-open") return hrq("already", owner);
   if (result?.code === "request-limit" && Number.isSafeInteger(result.resetsAt) && result.resetsAt > 0 && result.resetsAt <= 8.64e15) {
-    const time = new Date(result.resetsAt).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const time = dateTimeText(result.resetsAt, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
     return hrq("limit", time);
   }
   return hrq("failed");

@@ -13,6 +13,7 @@ import { RunMark, runOf } from "./fleet-task-run.js";
 import { OwnerChip } from "./fleet-task-owner.js";
 import { COLUMNS, ProgressBar, UNASSIGNED, Who, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, waitsList, waitsOn, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { assetUrl } from "/assets/asset-url.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 /** The task board's stylesheet, linked once (a tab opened before an upgrade has an app.css without these rules). */
 export function linkTaskBoardCss(doc = typeof document !== "undefined" ? document : null) {
@@ -400,7 +401,7 @@ function groupHead(group, key) {
   return html`<span class=${`tb-tag p-${key}`}>${t(`tasks.${key}`)}</span>`;
 }
 const groupWord = (group, key) => (group === "assignee" ? (key === NONE ? t("tasks.nobody") : key) : t(`tasks.${key}`));
-const longTime = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString(lang() === "zh-TW" ? "zh-TW" : "en") : ""; };
+const longTime = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? dateTimeText(d, undefined, lang() === "zh-TW" ? "zh-TW" : "en") : ""; };
 
 // The groups a person folded away, remembered on this device, per project (by what heads them: "1/status:done",
 // "none/assignee:alpha" — the project's id, or "none" for No project).

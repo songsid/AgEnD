@@ -9,6 +9,7 @@ import { t, register } from "/assets/app-i18n.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { money, tokens } from "./fleet-cache.js";
+import { timeText } from "/assets/clock-text.js";
 
 register("fusage", {
   en: {
@@ -439,7 +440,7 @@ export function UsageReport({ report, choice, setChoice, refresh, fetchedAt }) {
     <p class="us-basis" role="note" title=${tu("basisMore")}>${tu("basis", report.pricesChecked)}</p>
     ${noDaily ? html`<p class="us-partial" role="status">${tu("noDaily")}</p>` : report.dailyTruncated ? html`<p class="us-partial" role="status">${tu("partialDays", report.dailyFrom)}</p>` : null}
     ${zones ? html`<p class="us-partial" role="status">${tu("zoneChanged", zones.join(", "), report.zone)}</p>` : null}
-    <p class="note us-fresh">${tu("updated", new Date(fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))} · ${Number.isFinite(since) ? tu("since", new Date(since).toLocaleDateString()) : tu("notYet")} · ${tu("zoneNote", report.zone)}${group === "team" ? ` ${tu("teamsNote")}` : ""}
+    <p class="note us-fresh">${tu("updated", timeText(fetchedAt, { hour: "2-digit", minute: "2-digit" }, []))} · ${Number.isFinite(since) ? tu("since", new Date(since).toLocaleDateString()) : tu("notYet")} · ${tu("zoneNote", report.zone)}${group === "team" ? ` ${tu("teamsNote")}` : ""}
       ${report.scanning.active && (!report.scanning.caughtUp || report.scanning.pendingBytes > 0) ? html` <span class="us-scan" role="status">${tu("scanning")} <button type="button" class="btn btn-sm" onClick=${refresh}>${tu("refresh")}</button></span>` : null}</p>
     ${empty ? html`<${Empty} icon="chart" title=${tu("empty")} hint=${tu("emptyHint")} />` : html`
       <dl class="us-totals card">

@@ -9,6 +9,7 @@ import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { register, t, lang } from "/assets/app-i18n.js";
 import { api } from "./settings-confirm.js";
 import { typedOrigin, shownAddress, defaultListen } from "./settings-hub-web-address.js";
+import { clockFormat } from "/assets/clock-text.js";
 
 register("hubMemberAddress", {
   en: {
@@ -94,7 +95,7 @@ const errorText = (r) => {
   if (Number.isSafeInteger(r.retryAt) && r.retryAt > 0) {
     try {
       const at = new Date(Math.ceil(r.retryAt / 60_000) * 60_000);
-      if (!Number.isNaN(at.getTime())) time = new Intl.DateTimeFormat(lang(), { hour: "2-digit", minute: "2-digit" }).format(at);
+      if (!Number.isNaN(at.getTime())) time = clockFormat({ hour: "2-digit", minute: "2-digit" }, lang()).format(at);
     } catch { /* Fall back to the no-time wording. */ }
   }
   return copy(time ? "err_joining" : "err_joining_no_time", time);

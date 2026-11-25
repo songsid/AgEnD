@@ -4,6 +4,7 @@
  * zh-TW (admin is 管理員). A module of its own (namespace contactAuth); imports only app-i18n.
  */
 import { register, t, lang } from "/assets/app-i18n.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 register("contactAuth", {
   en: {
@@ -263,4 +264,4 @@ export const ca = (k, ...a) => t(`contactAuth.${k}`, ...a);
 
 export const contactPlatformLabel = platform => ({ discord: "Discord", telegram: "Telegram" }[platform] || platform);
 export const contactPersonLabel = person => person?.platform === "host" && person?.userId === "operator" ? ca("operator") : person?.label || person?.userId || "";
-export const contactWhen = value => { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toLocaleString(lang() === "zh-TW" ? "zh-TW" : "en", { dateStyle: "long", timeStyle: "short" }) : ""; };
+export const contactWhen = value => { const d = new Date(value); return Number.isFinite(d.getTime()) ? dateTimeText(d, { dateStyle: "long", timeStyle: "short" }, lang() === "zh-TW" ? "zh-TW" : "en") : ""; };

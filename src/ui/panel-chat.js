@@ -107,7 +107,7 @@ register("chatPhone", {
   en: { goTo: "Go to", thisChat: "This chat", verifiedUntil: "Verified · speaks as you until {0}", needsToast: "{0} needs you", ctxHide: "Hide this for now" },
   "zh-TW": { goTo: "前往", thisChat: "這個對話", verifiedUntil: "已驗證 · 以你的身分發言到 {0}", needsToast: "{0} 正在等你回應", ctxHide: "這次先不提醒" },
 });
-const untilClock = (ms) => { try { return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+const untilClock = (ms) => { try { return timeText(ms, { hour: "2-digit", minute: "2-digit" }, []); } catch { return ""; } };
 /** A Needs-you item's identity: its nonce, else its id, else what it says. */
 const needKey = (item) => String(item?.nonce || item?.id || JSON.stringify(item || null));
 /**
@@ -244,6 +244,7 @@ export function linkWorkBarCss(doc = typeof document !== "undefined" ? document 
 linkWorkBarCss();
 
 import { activityDrawCtx, activityInfo, activityInfoStore, activityOffered, activityPrefs, composeActivity, mountActivity, observeActivity, setActivityOn, setActivityThinking } from "./chat-activity.js";
+import { timeText } from "/assets/clock-text.js";
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composers = new Map(); // agent → current mounted refs, never a retained thread's stale closure
 const composerField = (name) => composers.get(name)?.input.current || null;

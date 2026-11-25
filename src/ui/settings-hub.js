@@ -23,6 +23,7 @@ import { hp } from "./hub-pairing-progress-strings.js";
 import { hpf, pairingCodeState, pairingFailure } from "./hub-pairing-form-strings.js";
 import { HubPageSharingSettings } from "./settings-hub-page-sharing.js";
 import { HubUpdateConsent } from "./settings-hub-updates.js";
+import { timeText } from "/assets/clock-text.js";
 
 register("hubSharingFleet", {
   en: { hint: "To pause and resume without clearing the allow list, open this agent under My agents on the Hub. Turning Share off stops sharing." },
@@ -170,7 +171,7 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {}, prefi
           <p class="note">${hw("hubProgressHidden")}</p>`
         : html`<p class="hub-steps-lead">${hw("pendingSteps")}</p>
           <ul class="hub-steps">${step(p.ownerConfirmed, "ownerStep")}${step(p.adminApproved, "adminStep")}</ul>`}
-      ${Number.isFinite(p.expiresAt) ? html`<p class="note">${hw("expires", new Date(p.expiresAt).toLocaleTimeString())}</p>` : null}
+      ${Number.isFinite(p.expiresAt) ? html`<p class="note">${hw("expires", timeText(p.expiresAt))}</p>` : null}
       <div class="field-row"><button type="button" class="btn" disabled=${busy} onClick=${cancel}>${hw("cancel")}</button></div>
     </div>`;
   } else if (p.state === "paired") {

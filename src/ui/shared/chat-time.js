@@ -1,18 +1,21 @@
 // #1770: the time a chat line shows, read in the fleet's zone (the one chat-logs, fleet.log and the #1586 DMs use) —
-// "17:38" today, "Yesterday 17:38", "10/11 17:38" earlier this year, "2025/10/11 17:38" before. The hour and minute keep
-// the browser's own format (12- or 24-hour), as they always had. No imports: the thread, the preview panel and the
+// "17:38" today, "Yesterday 17:38", "10/11 17:38" earlier this year, "2025/10/11 17:38" before. In English the hour and
+// minute keep the browser's own format (12- or 24-hour), as they always had; a zh-TW page is on the 24-hour clock
+// (M-3730, the same rule as clock-text.js, read from <html lang>). No imports: the thread, the preview panel and the
 // tests read it as it is.
 
 const cache = new Map();
 /** One formatter per (kind, zone, locale): a thread may label 500 lines on every render. */
+const zhPage = () => /^zh/i.test(globalThis.document?.documentElement?.lang || "");
 function fmt(kind, tz, locale) {
-  const key = `${kind}|${tz || ""}|${locale || ""}`;
+  const zh = kind !== "ymd" && (locale ? /^zh/i.test(String(locale)) : zhPage());
+  const key = `${kind}|${tz || ""}|${locale || ""}|${zh ? "h23" : ""}`;
   let f = cache.get(key);
   if (!f) {
     const o = kind === "hm" ? { hour: "2-digit", minute: "2-digit" }
       : kind === "ymd" ? { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", hourCycle: "h23" }
       : { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZoneName: "short" };
-    f = new Intl.DateTimeFormat(kind === "ymd" ? "en-US" : (locale || []), { ...o, timeZone: tz || undefined });
+    f = new Intl.DateTimeFormat(kind === "ymd" ? "en-US" : zh ? "zh-TW" : (locale || []), { ...o, ...(zh ? { hourCycle: "h23" } : {}), timeZone: tz || undefined });
     cache.set(key, f);
   }
   return f;

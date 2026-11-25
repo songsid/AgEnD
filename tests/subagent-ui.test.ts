@@ -36,7 +36,7 @@ describe("cached child component visibility defence",()=>{
 describe("progress retirement uses evidence deadlines, including old-server and error states",()=>{
  function render(runs:any[],at:number,error=false) {
   class Clock extends Date { static now() { return at; } }
-  const scope:any={register:()=>{},t:(s:string)=>s,Date:Clock,Map,Number,Array,Object,useRef:()=>({current:null}),useEffect:()=>{},useState:(initial:any)=>typeof initial==="object"?[{owner:"same-owner",runs,error},()=>{}]:[at,()=>{}],html:()=>({shown:true})};
+  const scope:any={register:()=>{},dateTimeText:(v:any)=>new Date(v).toLocaleString(),t:(s:string)=>s,Date:Clock,Map,Number,Array,Object,useRef:()=>({current:null}),useEffect:()=>{},useState:(initial:any)=>typeof initial==="object"?[{owner:"same-owner",runs,error},()=>{}]:[at,()=>{}],html:()=>({shown:true})};
   runInNewContext(raw.replace(/^import .*;$/gm,"").replace(/export /g,"")+"\nglobalThis.result=SubagentRow({name:'dev'})",scope);return scope.result;
  }
  it.each(["completed","unknown","running"])("%s hides on the deadline even before another HTTP poll",state=>{

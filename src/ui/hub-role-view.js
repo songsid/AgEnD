@@ -1,5 +1,6 @@
 /** Display projections only. Policy keys, permissions and checked writes remain server-owned. */
 import {hr} from "./hub-roles-strings.js";
+import { dateTimeText } from "/assets/clock-text.js";
 export const personKey=p=>`${p?.realm}/${p?.objectId}`;
 export const management=["fleets.manage","join.manage","roles.assign","audit.view","hub.admin"];
 export const permissionGroups=[{key:"usingHub",permissions:["ask_agents","publish_agents","pair_fleet"]},{key:"theirTeam",permissions:["team.view","team.usage"]},{key:"runningHub",permissions:["fleets.manage","join.manage","roles.assign","audit.view"]}];
@@ -73,8 +74,8 @@ export function valueLines(value){
  if(value.permissions)lines.push(value.permissions.map(p=>hr(p)).join(" · "));
  if(value.defaultMaxFleets!==undefined)lines.push(`${hr("quota")}: ${value.defaultMaxFleets}`);
  if(value.subject)lines.push(value.subject.name||hr("unknownPerson"));if(value.scope)lines.push(scopeName(value.scope));
- if(value.startsAt)lines.push(`${hr("start")}: ${new Date(value.startsAt).toLocaleString()}`);
- if(value.expiresAt!==undefined)lines.push(`${hr("ends")}: ${value.expiresAt?new Date(value.expiresAt).toLocaleString():hr("noEnd")}`);
+ if(value.startsAt)lines.push(`${hr("start")}: ${dateTimeText(value.startsAt)}`);
+ if(value.expiresAt!==undefined)lines.push(`${hr("ends")}: ${value.expiresAt?dateTimeText(value.expiresAt):hr("noEnd")}`);
  if(value.maxFleets!=null)lines.push(`${hr("override")}: ${value.maxFleets}`);
  if(value.rolesActive!==undefined)lines.push(hr(value.rolesActive?"on":"off"));
  return lines;

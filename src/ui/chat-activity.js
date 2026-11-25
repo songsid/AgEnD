@@ -18,6 +18,7 @@ import { html, render, useEffect, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { createStore } from "/assets/app-store.js";
 import { Icon } from "/assets/ui-icons.js";
+import { unitText } from "/assets/clock-text.js";
 import { CAT_ICON, KIND_ICON, LogRow, collapse, mergeSteps, stepLine, tl } from "./log-row.js";
 import { composeRows, groupSteps } from "./chat-activity-groups.js";
 
@@ -112,7 +113,7 @@ const thinkingOffered = () => globalThis.document?.body?.dataset?.logThinking ==
 function elapsed(ms) {
   if (!(ms >= 1000)) return "";
   const s = Math.round(ms / 1000);
-  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} m ${s % 60} s`;
+  return s < 60 ? unitText(s, "s") : `${unitText(Math.floor(s / 60), "m")} ${unitText(s % 60, "s")}`;
 }
 const countOf = (rows) => rows.reduce((n, x) => n + (x.repeat || 1), 0);
 /** Tool calls in `rows` (a repeated call counts each time): thinking and "said" lines are steps, not tools. */

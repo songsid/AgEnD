@@ -21,6 +21,7 @@ import { setTextSize, textSizeStore, TEXT_SIZES, usageOffered } from "./header-t
 import { UsageDialog } from "./usage-dialog.js";
 import { supportsInstanceFeature } from "./instance-nav.js";
 import { assetUrl } from "./asset-url.js";
+import { timeText } from "./clock-text.js";
 
 register("agentSheet", {
   en: { sheet: "{0}: more", search: "Search", files: "Files & changes", card: "Card", usage: "Usage", model: "Model & effort", backend: "CLI backend",
@@ -59,7 +60,7 @@ export function usePhone() {
 const CONTROLS = ["start", "restart", "stop", "pause", "wake", "delete"];
 /** The item keys the sheet places itself (a tile or a row of its own), never under Appearance. */
 const PLACED = ["details", "splitChat", "settings", "workspace", "fullWidth", "pins", ...CONTROLS];
-const untilClock = (ms) => { try { return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+const untilClock = (ms) => { try { return timeText(ms, { hour: "2-digit", minute: "2-digit" }, []); } catch { return ""; } };
 
 /**
  * The header's ⋯ on a phone, and its sheet.

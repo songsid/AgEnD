@@ -21625,7 +21625,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.authorizationRequests) return this.authorizationRequests;
     const adapterOf = (adapterId: string): ChannelAdapter | undefined => this.adapters.get(adapterId) ?? this.worlds.get(adapterId)?.adapter;
     // The host's clock, with its zone: the person may read the DM on a phone in another one.
-    const when = (ms: number) => new Date(ms).toLocaleString(undefined, { timeZoneName: "short" });
+    // M-3730: zh-TW is a 24-hour clock (2026/11/25 00:19:00 [GMT+8]), never 上午12:19; English is unchanged.
+    const when = (ms: number) => getLocale() === "zh-TW"
+      ? new Date(ms).toLocaleString("zh-TW", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZoneName: "short" })
+      : new Date(ms).toLocaleString(undefined, { timeZoneName: "short" });
     const quickHost = (): string => { try { const u = this.publicWebLink?.openSignin()?.url; return u ? new URL(u).host : "?"; } catch { return "?"; } };
     const where = (peer: WebPeer) => peer === "named_link"
       ? t("web_auth.peer_named_link", String(this.fleetConfig?.web?.public_link?.hostname ?? "?"))   // §0.2: the internet

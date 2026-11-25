@@ -19,6 +19,7 @@ import { BoardOffNote, boardOffTargets, relTime } from "./fleet-task-common.js";
 import { AgentTag } from "./fleet-task-run.js";
 import { WhoCard } from "./fleet-task-owner.js";
 import { insertAtTrigger, triggerAt, withoutCode } from "./trigger-complete.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 export const TIMELINE_FILTERS = ["all", "comments", "log", "history"];
 const RANK = { event: 0, log: 1, comment: 2 };   // at one instant: the move first, then the words that came with it
@@ -77,7 +78,7 @@ export const insertMention = (text, m, caret, name, names = []) => insertAtTrigg
 
 // ── The timeline ──────────────────────────────────────────
 
-const fullTime = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString() : ""; };
+const fullTime = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? dateTimeText(d) : ""; };
 
 /**
  * A run of the same history line from the same hand ("web-user changed acceptance" three times in a row) is one entry with a

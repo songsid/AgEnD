@@ -10,12 +10,13 @@ import { hq } from "./hub-quick-strings.js";
 import { hr } from "./hub-read-strings.js";
 import { linkHubCss } from "./hub-strings.js";
 import { linkHubOwnerCss } from "./hub-owner-strings.js";
+import { dateTimeText } from "/assets/clock-text.js";
 /** A member Settings reader opts into code rows only alongside this renderer. */
 export const pairingNoticesV3 = true;
 
 const reason = (r) => hq(r.code === "expired" ? "expired" : r.code === "conflict" ? "conflict" : r.code === "backpressure" ? "limit"
   : r.code === "denied" || r.code === "revoked" ? "denied" : r.code === "unavailable" || r.code === "unreachable" ? "unavailable" : "failed");
-const time = (at) => { try { return new Date(at).toLocaleString(lang() === "zh-TW" ? "zh-TW" : "en", { dateStyle: "medium", timeStyle: "short" }); } catch { return new Date(at).toLocaleString(); } };
+const time = (at) => { try { return dateTimeText(at, { dateStyle: "medium", timeStyle: "short" }, lang() === "zh-TW" ? "zh-TW" : "en"); } catch { return dateTimeText(at); } };
 
 /** The page controls its own attempt only. The separate fleet-local proof is never performed by this component. */
 export function QuickPairingGuide({ allowed = false, publishAllowed = false, onConnected = () => {} }) {

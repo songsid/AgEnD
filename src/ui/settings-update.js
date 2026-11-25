@@ -7,6 +7,7 @@ import { register, t, lang } from "/assets/app-i18n.js";
 import { useStore } from "/assets/app-store.js";
 import { toast } from "/assets/ui-toast.js";
 import { checkUpdateNow, hubNeed, openHubUpdateDialog, openUpdateDialog, refreshUpdate, updateActive, updateStore } from "/assets/app-update.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 register("supdate", {
   en: { title: "Version and update", current: "Current version", line: "Update line", latest: "Latest", checked: "Last checked",
@@ -29,7 +30,7 @@ function channelOf(version) {
   return !pre ? "latest" : pre[1] === "alpha" ? "alpha" : "beta";
 }
 function when(ms) {
-  try { return new Date(ms).toLocaleString(lang() === "zh-TW" ? "zh-TW" : "en-US", { dateStyle: "medium", timeStyle: "short" }); } catch { return ""; }
+  try { return dateTimeText(ms, { dateStyle: "medium", timeStyle: "short" }, lang() === "zh-TW" ? "zh-TW" : "en-US"); } catch { return ""; }
 }
 
 export function UpdateSection() {

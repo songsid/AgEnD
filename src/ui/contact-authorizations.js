@@ -18,11 +18,12 @@ import { ContactGrantEditor } from "./contact-grant-editor.js";
 import { InfoTip } from "/assets/info-tip.js";
 import { ca } from "./contact-auth-strings.js";
 import { decideTicket, getTicket, listTickets, personKey, shortTicketId } from "./contact-auth-client.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 // The Fleet tab's own label (panel-fleet.js reads fleet.<tab>).
 register("fleet", { en: { authorizations: "Authorizations" }, "zh-TW": { authorizations: "授權" } });
 
-const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""; };
+const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? dateTimeText(d, { dateStyle: "medium", timeStyle: "short" }, []) : ""; };
 /** The server's reason codes (ContactTicket.reason, ContactPermissions.originRestriction.reason). */
 export const REASONS = new Set(["earlier-non-admin", "unknown-origin"]);
 const TONE = { pending: "warn", approved: "ok", delivered: "ok", declined: "bad", expired: "muted", unknown: "bad" };

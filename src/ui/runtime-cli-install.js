@@ -4,6 +4,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { CLI_CAPS } from "./cli-caps.js";
 import { confirmedWrite } from "./settings-confirm.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 /**
  * #3190 Part 3b: install a CLI on a paired Windows computer, from Settings → Runtime. The page sends only a CLI id; the Runtime on that computer decides the
@@ -203,7 +204,7 @@ export function CliInstall({ machine, lease, onChanged }) {
       <ul class="runtime-cli-install-list" aria-label=${text("title")}>${INSTALL_CLIS.map(row)}</ul>
       ${view && !view.switches ? html`<p class="note" role="status">${text("unreadable")}</p>` : null}
       ${switchState && !allowed ? html`<p class="note runtime-cli-install-off" role="status">${text("switchOff")}</p><${CommandCard} label=${text("switchCommand")} command=${SWITCH_COMMAND} />` : null}
-      ${allowed ? html`<p class="note">${switchState.until ? text("switchUntil", new Date(switchState.until).toLocaleString()) : text("switchOn")}</p>` : null}
+      ${allowed ? html`<p class="note">${switchState.until ? text("switchUntil", dateTimeText(switchState.until)) : text("switchOn")}</p>` : null}
       ${running ? html`<p class="note" role="status" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${text("installing")}</p>` : null}
       ${note ? html`<p class="note" role="status">${note}</p>` : null}
       ${error ? html`<p class="runtime-error" role="alert">${error}</p>` : null}`}

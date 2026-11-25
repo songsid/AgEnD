@@ -5,6 +5,7 @@ import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { api } from "./settings-confirm.js";
 import { hs, setupError } from "./settings-hub-setup-strings.js";
 import { HUB_NAME_MAX } from "./hub-client.js";   // M-3235: the one Hub-name maximum (what the brand shows)
+import { dateTimeText } from "/assets/clock-text.js";
 // These words travel with the new renderer, even when the tab retains the setup dictionary.
 register("hubSetupReady", {
   en: {
@@ -224,7 +225,7 @@ export function HubSetupSettings() {
         ].map(([key, value]) => html`<div class="kv"><span class="k">${hs(key)}</span><span class="v mono">${value}</span></div>`)}
         <div class="kv"><span class="k">${hs("ca")}</span><span class="v">${form.ca === "system" ? hs("system") : html`<span>${fingerprints.map(fp => html`<${Fingerprint} value=${fp} />`)}</span>`}</span></div>
         </div></details>
-        <p class="note">${hs("expires")}: ${new Date(review.expiresAt).toLocaleString()}</p><p class="note">${hs("reviewHint")}</p>` : null}
+        <p class="note">${hs("expires")}: ${dateTimeText(review.expiresAt)}</p><p class="note">${hs("reviewHint")}</p>` : null}
       <div class="s-row">
         ${step > 1 ? html`<button class="btn" type="button" onClick=${() => { clearDraft(); setFailureCode(""); setStep(step === 4 ? (form.certificate === "import" ? 1 : 2) : step - 1); }}>${hs("back")}</button>` : null}
         ${step < 4 ? html`<button class="btn btn-primary" type="submit">${hs(step === 3 ? "test" : "next")}</button>` : html`<button class="btn btn-primary" type="button" disabled=${!review} onClick=${commit}>${hs("create")}</button>`}

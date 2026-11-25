@@ -10,6 +10,7 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { toast } from "/assets/ui-toast.js";
+import { clockFormat } from "/assets/clock-text.js";
 
 register("oshare", {
   en: {
@@ -40,7 +41,7 @@ register("oshare", {
 const to = (k, ...v) => t(`oshare.${k}`, ...v);
 const DURATIONS = [["m15", 15], ["m30", 30], ["h1", 60], ["h2", 120], ["h4", 240], ["h8", 480], ["h24", 1440]];
 const JSON_HEADERS = { "Content-Type": "application/json" };
-const when = (ms) => { try { return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(ms)); } catch { return ""; } };
+const when = (ms) => { try { return clockFormat({ month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }, undefined).format(new Date(ms)); } catch { return ""; } };
 
 /** What a refusal says (the host's `error` and `reason`). */
 export function refusalText(d) {
