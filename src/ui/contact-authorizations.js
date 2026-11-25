@@ -19,6 +19,9 @@ import { InfoTip } from "/assets/info-tip.js";
 import { ca } from "./contact-auth-strings.js";
 import { decideTicket, getTicket, listTickets, personKey, shortTicketId } from "./contact-auth-client.js";
 import { dateTimeText } from "/assets/clock-text.js";
+// M-3736 J (S-228): once the same-card host is installed, the page is its one card (request-contact-page.js).
+import { sameCardState, sameCardUnknownCode } from "./request-contact-client.js";
+import { RequestContactAuthorizations, SameCardUnknown } from "./request-contact-page.js";
 
 // The Fleet tab's own label (panel-fleet.js reads fleet.<tab>).
 register("fleet", { en: { authorizations: "Authorizations" }, "zh-TW": { authorizations: "授權" } });
@@ -93,7 +96,20 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
 
 const ticketFromSearch = () => { try { const v = new URLSearchParams(location.search).get("ticket"); return v && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : null; } catch { return null; } };
 
+/**
+ * Fleet → Authorizations: the same-card page where its host is installed, today's where it is not (404). Not known (a
+ * refusal or a failure): why, and Try again — never today's less-scoped page instead.
+ */
 export function ContactAuthorizations() {
+  const [host, setHost] = useState(null);
+  const ask = () => { setHost(null); void sameCardState().then((s) => setHost(s)); };
+  useEffect(() => { let live = true; void sameCardState().then((s) => { if (live) setHost(s); }); return () => { live = false; }; }, []);
+  if (host === null) return html`<div class="contact-auth-page"><${Skeleton} variant="cards" lines=${2} label=${ca("loading")} /></div>`;
+  return host === "on" ? html`<${RequestContactAuthorizations} />` : host === "off" ? html`<${LegacyContactAuthorizations} />`
+    : html`<div class="contact-auth-page"><${SameCardUnknown} code=${sameCardUnknownCode()} onRetry=${ask} /></div>`;
+}
+
+function LegacyContactAuthorizations() {
   const { instances } = useStore(appStore);
   const [status, setStatus] = useState("pending");
   const [agent, setAgent] = useState("");

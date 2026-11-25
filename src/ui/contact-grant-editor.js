@@ -6,8 +6,10 @@ import { personKey } from "./contact-auth-client.js";
 export const CONTACT_VERBS = ["send_to_instance", "delegate_task", "request_information", "broadcast", "report_result"];
 const localTime = date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 const afterDays = days => localTime(new Date(Date.now() + days * 86400000));
-export function ContactGrantEditor({ people, source, target, verb, grant = null, onSave, onClose }) {
-  const [selected, setSelected] = useState(() => grant ? [personKey(grant.person)] : people.length === 1 ? [personKey(people[0])] : []);
+// `keyOf` (M-3736 J): how a person is selected — the same-card contract's server-owned candidate key; by default the
+// person's own [platform, userId] key, as before.
+export function ContactGrantEditor({ people, source, target, verb, grant = null, onSave, onClose, keyOf = personKey }) {
+  const [selected, setSelected] = useState(() => grant ? [personKey(grant.person)] : people.length === 1 ? [keyOf(people[0])] : []);
   const [preset, setPreset] = useState(grant ? "custom" : "7");
   const [until, setUntil] = useState(() => grant ? localTime(new Date(grant.expiresAt)) : afterDays(7));
   const [uses, setUses] = useState(grant?.remainingUses == null ? "" : String(grant.remainingUses));
@@ -30,8 +32,8 @@ export function ContactGrantEditor({ people, source, target, verb, grant = null,
     actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${ca("cancel")}</button><button type="button" class="btn btn-primary" disabled=${busy || !valid} onClick=${save}>${ca(busy ? "saving" : grant ? "grantSave" : "allowAndApprove")}</button>`}>
     <p>${ca("grantRoute", source, target)}</p>
     <section class="s-group" aria-label=${ca("grantPeople")}><h3>${ca("grantPeople")}</h3><div class="s-checks">
-      ${people.map(person => html`<label class="check"><input type="checkbox" checked=${selected.includes(personKey(person))} disabled=${busy || !!grant}
-        onChange=${e => setSelected(toggle(selected, personKey(person), e.currentTarget.checked))} /><span>${contactPersonLabel(person)} · ${contactPlatformLabel(person.platform)}</span></label>`)}
+      ${people.map(person => html`<label class="check"><input type="checkbox" checked=${selected.includes(keyOf(person))} disabled=${busy || !!grant}
+        onChange=${e => setSelected(toggle(selected, keyOf(person), e.currentTarget.checked))} /><span>${contactPersonLabel(person)} · ${contactPlatformLabel(person.platform)}</span></label>`)}
     </div></section>
     ${!grant && people.length > 1 ? html`<p class="note">${ca("grantAllOrigins")}</p>` : null}
     ${grant ? html`<section class="s-group" aria-label=${ca("grantTypes")}><h3>${ca("grantTypes")}</h3><div class="s-checks">${CONTACT_VERBS.map(v => html`<label class="check"><input type="checkbox" checked=${verbs.includes(v)} disabled=${busy}

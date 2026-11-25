@@ -20,6 +20,16 @@ import { ContactGrantEditor } from "./contact-grant-editor.js";
 import { REASONS } from "./contact-authorizations.js";
 import { groupWouldDisable } from "./contact-tool-groups.js";
 import { dateTimeText } from "/assets/clock-text.js";
+import { register, t } from "/assets/app-i18n.js";
+// M-3736 J (S-228, design #4456 §6): once the same-card host is installed, Clear retained origin is no longer a way out —
+// each request is judged on its own card — so its button and the notes that point to it go; what it did stays as history.
+import { sameCardState } from "./request-contact-client.js";
+
+register("rcperm", {
+  en: { originHistory: "Retained origin (history)", originHistoryNote: "Contact requests are now judged one request at a time, on their own card. What this agent retained, and any earlier clearing, stays here as history." },
+  "zh-TW": { originHistory: "保留的來源（歷史）", originHistoryNote: "聯絡申請現在逐筆在各自的卡片上判斷。這個 Agent 先前保留的來源，以及之前的清除紀錄，會留在這裡作為歷史。" },
+});
+const tq = (k) => t(`rcperm.${k}`);
 
 const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? dateTimeText(d, { dateStyle: "medium", timeStyle: "short" }, []) : ""; };
 /** A3's guard reason codes (ContactGuardStatus.reason), each said in words (contact-auth-strings.js guardReason_<code>). */
@@ -103,6 +113,10 @@ export function ContactPermissionsPanel({ name }) {
   const [mcpDraft, setMcpDraft] = useState("");
   const [pick, setPick] = useState("");
   const [editing, setEditing] = useState(null), [grantFilter, setGrantFilter] = useState("");
+  // Clear retained origin is offered only where the host is known to be off (404); installed or not known, it isn't.
+  const [host, setHost] = useState(null);
+  useEffect(() => { let live = true; void sameCardState().then((s) => { if (live) setHost(s); }); return () => { live = false; }; }, []);
+  const sameCard = host === "on", clearOffered = host === "off";
   const p = perm.data;
   useEffect(() => { setEditing(null); }, [name, p?.revision]);
   if (!p && perm.loading !== false && !perm.error) return html`<${Skeleton} lines=${5} label=${ca("loading")} />`;
@@ -133,7 +147,7 @@ export function ContactPermissionsPanel({ name }) {
     if (ok) await write({ mode });
   };
   const clearRetainedOrigin = async () => {
-    if (busy || !p.originState?.canClear) return;
+    if (busy || !p.originState?.canClear || !clearOffered) return;
     setBusy(true);
     const confirmed = await confirmDialog({ title: ca("originClear"), message: ca("originClearConfirm"),
       confirmLabel: ca("originClear"), danger: true });
@@ -157,7 +171,7 @@ export function ContactPermissionsPanel({ name }) {
   const shownGrants = p.grants.filter(gr => (gr.person.label || gr.person.userId).toLocaleLowerCase().includes(grantFilter.toLocaleLowerCase()));
   return html`<div class="contact-perm" aria-busy=${busy ? "true" : undefined}>
     ${p.originRestriction?.active && REASONS.has(p.originRestriction.reason) ? html`<p class="feedback warning contact-origin-restriction" role="status" data-reason=${p.originRestriction.reason}>
-      ${ca(`reason_${p.originRestriction.reason}`)} ${ca("resetNote")}</p>` : null}
+      ${ca(`reason_${p.originRestriction.reason}`)}${clearOffered ? html` ${ca("resetNote")}` : ""}</p>` : null}
     ${!canManage && !canMode ? html`<p class="s-info contact-readonly"><span aria-hidden="true">ⓘ</span><span>${ca("readOnly")}</span></p>` : null}
     ${p.classicRoom ? html`<section class="card contact-mode" data-mode=${p.mode}>
       <h3>${ca("modeTitle")}</h3>
@@ -230,17 +244,17 @@ export function ContactPermissionsPanel({ name }) {
     </section>
     ${editing && editing.revision === p.revision && canManage ? html`<${ContactGrantEditor} key=${`${name}:${p.revision}:${editing.grant.id}`} grant=${editing.grant} people=${[editing.grant.person]} source=${agentLabel(editing.grant.source)} target=${agentLabel(editing.grant.target)}
       onClose=${() => setEditing(null)} onSave=${choice => grantsWrite(p.grants.map(row => row.id === editing.grant.id ? { ...row, expiresAt: choice.expiresAt, remainingUses: choice.remainingUses, verbs: choice.verbs } : row))} />` : null}
-    ${p.originState ? html`<section class="card contact-origin">
-      <h3>${ca("originTitle")}</h3>
+    ${p.originState ? html`<section class=${`card contact-origin${sameCard ? " contact-origin-history" : ""}`}>
+      <h3>${sameCard ? tq("originHistory") : ca("originTitle")}</h3>
       <p class="contact-origin-state"><strong>${ca(`originKind_${p.originState.kind}`)}</strong></p>
-      <p class="note">${ca("originRetainedNote")}</p>
+      <p class="note">${sameCard ? tq("originHistoryNote") : ca("originRetainedNote")}</p>
       <p>${ca("originPeople")}</p>
       ${p.originState.people.length ? html`<ul class="contact-list contact-origin-people">${p.originState.people.map((person) => html`<li key=${`${person.platform}:${person.adapterId}:${person.userId}`}>
         <strong>${personLabel(person)}</strong> <span class="muted">${person.platform} · ${person.adapterId} · ${person.userId}</span></li>`)}</ul>` : html`<p class="note">${ca("originPeopleNone")}</p>`}
       <p class="contact-origin-chain">${ca("originChain")}: ${p.originState.chain.length ? p.originState.chain.join(" → ") : ca("originChainNone")}</p>
       <p class="note">${ca("originReceipts", p.originState.receiptCount)}</p>
       ${p.originState.lastCleared ? html`<p class="contact-origin-last">${ca("originLastCleared", personLabel(p.originState.lastCleared.actor), when(p.originState.lastCleared.at))}</p>` : null}
-      ${p.originState.canClear ? html`<button type="button" class="btn btn-sm btn-danger contact-origin-clear" disabled=${busy} onClick=${() => void clearRetainedOrigin()}>${ca("originClear")}</button>` : null}
+      ${p.originState.canClear && clearOffered ? html`<button type="button" class="btn btn-sm btn-danger contact-origin-clear" disabled=${busy} onClick=${() => void clearRetainedOrigin()}>${ca("originClear")}</button>` : null}
     </section>` : null}
     <section class="card contact-history">
       <h3>${ca("historyTitle")}</h3>

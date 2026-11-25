@@ -18,6 +18,8 @@ async function rig(input = fixture(), allow = true, conflict = false) {
   let data = input;
   const calls: any[] = [], confirms: string[] = [];
   global.fetch = async (url: string, options: any = {}) => {
+    // M-3736 J: a host without the same-card route (it answers 404), as every host is until slice L installs it.
+    if (String(url).startsWith("/ui/api/request-contact-authorizations")) return { ok: false, status: 404, json: async () => ({}) };
     const method = options.method ?? "GET", body = options.body ? JSON.parse(options.body) : undefined;
     calls.push({ url, method, body });
     if (method === "POST") {
