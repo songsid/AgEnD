@@ -40,6 +40,10 @@ const P = {
   search: () => html`<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>`,
   type: () => html`<path d="M4 7V5h16v2M9 19h6M12 5v14"/>`,
   chart: () => html`<path d="M3 20h18M6 16v-4M11 16V8M16 16v-6"/>`,
+  // M-3722: Fleet's Cache, Usage and Host health had one icon (chart); on a phone the tabs are icons only.
+  database: () => html`<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>`,
+  gauge: () => html`<path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>`,
+  pulse: () => html`<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>`,
   up: () => html`<path d="M12 19V5M5 12l7-7 7 7"/>`,
   sort: () => html`<path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/>`,   // #2179: the sidebar's sort
   star: () => html`<path d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.5l-5.87 3.08 1.12-6.54L2.5 9.41l6.56-.95L12 2.5z"/>`,

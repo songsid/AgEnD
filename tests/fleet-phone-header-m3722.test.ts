@@ -46,6 +46,16 @@ describe("M-3722: Fleet's header on a phone names the page", () => {
     const pg = await shell();
     expect(title(pg)).toBe("Fleet");
   });
+  it("#4453 capture check: each tab its own icon (the row is icons only) and its own name", async () => {
+    const pg = await shell({ narrow: true });
+    const tabs = [...pg.root.querySelectorAll(".p-fleet .panel-head nav.fleet-phone-tabs > a")] as any[];
+    const icons = tabs.map((a) => a.querySelector("svg")?.innerHTML ?? ""), names = tabs.map((a) => a.textContent.trim());
+    expect(icons.every((x) => x.length > 0)).toBe(true);
+    expect(new Set(icons).size).toBe(icons.length);
+    expect(new Set(names).size).toBe(names.length);
+    const css = readFileSync("src/ui/shared/app.css", "utf8");
+    expect(css).toMatch(/\.fleet-phone-tabs \.seg-item\.active \{ color: var\(--accent\); box-shadow: inset 0 -3px 0 var\(--accent\); \}/);
+  });
   it("the phone rules: the tab row spans the width in equal columns, each a --tap target; the page's name shows", () => {
     const css = readFileSync("src/ui/shared/app.css", "utf8");
     expect(css).toMatch(/\.p-fleet > \.panel-head \.fleet-phone-tabs \{[^}]*flex: 1 0 100%;[^}]*display: grid;[^}]*grid-auto-columns: minmax\(0, 1fr\)/);

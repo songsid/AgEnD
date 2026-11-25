@@ -5168,6 +5168,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-fleet > .panel-head .panel-title .panel-sub:has(.host-mem) { flex: 1 1 auto; width: auto; }
   .p-fleet > .panel-head .fleet-phone-tabs { order: 20; flex: 1 0 100%; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0; min-width: 0; padding: 0; margin: 0; overflow: visible; }
   .p-fleet > .panel-head .fleet-phone-tabs .seg-item { min-height: var(--tap); min-width: 0; padding: 0; justify-content: center; }
+  /* The tab you are on: the accent, and a 3 px accent line under it (the grey tile alone was about 1.2:1 against the header). */
+  .p-fleet > .panel-head .fleet-phone-tabs .seg-item.active { color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
   .p-fleet > .panel-head .fleet-phone-tabs .seg-item span { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   .p-fleet .oc-bar > span:first-child, .p-fleet .oc-bar .org-counts { display: none; }
   .p-fleet .oc-bar .oc-tools { flex-wrap: nowrap; overflow-x: auto; width: 100%; }

@@ -105,7 +105,8 @@ const DOCS_SITE = "https://songsid.github.io/AgEnD";
 export function docsUrl(language = lang()) {
   return `${DOCS_SITE}${language === "zh-TW" ? "/zh-tw" : ""}/docs/web-guide/`;
 }
-const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", usage: "chart", authorizations: "key", "host-health": "chart" };
+// M-3722: one icon each (a phone's tabs are icons only): Cache, Usage and Host health no longer share "chart".
+const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "database", usage: "gauge", authorizations: "key", "host-health": "pulse" };
 const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"];
 
 async function api(method, path, body, lease) {
