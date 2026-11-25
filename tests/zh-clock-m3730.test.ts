@@ -43,6 +43,19 @@ describe("clock-text.js", () => {
     expect(c.dateTimeText(EVENING, { month: "short", day: "numeric" }, "en")).toBe("Nov 25");
   });
 
+  it("no fields (none, {} or only a timeZone): each wrapper keeps its native default, on the 24-hour clock (#4455 review)", async () => {
+    const c = await import("../src/ui/shared/clock-text.js");
+    page("zh-Hant");
+    const tz = { timeZone: "UTC" }, utcMidnight = Date.UTC(2026, 10, 25, 0, 19, 5);
+    expect([c.timeText(MIDNIGHT), c.timeText(MIDNIGHT, {})].map(sp)).toEqual(["00:19:05", "00:19:05"]);
+    expect(sp(c.timeText(utcMidnight, tz))).toBe("00:19:05");                    // a time alone, never a date
+    expect([c.dateTimeText(MIDNIGHT), c.dateTimeText(MIDNIGHT, {})].map(sp)).toEqual(["2026/11/25 00:19:05", "2026/11/25 00:19:05"]);
+    expect(sp(c.dateTimeText(utcMidnight, tz))).toBe("2026/11/25 00:19:05");      // a date and a time
+    expect(c.clockFormat(undefined, undefined).format(MIDNIGHT)).toBe(new Intl.DateTimeFormat("zh-TW").format(MIDNIGHT));   // a date alone
+    expect(c.clockFormat({}, undefined).format(MIDNIGHT)).toBe("2026/11/25");
+    expect(c.clockFormat(tz, undefined).format(utcMidnight)).toBe("2026/11/25");
+  });
+
   it("a date-only format is left as it is in zh-TW; an unreadable value is empty", async () => {
     const c = await import("../src/ui/shared/clock-text.js");
     page("zh-Hant");

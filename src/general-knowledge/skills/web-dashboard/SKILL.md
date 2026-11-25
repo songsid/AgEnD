@@ -763,7 +763,7 @@ confirm. After a failure, unapplied changes are staged again
 |---|---|---|
 | Your name (**Save**, **Use web-user** / **Use <account>**) | the name agents see on your web messages | your profile |
 | Theme: System / Light / Dark | page theme | host prefs `theme` |
-| Language: English / 中文 | page language (not the bots' replies — that is Shared agent settings → Language) | host prefs `lang` |
+| Language: English / 中文 | page language (not the bots' replies — that is Shared agent settings → Language). In 中文 every time on the dashboard is a 24-hour clock (00:19, 19:45; never 上午/下午) and durations say 小時/分鐘/秒; English keeps its own time format. Times keep their zone either way: chat lines in the fleet's zone, other times in the browser's | host prefs `lang` |
 | Names: Nickname first / Real name first | sidebar names | host prefs `names.primary` |
 | Allow HTML previews | the preview opt-in | host prefs `preview.optIn` |
 | Chat tour (this device) | replays the chat tour | browser |

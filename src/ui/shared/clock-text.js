@@ -10,11 +10,17 @@ export function zhClock() { return /^zh/i.test(globalThis.document?.documentElem
 export function clockLocale(enLocale) { return zhClock() ? "zh-TW" : enLocale; }
 
 const hasTime = (o) => Boolean(o && (o.hour || o.timeStyle));
-/** Intl options for that locale: a zh-TW time is on the 24-hour cycle. A date-only format is left as it is. */
-export function clockOptions(o) {
+const DATE = { year: "numeric", month: "numeric", day: "numeric" }, HMS = { hour: "2-digit", minute: "2-digit", second: "2-digit" };
+/**
+ * Intl options for that locale: a zh-TW time is on the 24-hour cycle. A date-only format is left as it is. With no
+ * fields (none, {} or only a timeZone) each wrapper keeps its native default: `datetime` (toLocaleString) is a date and
+ * a time, `time` (toLocaleTimeString) a time alone, `format` (Intl.DateTimeFormat) a date alone (#4455 review).
+ */
+export function clockOptions(o, kind = "datetime") {
   if (!zhClock()) return o;
-  if (!o || !Object.keys(o).some((k) => k !== "timeZone")) {   // the default date-and-time (toLocaleString() with no options)
-    return { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", ...(o?.timeZone ? { timeZone: o.timeZone } : {}) };
+  if (!o || !Object.keys(o).some((k) => k !== "timeZone")) {
+    if (kind === "format") return o;
+    return { ...(kind === "datetime" ? DATE : {}), ...HMS, hourCycle: "h23", ...(o?.timeZone ? { timeZone: o.timeZone } : {}) };
   }
   if (!hasTime(o)) return o;
   const { hour12: _ignored, dateStyle, timeStyle, ...rest } = o;
@@ -29,7 +35,7 @@ export function clockOptions(o) {
 }
 
 /** An Intl.DateTimeFormat that follows the rule above. */
-export function clockFormat(o, enLocale) { return new Intl.DateTimeFormat(clockLocale(enLocale), clockOptions(o)); }
+export function clockFormat(o, enLocale) { return new Intl.DateTimeFormat(clockLocale(enLocale), clockOptions(o, "format")); }
 
 const date = (v) => (v instanceof Date ? v : new Date(v));
 /** A time of day ("19:45" in zh-TW; the screen's English format otherwise). No `o`: toLocaleTimeString's own default
@@ -37,7 +43,7 @@ const date = (v) => (v instanceof Date ? v : new Date(v));
 export function timeText(v, o, enLocale) {
   const d = date(v);
   if (!Number.isFinite(d.getTime())) return "";
-  return d.toLocaleTimeString(clockLocale(enLocale), o || !zhClock() ? clockOptions(o) : { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+  return d.toLocaleTimeString(clockLocale(enLocale), clockOptions(o, "time"));
 }
 
 /** A date with its time (toLocaleString), with the screen's options. */
