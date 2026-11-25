@@ -920,6 +920,8 @@ interface NonceButtonEntry {
   contactSnapshot?: RequestContactSnapshotV1;
   /** S-229: a General proposal's card (one suggested choice + Not now) and what keeps it valid. */
   contactProposalCurrent?: () => boolean;
+  /** S-229: the choices this card offered; a click naming any other action on its nonce is refused. */
+  contactActions?: readonly string[];
   /**
    * #1490 row 27: the lifecycle of `instanceName` the prompt was offered for (lifecyclePin), taken when it is posted.
    * A Restart acts only while it still holds: a stop, restart or same-name replacement since makes the button stale.
@@ -6284,7 +6286,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       message: view.message, choices: view.choices,
       expiredText: t(opts.proposal ? "contactProposal.expired" : "contactHeld.expired"),
       timeoutMs: opts.proposal ? 5 * 60_000 : Math.max(60_000, Math.min(left, 24 * 3_600_000)),
-      extra: { contactTicketId: id, contactSnapshot: card.snapshot, ...(opts.generalName ? { generalName: opts.generalName } : {}),
+      extra: { contactTicketId: id, contactSnapshot: card.snapshot, contactActions: view.choices.map(c => c.action), ...(opts.generalName ? { generalName: opts.generalName } : {}),
         ...(opts.proposalCurrent ? { contactProposalCurrent: opts.proposalCurrent } : {}) } });
   }
   /**
@@ -6358,8 +6360,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const sameCard = (entry: NonceButtonEntry): boolean => !!port && !!entry.contactSnapshot;
     const mayDecide = (entry: NonceButtonEntry, action: string): boolean => {
       if (sameCard(entry)) {
-        // Not now exists only on a General proposal.
-        if (!principal || !entry.contactTicketId || action === "cancel" && !entry.generalName) return false;
+        // Only a choice this card offered: Not now exists only on a General proposal, and a proposal offers one decision.
+        if (!principal || !entry.contactTicketId || !entry.contactActions?.includes(action)) return false;
         // A reader who may decide it acts; a manager who reads a request already closed hears its outcome.
         try { const card = port!.read(entry.contactTicketId, principal); return card.actions.canDecide || card.ticket.state !== "pending" && this.contactAdminOf(card.ticket.target, principal.person); } catch { return false; }
       }
@@ -20014,7 +20016,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     view?: import("./backend/types.js").RemoteCardView;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "contactChange" | "contactTicketId" | "contactSnapshot" | "contactProposalCurrent" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
+    extra?: Pick<NonceButtonEntry, "contactChange" | "contactTicketId" | "contactSnapshot" | "contactProposalCurrent" | "contactActions" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
     timeoutMs?: number;
     /** #2675: an action the dashboard offers beyond the platform's buttons (a typed answer, which the platform takes as a reply). */
     webInput?: { action: string; label: string } | null;

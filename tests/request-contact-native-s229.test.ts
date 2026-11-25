@@ -161,6 +161,8 @@ it("someone who may not decide — another member, a manager who is not an appro
   r.fm.syncHeldTicketCard(ticket); await settle();
   await click(r, entries(r)[0], "approve", { userId: "demo-member", label: "Demo member" });
   await click(r, entries(r)[0], "approve", { userId: "demo-bot", label: "Bot" });
+  // A forged Not now on a held card (it offers Continue / Decline only) closes nothing.
+  await click(r, entries(r)[0], "cancel");
   r.eligible(false);
   await click(r, entries(r)[0], "approve");
   expect([r.box.contactAuthorizations.get(ticket.id)!.state, pendingDeliveries(r), entries(r).length, retired(r)]).toEqual(["pending", 0, 1, []]);
@@ -225,9 +227,12 @@ it.each(["en", "zh-TW"] as const)("%s: General's proposal posts the same card wi
   await click(r, entries(r)[0], "cancel");
   expect([r.box.contactAuthorizations.get(ticket.id)!.state, retired(r)]).toEqual(["pending", [locale === "en" ? "Not now. The request still waits." : "先不處理，申請仍在等待。"]]);
   (evidence[locale]!["general-proposal"] as any).afterNotNow = retired(r)[0];
-  // Its only decision button is the suggested one: an approve forged onto the proposal's nonce is not offered.
+  // Its only decision button is the suggested one: an approve forged onto the proposal's nonce is refused.
   await r.fm.requestContactChange("general", { kind: "ticket-decision", ticket_id: ticket.id, decision: "decline" }, () => true);
-  await click(r, entries(r)[0], "decline");
+  const proposal = entries(r).find((e: any) => e.generalName)!;
+  await click(r, proposal, "approve");
+  expect([r.box.contactAuthorizations.get(ticket.id)!.state, pendingDeliveries(r)]).toEqual(["pending", 0]);
+  await click(r, proposal, "decline");
   // The proposal says who declined; the request's held card (posted while it still waited) closes with the outcome.
   expect([r.box.contactAuthorizations.get(ticket.id)!.state, retired(r).slice(1)]).toEqual(["declined", locale === "en"
     ? ["Declined by Demo admin. The agent is told.", "Declined elsewhere (the dashboard or another card)."] : ["Demo admin 已拒絕，已通知該 Agent。", "已在別處拒絕（網頁或另一張卡片）。"]]);
