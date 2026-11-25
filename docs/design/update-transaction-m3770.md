@@ -8,7 +8,7 @@ It also fixes the interfaces that 2.2 (the quiescence barrier, GrokCore) and 2.5
 
 **Scope.** Phase 2 runs only on a machine in class **self** (§4 of the design), and only when both the running version and the target speak this transaction (from- and to-version ≥ V_tx). Anywhere else, Phase 1's updater runs unchanged.
 
-**Revision 2** answers Prism's design review (6065369545); **revision 3** answers its scoped pass (6065419816). The changes are mapped in §9.
+**Revision 2** answers Prism's design review (6065369545); **revisions 3 and 4** answer its scoped passes (6065419816, 6065453267). The changes are mapped in §9.
 
 ---
 
@@ -199,9 +199,20 @@ Neither CLI-owned files nor files in a CLI's profile are included, rev 3. `crede
    - the home's private tmux server.
    The agents stop through the fleet's own stop, then each recorded pane process is confirmed gone.
 2. **Fence the fleet:** the updater takes `fleet.lock` itself, with role `update` and its attempt id. Every fleet start, and with it every agent start, is refused until the handoff (§4.3).
-3. **Fence the CLI:** every state-writing `agend` command checks the journal before it opens a file of the scope. While `current` names an open, unknown or manual attempt, it refuses with the attempt's id and stage.
-   - The check sits in one place: the CLI's state-open helpers, which `scheduler/db.ts`, the config writer and the like already go through. The writer inventory's test lists every state-writing command and fails if one bypasses the check.
-   - Only the authenticated helpers (§4.4) are exempt.
+3. **Fence the CLI with a lease held for the writer's whole lifetime (rev 4).** A check before opening alone races, so admission is a lock the operating system holds.
+   - **The lease** is `<home>/.state-lease.sqlite` (rollback journal, not WAL), used only for its locks. They are fcntl locks the kernel drops when a process dies.
+   - **A state-writing `agend` command**, from the moment it opens any file of the scope until it has closed the last one:
+     1. holds a read transaction on it: `BEGIN DEFERRED`, then a `SELECT` (a SHARED lock);
+     2. **after** that, checks the journal. If `current` names an open, unknown or manual attempt, it ends the transaction and refuses with the attempt's id and stage.
+   - **The updater:**
+     1. publishes `current` (§2.4);
+     2. fences `fleet.lock`;
+     3. then takes `BEGIN EXCLUSIVE` on the lease, with a 60 s busy timeout. That lock is granted only once every SHARED holder has finished: the **drain**. A writer admitted before `current` was published finishes first; a writer arriving after it sees `current` and refuses.
+     4. holds the lease until the terminal write (§2.4).
+   - A writer that finds the lease busy waits up to 2 s, then refuses with the same words.
+   - **When the 60 s drain expires,** the attempt is abandoned by the recorded procedure (§2.3).
+   - **The CLI's state-open helpers** take the lease in one place: `scheduler/db.ts`, the config writer, `config-history.ts` and the like. The writer inventory's test lists every state-writing command and fails if one opens scope files without the lease.
+   - **Exempt:** the fleet and its daemons, which `fleet.lock` fences, and the authenticated helpers (§4.4). The recovery runner takes the same exclusive lease.
 4. **The proof:** the writers-gone proof (§4.4) runs after the fences, and again after the copy or restore, before its result is published.
 5. **The wait:** a writer still present gets 60 s, polled. On expiry the recorded abandon procedure runs: restart the old fleet, hand back the inbox and the deferred jobs, then `abandoned` (open point 4, §8).
 
@@ -211,11 +222,14 @@ Neither CLI-owned files nor files in a CLI's profile are included, rev 3. `crede
   1. The updater or runner journals the planned generation (§3.3).
   2. It writes `handoff: { nonce, gen }` into its own lock record: tmp, fsync, rename.
   3. It starts the service, or spawns the fleet when there is no service.
-- **The starting fleet's `acquireFleetLock`**, finding role `update`:
-  - takes it over only when the attempt's journal names a planned generation with exactly that nonce, unconsumed, and the lock record's handoff carries the same;
-  - takes over by writing its own record `{ pid, role: "fleet", nonce }` to a tmp file and renaming it over the lock: one atomic replacement, never a release and a re-acquire;
-  - refuses on any other record or nonce.
-- **The nonce** reaches a service start through the journal: the pre-start step (§6.2) passes it on as `AGEND_UPDATE_HANDOFF`. A spawned fleet gets it in its environment. It is single-use: the journal marks it consumed when the pid lands.
+- **The starting fleet's `acquireFleetLock`**, finding role `update`, takes over only when the attempt's journal names a planned generation with exactly that nonce, and the lock record's handoff carries the same.
+- **Serialized, rev 4.** A rename isn't a compare-and-swap, so the takeover is claimed first:
+  1. **Claim:** create `attempts/<id>/handoff-<nonce>.claim` with `O_EXCL` (`wx`), holding the claimant's `{ pid, start }`; fsync it and its directory. **Exactly one** contender creates it. Every other contender for that nonce refuses at once, whether or not the winner has finished.
+  2. **Take over:** the claim's holder writes its record `{ pid, role: "fleet", nonce }` to a tmp file and renames it over `fleet.lock`.
+  3. **Acknowledge:** the updater or runner sees the record, journals the generation's pid, and marks the nonce consumed.
+- **A claim left by a claimant that died:** proven by `holderState`. If `fleet.lock` still holds the update record, the nonce is void and never reused. The updater or runner journals that and plans a new generation with a new nonce. An unknown claimant is never voided: the attempt waits, then goes to manual-recovery.
+- **The nonce** reaches a service start through the journal: the pre-start step (§6.2) passes it on as `AGEND_UPDATE_HANDOFF`. A spawned fleet gets it in its environment. It is single-use: the claim file consumes it, and the journal marks it consumed when the pid lands.
+- **The handoff route stays in place until the takeover is acknowledged, rev 4.** That route is the pre-start step and its `EnvironmentFile`, or launchd's wrapper. It is removed only after step 3, for every generation, the rollback included (§6.2).
 
 ### 4.4 The writers-gone proof, and who is exempt
 - **The proof looks for** any process of this uid that has `AGEND_HOME` equal to this home, its cwd under the home, or a file of the scope open or mapped (Linux `/proc/*/{environ,cwd,fd,maps}`; macOS `lsof -Fn +D`).
@@ -310,15 +324,21 @@ Nothing is moved before the header is durable. A crash before then means no `res
 - **Containers** missing in the home are created, and every container's mode is set as recorded. This is logged as `containers`.
 
 **A retry** replays the log. For each unit `u`:
-| Logged | Found | Action |
-|---|---|---|
-| `restored` | — | done |
-| `aside`, not `restored` | `<home>/u` exists and matches the manifest | log `restored` (the rename landed; its log line didn't) |
-| `aside`, not `restored` | otherwise | remove `<home>/u.restore-tmp` if present; build and rename again |
-| neither | `<home>/u` absent, and `replaced/u` exists with the header's `{ dev, ino, type }` for u | log `aside` (the move landed; its log line didn't); go on as above |
-| neither | `<home>/u` present, and `replaced/u` absent | do `aside`, then `restored` |
-| neither | `<home>/u` absent, and u isn't in the current units (manifest-only) | `restored` |
-| neither | anything else (both present; or `replaced/u` with another identity) | manual-recovery |
+Each unit is one of three kinds, fixed by the header: **both** (in the current units and the manifest), **new-only** (current only) or **manifest-only** (manifest only). A unit is **complete** when it is logged `restored`, or, for a new-only unit, logged `aside`.
+
+| Kind | Logged | Found | Action |
+|---|---|---|---|
+| any | complete | — | done |
+| new-only | neither | `<home>/u` absent, and `replaced/u` has the header's `{ dev, ino, type }` | log `aside`: complete (the move landed; its log line didn't). Nothing is copied: there is no snapshot of it |
+| new-only | neither | `<home>/u` present, `replaced/u` absent | do `aside`: complete |
+| both | `aside` | `<home>/u` exists and matches the manifest | log `restored` (the rename landed; its log line didn't) |
+| both | `aside` | otherwise | remove `<home>/u.restore-tmp` if present; build and rename again |
+| both | neither | `<home>/u` absent, and `replaced/u` has the header's identity | log `aside`; then as the row above |
+| both | neither | `<home>/u` present with the header's identity, `replaced/u` absent | do `aside`, then `restored` |
+| manifest-only | neither | `<home>/u` absent | build and rename: `restored` |
+| manifest-only | neither | `<home>/u` exists and matches the manifest | log `restored` (the rename landed before its log line, rev 4) |
+| manifest-only | neither | `<home>/u.restore-tmp` present, `<home>/u` absent | remove the tmp; build and rename |
+| any | — | anything else (both `<home>/u` and `replaced/u` present for a both-unit; a present path that matches neither the header nor the manifest; `replaced/u` with another identity) | manual-recovery |
 
 **After every unit:**
 - run `containers`;
@@ -390,9 +410,13 @@ The original definition's bytes are `unit.preimage`. The pre-start step runs **i
 **The runner owns the final service transition:**
 1. It waits until the refused start has ended: the unit is `inactive` or `failed`, and launchd's job is not running.
 2. It runs `recoveryPlan` (§7) and restores, under the locks.
-3. It removes the drop-in or wrapper (the unit restore, §6.3), then `daemon-reload` or the plist reload. That happens only with no start job in progress, so it never relies on a reload changing an active start's ExecStart.
-4. It plans the `rollback` generation (§3.3).
-5. It runs `systemctl --user reset-failed` and `start`, or `launchctl kickstart`, and waits for the generation's handoff.
+3. **It restores the unit's own definition** (`unit.preimage`, §6.3), but **keeps the handoff route**: the drop-in reduced to its pre-start check and `EnvironmentFile`, or the wrapper. Then `daemon-reload` or the plist reload, with no start job in progress, so it never relies on a reload changing an active start's ExecStart.
+4. It plans the `rollback` generation with its nonce (§3.3).
+5. It runs `systemctl --user reset-failed` and `start`, or `launchctl kickstart`. The pre-start check delivers the nonce, and the old version's fleet claims it and takes `fleet.lock` over (§4.3).
+6. **After the takeover is acknowledged** (rev 4):
+   - **systemd:** the runner removes the drop-in and runs `daemon-reload` while the unit is active, with no job queued. A reload doesn't restart a running unit.
+   - **launchd:** the loaded job keeps the wrapper until the next load. Reloading a running job would restart it, so the runner writes the unwrapped plist to disk, and the next load (the next `agend restart`, a reboot, or an update) uses it.
+   - **The wrapper itself** is harmless outside an attempt: with no open attempt it only execs the original arguments. P3 treats a job running such a wrapper for a terminal attempt as the expected program.
 
 **The operator command**, `<home>/.update-journal/recovery/<id>/node …/recover.cjs --home <home> --run`, is the same runner, run from a shell outside the service. It works with the package missing or broken.
 
@@ -462,6 +486,14 @@ A retry recognises each effect by the path's presence and its hash against the p
 | 3. Writers: `credential-profiles/` excluded whole, so no included file has an external writer; the CLI fence on state-writing commands; the atomic fleet.lock handoff by nonce; the authenticated exempt set | §4.1–4.4, §5.1 |
 | 4. The forward-install intent before npm; partial contents only within the destination, authorizing a preimage restore; the planned generation and nonce before a start | §3.2, §3.3, §6.3 |
 | Inventory: the default `.claude.json` outside the home named; eligibility by pre-commit writers only | §5.1 |
+
+### Revision 4 (Prism 6065453267)
+| Review point | Where |
+|---|---|
+| 1. Unit kinds (both, new-only, manifest-only): a landed manifest-only restore is recognised without an `aside`; a new-only unit is complete at `aside`, with no snapshot copy | §5.5 |
+| 2. The takeover serialized by an `O_EXCL` claim per nonce: exactly one contender; a dead claimant voids the nonce, which is never reused | §4.3 |
+| 3. The CLI fence as a lease held for the writer's whole lifetime (SQLite SHARED vs EXCLUSIVE on `.state-lease.sqlite`); the updater publishes `current`, then drains; the check runs after the lease | §4.2 |
+| 4. The handoff route kept until the rollback generation's takeover is acknowledged; systemd removes the drop-in afterwards; launchd keeps a harmless wrapper until the next load | §6.2, §4.3 |
 
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
