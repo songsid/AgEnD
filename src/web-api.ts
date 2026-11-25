@@ -276,7 +276,12 @@ function contactNeedsFor(req: IncomingMessage, url: URL, ctx: WebApiContext, bas
   // A session identity may see benign room suggestions, never pending approval tickets.
   const suggestions = observer && ctx.contactNeeds ? ctx.contactNeeds(observer).filter(item => item && typeof item === "object"
     && (item as { reason?: string }).reason === "contact_restricted_suggestion") : [];
-  return [...ordinary, ...suggestions];
+  // M-3710 (R21079937, 11-25: a pending request was in no list, even on this computer): an admin session with no verified
+  // person behind it is told how many requests wait and to authorize this browser — the count only, never which.
+  const waiting = admin ? ctx.contactPendingCount?.() : undefined;
+  const verify = waiting && waiting.count > 0 ? [{ id: "contact-verify", type: "contact", reason: "contact_verify_needed", instance: "",
+    since: waiting.since, detail: "", contactVerify: { count: waiting.count } }] : [];
+  return [...ordinary, ...verify, ...suggestions];
 }
 
 /**
@@ -439,6 +444,8 @@ export interface WebApiContext extends ClaudeCredentialApi {
   decideContactAuthorization?: ContactApiHost["decideContactAuthorization"];
   contactActor?(req: IncomingMessage, url: URL): import("./contact-auth-types.js").ContactPerson | null;
   contactNeeds?(actor: import("./contact-auth-types.js").ContactPerson): unknown[];
+  /** M-3710: the pending contact requests' count and the oldest one's time — nothing that names them. */
+  contactPendingCount?(): { count: number; since: number };
   acknowledgeContactSuggestion?(instance: string, actor: import("./contact-auth-types.js").ContactPerson): void;
   acknowledgeContactSuggestionFromWeb?(instance: string, req: IncomingMessage, url: URL): void;
   contactSuggestionActor?(req: IncomingMessage, url: URL): import("./contact-auth-types.js").ContactPerson | null;
