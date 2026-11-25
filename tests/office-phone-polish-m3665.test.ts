@@ -89,10 +89,10 @@ describe("zoomed out past TAG_READ_K: the names as chips, not 3 px tags", () => 
     expect(scene("cozy", true).tags).toEqual([]);
   });
   const near = (xs: number[], k: number) => xs.some((s) => Math.abs(s - k) < 1e-9);
-  for (const ratio of [1, 2, 3]) it(`leader's check (device ratio ${ratio}): too far out (CSS zoom 0.3), a caller's tag on the map at TAG_READ_K's size; nobody else's`, () => {
+  for (const ratio of [1, 2, 3]) it(`leader's check (device ratio ${ratio}): too far out (CSS zoom 0.3), a caller's tag on the map at its full size (1×); nobody else's`, () => {
     const far = scene("cozy", true, 0.3, { ratio });
     expect(far.tags).toEqual(["caller"]);
-    expect(near(far.scales, F.TAG_READ_K / 0.3)).toBe(true);        // by the CSS zoom (Prism #4423: not a = zoom × ratio)
+    expect(near(far.scales, 1 / 0.3)).toBe(true);                    // by the CSS zoom (Prism #4423: not a = zoom × ratio), to 1×
     expect(scene("cozy", true, 1, { ratio }).tags).toEqual([]);      // tags off at a readable zoom (a small tile): as before
   });
   it("Hide names at 0.3: the caller's tag, once (as #4466)", () => { expect(scene("cozy", "names", 0.3, { ratio: 2 }).tags).toEqual(["caller"]); });

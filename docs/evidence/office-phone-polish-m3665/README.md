@@ -31,13 +31,13 @@ The Desks style draws its tags into its cached desk layer, not as canvas text, s
 
 At a phone's whole-office zoom, the strip below the stage replaces the 3 px tags on purpose: a readable row instead of unreadable labels. Four things were tightened after the capture check and its review:
 
-- **A caller still says who they are on the map.** Below `TAG_READ_K`, measured as the view's CSS zoom on any device ratio, each caller's name tag is drawn at the size it has at `TAG_READ_K`, without the level badge. It is placed as every tag is: never under an open card, clear of the kept-clear controls, else a row lower, and registered so bubbles keep off it. A hovered or found caller gets this one tag, not a small one as well. Their bubble shows as before, and their chip comes first in the row, warning-coloured. See `fleet/after-phone-light-en-cozy.png`: "Stuck one" under the person in the Help desk.
+- **A caller still says who they are on the map.** Below `TAG_READ_K`, measured as the view's CSS zoom on any device ratio, each caller's name tag is drawn at its full size (1×, the leader's call: who needs you, at a glance), without the level badge. It is placed as every tag is: never under an open card, clear of the kept-clear controls, else a row lower, and registered so bubbles keep off it. A hovered or found caller gets this one tag, not a small one as well. Their bubble shows as before, and their chip comes first in the row, warning-coloured. See `fleet/after-phone-light-en-cozy.png`: "Stuck one" under the person in the Help desk.
 - **Offline is visible at that zoom.** The power-off mark keeps its `TAG_READ_K` size, scaled about its own centre, on the zones styles and on Desks. The figure stays faded. At a desk's zoom it's drawn as before.
 - **The row never cuts a chip short.** It scrolls sideways, and while there's more in either direction, that edge fades (as the zone chips' does). See `hub-room/phone-en-light-after-office.png`.
 - **The row is flat:** a border, no shadow.
 - **With Hide names on (#4466),** the row keeps only the callers, and none at all when nobody calls.
 
-**Source of the after frames.** Every `after` frame and both `after-report.json` files were captured from a checkout whose `src/` tree is `1c151aa660476fd99b4f45994f0ca8aecc44e358`, this PR's head's `src/` tree, in the pinned Playwright image (`source` in each report). The `before` frames are unchanged.
+**Source of the after frames.** Every `after` frame and both `after-report.json` files were captured from a checkout whose `src/` tree is `1e787c6849df29981fcf526a0c13673f888465f7`, this PR's head's `src/` tree, in the pinned Playwright image (`source` in each report). The `before` frames are unchanged.
 
 ## 3. Area chips whole on a phone
 

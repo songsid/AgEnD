@@ -14,7 +14,7 @@
       "zoom": "29%",
       "tagsOff": true,
       "people": 31,
-      "peopleInView": 3,
+      "peopleInView": 5,
       "minChipH": 44,
       "chipsBad": [],
       "chips": [
@@ -37,7 +37,7 @@
       "zoom": "29%",
       "tagsOff": true,
       "people": 31,
-      "peopleInView": 5,
+      "peopleInView": 4,
       "minChipH": 44,
       "chipsBad": [],
       "chips": [
@@ -49,7 +49,7 @@
     }
   },
   "source": {
-    "src_tree": "1c151aa660476fd99b4f45994f0ca8aecc44e358",
+    "src_tree": "1e787c6849df29981fcf526a0c13673f888465f7",
     "note": "captured from a checkout whose src/ is this tree (the PR head's src/ tree; no tracked change besides it; untracked: the capture script and the node_modules link), in the pinned Playwright image"
   }
 }

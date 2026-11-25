@@ -569,8 +569,10 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   const sk = p.skin;
   const ls = layerScale(a, p.L.width, p.L.height);
   // M-3665: the view's CSS zoom (a is bitmap px a unit: the zoom × the device ratio, Prism #4423). Below TAG_READ_K what must
-  // stay readable — a caller's tag, the offline mark — is drawn readScale times larger, at the size it has at TAG_READ_K.
+  // stay readable is drawn larger: the offline mark readScale times (its size at TAG_READ_K), a caller's tag callerScale.
   const zk = a / ((env && env.ratio) || 1), readScale = zk < TAG_READ_K ? TAG_READ_K / zk : 1;
+  // A caller's tag at its full size (1×: the leader's call, "who needs you at a glance"); other floors stay at TAG_READ_K.
+  const callerScale = zk < 1 ? 1 / zk : 1;
   // Zones zoomed in past the layers' budget (a big pack): the layer would be coarser than the screen and the picture,
   // so the background and foreground are drawn from their pictures instead (only the part on screen is rasterised).
   const direct = !!p.zones && ls < a - 1e-6;
@@ -741,7 +743,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const pinned = (q) => q.d.key === hot || !!q.look.match;
     const crowded = (q) => over.has(q.d.area) && !pinned(q);
     // M-3665 (leader's check): too far out to read (tagsOff true), a caller still says who they are on the map — their tag
-    // at the size it has at TAG_READ_K, where they stand (the chip row below lists them too). Drawn after the tags, below.
+    // at its full size (1×), where they stand (the chip row below lists them too). Drawn after the tags, below.
     const beaconOn = tagsOff === true && readScale > 1;
     const beacon = (q) => beaconOn && CALLING.has(q.look.state);
     // A caller keeps their tag with names hidden (#4467 review): the Help desk always says who needs you.
@@ -787,12 +789,12 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const tagOrder = people.filter((q) => !(live.hidden.has(q.look.name) && q.look.name !== heldName) && tagged(q))
       .map((q, i) => ({ q, i, rank: pinned(q) ? 0 : q.at.walking ? 2 : 1 })).sort((x, y) => x.rank - y.rank || x.i - y.i);
     for (const { q, rank } of tagOrder) place(q.at.x, q.at.y, tagLook(q), FULL_TRIES, rank === 0);
-    // The callers' tags in that mode (above), as the tags are placed: the box scaled about where they stand so it reads as
-    // at TAG_READ_K, never under an open card, clear of the kept-clear controls and of each other (there, else a row
+    // The callers' tags in that mode (above), as the tags are placed: the box scaled about where they stand so it reads at
+    // its full size, never under an open card, clear of the kept-clear controls and of each other (there, else a row
     // lower), registered (bubbles keep off it); their level left out. None clear: left to their chip in the row.
     if (beaconOn) for (const q of people) {
       if (!CALLING.has(q.look.state) || live.hidden.has(q.look.name) || offView(q.at)) continue;
-      const k = readScale, look = { ...q.look, badge: null }, sc = (b) => ({ x: q.at.x + (b.x - q.at.x) * k, y: q.at.y + (b.y - q.at.y) * k, w: b.w * k, h: b.h * k });
+      const k = callerScale, look = { ...q.look, badge: null }, sc = (b) => ({ x: q.at.x + (b.x - q.at.x) * k, y: q.at.y + (b.y - q.at.y) * k, w: b.w * k, h: b.h * k });
       for (const dy of [0, TAG_ROW]) {
         const box = sc(tagBox(ctx, q.at.x, q.at.y + dy, look.label, false, look.fit));
         if (covered(box) || touches(box)) continue;

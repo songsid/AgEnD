@@ -60,13 +60,13 @@
       "errors": [],
       "csp": [],
       "style": "studio",
-      "calls": 97,
+      "calls": 105,
       "tagNames": [
+        "General",
         "Paused one",
         "Offline one",
         "Stuck one",
-        "Worker",
-        "General"
+        "Worker"
       ],
       "tagCss": 8.6,
       "zoom": "86%",
@@ -115,7 +115,7 @@
       "errors": [],
       "csp": [],
       "style": "pixel",
-      "calls": 98,
+      "calls": 97,
       "tagNames": [],
       "tagCss": null,
       "zoom": "100%",
@@ -164,13 +164,13 @@
       "errors": [],
       "csp": [],
       "style": "guild",
-      "calls": 106,
+      "calls": 103,
       "tagNames": [
+        "Stuck one",
         "General",
         "Worker",
         "Paused one",
-        "Offline one",
-        "Stuck one"
+        "Offline one"
       ],
       "tagCss": 8.6,
       "zoom": "86%",
@@ -219,7 +219,7 @@
       "errors": [],
       "csp": [],
       "style": "school",
-      "calls": 104,
+      "calls": 105,
       "tagNames": [
         "Stuck one",
         "General",
@@ -276,11 +276,11 @@
       "style": "cozy",
       "calls": 105,
       "tagNames": [
-        "Paused one",
         "Offline one",
         "Stuck one",
         "Worker",
-        "General"
+        "General",
+        "Paused one"
       ],
       "tagCss": 8.6,
       "zoom": "86%",
@@ -329,11 +329,11 @@
       "errors": [],
       "csp": [],
       "style": "cozy",
-      "calls": 105,
+      "calls": 104,
       "tagNames": [
         "Stuck one"
       ],
-      "tagCss": 5,
+      "tagCss": 10,
       "zoom": "30%",
       "chips": [
         {
@@ -421,11 +421,11 @@
       "errors": [],
       "csp": [],
       "style": "cozy",
-      "calls": 104,
+      "calls": 105,
       "tagNames": [
         "Stuck one"
       ],
-      "tagCss": 5,
+      "tagCss": 10,
       "zoom": "30%",
       "chips": [
         {
@@ -511,7 +511,7 @@
     }
   },
   "source": {
-    "src_tree": "1c151aa660476fd99b4f45994f0ca8aecc44e358",
+    "src_tree": "1e787c6849df29981fcf526a0c13673f888465f7",
     "note": "captured from a checkout whose src/ is this tree (the PR head's src/ tree; no tracked change besides it; untracked: the capture script and the node_modules link), in the pinned Playwright image"
   }
 }
