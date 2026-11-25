@@ -1,0 +1,168 @@
+{
+  "sourceHead": "e97174d863a2afe2320e631bf204f25b2e120749",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-en-light: Needs you shows the prompt and both of its choices",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the credits choice asks to be confirmed first",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: cancelling the confirmation leaves the card (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: Needs you shows the prompt and both of its choices",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the credits choice asks to be confirmed first",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: cancelling the confirmation leaves the card (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: Needs you shows the prompt and both of its choices",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the credits choice asks to be confirmed first",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: cancelling the confirmation leaves the card (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: Needs you shows the prompt and both of its choices",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the credits choice asks to be confirmed first",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: cancelling the confirmation leaves the card (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "claude-usage-credits-m3757/desk-en-light-1-needs-card.png",
+      "sha256": "54b66b995201d353980e6737e8852291a642dcd1ae8ee682596418def6c7b851"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-en-light-2-confirm-credits.png",
+      "sha256": "33de4e8768119c9621ccc380b94ada52df0c9288007c4215f6ef23a43d05a1be"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-dark-1-needs-card.png",
+      "sha256": "b1fd45870fc16f68a46861347038b00f75c59baa7d23fd57fa1740e010f31d07"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-dark-2-confirm-credits.png",
+      "sha256": "4304eb93ad390204ffb1a8d912dbe8e05ac5049bc1656dcb0591945b16770774"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-en-light-1-needs-card.png",
+      "sha256": "22b64cbd4f3569360a3f876923a1ba1599e586847c68e5bae761fbf3516a2088"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-en-light-2-confirm-credits.png",
+      "sha256": "d9c0de1410c62db650adf6a4f3899996e0deaca9f06de4f5244adb3396cf6f9d"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-dark-1-needs-card.png",
+      "sha256": "7b0dd6d562cf63f632dc56fc42f640a19644f1c6fb40371e97eaed4f45c60d15"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-dark-2-confirm-credits.png",
+      "sha256": "ed09df34e561b7fee14ab49e68cc3cdec1db6241988c40e955b58de64e42ea53"
+    }
+  ]
+}
