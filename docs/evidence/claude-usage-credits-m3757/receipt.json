@@ -1,5 +1,5 @@
 {
-  "sourceHead": "fddd85bf2e361657c9845eaff4558938bf538967",
+  "sourceHead": "1dad12d86288080793314f021dcf6c798db4d220",
   "dirty": [],
   "checks": [
     {
@@ -16,6 +16,10 @@
     },
     {
       "name": "desk-en-light: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: every control is shown and none overlaps the next",
       "ok": true
     },
     {
@@ -51,6 +55,10 @@
       "ok": true
     },
     {
+      "name": "desk-en-light: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
       "name": "desk-en-light: the confirmation's two buttons are one width",
       "ok": true
     },
@@ -63,11 +71,19 @@
       "ok": true
     },
     {
+      "name": "desk-en-light: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: chat — every control is shown and none overlaps the next",
+      "ok": true
+    },
+    {
       "name": "desk-en-light: no horizontal overflow",
       "ok": true
     },
     {
-      "name": "desk-en-light: cancelling the confirmation leaves the card (nothing answered)",
+      "name": "desk-en-light: cancelling the confirmation leaves the prompt (nothing answered)",
       "ok": true
     },
     {
@@ -88,6 +104,10 @@
     },
     {
       "name": "desk-zh-TW-dark: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: every control is shown and none overlaps the next",
       "ok": true
     },
     {
@@ -123,6 +143,10 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-dark: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
       "name": "desk-zh-TW-dark: the confirmation's two buttons are one width",
       "ok": true
     },
@@ -135,11 +159,19 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-dark: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: chat — every control is shown and none overlaps the next",
+      "ok": true
+    },
+    {
       "name": "desk-zh-TW-dark: no horizontal overflow",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: cancelling the confirmation leaves the card (nothing answered)",
+      "name": "desk-zh-TW-dark: cancelling the confirmation leaves the prompt (nothing answered)",
       "ok": true
     },
     {
@@ -160,6 +192,10 @@
     },
     {
       "name": "desk-zh-TW-light: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: every control is shown and none overlaps the next",
       "ok": true
     },
     {
@@ -195,6 +231,10 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-light: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
       "name": "desk-zh-TW-light: the confirmation's two buttons are one width",
       "ok": true
     },
@@ -207,11 +247,19 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-light: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: chat — every control is shown and none overlaps the next",
+      "ok": true
+    },
+    {
       "name": "desk-zh-TW-light: no horizontal overflow",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-light: cancelling the confirmation leaves the card (nothing answered)",
+      "name": "desk-zh-TW-light: cancelling the confirmation leaves the prompt (nothing answered)",
       "ok": true
     },
     {
@@ -232,6 +280,10 @@
     },
     {
       "name": "phone-en-light: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: every control is shown, a 44 px tap target, and none overlaps the next",
       "ok": true
     },
     {
@@ -267,6 +319,10 @@
       "ok": true
     },
     {
+      "name": "phone-en-light: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
       "name": "phone-en-light: the confirmation's two buttons are one width",
       "ok": true
     },
@@ -279,11 +335,19 @@
       "ok": true
     },
     {
+      "name": "phone-en-light: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: chat — every control is shown, a 44 px tap target, and none overlaps the next",
+      "ok": true
+    },
+    {
       "name": "phone-en-light: no horizontal overflow",
       "ok": true
     },
     {
-      "name": "phone-en-light: cancelling the confirmation leaves the card (nothing answered)",
+      "name": "phone-en-light: cancelling the confirmation leaves the prompt (nothing answered)",
       "ok": true
     },
     {
@@ -304,6 +368,10 @@
     },
     {
       "name": "phone-zh-TW-dark: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: every control is shown, a 44 px tap target, and none overlaps the next",
       "ok": true
     },
     {
@@ -339,6 +407,10 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-dark: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-dark: the confirmation's two buttons are one width",
       "ok": true
     },
@@ -351,11 +423,19 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-dark: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: chat — every control is shown, a 44 px tap target, and none overlaps the next",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-dark: no horizontal overflow",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: cancelling the confirmation leaves the card (nothing answered)",
+      "name": "phone-zh-TW-dark: cancelling the confirmation leaves the prompt (nothing answered)",
       "ok": true
     },
     {
@@ -376,6 +456,10 @@
     },
     {
       "name": "phone-zh-TW-light: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: every control is shown, a 44 px tap target, and none overlaps the next",
       "ok": true
     },
     {
@@ -411,6 +495,10 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-light: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-light: the confirmation's two buttons are one width",
       "ok": true
     },
@@ -423,11 +511,19 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-light: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: chat — every control is shown, a 44 px tap target, and none overlaps the next",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-light: no horizontal overflow",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-light: cancelling the confirmation leaves the card (nothing answered)",
+      "name": "phone-zh-TW-light: cancelling the confirmation leaves the prompt (nothing answered)",
       "ok": true
     },
     {
@@ -446,11 +542,15 @@
     },
     {
       "path": "claude-usage-credits-m3757/desk-en-light-2-confirm-credits.png",
-      "sha256": "46b218e0e5818b7e13d8e3b430846ce4c8b8021736b6dade69c2d34582c31d2c"
+      "sha256": "80b1adce36fe3706cfdbd861dc712f35753026628cb8911f86852069da9123e3"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-en-light-4-chat.png",
+      "sha256": "3bcf244c747a794067a19fdedd242ad5f5dd119133d11ce9a30d3e96a3fdcc95"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-1-needs-card.png",
-      "sha256": "3600dde4c7c97b2d536a9f41795057836e71f125c9bff77cddbc26c33f5c6f7e"
+      "sha256": "8fd8a8368f891e5fe5c7ecd93b48d28eb189e626f91f8f7e2d54aed376dc7c59"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-3-claude-text.png",
@@ -461,52 +561,72 @@
       "sha256": "cd076b7da7ab15f58494f17944d13b5a452ae1e11c4a29cb188aef46d88b534d"
     },
     {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-dark-4-chat.png",
+      "sha256": "fffba5fab697e04ddf049cd32da0c839cea631417061e47efb5bddfc2d6c6f4c"
+    },
+    {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-1-needs-card.png",
-      "sha256": "b97b3bc12548bb7dd61dc91a1c49f0c2076156e9d53e915cf33613c0950a638c"
+      "sha256": "6b32d085daaf2f2ad77d767a04de02aa3ecb10acb2b262854d2db70b1cb41cd9"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-3-claude-text.png",
-      "sha256": "9bc295dfcf82ac1fa20c6b57d44fcf69c40a9d5bf74e34155b3180774b764732"
+      "sha256": "1a33529801a0b4509a69f366504534877f4ee3d9809781a0d3c7c4a94292586c"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-2-confirm-credits.png",
-      "sha256": "2714b310a0a3c644a414edd6e859a860118169dc61c05fff703e446c9aae27f8"
+      "sha256": "ebee912330d4bab324ec80454bd34ca0939dd921ae5b9adb25ba74d111282c40"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-light-4-chat.png",
+      "sha256": "31c4a4eaafa4f2ece0542e431ff861e4ef0d700743243e098057056ff2456677"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-1-needs-card.png",
-      "sha256": "7c63b621bdad18691f86434cd4434b35b53732f0f0f47ac18819a96d58f8408d"
+      "sha256": "a222bc52086b8770430841a74bbf75af1e4d7c5681efbbf074004844098487ce"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-3-claude-text.png",
-      "sha256": "4d468e405ad1c91643c9377e968aaa6a0b53b41181dd045c1d82c26cd7aba736"
+      "sha256": "2ff38e2cb2d82df92ae6518143eb608dbb5d6afd4cd20433f0ab5c7f43611592"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-2-confirm-credits.png",
-      "sha256": "8cb3589a8eb5f91dbee397ec08002ac8eb033ece6a31a2253bde934661176503"
+      "sha256": "88547319f16d1174c87a60b53ef2ca408dfdd1af386def972657bdfb4aec5475"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-en-light-4-chat.png",
+      "sha256": "b02db06ae60500e5da4517375a81c8658e468a290eb5e9450acc330867243531"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-1-needs-card.png",
-      "sha256": "c611e2aba4ab98c6b795d3806813e3919dcc32831c56775251ff6bbe065947bb"
+      "sha256": "e5c7cd0282487c1a42293a24875c317d4a7d4473edd2e5b9b1601f29d4c9aa5d"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-3-claude-text.png",
-      "sha256": "f03423fe72e8ce6b8528478ffebf80e40f5d77f5d35ae3b9efa16e035b52d2ba"
+      "sha256": "66f85271ca8487c90d883f8ef2b10b0d67bf0670e849857a06ed2c6149c83a7c"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-2-confirm-credits.png",
-      "sha256": "53f4081f81d74e2df741d5140c8903147ce68200f7e8aec32e3fd466a40ba838"
+      "sha256": "c8accdd688c1963fbf390bf65d2bf89ae8feac250f80eff19a673718eb4e4b7c"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-dark-4-chat.png",
+      "sha256": "3f04b362f39431ed7c26586c97c4ba698d753d246c614660b5a522b11e4180ad"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-light-1-needs-card.png",
-      "sha256": "0996f5cac7ca40afb7cb52411c2a9db6c9540200b0ce2cc913c7d6d97acb88f1"
+      "sha256": "5d6b83f0261bd712a71eeda02d85c481098777f86ca25d9ff22bd27771457c6e"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-light-3-claude-text.png",
-      "sha256": "365fe0b8af2c60961c3c2b1bb85be28a06fce353f29e58a2a3aa2da837b294ff"
+      "sha256": "5e43eb0832e3ff25847d079b5fa4a6141e998cf9887a098d55a6d45da3b7251b"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-light-2-confirm-credits.png",
-      "sha256": "7ce56e9f3eec2b2421cac30e6f23f8a6ea78672b85f7ec1ab555f7f9ad9a3df8"
+      "sha256": "e408f88c35ab8e3e347714efe3c9b5a0aad03f56d70dd018943b2aa0cdbefb3b"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-light-4-chat.png",
+      "sha256": "cf797b5b749d0c1a21fb4beff6ca1574827ab2903ed45f803523b1b6715406a7"
     }
   ]
 }
