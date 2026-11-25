@@ -20,7 +20,7 @@
 
 Fleet admins can always use every agent. A bot's Discord or Telegram `allowed_users` is unchanged.
 
-**Captures.** From the real web app (`scripts/manual/smoke-fixture`), headless Chromium, at 6cb4ea444 (`src` clean). The script is `scripts/manual/agent-who-can-use-m3734/capture.mts`. The guests and people are made up and on Discord:
+**Captures.** From the real web app (`scripts/manual/smoke-fixture`), headless Chromium, at 0fefd9172 (`src` clean). The script is `scripts/manual/agent-who-can-use-m3734/capture.mts`. The guests and people are made up and on Discord:
 - Alice: Chat, alpha.
 - Bob: beta only, so not listed.
 - Carol: Trusted, alpha and beta.
