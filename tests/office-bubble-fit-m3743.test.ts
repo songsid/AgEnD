@@ -110,6 +110,41 @@ describe("placeBubbles places the boxes as drawn (`boxAt`)", () => {
     // The page gives each bubble its boxAt (the box drawn at each spot, kept on screen as drawBubble keeps it).
     expect(readFileSync("src/ui/fleet-office.js", "utf8")).toContain("boxAt: ((at) => (dy, flip) => bubbleBox(ctx, at.x, at.y, b.text, -dy, flip, fit))(sp)");
   });
+  it("#4474 review: a slid foot's tail is kept clear where it is drawn — Prism's pair: (399,100) \"Need you!\" and (360,120) \"abcde\"", () => {
+    const item = (key: string, x: number, y: number, text: string, calling: boolean) => ({ key, calling, shown: calling ? 9 : 1, tail: { x, y },
+      box: K.bubbleBox(ctx0, x, y, text, 0, false, FIT), boxAt: (dy: number, flip: boolean) => K.bubbleBox(ctx0, x, y, text, -dy, flip, FIT) });
+    const first = item("a", 399, 100, "Need you!", true), second = item("b", 360, 120, "abcde", false);
+    const drawnFirst = first.boxAt(0, false);
+    expect(drawnFirst.foot).toBe(391);                                      // the foot slid left of the old strip (x 398…)
+    const inRect = (r: any, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+    expect(inRect(drawnFirst.tail, 393.5, 95.5)).toBe(true);                // the point on its drawn tail
+    const placed = Z.placeBubbles([first, second], 22);
+    for (const q of placed.filter((q: any) => q.key === "b")) {
+      const b = q.boxAt(q.dy, !!q.flip);
+      expect(touch(b, drawnFirst.tail), `b at dy ${q.dy} over a's tail`).toBe(false);
+      expect(inRect(b, 393.5, 95.5)).toBe(false);
+    }
+  });
+  it("the tail's box holds the tail as drawn (its foot and its tip), over the head and under it", () => {
+    for (const [x, y, lift] of [[399, 100, 0], [200, 100, 0], [200, 12, 0], [392, 10, 0], [5, 100, 22]] as const) {
+      const path: Array<[number, number]> = [];
+      const ctx = { ...ctx0, fillStyle: "", strokeStyle: "", lineWidth: 1, textBaseline: "", textAlign: "", beginPath() {}, closePath() {}, fill() {}, stroke() {}, fillText() {},
+        moveTo(px: number, py: number) { path.push([px, py]); }, lineTo(px: number, py: number) { path.push([px, py]); } };
+      K.pixelSkin.drawBubble(ctx, x, y, "Need you!", { mode: "light" }, lift, false, FIT);
+      const b = K.bubbleBox(ctx0, x, y, "Need you!", lift, false, FIT), tip = path.findIndex(([px, py]) => px === x && py === y);
+      for (const [px, py] of [path[tip - 1]!, path[tip]!, path[tip + 1]!]) {
+        expect(px >= b.tail.x && px <= b.tail.x + b.tail.w && py >= b.tail.y && py <= b.tail.y + b.tail.h, `(${x},${y}) point ${px},${py} in ${JSON.stringify(b.tail)}`).toBe(true);
+      }
+    }
+    // The page keeps that box clear (placeBubbles' boxAt → its tail), checks it again where drawn, and writes an area's name
+    // again over it (not the old strip under the speaker).
+    const page = readFileSync("src/ui/fleet-office.js", "utf8");
+    expect(page).toContain("const tailOf = (sp, box) => box.tail ||");
+    expect(page).toContain("if (held.some((o) => overlaps(o, box) || overlaps(o, tl))) continue;");
+    expect(page).toContain("if (text) tails.push(tailOf(sp, bubbleBox(ctx, sp.x, sp.y, text, -dy, flip, fit)));");
+    // Without fit: the strip under the speaker, as before (x - 1, 9 wide, from the box's foot to the head).
+    expect(K.bubbleBox(ctx0, 200, 100, "Need you!").tail).toEqual({ x: 199, y: 94, w: 9, h: 6 });
+  });
   it("a box under its speaker keeps the strip from the speaker down to it clear (no other bubble on its tail)", () => {
     const under = { key: "a", calling: true, shown: 9, tail: { x: 200, y: 12 }, box: K.bubbleBox(ctx0, 200, 12, "Need you!", 0, false, FIT),
       boxAt: (dy: number, flip: boolean) => K.bubbleBox(ctx0, 200, 12, "Need you!", -dy, flip, FIT) };

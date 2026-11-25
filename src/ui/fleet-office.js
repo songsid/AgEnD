@@ -863,13 +863,21 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const over = ar.rect.y + BUBBLE_IN_AREA - bubbleBox(ctx, sp.x, sp.y, text, -dy, flip, fit).y;
     return over > 0 ? Math.max(0, dy - over) : dy;
   };
-  const say = () => { T(); const tails = []; for (const { sp, b, dy: lifted, flip = false } of placed) {
-    const text = [...b.text].slice(0, b.shown).join(""), dy = inArea(sp, b.text, lifted, flip);
+  // The box a tail covers: the skin's own (from its foot to the speaker, M-3743), else the strip under the speaker (an older skin).
+  const tailOf = (sp, box) => box.tail || (box.below ? { x: sp.x - 1, y: sp.y, w: 9, h: Math.max(0, box.y - sp.y) } : { x: sp.x - 1, y: box.y + box.h, w: 9, h: Math.max(0, sp.y - (box.y + box.h)) });
+  // M-3743 (#4474 review): checked again where each is drawn (kept on screen, and in its area), in placing order: none over
+  // another's box or tail, or a name tag. A page still holding an older fleet-office-zones.js places `box` moved by dy (it
+  // knows no boxAt), and two boxes kept on screen could meet; with the current one this keeps every bubble it placed.
+  const shown = [], held = [...tags];
+  for (const it of placed) {
+    const flip = it.flip || false, dy = inArea(it.sp, it.b.text, it.dy, flip), box = bubbleBox(ctx, it.sp.x, it.sp.y, it.b.text, -dy, flip, fit), tl = tailOf(it.sp, box);
+    if (held.some((o) => overlaps(o, box) || overlaps(o, tl))) continue;
+    held.push(box, tl); shown.push({ ...it, dy, flip });
+  }
+  const say = () => { T(); const tails = []; for (const { sp, b, dy, flip } of shown) {
+    const text = [...b.text].slice(0, b.shown).join("");
     sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy, flip, fit);
-    if (text) {
-      const box = bubbleBox(ctx, sp.x, sp.y, text, -dy, flip, fit);
-      tails.push(box.below ? { x: sp.x - 1, y: sp.y, w: 9, h: Math.max(0, box.y - sp.y) } : { x: sp.x - 1, y: box.y + box.h, w: 9, h: Math.max(0, sp.y - (box.y + box.h)) });
-    }
+    if (text) tails.push(tailOf(sp, bubbleBox(ctx, sp.x, sp.y, text, -dy, flip, fit)));
     if (bubbleHits && text) {
       const box = bubbleBox(ctx, sp.x, sp.y, text, -dy, flip, fit);
       bubbleHits.push({ name: sp.look.name, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
