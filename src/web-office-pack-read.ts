@@ -133,7 +133,7 @@ export async function readPackSources(args: Record<string, unknown>, ctx: PackRe
     const files = new Map<string, Buffer>();
     let packBytes = 0;
     for (const src of named) {
-      if (!skinFileNameOk(src)) return { ok: false, reason: `${at}: ${src.slice(0, 200)} — letters, digits, . _ - and /, no hidden or empty part, ending .png` };
+      if (!skinFileNameOk(src)) return { ok: false, reason: `${at}: ${src.slice(0, 200)} — letters, digits, . _ - and /, no hidden or empty part, ending .png or .webp` };
       let real: string;
       if (base) {
         try { real = await realpath(join(base.real, src)); } catch { return { ok: false, reason: `${at}: ${src} — named by the manifest, not in the folder` }; }

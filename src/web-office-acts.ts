@@ -25,7 +25,9 @@ import { applyOverrides, fitNight, fitSeatFor, type CheckedPack } from "./ui/fle
 import { OFFICE_NOBODY, type Office } from "./web-office-store.js";
 import { OfficeSetArgs, OfficeViewArgs, validateArgs } from "./outbound-schemas.js";
 
-export const OFFICE_ACT_LIMITS = { perMinute: 6, perHour: 60, say: 40, minSeconds: 5, maxSeconds: 120, defaultSeconds: 30 } as const;
+export const OFFICE_ACT_LIMITS = { perMinute: 6, perHour: 60, say: 40, minSeconds: 5, maxSeconds: 120, defaultSeconds: 30,
+  /** A ride (office_set `ride`) is where the agent chooses to work: longer, and new work does not end it. */
+  rideMinSeconds: 60, rideMaxSeconds: 28800, rideDefaultSeconds: 3600 } as const;
 export const OFFICE_POSES = ["idle", "working", "needs", "paused"] as const;
 export type OfficePose = typeof OFFICE_POSES[number];
 const MINUTE_MS = 60_000, HOUR_MS = 60 * MINUTE_MS;
@@ -35,6 +37,8 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2
 /** One instance's act: where it walks (a point, or a person the page finds), what it says, how it stands, and until when. */
 export interface OfficeAct {
   instance: string; office: string; x?: number; y?: number; person?: string; say?: string; pose?: OfficePose;
+  /** A vehicle of the office's pack it rides (office_set `ride`): the page walks it to the platform and on board. */
+  ride?: string;
   /** Wall-clock ms: when it was set, and when it ends. */
   since: number; until: number;
   /** The instance's dashboard state when it was set: set while idle, working is new work and ends it (actLive). */
@@ -45,6 +49,8 @@ export interface OfficeSpots {
   waypoints: Array<{ id: string; x: number; y: number }>;
   npcs: Array<{ id: string; label: string | null; x: number; y: number }>;
   door: { x: number; y: number } | null;
+  /** The pack's vehicles (a train on a loop): office_set `ride` names one. */
+  vehicles: Array<{ id: string; label: string | null; seats: number; platforms: Array<{ x: number; y: number }> }>;
 }
 /** `walks`: a zones style, where characters walk; on desks (false) only say and pose show. */
 export interface OfficeSeen { id: string; name: string; skin: string; walks: boolean; members: Array<{ name: string; display_name?: string; state: string; level?: number }>; spots: OfficeSpots }
@@ -88,7 +94,7 @@ export const officeWalks = (pack: CheckedPack | null): boolean => !!pack?.stateZ
 
 /** The spots of an office's skin: a kept zones pack's, with the office's overrides on it; a desks style's are none. */
 export function officeSpots(office: Pick<Office, "skin" | "overrides">, pack: CheckedPack | null): OfficeSpots {
-  if (!pack || !officeWalks(pack)) return { seats: [], waypoints: [], npcs: [], door: null };
+  if (!pack || !officeWalks(pack)) return { seats: [], waypoints: [], npcs: [], door: null, vehicles: [] };
   const applied = applyOverrides(pack, fitSeatFor(pack, fitNight(pack, office.overrides ?? null)));   // #2665/#2691: a night place or seat the pack lost: left out
   const p = applied.ok ? applied.pack : pack;
   return {
@@ -96,6 +102,7 @@ export function officeSpots(office: Pick<Office, "skin" | "overrides">, pack: Ch
     waypoints: p.waypoints.map(w => ({ id: w.id, x: w.x, y: w.y })),
     npcs: p.furniture.map(f => ({ id: f.id, label: f.label ?? null, x: f.x, y: f.y })),
     door: { x: p.door.x, y: p.door.y },
+    vehicles: (p.vehicles ?? []).map(v => ({ id: v.id, label: v.label ?? null, seats: v.seats.length, platforms: v.stops.map(s => ({ x: s.platform.x, y: s.platform.y })) })),
   };
 }
 
@@ -215,15 +222,17 @@ export class OfficeActs {
     const targets = a.go ? (["seat", "waypoint", "person"] as const).filter(k => a.go![k] !== undefined) : [];
     if (a.go && targets.length !== 1) return refuse("go", "go: exactly one of seat, waypoint or person.");
     if (a.clear !== undefined && a.clear !== true) return refuse("clear", "clear: true, or leave it out.");
-    if (a.clear && (a.go || a.say !== undefined || a.pose || a.seconds !== undefined)) return refuse("clear", "clear: true goes alone.");
-    if (!a.clear && !a.go && a.say === undefined && !a.pose) return refuse("nothing", "Nothing to do: give go, say or pose (or clear: true).");
+    if (a.clear && (a.go || a.say !== undefined || a.pose || a.seconds !== undefined || a.ride !== undefined)) return refuse("clear", "clear: true goes alone.");
+    if (!a.clear && !a.go && a.say === undefined && !a.pose && a.ride === undefined) return refuse("nothing", "Nothing to do: give go, say, pose or ride (or clear: true).");
+    if (a.ride !== undefined && a.go) return refuse("ride", "ride: not with go (riding, you go where the vehicle goes).");
     let say: string | undefined;
     if (a.say !== undefined) {
       say = a.say.trim();
       if (!say || [...say].length > OFFICE_ACT_LIMITS.say || CONTROL.test(say)) return refuse("say", `say: 1–${OFFICE_ACT_LIMITS.say} characters on one line, no control characters.`);
     }
-    if (a.seconds !== undefined && (!Number.isFinite(a.seconds) || a.seconds < OFFICE_ACT_LIMITS.minSeconds || a.seconds > OFFICE_ACT_LIMITS.maxSeconds)) {
-      return refuse("seconds", `seconds: ${OFFICE_ACT_LIMITS.minSeconds} to ${OFFICE_ACT_LIMITS.maxSeconds}.`);
+    const [lo, hi] = a.ride !== undefined ? [OFFICE_ACT_LIMITS.rideMinSeconds, OFFICE_ACT_LIMITS.rideMaxSeconds] : [OFFICE_ACT_LIMITS.minSeconds, OFFICE_ACT_LIMITS.maxSeconds];
+    if (a.seconds !== undefined && (!Number.isFinite(a.seconds) || a.seconds < lo || a.seconds > hi)) {
+      return refuse("seconds", `seconds: ${lo} to ${hi}${a.ride !== undefined ? " for a ride" : ""}.`);
     }
     const mine = this.officesOf(instance);
     if (a.clear) {
@@ -258,8 +267,17 @@ export class OfficeActs {
         person = who;
       }
     }
-    const since = this.now(), seconds = a.seconds ?? OFFICE_ACT_LIMITS.defaultSeconds;
-    const act: OfficeAct = { instance, office: o.id, ...(point ?? {}), ...(person ? { person } : {}), ...(say ? { say } : {}), ...(a.pose ? { pose: a.pose } : {}),
+    let ride: string | undefined;
+    if (a.ride !== undefined) {
+      const pack = this.deps.pack(o.skin);
+      if (!officeWalks(pack)) return refuse("ride", `ride: ${o.id} is drawn as desks (its style "${o.skin}"): nobody walks or rides there.`);
+      const vs = officeSpots(o, pack).vehicles, v = vs.find(x => x.id === a.ride);
+      if (!v) return refuse("ride", vs.length ? `ride: "${a.ride}" is not a vehicle of ${o.id}; office_view lists them.` : `ride: ${o.id} has no vehicles (its style "${o.skin}").`);
+      if (!v.seats || !v.platforms.length) return refuse("ride", `ride: "${a.ride}" has no seats or no stop to board at.`);
+      ride = v.id;
+    }
+    const since = this.now(), seconds = a.seconds ?? (ride ? OFFICE_ACT_LIMITS.rideDefaultSeconds : OFFICE_ACT_LIMITS.defaultSeconds);
+    const act: OfficeAct = { instance, office: o.id, ...(point ?? {}), ...(person ? { person } : {}), ...(say ? { say } : {}), ...(a.pose ? { pose: a.pose } : {}), ...(ride ? { ride } : {}),
       since, until: since + Math.round(seconds * 1000), state: this.deps.people().stateOf(instance) };
     this.acts.delete(instance);                                     // the newest last
     this.acts.set(instance, act);

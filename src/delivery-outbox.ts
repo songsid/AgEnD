@@ -9,6 +9,8 @@ import { dirname } from "node:path";
 import { t } from "./locale.js";
 import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
 import { ContactAuthStore } from "./contact-auth-store.js";
+import { RequestContextStore, requestContextDigest, requestContextJson } from "./request-context-store.js";
+import { RequestOperationBindingV1Schema, type RequestContextV1, type RequestOperationBindingV1 } from "./request-context-protocol.js";
 import { registerRequestContextDispatcher, assertRequestContextCompatibility, activateRequestContextBarrier, type RequestContextCompatibilityOptions, type RequestContextDispatchVersion } from "./request-context-compatibility.js";
 import { validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import { WorkingStateJournal, type WorkingStateSnapshot, type WorkingStateReference } from "./working-state-journal.js";
@@ -1156,8 +1158,51 @@ export class DeliveryOutbox extends EventEmitter {
     this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
+  /** Internal future-dispatch port only; no production ingress calls this before slice L. */
+  admitWithRequestContext(input: NewOutboxDelivery, context: RequestContextV1, bindingInput: RequestOperationBindingV1): { delivery: OutboxDelivery; inserted: boolean } {
+    if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") {
+      throw Error("request-context dispatcher is not ready");
+    }
+    const admitted = this.db.transaction(() => {
+      const store = new RequestContextStore(this.db), binding = RequestOperationBindingV1Schema.parse(bindingInput);
+      const stored = store.recordContext(context);
+      if (binding.operationId !== input.operationId || binding.source.instance !== input.sourceInstance
+        || binding.target.instance !== input.targetInstance || binding.contextId !== stored.ref.contextId
+        || binding.rootContextId !== stored.ref.rootContextId || binding.source.instance !== stored.source.instance
+        || binding.source.incarnation !== stored.source.incarnation || binding.payloadSha256 !== requestContextDigest(input.payload)) {
+        throw Error("request-context operation binding conflict");
+      }
+      const admissionSha256 = requestContextDigest({ ...input, targetSession: input.targetSession ?? null,
+        correlationId: input.correlationId ?? null, forwards: input.forwards ?? [], requestedKind: input.requestedKind ?? input.kind });
+      const prior = store.operation(input.sourceInstance, input.operationId);
+      if (prior) {
+        if (prior.sourceKey !== input.sourceKey || prior.admissionSha256 !== admissionSha256
+          || requestContextJson(prior.binding) !== requestContextJson(binding)) throw Error("request-context operation conflict");
+        const delivery = this.get(prior.deliveryId);
+        if (!delivery || requestContextDigest(delivery.payload) !== binding.payloadSha256) throw Error("request-context delivery unavailable");
+        return { delivery, inserted: false };
+      }
+      if (this.db.prepare("SELECT 1 FROM deliveries WHERE source_key=? OR (source_instance=? AND operation_id=?) LIMIT 1")
+        .get(input.sourceKey, input.sourceInstance, input.operationId)) throw Error("request-context cannot adopt legacy operation");
+      const admitted = this.admitInternal(input, true);
+      if (requestContextDigest(admitted.delivery.payload) !== binding.payloadSha256) throw Error("request-context admitted payload changed");
+      store.recordOperation({ binding, sourceKey: input.sourceKey, deliveryId: admitted.delivery.deliveryId, admissionSha256 });
+      return admitted;
+    })();
+    if (admitted.inserted) this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
+    return admitted;
+  }
+
+  requestContextForDelivery(deliveryId: string) { return new RequestContextStore(this.db).forDelivery(deliveryId); }
+  requestContext(id: string): RequestContextV1 | null { return new RequestContextStore(this.db).context(id); }
+  requestContextOperation(source: string, operationId: string) { return new RequestContextStore(this.db).operation(source, operationId); }
+
   /** Commit admission before returning success. Duplicate source keys return their original row. */
   admit(input: NewOutboxDelivery): { delivery: OutboxDelivery; inserted: boolean } {
+    return this.admitInternal(input, false);
+  }
+
+  private admitInternal(input: NewOutboxDelivery, scoped: boolean): { delivery: OutboxDelivery; inserted: boolean } {
     const now = new Date().toISOString();
     const deliveryId = randomUUID();
     const insert = this.db.prepare(`
@@ -1174,6 +1219,7 @@ export class DeliveryOutbox extends EventEmitter {
     `);
     const select = this.db.prepare("SELECT * FROM deliveries WHERE source_key = ?");
     const transaction = this.db.transaction(() => {
+      if (!scoped) new RequestContextStore(this.db).assertLegacyAdmission(input.sourceInstance, input.operationId, input.sourceKey);
       const previous = select.get(input.sourceKey) as OutboxRow | undefined;
       const forwards = input.forwards ?? [];
       if (forwards.length > 16 || new Set(forwards).size !== forwards.length
@@ -1276,7 +1322,7 @@ export class DeliveryOutbox extends EventEmitter {
       return { delivery: mapRow(row), inserted: result.changes === 1 };
     });
     const admitted = transaction();
-    if (admitted.inserted) this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
+    if (admitted.inserted && !scoped) this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
     return admitted;
   }
 

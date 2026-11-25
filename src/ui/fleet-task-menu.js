@@ -17,7 +17,7 @@ register("taskmenu", {
     prev: "Previous card (K)", next: "Next card (J)", position: "{0} / {1}",
   },
   "zh-TW": {
-    label: "{0}：動作", open: "打開", moveTo: "移到", assignee: "負責人", priority: "優先度",
+    label: "{0}：動作", open: "打開", moveTo: "移到", assignee: "負責人", priority: "優先級",
     copyLink: "複製連結", copyId: "複製卡號", copied: "已複製 {0}", cancel: "取消這張卡…",
     prev: "上一張（K）", next: "下一張（J）", position: "{0} / {1}",
   },

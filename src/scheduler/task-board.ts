@@ -15,6 +15,7 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { parseMentions } from "./task-board-mentions.js";
+import { TASK_FILE_LIMITS, TaskFileError, type StagedFile, type TaskFileStore } from "./task-files.js";
 
 export const CARD_STATUSES = ["open", "claimed", "blocked", "review", "done", "cancelled"] as const;
 export type CardStatus = (typeof CARD_STATUSES)[number];
@@ -257,6 +258,8 @@ export interface CardView {
   progress: Progress | null;
   unmetDeps: string[];
   commentCount: number;
+  /** Files on the card (its attachments). */
+  attachmentCount: number;
   /** Comments by others its assignee has not acted on yet. */
   newCommentCount: number;
   lastComment: { author: string; authorKind: Actor["kind"]; at: string } | null;
@@ -270,6 +273,24 @@ export interface Entry {
   author: string;
   authorKind: Actor["kind"];
   text: string;
+  at: string;
+}
+
+/**
+ * A file on a card: linked to the comment its writer left with it (`entryId`), kept under the card in
+ * `task-files/` (task-files.ts) and served only as a download (GET /ui/tasks/files/<id>). `kind` is what the bytes are
+ * (a picture, or anything else); `name` is a label — never a path.
+ */
+export interface Attachment {
+  id: string;
+  cardId: string;
+  entryId: number | null;
+  name: string;
+  mime: string;
+  kind: "photo" | "document";
+  size: number;
+  author: string;
+  authorKind: Actor["kind"];
   at: string;
 }
 
@@ -374,6 +395,8 @@ export interface CardDetail {
   comments: Entry[];
   logs: Entry[];
   history: CardEvent[];
+  /** The files on this card, oldest first; each hangs under the comment `entryId` names. */
+  attachments: Attachment[];
   /** The instances that watch this card (its own list: a sub task's main task's watchers follow it too). */
   watchers: string[];
   /** A sub task's: the watchers of its main task, which follow it too (read-only here; empty for any other card). */
@@ -433,6 +456,8 @@ export interface CardPatch {
   projectId?: number | null;
   log?: string;
   comment?: string;
+  /** Files the writer staged (TaskFileStore): linked to the comment this write leaves — a line naming them when it has no words. */
+  attach?: string[];
 }
 
 export interface MoveOptions {
@@ -440,6 +465,8 @@ export interface MoveOptions {
   result?: string;
   comment?: string;
   version?: number;
+  /** As CardPatch.attach: the files that go with the move's comment. */
+  attach?: string[];
 }
 
 export interface MutationResult {
@@ -700,8 +727,16 @@ export class TaskBoard {
   /** The notes of the last write, until a caller of the `task` tool's old actions takes them (takeNotes). */
   private lastNotes: string[] = [];
   private codes = new Map<string, string>();
+  /** Where files on cards live (task-files.ts); none: this process cannot take attachments (a bare board in a test, the CLI). */
+  private fileStore: TaskFileStore | null = null;
+  /** What undoes this write's file moves, when the write fails after them. */
+  private undo: Array<() => void> = [];
 
   constructor(private readonly db: Database.Database, private readonly now: () => Date = () => new Date()) {}
+
+  /** The store for files on cards (the fleet's scheduler sets it); null takes attachments away. */
+  setFiles(store: TaskFileStore | null): void { this.fileStore = store; }
+  files(): TaskFileStore | null { return this.fileStore; }
 
   /** Called with what each committed write changed. Returns an unsubscribe function. */
   onChange(listener: (change: BoardChange) => void): () => void {
@@ -783,6 +818,20 @@ export class TaskBoard {
         at          TEXT NOT NULL,
         PRIMARY KEY (task_id, instance)
       );
+      CREATE TABLE IF NOT EXISTS task_attachments (
+        id          TEXT PRIMARY KEY,
+        task_id     TEXT NOT NULL,
+        entry_id    INTEGER,
+        name        TEXT NOT NULL,
+        mime        TEXT NOT NULL,
+        kind        TEXT NOT NULL,
+        size        INTEGER NOT NULL,
+        sha256      TEXT NOT NULL,
+        author      TEXT NOT NULL,
+        author_kind TEXT NOT NULL,
+        at          TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_attachments_task ON task_attachments(task_id, at);
     `);
     // #2352: a project's lead instance, added in place (null: its waiting cards' buttons stay in General).
     const projectCols = new Set((this.db.prepare("PRAGMA table_info(task_projects)").all() as Array<{ name: string }>).map((c) => c.name));
@@ -1055,6 +1104,8 @@ export class TaskBoard {
       `SELECT e.task_id AS task_id, n.n AS n, e.author AS author, e.author_kind AS author_kind, e.at AS at FROM task_entries e
        JOIN (SELECT task_id, COUNT(*) AS n, MAX(id) AS last FROM task_entries WHERE kind IN ('comment', 'reject', 'approve')${by.sql} GROUP BY task_id) n ON e.id = n.last`,
     ).all(...by.args) as Array<{ task_id: string; n: number; author: string; author_kind: Actor["kind"]; at: string }>).map((r) => [r.task_id, r]));
+    const files = new Map((this.db.prepare(`SELECT task_id, COUNT(*) AS n FROM task_attachments WHERE 1 = 1${by.sql} GROUP BY task_id`)
+      .all(...by.args) as Array<{ task_id: string; n: number }>).map((r) => [r.task_id, r.n]));
     const unseen = new Map((this.db.prepare(
       `SELECT t.id AS id, COUNT(e.id) AS n FROM tasks t JOIN task_entries e
          ON e.task_id = t.id AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.author IS NOT t.assignee${eBy.sql}
@@ -1104,6 +1155,7 @@ export class TaskBoard {
         progress: card.kind === "main" ? progress.get(card.uuid) ?? { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 } : null,
         unmetDeps: unmet(card.deps, card.parent),
         commentCount: c?.n ?? 0,
+        attachmentCount: files.get(card.uuid) ?? 0,
         newCommentCount: unseen.get(card.uuid) ?? 0,
         lastComment: c ? { author: c.author, authorKind: c.author_kind, at: c.at } : null,
       };
@@ -1120,6 +1172,7 @@ export class TaskBoard {
       comments: this.entries(card.uuid, ["comment", "reject", "approve"], 200),
       logs: this.entries(card.uuid, ["log"], 200),
       history: this.events(card.uuid, 200).filter((e) => e.type !== "reordered"),
+      attachments: this.attachments(card.uuid, scope),
       watchers: this.watchersOf(card.uuid),
       inheritedWatchers: card.parent ? this.watchersOf(card.parent) : [],
       leader: this.leaderOf(card),
@@ -1661,13 +1714,8 @@ export class TaskBoard {
           touched = true;
         }
       }
-      if (patch.comment !== undefined) {
-        const text = checkText("the comment", patch.comment, CARD_LIMITS.comment);
-        if (text) {
-          this.entry(card, "comment", actor, text);
-          this.commented(actor, card, text);
-          touched = true;
-        }
+      if (patch.comment !== undefined || patch.attach?.length) {
+        if (this.writeComment(card, actor, patch.comment ?? "", patch.attach)) touched = true;
       }
 
       if (!touched) return { card, notes: ["no change"], said: [] };
@@ -1709,10 +1757,8 @@ export class TaskBoard {
         this.checkAnswer(card, comment);
         const busy = this.busyWith(card, card.assignee);
         if (busy.length) {
-          const text = checkText("the comment", comment!, CARD_LIMITS.comment);
-          this.entry(card, "comment", actor, text);
           // #2801 review: the one comment that is news — the answer its assignee waits for (`kept`).
-          this.commented(actor, card, text, true);
+          this.writeComment(card, actor, comment!, options.attach, true);
           card.version++;
           card.updatedAt = this.nowIso();
           this.save(card);
@@ -1724,7 +1770,7 @@ export class TaskBoard {
       if (derived) this.checkDerivedMove(card, actor, to, reason, { comment });
       else this.checkManualMove(card, actor, to, reason, { comment });
 
-      this.applyMove(card, actor, this.ownReview(card, actor, to, reason), reason, comment);
+      this.applyMove(card, actor, this.ownReview(card, actor, to, reason), reason, comment, options.attach);
       return { card, from, ...this.spoken() };
     });
   }
@@ -2218,7 +2264,7 @@ export class TaskBoard {
   // ── Derived state ───────────────────────────────────────
 
   /** Status bookkeeping shared by every move, then what the move sets off. */
-  private applyMove(card: Card, actor: Actor, to: CardStatus, reason: string, comment?: string): void {
+  private applyMove(card: Card, actor: Actor, to: CardStatus, reason: string, comment?: string, attach?: string[]): void {
     const from = card.status;
     const now = this.nowIso();
     card.status = to;
@@ -2226,11 +2272,7 @@ export class TaskBoard {
     if (to === "review") card.submittedAt = now;
     card.doneAt = to === "done" ? now : null;
     card.blockedReason = to === "blocked" ? reason : "";
-    if (comment?.trim()) {
-      const text = checkText("the comment", comment, CARD_LIMITS.comment);
-      this.entry(card, "comment", actor, text);
-      this.commented(actor, card, text);
-    }
+    if (comment?.trim() || attach?.length) this.writeComment(card, actor, comment ?? "", attach);
     card.version++;
     card.updatedAt = now;
     this.surfaceComments(card, actor);
@@ -2670,6 +2712,7 @@ export class TaskBoard {
     this.pending = [];
     this.projectsChanged = false;
     this.notes = [];
+    this.undo = [];
     try {
       let wakes: Wake[] = [];
       const result = this.db.transaction(() => {
@@ -2685,6 +2728,9 @@ export class TaskBoard {
         }
         return r;
       }).immediate();
+      // Committed: the rows are there for good, so what undoes the file moves is forgotten — a failure from here on (a listener's
+      // work, reading the revision) must not move files back from under rows that stay.
+      this.undo = [];
       this.lastNotes = this.notes.map((n) => n.text);
       const touched = this.pending;
       const projects = this.projectsChanged;
@@ -2696,9 +2742,14 @@ export class TaskBoard {
         }
       }
       return result;
+    } catch (err) {
+      // The write failed BEFORE it committed, after it moved files under a card: the rows are rolled back, so the files go back to staging.
+      for (const back of this.undo.reverse()) { try { back(); } catch { /* the sweep removes it */ } }
+      throw err;
     } finally {
       this.pending = [];
       this.projectsChanged = false;
+      this.undo = [];
     }
   }
 
@@ -2788,6 +2839,78 @@ export class TaskBoard {
   }
 
   /**
+   * A comment written, with the files that came with it: its entry, the files linked to it, and the
+   * "commented" event. A write that brings files and no words leaves a line naming them (`📎 name, name`), which an
+   * older release shows as the comment it is. False when there is nothing to write (no words, no files).
+   */
+  private writeComment(card: Card, actor: Actor, raw: string, attach: readonly string[] | undefined, kept = false): boolean {
+    const files = attach?.length ? this.stagedFiles(card, actor, attach) : [];
+    const words = checkText("the comment", raw, CARD_LIMITS.comment);
+    const text = words || (files.length ? checkText("the comment", `📎 ${files.map((f) => f.name).join(", ")}`, CARD_LIMITS.comment) : "");
+    if (!text) return false;
+    const entryId = this.entry(card, "comment", actor, text);
+    this.linkFiles(card, actor, entryId, files);
+    this.commented(actor, card, text, kept, files.length);
+    return true;
+  }
+
+  /** The files `actor` staged, checked against this card's limits (nothing is moved yet). */
+  private stagedFiles(card: Card, actor: Actor, ids: readonly string[]): StagedFile[] {
+    const store = this.fileStore;
+    if (!store) throw new TaskBoardError("invalid", "attachments are not available here (the fleet's scheduler holds the card files)");
+    let files: StagedFile[];
+    try { files = store.adopt(actor.name, ids); } catch (err) {
+      if (err instanceof TaskFileError) throw new TaskBoardError("invalid", err.message);
+      throw err;
+    }
+    const held = this.db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes FROM task_attachments WHERE task_id = ?").get(card.uuid) as { n: number; bytes: number };
+    const bytes = files.reduce((n, f) => n + f.size, 0);
+    if (held.n + files.length > TASK_FILE_LIMITS.files) {
+      throw new TaskBoardError("too_long", `${card.code} holds ${held.n} files; at most ${TASK_FILE_LIMITS.files} on a card`);
+    }
+    if (held.bytes + bytes > TASK_FILE_LIMITS.cardBytes) {
+      throw new TaskBoardError("too_long", `the files on ${card.code} would be ${Math.ceil((held.bytes + bytes) / (1024 * 1024))} MiB; at most ${Math.floor(TASK_FILE_LIMITS.cardBytes / (1024 * 1024))} MiB on a card`);
+    }
+    return files;
+  }
+
+  /** The staged files, now the card's: a row each, hung under `entryId`, and the file moved under the card. */
+  private linkFiles(card: Card, actor: Actor, entryId: number, files: readonly StagedFile[]): void {
+    if (!files.length) return;
+    const store = this.fileStore!;
+    const insert = this.db.prepare("INSERT INTO task_attachments (id, task_id, entry_id, name, mime, kind, size, sha256, author, author_kind, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    for (const f of files) {
+      insert.run(f.id, card.uuid, entryId, f.name, f.mime, f.kind, f.size, f.sha256, actor.name, actor.kind, this.nowIso());
+      try { this.undo.push(store.commit(card.uuid, f)); } catch (err) {
+        if (err instanceof TaskFileError) throw new TaskBoardError("invalid", err.message);
+        throw new TaskBoardError("invalid", `the file ${f.name} could not be stored on ${card.code}`);
+      }
+    }
+  }
+
+  /** The files on a card, oldest first; a scope leaves out the ones its left-out authors wrote. */
+  attachments(uuid: string, scope: ReadScope = {}): Attachment[] {
+    const by = this.notBy(scope, "author");
+    const rows = this.db.prepare(`SELECT * FROM task_attachments WHERE task_id = ?${by.sql} ORDER BY at, rowid`).all(uuid, ...by.args) as Row[];
+    return rows.map((r) => this.toAttachment(r));
+  }
+
+  /** One file by its id, with the card it is on; undefined when there is none. */
+  attachment(id: string): { file: Attachment; card: Card } | undefined {
+    const r = this.db.prepare("SELECT * FROM task_attachments WHERE id = ?").get(id) as Row | undefined;
+    const card = r ? this.byUuid(r.task_id as string) : undefined;
+    return r && card ? { file: this.toAttachment(r), card } : undefined;
+  }
+
+  private toAttachment(r: Row): Attachment {
+    return {
+      id: r.id as string, cardId: this.codeOf(r.task_id as string), entryId: r.entry_id === null ? null : Number(r.entry_id), name: r.name as string,
+      mime: r.mime as string, kind: r.kind === "photo" ? "photo" : "document", size: Number(r.size), author: r.author as string,
+      authorKind: r.author_kind as Actor["kind"], at: r.at as string,
+    };
+  }
+
+  /**
    * Any write by the assignee counts as having seen the comments so far, so the unseen ones go in its reply first;
    * otherwise a comment posted mid-task would be acknowledged without being read.
    */
@@ -2805,17 +2928,18 @@ export class TaskBoard {
     card.seenEntryId = (this.db.prepare("SELECT COALESCE(MAX(id), 0) AS m FROM task_entries WHERE task_id = ?").get(card.uuid) as { m: number }).m;
   }
 
-  private entry(card: Card, kind: EntryKind, actor: Actor, text: string): void {
-    this.db.prepare("INSERT INTO task_entries (task_id, kind, author, author_kind, text, at) VALUES (?, ?, ?, ?, ?, ?)")
+  private entry(card: Card, kind: EntryKind, actor: Actor, text: string): number {
+    const r = this.db.prepare("INSERT INTO task_entries (task_id, kind, author, author_kind, text, at) VALUES (?, ?, ?, ?, ?, ?)")
       .run(card.uuid, kind, actor.name, actor.kind, text, this.nowIso());
+    return Number(r.lastInsertRowid);
   }
 
   /**
    * A comment written (its entry is already on the card): the "commented" event, and whom the comment concerns, which
    * settleWakes reads when the write ends. `kept` is a dispatcher's answer a busy assignee finds on the card (#2303).
    */
-  private commented(actor: Actor, card: Card, text: string, kept = false): void {
-    this.event(actor, card, "commented", kept ? { text, kept: true } : { text });
+  private commented(actor: Actor, card: Card, text: string, kept = false, files = 0): void {
+    this.event(actor, card, "commented", { text, ...(kept ? { kept: true } : {}), ...(files ? { files } : {}) });
     this.pending[this.pending.length - 1]!.audience = this.routeComment(actor, card, text, kept);
   }
 

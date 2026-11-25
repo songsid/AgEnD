@@ -1,0 +1,55 @@
+{
+  "baseline": "ce4f43f2dec7b447ac2747db45c2de74c05e7b8f",
+  "featureEnabled": false,
+  "productionDispatcherCapability": 0,
+  "focused": {
+    "files": 1,
+    "tests": 26
+  },
+  "neighbors": {
+    "files": 8,
+    "tests": 188
+  },
+  "sourceBuildAndTypes": 0,
+  "testTypes": 0,
+  "crashControls": {
+    "beforeCommitExit": 91,
+    "afterCommitExit": 92,
+    "retainedDeliveriesAfterRetry": 1,
+    "liveBackendOrProviderCalls": 0
+  },
+  "mutations": [
+    {
+      "mutation": "admission-snapshot",
+      "result": "semantic red",
+      "restored": true
+    },
+    {
+      "mutation": "parent-inheritance",
+      "result": "semantic red",
+      "restored": true
+    },
+    {
+      "mutation": "outer-transaction",
+      "result": "semantic red",
+      "restored": true
+    },
+    {
+      "mutation": "legacy-bypass",
+      "result": "semantic red",
+      "restored": true
+    }
+  ],
+  "sourceSha256": {
+    "src/delivery-outbox.ts": "1d22eaeff8bc330e38e4bdfb9145f8a415df23eead404f13929bf1ce26b66341",
+    "src/request-context-store.ts": "9e150bdaf3ff6873841dd80914d3e87c77c27b53b4718bf39f1f8e6722b742aa",
+    "tests/request-context-store-s222.test.ts": "8c7ac7c8fb70abef58c92c2041d0a6d6176a67850b68b81a8658f30a15000cf0",
+    "tests/fixtures/request-context-s222/crash.ts": "9bc4b34d940af684c84ef34b4df1b9f2b5c3f9a919797ba83a5f94df8b39b904"
+  },
+  "limits": [
+    "Internal persistence only; ingress authentication, current turn, actual tool selection and current incarnation checks belong to later integration.",
+    "No production caller or new permission enabled; supporting-dispatch fixture plus active compatibility barrier required.",
+    "Process-exit proof is not power-loss durability; existing SQLite WAL configuration is unchanged.",
+    "No TTL/deactivation API; later controlled drain must retire referenced operations before rollback."
+  ]
+}

@@ -33,7 +33,7 @@ import { canonicalText } from "./web-theme.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import { parsePinKey, type PinWrite, type WebPinStore } from "./web-pin-store.js";
-import { SKIN_WIRE_BYTES, type OfficeSkinStore } from "./web-office-skins.js";
+import { SKIN_WIRE_BYTES, skinPictureType, type OfficeSkinStore } from "./web-office-skins.js";
 import type { OfficeActs } from "./web-office-acts.js";
 import type { OfficePackTools } from "./web-office-pack-tools.js";
 import type { WebAppearance } from "./web-appearance.js";
@@ -57,7 +57,8 @@ import { ROUTE_WORKER_CSP, ROUTE_WORKER_PATH, sendPanelHtml } from "./web-host-g
 import { libavoidFile } from "./web-libavoid.js";
 import { shellRoute } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createReadStream, createWriteStream, existsSync, readFileSync, closeSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, readFileSync, closeSync, constants as fsConstants } from "node:fs";
+import { open as openFile } from "node:fs/promises";
 import { servedAssets } from "./auth-api.js";
 import { assetIntact, assetsUnchanged, assetVersion, assetVersionMark, answerStaleAsset, buildModuleGraph, staticClosure, versionShell, IMMUTABLE_PRIVATE, type ModuleGraph } from "./web-asset-version.js";
 import { join, dirname } from "node:path";
@@ -1169,7 +1170,7 @@ function handleOfficeSkins(req: IncomingMessage, res: ServerResponse, url: URL, 
     if (picture) {
       const bytes = store.picture(picture[1]!, picture[2]!);
       if (!bytes) { res.setHeader("Cache-Control", "private, no-store"); json(res, 404, { error: "No such image" }); return true; }
-      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Type", skinPictureType(bytes));
       // Keyed by the sha of its bytes: a picture at this URL never changes.
       res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
       res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
@@ -2100,6 +2101,47 @@ function boardActor(req: IncomingMessage, url: URL, ctx: WebApiContext, p: WebPe
  * A board refusal as the dashboard reads it: the board's sentence, its code and the status that fits, and — when the
  * person can meet it — the key and values the page says it with in its own language.
  */
+/**
+ * GET /ui/tasks/files/<id> — a file an agent put on a card, sent as a DOWNLOAD. It is read with the card: any
+ * session that may read the card may fetch it, and over the public link a card kept out of sight (or its main task), or a
+ * file one of those instances wrote, is "no such file" — the same answer an unknown id gets. Never sent as a page: an image
+ * as an image, text as plain text, everything else (HTML and SVG included) as an opaque download, under a sandboxing CSP and
+ * `nosniff`; what the dashboard shows of an HTML file it fetches and runs in the preview frame, never from here.
+ */
+async function serveCardFile(
+  res: ServerResponse,
+  board: TaskBoard,
+  id: string,
+  rules: { hidden: (c: NonNullable<ReturnType<TaskBoard["findCard"]>>) => boolean; hiddenName: (n: string) => boolean },
+): Promise<void> {
+  const miss = () => { if (!res.headersSent) json(res, 404, { error: "No such file" }); };
+  try {
+    const found = board.attachment(id);
+    const store = board.files();
+    if (!found || !store || rules.hidden(found.card) || rules.hiddenName(found.file.author)) return miss();
+    const on = store.pathOf(found.card.uuid, id);
+    if (!on || on.size !== found.file.size) return miss();
+    // O_NOFOLLOW is undefined on Windows (the flag is then 0): there the isFile and size checks below stand alone (docs/design/task-board.md).
+    const fh = await openFile(on.path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    let bytes: Buffer;
+    try {
+      const st = await fh.stat();
+      if (!st.isFile() || st.size !== found.file.size) return miss();
+      bytes = await fh.readFile();
+    } finally { await fh.close().catch(() => {}); }
+    const { file } = found;
+    const inline = INLINE_MIME.has(file.mime);
+    res.setHeader("Content-Type", inline ? file.mime : file.mime.startsWith("text/") ? "text/plain; charset=utf-8" : "application/octet-stream");
+    res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(wellFormed(file.name))}`);
+    res.setHeader("Content-Length", bytes.length);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    res.writeHead(200);
+    res.end(bytes);
+  } catch { miss(); }
+}
+
 function boardError(res: ServerResponse, err: unknown): void {
   if (res.headersSent) return;
   if (err instanceof TaskBoardError) {
@@ -4060,7 +4102,7 @@ export function handleWebRequest(
   // ── Task board (scheduler/task-board.ts) ──────────────
   // Reads are the session's; every write is the signed-in person's, through the same rules an instance's tools use.
 
-  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/refs" || path === "/ui/tasks/work" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects")) {
+  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/refs" || path === "/ui/tasks/work" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects") || path.startsWith("/ui/tasks/files/")) {
     const board = ctx.scheduler?.db.board;
     if (!board) { json(res, 503, { error: "The task board is not available", code: "unavailable", key: "unavailable" }); return true; }
     // M-3278 (decision 7933bf90): an admin session changes the board over the public link too, as itself (boardActor), and
@@ -4215,6 +4257,15 @@ export function handleWebRequest(
         }
         const limit = Number(url.searchParams.get("limit")) || 8;
         json(res, 200, { refs: board.suggest((url.searchParams.get("q") ?? "").slice(0, 100), limit, (c) => !hidden(c)).map(taskRefView) });
+        return true;
+      }
+      // a file on a card, as a download — the gate of reading the card (below), plus the file's own author.
+      const cardFile = method === "GET" ? /^\/ui\/tasks\/files\/([0-9a-f]{32})$/.exec(path) : null;
+      if (cardFile) {
+        void serveCardFile(res, board, cardFile[1]!, {
+          hidden: (c) => !!gateway && (hidden(c) || (!!c.parent && hiddenRef(c.parent))),
+          hiddenName: (n) => !!gateway && hiddenName(n),
+        });
         return true;
       }
       if (method === "GET" && card && !card[2]) {

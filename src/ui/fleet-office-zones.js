@@ -531,6 +531,7 @@ export function createMail({ max = MAIL.MAX } = {}) {
 export function createWalkers() {
   const by = new Map();
   const posAt = (w, now) => {
+    if (w.ride) { const p = w.ride(now); return { x: p.x, y: p.y, walking: false, riding: true }; }   // on board: where their seat is
     if (!w.pts) return { x: w.to.x, y: w.to.y, walking: false };
     const t = (now - w.start) / w.ms;
     if (t >= 1) return { x: w.to.x, y: w.to.y, walking: false };
@@ -542,7 +543,8 @@ export function createWalkers() {
       for (const name of [...by.keys()]) if (!targets.has(name)) by.delete(name);
       for (const [name, to] of targets) {
         const w = by.get(name);
-        if (fresh) { by.set(name, { pts: null, to }); continue; }
+        if (fresh) { by.set(name, { pts: null, to }); continue; }    // a rider too: a new office or style has no such vehicle
+        if (w && w.ride) continue;                                   // a rider goes where the vehicle goes (place() gets them off)
         if (!w || still) { if (!w || w.to.x !== to.x || w.to.y !== to.y) by.set(name, { pts: null, to }); continue; }
         if (w.to.x === to.x && w.to.y === to.y) continue;
         const here = posAt(w, now), via = routeVia(graph, { x: here.x, y: here.y }, { x: to.x, y: to.y });
@@ -555,6 +557,8 @@ export function createWalkers() {
     /** M-3293: `name` set down at `at` (picked up and carried, or just dropped): standing there, no walk; the next sync
      * walks them from there to their target along the graph, as any walk. */
     place(name, at) { by.set(name, { pts: null, to: { x: at.x, y: at.y } }); },
+    /** On board a vehicle: `seat(now)` is where they are (fleet-office-vehicles.js seatAt); place() gets them off. */
+    ride(name, seat) { by.set(name, { ride: seat }); },
     moving(now) { for (const w of by.values()) if (posAt(w, now).walking) return true; return false; },
   };
 }

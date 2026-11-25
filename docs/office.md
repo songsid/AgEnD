@@ -104,9 +104,9 @@ If someone saved the offices while you were editing, your save is refused and no
 
 ## Use a skin pack
 
-A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG files. Making one is described in [Make a skin pack](#make-a-skin-pack).
+A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG (or WebP) files. Making one is described in [Make a skin pack](#make-a-skin-pack).
 
-**Upload one.** In **Edit offices → Skin packs**, use **Upload a skin pack** and pick the pack's `manifest.json` and all its PNG files together, or use **Upload a folder**. The host checks everything (see [Limits](#limits)). On the first problem it refuses the upload and says where the problem is, for example `furniture[3].sprite.w: a whole number from 1 to 512`. Packs are kept whole in `web-office-skins/<id>/` in the AgEnD home and never changed.
+**Upload one.** In **Edit offices → Skin packs**, use **Upload a skin pack** and pick the pack's `manifest.json` and all its PNG and WebP files together, or use **Upload a folder**. The host checks everything (see [Limits](#limits)). On the first problem it refuses the upload and says where the problem is, for example `furniture[3].sprite.w: a whole number from 1 to 512`. Packs are kept whole in `web-office-skins/<id>/` in the AgEnD home and never changed.
 
 **Use it.** Kept packs appear in every **Style** picker. Pick one for an office in Edit offices, or for Whole fleet in the Office bar. A pack the page can't load is drawn as Desks, with a note.
 
@@ -116,7 +116,7 @@ A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG fi
 
 ## Make a skin pack
 
-A pack describes one scene on a **1280×720 logical canvas** (16:9), or on its own size with `"canvas": [w, h]` (640×360 to 5120×2880, any shape: a bigger office, or a wide one). Every coordinate in the manifest is in these logical units, within the canvas; the background and the foreground have the canvas's shape (a picture is at most 4096 px a side, so a 5120-wide canvas's background is drawn scaled up). The view fits the whole canvas, on a phone too, and zooms out as far as it needs to; in All offices a big office is scaled down into its tile. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
+A pack describes one scene on a **1280×720 logical canvas** (16:9), or on its own size with `"canvas": [w, h]` (640×360 to 5120×2880, any shape: a bigger office, or a wide one). Every coordinate in the manifest is in these logical units, within the canvas; the background and the foreground have the canvas's shape (a picture is at most 5120 px a side and 16 Mpx, so a 5120×2880 background fits at full size; save a big one as WebP to fit the 4 MiB a file). The view fits the whole canvas, on a phone too, and zooms out as far as it needs to; in All offices a big office is scaled down into its tile. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
 
 A minimal zones pack:
 
@@ -158,7 +158,7 @@ A minimal zones pack:
 
 - **Frame list with per-frame durations:** omit `src` and pass `frames` as a list of `{ "src", "ms"? }` entries (up to 600 steps, each image `w × h` px, `ms` 33–60000). The same file may appear in multiple steps and is only uploaded and decoded once. Any single-sheet or multi-sheet strip can also pass a `durations` array (`ms` per frame) instead of `fps`.
 - **Playback:** strips loop from frame 0 by default. Set `"once": true` to play once and hold the last frame, or `"loopFrom": <index>` to play an intro (`0 .. loopFrom - 1`) once and loop the rest. With reduced motion (`prefers-reduced-motion: reduce`), every strip holds frame 0.
-- **Splitting tip:** keep each sheet within 32 frames and 4096 px wide (e.g., 10 sheets × 30 frames of 64×96 px = 300 frames, 10 s at 30 FPS). Keep the whole pack within 220 files, 42 MiB, and 64 Mpx of total decoded pixels so phones stay smooth. To save files, put several poses in one sheet and cut each strip from it with `row` / `col` (see [Strips](#strips)).
+- **Splitting tip:** keep each sheet within 32 frames and 5120 px wide (e.g., 10 sheets × 30 frames of 64×96 px = 300 frames, 10 s at 30 FPS). Keep the whole pack within 220 files, 42 MiB, and 64 Mpx of total decoded pixels so phones stay smooth. To save files, put several poses in one sheet and cut each strip from it with `row` / `col` (see [Strips](#strips)).
 
 **Areas, seats and states.** An area is a rect `[x, y, w, h]` and its seats in the order they fill up. A seat is `[x, y]`, where the person's feet go, inside its area's rect. `stateZones` sends each state (`needs`, `crashed`, `stuck`, `working`, `idle`, `paused`, `stopped`, `missing`) to an area; a state it doesn't name goes to `"default"`, else the first area. Bedtime sends the idle to the area `paused` uses.
 
@@ -366,6 +366,28 @@ What it shows:
 | **Fast** | Typed quickly, and goes on after a short pause. |
 | **Skip** | Closes every reply shown now. |
 
+## Vehicles
+
+A zones pack can run a train (or any vehicle) round a loop of track with `vehicles` (at most 4):
+
+```json
+"vehicles": [{
+  "id": "loop-line", "label": "Loop line",
+  "sprite": { "src": "train.png", "frames": 2, "w": 192, "h": 96, "fps": 4 },
+  "path": [[80, 80], [5040, 80], [5040, 2800], [80, 2800]],
+  "speed": 120,
+  "stops": [{ "at": 1, "seconds": 10, "platform": [4980, 1650] }],
+  "seats": [{ "dx": -48 }, { "dx": 0 }, { "dx": 48 }]
+}]
+```
+
+- `path`: 3–64 points; the last joins the first, and the vehicle goes round and round, lap after lap. `speed` is logical units a second (5–600, default 80).
+- `stops`: the path points it waits at (`at`, a point's index), for `seconds` (1–600, default 8), and the `platform` point where riders wait, board and get off. A vehicle with seats needs at least one stop.
+- `seats` (up to 16): where riders sit, as offsets from the vehicle's anchor along the way it goes (`dx` ahead, `dy` to its right), so they turn with it at the corners.
+- `sprite`: its picture heading right (mirrored going left); or `sprites` by heading (`right`, `left`, `up`, `down`), each a frame strip. It plays while moving and holds its first frame at a stop.
+- Where a vehicle is depends on the clock alone, so every page shows it in the same place.
+- **Who rides is the agents' own choice** (`office_set { ride }`, see [Agents in the office](#agents-in-the-office)), not the pack's: the rider walks to the platform nearest its seat, waits there until the vehicle stops, takes a free seat and works there as it goes round (its name tag, bubble and card go with it). When the ride ends, it stays on until the next stop, gets off at that platform and walks back. A full vehicle: the next one. Bedtime, or being paused or stopped, ends a ride the same way. Calling for a person (needs, crashed, stuck) is different: the rider gets off at once, where it is, and walks to its place, so nothing keeps a caller from the Help desk; the ride resumes after the call while it lasts.
+
 ## Share a view
 
 A fleet admin can show the live Office to people outside the fleet for a while, with no sign-in. Use **Share…** in the Office bar, on the dashboard reached directly or signed in over the temporary public link; a read-only session or a guest can't share. There is no chat command for it.
@@ -387,6 +409,7 @@ An agent can see the offices it's in and direct its own character for a moment, 
 
 - `office_view { office? }`: the stored offices it's in, with their members and states. For an office in an uploaded zones pack it also lists the seats (`"area:index"`), waypoints, furniture (NPCs) and the door, with the office's layout overrides applied. Any other office (Desks, Studio, Cozy, or a pack without zones) returns `walks: false` and no spots.
 - `office_set { office?, go?, say?, pose?, seconds?, clear? }`: walk to a seat, a waypoint or another member (`go`); say a line of 1–40 characters (`say`); hold a pose: idle, working, needs or paused (`pose`); for 5–120 seconds (default 30). `clear: true` ends it. Where `walks` is false, the line and the pose show, and `go` is refused.
+- `office_set { ride, seconds? }`: work on board one of the office's vehicles (see [Vehicles](#vehicles)): the agent walks to the platform, waits for the train to stop there, takes a free seat and goes round with it. A ride lasts 60–28800 seconds (default 3600); new work does not end it, `clear: true` or a new `office_set` does, and the agent gets off at the next stop. Calling for a person takes it off at once, until the call is over. `office_view` lists the vehicles (`spots.vehicles`: id, label, seat count, platforms).
 - Each act replaces the last. It ends when its time is up or the agent starts new work, and it isn't shown while the agent calls for a person, is paused or stopped, or is asleep at bedtime. Acts are kept in memory only.
 - At most 6 calls a minute and 60 an hour per agent; a refusal says `cooldown_ms`.
 - Also on the command line: `agend-agent office view [office]` and `agend-agent office set '<json>'`.
@@ -601,7 +624,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 |---|---|
 | Packs kept | 16 (plus one previous version each, kept for agents' restores) |
 | Files in a pack | 220 |
-| One file | 4 MiB, 4096 × 4096 px (16 Mpx), PNG only (checked by signature, every chunk read, metadata stripped) |
+| One file | 4 MiB, 5120 px a side and 16 Mpx, PNG or WebP as its name ends (`.png`, `.webp`; checked by signature, every chunk read, metadata stripped) |
 | A whole pack | 42 MiB, 64 Mpx of decoded pixels in all |
 | One strip | up to 32 frames per sheet, 32 sheets, 600 total frames, 33–60000 ms per frame |
 | The manifest | 64 KiB |

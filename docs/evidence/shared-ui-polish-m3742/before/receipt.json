@@ -1,0 +1,851 @@
+{
+  "sourceHead": "b4eb60a7a4701a8e81226470f1f83dd68803f593",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: the title has no border, outline or ring at rest",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: \"I understand\" is a flat button: a visible border, its own background, no shadow",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 99,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgb(255, 246, 214)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "desk-light-en: the preview frame's border is at least 3:1 against what is behind it, flat",
+      "ok": false,
+      "detail": {
+        "border": "rgb(227, 179, 65)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(255, 255, 255)",
+        "ratio": 1.95
+      }
+    },
+    {
+      "name": "desk-light-en: focused from the keyboard, the title shows a ring",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: the title has no border, outline or ring at rest",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: 優先級, never 優先度",
+      "ok": false,
+      "detail": [
+        "優先度"
+      ]
+    },
+    {
+      "name": "desk-light-zh-TW: \"I understand\" is a flat button: a visible border, its own background, no shadow",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 74,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgb(255, 246, 214)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "desk-light-zh-TW: the preview frame's border is at least 3:1 against what is behind it, flat",
+      "ok": false,
+      "detail": {
+        "border": "rgb(227, 179, 65)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(255, 255, 255)",
+        "ratio": 1.95
+      }
+    },
+    {
+      "name": "desk-light-zh-TW: the notice says Agent",
+      "ok": false,
+      "detail": "預覽會在隔離的框架裡執行 agent 的 HTML。它無法使用你的登入，但可能把資料傳出去。只預覽你信任的內容。預覽可能讓這個分頁變慢或卡住。\n我知道了"
+    },
+    {
+      "name": "desk-light-zh-TW: focused from the keyboard, the title shows a ring",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: the title has no border, outline or ring at rest",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: \"I understand\" is a flat button: a visible border, its own background, no shadow",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 99,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgba(227, 179, 65, 0.14)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "desk-dark-en: the preview frame's border is at least 3:1 against what is behind it, flat",
+      "ok": false,
+      "detail": {
+        "border": "rgba(227, 179, 65, 0.45)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(33, 33, 33)",
+        "ratio": 2.78
+      }
+    },
+    {
+      "name": "desk-dark-en: focused from the keyboard, the title shows a ring",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the title has no border, outline or ring at rest",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: 優先級, never 優先度",
+      "ok": false,
+      "detail": [
+        "優先度"
+      ]
+    },
+    {
+      "name": "desk-dark-zh-TW: \"I understand\" is a flat button: a visible border, its own background, no shadow",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 74,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgba(227, 179, 65, 0.14)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "desk-dark-zh-TW: the preview frame's border is at least 3:1 against what is behind it, flat",
+      "ok": false,
+      "detail": {
+        "border": "rgba(227, 179, 65, 0.45)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(33, 33, 33)",
+        "ratio": 2.78
+      }
+    },
+    {
+      "name": "desk-dark-zh-TW: the notice says Agent",
+      "ok": false,
+      "detail": "預覽會在隔離的框架裡執行 agent 的 HTML。它無法使用你的登入，但可能把資料傳出去。只預覽你信任的內容。預覽可能讓這個分頁變慢或卡住。\n我知道了"
+    },
+    {
+      "name": "desk-dark-zh-TW: focused from the keyboard, the title shows a ring",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: Back and Previous / Next are 44 px boxes",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: the title has no border, outline or ring at rest",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: \"I understand\" is a flat button: a visible border, its own background, no shadow",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 105,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgb(255, 246, 214)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "phone-light-en: \"I understand\" is a 44 px box",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 105,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgb(255, 246, 214)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "phone-light-en: the preview frame's border is at least 3:1 against what is behind it, flat",
+      "ok": false,
+      "detail": {
+        "border": "rgb(227, 179, 65)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(255, 255, 255)",
+        "ratio": 1.95
+      }
+    },
+    {
+      "name": "phone-light-en: focused from the keyboard, the title shows a ring",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: Back and Previous / Next are 44 px boxes",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: the title has no border, outline or ring at rest",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: 優先級, never 優先度",
+      "ok": false,
+      "detail": [
+        "優先度"
+      ]
+    },
+    {
+      "name": "phone-light-zh-TW: \"I understand\" is a flat button: a visible border, its own background, no shadow",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 78,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgb(255, 246, 214)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "phone-light-zh-TW: \"I understand\" is a 44 px box",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 78,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgb(255, 246, 214)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "phone-light-zh-TW: the preview frame's border is at least 3:1 against what is behind it, flat",
+      "ok": false,
+      "detail": {
+        "border": "rgb(227, 179, 65)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(255, 255, 255)",
+        "ratio": 1.95
+      }
+    },
+    {
+      "name": "phone-light-zh-TW: the notice says Agent",
+      "ok": false,
+      "detail": "預覽會在隔離的框架裡執行 agent 的 HTML。它無法使用你的登入，但可能把資料傳出去。只預覽你信任的內容。預覽可能讓這個分頁變慢或卡住。\n我知道了"
+    },
+    {
+      "name": "phone-light-zh-TW: focused from the keyboard, the title shows a ring",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: Back and Previous / Next are 44 px boxes",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: the title has no border, outline or ring at rest",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: \"I understand\" is a flat button: a visible border, its own background, no shadow",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 105,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgba(227, 179, 65, 0.14)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "phone-dark-en: \"I understand\" is a 44 px box",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 105,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgba(227, 179, 65, 0.14)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "phone-dark-en: the preview frame's border is at least 3:1 against what is behind it, flat",
+      "ok": false,
+      "detail": {
+        "border": "rgba(227, 179, 65, 0.45)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(33, 33, 33)",
+        "ratio": 2.78
+      }
+    },
+    {
+      "name": "phone-dark-en: focused from the keyboard, the title shows a ring",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: Back and Previous / Next are 44 px boxes",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the title has no border, outline or ring at rest",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: 優先級, never 優先度",
+      "ok": false,
+      "detail": [
+        "優先度"
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW: \"I understand\" is a flat button: a visible border, its own background, no shadow",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 78,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgba(227, 179, 65, 0.14)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW: \"I understand\" is a 44 px box",
+      "ok": false,
+      "detail": {
+        "h": 30,
+        "w": 78,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgba(227, 179, 65, 0.14)",
+        "borderVsBanner": 1
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW: the preview frame's border is at least 3:1 against what is behind it, flat",
+      "ok": false,
+      "detail": {
+        "border": "rgba(227, 179, 65, 0.45)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(33, 33, 33)",
+        "ratio": 2.78
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW: the notice says Agent",
+      "ok": false,
+      "detail": "預覽會在隔離的框架裡執行 agent 的 HTML。它無法使用你的登入，但可能把資料傳出去。只預覽你信任的內容。預覽可能讓這個分頁變慢或卡住。\n我知道了"
+    },
+    {
+      "name": "phone-dark-zh-TW: focused from the keyboard, the title shows a ring",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3742-desk-light-en-1-card.png",
+      "sha256": "d8da8ecd3d8116f0a180b215a6781c64551d6106271cfd8e28cf9c57292aac97"
+    },
+    {
+      "path": "m3742-desk-light-en-2-preview.png",
+      "sha256": "430663efde3e6d7a474b0808ab6b9cddb8f42419c62079426ccfe5155807eaa4"
+    },
+    {
+      "path": "m3742-desk-light-zh-TW-1-card.png",
+      "sha256": "bd84643c8e0d10436a92dc585280b2b557f880c4868b824ab2e32e50be889285"
+    },
+    {
+      "path": "m3742-desk-light-zh-TW-2-preview.png",
+      "sha256": "96e5245e1c7fc9571ffc652c4fb92c2c097430e8c54c9acdb9e42ce08e3f563f"
+    },
+    {
+      "path": "m3742-desk-dark-en-1-card.png",
+      "sha256": "c432d66f73dd41b1a31eed7f221e45b76b36546259e3f23c15b02c2ad9db5c25"
+    },
+    {
+      "path": "m3742-desk-dark-en-2-preview.png",
+      "sha256": "ca805927ee2181b5989d20f9532398d1ac077841b8a39315d97ab5db8cc5d263"
+    },
+    {
+      "path": "m3742-desk-dark-zh-TW-1-card.png",
+      "sha256": "ccf145a5f05f06c1fdd3d3c3ad6621028574724554c52cd21fdd9f9fa52f7383"
+    },
+    {
+      "path": "m3742-desk-dark-zh-TW-2-preview.png",
+      "sha256": "f5e3c5283b5b464deb1b473a57f85a618cb30313194f499078b04b04b5022618"
+    },
+    {
+      "path": "m3742-phone-light-en-1-card.png",
+      "sha256": "3323d9bcdfa95c62f2a8a3549085b48855efdb7fe118783e0b1434e3e17e99ac"
+    },
+    {
+      "path": "m3742-phone-light-en-2-preview.png",
+      "sha256": "0bec0b708628879fb0e4c7fa2f36020e5798a54f2a09c9c781fdff5446eed8f4"
+    },
+    {
+      "path": "m3742-phone-light-zh-TW-1-card.png",
+      "sha256": "caeb67d2da1cbbe898fc3f48f4a6a4e070081e55a8982c126ec02229a773a5a5"
+    },
+    {
+      "path": "m3742-phone-light-zh-TW-2-preview.png",
+      "sha256": "676abe8b34cf80730e716748383e3b0002a72ef0557a62111ecc8ea3a5ba1a4f"
+    },
+    {
+      "path": "m3742-phone-dark-en-1-card.png",
+      "sha256": "71577e8a3059c1c9073110a3091e91e18baae847e9f072727d9abb8575496d77"
+    },
+    {
+      "path": "m3742-phone-dark-en-2-preview.png",
+      "sha256": "794876e467c8f536e8cec72a6bec5bef2c6879aa2c759862d3c42b0005784714"
+    },
+    {
+      "path": "m3742-phone-dark-zh-TW-1-card.png",
+      "sha256": "077bd62d5bb5bde4c5a03896d10f11a5fd8a1b4becdbb76661898ae3c54889a0"
+    },
+    {
+      "path": "m3742-phone-dark-zh-TW-2-preview.png",
+      "sha256": "d3dd0a2808692ae69c552e9a50303fb89476a52f5e7048635628a6a30c148190"
+    }
+  ],
+  "measured": {
+    "desk-light-en-card": {
+      "taps": [
+        {
+          "s": ".tp-bar .tp-back",
+          "w": 152,
+          "h": 30
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 36,
+          "h": 36
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 36,
+          "h": 36
+        }
+      ],
+      "title": {
+        "tag": "BUTTON",
+        "focused": false,
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "outline": "none 3px",
+        "shadow": "none"
+      }
+    },
+    "desk-light-en-preview": {
+      "ack": {
+        "h": 30,
+        "w": 99,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgb(255, 246, 214)",
+        "borderVsBanner": 1
+      },
+      "frame": {
+        "border": "rgb(227, 179, 65)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(255, 255, 255)",
+        "ratio": 1.95
+      },
+      "bannerText": "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.\nI understand"
+    },
+    "desk-light-zh-TW-card": {
+      "taps": [
+        {
+          "s": ".tp-bar .tp-back",
+          "w": 98,
+          "h": 30
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 36,
+          "h": 36
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 36,
+          "h": 36
+        }
+      ],
+      "title": {
+        "tag": "BUTTON",
+        "focused": false,
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "outline": "none 3px",
+        "shadow": "none"
+      }
+    },
+    "desk-light-zh-TW-preview": {
+      "ack": {
+        "h": 30,
+        "w": 74,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgb(255, 246, 214)",
+        "borderVsBanner": 1
+      },
+      "frame": {
+        "border": "rgb(227, 179, 65)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(255, 255, 255)",
+        "ratio": 1.95
+      },
+      "bannerText": "預覽會在隔離的框架裡執行 agent 的 HTML。它無法使用你的登入，但可能把資料傳出去。只預覽你信任的內容。預覽可能讓這個分頁變慢或卡住。\n我知道了"
+    },
+    "desk-dark-en-card": {
+      "taps": [
+        {
+          "s": ".tp-bar .tp-back",
+          "w": 152,
+          "h": 30
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 36,
+          "h": 36
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 36,
+          "h": 36
+        }
+      ],
+      "title": {
+        "tag": "BUTTON",
+        "focused": false,
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "outline": "none 3px",
+        "shadow": "none"
+      }
+    },
+    "desk-dark-en-preview": {
+      "ack": {
+        "h": 30,
+        "w": 99,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgba(227, 179, 65, 0.14)",
+        "borderVsBanner": 1
+      },
+      "frame": {
+        "border": "rgba(227, 179, 65, 0.45)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(33, 33, 33)",
+        "ratio": 2.78
+      },
+      "bannerText": "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.\nI understand"
+    },
+    "desk-dark-zh-TW-card": {
+      "taps": [
+        {
+          "s": ".tp-bar .tp-back",
+          "w": 98,
+          "h": 30
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 36,
+          "h": 36
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 36,
+          "h": 36
+        }
+      ],
+      "title": {
+        "tag": "BUTTON",
+        "focused": false,
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "outline": "none 3px",
+        "shadow": "none"
+      }
+    },
+    "desk-dark-zh-TW-preview": {
+      "ack": {
+        "h": 30,
+        "w": 74,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgba(227, 179, 65, 0.14)",
+        "borderVsBanner": 1
+      },
+      "frame": {
+        "border": "rgba(227, 179, 65, 0.45)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(33, 33, 33)",
+        "ratio": 2.78
+      },
+      "bannerText": "預覽會在隔離的框架裡執行 agent 的 HTML。它無法使用你的登入，但可能把資料傳出去。只預覽你信任的內容。預覽可能讓這個分頁變慢或卡住。\n我知道了"
+    },
+    "phone-light-en-card": {
+      "taps": [
+        {
+          "s": ".tp-bar .tp-back",
+          "w": 160,
+          "h": 44
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 44,
+          "h": 44
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "title": {
+        "tag": "BUTTON",
+        "focused": false,
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "outline": "none 3px",
+        "shadow": "none"
+      }
+    },
+    "phone-light-en-preview": {
+      "ack": {
+        "h": 30,
+        "w": 105,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgb(255, 246, 214)",
+        "borderVsBanner": 1
+      },
+      "frame": {
+        "border": "rgb(227, 179, 65)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(255, 255, 255)",
+        "ratio": 1.95
+      },
+      "bannerText": "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.\nI understand"
+    },
+    "phone-light-zh-TW-card": {
+      "taps": [
+        {
+          "s": ".tp-bar .tp-back",
+          "w": 102,
+          "h": 44
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 44,
+          "h": 44
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "title": {
+        "tag": "BUTTON",
+        "focused": false,
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "outline": "none 3px",
+        "shadow": "none"
+      }
+    },
+    "phone-light-zh-TW-preview": {
+      "ack": {
+        "h": 30,
+        "w": 78,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgb(255, 246, 214)",
+        "borderVsBanner": 1
+      },
+      "frame": {
+        "border": "rgb(227, 179, 65)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(255, 255, 255)",
+        "ratio": 1.95
+      },
+      "bannerText": "預覽會在隔離的框架裡執行 agent 的 HTML。它無法使用你的登入，但可能把資料傳出去。只預覽你信任的內容。預覽可能讓這個分頁變慢或卡住。\n我知道了"
+    },
+    "phone-dark-en-card": {
+      "taps": [
+        {
+          "s": ".tp-bar .tp-back",
+          "w": 160,
+          "h": 44
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 44,
+          "h": 44
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "title": {
+        "tag": "BUTTON",
+        "focused": false,
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "outline": "none 3px",
+        "shadow": "none"
+      }
+    },
+    "phone-dark-en-preview": {
+      "ack": {
+        "h": 30,
+        "w": 105,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgba(227, 179, 65, 0.14)",
+        "borderVsBanner": 1
+      },
+      "frame": {
+        "border": "rgba(227, 179, 65, 0.45)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(33, 33, 33)",
+        "ratio": 2.78
+      },
+      "bannerText": "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.\nI understand"
+    },
+    "phone-dark-zh-TW-card": {
+      "taps": [
+        {
+          "s": ".tp-bar .tp-back",
+          "w": 102,
+          "h": 44
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 44,
+          "h": 44
+        },
+        {
+          "s": ".tp-bar .tc-steps .icon-btn",
+          "w": 44,
+          "h": 44
+        }
+      ],
+      "title": {
+        "tag": "BUTTON",
+        "focused": false,
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "outline": "none 3px",
+        "shadow": "none"
+      }
+    },
+    "phone-dark-zh-TW-preview": {
+      "ack": {
+        "h": 30,
+        "w": 78,
+        "bg": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "bw": "1px",
+        "shadow": "none",
+        "bannerBg": "rgba(227, 179, 65, 0.14)",
+        "borderVsBanner": 1
+      },
+      "frame": {
+        "border": "rgba(227, 179, 65, 0.45)",
+        "bw": "2px",
+        "style": "solid",
+        "shadow": "none",
+        "behind": "rgb(33, 33, 33)",
+        "ratio": 2.78
+      },
+      "bannerText": "預覽會在隔離的框架裡執行 agent 的 HTML。它無法使用你的登入，但可能把資料傳出去。只預覽你信任的內容。預覽可能讓這個分頁變慢或卡住。\n我知道了"
+    }
+  },
+  "summary": "20/48"
+}

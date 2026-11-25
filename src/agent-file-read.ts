@@ -30,7 +30,7 @@ export interface AgentFileContext {
 const plainCaller = (name: unknown): name is string => typeof name === "string" && name.length > 0 && name !== "." && name !== ".." && !/[/\\\u0000-\u001f\u007f]/.test(name);
 // These names are private even inside an admitted staging directory. A staging area is not a credential store.
 const sensitiveNames = [
-  "instances", "credential-profiles", "inbox", "chat-logs", "web-files", "web-chat.json", "cx", "kiro-v3", "cli-env", "access",
+  "instances", "credential-profiles", "inbox", "chat-logs", "web-files", "task-files", "web-chat.json", "cx", "kiro-v3", "cli-env", "access",
   "web.token", "view.token", "web-sessions", "sessions", "session-env", "projects", "file-history", "shell-snapshots", "backups", "todos", "statsig", "ide",
   "claude.md", "agents.md", "mcp-config.json", "claude-settings.json", "credentials.json", "opencode.json", "opencode.jsonc",
   "config.toml", "settings.json", "settings.local.json", "auth.json", "history.jsonl", "agent.token", "session-id", "session-id.backend",
@@ -41,7 +41,7 @@ const sensitiveNames = [
 ];
 const sensitivePart = (part: string) => (part.startsWith(".") && part !== ".agend") || sensitiveNames.some(name => part.toLowerCase() === name || part.toLowerCase().startsWith(name + ".") || part.toLowerCase().startsWith(name + "-"))
   || /\.(?:db|sqlite|sqlite3)(?:[.-]|$)/i.test(part) || /\.(?:token|pem|key)(?:[.-]|$)/i.test(part);
-const reservedStateRoots = new Set(["workspaces", "kiro-identity", "operator", "model-catalog", "profiles", "preview-tunnel", "bin", "web-effects", "web-mods", "web-themes", "web-owner-css", "cards", "avatars", "cache", "web-files"]);
+const reservedStateRoots = new Set(["workspaces", "kiro-identity", "operator", "model-catalog", "profiles", "preview-tunnel", "bin", "web-effects", "web-mods", "web-themes", "web-owner-css", "cards", "avatars", "cache", "web-files", "task-files"]);
 const staging = ["web-assets", "web-effects", ".agend/appearance", ".agend/mods"];
 
 /** Read persisted Classic ownership, including peers with no running daemon. Never construct the migrating manager. */

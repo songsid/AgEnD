@@ -1109,10 +1109,15 @@ html.lb-open .scroller { overflow: hidden; }
 .pv-banner[hidden] { display: none; }
 .pv-banner-text { flex: 1; min-width: 0; }
 /* #1568: "I understand" hides the banner until the next sign-in; .preview-frame's border below never depends on it. */
-.pv-banner .pv-ack { flex: none; }
+/* M-3742 (Prism #4462 triage): a real flat button — its own background and a visible edge on the notice's tint, no shadow —
+   not a ghost that reads as text; a 44 px box on a phone. Shared by the chat, the preview panel and a task card's files. */
+.pv-banner .pv-ack, .pv-banner .pv-ack.btn-ghost { flex: none; background: var(--bg); border-color: var(--border-strong); color: var(--text); box-shadow: none; }
+.pv-banner .pv-ack:hover:not(:disabled) { background: var(--surface); }
+@media (max-width: 899px), (pointer: coarse) { .pv-banner .pv-ack { min-height: var(--tap); } }
 .pv-holder:empty { display: none; }
 .pv-holder { margin-top: var(--s-2); }
-.preview-frame { display: block; width: 100%; border: 2px solid var(--warn-line); border-radius: var(--r-sm); background: #ffffff; }
+/* M-3742: the frame's edge at least 3:1 against the page in light and dark (--warn-line alone was ~1.9:1 on white, ~2.5:1 on dark). */
+.preview-frame { display: block; width: 100%; border: 2px solid var(--warn-line); border-color: color-mix(in srgb, var(--warn) 85%, var(--bg)); border-radius: var(--r-sm); background: #ffffff; }
 /* #1481: the preview beside the conversation. A split on a wide screen (width: --pv-w, set by the divider through
    CSSOM), a full-screen sheet on a narrow one. The frame is the card's (preview.js), sized by the panel here. */
 .chat-split { flex: 1; min-height: 0; display: flex; }

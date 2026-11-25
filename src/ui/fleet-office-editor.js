@@ -3,7 +3,7 @@
 // whole teams or one instance at a time, or #2752 nobody: its style's NPCs only) and deletes one — then saves the whole list with the rev it read
 // (PUT /ui/offices; a change made meanwhile is a 409: read again, nothing overwritten). A stored office's layout (seats,
 // paths) and its layout overrides (Edit layout, fleet-office-layout.js) are kept as they are. Skin packs (#2513): the
-// packs the host keeps are styles to choose; an admin uploads one here (its manifest.json and its PNGs, picked together
+// packs the host keeps are styles to choose; an admin uploads one here (its manifest.json and its PNG or WebP pictures, picked together
 // or as a folder — sent at once, checked by the host, which keeps it whole) or deletes one; #2692: which agents may change
 // packs, whether their changes need the admin's yes, those waiting for it, and the newest log entries. Never offered to a guest,
 // the public link or a read-only session (the host refuses them too).
@@ -30,7 +30,7 @@ register("orge", {
     failed: "The offices were not saved ({0}).", layoutKept: "Its seats and paths are kept.",
     stayInArea: "Idle people stay in their own area", stayInAreaNote: "They stroll only within the area they sit in and never go to sit in another area.",
     styleUnknown: "{0} (not available here: drawn as Desks)",
-    packs: "Skin packs", packsLead: "Styles drawn from an artist's pictures. Pick a pack's manifest.json and all its PNG files together (or its folder).",
+    packs: "Skin packs", packsLead: "Styles drawn from an artist's pictures. Pick a pack's manifest.json and all its PNG or WebP files together (or its folder).",
     packsNone: "No skin packs yet.", upload: "Upload a skin pack", uploadFolder: "Upload a folder", uploading: "Uploading…", uploaded: "Skin pack “{0}” uploaded.",
     uploadFailed: "The skin pack was not uploaded: {0}", noManifest: "no manifest.json among the files", badManifest: "manifest.json is not JSON",
     removePack: "Delete {0}", removedPack: "Skin pack “{0}” deleted.", removeFailed: "The skin pack was not deleted ({0}).",
@@ -54,7 +54,7 @@ register("orge", {
     failed: "辦公室沒有儲存（{0}）。", layoutKept: "它的座位與路徑會保留。",
     stayInArea: "待命只在自己的區域走動", stayInAreaNote: "待命的人只在自己座位所在的區域裡走動，不會到其他區域去坐。",
     styleUnknown: "{0}（這裡沒有：以辦公桌顯示）",
-    packs: "外觀包", packsLead: "用畫師的圖片畫出的風格。請把外觀包的 manifest.json 和所有 PNG 檔一起選取（或選整個資料夾）。",
+    packs: "外觀包", packsLead: "用畫師的圖片畫出的風格。請把外觀包的 manifest.json 和所有 PNG 或 WebP 檔一起選取（或選整個資料夾）。",
     packsNone: "還沒有外觀包。", upload: "上傳外觀包", uploadFolder: "上傳資料夾", uploading: "上傳中…", uploaded: "已上傳外觀包「{0}」。",
     uploadFailed: "外觀包沒有上傳：{0}", noManifest: "檔案中沒有 manifest.json", badManifest: "manifest.json 不是 JSON",
     removePack: "刪除 {0}", removedPack: "已刪除外觀包「{0}」。", removeFailed: "外觀包沒有刪除（{0}）。",
@@ -91,7 +91,7 @@ export async function packUpload(files) {
   try { manifest = JSON.parse(await man.file.text()); } catch { return { error: te("badManifest") }; }
   const out = {};
   for (const x of named) {
-    if (x === man || !/\.png$/i.test(x.name)) continue;
+    if (x === man || !/\.(png|webp)$/i.test(x.name)) continue;
     out[x.name] = base64Of(new Uint8Array(await x.file.arrayBuffer()));
   }
   return { body: { manifest, files: out } };
@@ -126,7 +126,7 @@ function Packs({ packs, store }) {
       <span>${pk.name}</span>${pk.name !== pk.id ? html` <span class="muted mono">${pk.id}</span>` : null}
       <button type="button" class="btn btn-sm btn-danger oe-pack-remove" onClick=${() => remove(pk)} aria-label=${te("removePack", pk.name)}>${te("remove")}</button></li>`)}</ul>`
       : html`<p class="note" id="oePacksNone">${te("packsNone")}</p>`}
-    <label class="btn btn-sm oe-upload">${te("upload")}<input type="file" class="sr-only oe-upload-files" multiple accept=".json,.png,application/json,image/png" onChange=${send} /></label>
+    <label class="btn btn-sm oe-upload">${te("upload")}<input type="file" class="sr-only oe-upload-files" multiple accept=".json,.png,.webp,application/json,image/png,image/webp" onChange=${send} /></label>
     <label class="btn btn-sm oe-upload">${te("uploadFolder")}<input type="file" class="sr-only oe-upload-dir" webkitdirectory="" multiple onChange=${send} /></label>
     ${msg ? html`<p class="note oe-pack-msg" role="status">${msg}</p>` : null}
   </fieldset>`;
