@@ -59,7 +59,7 @@ const buttons = async (page: any) => page.evaluate(`[...document.querySelectorAl
 const taps = async (page: any) => page.evaluate(`[...document.querySelectorAll(".update-line button, .uc-settings .btn, .uc-settings .input, .uc-day")].filter((e) => e.getBoundingClientRect().width).map((e) => Math.round(e.getBoundingClientRect().height))`);
 const scroll = async (page: any) => page.evaluate(`({ w: innerWidth, s: document.documentElement.scrollWidth })`);
 const W = (zh: boolean, en: string, zhText: string) => (zh ? zhText : en);
-// A word kept on one line (the leader's capture check: 「閒置時」 wrapped as 閒置 / 時 on a phone): its text range's boxes share one top.
+// A word kept on one line (the leader's capture check: 「閒置時」 wrapped as 閒置 / 時 on a phone; the line is now 「…，等 Agent 閒置後更新到 X。」): its text range's boxes share one top.
 const unsplit = async (page: any, word: string) => page.evaluate(`(() => { const w = ${JSON.stringify(word)};
   const walk = document.createTreeWalker(document.querySelector(".update-line .update-words"), NodeFilter.SHOW_TEXT);
   for (let n = walk.nextNode(); n; n = walk.nextNode()) { const i = n.data.indexOf(w); if (i < 0) continue;
@@ -76,7 +76,7 @@ async function walk(c: any, full: boolean) {
     await page.goto(fx.base + "/ui/needs"); check(`${tag}: mounted`, await mounted(page, 30000));
     await page.waitForSelector(".update-line", { timeout: 20000 });
     let t = await lineText(page), b = await buttons(page);
-    check(`${tag} 1: offered: the title and one line`, t.includes(NEXT) && t.includes(W(zh, `Your work continues; if it won't start, AgEnD tries to roll back to ${current}.`, `工作不會中斷；新版起不來時，AgEnD 會嘗試退回 ${current}。`)), t);
+    check(`${tag} 1: offered: the title and one line`, t.includes(NEXT) && t.includes(W(zh, `Your work continues; if the new version won't start, AgEnD tries to roll back to ${current}.`, `工作不會中斷；新版起不來時，AgEnD 會嘗試退回 ${current}。`)), t);
     check(`${tag} 1: Update when idle / Pick a time / Not now`, [W(zh, "Update when idle", "閒置時更新"), W(zh, "Pick a time", "選個時間"), W(zh, "Not now", "先不要")].every((x) => b.includes(x)), b);
     if (phone) check(`${tag} 1: 44 px buttons`, (await taps(page)).every((h: number) => h >= 44), await taps(page));
     const sc = await scroll(page); check(`${tag} 1: no sideways scroll`, sc.s <= sc.w, sc);
@@ -96,8 +96,9 @@ async function walk(c: any, full: boolean) {
     await page.waitForTimeout(800);
     check(`${tag} 3: scheduled on the server`, card()?.state === "scheduled", card());
     t = await lineText(page);
-    check(`${tag} 3: the line says when`, t.includes(W(zh, "when your agents are idle", "等 Agent 閒置時")), t);
-    if (zh) check(`${tag} 3: 「閒置時」 stays on one line`, await unsplit(page, "閒置時"), t);
+    check(`${tag} 3: the line says when`, t.includes(W(zh, "when your agents are idle", "等 Agent 閒置後更新到")), t);
+    check(`${tag} 3: no filled button (#4487 UX look)`, (await page.locator(".update-line .btn-primary").count()) === 0, await buttons(page));
+    if (zh) for (const w of ["排定在", "閒置後更新到"]) check(`${tag} 3: 「${w}」 stays on one line`, await unsplit(page, w), t);
     await shot(page, `${tag}-3-scheduled`);
     await page.locator(".update-line button", { hasText: W(zh, "Cancel", "取消") }).click(); await page.waitForTimeout(800);
     check(`${tag} 3: Cancel → offered again`, card()?.state === "offered", card());
@@ -105,7 +106,8 @@ async function walk(c: any, full: boolean) {
     await page.locator(".update-line button", { hasText: W(zh, "Update when idle", "閒置時更新") }).click(); await page.waitForTimeout(800);
     check(`${tag} 4: waiting on the server, naming who works`, card()?.state === "waiting-idle" && (card()?.waitingFor || []).length === 5, card());
     t = await lineText(page); b = await buttons(page);
-    check(`${tag} 4: the line names two, then +3; Update now / Pick a time / Cancel`, /\+3/.test(t) && !t.includes("reviewer, tester") && [W(zh, "Update now", "立即更新"), W(zh, "Cancel", "取消")].every((x) => b.includes(x)), { t, b });
+    check(`${tag} 4: the line names two, then 3 more; Update now / Pick a time / Cancel`, t.includes(W(zh, "and 3 more", "，另有 3 個")) && !t.includes("reviewer, tester") && [W(zh, "Update now", "立即更新"), W(zh, "Cancel", "取消")].every((x) => b.includes(x)), { t, b });
+    check(`${tag} 4: Update now is not the filled button (#4487 UX look)`, (await page.locator(".update-line .btn-primary").count()) === 0, b);
     await shot(page, `${tag}-4-waiting`);
     await page.locator(".update-line button", { hasText: W(zh, "Cancel", "取消") }).click(); await page.waitForTimeout(800);
     // 5 a press-only machine: no-write → no update button, the words
@@ -116,7 +118,9 @@ async function walk(c: any, full: boolean) {
     check(`${tag} 5: How to update is folded`, !(await page.locator(".update-line details.uc-how").getAttribute("open") !== null), null);
     await shot(page, `${tag}-5-press-only`);
     await page.locator(".update-line details.uc-how summary").click(); await page.waitForTimeout(300);
-    check(`${tag} 5: How to update holds the command`, (await lineText(page)).includes("sudo agend update"), await lineText(page));
+    check(`${tag} 5: How to update holds the command, as code`, (await page.locator(".update-line .uc-how .uc-cmd").allInnerTexts()).join("|") === "sudo agend update", await lineText(page));
+    const howPx = await page.evaluate(`[parseFloat(getComputedStyle(document.querySelector(".uc-how p")).fontSize), parseFloat(getComputedStyle(document.body).fontSize)]`) as number[];
+    check(`${tag} 5: How to update at body size`, howPx[0] >= howPx[1], howPx);
     await shot(page, `${tag}-5b-how-to`);
     // 6 Settings → Version and update (◐: lingering off)
     setPreflight(pre([{ id: "P1", ok: true }, { id: "P3", ok: false, code: "linger-off", detail: { user: "example" } }, { id: "P4", ok: true }]));
@@ -129,7 +133,7 @@ async function walk(c: any, full: boolean) {
     if (phone) check(`${tag} 6: 44 px controls`, (await taps(page)).every((h: number) => h >= 44), await taps(page));
     check(`${tag} 6: no top line while Settings is open`, (await page.locator(".update-line").count()) === 0, await lineText(page));
     check(`${tag} 6: no AM/PM time inputs`, (await page.locator("#settings-update input[type=time]").count()) === 0, null);
-    check(`${tag} 6: the linger line without jargon`, s.includes("example") && !s.includes("lingering"), s.slice(0, 300));
+    check(`${tag} 6: the linger line without jargon, with the command to fix it`, s.includes("example") && !s.includes("lingering") && (await page.locator("#settings-update .uc-cmd").allInnerTexts()).join("|") === "sudo loginctl enable-linger example", s.slice(0, 300));
     await shot(page, `${tag}-6-settings`);
     await page.locator(".uc-advanced summary").click(); await page.waitForTimeout(300);
     await page.evaluate(`document.querySelector(".uc-advanced")?.scrollIntoView({ block: "center" })`);

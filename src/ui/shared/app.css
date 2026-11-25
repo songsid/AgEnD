@@ -2236,6 +2236,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .update-text { display: flex; align-items: flex-start; gap: var(--s-2); min-width: 0; }
 .update-icon { display: inline-flex; flex: none; margin-top: 1px; }
 .update-words { min-width: 0; }
+/* M-3770 1.4 (capture check): zh banner words break at spaces and punctuation, never inside a word (「閒置時」), as the credits card's. */
+.update-words :is(.update-title, .update-sub) { word-break: keep-all; overflow-wrap: anywhere; text-wrap: balance; }
 .update-title { font-weight: 600; }
 .update-sub { font-size: var(--fs-xs); color: var(--text-2); }
 .update-line.bad .update-sub, .update-line.ok .update-sub { color: var(--text-2); }
@@ -2283,9 +2285,14 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .uc-pick-frame { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); }
 .uc-pick-field { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-2); }
 .uc-pick-field .input { width: auto; min-width: 7em; }
-.uc-how { margin-top: 2px; font-size: var(--fs-sm); }
+.uc-how { margin-top: 2px; font-size: var(--fs-md); }
 .uc-how summary { cursor: pointer; color: var(--accent); }
-.uc-how p { margin: var(--s-1) 0 0; color: var(--text-2); overflow-wrap: anywhere; }
+.uc-how p { margin: var(--s-1) 0 0; color: var(--text); overflow-wrap: anywhere; }
+/* #4487 UX look: a command in a check's sentence is code to copy (one tap selects it all); the banner's secondary buttons
+   keep a visible outline on any banner colour (先不要 on the phone's dark press-only banner). */
+.uc-cmd { font-family: var(--font-mono); font-size: 0.92em; padding: 1px 5px; border-radius: var(--r-sm); background: var(--surface);
+  border: 1px solid var(--border); user-select: all; overflow-wrap: anywhere; word-break: break-all; }
+.update-actions .btn:not(.btn-primary):not(.update-x) { border-color: var(--border-strong); }
 .uc-needs .n-item { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
 @media (max-width: 899px), (pointer: coarse) {
   .uc-settings :is(.btn, .input, .uc-day, .uc-pick-row), .uc-needs .btn, .update-line .update-actions .btn { min-height: var(--tap); }

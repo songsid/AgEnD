@@ -15,9 +15,9 @@ register("updatecard", {
   en: {
     ready: "AgEnD {0} is ready.",
     continues: "Your work continues.",
-    backPhase1: "Your work continues; if it won't start, AgEnD tries to roll back to {0}.",
+    backPhase1: "Your work continues; if the new version won't start, AgEnD tries to roll back to {0}.",
     noWayBack: "Your work continues; this setup can't restart AgEnD by itself, so check on it afterwards.",
-    howTo: "How to update", pressOnlyLine: "AgEnD can't update itself on this machine; update it by hand.", more: "+{0}",
+    howTo: "How to update", pressOnlyLine: "AgEnD can't update itself on this machine; update it by hand.", sep: ", ", more: " and {0} more",
     whenIdle: "Update when idle", pickTime: "Pick a time", notNow: "Not now", updateNow: "Update now", cancel: "Cancel",
     waiting: "Updating to {0} as soon as your agents are idle.", waitingFor: "Waiting for: {0}", waitingSince: "Waiting since {0}",
     scheduled: "Updating to {0} at {1}, when your agents are idle.", notNowUntil: "You chose Not now. The card comes back on {0}.",
@@ -33,7 +33,7 @@ register("updatecard", {
     pauseTitle: "Don't update during", pauseHint: "Days and hours when AgEnD never updates (a waiting update waits for the window to end).",
     pauseAdd: "Add a time", pauseRemove: "Remove", from: "From", to: "To", save: "Save", saved: "Saved.", saveFailed: "Couldn't save: {0}",
     advanced: "Advanced", pin: "Pin to a version", pinHint: "No update is offered while a version is pinned. Leave empty for none.",
-    maxWait: "Longest wait for idle (hours)", maxWaitHint: "After this, the card asks again instead of waiting (1–168, default 24).",
+    maxWait: "Longest wait for idle (hours)", maxWaitHint: "After this, AgEnD asks again instead of waiting (1–168, default 24).",
     days: "Sun,Mon,Tue,Wed,Thu,Fri,Sat",
     c_checkout: "AgEnD runs from a source checkout, not from an install npm updates. Update it with git.",
     c_other_copy: "Another copy of AgEnD ({path}) is the one npm would update, not the one running. Run the fleet from the global install.",
@@ -45,10 +45,10 @@ register("updatecard", {
     c_not_service: "AgEnD isn't running as a service, so it can't bring itself back after an update.",
     c_service_unknown: "AgEnD can't confirm that its service will bring it back after an update.",
     notAllChecked: "Some checks haven't run yet; they run when AgEnD starts and once a day.",
-    c_linger_off: "AgEnD stops when {user} signs out, so it can't restart itself.",
+    c_linger_off: "AgEnD stops when the user {user} signs out, so it can't restart itself. To fix it, run `sudo loginctl enable-linger {user}`.",
     c_system_unit_not_root: "AgEnD runs as a system service; updating it needs root.",
-    c_unit_reload_pending: "The service definition changed and hasn't been reloaded. Run systemctl --user daemon-reload.",
-    c_no_write: "Updating needs write access to {path}. Run sudo agend update in a terminal on that computer, or reinstall with the one-line installer.",
+    c_unit_reload_pending: "The service definition changed and hasn't been reloaded. Run `systemctl --user daemon-reload`.",
+    c_no_write: "Updating needs write access to {path}. Run `sudo agend update` in a terminal on that computer, or reinstall with the one-line installer.",
     c_linked: "This AgEnD is linked from a development folder ({path}); an update replaces the link.",
     c_vendored: "This AgEnD sits inside another project ({path}).",
     c_low_disk: "Updating needs about {need} free on {path}; there's {have}.",
@@ -57,7 +57,7 @@ register("updatecard", {
     c_update_running: "An update is already running.",
     c_container: "AgEnD runs in a container; update the image.",
     c_windows_runtime: "This computer's AgEnD Runtime updates itself.",
-    c_node_too_old: "v{0} needs Node {needs}; this machine has {node}.",
+    c_node_too_old: "AgEnD {0} needs Node {needs}; this machine has {node}.",
     c_other: "A check didn't pass ({0}).",
   },
   "zh-TW": {
@@ -65,10 +65,10 @@ register("updatecard", {
     continues: "工作不會中斷。",
     backPhase1: "工作不會中斷；新版起不來時，AgEnD 會嘗試退回 {0}。",
     noWayBack: "工作不會中斷；這台機器無法自行重新啟動 AgEnD，更新後請確認一下。",
-    howTo: "如何更新", pressOnlyLine: "這台機器上 AgEnD 無法自行更新，請手動更新。", more: "+{0}",
+    howTo: "如何更新", pressOnlyLine: "這台機器上 AgEnD 無法自行更新，請手動更新。", sep: "、", more: "，另有 {0} 個",
     whenIdle: "閒置時更新", pickTime: "選個時間", notNow: "先不要", updateNow: "立即更新", cancel: "取消",
     waiting: "Agent 一閒置就更新到 {0}。", waitingFor: "正在等：{0}", waitingSince: "從 {0} 開始等",
-    scheduled: "{1} 更新到 {0}（等 Agent 閒置時）。", notNowUntil: "你選了「先不要」，{0} 會再提醒。",
+    scheduled: "排定在 {1}，等 Agent 閒置後更新到 {0}。", notNowUntil: "你選了「先不要」，{0} 會再提醒。",
     starting: "正在開始更新到 {0}…", cantTitle: "AgEnD 無法在這台機器上自行更新。",
     nowTitle: "立即更新？", nowBody: "有 {0} 個 Agent 正在工作。AgEnD 重新啟動時會停下幾分鐘，之後從原處繼續。",
     nowBodyIdle: "AgEnD 會重新啟動幾分鐘，Agent 之後從原處繼續。", nowGo: "立即更新",
@@ -81,7 +81,7 @@ register("updatecard", {
     pauseTitle: "這些時段不更新", pauseHint: "AgEnD 絕不會在這些日子和時段更新（等待中的更新會等時段結束）。",
     pauseAdd: "新增時段", pauseRemove: "移除", from: "從", to: "到", save: "儲存", saved: "已儲存。", saveFailed: "無法儲存：{0}",
     advanced: "進階", pin: "固定在某個版本", pinHint: "固定版本時不會提供任何更新。留空表示不固定。",
-    maxWait: "等 Agent 閒下來的上限（小時）", maxWaitHint: "超過之後，卡片會再問你，而不是繼續等（1–168，預設 24）。",
+    maxWait: "等 Agent 閒下來的上限（小時）", maxWaitHint: "超過之後，AgEnD 會再問你，而不是繼續等（1–168，預設 24）。",
     days: "日,一,二,三,四,五,六",
     c_checkout: "AgEnD 是從原始碼資料夾執行的，不是 npm 會更新的安裝。請用 git 更新。",
     c_other_copy: "npm 會更新的是另一份 AgEnD（{path}），不是正在執行的這份。請改用全域安裝執行 Fleet。",
@@ -93,10 +93,10 @@ register("updatecard", {
     c_not_service: "AgEnD 不是以服務方式執行，更新後無法自己回來。",
     c_service_unknown: "AgEnD 無法確認它的服務在更新後會讓它重新啟動。",
     notAllChecked: "有些檢查還沒跑完；AgEnD 啟動時和每天會檢查一次。",
-    c_linger_off: "{user} 登出後 AgEnD 會停止，所以無法自行重新啟動。",
+    c_linger_off: "使用者 {user} 登出後 AgEnD 會停止，所以無法自行重新啟動。修正方式：執行 `sudo loginctl enable-linger {user}`。",
     c_system_unit_not_root: "AgEnD 以系統服務執行，更新需要 root。",
-    c_unit_reload_pending: "服務定義已變更但尚未重新載入。請執行 systemctl --user daemon-reload。",
-    c_no_write: "更新需要 {path} 的寫入權限。請在那台電腦的終端機執行 sudo agend update，或用單行安裝指令重新安裝。",
+    c_unit_reload_pending: "服務定義已變更但尚未重新載入。請執行 `systemctl --user daemon-reload`。",
+    c_no_write: "更新需要 {path} 的寫入權限。請在那台電腦的終端機執行 `sudo agend update`，或用單行安裝指令重新安裝。",
     c_linked: "這份 AgEnD 是從開發資料夾連結的（{path}），更新會取代這個連結。",
     c_vendored: "這份 AgEnD 位於另一個專案裡（{path}）。",
     c_low_disk: "更新需要 {path} 約 {need} 的可用空間，目前只有 {have}。",
@@ -105,7 +105,7 @@ register("updatecard", {
     c_update_running: "已經有一個更新在進行中。",
     c_container: "AgEnD 在容器裡執行，請更新映像檔。",
     c_windows_runtime: "這台電腦的 AgEnD Runtime 會自行更新。",
-    c_node_too_old: "v{0} 需要 Node {needs}，這台機器是 {node}。",
+    c_node_too_old: "AgEnD {0} 需要 Node {needs}，這台機器是 {node}。",
     c_other: "有一項檢查沒有通過（{0}）。",
   },
 });
@@ -118,7 +118,13 @@ export function checkSentence(check, version = "") {
   let s = t(`updatecard.${key}`, version);
   if (s === `updatecard.${key}`) return tc("c_other", String(check.code));
   const d = check.detail && typeof check.detail === "object" ? check.detail : {};
-  return s.replace(/\{(path|user|need|have|node|needs)\}/g, (_, k) => (d[k] !== undefined ? String(d[k]) : "…"));
+  return s.replace(/\{(path|user|need|have|node|needs)\}/g, (_, k) => (d[k] !== undefined ? String(d[k]).replace(/`/g, "'") : "…"));
+}
+/** A check's sentence as plain text (a toast): the command marks dropped. */
+export function checkText(check, version = "") { return checkSentence(check, version).replace(/`/g, ""); }
+/** A check's sentence for the page: a `command` in it is shown as copyable code (#4487 UX look). */
+export function checkRich(check, version = "") {
+  return checkSentence(check, version).split("`").map((part, i) => (i % 2 ? html`<code class="uc-cmd">${part}</code>` : part));
 }
 /** The checks that did not pass, in P-order (absent checks are not failures: they were not run). */
 export function failedChecks(preflight) {
@@ -139,10 +145,10 @@ export function backSentence(info) {
   if (!pf || !Array.isArray(pf.checks) || !pf.checks.some((c) => c && c.id === "P3")) return tc("continues");
   return serviceInstall(pf) ? tc("backPhase1", info.current) : tc("noWayBack");
 }
-/** The busy agents, capped (the leader's copy pass): "A, B +3". */
+/** The busy agents, capped (the leader's copy pass): "A, B and 3 more" / 「A、B，另有 3 個」 (#4487 UX look). */
 export function namesShown(names, max = 2) {
   const list = Array.isArray(names) ? names.filter(Boolean) : [];
-  return list.length <= max ? list.join(", ") : `${list.slice(0, max).join(", ")} ${tc("more", list.length - max)}`;
+  return list.length <= max ? list.join(tc("sep")) : `${list.slice(0, max).join(tc("sep"))}${tc("more", list.length - max)}`;
 }
 
 // M-3730: through the shared clock helper (24-hour in zh-TW); English is 24-hour here too, as the leader asked for this card.
@@ -167,7 +173,7 @@ export async function answerCard(body, { refresh, setInfo, getInfo }) {
   if (res && res.status === 412 && out && out.preflight) {
     if (info) setInfo({ ...info, preflight: out.preflight });
     const first = failedChecks(out.preflight)[0];
-    toast(first ? checkSentence(first, info && info.card ? info.card.version : "") : tc("stop"), false);
+    toast(first ? checkText(first, info && info.card ? info.card.version : "") : tc("stop"), false);
     return { ok: false, preflight: out.preflight };
   }
   if (res && res.status === 409) toast(out && out.key === "update_running" ? tc("running") : tc("changed"), false);
@@ -248,7 +254,7 @@ export function cardLine(info, { Line, busy, deps }) {
   const cancel = () => { void answerCard({ action: "cancel" }, deps); };
   const now = () => { void updateNow(info, deps); };
   const pick = () => { void pickTime(deps); };
-  const how = fails.length ? html`<details class="uc-how"><summary>${tc("howTo")}</summary>${fails.map((f) => html`<p>${checkSentence(f, c.version)}</p>`)}</details>` : null;
+  const how = fails.length ? html`<details class="uc-how"><summary>${tc("howTo")}</summary>${fails.map((f) => html`<p>${checkRich(f, c.version)}</p>`)}</details>` : null;
   if (c.state === "offered") {
     const sub = press ? [backSentence(info)] : [tc("pressOnlyLine"), how];
     return html`<${Line} title=${tc("ready", c.version)} sub=${sub}>
@@ -257,7 +263,7 @@ export function cardLine(info, { Line, busy, deps }) {
   if (c.state === "waiting-idle") {
     const names = Array.isArray(c.waitingFor) && c.waitingFor.length ? tc("waitingFor", namesShown(c.waitingFor)) : null;
     return html`<${Line} spinner title=${tc("waiting", c.version)} sub=${[names]}>
-      ${press ? html`${btn(tc("updateNow"), now, true)}${btn(tc("pickTime"), pick)}` : null}${btn(tc("cancel"), cancel)}</${Line}>`;
+      ${press ? html`${btn(tc("updateNow"), now)}${btn(tc("pickTime"), pick)}` : null}${btn(tc("cancel"), cancel)}</${Line}>`;
   }
   if (c.state === "scheduled") {
     return html`<${Line} icon="clock" title=${tc("scheduled", c.version, fmtTime(c.scheduledAt))}>
@@ -294,7 +300,7 @@ export function MachineLine({ info }) {
   const fails = failedChecks(pf);
   return html`<div class=${`uc-machine uc-${cls}`}>
     <div><strong>${tc("machine")}</strong> <span class="uc-mark" aria-hidden="true">${mark}</span> <span>${tc(cls === "self" ? "self" : cls === "admin-only" ? "adminOnly" : "stop")}</span></div>
-    ${fails.length ? html`<ul class="uc-checks">${fails.map((f) => html`<li key=${f.id}>${checkSentence(f, info.card ? info.card.version : "")}</li>`)}</ul>`
+    ${fails.length ? html`<ul class="uc-checks">${fails.map((f) => html`<li key=${f.id}>${checkRich(f, info.card ? info.card.version : "")}</li>`)}</ul>`
       : cls !== "self" ? html`<p class="muted uc-checks">${tc("notAllChecked")}</p>` : null}
   </div>`;
 }
@@ -376,7 +382,7 @@ export function UpdateNeedsItem({ info, settingsHref }) {
   // Can't update here: the reason itself is the one line (the leader's copy pass), with the way to Settings.
   if ((c.state === "cant" || (info.preflight && info.preflight.class === "stop")) && c.state !== "not-now") {
     const first = fails[0];
-    return html`<section class="n-group uc-needs"><div class="n-item"><strong>${first ? checkSentence(first, c.version) : tc("cantTitle")}</strong>
+    return html`<section class="n-group uc-needs"><div class="n-item"><strong>${first ? checkRich(first, c.version) : tc("cantTitle")}</strong>
       <a class="btn btn-sm" href=${settingsHref}>${t("app.settings")}</a></div></section>`;
   }
   return null;

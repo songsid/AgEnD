@@ -65,7 +65,7 @@ describe("M-3770 1.4: the card on the banner", () => {
     answer = r => (r.url === "/ui/update" ? { body: info } : r.url === "/ui/update/answer" ? { body: { card: CARD({ state: "waiting-idle", waitingFor: ["Example helper", "writer"], waitingSince: Date.now() }) } } : undefined);
     await mountShell();
     expect(text()).toContain("AgEnD 2.4.1 is ready.");
-    expect(text()).toContain("Your work continues; if it won't start, AgEnD tries to roll back to 2.4.0.");
+    expect(text()).toContain("Your work continues; if the new version won't start, AgEnD tries to roll back to 2.4.0.");
     expect(["Update when idle", "Pick a time", "Not now"].every((b) => !!button(b))).toBe(true);
     expect(button("Later")).toBeUndefined();                                  // the per-browser Later is gone with the card
     await press("Update when idle");
@@ -157,11 +157,24 @@ describe("M-3770 1.4: the card on the banner", () => {
 });
 
 describe("M-3770 1.4: the leader's copy pass", () => {
-  it("waiting names at most two agents, then +N", async () => {
+  it("waiting names at most two agents, then how many more; Update now is not the filled button (#4487 UX look)", async () => {
     answer = r => (r.url === "/ui/update" ? { body: ADMIN({ card: CARD({ state: "waiting-idle", waitingFor: ["A", "B", "C", "D", "E"] }) }) } : undefined);
     await mountShell();
-    expect(text()).toContain("Waiting for: A, B +3");
+    expect(text()).toContain("Waiting for: A, B and 3 more");
     expect(text()).not.toContain("C, D");
+    expect(p.root.querySelectorAll(".update-line .btn-primary").length).toBe(0);
+    expect(uc.namesShown(["A", "B"])).toBe("A, B");
+    i18n.setLang("zh-TW", { store: false });
+    try {
+      expect(uc.namesShown(["A", "B", "C", "D", "E"])).toBe("A、B，另有 3 個");
+      expect(i18n.t("updatecard.scheduled", "2.4.1", "11月26日週四 22:00")).toBe("排定在 11月26日週四 22:00，等 Agent 閒置後更新到 2.4.1。");
+    } finally { i18n.setLang("en", { store: false }); }
+  });
+  it("a scheduled card has no filled button either", async () => {
+    answer = r => (r.url === "/ui/update" ? { body: ADMIN({ card: CARD({ state: "scheduled", scheduledAt: Date.now() + 864e5 }) }) } : undefined);
+    await mountShell();
+    expect(p.root.querySelectorAll(".update-line button").length).toBeGreaterThan(0);
+    expect(p.root.querySelectorAll(".update-line .btn-primary").length).toBe(0);
   });
   it("can't update here (class stop): no banner line; Needs you holds the one line", async () => {
     answer = r => (r.url === "/ui/update" ? { body: ADMIN({ preflight: { class: "stop", checkedAt: 1, pressHere: false, checks: [{ id: "P9", ok: false, code: "container" }] } }) } : undefined);
@@ -208,7 +221,8 @@ describe("M-3770 1.4: Settings → Version and update", () => {
     expect(card()).toContain("You chose Not now. The card comes back on");
     expect(card()).toContain("Updates on this machine");
     expect(card()).toContain("Updates here need you:");
-    expect(card()).toContain("AgEnD stops when example signs out, so it can't restart itself.");
+    expect(card()).toContain("AgEnD stops when the user example signs out, so it can't restart itself. To fix it, run sudo loginctl enable-linger example.");
+    expect([...p.root.querySelectorAll(".s-update .uc-cmd")].map((e: any) => e.textContent)).toEqual(["sudo loginctl enable-linger example"]);
     expect(card()).not.toContain("lingering");
     expect(card()).toContain("Don't update during");
     expect(p.root.querySelectorAll(".uc-pause-row").length).toBe(1);
@@ -240,7 +254,9 @@ describe("M-3770 1.4: Settings → Version and update", () => {
 
 describe("M-3770 1.4: the words", () => {
   it("a check's sentence fills its detail; an unknown code is still words, never raw; absent checks aren't failures", () => {
-    expect(uc.checkSentence({ id: "P10", ok: false, code: "node-too-old", detail: { node: "20.11", needs: ">=22.14" } }, "2.5.0")).toBe("v2.5.0 needs Node >=22.14; this machine has 20.11.");
+    expect(uc.checkSentence({ id: "P10", ok: false, code: "node-too-old", detail: { node: "20.11", needs: ">=22.14" } }, "2.5.0")).toBe("AgEnD 2.5.0 needs Node >=22.14; this machine has 20.11.");
+    expect(uc.checkText({ id: "P4", ok: false, code: "no-write", detail: { path: "/opt/x" } })).toBe("Updating needs write access to /opt/x. Run sudo agend update in a terminal on that computer, or reinstall with the one-line installer.");
+    expect(uc.checkSentence({ id: "P3", ok: false, code: "linger-off", detail: { user: "a`b" } })).toBe("AgEnD stops when the user a'b signs out, so it can't restart itself. To fix it, run `sudo loginctl enable-linger a'b`.");
     expect(uc.checkSentence({ id: "P1", ok: false, code: "brand-new-code" })).toBe("A check didn't pass (brand-new-code).");
     expect(uc.failedChecks({ checks: [{ id: "P10", ok: false, code: "node-too-old" }, { id: "P2", ok: false, code: "shared-home" }, { id: "P1", ok: true }] }).map((c: any) => c.id)).toEqual(["P2", "P10"]);
     expect(uc.failedChecks({ checks: [] })).toEqual([]);
