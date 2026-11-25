@@ -1,0 +1,137 @@
+{
+  "sourceRevision": "53fb12d0cbca606b1737ccc85403f3e346b55baf",
+  "count": 13,
+  "allRed": true,
+  "allRestored": true,
+  "cases": [
+    {
+      "name": "legacy-scoped-fence",
+      "file": "src/contact-auth-store.ts",
+      "old": "if (scoped !== (authority.requestContextVersion === 1) || !!(row && JSON.parse(row.request_json).requestContext) !== scoped)",
+      "new": "if (false)",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "legacy decision and grant paths",
+      "exitCode": 1,
+      "restoredSha256": "f499d42078382a2c657da6289936d8a16d8622cb30103b6b078961667ba3e510"
+    },
+    {
+      "name": "full-image-retry",
+      "file": "src/request-contact-gate.ts",
+      "old": "if (previous && requestContextJson(previous.image) !== requestContextJson(image))",
+      "new": "if (false)",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "files-only and boot-only",
+      "exitCode": 1,
+      "restoredSha256": "7b9af7216af9b1133fbf164d0c894451b333e17b02ecd60796ab7d8127e5404d"
+    },
+    {
+      "name": "request-row-integrity",
+      "file": "src/request-contact-gate.ts",
+      "old": "!request || row.request_sha256!==requestContextDigest(JSON.parse(request.request_json)) ||",
+      "new": "!request ||",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "changed retained request",
+      "exitCode": 1,
+      "restoredSha256": "7b9af7216af9b1133fbf164d0c894451b333e17b02ecd60796ab7d8127e5404d"
+    },
+    {
+      "name": "origin-forbidden",
+      "file": "src/request-contact-gate.ts",
+      "old": "this.ports.ready(); const image = this.checked(delivery, context, binding);",
+      "new": "this.tickets.origin(delivery.sourceInstance); this.ports.ready(); const image = this.checked(delivery, context, binding);",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "correlation returns and lifetime",
+      "exitCode": 1,
+      "restoredSha256": "7b9af7216af9b1133fbf164d0c894451b333e17b02ecd60796ab7d8127e5404d"
+    },
+    {
+      "name": "inherit-forbidden",
+      "file": "src/request-contact-gate.ts",
+      "old": "this.ports.ready(); const image = this.checked(delivery, context, binding);",
+      "new": "this.tickets.inheritOrigin(delivery.targetInstance,{kind:\"unknown\",people:[],receiptIds:[],chain:[]}); this.ports.ready(); const image = this.checked(delivery, context, binding);",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "correlation returns and lifetime",
+      "exitCode": 1,
+      "restoredSha256": "7b9af7216af9b1133fbf164d0c894451b333e17b02ecd60796ab7d8127e5404d"
+    },
+    {
+      "name": "correlation-forbidden",
+      "file": "src/request-contact-gate.ts",
+      "old": "this.ports.ready(); const image = this.checked(delivery, context, binding);",
+      "new": "this.tickets.approvedReturn(delivery.sourceInstance,delivery.targetInstance,delivery.correlationId??\"fixture\"); this.ports.ready(); const image = this.checked(delivery, context, binding);",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "correlation returns and lifetime",
+      "exitCode": 1,
+      "restoredSha256": "7b9af7216af9b1133fbf164d0c894451b333e17b02ecd60796ab7d8127e5404d"
+    },
+    {
+      "name": "post-admission-current",
+      "file": "src/request-contact-gate.ts",
+      "old": "this.requireCurrent(image); return result;",
+      "new": "return result;",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "policy becoming stale at admission",
+      "exitCode": 1,
+      "restoredSha256": "7b9af7216af9b1133fbf164d0c894451b333e17b02ecd60796ab7d8127e5404d"
+    },
+    {
+      "name": "bound-delivery-retention",
+      "file": "src/delivery-outbox.ts",
+      "old": "${hasTable(this.db, \"request_context_operations_v1\") ? \"AND delivery_id NOT IN (SELECT delivery_id FROM request_context_operations_v1)\" : \"\"}",
+      "new": "${\"\"}",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "ordinary pruning skips retained",
+      "exitCode": 1,
+      "restoredSha256": "7bd4de5277bfddeaa90778ad793acd46f32514ebc0f1ce7d443ac72c07523198"
+    },
+    {
+      "name": "ticket-retention",
+      "file": "src/contact-auth-store.ts",
+      "old": "(scoped ? \" AND id NOT IN (SELECT ticket_id FROM request_context_contacts_v1)\" : \"\")",
+      "new": "\"\"",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "legacy age pruning preserves",
+      "exitCode": 1,
+      "restoredSha256": "f499d42078382a2c657da6289936d8a16d8622cb30103b6b078961667ba3e510"
+    },
+    {
+      "name": "root-retirement-cas",
+      "file": "src/delivery-outbox.ts",
+      "old": "if (!retired()) throw Error(\"request-context root retirement changed\");",
+      "new": "// mutant: ignore changed proof",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "changing drained-root proof",
+      "exitCode": 1,
+      "restoredSha256": "7bd4de5277bfddeaa90778ad793acd46f32514ebc0f1ce7d443ac72c07523198"
+    },
+    {
+      "name": "pending-fairness",
+      "file": "src/request-contact-gate.ts",
+      "old": "this.db.prepare(`UPDATE ${TABLE} SET last_checked_seq=(SELECT COALESCE(MAX(last_checked_seq),0)+1 FROM ${TABLE}) WHERE ticket_id=?`).run(row.ticket_id);",
+      "new": "// mutant: no rotation",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "refused pending operation rotates",
+      "exitCode": 1,
+      "restoredSha256": "7b9af7216af9b1133fbf164d0c894451b333e17b02ecd60796ab7d8127e5404d"
+    },
+    {
+      "name": "guest-precedence",
+      "file": "src/request-contact-gate.ts",
+      "old": "context.ingress === \"restricted-room\" && !!root",
+      "new": "(context.ingress === \"restricted-room\" || context.ingress === \"guest\") && !!root",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "current root-source admin passes",
+      "exitCode": 1,
+      "restoredSha256": "7b9af7216af9b1133fbf164d0c894451b333e17b02ecd60796ab7d8127e5404d"
+    },
+    {
+      "name": "wrong-root-release",
+      "file": "src/request-contact-gate.ts",
+      "old": "  private release(root: string): ContactTicket | null {",
+      "new": "  private release(root: string): ContactTicket | null {\n    root=(this.db.prepare(`SELECT root_id FROM ${TABLE} ORDER BY rowid LIMIT 1`).get() as {root_id:string}|undefined)?.root_id??root;",
+      "test": "tests/request-contact-gate-s225.test.ts",
+      "pattern": "holds one exact outside operation",
+      "exitCode": 1
+    }
+  ]
+}
