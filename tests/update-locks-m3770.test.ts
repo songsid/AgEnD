@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { acquireFleetLock, fleetLockHeldByAnother, readFleetLockRecord, releaseFleetLock, setFleetLockHandoff } from "../src/fleet-lock.js";
-import { ackGeneration, advance, claimHandoff, fleetStartGate, finish, revokeHandoff, newAttemptId, openAttempt, planGeneration, readCurrent, updaterState, voidGeneration, type AttemptRecord } from "../src/update-journal.js";
+import { ackGeneration, advance, claimHandoff, defaultJournalIo, fleetStartGate, type JournalIo, finish, revokeHandoff, newAttemptId, openAttempt, planGeneration, readCurrent, updaterState, voidGeneration, type AttemptRecord } from "../src/update-journal.js";
 import { acquireServiceLock, admitServiceCommand, SERVICE_LOCK_TOKEN_ENV } from "../src/service-lock.js";
 import { takeExclusiveLease, takeSharedLease } from "../src/state-lease.js";
 import type { InstallLockDeps } from "../src/install-lock.js";
@@ -126,6 +126,24 @@ describe("M-3770 2.1b: planned generations and the single-use claim (§3.3, §4.
   });
 });
 
+describe("M-3770 2.1b: a revoke that can't judge the claim rewrites nothing (Prism #4499 R2)", () => {
+  it("a malformed claim, an unreadable one, or a probe that throws: claimant-unknown, never an exception", () => {
+    const h = home();
+    planGeneration(h, advance(h, open(h), "barrier"), "trial", NONCE);
+    const updater = { pid: UPDATER, start: START };
+    const claimPath = join(h, ".update-journal", "attempts", ID, `handoff-${NONCE}.claim`);
+    writeFileSync(claimPath, "{not json");
+    expect(revokeHandoff(h, ID, NONCE, updater, LIVE([UPDATER]))).toBe("claimant-unknown");
+    writeFileSync(claimPath, JSON.stringify({ pid: 300 }) + "\n");                                       // no start
+    expect(revokeHandoff(h, ID, NONCE, updater, LIVE([UPDATER]))).toBe("claimant-unknown");
+    writeFileSync(claimPath, JSON.stringify({ pid: 300, start: START }) + "\n");
+    const eacces: JournalIo = { ...defaultJournalIo, read: path => { if (path === claimPath) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return defaultJournalIo.read(path); } };
+    expect(revokeHandoff(h, ID, NONCE, updater, LIVE([UPDATER]), eacces)).toBe("claimant-unknown");
+    expect(revokeHandoff(h, ID, NONCE, updater, { processStart: () => { throw new Error("EIO"); }, exists: () => true })).toBe("claimant-unknown");
+    expect(revokeHandoff(h, ID, NONCE, updater, LIVE([UPDATER]))).toBe("claimant-gone");              // the control: readable, 300 gone
+  });
+});
+
 describe("M-3770 2.1b: every fleet start reads the journal first (§4.3, §7; Prism #4499)", () => {
   it("refuses while an attempt is open, unknown or manual — except the attempt's own planned start while its updater lives", () => {
     const h = home();
@@ -186,6 +204,26 @@ describe("M-3770 2.1b: the service lock (§3.4)", () => {
     const held = acquireServiceLock(h2, ID, deps(UPDATER, [UPDATER]));
     if (!held.ok) throw new Error(held.reason);
     expect(admitServiceCommand(h2, "restart", deps(600, [UPDATER, 600]), { [SERVICE_LOCK_TOKEN_ENV]: held.token }).ok).toBe(false);
+  });
+
+  it("the token's holder must be the updater by its full identity: start ticks and boot id too, when recorded (Prism #4499 R2)", () => {
+    const BOOT = "0b0b0b0b-0000-4000-8000-000000000001", BOOT2 = "0b0b0b0b-0000-4000-8000-000000000002";
+    const ticked = (pid: number, live: number[], ticks: string): InstallLockDeps => ({ ...deps(pid, live), startTicks: p => (live.includes(p) || p === pid ? ticks : null), bootId: () => BOOT });
+    const openWith = (h: string, start: { processStart: string; startTicks?: string; bootId?: string }) => {
+      const r = openAttempt(h, { id: ID, kind: "update", updater: { pid: UPDATER, start }, from: { name: "@songsid/agend", version: "2.4.0", integrity: null }, to: { name: "@songsid/agend", version: "2.4.1", integrity: null } });
+      if (!r.ok) throw new Error(r.reason);
+    };
+    const tokenAdmits = (start: { processStart: string; startTicks?: string; bootId?: string }) => {
+      const h = home();
+      openWith(h, start);
+      const held = acquireServiceLock(h, ID, ticked(UPDATER, [UPDATER], "123"));
+      if (!held.ok) throw new Error(held.reason);
+      return admitServiceCommand(h, "restart", ticked(600, [UPDATER, 600], "123"), { [SERVICE_LOCK_TOKEN_ENV]: held.token }).ok;
+    };
+    expect(tokenAdmits({ ...START, startTicks: "123", bootId: BOOT })).toBe(true);                     // the control: the same process
+    expect(tokenAdmits({ ...START, startTicks: "999", bootId: BOOT })).toBe(false);                    // other ticks
+    expect(tokenAdmits({ ...START, startTicks: "123", bootId: BOOT2 })).toBe(false);                   // another boot
+    expect(tokenAdmits(START)).toBe(false);                                                            // ticks on one side only
   });
 
   it("a home that doesn't exist yet is created (private) and the command takes the lock the normal way — never admitted lockless", () => {

@@ -523,7 +523,8 @@ export function recoveryPlan(read: JournalRead, updater: UpdaterState, ownStart 
 
 /**
  * §4.3 "the fence doesn't depend on fleet.lock alone", §7: every fleet start reads the journal FIRST. It goes on only
- * when the plan is a normal start — no attempt, a closing one (the updater or the next update finishes it), or this
+ * when the plan is a normal start — no attempt, a closing one (a plain start doesn't run `finishClosing`: the updater,
+ * the recovery runner or the next update does, under the home lock — 2.1c), or this
  * start holding the open attempt's planned nonce while its updater lives. Everything else refuses, naming the attempt;
  * resuming an interrupted attempt is the recovery runner's (2.1c), never a plain start's.
  */
@@ -618,11 +619,14 @@ export function revokeHandoff(home: string, attemptId: string, nonce: string, up
   catch { /* a start holds the claim (or it can't be written): judge its holder */ }
   // §4.3 "a claim left by a claimant that died": a claimant proven gone can never rename over fleet.lock, so the
   // updater may go on — voiding that nonce (voidGeneration) and planning a new one. An unknown claimant is never voided.
-  let claim: { pid?: unknown; start?: unknown } | null = null;
-  try { claim = JSON.parse(io.read(path) ?? "null"); } catch { claim = null; }
-  if (!claim || !isPid(claim.pid) || !isStart(claim.start)) return "claimant-unknown";
-  const state = holderState(startOf(claim.pid as number, claim.start as ProcessStartRecord), liveness);
-  return state === "stale" ? "claimant-gone" : state === "live" ? "claimed-live" : "claimant-unknown";
+  // Every failure from here on (an unreadable or malformed claim, a probe that throws) is "claimant-unknown": the
+  // updater rewrites nothing on it (Prism #4499 R2).
+  try {
+    const claim = JSON.parse(io.read(path) ?? "null") as { pid?: unknown; start?: unknown } | null;
+    if (!isObj(claim) || !isPid(claim.pid) || !isStart(claim.start)) return "claimant-unknown";
+    const state = holderState(startOf(claim.pid as number, claim.start as ProcessStartRecord), liveness);
+    return state === "stale" ? "claimant-gone" : state === "live" ? "claimed-live" : "claimant-unknown";
+  } catch { return "claimant-unknown"; }
 }
 
 /** A nonce whose claimant is proven gone with the update's fence still in place: void, never reused (§4.3). */

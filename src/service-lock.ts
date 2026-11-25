@@ -55,14 +55,18 @@ export function admitServiceCommand(home: string, command: string, deps: Install
   return { ok: true, release: taken.release, viaToken: false };
 }
 
-/** The live holder is the open attempt's updater: `attempt:<id>`, `current` open on that id, the same pid and start. */
-function tokenBound(home: string, record: { pid: number; processStart: string; targetSpec: string }): boolean {
+/**
+ * The live holder is the open attempt's updater: `attempt:<id>`, `current` open on that id, and the same process — pid,
+ * lstart, and the start ticks and boot id whenever either side recorded them (both or neither; Prism #4499 R2).
+ */
+function tokenBound(home: string, record: { pid: number; processStart: string; targetSpec: string; startTicks?: string; bootId?: string }): boolean {
   const id = /^attempt:(.+)$/.exec(record.targetSpec)?.[1];
   if (!id) return false;
   const read = readCurrent(home);
   if (read.state !== "open" || read.attempt.id !== id) return false;
   const u = read.attempt.updater;
-  return u.pid === record.pid && sameStartText(u.start.processStart, record.processStart);
+  if (u.pid !== record.pid || !sameStartText(u.start.processStart, record.processStart)) return false;
+  return u.start.startTicks === record.startTicks && u.start.bootId === record.bootId;
 }
 
 function refusal(home: string, command: string, spec: string): string {
