@@ -100,7 +100,7 @@ register("updatecard", {
     c_linked: "這份 AgEnD 是從開發資料夾連結的（{path}），更新會取代這個連結。",
     c_vendored: "這份 AgEnD 位於另一個專案裡（{path}）。",
     c_low_disk: "更新需要 {path} 約 {need} 的可用空間，目前只有 {have}。",
-    c_npm_unreachable: "這台機器連不到更新來源（網路或代理伺服器）。",
+    c_npm_unreachable: "這台機器連不到更新來源（網路或 Proxy 設定）。",
     c_rehearsal: "這裡正在進行演練或測試，更新會等它結束。",
     c_update_running: "已經有一個更新在進行中。",
     c_container: "AgEnD 在容器裡執行，請更新映像檔。",
