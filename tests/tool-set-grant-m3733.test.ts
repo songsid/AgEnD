@@ -1,6 +1,7 @@
 /**
- * M-3733 (#4459 1A): any creator may pass tool_set up to its own profile.
- * full and general are never grantable by a non-General creator.
+ * M-3733 (#4459 1A): any creator may pass tool_set up to its own profile
+ * on create_instance and deploy_template. full and general are never
+ * grantable by a non-General creator. update_instance_config stays General-only.
  *
  * Reverse mutation: removing toolSetGrantRefusal (or the handler/lifecycle
  * calls) lets tool_set full reach handleCreate or the saved config.
@@ -193,7 +194,9 @@ describe("create_instance cap (M-3733)", () => {
   });
 });
 
-describe("update_instance_config cap (M-3733)", () => {
+describe("update_instance_config tool_set stays General-only (M-3733)", () => {
+  const refused = "tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)";
+
   function fleet() {
     return ctxFor({
       coord: { tool_set: "coordinator" },
@@ -203,18 +206,30 @@ describe("update_instance_config cap (M-3733)", () => {
     });
   }
 
-  it("lets a coordinator set a worker to coordinator and refuses full and its own profile", async () => {
+  it("refuses a coordinator raising, lowering or editing the leader, and leaves every profile unchanged", async () => {
     const ctx = fleet();
-    const ok = await call(ctx, "update_instance_config", { name: "dev", config: { tool_set: "coordinator" } }, "coord");
-    expect(ok.error).toBeUndefined();
-    expect(ctx.fleetConfig.instances.dev.tool_set).toBe("coordinator");
-    expect(ctx.saveFleetConfig).toHaveBeenCalledOnce();
-    const over = await call(ctx, "update_instance_config", { name: "dev", config: { tool_set: "full" } }, "coord");
-    expect(over.error).toMatch(/highest profile this agent can set is coordinator/);
-    expect(ctx.fleetConfig.instances.dev.tool_set).toBe("coordinator");
-    const self = await call(ctx, "update_instance_config", { name: "coord", config: { tool_set: "worker" } }, "coord");
+    for (const [name, tool_set] of [["dev", "coordinator"], ["dev", "minimal"], ["admin", "worker"], ["admin", "full"], ["coord", "worker"]] as const) {
+      const out = await call(ctx, "update_instance_config", { name, config: { tool_set } }, "coord");
+      expect(out.error, `${name} ${tool_set}`).toBe(refused);
+    }
+    const worker = await call(ctx, "update_instance_config", { name: "coord", config: { tool_set: "minimal" } }, "dev");
+    expect(worker.error).toBe(refused);
+    expect(ctx.fleetConfig.instances.dev.tool_set).toBe("worker");
+    expect(ctx.fleetConfig.instances.coord.tool_set).toBe("coordinator");
+    expect(ctx.fleetConfig.instances.admin.tool_set).toBeUndefined();
+    expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
+  });
+
+  it("still lets that coordinator change another field, and lets General set full", async () => {
+    const ctx = fleet();
+    const other = await call(ctx, "update_instance_config", { name: "dev", config: { display_name: "Dev" } }, "coord");
+    expect(other.error).toBeUndefined();
+    expect(ctx.fleetConfig.instances.dev.display_name).toBe("Dev");
+    expect((await call(ctx, "update_instance_config", { name: "dev", config: { tool_set: "full" } }, "admin")).error).toBeUndefined();
+    expect(ctx.fleetConfig.instances.dev.tool_set).toBe("full");
+    const self = await call(ctx, "update_instance_config", { name: "admin", config: { tool_set: "worker" } }, "admin");
     expect(self.error).toMatch(/own tool_set.*#804\/#814/);
-    expect(ctx.saveFleetConfig).toHaveBeenCalledOnce();
+    expect(ctx.fleetConfig.instances.admin.tool_set).toBeUndefined();
   });
 
   it("lets General set full and refuses skipPermissions for General and a coordinator", async () => {
@@ -228,13 +243,13 @@ describe("update_instance_config cap (M-3733)", () => {
     expect(ctx.fleetConfig.instances.dev.skipPermissions).toBeUndefined();
   });
 
-  it("names the cap before the Windows refusal, and still refuses an in-cap tool_set on a Windows agent", async () => {
+  it("refuses a non-General tool_set before the Windows check, and still refuses General's tool_set on a Windows agent", async () => {
     const ctx = fleet();
-    const over = await call(ctx, "update_instance_config", { name: "win", config: { tool_set: "full" } }, "coord");
-    expect(over.error).toMatch(/highest profile this agent can set is coordinator/);
-    expect(over.error).not.toMatch(/Windows/);
-    const inside = await call(ctx, "update_instance_config", { name: "win", config: { tool_set: "worker" } }, "coord");
-    expect(inside.error).toMatch(/Windows agent's tool_set/);
+    const coord = await call(ctx, "update_instance_config", { name: "win", config: { tool_set: "worker" } }, "coord");
+    expect(coord.error).toBe(refused);
+    expect(coord.error).not.toMatch(/Windows/);
+    const general = await call(ctx, "update_instance_config", { name: "win", config: { tool_set: "worker" } }, "admin");
+    expect(general.error).toMatch(/Windows agent's tool_set/);
     expect(ctx.fleetConfig.instances.win.tool_set).toBe("worker");
     expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
   });

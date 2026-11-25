@@ -59,7 +59,9 @@ fleet admin. Decision 36525f1b (user 2026-11-09) adds `get_instance_logs`,
 `get_fleet_config`, `validate_config` and `list_deployments`, and lets General
 set another agent’s `tool_set` directly through `update_instance_config` or
 `create_instance`, without confirmation. Any other creator may set `tool_set`
-the same way, and on `deploy_template`, up to its own resolved profile. The
+on `create_instance` and `deploy_template` only, up to its own resolved profile.
+Changing an existing agent's `tool_set` through `update_instance_config` stays
+General-only. The
 order is defined once (`toolSetRank`): `full`, `general`, `coordinator`,
 `worker`, `standard`, `minimal`, highest privilege first. A non-General creator
 cannot grant `full` or `general`; a creator already on one of those is capped
@@ -87,11 +89,12 @@ runs part of the fleet.
   teams and templates, edit fleet defaults and instance config, run kiro
   migration/reconciliation, change others' decisions and web settings
   (`src/tool-permissions.ts:80-93`). Set another agent's `tool_set` to
-  `coordinator` or lower (`worker`, `standard`, `minimal`) on create, update,
-  or deploy, with no confirmation card. The new agent starts on that profile.
+  `coordinator` or lower (`worker`, `standard`, `minimal`) when creating or
+  deploying it, with no confirmation card. The new agent starts on that profile.
 - Can't: exceed the table — anything not listed is refused, with the reason
   naming what the instance runs under. Grant `full` or `general`, grant a
-  profile above its own resolved profile, or change its own `tool_set`.
+  profile above its own resolved profile, change an existing agent's
+  `tool_set` through `update_instance_config`, or change its own `tool_set`.
 - Code: `src/tool-permissions.ts:100-107`.
 - Refs: `docs/design/coordinator-tool-perms.zh-TW.md` (zh-TW only).
 
@@ -544,9 +547,10 @@ right after the agent's Role, with a fixed preface.
 Real code-vs-decision gaps only. Nothing here is papered over.
 
 The previous entry (General's `tool_set` assignment recorded as convention
-only) is closed. `toolSetRank` defines the order, and `create_instance`,
-`update_instance_config` and `deploy_template` enforce the cap. General still
-sets any writable profile except the role-derived `general` profile.
+only) is closed. `toolSetRank` defines the order, and `create_instance` and
+`deploy_template` enforce the cap. `update_instance_config` changing an
+existing agent's `tool_set` stays General-only. General still sets any
+writable profile except the role-derived `general` profile.
 
 [繁體中文](concepts.zh-TW.md)
 

@@ -1507,10 +1507,14 @@ function introducedErrors(before: ValidationResult, after: ValidationResult): Va
 
 const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
   // Check raw fields before Zod strips them. skipPermissions stays refused for
-  // everyone. tool_set is capped at the caller's own profile (never full/general
-  // for a non-General creator). General keeps today's rights.
+  // everyone. Changing an existing agent's tool_set stays General-only (#814).
+  // create_instance and deploy_template keep the creator cap.
   if ((rawArgs as any)?.config?.skipPermissions !== undefined) {
     respond(null, "skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
+    return;
+  }
+  if ((rawArgs as any)?.config?.tool_set !== undefined && !isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? "")) {
+    respond(null, "tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }
   const target = (rawArgs as any)?.name, caller = meta?.instanceName ?? "";
@@ -1518,12 +1522,8 @@ const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
   const selfTarget = target === caller || (instances && typeof target === "string" &&
     Object.hasOwn(instances, target) && Object.hasOwn(instances, caller) && instances[target] === instances[caller]);
   if ((rawArgs as any)?.config?.tool_set !== undefined && selfTarget) {
-    respond(null, "An agent cannot change its own tool_set through a tool; use Settings or fleet.yaml (privilege boundary, #804/#814)");
+    respond(null, "General cannot change its own tool_set through a tool; use Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
-  }
-  if ((rawArgs as any)?.config?.tool_set !== undefined) {
-    const grantError = toolSetGrantError(ctx, caller, (rawArgs as any).config.tool_set, undefined);
-    if (grantError) { respond(null, grantError); return; }
   }
   if ((rawArgs as any)?.config?.tool_set !== undefined && typeof target === "string" &&
       instances && Object.hasOwn(instances, target) && isWindowsInstance(instances[target])) {
