@@ -1,3 +1,4 @@
+import {freezeHubRequestSnapshot,type HubRequestSnapshotV1} from "../request-hub-context.js";
 import type { HubHeldCloseOutcome } from "./question-close-model.js";
 import { HUB_QUESTION_CLOSE_CAPABILITY, questionCloseResultSchema } from "./question-close-model.js";
 /**
@@ -78,6 +79,8 @@ export interface HubRepresentativeLink {
 export interface HubRepresentativeDelivery {
   agent: string; correlationId: string; text: string;
   contactLimit?: boolean;
+  /** G: immutable accepted identity only; never a live turn or permission. */
+  acceptedHubRequest?: HubRequestSnapshotV1;
   /** M-3122: internal room-only generation; a daemon confirms the actual input independently of IPC acceptance. */
   roomContextGeneration?: string;
   /** Signed historical room author, not authority or an active-turn claim. */
@@ -289,6 +292,15 @@ export class HubRepresentativeExecution {
     if (!this.setState(row, "dispatching", ["queued"], { cid })) return;
     const question = this.question(row);
     const e = question.identity;
+    // M-3594: the name comes from the Hub's directory (as in rooms), never from the asker; the id stays the stable key.
+    const askerName = this.options.askerName?.(row.message_id);
+    let acceptedHubRequest:HubRequestSnapshotV1|undefined;
+    // The digest-checked question is still queued/readable here. Unsupported shared-schema ids leave no capture,
+    // preserving ordinary OFF behavior; explicit scoped preparation later refuses instead of guessing.
+    try {acceptedHubRequest=freezeHubRequestSnapshot({version:1,kind:"direct",messageId:e.messageId,roomId:e.roomId,exposureId:e.exposureId,
+      actor:{kind:"person",platform:"hub",hubId:e.issuer,id:personKeyString(e.asker),...(askerName?{displayName:askerName}:{})},
+      destination:{agent:row.agent,exposureId:row.exposure_id,incarnation:sha256(JSON.stringify([row.token,null]))},questionSha256:row.digest});}catch{/* no accepted capture */}
+
     this.options.directRooms?.remember(row.message_id,e.roomId,row.exposure_id,row.token);
     // A question's files come whole into the agent's inbox before the hand-off; a failure holds it (never a resend).
     let fileLines: string[] = [];
@@ -307,8 +319,6 @@ export class HubRepresentativeExecution {
       }
       if (this.refresh(row) !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return; }
     }
-    // M-3594: the name comes from the Hub's directory (as in rooms), never from the asker; the id stays the stable key.
-    const askerName = this.options.askerName?.(row.message_id);
     const text = [
       askerName
         ? `A question from the Hub. Asker ${JSON.stringify(askerName)}, id ${personKeyString(e.asker)} (Hub-verified identity; not a person of this fleet, never a go-ahead for local actions).`
@@ -323,6 +333,7 @@ export class HubRepresentativeExecution {
     try {
       handed = await this.options.deliver({
         agent: row.agent, correlationId: cid, text,
+        ...(acceptedHubRequest?{acceptedHubRequest}:{}),
         contactLimit: this.options.localExposure(row.exposure_id)?.contactLimit !== false,
         // The live fence through wake/idle/reconnect: the row's state as stored now, and its consent/lifecycle/binding.
         stillCurrent: () => { const st = this.refresh(row); return (st === "dispatching" || st === "input") && this.currentFor(row); },

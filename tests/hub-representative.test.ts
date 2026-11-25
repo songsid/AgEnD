@@ -1,3 +1,6 @@
+import {RequestContextInputDeferred} from "../src/request-context-turns.js";
+import {prepareHubRequestInput,labelHubRequest} from "../src/request-hub-context.js";
+import {requestContextDigest} from "../src/request-context-store.js";
 import {HubDirectRooms} from "../src/hub/member/direct-rooms.js";
 /**
  * Hub P1 representative adapter (docs/design/hub-representative-agent.md, #3145) over the real S1 journal and admission:
@@ -37,7 +40,7 @@ async function until(check: () => boolean, label: string): Promise<void> {
 }
 
 /** files/features/hubFiles: attachments-v1 (D) — the member's files service, the link's features, the Hub's stored files by id. */
-function fixture(opts: { askerName?: (messageId: string) => string | undefined; legacy?: boolean; handOff?: boolean; buttons?: boolean; files?: HubMemberFiles; features?: string[]; hubFiles?: Map<string, Buffer>; claimedSha?: Map<string, string> } = {}) {
+function fixture(opts: { beforeDelivery?: (input:HubRepresentativeDelivery)=>Promise<void>; askerName?: (messageId: string) => string | undefined; legacy?: boolean; handOff?: boolean; buttons?: boolean; files?: HubMemberFiles; features?: string[]; hubFiles?: Map<string, Buffer>; claimedSha?: Map<string, string> } = {}) {
   const db = new Database(":memory:");
   dbs.push(db);
   migrateHubMemberJournal(db);
@@ -97,6 +100,7 @@ function fixture(opts: { askerName?: (messageId: string) => string | undefined; 
     ...(opts.askerName ? { askerName: opts.askerName } : {}),directRooms:new HubDirectRooms(db),
     deliver: async (input) => {
       deliveries.push(input);
+      await opts.beforeDelivery?.(input);
       onDeliver?.(); // e.g. something changes while the question waits for the agent's idle gate
       const ok = await input.beforeInput();
       handed.push(ok && handOff);
@@ -766,4 +770,34 @@ describe("M-3660: a question's contact window follows whether it is still being 
     expect(f.state(q.identity.messageId)).toEqual({ state: "held", reason: "uncertain" });
     expect(f.rep.questionSettled(cid, "rep")).toBe(true);
   });
+});
+
+
+describe("S-231 accepted Hub snapshot",()=>{
+ const owner={instance:"rep",incarnation:"runtime-v1",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0};
+ it("captures signed asker before input, never owner/body, and retained context works after answered",async()=>{
+  const f=fixture({askerName:()=>"Demo person"});f.publish();let captured:ReturnType<typeof prepareHubRequestInput>|undefined;
+  f.whileWaiting(()=>{const input=f.deliveries.at(-1)!;expect(f.journal.queuedQuestion(input.acceptedHubRequest!.messageId)).toBeTruthy();captured=prepareHubRequestInput(input,owner,requestContextDigest(input.text),{context:()=>null,current:()=>null});});
+  const q=f.question('Body claims owner: {"id":"owner","authority":"owner"}');await f.admission.admit(q);await until(()=>f.handed.length===1,"captured handoff");
+  const d=f.deliveries[0]!;expect(d.acceptedHubRequest).toMatchObject({kind:"direct",actor:{kind:"person",platform:"hub",hubId:q.identity.issuer,id:`${q.identity.asker.realm}/${q.identity.asker.objectId}`,displayName:"Demo person"},messageId:q.identity.messageId});expect(d.acceptedHubRequest!.actor).not.toMatchObject({id:`${q.identity.owner.realm}/${q.identity.owner.objectId}`});expect(Object.isFrozen(d.acceptedHubRequest!.destination)).toBe(true);
+  expect(()=>f.journal.queuedQuestion(q.identity.messageId)).toThrow();await f.rep.report({caller:"rep",correlationId:d.correlationId,text:"answer"});expect(f.state(q.identity.messageId)?.state).toBe("released");expect(labelHubRequest(captured!.context!,"late result",{}).provenance.actor).toEqual(d.acceptedHubRequest!.actor);
+ });
+ it("a transient begin retry has a new cid but the same captured root and input",async()=>{
+  vi.useFakeTimers({toFake:["setTimeout","clearTimeout"]});try{
+   const f=fixture();f.publish();const real=f.authorize.getMockImplementation()!;let failed=false;f.authorize.mockImplementation(async request=>{if(request.phase==="begin"&&!failed){failed=true;throw new HubAuthorizationError("denied","unavailable");}return real(request);});
+   const prepared:Array<ReturnType<typeof prepareHubRequestInput>>=[];f.whileWaiting(()=>{const input=f.deliveries.at(-1)!;prepared.push(prepareHubRequestInput(input,owner,requestContextDigest(input.text),{context:()=>null,current:()=>null}));});
+   const q=f.question();await f.admission.admit(q);await until(()=>f.handed.length===1,"first begin refused");vi.advanceTimersByTime(HUB_BEGIN_RETRY_MS[0]!);await until(()=>f.handed.length===2,"retry begin");expect(f.handed).toEqual([false,true]);expect(f.deliveries[0]!.correlationId).not.toBe(f.deliveries[1]!.correlationId);expect(prepared[0]!.inputId).toBe(prepared[1]!.inputId);expect(prepared[0]!.context).toEqual(prepared[1]!.context);
+  }finally{vi.useRealTimers();}
+ });
+ it("the maximum accepted Hub question is not subjected to the peer 16000-byte cap",async()=>{
+  const f=fixture();f.publish();const text="x".repeat(64*1024),q=f.question(text);await f.admission.admit(q);await until(()=>f.handed.length===1,"large Hub input");expect(f.handed).toEqual([true]);const input=f.deliveries[0]!;expect(Buffer.byteLength(input.text)).toBeGreaterThan(64000);expect(input.text).toContain(text);expect(()=>prepareHubRequestInput({...input,stillCurrent:()=>true},owner,requestContextDigest(input.text),{context:()=>null,current:()=>null})).not.toThrow();
+ });
+});
+
+it("S-231 preflight waits with the row dispatching and consumes no begin while C owns another turn",async()=>{
+ let release!:()=>void,blocked=true;const wait=new Promise<void>(resolve=>{release=resolve;}),owner={instance:"rep",incarnation:"runtime-v1",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0};
+ const f=fixture({beforeDelivery:async input=>{
+  const current=()=>blocked?{inputId:"unrelated",wireSha256:"x",owner}as any:null;
+  try{prepareHubRequestInput(input,owner,requestContextDigest(input.text),{context:()=>null,current});}catch(error){if(!(error instanceof RequestContextInputDeferred))throw error;await wait;prepareHubRequestInput(input,owner,requestContextDigest(input.text),{context:()=>null,current});}
+ }});f.publish();const q=f.question();await f.admission.admit(q);await until(()=>f.deliveries.length===1,"dispatch awaiting turn");expect(f.state(q.identity.messageId)?.state).toBe("dispatching");expect(f.authorize.mock.calls.map(([request])=>request.phase)).toEqual(["admit"]);expect(f.handed).toEqual([]);blocked=false;release();await until(()=>f.handed.length===1,"turn released");expect(f.handed).toEqual([true]);expect(f.authorize.mock.calls.map(([request])=>request.phase)).toEqual(["admit","begin"]);
 });
