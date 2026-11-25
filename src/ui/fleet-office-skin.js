@@ -48,6 +48,7 @@
 import { t } from "/assets/app-i18n.js";
 import { frameAt, nameHash } from "./fleet-office-model.js";
 import { CHAR_DEPTH, LOGICAL, canvasOf, checkSkinPack, own, packPortraitImages, packSceneImages, poseStrip, stripBox, stripCell, stripFrameAt, stripImages, walkStrip } from "./fleet-office-pack.js";
+import { facing } from "./fleet-office-vehicles.js";
 import { tierColours } from "./fleet-office-levels.js";
 import { assetUrl } from "/assets/asset-url.js";
 
@@ -755,6 +756,20 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       const im = img(pack.foreground);
       if (!im) return;
       ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
+    },
+    /** A pack's vehicle where it is (`at`, fleet-office-vehicles.js vehicleAt): its picture for the way it faces
+     * (`sprites` by heading; else `sprite`, mirrored going left), playing while it moves, its first frame at a stop. */
+    drawVehicle(ctx, v, at, ms, env) {
+      const dir = facing(at.heading), by = v.sprites || {};
+      const st = by[dir] || (dir === "left" && by.right) || v.sprite || by.right || by.left || by.down || by.up;
+      if (!st) return;
+      const mirror = !by[dir] && dir === "left";
+      strip(ctx, st, at.stop === null ? clipMs(env, `v:${v.id}`, st, ms) : 0, at.x, at.y, at.stop === null ? null : 0, mirror);
+    },
+    /** Its front edge (`fronts` for the way it faces; going left, `right`'s mirrored), over the riders. */
+    drawVehicleFront(ctx, v, at, ms, env) {
+      const dir = facing(at.heading), by = v.fronts || {}, st = by[dir] || (dir === "left" && by.right) || null;
+      if (st) strip(ctx, st, 0, at.x, at.y, 0, !by[dir] && dir === "left");
     },
     drawFurniture(ctx, f, active, ms, env) {
       if (f.shape) { drawFurniture(ctx, f, active, ms, env); return; }

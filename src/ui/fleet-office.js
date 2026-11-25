@@ -72,6 +72,7 @@ import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
 import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, pixelSkin, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint, withCharacters } from "./fleet-office-skin.js";
+import { createRiders, facing, seatAt, vehicleAt } from "./fleet-office-vehicles.js";
 import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, routeStaysInArea, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
@@ -442,6 +443,11 @@ export function actLive(a, state, at = Date.now(), seen = null) {
   if (state !== "working") { seen.add(k); return true; }
   return !seen.has(k) && (!a.state || a.state === "working");
 }
+/**
+ * Whether an agent's ride (office_set `ride`) holds now: set and not past its end, the person not asleep. Working, a
+ * new turn or a call do not end it (it is where they choose to be); clearing it, a new office_set or its end do.
+ */
+export const rideLive = (a, state, at = Date.now()) => !!a && !!a.ride && at < a.until && !ASLEEP.has(state);
 /** How far beside the person an agent going to them stands. */
 const ACT_BESIDE = 48;
 /** Where an agent's act sends it at `t`: its point, beside the person it goes to (where they are now), or null. */
@@ -520,7 +526,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   const up = still ? [] : p.flights.frame(ms, p.L);
   // Mail from another office (#2564): flying in at the door, or on the floor until its person picks it up.
   const post = still || !p.mail || !p.zones ? [] : p.mail.frame(ms > 0 ? ms : now(), p.L, p.walkers);
-  let walking = false;
+  let walking = false, carsOn = false;
   if (p.zones) {
     // Furniture under the people; the people (nearest last) with the furniture whose depth is "y" among them, by base
     // y (a tie: the item first, the person in front); furniture over them; things in the air; the pack's foreground
@@ -546,7 +552,10 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const furniture = strollFurniture(p.night ? nightFurniture(sk.pack.furniture) : sk.pack.furniture, (k) => p.walkers.at(k, t));
     if (furniture.some((f) => f.walking)) walking = true;
     const placedSnacks = p.snacks ? p.snacks.placedList() : [];
+    const wall = Date.now(), cars = (sk.pack.vehicles || []).map((v) => ({ v, at: vehicleAt(v, wall) }));
+    carsOn = cars.length > 0;
     const band = [...furniture.filter((f) => f.depth === "y").map((f) => ({ y: f.y, k: 0, f })),
+      ...cars.map((c) => ({ y: c.at.y, k: 0.8, car: c })),
       ...placedSnacks.map((sn) => ({ y: sn.y, k: 0.5, sn })),
       ...people.map((q) => ({ y: q.at.y, k: 1, p: q })),
       ...(p.ghosts ? ghostsOf(sk.pack, people).map((g) => ({ y: g.y, k: 1, g })) : []),
@@ -601,7 +610,8 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     for (const f of furniture) if (f.depth !== "y" && f.depth < CHAR_DEPTH) sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env);
     for (const it of post) if (it.t === 0) sk.drawProp(ctx, it, ms, env);        // a letter on the floor: under the people
     let heldPerson = null;
-    for (const { f, p: q, g, n, sn } of band) {
+    for (const { f, p: q, g, n, sn, car } of band) {
+      if (car) { if (sk.drawVehicle) sk.drawVehicle(ctx, car.v, car.at, ms, env); continue; }
       if (f) { sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env); continue; }
       if (sn) {
         const sdef = p.snacksById && p.snacksById.get(sn.snackId);
@@ -638,6 +648,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
         speakers.push({ look: q.look, ...speakerAt(sk, look, q.at), area: q.d.area });
       }
     }
+    // shortcut: a car's front edge goes over the whole band (its riders, and anyone walking just below it); per-rider
+    // depth if people ever stand right in front of a moving car.
+    for (const c of cars) if (sk.drawVehicleFront) sk.drawVehicleFront(ctx, c.v, c.at, ms, env);
     for (const f of furniture) if (f.depth !== "y" && f.depth >= CHAR_DEPTH) sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env);
     // M-3445 (#4267): the character currently being dragged renders lifted above furniture and other characters in its `dragged` pose.
     if (heldPerson) {
@@ -849,7 +862,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     if (bubbleHits) bubbleHits.push({ name: sp.look.name, reply: true, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
   } };
   if (defer) defer.push(say); else say();
-  return replies.length > 0 || walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting || (!!p.snacks && p.snacks.active(t0)) || !!(p.snackDrop && p.snackDrop.current) || !!(p.hold && p.hold.held());
+  return replies.length > 0 || carsOn || walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting || (!!p.snacks && p.snacks.active(t0)) || !!(p.snackDrop && p.snackDrop.current) || !!(p.hold && p.hold.held());
 }
 /**
  * #2661: an NPC's name tag (a furniture item's label) — with the title a pack pins on it (`levels.fixed` by its id),
@@ -1069,6 +1082,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   fsRef.current = fs;
   const flights = useMemo(() => createFlights(), []);
   const walkers = useMemo(() => createWalkers(), []);
+  const riders = useMemo(() => createRiders(), []);
   const seatsRef = useRef(new Map());                                 // the zones layout's last seats: kept where they can be
   const seatPrefsRef = useRef({}), seatKeyRef = useRef(""), seatDropRef = useRef(null);
   const placedRef = useRef(null);                                    // M-3539: the office and style the walkers were last placed for
@@ -1468,6 +1482,17 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       // An act's walk; not someone in bed for the night (#2568: bedtime wins, as for mail).
       for (const d of desksOf(L)) { const a = actsHere.get(d.node.name), at = !d.night && actLive(a, d.node.state, Date.now(), actSeen.current) ? actTarget(a, L, walkers, t) : null; if (at) to.set(d.node.name, at); }
       for (const [name, at] of mail.targets(L, t)) to.set(name, at);
+      // A pack's vehicles: who wants to ride walks to the platform, boards when it stops there, gets off at a stop.
+      const vehicles = skin.pack.vehicles || [];
+      if (vehicles.length) {
+        const byId = new Map(vehicles.map((v) => [v.id, v])), wall = Date.now(), here = desksOf(L);
+        const wants = new Map(here.map((d) => { const a = actsHere.get(d.node.name); return [d.node.name, !d.night && rideLive(a, d.node.state, wall) ? a.ride : null]; }));
+        const r = riders.step({ wants, vehicles: byId, wall, posOf: (n) => walkers.at(n, t), homeOf: (n) => (here.find((d) => d.node.name === n) || {}).seat || null,
+          sinceOf: (n) => { const a = actsHere.get(n); return a && a.ride && typeof a.since === "number" ? a.since : null; } });
+        for (const [name, at] of r.targets) to.set(name, at);
+        for (const b of r.board) { const v = byId.get(b.vehicle); walkers.ride(b.name, () => seatAt(v, vehicleAt(v, Date.now()), b.seat)); }
+        for (const a of r.alight) walkers.place(a.name, a.at);
+      } else riders.clear();
       for (const [name, at] of snacks.targets(t)) to.set(name, at);
       const held = hold.held();                                     // M-3293: carried: where the pointer is, no walk
       if (held) to.set(held.name, held.at);
@@ -1484,7 +1509,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (still) return undefined;
     const h = setInterval(go, WANDER.TICK);
     return () => clearInterval(h);
-  }, [L, wander, mail, skin, night, actsHere, visitMemo, ownArea]);
+  }, [L, wander, mail, skin, night, actsHere, visitMemo, ownArea, riders]);
   // …and in each tile on a zones style; the traffic within a tile is its own, between tiles the overview's.
   useEffect(() => {
     for (const tl of tiles) if (tl.zones) tl.walkers.sync(new Map(desksOf(tl.L).map((d) => [d.node.name, d.seat])), now(), tl.L, still);

@@ -100,10 +100,11 @@ export function actsOk(list, now) {
   const str = (v) => typeof v === "string" && v.length > 0 && v.length <= 200, num = (v) => typeof v === "number" && Number.isFinite(v);
   return (Array.isArray(list) ? list : []).filter((a) => a && typeof a === "object" && str(a.instance) && str(a.office) && num(a.until)
     && (a.x === undefined || num(a.x)) && (a.y === undefined || num(a.y)) && (a.person === undefined || str(a.person))
-    && (a.say === undefined || (typeof a.say === "string" && a.say.length <= 40)) && (a.pose === undefined || ["idle", "working", "needs", "paused"].includes(a.pose)))
+    && (a.say === undefined || (typeof a.say === "string" && a.say.length <= 40)) && (a.pose === undefined || ["idle", "working", "needs", "paused"].includes(a.pose))
+    && (a.ride === undefined || str(a.ride)))
     .map((a) => ({ instance: a.instance, office: a.office, until: a.until - skew, ...(num(a.since) ? { since: a.since } : {}), ...(str(a.state) ? { state: a.state } : {}),
       ...(num(a.x) && num(a.y) ? { x: a.x, y: a.y } : {}),
-      ...(a.person ? { person: a.person } : {}), ...(a.say ? { say: a.say } : {}), ...(a.pose ? { pose: a.pose } : {}) }));
+      ...(a.person ? { person: a.person } : {}), ...(a.say ? { say: a.say } : {}), ...(a.pose ? { pose: a.pose } : {}), ...(a.ride ? { ride: a.ride } : {}) }));
 }
 export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {}) {
   const st = () => { try { return storage || globalThis.localStorage || null; } catch { return null; } };

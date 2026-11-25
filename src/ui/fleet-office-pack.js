@@ -693,6 +693,63 @@ function snackLabelOf(v, at) {
   return out;
 }
 
+/**
+ * A pack's `vehicles` (a train on a loop of track): each runs round its closed `path` (logical points; the last joins
+ * the first) at `speed` logical units a second, and waits `seconds` at each of its `stops` (a path point's index, with
+ * the `platform` point people board from). `seats`: where riders sit, offsets from the vehicle's anchor as drawn
+ * heading right (`dx` along the car, `dy` across it; fleet-office-vehicles.js seatAt places them for each heading).
+ * `sprite` (its picture heading right; mirrored going left), or `sprites` by heading (`right`, `left`, `up`, `down`),
+ * each a strip; `fronts` the same by heading, drawn over the riders (the car's front edge hiding their lower half). Who
+ * rides is the agents' own choice (office_set `ride`), not the pack's.
+ */
+export const VEHICLE_LIMITS = { vehicles: 4, path: 64, stops: 8, seats: 16, minSpeed: 5, maxSpeed: 600, defaultSpeed: 80, maxSeconds: 600, defaultSeconds: 8, offset: 2000 };
+const HEADINGS = ["right", "left", "up", "down"];
+function vehiclesOf(v, scale) {
+  if (v === undefined) return [];
+  const seen = new Set();
+  return list(v, VEHICLE_LIMITS.vehicles, "vehicles").map((x, i) => {
+    const at = `vehicles[${i}]`;
+    obj(x, at); keys(x, ["id", "label", "sprite", "sprites", "fronts", "path", "speed", "stops", "seats"], at);
+    if (!nameOk(x.id) || seen.has(x.id)) throw new Refused(`${at}.id`, "a new name of letters, digits, _ or - (not an inherited one)");
+    seen.add(x.id);
+    if (x.label !== undefined && (typeof x.label !== "string" || !x.label.trim() || [...x.label].length > LIMIT.line || /[\u0000-\u001f\u007f]/.test(x.label))) throw new Refused(`${at}.label`, `1–${LIMIT.line} characters`);
+    if (x.sprite === undefined && x.sprites === undefined) throw new Refused(at, "a sprite, or sprites by heading");
+    let sprites = null;
+    if (x.sprites !== undefined) {
+      obj(x.sprites, `${at}.sprites`); keys(x.sprites, HEADINGS, `${at}.sprites`);
+      sprites = {};
+      for (const h of HEADINGS) if (x.sprites[h] !== undefined) sprites[h] = checkStrip(x.sprites[h], `${at}.sprites.${h}`, scale);
+      if (!Object.keys(sprites).length) throw new Refused(`${at}.sprites`, "at least one heading");
+    }
+    let fronts = null;
+    if (x.fronts !== undefined) {
+      obj(x.fronts, `${at}.fronts`); keys(x.fronts, HEADINGS, `${at}.fronts`);
+      fronts = {};
+      for (const h of HEADINGS) if (x.fronts[h] !== undefined) fronts[h] = checkStrip(x.fronts[h], `${at}.fronts.${h}`, scale);
+    }
+    const path = list(x.path, VEHICLE_LIMITS.path, `${at}.path`).map((p, j) => point(p, `${at}.path[${j}]`));
+    if (path.length < 3) throw new Refused(`${at}.path`, "at least 3 points (a loop)");
+    const speed = x.speed === undefined ? VEHICLE_LIMITS.defaultSpeed : num(x.speed, VEHICLE_LIMITS.minSpeed, VEHICLE_LIMITS.maxSpeed, `${at}.speed`);
+    const taken = new Set();
+    const stops = list(x.stops ?? [], VEHICLE_LIMITS.stops, `${at}.stops`).map((s, j) => {
+      const here = `${at}.stops[${j}]`;
+      obj(s, here); keys(s, ["at", "seconds", "platform"], here);
+      const k = int(s.at, 0, path.length - 1, `${here}.at`);
+      if (taken.has(k)) throw new Refused(`${here}.at`, "a path point no other stop has");
+      taken.add(k);
+      return { at: k, seconds: s.seconds === undefined ? VEHICLE_LIMITS.defaultSeconds : num(s.seconds, 1, VEHICLE_LIMITS.maxSeconds, `${here}.seconds`), platform: point(s.platform, `${here}.platform`) };
+    });
+    const seats = list(x.seats ?? [], VEHICLE_LIMITS.seats, `${at}.seats`).map((s, j) => {
+      const here = `${at}.seats[${j}]`;
+      obj(s, here); keys(s, ["dx", "dy"], here);
+      return { dx: num(s.dx ?? 0, -VEHICLE_LIMITS.offset, VEHICLE_LIMITS.offset, `${here}.dx`), dy: num(s.dy ?? 0, -VEHICLE_LIMITS.offset, VEHICLE_LIMITS.offset, `${here}.dy`) };
+    });
+    if (seats.length && !stops.length) throw new Refused(`${at}.stops`, "at least one stop, for its seats to be boarded");
+    return { id: x.id, ...(x.label !== undefined ? { label: x.label.trim() } : {}), sprite: x.sprite === undefined ? null : checkStrip(x.sprite, `${at}.sprite`, scale),
+      ...(sprites ? { sprites } : {}), ...(fronts && Object.keys(fronts).length ? { fronts } : {}), path, speed, stops, seats };
+  });
+}
+
 /** M-3432 (#4255): a pack's optional `snacks` list — 1–12 snack items with sprites, optional eat overlay, and attraction radius. */
 function snacksOf(v, scale) {
   if (v === undefined) return [];
@@ -742,7 +799,7 @@ export function checkLevels(v) {
 export function checkSkinPack(x, { kept = false } = {}) {
   try {
     obj(x, "pack");
-    keys(x, ["format", "id", "scale", "canvas", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "bubblesByInstance", "room", "desk", "levels", "portraits", "dialogBox", "idleVisits", "snacks", "card"], "pack");
+    keys(x, ["format", "id", "scale", "canvas", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "bubblesByInstance", "room", "desk", "levels", "portraits", "dialogBox", "idleVisits", "snacks", "card", "vehicles"], "pack");
     if (x.format !== 1) throw new Refused("format", "1");
     if (typeof x.id !== "string" || !ID.test(x.id)) throw new Refused("id", "1–40 letters, digits, _ or -");
     if (BUILT_IN.has(x.id) || (!kept && RESERVED.has(x.id))) throw new Refused("id", "a built-in skin's id");
@@ -850,6 +907,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
     const levels = levelsOf(x.levels);
     const portraits = portraitsOf(x.portraits, fids), dialogBox = dialogBoxOf(x.dialogBox), card = cardOf(x.card);
     const snacks = snacksOf(x.snacks, scale);
+    const vehicles = vehiclesOf(x.vehicles, scale);
     const room = x.room === undefined ? {} : obj(x.room, "room"), desk = x.desk === undefined ? {} : obj(x.desk, "desk");
     keys(room, ["floor", "wall"], "room"); keys(desk, ["back", "front", "lit"], "desk");
     const opt = (v, at) => (v === undefined ? undefined : src(v, at));
@@ -863,7 +921,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       room: { floor: opt(room.floor, "room.floor"), wall: opt(room.wall, "room.wall") }, desk: { back: opt(desk.back, "desk.back"), front: opt(desk.front, "desk.front"), lit: opt(desk.lit, "desk.lit") },
       ...(levels ? { levels } : {}), ...(idleVisits.length ? { idleVisits } : {}),
       ...(portraits ? { portraits } : {}), ...(dialogBox ? { dialogBox } : {}),
-      ...(snacks.length ? { snacks } : {}), ...(card ? { card } : {}),
+      ...(snacks.length ? { snacks } : {}), ...(card ? { card } : {}), ...(vehicles.length ? { vehicles } : {}),
     } };
   } catch (err) {
     if (err instanceof Refused) return { ok: false, error: err.message };
@@ -907,6 +965,11 @@ export function packStrips(pack) {
   for (const sn of pack.snacks || []) {
     if (sn.sprite) out.push({ at: `snacks.${sn.id}.sprite`, strip: sn.sprite });
     if (sn.eat) out.push({ at: `snacks.${sn.id}.eat`, strip: sn.eat });
+  }
+  for (const v of pack.vehicles || []) {
+    if (v.sprite) out.push({ at: `vehicles.${v.id}.sprite`, strip: v.sprite });
+    for (const [h, st] of Object.entries(v.sprites || {})) out.push({ at: `vehicles.${v.id}.sprites.${h}`, strip: st });
+    for (const [h, st] of Object.entries(v.fronts || {})) out.push({ at: `vehicles.${v.id}.fronts.${h}`, strip: st });
   }
   return out;
 }
