@@ -1,5 +1,5 @@
 {
-  "sourceHead": "be46f7e0de73dfafeb3e809049eb5d09af59d473",
+  "sourceHead": "67b884240820d6b46b2e05ecdd49e1ae3ed85efa",
   "dirty": [],
   "checks": [
     {
@@ -31,6 +31,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-en 3: no filled button (#4487 UX look)",
+      "ok": true
+    },
+    {
       "name": "desk-light-en 3: Cancel → offered again",
       "ok": true
     },
@@ -39,7 +43,11 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 4: the line names two, then +3; Update now / Pick a time / Cancel",
+      "name": "desk-light-en 4: the line names two, then 3 more; Update now / Pick a time / Cancel",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: Update now is not the filled button (#4487 UX look)",
       "ok": true
     },
     {
@@ -51,7 +59,15 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 5: How to update holds the command",
+      "name": "desk-light-en 5: How to update holds the command, as code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: How to update at body size",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the command on one line",
       "ok": true
     },
     {
@@ -67,7 +83,15 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 6: the linger line without jargon",
+      "name": "desk-light-en 6: the linger line without jargon, with the command to fix it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 6: admin-only: Update when idle and Not now, no Pick a time (the server takes no schedule here; #4487 review P2)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 6: the command on one line",
       "ok": true
     },
     {
@@ -76,6 +100,10 @@
     },
     {
       "name": "desk-light-en 7: and not on the banner too",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 7: no \"nothing needs you\" above it; counted (#4487 review P2)",
       "ok": true
     },
     {
@@ -103,6 +131,14 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW 1: 「新版起不來時」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: 「嘗試退回」 stays on one line",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 2b: Another time in its frame: a day and a 24-hour time (no native time input)",
       "ok": true
     },
@@ -115,6 +151,18 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW 3: no filled button (#4487 UX look)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: 「排定在」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: 「閒置後更新到」 stays on one line",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 3: Cancel → offered again",
       "ok": true
     },
@@ -123,7 +171,11 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 4: the line names two, then +3; Update now / Pick a time / Cancel",
+      "name": "phone-dark-zh-TW 4: the line names two, then 3 more; Update now / Pick a time / Cancel",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: Update now is not the filled button (#4487 UX look)",
       "ok": true
     },
     {
@@ -135,7 +187,15 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 5: How to update holds the command",
+      "name": "phone-dark-zh-TW 5: How to update holds the command, as code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: How to update at body size",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the command on one line",
       "ok": true
     },
     {
@@ -155,7 +215,15 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 6: the linger line without jargon",
+      "name": "phone-dark-zh-TW 6: the linger line without jargon, with the command to fix it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 6: admin-only: Update when idle and Not now, no Pick a time (the server takes no schedule here; #4487 review P2)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 6: the command on one line",
       "ok": true
     },
     {
@@ -164,6 +232,10 @@
     },
     {
       "name": "phone-dark-zh-TW 7: and not on the banner too",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 7: no \"nothing needs you\" above it; counted (#4487 review P2)",
       "ok": true
     },
     {
@@ -184,6 +256,14 @@
     },
     {
       "name": "desk-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: 「新版起不來時」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: 「嘗試退回」 stays on one line",
       "ok": true
     },
     {
@@ -222,93 +302,93 @@
   "pictures": [
     {
       "path": "s237-desk-light-en-1-offered.png",
-      "sha256": "2ef499282b43404e53dd3377aaeee23aaad82118532469e4caeb406ef1089750"
+      "sha256": "f93ba350a84999f89ad979104e28ec1827c75627e0dac6a356754b31a35b3006"
     },
     {
       "path": "s237-desk-light-en-2-pick.png",
-      "sha256": "112a0756ddd2ddbc7cd1d4ce0cc6999a07296aa511f6007323fee024e7866621"
+      "sha256": "ea0e486c220264468d905c76109676b3f040f8d418a92d29b6f06bbf033034e2"
     },
     {
       "path": "s237-desk-light-en-2b-pick-other.png",
-      "sha256": "9d9496edc5a1c60dbc597d3b932fa06861aad7b37402ae1ecfa79facff125d73"
+      "sha256": "856728bf3d2eac263e12304531d568e4eafbd9d2bb6503282cfdbce7bddf6006"
     },
     {
       "path": "s237-desk-light-en-3-scheduled.png",
-      "sha256": "3449009b310f8655f7290eba3f73a411100fada7ec7223f0ebdcfe02ef92fc5a"
+      "sha256": "c1e1e9bca89f96c2df128031ff22e5f029e5c776f1e921a0fd1ca60dff348367"
     },
     {
       "path": "s237-desk-light-en-4-waiting.png",
-      "sha256": "7b05416a645ac230938c80fe6339d661e639ff864df0aeec31d186eff6db4ead"
+      "sha256": "9c7b72a770821ac761b3f7927688f3f298dc7cacb2b4d69e2a682eef7fbefe6a"
     },
     {
       "path": "s237-desk-light-en-5-press-only.png",
-      "sha256": "5e08461fc70f2b47f95c7f6318dcc7db231c66d101caccd424f4c47dca135e82"
+      "sha256": "d8181992950109dc5f1b82a058cf0e2549e8a3a31738da590ec5066d553729ef"
     },
     {
       "path": "s237-desk-light-en-5b-how-to.png",
-      "sha256": "b725c1c405a991b6f093e3a903cfa7c83fa19d06fc6436930c062311c85a55b2"
+      "sha256": "2bbf6b602f6ea93e59b52d9a39256cde2c47766d3ffb5ce2782c6fcc6bf16f91"
     },
     {
       "path": "s237-desk-light-en-6-settings.png",
-      "sha256": "4efbba0be700ad30e5ab99ea8a5223c76d284b86aa75a812506f78905dbbf8ff"
+      "sha256": "9e2e5a337094fef2f672d3199b433acbc308b546598a1efb08bd11b474bd9022"
     },
     {
       "path": "s237-desk-light-en-6b-advanced.png",
-      "sha256": "220808ce977825298ea44323f490d2c7f34ffb3b44bf4430a78ce6d19cbcd8f2"
+      "sha256": "65bd146af30cca846325b6ad88ba15ff70713a9057fc37a1482463a11fe75f8c"
     },
     {
       "path": "s237-desk-light-en-7-needs.png",
-      "sha256": "b637a011378c44264c1f9775096be83528cbb02bf0327553536153e6d61f5832"
+      "sha256": "618e4a89c7bd074ce60784c8b0a7fdb75af602f95c8b049131bd655b4d274995"
     },
     {
       "path": "s237-phone-dark-zh-TW-1-offered.png",
-      "sha256": "94697ecb04862b8c8b3a0b4d62bd02deb632a663c6f4baf1cbacb8a5c8df984c"
+      "sha256": "9f0823b50abfb0b1f5e16a4d97929c539f04692940226e82fad2e71470435b03"
     },
     {
       "path": "s237-phone-dark-zh-TW-2-pick.png",
-      "sha256": "be13db36399dadea35e8d95b1269d7b78226ea1f1ed9b60576a93e86e668e9fc"
+      "sha256": "ffe52aaf2106623d1694be36c26a35877584607905ba3875e2400ef5ef03d01c"
     },
     {
       "path": "s237-phone-dark-zh-TW-2b-pick-other.png",
-      "sha256": "7331cd46e3a0be6dafb43fd229162529e370747e8f94ecc47cb5c5e198f0a116"
+      "sha256": "459dd7bf2e0e0432da56e766893cf6a3e6bd6b56d54646387b5926dca60dc710"
     },
     {
       "path": "s237-phone-dark-zh-TW-3-scheduled.png",
-      "sha256": "59f7fa1c45b1cd4e75fe788e612256c4556d6fa80903974bc9df409b00200351"
+      "sha256": "0c7a61562b114f58a527f41178bbcf365d6a4492803f100a864da3ec81496cb2"
     },
     {
       "path": "s237-phone-dark-zh-TW-4-waiting.png",
-      "sha256": "61a74d9d69f2a513a5414124fa6adf5dc83b70cd5cd279dd500b21786c0bf414"
+      "sha256": "ceb50b3d517e9a8e10fd754ad50b1683b25c458972b099ee57ae03ed5f6dab51"
     },
     {
       "path": "s237-phone-dark-zh-TW-5-press-only.png",
-      "sha256": "9c0deaec60be968501540493fe58aa1ca35fde1e1b226021615fa1b91041ac37"
+      "sha256": "e48b029925ae7de9334061374094b08c8d755d97efdd85d4689d232ab5b67a51"
     },
     {
       "path": "s237-phone-dark-zh-TW-5b-how-to.png",
-      "sha256": "70e3135082b5d2dc598c97a3193842257a5dbc6b647577d039401c6dd0844510"
+      "sha256": "f768a8b77caf7c7cad0b3e532db3d2b07dd1ec62f6f81972c1bdcfef642decab"
     },
     {
       "path": "s237-phone-dark-zh-TW-6-settings.png",
-      "sha256": "b988131265af1d233019b1c3c29a318c6e6156bec1aa789d49c67736470c53ea"
+      "sha256": "7cf3adc67503a09bd656a540c6fb0799ea9a5de5958af6e13c9b011c6387e1b5"
     },
     {
       "path": "s237-phone-dark-zh-TW-6b-advanced.png",
-      "sha256": "964fa5b61fe737fc725d757e25a073aa3ffbb001939c0ab6ca83df8bbd73bc31"
+      "sha256": "ddd1e4a0a1859874c45d3effa1c1ded37465602f434db35d1e998f6c74c5e04c"
     },
     {
       "path": "s237-phone-dark-zh-TW-7-needs.png",
-      "sha256": "04d517121c9c521629c3c9aa7ceebe43d0ae8be7927c44a62357373e5cfbb155"
+      "sha256": "dc3d5d8c1825c4548d3a9085bc4fbaa8421ce294b757905c675cff60d3d19e74"
     },
     {
       "path": "s237-desk-dark-zh-TW-1-offered.png",
-      "sha256": "ec287c3f7777c34c33cdacf7ac7e53cedd437305725086cd1585887a8698150a"
+      "sha256": "fb6ec18fb9cc86b7f1e21f37c81c46f6dc5bf26380eecff12213b9e46f5d9025"
     },
     {
       "path": "s237-phone-light-en-1-offered.png",
-      "sha256": "bcdfe50498864c00eb881ed08c9ed9f34d66385214955ec7caed8258a3879bb8"
+      "sha256": "11ebfb72902fbb13f14f1803089f12a2b3c21ceca4bdc01b8ef3d4d16a1af0e2"
     }
   ],
   "seen": {},
-  "summary": "54/54"
+  "summary": "74/74"
 }
