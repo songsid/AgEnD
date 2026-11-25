@@ -4,7 +4,7 @@
 Source and test type checking is clean. The new gate's 28 controls use actual
 SQLite/outbox stores and synthetic people, with no live Fleet or provider call.
 [verification.json](verification.json) records the exact source revision, hashes
-and complete command. The initial tests failed before the dormant factory existed.
+and complete command. Source checksums use separate path/digest fields. Two historical generic-key matches were independently verified public-source hashes and are pinned only by exact commit/path/rule/line fingerprints. The initial tests failed before the dormant factory existed.
 
 All 13 guard reversals failed and were restored. [mutations.json](mutations.json)
 records exact edits and focused patterns: both in-store scope fences, full image

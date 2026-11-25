@@ -122,14 +122,32 @@
     ],
     "exitCode": 0
   },
-  "sourceAndTestSha256": {
-    "src/contact-auth-store.ts": "f499d42078382a2c657da6289936d8a16d8622cb30103b6b078961667ba3e510",
-    "src/contact-auth-types.ts": "af048340e58c6de4179c07304b5850947a41f914898368714afcdc1502aa2fd9",
-    "src/delivery-outbox.ts": "7bd4de5277bfddeaa90778ad793acd46f32514ebc0f1ce7d443ac72c07523198",
-    "src/request-contact-gate.ts": "7b9af7216af9b1133fbf164d0c894451b333e17b02ecd60796ab7d8127e5404d",
-    "src/request-context-store.ts": "d6eb5307a5008886e41e3c12a2a8ceffe1b8bfae85a387675911bc2c67c79a06",
-    "tests/request-contact-gate-s225.test.ts": "42dcd7800d25904a9e3af46cc2c70bcc5340af2250701357d4ff383328b9039d"
-  },
+  "sourceAndTestSha256": [
+    {
+      "path": "src/contact-auth-store.ts",
+      "sha256": "f499d42078382a2c657da6289936d8a16d8622cb30103b6b078961667ba3e510"
+    },
+    {
+      "path": "src/contact-auth-types.ts",
+      "sha256": "af048340e58c6de4179c07304b5850947a41f914898368714afcdc1502aa2fd9"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "7bd4de5277bfddeaa90778ad793acd46f32514ebc0f1ce7d443ac72c07523198"
+    },
+    {
+      "path": "src/request-contact-gate.ts",
+      "sha256": "7b9af7216af9b1133fbf164d0c894451b333e17b02ecd60796ab7d8127e5404d"
+    },
+    {
+      "path": "src/request-context-store.ts",
+      "sha256": "d6eb5307a5008886e41e3c12a2a8ceffe1b8bfae85a387675911bc2c67c79a06"
+    },
+    {
+      "path": "tests/request-contact-gate-s225.test.ts",
+      "sha256": "42dcd7800d25904a9e3af46cc2c70bcc5340af2250701357d4ff383328b9039d"
+    }
+  ],
   "baseRegression": {
     "missingFactory": true,
     "newTestsBeforeImplementationExitCode": 1
