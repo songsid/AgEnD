@@ -367,11 +367,6 @@ export interface RemoteCardOption {
   checked?: boolean;
 }
 
-/**
- * #2675: a question a CLI shows in place of its composer (kiro V3's agent Question card), read from the pane so that a
- * person can answer it from the chat. `identity` is what is being asked — the title, the question and the rows' titles —
- * never the cursor, a tick or a typed answer, so moving through the card does not make it another card.
- */
 /** M-3757: an option of Claude's usage-credits prompt, by what it does. */
 export type RemoteCardRole = "switch" | "credits" | "not-now" | "keep" | "admin" | "upgrade";
 /** M-3757: a card the dashboard shows in its compact form (a one-line title and the options by role, the CLI's words folded). */
@@ -381,6 +376,11 @@ export interface RemoteCardView {
   raw: string;
 }
 
+/**
+ * #2675: a question a CLI shows in place of its composer (kiro V3's agent Question card), read from the pane so that a
+ * person can answer it from the chat. `identity` is what is being asked — the title, the question and the rows' titles —
+ * never the cursor, a tick or a typed answer, so moving through the card does not make it another card.
+ */
 export interface RemoteQuestionCard {
   kind: "question";
   identity: string;
