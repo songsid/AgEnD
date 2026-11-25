@@ -45,7 +45,8 @@ const mount = async (preflight: unknown, fix?: (r: Req) => { status?: number; bo
   await p.mount(h("div", {}, h(UpdateSection, {}), h(Toasts, {}))); await settle(10);
 };
 const fixes = () => reqs.filter(r => r.url === "/ui/update/fixes");
-const shown = () => [...p.root.querySelectorAll(".toasts .toast")].map((e: any) => [e.textContent, e.classList.contains("ok")]);
+// [text, ok, shown in full (toast-detail: a phone's toast is otherwise one cut line)]
+const shown = () => [...p.root.querySelectorAll(".toasts .toast")].map((e: any) => [e.textContent, e.classList.contains("ok"), e.classList.contains("toast-detail")]);
 
 describe("M-3770 1.6: the fix buttons", () => {
   it("lingering off: Fix it for me → one POST with a key; the fresh pre-flight replaces the page's and the line goes", async () => {
@@ -61,7 +62,7 @@ describe("M-3770 1.6: the fix buttons", () => {
     expect(machine()?.textContent).toContain("AgEnD can update itself here.");
     expect(machine()?.textContent).not.toContain("signs out,");
     expect(fixButton()).toBeUndefined();
-    expect(shown().slice(before)).toEqual([["Done: AgEnD keeps running after example signs out.", true]]);
+    expect(shown().slice(before)).toEqual([["Done: AgEnD keeps running after example signs out.", true, true]]);
   });
 
   it("a fix that doesn't take: says so, keeps the line and its command; already fixed: says so", async () => {
@@ -69,7 +70,7 @@ describe("M-3770 1.6: the fix buttons", () => {
     const before = shown().length;
     fixButton().click();
     await vi.waitFor(() => expect(fixes().length).toBe(1)); await settle(10);
-    expect(shown().slice(before)).toEqual([["AgEnD couldn't fix it by itself. Run the command above in a terminal on that computer.", false]]);
+    expect(shown().slice(before)).toEqual([["AgEnD couldn't fix it by itself. Run the command above in a terminal on that computer.", false, true]]);
     expect([...machine()!.querySelectorAll(".uc-cmd")].map((e: any) => e.textContent)).toEqual(["sudo loginctl enable-linger example"]);
     expect(fixButton()?.disabled).toBe(false);
     await p.unmount(); reqs = [];
@@ -77,7 +78,7 @@ describe("M-3770 1.6: the fix buttons", () => {
     const before2 = shown().length;
     fixButton().click();
     await vi.waitFor(() => expect(fixes().length).toBe(1)); await settle(10);
-    expect(shown().slice(before2)).toEqual([["That's already fixed.", true]]);
+    expect(shown().slice(before2)).toEqual([["That's already fixed.", true, false]]);
     expect(fixButton()).toBeUndefined();
   });
 

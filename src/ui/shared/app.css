@@ -2282,8 +2282,12 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .uc-machine .uc-mark { font-weight: var(--fw-semibold); margin: 0 2px; }
 .uc-self .uc-mark { color: var(--ok); } .uc-admin-only .uc-mark { color: var(--warn); } .uc-stop .uc-mark { color: var(--danger); }
 .uc-checks { margin: var(--s-1) 0 0; padding-left: var(--s-4); color: var(--text-2); }
-.uc-checks .uc-fix { margin: var(--s-1) 0 var(--s-2); }   /* M-3770 1.6: a fix button under its check */
+/* M-3770 1.6: a check's words break only at spaces and punctuation, as the banner's (no 「回 / 來」); its fix button
+   under it; How to fix's steps indented under their summary. */
+.uc-checks li { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
+.uc-checks .uc-fix { margin: var(--s-1) 0 var(--s-2); }
 .uc-checks .uc-how { font-size: inherit; }
+.uc-checks .uc-how > p { padding-left: var(--s-3); border-left: 2px solid var(--border); }
 .uc-controls { display: flex; flex-direction: column; gap: var(--s-3); }
 .uc-pause { border: 0; padding: 0; margin: 0; min-width: 0; }
 .uc-pause legend { font-weight: var(--fw-semibold); font-size: var(--fs-sm); padding: 0; }

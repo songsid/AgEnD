@@ -152,9 +152,10 @@ export async function fixCheck(fix, check, { refresh, setInfo, getInfo }) {
   const info = getInfo();
   if (out && out.preflight && info) setInfo({ ...info, preflight: out.preflight });
   const user = check && check.detail && check.detail.user ? String(check.detail.user) : "";
-  if (res && res.ok) toast(tc("fixedLinger", user));
+  // Shown in full (a phone's toast is otherwise one line, cut): it names the user, and the failure says what to do.
+  if (res && res.ok) toast(tc("fixedLinger", user), true, { detail: true });
   else if (res && res.status === 409 && out && out.error === "not_needed") toast(tc("fixNotNeeded"));
-  else if (res && res.status === 422) toast(tc("fixFailed"), false);
+  else if (res && res.status === 422) toast(tc("fixFailed"), false, { detail: true });
   else { toast(tc("failedAnswer", (out && out.error) || (res ? String(res.status) : "network")), false); await refresh(); }
   return { ok: !!(res && res.ok) };
 }
