@@ -23,7 +23,7 @@ import { agentConflict, draftQuickstart, draftWebOnly, newConnectionConflict, pl
 import type { FleetConfig } from "./types.js";
 import { channelWithDefaults } from "./config.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
-import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, guestsPreconditionFailure, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
+import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, guestsConversionFailure, guestsPreconditionFailure, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
 import { validateFleetConfig, validateClassicBotConfig } from "./config-validator.js";
 import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
@@ -63,6 +63,8 @@ export interface SettingsEffectContext {
   hubExposure?(input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
   /** S3c PR B: a Hub pairing step's summary (connect, confirm the fingerprint, disconnect). Throws on a refused input. */
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
+  /** M-3734: each guest's derived agents now (#1920's access while no grants are saved), for Start from today's guests. */
+  guestDerivedScopes?(): Record<string, string[]>;
 }
 /** The dashboard's host CLI installs (web-host-install.ts): the change this gate holds is "install <CLI>" — only its id is ever in the request. */
 export const HOST_CLI_PATHS: ReadonlySet<string> = new Set(["/ui/host-install", "/ui/host-update", "/ui/host-native-switch", "/ui/host-npm-remove"]);
@@ -388,7 +390,8 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     }
     if (parsed.guests) {
       // M-3734: a grant changed since the page read it is refused here, before any confirmation is asked for.
-      if (guestsPreconditionFailure(cfg.web?.guests, parsed.guests)) throw new SettingsConfirmationError(409, "guest_grant_changed");
+      if (guestsPreconditionFailure(cfg.web?.guests, parsed.guests)
+        || guestsConversionFailure(parsed.guests, parsed.guests.if_grants === "unset" ? context.guestDerivedScopes?.() : undefined)) throw new SettingsConfirmationError(409, "guest_grant_changed");
       const applied = applyGuestsPatch(cfg.web?.guests, parsed.guests);
       if (applied.next) after.fleet.web.guests = applied.next; else delete after.fleet.web.guests;
     }

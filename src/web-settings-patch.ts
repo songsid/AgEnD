@@ -238,6 +238,23 @@ export function guestsPreconditionFailure(current: WebGuestsConfig | undefined, 
   return null;
 }
 
+/**
+ * M-3734 (Prism #4461 R1): "Start from today's guests" (`if_grants: "unset"` with `grants`) must be today's derived access
+ * exactly — each guest with any agent now gets a grant of exactly those agents, and no one else gets one. Checked against
+ * the scopes the fleet computes now (`scopes`: each account's derived agents; undefined: not known here, refused), when
+ * the save is admitted and again as it applies, so access narrowed since the page read it is never put back.
+ */
+export function guestsConversionFailure(patch: GuestsPatch, scopes: Record<string, string[]> | undefined): { account?: string } | null {
+  if (patch.if_grants !== "unset" || !patch.grants) return null;
+  if (!scopes) return {};
+  const now = new Map(Object.entries(scopes).filter(([, list]) => Array.isArray(list) && list.length > 0));
+  const asked = Object.entries(patch.grants).filter(([, grant]) => grant && grant.instances.length > 0);
+  if (asked.length !== now.size) return { account: [...now.keys()].find((k) => !asked.some(([a]) => a === k)) ?? asked.find(([a]) => !now.has(a))?.[0] };
+  const same = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((n, i) => n === [...b].sort()[i]);
+  for (const [account, grant] of asked) if (!now.has(account) || !same(grant!.instances, now.get(account)!)) return { account };
+  return null;
+}
+
 /** `web.guests` after a patch (a copy; null removes; an emptied map leaves; nothing left: undefined), and the file edits. */
 export function applyGuestsPatch(current: WebGuestsConfig | undefined, patch: GuestsPatch):
   { next: WebGuestsConfig | undefined; changes: Array<{ path: string[]; value: unknown; remove?: true }> } {

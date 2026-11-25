@@ -8,7 +8,8 @@
 //   grant changed since — checked as it is admitted and again as it applies after a confirmation — so a change made
 //   meanwhile in Settings → Guests is never written over, and Remove's question is about exactly what is written.
 //   While the fleet still uses #1920's derived access (no grants saved), the list is read-only, and "Start from today's
-//   guests" saves each guest's current reach as a grant (Settings → Guests' own button, one write here, `if_grants: "unset"`).
+//   guests" saves each guest's current reach as a grant (Settings → Guests' own button, one write here, `if_grants: "unset"`):
+//   the server takes it only while it is exactly each guest's derived access then (Prism #4461 R1) — never access narrowed since.
 // - Hub: who may ask is kept only on the Hub (its grants: people or AD groups, each with an expiry); the Fleet never reads
 //   or writes it. This says whether the agent is shared and links to the Hub page that chooses who may ask
 //   (`?agent=<exposureId>&grant=1`, as Settings → Hub does) — on the Hub's own address, so only where the Hub is reachable.
@@ -110,7 +111,7 @@ function GuestsCard({ name, shown }) {
       if (!live.current) return;
       if (r.ok) { setMsg(null); toast(wc("saved")); }
       else if (r.ambiguous) setMsg({ error: wc("unknown") });
-      else if (r.status === 409 && r.body && (r.body.key === "guest_grant_changed" || r.body.error === "guest_grant_changed")) setMsg({ error: wc("changed") });
+      else if (r.status === 409 && r.body && (r.body.key === "guest_grant_changed" || r.body.error === "guest_grant_changed")) setMsg({ error: wc(key === "--convert" ? "changedAll" : "changed") });
       else if (r.body && r.body.key === "guest_grant_refused") setMsg({ error: wc("refused", r.body.error || "") });
       else setMsg({ error: wc("saveFailed", (r.body && r.body.error) || r.status) });
     } catch { if (live.current) setMsg({ error: wc("unknown") }); }

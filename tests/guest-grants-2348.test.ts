@@ -115,7 +115,7 @@ describe("the gate: what waits for a fleet admin", () => {
   });
 });
 
-function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: string, u: string) => string | null; rooms?: string[] } = {}) {
+function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: string, u: string) => string | null; rooms?: string[]; scopes?: () => Record<string, string[]> } = {}) {
   const root = tmp("agend-2348g-");
   const path = join(root, "fleet.yaml");
   const config: any = { defaults: {}, ...structuredClone(FLEET), ...structuredClone(fleet) };
@@ -142,9 +142,9 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
   const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
     guestOverview: () => ({ audit: [{ kind: "grant", at: 1, account: "dc:111", name: "Ada", via: "direct", added: [], removed: ["a"], endedSessions: 1 }] }), revokeGuestWebSessions: revoke, forgetGuestPrefs: forget, guestPeople: people, guestGrantRefusal: refusal, sendGuestCodeByAdmin: sendCode, noteGuestGrantChange: note,
-    ...(opts.rooms ? { classicRoomNames: () => opts.rooms } : {}) } as unknown as SettingsApiContext;
+    ...(opts.rooms ? { classicRoomNames: () => opts.rooms } : {}), ...(opts.scopes ? { guestDerivedScopes: opts.scopes } : {}) } as unknown as SettingsApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
-  const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision });
+  const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision, ...(opts.scopes ? { guestDerivedScopes: opts.scopes } : {}) });
   const gate = new SettingsHttpConfirmation(store, {
     principal: req => req.headers.cookie ? { id: "session-a", label: "browser", source: "web_session", current: () => true } : null,
     baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
@@ -359,15 +359,42 @@ describe("M-3734 (Prism #4461 P2): if_grants — a whole-grant save only while t
     expect((await h.store.decide(wide.body.pending_change.id, "confirm", confirmer())).state).toBe("applied");
     expect(h.raw().web.guests.grants["dc:111"]).toEqual({ instances: ["b"], level: "trusted" });
   });
-  it("Start from today's guests (if_grants: \"unset\"): refused once grants exist (someone chose meanwhile); applies while none do", async () => {
-    const h = harness({ web: { guests: { enabled: true, grants: {} } } });
+  it("Start from today's guests (if_grants: \"unset\"): refused once grants exist (someone chose meanwhile); applies while none do and it is today's access", async () => {
+    const h = harness({ web: { guests: { enabled: true, grants: {} } } }, { scopes: () => ({ "dc:111": ["a"] }) });
     expect((await h.request("PUT", WEB, { guests: { grants: { "dc:111": { instances: ["a"] } }, if_grants: "unset" } })).status).toBe(409);
     expect(h.config.web.guests.grants).toEqual({});
-    const fresh = harness({ web: { guests: { enabled: true } } });
+    const fresh = harness({ web: { guests: { enabled: true } } }, { scopes: () => ({ "dc:111": ["a"], "dc:222": [] }) });
     const r = await fresh.request("PUT", WEB, { guests: { grants: { "dc:111": { instances: ["a"] } }, if_grants: "unset" } });
     expect(r.status).toBe(202);
     expect((await fresh.store.decide(r.body.pending_change.id, "confirm", confirmer())).state).toBe("applied");
     expect(fresh.raw().web.guests.grants).toEqual({ "dc:111": { instances: ["a"] } });
+  });
+  it("Prism #4461 R1: shown [a, b] → an admin narrows (open_instances) to [a] → the conversion of [a, b] is refused as it is admitted; nothing written", async () => {
+    let scope = ["a", "b"];
+    const h = harness({ web: { guests: { enabled: true } } }, { scopes: () => ({ "dc:111": scope }) });
+    scope = ["a"];                                                                     // narrowed after the page read it
+    const r = await h.request("PUT", WEB, { guests: { grants: { "dc:111": { name: "Ada", instances: ["a", "b"] } }, if_grants: "unset" } });
+    expect([r.status, r.body.error]).toEqual([409, "guest_grant_changed"]);
+    expect(h.config.web.guests.grants).toBeUndefined();
+  });
+  it("Prism #4461 R1: admitted as today's access, then someone's access changes (no setting changed: the baseline can't see it) → the confirmed replay is refused by the handler", async () => {
+    let scopes: Record<string, string[]> = { "dc:111": ["a", "b"] };
+    const h = harness({ web: { guests: { enabled: true } } }, { scopes: () => scopes });
+    const r = await h.request("PUT", WEB, { guests: { grants: { "dc:111": { instances: ["b", "a"] } }, if_grants: "unset" } });
+    expect([r.status, r.body.result]).toEqual([202, "pending_confirmation"]);
+    scopes = { "dc:111": ["a"] };
+    const done = await h.store.decide(r.body.pending_change.id, "confirm", confirmer());
+    expect(done.state).not.toBe("applied");
+    expect(h.config.web.guests.grants).toBeUndefined();
+  });
+  it("Prism #4461 R1: a conversion that leaves out someone who has access today, adds someone who hasn't, or comes where today's access can't be read: refused", async () => {
+    const both = () => ({ "dc:111": ["a"], "dc:222": ["b"] });
+    for (const [grants, scopes] of [[{ "dc:111": { instances: ["a"] } }, both], [{ "dc:111": { instances: ["a"] }, "dc:222": { instances: ["b"] }, "dc:333": { instances: ["c"] } }, both],
+      [{ "dc:111": { instances: ["a"] } }, undefined]] as const) {
+      const h = harness({ web: { guests: { enabled: true } } }, scopes ? { scopes } : {});
+      expect((await h.request("PUT", WEB, { guests: { grants, if_grants: "unset" } })).status).toBe(409);
+      expect(h.config.web.guests.grants).toBeUndefined();
+    }
   });
 });
 
@@ -431,6 +458,20 @@ function fleet() {
 }
 
 describe("on a real FleetManager", () => {
+  it("M-3734: guestDerivedScopes — each listed guest's agents now, as Settings → Guests lists them (people with none left out)", () => {
+    const { s } = fleet();
+    const listed = s.guestOverview().guests.filter((g: any) => g.scope.length).map((g: any) => [`${g.adapterId}:${g.userId}`, g.scope]);
+    expect(listed.length).toBeGreaterThan(0);
+    expect(Object.entries(s.guestDerivedScopes())).toEqual(listed);
+  });
+  it("M-3734: the Settings gate's baseline carries them (Start from today's guests is checked as it is admitted)", async () => {
+    const { s } = fleet();
+    s.configPath = join(s.dataDir, "fleet.yaml"); writeFileSync(s.configPath, "defaults: {}\n");
+    s.settingsGate();
+    const scopes = (await s.settingsBaselineReader.read()).guestDerivedScopes;
+    expect(typeof scopes).toBe("function");
+    expect(scopes()).toEqual(s.guestDerivedScopes());
+  });
   it("the people list leaves out fleet admins; a grant is refused for an admin, someone unseen, or an unknown connection", () => {
     const { s } = fleet();
     expect(s.guestPeople().people.map((p: any) => [p.userId, p.platform, p.instances])).toEqual([["111", "discord", ["a"]]]);

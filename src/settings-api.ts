@@ -20,7 +20,7 @@ import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, 
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
-import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, guestsPreconditionFailure, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
+import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, guestsConversionFailure, guestsPreconditionFailure, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS, effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { parseRuntimesSettingsBody, runtimeSettingsView } from "./runtime-switches.js";
@@ -159,6 +159,8 @@ export interface SettingsApiContext extends AppShellContext {
   testNamedLink?(input: { hostname: unknown; port: unknown; protocol: unknown; token?: unknown; current?: () => boolean }): Promise<import("./tunnel/named-link-test.js").NamedTestResult | { busy: true }>;
   /** #1920 phase 3: Settings → Web sign-ins → Guests. */
   guestOverview?(): unknown;
+  /** M-3734: each guest's derived agents now (Start from today's guests is checked against them). */
+  guestDerivedScopes?(): Record<string, string[]>;
   /** #2667: the ClassicBot rooms' instance names — a guest grant may name one, so a save's validation knows them. */
   classicRoomNames?(): string[];
   revokeGuestWebSessions?(owner: { adapterId: string; userId: string }): { count: number; durable: boolean };
@@ -1753,7 +1755,8 @@ export function handleSettingsRequest(
       // #1920 phase 3: guest sign-in (Settings → Web sign-ins → Guests); widening it is confirmed (settings-change.ts).
       if (parsed.guests) {
         // M-3734: checked again as it applies (a confirmation's replay comes here): what the page read must still be saved.
-        const stale = guestsPreconditionFailure(cfg.web?.guests, parsed.guests);
+        const stale = guestsPreconditionFailure(cfg.web?.guests, parsed.guests)
+          ?? guestsConversionFailure(parsed.guests, parsed.guests.if_grants === "unset" ? ctx.guestDerivedScopes?.() : undefined);
         if (stale) return json(res, 409, { error: "This person's guest access changed since the page read it. Read it again and retry.", key: "guest_grant_changed", ...(stale.account ? { account: stale.account } : {}) });
         // #2348: a new grant names someone AgEnD has seen in chat, on a connection of this fleet, who is not a fleet admin
         // (admins sign in as admins). One already granted may be edited or removed whatever the list says now.

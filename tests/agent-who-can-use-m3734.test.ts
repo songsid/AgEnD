@@ -220,6 +220,14 @@ describe("Web guests: the people whose grant names this agent (M-3734)", () => {
     expect(await w.answering(w.$("#whoConvert"), true)).toContain("Each guest keeps exactly the agents they can use now.");
     expect(w.writes()).toEqual([{ guests: { grants: { "dc:111": { name: "Alice", instances: ["alpha", "beta"] }, "tg:222": { name: "Bob", instances: ["beta"] } }, if_grants: "unset" } }]);
   });
+  it("Prism #4461 R1: a conversion the server refuses (today's access changed since the list was read) says nothing was saved and reads the list again", async () => {
+    const derived = { ...structuredClone(OVERVIEW), explicit: false,
+      guests: [guest("dc", "111", "Alice", "discord", null, { scope: ["alpha", "beta"] })] };
+    const w = await open("alpha", derived);
+    webAnswer = { status: 409, body: { error: "guest_grant_changed" } };
+    await w.answering(w.$("#whoConvert"), true);
+    expect(w.$(".ap-who-msg[role=alert]").textContent).toBe("Guests' access changed since this list was read, so nothing was saved. The list is up to date now: check it and try again.");
+  });
   it("not a fleet admin (403): says only an admin can see it; an agent guests can't be given: says so", async () => {
     guestsStatus = 403;
     let w = await open();
