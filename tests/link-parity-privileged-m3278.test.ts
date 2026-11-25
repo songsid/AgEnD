@@ -18,7 +18,7 @@ describe("M-3278 4/5: the public link routes each lifted group", () => {
     // the app icon
     ["GET", "/ui/app-icon"], ["PUT", "/ui/app-icon"], ["DELETE", "/ui/app-icon"],
     // AgEnD's own web update
-    ["GET", "/ui/update"], ["POST", "/ui/update/check"], ["POST", "/ui/update/start"], ["POST", "/ui/update/answer"], ["GET", "/ui/update/log"],
+    ["GET", "/ui/update"], ["POST", "/ui/update/check"], ["POST", "/ui/update/start"], ["POST", "/ui/update/answer"], ["POST", "/ui/update/fixes"], ["GET", "/ui/update/log"],
     // owner CSS
     ["GET", "/ui/owner-css.css"], ["GET", "/ui/owner-css/state"], ["GET", `/ui/owner-css/asset/${HEX}`], ["POST", "/ui/owner-css"], ["POST", "/ui/owner-css/restore"],
     // mods

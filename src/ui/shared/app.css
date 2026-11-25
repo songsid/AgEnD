@@ -2282,6 +2282,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .uc-machine .uc-mark { font-weight: var(--fw-semibold); margin: 0 2px; }
 .uc-self .uc-mark { color: var(--ok); } .uc-admin-only .uc-mark { color: var(--warn); } .uc-stop .uc-mark { color: var(--danger); }
 .uc-checks { margin: var(--s-1) 0 0; padding-left: var(--s-4); color: var(--text-2); }
+.uc-checks .uc-fix { margin: var(--s-1) 0 var(--s-2); }   /* M-3770 1.6: a fix button under its check */
+.uc-checks .uc-how { font-size: inherit; }
 .uc-controls { display: flex; flex-direction: column; gap: var(--s-3); }
 .uc-pause { border: 0; padding: 0; margin: 0; min-width: 0; }
 .uc-pause legend { font-weight: var(--fw-semibold); font-size: var(--fs-sm); padding: 0; }

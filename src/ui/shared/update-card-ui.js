@@ -60,6 +60,9 @@ register("updatecard", {
     c_windows_runtime: "This computer's AgEnD Runtime updates itself.",
     c_node_too_old: "AgEnD {0} needs Node {needs}; this machine has {node}.",
     c_other: "A check didn't pass ({0}).",
+    fixIt: "Fix it for me", fixing: "Fixing…", fixedLinger: "Done: AgEnD keeps running after {0} signs out.",
+    fixFailed: "AgEnD couldn't fix it by itself. Run the command above in a terminal on that computer.", fixNotNeeded: "That's already fixed.",
+    howToFix: "How to fix", serviceHow: "In a terminal on that computer, run `agend install`. AgEnD restarts as a service: every Agent stops briefly and comes back on its own.",
   },
   "zh-TW": {
     ready: "AgEnD {0} 可以更新了。",
@@ -109,6 +112,9 @@ register("updatecard", {
     c_windows_runtime: "這台電腦的 AgEnD Runtime 會自行更新。",
     c_node_too_old: "AgEnD {0} 需要 Node {needs}，這台機器是 {node}。",
     c_other: "有一項檢查沒有通過（{0}）。",
+    fixIt: "幫我修正", fixing: "修正中…", fixedLinger: "完成：使用者 {0} 登出後，AgEnD 仍會繼續執行。",
+    fixFailed: "AgEnD 無法自行修正。請在那台電腦的終端機執行上面的指令。", fixNotNeeded: "這項已經修正了。",
+    howToFix: "修正方式", serviceHow: "在那台電腦的終端機執行 `agend install`。AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。",
   },
 });
 const tc = (key, ...a) => t(`updatecard.${key}`, ...a);
@@ -125,8 +131,42 @@ export function checkSentence(check, version = "") {
 /** A check's sentence as plain text (a toast): the command marks dropped. */
 export function checkText(check, version = "") { return checkSentence(check, version).replace(/`/g, ""); }
 /** A check's sentence for the page: a `command` in it is shown as copyable code (#4487 UX look). */
-export function checkRich(check, version = "") {
-  return checkSentence(check, version).split("`").map((part, i) => (i % 2 ? html`<code class="uc-cmd">${part}</code>` : part));
+export function checkRich(check, version = "") { return richText(checkSentence(check, version)); }
+const richText = (text) => String(text).split("`").map((part, i) => (i % 2 ? html`<code class="uc-cmd">${part}</code>` : part));
+
+/** M-3770 1.6: the fix a failing check offers here (the server's update-fix.ts `fixFor`): lingering off → "linger". */
+export function fixFor(check) {
+  return check && check.ok === false && check.id === "P3" && check.code === "linger-off" ? "linger" : null;
+}
+/**
+ * POST /ui/update/fixes: the server runs its pre-flight again, makes the fix if it is still asked for, and answers with the
+ * fresh pre-flight (which replaces the store's, so the line and its button go once the check passes).
+ */
+export async function fixCheck(fix, check, { refresh, setInfo, getInfo }) {
+  const key = `fix-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  let res = null, out = null;
+  try {
+    res = await fetch("/ui/update/fixes", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify({ fix }) });
+    try { out = await res.json(); } catch { out = null; }
+  } catch { res = null; }
+  const info = getInfo();
+  if (out && out.preflight && info) setInfo({ ...info, preflight: out.preflight });
+  const user = check && check.detail && check.detail.user ? String(check.detail.user) : "";
+  if (res && res.ok) toast(tc("fixedLinger", user));
+  else if (res && res.status === 409 && out && out.error === "not_needed") toast(tc("fixNotNeeded"));
+  else if (res && res.status === 422) toast(tc("fixFailed"), false);
+  else { toast(tc("failedAnswer", (out && out.error) || (res ? String(res.status) : "network")), false); await refresh(); }
+  return { ok: !!(res && res.ok) };
+}
+/** One check that did not pass: its sentence, and its fix — a button where AgEnD can make it, else how to (not a service). */
+function CheckItem({ check, version, deps }) {
+  const [busy, setBusy] = useState(false);
+  const fix = deps ? fixFor(check) : null;
+  const press = async () => { setBusy(true); try { await fixCheck(fix, check, deps); } finally { setBusy(false); } };
+  return html`<li>${checkRich(check, version)}
+    ${fix ? html`<div class="uc-fix"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${press}>${busy ? tc("fixing") : tc("fixIt")}</button></div>` : null}
+    ${check.code === "not-service" ? html`<details class="uc-how"><summary>${tc("howToFix")}</summary><p>${richText(tc("serviceHow"))}</p></details>` : null}
+  </li>`;
 }
 /** The checks that did not pass, in P-order (absent checks are not failures: they were not run). */
 export function failedChecks(preflight) {
@@ -294,7 +334,7 @@ export function UpdateCardSettings({ info, deps }) {
   noteCurrentVersion(info && info.current);
   return html`<div class="uc-settings">
     <${CardStatus} info=${info} deps=${deps} />
-    <${MachineLine} info=${info} />
+    <${MachineLine} info=${info} deps=${deps} />
     <${UpdatesControls} />
   </div>`;
 }
@@ -308,7 +348,7 @@ function CardStatus({ info }) {
   return line ? html`<p class="uc-status" role="status">${line}</p>` : null;
 }
 /** "Updates on this machine": ✓ / ◐ / ✗, then each check that did not pass, worded, and the ones not run yet. */
-export function MachineLine({ info }) {
+export function MachineLine({ info, deps }) {
   const pf = info && info.preflight;
   if (!pf) return html`<div class="uc-machine"><strong>${tc("machine")}</strong> <span class="muted">${tc("checking")}</span></div>`;
   const cls = pf.class === "self" ? "self" : pf.class === "admin-only" ? "admin-only" : "stop";
@@ -316,7 +356,7 @@ export function MachineLine({ info }) {
   const fails = failedChecks(pf);
   return html`<div class=${`uc-machine uc-${cls}`}>
     <div><strong>${tc("machine")}</strong> <span class="uc-mark" aria-hidden="true">${mark}</span> <span>${tc(cls === "self" ? "self" : cls === "admin-only" ? "adminOnly" : "stop")}</span></div>
-    ${fails.length ? html`<ul class="uc-checks">${fails.map((f) => html`<li key=${f.id}>${checkRich(f, info.card ? info.card.version : "")}</li>`)}</ul>`
+    ${fails.length ? html`<ul class="uc-checks">${fails.map((f) => html`<${CheckItem} key=${f.id} check=${f} version=${info.card ? info.card.version : ""} deps=${deps} />`)}</ul>`
       : cls !== "self" ? html`<p class="muted uc-checks">${tc("notAllChecked")}</p>` : null}
   </div>`;
 }

@@ -4144,6 +4144,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** M-3770 (#4480 §4): the last pre-flight — a diagnostic for the page; every launch proves its local checks again. */
   private updatePreflight: import("./update-readiness.js").UpdatePreflight | null = null;
   private updatePreflightRunning: Promise<void> | null = null;
+  /** M-3770 1.6: the fix buttons' answers by Idempotency-Key (the last 32), and the one fix running at a time. */
+  private readonly updateFixAnswers = new Map<string, Promise<{ status: number; body: Record<string, unknown> }>>();
+  private updateFixChain: Promise<void> = Promise.resolve();
   /** M-2738: a web start's Idempotency-Key → its answer (a retried request never starts a second update). */
   private webUpdateStarts = new Map<string, Promise<{ ok: true } | { ok: false; status: number; error: string }>>();
   /**
@@ -32371,6 +32374,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return preflightRefusal(fresh, origin, (key, ...args) => t(key, ...args));
   }
 
+  /** M-3770 1.6: make a pre-flight fix (update-fix.ts; tests stub this, so no real loginctl runs). */
+  protected async runUpdateFix(fix: import("./update-fix.js").UpdateFix): Promise<{ ok: boolean }> {
+    const [{ applyUpdateFix }, { defaultReadinessDeps }] = await Promise.all([import("./update-fix.js"), import("./update-readiness.js")]);
+    return applyUpdateFix(fix, defaultReadinessDeps());
+  }
+
+  /**
+   * M-3770 1.6: POST /ui/update/fixes. The same key gets the same answer; one fix runs at a time. The local checks run
+   * again first and decide whether the fix is still asked for (a page drawn from an older result never runs it); the
+   * session is asked again right before it runs; the checks run once more after it, and the page gets that result.
+   */
+  private fixUpdateOnce(key: string, person: string, fix: import("./update-fix.js").UpdateFix, stillAllowed: () => boolean): Promise<{ status: number; body: Record<string, unknown> }> {
+    const seen = this.updateFixAnswers.get(key);
+    if (seen) return seen;
+    const answer = this.updateFixChain.then(() => this.fixUpdateNow(person, fix, stillAllowed));
+    this.updateFixChain = answer.then(() => undefined, () => undefined);
+    this.updateFixAnswers.set(key, answer);
+    if (this.updateFixAnswers.size > 32) this.updateFixAnswers.delete(this.updateFixAnswers.keys().next().value!);
+    return answer;
+  }
+
+  private async fixUpdateNow(person: string, fix: import("./update-fix.js").UpdateFix, stillAllowed: () => boolean): Promise<{ status: number; body: Record<string, unknown> }> {
+    const [{ mergePreflight }, { fixOffered }] = await Promise.all([import("./update-readiness.js"), import("./update-fix.js")]);
+    const local = async () => {
+      try {
+        const fresh = await this.probeUpdatePreflight({ localOnly: true });
+        this.updatePreflight = mergePreflight(this.updatePreflight, fresh, this.updateCheckState?.offer?.version ?? null);
+        return fresh;
+      } catch (err) { this.logger.warn({ err }, "Update pre-flight could not run for a fix"); return null; }
+    };
+    const before = await local();
+    if (!before) return { status: 503, body: { error: "preflight_unavailable", preflight: this.updatePreflight } };
+    if (!fixOffered(before, fix)) return { status: 409, body: { error: "not_needed", preflight: this.updatePreflight } };
+    if (this.shuttingDown || !stillAllowed()) return { status: 403, body: { error: "update_needs_an_admin_session" } };
+    let ok = false;
+    try { ok = (await this.runUpdateFix(fix)).ok; } catch (err) { this.logger.warn({ err, fix }, "Update pre-flight fix failed"); }
+    this.logger.info({ person, fix, ok }, "web: update pre-flight fix");
+    await local();
+    return ok ? { status: 200, body: { preflight: this.updatePreflight } } : { status: 422, body: { error: "fix_failed", preflight: this.updatePreflight } };
+  }
+
   private ensureUpdateCard(): UpdateOfferCard {
     if (this.updateCard) return this.updateCard;
     this.updateCard = new UpdateOfferCard({
@@ -32534,6 +32578,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
       card: () => this.refreshUpdateCard(),
       answerUpdate: (key, by, body, stillAllowed) => this.ensureUpdateCard().answer(key, by, body, stillAllowed),
+      fixUpdate: (key, person, fix, stillAllowed) => this.fixUpdateOnce(key, person, fix, stillAllowed),
     };
   }
 
