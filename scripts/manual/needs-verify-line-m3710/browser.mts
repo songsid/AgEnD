@@ -85,6 +85,9 @@ try {
         check(`${tag}: public link, unverified — the line with the count`, (await line.locator(".n-title").innerText()).trim() === title, await line.innerText());
         check(`${tag}: public link — no request named`, !/Example lead|Example worker|release checklist|發版/.test(await page.locator(".p-needs").innerText()));
         receipt[`linkChip-${tag}`] = (await line.locator(".webauth-chip").innerText().catch(() => "")).trim();
+        // The page looks the same as on this computer (a headless shot has no address bar): where it was, recorded.
+        check(`${tag}: frame 3 is on the public link`, new URL(page.url()).origin === `https://${link.host}`, page.url());
+        receipt[`linkPage-${tag}`] = page.url();
         await shot(page, "3-link-unverified");
         check(`${tag}: no page errors (link)`, errors.length === 0, errors);
       } finally { await ctx.close(); }
