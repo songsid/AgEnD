@@ -38,6 +38,11 @@ Receipt `origin.web_identity` records recognition, while `authority` remains
 unchanged (`none` until the existing verification rules pass). Display names,
 message bodies, client metadata and voter keys never supply this identity.
 The central current-role gate still decides whether that person manages a target.
+**Revoke web authority** removes go-ahead authority, not the signed-in session.
+That session still identifies its account for contact permissions, including its
+current administrator role. To stop recognizing a lost browser as that account,
+use its **Sign out** action or **Sign out everywhere**; revoking authority alone
+is insufficient. Neither action guesses away existing retained origins.
 
 Historical unverified receipts discarded their session-account join, and retained
 origins can lose older receipts or include a mode-switch seed. No speculative
