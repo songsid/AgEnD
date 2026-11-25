@@ -59,6 +59,13 @@ const buttons = async (page: any) => page.evaluate(`[...document.querySelectorAl
 const taps = async (page: any) => page.evaluate(`[...document.querySelectorAll(".update-line button, .uc-settings .btn, .uc-settings .input, .uc-day")].filter((e) => e.getBoundingClientRect().width).map((e) => Math.round(e.getBoundingClientRect().height))`);
 const scroll = async (page: any) => page.evaluate(`({ w: innerWidth, s: document.documentElement.scrollWidth })`);
 const W = (zh: boolean, en: string, zhText: string) => (zh ? zhText : en);
+// A word kept on one line (the leader's capture check: 「閒置時」 wrapped as 閒置 / 時 on a phone): its text range's boxes share one top.
+const unsplit = async (page: any, word: string) => page.evaluate(`(() => { const w = ${JSON.stringify(word)};
+  const walk = document.createTreeWalker(document.querySelector(".update-line .update-words"), NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) { const i = n.data.indexOf(w); if (i < 0) continue;
+    const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + w.length);
+    return new Set([...r.getClientRects()].filter((b) => b.width).map((b) => Math.round(b.top))).size === 1; }
+  return null; })()`);
 
 async function walk(c: any, full: boolean) {
   const tag = caseName(c), zh = c.lang === "zh-TW", phone = c.device === "phone";
@@ -73,6 +80,7 @@ async function walk(c: any, full: boolean) {
     check(`${tag} 1: Update when idle / Pick a time / Not now`, [W(zh, "Update when idle", "閒置時更新"), W(zh, "Pick a time", "選個時間"), W(zh, "Not now", "先不要")].every((x) => b.includes(x)), b);
     if (phone) check(`${tag} 1: 44 px buttons`, (await taps(page)).every((h: number) => h >= 44), await taps(page));
     const sc = await scroll(page); check(`${tag} 1: no sideways scroll`, sc.s <= sc.w, sc);
+    if (zh) for (const w of ["新版起不來時", "嘗試退回"]) check(`${tag} 1: 「${w}」 stays on one line`, await unsplit(page, w), t);
     await shot(page, `${tag}-1-offered`);
     if (!full) { check(`${tag}: no page errors`, errors.length === 0, errors); return; }
     // 2–3 Pick a time → scheduled
@@ -89,6 +97,7 @@ async function walk(c: any, full: boolean) {
     check(`${tag} 3: scheduled on the server`, card()?.state === "scheduled", card());
     t = await lineText(page);
     check(`${tag} 3: the line says when`, t.includes(W(zh, "when your agents are idle", "等 Agent 閒置時")), t);
+    if (zh) check(`${tag} 3: 「閒置時」 stays on one line`, await unsplit(page, "閒置時"), t);
     await shot(page, `${tag}-3-scheduled`);
     await page.locator(".update-line button", { hasText: W(zh, "Cancel", "取消") }).click(); await page.waitForTimeout(800);
     check(`${tag} 3: Cancel → offered again`, card()?.state === "offered", card());
