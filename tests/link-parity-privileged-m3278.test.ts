@@ -8,7 +8,7 @@ import { isPublicWebRoute } from "../src/public-web-gateway.js";
 // M-3770: the update check also refreshes the pre-flight (#4480 §4); its probes are stubbed here (no npm or systemctl runs).
 vi.mock("../src/update-readiness.js", async importOriginal => {
   const real = await importOriginal<typeof import("../src/update-readiness.js")>();
-  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }], Date.now())) };
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }], Date.now())) };
 });
 
 const HEX = "0123456789abcdef0123456789abcdef";

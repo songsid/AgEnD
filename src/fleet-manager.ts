@@ -31590,12 +31590,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return runUpdatePreflight(opts);
   }
 
-  /** M-3770: refresh the cached pre-flight for the offered version. One at a time; never throws. */
+  /**
+   * M-3770: refresh the cached pre-flight for the offered version. One at a time; never throws. A run is bound to the
+   * version it judged: if the offer moved meanwhile its result is not published (Prism #4483 3) and the run starts again
+   * for the new one. What it finds is merged by check (mergePreflight): a launch's fresher local rows are kept.
+   */
   refreshUpdatePreflight(): Promise<void> {
     if (this.updatePreflightRunning) return this.updatePreflightRunning;
     const running = (async () => {
-      try { this.updatePreflight = await this.probeUpdatePreflight({ target: this.updateCheckState?.offer?.version ?? null }); }
-      catch (err) { this.logger.warn({ err }, "Update pre-flight could not run"); }
+      const { mergePreflight } = await import("./update-readiness.js");
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const target = this.updateCheckState?.offer?.version ?? null;
+        let fresh: import("./update-readiness.js").UpdatePreflight;
+        try { fresh = await this.probeUpdatePreflight({ target }); }
+        catch (err) { this.logger.warn({ err }, "Update pre-flight could not run"); return; }
+        const now = this.updateCheckState?.offer?.version ?? null;
+        if (now !== target) continue;                                     // the offer changed: judge the new one
+        this.updatePreflight = mergePreflight(this.updatePreflight, fresh, now);
+        return;
+      }
     })().finally(() => { if (this.updatePreflightRunning === running) this.updatePreflightRunning = null; });
     this.updatePreflightRunning = running;
     return running;
@@ -31603,19 +31616,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /**
    * M-3770 (#4480 §4.2): identity is proven at the moment of change. The local checks run again now, whatever the cached
-   * result says; the network ones (P7, P10) are `agend update`'s own. The cache keeps them and takes the fresh rest.
+   * result says, and decide; the network ones (P7, P10) are `agend update`'s own. The cache takes the fresh rows and
+   * keeps a cached P7/P10 only while it still applies, with its own age (mergePreflight).
    * Returns the refusal in words, or null to go ahead.
    */
   async updatePreflightGate(origin: "press" | "unattended"): Promise<string | null> {
-    const { preflightRefusal, summarize } = await import("./update-readiness.js");
+    const { mergePreflight, preflightRefusal } = await import("./update-readiness.js");
     let fresh: import("./update-readiness.js").UpdatePreflight;
     try { fresh = await this.probeUpdatePreflight({ localOnly: true }); }
     catch (err) {
       this.logger.warn({ err }, "Update pre-flight could not run at launch");
       return t("update.preflight.refused", t("update.preflight.code.unreadable"));
     }
-    const kept = (this.updatePreflight?.checks ?? []).filter(c => c.id === "P7" || c.id === "P10");
-    this.updatePreflight = summarize([...fresh.checks, ...kept].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1))), fresh.checkedAt);
+    this.updatePreflight = mergePreflight(this.updatePreflight, fresh, this.updateCheckState?.offer?.version ?? null);
     return preflightRefusal(fresh, origin, (key, ...args) => t(key, ...args));
   }
 

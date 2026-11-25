@@ -8,7 +8,7 @@ const boundaries = vi.hoisted(() => ({ commands: [] as any[], reads: [] as any[]
 // M-3770: the launch's pre-flight (#4480 §4) is proven on a real install; here the machine is one that may update itself.
 vi.mock("../src/update-readiness.js", async importOriginal => {
   const real = await importOriginal<typeof import("../src/update-readiness.js")>();
-  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }], Date.now())) };
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }], Date.now())) };
 });
 vi.mock("node:fs/promises", async original => {
   const real = await original<typeof import("node:fs/promises")>();

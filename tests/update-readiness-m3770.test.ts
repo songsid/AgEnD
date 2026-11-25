@@ -1,7 +1,7 @@
 // M-3770 slice 1.2 (design #4480 §4): the pre-flight's classes and checks P1, P3, P4, P5, P7, P9 and P10, on fake
 // probes (no npm, systemctl or filesystem of the host is touched), and the launch's refusal words.
 import { describe, expect, it } from "vitest";
-import { preflightAllows, preflightClass, preflightRefusal, runUpdatePreflight, summarize, type ReadinessDeps } from "../src/update-readiness.js";
+import { mergePreflight, preflightAllows, preflightClass, preflightRefusal, runUpdatePreflight, summarize, type ReadinessDeps } from "../src/update-readiness.js";
 import { setLocale, t } from "../src/locale.js";
 
 const PREFIX = "/home/u/.nvm/versions/node/v22.14.0";
@@ -17,6 +17,10 @@ type Opts = {
   unwritable?: string[]; symlink?: boolean; linkTarget?: string; files?: string[]; initCgroup?: string;
   ping?: { status: number | null; stderr: string; timedOut?: boolean }; registry?: boolean;
   view?: string | null; node?: string | null; env?: NodeJS.ProcessEnv; ppid?: number;
+  /** `systemctl show`'s answer (default: a loaded, active unit; NeedDaemonReload from `reload`). */
+  unit?: { status: number | null; stdout: string; timedOut?: boolean };
+  /** `launchctl print`'s answer (default: the job running). */
+  launchd?: { status: number | null; stdout: string };
 };
 
 function rig(o: Opts = {}) {
@@ -62,7 +66,8 @@ function rig(o: Opts = {}) {
     readText: async p => (p === "/proc/1/cgroup" ? (o.initCgroup ?? "0::/init.scope\n") : null),
     run: async (cmd, args, _timeout, env) => {
       runs.push([cmd, ...args].join(" "));
-      if (cmd === "systemctl") return { status: 0, stdout: `${o.reload ?? "no"}\n`, stderr: "" };
+      if (cmd === "systemctl") return { ...(o.unit ?? { status: 0, stdout: `LoadState=loaded\nActiveState=active\nNeedDaemonReload=${o.reload ?? "no"}\n` }), stderr: "" };
+      if (cmd === "launchctl") return { ...(o.launchd ?? { status: 0, stdout: "gui/501/com.agend.fleet = {\n\tstate = running\n\tpid = 812\n}\n" }), stderr: "" };
       if (cmd === "npm" && args[0] === "config") return o.registry === false ? { status: 1, stdout: "", stderr: "" } : { status: 0, stdout: "; \"user\" config from /home/u/.npmrc\n", stderr: "" };
       if (cmd === "npm" && args[0] === "ping") { pingEnv.push(env); return { ...(o.ping ?? { status: 0, stderr: "" }), stdout: "" }; }
       if (cmd === "npm" && args[0] === "view") return o.view === null ? { status: 1, stdout: "", stderr: "E404" } : { status: 0, stdout: o.view ?? JSON.stringify({ version: "2.5.0", engines: { node: ">=22.14.0" }, optionalDependencies: {} }), stderr: "" };
@@ -75,14 +80,21 @@ function rig(o: Opts = {}) {
   return { d, runs, pingEnv };
 }
 
-const byId = (p: { checks: Array<{ id: string }> }, id: string) => p.checks.find(c => c.id === id);
+/** One check's row without its time (the merge tests below are about the times). */
+const byId = (p: { checks: Array<{ id: string; checkedAt?: number }> }, id: string) => {
+  const row = p.checks.find(c => c.id === id);
+  if (!row) return undefined;
+  const { checkedAt: _at, ...rest } = row;
+  return rest;
+};
 
 describe("M-3770 pre-flight (#4480 §4.1): the classes", () => {
   it("a global install under its user unit, lingering on, writable, the registry up, the target's Node met: self", async () => {
     const { d } = rig();
     const p = await runUpdatePreflight({ target: "2.5.0" }, d);
     expect(p.checks.map(c => [c.id, c.ok])).toEqual([["P1", true], ["P3", true], ["P4", true], ["P5", true], ["P7", true], ["P9", true], ["P10", true]]);
-    expect(p).toMatchObject({ class: "self", pressHere: true, checkedAt: 1_700_000_000_000 });
+    expect(p.checks.every(c => c.checkedAt === 1_700_000_000_000)).toBe(true);
+    expect(p).toMatchObject({ class: "self", pressHere: true, checkedAt: 1_700_000_000_000, target: "2.5.0", install: AGEND });
   });
 
   it("the worst failing check sets the class; a press needs pressHere, anything unattended needs self", () => {
@@ -92,7 +104,10 @@ describe("M-3770 pre-flight (#4480 §4.1): the classes", () => {
     const noWrite = summarize([{ id: "P4", ok: false, code: "no-write" }], 1);
     expect(noWrite).toMatchObject({ class: "admin-only", pressHere: false });     // §4 P4: no button on the web or in chat
     expect(preflightClass([{ id: "P3", ok: false }, { id: "P9", ok: false }])).toBe("stop");
-    expect(preflightClass([])).toBe("self");
+    // Prism #4483 (2): a partial or empty result is never self — P1, P3, P4 and P9 must be present and pass.
+    expect(summarize([], 1).class).toBe("admin-only");
+    expect(summarize([{ id: "P1", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }], 1).class).toBe("admin-only");
+    expect(summarize([{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }], 1).class).toBe("self");
   });
 });
 
@@ -139,14 +154,43 @@ describe("M-3770 P3: the service brings it back", () => {
     expect(byId(root, "P3")).toEqual({ id: "P3", ok: true });
     const { d, runs } = rig({ reload: "yes" });
     expect(byId(await runUpdatePreflight({}, d), "P3")).toEqual({ id: "P3", ok: false, code: "unit-reload-pending" });
-    expect(runs).toContain("systemctl --user show com.agend.fleet.service -p NeedDaemonReload --value");
+    expect(runs).toContain("systemctl --user show com.agend.fleet.service -p LoadState -p ActiveState -p NeedDaemonReload");
   });
 
-  it("macOS: started by its launchd job passes; a hand-run does not", async () => {
+  it("macOS: its launchd job, named and running, passes; a hand-run does not", async () => {
     const mac = rig({ platform: "darwin", env: { PATH: `${PREFIX}/bin`, XPC_SERVICE_NAME: "com.agend.fleet" } });
-    expect(byId(await runUpdatePreflight({}, mac.d), "P3")).toEqual({ id: "P3", ok: true });
+    expect(byId(await runUpdatePreflight({}, mac.d), "P3")).toMatchObject({ id: "P3", ok: true });
+    expect(mac.runs).toContain("launchctl print gui/1000/com.agend.fleet");
     const hand = rig({ platform: "darwin", env: { PATH: `${PREFIX}/bin` } });
     expect(byId(await runUpdatePreflight({}, hand.d), "P3")).toMatchObject({ ok: false, code: "not-service" });
+  });
+
+  // Prism #4483 (2): a service that can't be proven is never a passing P3, and never self or unattended.
+  it.each([
+    ["systemctl fails", { unit: { status: 1, stdout: "" } }],
+    ["systemctl times out", { unit: { status: null, stdout: "", timedOut: true } }],
+    ["systemctl answers nothing", { unit: { status: 0, stdout: "" } }],
+    ["the unit isn't loaded", { unit: { status: 0, stdout: "LoadState=not-found\nActiveState=inactive\nNeedDaemonReload=no\n" } }],
+    ["the unit is masked (though still running)", { unit: { status: 0, stdout: "LoadState=masked\nActiveState=active\nNeedDaemonReload=no\n" } }],
+    ["the unit isn't active", { unit: { status: 0, stdout: "LoadState=loaded\nActiveState=failed\nNeedDaemonReload=no\n" } }],
+    ["no unit name in the cgroup (a service, but not which)", { cgroup: "0::/user.slice/user-1000.slice/user@1000.service/app.slice\n" }],
+    ["macOS: a parent of 1 without a launchd job (an orphaned hand-start)", { platform: "darwin" as const, ppid: 1, env: { PATH: `${PREFIX}/bin` } }],
+    ["macOS: the job named but not running", { platform: "darwin" as const, env: { PATH: `${PREFIX}/bin`, XPC_SERVICE_NAME: "com.agend.fleet" }, launchd: { status: 0, stdout: "state = not running\n" } }],
+    ["macOS: launchctl fails", { platform: "darwin" as const, env: { PATH: `${PREFIX}/bin`, XPC_SERVICE_NAME: "com.agend.fleet" }, launchd: { status: 113, stdout: "" } }],
+  ] as Array<[string, Opts]>)("unproven service → service-unknown, admin-only, no unattended start: %s", async (_name, o) => {
+    const p = await runUpdatePreflight({ localOnly: true }, rig({ notify: true, ...o }).d);
+    const p3 = byId(p, "P3") as { code?: string } | undefined;
+    // A cgroup without a unit isn't a service by startedByServiceManager at all; everything else is service-unknown.
+    expect(["service-unknown", "not-service"]).toContain(p3?.code);
+    expect(p.class).toBe("admin-only");
+    expect([preflightAllows(p, "press"), preflightAllows(p, "unattended")]).toEqual([true, false]);
+  });
+
+  it("a known-good service is self (the controls for the cases above)", async () => {
+    const linux = await runUpdatePreflight({ localOnly: true }, rig().d);
+    expect([linux.class, byId(linux, "P3")?.ok]).toEqual(["self", true]);
+    const mac = await runUpdatePreflight({ localOnly: true }, rig({ platform: "darwin", env: { PATH: `${PREFIX}/bin`, XPC_SERVICE_NAME: "com.agend.fleet" } }).d);
+    expect([mac.class, byId(mac, "P3")?.ok]).toEqual(["self", true]);
   });
 });
 
@@ -172,6 +216,12 @@ describe("M-3770 P4 and P5: writing the install, and a linked or vendored copy",
     expect(byId(p, "P1")).toEqual({ id: "P1", ok: true });
     expect(byId(p, "P5")).toEqual({ id: "P5", ok: false, code: "linked", detail: { path: "/home/u/src/agend" } });
     expect(p).toMatchObject({ class: "admin-only", pressHere: true });
+    // Prism #4483 (1): a linked install is held to PATH's agend too: another install's agend first on PATH is path-shadow.
+    const shadowed = rig({ packageDir: "/home/u/src/agend", realPkg: "/home/u/src/agend", symlink: true, linkTarget: "/home/u/src/agend",
+      pathAgend: "/usr/local/bin/agend", pathAgendReal: "/usr/local/lib/node_modules/@songsid/agend/dist/cli.js" });
+    const ps = await runUpdatePreflight({}, shadowed.d);
+    expect(byId(ps, "P1")).toMatchObject({ ok: false, code: "path-shadow", detail: { path: "/usr/local/bin/agend" } });
+    expect([ps.class, preflightAllows(ps, "press")]).toEqual(["stop", false]);
     // A checkout that the global entry does NOT link to stays a checkout (stop).
     const other = rig({ packageDir: "/home/u/src/agend", realPkg: "/home/u/src/agend", symlink: true, linkTarget: "/home/u/src/other" });
     expect(byId(await runUpdatePreflight({}, other.d), "P1")).toEqual({ id: "P1", ok: false, code: "checkout" });
@@ -243,5 +293,51 @@ describe("M-3770: the launch's refusal, in words", () => {
       for (const code of codes) expect(t(`update.preflight.code.${code}`, "x", "y")).not.toContain("update.preflight");
       expect(preflightRefusal(summarize([{ id: "P9", ok: false, code: "container" }], 1), "press", tr)).toBe("這台電腦無法從這裡更新：AgEnD 在容器裡執行；請更新映像檔。 沒有做任何變更。");
     } finally { setLocale("en"); }
+  });
+});
+
+// Prism #4483 (3): a cached result keeps each row's own age and scope; nothing old is relabelled as fresh.
+describe("M-3770: merging a cached pre-flight with a fresher one", () => {
+  const full = (at: number, target: string | null, install = AGEND, extra: Array<Record<string, unknown>> = []) => summarize([
+    { id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true },
+    { id: "P7", ok: true }, ...(target ? [{ id: "P10", ok: false, code: "node-too-old", detail: { node: "20.11.0", needs: ">=22.14.0" } }] : []), ...extra,
+  ] as never, at, { target, install });
+  const local = (at: number, install: string | null = AGEND) => summarize([{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }], at, { install });
+
+  it("a launch's local re-proof keeps the cached P7/P10 with their own time; the whole is as old as its oldest row", () => {
+    const m = mergePreflight(full(100, "2.5.0"), local(500), "2.5.0");
+    expect(m.checks.map(c => [c.id, c.checkedAt])).toEqual([["P1", 500], ["P3", 500], ["P4", 500], ["P7", 100], ["P9", 500], ["P10", 100]]);
+    expect(m).toMatchObject({ checkedAt: 100, class: "stop", target: "2.5.0" });
+  });
+
+  it("a P10 for another version than the one offered now is dropped, not relabelled; so is P7/P10 of another install", () => {
+    const moved = mergePreflight(full(100, "2.5.0"), local(500), "2.6.0");
+    expect(moved.checks.map(c => c.id)).not.toContain("P10");
+    expect(moved).toMatchObject({ target: null, checkedAt: 100 });                 // P7 still applies (same install)
+    const other = mergePreflight(full(100, "2.5.0"), local(500, "/usr/local/bin/agend"), "2.5.0");
+    expect(other.checks.map(c => c.id)).toEqual(["P1", "P3", "P4", "P9"]);
+    expect(other).toMatchObject({ checkedAt: 500, class: "self" });
+  });
+
+  it("a newer cached P10 for another version never wins over the fresh one for the version offered now", () => {
+    const fresh = summarize([{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }, { id: "P10", ok: true }], 100, { target: "2.6.0", install: AGEND });
+    const m = mergePreflight(full(900, "2.5.0"), fresh, "2.6.0");
+    expect(m.checks.find(c => c.id === "P10")).toMatchObject({ ok: true, checkedAt: 100 });
+    expect(m.target).toBe("2.6.0");
+  });
+
+  it("a fresh run's own P10 for a version no longer offered is dropped too", () => {
+    const stale = mergePreflight(null, full(100, "2.5.0"), "2.6.0");
+    expect(stale.checks.map(c => c.id)).not.toContain("P10");
+    expect(stale.target).toBeNull();
+    expect(mergePreflight(null, full(100, "2.5.0"), "2.5.0").checks.map(c => c.id)).toContain("P10");
+  });
+
+  it("an older run finishing late never overwrites fresher rows (per check, the newer wins)", () => {
+    const gate = mergePreflight(full(100, "2.5.0"), local(500), "2.5.0");           // a launch's re-proof at 500
+    const lateRefresh = full(300, "2.5.0", AGEND);                                     // a refresh that started earlier
+    const m = mergePreflight(gate, lateRefresh, "2.5.0");
+    expect(m.checks.find(c => c.id === "P1")?.checkedAt).toBe(500);
+    expect(m.checks.find(c => c.id === "P7")?.checkedAt).toBe(300);
   });
 });

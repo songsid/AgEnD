@@ -32,19 +32,25 @@ export type PreflightClass = "self" | "admin-only" | "stop";
 export type PreflightId = "P1" | "P2" | "P3" | "P4" | "P5" | "P6" | "P7" | "P8" | "P9" | "P10";
 export type PreflightCode =
   | "checkout" | "other-copy" | "path-shadow" | "unreadable"                                  // P1
-  | "not-service" | "linger-off" | "system-unit-not-root" | "unit-reload-pending"           // P3
+  | "not-service" | "service-unknown" | "linger-off" | "system-unit-not-root" | "unit-reload-pending" // P3
   | "no-write"                                                                              // P4
   | "linked" | "vendored"                                                                   // P5
   | "npm-unreachable"                                                                       // P7
   | "container" | "windows-runtime"                                                         // P9
   | "node-too-old";                                                                         // P10
-export interface PreflightCheck { id: PreflightId; ok: boolean; code?: PreflightCode; detail?: Record<string, string | number> }
+/** One check's result. `checkedAt`: when THIS check ran (a merged result keeps each row's own age). */
+export interface PreflightCheck { id: PreflightId; ok: boolean; code?: PreflightCode; detail?: Record<string, string | number>; checkedAt?: number }
 export interface UpdatePreflight {
   class: PreflightClass;
+  /** The OLDEST row's time: the result is no fresher than its oldest check. */
   checkedAt: number;
   checks: PreflightCheck[];
   /** An admin's press from the web or chat may start it: not stop, and not P4 (that needs `sudo agend update` in a shell). */
   pressHere: boolean;
+  /** The version P10 was judged for (null: none). */
+  target: string | null;
+  /** The proven install's `agend` (null: not proven): P7 and P10 hold only for this install. */
+  install: string | null;
 }
 
 /** What a failing check makes the machine (design §4.1's table). */
@@ -64,9 +70,44 @@ export function preflightClass(checks: readonly PreflightCheck[]): PreflightClas
   return worst;
 }
 
-export function summarize(checks: PreflightCheck[], checkedAt: number): UpdatePreflight {
-  const cls = preflightClass(checks);
-  return { class: cls, checkedAt, checks, pressHere: cls !== "stop" && !checks.some(c => c.id === "P4" && !c.ok) };
+/** The local checks a result must hold, passed, before it may be self (a partial or empty result is never self). */
+const SELF_NEEDS: readonly PreflightId[] = ["P1", "P3", "P4", "P9"];
+
+export function summarize(checks: PreflightCheck[], checkedAt: number, scope: { target?: string | null; install?: string | null } = {}): UpdatePreflight {
+  const rows = checks.map(c => (c.checkedAt === undefined ? { ...c, checkedAt } : c));
+  let cls = preflightClass(rows);
+  if (cls === "self" && !SELF_NEEDS.every(id => rows.some(c => c.id === id && c.ok))) cls = "admin-only";
+  const oldest = rows.length ? Math.min(...rows.map(c => c.checkedAt!)) : checkedAt;
+  return { class: cls, checkedAt: oldest, checks: rows, pressHere: cls !== "stop" && !rows.some(c => c.id === "P4" && !c.ok),
+    target: scope.target ?? null, install: scope.install ?? null };
+}
+
+const ORDER: readonly PreflightId[] = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"];
+
+/**
+ * A cached result brought up to date with a fresher one (a launch's local re-proof, or a refresh). Per check, the newer
+ * row wins. A P7 or P10 row only `prev` holds is kept only while it still applies: the same proven install, and for
+ * P10 the version offered now (`target`); otherwise it is dropped, never relabelled. The result is as old as its
+ * oldest row.
+ */
+export function mergePreflight(prev: UpdatePreflight | null, fresh: UpdatePreflight, target: string | null): UpdatePreflight {
+  const rows = new Map<PreflightId, PreflightCheck>();
+  for (const c of fresh.checks) rows.set(c.id, c);
+  for (const c of prev?.checks ?? []) {
+    const mine = rows.get(c.id);
+    if (mine) {
+      if ((c.checkedAt ?? 0) > (mine.checkedAt ?? 0) && prev!.install === fresh.install && (c.id !== "P10" || prev!.target === target)) rows.set(c.id, c);
+      continue;
+    }
+    if (c.id !== "P7" && c.id !== "P10") continue;                                      // local checks: the fresh run's only
+    if (!prev || prev.install === null || prev.install !== fresh.install) continue;
+    if (c.id === "P10" && (prev.target === null || prev.target !== target)) continue;
+    rows.set(c.id, c);
+  }
+  // A P10 the fresh run made is for the version it was asked about: kept only while that is still the one offered.
+  if (rows.get("P10") && fresh.checks.includes(rows.get("P10")!) && fresh.target !== target) rows.delete("P10");
+  const checks = [...rows.values()].sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
+  return summarize(checks, fresh.checkedAt, { target: rows.has("P10") ? target : null, install: fresh.install });
 }
 
 /** Whether `origin` may start an update on a machine with this result: a press needs pressHere; anything unattended, self. */
@@ -143,41 +184,61 @@ async function checkInstall(d: ReadinessDeps): Promise<{ check: PreflightCheck; 
       try { mine = await d.realpath(entry) === await d.realpath(d.dispatch.packageDir); } catch { mine = false; }
     }
     if (!mine || "reason" in found || !installed?.ok) return { check: { id: "P1", ok: false, code: "checkout" }, install: null, runningRoot: null };
-    return { check: { id: "P1", ok: true }, install: { root: found.root, prefix: found.prefix, ...(found.npmDir ? { npmDir: found.npmDir } : {}), agend: installed.agend, packageDir: entry!, linked: true }, runningRoot: null };
+    return pathAgrees(d, { root: found.root, prefix: found.prefix, ...(found.npmDir ? { npmDir: found.npmDir } : {}), agend: installed.agend, packageDir: entry!, linked: true }, null);
   }
   if ("reason" in found || !installed || !installed.ok) {
     return { check: { id: "P1", ok: false, code: "other-copy", detail: { path: join(running.root, "@songsid", "agend") } }, install: null, runningRoot: running.root };
   }
-  const install: Install = { root: found.root, prefix: found.prefix, ...(found.npmDir ? { npmDir: found.npmDir } : {}), agend: installed.agend, packageDir: join(found.root, "@songsid", "agend"), linked: false };
-  // PATH's `agend` (the fleet's): another file there would run instead of the one updated. Moved before the install (#4480 P1).
+  return pathAgrees(d, { root: found.root, prefix: found.prefix, ...(found.npmDir ? { npmDir: found.npmDir } : {}), agend: installed.agend, packageDir: join(found.root, "@songsid", "agend"), linked: false }, running.root);
+}
+
+/**
+ * P1's last part, for every proven install (a registry install or an npm link alike): PATH's `agend` (the fleet's) is
+ * that install's file. Another file there would run instead of the one updated. Moved before the install (#4480 P1).
+ */
+async function pathAgrees(d: ReadinessDeps, install: Install, runningRoot: string | null): Promise<{ check: PreflightCheck; install: Install; runningRoot: string | null }> {
   const first = await onPath(d, "agend", d.env.PATH ?? "");
   if (first) {
     let same = false;
-    try { same = await d.realpath(first) === await d.realpath(installed.agend); } catch { same = false; }
-    if (!same) return { check: { id: "P1", ok: false, code: "path-shadow", detail: { path: first } }, install, runningRoot: running.root };
+    try { same = await d.realpath(first) === await d.realpath(install.agend); } catch { same = false; }
+    if (!same) return { check: { id: "P1", ok: false, code: "path-shadow", detail: { path: first } }, install, runningRoot };
   }
-  return { check: { id: "P1", ok: true }, install, runningRoot: running.root };
+  return { check: { id: "P1", ok: true }, install, runningRoot };
 }
 
-/** P3: the service manager will bring it back after the update. */
+/**
+ * P3: the service manager will bring it back after the update — proven, not assumed. A service whose proof can't be had
+ * (a query that fails, times out or answers nothing; a unit not loaded or not active; on macOS a parent of 1 with no
+ * launchd job naming this process) is `service-unknown`: admin-only, never self.
+ */
 async function checkService(d: ReadinessDeps): Promise<PreflightCheck | null> {
   if (d.platform === "win32") return null;                                       // P9's (the Runtime updates itself)
+  if (d.platform === "darwin") return checkLaunchd(d);
   const cgroup = d.platform === "linux" ? await d.ownCgroup() : null;
-  if (!startedByServiceManager({ platform: d.platform, env: d.env, ownCgroup: cgroup, ppid: d.ppid, launchdLabel: "com.agend.fleet" })) {
+  if (!startedByServiceManager({ platform: d.platform, env: d.env, ownCgroup: cgroup, ppid: d.ppid, launchdLabel: LAUNCHD_LABEL })) {
     return { id: "P3", ok: false, code: "not-service" };
   }
-  if (d.platform !== "linux" || cgroup === null) return { id: "P3", ok: true };
-  const manager = serviceManagerOf(cgroup);
+  if (d.platform !== "linux" || cgroup === null) return { id: "P3", ok: false, code: "service-unknown" };
+  const manager = serviceManagerOf(cgroup), unit = systemdServiceOf(cgroup);
+  if (!manager || !unit) return { id: "P3", ok: false, code: "service-unknown" };
   if (manager === "system" && d.uid !== 0) return { id: "P3", ok: false, code: "system-unit-not-root" };
-  const unit = systemdServiceOf(cgroup);
-  if (manager === "user") {
-    if (!d.user || !await d.exists(`/var/lib/systemd/linger/${d.user}`)) return { id: "P3", ok: false, code: "linger-off", detail: { user: d.user } };
+  if (manager === "user" && (!d.user || !await d.exists(`/var/lib/systemd/linger/${d.user}`))) return { id: "P3", ok: false, code: "linger-off", detail: { user: d.user } };
+  const r = await d.run("systemctl", [...(manager === "user" ? ["--user"] : []), "show", `${unit}.service`, "-p", "LoadState", "-p", "ActiveState", "-p", "NeedDaemonReload"], 5000);
+  const props = new Map(r.status === 0 ? r.stdout.split("\n").map(l => /^(\w+)=(.*)$/.exec(l.trim())).filter((m): m is RegExpExecArray => !!m).map(m => [m[1]!, m[2]!.trim()]) : []);
+  if (props.get("LoadState") !== "loaded" || !["active", "reloading"].includes(props.get("ActiveState") ?? "") || !["yes", "no"].includes(props.get("NeedDaemonReload") ?? "")) {
+    return { id: "P3", ok: false, code: "service-unknown" };
   }
-  if (unit && manager) {
-    const r = await d.run("systemctl", [...(manager === "user" ? ["--user"] : []), "show", `${unit}.service`, "-p", "NeedDaemonReload", "--value"], 5000);
-    if (r.status === 0 && r.stdout.trim() === "yes") return { id: "P3", ok: false, code: "unit-reload-pending" };
-  }
+  if (props.get("NeedDaemonReload") === "yes") return { id: "P3", ok: false, code: "unit-reload-pending" };
   return { id: "P3", ok: true };
+}
+
+const LAUNCHD_LABEL = "com.agend.fleet";
+
+/** macOS: launchd names its job in XPC_SERVICE_NAME, and the job must be loaded and running. A parent of 1 alone proves nothing. */
+async function checkLaunchd(d: ReadinessDeps): Promise<PreflightCheck> {
+  if (d.env.XPC_SERVICE_NAME !== LAUNCHD_LABEL) return { id: "P3", ok: false, code: d.ppid === 1 ? "service-unknown" : "not-service" };
+  const r = await d.run("launchctl", ["print", `gui/${d.uid}/${LAUNCHD_LABEL}`], 5000);
+  return r.status === 0 && /^\s*state = running\s*$/m.test(r.stdout) ? { id: "P3", ok: true } : { id: "P3", ok: false, code: "service-unknown" };
 }
 
 /** P4: this user may write the install (no silent sudo or nvm route is ever taken). */
@@ -288,7 +349,7 @@ export async function runUpdatePreflight(opts: { target?: string | null; localOn
   checks.push(platform);
   const order: PreflightId[] = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"];
   checks.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-  return summarize(checks, d.now());
+  return summarize(checks, d.now(), { target: checks.some(c => c.id === "P10") ? opts.target ?? null : null, install: install?.agend ?? null });
 }
 
 /** One failing check in words (the fleet's language): its fixed code, with only the values its sentence names. */
