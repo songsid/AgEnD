@@ -378,14 +378,15 @@ describe("M-3749 review: target spellings, unreadable targets, the default login
 
 describe("M-3749 review R4: a tab that retains the released app-i18n.js", () => {
   it("still words the item in EN and zh-TW with beta.23's app-i18n.js byte for byte (no raw keys; names and profiles kept)", async () => {
-    const { execFileSync } = await import("node:child_process");
+    const { createHash } = await import("node:crypto");
     const { cpSync } = await import("node:fs");
-    const released = execFileSync("git", ["show", "v2.4.0-beta.23:src/ui/shared/app-i18n.js"]);
-    const blob = execFileSync("git", ["rev-parse", "v2.4.0-beta.23:src/ui/shared/app-i18n.js"], { encoding: "utf8" }).trim();
+    // v2.4.0-beta.23:src/ui/shared/app-i18n.js, committed byte for byte (CI checks out without tags); its git blob id proves it.
+    const released = readFileSync("tests/fixtures/app-i18n-v2.4.0-beta.23.js.txt");
+    const blob = createHash("sha1").update(Buffer.concat([Buffer.from(`blob ${released.length}\0`), released])).digest("hex");
+    expect(blob).toBe("17adf966de6cce1ae1dd37fef6a641d115c161db");
     const dir = join(root, "assets");
     cpSync("src/ui/shared", dir, { recursive: true });                    // today's modules…
     writeFileSync(join(dir, "app-i18n.js"), released);                    // …with the released app-i18n.js retained
-    expect(execFileSync("git", ["hash-object", join(dir, "app-i18n.js")], { encoding: "utf8" }).trim()).toBe(blob);
     expect(released.toString()).not.toContain("mcp_missing");               // the control: that release has none of the keys
     const i18n = await import(join(dir, "app-i18n.js"));
     expect(i18n.t("app.needs_mcp_missing_detail")).toBe("app.needs_mcp_missing_detail");   // raw before the consumer loads
