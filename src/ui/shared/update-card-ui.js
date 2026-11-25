@@ -22,7 +22,7 @@ register("updatecard", {
     starting: "Starting the update to v{0}…", cantTitle: "AgEnD can't update itself on this machine.", pressOnly: "Update this machine yourself:",
     nowTitle: "Update now?", nowBody: "{0} agents are working. They stop for a few minutes while AgEnD restarts, then pick up where they were.",
     nowBodyIdle: "AgEnD restarts for a few minutes; your agents pick up where they were.", nowGo: "Update now",
-    pickTitle: "When should AgEnD update?", pickTonight: "Tonight at 22:00", pickMorning: "Tomorrow at 08:00", pickOther: "Another time",
+    pickTitle: "When should AgEnD update?", pickTonight: "Tonight", pickMorning: "Tomorrow morning", pickThisMorning: "This morning", pickOther: "Another time",
     pickHint: "It still waits until your agents are idle at that time. Within the next 7 days.", pickGo: "Schedule", pickBad: "Pick a time in the next 7 days.",
     changed: "The update changed while you were looking. Here it is again.", running: "An update is already running.",
     failedAnswer: "That didn't work: {0}",
@@ -67,7 +67,7 @@ register("updatecard", {
     starting: "正在開始更新到 v{0}…", cantTitle: "AgEnD 無法在這台機器上自行更新。", pressOnly: "請自行更新這台機器：",
     nowTitle: "立即更新？", nowBody: "有 {0} 個 Agent 正在工作。AgEnD 重新啟動時會停下幾分鐘，之後從原處繼續。",
     nowBodyIdle: "AgEnD 會重新啟動幾分鐘，Agent 之後從原處繼續。", nowGo: "立即更新",
-    pickTitle: "要在什麼時候更新？", pickTonight: "今晚 22:00", pickMorning: "明天 08:00", pickOther: "其他時間",
+    pickTitle: "要在什麼時候更新？", pickTonight: "今晚", pickMorning: "明天早上", pickThisMorning: "今天早上", pickOther: "其他時間",
     pickHint: "到了那個時間，仍會等 Agent 閒下來才開始。可選未來 7 天內。", pickGo: "排定", pickBad: "請選未來 7 天內的時間。",
     changed: "這個更新剛剛有變動，以下是最新狀態。", running: "已經有一個更新在進行中。",
     failedAnswer: "沒有成功：{0}",
@@ -86,7 +86,7 @@ register("updatecard", {
     c_unknown_owner: "AgEnD 無法確認是哪一份安裝在執行這個 Fleet。請以服務方式重新啟動後再檢查。",
     c_other_install: "這個使用者底下還有另一份 AgEnD。更新其中一份可能影響另一份。",
     c_not_service: "AgEnD 不是以服務方式執行，更新後無法自己回來。",
-    c_linger_off: "{user} 的 lingering 沒有開，登出時服務會停止。",
+    c_linger_off: "{user} 登出時，AgEnD 的服務會跟著停止（systemd 的 lingering 未開啟）。",
     c_system_unit_not_root: "AgEnD 以系統服務執行，更新需要 root。",
     c_unit_reload_pending: "服務定義已變更但尚未重新載入。請執行 systemctl --user daemon-reload。",
     c_no_write: "更新需要 {path} 的寫入權限。請在那台電腦的終端機執行 sudo agend update，或用單行安裝指令重新安裝。",
@@ -195,7 +195,7 @@ export function PickTimeHost() {
     actions=${html`<button type="button" class="btn" onClick=${() => close(null)}>${tc("cancel")}</button><button type="button" class="btn btn-primary" onClick=${go}>${tc("pickGo")}</button>`}>
     <div class="uc-pick">
       ${radio("tonight", `${tc("pickTonight")} · ${fmtTime(nextAt(22))}`)}
-      ${radio("morning", `${tc("pickMorning")} · ${fmtTime(nextAt(8))}`)}
+      ${radio("morning", `${new Date(nextAt(8)).toDateString() === new Date().toDateString() ? tc("pickThisMorning") : tc("pickMorning")} · ${fmtTime(nextAt(8))}`)}
       ${radio("other", tc("pickOther"))}
       ${choice === "other" ? html`<input type="datetime-local" class="input uc-pick-other" min=${local(min)} max=${local(max)} value=${other} onInput=${(e) => setOther(e.currentTarget.value)} />` : null}
       <p class="muted uc-pick-hint">${tc("pickHint")}</p>
@@ -244,6 +244,7 @@ export function cardLine(info, { Line, busy, deps }) {
 
 /** Settings → Version and update: the card's state, the pre-flight result, and the controls (two + Advanced). */
 export function UpdateCardSettings({ info, deps }) {
+  noteCurrentVersion(info && info.current);
   return html`<div class="uc-settings">
     <${CardStatus} info=${info} deps=${deps} />
     <${MachineLine} info=${info} />
@@ -271,6 +272,11 @@ export function MachineLine({ info }) {
     ${fails.length ? html`<ul class="uc-checks">${fails.map((f) => html`<li key=${f.id}>${checkSentence(f, info.card ? info.card.version : "")}</li>`)}</ul>` : null}
   </div>`;
 }
+
+/** The running version (the placeholder of the pin): read from GET /ui/update's answer, kept by app-update.js's store. */
+let currentVersion = "";
+export function noteCurrentVersion(v) { if (typeof v === "string") currentVersion = v; }
+const updateCurrentVersion = () => currentVersion;
 
 /** The controls: when not to update (pause windows) and, under Advanced, the pin and the longest wait. PUT /api/settings/fleet/updates. */
 export function UpdatesControls() {
@@ -322,7 +328,7 @@ export function UpdatesControls() {
       </div>
     </fieldset>
     <details class="s-ui-disclosure uc-advanced"><summary>${tc("advanced")}</summary><div class="s-disclosure-body">
-      <label class="field"><span>${tc("pin")}</span><input class="input" value=${pin} placeholder="2.4.0" onInput=${(e) => setPin(e.currentTarget.value)} /><span class="muted uc-hint">${tc("pinHint")}</span></label>
+      <label class="field"><span>${tc("pin")}</span><input class="input" value=${pin} placeholder=${updateCurrentVersion() || ""} onInput=${(e) => setPin(e.currentTarget.value)} /><span class="muted uc-hint">${tc("pinHint")}</span></label>
       <label class="field"><span>${tc("maxWait")}</span><input class="input" type="number" min="1" max="168" step="1" value=${wait} onInput=${(e) => setWait(e.currentTarget.value)} /><span class="muted uc-hint">${tc("maxWaitHint")}</span></label>
       <div class="uc-row-actions"><button type="button" class="btn btn-sm btn-primary" disabled=${busy}
         onClick=${() => { void save({ pin: pin.trim() ? pin.trim() : null, maxIdleWait: Number(wait) }); }}>${tc("save")}</button></div>

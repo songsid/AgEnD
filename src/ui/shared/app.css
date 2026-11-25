@@ -2283,6 +2283,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 @media (max-width: 899px), (pointer: coarse) {
   .uc-settings :is(.btn, .input, .uc-day, .uc-pick-row), .uc-needs .btn, .update-line .update-actions .btn { min-height: var(--tap); }
   .uc-day, .uc-pick-row { display: inline-flex; align-items: center; }
+  .uc-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); width: 100%; }   /* the week on one row */
+  .uc-day { justify-content: center; gap: 2px; }
 }
 .s-update dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px var(--s-4); margin: 0 0 var(--s-3); font-size: var(--fs-sm); }
 .s-update dt { color: var(--text-2); }
