@@ -20,7 +20,7 @@
 
 Fleet admins can always use every agent. A bot's Discord or Telegram `allowed_users` is unchanged.
 
-**Captures.** From the real web app (`scripts/manual/smoke-fixture`), headless Chromium, at 915b4c845 (`src` clean). The script is `scripts/manual/agent-who-can-use-m3734/capture.mts`. The guests and people are made up and on Discord:
+**Captures.** From the real web app (`scripts/manual/smoke-fixture`), headless Chromium, at 8b7749243 (`src` clean). The script is `scripts/manual/agent-who-can-use-m3734/capture.mts`. The guests and people are made up and on Discord:
 - Alice: Chat, alpha.
 - Bob: beta only, so not listed.
 - Carol: Trusted, alpha and beta.
@@ -43,7 +43,7 @@ What the checks cover:
 - the rows and levels, and Carol's "level applies to all 2 agents" note;
 - the scope showing the agent's display name (desk);
 - the Hub button by name, on screen, with its address and target, and the note that it doesn't open outside the internal network;
-- every control in the section at least 44 px tall and on screen;
+- every control in the section at least 44 px tall, on screen and with its label inside it (that last part failed on the earlier CSS: the Hub card's two buttons overflowed at 390 px, phone dark en);
 - no sideways scroll;
 - no console error and no failed read.
 
