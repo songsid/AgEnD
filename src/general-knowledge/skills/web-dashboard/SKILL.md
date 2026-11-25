@@ -478,7 +478,10 @@ packs** on (`office_pack_access`, Dashboard access) can check, upload, replace, 
 previous version kept per pack); **Agents changing packs** under the packs names those agents, sets whether their changes
 **Need my yes** (the default) or **Apply at once**, and approves or rejects the waiting ones (also from the notice's
 buttons in General); every change is logged and told in General. **Style** (per office for a stored one; for the whole fleet, #2716, an admin's pick is kept on the host for every device and share link, anyone else's stays in their browser): **Desks**,
-**Studio** (one scene — Work, Lounge, Help desk, Nap corner — where each instance walks to the area for its state),
+**Studio** (one scene — Work, Lounge, Help desk, Nap corner — where each instance walks to the area for its state; the Help
+desk is for an agent that is calling: a Needs you item that names it, such as a held contact request to approve, a failed
+delivery, a crash or a prompt waiting at its terminal. A ClassicBot room's low-key "can switch to restricted mode"
+suggestion alone does not send it there, and the org chart doesn't mark it calling for it either, #4449),
 **Cozy** (#2631: the same in a warm pixel-art office drawn as one picture; its notice board says a skin pack can
 restyle it; the default for a browser that has not picked a style and for a new office — a saved office keeps its
 own), **Guild** and **School** (#2947: two more pictures on the Cozy's arrangement — an adventurers' guild hall and a
