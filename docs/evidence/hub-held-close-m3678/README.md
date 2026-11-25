@@ -65,3 +65,17 @@ Both failing CI checks pass. A neighboring Hub hook's fixed 400 ms positive wait
 also exposed a cold-import race locally; it now waits on the mock's actual apply
 completion for initial and changed configuration. No timeout or retry was added.
 The two suites pass 15 tests; source and test TypeScript pass.
+
+
+## Link parity correction
+
+After the link audit landed on release, its guard caught the missing public-link
+route. A plain merge preserves all 83 owned added/removed-line sequences and all
+48 PNG blobs. `POST /ui/needs/hub-close` is now routed next to hub-retry, with no
+change to its verified managing-admin handler. The audit's settled route list
+includes it. Regression calls use actual gateway session/context binding and the
+real FleetManager contact-actor consumer with an inert verification provider:
+admins succeed over the link and locally; read-only, guest, unverified and
+missing-CSRF requests invoke no close callback. Four audit failures precede the
+route addition. The final audit passes 5 tests; 45 neighboring contact/retry/role
+cases pass. Both TypeScript checks pass. No new browser or live campaign.

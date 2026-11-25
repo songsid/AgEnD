@@ -85,5 +85,31 @@
     "sourceTypecheck": 0,
     "testTypecheck": 0,
     "neighborTimingCorrection": "Existing 400ms startup/apply wait replaced with the actual mocked apply completion signal; no retries or timeout increase."
+  },
+  "linkCorrection": {
+    "sync": {
+      "reviewed": "a5bf6aa5481e54aa9dcad8ae89fe78ab49936b47",
+      "incoming": "af75175716ebf816237b573e6537114439a01945",
+      "merged": "a02e34bbfbcc3a6b2a36d078388eb34fd04c74ee",
+      "oldBase": "ed74e0782450d193fbb7002bc86abf54588251b1",
+      "ownedPaths": 83,
+      "orderedAddedRemovedLinesIdentical": true,
+      "pngBlobsIdentical": 48
+    },
+    "route": "POST /ui/needs/hub-close",
+    "baseAuditFailures": 4,
+    "finalAuditTests": 5,
+    "neighborTestsPassed": 45,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0,
+    "checks": [
+      "current admin over gateway and local",
+      "actual FleetManager.contactActor consumer",
+      "read-only refused",
+      "guest refused",
+      "unverified refused",
+      "missing CSRF refused"
+    ],
+    "capturesUnchanged": true
   }
 }

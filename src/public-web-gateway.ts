@@ -125,6 +125,8 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // M-3680 (decision 7933bf90; found by the link-parity audit): Needs you's "Try again" on held Hub work (M-3632) was
   // missing here. The handler admits an admin session only over the link.
   if (method === "POST" && path === "/ui/needs/hub-retry") return true;
+  // M-3678: same verified target-manager check as the local held-question close.
+  if (method === "POST" && path === "/ui/needs/hub-close") return true;
   // #1827: the person's own name (a profile edit, which the public link may make).
   if ((method === "GET" || method === "POST") && path === "/ui/profile") return true;
   if (isPublicPrivilegedRoute(method, path)) return true;
