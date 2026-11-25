@@ -1,0 +1,240 @@
+{
+  "sourceHead": "2c412898aeabee6726f1549b2cf11ed0eaff0011",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: the app mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: every ClassicBot room has its restricted-mode suggestion in Needs you",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no room is drawn calling for it (not \"needs\")",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the real call still calls: worker is \"needs\"",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the app mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: every ClassicBot room has its restricted-mode suggestion in Needs you",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no room is drawn calling for it (not \"needs\")",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the real call still calls: worker is \"needs\"",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: the app mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: every ClassicBot room has its restricted-mode suggestion in Needs you",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: no room is drawn calling for it (not \"needs\")",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: the real call still calls: worker is \"needs\"",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the app mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: every ClassicBot room has its restricted-mode suggestion in Needs you",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no room is drawn calling for it (not \"needs\")",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the real call still calls: worker is \"needs\"",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-pixel: the app mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-pixel: every ClassicBot room has its restricted-mode suggestion in Needs you",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-pixel: no room is drawn calling for it (not \"needs\")",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-pixel: the real call still calls: worker is \"needs\"",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-pixel: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-studio: the app mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-studio: every ClassicBot room has its restricted-mode suggestion in Needs you",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-studio: no room is drawn calling for it (not \"needs\")",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-studio: the real call still calls: worker is \"needs\"",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-studio: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-cozy: the app mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-cozy: every ClassicBot room has its restricted-mode suggestion in Needs you",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-cozy: no room is drawn calling for it (not \"needs\")",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-cozy: the real call still calls: worker is \"needs\"",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-cozy: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3720-desk-light-en.png",
+      "sha256": "d39387dd7a6281a872de1b1a1cda9b28978e4a82cc7e237e5d2b4d8981b45231"
+    },
+    {
+      "path": "m3720-desk-dark-zh-TW.png",
+      "sha256": "782f7c91787dafd58c58a520275f96c0a85e4394c51c9fd2a003ead3819e4b75"
+    },
+    {
+      "path": "m3720-phone-light-en.png",
+      "sha256": "3018ed3bc09470a969471e94ad8a39bc5d5d47ad044c1621eb62022ac1cbf037"
+    },
+    {
+      "path": "m3720-phone-dark-zh-TW.png",
+      "sha256": "083e26bc96f3cf651448d3e9858bab7f33a11aef81bc0addbe6a17a975f9ebed"
+    },
+    {
+      "path": "m3720-desk-light-en-pixel.png",
+      "sha256": "2a04c32a438baa6064174e691ed0324a1ba446b5d8a7eede41d10b61823c7ae9"
+    },
+    {
+      "path": "m3720-desk-light-en-studio.png",
+      "sha256": "a5cb76d3161d3b738cc1aa7f8a7e9af03e8d4951d4cb9e0624818034b8dce5e7"
+    },
+    {
+      "path": "m3720-desk-light-en-cozy.png",
+      "sha256": "fb54e154531333ae8b5eb771818e461e1e6c74bb843627b0396e020d54b20f94"
+    }
+  ],
+  "states": {
+    "desk-light-en": {
+      "general": "idle",
+      "lead": "idle",
+      "worker": "needs",
+      "classic-產品專案區-5823-grok-bot": "idle",
+      "classic-遊戲企劃-7393": "idle",
+      "classic-customer-escalations-and-refund-requests-2291": "idle"
+    },
+    "desk-dark-zh-TW": {
+      "general": "idle",
+      "lead": "idle",
+      "worker": "needs",
+      "classic-產品專案區-5823-grok-bot": "idle",
+      "classic-遊戲企劃-7393": "idle",
+      "classic-customer-escalations-and-refund-requests-2291": "idle"
+    },
+    "phone-light-en": {
+      "general": "idle",
+      "lead": "idle",
+      "worker": "needs",
+      "classic-產品專案區-5823-grok-bot": "idle",
+      "classic-遊戲企劃-7393": "idle",
+      "classic-customer-escalations-and-refund-requests-2291": "idle"
+    },
+    "phone-dark-zh-TW": {
+      "general": "idle",
+      "lead": "idle",
+      "worker": "needs",
+      "classic-產品專案區-5823-grok-bot": "idle",
+      "classic-遊戲企劃-7393": "idle",
+      "classic-customer-escalations-and-refund-requests-2291": "idle"
+    },
+    "desk-light-en-pixel": {
+      "general": "idle",
+      "lead": "idle",
+      "worker": "needs",
+      "classic-產品專案區-5823-grok-bot": "idle",
+      "classic-遊戲企劃-7393": "idle",
+      "classic-customer-escalations-and-refund-requests-2291": "idle"
+    },
+    "desk-light-en-studio": {
+      "general": "idle",
+      "lead": "idle",
+      "worker": "needs",
+      "classic-產品專案區-5823-grok-bot": "idle",
+      "classic-遊戲企劃-7393": "idle",
+      "classic-customer-escalations-and-refund-requests-2291": "idle"
+    },
+    "desk-light-en-cozy": {
+      "general": "idle",
+      "lead": "idle",
+      "worker": "needs",
+      "classic-產品專案區-5823-grok-bot": "idle",
+      "classic-遊戲企劃-7393": "idle",
+      "classic-customer-escalations-and-refund-requests-2291": "idle"
+    }
+  },
+  "rooms": [
+    "classic-產品專案區-5823-grok-bot",
+    "classic-遊戲企劃-7393",
+    "classic-customer-escalations-and-refund-requests-2291"
+  ],
+  "summary": "35/35"
+}
