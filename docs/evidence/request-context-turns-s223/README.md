@@ -31,3 +31,9 @@ provider, live pane, desktop window or Fleet deployment is used.
 npx vitest run tests/request-context-turns-s223.test.ts \
   tests/request-context-daemon-s223.test.ts tests/request-context-recovery-s223.test.ts
 ```
+
+The review regression pins A-to-B succession under the same unchanged runtime
+owner, through both the tracker and the real daemon accessor. A stale A snapshot
+cannot validate or end B. A changed B snapshot with its live token also refuses.
+Owner-only and token-only predicates each make both regression tests fail; runtime
+source is unchanged by this correction.

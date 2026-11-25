@@ -116,3 +116,21 @@ it("matching an unmarked repeated system prompt never proves an owned turn ended
   write.ledger.observe([{ kind: "start", turnId: "same-text" }, { kind: "user", turnId: "same-text", text: write.text, at: write.at }, { kind: "end", turnId: "same-text", end: "complete" }]);
   r.daemon.settleRequestContextFromTranscript(); expect(r.daemon.requestContextTurnCurrent(snapshot)).toBe(true);
 });
+it("the daemon refuses an older snapshot after the next input binds under the same owner", async () => {
+  const r = rig(), firstText = "[hid:demo-first] First input"; r.prepare("human:demo-first", firstText);
+  const firstWrite = r.daemon.deliverMessage(firstText, undefined, { humanVerificationId: "demo-first" }); await vi.runAllTimersAsync(); await firstWrite;
+  const first = r.daemon.requestContextTurnSnapshot(), write = r.daemon.requestContextWrite;
+  write.ledger.observe([{ kind: "start", turnId: "first" }, { kind: "user", turnId: "first", text: firstText, at: write.at }, { kind: "end", turnId: "first", end: "complete" }]);
+  r.daemon.settleRequestContextFromTranscript(); expect(r.daemon.requestContextTurnSnapshot()).toBeNull();
+  const secondText = "[hid:demo-second] Second input"; r.prepare("human:demo-second", secondText);
+  const prepared = r.inputs.get("human:demo-second")!;
+  prepared.context = { ...prepared.context!, ref: { version: 1, contextId: AUDIENCE, rootContextId: AUDIENCE }, rootEvidenceRef: "accepted-second" };
+  const secondWrite = r.daemon.deliverMessage(secondText, undefined, { humanVerificationId: "demo-second" }); await vi.runAllTimersAsync(); await secondWrite;
+  const second = r.daemon.requestContextTurnSnapshot(); expect(second.owner).toEqual(first.owner);
+  expect(r.daemon.requestContextTurnCurrent(first)).toBe(false);
+  expect(r.turns.ended(first, r.daemon.requestContextOwner())).toBe(false);
+  expect(r.daemon.requestContextTurnSnapshot()).toBe(second);
+  expect(r.daemon.requestContextTurnCurrent(second)).toBe(true);
+  expect(r.daemon.requestContextTurnCurrent({ ...second, wireSha256: wireDigest("different snapshot") })).toBe(false);
+  expect(r.daemon.requestContextTurnSnapshot()).toBe(second);
+});

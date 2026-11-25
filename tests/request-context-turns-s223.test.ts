@@ -146,3 +146,17 @@ it("a stale completion with its captured old owner cannot retire a newer binding
   const current = r.turns.beforeWrite("next", digest, newerOwner);
   expect(r.turns.ended(old, owner)).toBe(false); expect(r.turns.current(newerOwner)).toBe(current);
 });
+it("a stale snapshot cannot retire its successor under the same unchanged owner", () => {
+  const r = rig(), first = r.turns.beforeWrite("first", r.prepare("first"), owner);
+  expect(r.turns.ended(first, owner)).toBe(true);
+  const nextContext = { ...context(), ref: { version: 1 as const, contextId: OTHER, rootContextId: OTHER } };
+  const second = r.turns.beforeWrite("second", r.prepare("second", nextContext), owner);
+  expect(second.owner).toEqual(first.owner); expect(second.token).not.toBe(first.token);
+  expect(r.turns.isCurrent(first, owner)).toBe(false);
+  expect(r.turns.ended(first, owner)).toBe(false);
+  expect(r.turns.current(owner)).toBe(second);
+  const changedSnapshot = { ...second, wireSha256: wireDigest("different snapshot") };
+  expect(r.turns.isCurrent(changedSnapshot, owner)).toBe(false);
+  expect(r.turns.ended(changedSnapshot, owner)).toBe(false);
+  expect(r.turns.current(owner)).toBe(second);
+});
