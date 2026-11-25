@@ -483,7 +483,8 @@ The user's input, extending C and D7. The agents' CLIs (Claude Code, Codex, Kiro
     5. signs;
     6. pushes **with the head it read as the expected parent**.
   - If the branch moved (another writer won), the push is refused, and the writer re-reads, re-applies its change to the new index and tries again. A stale copy is never published.
-  - So two writers can never publish different content under one generation, and a new client can never receive an older floor than the one already published.
+  - So two writers can never publish different content under one generation, and a stale writer can never overwrite newer policy.
+  - This doesn't stop a **fresh** client (no high-water mark yet) from fetching an older, still-unexpired generation from a lagging mirror. That client sees older advice until its next fetch reaches the current one. From then on the persisted high-water mark and the expiry bound (§5.1) keep it from going back.
 
 **What a fleet does with it** (the daily check, §1.1, and on the first start after an update)
 
@@ -635,3 +636,4 @@ A rehearsal (like S-233's) proves phases 2–4 on real installs: a forced trial 
 | Prism R4-1: two index writers | §5.4: one index writer: the site repo commit is the source of truth; a shared concurrency group; compare-and-swap on the parent commit; rebase on conflict; generation strictly +1 |
 | Prism R4-2: resolving without silencing older fleets; exact coverage | §5.4: `resolved` history with `resolvedBy`, judged against the running build's exact `auditedCli`; an ineligible fix gets the way back; "covered" = the exact version/build |
 | Prism R4-3: the shared-key boundary | §5.4: a false flag alone is a notice, but the key signs the whole index, so it's §5.1's boundary; flags never add scheduling authority |
+| Prism R5 wording | §5.4: CAS prevents stale-writer overwrites and conflicting equal generations; a fresh client may still read an older unexpired generation from a lagging mirror until its next fetch |
