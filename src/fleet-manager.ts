@@ -2193,6 +2193,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const line = !p3 ? t("update.chatcard.continues") : p3.ok ? t("update.chatcard.back", current ?? "?") : t("update.chatcard.noWayBack");
       return `${t("update.chatcard.offer", view.version)}\n${line}`;
     }
+    // The card's own short lines, as on the web (the leader's copy pass); anything else in /update's words.
+    const at = (ms?: number) => { if (!ms) return ""; const d = new Date(ms), p2 = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+    if (view?.state === "waiting-idle") return t("update.chatcard.state_waiting", view.version);
+    if (view?.state === "scheduled") return t("update.chatcard.state_scheduled", view.version, at(view.scheduledAt));
+    if (view?.state === "not-now") return t("update.chatcard.state_not_now", view.version, at(view.notNowUntil));
+    if (view?.state === "updating") return t("update.chatcard.state_updating", view.version);
+    if (view?.state === "done") return t("update.chatcard.state_done", view.version);
+    if (view?.state === "failed") return t("update.chatcard.state_failed", view.version, current ?? "?");
     const reply = updateOfferReply(view, current, !!resolveUpdates(this.fleetConfig?.updates).pin);
     return t(reply.key, ...reply.args);
   }
@@ -2224,7 +2232,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (view && state === "offered" && view.installable && (!posted || posted.version !== view.version || posted.state !== "offered")) {
         const place = this.updateChatCardPlace();
         if (!place) return;
-        if (posted) await this.editUpdateChatCard(posted, posted.version === view.version ? t("update.chatcard.cancelled", `v${posted.version}`) : t("update.chatcard.replaced", `v${view.version}`));
+        if (posted) await this.editUpdateChatCard(posted, posted.version === view.version ? t("update.chatcard.cancelled", posted.version) : t("update.chatcard.replaced", view.version));
         const nonce = await this.postNonceButtonPromptOrThrow({
           prefix: UPDATE_CARD_CALLBACK_PREFIX, alertType: "tip", instanceName: place.general, adapter: place.adapter, adapterId: place.adapterId,
           chatId: place.chatId, ...(place.threadId ? { threadId: place.threadId } : {}),
@@ -2239,7 +2247,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return;
       }
       if (posted && posted.state !== state) {
-        const text = state === "none" && posted.state !== "done" ? t("update.chatcard.cancelled", `v${posted.version}`) : this.updateChatCardText(view, current);
+        const text = state === "none" && posted.state !== "done" ? t("update.chatcard.cancelled", posted.version) : this.updateChatCardText(view, current);
         await this.editUpdateChatCard(posted, text);
         this.writeUpdateChatCard(state === "none" ? null : { ...posted, state, nonce: null });
       }

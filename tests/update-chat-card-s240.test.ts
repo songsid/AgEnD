@@ -134,7 +134,7 @@ describe("M-3770 1.5: the update card in General's chat", () => {
       expect(f.fm.updateOfferView().state).toBe("offered");
       expect(await press(f, g, "when-idle").run).toBe(true);
       expect(f.fm.updateOfferView().state).toBe("waiting-idle");
-      expect(g.retired.at(-1)).toMatch(/will update when your agents are idle\. · answered by Example owner/);
+      expect(g.retired.at(-1)).toMatch(/Updating to 2\.3\.5-beta\.3 as soon as your agents are idle\. · answered by Example owner/);
     } finally { await f.stop(); }
   });
   it("Tonight schedules 22:00 (the next one at least 30 min ahead); Not now hides it", async () => {
@@ -171,7 +171,7 @@ describe("M-3770 1.5: the update card in General's chat", () => {
       expect(g.alerts).toHaveLength(2);
       expect([...g.edits, ...g.retired].some((t) => /cancelled/.test(t))).toBe(true);
       offer(f, "2.3.5-beta.4"); await vi.waitFor(() => expect(g.alerts).toHaveLength(3));
-      expect(g.retired.some((t) => /newer card replaced this one \(v2\.3\.5-beta\.4\)/.test(t))).toBe(true);
+      expect(g.retired.some((t) => /newer card replaced this one \(2\.3\.5-beta\.4\)/.test(t))).toBe(true);
     } finally { await f.stop(); }
   });
   it("the daily check no longer posts \"Run: /update\" for an offer this install can take: the card, once", async () => {
