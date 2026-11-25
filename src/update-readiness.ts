@@ -329,26 +329,21 @@ async function checkTarget(d: ReadinessDeps, install: Install, target: string): 
  * re-proves (P1, P3, P4, P5, P9): no network, since `agend update` pings and checks the target itself.
  */
 export async function runUpdatePreflight(opts: { target?: string | null; localOnly?: boolean } = {}, d: ReadinessDeps = defaultReadinessDeps()): Promise<UpdatePreflight> {
+  // Each row is stamped when its check finished (Prism #4483 R2): a run that then waits on the network must not make
+  // what it saw earlier look newer than a launch's re-proof made meanwhile.
   const checks: PreflightCheck[] = [];
-  const platform = await checkPlatform(d);
+  const seen = (c: PreflightCheck | null): void => { if (c) checks.push({ ...c, checkedAt: d.now() }); };
+  seen(await checkPlatform(d));
   const { check: p1, install, runningRoot } = await checkInstall(d);
-  checks.push(p1);
-  const p3 = await checkService(d);
-  if (p3) checks.push(p3);
-  if (install) checks.push(await checkWrite(d, install));
-  const p5 = await checkCopy(d, install, runningRoot);
-  if (p5) checks.push(p5);
+  seen(p1);
+  seen(await checkService(d));
+  if (install) seen(await checkWrite(d, install));
+  seen(await checkCopy(d, install, runningRoot));
   if (install && !opts.localOnly) {
-    const p7 = await checkSource(d, install);
-    if (p7) checks.push(p7);
-    if (opts.target) {
-      const p10 = await checkTarget(d, install, opts.target);
-      if (p10) checks.push(p10);
-    }
+    seen(await checkSource(d, install));
+    if (opts.target) seen(await checkTarget(d, install, opts.target));
   }
-  checks.push(platform);
-  const order: PreflightId[] = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"];
-  checks.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  checks.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
   return summarize(checks, d.now(), { target: checks.some(c => c.id === "P10") ? opts.target ?? null : null, install: install?.agend ?? null });
 }
 

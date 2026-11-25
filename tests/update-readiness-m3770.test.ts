@@ -1,6 +1,6 @@
 // M-3770 slice 1.2 (design #4480 §4): the pre-flight's classes and checks P1, P3, P4, P5, P7, P9 and P10, on fake
 // probes (no npm, systemctl or filesystem of the host is touched), and the launch's refusal words.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mergePreflight, preflightAllows, preflightClass, preflightRefusal, runUpdatePreflight, summarize, type ReadinessDeps } from "../src/update-readiness.js";
 import { setLocale, t } from "../src/locale.js";
 
@@ -21,6 +21,8 @@ type Opts = {
   unit?: { status: number | null; stdout: string; timedOut?: boolean };
   /** `launchctl print`'s answer (default: the job running). */
   launchd?: { status: number | null; stdout: string };
+  /** The clock `now()` reads (default: a fixed instant); `pingGate`: `npm ping` waits for it. */
+  clock?: { t: number }; pingGate?: Promise<void>;
 };
 
 function rig(o: Opts = {}) {
@@ -69,13 +71,13 @@ function rig(o: Opts = {}) {
       if (cmd === "systemctl") return { ...(o.unit ?? { status: 0, stdout: `LoadState=loaded\nActiveState=active\nNeedDaemonReload=${o.reload ?? "no"}\n` }), stderr: "" };
       if (cmd === "launchctl") return { ...(o.launchd ?? { status: 0, stdout: "gui/501/com.agend.fleet = {\n\tstate = running\n\tpid = 812\n}\n" }), stderr: "" };
       if (cmd === "npm" && args[0] === "config") return o.registry === false ? { status: 1, stdout: "", stderr: "" } : { status: 0, stdout: "; \"user\" config from /home/u/.npmrc\n", stderr: "" };
-      if (cmd === "npm" && args[0] === "ping") { pingEnv.push(env); return { ...(o.ping ?? { status: 0, stderr: "" }), stdout: "" }; }
+      if (cmd === "npm" && args[0] === "ping") { pingEnv.push(env); if (o.pingGate) await o.pingGate; return { ...(o.ping ?? { status: 0, stderr: "" }), stdout: "" }; }
       if (cmd === "npm" && args[0] === "view") return o.view === null ? { status: 1, stdout: "", stderr: "E404" } : { status: 0, stdout: o.view ?? JSON.stringify({ version: "2.5.0", engines: { node: ">=22.14.0" }, optionalDependencies: {} }), stderr: "" };
       if (cmd === "sh") return o.node === null ? { status: 127, stdout: "", stderr: "" } : { status: 0, stdout: `${o.node ?? "22.14.0"} /usr/bin/node\n`, stderr: "" };
       return { status: 1, stdout: "", stderr: "" };
     },
     host: () => ({ platform: "linux", arch: "x64", id: "linux-x64", glibc: "2.35", darwinRelease: null }),
-    now: () => 1_700_000_000_000,
+    now: () => o.clock?.t ?? 1_700_000_000_000,
   };
   return { d, runs, pingEnv };
 }
@@ -339,5 +341,27 @@ describe("M-3770: merging a cached pre-flight with a fresher one", () => {
     const m = mergePreflight(gate, lateRefresh, "2.5.0");
     expect(m.checks.find(c => c.id === "P1")?.checkedAt).toBe(500);
     expect(m.checks.find(c => c.id === "P7")?.checkedAt).toBe(300);
+  });
+});
+
+// Prism #4483 R2: the producer stamps each row when its check finished, not when the whole run ends.
+describe("M-3770: a refresh overlapping a launch's re-proof (the real producer, not hand-made rows)", () => {
+  it("a refresh that saw P1 pass, then waited on npm ping, never replaces the launch's newer path-shadow refusal", async () => {
+    const clock = { t: 100 };
+    let release!: () => void;
+    const refreshRig = rig({ clock, pingGate: new Promise<void>(r => { release = r; }) });
+    const refreshing = runUpdatePreflight({ target: "2.5.0" }, refreshRig.d);        // P1 passes at 100, then waits on the ping
+    await vi.waitFor(() => expect(refreshRig.runs.some(r => r.startsWith("npm ping"))).toBe(true));
+    clock.t = 110;
+    const gate = await runUpdatePreflight({ localOnly: true }, rig({ clock, pathAgend: "/usr/local/bin/agend", pathAgendReal: "/usr/local/lib/node_modules/@songsid/agend/dist/cli.js" }).d);
+    let cached = mergePreflight(null, gate, "2.5.0");
+    expect(cached.class).toBe("stop");
+    clock.t = 200; release();
+    const refreshed = await refreshing;
+    expect(refreshed.checks.find(c => c.id === "P1")).toMatchObject({ ok: true, checkedAt: 100 });   // when it was seen
+    expect(refreshed.checks.find(c => c.id === "P7")).toMatchObject({ ok: true, checkedAt: 200 });
+    cached = mergePreflight(cached, refreshed, "2.5.0");
+    expect(cached.checks.find(c => c.id === "P1")).toMatchObject({ ok: false, code: "path-shadow", checkedAt: 110 });
+    expect(cached.class).toBe("stop");
   });
 });
