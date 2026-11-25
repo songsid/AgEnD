@@ -1,5 +1,5 @@
 {
-  "sourceHead": "337317c6195f31797e0e3dfd682f22e0e75ccafe",
+  "sourceHead": "94f81cfc5383bab195abea8dd6ac578936998396",
   "dirty": [],
   "checks": [
     {
@@ -11,7 +11,7 @@
       "ok": true
     },
     {
-      "name": "desk-en-light guest-verified: the session menu's role reads \"Guest · Verified until 09:18 AM\"",
+      "name": "desk-en-light guest-verified: the session menu's role reads \"Guest · Verified until 12:19 AM\"",
       "ok": true
     },
     {
@@ -19,7 +19,7 @@
       "ok": true
     },
     {
-      "name": "desk-en-light guest-verified: the time stays on one line (2 line(s) in all)",
+      "name": "desk-en-light guest-verified: the time stays on one line (1 line(s) in all)",
       "ok": true
     },
     {
@@ -63,7 +63,7 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark guest-verified: the session menu's role reads \"訪客 · 已驗證到 上午09:18\"",
+      "name": "desk-zh-TW-dark guest-verified: the session menu's role reads \"訪客 · 已驗證到 上午12:19\"",
       "ok": true
     },
     {
@@ -115,7 +115,7 @@
       "ok": true
     },
     {
-      "name": "phone-en-light guest-verified: the session menu's role reads \"Guest · Verified until 09:18 AM\"",
+      "name": "phone-en-light guest-verified: the session menu's role reads \"Guest · Verified until 12:19 AM\"",
       "ok": true
     },
     {
@@ -167,7 +167,7 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark guest-verified: the session menu's role reads \"訪客 · 已驗證到 上午09:18\"",
+      "name": "phone-zh-TW-dark guest-verified: the session menu's role reads \"訪客 · 已驗證到 上午12:19\"",
       "ok": true
     },
     {
@@ -214,35 +214,35 @@
   "pictures": [
     {
       "path": "web-guest-verified-m3651/desk-en-light-guest-verified.png",
-      "sha256": "e1d1c29db4730fba2102b67634eaf5d54f6d96864510b6d3dc0d457d89901f3c"
+      "sha256": "0e3758f464ec807bfaa7cb5ae36cf83dc84c04686f1f36c75451c46472741002"
     },
     {
       "path": "web-guest-verified-m3651/desk-en-light-guest-not-verified.png",
-      "sha256": "06b4895ec6ba3d30d1901f02bd9d71ec2909e335edca6885becb6ce1dc097505"
+      "sha256": "735804fc750f0e94e6ce7fd5f77dbcb0ae930e2ae5337dcfca851158e8e87bc7"
     },
     {
       "path": "web-guest-verified-m3651/desk-zh-TW-dark-guest-verified.png",
-      "sha256": "f716e94c52f9002f0749163894b445a66e7ed22ddf9956788daadc267ed15565"
+      "sha256": "6b775780575ad8b5b0f0a734eb30196bf9c10bccc239a9e7acbb08a103f0922b"
     },
     {
       "path": "web-guest-verified-m3651/desk-zh-TW-dark-guest-not-verified.png",
-      "sha256": "a7a0cd4f290a99fc076b83781349e41f8d86c987cb97793a03692866a9c0e0d0"
+      "sha256": "bd3183a59524cd4be6ba032929205979f4dbc19c8725873f31fcd907175a2543"
     },
     {
       "path": "web-guest-verified-m3651/phone-en-light-guest-verified.png",
-      "sha256": "14bbf094a960165e6dff5c4fce17324cebb8e4da4e8a6b2a8740b57c27ecfc3a"
+      "sha256": "9f5c455da3781806d10c45156fd62e6947a61b5cf0bb1297ef9d39f757108f37"
     },
     {
       "path": "web-guest-verified-m3651/phone-en-light-guest-not-verified.png",
-      "sha256": "79fb294e99b538667ca3299410f0af72108fc7387717053ff8cdc020c44b57b6"
+      "sha256": "2e4e56064ec6afdb687384c3ad9237f88f5e73b07d148bad7aa8aecfb26eabf1"
     },
     {
       "path": "web-guest-verified-m3651/phone-zh-TW-dark-guest-verified.png",
-      "sha256": "56e17a9b6a12dc8967c177db3e97cf386829fdd00eab4d34cc9391271e21c45c"
+      "sha256": "ae7832d5292201c66367fc0a4e88253088e60461c40b3630fe4aacce50a30156"
     },
     {
       "path": "web-guest-verified-m3651/phone-zh-TW-dark-guest-not-verified.png",
-      "sha256": "d544b086648eb252f37f63bb2fbaf6495a810d4e07e8d2a55f491e76c2049ab8"
+      "sha256": "e75cd6f44950f254f429a5cb32b3b2bc80e7bee99a57e2d9e55cd15c904804a8"
     }
   ],
   "summary": "52/52"

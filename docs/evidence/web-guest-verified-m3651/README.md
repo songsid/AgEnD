@@ -20,3 +20,5 @@ The image review found two layout issues in the desk English menu, both now fixe
 Two new checks cover these: the role starts beside its label, and the time stays on one line. The time check fails on the commit before the fix, with the time on 2 lines.
 
 `receipt.json` lists the commit (its `src` clean), each check (52/52) and each PNG's sha256.
+
+Re-taken on 11-25 at 94f81cfc5, after the release tip 8173deb6b was merged in (#4433, #4435, #4438, #4447, #4448, #4449 and #4453 had landed in the same web authority, session and receipt code): 52/52, unchanged.
