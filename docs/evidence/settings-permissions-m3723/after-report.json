@@ -1,0 +1,20 @@
+{
+  "label": "after",
+  "cases": {
+    "desk-light-en": {
+      "errors": [],
+      "csp": [],
+      "text": "ⓘAt /start you choose Free or Restricted before the room is created. For a fleet admin, Free comes first and is recommended; Restricted is still a choice, and the tap is still required. Anyone else is offered Restricted only. Change it later in the room's Settings → Permissions, or from General's contact-change card. Where the guard doesn't cover a room's AI tool or version, that tool runs with its normal permissions; only contact approval applies."
+    },
+    "desk-dark-zh-TW": {
+      "errors": [],
+      "csp": [],
+      "text": "ⓘ執行 /start 時，房間建立前要選擇自由模式或受限模式。Fleet 管理員會先看到自由模式（建議），受限模式仍是一個按鈕，仍要點選。其他人只會看到受限模式。之後可在房間的設定 → 權限，或從 General 的聯絡變更卡片更改。若防護不涵蓋房間的 AI 工具或版本，該工具會以原本的權限執行，只有聯絡申請需要核准。"
+    }
+  },
+  "source": {
+    "commit": "this PR's head",
+    "src_tree": "2f33d0709d96e0bb2207814327060d4910fd80f1",
+    "note": "captured from the working tree that is this commit's src/ (the same tree; no src change after the capture)"
+  }
+}
