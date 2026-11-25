@@ -49,7 +49,7 @@ it("the admitted canonical field is parseable, authority-none and escaped, with 
 });
 it.each(["mcp","cli","either"]as const)("%s counts the full label, metadata and UTF-8 content at the exact 16000-byte boundary",mode=>{
  const f=fixture(),meta={from_instance:"source",requires_reply:"true",correlation_id:"fixture-reply",task_summary:"summary"},empty=labelHubRequest(f.prepared.context!,"",meta,mode),fill="x".repeat(16000-empty.assembledBytes),full=labelHubRequest(f.prepared.context!,fill,meta,mode);
- expect(full.assembledBytes).toBe(16000);expect(()=>labelHubRequest(f.prepared.context!,fill+"x",meta,mode)).toThrow(/too large/);expect(()=>labelHubRequest(f.prepared.context!,fill+"字",meta,mode)).toThrow(/too large/);
+ expect(full.assembledBytes).toBe(16000);expect(()=>labelHubRequest(f.prepared.context!,fill+"x",meta,mode)).toThrow(/too large/);expect(()=>labelHubRequest(f.prepared.context!,fill+"字",meta,mode)).toThrow(/too large/);expect(()=>labelHubRequest(f.prepared.context!,"x".repeat(16000-empty.assembledBytes-2)+"字",meta,mode)).toThrow(/too large/);
  expect(Math.max(...(mode==="either"?["mcp","cli"]as const:[mode]).map(m=>Buffer.byteLength(formatCrossInstanceInboundMessage(full.content,meta,m))))).toBe(16000);
 });
 it("the B admission stores the visible label and rejects a retry whose requester/content was changed",()=>{
