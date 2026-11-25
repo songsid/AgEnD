@@ -15,7 +15,7 @@ import { validateRequestContextCallStamp } from "../src/request-context-call-pro
 import type { RequestContextTurnSnapshot } from "../src/request-context-turns.js";
 const cleanup: Array<() => unknown | Promise<unknown>> = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); vi.restoreAllMocks(); });
-function rig() {
+function rig(registration?:import("../src/request-context-fence.js").RequestContextRegistrationGate) {
   const root = mkdtempSync(join(tmpdir(), "agend-s224-pane-")); cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const owner = { hostBootId: randomUUID(), paneId: randomUUID(), launchId: randomUUID(), agentId: randomUUID(), instance: "worker" };
   const contextId = randomUUID();
@@ -24,11 +24,11 @@ function rig() {
     context: { ref: { version: 1, contextId, rootContextId: contextId }, ingress: "guest", rootEvidenceRef: "fixture",
       initiatingActor: { kind: "person", platform: "discord", userId: "PRIVATE_PERSON_ID" }, source: { instance: owner.instance, incarnation: "incarnation" },
       sourceAudience: { kind: "web", ref: randomUUID() } } };
-  let active = a; const proofs = new RequestContextPaneProofs("synthetic-key-".repeat(4));
+  let active = a; const proofs = new RequestContextPaneProofs("synthetic-key-".repeat(4),registration);
   const stamp = proofs.mint(owner, a, captured => captured.token === active.token);
   const invoke = vi.fn(async (_input: Parameters<PaneMcpAuthority["invoke"]>[0], current: () => boolean) => ({ result: { ok: current() } }));
   const written = vi.fn(), file = join(root, "launch.mcp.json");
-  const authority: PaneMcpAuthority = { owner, machineId: randomUUID(), toolCeiling: ["reply"], current: () => true,
+  const authority: PaneMcpAuthority = { registration, owner, machineId: randomUUID(), toolCeiling: ["reply"], current: () => true,
     allowed: () => true, menu: () => [{ name: "reply" }], invoke, responseWritten: written, requestContexts: proofs };
   const lease = new PaneMcpAuthorityLease(file, authority);
   const body = { op: "pane-mcp" as const, method: "tools/call" as const, owner, helperId: randomUUID(), callId: "a".repeat(64), params: { name: "reply", arguments: { text: "PRIVATE_PROMPT" } } };
@@ -152,4 +152,18 @@ it("a positive launch exit retires only that launch's retained proofs through th
  (manager as any).recordExit("fixture",{launch:{cli:"claude-code"}}, {...f.owner,state:"exited",sessionId:randomUUID()});
  expect(()=>f.proofs.resolve(f.owner,f.stamp)).toThrow(/unavailable/);
  expect(()=>f.proofs.resolve(other,otherStamp)).not.toThrow();
+});
+
+it("S-226 written and detached ledger rows retain their root until a matching positive launch exit",async()=>{
+ const registration={assertRegistration:vi.fn()},f=rig(registration),root=f.a.context.ref.rootContextId;
+ const result=await f.lease.handle(f.authority.machineId,f.body,()=>true,f.stamp)as {responseId:string};
+ await f.lease.handle(f.authority.machineId,{op:"pane-mcp",method:"response-written",owner:f.owner,helperId:f.body.helperId,callId:f.body.callId,responseId:result.responseId},()=>true,f.stamp);
+ expect(f.lease.drainView(root).references).toHaveLength(1);f.lease.close();expect(f.lease.drainView(root).references).toHaveLength(1);
+ const exit={...f.owner,state:"exited" as const,columns:80,rows:24,seq:1,commandSequence:1,outputAt:0};
+ expect(()=>f.lease.retire({...exit,launchId:randomUUID()})).toThrow(/owned exit/);expect(f.lease.drainView(root).references).toHaveLength(1);
+ f.lease.retire(exit);expect(f.lease.drainView(root).references).toEqual([]);
+});
+it("S-226 new pane call preparation checks the drain fence before invoking or persisting a row",async()=>{
+ const registration={assertRegistration:vi.fn()},f=rig(registration);registration.assertRegistration.mockImplementation(()=>{throw Error("root draining");});
+ await expect(f.lease.handle(f.authority.machineId,f.body,()=>true,f.stamp)).rejects.toThrow(/draining/);expect(f.invoke).not.toHaveBeenCalled();expect(f.lease.drainView(f.a.context.ref.rootContextId).references).toEqual([]);
 });

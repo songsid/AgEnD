@@ -1,3 +1,4 @@
+import { RequestContextReferenceMap, type RequestContextRegistrationGate } from "./request-context-fence.js";
 /** Per-turn, instance-bound MCP capabilities for native Windows CLI children. */
 import { agentCredentialPolicy } from "./agent-credentials.js";
 import { nativeAgentAdmissionContext } from "./native-agent-admission.js";
@@ -85,8 +86,11 @@ function refuse(req:IncomingMessage,res:ServerResponse,status:number,message:str
 }
 
 export class NativeMcpSessions {
-  private readonly sessions=new Map<string,Session>();
-  constructor(private readonly ctx:AgentEndpointContext) {}
+  private readonly sessions=new RequestContextReferenceMap<string,Session>(session=>session.requestContext?.snapshot.context.ref.rootContextId??null,session=>`native-grant:${session.requestId}`);
+  private readonly drainCalls=new RequestContextReferenceMap<string,Session>(session=>session.requestContext?.snapshot.context.ref.rootContextId??null,session=>`native-call:${session.requestId}`);
+  constructor(private readonly ctx:AgentEndpointContext,registration?:RequestContextRegistrationGate) {this.sessions.installRegistration(registration);this.drainCalls.installRegistration(registration);}
+  get drainRevision():string{return `${this.sessions.revision}:${this.drainCalls.revision}`;}
+  drainView(rootId:string){const sessions=this.sessions.view(rootId),calls=this.drainCalls.view(rootId);return {...sessions,revision:this.drainRevision,references:[...sessions.references,...calls.references],unknown:sessions.unknown||calls.unknown};}
   private requestContextRequired=false;
   /** Internal rollout only; production stays OFF until L. Existing grants do not acquire a context. */
   setRequestContextRequired(required:boolean):void {
@@ -103,6 +107,7 @@ export class NativeMcpSessions {
       throw Error("Native MCP request context is no longer current");
     }
 
+    if(input.requestContext)this.sessions.registrationGate?.assertRegistration(input.requestContext.snapshot.context.ref.rootContextId);
     if(!windowsCliEnabled() || config?.runtime!=="windows" || !UUID.test(config.native_agent_id ?? "")
       || !["codex","claude-code"].includes(config.backend ?? "") || !UUID.test(input.requestId)
       || !["read-only","workspace-write"].includes(input.sandbox) || typeof input.stillCurrent!=="function") throw Error("Native MCP requires an active supported Windows instance");
@@ -225,6 +230,7 @@ export class NativeMcpSessions {
       const old=session.calls.get(body.callId);
       if(old && old.digest!==digest){json(res,409,{error:"Native MCP callId belongs to different arguments"});return;}
       if(!old && session.calls.size>=MAX_CALLS){json(res,429,{error:"Native MCP turn call limit reached"});return;}
+      if(!old&&session.requestContext)this.sessions.registrationGate?.assertRegistration(session.requestContext.snapshot.context.ref.rootContextId);
       const operationId=old?.operationId ?? randomUUID();
       const call=old ?? {operationId,digest,result:Promise.resolve().then(async()=>{
         if(!this.current(session) || !this.canCall(session,name,args))return toolError("Native MCP capability or tool access was revoked");
@@ -238,7 +244,10 @@ export class NativeMcpSessions {
           return result(value);
         } catch(error){return toolError(error instanceof Error ? error.message : "AgEnD tool failed");}
       })};
-      if(!old)session.calls.set(body.callId,call);
+      if(!old){
+        session.calls.set(body.callId,call);
+        if(this.drainCalls.registrationGate){this.drainCalls.set(operationId,session);void call.result.then(()=>this.drainCalls.delete(operationId),()=>this.drainCalls.delete(operationId));}
+      }
       const response=await call.result;
       if(!this.current(session)){json(res,401,{error:"Native MCP capability is invalid or expired"});return;}
       if(!this.canCall(session,name,args)) {

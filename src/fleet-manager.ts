@@ -1,3 +1,4 @@
+import { RequestContextReferenceMap, type RequestContextRegistrationGate } from "./request-context-fence.js";
 type HubHeldCloseOutcome = import("./hub/question-close-model.js").HubHeldCloseOutcome;
 import { prepareContactChange, shortContactTicketId, type PreparedContactChange } from "./contact-change-proposals.js";
 import { contactStateView, ownContactRequestsView } from "./contact-state-view.js";
@@ -1511,6 +1512,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private fleetWindowsRuntime: FleetWindowsRuntime | null = null;
   private nativeMcpStore: NativeMcpSessions | null = null;
   private readonly requestContextIpcCalls = new WeakMap<object, RequestContextLocalCall>();
+  private readonly requestContextFleetCalls=new RequestContextReferenceMap<string,{call:RequestContextLocalCall;instance:string;responseKey:string}>(row=>row.responseKey&&row.call.admission.coverage==="covered"?row.call.admission.lease.snapshot.context.ref.rootContextId:null,row=>`fleet-call:${row.call.id}`);
+  setRequestContextDrainRegistration(registration:RequestContextRegistrationGate):void {
+    if(this.instanceIpcClients.size)throw Error("Request context drain must bind before IPC starts");
+    this.requestContextFleetCalls.installRegistration(registration);
+  }
+  get requestContextFleetDrainRevision():string{return this.requestContextFleetCalls.revision;}
+  requestContextFleetDrainView(rootId:string){return this.requestContextFleetCalls.view(rootId);}
+  private finishRequestContextIpcCall(message:object):void {const call=this.requestContextCallOf(message);if(call)this.requestContextFleetCalls?.delete(call.id);}
+  private observeRequestContextResponses(name:string,ipc:InstanceClient):void {
+    if(!this.requestContextFleetCalls.registrationGate)return;
+    const send=ipc.send.bind(ipc);
+    ipc.send=(message:unknown):boolean=>{
+      try{return send(message);}finally{
+        if(message&&typeof message==="object"){
+          const row=message as Record<string,unknown>,key=String(row.fleetRequestId??row.requestId??"");
+          if(String(row.type??"").endsWith("_response")&&key)for(const [id,call]of this.requestContextFleetCalls)if(call.instance===name&&call.responseKey===key)this.requestContextFleetCalls.delete(id);
+        }
+      }
+    };
+  }
   /** Captured at IPC arrival, not a later lookup of this instance's current turn. */
   requestContextCallOf(message: object): RequestContextLocalCall | null { return this.requestContextIpcCalls?.get(message) ?? null; }
   private captureRequestContextIpcCall(name: string, message: Record<string, unknown>, ipc: InstanceClient): boolean {
@@ -1524,6 +1545,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const scoped = Object.freeze({ id: captured.id, admission: captured.admission,
       current: () => captured.current() && this.instanceIpcClients.get(name) === ipc && this.getDaemonBootId(name) === originalBoot
         && !!tool && this.checkToolPermission("ipc-outbound", name, tool === "hub_room_status" ? "hub_room_list" : tool).allowed });
+    if(this.requestContextFleetCalls.registrationGate){
+      const responseKey=String(message.fleetRequestId??message.requestId??"");
+      if(this.requestContextFleetCalls.has(scoped.id)||[...this.requestContextFleetCalls.values()].some(row=>row.instance===name&&row.responseKey===responseKey))return false;
+      try{this.requestContextFleetCalls.set(scoped.id,{call:scoped,instance:name,responseKey});}catch{return false;}
+    }
     this.requestContextIpcCalls.set(message, scoped); return true;
   }
   private paneManager: import("./native-pane-manager.js").NativePaneManager | null = null;
@@ -5902,6 +5928,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       delivered: ticket => !!ticket.deliveryId && this.deliveryOutbox!.get(ticket.deliveryId)?.state === "delivered",
       deliveryState: ticket => ticket.deliveryId ? this.deliveryOutbox!.get(ticket.deliveryId)?.state : undefined,
       admit: (request, ticketId) => {
+        if(this.daemons.get(request.target)?.requestContextCallsRequired?.()||this.fleetWindowsRuntime?.requestContextCallsRequired?.(request.target))throw Error("request-context-legacy-decision-upgrade-required");
         const payload = { ...request.payload, contactTicket: { id: ticketId, state: "delivered" } };
         const admitted = this.deliveryOutbox!.admit({ operationId: request.operationId,
           sourceKey: `contact:${ticketId}`, sourceInstance: request.source,
@@ -14166,6 +14193,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       await ipc.connect();
       this.instanceIpcClients.set(name, ipc);
+      this.observeRequestContextResponses(name,ipc);
       ipc.on("message", safeHandler(async (msg: Record<string, unknown>) => {
         if ((msg.type === "fleet_outbound" || toolForIpcType(msg.type) !== null) && !this.captureRequestContextIpcCall(name, msg, ipc)) {
           if (this.instanceIpcClients.get(name) !== ipc) return;
@@ -14195,7 +14223,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             this.sessionRegistry.set(sender, name);
             this.logger.info({ sessionName: sender, instanceName: name }, "Registered external session");
           }
-          await this.handleOutboundFromInstance(name, msg);
+          try { await this.handleOutboundFromInstance(name, msg); } finally { this.finishRequestContextIpcCall(msg); }
         } else if (toolForIpcType(msg.type) !== null) {
           // Sink 2 of 3. Each of these types IS a tool and reaches its own
           // handler without passing through the outbound path — which is how

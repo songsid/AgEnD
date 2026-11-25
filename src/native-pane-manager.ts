@@ -1,3 +1,4 @@
+import type { RequestContextRegistrationGate } from "./request-context-fence.js";
 import { t } from "./locale.js";
 import { loadGeneralKnowledge } from "./runtime-general-workspace.js";
 import { generalWorkspaceUpgrade, validateGeneralWorkspaceReceipt } from "./runtime-general-protocol.js";
@@ -27,6 +28,7 @@ interface Manifest {version:1;machineId:string;configuration:string;launch:Runti
 export interface NativeMachineEndpoint extends PaneEndpoint {epoch():string|null; version(provider:string):string|null}
 export interface NativePaneManagerOptions {
  requestContexts?: RequestContextPaneProofs;
+ registration?: RequestContextRegistrationGate;
  home:string;
  store:WindowsAgents;
  config(name:string):InstanceConfig|undefined;
@@ -42,6 +44,16 @@ export interface NativePaneManagerOptions {
 interface Binding {native:RuntimeNativePaneLifecycle;lease:PaneMcpAuthorityLease;bind(daemon:Daemon):void}
 export class NativePaneManager {
  private bindings=new Map<string,Binding>();
+ private drainLeases=new Map<string,PaneMcpAuthorityLease>();
+ private drainSerial=0;
+ get drainRevision():string{return `${this.drainSerial}:${this.options.store.requestContextDrainRevision}:${[...this.drainLeases].map(([id,lease])=>`${id}:${lease.drainRevision}`).join(";")}`;}
+ drainView(rootId:string){
+  const panes=this.options.store.requestContextPaneLaunches?.();
+  let unknown=!panes||this.preparing.size>0||panes.some(pane=>!this.drainLeases.has(pane.launchId));
+  const references:string[]=[];
+  for(const lease of this.drainLeases.values()){const view=lease.drainView(rootId);references.push(...view.references);unknown ||= view.unknown||view.registration!==this.options.registration;}
+  return {registration:this.options.registration??null,revision:this.drainRevision,references,unknown};
+ }
  private preparing=new Set<string>();
  constructor(private options:NativePaneManagerOptions){}
  private directory(id:string):string {
@@ -105,6 +117,7 @@ export class NativePaneManager {
   if(manifest.launch.cli==="codex"&&manifest.fresh&&snapshot.sessionId&&snapshot.sessionId!==manifest.fresh.previous.sessionId
     &&this.options.store.get(snapshot.agentId).threadId!==snapshot.sessionId)next=this.bindFreshCodex(file,manifest,snapshot);
   next={...next,exited:snapshot};this.save(file,next);
+  this.drainLeases.get(snapshot.launchId)?.retire(snapshot);this.drainLeases.delete(snapshot.launchId);this.drainSerial++;
   this.options.requestContexts?.retire({hostBootId:snapshot.hostBootId,paneId:snapshot.paneId,launchId:snapshot.launchId,agentId:snapshot.agentId,instance:snapshot.instance});
   const profile=this.options.store.get(snapshot.agentId);
   if(!snapshot.noLaunch&&!profile.threadId&&snapshot.sessionId&&profile.activeId)this.options.store.pinPaneSession(snapshot.agentId,snapshot.launchId,snapshot.sessionId);
@@ -130,7 +143,7 @@ export class NativePaneManager {
  /** Prepare metadata and helper authority first; acquire() alone may reserve and spawn. */
  async prepare(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<RuntimeNativePaneLifecycle> {
   const id=config.native_agent_id;if(!id||!UUID.test(id)||this.preparing.has(id))throw Error("Native pane preparation already has an owner or lacks an identity");
-  this.preparing.add(id);try{return await this.prepareOwned(name,config,assertCurrent);}catch(error){if(error instanceof NativePaneRecoveryError){assertCurrent();this.options.store.setPaneRecovery(id,error.recovery);}throw error;}finally{this.preparing.delete(id);}
+  this.preparing.add(id);this.drainSerial++;try{return await this.prepareOwned(name,config,assertCurrent);}catch(error){if(error instanceof NativePaneRecoveryError){assertCurrent();this.options.store.setPaneRecovery(id,error.recovery);}throw error;}finally{this.preparing.delete(id);this.drainSerial++;}
  }
  private async prepareOwned(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<RuntimeNativePaneLifecycle> {
   config=structuredClone(config);
@@ -239,6 +252,7 @@ export class NativePaneManager {
   const owned=()=>!!daemon&&current()&&this.options.published(name,daemon);
   const lease=new PaneMcpAuthorityLease(join(directory,`${launch.launchId}.mcp.json`),{
    ...(this.options.requestContexts ? { requestContexts: this.options.requestContexts } : {}),
+   ...(this.options.registration?{registration:this.options.registration}:{}),
    toolCeiling:launch.mcpTools??[],
    machineId:endpoint.machineId,owner:{hostBootId,paneId:launch.paneId,launchId:launch.launchId!,agentId:id,instance:name},current,transportEpoch:()=>endpoint.epoch(),
    menu:()=>this.options.menu(name),allowed:(tool,args)=>current()&&this.options.allowed(name,tool,args),
@@ -246,6 +260,7 @@ export class NativePaneManager {
    responseWritten:operationId=>daemon?.paneToolResponseWritten(operationId,owned),
    toolFailed:details=>daemon?.logNativeToolFailure(details),
   });
+  if(this.options.registration){this.drainLeases.set(launch.launchId!,lease);this.drainSerial++;}
   const native:RuntimeNativePaneLifecycle=new RuntimeNativePaneLifecycle({endpoint,launch,...(this.options.requestContexts ? { requestContexts: this.options.requestContexts } : {}),receiptFile:join(directory,`${launch.launchId}.pane.json`),...(launch.cli==="codex"&&retained.fresh?{freshPrevious:retained.fresh.previous}:{}),
    admit:()=>{assertCurrent();this.options.admit(name,config);},reserve:launchId=>{this.options.store.reservePane(id,launchId);},pin:(launchId,sessionId)=>{
     if(launch.cli==="codex"&&retained.fresh){const observed=native.port.ownedSnapshot();if(!observed||observed.launchId!==launchId||observed.sessionId!==sessionId)throw Error("Fresh Codex observation differs");retained=this.bindFreshCodex(file,retained,observed);}
@@ -268,7 +283,7 @@ export class NativePaneManager {
  async startFresh(name:string,config:InstanceConfig,launchId:string,sessionId:string|null,assertCurrent:()=>void):Promise<void>{
   config=structuredClone(config);
   const id=config.native_agent_id;if(!id||this.preparing.has(id)||this.bindings.has(id))throw Error("Native pane preparation still has an owner");
-  this.preparing.add(id);try{
+  this.preparing.add(id);this.drainSerial++;try{
    assertCurrent();this.options.admit(name,config);const agent=this.options.store.get(id),file=join(this.directory(id),"active.json"),manifest=this.load(file);
    // A replay consumes its already-committed UUID only after the original decision's proof is rechecked.
    const replay=!!(manifest?.fresh&&!manifest.exited&&!manifest.fresh.announced&&(manifest.fresh.decisionLaunchId??manifest.fresh.previous.launchId)===launchId&&(manifest.fresh.previous.sessionId??null)===sessionId);
@@ -303,12 +318,12 @@ export class NativePaneManager {
     :this.freshIntent(file,manifest,false,config,agent);
    if(replay)this.save(file,next);if(agent.cli==="claude-code")this.options.store.replacePaneSession(id,previous,next.launch.launchId!);
   }catch(error){if(error instanceof NativePaneRecoveryError){assertCurrent();this.options.store.setPaneRecovery(id,error.recovery);}throw error;}
-  finally{this.preparing.delete(id);}
+  finally{this.preparing.delete(id);this.drainSerial++;}
  }
  /** Explicit admin attestation, bound to the held launch; no keys, tool calls or process signals. */
  async recover(name:string,config:InstanceConfig,launchId:string,confirmedStopped:boolean,assertCurrent:()=>void):Promise<void>{
   const id=config.native_agent_id;if(!id||!UUID.test(id)||this.preparing.has(id))throw Error("Native pane preparation is in flight");
-  this.preparing.add(id);
+  this.preparing.add(id);this.drainSerial++;
   try {
    assertCurrent();this.options.admit(name,config);
    const agent=this.options.store.get(id),file=join(this.directory(id),"active.json"),manifest=this.load(file);
@@ -340,7 +355,7 @@ export class NativePaneManager {
    if(!agent.threadId)this.options.store.pinPaneSession(id,launchId,pin);
    if(!this.bindings.has(id))this.recordExit(file,manifest,ended);
    this.options.store.setPaneRecovery(id,manifest.launch.cli==="codex"&&manifest.fresh&&!ended.sessionId?{kind:"session-unconfirmed",provider:"codex",launchId,sessionId:pin}:undefined);
-  } finally {this.preparing.delete(id);}
+  } finally {this.preparing.delete(id);this.drainSerial++;}
  }
  /** Close only the retained exact launch. Offline, missing, or unknown exit remains reserved. */
  async closeRetained(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<void>{

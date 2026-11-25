@@ -43,6 +43,10 @@ interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<strin
 const idPattern = /^[a-f0-9-]{36}$/i;
 const shortText = (value: unknown, limit: number): value is string => typeof value === "string" && value.length <= limit && !value.includes("\0");
 export class WindowsAgents {
+  private drainSerial=0;
+  get requestContextDrainRevision():string{return String(this.drainSerial);}
+  requestContextPaneLaunches(){return this.data.agents.filter(agent=>agent.paneLaunchId).map(agent=>({agentId:agent.id,launchId:agent.paneLaunchId!}));}
+  requestContextActiveExecutions(){return this.data.agents.filter(agent=>agent.activeId&&!agent.paneLaunchId).map(agent=>({agentId:agent.id,requestId:agent.activeId!}));}
   private data: AgentData = { version: 1, agents: [], requests: {} };
   private file: string;
   private listeners = new Set<() => void>();
@@ -66,6 +70,7 @@ export class WindowsAgents {
       if (Buffer.byteLength(body) > 20 * 1024 * 1024) throw new Error("Windows agent history limit reached");
       mkdirSync(dirname(this.file), { recursive: true });
       atomicWriteFileSync(this.file, body, { mode: 0o600 });
+      this.drainSerial++;
       for (const listener of [...this.listeners]) { try { listener(); } catch { /* Observers cannot roll back committed data. */ } }
       return result;
     } catch (e) { this.data = JSON.parse(before); throw e; }

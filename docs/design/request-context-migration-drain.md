@@ -27,14 +27,19 @@ used as a human receipt. A metadata row or timestamp alone is not a certificate.
 
 ## 2. Legacy shadow
 
-Read stored ticket/policy JSON directly on the outbox connection, with bounded
-paging and a stable digest. Calling `get()` would persist expiry and is forbidden
-for this shadow. Return identifiers/status/digests, never message bodies or actor
+Read stored ticket/policy JSON directly on the outbox connection, in one synchronous read transaction with a hard bound of 64 rows per table
+(default 32), capped JSON bytes and a stable digest. Only an untruncated initial
+page can be complete; subsequent pages are informational and never combine into
+a migration plan. Check `total_changes()` before and after callbacks to detect
+same-connection writes (including legacy hold/prune); `data_version` alone cannot
+see these. Calling either `get()` or `policy()` may persist expiry or normalize
+stale policy and is forbidden for this shadow. Return identifiers/status/digests, never message bodies or actor
 identity inferred from names. An expired pending row can be classified logically
 expired without rewriting its retained state.
 
 - Pending legacy tickets retain their exact id, operation, payload, origin,
-  decision revision and existing one-time decision path. No E companion is added.
+  decision revision. No E companion is added. Every unresolved legacy ticket
+  is a named cutover blocker, even when inspection itself is complete.
 - Approved/delivered operations retain their original receipt/idempotency. A lost,
   missing or uncertain delivery is reported as unresolved, never resubmitted.
 - Declined/expired tickets stay terminal. A matching new grant or a new request's
@@ -63,10 +68,14 @@ ids and current generation, or explicit unknown/unavailable. Caller text, tool
 arguments, a boolean “idle”, correlation ids and the old origin union supply no
 references or proof.
 
-F will expose bounded inspection ports on the existing C/D registries rather than
+F exposes synchronous inspection ports on the existing C/D registries rather than
 refreshing a call from the latest context. A stale or disconnected daemon is not
 an empty registry. A live launch's written MCP row still retains its context
-until that launch ledger is retired, as D's contract states. No recursive scan of
+until a matching positive launch exit, as D's contract states. A detached
+lease is not retired. Thus a root used by a persistent launch may remain retained
+until relaunch. Fleet proof leases and ledger rows cover late remote calls; remote
+relay stamps are NOT an independently queried participant and no network read is
+part of drain. A late remote call cannot resolve its retired Fleet proof. No recursive scan of
 an arbitrary state directory is permitted; only registered owned launch files.
 
 Expected-return/Hub/derivative readers not yet installed by their owning slices
@@ -90,7 +99,9 @@ through actual paths; F's scratch certificate is not a native-coverage claim.
    inventory means “not drained”, with a concrete reason.
 4. Only a complete zero-reference snapshot can mint a synchronous retirement
    proof. It captures the manager owner, fence epoch and participant revisions.
-   Re-reading it must validate all of those and all zero-reference results; it
+   Each owner advances a monotonic revision on insert, replacement and removal,
+   including an insert/remove ABA. Re-reading validates these captured revisions
+   without another registry scan; E rechecks durable rows in its transaction. It
    does not trust its age. Releasing/replacing the fence invalidates the proof.
 5. Pass that proof to E's `retireRoot`, which still checks terminal deliveries,
    unread expiry, 30-day terminal retention, pending tickets and reply/recovery
@@ -104,14 +115,57 @@ Otherwise it blocks retirement. Drain is not a blanket “clear origin” escape
 
 ## 5. Cutover and rollback seams
 
-Keep unresolved legacy holds visible and immutable. A new engine cannot route a
-legacy operation through an unsupported input adapter by claiming its parent is
-known. Untracked executable old work must finish or be explicitly cancelled under
-the old engine at a verified input boundary. The cutover assessment must name any
-legacy-decision continuation lane that is still needed; missing support holds
-that operation for the old compatible path, never guesses a new root or replays
-it. I/L must settle that routing before they enable it; F does not reinterpret
-old approvals as E root release.
+Keep unresolved legacy holds visible and immutable. The source review found NO
+safe end-to-end legacy continuation lane: legacy decide / applyStandingGrant →
+Fleet host.admit → outbox.admit produces a context-less delivery; a C-bound target
+has no admitted input for it. Calling beforeWrite(null) instead would guess from
+the recovery pointer and is forbidden. F guards host.admit for a C-bound daemon
+or exec target before creating an outbox row; the store transaction rolls the
+decision back and leaves it pending (`request-context-legacy-decision-upgrade-required`).
+Unbound targets retain the old path. No unsupported delivery is retried or replayed.
+
+L must see zero pending legacy tickets and zero approved-undelivered/uncertain
+operations, decided and consumed under the old engine, explicitly declined, or
+expired; otherwise each ticket blocks cutover. Alternatively I/L must implement
+an explicit per-ticket legacy-decision input proof: fresh unendorsed root,
+unknown initiatingActor (existing reason `legacy-operation`), conservative
+restricted ingress unless stored target policy was Free, evidence tied to the
+ticket AND delivery ids, no parent and no D1. F does not implement that alternative
+or infer anything from retained origins.
+
+The raw shadow reads contact_auth_tickets.ticket_json/request_json,
+contact_auth_policies.policy_json and contact_auth_origins.origin_json. It hashes
+history only. Scope companions exclude already-scoped tickets from the legacy
+inventory. Missing, malformed, oversized or changing data is incomplete.
+
+### Concrete owners and fence sites
+
+- Fleet's original WeakMap still captures exact arrival objects; a separate
+  enumerable call-id index retains each call through actual response/handler
+  completion. A daemon timeout does not clear the coordinator's pending effect.
+- Daemon call maps expose references and revisions; refusal, response and timeout
+  paths remove their own entry. C active-turn and recovery-pointer refs are distinct.
+- Native grants and actual in-flight calls retain their captured roots, even if
+  a grant closes while a call is completing. Exec captured runs plus raw unresolved
+  WindowsAgent active ids block; an unknown raw run is never an empty inventory.
+- Fleet pane proofs and owned launch ledgers persist until positive exit. Unknown
+  launch inventory after restart blocks until the manager reconciles it; no scan
+  of arbitrary state files or remote relay is used.
+- Fence checks are synchronous at C apply (independent, steer, expected return,
+  recovery and queued steer), daemon first-hop begin, pane proof mint, native grant
+  and new native call, exec claim, E admission/continued/sweep/reevaluate inside its
+  SQLite transaction, and context/recovery persistence. Later expected-return,
+  Hub and derivative owners must register the same gate before accepting work.
+- All eight families are mandatory. Uninstalled adapters, an owner that used a
+  gate without an inventory, an unknown reference or an unreadable participant
+  refuses the certificate. No production assembly installs these in F; L must
+  exercise the complete assembly, including later work registries, before cutover.
+
+A root's last conservative recovery pointer can remain indefinitely if no later
+independent input supersedes it. That is retained GC evidence, not a permission
+lock. F never deletes that pointer to make a proof pass. A retired root leaves a
+fence tombstone so a late stale input cannot recreate its deleted context; an
+explicit fence release is possible only while the root itself remains retained.
 
 Rollback first fences new scoped admissions and registrations, drains or
 explicitly declines/cancels dependent executable work, and preserves notices and
@@ -138,3 +192,21 @@ No barrier deactivation, live backup, DB restore or downgrade is performed here.
 
 No UI or renderer change belongs to F. Public evidence uses synthetic names and
 source hashes only. Production stays OFF through this slice.
+
+## 7. Fable design-review dispositions
+
+- Legacy-lane question (a): §5 records the unsupported seam and per-ticket
+  blockers; the actual legacy host guard refuses C-bound targets. Explicit
+  legacy-decision roots belong to I/L, not an automatic F migration.
+- Retirement question (b): §3 and §5 name the actual enumerable owners, Fleet
+  index, launch-exit and recovery lifetime, and every synchronous fence site.
+  Remote relay stamps are excluded from the local proof. All registries expose
+  revisions, and a used gate without a registered reader blocks proof.
+- Shadow correction: §2 requires one bounded read transaction, raw columns,
+  forbidden get/policy calls and same-connection change detection. Paged results
+  are incomplete; a pruned/changed snapshot is never an applicable plan.
+- Implementation risk and rollback: no production caller installs the new gates,
+  readers or fence service here. Revert this dormant slice before L without data
+  migration. After L, §5's barrier-preserving drain order remains mandatory; an
+  unknown participant blocks GC and must never become an agent-wide permission
+  lock or guessed zero-reference assertion.

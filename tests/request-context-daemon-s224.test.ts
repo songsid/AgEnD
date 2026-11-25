@@ -10,12 +10,12 @@ import { deliveryContentDigest } from "../src/delivery-outbox.js";
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const logger: any = { info() {}, error() {}, warn() {}, debug() {}, child() { return logger; } };
-function rig(enabled = true) {
+function rig(enabled = true, registration?:import("../src/request-context-fence.js").RequestContextRegistrationGate) {
   const root = mkdtempSync(join(tmpdir(), "agend-s224-local-")); roots.push(root);
   const dir = join(root, "instances", "worker"); mkdirSync(dir, { recursive: true });
   const daemon: any = new Daemon("worker", { working_directory: root, log_level: "silent", backend: "claude-code" } as any, dir, true, undefined, undefined, logger);
   const inputs = new Map<string, PreparedRequestContextInput>(), contexts = new Map<string, any>();
-  const turns = new RequestContextLocalTurns({ input: id => inputs.get(id) ?? null, context: id => contexts.get(id) ?? null,
+  const turns = new RequestContextLocalTurns({ registration, input: id => inputs.get(id) ?? null, context: id => contexts.get(id) ?? null,
     retain: c => { contexts.set(c.ref.contextId, c); }, canManage: () => true, recovery: () => null, saveRecovery: () => {} });
   if (enabled) daemon.setRequestContextLocalLifecycle(turns, () => ({ incarnation: "incarnation", workGeneration: "session" }));
   daemon.ipcServer = { send: vi.fn(() => true) };
@@ -31,7 +31,7 @@ function rig(enabled = true) {
     daemon.bindRequestContextWrite(id, text, false); return daemon.requestContextTurnSnapshot();
   };
   const call = () => { daemon.handleOwnedToolCall({ type: "tool_call", tool: "send_to_instance", args: { instance_name: "target", message: "synthetic" }, requestId: 1 }, socket); return frames.at(-1)!; };
-  const fm: any = new FleetManager(root); fm.daemons.set("worker", daemon); vi.spyOn(fm, "checkToolPermission").mockReturnValue({allowed:true}); const ipc = { send: vi.fn(() => true) }; fm.instanceIpcClients.set("worker", ipc);
+  const fm: any = new FleetManager(root); fm.daemons.set("worker", daemon); vi.spyOn(fm, "checkToolPermission").mockReturnValue({allowed:true}); const ipc = { send: vi.fn(() => true) }; if(registration)fm.setRequestContextDrainRegistration(registration);fm.instanceIpcClients.set("worker", ipc);if(registration)fm.observeRequestContextResponses("worker",ipc);
   const clearTimers = () => { for (const cb of daemon.pendingIpcRequests.values()) cb({ result: { sent: false } }); daemon.pendingIpcRequests.clear(); };
   return { daemon, turns, bind, frames, call, fm, ipc, socket, clearTimers };
 }
@@ -103,4 +103,23 @@ it("the real user-cancel path flags turn cancellation while dialog keys keep the
  f.daemon.tmux={capturePane:vi.fn(async()=>"synthetic screen"),sendSpecialKey:vi.fn(async()=>true)};
  await f.daemon.sendEscape();
  expect(f.daemon.tmux.sendSpecialKey).toHaveBeenCalledWith("Escape",undefined,{kind:"dialog",screen:"synthetic screen",cancelTurn:true});
+});
+
+it("S-226 actual daemon and Fleet indexes last until their own completion, not a turn ending",()=>{
+ const gate={assertRegistration:vi.fn()},f=rig(true,gate),snapshot=f.bind("a"),root=snapshot.context.ref.rootContextId,frame=f.call();
+ expect(f.daemon.requestContextCallDrainView(root).references).toHaveLength(1);expect(f.fm.captureRequestContextIpcCall("worker",frame,f.ipc)).toBe(true);
+ expect(f.fm.requestContextFleetDrainView(root).references).toHaveLength(1);f.turns.ended(snapshot,snapshot.owner);
+ expect(f.fm.requestContextFleetDrainView(root).references).toHaveLength(1);
+ (f.ipc.send as any)({type:"fleet_outbound_response",fleetRequestId:frame.fleetRequestId,result:{sent:false}});
+ expect(f.fm.requestContextFleetDrainView(root).references).toEqual([]);f.clearTimers();expect(f.daemon.requestContextCallDrainView(root).references).toEqual([]);
+});
+it("S-226 a fenced local call is refused before dispatch and cannot enter either index",()=>{
+ const gate={assertRegistration:vi.fn()},f=rig(true,gate),snapshot=f.bind("a"),root=snapshot.context.ref.rootContextId;
+ gate.assertRegistration.mockImplementation(()=>{throw Error("root draining");});
+ f.daemon.handleOwnedToolCall({tool:"send_to_instance",args:{instance_name:"target",message:"synthetic"},requestId:2},f.socket);
+ expect(f.frames).toEqual([]);expect(f.daemon.requestContextCallDrainView(root).references).toEqual([]);expect(f.daemon.ipcServer.send).toHaveBeenCalledWith(f.socket,expect.objectContaining({error:expect.stringContaining("unavailable")}));
+});
+it("S-226 Fleet refuses a newly fenced captured call without dropping an already active daemon call",()=>{
+ const gate={assertRegistration:vi.fn()},f=rig(true,gate),snapshot=f.bind("a"),frame=f.call();gate.assertRegistration.mockImplementation(()=>{throw Error("root draining");});
+ expect(f.fm.captureRequestContextIpcCall("worker",frame,f.ipc)).toBe(false);expect(f.fm.requestContextFleetDrainView(snapshot.context.ref.rootContextId).references).toEqual([]);f.clearTimers();
 });
