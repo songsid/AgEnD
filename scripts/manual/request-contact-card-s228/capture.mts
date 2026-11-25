@@ -133,7 +133,9 @@ async function walk(c: any) {
     t = await cardText(page, A.id);
     check(`${tag} 2: no verify line, no marked choice`, !t.includes(W(zh, "Authorize this browser to decide.", "授權這個瀏覽器後才能決定。")) && !/Your choice|你的選擇|✓/.test(t), t);
     check(`${tag} 2: every card on the page read again (one Authorize serves them all)`, await waitFor(page, `document.querySelectorAll(".rc-card .rc-verify").length === 0 && [...document.querySelectorAll('.rc-card[data-ticket="${B.id}"] button[data-choice="continue"]')].every((b) => !b.disabled)`), await page.evaluate(`document.querySelectorAll(".rc-card .rc-verify").length`));
-    check(`${tag} 2: the scope phrase wraps whole (never after 「＝」/"=")`, await page.evaluate(`[...document.querySelectorAll(".rc-card .rc-scope")].every((e) => { const r = document.createRange(); r.selectNodeContents(e); const tops = new Set([...r.getClientRects()].filter((b) => b.width).map((b) => Math.round(b.top))); return tops.size === 1; })`), null);
+    // The verb, the "=" and what follows it stay on one line (zh broke as 「繼續＝ / 只放行…」); a long English one may wrap later.
+    check(`${tag} 2: the scope never breaks at its 「＝」/"="`, await page.evaluate(`[...document.querySelectorAll(".rc-card .rc-scope")].every((e) => { const n = e.firstChild, i = Math.max(n.data.indexOf("＝"), n.data.indexOf("=")); if (i < 0) return false;
+      const r = document.createRange(); r.setStart(n, 0); r.setEnd(n, Math.min(n.data.length, i + 4)); return new Set([...r.getClientRects()].filter((b) => b.width).map((b) => Math.round(b.top))).size === 1; })`), null);
     await page.keyboard.press("Enter"); await page.waitForTimeout(300);
     check(`${tag} 2: verifying (and Enter) decided nothing`, state(A.id) === "pending" && box.listPending().length === base, state(A.id));
     await shot(page, `${tag}-2-verified`);
