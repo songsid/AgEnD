@@ -102,7 +102,7 @@ register("orgo", {
     b_working: "On it.|Typing…|Almost there|In the zone|One more test", b_idle: "Tea time|Ready when you are|Stretching|Anything for me?",
     b_paused: "Zzz…|Back later", b_stopped: "Off duty|Zzz…", b_needs: "Need you!|A question for you|Over here!",
     b_crashed: "Ouch, crashed|Help!", b_stuck: "Hmm, stuck?|Still thinking…",
-    options: "Office options", hideAsleep: "Hide paused and stopped", nightOn: "Bedtime (0–6): idle agents sleep", playOn: "Drag and pat", playStill: "Off while reduced motion is on", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
+    options: "Office options", hideAsleep: "Hide paused and stopped", hideNames: "Hide names and levels", hideMini: "Hide the minimap", nightOn: "Bedtime (0–6): idle agents sleep", playOn: "Drag and pat", playStill: "Off while reduced motion is on", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
     styleForAll: "The whole fleet's style, for everyone: every device and share link", styleHere: "The whole fleet's style in this browser",
     styleFailed: "The style was not saved for everyone ({0}).", styleBusy: "Too many changes. Try again in a minute.",
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
@@ -135,7 +135,7 @@ register("orgo", {
     b_working: "處理中|打字中…|快好了|專心中|再測一次", b_idle: "喝茶中|隨時可以開工|伸個懶腰|有事找我嗎？",
     b_paused: "Zzz…|晚點回來", b_stopped: "下班了|Zzz…", b_needs: "需要你！|有個問題|在這裡！",
     b_crashed: "糟糕，當掉了|救命！", b_stuck: "嗯，卡住了？|還在想…",
-    options: "辦公室選項", hideAsleep: "隱藏暫停與停止的成員", nightOn: "0–6 點就寢：閒著的人去睡", playOn: "拖曳與摸頭", playStill: "開啟「減少動態效果」時關閉", layoutIgnored: "它儲存的配置不適用這個風格：以風格本身的配置顯示。",
+    options: "辦公室選項", hideAsleep: "隱藏暫停與停止的成員", hideNames: "隱藏名字和等級", hideMini: "隱藏小地圖", nightOn: "0–6 點就寢：閒著的人去睡", playOn: "拖曳與摸頭", playStill: "開啟「減少動態效果」時關閉", layoutIgnored: "它儲存的配置不適用這個風格：以風格本身的配置顯示。",
     styleForAll: "整個 fleet 的風格，所有人共用：每台裝置與分享連結都一樣", styleHere: "這個瀏覽器裡整個 fleet 的風格",
     styleFailed: "風格沒有替所有人儲存（{0}）。", styleBusy: "變更太頻繁，請一分鐘後再試。",
     fit: "顯示整個辦公室", overview: "總覽：點一下移到那裡", fullscreen: "全螢幕", exitFullscreen: "結束全螢幕",
@@ -331,6 +331,13 @@ function looksOf(L, work, q, mode, zones, badge = () => null) {
       sign: zones ? null : signOf(n.state), coat: coatOf(n.i, n.i ? identityOf(n.i) : null, mode), work: work.get(n.name) || 0, dim: !!q && !match, match, free: zones,
       badge: badge(n.name), fit: n.i && n.i.tag_fit && typeof n.i.tag_fit === "object" ? n.i.tag_fit : null }];
   }));
+}
+/** `view` (buildOrgView's) with each renamed person's nickname set to the name this browser gives them. */
+export function renamedView(view, renames) {
+  if (!view || !renames || !Object.keys(renames).length) return view;
+  const one = (n) => (n && n.i && Object.prototype.hasOwnProperty.call(renames, n.name) ? { ...n, i: { ...n.i, display_name: renames[n.name] } } : n);
+  return { ...view, top: (view.top || []).map(one), teams: (view.teams || []).map((t) => ({ ...t, nodes: (t.nodes || []).map(one) })),
+    rest: view.rest ? { ...view.rest, nodes: (view.rest.nodes || []).map(one) } : view.rest };
 }
 /** A stored office's own layout on a zones style (its overrides); `ignored`: they do not fit this style. */
 function withOverrides(baseSkin, zones, office) {
@@ -965,7 +972,7 @@ function ensureDialogueStyle() {
   link.href = assetUrl("/assets/office-dialogue.css");
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
-export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, chatUi = null, more = false, onMore = null, live = null, onLive = null,
+export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, chatUi = null, more = false, onMore = null, live = null, onLive = null,
   oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false, cardPhoto = null, characters = null }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
@@ -1007,6 +1014,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [styleErr, setStyleErr] = useState("");
   const style = canEdit ? hostStyle ?? ownStyle ?? "cozy" : ownStyle ?? hostStyle ?? "cozy";
   const [hideAsleep, setHideAsleep] = useState(() => store.hideAsleep());
+  const [namesOff, setNamesOff] = useState(() => store.namesOff());
+  const [miniOff, setMiniOff] = useState(() => store.miniOff());
+  // The names this browser gives people: each node's nickname replaced here, so the tags, the card and the dialogue follow.
+  const [renames, setRenames] = useState(() => store.renames());
+  const view = useMemo(() => renamedView(given, renames), [given, renames]);
   // Bedtime (#2568), when it is on here: the idle sleep from NIGHT.FROM to NIGHT.TO on this device's clock (read every NIGHT.TICK).
   const [nightOn, setNightOn] = useState(() => store.nightOn());
   const [keyOpen, setKeyOpen] = useState(() => store.keyOpen());
@@ -1471,6 +1483,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       for (const [name, at] of snacks.targets(t)) to.set(name, at);
       const held = hold.held();                                     // M-3293: carried: where the pointer is, no walk
       if (held) to.set(held.name, held.at);
+      const carded = cardDesk.current, stay = carded && carded.walks ? walkers.at(carded.name, t) : null;
+      if (stay && (!held || held.name !== carded.name)) to.set(carded.name, { x: stay.x, y: stay.y });   // their card is open: no walk
       // M-3539: a new office or style (a room's office reads its style after it opens) puts everyone at their place at
       // once: walking there from the old one's seats drew the asleep standing in the help desk for seconds.
       const placed = `${officeKey}\n${skin.id}`, fresh = placedRef.current !== placed;
@@ -1687,6 +1701,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     store.saveFitMode(officeKey, next); setFitRev((n) => n + 1);
     fit(next);
   };
+  useEffect(() => { if (!miniOff) mark(); }, [miniOff]);           // shown again: placed on the view at once
   /** + / −: the next pixel level about the stage's middle. */
   const zoomStep = (dir) => { const v = view0(), k = stepK(v.k, dir, ratio, kLo); raw.current = k; setView(zoomTo(v, k, size.w / 2, size.h / 2)); };
   /** Bring a box (logical units) into view, unchanged when it already is. */
@@ -1805,7 +1820,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ? Math.max(0, ...tiles.map((tl) => packMaxFps(tl.skin && tl.skin.pack)))
       : packMaxFps(skin && skin.pack);
     const fps = Math.max(FPS, Math.min(30, Math.ceil(maxPackFps)));
-    const base = { ctx, ratio, BW, BH, matte, env, fps, dirty: true };
+    const base = { ctx, ratio, BW, BH, matte, env, fps, dirty: true, namesOff };
     if (overview) {
       // Each tile a scene of its own, where the overview puts it (arranged.tiles, in the same order).
       const parts = tiles.map((tl, i) => ({ ...partOf(tl.L, tileLooks[i], tl.skin, tl.zones, tl.walkers, tl.flights), night, key: tl.key, prefix: tl.prefix, tile: arranged.tiles[i], ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(tl.skin) }));
@@ -1816,7 +1831,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         snacks: play ? snacks : null, snacksById, ownArea, snackDrop: snackDropRef, onSnackClaim, onSnacksChanged: () => walkNow.current?.() } };
     }
     if (still) draw(0); else loop.current?.wake();
-  }, [L, looks, skin, pal, size.w, size.h, ratio, matte, overview, tiles, tileLooks, arranged, ghosts, night, mail, actsHere, lv, wordsOf, play, snacksById, ownArea]);
+  }, [L, looks, skin, pal, size.w, size.h, ratio, matte, overview, tiles, tileLooks, arranged, ghosts, night, mail, actsHere, lv, wordsOf, play, snacksById, ownArea, namesOff]);
 
   /** One frame at `ms` (0: still); whether anything is moving (in the air, or someone walking). */
   function draw(ms) {
@@ -1845,7 +1860,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         s.part.cover = r.width > 0 && r.height > 0 ? { x: (r.left - c.left) * s.ratio, y: (r.top - c.top) * s.ratio, w: r.width * s.ratio, h: r.height * s.ratio } : null;
       } else s.part.cover = null;
       const e0 = clocked(""), kc = keepClearOf(canvasRef.current, v);
-      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, kc.length ? { ...e0, keepClear: kc } : e0, false, null, s.bubbleHits);
+      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, kc.length ? { ...e0, keepClear: kc } : e0, !!s.namesOff, null, s.bubbleHits);
       if (seenClips) clipClocks.current.prune(seenClips);
       return drawDialogue(ctx, s, ms) || moved;
     }
@@ -1860,7 +1875,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.beginPath(); ctx.rect(tx, ty, tw, th); ctx.clip();
-      if (drawPart(ctx, p, a * tt.s, tx, ty, ms, still, hot && hot.startsWith(p.prefix) ? hot.slice(p.prefix.length) : null, clocked(p.prefix), v.k * tt.s < TAG_MIN_K, said, s.bubbleHits)) moving = true;
+      if (drawPart(ctx, p, a * tt.s, tx, ty, ms, still, hot && hot.startsWith(p.prefix) ? hot.slice(p.prefix.length) : null, clocked(p.prefix), v.k * tt.s < TAG_MIN_K || !!s.namesOff, said, s.bubbleHits)) moving = true;
       ctx.restore();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.strokeStyle = env.pal.border; ctx.lineWidth = 1;
@@ -2486,6 +2501,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const cardOf = card ? people.find((d) => d.key === card && d.node.i) || null : null;
   cardDesk.current = cardOf ? { name: cardOf.node.name, box: cardOf.box, walks: zones && !overview, skin: cardOf.skin } : null;
   useEffect(() => { if (card && !cardOf) setCard(null); }, [card, !!cardOf]);
+  useEffect(() => { walkNow.current?.(); }, [cardOf ? cardOf.node.name : null]);   // stop there now; walk again once it closes
   const closeCard = () => {
     setCard(null);
     const from = cardFrom.current; cardFrom.current = null;
@@ -2621,6 +2637,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
           ${packs.map((pk) => html`<option key=${`pack:${pk.id}`} value=${pk.id}>${pk.name}</option>`)}
         </select></label>` : null}
       <label class="check oo-hide-asleep"><input type="checkbox" checked=${hideAsleep} onChange=${() => { const v = !hideAsleep; store.saveHideAsleep(v); setHideAsleep(v); setTip(null); }} /><span>${to("hideAsleep")}</span></label>
+      <label class="check oo-hide-names"><input type="checkbox" checked=${namesOff} onChange=${() => { const v = !namesOff; store.saveNamesOff(v); setNamesOff(v); }} /><span>${to("hideNames")}</span></label>
+      <label class="check oo-hide-mini"><input type="checkbox" checked=${miniOff} onChange=${() => { const v = !miniOff; store.saveMiniOff(v); setMiniOff(v); }} /><span>${to("hideMini")}</span></label>
       ${zones && !overview && !shared ? html`<label class="check oo-play"><input type="checkbox" checked=${playOn && !still} disabled=${still}
         onChange=${() => { const v = !playOn; store.savePlayOn(v); setPlayOn(v); }} /><span>${to("playOn")}</span>${playStillOff ? html`<span class="muted oo-note oo-play-still">${to("playMotionOff")}</span>` : null}</label>` : null}
       ${zones || overview ? html`<label class="check oo-night"><input type="checkbox" checked=${nightOn} onChange=${() => { const v = !nightOn; store.saveNightOn(v); setNightOn(v); }} /><span>${to("nightOn")}</span></label>` : null}
@@ -2706,6 +2724,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
           // #4379 review: the tags it covers (or uncovers) are judged at the next frame; a still scene draws one now.
           if (was !== el && scene.current) { scene.current.dirty = true; const go = () => (still ? draw(0) : loop.current?.wake()); if (typeof requestAnimationFrame === "function") requestAnimationFrame(go); else go(); } }}
         onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard}
+        rename=${onOpen && !readOnly ? { value: renames[cardOf.node.name] || "", save: (v) => setRenames(store.saveRename(cardOf.node.name, v)) } : null}
         onReact=${play ? (kind) => {
           const n = cardOf.node.name;
           if (kind === "feed" && !ASLEEP.has(cardOf.node.state) && !cardOf.box.night) {
@@ -2765,14 +2784,14 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
           : snackDrag.kind === "place" ? html`<span class="oo-snack-hint">${to("snackPlace")}</span>` : null}
       </div>` : null}
       ${fs ? html`<div class="oo-fs-bar">${oneOffice ? null : officeSelect("oo-fs-office")}${carChrome()}</div>` : null}
-      <svg ref=${miniRef} class="oc-mini oo-mini" viewBox=${`0 0 ${Math.max(1, L.width)} ${Math.max(1, L.height)}`} aria-hidden="true" onClick=${onMini}>
+      ${miniOff ? null : html`<svg ref=${miniRef} class="oc-mini oo-mini" viewBox=${`0 0 ${Math.max(1, L.width)} ${Math.max(1, L.height)}`} aria-hidden="true" onClick=${onMini}>
         <title>${to("overview")}</title>
         <rect class="oo-mini-matte" x=${-L.width} y=${-L.height} width=${L.width * 3} height=${L.height * 3} fill=${matte} />
         <rect class="oo-mini-scene" x="0" y="0" width=${L.width} height=${L.height} />
         ${miniRects.map((r) => html`<rect key=${r.key} class="oo-mini-room" x=${r.x} y=${r.y} width=${r.w} height=${r.h} />`)}
         ${people.map((d) => html`<circle key=${d.key} class=${`oo-mini-dot st-${d.node.state}${q && hits(d.node, q) ? " match" : ""}`} cx=${d.dot.x} cy=${d.dot.y} r=${dotR} />`)}
         <rect ref=${miniViewRef} class="oc-mini-view oo-mini-view" />
-      </svg>
+      </svg>`}
     </div>
     ${zoneList.length ? html`<div class="oo-zone-pills" role="group" aria-label=${to("zones")} ref=${pillsRef} onScroll=${pillsCue}>
         <button type="button" class="btn btn-sm oo-zone-all" onClick=${() => fit()}>${to("zoneAll")}</button>

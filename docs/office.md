@@ -59,6 +59,8 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 |---|---|---|
 | **Style** | **Desks**, **Studio**, **Cozy**, **Guild**, **School** or an uploaded skin pack (for Whole fleet; a stored office has its own) | for the whole fleet when a fleet admin picks it; anyone else's pick is their own browser's |
 | **Hide paused and stopped** | leaves the sleepers out | per browser |
+| **Hide names and levels** | no name tags or level badges over the people; the one hovered or found keeps theirs | per browser |
+| **Hide the minimap** | no minimap in the corner | per browser |
 | **Bedtime (0–6): idle agents sleep** | see [Bedtime](#bedtime-strolls-and-mail) (zones styles and All offices) | per device, off by default |
 | **Lobby tile** | in All offices, a tile for the instances in no office | per browser, on by default |
 | **Drag and pat** | pick people up and pat or feed them: see [Bedtime, strolls and mail](#bedtime-strolls-and-mail) (zones styles) | per device, on by default |
@@ -459,7 +461,7 @@ When someone goes up a level, a short ring shows over their head, and the people
 
 ### The profile card
 
-Clicking a person opens their card beside them. It's a popover, not a dialog: the Office keeps running and isn't dimmed, and the card follows the person if they walk off. Click the same person again, press Esc, or click anywhere else to close it; click someone else to switch to their card. On a phone the card is a sheet at the bottom of the screen; swipe it down to close it.
+Clicking a person opens their card beside them. It's a popover, not a dialog: the Office keeps running and isn't dimmed, and the person stays where they are while their card is open (they walk on once it closes). Click the same person again, press Esc, or click anywhere else to close it; click someone else to switch to their card. On a phone the card is a sheet at the bottom of the screen; swipe it down to close it.
 
 The card is 320 px wide and shows:
 
@@ -468,6 +470,7 @@ The card is 320 px wide and shows:
 - The office and area, the model, the backend, today's work tokens and requests, and the day count since first seen.
 - **Now:** the same activity line as the hover tooltip.
 - **Find in office** pans and zooms to them; **Chat** opens their chat.
+- **✎** beside the name renames them for you: the name you type (up to 24 characters) shows on their tag, card and dialogue in this browser only; the instance name stays on the card. Empty gives back their own. Not on a share link.
 
 Rows the viewer may not see are left out: no token rows where the numbers aren't served (see above), and on a share link only the name, title, state, office and level.
 

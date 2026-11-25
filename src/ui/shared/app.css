@@ -2705,6 +2705,11 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card-avatar .oo-badge { position: absolute; left: -6px; top: -6px; }
 .oo-card-names { flex: 1; min-width: 0; }
 .oo-card-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oo-card-name-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.oo-card-name-row .oo-card-name { min-width: 0; }
+.oo-card-rename-btn { flex: none; width: 24px; height: 24px; font-size: var(--fs-sm); color: var(--text-2); }
+.oo-card-rename { width: 100%; font: inherit; font-weight: 600; }
+.oo-card.sheet .oo-card-rename-btn { width: var(--tap); height: var(--tap); }
 /* One line, cut; a fixed line height so a CJK fallback in the mono stack doesn't make it taller. */
 .oo-card-instance { height: 18px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-2); }
 .oo-card-state { color: var(--text-2); }

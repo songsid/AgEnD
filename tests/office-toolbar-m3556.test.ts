@@ -80,11 +80,17 @@ for (const narrow of [false, true]) describe(narrow ? "phone" : "desk", () => {
       expect(btn().getAttribute("aria-expanded")).toBe("true");
       expect(q(".oo-display-pop .oo-display-h").textContent.trim()).toBe("Display options");   // the same heading as a room's
       const list = q(".oo-display-pop .oo-display-list");
-      expect(kinds(list)).toEqual(["style", "oo-hide-asleep", "oo-play", "oo-night", "oo-dialogue", "talk", "oo-key-tick"]);
+      expect(kinds(list)).toEqual(["style", "oo-hide-asleep", "oo-hide-names", "oo-hide-mini", "oo-play", "oo-night", "oo-dialogue", "talk", "oo-key-tick"]);
       expect(q(".oo-sheet")).toBeNull();                                       // not a modal sheet
       // A tick: saved and applied at once, the dropdown still open.
       fire(q(".oo-hide-asleep input"), "change"); await settle(3);
       expect([localStorage.getItem("agend_org_office_hide_asleep") ?? localStorage.getItem("agend_org_office_hideasleep"), !!q(".oo-display-pop")]).toEqual(["1", true]);
+      // Hide the minimap: gone at once and kept; ticked again, back.
+      expect(!!q(".oo-mini")).toBe(true);
+      fire(q(".oo-hide-mini input"), "change"); await settle(3);
+      expect([q(".oo-mini"), localStorage.getItem("agend_org_office_hide_minimap")]).toEqual([null, "1"]);
+      fire(q(".oo-hide-mini input"), "change"); await settle(3);
+      expect([!!q(".oo-mini"), localStorage.getItem("agend_org_office_hide_minimap")]).toEqual([true, "0"]);
       // A press inside does not close it; one elsewhere does.
       fire(q(".oo-display-pop"), "pointerdown", {}); await settle(2);
       expect(!!q(".oo-display-pop")).toBe(true);
@@ -134,7 +140,7 @@ for (const narrow of [false, true]) describe(narrow ? "phone" : "desk", () => {
       expect(got.slice(0, 4)).toEqual(["office", "team", "people", "heading"]);
       expect(q(".oo-sheet .oo-sheet-h").textContent.trim()).toBe("Display options");
       const rule = got.indexOf("rule"), heading = got.indexOf("heading");
-      expect(got.slice(heading + 1, rule)).toEqual(["style", "oo-hide-asleep", "oo-play", "oo-night", "oo-dialogue", "talk", "oo-key-tick"]);
+      expect(got.slice(heading + 1, rule)).toEqual(["style", "oo-hide-asleep", "oo-hide-names", "oo-hide-mini", "oo-play", "oo-night", "oo-dialogue", "talk", "oo-key-tick"]);
       expect(got.slice(rule + 1)).toEqual(expect.arrayContaining(["oo-edit"]));
       expect(q(".oo-display-pop")).toBeNull();                                  // the phone keeps its sheet
     });
