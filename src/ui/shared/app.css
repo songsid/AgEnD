@@ -2941,7 +2941,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .oo-sheet :is(.oo-sheet-bar > *, .oo-sheet-live) { min-height: var(--tap); }
 .oo-sheet :is(.oo-pick, .check) { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text); }
 .oo-sheet .oo-pick { justify-content: space-between; }
-.oo-sheet .oo-pick .tb-select { width: 62%; min-height: var(--tap); font-size: var(--fs-md); }
+.oo-sheet .oo-pick .tb-select { width: 62%; max-width: none; min-height: var(--tap); font-size: var(--fs-md); }   /* M-3743: not the bar's 150 px cap ("Pop-up window" was cut) */
 .oo-sheet .dlg-x { width: var(--tap); height: var(--tap); }
 /* M-3556: more below the fold fades out at the sheet's foot, over the rows (data-more: set while not at the end). */
 .oo-sheet .dlg-body[data-more]::after { content: ""; position: sticky; bottom: calc(-1 * var(--s-4)); flex: none; display: block; height: 48px;

@@ -623,10 +623,15 @@ export function placeBubbles(items, lift = 22, blocked = [], soft = [], air = 0)
   const taken = [...blocked], out = [];
   const hit = (list, r) => list.some((t) => r.x < t.x + t.w && t.x < r.x + r.w && r.y < t.y + t.h && t.y < r.y + r.h);
   // M-3722: `flipBox` (the box on the tail's left) is a call's other side: tried before a call covers an area's name.
+  // M-3743: `boxAt(dy, flip)` (optional): the box as it is drawn at that spot — kept on screen, so not always `box` moved
+  // by dy — with its `tail` (the box the tail covers, from its foot to the speaker: a slid foot, or a box under its speaker,
+  // tail up), kept clear too; else the strip under the speaker, as before.
   const at = (it, dy, flip = false) => {
-    const box = flip && it.flipBox ? it.flipBox : it.box;
-    const r = { x: box.x, y: box.y + dy, w: box.w, h: box.h };
-    return { r, t: it.tail ? { x: it.tail.x - 1, y: r.y + r.h, w: 9, h: Math.max(0, it.tail.y - (r.y + r.h)) } : null };
+    const box = flip && it.flipBox ? it.flipBox : it.box, got = typeof it.boxAt === "function" ? it.boxAt(dy, flip) : null;
+    const r = got ? { x: got.x, y: got.y, w: got.w, h: got.h } : { x: box.x, y: box.y + dy, w: box.w, h: box.h };
+    if (!it.tail) return { r, t: null };
+    if (got && got.tail) return { r, t: got.tail };
+    return { r, t: r.y > it.tail.y ? { x: it.tail.x - 1, y: it.tail.y, w: 9, h: r.y - it.tail.y } : { x: it.tail.x - 1, y: r.y + r.h, w: 9, h: Math.max(0, it.tail.y - (r.y + r.h)) } };
   };
   // M-3722: an area's name (`soft`) keeps a bubble's BOX off it; a tail may cross a name (the Office writes the name again
   // over it) — a caller standing at a name's height would otherwise always cover it.
