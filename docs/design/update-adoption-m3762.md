@@ -1,6 +1,6 @@
 # Updates people actually take (M-3762)
 
-**Status:** design, revision 2. It folds in Lumen's UX review and Prism's safety review of revision 1 (`89d60061b`). The user approves it before any code.
+**Status:** design, revision 3. It folds in Lumen's and Prism's reviews of revisions 1 and 2 (§10). The user approves it before any code.
 **Asked by:** the user, 11-25, through the leader.
 - Most people don't know `/update`.
 - Like Windows Update, they press "Later": they fear their agents' work will stop or that the update will break something.
@@ -137,14 +137,14 @@ There is **one card per fleet**, not one per version.
 ```
 🆕 AgEnD v2.4.1 is ready (you have v2.4.0). <one line: what's new>
 Your agents finish what they're doing first, then AgEnD restarts for a few minutes and they carry on.
-If the new version doesn't start, it returns to v2.4.0 by itself.          ← only where §4 says that is true
+If the new version doesn't start, it returns to v2.4.0 by itself.          ← Phase 2, class Self only (§3.3); Phase 1 says less (§3.2)
 [ Update when idle ]  [ Pick a time ]  [ Not now ]
 ```
 zh-TW (glossary: 管理員, Agent):
 ```
 🆕 AgEnD v2.4.1 已可更新（目前 v2.4.0）。<一行：這版的新功能>
 Agent 會先把手上的事做完，接著 AgEnD 重新啟動幾分鐘，之後繼續工作。
-新版沒有正常啟動的話，會自己回到 v2.4.0。          ← 只在 §4 判定可以時才寫
+新版沒有正常啟動的話，會自己回到 v2.4.0。          ← 只在第二階段、§4 判定為 Self 時才寫；第一階段的說法較保守（§3.2）
 [ 閒下來時更新 ]  [ 選個時間 ]  [ 先不要 ]
 ```
 
@@ -153,7 +153,8 @@ Agent 會先把手上的事做完，接著 AgEnD 重新啟動幾分鐘，之後�
 - **Not now** is one choice, kept on the server for the fleet. The card returns **a week after the admin's last answer**, whatever versions come in between. There is no "Skip this version": an admin who wants updates off sets a pin (§6).
 - **While it waits for idle**, the card shows who is working ("waiting for: Example helper, writer"). It keeps **Update now** and **Pick a time**, because a busy fleet may never be idle.
   - **Update now** says how many agents are working and that they resume where they were. It still runs pre-flight and every check.
-- **The second sentence is shown only where it is true** (§4's classes). Elsewhere it is replaced:
+- **The second sentence is shown only where it is true** (§4's classes, and the phase). Elsewhere it is replaced:
+  - **Phase 1**, on a service install: "If the new version doesn't start, AgEnD tries to put v2.4.0 back; if it can't, it tells you how to recover." (§3.2: best effort);
   - a non-service install, in Phase 1 and 2: "There's no automatic way back on this setup: if the new version doesn't start, start AgEnD again (Settings shows how)";
   - after the trial has committed (§3.3, step 7): "If something is wrong afterwards, Go back to v2.4.0 is in Settings".
 - **Non-admins** in General's topic see the card. Pressing a button gets only them a short reply: "Only a fleet admin can update AgEnD." No state changes.
@@ -177,22 +178,32 @@ Phase 1 answers the user's "people press Later" with changes to words and timing
 - pre-flight (§4) gating every path;
 - today's updater, unchanged.
 
-The second sentence is then exactly as true as today:
-- on a **service install**, a package that fails to verify or start is restored, along with its unit (`package-preimage.ts`, `service-activation.ts`);
-- elsewhere it is replaced, as in §3.1.
+The second sentence is then **best effort**, and says so (§3.1):
+- On a **service install**, a package that fails to verify or start is restored, along with its unit (`package-preimage.ts`, `service-activation.ts`).
+- A new version can **migrate state and then fail** before it proves its start. Today's package rollback has no state backup, so it can't promise that the old version works with that state. In that case the card goes to "Needs a hand", with the log and the recovery steps.
+- Elsewhere the sentence is replaced, as in §3.1.
 
-Phase 1 promises no state backup, and no rollback after a successful start.
+Phase 1 promises no state backup and no rollback after a successful start. Its rollback is the package's own, best effort.
+
+**Phase 1 doesn't depend on the signed index (Phase 3).**
+- P7 is `npm ping` only.
+- The never-rule on an unverified index (§6, rule 4) and required updates (§5.3) apply once the running build has Phase 3.
+- Before that, updates come from npm as today, as one-press or idle-waited updates. Nothing updates automatically: that mode is Phase 5.
 
 ### 3.3 Phase 2 — a real update transaction
 
 The full flow runs only on a machine in class **Self** (§4). Both the running version and the target must speak this transaction (from-version ≥ V_tx, the first release to ship it). Otherwise the fleet stays on Phase 1's promises and the card says so.
 
 1. **Re-prove identity under locks** (§4.2). Take the prefix lock, the home lock and the service lock, and hold them through step 8. The cached pre-flight result is for display only.
-2. **Quiescence barrier**, not just observing idle:
-   - **Fence admissions.** New inbound messages (chat, web, Hub, `send_to_instance`) are accepted into a durable **update inbox** in the attempt journal (step 3), and are not dispatched. No new task-board claims are admitted.
-   - **Fence the scheduler.** A job that comes due is recorded as *deferred by update* in the journal and runs after the commit (or after the rollback). A scheduled job **never counts as busy**, so a job every five minutes can't keep a fleet from ever updating.
-   - **Drain.** Wait until every agent is idle by `hubUpdateIdle` plus `hasWorkLease`, with no in-flight delivery or tool call. An agent waiting on a person counts as idle.
-   - If the drain takes longer than the admin's limit (default 24 h), the fences open again and the card offers **Update now** or **Keep waiting**.
+2. **Quiescence barrier: wait first, then fence and check again.** Fences never hold back the work that has to finish for the fleet to become idle.
+   1. **Wait for an idle candidate, without fences.** Every agent is idle by `hubUpdateIdle` plus `hasWorkLease`, with no in-flight delivery or tool call. An agent waiting on a person counts as idle. Replies, completions and inter-agent messages that existing work needs flow as normal. A scheduled job **never counts as busy**, so a job every five minutes can't keep a fleet from ever updating.
+   2. **Open the attempt journal** (step 3), before any fence.
+   3. **Fence and check again, atomically** (one critical section in the fleet's event loop):
+      - new inbound messages (chat, web, Hub, `send_to_instance`) go into the journal's **update inbox** and are not dispatched;
+      - no new task-board claims;
+      - a scheduled job that comes due is recorded as *deferred by update*;
+      - then idle is checked again. If anything is busy now, the fences open, the held items are **handed back** (below), and the update goes back to waiting (substep 1).
+   4. **Abandon or time out.** If the wait passes the admin's limit (default 24 h, `maxIdleWait`), or the attempt is cancelled, the journal records *abandoned*. Everything held is handed back **to the running fleet**, in arrival order: the inbox is dispatched normally, and the deferred jobs run then. The card offers **Update now** or **Keep waiting**.
 3. **Attempt journal**, opened before anything changes. It lives **outside everything that is restored**, at `<home>/.update-journal/`. It holds:
    - the attempt id;
    - the proven install identity (§4.2);
@@ -213,6 +224,18 @@ The full flow runs only on a machine in class **Self** (§4). Both the running v
    - the scheduler stays fenced;
    - **agents' CLIs are not started**, so their session stores are untouched;
    - database migrations run.
+   - **Every writer of fleet state is gated, not only startup.** In trial mode each writer either writes into the attempt journal or is refused before it acknowledges anything:
+     - adapter cursors and inbound go to the journal;
+     - every **mutating web or Hub API** (settings, authorization, sessions including revocations and sign-outs, task board, Hub member changes) answers **503 "AgEnD is updating; try again in a few minutes"**, with `Retry-After`, before any write.
+
+     So nothing accepted during the trial can be undone by a rollback. A revoked session, for example, is never reactivated by the restored snapshot: the revocation was refused and the person retries it.
+
+   **The gap between the old fleet's exit and the trial's start** (seconds) has **no listener**. The doc doesn't promise a queue for it. The boundary is per surface:
+   - **Web.** Requests fail. The page already shows "AgEnD is restarting" and retries.
+   - **Hub.** The Hub holds what it sends to an offline member until it reconnects, as today.
+   - **Telegram.** Unconfirmed updates stay with the platform (long-poll) and are read on reconnect.
+   - **Discord.** The gateway doesn't replay. On start the fleet (trial or old) **reads each bound channel's history since its last-seen message id** and admits what it missed into the inbox. Phase 2 adds this catch-up; until it exists, the card says "a message sent in Discord during the restart may need sending again".
+   - **`send_to_instance`** from another fleet process. Refused while the fleet is down; the sender's delivery already retries.
 6. **Health proof**, against the baseline, for up to 5 minutes:
    - the process stays up, with no restart loop;
    - the web's health route answers;
@@ -257,10 +280,10 @@ The plain `agend update` CLI, run by an operator at a shell, takes the same tran
 | P1 | **This is the install that runs** | `runningInstall` = global (not a checkout). `resolveInstalledAgend` resolves. `npmForRunningInstall` finds an npm whose `npm root -g` is the running package. PATH's `agend` is the same file (today only checked after installing; moved to before). | **Stop** | "This AgEnD runs from a source checkout / another copy than the one npm would update. Update it with git, or run the fleet from the global install." |
 | P2 | **One fleet per install and per home, proven** | Identity under locks (§4.2): this home's live fleet is this package. No *other* live fleet uses this home, or this package with another home. Other `agend` units and plists, and the conventional global roots, are scanned as a **diagnostic**, never as proof. | **Stop** if ownership is unknown or state is shared. **Admin only** if another install is proven disjoint (its own home, prefix and service). | "Two AgEnD installs live under this user: v2.4.0 in ~/.nvm/…/22 (this fleet) and v2.3.9 in /usr/local (fleet at ~/.agend-test, running). They share ~/.agend: updating one could break the other. Give each its own home, or remove one." |
 | P3 | **The service will restart it** | `startedByServiceManager`. The unit is loaded with no pending daemon-reload. Linux: lingering is on for a user unit; a system unit needs a root updater. macOS: the plist is loaded and matches. | **Admin only** | "AgEnD isn't running as a service, so it can't bring itself back after an update." Button: **Install as a service** (new; it runs `agend service install` for the admin). Lingering off: **Turn on** (the existing `user-systemd` step), else the command. |
-| P4 | **It may write the install** | `W_OK` on the npm root and prefix. **No silent nvm or sudo route.** | **Admin only** (a shell press with `sudo`; the web can't) | "Updating needs write access to /usr/local/lib/node_modules (owned by root). Run `sudo agend update` yourself, or reinstall with the one-line installer (a user-owned Node)." |
+| P4 | **It may write the install** | `W_OK` on the npm root and prefix. **No silent nvm or sudo route.** | **Admin only**, from a shell with `sudo`. The web and chat card shows **no update button** for it, only the words. | "This update needs administrator rights on that computer: run `sudo agend update` in a terminal there, or reinstall with the one-line installer (a user-owned Node) so AgEnD can update itself." |
 | P5 | **Not a linked or vendored copy** | The package is a symlink (`npm link`), or sits inside another project's `node_modules`. | **Admin only** (today's warning on press) | "This AgEnD is linked from a development folder; an update replaces the link." |
-| P6 | **Room to update** | `statfs`: free space in the prefix and home of at least 3 × the package size, plus the snapshot size. | **Stop** (until freed) | "Updating needs about 900 MB free on /home; there's 210 MB." |
-| P7 | **The update source answers** | `npm ping` against the install's registry, and the signed index fetched and verified (§5.1). | **Stop** for this attempt (notify only) | "The update source can't be reached from this machine (network or proxy)." |
+| P6 | **Room to update** | `statfs`: free space in the prefix and home of at least 3 × the package size, **plus the snapshot size from Phase 2** (Phase 1 takes no snapshot and doesn't count it). | **Stop** (until freed) | "Updating needs about 900 MB free on /home; there's 210 MB." |
+| P7 | **The update source answers** | `npm ping` against the install's registry. From Phase 3, also the signed index fetched and verified (§5.1). | **Stop** for this attempt (notify only) | "The update source can't be reached from this machine (network or proxy)." |
 | P8 | **Nothing else is updating or being tested** | No `update-in-progress.json`, no lock held, no unfinished journal attempt. **New:** a rehearsal or test marker: `AGEND_REHEARSAL=1` / `AGEND_E2E=1` in the fleet's environment, or `<home>/.no-auto-update`. | **Stop** while it lasts | "A rehearsal / manual test is running here; updates wait until it ends." |
 | P9 | **The platform is one we update** | Docker (`/.dockerenv`, cgroup); Windows paired or Runtime mode. | **Stop** (the image or the Runtime updates itself) | "AgEnD runs in a container; update the image." / "This computer's AgEnD Runtime updates itself." |
 | P10 | **The target runs here** | Today's `preflightUpdate`: the target's `engines` and runtime pins against the Node it will run on. | **Stop** for that target | "v2.5.0 needs Node 22.14 or newer; this machine has 20.11." |
@@ -321,15 +344,16 @@ Both are signed and published on the docs site, mirrored as GitHub release asset
 ```
 
 **What a fleet accepts:**
-- **The signature.** It must verify against a key the build trusts (below).
-- **Freshness and replay:**
-  - The `generation` must be **at least the highest it has accepted**. That high-water mark is persisted in the attempt journal's directory, outside any restore. An older index is refused, even when it is validly signed and not expired, so it can't undo newer advice.
-  - The index is refused when `expiresAt` has passed, or when `issuedAt` is more than **1 hour in the future**: clock tolerance is separate from age.
-  - An index issued days ago stays valid until it expires.
+- **The signature.** Ed25519, by an **operational** key that the current **trust epoch** authorizes for this channel (below). A signature by the recovery key, or by any key in the wrong role, is refused.
+- **Freshness and replay**, scoped to `(epoch, channel)`:
+  - The index carries `epoch` and `generation`. It is accepted only if its epoch is the fleet's current epoch, and its generation is at least the highest accepted **in that epoch and channel**.
+  - **An equal generation must carry the same digest.** The fleet persists the digest per generation, so the same number with different content is refused.
+  - The high-water marks are persisted in the attempt journal's directory, outside any restore. An older index is refused even when it is validly signed and unexpired, so it can't undo newer advice.
+  - Validity is bounded: `expiresAt` at most **14 days** after `issuedAt`. An index is refused once it has expired, or when `issuedAt` is more than **1 hour in the future**: clock tolerance is separate from age. An index issued days ago stays valid until it expires.
 - **The artifact binding.** An update installs only a target whose manifest is in the accepted index (by `sha256`) and meets **all** of these:
   - same package and channel;
   - this platform;
-  - a version higher than the running one and than any version already rolled back here;
+  - a version higher than the running one and than any version already rolled back here. **The one exception is an admin's explicit Try again**: it may target exactly the artifact that rolled back (the same `integrity`), once per press. Every other check in this list, and §4, still applies. Automatic and scheduled updates never retry it;
   - not in `knownBad`;
   - its `engines` met.
 
@@ -339,9 +363,13 @@ Both are signed and published on the docs site, mirrored as GitHub release asset
   - plain notices continue from npm, as today;
   - Settings says "Couldn't verify the update list since <time>".
 
-**Keys and their trust boundary** (decision D4):
-- Every build carries an **operational key**, which signs the indexes, and an **offline recovery key**, kept separately and never used for routine signing.
-- The recovery key signs only two things: a **revocation** of an operational key, and the **introduction of a new one**. A fleet persists both outside any restore.
+**Keys, roles and trust epochs** (decision D4). Both kinds of key are Ed25519, and their roles never mix:
+- **Operational keys** sign indexes and manifests, and nothing else.
+- **The recovery key** is offline, compiled into every build, and signs only **trust-epoch records**: `releases/trust/epoch-<n>.json` + `.sig`, `{ epoch: n, issuedAt, channels, operationalKeys: [publicKey…], revoked: [publicKey…] }`.
+  - Epoch 0 is the operational key compiled into the build.
+  - The fleet fetches and verifies epoch records **on their own path, independently of any index**, so a poisoned or refused index never blocks recovery.
+  - It accepts epoch n+1 only from the recovery key, and only above its current epoch. It persists the current epoch outside any restore.
+  - **A new epoch resets the generation high-water marks.** So an index signed by a stolen key with an enormous generation ("generation poisoning") is undone by the next epoch, along with the key's revocation. Legitimate indexes then start again at generation 1 in the new epoch.
 
 What a **stolen operational key** can do, until it is revoked:
 - force an update to a **release that is still published**, including a bad one that isn't yet listed in `knownBad`;
@@ -356,7 +384,7 @@ Limits that reduce the harm:
 - at most **one required update per 24 h** per fleet;
 - every required update shows **who says it's required and why** (§5.3).
 
-Recovery is the recovery key's revocation. Old clients trust it because it is compiled in. Losing **both** keys has no automatic recovery: a fleet then needs an admin to update by hand to a build with new keys. The doc says so plainly.
+Recovery is a new trust epoch signed by the recovery key: it revokes the key, names its successor and resets the high-water marks. Old clients trust it because the recovery key is compiled in. Losing **both** keys has no automatic recovery: a fleet then needs an admin to update by hand to a build with new keys. The doc says so plainly.
 
 ### 5.2 Triggers
 
@@ -416,9 +444,9 @@ Settings shows, **before any of this happens**, that "the publisher can mark a v
 1. while the quiescence barrier can't be reached: an agent working, or work in flight (§3.3, step 2);
 2. inside an admin-set **pause window**. A required update waits for the window to end;
 3. during a rehearsal or test (P8);
-4. when the signed index can't be verified (§5.1);
+4. when the signed index can't be verified (§5.1). This applies once the running build has Phase 3; before it, there is no automatic update at all;
 5. in pre-flight class Admin only or Stop (§4);
-6. toward a version that already rolled back here (from the journal), until a newer version or an admin's **Try again**;
+6. toward a version that already rolled back here (from the journal), until a newer version. An admin's explicit **Try again** is the one exception, for that exact artifact (§5.1);
 7. within 6 h of publication, except a required update (a short soak, during which the publish can be pulled);
 8. more than one required update per 24 h (§5.1).
 
@@ -426,9 +454,9 @@ Settings shows, **before any of this happens**, that "the publisher can mark a v
 - **Updates:** *Ask me* (default, D1) / *Automatically when idle*;
 - **Don't update during:** days and hours.
 
-**`fleet.yaml` only**, for operators:
-- `updates.pin: <version>`: no update is offered, a banner shows the pin, and a required update **still shows** (D3);
-- `updates.maxIdleWait` (default 24 h).
+**Under Settings → Version and update → Advanced** (collapsed, so the default view keeps its two controls), also in `fleet.yaml` as `updates.*` (the standing rule: every setting is editable in Settings):
+- **Pin to a version** (`updates.pin`): no update is offered, and a banner shows the pin. What a pin does to a **required** update is D3. With the recommended (b), the pin stops it too, and a red notice stays in Needs you and the banner until the pin is removed;
+- **Longest wait for idle** (`updates.maxIdleWait`, default 24 h).
 
 ---
 
@@ -475,7 +503,9 @@ A rehearsal (like S-233's) proves phases 2–4 on real installs: a forced trial 
 - **Key compromise:** see §5.1. The limits there and the recovery key bound the harm; losing both keys needs a manual update.
 - **More automation in a path that can stop the fleet.** *Ask me* stays the default. *Automatically when idle* comes last, and every automatic path needs class Self.
 
-## 10. Changes in revision 2 (the review of `89d60061b`)
+## 10. Changes by revision
+
+### Revision 2 (the review of `89d60061b`)
 
 | Review point | Where it is answered |
 |---|---|
@@ -493,3 +523,15 @@ A rehearsal (like S-233's) proves phases 2–4 on real installs: a forced trial 
 | Prism 6: freshness and durable deadlines | §5.1: `generation` high-water mark, future-clock tolerance apart from age. §5.3: advisory ids, `dueAt`, persisted |
 | Prism 7: pin and override contradictions | §4.1, §6: a pin is a policy, not a pre-flight check. D3, D9 |
 | Prism 8: safe T3 targets | §5.2: actual binaries; drift = newer than audited; one target meeting every constraint, never regressing another agent's CLI |
+
+### Revision 3 (Prism's second review of `b9cd7b2f3`, and Lumen's revision-2 nits)
+
+| Point | Where |
+|---|---|
+| Prism R2-1: fences must not block the drain; journal before fences; hand-back on abandon | §3.3 step 2: wait without fences, open the journal, then fence and re-check atomically; abandon hands everything back in order |
+| Prism R2-2: the surviving ingress owner; trial write gates | §3.3 step 5: each writer journals or is refused with 503 before it acknowledges (incl. session revocation); the stop→start gap is stated per surface (web retry, Hub hold, Telegram long-poll, Discord history catch-up, sender retry) |
+| Prism R2-3: Phase 1's promise; P7 and the signature rule feature-gated | §3.1, §3.2: best effort, "Needs a hand" after a migrate-then-fail. §3.2, P7, §6 rule 4: index rules from Phase 3 |
+| Prism R2-4: poisoned freshness | §5.1: Ed25519 roles; trust epochs signed by the recovery key, fetched independently; high-water per (epoch, channel), reset by a new epoch; equal generation needs the same digest; 14-day validity bound |
+| Prism R2-5: Try again is reachable | §5.1 exception for the exact failed artifact; §6 rule 6 |
+| Prism R2-6: operator settings in the UI | §6: Advanced in Settings (pin, longest wait), and `fleet.yaml` |
+| Lumen nits | §6 pin follows D3's option; P6 counts the snapshot from Phase 2; P4 has no button on the card |
