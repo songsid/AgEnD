@@ -1,0 +1,197 @@
+{
+  "sourceHead": "a07932b8e08d255123f076883d59e124e02b52e9",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en 1: lingering off: the line names the user, with its command as code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: one fix button, Fix it for me",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: the fix ran once",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: ✓ AgEnD can update itself here; the line and its button are gone",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: says it's done, in full",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: says AgEnD couldn't, and to run the command, in full",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: the line and its command stay; the button can be pressed again",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: no fix button",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: How to fix folds out agend install, as code, and says what it does",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: How to fix's steps indented under it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: lingering off: the line names the user, with its command as code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: one fix button, Fix it for me",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the button is 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the fix ran once",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: ✓ AgEnD can update itself here; the line and its button are gone",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: says it's done, in full",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the toast keeps 「執行」 whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: says AgEnD couldn't, and to run the command, in full",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the line and its command stay; the button can be pressed again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the toast keeps 「上面」 whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the toast keeps 「終端機」 whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the toast keeps 「執行」 whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: no fix button",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: How to fix folds out agend install, as code, and says what it does",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: 「回來」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: 「服務方式」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: 「執行」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: How to fix's steps indented under it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "nothing was installed: no launch reached",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "s238-desk-light-en-1-linger.png",
+      "sha256": "bd31c05f31f44c31a6b38a6d5c82050305d3d1e75dcf9a2f64d0a678f11ac7ec"
+    },
+    {
+      "path": "s238-desk-light-en-2-fixed.png",
+      "sha256": "f85cb813966a60c1aecac60c3b17191ed6dd7492d0e6ffda2639895dbb942e14"
+    },
+    {
+      "path": "s238-desk-light-en-3-failed.png",
+      "sha256": "3a41f1fadcfc59937e57eeb2ef70e3fad86dbe7fcd4a1039cd0b89dd8abc41dc"
+    },
+    {
+      "path": "s238-desk-light-en-4-not-service.png",
+      "sha256": "d46b29f2ee7b87373475fe28cd08aa86ebf5d61379d5e2c1f36cb9927092cdbd"
+    },
+    {
+      "path": "s238-phone-dark-zh-TW-1-linger.png",
+      "sha256": "7130a918dd06ee9237fa6c056604804256e259481816172f1a409c1736ef3ae1"
+    },
+    {
+      "path": "s238-phone-dark-zh-TW-2-fixed.png",
+      "sha256": "b285b211c1bc080d6f2af7c77161b5c78a9b9314bb29fb23467d65702e7a7128"
+    },
+    {
+      "path": "s238-phone-dark-zh-TW-3-failed.png",
+      "sha256": "573990cbc6b2a51843befbebf487e48620782f630e87c45c4c890a6bb419e4f1"
+    },
+    {
+      "path": "s238-phone-dark-zh-TW-4-not-service.png",
+      "sha256": "c63d4ccf330049c9b512e796a754d47adb93fc62bae1216dc78fa2118d152551"
+    }
+  ],
+  "summary": "39/39"
+}
