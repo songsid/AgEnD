@@ -46,6 +46,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { randomBytes } from "node:crypto";
 import { acquireHomeUpdateLock, admitFleetStart, installPrefixOf } from "./home-update-lock.js";
+import { ensureAgendHome } from "./agend-home.js";
 import { spawnSync, execSync, execFileSync } from "node:child_process";
 import { spawn } from "./child-process.js";
 import { getAgendHome, isDefaultAgendHome, realDefaultAgendHome } from "./paths.js";
@@ -194,6 +195,7 @@ program.hook("preAction", async (_hooked, action) => {
  */
 function admitAgainstHomeUpdate(): { ok: true; release(): void } | { ok: false } {
   try {
+    ensureAgendHome(DATA_DIR);                                     // as acquireFleetLock does next: the lock lives in it
     const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null };
     const ownPrefix = installPrefixOf(fileURLToPath(new URL("..", import.meta.url)));
     const admitted = admitFleetStart(DATA_DIR, ownPrefix, {
@@ -1812,6 +1814,9 @@ program
           // never sees) refuses this one — then the prefix. Both are held until this process exits.
           let installPrefix = prefix;
           try { installPrefix = realpathSync(prefix); } catch { /* the prefix lock below says so */ }
+          // A home no fleet has made yet (an update right after a fresh install) is made here, privately, as the fleet
+          // lock makes it: the lock lives in it, and a missing home is no reason to refuse.
+          try { ensureAgendHome(DATA_DIR); } catch (err) { return { ok: false as const, path: DATA_DIR, reason: `the AgEnD home ${DATA_DIR} could not be made (${(err as Error).message})` }; }
           const home = acquireHomeUpdateLock(DATA_DIR, { spec: pkg, installPrefix }, lockDeps);
           if (!home.ok) return home;
           const lock = acquireInstallLock(prefix, { spec: pkg, agendHome: DATA_DIR }, lockDeps);
