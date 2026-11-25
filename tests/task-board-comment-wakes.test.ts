@@ -813,7 +813,8 @@ describe("6. compatibility", () => {
       const cols = (t: string) => (raw.prepare(`PRAGMA table_info(${t})`).all() as Array<{ name: string }>).map((x) => x.name);
       expect(cols("task_entries")).toEqual(["id", "task_id", "kind", "author", "author_kind", "text", "at"]);
       const tables = (raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'task%' ORDER BY name").all() as Array<{ name: string }>).map((x) => x.name);
-      expect(tables).toEqual(["task_counters", "task_entries", "task_events", "task_liveness", "task_projects", "task_watchers", "tasks"]);
+      // (task_attachments, an additive table for files on a card, was added later — nothing about comments or wakes changed.)
+      expect(tables).toEqual(["task_attachments", "task_counters", "task_entries", "task_events", "task_liveness", "task_projects", "task_watchers", "tasks"]);
       // The event a comment leaves is the one it always left: its text, nothing about whom it woke.
       const ev = raw.prepare("SELECT data FROM task_events WHERE type = 'commented'").get() as { data: string };
       expect(JSON.parse(ev.data)).toEqual({ text: "@dev-b look" });
