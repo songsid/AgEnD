@@ -1,0 +1,45 @@
+{
+  "dev": "phone",
+  "cases": {
+    "phone-light-en": {
+      "miniBefore": false,
+      "miniHidden": 0,
+      "miniBack": false,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "cardState": "Crashed · Novice",
+      "errors": [],
+      "csp": []
+    },
+    "phone-light-zh-TW": {
+      "miniBefore": false,
+      "miniHidden": 0,
+      "miniBack": false,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "cardState": "已當掉 · 新手",
+      "errors": [],
+      "csp": []
+    },
+    "phone-dark-en": {
+      "miniBefore": false,
+      "miniHidden": 0,
+      "miniBack": false,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "cardState": "Crashed · Novice",
+      "errors": [],
+      "csp": []
+    },
+    "phone-dark-zh-TW": {
+      "miniBefore": false,
+      "miniHidden": 0,
+      "miniBack": false,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "cardState": "已當掉 · 新手",
+      "errors": [],
+      "csp": []
+    }
+  }
+}

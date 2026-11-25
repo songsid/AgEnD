@@ -1,0 +1,45 @@
+{
+  "dev": "desk",
+  "cases": {
+    "desk-light-en": {
+      "miniBefore": true,
+      "miniHidden": 0,
+      "miniBack": true,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "cardState": "Crashed · Novice",
+      "errors": [],
+      "csp": []
+    },
+    "desk-light-zh-TW": {
+      "miniBefore": true,
+      "miniHidden": 0,
+      "miniBack": true,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "cardState": "已當掉 · 新手",
+      "errors": [],
+      "csp": []
+    },
+    "desk-dark-en": {
+      "miniBefore": true,
+      "miniHidden": 0,
+      "miniBack": true,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "cardState": "Crashed · Novice",
+      "errors": [],
+      "csp": []
+    },
+    "desk-dark-zh-TW": {
+      "miniBefore": true,
+      "miniHidden": 0,
+      "miniBack": true,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "cardState": "已當掉 · 新手",
+      "errors": [],
+      "csp": []
+    }
+  }
+}
