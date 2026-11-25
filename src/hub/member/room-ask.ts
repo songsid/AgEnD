@@ -69,6 +69,8 @@ export interface RoomAskOptions {
   /** Only a published, owner-consented mapping with the agent's current lifecycle token. */
   localExposure(id: string): RoomExposure | null;
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
+  /** S-244: while an update barrier is up, a queued ask stays queued. */
+  updateHeld?: () => boolean;
   locale?: "en" | "zh-TW";
   /** Read current Fleet defaults when each question is rendered, including after configuration reload. */
   maxCrossInstanceMessageBytes?(): number | undefined;
@@ -288,7 +290,7 @@ export class HubRoomAskAdapter {
   }
   private async dispatch(id: string): Promise<void> {
     const row = this.row(id), source = this.admitted.get(id);
-    if (!row || row.state !== "queued" || !source || !this.usable(source)) return;
+    if (!row || row.state !== "queued" || !source || !this.usable(source) || this.options.updateHeld?.()) return;
     const saved = this.read(row);
     if (!this.current(saved)||!this.provenanceReady(saved)) return;
     this.save(id, "dispatching", saved);
@@ -429,7 +431,7 @@ export class HubRoomAskAdapter {
   private readonly owedFlights=new Set<string>();
   private async flushOwed(link:RoomAskLink):Promise<void>{
     for(const {row,saved} of this.obligations()){
-      if(!saved.owed||this.owedFlights.has(row.message_id)||!this.usable(link)||!this.current(saved))continue;
+      if(!saved.owed||this.owedFlights.has(row.message_id)||!this.usable(link)||!this.current(saved)||this.options.updateHeld?.())continue;
       this.owedFlights.add(row.message_id);
       try{
         if(saved.owed.phase===1&&!saved.owed.reminderInput&&this.options.remind){

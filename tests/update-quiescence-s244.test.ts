@@ -53,8 +53,8 @@ function bodyOf(src: string, signature: string): string {
   return src.slice(at);
 }
 function holdBeforeSend(src: string): void {
-  const hold = src.indexOf("holdPaneSend");
   const send = src.indexOf("ipc.send");
+  const hold = src.lastIndexOf("holdPaneSend", send);
   expect(hold).toBeGreaterThanOrEqual(0);
   expect(send).toBeGreaterThan(hold);
   expect(src.slice(hold, send)).not.toMatch(/\bawait\b/);
@@ -232,7 +232,7 @@ describe("S-244 holds after the flag is up", () => {
     const web = { type: "fleet_inbound", content: "from the web", targetSession: "worker", meta: { source: "web" } };
     const hub = { type: "fleet_inbound", content: "from the hub", targetSession: "worker", meta: { from_display: "Hub" } };
     expect(barrier.commitTurn(web)).toBe(true);
-    expect(barrier.commitTurn(hub)).toBe(true);
+    expect(barrier.commitTurn(hub)).toBe(false);
     expect(barrier.commitTurn({ type: "fleet_schedule_trigger", content: "already past the lock" })).toBe(false);
     expect(isAgentTurn({ type: "fleet_inbound", content: "/status" })).toBe(false);
     expect(turnSource(web)).toBe("web");
@@ -256,9 +256,10 @@ describe("S-244 holds after the flag is up", () => {
     expect(scheduler.db.get(oneShot.id)?.id).toBe(oneShot.id);
 
     const entries = listHandback(home, attempt.id);
-    expect(entries.map(entry => entry.kind === "inbox" ? entry.item.kind : entry.kind)).toEqual(["copy", "copy", "reference", "deferred"]);
+    expect(entries.map(entry => entry.kind === "inbox" ? entry.item.kind : entry.kind)).toEqual(["copy", "reference", "deferred"]);
     const copies = entries.filter(entry => entry.kind === "inbox" && entry.item.kind === "copy");
-    expect(copies.map(entry => entry.kind === "inbox" ? entry.source : "")).toEqual(["web", "hub"]);
+    expect(copies.map(entry => entry.kind === "inbox" ? entry.source : "")).toEqual(["web"]);
+    expect(entries.some(entry => entry.kind === "inbox" && entry.item.kind === "copy" && JSON.stringify(entry.item).includes("from the hub"))).toBe(false);
     expect(entries.some(entry => entry.kind === "deferred" && entry.job.scheduleId === oneShot.id)).toBe(true);
     scheduler.shutdown();
     outbox.close();
@@ -628,5 +629,29 @@ describe("S-244 ingress inventory", () => {
     expect(launch).not.toContain("quiescence");
     expect(launch).not.toContain("secondCheck");
     expect(launch).not.toContain("holdPaneSend");
+    const hand = fleet.handOffAfterBeforeInput!.toString();
+    const flag = hand.indexOf("refuseHubPane");
+    expect(flag).toBeGreaterThanOrEqual(0);
+    expect(flag).toBeLessThan(hand.indexOf("await beforeInput"));
+    expect(flag).toBeLessThan(hand.indexOf("this.prepareClassicForPerson"));
+  });
+
+  it("does not defer the same occurrence twice, including after a new process binds the attempt", () => {
+    const home = scratch("s244-dedupe-");
+    const attempt = open(home);
+    const barrier = new QuiescenceBarrier(home);
+    barrier.bind(attempt);
+    expect(barrier.secondCheck(idle())).toBe("held");
+    expect(barrier.holdSchedule("sched-1", "run-1")).toBe(true);
+    expect(barrier.holdSchedule("sched-1", "run-1")).toBe(true);
+    expect(barrier.holdSchedule("sched-1", "run-2")).toBe(true);
+    const jobs = () => listHandback(home, attempt.id).filter(entry => entry.kind === "deferred");
+    expect(jobs().map(entry => entry.kind === "deferred" ? entry.job.runId : "")).toEqual(["run-1", "run-2"]);
+    const again = new QuiescenceBarrier(home);
+    again.bind(attempt);
+    expect(again.holdSchedule("sched-1", "run-1")).toBe(false);
+    again.secondCheck(idle());
+    expect(again.holdSchedule("sched-1", "run-1")).toBe(true);
+    expect(jobs().map(entry => entry.kind === "deferred" ? entry.job.runId : "")).toEqual(["run-1", "run-2"]);
   });
 });

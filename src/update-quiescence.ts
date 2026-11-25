@@ -4,7 +4,9 @@
  * The product rules are design #4480 §3.3 step 2. Where this file meets the journal, the files and the replay rules
  * are #4494's §2.6 helpers (`writeInboxItem`, `writeDeferred`, `listHandback`, `handbackAction`, `markHandback`,
  * `handbackSourceKey`, `writeCancel`). The fleet does not write a stage. Source-cleared note #4493 is the behavior
- * this code follows where it supersedes the stage sentences in merged #4490.
+ * this code follows where it supersedes the stage sentences in merged #4490. A Hub or room row is durable and
+ * encrypted in the member journal: its producer leaves it queued, and this module never copies that text. A copy
+ * is only adapter or web ingress that never became a durable row.
  *
  * Nothing in the live installer calls this. Wiring it into `launchInstalledUpdate` before slice 2.5 would hold
  * messages and then install with today's updater. The flag defaults down, so every hook is a no-op until a caller
@@ -167,7 +169,10 @@ export interface QuiescenceGate {
   holdTaskClaim(): boolean;
   /** After `admitDurableDelivery` inserts a row. The row stays; this writes a reference. */
   noteAdmission(deliveryId: string, createdSeq: number): void;
-  /** True: the turn was journaled as a copy and must not be sent. */
+  /**
+   * True: an adapter or web turn was journaled as a copy and must not be sent.
+   * A Hub or room payload is not a copy. The producer leaves that row queued, and the caller must not send it.
+   */
   commitTurn(payload: Record<string, unknown>): boolean;
 }
 
@@ -213,6 +218,8 @@ export class QuiescenceBarrier implements QuiescenceGate {
   private flag = false;
   private seq = 0;
   private seen = new Set<string>();
+  /** Deferred occurrences already on this attempt, so a re-offered run is not written twice. */
+  private deferred = new Set<string>();
   private attempt: AttemptRecord | null = null;
 
   constructor(private readonly home: string, private readonly io: JournalIo = defaultJournalIo) {}
@@ -226,8 +233,10 @@ export class QuiescenceBarrier implements QuiescenceGate {
     const entries = listHandback(this.home, attempt.id, this.io);
     this.seq = entries.reduce((max, entry) => Math.max(max, entry.seq), 0);
     this.seen.clear();
+    this.deferred.clear();
     for (const entry of entries) {
       if (entry.kind === "inbox" && entry.item.kind === "reference") this.seen.add(entry.item.deliveryId);
+      if (entry.kind === "deferred") this.deferred.add(`${entry.job.scheduleId}\0${entry.job.runId}`);
     }
   }
 
@@ -274,9 +283,12 @@ export class QuiescenceBarrier implements QuiescenceGate {
   holdSchedule(scheduleId: string, runId: string): boolean {
     if (!this.flag) return false;
     if (!this.attempt) throw new Error("no attempt is bound");
+    const key = `${scheduleId}\0${runId}`;
+    if (this.deferred.has(key)) return true;
     const seq = this.seq + 1;
     writeDeferred(this.home, this.attempt.id, seq, { scheduleId, runId }, this.io);
     this.seq = seq;
+    this.deferred.add(key);
     return true;
   }
 
@@ -289,6 +301,8 @@ export class QuiescenceBarrier implements QuiescenceGate {
 
   commitTurn(payload: Record<string, unknown>): boolean {
     if (!this.flag || !isAgentTurn(payload)) return false;
+    // Hub and room text stays in the member journal, encrypted, and only while that row is queued.
+    if (turnSource(payload) === "hub") return false;
     if (!this.attempt) throw new Error("no attempt is bound");
     const seq = this.seq + 1;
     writeInboxItem(this.home, this.attempt.id, seq, turnSource(payload), { kind: "copy", body: payload }, this.io);

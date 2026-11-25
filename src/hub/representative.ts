@@ -101,6 +101,8 @@ export interface HubRepresentativeOptions {
   /** The member link, once a handshake completed on it (null: offline). */
   link(): HubRepresentativeLink | null;
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
+  /** S-244: while an update barrier is up, a queued question stays queued. No begin lease and no input intent. */
+  updateHeld?: () => boolean;
   /** attachments-v1 files: into the agent's inbox for a question, out of the agent's own paths for an answer. */
   files?: HubMemberFiles;
   audit(event: { action: string; result: "completed" | "held" | "denied"; messageId?: string; exposureId?: string; reasonCode?: string }, db: Database.Database): void;
@@ -259,7 +261,7 @@ export class HubRepresentativeExecution {
    * dispatch settles, so a backlog larger than one page keeps draining). Input-bearing work is never picked up again.
    */
   pump(): void {
-    if (this.closed || !this.recovered || !this.options.link()) return;
+    if (this.closed || !this.recovered || !this.options.link() || this.options.updateHeld?.()) return;
     let rows: Row[];
     try { rows = this.options.db.prepare("SELECT * FROM hub_representative_questions WHERE state='queued' ORDER BY at LIMIT 64").all() as Row[]; }
     catch (err) { this.options.log("warn", "Hub question queue could not be read", { err: String(err) }); return; }
@@ -284,6 +286,7 @@ export class HubRepresentativeExecution {
   }
 
   private async dispatch(row: Row): Promise<void> {
+    if (this.options.updateHeld?.()) return;
     if (!this.currentFor(row)) { this.hold(row, "stale"); return; }
     const cid = `hub-${randomUUID()}`;
     if (!this.setState(row, "dispatching", ["queued"], { cid })) return;
@@ -306,6 +309,10 @@ export class HubRepresentativeExecution {
         this.hold(row, "files-unavailable"); return;
       }
       if (this.refresh(row) !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return; }
+    }
+    if (this.options.updateHeld?.()) {
+      if (this.refresh(row) === "dispatching") this.setState(row, "queued", ["dispatching"], { cid: null });
+      return;
     }
     // M-3594: the name comes from the Hub's directory (as in rooms), never from the asker; the id stays the stable key.
     const askerName = this.options.askerName?.(row.message_id);
@@ -332,6 +339,10 @@ export class HubRepresentativeExecution {
       this.options.log("warn", "Hub question hand-off failed", { messageId: row.message_id, err: String(err) });
     }
     const state = this.refresh(row);
+    if (!handed && state === "dispatching" && this.options.updateHeld?.()) {
+      this.setState(row, "queued", ["dispatching"], { cid: null });
+      return;
+    }
     if (handed && state === "input") {
       // Handed to the agent's daemon: local state only. The journal's delivered/consumed evidence waits for the agent's
       // own report (queue acceptance is not delivery); a pane that never takes it is reported back (deliveryFailed).
@@ -347,6 +358,7 @@ export class HubRepresentativeExecution {
   /** The fleet's last step before input (at the connected hand-off): consent and lifecycle again, the begin lease, spent at once. */
   private async beforeInput(row: Row): Promise<boolean> {
     try {
+      if (this.options.updateHeld?.()) return false;
       if (this.refresh(row) !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return false; }
       const request: HubAuthorizationRequest = { messageId: row.message_id, operationId: randomUUID(), exposureRevision: row.revision, phase: "begin" };
       const lease = await this.options.authorize(request);

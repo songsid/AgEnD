@@ -385,7 +385,7 @@ import { WebSettingsTools } from "./web-settings-tools.js";
 import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
-import type { QuiescenceGate } from "./update-quiescence.js";
+import { turnSource, type QuiescenceGate } from "./update-quiescence.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateOfferReply, type UpdateCardView } from "./update-card.js";
 import { preflightAllows } from "./update-readiness.js";
@@ -2833,6 +2833,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
                   && (interaction.kind === "permission" || interaction.kind === "dangerous_command") };
             },
             deliver: input => this.deliverHubQuestion(input),
+            updateHeld: () => this.quiescence?.armed() === true,
             agentToken: agent => this.hubAgentToken(agent),
             // attachments-v1: a question's files go into the agent's inbox; an answer's come from its own paths.
             files: { stateDir: this.dataDir,
@@ -8687,11 +8688,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * Last synchronous commit of a pane write (S-244). True: the barrier journaled the turn, so it is not sent.
-   * There is no await between this and `ipc.send`. Unarmed, or not an agent turn: false, and the send proceeds.
+   * Last synchronous commit of a pane write (S-244). True: the barrier journaled an adapter or web turn, so it is
+   * not sent. There is no await between this and `ipc.send`. Unarmed, or not an agent turn: false, and the send proceeds.
+   * A Hub or room payload is not a copy: `refuseHubPane` refuses it before this, and the producer leaves the row queued.
    */
   private holdPaneSend(payload: Record<string, unknown>): boolean {
     return this.quiescence?.commitTurn(payload) === true;
+  }
+
+  /** The fence is up and this payload belongs to a durable Hub or room row. Do not send it and do not copy it. */
+  private refuseHubPane(payload: Record<string, unknown>): boolean {
+    return this.quiescence?.armed() === true && turnSource(payload) === "hub";
   }
 
   /**
@@ -8728,6 +8735,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ipc?.connected) {
         if (beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
         const wire = this.bindHumanReceiptPayload(instanceName, payload);
+        if (this.refuseHubPane(wire)) return false;
         if (this.holdPaneSend(wire)) return true;
         if (ipc.send(wire)) return true;
       }
@@ -8761,12 +8769,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async handOffAfterBeforeInput(instanceName: string, payload: Record<string, unknown>, deliveryEpoch: number,
     stillCurrent: (() => boolean) | undefined, beforeInput: () => Promise<boolean>): Promise<boolean> {
+    // The flag is read before beforeInput and before prepareClassicForPerson. A Hub or room row stays
+    // queued at its producer: no begin lease, no input intent, and no plaintext copy of the question.
+    if (this.refuseHubPane(payload)) return false;
+    if (this.quiescence?.armed()) {
+      const early = this.bindHumanReceiptPayload(instanceName, payload);
+      if (this.holdPaneSend(early)) return true;
+    }
     if (!(await beforeInput())) return false;
+    if (this.refuseHubPane(payload)) return false;
     const privateToken = await this.prepareClassicForPerson(instanceName, payload, deliveryEpoch, stillCurrent);
     if (privateToken === false || this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc?.connected || (privateToken && this.classicPrivacy().read(instanceName)?.token !== privateToken)) return false;
     const wire = this.bindHumanReceiptPayload(instanceName, payload);
+    if (this.refuseHubPane(wire)) return false;
     if (this.holdPaneSend(wire)) return true;
     const sent = ipc.send(wire);
     if (sent && privateToken) {
@@ -8803,6 +8820,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ipc?.connected && beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
       if (ipc?.connected) {
         const wire = this.bindHumanReceiptPayload(instanceName, payload);
+        if (this.refuseHubPane(wire)) return false;
         if (this.holdPaneSend(wire)) return true;
         if (ipc.send(wire)) return true;
       }
@@ -9217,6 +9235,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let sent = false;
     try {
       const wire = this.bindHumanReceiptPayload(instanceName, admitted);
+      if (this.refuseHubPane(wire)) return false;
       if (this.holdPaneSend(wire)) { sent = true; return true; }
       sent = ipc.send(wire);
       return sent;
