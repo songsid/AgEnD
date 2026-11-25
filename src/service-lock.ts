@@ -6,9 +6,9 @@
  * the service is admitted by the lock record's token (`AGEND_SERVICE_LOCK_TOKEN`), only while that live holder is the
  * one that wrote it.
  */
-import { existsSync } from "node:fs";
+import { ensureAgendHome } from "./agend-home.js";
 import { join } from "node:path";
-import { acquireInstallLock, type InstallLock, type InstallLockDeps } from "./install-lock.js";
+import { acquireInstallLock, sameStartText, type InstallLock, type InstallLockDeps } from "./install-lock.js";
 import { lockHolderAt } from "./home-update-lock.js";
 import { readCurrent } from "./update-journal.js";
 
@@ -29,16 +29,22 @@ export type ServiceAdmission = { ok: true; release(): void; viaToken: boolean } 
  * ends. Held by a live updater: admitted only with that holder's token; otherwise refused, naming the attempt and its
  * stage. A holder that can't be told live or gone, or a record that can't be read, refuses too (the words name the
  * lock and the way out) — a service command never guesses that an update is over.
+ *
+ * A home that doesn't exist yet is created first (private, by the same checks as every start) and then admitted the
+ * normal way (Prism #4499): "no home" observed once is no proof that an update won't create it and lock it a moment
+ * later, while this command still runs.
+ *
+ * The token admits only the open attempt's own updater's child: the live holder's record is `attempt:<id>`, `current`
+ * names that attempt open, and the holder is that attempt's updater (pid and start). (The recovery runner, 2.1c, joins.)
  */
 export function admitServiceCommand(home: string, command: string, deps: InstallLockDeps, env: NodeJS.ProcessEnv = process.env): ServiceAdmission {
-  // No home yet: no update can hold its service (the updater makes the home before its locks), and this command
-  // creates nothing here — admitted without a lock.
-  if (!existsSync(home)) return { ok: true, release: () => {}, viaToken: false };
+  try { ensureAgendHome(home); }
+  catch (err) { return { ok: false, reason: `\`agend ${command}\` is refused: the AgEnD home ${home} can't be used (${(err as Error).message}).` }; }
   const path = serviceLockPath(home);
   const holder = lockHolderAt(path, deps);
   if (holder.state === "live") {
     const token = env[SERVICE_LOCK_TOKEN_ENV];
-    if (token && token === holder.record.token) return { ok: true, release: () => {}, viaToken: true };
+    if (token && token === holder.record.token && tokenBound(home, holder.record)) return { ok: true, release: () => {}, viaToken: true };
     return { ok: false, reason: refusal(home, command, holder.record.targetSpec) };
   }
   if (holder.state === "unknown" || holder.state === "unreadable") {
@@ -47,6 +53,16 @@ export function admitServiceCommand(home: string, command: string, deps: Install
   const taken = acquireInstallLock(home, { spec: `command:${command}`, agendHome: home }, deps, { file: SERVICE_LOCK_FILE, name: NAME });
   if (!taken.ok) return { ok: false, reason: `\`agend ${command}\` is refused: ${taken.reason}` };
   return { ok: true, release: taken.release, viaToken: false };
+}
+
+/** The live holder is the open attempt's updater: `attempt:<id>`, `current` open on that id, the same pid and start. */
+function tokenBound(home: string, record: { pid: number; processStart: string; targetSpec: string }): boolean {
+  const id = /^attempt:(.+)$/.exec(record.targetSpec)?.[1];
+  if (!id) return false;
+  const read = readCurrent(home);
+  if (read.state !== "open" || read.attempt.id !== id) return false;
+  const u = read.attempt.updater;
+  return u.pid === record.pid && sameStartText(u.start.processStart, record.processStart);
 }
 
 function refusal(home: string, command: string, spec: string): string {

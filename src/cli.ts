@@ -47,7 +47,7 @@ import { createRequire } from "node:module";
 import { randomBytes } from "node:crypto";
 import { acquireHomeUpdateLock, admitFleetStart, installPrefixOf } from "./home-update-lock.js";
 import { admitServiceCommand } from "./service-lock.js";
-import { claimHandoff } from "./update-journal.js";
+import { claimHandoff, fleetStartGate } from "./update-journal.js";
 import { takeSharedLease } from "./state-lease.js";
 import { ensureAgendHome } from "./agend-home.js";
 import { spawnSync, execSync, execFileSync } from "node:child_process";
@@ -256,13 +256,20 @@ function claimFleetSingleton(): boolean {
   const home = admitAgainstHomeUpdate();
   if (!home.ok) return false;
   try {
-    // M-3770 §4.3: a start holding an update's planned nonce (AGEND_UPDATE_HANDOFF) takes the fence over by the
-    // journal's single-use claim; every other start is refused while an update fences the home.
-    const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null };
+    // M-3770 §4.3, §7: the journal first — an open, unknown or manual attempt refuses every start but the attempt's own
+    // (its planned nonce, AGEND_UPDATE_HANDOFF, while its updater lives). That start then takes the fence over by the
+    // journal's single-use claim.
+    const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null };
+    const liveness = { processStart: admission.processStart, startTicks: admission.startTicks, bootId: admission.bootId };
+    const gate = fleetStartGate(DATA_DIR, process.env.AGEND_UPDATE_HANDOFF ?? null, liveness);
+    if (!gate.ok) throw new Error(gate.reason);
     setProcessFleetLock(acquireFleetLock(DATA_DIR, {
       claimHandoff: (attemptId, nonce, pid) => {
-        const start = admission.processStart(pid);
-        return !!start && claimHandoff(DATA_DIR, attemptId, nonce, { pid, start: { processStart: start } });
+        const processStart = admission.processStart(pid);
+        if (!processStart) return false;
+        const ticks = admission.startTicks(pid), boot = admission.bootId();
+        const start = { processStart, ...(ticks !== null && boot !== null ? { startTicks: ticks, bootId: boot } : {}) };
+        return claimHandoff(DATA_DIR, attemptId, nonce, { pid, start }, liveness);
       },
     }));
     home.release();
