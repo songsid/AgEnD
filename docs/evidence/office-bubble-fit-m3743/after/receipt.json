@@ -1,5 +1,5 @@
 {
-  "sourceHead": "5b5dbdd1231080a78d5e6d6d27f5da0d9f73d2ae",
+  "sourceHead": "5018755de50771ee64ccc14a8b9d1d288644be7e",
   "dirty": [],
   "checks": [
     {
@@ -230,7 +230,7 @@
   "pictures": [
     {
       "path": "m3743-desk-light-en-0-fit.png",
-      "sha256": "ff45add232a0ad059c7520cebe722723a3c281fac603f1367db477fae7722209"
+      "sha256": "84cf5bda589d6e98fae36a7ee2b564eb10daf9cb1607c1f589b318c07d94a9b0"
     },
     {
       "path": "m3743-desk-light-en-1-right.png",
@@ -238,7 +238,7 @@
     },
     {
       "path": "m3743-desk-dark-zh-TW-0-fit.png",
-      "sha256": "bde3c387224dd7afb1f0dd3d8161cf3e0f13898689cef61f59872886d595524e"
+      "sha256": "71824510d7003c89952b24046d31ae248d5951a2b70ca11a2adb06d5c920fc77"
     },
     {
       "path": "m3743-desk-dark-zh-TW-1-right.png",
@@ -262,7 +262,7 @@
     },
     {
       "path": "m3743-phone-light-zh-TW-0-fit.png",
-      "sha256": "8f7f77d501fadc43abcf77739291b53450d969fb398cf86697743731aa38353f"
+      "sha256": "6930ac088a351c7df94ff92c78a00264bc8be47677e35ade8295095b28f1e11c"
     },
     {
       "path": "m3743-phone-light-zh-TW-1-right.png",
@@ -286,7 +286,7 @@
     },
     {
       "path": "m3743-phone-dark-en-2-left.png",
-      "sha256": "8f01b9b57b87fdb97544458bbd25c769daef82f39f3efcfd47eec274c4c73b80"
+      "sha256": "94fbe3a412acb9f923fc38bffa5b7a9b8dd312dd71d8b2271c9ee66444cc67c1"
     },
     {
       "path": "m3743-phone-dark-en-3-sheet.png",
@@ -294,15 +294,15 @@
     },
     {
       "path": "m3743-phone-dark-zh-TW-0-fit.png",
-      "sha256": "d9e888e6399934764dfabbc1617d52e8789190fc0d5db81eb6a41bbe0ad7a911"
+      "sha256": "ff5a464e0d3012c377adba4ea230e6bc9542097e7e5a6532c1ae6b0a2ff28b8e"
     },
     {
       "path": "m3743-phone-dark-zh-TW-1-right.png",
-      "sha256": "fc49fc0a6a50f507d1e8c39d636d0b26419a0ec86df85ec6e0d59f8c3d4e15ae"
+      "sha256": "9330c77265db2ae547b74e88f9a3db627de9b94e7f7201d65904594a09052810"
     },
     {
       "path": "m3743-phone-dark-zh-TW-2-left.png",
-      "sha256": "566603c4ef9bbf9a9c6b349ce18abde9210672e759532da47f4a6a78810c396d"
+      "sha256": "53e2dcd2cd97f33714a599a7006a5330030b78801abe0b201a6fd1be36633f17"
     },
     {
       "path": "m3743-phone-dark-zh-TW-3-sheet.png",
@@ -327,7 +327,7 @@
         "H": 716
       },
       "bubble": {
-        "l": 960,
+        "l": 833,
         "r": 1095,
         "t": 432,
         "b": 518,
@@ -335,7 +335,7 @@
           "x": 1084,
           "y": 518
         },
-        "n": 5215
+        "n": 9390
       },
       "edgePaper": 0
     },
@@ -356,7 +356,7 @@
         "H": 758
       },
       "bubble": {
-        "l": 897,
+        "l": 953,
         "r": 1096,
         "t": 472,
         "b": 566,
@@ -364,7 +364,7 @@
           "x": 1086,
           "y": 566
         },
-        "n": 7110
+        "n": 4530
       },
       "edgePaper": 0
     },

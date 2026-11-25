@@ -7,7 +7,7 @@ The Office now passes the part of the scene on screen, and the bubble's box stay
 - Near the top, it moves down, shortening its tail.
 - It goes under the head, with its tail pointing up, only when there is no room above (as a Talk reply does, #4406).
 
-The bubbles are placed where they are drawn (`placeBubbles`' `boxAt`), so two bubbles kept on screen never overlap, and the tap box is the drawn box.
+Each bubble is placed where it is drawn (`placeBubbles`' `boxAt`), and so is its tail: `bubbleBox` returns the area the tail covers, from its slid foot to the speaker, and that area is kept clear of other bubbles and redraws an area's name it crosses. The page then checks every placed bubble again where it is drawn, so a page still holding the older `fleet-office-zones.js` (which knows no `boxAt`) never draws two bubbles over each other. `tests/office-bubble-fit-retained-m3743.test.ts` runs the page with that retained function. The tap box is the drawn box (#4474 review).
 
 **Talk select.** On a phone (640 px wide or less), the ⋯ sheet's selects were still held to the Office bar's 150 px cap. That left the Talk select's "Pop-up window" 108 px for its text (after the padding and the native ▼), against the 120 px it needs, so it read "Pop-up windov". The sheet's rule now lifts the cap, so the select is 62% of its row: 217 px on a 390 px phone.
 
@@ -20,7 +20,7 @@ The bubbles are placed where they are drawn (`placeBubbles`' `boxAt`), so two bu
 
 Results:
 - `before/`: release `c2b0e3895`, 34 of 56 checks. Every edge frame is cut; for example, on the phone's right edge the bubble's paper runs to the last column, and 73 paper pixels are on the edge. "Pop-up window" does not fit (120 px > 108 px).
-- `after/`: this branch at `5b5dbdd12` (`src` clean, the same as `fb0517b4f`), 56 of 56. On the phone's right edge the bubble is 190–380 of 390 px, and on the left edge 9–178. The Talk select is 217 px wide, with 199 px for its text.
+- `after/`: this branch at `5018755de` (`src` clean), 56 of 56. On the phone's right edge the bubble is 190–380 of 390 px, and on the left edge 9–178. The Talk select is 217 px wide, with 199 px for its text.
 
 Each `receipt.json` lists the commit, every check, the measured bubble boxes, the zoom and the select, and each PNG's sha256.
 
