@@ -688,6 +688,11 @@ export interface FleetConfig {
    * once on each Windows computer, 1..16, default 4.
    */
   runtimes?: { windows_cli?: boolean; remote_runtime?: boolean; max_agents_per_machine?: number };
+  /**
+   * M-3762: one update offer. `mode` auto-when-idle is stored and not acted on until Phase 5.
+   * `pause` days are 0 (Sunday) through 6. `pin` set means nothing is offered. `maxIdleWait` is hours (default 24).
+   */
+  updates?: import("./update-settings.js").UpdatesSettings;
 }
 
 /**

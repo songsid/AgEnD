@@ -91,6 +91,7 @@ import { resolveToolSet } from "./tool-permissions.js";
 import type { WebSessionStore, SessionRecord, WebDeviceRow } from "./web-session.js";
 import { OPERATOR, isOwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
 import { WEB_NAME_FALLBACK, type WebAccount, webPersonKey } from "./web-profile.js";
+import { updateAnswerLabel } from "./update-card.js";
 import { commitTeamCreate, commitTeamUpdate } from "./outbound-handlers.js";
 import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-mentions.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
@@ -876,10 +877,11 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
 
 /**
  * M-2738 (#3332): updating AgEnD from the web.
- *   GET  /ui/update        { admin, current, offer?, checked_at?, check_failed?, progress?, now } — an admin session; a
+ *   GET  /ui/update        { admin, current, offer?, card?, checked_at?, check_failed?, progress?, now } — an admin session; a
  *                          read-only session gets { admin: false, current } (its stale-tab reload line)
  *   POST /ui/update/check  look now (one a minute) → the GET's answer
  *   POST /ui/update/start  { confirm: "update-agend" } + Idempotency-Key → 202 { started } (the progress is the GET's)
+ *   POST /ui/update/answer { action } + Idempotency-Key → 200 { card } (the one update offer)
  *   GET  /ui/update/log    { text, error } — the updater's own words, for the failure's "full log"
  * Signed-in sessions only (never the CLI's token or a guest; M-3278: the public link's sessions too, as locally); an
  * admin's for all but the version. Asked again once a body is in.
@@ -887,7 +889,7 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
 function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   const host = ctx.webUpdate;
   if (!host) { json(res, 404, { error: "not found" }); return true; }
-  const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/log": "GET" };
+  const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/answer": "POST", "/ui/update/log": "GET" };
   if (!routes[path]) { json(res, 404, { error: "not found" }); return true; }
   if (routes[path] !== method) { res.setHeader("Allow", routes[path]!); json(res, 405, { error: "method not allowed" }); return true; }
   res.setHeader("Cache-Control", "no-store");
@@ -896,13 +898,13 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
     if (verdict.via !== "session" || !verdict.session || verdict.session.tier === "guest") return { status: 403, error: "update_needs_a_signed_in_person" };
     const owner = verdict.session.owner;
-    return { admin: verdict.session.tier === "admin", person: owner ? webPersonKey(owner) : "admin-session" };
+    return { admin: verdict.session.tier === "admin", person: owner ? webPersonKey(owner) : "admin-session", label: owner ? (ctx.webPerson?.(owner)?.name ?? "") : "" };
   };
   const view = (admin: boolean) => {
     const st = host.updateState();
     if (!admin) return { admin: false, current: st.current };
     const progress = host.updateProgress();
-    return { admin: true, current: st.current, offer: st.offer, hubRecommendation: st.hubRecommendation ?? null, checked_at: st.checkedAt, check_failed: st.checkFailed, progress, now: Date.now() };
+    return { admin: true, current: st.current, offer: st.offer, hubRecommendation: st.hubRecommendation ?? null, checked_at: st.checkedAt, check_failed: st.checkFailed, progress, card: host.card?.() ?? null, now: Date.now() };
   };
   const first = who();
   if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -911,7 +913,7 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
   if (path === "/ui/update/log") { const l = host.updateLog(); json(res, 200, { text: l.text, error: l.error }); return true; }
   (async () => {
     let body: Record<string, unknown> = {};
-    try { body = await parseBody(req); } catch { if (path === "/ui/update/start") { json(res, 400, { error: "Invalid JSON" }); return; } }
+    try { body = await parseBody(req); } catch { if (path === "/ui/update/start" || path === "/ui/update/answer") { json(res, 400, { error: "Invalid JSON" }); return; } }
     if (!permitWebContinuation(req, res, ctx) || res.destroyed) return;
     const now = who();
     if ("status" in now) { json(res, now.status, { error: now.error }); return; }
@@ -920,6 +922,15 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
       const r = await host.checkUpdateNow();
       if (!r.ok) { json(res, r.status, { error: r.error }); return; }
       json(res, 200, view(true));
+      return;
+    }
+    if (path === "/ui/update/answer") {
+      if (!host.answerUpdate) { json(res, 404, { error: "unavailable" }); return; }
+      const header = req.headers["idempotency-key"];
+      const key = typeof header === "string" ? header : "";
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
+      const answered = await host.answerUpdate(key, updateAnswerLabel(now.label), body);
+      json(res, answered.status, answered.ok ? { card: answered.card } : answered.body);
       return;
     }
     const header = req.headers["idempotency-key"];

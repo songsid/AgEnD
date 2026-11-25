@@ -129,4 +129,8 @@ export interface WebUpdateHost {
   /** Owner action on one retained Hub request. The host resolves its verified version. */
   startHubRequestedUpdate?(key: string, person: string, stillAllowed: () => boolean, requestId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   updateLog(): { text: string | null; error: string | null };
+  /** The one update card. Null when nothing is offered (including a pin). */
+  card?(): import("./update-card.js").UpdateCardView | null;
+  /** POST /ui/update/answer. `by` is a display label, never an id. */
+  answerUpdate?(key: string, by: string, body: import("./update-card.js").UpdateAnswerBody): Promise<import("./update-card.js").UpdateAnswerResult>;
 }

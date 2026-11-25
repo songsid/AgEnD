@@ -82,7 +82,7 @@ async function trace(twoGenerals: boolean, order: string[], command: string, use
 }
 
 describe("#1490 row14: forum-root authority must not depend on the dedup race", () => {
-  for (const command of ["/restart full", "/update"]) {
+  for (const command of ["/restart full", "/update now"]) {
     it(`two Generals: sibling-admin authority is arrival-independent for ${command}`, async () => {
       const ownerFirst = await trace(true, [A, B], command, ADMIN_B);
       const siblingFirst = await trace(true, [B, A], command, ADMIN_B);
@@ -93,13 +93,13 @@ describe("#1490 row14: forum-root authority must not depend on the dedup race", 
     });
     it(`one General: a sibling cannot silently consume ${command}`, async () => {
       const result = await trace(false, [B, A], command, ADMIN_A);
-      if (command === "/update") expect(result.updates).toHaveLength(1);
+      if (command.startsWith("/update")) expect(result.updates).toHaveLength(1);
       else expect(result.restarts).toEqual([A]);
     });
     it(`an explicitly addressed owner retains its own admin: ${command}`, async () => {
       const addressed = command.replace(/^(\/\w+)/, "$1@BetaBot");
       const result = await trace(true, [A, B], addressed, ADMIN_B);
-      if (command === "/update") expect(result.updates).toEqual([`command /update by ${B}:${ADMIN_B}`]);
+      if (command.startsWith("/update")) expect(result.updates).toEqual([`command /update by ${B}:${ADMIN_B}`]);
       else expect(result.restarts).toEqual([B]);
     });
   }
