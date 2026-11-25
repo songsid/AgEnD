@@ -45,9 +45,12 @@ export class IdleUpdateQueue {
     this.host.db.prepare("UPDATE fleet_idle_updates SET state=?,reason=?,updated_at=? WHERE id=?").run(state, reason, this.host.now(), id);
     const row = this.get(id)!; this.say(row); this.arm(); return row;
   }
-  request(value: { id: string; version: string }): IdleUpdate {
+  request(value: { id: string; version: string; waitMs?: number }): IdleUpdate {
     if (!this.live()) throw Error("stopped");
-    if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(value.id) || value.version !== value.version.trim() || value.version.length > 128 || !isExactVersion(value.version)) throw Error("invalid");
+    // Hub callers omit waitMs and keep the 24h wait. A fleet card passes updates.maxIdleWait.
+    const wait = value.waitMs ?? IDLE_UPDATE_WAIT_MS;
+    if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(value.id) || value.version !== value.version.trim() || value.version.length > 128 || !isExactVersion(value.version)
+      || !Number.isSafeInteger(wait) || wait < 1 || wait > 14 * 24 * 60 * 60_000) throw Error("invalid");
     this.expire();
     let inserted = false;
     const row = this.host.db.transaction(() => {
@@ -55,7 +58,7 @@ export class IdleUpdateQueue {
       if (known) { if (known.version !== value.version) throw Error("conflict"); return known; }
       if (this.pending()) throw Error("busy");
       const now = this.host.now();
-      this.host.db.prepare("INSERT INTO fleet_idle_updates VALUES(?,?,?,?,?,'waiting',NULL)").run(value.id, value.version, now, now + IDLE_UPDATE_WAIT_MS, now);
+      this.host.db.prepare("INSERT INTO fleet_idle_updates VALUES(?,?,?,?,?,'waiting',NULL)").run(value.id, value.version, now, now + wait, now);
       inserted = true; return this.get(value.id)!;
     })();
     if (inserted) this.say(row); this.arm(); return row;
@@ -71,7 +74,11 @@ export class IdleUpdateQueue {
     if (this.running) { this.dirty = true; return this.running; }
     this.running = Promise.resolve().then(async () => {
       do { this.dirty = false; await this.run(); } while (this.dirty && this.live());
-    }).finally(() => { this.running = null; this.arm(); });
+    }).finally(() => {
+      this.running = null; this.arm();
+      // A pump that arrived after the loop check, and before running was cleared, must not be dropped.
+      if (this.dirty && this.live()) void this.pump();
+    });
     return this.running;
   }
   private async run(): Promise<void> {

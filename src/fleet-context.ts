@@ -126,6 +126,12 @@ export interface FleetContext {
   /** #1920 step 4: a non-admin's `/web` while guest sign-in is on (decided synchronously), and its handling. */
   isGuestWebAsk?(adapterId: string | undefined, userId: string): boolean;
   guestWebCommand?(ask: { adapterId: string; userId: string; username?: string; arg: string; replyHere: (text: string) => Promise<unknown>; replyPrivately?: (text: string) => Promise<unknown> }): Promise<boolean>;
+  /** Bare `/update`: the one card, in words. `/update now` is the immediate path. */
+  describeUpdateOffer?(): string;
+  /** A pin refuses the immediate path. Null means it may launch. */
+  refuseImmediateUpdate?(): string | null;
+  /** `/update now` claimed the machine. The card shows updating; the launch is the caller's. */
+  beginUpdateRun?(): void;
   /** Persist and edit one `/update` message across the fleet process restart. */
   beginUpdateProgress?(adapter: import("./channel/types.js").ChannelAdapter, chatId: string, threadId: string | undefined, messageId: string): void;
   failUpdateProgress?(message: string): void;

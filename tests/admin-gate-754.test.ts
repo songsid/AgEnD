@@ -195,7 +195,7 @@ describe("the check and the act are one stretch: an instance rebound to another 
 });
 
 describe("the table judges only what a handler would run: other text is the agent's, for a member and an admin alike (#1399 review)", () => {
-  const generalForms = ["/status report", "/STATUS", "/Doctor", "/update now", "/sysinfo please"];
+  const generalForms = ["/status report", "/STATUS", "/Doctor", "/update nowhere", "/sysinfo please"];
   const instanceForms = ["/COLLAB", "/pause one two", "/Compact", "/clear all", "/cancel now", "/ctx please"];
   for (const user of [PLAIN, ADMIN_A]) {
     it(`General, ${user === PLAIN ? "member" : "admin"}: ${generalForms.join(", ")} pass through with no reply`, async () => {

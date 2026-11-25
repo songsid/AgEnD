@@ -9,6 +9,7 @@ import { unshareParsed } from "./yaml-shared-nodes.js";
 import { getAgendHome, getTmuxSessionName, ensureWorkspaceGit } from "./paths.js";
 import { normalizeOfficeStorage, dashboardSwitches } from "./dashboard-permissions.js";
 import type { CostGuardConfig, HangDetectorConfig, DailySummaryConfig, FleetConfig, FleetDefaults, FleetTemplate, InstanceConfig, RawFleetConfig } from "./types.js";
+import { updatesFromRaw } from "./update-settings.js";
 
 export function deepMergeGeneric<T extends object>(target: T, source: Partial<T>): T {
   const result = { ...target } as Record<string, unknown>;
@@ -221,6 +222,7 @@ export function loadFleetConfigSource(raw: string): FleetConfig {
     fleet_label?: string;
     login?: FleetConfig["login"];
     web_terminal?: FleetConfig["web_terminal"];
+    updates?: unknown;
   } | null;
 
   if (!parsed) {
@@ -303,6 +305,7 @@ export function loadFleetConfigSource(raw: string): FleetConfig {
     fleet_label: parsed.fleet_label,
     login: validateLoginConfig(parsed.login),
     web_terminal: validateWebTerminalConfig(parsed.web_terminal),
+    updates: updatesFromRaw(parsed.updates),
   };
 }
 

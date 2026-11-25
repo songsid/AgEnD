@@ -97,7 +97,7 @@ export interface HubMemberComponents {
 }
 
 export interface HubMemberFactoryOptions {
-  updates?: Pick<MemberUpdatesOptions, "canInstall" | "launch" | "active" | "outcome" | "idle" | "notify" | "busy">;
+  updates?: Pick<MemberUpdatesOptions, "canInstall" | "launch" | "active" | "outcome" | "idle" | "notify" | "busy" | "onQueue">;
   attachUpdates?(updates: HubMemberUpdates | null): void;
   fleetInfo?: import("../types.js").HubFleetInfo;
   versionRegistry?: import("../published-version.js").PublishedVersionLookup;

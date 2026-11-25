@@ -23,6 +23,7 @@ import { CROSS_INSTANCE_VISIBILITY_MODES, isCrossInstanceVisibility } from "./cr
 import { dashboardAccessProblem } from "./dashboard-permissions.js";
 import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker.js";
 import { isNativeProviderId, nativeProvider } from "./windows-cli-providers.js";
+import { updatesProblems } from "./update-settings.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -419,6 +420,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     const problem = monitoringProblem(config.monitoring);
     if (problem) err("monitoring", problem);
   }
+  for (const problem of updatesProblems((config as { updates?: unknown }).updates)) err(problem.path, problem.message);
   if (config.needs_you !== undefined && !isObj(config.needs_you)) {
     err("needs_you", "must be a mapping");
   } else if (isObj(config.needs_you)) {
