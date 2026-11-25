@@ -7,6 +7,7 @@ import { register, t } from "/assets/app-i18n.js";
 register("ucard", {
   en: {
     title: "{0}: {1} now costs extra. Switch model?", titleStay: "{0}: {1} now costs extra.", titlePicker: "{0}: switching to {1} costs extra.",
+    titleShort: "{0} costs extra. Switch model?", titleStayShort: "{0} costs extra.", titlePickerShort: "Switching to {0} costs extra.",
     switch: "Switch to {0} (uses your plan)", credits: "Keep {0} (billed to credits)", creditsPicker: "Use {0} (billed to credits)",
     notNow: "Not now (nothing is sent)", keep: "Keep the current model (uses your plan)", admin: "Ask my admin for credits", upgrade: "Upgrade plan",
     showRaw: "Show Claude's text",
@@ -15,6 +16,7 @@ register("ucard", {
   },
   "zh-TW": {
     title: "{0}：{1} 要另外收費，要換模型嗎？", titleStay: "{0}：{1} 要另外收費。", titlePicker: "{0}：改用 {1} 要另外收費。",
+    titleShort: "{0} 要另外收費，要換模型嗎？", titleStayShort: "{0} 要另外收費。", titlePickerShort: "改用 {0} 要另外收費。",
     switch: "換成 {0}（用方案額度）", credits: "繼續用 {0}（另外扣點數）", creditsPicker: "改用 {0}（另外扣點數）",
     notNow: "先不要（不送出）", keep: "維持目前模型（用方案額度）", admin: "向管理員申請點數", upgrade: "升級方案",
     showRaw: "看 Claude 原文",
@@ -24,10 +26,13 @@ register("ucard", {
 });
 const tu = (k, ...a) => t(`ucard.${k}`, ...a);
 
-/** The card's one-line title. */
-export function usageCreditsTitle(view) {
-  if (view.picker) return tu("titlePicker", view.agent, view.model);
-  return tu(view.target ? "title" : "titleStay", view.agent, view.model);
+/**
+ * The card's one-line title. `named: false` where the agent is already named above it (Needs you's agent group): the
+ * title then starts at the model, short enough for one line on a phone.
+ */
+export function usageCreditsTitle(view, { named = true } = {}) {
+  const key = view.picker ? "titlePicker" : view.target ? "title" : "titleStay";
+  return named ? tu(key, view.agent, view.model) : tu(`${key}Short`, view.model);
 }
 
 /** One option's button words, by its role; null for a role this page does not know (its own label is shown). */
@@ -51,7 +56,7 @@ export function usageCreditsActions(view, actions) {
   return (actions || []).map((a) => {
     const words = label(view, a.role);
     const confirmation = a.role === "credits"
-      ? { title: tu(view.picker ? "confirmTitlePicker" : "confirmTitle", view.agent, view.model), message: tu("confirmMessage", view.agent), confirmLabel: tu("confirmLabel") }
+      ? { title: tu(view.picker ? "confirmTitlePicker" : "confirmTitle", view.agent, view.model), message: tu("confirmMessage", view.agent), confirmLabel: tu("confirmLabel"), even: true }
       : a.confirmation;
     const { hint: _hint, ...rest } = a;
     return { ...rest, label: words || a.label, primary: a.role === "switch", ...(confirmation ? { confirmation } : {}) };
