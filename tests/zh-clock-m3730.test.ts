@@ -20,6 +20,7 @@ const EVENING = new Date(2026, 10, 25, 19, 45, 0).getTime();
 
 describe("clock-text.js", () => {
   it("zh-TW: times and dates-with-time are 24-hour, whatever the screen's own locale was", async () => {
+    // @ts-expect-error — a JS module of the app, with no types
     const c = await import("../src/ui/shared/clock-text.js");
     page("zh-Hant");
     expect(c.timeText(MIDNIGHT, { hour: "2-digit", minute: "2-digit" }, [])).toBe("00:19");
@@ -35,6 +36,7 @@ describe("clock-text.js", () => {
   });
 
   it("English: each screen keeps its own format (12-hour where it was)", async () => {
+    // @ts-expect-error — a JS module of the app, with no types
     const c = await import("../src/ui/shared/clock-text.js");
     page("en");
     expect(sp(c.timeText(EVENING, { hour: "2-digit", minute: "2-digit" }, "en"))).toBe("07:45 PM");
@@ -44,6 +46,7 @@ describe("clock-text.js", () => {
   });
 
   it("no fields (none, {} or only a timeZone): each wrapper keeps its native default, on the 24-hour clock (#4455 review)", async () => {
+    // @ts-expect-error — a JS module of the app, with no types
     const c = await import("../src/ui/shared/clock-text.js");
     page("zh-Hant");
     const tz = { timeZone: "UTC" }, utcMidnight = Date.UTC(2026, 10, 25, 0, 19, 5);
@@ -57,6 +60,7 @@ describe("clock-text.js", () => {
   });
 
   it("a date-only format is left as it is in zh-TW; an unreadable value is empty", async () => {
+    // @ts-expect-error — a JS module of the app, with no types
     const c = await import("../src/ui/shared/clock-text.js");
     page("zh-Hant");
     expect(c.dateTimeText(EVENING, { month: "short", day: "numeric" }, "en")).toBe("11月25日");
@@ -65,11 +69,13 @@ describe("clock-text.js", () => {
   });
 
   it("durations: 小時/分鐘/秒 in zh-TW, h/min/s in English", async () => {
+    // @ts-expect-error — a JS module of the app, with no types
     const c = await import("../src/ui/shared/clock-text.js");
     page("zh-Hant");
     expect([c.unitText(2, "h"), c.unitText(5, "min"), c.unitText(3, "s"), c.unitText(120, "ms")]).toEqual(["2 小時", "5 分鐘", "3 秒", "120 毫秒"]);
     page("en");
     expect([c.unitText(2, "h"), c.unitText(5, "min"), c.unitText(3, "s")]).toEqual(["2 h", "5 min", "3 s"]);
+    // @ts-expect-error — a JS module of the app, with no types
     const { ttlText } = await import("../src/ui/fleet-cache.js");
     expect(ttlText(7200)).toBe("2 h");
     page("zh-Hant");
@@ -79,6 +85,7 @@ describe("clock-text.js", () => {
 
 describe("chat-time.js on a zh-TW page", () => {
   it("a chat line's time and its tooltip are 24-hour; English keeps the browser's format", async () => {
+    // @ts-expect-error — a JS module of the app, with no types
     const { chatTime, chatTimeFull } = await import("../src/ui/shared/chat-time.js");
     page("zh-Hant");
     expect(chatTime(MIDNIGHT, { tz: undefined, now: MIDNIGHT })).toBe("00:19");
