@@ -455,8 +455,9 @@ pack tools, and rolling back. Point people there for more than the summary below
 
 **Office** (the third view, remembered per device; M-3556: its bar is one row — Office, Show, People on the left; Edit
 offices, Share… and **⚙ Display options** on the right, a dropdown holding Style, Hide paused and stopped, Drag and pat,
-Bedtime, Lobby tile, Dialogue, Talk and Key; a phone's ⋯ sheet lists the same in that order; a Hub room's gear opens the same
-dropdown) draws the same fleet as a pixel office: a room per team, a desk
+Bedtime, Lobby tile, Dialogue, Talk and Key; a phone's ⋯ sheet lists the same in that order — on a phone the bar is Find, the
+Canvas / List / Office switch and ⋯ in one row, or on a narrow phone (under 370 px, #4454) Find on its own row with the switch
+and ⋯ under it; a Hub room's gear opens the same dropdown) draws the same fleet as a pixel office: a room per team, a desk
 per instance with a name tag, General and "Not in a team" in the **Lobby**. Each little person is its state: typing
 with the lamp on (working), tea break (idle), asleep behind a **Closed** sign (paused/stopped), a hand up under a
 blinking light (needs you, crashed, looks stuck). With **Live** on, each message, delegation and report is carried
