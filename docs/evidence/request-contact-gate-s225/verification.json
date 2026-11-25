@@ -1,5 +1,5 @@
 {
-  "sourceRevision": "53fb12d0cbca606b1737ccc85403f3e346b55baf",
+  "sourceRevision": "c835404c466e5bda0fff89821067093f8a42f274",
   "baseRevision": "d4d3299bd5141238873874402ad6ac3d542c8aab",
   "tests": {
     "passed": 615,
@@ -111,7 +111,8 @@
       "tests/retention-1335.test.ts",
       "src/delivery-outbox.test.ts",
       "--maxWorkers=2"
-    ]
+    ],
+    "sourceRevision": "53fb12d0cca606b1737ccc85403f3e346b55baf"
   },
   "typecheck": {
     "command": [
@@ -133,11 +134,11 @@
     },
     {
       "path": "src/delivery-outbox.ts",
-      "sha256": "7bd4de5277bfddeaa90778ad793acd46f32514ebc0f1ce7d443ac72c07523198"
+      "sha256": "08d993d26ce2ff1b3963625fbb27612f13a4179cb4a529a5b69be2dbd59109f1"
     },
     {
       "path": "src/request-contact-gate.ts",
-      "sha256": "7b9af7216af9b1133fbf164d0c894451b333e17b02ecd60796ab7d8127e5404d"
+      "sha256": "b4173e272a61bc5d12dc3e97d3c80319e1b2683ba0f74b4beb12e21ee6e19728"
     },
     {
       "path": "src/request-context-store.ts",
@@ -145,7 +146,7 @@
     },
     {
       "path": "tests/request-contact-gate-s225.test.ts",
-      "sha256": "42dcd7800d25904a9e3af46cc2c70bcc5340af2250701357d4ff383328b9039d"
+      "sha256": "28d523b6c2d6bbabf2b1aaf29999586216d19f5c9513fa72a07efccb96dc9a78"
     }
   ],
   "baseRegression": {
@@ -162,5 +163,36 @@
     "No UI, notification routing, ingress or receiver activation in this slice.",
     "F/I must install the drained-root lifecycle proof and periodic scoped sweep before L cutover.",
     "Shared pending limits remain 32 per source and 512 total."
-  ]
+  ],
+  "reviewCorrectionValidation": {
+    "sourceRevision": "c835404c466e5bda0fff89821067093f8a42f274",
+    "baseRevision": "d1a73c93a823433382996c891c624a1f80c3837d",
+    "passed": 67,
+    "failed": 0,
+    "files": [
+      "tests/request-contact-gate-s225.test.ts",
+      "tests/retention-1335.test.ts",
+      "tests/contact-outcome-notices-3372.test.ts"
+    ],
+    "command": [
+      "node_modules/.bin/vitest",
+      "run",
+      "tests/request-contact-gate-s225.test.ts",
+      "tests/retention-1335.test.ts",
+      "tests/contact-outcome-notices-3372.test.ts",
+      "--maxWorkers=2"
+    ],
+    "typecheckExitCode": 0,
+    "baseRegression": {
+      "exitCode": 1,
+      "failed": 4,
+      "controls": [
+        "terminal retry en",
+        "terminal retry zh-TW",
+        "unread expiry at retirement boundary",
+        "indexed legacy adoption query"
+      ]
+    },
+    "policyChoice": "An exact operation already held retains its decision requirement after promotion; new operations use current root-source admin status."
+  }
 }

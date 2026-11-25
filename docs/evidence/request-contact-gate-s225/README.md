@@ -1,6 +1,6 @@
 # Slice E: request-scoped contact gate
 
-615 tests passed, one existing skip, across 50 affected and neighboring files.
+Initial implementation: 615 tests passed, one existing skip, across 50 affected and neighboring files.
 Source and test type checking is clean. The new gate's 28 controls use actual
 SQLite/outbox stores and synthetic people, with no live Fleet or provider call.
 [verification.json](verification.json) records the exact source revision, hashes
@@ -44,3 +44,21 @@ node scripts/changelog-assemble.mjs --check
 ```
 
 Raw execution and mutation logs remain private.
+
+## Implementation review corrections
+
+The current correction run passes 67 tests across the gate, retention and outcome
+suites; source/test types are clean. Four controls fail on the earlier head and
+pass after correction: terminal retry wording in EN/zh-TW, unread expiry at the
+outbox retirement boundary, and the compound legacy-operation expression index.
+The index is created only by the capability-gated factory. An additional policy
+control pins that already-held operations remain held after promotion, while new
+operations use current source-administrator status. This does not replay old work
+or create a synthetic human approval.
+
+Declined/expired retries reuse existing localized outcome text that says stop
+waiting. The API envelope keeps its existing shape and reports the terminal state;
+only pending results say they await approval. No new card or translated string is
+introduced. The initial full-suite and 13-reversal results above are retained
+initial evidence, not repeated whole-suite claims at this correction revision.
+See `reviewCorrectionValidation` for the current command and source binding.
