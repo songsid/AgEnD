@@ -33,7 +33,8 @@ export interface HostDeps {
   /** Linux: a process's argv, environment and owner (null: gone or unreadable). */
   procArgv(pid: number): Promise<string[] | null>;
   procEnv(pid: number): Promise<Record<string, string> | null>;
-  procUid(pid: number): Promise<number | null>;
+  /** A process's owner: its uid, "gone" (proven: no such process), or null (unknown: permission, I/O). */
+  procUid(pid: number): Promise<number | "gone" | null>;
   /** Bytes free to this user on the filesystem holding `path` (statfs), or null. */
   freeBytes(path: string): Promise<number | null>;
   /** Who holds an owned lock file (home-update-lock.ts lockHolderAt). */
@@ -86,13 +87,15 @@ async function liveFleets(d: HostDeps): Promise<{ complete: boolean; fleets: Arr
       if (pid === d.pid) continue;
       const argv = await d.procArgv(pid);
       if (!argv) {
-        // Gone (no owner either), another user's, or this user's and unreadable: only the last one leaves a doubt.
+        // Proven gone, or another user's: skipped. This user's and unreadable, or an owner that can't be told: a doubt.
         const uid = await d.procUid(pid);
-        if (uid === d.uid) return { complete: false, fleets };
-        continue;
+        if (uid === "gone" || (typeof uid === "number" && uid !== d.uid)) continue;
+        return { complete: false, fleets };
       }
       if (!FLEET_START.test(argv.join(" "))) continue;
-      if (await d.procUid(pid) !== d.uid) continue;                       // another user's fleet is another user's state
+      const owner = await d.procUid(pid);
+      if (owner === "gone" || (typeof owner === "number" && owner !== d.uid)) continue;   // gone, or another user's state
+      if (owner === null) return { complete: false, fleets };                // a fleet whose owner can't be told (Prism #4489 R2)
       const entry = argv.find(a => /(?:^|\/)(?:cli\.js|agend)$/.test(a) && a.startsWith("/")) ?? null;
       const pkg = entry ? await packageOf(d, entry) : null;
       const env = await d.procEnv(pid);
@@ -249,4 +252,12 @@ export async function checkQuiet(d: HostDeps, home: string, install: { prefix: s
   }
   if (!localOnly && d.updateInProgress(home)) return { id: "P8", ok: false, code: "update-running", detail: { path: join(home, "update-in-progress.json") } };
   return { id: "P8", ok: true };
+}
+
+/** The owner of `/proc/<pid>` by `stat`: its uid; "gone" only for a proven absence (ENOENT, ESRCH); null for anything else. */
+export function procUidBy(statOf: (path: string) => Promise<{ uid: number }>): (pid: number) => Promise<number | "gone" | null> {
+  return async pid => {
+    try { return (await statOf(`/proc/${pid}`)).uid; }
+    catch (err) { const code = (err as NodeJS.ErrnoException).code; return code === "ENOENT" || code === "ESRCH" ? "gone" : null; }
+  };
 }

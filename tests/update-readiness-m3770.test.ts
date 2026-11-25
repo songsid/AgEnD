@@ -1,6 +1,7 @@
 // M-3770 slice 1.2 (design #4480 §4): the pre-flight's classes and checks P1, P3, P4, P5, P7, P9 and P10, on fake
 // probes (no npm, systemctl or filesystem of the host is touched), and the launch's refusal words.
 import { describe, expect, it, vi } from "vitest";
+import { procUidBy } from "../src/update-readiness-host.js";
 import { mergePreflight, preflightAllows, preflightClass, preflightRefusal, runUpdatePreflight, summarize, type PreflightCheck, type ReadinessDeps } from "../src/update-readiness.js";
 import { setLocale, t } from "../src/locale.js";
 
@@ -25,7 +26,7 @@ type Opts = {
   clock?: { t: number }; pingGate?: Promise<void>;
   /** Host (P2/P6/P8): files by path, directory listings, other processes, free bytes, lock holders, an update marker. */
   texts?: Record<string, string>; dirs?: Record<string, string[]>; reals?: Record<string, string>;
-  procs?: Array<{ pid: number; argv: string[] | null; env: Record<string, string> | null; uid?: number }>;
+  procs?: Array<{ pid: number; argv: string[] | null; env: Record<string, string> | null; uid?: number | "gone" | null }>;
   /** /proc can't be listed; `missing`: paths whose realpath fails (no such file). */
   pidsUnlisted?: boolean; missing?: string[];
   free?: number | null; duKb?: number | null; locks?: Record<string, { state: "live" | "stale" | "unknown"; pid: number }>; inProgress?: boolean;
@@ -100,7 +101,7 @@ function rig(o: Opts = {}) {
     listPids: async () => (o.pidsUnlisted ? null : (o.procs ?? []).map(x => x.pid)),
     procArgv: async pid => o.procs?.find(x => x.pid === pid)?.argv ?? null,
     procEnv: async pid => o.procs?.find(x => x.pid === pid)?.env ?? null,
-    procUid: async pid => { const x = o.procs?.find(q => q.pid === pid); return x ? (x.uid ?? 1000) : null; },
+    procUid: async pid => { const x = o.procs?.find(q => q.pid === pid); return x ? (x.uid === undefined ? 1000 : x.uid) : "gone"; },
     freeBytes: async () => (o.free === undefined ? 50e9 : o.free),
     lockHolder: path => { const l = o.locks?.[path]; return l ? { state: l.state, record: { pid: l.pid } } : { state: "free" }; },
     updateInProgress: () => !!o.inProgress,
@@ -531,7 +532,7 @@ describe("M-3770 1.3 review: scans, home identity and unreadable locks", () => {
     expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ procs: [{ pid: 90, argv: null, env: null, uid: 1000 }] }).d), "P2"))
       .toEqual({ id: "P2", ok: false, code: "unknown-owner", detail: { path: "/proc" } });
     const gone = rig({ procs: [{ pid: 91, argv: null, env: null }] });
-    gone.d.procUid = async () => null;                                                       // no owner: the process is gone
+    gone.d.procUid = async () => "gone";                                                     // proven: the process is gone
     expect(byId(await runUpdatePreflight({ localOnly: true }, gone.d), "P2")).toEqual({ id: "P2", ok: true });
     expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ procs: [{ pid: 92, argv: null, env: null, uid: 0 }] }).d), "P2")).toEqual({ id: "P2", ok: true });
   });
@@ -566,5 +567,29 @@ describe("M-3770 1.3 review: scans, home identity and unreadable locks", () => {
     expect(byId(await runUpdatePreflight({ localOnly: true }, rig().d), "P8")).toEqual({ id: "P8", ok: true });
     expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ locks: { [home]: { state: "stale", pid: 5 } } }).d), "P8")).toEqual({ id: "P8", ok: true });
     expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ locks: { [home]: { state: "live", pid: 4321 } } }).d), "P8")).toEqual({ id: "P8", ok: true });
+  });
+});
+
+// Prism #4489 R2: an owner that can't be told is never "gone".
+describe("M-3770 1.3 review R2: a process's owner, proven or unknown", () => {
+  it("the /proc adapter: ENOENT/ESRCH is gone; permission or I/O failure is unknown (null); a stat is its uid", async () => {
+    const fail = (code: string) => procUidBy(async () => { throw Object.assign(new Error(code), { code }); });
+    expect(await fail("ENOENT")(1)).toBe("gone");
+    expect(await fail("ESRCH")(1)).toBe("gone");
+    expect(await fail("EACCES")(1)).toBeNull();
+    expect(await fail("EIO")(1)).toBeNull();
+    expect(await procUidBy(async () => ({ uid: 1000 }))(1)).toBe(1000);
+  });
+
+  it("an unreadable process whose owner is unknown, or a recognised fleet whose owner is unknown, makes the scan incomplete (unknown-owner)", async () => {
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ procs: [{ pid: 94, argv: null, env: null, uid: null }] }).d), "P2"))
+      .toEqual({ id: "P2", ok: false, code: "unknown-owner", detail: { path: "/proc" } });
+    const fleet = await runUpdatePreflight({ localOnly: true }, rig({ texts: OTHER_PKG, procs: [{ pid: 95, argv: fleetArgv(OTHER), env: { HOME: "/home/u" }, uid: null }] }).d);
+    expect(byId(fleet, "P2")).toEqual({ id: "P2", ok: false, code: "unknown-owner", detail: { path: "/proc" } });
+    expect(fleet.class).toBe("stop");
+    // Controls: proven gone and another user's are still skipped, for an unreadable process and a recognised fleet alike.
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ texts: OTHER_PKG, procs: [{ pid: 96, argv: fleetArgv(OTHER), env: { HOME: "/home/u" }, uid: "gone" }] }).d), "P2")).toEqual({ id: "P2", ok: true });
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ texts: OTHER_PKG, procs: [{ pid: 97, argv: fleetArgv(OTHER), env: { HOME: "/home/v" }, uid: 1001 }] }).d), "P2")).toEqual({ id: "P2", ok: true });
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ procs: [{ pid: 98, argv: null, env: null, uid: "gone" }] }).d), "P2")).toEqual({ id: "P2", ok: true });
   });
 });
