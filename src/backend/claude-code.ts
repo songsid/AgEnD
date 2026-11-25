@@ -1,3 +1,4 @@
+import { claudeUsageCreditsPrompt } from "./claude-usage-credits.js";
 import { CLAUDE_MINIMUM_ERROR } from "../claude-model-minimum.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { selectionCard } from "../selection-card.js";
@@ -1688,6 +1689,22 @@ export class ClaudeCodeBackend implements CliBackend {
       { pattern: /Choose the text style that looks best with your terminal/, isActive: claudeThemePickerActive, keys: ["Enter"], description: "Claude onboarding theme picker — accept the highlighted theme", blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-onboarding-theme" },
       { pattern: /Press Enter to continue/, isActive: claudeSecurityNotesActive, keys: ["Enter"], description: "Claude onboarding security notes — continue", blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-onboarding-security" },
       { pattern: /Use Claude Code's terminal setup\?/, isActive: claudeTerminalSetupActive, keys: ["Escape"], description: "Claude onboarding terminal-setup offer — skip", blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-onboarding-terminal-setup" },
+      // M-3757 (2.1.332): the usage-credits prompt before a turn on a credits-billed model (Fable on Pro/Team plans). Its
+      // focus starts on "Switch to <default> and continue", so a delivery's Enter would change the model; AgEnD never
+      // answers it. Held, and a person chooses on the Needs-you card (switch, credits, or the dialog's other choice).
+      {
+        pattern: /usage credits|You've reached your Fable limit/,
+        isActive: pane => claudeUsageCreditsPrompt(pane) !== null,
+        requestIdentity: pane => claudeUsageCreditsPrompt(pane)?.card.identity ?? null,
+        interactionKind: "dialog",
+        keys: [],
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        humanOnly: true,
+        remoteCard: pane => claudeUsageCreditsPrompt(pane)?.card ?? null,
+        description: "Claude usage-credits prompt (switch the model or spend usage credits) — waiting for a person, never auto-answered",
+      },
       // #1690: the model/effort switch confirmation. Held for every delivery while it is up (its default cursor is Yes:
       // a stray Enter would confirm it) and never answered by the scanner — AgEnD's own /model answers it on a verified
       // cursor (Daemon.answerOwnSwitchDialog); one AgEnD did not ask for is parked for a human.
