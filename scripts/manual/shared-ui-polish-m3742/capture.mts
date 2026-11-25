@@ -56,12 +56,15 @@ db.board.moveCard(as("dev"), DEV, "claimed", {});
 db.board.moveCard(as("dev"), DEV, "done", { result: "A one-file HTML prototype.", comment: "Prototype attached.", attach: [await staged("dev", "prototype.html", Buffer.from(GAME_HTML))] });
 
 // In the page, as strings (tsx would wrap named helpers in __name(), which the page does not have).
-const CONTRAST = `const lum = (c) => { const m = c.match(/[\\d.]+/g).map(Number); const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); };
-  // A colour with alpha is laid over what is behind it first (rgba(…, 0.45) is not its own rgb).
-  const over = (c, under) => { const m = c.match(/[\d.]+/g).map(Number), u = under.match(/[\d.]+/g).map(Number), a = m.length > 3 ? m[3] : 1;
-    return "rgb(" + [0, 1, 2].map((i) => Math.round(m[i] * a + u[i] * (1 - a))).join(", ") + ")"; };
-  const ratio = (a, b) => { const top = over(a, b), x = lum(top), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-  const behind = (el) => { for (let p = el.parentElement; p; p = p.parentElement) { const bg = getComputedStyle(p).backgroundColor; const a = bg.match(/[\\d.]+/g); if (a && (a.length < 4 || Number(a[3]) > 0.9)) return bg; } return getComputedStyle(document.body).backgroundColor; };`;
+// In the page: rgb()/rgba() in 0–255, or color(srgb r g b [/ a]) in 0–1 (what Chromium reports for a color-mix()); a colour
+// with alpha is laid over what is behind it first (rgba(…, 0.45) is not its own rgb).
+const CONTRAST = `const parse = (c) => { const n = (c.match(/[\\d.]+/g) || []).map(Number), srgb = /^color\\(srgb/.test(c);
+    return { rgb: n.slice(0, 3).map((v) => (srgb ? v * 255 : v)), a: n.length > 3 ? n[3] : 1 }; };
+  const lum = (c) => { const m = parse(c).rgb; const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); };
+  const over = (c, under) => { const top = parse(c), u = parse(under).rgb;
+    return "rgb(" + [0, 1, 2].map((i) => Math.round(top.rgb[i] * top.a + u[i] * (1 - top.a))).join(", ") + ")"; };
+  const ratio = (a, b) => { const x = lum(over(a, b)), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const behind = (el) => { for (let p = el.parentElement; p; p = p.parentElement) { const bg = getComputedStyle(p).backgroundColor, a = parse(bg).a; if (bg !== "transparent" && a > 0.9) return bg; } return getComputedStyle(document.body).backgroundColor; };`;
 const PREVIEW = `(() => { ${CONTRAST}
   const ack = document.querySelector(".tp-files .pv-ack"), frame = document.querySelector(".tp-files .preview-frame"), banner = document.querySelector(".tp-files .pv-banner");
   const a = ack && getComputedStyle(ack), f = frame && getComputedStyle(frame), r = ack && ack.getBoundingClientRect();
