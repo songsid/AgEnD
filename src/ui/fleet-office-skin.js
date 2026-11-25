@@ -38,7 +38,7 @@
 // @property {(look, at) => {x, y, w, h}} [charBox]   zones: the box drawCharacter covers with the feet at `at`
 //   ({ x, y, walking, heading }): what hover and click hit (fleet-office-zones.js personAt)
 // @property {(ctx, prop, ms, env) => void} drawProp      a traffic item in the air: { kind, hue, x, y, t }
-// @property {(ctx, x, y, text, env, lift?) => void} drawBubble  a speech bubble whose tail points at (x, y), its box `lift` px higher
+// @property {(ctx, x, y, text, env, lift?, flip?) => void} drawBubble  a speech bubble whose tail points at (x, y), its box `lift` px higher (`flip`: on the tail's left)
 // @property {(env) => string} matte   #2540: the colour around the scene (the Office fills the panel; the scene is 16:9)
 // @property {object|null} [backdrop]  a pack's loaded background picture (the page samples its edges for the matte)
 // The desks layout's back and front layers change only when the fleet (or the zoom) does: the renderer keeps them as
@@ -343,19 +343,23 @@ const BUBBLE_FONT = "600 11px system-ui, sans-serif";
  * The box a speech bubble with its tail at (x, y) takes for `text` (its tail excluded): what drawBubble draws, and what
  * the Office places so no two overlap (#2431: two neighbours' bubbles covered each other on a phone).
  */
-export function bubbleBox(ctx, x, y, text, lift = 0) {
+export function bubbleBox(ctx, x, y, text, lift = 0, flip = false) {
   ctx.save();
   ctx.font = BUBBLE_FONT;
   const t = fitText(ctx, text, 150), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + 14), h = 19;
   ctx.restore();
-  const bx = Math.round(x - 10), by = Math.round(y - h - 6 - lift);
+  // M-3722: `flip` puts the box on the tail's left (its tail still under it), for a call whose usual place covers a name.
+  const bx = Math.round(flip ? x - w + 14 : x - 10), by = Math.round(y - h - 6 - lift);
   return { x: bx, y: by, w, h, text: t };
 }
 
-/** A speech bubble, its tail at (x, y): short words on light paper in either theme; `lift` raises the box (its tail longer). */
-function drawBubble(ctx, x, y, text, env, lift = 0) {
+/**
+ * A speech bubble, its tail at (x, y): short words on light paper in either theme; `lift` raises the box (its tail
+ * longer); `flip` (M-3722) draws the box on the tail's left.
+ */
+function drawBubble(ctx, x, y, text, env, lift = 0, flip = false) {
   if (!text) return;
-  const { x: bx, y: by, w, h, text: t } = bubbleBox(ctx, x, y, text, lift);
+  const { x: bx, y: by, w, h, text: t } = bubbleBox(ctx, x, y, text, lift, flip);
   ctx.save();
   ctx.font = BUBBLE_FONT;
   ctx.fillStyle = "#fffdf6"; ctx.strokeStyle = env.mode === "light" ? "rgba(0, 0, 0, 0.35)" : "rgba(0, 0, 0, 0.6)"; ctx.lineWidth = 1;
