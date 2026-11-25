@@ -132,6 +132,8 @@ async function walk(c: any) {
     check(`${tag} 2: read again once verified: the buttons on`, await waitFor(page, `[...document.querySelectorAll('.rc-card[data-ticket="${A.id}"] button[data-choice]')].some((b) => !b.disabled)`), await offOn(page, A.id));
     t = await cardText(page, A.id);
     check(`${tag} 2: no verify line, no marked choice`, !t.includes(W(zh, "Authorize this browser to decide.", "授權這個瀏覽器後才能決定。")) && !/Your choice|你的選擇|✓/.test(t), t);
+    check(`${tag} 2: every card on the page read again (one Authorize serves them all)`, await waitFor(page, `document.querySelectorAll(".rc-card .rc-verify").length === 0 && [...document.querySelectorAll('.rc-card[data-ticket="${B.id}"] button[data-choice="continue"]')].every((b) => !b.disabled)`), await page.evaluate(`document.querySelectorAll(".rc-card .rc-verify").length`));
+    check(`${tag} 2: the scope phrase wraps whole (never after 「＝」/"=")`, await page.evaluate(`[...document.querySelectorAll(".rc-card .rc-scope")].every((e) => { const r = document.createRange(); r.selectNodeContents(e); const tops = new Set([...r.getClientRects()].filter((b) => b.width).map((b) => Math.round(b.top))); return tops.size === 1; })`), null);
     await page.keyboard.press("Enter"); await page.waitForTimeout(300);
     check(`${tag} 2: verifying (and Enter) decided nothing`, state(A.id) === "pending" && box.listPending().length === base, state(A.id));
     await shot(page, `${tag}-2-verified`);

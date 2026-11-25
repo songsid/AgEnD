@@ -12,7 +12,7 @@
 //   one request), so the two verbs in one list explain themselves; the long wording is in its details.
 // - 409 (decided or changed elsewhere) → read the same card again and show it; never retried.
 // A module of its own, with its own words (the module-skew rule): an older cached page keeps today's cards.
-import { html, useEffect, useState } from "/assets/app-html.js";
+import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import { dateTimeText } from "/assets/clock-text.js";
@@ -152,6 +152,10 @@ function authorizeControl(auth) {
   return html`<${AuthorizeChip} />`;
 }
 
+/** Every mounted card's "this browser is verified now" ear, for this page load. */
+const verifiedListeners = new Set();
+function announceVerified(self) { for (const hear of [...verifiedListeners]) if (hear !== self) { try { hear(); } catch { /* one card's read never stops the others' */ } } }
+
 /** One card. `onChange(card)`: the server's fresh card after a decision or a re-read. */
 export function RequestContactCard({ card, onChange, focus = false, openHref = null }) {
   const [busy, setBusy] = useState(false);
@@ -166,14 +170,25 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   const grantable = card.actions.canGrant && Array.isArray(card.grantCandidates) && card.grantCandidates.length > 0;
 
   // Once this browser is verified, read the same card again (only reading: a decision waits for a click on its buttons).
+  // Only the card whose Authorize was pressed watches the confirm come in; it tells every other card on the page, which
+  // reads itself again too (the capture look: the others stayed "Authorize this browser to decide.").
   const verified = auth.st && auth.st.state === "verified";
+  const waits = useRef(needsVerify);
+  waits.current = needsVerify;
+  const readAgain = useRef(null);
+  readAgain.current = () => { void getCard(tk.id).then((r) => { if (r.ok) onChange?.(r.data); }); };
+  const ear = useRef(null);
+  useEffect(() => {
+    const hear = () => { if (waits.current) readAgain.current(); };
+    ear.current = hear;
+    verifiedListeners.add(hear);
+    return () => { verifiedListeners.delete(hear); };
+  }, []);
   useEffect(() => {
     if (!needsVerify || !verified) return undefined;
-    let live = true;
-    void getCard(tk.id).then((r) => {
-      if (live && r.ok) onChange?.(r.data);
-    });
-    return () => { live = false; };
+    readAgain.current();
+    announceVerified(ear.current);
+    return undefined;
   }, [needsVerify, verified, tk.id]);
 
   const reread = async (say) => {

@@ -315,6 +315,32 @@ describe("J: not verified yet — the same card, then an explicit decision", () 
     choice(pg.root, "continue").click(); await settle(6);
     expect(decisions(calls).map((x) => x.body.decision)).toEqual(["approve-once"]);
   }, 15_000);
+  it("one Authorize serves every card on the page: each unverified card reads itself again once this browser is verified", async () => {
+    let authState: unknown = NOT_VERIFIED;
+    const ID_B = "R1b2c3d4e-1111-4222-8333-444455556666";
+    const reads: string[] = [];
+    const calls = api({ "GET /ui/authorization": () => ({ body: authState }), "POST /ui/authorization": () => { authState = { state: "pending", expiresInMs: 300_000 }; return { body: { ok: true, expiresInMs: 300_000 } }; },
+      [`GET ${BASE}/${ID}`]: () => { reads.push(ID); return { body: card() }; },
+      [`GET ${BASE}/${ID_B}`]: () => { reads.push(ID_B); return { body: card({}, { id: ID_B }) }; } });
+    const unverified = (id: string) => card({ actions: { canDecide: false, canGrant: true, requiresVerification: true } }, { id });
+    const shown: Record<string, CardV1> = { [ID]: unverified(ID), [ID_B]: unverified(ID_B) };
+    // A page as Needs you is one: the cards stay mounted, each replaced in its parent's state.
+    const { useState } = await import("/assets/app-html.js") as any;
+    function Page() {
+      const [cards, setCards] = useState(shown);
+      return h("div", null, ...[ID, ID_B].map((id) => h(cardMod.RequestContactCard, { key: id, card: cards[id], onChange: (c: CardV1) => { shown[id] = c; setCards({ ...shown }); } })));
+    }
+    const pg = await mountWith(Page, {});
+    expect(pg.root.querySelectorAll(".rc-verify").length).toBe(2);
+    (pg.root.querySelector(`.rc-card[data-ticket="${ID}"] .rc-auth-ask`) as any).click(); await settle(6);
+    authState = VERIFIED;
+    await vi.waitFor(() => expect(reads.includes(ID) && reads.includes(ID_B)).toBe(true), { timeout: 6000 });
+    await settle(10);
+    expect(reads.filter((x) => x === ID).length, "the announcing card reads itself once").toBe(1);
+    expect(reads.filter((x) => x === ID_B).length).toBe(1);
+    expect(shown[ID_B]!.actions.canDecide).toBe(true);
+    expect(decisions(calls)).toEqual([]);
+  }, 15_000);
   it("changed while authorizing: the read-again card shows its outcome, nothing decided", async () => {
     let authState: unknown = NOT_VERIFIED;
     const calls = api({ "GET /ui/authorization": () => ({ body: authState }), "POST /ui/authorization": () => { authState = { state: "pending", expiresInMs: 300_000 }; return { body: { ok: true, expiresInMs: 300_000 } }; },
