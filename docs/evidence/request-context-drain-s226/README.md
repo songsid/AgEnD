@@ -1,11 +1,25 @@
 # S-226: legacy shadow and root-drain evidence
 
-Current R1 source/test commit: `a80c1ce491ba23f0e6ec1264343cbd63e636474d`.
+Current R2 source/test commit: `6586faf9b9b76fa70660a876b643f3060a1de83a`.
 Initial source/test commit: `2112f28ffca9871b4b81cb58ac7db7d4cf2abac2`.
 Base: merged E, `80e9ffcd12801a60dbbc9fbb3e9f3a658e880efa`.
 [Design and review dispositions](../../design/request-context-migration-drain.md).
 Exact commands, digest rows, ten guard-reversal results and limitations are in
 [verification.json](verification.json). Logs remain private.
+
+## R2 shutdown-fixture repair
+
+The CI nonce-button shutdown regression came from a prototype fixture: it bypasses
+class field initialization, so the new unconditional drain-index clear threw
+before adapter shutdown. The single runtime path changed is FleetManager. All new
+index helpers now tolerate the absent registry; drain inspection still reports
+unknown/unavailable, never an empty proven inventory. Registration refuses if its
+registry is absent. Constructed-manager semantics and the R1 policy remain intact.
+
+All 62 suites using Object.create(FleetManager.prototype), plus the actual daemon
+and drain suites, pass: 1,308 tests and one existing skip across 64 files. Test
+TypeScript and build pass. The JSON records every selected file and the exact
+command. Earlier R1 and initial proof below are retained, not rerun claims.
 
 ## R1 correction result
 
