@@ -64,6 +64,8 @@ try {
         check(`${tag}: localhost, unverified — the line with the count`, (await line.locator(".n-title").innerText()).trim() === title, await line.innerText());
         const said = await line.innerText();
         check(`${tag}: localhost — Authorize this browser offered`, /Authorize this browser|授權這個瀏覽器/.test(said), said);
+        // #4447 review: on a phone the Authorize button is a full touch target (44px).
+        if (c.device === "phone") { const box = await line.locator(".webauth-chip button").first().boundingBox(); check(`${tag}: Authorize is a 44px tap target`, !!box && box.height >= 44 && box.width >= 44, box); }
         check(`${tag}: no request named before verifying`, !/Example lead|Example worker|release checklist|發版/.test(await page.locator(".p-needs").innerText()));
         await shot(page, "1-local-unverified");
         let record: any = null;
