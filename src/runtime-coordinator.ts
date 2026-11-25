@@ -943,7 +943,7 @@ export class RuntimeCoordinator {
     if (!Number.isInteger(maxAgents) || maxAgents < 1 || maxAgents > 16) throw Error("Invalid machine pane limit");
     const machine = this.entry(machineId).machine, connection = this.connections.get(machineId);
     if (this.closed || machine.status !== "online" || machine.paneProtocol !== 1 || !connection || !this.admitting(connection)) throw Error("Pane runtime is offline, updating or unsupported");
-    if (request.action === "input" && request.requestContext && !connection.requestContextProtocol) throw Error("Originating-call protocol not negotiated");
+    if ((request.action === "input" && request.requestContext || request.action === "key" && request.cancelTurn) && !connection.requestContextProtocol) throw Error("Originating-call protocol not negotiated");
     if (this.panePending.size >= 64) throw Error("Pane transport capacity reached");
     const id = randomUUID();
     return new Promise((resolve, reject) => {

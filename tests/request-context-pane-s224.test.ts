@@ -97,6 +97,8 @@ it("captures A before a held HTTP body, without helper-wire changes; abort quara
   // The receipt for the original call still names A even though the installed stamp changed.
   await paneMcpHttp(connected, { op: "pane-mcp", owner: f.owner, helperId: f.body.helperId, method: "response-written", callId: f.body.callId, responseId: "c".repeat(64) });
   expect(forward.mock.calls[2][2]).toEqual(f.stamp);
+  expect((relay as any).callStamps.size).toBe(1); // Only B remains; A was removed after its forwarded ACK.
+  expect([...(relay as any).callStamps.values()]).not.toContainEqual(f.stamp);
   expect(JSON.stringify(connection)).not.toContain(f.a.token);
 });
 it("stamp validation is strict and OFF rejects publication", () => {
@@ -128,4 +130,26 @@ it("S-224 the native manager gives an old unnegotiated transport only unknown pe
  expect(f.invoke.mock.calls[1][0].requestContext?.coverage).toBe("covered");
  await expect(manager.handle(f.authority.machineId,{...f.body,callId:"b".repeat(64)},()=>true)).rejects.toThrow(/different originating/);
  expect(f.invoke).toHaveBeenCalledTimes(2);
+});
+
+it("a late stdout ACK matches its durable original stamp after the turn and proof retire, never dispatching again", async () => {
+  const f = rig();
+  const result = await f.lease.handle(f.authority.machineId, f.body, () => true, f.stamp) as {responseId:string};
+  const b = f.replace(); f.proofs.retire(f.owner);
+  const ack = {op:"pane-mcp",method:"response-written",owner:f.owner,helperId:f.body.helperId,callId:f.body.callId,responseId:result.responseId};
+  await expect(f.lease.handle(f.authority.machineId, ack, () => true, b)).rejects.toThrow(/different originating/);
+  await expect(f.lease.handle(f.authority.machineId, ack, () => false, f.stamp)).rejects.toThrow(/no longer current/);
+  await expect(f.lease.handle(f.authority.machineId, ack, () => true, f.stamp)).resolves.toEqual({result:{ok:true}});
+  await f.lease.handle(f.authority.machineId, ack, () => true, f.stamp);
+  expect(f.written).toHaveBeenCalledOnce(); expect(f.invoke).toHaveBeenCalledOnce();
+  expect(Object.values(JSON.parse(readFileSync(f.file,"utf8")).calls)[0]).toMatchObject({state:"written"});
+});
+it("a positive launch exit retires only that launch's retained proofs through the manager", () => {
+ const f=rig(),other={...f.owner,launchId:randomUUID()},otherStamp=f.proofs.mint(other,f.a,()=>true);
+ const store={get:()=>({threadId:randomUUID()}),setPaneRecovery:vi.fn()};
+ const manager=new NativePaneManager({requestContexts:f.proofs,store} as any);
+ (manager as any).save=vi.fn();
+ (manager as any).recordExit("fixture",{launch:{cli:"claude-code"}}, {...f.owner,state:"exited",sessionId:randomUUID()});
+ expect(()=>f.proofs.resolve(f.owner,f.stamp)).toThrow(/unavailable/);
+ expect(()=>f.proofs.resolve(other,otherStamp)).not.toThrow();
 });

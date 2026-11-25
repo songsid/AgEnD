@@ -5406,7 +5406,7 @@ export class Daemon extends EventEmitter {
       // does on Linux's tmux pane, on the same screen, with the same key.
       const screen = await tmux.capturePane().catch(() => null);
       if (screen === null) return;
-      await tmux.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c", undefined, { kind: "dialog", screen });
+      await tmux.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c", undefined, { kind: "dialog", screen, cancelTurn: true });
       return;
     }
     await tmux.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c");
@@ -12946,7 +12946,7 @@ export class Daemon extends EventEmitter {
 
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
     const respond = (result: unknown, error?: string, errorCode?: string | number) => {
-      if (originatingCall && !originatingCall.current()) { result = null; error = "Originating request context is no longer current"; }
+      if (originatingCall && !originatingCall.current()) { result = null; error = `Tool outcome is unconfirmed. ${operationId ? `Inspect operation ${operationId}` : "Inspect the tool operation status"}; do not repeat it.`; }
       if (originatingCall) this.requestContextCalls.delete(originatingCall.id);
       // A message that verifiably went out stands down the dead-MCP proxy reply
       // for this turn: the agent proved it can still speak for itself.

@@ -58,6 +58,7 @@ export type NativeExecutionResult = WindowsCliTask & {reportedCorrelationIds?: r
 
 export class FleetWindowsRuntime {
   private hasClaimed = false;
+  private readonly requestContextRuns = new Map<string, { requestId: string; retire(): void }>();
   private requestContextLifecycle?: { turns: RequestContextLocalTurns; owner(instance: string): RequestContextRuntimeOwner };
   /** Uninstalled in production until L. The lane owner is stable across exec claims, not the new run id. */
   setRequestContextExecLifecycle(turns: RequestContextLocalTurns, owner: (instance: string) => RequestContextRuntimeOwner): void {
@@ -99,6 +100,11 @@ export class FleetWindowsRuntime {
     const config = this.config(name);
     if (!isWindowsInstance(config)) return null;
     const agent = this.store.get(this.id(name));
+    const run = this.requestContextRuns.get(name);
+    if (run && agent.activeId !== run.requestId) {
+      const recovered = this.bridge.get(run.requestId);
+      if (recovered?.finishedAt && recovered.outcomeConfirmed === true) { run.retire(); this.requestContextRuns.delete(name); }
+    }
     if (config.machine_id !== agent.machineId) throw new Error("The instance machine does not match its saved conversation");
     const blocked = config.native_adapter === "pane" && agent.paneLaunchId ? this.host.paneCurrent?.(name) !== true : agent.blocked;
     return {...agent,blocked,name:config.display_name ?? agent.name,description:config.description ?? "",instructions:config.systemPrompt ?? "",cwd:config.working_directory,model:config.model || undefined,sandbox:config.native_sandbox ?? agent.sandbox};
@@ -317,7 +323,11 @@ export class FleetWindowsRuntime {
       const previous = turns.current(owner);
       // Resolve the admitted input with C's exact parent/actor/wire checks BEFORE retiring any old grant.
       const snapshot = turns.beforeWrite(options.requestContextInputId ?? null, deliveryContentDigest(prompt), owner);
-      retireContext = () => { if (snapshot !== previous) turns.ended(snapshot, owner); };
+      retireContext = () => {
+        if (snapshot !== previous) turns.ended(snapshot, owner);
+        if (this.requestContextRuns.get(name)?.requestId === requestId) this.requestContextRuns.delete(name);
+      };
+      this.requestContextRuns.set(name, { requestId, retire: retireContext });
       try { requestContext = captureRequestContextCall(snapshot, captured => turns.isCurrent(captured, ownerOf(name))); }
       catch (error) { retireContext(); throw error; }
     }

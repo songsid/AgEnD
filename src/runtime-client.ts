@@ -413,7 +413,7 @@ export class RuntimeClient {
         || typeof value.id !== "string" || !validWindowsAgentId(value.id) || !Number.isInteger(value.maxAgents)
         || (value.maxAgents as number) < 1 || (value.maxAgents as number) > 16) throw Error("Invalid pane transport envelope");
       const request = validateRuntimePaneRequest(value.request);
-        if (request.action === "input" && request.requestContext && !this.requestContextProtocol) throw Error("Originating-call protocol not negotiated");
+        if ((request.action === "input" && request.requestContext || request.action === "key" && request.cancelTurn) && !this.requestContextProtocol) throw Error("Originating-call protocol not negotiated");
       this.machinePaneLimit = value.maxAgents as number;
       const epoch = this.paneEpoch;
       let leave: (() => void) | undefined, opening: string | undefined, openingDefault: string | undefined;

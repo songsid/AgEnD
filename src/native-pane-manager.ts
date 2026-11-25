@@ -105,6 +105,7 @@ export class NativePaneManager {
   if(manifest.launch.cli==="codex"&&manifest.fresh&&snapshot.sessionId&&snapshot.sessionId!==manifest.fresh.previous.sessionId
     &&this.options.store.get(snapshot.agentId).threadId!==snapshot.sessionId)next=this.bindFreshCodex(file,manifest,snapshot);
   next={...next,exited:snapshot};this.save(file,next);
+  this.options.requestContexts?.retire({hostBootId:snapshot.hostBootId,paneId:snapshot.paneId,launchId:snapshot.launchId,agentId:snapshot.agentId,instance:snapshot.instance});
   const profile=this.options.store.get(snapshot.agentId);
   if(!snapshot.noLaunch&&!profile.threadId&&snapshot.sessionId&&profile.activeId)this.options.store.pinPaneSession(snapshot.agentId,snapshot.launchId,snapshot.sessionId);
   if(this.options.store.get(snapshot.agentId).activeId){

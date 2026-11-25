@@ -84,10 +84,14 @@ export class PaneMcpAuthorityLease {
   async handle(machineId: string, raw: unknown, transport: () => boolean, rawStamp?: unknown): Promise<unknown> {
     const body = validatePaneMcpBody(raw);
     let admission: PaneRequestContextAdmission | undefined, reference: CallContextReference | undefined;
+    let receiptStampSha256: string | undefined;
     if (rawStamp !== undefined && !this.authority.requestContexts) throw Error("Originating-call protocol not negotiated");
     if (this.authority.requestContexts && body.method !== "presence" && body.method !== "tools/list") {
       const stamp = validateRequestContextCallStamp(rawStamp), stampSha256 = runtimeJobDigest(stamp);
-      if (stamp.coverage === "covered") {
+      if (body.method === "response-written") {
+        // An ACK grants no execution. Match the durable original row, even after its turn/proof has retired.
+        receiptStampSha256 = stampSha256;
+      } else if (stamp.coverage === "covered") {
         const captured = this.authority.requestContexts.resolve(body.owner, stamp);
         admission = { coverage: "covered", lease: captured.lease };
         reference = { stampSha256, coverage: "covered", ...captured.reference };
@@ -106,7 +110,9 @@ export class PaneMcpAuthorityLease {
     if (body.method === "tools/list") return { result: { tools: withComposites(this.authority.menu().filter(tool => this.toolCeiling.has(tool.name))) } };
     const key = this.key(body), previous = this.ledger.calls[key];
     // Compare BEFORE cached/in-flight results and response-written receipts. A legacy row never acquires a context.
-    if (previous && runtimeJobDigest(previous.requestContext ?? null) !== runtimeJobDigest(reference ?? null)) throw Error("Pane tool identity has different originating context");
+    if (previous && (body.method === "response-written" && receiptStampSha256 !== undefined
+      ? previous.requestContext?.stampSha256 !== receiptStampSha256
+      : runtimeJobDigest(previous.requestContext ?? null) !== runtimeJobDigest(reference ?? null))) throw Error("Pane tool identity has different originating context");
     if (body.method === "response-written") {
       if (!previous || previous.state === "prepared" || previous.responseId !== body.responseId) throw Error("Pane tool response receipt differs");
       if (previous.state !== "written") {

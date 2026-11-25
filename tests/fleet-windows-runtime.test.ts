@@ -41,7 +41,7 @@ function fixture(openMcp?:FleetWindowsRuntimeHost["openMcp"]) {
   }},{store,bridge});
   const create=()=>runtime.create({name:"Windows helper",cli:"codex",sandbox:"read-only",instructions:"Use native tools",tags:["tools"]},()=>true);
   const settle=(key=id,change:Partial<WindowsCliTask>={})=>{active=false;const task={...tasks.get(key)!,status:"completed" as const,output:"native reply",threadId:thread,outcomeConfirmed:true,finishedAt:Date.now(),...change};tasks.set(key,task);callbacks.get(key)?.onSettled?.(task);return task;};
-  return {home,fleet,store,runtime,bridge,start,save,warn,removed,history,events,create,settle,stop:()=>{stopping=true;}};
+  return {home,fleet,store,runtime,bridge,start,save,warn,removed,history,events,create,settle,tasks,stop:()=>{stopping=true;}};
 }
 
 describe("Fleet Windows runtime adapter",()=>{
@@ -312,6 +312,18 @@ describe("S-224 exec admitted-input capture", () => {
     expect(f.open).toHaveBeenCalledTimes(1); expect(captured.current()).toBe(true);
     expect(JSON.stringify(f.store.get(f.agent.id))).not.toContain(captured.snapshot.token);
     f.settle(); expect(captured.current()).toBe(false); expect(f.turns.current(f.owner)).toBeNull();
+  });
+  it("retires an unconfirmed exec binding only after durable recovery confirms its outcome, then admits independent B", async () => {
+    const f=await scoped(); f.prepare("a"); f.prepare("b");
+    await f.runtime.deliver(f.name,{requestId:id,content:"Question"},{requestContextInputId:"a"});
+    const a=f.turns.current(f.owner);
+    f.settle(id,{outcomeConfirmed:false});
+    expect(f.turns.current(f.owner)).toBe(a);
+    await expect(f.runtime.deliver(f.name,{requestId:thread,content:"Question"},{requestContextInputId:"b"})).rejects.toThrow(/must wait/);
+    f.tasks.set(id,{...f.tasks.get(id)!,outcomeConfirmed:true}); // Executor recovery, no second onSettled callback.
+    await f.runtime.deliver(f.name,{requestId:thread,content:"Question"},{requestContextInputId:"b"});
+    expect(f.turns.current(f.owner)?.inputId).toBe("b");
+    expect(f.open).toHaveBeenCalledTimes(2); f.settle(thread);
   });
   it("defers independent B before any old-grant close or journal write, without laundering A", async () => {
     const f = await scoped(); f.prepare("a"); f.prepare("b");

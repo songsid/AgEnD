@@ -270,7 +270,7 @@ export class RuntimePanePort implements Pane {
     if (!keys.length || keys.length > 64 || keys.some(key => !Object.hasOwn(PANE_EDIT_KEYS, key))) return false;
     return this.mutate((snapshot, expectedSeq) => ({ action: "edit", ...this.target(snapshot), expectedSeq, keys: [...keys] as PaneEditKey[] }));
   }
-  sendSpecialKey(key: PaneKey, _timeoutMs?: number, proof?: PaneInputProof): Promise<boolean> { return this.mutate((snapshot, expectedSeq) => ({ action: "key", ...this.target(snapshot), expectedSeq, key }), proof); }
+  sendSpecialKey(key: PaneKey, _timeoutMs?: number, proof?: PaneInputProof): Promise<boolean> { return this.mutate((snapshot, expectedSeq) => ({ action: "key", ...this.target(snapshot), expectedSeq, key, ...(proof?.cancelTurn && this.requestContextProtocol ? { cancelTurn: true as const } : {}) }), proof); }
   async deleteBackward(count: number): Promise<boolean> {
     if (!Number.isInteger(count) || count <= 0) return true;
     if (count > 8192) return false;

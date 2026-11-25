@@ -196,14 +196,14 @@ no repeated design, native, browser or provider campaign is requested.
 
 ## Implemented dormant ports
 
-- `FleetWindowsRuntime` resolves the server-owned admitted input at claim, before retiring the previous grant or journaling a new run. Request-id retries retain their original lease. A positive confirmed end retires the binding; an uncertain end does not.
+- `FleetWindowsRuntime` resolves the server-owned admitted input at claim, before retiring the previous grant or journaling a new run. Request-id retries retain their original lease. A positive confirmed end retires the binding; an uncertain end does not. If durable executor recovery later confirms that run, the next runtime read retires that exact saved snapshot before accepting independent input.
 - `Daemon` captures at the own helper's first IPC arrival. Only an opaque call id plus the existing boot fence goes to Fleet. Fleet captures the original scope in a private WeakMap before handler awaits; a late call cannot resolve as a newer turn. Sibling/unmapped helpers are not covered.
 - `RuntimePanePort` stages the final wire digest and opaque proof from C's final hook. It rechecks the staged owner/currentness after observation waits. The host installs only after durable prepare and stale-sequence checks, immediately before PTY write, under its existing serialized queue. Replay never installs again; a failed prepared write poisons coverage.
 - Runtime/Fleet negotiate `request-context-call-v1` through the existing RuntimeInfo offer and welcome acknowledgment. Host/link and the local stdio init/hello exchange negotiate separately. The input field and MCP envelope field stay absent unless both ends agree. The helper body and connection file stay unchanged.
 - Open-result support is connection-local and is not persisted in the pane receipt. An older host still accepts ordinary input without a stamp; its calls receive only unknown per-operation scope. No latest-owner fallback is available.
 - The v1 MCP ledger atomically stores ids/digests or a not-covered reason with the prepared operation. Comparisons precede cached/in-flight returns. The original call stamp also owns its stdout-written receipt; installing B cannot relabel A's receipt.
 - Generic queued/composer handoff is disabled for scoped ordinary input. It waits for idle, then binds at the final write. Only a server-proven permitted admin steer may join the already bound turn; it retains A's token and requester. No generic queued-consumption proof is claimed.
-- A positive native zero-input result retires only a newly bound turn. Uncertain writes and failed steers that borrowed an existing turn cannot clear it. A transcript abort or interrupt-capable host input marks later contacts not-covered; input itself remains usable.
+- A positive native zero-input result retires only a newly bound turn. Uncertain writes and failed steers that borrowed an existing turn cannot clear it. A transcript abort or an explicitly flagged turn-cancel key marks later contacts not-covered; ordinary dialog Escape keys do not. The cancellation intent is emitted only on a negotiated transport. Input itself remains usable.
 - Existing delivery/task mutation proxies and channel pre-send callbacks recheck the captured scope after awaits. Attachments recheck before each send. Private coverage metadata is available to E/F; those slices supply admission/side-effect policy. No new go-ahead authority is introduced here.
 
 All rollout hooks remain uninstalled in production: native exec/local lifecycle,
@@ -214,3 +214,10 @@ same-user process isolation.
 
 Verification and exact limitations are recorded in
 [the slice D evidence](../evidence/request-context-call-s224/README.md).
+
+### Implementation review corrections
+
+- Stdout receipts prove that the original response was written, not that a new tool may run. An ACK requires the current launch/transport and its durable call row's exact stamp digest and response id, but does not require the originating turn or proof registry entry to remain current. Tool execution retains all original-turn checks.
+- The relay drops a call's captured stamp after its response-written forwarding succeeds. An unsuccessful forwarding retains it. A positive launch exit retires the Fleet proof registry through the native manager's existing exit path; a detach or uncertain exit does not pretend the launch ended.
+- An exec scope held after an uncertain outcome ends only when its same request is confirmed by durable recovery. It cannot retire a newer binding. A late local tool result uses unconfirmed-outcome wording and warns against repetition.
+- A real abort still leaves that persistent launch uncovered until a fresh launch or per-turn helper identity. No automatic re-cover rule is added; the follow-up remains separate.

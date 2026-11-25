@@ -318,3 +318,28 @@ it("S-224 an older host keeps normal input usable without emitting a covered sta
  native.stageRequestContext(snapshot,createHash("sha256").update("ordinary input").digest("hex"),()=>true,false);
  expect(await native.port.pasteBuffer("ordinary input",{proof:{kind:"dialog",screen:captured}})).toBe(true);expect(f.processes[0].write).toHaveBeenCalledOnce();expect(install).not.toHaveBeenCalled();
 });
+
+it("S-224 dialog Escape preserves coverage; explicit turn cancellation quarantines it",async()=>{
+ const install=vi.fn(),f=setup(4,{requestContextNegotiated:()=>true,installRequestContext:install}),pane=await f.open();
+ const base={paneId:pane.paneId,launchId:pane.launchId,expectedSeq:pane.seq};
+ const stamp={version:1 as const,coverage:"covered" as const,proof:"a".repeat(64)};
+ await f.host.request({action:"input",...base,operationId:randomUUID(),sequence:1,kind:"paste",text:"fixture",requestContext:stamp});
+ const afterDialog=await f.host.request({action:"key",...base,operationId:randomUUID(),sequence:2,key:"Escape"});
+ expect(install.mock.calls.map(row=>row[1])).toEqual([stamp]);
+ await f.host.request({action:"key",...base,expectedSeq:(afterDialog as {seq:number}).seq,operationId:randomUUID(),sequence:3,key:"Escape",cancelTurn:true});
+ expect(install.mock.calls.map(row=>row[1])).toEqual([stamp,{version:1,coverage:"not-covered",reason:"interrupted-launch"}]);
+});
+
+it("S-224 the port transmits cancellation intent only for a negotiated explicit cancel, never a dialog Escape",async()=>{
+ const install=vi.fn(),f=setup(4,{requestContextNegotiated:()=>true,installRequestContext:install}),config={...launch(),launchId:randomUUID()};
+ const requests:any[]=[],endpoint={machineId:"local",online:()=>true,call:(req:any)=>{requests.push(req);return f.host.request(req);},subscribe:()=>()=>{}};
+ const native=new RuntimeNativePaneLifecycle({endpoint,launch:config,receiptFile:join(f.directory,"cancel-port.json"),admit:()=>{},reserve:()=>{},pin:()=>{},exited:()=>{},mcpProof:()=>"unknown",releaseAuthority:()=>{}});
+ await native.port.open(); f.processes[0].emit("❯ ");
+ const screen=await native.port.capturePane();
+ expect(await native.port.sendSpecialKey("Escape",undefined,{kind:"dialog",screen})).toBe(true);
+ expect(requests.at(-1)).not.toHaveProperty("cancelTurn"); expect(install).not.toHaveBeenCalled();
+ const again=await native.port.capturePane();
+ expect(await native.port.sendSpecialKey("Escape",undefined,{kind:"dialog",screen:again,cancelTurn:true})).toBe(true);
+ expect(requests.at(-1)).toHaveProperty("cancelTurn",true);
+ expect(install.mock.calls[0][1]).toEqual({version:1,coverage:"not-covered",reason:"interrupted-launch"});
+});

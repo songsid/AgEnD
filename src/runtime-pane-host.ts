@@ -296,7 +296,7 @@ export class RuntimePaneHost {
       return structuredClone(record.snapshot);
     }
     if (!current() || !this.options.online()) throw Error("Pane input lease expired");
-    if (request.action === "input" && request.requestContext && (!this.options.requestContextNegotiated?.() || !this.options.installRequestContext)) throw Error("Originating-call protocol not negotiated");
+    if ((request.action === "input" && request.requestContext || request.action === "key" && request.cancelTurn) && (!this.options.requestContextNegotiated?.() || !this.options.installRequestContext)) throw Error("Originating-call protocol not negotiated");
     const digest = RuntimePaneStore.digest(request);
     if (request.sequence === record.snapshot.commandSequence) {
       if (record.lastCommand?.id !== request.operationId || record.lastCommand.digest !== digest) throw Error("Pane input sequence belongs to another command");
@@ -321,7 +321,7 @@ export class RuntimePaneHost {
     try {
     // No await between proof installation and PTY write, under the same per-pane serialized command.
     if (tracked && request.action === "input") install(request.requestContext ?? { version: 1, coverage: "not-covered", reason: "unbound-input" });
-    if (tracked && request.action === "key" && ["Escape", "C-c"].includes(request.key)) install({ version: 1, coverage: "not-covered", reason: "interrupted-launch" });
+    if (tracked && request.action === "key" && request.cancelTurn === true) install({ version: 1, coverage: "not-covered", reason: "interrupted-launch" });
     if (request.action === "input") live.process.write(request.kind === "paste" ? live.screen.bracketedPaste(request.text) : request.text);
     else if (request.action === "edit") live.process.write(request.keys.map(key => PANE_EDIT_KEYS[key]).join("").repeat(request.repeat ?? 1));
     else if (request.action === "key") live.process.write(KEYS[request.key]);

@@ -89,3 +89,18 @@ it("S-224 captured local scope also loses its commit lease after role, IPC or pu
  f.fm.checkToolPermission.mockReturnValue({allowed:true});f.fm.instanceIpcClients.set("worker",{});expect(captured.current()).toBe(false);
  f.fm.instanceIpcClients.set("worker",f.ipc);f.fm.daemons.set("worker",{bootId:"replacement"});expect(captured.current()).toBe(false);f.clearTimers();
 });
+
+it("a retired call reports an unconfirmed outcome rather than implying that a committed effect was not done", () => {
+ const f=rig(); const a=f.bind("a"); f.call();
+ f.turns.ended(a,a.owner); f.bind("b","owner");
+ f.clearTimers();
+ expect(JSON.stringify(f.daemon.ipcServer.send.mock.calls)).toContain("outcome is unconfirmed");
+ expect(JSON.stringify(f.daemon.ipcServer.send.mock.calls)).toContain("do not repeat");
+});
+
+it("the real user-cancel path flags turn cancellation while dialog keys keep their existing proof", async () => {
+ const f=rig(); f.daemon.nativePaneLifecycle={};
+ f.daemon.tmux={capturePane:vi.fn(async()=>"synthetic screen"),sendSpecialKey:vi.fn(async()=>true)};
+ await f.daemon.sendEscape();
+ expect(f.daemon.tmux.sendSpecialKey).toHaveBeenCalledWith("Escape",undefined,{kind:"dialog",screen:"synthetic screen",cancelTurn:true});
+});

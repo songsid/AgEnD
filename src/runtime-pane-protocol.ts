@@ -76,7 +76,7 @@ export type RuntimePaneRequest =
   | { action: "transcript"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
   | { action: "transcript-baseline"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
   | { action: "input"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq: number; kind: "literal" | "paste"; text: string; requestContext?: RequestContextCallStamp }
-  | { action: "key"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq: number; key: PaneKey }
+  | { action: "key"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq: number; key: PaneKey; cancelTurn?: true }
   | { action: "resize"; paneId: string; launchId: string; operationId: string; sequence: number; columns: number; rows: number }
   | { action: "edit"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq: number; keys: PaneEditKey[]; repeat?: number }
   | { action: "reconcile"; paneId: string; launchId: string; operationId: string; sequence: number; digest: string }
@@ -155,7 +155,8 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
       if(value.kind === "literal" && /[\r\n]/.test(value.text as string))throw Error("Multiline input requires bracketed paste");
       break;
     case "key":
-      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "expectedSeq", "key"]);
+      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "expectedSeq", "key", "cancelTurn"]);
+      if (value.cancelTurn !== undefined && (value.cancelTurn !== true || !["Escape", "C-c"].includes(String(value.key)))) throw Error("Invalid pane turn cancellation");
       if (!["Enter", "Escape", "Up", "Down", "Right", "Left", "C-c", "C-q"].includes(String(value.key))) throw Error("Invalid pane key");
       break;
     case "resize": closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "columns", "rows"]); dimension(value.columns, 40, 300); dimension(value.rows, 10, 120); break;

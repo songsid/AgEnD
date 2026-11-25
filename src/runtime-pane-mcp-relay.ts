@@ -85,6 +85,7 @@ export class PaneMcpRelay {
         || this.options.requestContextProtocol === 1 && (!arrivalOwner || key(arrivalOwner) !== key(body.owner))) throw Error("Pane MCP scope is unavailable");
       const current = (): boolean => !res.destroyed && !res.writableEnded && this.options.owned(body.owner);
       let forwardStamp = arrivalStamp;
+      let completedCallKey: string | undefined;
       if (arrivalStamp && (body.method === "tools/call" || body.method === "response-written")) {
         const callKey = `${arrivalToken}:${body.helperId}:${body.callId}`;
         if (body.method === "tools/call") {
@@ -99,10 +100,12 @@ export class PaneMcpRelay {
           // A stdout receipt belongs to the ORIGINAL call, never a later installed input.
           forwardStamp = this.callStamps.get(callKey);
           if (!forwardStamp) throw Error("Pane MCP response attribution is unavailable");
+          completedCallKey = callKey;
         }
       }
       const result = forwardStamp ? await this.options.forward(body, current, forwardStamp) : await this.options.forward(body, current);
       if (!current()) throw Error("Pane MCP lease expired");
+      if (completedCallKey) this.callStamps.delete(completedCallKey);
       answer(200, result);
     } catch { answer(403, { error: "Pane MCP request was refused or is unconfirmed; it was not replayed" }); }
     finally { await finished; this.pending--; }
