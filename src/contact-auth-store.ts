@@ -10,6 +10,7 @@ export const CONTACT_DELIVERY_IN_FLIGHT: readonly string[] = ["queued", "deliver
 /** M-3716: what the requester is told about one held request. */
 export type ContactOutcome = "declined" | "expired" | "delivered" | "unconfirmed" | "queued";
 export interface ContactRequest {
+  requestContext?: import("./request-context-protocol.js").RequestContextRefV1;
   operationId: string;
   source: string;
   target: string;
@@ -25,6 +26,8 @@ export interface ContactRequest {
   forwards?: readonly string[];
 }
 export interface ContactDecisionAuthority {
+  requestContextVersion?: 1;
+  rootApprovalTicketId?: string;
   canDecide(target: string, actor: ContactPerson): boolean;
   /** Checks generations, current policy and prior Hub contact restriction. */
   current(request: ContactRequest): boolean;
@@ -236,7 +239,7 @@ export class ContactAuthStore {
       sourceGeneration: input.sourceGeneration, targetGeneration: input.targetGeneration,
       verb: input.verb, message: input.message, resultRecipient: input.resultRecipient,
       correlationId: input.correlationExplicit === false ? undefined : input.correlationId,
-      forwards: input.forwards ?? [], targetSession: input.payload.targetSession, type: input.payload.type,
+      forwards: input.forwards ?? [], requestContext: input.requestContext, targetSession: input.payload.targetSession, type: input.payload.type,
       metadata: Object.fromEntries(Object.entries((input.payload.meta ?? {}) as Record<string, unknown>)
         .filter(([key]) => !["message_id", "correlation_id", "ts"].includes(key))) };
     const hash = createHash("sha256").update(JSON.stringify(stable)).digest("hex");
@@ -256,12 +259,13 @@ export class ContactAuthStore {
       const total = this.db.prepare("SELECT count(*) AS n FROM contact_auth_tickets WHERE created_at>? "
         + "AND json_extract(ticket_json,'$.state')='pending'").get(now - CONTACT_APPLICATION_TTL_MS) as { n: number };
       if (total.n >= 512) throw Error("application-capacity");
-      this.db.prepare("DELETE FROM contact_auth_tickets WHERE created_at<?")
+      const scoped = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_context_contacts_v1'").get();
+      this.db.prepare("DELETE FROM contact_auth_tickets WHERE created_at<?" + (scoped ? " AND id NOT IN (SELECT ticket_id FROM request_context_contacts_v1)" : ""))
         .run(now - 30 * 24 * 60 * 60_000);
       this.db.exec("DELETE FROM contact_auth_outcome_notices WHERE ticket_id NOT IN (SELECT id FROM contact_auth_tickets)");
       this.db.exec("DELETE FROM contact_auth_approval_notices WHERE ticket_id NOT IN (SELECT id FROM contact_auth_tickets)");
       this.db.prepare("DELETE FROM contact_auth_history WHERE at<?").run(now - 90 * 24 * 60 * 60_000);
-      const ticket: ContactTicket = { id: `R${randomUUID()}`, revision: 1, scope: "peer.dispatch", state: "pending",
+      const ticket: ContactTicket = { ...(input.requestContext ? { requestContext: input.requestContext } : {}), id: `R${randomUUID()}`, revision: 1, scope: "peer.dispatch", state: "pending",
         source: input.source, target: input.target, sourceGeneration: input.sourceGeneration, targetGeneration: input.targetGeneration,
         verb: input.verb, origin: structuredClone(input.origin), message: input.message, requestHash: hash,
         correlationId: input.correlationId, resultRecipient: input.resultRecipient,
@@ -377,10 +381,18 @@ export class ContactAuthStore {
         && (!filter.status || ticket.state === filter.status));
     return { items, nextCursor: rows.length > 50 ? String(offset + 50) : null };
   }
+  private assertDecisionScope(id: string, authority: ContactDecisionAuthority): void {
+    const table = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_context_contacts_v1'").get();
+    const scoped = !!table && !!this.db.prepare("SELECT 1 FROM request_context_contacts_v1 WHERE ticket_id=?").get(id);
+    const row = this.db.prepare("SELECT request_json FROM contact_auth_tickets WHERE id=?").get(id) as {request_json:string}|undefined;
+    if (scoped !== (authority.requestContextVersion === 1) || !!(row && JSON.parse(row.request_json).requestContext) !== scoped) throw Error("request-context scoped-ticket mismatch");
+  }
   decide(id: string, decision: ContactTicketDecision, actor: ContactPerson, authority: ContactDecisionAuthority, automatic = false): ContactTicket {
+    this.db.transaction(() => this.assertDecisionScope(id, authority))();
     // Expiry is persisted outside the decision transaction, even when deciding throws.
     this.get(id);
     return this.db.transaction(() => {
+      this.assertDecisionScope(id, authority);
       const row = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE id=?").get(id) as TicketRow | undefined;
       if (!row) throw Error("not-found");
       const ticket = this.read(row), request = JSON.parse(row.request_json) as ContactRequest;
@@ -419,14 +431,16 @@ export class ContactAuthStore {
         }
         ticket.deliveryId = authority.admit(request, ticket.id);
         ticket.state = "approved";
+        if (authority.rootApprovalTicketId) ticket.rootApprovalTicketId = authority.rootApprovalTicketId;
       }
       this.write(ticket);
-      this.history(ticket.target, actor, automatic ? "grant-use" : decision.decision === "decline" ? "decline" : "approve", automatic ? "Standing contact grant used" : decision.decision, ticket.id);
+      this.history(ticket.target, actor, automatic ? "grant-use" : decision.decision === "decline" ? "decline" : "approve", authority.rootApprovalTicketId ? `Request approval ${authority.rootApprovalTicketId} continued` : automatic ? "Standing contact grant used" : decision.decision, ticket.id);
       return ticket;
     })();
   }
   applyStandingGrant(id: string, authority: ContactDecisionAuthority): ContactTicket | undefined {
     return this.db.transaction(() => {
+      this.assertDecisionScope(id, authority);
       const row = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE id=?").get(id) as TicketRow | undefined;
       if (!row) return undefined;
       const ticket = this.read(row);

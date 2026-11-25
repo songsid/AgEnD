@@ -111,7 +111,10 @@ export class RequestContextStore {
     return record;
   }
   assertLegacyAdmission(source: string, operationId: string, sourceKey: string): void {
-    if (this.present() && this.db.prepare(`SELECT 1 FROM deliveries WHERE request_context_id IS NOT NULL AND ((source_instance=? AND operation_id=?) OR source_key=?)
+    const present = this.present();
+    if (present && this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_context_contacts_v1'").get()
+      && this.db.prepare("SELECT 1 FROM request_context_contacts_v1 WHERE (source_instance=? AND operation_id=?) OR source_key=? LIMIT 1").get(source, operationId, sourceKey)) throw Error("request-context required for scoped retry");
+    if (present && this.db.prepare(`SELECT 1 FROM deliveries WHERE request_context_id IS NOT NULL AND ((source_instance=? AND operation_id=?) OR source_key=?)
       UNION ALL SELECT 1 FROM ${OPERATIONS} WHERE (source_instance=? AND operation_id=?) OR source_key=? LIMIT 1`)
       .get(source, operationId, sourceKey, source, operationId, sourceKey)) throw Error("request-context required for scoped retry");
   }

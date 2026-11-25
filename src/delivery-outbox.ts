@@ -1,3 +1,4 @@
+import { RequestContactGate, type RequestContactGateHost } from "./request-contact-gate.js";
 import { WorkingRecoveryStore, WORKING_RECOVERY_KIND, type RecoveryEpisode } from "./working-recovery.js";
 import { initializeSeenPeople, isSeenPerson, listSeenPeople, noteSeenPerson, pruneSeenPeople, SEEN_PEOPLE_KEEP_DAYS, type SeenPerson } from "./guest-seen-people.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
@@ -1159,6 +1160,17 @@ export class DeliveryOutbox extends EventEmitter {
     this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
+  /** Dormant central gate; no production caller until the controlled cutover. */
+  requestContactGate(host: RequestContactGateHost): RequestContactGate {
+    const ready = (): void => {
+      if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") throw Error("request-context dispatcher is not ready");
+    };
+    ready();
+    return new RequestContactGate(this.db, this.contactAuthorizations, { ready,
+      admit: (input, context, binding) => this.admitWithRequestContext(input, context, binding),
+      retire: (root, proof) => this.retireRequestContextRoot(root, proof) }, host);
+  }
+
   /** Internal future-dispatch port only; no production ingress calls this before slice L. */
   admitWithRequestContext(input: NewOutboxDelivery, context: RequestContextV1, bindingInput: RequestOperationBindingV1): { delivery: OutboxDelivery; inserted: boolean } {
     if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") {
@@ -2058,6 +2070,66 @@ export class DeliveryOutbox extends EventEmitter {
    * `delivery_status` can return "expired" for a pruned row — but only to the
    * original source or target (ownership check, #1340 P2 🔒).
    */
+  private pruneDeliveryRows(rows: Array<{ delivery_id: string; source_instance: string; target_instance: string }>, now: string): void {
+    const ids = rows.map(row => row.delivery_id); if (!ids.length) return;
+    const placeholders = ids.map(() => "?").join(",");
+        // Record (delivery_id, source, target) so delivery_status can return
+        // "expired" to the row's own source/target (ownership-gated).
+        const insertPruned = this.db.prepare(
+          "INSERT OR IGNORE INTO pruned_ids(delivery_id, source_instance, target_instance, pruned_at) VALUES (?, ?, ?, ?)",
+        );
+        for (const row of rows) insertPruned.run(row.delivery_id, row.source_instance, row.target_instance, now);
+
+        // Delete child rows first.
+        this.db.prepare(`DELETE FROM delivery_attempts WHERE delivery_id IN (${placeholders})`).run(...ids);
+        // Only closed reply_obligations (answered/expired): open ones were excluded above.
+        if (hasTable(this.db, "reply_obligations")) {
+          this.db.prepare(`
+            DELETE FROM reply_obligations
+            WHERE request_delivery_id IN (${placeholders}) AND state IN ('answered','expired')
+          `).run(...ids);
+        }
+        this.db.prepare(`DELETE FROM outcome_notices WHERE notice_delivery_id IN (${placeholders})`).run(...ids);
+        this.db.prepare(`DELETE FROM failure_notices WHERE parent_delivery_id IN (${placeholders}) OR notice_delivery_id IN (${placeholders})`).run(...ids, ...ids);
+        this.db.prepare(`DELETE FROM delivery_forward_edges WHERE reference_kind='delivery' AND reference_id IN (${placeholders})`).run(...ids);
+        this.db.prepare(`DELETE FROM deliveries WHERE delivery_id IN (${placeholders})`).run(...ids);
+  }
+
+  /** Dormant lifecycle port: only drained, terminal roots older than 30 days may retire atomically. */
+  private retireRequestContextRoot(root: string, retired: () => boolean): number {
+    if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") throw Error("request-context dispatcher is not ready");
+    return this.db.transaction(() => {
+      const store = new RequestContextStore(this.db), context = store.context(root);
+      if (!context || context.ref.rootContextId !== root || context.ref.parentContextId || !retired()) throw Error("request-context root is not drained");
+      const ids = (this.db.prepare("SELECT context_id FROM request_contexts_v1 WHERE json_extract(context_json,'$.ref.rootContextId')=?").all(root) as Array<{context_id:string}>).map(row=>row.context_id);
+      const slots = "SELECT context_id FROM request_contexts_v1 WHERE json_extract(context_json,'$.ref.rootContextId')=?", cutoff = new Date(Date.now()-30*24*60*60_000).toISOString();
+      const rows = this.db.prepare(`SELECT d.delivery_id,d.source_instance,d.target_instance,d.state,COALESCE(d.finished_at,d.updated_at) AS at
+        FROM deliveries d JOIN request_context_operations_v1 o ON o.delivery_id=d.delivery_id WHERE o.context_id IN (${slots})`).all(root) as Array<{delivery_id:string;source_instance:string;target_instance:string;state:string;at:string}>;
+      if (rows.some(row=>!["delivered","failed","cancelled"].includes(row.state)||!Number.isFinite(Date.parse(row.at))||Date.parse(row.at)>=Date.parse(cutoff))) throw Error("request-context root retention not elapsed");
+      if (this.db.prepare(`SELECT 1 FROM reply_obligations WHERE state='open' AND request_delivery_id IN (SELECT delivery_id FROM request_context_operations_v1 WHERE context_id IN (${slots})) LIMIT 1`).get(root)) throw Error("request-context root has open reply");
+      if (hasTable(this.db,"request_context_recovery_v1") && this.db.prepare(`SELECT 1 FROM request_context_recovery_v1 WHERE json_extract(pointer_json,'$.contextId') IN (${slots}) LIMIT 1`).get(root)) throw Error("request-context root has recovery reference");
+      if (hasTable(this.db,"request_context_contacts_v1")) {
+        const tickets = this.db.prepare("SELECT t.id,t.ticket_json FROM contact_auth_tickets t JOIN request_context_contacts_v1 c ON c.ticket_id=t.id WHERE c.root_id=?").all(root) as Array<{id:string;ticket_json:string}>;
+        if (tickets.some(row=>{const t=JSON.parse(row.ticket_json);const at=Date.parse(t.decidedAt??t.expiresAt??t.createdAt);return !['approved','delivered','declined','expired'].includes(t.state)||!Number.isFinite(at)||at>=Date.parse(cutoff);})) throw Error("request-context root has retained ticket");
+        for (const ticket of tickets) {
+          this.db.prepare("DELETE FROM contact_auth_outcome_notices WHERE ticket_id=?").run(ticket.id);
+          this.db.prepare("DELETE FROM contact_auth_approval_notices WHERE ticket_id=?").run(ticket.id);
+        }
+        this.db.prepare("DELETE FROM request_context_contacts_v1 WHERE root_id=?").run(root);
+        for (const ticket of tickets) this.db.prepare("DELETE FROM contact_auth_tickets WHERE id=?").run(ticket.id);
+      }
+      this.db.prepare(`DELETE FROM request_context_operations_v1 WHERE context_id IN (${slots})`).run(root);
+      this.pruneDeliveryRows(rows,new Date().toISOString());
+      // Single-parent contexts are deleted leaves first; no dependent recovery/ledger/work may remain.
+      for (let left=ids.length;left>0;) {
+        const changed=this.db.prepare(`DELETE FROM request_contexts_v1 WHERE context_id IN (${slots}) AND context_id NOT IN (SELECT parent_id FROM request_contexts_v1 WHERE parent_id IS NOT NULL)`).run(root).changes;
+        if (!changed) throw Error("request-context root has external descendant"); left-=changed;
+      }
+      if (!retired()) throw Error("request-context root retirement changed");
+      return rows.length;
+    })();
+  }
+
   async prune(days: number): Promise<{ pruned: number; durationMs: number }> {
     const { performance } = await import("node:perf_hooks");
     const t0 = performance.now();
@@ -2079,6 +2151,7 @@ export class DeliveryOutbox extends EventEmitter {
         FROM deliveries
         WHERE state IN ${PRUNABLE}
           AND COALESCE(finished_at, updated_at) < ?
+          ${hasTable(this.db, "request_context_operations_v1") ? "AND delivery_id NOT IN (SELECT delivery_id FROM request_context_operations_v1)" : ""}
           AND (
             NOT EXISTS (SELECT 1 FROM reply_obligations WHERE request_delivery_id = delivery_id AND state = 'open')
           )
@@ -2088,30 +2161,8 @@ export class DeliveryOutbox extends EventEmitter {
 
       if (rows.length === 0) break;
 
-      const ids = rows.map(r => r.delivery_id);
-      const placeholders = ids.map(() => "?").join(",");
-
       this.db.transaction(() => {
-        // Record (delivery_id, source, target) so delivery_status can return
-        // "expired" to the row's own source/target (ownership-gated).
-        const insertPruned = this.db.prepare(
-          "INSERT OR IGNORE INTO pruned_ids(delivery_id, source_instance, target_instance, pruned_at) VALUES (?, ?, ?, ?)",
-        );
-        for (const row of rows) insertPruned.run(row.delivery_id, row.source_instance, row.target_instance, now);
-
-        // Delete child rows first.
-        this.db.prepare(`DELETE FROM delivery_attempts WHERE delivery_id IN (${placeholders})`).run(...ids);
-        // Only closed reply_obligations (answered/expired): open ones were excluded above.
-        if (hasTable(this.db, "reply_obligations")) {
-          this.db.prepare(`
-            DELETE FROM reply_obligations
-            WHERE request_delivery_id IN (${placeholders}) AND state IN ('answered','expired')
-          `).run(...ids);
-        }
-        this.db.prepare(`DELETE FROM outcome_notices WHERE notice_delivery_id IN (${placeholders})`).run(...ids);
-        this.db.prepare(`DELETE FROM failure_notices WHERE parent_delivery_id IN (${placeholders}) OR notice_delivery_id IN (${placeholders})`).run(...ids, ...ids);
-        this.db.prepare(`DELETE FROM delivery_forward_edges WHERE reference_kind='delivery' AND reference_id IN (${placeholders})`).run(...ids);
-        this.db.prepare(`DELETE FROM deliveries WHERE delivery_id IN (${placeholders})`).run(...ids);
+        this.pruneDeliveryRows(rows, now);
       })();
 
       total += rows.length;

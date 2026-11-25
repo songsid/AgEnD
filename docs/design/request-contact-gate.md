@@ -131,3 +131,25 @@ F and later slices supply those integrations; I is the projection/decision seam.
 Before cutover revert the dormant core. After activation keep A's startup barrier
 and drain/cancel dependent operations before downgrade; never drop metadata or
 replay uncertain effects to make an old executable work. This is not a sandbox.
+
+## Design review disposition
+
+Fable's source review at `29edc5d65` is adopted:
+
+- Scoped-versus-legacy validation runs inside both existing decide and grant-use transactions, before actor checks/writes. A missing/mismatched companion refuses. The request-context version marker is server-only. Legacy direct outbox admission also refuses an identity already held by the scoped companion.
+- `RequestContactGate.sweep` is the future projection/outcome sweep's scoped auto-apply entry; legacy grant entry refuses scoped tickets. `origin`, `inheritOrigin` and `approvedReturn` are forbidden reads in the new gate, with paired controls.
+- Ticket age pruning excludes scoped companions; ordinary delivery pruning excludes all B-bound deliveries, avoiding FK starvation of unrelated legacy retention. Existing notice markers stay with referenced tickets.
+- Retention predicate: a scoped companion or B operation retains its root until explicit `retireRoot`. The F/I work-lifecycle owner must prove there is no active turn/input, expected continuation, derivative work or native call-ledger reference; this callback is uninstalled before cutover. Retirement additionally requires only confirmed terminal deliveries, no open reply or recovery pointer, no pending ticket, and every final delivery/ticket timestamp older than 30 days. It removes scoped tickets/notice markers, companions, operation bindings, terminal deliveries and single-parent contexts together in one transaction. A changing retirement proof rolls it all back. Cutover must wire this owner before activation.
+- A downgraded executable is not trusted to maintain these exclusions. If protected proof is lost, no release is guessed: new operations hold/refuse. Draining dependent work before downgrade prevents breaking an active root's D1 promise.
+- The restricted-room admin exception checks the stored root initiating native person through the current central gate. Promotion/demotion affect the next operation. Guest and Hub ingress, later admin steering and display names do not take this exception; no verified flag or go-ahead authority is invented.
+- Pending capacity deliberately remains shared: 32 per source and 512 total. Re-evaluation does not create a new ticket, so it cannot consume another slot. A burst can affect both old and new holds; no hidden independent queue is introduced.
+- The full companion digest is retry identity; the legacy requestHash alone is insufficient. Files-only and boot-only changes conflict.
+- Each sweep/re-evaluation examines at most 64 pending operations (or a smaller requested limit), then the next tick handles the rest. Each operation has its own transaction and a structured refusal result; one stale operation does not prevent a current sibling from proceeding or undo a committed root approval.
+
+## Implementation boundary
+
+`DeliveryOutbox.requestContactGate` is the sole dormant factory. It checks capability/barrier before creating the gate. `RequestContactGate` stores canonical full admission and retained-request digests, derives D1 only from the existing committed ticket plus B's validated operation, and calls the existing transaction-owned decision/grant code. The shared in-store scope fence is checked before any legacy role callback or expiry write, then again under the decision transaction. Ordinary legacy outbox retries also reject scoped pending identities.
+
+Sweep fairness uses only a monotonic `last_checked_seq` in the companion, ordered before row id. It changes scheduling, never immutable image/provenance, policy, or release. Refused candidates rotate too, so an old refused page cannot starve later pending work. No production timer or event route invokes this dormant core yet.
+
+The root-retirement port shares the existing outbox child-row/pruned-id deletion helper. It rejects uncertain deliveries, open replies, recovery pointers, unelapsed 30-day retention, pending tickets, a missing lifecycle proof or a proof that changes during the transaction. The gate validates scoped images before retiring them. Until F/I supplies that lifecycle proof and L activates the flow, retirement refuses by default.
