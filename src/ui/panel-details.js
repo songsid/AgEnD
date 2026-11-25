@@ -34,6 +34,7 @@ import { InstanceBoardWork } from "./fleet-task-work.js";
 import { Icon } from "/assets/ui-icons.js";
 import { AgentCategoryNav, AgentPageHead, AgentSettingsPanels, agentKind, categoryFromSearch, useAgentSettings } from "./agent-details-settings.js";
 import { ContactPermissionsPanel } from "./contact-permissions.js";
+import { WhoCanUsePanel } from "./agent-who-can-use.js";
 import "./agent-page-strings.js";
 import { pt } from "./agent-page-strings.js";
 import { timeText } from "/assets/clock-text.js";
@@ -220,6 +221,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
       <div class="s-section-layout" data-agent-category=${shownCat}>
         <div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-overview` : "ap-panel-overview"} hidden=${shownCat !== "overview"}>${overview}</div>
         ${opened ? html`<${AgentSettingsPanels} name=${name} kind=${kind} cat=${shownCat} sess=${sess} onDirty=${onDirty} />` : null}
+        ${shownCat === "access" ? html`<div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-access` : "ap-panel-access"}><${WhoCanUsePanel} key=${name} name=${name} label=${inst && inst.display_name && inst.display_name !== name ? `${inst.display_name} (${name})` : name} /></div>` : null}
         ${shownCat === "permissions" ? html`<div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-permissions` : "ap-panel-permissions"}><${ContactPermissionsPanel} key=${name} name=${name} /></div>` : null}
       </div></div></div>
     ${sess.staged.size && Pending ? html`<${Pending} staged=${sess.staged} busy=${!!sess.op && ["writing", "posting", "watching"].includes(sess.op.phase)} onApply=${sess.apply} onDiscard=${sess.discard} section="agents" />` : null}

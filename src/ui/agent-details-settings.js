@@ -28,17 +28,19 @@ import { batchImpact, impactOf, shortName } from "./settings-model.js";
 import { AGENT_CATEGORIES, AgentFields, CLASSIC_CATEGORIES, ClassicFields, ask, useAgentForm, useClassicForm } from "./settings-dialogs.js";
 import { NATIVE_CATEGORIES, NativeFields, useNativeForm } from "./native-instance-settings.js";
 import { ca } from "./contact-auth-strings.js";
+import { wc } from "./agent-who-can-use-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 
 /** The icon in front of each category you can open — the project's own set (ui-icons.js). */
-export const CATEGORY_ICONS = { overview: "eye", basic: "idcard", runtime: "bot", work: "view", channel: "chat", adv: "code", permissions: "key" };
+export const CATEGORY_ICONS = { overview: "eye", basic: "idcard", runtime: "bot", work: "view", channel: "chat", adv: "code", access: "team", permissions: "key" };
 /** Which kind of page this is: a ClassicBot room (classicBot.yaml), a Windows native agent, or a fleet agent. */
 export const agentKind = (d, inst) => (d && d.kind === "classic" ? "classic" : inst && inst.runtime === "windows" ? "native" : "fleet");
 /** The categories of a kind, Overview first. A native agent has no channel binding or idle settings; a ClassicBot room has no basic info or workspace. */
 // M-3339: every kind has Permissions last (contact-permissions.js — its own read and saves, not this page's staged form).
-export const categoriesOf = (kind) => ["overview", ...(kind === "classic" ? CLASSIC_CATEGORIES : kind === "native" ? NATIVE_CATEGORIES : AGENT_CATEGORIES), "permissions"];
-export const categoryLabel = (kind, cat) => (cat === "permissions" ? ca("tab") : pt(kind === "classic" && cat === "channel" ? "cat_classicChannel" : `cat_${cat}`));
+// M-3734: Who can use just before it (agent-who-can-use.js — also its own reads and writes).
+export const categoriesOf = (kind) => ["overview", ...(kind === "classic" ? CLASSIC_CATEGORIES : kind === "native" ? NATIVE_CATEGORIES : AGENT_CATEGORIES), "access", "permissions"];
+export const categoryLabel = (kind, cat) => (cat === "permissions" ? ca("tab") : cat === "access" ? wc("tab") : pt(kind === "classic" && cat === "channel" ? "cat_classicChannel" : `cat_${cat}`));
 /** The category the address names (`?cat=`), or "" for none — the phone's list, and Overview on a wide screen. */
 export function categoryFromSearch(kind, search = typeof location !== "undefined" ? location.search : "") {
   const cat = new URLSearchParams(search).get("cat") || "";
@@ -275,7 +277,7 @@ export function AgentCategoryNav({ name, kind, cat, dirty, children }) {
 
 /** The page's heading: the category's name, who it affects, and a line on what it is. */
 export function AgentPageHead({ name, kind, cat, inst }) {
-  return html`<${PageHead} title=${categoryLabel(kind, cat)} scope=${pt("onlyThis", inst ? shortName(name, inst) : name)} lead=${cat === "overview" ? pt("leadOverview") : cat === "permissions" ? ca("lead") : pt("leadSection")} />`;
+  return html`<${PageHead} title=${categoryLabel(kind, cat)} scope=${pt("onlyThis", inst ? shortName(name, inst) : name)} lead=${cat === "overview" ? pt("leadOverview") : cat === "permissions" ? ca("lead") : cat === "access" ? wc("lead") : pt("leadSection")} />`;
 }
 
 // ── The forms ──
@@ -301,7 +303,7 @@ function AgentForms({ name, kind, cat, sess, inst, room, onDirty, onDelete, dele
     const confirms = patch.mcp_proxy_reply === true ? ["agentPage.confirmMcpProxy"] : undefined;
     sess.stage(key, { ...change, ...(confirms ? { confirms } : {}), ...(ready ? {} : { invalid: true }) });
   }, [patchJson, ready, deleting]);
-  const cats = categoriesOf(kind).slice(1).filter((c) => c !== "permissions");
+  const cats = categoriesOf(kind).slice(1).filter((c) => c !== "permissions" && c !== "access");
   const Fields = kind === "classic" ? ClassicFields : kind === "native" ? NativeFields : AgentFields;
   return cats.map((c) => html`<div key=${c} class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-${c}` : `ap-panel-${c}`} hidden=${c !== cat}>
     <${Fields} m=${form} cat=${c} idPrefix=${pane ? `pane-${pane.id}-` : ""} onDelete=${kind === "fleet" && c === "adv" ? onDelete : undefined} /></div>`);

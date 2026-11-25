@@ -119,6 +119,17 @@ as their own Discord or Telegram account. What a guest sees:
   ClassicBot room, and ClassicBot group rooms while their membership is verified, minus any `web.guests.narrow`.
   **Start from today's guests** turns that into grants.
 
+**Who can use, on an agent's page (M-3734, #4459).** Each agent's page (and a ClassicBot room's) has a **Who can use**
+category (「誰能用」), before Permissions. It lists and edits the same two records, with no permissions of its own:
+- **Web guests:** everyone whose grant names this agent, each with their level, **Add a person**, **Chat | Trusted** and
+  **Remove**. Each change writes that person's grant in `web.guests.grants`, the same data as Settings → Guests, under the
+  same confirmations. Before any grant is saved, the list is read-only and offers **Start from today's guests**.
+- **Hub:** whether the agent is shared on the Hub and, when it is, **Choose who may ask on the Hub**. That button opens the
+  Hub's own page (people or AD groups, each until a chosen date), which only opens where the Hub can be reached (today, the
+  company network). The Fleet itself never reads or changes who may ask.
+
+Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram (`allowed_users`) is unchanged.
+
 Guests can filter their granted agents and rooms, change sorting, and use **Custom** (「自訂」) for detailed or compact
 rows and a compact row's display name or instance name. Choices belong to that guest's account, including over the
 public link; they never change the host's preferences. Desktop and phone keep separate density choices and share the
