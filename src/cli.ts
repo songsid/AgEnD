@@ -43,6 +43,10 @@ import {
 } from "node:fs";
 import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { randomBytes } from "node:crypto";
+import { acquireHomeUpdateLock, admitFleetStart, installPrefixOf } from "./home-update-lock.js";
+import { ensureAgendHome } from "./agend-home.js";
 import { spawnSync, execSync, execFileSync } from "node:child_process";
 import { spawn } from "./child-process.js";
 import { getAgendHome, isDefaultAgendHome, realDefaultAgendHome } from "./paths.js";
@@ -185,15 +189,42 @@ program.hook("preAction", async (_hooked, action) => {
   } catch { /* the banner never stands in a command's way */ }
 });
 
+/**
+ * M-3770 (#4480 §4.2): before claiming fleet.lock, take the home update lock: another install's update in progress on
+ * this home keeps this fleet from starting (its own update's restart goes through). Sync, like the claim it guards.
+ */
+function admitAgainstHomeUpdate(): { ok: true; release(): void } | { ok: false } {
+  try {
+    ensureAgendHome(DATA_DIR);                                     // as acquireFleetLock does next: the lock lives in it
+    const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null };
+    const ownPrefix = installPrefixOf(fileURLToPath(new URL("..", import.meta.url)));
+    const admitted = admitFleetStart(DATA_DIR, ownPrefix, {
+      pid: process.pid, processStart: admission.processStart, startTicks: admission.startTicks, bootId: admission.bootId,
+      newToken: () => randomBytes(16).toString("hex"), now: () => new Date(), log: message => console.log(message),
+    });
+    if (!admitted.ok) { console.error(admitted.reason); process.exitCode = 1; return { ok: false }; }
+    if (admitted.note) console.log(`  Home update lock: ${admitted.note}.`);
+    return { ok: true, release: admitted.release };
+  } catch (err) {
+    // The lock's own failure never keeps a fleet down: fleet.lock still keeps one fleet per home.
+    console.log(`  Home update lock not checked (${(err as Error).message}).`);
+    return { ok: true, release: () => {} };
+  }
+}
+
 function claimFleetSingleton(): boolean {
+  const home = admitAgainstHomeUpdate();
+  if (!home.ok) return false;
   try {
     setProcessFleetLock(acquireFleetLock(DATA_DIR));
+    home.release();
     process.once("exit", () => { releaseProcessFleetLock(); });
     // Before anything is spawned, so a tmux server the fleet starts inherits it
     // (each CLI launch also sets it in its pane: coredumpFilterLaunchPrefix).
     limitFleetCoreDumps({ info: m => console.log(m), error: m => console.error(m) });
     return true;
   } catch (err) {
+    home.release();
     console.error((err as Error).message);
     process.exitCode = 1;
     return false;
@@ -1775,12 +1806,22 @@ program
           ? { preflight: preflight.installPreflight(pkg, targetVersion, "the Node 22 nvm selected", { log: m => console.log(m), error: m => console.error(m) }) }
           : {}),
         lock: prefix => {
-          const lock = acquireInstallLock(prefix, { spec: pkg, agendHome: DATA_DIR }, {
+          const lockDeps = {
             pid: process.pid, processStart: admission.processStart, startTicks: admission.startTicks, bootId: admission.bootId, newToken: () => randomBytes(16).toString("hex"),
-            now: () => new Date(), log: message => console.log(message),
-          });
-          if (!lock.ok) return lock;
-          releaseLock = lock.release;
+            now: () => new Date(), log: (message: string) => console.log(message),
+          };
+          // M-3770 (#4480 §4.2): the home first — another install updating this home (a second prefix the prefix lock
+          // never sees) refuses this one — then the prefix. Both are held until this process exits.
+          let installPrefix = prefix;
+          try { installPrefix = realpathSync(prefix); } catch { /* the prefix lock below says so */ }
+          // A home no fleet has made yet (an update right after a fresh install) is made here, privately, as the fleet
+          // lock makes it: the lock lives in it, and a missing home is no reason to refuse.
+          try { ensureAgendHome(DATA_DIR); } catch (err) { return { ok: false as const, path: DATA_DIR, reason: `the AgEnD home ${DATA_DIR} could not be made (${(err as Error).message})` }; }
+          const home = acquireHomeUpdateLock(DATA_DIR, { spec: pkg, installPrefix }, lockDeps);
+          if (!home.ok) return home;
+          const lock = acquireInstallLock(prefix, { spec: pkg, agendHome: DATA_DIR }, lockDeps);
+          if (!lock.ok) { home.release(); return lock; }
+          releaseLock = () => { lock.release(); home.release(); };
           return { ok: true, token: lock.token };
         },
       },

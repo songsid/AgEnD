@@ -8,7 +8,7 @@ import { hostText } from "../src/ui/shared/setup-host-text.js";
 // itself, and no probe (npm, systemctl) runs.
 vi.mock("../src/update-readiness.js", async importOriginal => {
   const real = await importOriginal<typeof import("../src/update-readiness.js")>();
-  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }], Date.now())) };
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }], Date.now())) };
 });
 
 const src = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");

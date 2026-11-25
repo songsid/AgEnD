@@ -16,8 +16,8 @@
  * (identity proven at the moment of change, §4.2). Runs on the fleet's event loop: every probe is async and bounded.
  */
 import { constants } from "node:fs";
-import { access, lstat, readFile, realpath } from "node:fs/promises";
-import { userInfo } from "node:os";
+import { access, lstat, readdir, readFile, realpath, stat, statfs } from "node:fs/promises";
+import { homedir, userInfo } from "node:os";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { execFile } from "./child-process.js";
 import { defaultDispatchDeps, npmForRunningInstall, resolveInstalledAgend, runningInstall, type DispatchDeps } from "./update-dispatch.js";
@@ -27,15 +27,22 @@ import { applyUpdateNpmBounds, npmConfigQuery, parseNpmConfigLs, registryUnreach
 import { serviceManagerOf } from "./update-launch.js";
 import { isExactVersion } from "./update-check.js";
 import { startedByServiceManager, systemdServiceOf } from "./service-owner.js";
+import { checkQuiet, checkSharing, checkSpace, procUidBy, type HostDeps } from "./update-readiness-host.js";
+import { lockHolderAt } from "./home-update-lock.js";
+import { isUpdateInProgress } from "./update-marker.js";
+import { createRequire } from "node:module";
 
 export type PreflightClass = "self" | "admin-only" | "stop";
 export type PreflightId = "P1" | "P2" | "P3" | "P4" | "P5" | "P6" | "P7" | "P8" | "P9" | "P10";
 export type PreflightCode =
   | "checkout" | "other-copy" | "path-shadow" | "unreadable"                                  // P1
+  | "shared-home" | "unknown-owner" | "other-install"                                       // P2
   | "not-service" | "service-unknown" | "linger-off" | "system-unit-not-root" | "unit-reload-pending" // P3
   | "no-write"                                                                              // P4
   | "linked" | "vendored"                                                                   // P5
+  | "low-disk"                                                                              // P6
   | "npm-unreachable"                                                                       // P7
+  | "rehearsal" | "update-running"                                                          // P8
   | "container" | "windows-runtime"                                                         // P9
   | "node-too-old";                                                                         // P10
 /** One check's result. `checkedAt`: when THIS check ran (a merged result keeps each row's own age). */
@@ -58,12 +65,15 @@ const FAILS_TO: Record<PreflightId, PreflightClass> = {
   P1: "stop", P2: "stop", P3: "admin-only", P4: "admin-only", P5: "admin-only", P6: "stop", P7: "stop", P8: "stop", P9: "stop", P10: "stop",
 };
 
+/** What one failing row makes the machine: by its check, except P2's `other-install` (proven disjoint), which is admin-only. */
+const failsTo = (c: PreflightCheck): PreflightClass => (c.id === "P2" && c.code === "other-install" ? "admin-only" : FAILS_TO[c.id]);
+
 /** The class of a set of results: the worst failing check's, else self. */
 export function preflightClass(checks: readonly PreflightCheck[]): PreflightClass {
   let worst: PreflightClass = "self";
   for (const c of checks) {
     if (c.ok) continue;
-    const to = FAILS_TO[c.id];
+    const to = failsTo(c);
     if (to === "stop") return "stop";
     worst = "admin-only";
   }
@@ -71,7 +81,7 @@ export function preflightClass(checks: readonly PreflightCheck[]): PreflightClas
 }
 
 /** The local checks a result must hold, passed, before it may be self (a partial or empty result is never self). */
-const SELF_NEEDS: readonly PreflightId[] = ["P1", "P3", "P4", "P9"];
+const SELF_NEEDS: readonly PreflightId[] = ["P1", "P2", "P3", "P4", "P8", "P9"];
 
 export function summarize(checks: PreflightCheck[], checkedAt: number, scope: { target?: string | null; install?: string | null } = {}): UpdatePreflight {
   const rows = checks.map(c => (c.checkedAt === undefined ? { ...c, checkedAt } : c));
@@ -115,13 +125,15 @@ export function preflightAllows(p: UpdatePreflight, origin: "press" | "unattende
   return origin === "press" ? p.pressHere : p.class === "self";
 }
 
-export interface ReadinessDeps {
+export interface ReadinessDeps extends HostDeps {
   dispatch: DispatchDeps;
   platform: NodeJS.Platform;
   env: NodeJS.ProcessEnv;
   uid: number;
   user: string;
   ppid: number;
+  /** This fleet's AgEnD home (the fleet passes its own; default: AGEND_HOME, else ~/.agend). */
+  home: string;
   /** /proc/self/cgroup, or null off Linux / unreadable. */
   ownCgroup(): Promise<string | null>;
   exists(path: string): Promise<boolean>;
@@ -158,7 +170,28 @@ export const defaultReadinessDeps = (): ReadinessDeps => ({
   }),
   host: () => runtimePlatform.hostPlatform(),
   now: () => Date.now(),
+  pid: process.pid,
+  home: process.env.AGEND_HOME || join(homedir(), ".agend"),
+  homeDir: homedir(),
+  listDir: async path => { try { return await readdir(path); } catch { return []; } },
+  listPids: async () => { try { return (await readdir("/proc")).filter(n => /^\d+$/.test(n)).map(Number); } catch { return null; } },
+  procArgv: async pid => { try { return (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0").filter(Boolean); } catch { return null; } },
+  procEnv: async pid => {
+    try {
+      const out: Record<string, string> = Object.create(null);
+      for (const kv of (await readFile(`/proc/${pid}/environ`, "utf8")).split("\0")) { const at = kv.indexOf("="); if (at > 0) out[kv.slice(0, at)] = kv.slice(at + 1); }
+      return out;
+    } catch { return null; }
+  },
+  procUid: procUidBy(path => stat(path)),
+  freeBytes: async path => { try { const s = await statfs(path); return Number(s.bavail) * Number(s.bsize); } catch { return null; } },
+  lockHolder: path => lockHolderAt(path, admission()),
+  updateInProgress: home => { try { return isUpdateInProgress(home); } catch { return false; } },
 });
+
+/** The lock-holder helpers the installer's postinstall shares (launcher/install-admission.cjs). */
+const admission = (): { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null } =>
+  createRequire(import.meta.url)("../launcher/install-admission.cjs");
 
 /** The first executable `name` on `path`. */
 async function onPath(d: ReadinessDeps, name: string, path: string): Promise<string | null> {
@@ -337,8 +370,13 @@ export async function runUpdatePreflight(opts: { target?: string | null; localOn
   const { check: p1, install, runningRoot } = await checkInstall(d);
   seen(p1);
   seen(await checkService(d));
+  let ownPackage: string | null = null;
+  if (install) { try { ownPackage = await d.realpath(install.packageDir); } catch { ownPackage = null; } }
+  seen(await checkSharing(d, d.home, ownPackage));
   if (install) seen(await checkWrite(d, install));
   seen(await checkCopy(d, install, runningRoot));
+  seen(await checkSpace(d, d.home, install));
+  seen(await checkQuiet(d, d.home, install, !!opts.localOnly));
   if (install && !opts.localOnly) {
     seen(await checkSource(d, install));
     if (opts.target) seen(await checkTarget(d, install, opts.target));
@@ -350,7 +388,10 @@ export async function runUpdatePreflight(opts: { target?: string | null; localOn
 /** One failing check in words (the fleet's language): its fixed code, with only the values its sentence names. */
 export function preflightWords(check: PreflightCheck, tr: (key: string, ...args: string[]) => string): string {
   const d = check.detail ?? {};
-  const args = check.code === "node-too-old" ? [String(d.node ?? ""), String(d.needs ?? "")] : [String(d.path ?? d.user ?? "")];
+  const args = check.code === "node-too-old" ? [String(d.node ?? ""), String(d.needs ?? "")]
+    : check.code === "low-disk" ? [String(d.need ?? ""), String(d.have ?? ""), String(d.path ?? "")]
+    : check.code === "shared-home" || check.code === "other-install" ? [String(d.path ?? ""), String(d.home ?? "?")]
+    : [String(d.path ?? d.user ?? "")];
   return tr(`update.preflight.code.${check.code}`, ...args);
 }
 
@@ -360,7 +401,7 @@ export function preflightWords(check: PreflightCheck, tr: (key: string, ...args:
  */
 export function preflightRefusal(p: UpdatePreflight, origin: "press" | "unattended", tr: (key: string, ...args: string[]) => string): string | null {
   if (preflightAllows(p, origin)) return null;
-  const blocking = p.checks.find(c => !c.ok && (FAILS_TO[c.id] === "stop" || c.id === "P4"));
+  const blocking = p.checks.find(c => !c.ok && (failsTo(c) === "stop" || c.id === "P4"));
   if (blocking) return tr("update.preflight.refused", preflightWords(blocking, tr));
   const first = p.checks.find(c => !c.ok);
   return tr("update.preflight.press_only", first ? preflightWords(first, tr) : "");

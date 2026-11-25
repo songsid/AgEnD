@@ -31680,8 +31680,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** M-3770: the pre-flight probes (runUpdatePreflight; tests stub that module, so no real npm or systemctl runs). */
   protected async probeUpdatePreflight(opts: { target?: string | null; localOnly?: boolean }): Promise<import("./update-readiness.js").UpdatePreflight> {
-    const { runUpdatePreflight } = await import("./update-readiness.js");
-    return runUpdatePreflight(opts);
+    const { defaultReadinessDeps, runUpdatePreflight } = await import("./update-readiness.js");
+    return runUpdatePreflight(opts, { ...defaultReadinessDeps(), home: this.dataDir });
   }
 
   /**

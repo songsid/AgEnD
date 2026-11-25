@@ -21,7 +21,7 @@ vi.mock("../src/update-readiness.js", async importOriginal => {
   return { ...real, runUpdatePreflight: vi.fn(async (opts: { target?: string | null; localOnly?: boolean } = {}) => {
     preflight.calls.push(opts);
     if (preflight.hold) await preflight.hold;
-    const local = preflight.checks ?? [{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }];
+    const local = preflight.checks ?? [{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }];
     const network = !opts.localOnly && preflight.network ? preflight.network : [];
     return real.summarize([...local, ...network] as never, Date.now(), { target: network.some(c => c.id === "P10") ? opts.target ?? null : null, install: "/home/u/.npm-global/bin/agend" });
   }) };
