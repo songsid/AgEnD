@@ -977,6 +977,12 @@ img.amb-p { object-fit: contain; }
 .n-raw > summary { cursor: pointer; width: fit-content; }
 .n-raw-text { margin: var(--s-1) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-xs); color: var(--text-2); }
 .n-link { display: inline-block; margin-top: var(--s-2); font-size: var(--fs-xs); color: var(--text-2); }
+/* Phone and touch: the compact card's choices, its text toggle and its chat link are full tap targets (as .n-actions). */
+@media (max-width: 899px), (pointer: coarse) {
+  .n-stack > .btn, .prompt .acts-stack > .btn { min-height: var(--tap); }
+  .n-raw > summary { min-height: var(--tap); line-height: var(--tap); }
+  .n-link { display: inline-flex; align-items: center; min-height: var(--tap); }
+}
 .prompt .wait { font-size: var(--fs-xs); color: var(--text-3); }
 /* #2675: a prompt's typed answer. 16px keeps iOS from zooming in on focus (#1612). */
 .prompt .prompt-text { display: flex; gap: var(--s-2); margin-top: var(--s-2); }
