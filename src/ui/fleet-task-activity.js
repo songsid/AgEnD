@@ -20,6 +20,11 @@ import { AgentTag } from "./fleet-task-run.js";
 import { WhoCard } from "./fleet-task-owner.js";
 import { insertAtTrigger, triggerAt, withoutCode } from "./trigger-complete.js";
 import { dateTimeText } from "/assets/clock-text.js";
+import { FileList } from "./fleet-task-files.js";
+import { MdBody, commentHtml, decorateCode, storedWrap } from "./fleet-task-md.js";
+
+// The Markdown pieces moved to fleet-task-md.js (the card's fields draw them too); these stay importable from here.
+export { MdBody, commentHtml, decorateCode };
 
 export const TIMELINE_FILTERS = ["all", "comments", "log", "history"];
 const RANK = { event: 0, log: 1, comment: 2 };   // at one instant: the move first, then the words that came with it
@@ -34,7 +39,8 @@ const when = (iso) => { const n = Date.parse(iso); return Number.isFinite(n) ? n
  */
 export function timelineOf(detail) {
   const out = [];
-  for (const e of (detail && detail.comments) || []) out.push({ key: `c${e.id}`, type: "comment", at: e.at, who: e.author, by: e.authorKind || "", text: e.text, kind: e.kind, authorKind: e.authorKind });
+  const files = (detail && detail.attachments) || [];
+  for (const e of (detail && detail.comments) || []) out.push({ key: `c${e.id}`, type: "comment", at: e.at, who: e.author, by: e.authorKind || "", text: e.text, kind: e.kind, authorKind: e.authorKind, files: files.filter((f) => f.entryId === e.id) });
   for (const e of (detail && detail.logs) || []) out.push({ key: `l${e.id}`, type: "log", at: e.at, who: e.author, by: e.authorKind || "", text: e.text });
   for (const ev of (detail && detail.history) || []) {
     if (ev.type === "commented" || ev.type === "reordered") continue;
@@ -116,12 +122,6 @@ export function dayLabel(iso, now = Date.now()) {
   return d.toLocaleDateString(lang() === "zh-TW" ? "zh-TW" : "en-US", { weekday: "short", month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
 }
 
-/** A comment's text as the chat draws a message (Markdown, escaped first); the plain text when the renderer is not there. */
-const commentHtml = (text) => {
-  const r = globalThis.AgendChatRender;
-  return r && typeof r.renderMarkdown === "function" ? { __html: r.renderMarkdown(text) } : null;
-};
-
 /**
  * The stream's items (pure: tests import it): what people and agents SAY — a comment, a progress note — is a card each; the
  * system's lines (history) between two cards are a run, of any length, and a run is folded into one "› N activities" row at first
@@ -143,80 +143,6 @@ export function streamOf(entries, group = true) {
 
 const timeOf = (entry) => html`<time class="muted tl-time" dateTime=${entry.at} title=${fullTime(entry.at)}>${relTime(entry.at)}</time>`;
 
-// ── A comment's text as the chat draws a message ─────────────
-
-/** The chat's copy: the clipboard, else a hidden text area (a plain-http page has no clipboard API). */
-async function copyText(text) {
-  try { if (navigator.clipboard && globalThis.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch { /* fall back */ }
-  const ta = document.createElement("textarea"); ta.value = text; ta.setAttribute("readonly", ""); ta.className = "offscreen";
-  document.body.appendChild(ta); ta.select();
-  let ok = false; try { ok = document.execCommand("copy"); } catch { ok = false; }
-  ta.remove();
-  return ok;
-}
-const storedWrap = () => { try { return localStorage.getItem("agend_code_wrap") === "1"; } catch { return false; } };
-
-/**
- * Code blocks as the chat's thread draws them (chat-thread.js `decorateCode`, the same classes, so the same sheet styles them):
- * a header with the language, Wrap and Copy, and a block of more than CODE_FOLD_LINES lines folded until opened. Built from nodes.
- */
-export function decorateCode(root) {
-  if (!root || typeof root.querySelectorAll !== "function") return;
-  const doc = root.ownerDocument;
-  const R = globalThis.AgendChatRender;
-  const limit = R && Number.isFinite(R.CODE_FOLD_LINES) ? R.CODE_FOLD_LINES : 30;
-  const lineCount = R && typeof R.lineCount === "function" ? R.lineCount : (c) => String(c).split("\n").length;
-  for (const pre of root.querySelectorAll("pre")) {
-    if (pre.parentNode && pre.parentNode.classList && pre.parentNode.classList.contains("codeblock")) continue;
-    const box = doc.createElement("div"); box.className = "codeblock";
-    const head = doc.createElement("div"); head.className = "cb-head";
-    const lang = doc.createElement("span"); lang.className = "cb-lang"; lang.textContent = pre.dataset.lang || "text";
-    const wrap = doc.createElement("button"); wrap.type = "button"; wrap.className = "chip-btn"; wrap.dataset.act = "toggleWrap"; wrap.textContent = t("chat.wrap");
-    const copy = doc.createElement("button"); copy.type = "button"; copy.className = "chip-btn"; copy.dataset.act = "copyCode"; copy.textContent = t("chat.copy");
-    head.append(lang, wrap, copy);
-    pre.replaceWith(box); box.append(head, pre);
-    const lines = lineCount(pre.textContent);
-    if (lines > limit) {
-      box.classList.add("folded");
-      const more = doc.createElement("button"); more.type = "button"; more.className = "cb-more"; more.dataset.act = "toggleFold";
-      more.dataset.lines = String(lines); more.textContent = t("chat.showAll", lines);
-      box.append(more);
-    }
-  }
-}
-
-/** A click on one of a decorated block's buttons (Copy, Wrap, Show all), as the chat's thread answers it. */
-async function onCodeClick(e) {
-  const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
-  if (!el) return;
-  const act = el.dataset.act;
-  if (act === "copyCode") {
-    const pre = el.closest(".codeblock") && el.closest(".codeblock").querySelector("pre");
-    if (!pre) return;
-    const ok = await copyText(pre.textContent);
-    const was = el.dataset.label || el.textContent; el.dataset.label = was;
-    el.textContent = t(ok ? "chat.copied" : "chat.copyFailed");
-    setTimeout(() => { el.textContent = was; }, 1200);
-  } else if (act === "toggleWrap") {
-    const stream = el.closest(".tl");
-    if (!stream) return;
-    const on = stream.classList.toggle("wrap-code");
-    try { localStorage.setItem("agend_code_wrap", on ? "1" : "0"); } catch { /* this page only */ }
-  } else if (act === "toggleFold") {
-    const box = el.closest(".codeblock");
-    if (!box) return;
-    const folded = box.classList.toggle("folded");
-    el.textContent = !folded ? t("chat.showLess") : t("chat.showAll", el.dataset.lines);
-  }
-}
-
-/** A comment's body: the chat's Markdown, its code blocks decorated as the chat's are. */
-function MdBody({ body }) {
-  const ref = useRef(null);
-  useEffect(() => { decorateCode(ref.current); });
-  return html`<div class="tl-body md" ref=${ref} onClick=${onCodeClick} dangerouslySetInnerHTML=${body}></div>`;
-}
-
 /**
  * One entry. A comment and a progress note are each a card (the same: a head with the avatar — an instance's with its state
  * dot —, the name, an "Agent" badge, a tag for what it is, and the time; the text under the name); a history line is a thin row
@@ -236,7 +162,8 @@ function Entry({ entry, describe, who }) {
         ${entry.kind === "reject" ? html`<span class="tb-tag st-blocked">${t("taskcard.rejectTag")}</span>` : null}
         ${entry.kind === "approve" ? html`<span class="tb-tag st-done">${t("taskcard.approveTag")}</span>` : null}
         ${time}</div>
-      ${body ? html`<${MdBody} body=${body} />` : html`<div class="tl-body">${entry.text}</div>`}</li>`;
+      ${body ? html`<${MdBody} body=${body} />` : html`<div class="tl-body">${entry.text}</div>`}
+      ${entry.files && entry.files.length ? html`<${FileList} files=${entry.files} cls="tl-files" />` : null}</li>`;
   }
   if (entry.type === "log") {
     return html`<li class=${`tl-item tl-card tl-log${mark}`}>

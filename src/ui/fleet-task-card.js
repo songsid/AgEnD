@@ -19,6 +19,7 @@ import { ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, errorTe
 import { StepButtons, movesFor } from "./fleet-task-menu.js";
 import { Checklist, EditableText, InlineTitle, PropChip, QuickAdd } from "./fleet-task-edit.js";
 import { Composer, Timeline } from "./fleet-task-activity.js";
+import { FilesField } from "./fleet-task-files.js";
 import { AgentRun } from "./fleet-task-run.js";
 import { LeaderRow, WatchersRow } from "./fleet-task-follow.js";
 
@@ -395,6 +396,7 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
         ${spec.shown.length ? html`<div class="tp-spec">${spec.shown}</div>` : null}
         ${spec.adders.length ? html`<div class="tp-adders">${spec.adders}</div>` : null}
         <${AgentRun} card=${card} detail=${detail} doing=${doing} derived=${derived} shown=${handoff.shown} adders=${handoff.adders} />
+        <${FilesField} files=${(detail && detail.attachments) || []} />
         ${subs}
       </div>
 

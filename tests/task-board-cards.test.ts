@@ -1213,7 +1213,8 @@ describe("round 7: a comment is formatted as the instance chat's window formats 
     expect([...b.querySelectorAll("a")].filter((a: any) => /^javascript:/i.test(a.getAttribute("href") ?? ""))).toEqual([]);
   });
   it("the same renderer and the same code-block frame as the chat: one Markdown, the chat's classes and actions, the chat's strings", () => {
-    const act = readFileSync(join(UI, "fleet-task-activity.js"), "utf8");
+    // the Markdown pieces live in fleet-task-md.js (a card's fields and a file's preview draw them too); the timeline imports them.
+    const act = readFileSync(join(UI, "fleet-task-md.js"), "utf8");
     const chat = readFileSync(join(UI, "shared", "chat-thread.js"), "utf8");
     expect(act, "the shared renderer, not a copy").toMatch(/AgendChatRender/);
     expect(act).not.toMatch(/function renderMarkdown|escapeHtml\(/);

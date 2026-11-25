@@ -10,6 +10,7 @@ import { t, register, lang } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { RunMark, runOf } from "./fleet-task-run.js";
+import "./fleet-task-files.js";
 import { OwnerChip } from "./fleet-task-owner.js";
 import { COLUMNS, ProgressBar, UNASSIGNED, Who, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, waitsList, waitsOn, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { assetUrl } from "/assets/asset-url.js";
@@ -498,6 +499,7 @@ function Row({ card, subs, main, flash, now, runs, subsAsRows, who, expanded, on
         ${card.acceptance.length ? html`<span class=${accepted === card.acceptance.length ? "all" : ""} title=${t(card.kind === "main" ? "tasks.definition" : "tasks.acceptance")}><${Icon} name="check" size=${13} />${accepted}/${card.acceptance.length}</span>` : null}
         ${waitsOn(card) ? html`<span title=${t("tasks.waitsFor", waitsList(card, ", "))}><${Icon} name="clock" size=${13} /></span>` : null}
         ${card.commentCount ? html`<span class=${replied ? "reply" : ""} title=${replied ? t("tasks.agentReplied") : t("tasks.comments")}><${Icon} name="chat" size=${13} />${card.commentCount}</span>` : null}
+        ${card.attachmentCount ? html`<span title=${t("taskfiles.title")}><${Icon} name="attach" size=${13} />${card.attachmentCount}</span>` : null}
       </span>
       <span class=${`tb-row-prio p-${card.priority}`}>${t(`tasks.${card.priority}`)}</span>
       ${who ? html`<span class="tb-row-who"><${OwnerChip} card=${card} cards=${cards} lead=${lead} canAssign=${writable && card.status !== "done" && card.status !== "cancelled"} onPick=${onOwner} /></span>` : null}

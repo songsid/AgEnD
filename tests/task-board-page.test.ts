@@ -1291,7 +1291,8 @@ describe("who may change the board — through the real Tasks tab", () => {
       expect(!!q(".tc-mentions"), "no @ list without a comment box").toBe(false);
       expect(!!q(".tp-body .tc-quick-add"), "adding a sub task").toBe(writes);
       expect(qa(".tp-add").length > 0, "the + Add buttons of the empty fields").toBe(writes);
-      expect(qa(".tp-body .tc-field .tc-text").filter((el) => el.tagName === "BUTTON").length > 0, "a text opens as a box on a click").toBe(writes);
+      // (a text that is there is read as Markdown — a box that opens on a click too — an empty one is the button.)
+      expect(qa(".tp-body .tc-field .tc-text").filter((el) => el.tagName === "BUTTON" || String(el.parentNode?.className).includes("tc-md-wrap")).length > 0, "a text opens as a box on a click").toBe(writes);
       expect(qa(".tp-body .tb-check input").every((el) => el.disabled === !writes) && qa(".tp-body .tb-check input").length > 0, "ticks").toBe(true);
       expect(!!q(".tp-body .tc-editlist"), "Edit the list").toBe(writes);
       expect(qa(".tp .tc-actions button, .tp .tp-bar .tp-more, .tp .tp-bar .menu-trigger").length > 0, "Mark blocked, the ⋯ menu and the card's actions").toBe(writes);
