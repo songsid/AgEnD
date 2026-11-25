@@ -64,12 +64,13 @@ try {
         check(`${tag}: localhost, unverified — the line with the count`, (await line.locator(".n-title").innerText()).trim() === title, await line.innerText());
         const said = await line.innerText();
         check(`${tag}: localhost — Authorize this browser offered`, /Authorize this browser|授權這個瀏覽器/.test(said), said);
-        check(`${tag}: no request named before verifying`, !/Example lead|Example worker|release checklist|發版/.test(await page.locator("body").innerText()));
+        check(`${tag}: no request named before verifying`, !/Example lead|Example worker|release checklist|發版/.test(await page.locator(".p-needs").innerText()));
         await shot(page, "1-local-unverified");
-        const record = fm.webSessions.list(undefined, () => true).find((r: any) => r.owner?.userId === account.userId);
+        let record: any = null;
+        fm.webSessions.list(undefined, (r: any) => { if (r.owner?.userId === account.userId) record = r; return false; });
         check(`${tag}: the account confirms (as the DM's Confirm)`, fm.authorizeWebSession(record, "loopback", false).ok === true);
         await page.reload(); await page.locator(".contact-need[data-reason=contact_request]").first().waitFor({ timeout: 15000 });
-        const body = await page.locator("body").innerText();
+        const body = await page.locator(".p-needs").innerText();
         check(`${tag}: verified — the requests with Approve once, and no line`, (await page.locator(".contact-verify-need").count()) === 0
           && (await page.locator(".contact-need[data-reason=contact_request]").count()) === 2 && /Approve once|核准一次/.test(body), body.slice(0, 400));
         await shot(page, "2-local-verified");
@@ -82,7 +83,7 @@ try {
       try {
         const line = page.locator(".contact-verify-need"); await line.waitFor({ timeout: 20000 });
         check(`${tag}: public link, unverified — the line with the count`, (await line.locator(".n-title").innerText()).trim() === title, await line.innerText());
-        check(`${tag}: public link — no request named`, !/Example lead|Example worker|release checklist|發版/.test(await page.locator("body").innerText()));
+        check(`${tag}: public link — no request named`, !/Example lead|Example worker|release checklist|發版/.test(await page.locator(".p-needs").innerText()));
         receipt[`linkChip-${tag}`] = (await line.locator(".webauth-chip").innerText().catch(() => "")).trim();
         await shot(page, "3-link-unverified");
         check(`${tag}: no page errors (link)`, errors.length === 0, errors);
