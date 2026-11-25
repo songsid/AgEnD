@@ -193,6 +193,30 @@ describe("a guest's /web: its private code signs it in verified as its account (
     expect(h.s.webAuthorityQualifies({ session: rec, gateway: false, peer: "loopback" })).toBe("not_admin_session");
   });
 
+  it("D1 on the current tip (#4435, #4447): a verified guest whose account is a Fleet admin on a second bot is still no contact actor, and Needs you gives it no verify line and no request", async () => {
+    const h = rig();
+    // #4435: the same person across bot connections — alice is a Fleet admin of a second Discord connection.
+    const second = { id: "second", type: "discord", group_id: "G2", bot_token_env: "NONE", access: { mode: "allowlist", allowed_users: ["alice"] } };
+    (h.fm.fleetConfig as any).channels = [...(h.fm.fleetConfig as any).channels, second];
+    expect(h.s.isFleetAdmin("alice", "second"), "alice is an admin — as an account on the second bot").toBe(true);
+    const { rec, cookie } = await h.signIn(await h.web());
+    expect([rec.tier, h.kind(rec)]).toEqual(["guest", "web-guest"]);
+    const req = h.call("GET", "/auth/session", undefined, cookie).req;
+    expect(h.s.contactActor(req, new URL("http://127.0.0.1:19280/ui/fleet/authorizations")), "a guest is never a contact actor").toBeNull();
+    // #4447: two contact requests wait; the guest's Needs you (its poll) carries no count line and no request.
+    h.s.contactPendingCount = () => ({ count: 2, since: 1 });
+    const { handleWebRequest } = await import("../src/web-api.js");
+    const poll = await new Promise<any>((resolve) => {
+      const pr = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/poll", headers: { host: "127.0.0.1:19280", "user-agent": UA, origin: "http://127.0.0.1:19280", cookie }, socket: { remoteAddress: "127.0.0.1" }, destroy: vi.fn() });
+      let status = 0;
+      const res = Object.assign(new EventEmitter(), { headersSent: false, destroyed: false, writableEnded: false, setHeader() {}, write: () => true, destroy: vi.fn(),
+        writeHead: (c: number) => { status = c; }, end: (t = "") => resolve({ status, body: t ? JSON.parse(String(t)) : null }) });
+      handleWebRequest(pr as never, res as never, new URL("/ui/poll", "http://127.0.0.1:19280"), h.fm as never);
+    });
+    expect(poll.status).toBe(200);
+    expect(JSON.stringify(poll.body.needs ?? []), "no verify line, no contact request").not.toMatch(/contact_verify_needed|contact_request|"type":"contact"/);
+  });
+
   it("ended as an admin's: Revoke web authority (the epoch) reads it as none; its own /web revoke signs it out", async () => {
     const h = rig();
     const { rec } = await h.signIn(await h.web());
