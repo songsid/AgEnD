@@ -8,7 +8,7 @@ Regenerate: `S229_EVIDENCE=1 npx vitest run tests/request-contact-native-s229.te
 |---|---|---|
 | `held-request` | A request-scoped hold: question, quote, who asked · #id · expiry, the web card's short scope line (#4497) | Continue / Decline |
 | `held-legacy` | A legacy ticket on the same card | Approve once / Decline |
-| `general-proposal` | General's proposal: its one suggestion, then the same card | the suggested choice / Not now |
+| `general-proposal` | General's proposal: its one suggestion, then the same card ending at the meta line (no scope line) | the suggested choice / Not now |
 
 What a card says when it closes:
 

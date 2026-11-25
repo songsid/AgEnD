@@ -219,8 +219,11 @@ it.each(["en", "zh-TW"] as const)("%s: General's proposal posts the same card wi
   setLocale(locale);
   const r = rig(), ticket = r.hold();
   await r.fm.requestContactChange("general", { kind: "ticket-decision", ticket_id: ticket.id, decision: "decline" }, () => true);
-  const lines = posted(r).message.split("\n");
-  expect(lines.slice(0, 2)).toEqual(locale === "en" ? ["General suggests: Decline", "Let Example lead contact Example worker?"] : ["General 建議：拒絕", "讓 Example lead 聯絡 Example worker？"]);
+  const lines = posted(r).message.split("\n"), short = ticket.id.slice(0, 9);
+  // It ends at the meta line: no scope line for a button the proposal does not offer.
+  expect(lines).toEqual(locale === "en" ? ["General suggests: Decline", "Let Example lead contact Example worker?", "> Please run the release checklist.",
+    expect.stringMatching(new RegExp(`^Asked by Demo person · #${short} · expires in (29|30) min$`))]
+    : ["General 建議：拒絕", "讓 Example lead 聯絡 Example worker？", "> Please run the release checklist.", expect.stringMatching(new RegExp(`^Demo person 提出 · #${short} · (29|30) 分鐘後到期$`))]);
   expect(posted(r).choices.map((c: any) => c.label)).toEqual(locale === "en" ? ["Decline", "Not now"] : ["拒絕", "先不要"]);
   expect([r.box.contactAuthorizations.get(ticket.id)!.state, pendingDeliveries(r)]).toEqual(["pending", 0]);
   record("general-proposal", r);

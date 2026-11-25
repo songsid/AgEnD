@@ -29,8 +29,8 @@ const expiresIn = (card: RequestContactCardV1, now: number): string => {
 };
 
 /**
- * The card: a question title, the held message, one meta line (who asked · #id · expiry) and one scope sentence.
- * A General proposal leads with its one suggestion and offers only that choice plus Not now.
+ * The card: a question title, the held message, one meta line (who asked · #id · expiry) and one scope line.
+ * A General proposal leads with its one suggestion, ends at the meta line, and offers only that choice plus Not now.
  */
 export function nativeContactCardText(card: RequestContactCardV1, opts: { now?: number; proposal?: "approve-once" | "decline" } = {}): NativeContactCardView {
   const now = opts.now ?? Date.now(), root = card.approvalScope === "root-request";
@@ -43,7 +43,8 @@ export function nativeContactCardText(card: RequestContactCardV1, opts: { now?: 
     t("contactCard.title", card.sourceLabel, card.targetLabel),
     `> ${quote.replace(/\s*\n+\s*/g, " ")}`,
     meta,
-    t(root ? "contactCard.scope_root" : "contactCard.scope_once"),
+    // A proposal offers one decision and Not now; a scope line would describe a button that is not there.
+    ...(opts.proposal ? [] : [t(root ? "contactCard.scope_root" : "contactCard.scope_once")]),
   ];
   const choices: NativeContactCardView["choices"] = opts.proposal
     ? [{ action: opts.proposal === "decline" ? "decline" : "approve", label: opts.proposal === "decline" ? decline : approve }, { action: "cancel", label: t("contactCard.not_now") }]

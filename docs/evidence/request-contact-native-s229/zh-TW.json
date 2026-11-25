@@ -37,7 +37,7 @@
     "general-proposal": {
       "card": {
         "type": "clear_confirm",
-        "text": "General 建議：拒絕\n讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\nDemo person 提出 · #R1a2b3c4d · 30 分鐘後到期\n繼續＝只放行這筆請求和它後續的聯絡。",
+        "text": "General 建議：拒絕\n讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\nDemo person 提出 · #R1a2b3c4d · 30 分鐘後到期",
         "buttons": [
           {
             "label": "拒絕",
