@@ -570,7 +570,7 @@ export const ReplaceInstanceArgs = z.object({
 // any unknown keys so internal callers (deploy_template) can forward extras
 // (profile-derived fields, start_point, …) without the schema stripping them.
 export const CreateInstanceArgs = z.object({
-  tool_set: WritableToolSet.optional().describe("AgEnD tool profile for the new instance. General may set full, coordinator, worker, standard or minimal. Any other creator may set a profile at or below its own, never full or general; the refusal names the cap. A resolved self-target is refused (#804/#814)."),
+  tool_set: WritableToolSet.optional().describe("Tool profile for the new instance, at or below the caller's own. Never full or general; the refusal names the cap. General may set any writable profile. Self-targets are refused (#804/#814)."),
   directory: z.string().optional().describe(
     "Absolute path or ~-prefixed path to the project directory. Optional — omit to auto-create a workspace at ~/.agend/workspaces/<name>.",
   ),
