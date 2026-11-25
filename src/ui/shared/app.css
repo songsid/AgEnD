@@ -1443,6 +1443,8 @@ img.amb-p { object-fit: contain; }
 .webauth-chip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); margin: var(--s-1) 0 0; font-size: var(--fs-xs); }
 .webauth-chip .webauth-ok { color: var(--ok); }
 .webauth-chip .btn-sm { min-height: 24px; }
+/* M-3710 (#4447 review): Needs you's Authorize this browser is a full touch target on a phone. */
+@media (pointer: coarse), (max-width: 479px) { .contact-verify-need .webauth-chip .btn-sm { min-height: var(--tap); min-width: var(--tap); } }
 /* #1939 S2a: Settings → Web → Web authority. */
 .s-web-authority .s-va-sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .s-web-authority .s-va-sessions li { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); overflow-wrap: anywhere; }
@@ -5392,3 +5394,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-fleet :is(.tb-head-actions, .tb-title, .tb-stats) .btn { min-height: var(--tap); }
   .p-fleet .tb-project-menu .icon-btn { width: var(--tap); height: var(--tap); }   /* a project tile's ⋯ */
 }
+
+/* M-3678: the new owner stop action follows the phone tap target. */
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .n-actions .hub-close { min-height: var(--tap); min-width: var(--tap); } }

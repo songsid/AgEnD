@@ -276,7 +276,12 @@ function contactNeedsFor(req: IncomingMessage, url: URL, ctx: WebApiContext, bas
   // A session identity may see benign room suggestions, never pending approval tickets.
   const suggestions = observer && ctx.contactNeeds ? ctx.contactNeeds(observer).filter(item => item && typeof item === "object"
     && (item as { reason?: string }).reason === "contact_restricted_suggestion") : [];
-  return [...ordinary, ...suggestions];
+  // M-3710 (R21079937, 11-25: a pending request was in no list, even on this computer): an admin session with no verified
+  // person behind it is told how many requests wait and to authorize this browser — the count only, never which.
+  const waiting = admin ? ctx.contactPendingCount?.() : undefined;
+  const verify = waiting && waiting.count > 0 ? [{ id: "contact-verify", type: "contact", reason: "contact_verify_needed", instance: "",
+    since: waiting.since, detail: "", contactVerify: { count: waiting.count } }] : [];
+  return [...ordinary, ...verify, ...suggestions];
 }
 
 /**
@@ -439,6 +444,8 @@ export interface WebApiContext extends ClaudeCredentialApi {
   decideContactAuthorization?: ContactApiHost["decideContactAuthorization"];
   contactActor?(req: IncomingMessage, url: URL): import("./contact-auth-types.js").ContactPerson | null;
   contactNeeds?(actor: import("./contact-auth-types.js").ContactPerson): unknown[];
+  /** M-3710: the pending contact requests' count and the oldest one's time — nothing that names them. */
+  contactPendingCount?(): { count: number; since: number };
   acknowledgeContactSuggestion?(instance: string, actor: import("./contact-auth-types.js").ContactPerson): void;
   acknowledgeContactSuggestionFromWeb?(instance: string, req: IncomingMessage, url: URL): void;
   contactSuggestionActor?(req: IncomingMessage, url: URL): import("./contact-auth-types.js").ContactPerson | null;
@@ -659,6 +666,7 @@ export interface WebApiContext extends ClaudeCredentialApi {
   /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
   /** M-3632: Needs you → "Try again" on held Hub work. */
+  closeHubHeld?(id: string, actor: import("./contact-auth-types.js").ContactPerson): Promise<{ status: number; code: string }>;
   retryHubHeld?(id: string): { status: number; code: string };
   /** alpha.2 (M-2300): agents' requests waiting for a web-only fleet's verified owner; null: not that owner. */
   webAgentProposals?(req: IncomingMessage): import("./settings-confirmation.js").SettingsPendingView[] | null;
@@ -3592,6 +3600,20 @@ export function handleWebRequest(
     return true;
   }
 
+  if (method === "POST" && path === "/ui/needs/hub-close") {
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "invalid" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const actor = ctx.contactActor?.(req, url);
+      if (!actor) { json(res, 403, { error: "verification-required", code: "verification-required" }); return; }
+      if (typeof body.id !== "string" || body.id.length > 200) { json(res, 400, { error: "invalid" }); return; }
+      if (!ctx.closeHubHeld) { json(res, 503, { error: "unavailable", code: "unavailable" }); return; }
+      const out = await ctx.closeHubHeld(body.id, actor);
+      json(res, out.status, { code: out.code, ...(out.status === 200 ? { ok: true } : { error: out.code }) });
+    })().catch(() => { if (!res.headersSent) json(res, 503, { error: "unavailable", code: "unavailable" }); });
+    return true;
+  }
   // M-3632: Needs you → "Try again" on held Hub work: back through the Hub's checks, never a blind delivery.
   if (method === "POST" && path === "/ui/needs/hub-retry") {
     if (!ctx.retryHubHeld) { json(res, 404, { error: "not-found", code: "not-found" }); return true; }

@@ -78,7 +78,12 @@ export function nodeText(n) {
 export function buildOrgView(org, app) {
   const live = new Map((app.instances || []).map((i) => [i.name, i]));
   const needs = new Map();
-  for (const item of Array.isArray(app.needs) ? app.needs : []) needs.set(item.instance, (needs.get(item.instance) || 0) + 1);
+  // M-3720 (the user, 11-25): a ClassicBot room's "can switch to restricted mode" suggestion is a low-key hint (Needs you
+  // folds them into one quiet group), not a call — it alone never sends the room to the Help desk. Every other item does.
+  for (const item of Array.isArray(app.needs) ? app.needs : []) {
+    if (item && item.type === "contact" && item.reason === "contact_restricted_suggestion") continue;
+    needs.set(item.instance, (needs.get(item.instance) || 0) + 1);
+  }
   const awaiting = app.awaiting || {};
   const info = (org && org.instances) || {};
   const node = (name) => {

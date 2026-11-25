@@ -1,3 +1,4 @@
+type HubHeldCloseOutcome = import("./hub/question-close-model.js").HubHeldCloseOutcome;
 import { prepareContactChange, shortContactTicketId, type PreparedContactChange } from "./contact-change-proposals.js";
 import { contactStateView, ownContactRequestsView } from "./contact-state-view.js";
 import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
@@ -24,7 +25,7 @@ import {withHubRoomReplyWarning} from "./hub-room-reply-warning.js";
 import { ContactAuthService } from "./contact-auth-service.js";
 import { stageContactFiles, type ContactFileLease } from "./contact-auth-files.js";
 import { ContactOriginClearSchema, ContactPermissionsSchema, sameContactPerson } from "./contact-auth-policy.js";
-import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus, type ContactOrigin, type ContactOriginClear, type ContactPerson, type ContactPermissions, type ContactPermissionsWrite, type ContactRoomTools, type ContactTicketDecision } from "./contact-auth-types.js";
+import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus, type ContactOrigin, type ContactOriginClear, type ContactPerson, type ContactPermissions, type ContactPermissionsWrite, type ContactRoomTools, type ContactTicket, type ContactTicketDecision } from "./contact-auth-types.js";
 import { contactPersonKey, normalizeContactPersonKey, type ContactRequest } from "./contact-auth-store.js";
 import { hubSharingNoticeText, type HubSharingNotice, type HubSharingController } from "./hub-sharing-notice.js";
 import { hubPageSharingSettings } from "./hub-page-sharing-settings.js";
@@ -902,6 +903,8 @@ export interface ModelCatalog {
  */
 interface NonceButtonEntry {
   contactChange?: { plan: PreparedContactChange; current(): boolean };
+  /** M-3680: the held contact request a General card decides (CONTACT_TICKET_PREFIX). */
+  contactTicketId?: string;
   /**
    * #1490 row 27: the lifecycle of `instanceName` the prompt was offered for (lifecyclePin), taken when it is posted.
    * A Restart acts only while it still holds: a stop, restart or same-name replacement since makes the button stale.
@@ -1119,6 +1122,13 @@ const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
 /** M-3140: Update now on a Hub-recommended-version notice in General ("hub-update:" + 32 hex + ":update" = 50 bytes). */
 const HUB_UPDATE_CALLBACK_PREFIX = "hub-update:";
 const HUB_SHARING_CALLBACK_PREFIX = "hub-share:";
+/** M-3680: a held contact request's card in General ("contact-ticket:" + 32 hex + ":approve" = 55 bytes, under Telegram's 64). */
+const CONTACT_TICKET_PREFIX = "contact-ticket:";
+/** How many requests' cards are remembered (one card per request; a decided one is forgotten at once). */
+const HELD_CARDS_KEPT = 512;
+/** A held request's card, retired after it was decided elsewhere (the dashboard, Needs you, another card) or closed. */
+const heldCardOutcome = (state: string): string => t(state === "approved" ? "contactHeld.approvedElsewhere"
+  : state === "declined" ? "contactHeld.declinedElsewhere" : state === "expired" ? "contactHeld.expired" : "contactHeld.closed");
 const HUB_FLEET_UPDATE_CALLBACK_PREFIX = "hub-fleet-update:";
 const KIRO_RECONCILE_CALLBACK_PREFIX = "kiro-reconcile:";
 /** #2692: a fleet admin's Approve / Reject on an agent's pending skin-pack change, in General. */
@@ -2748,7 +2758,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               : this.getInstanceAdapterId(agent) === actor.adapter_id && this.isFleetAdmin(actor.user_id, actor.adapter_id),
           }, caller.agent, receiptId),
           attachExposures: api => this.attachHubMemberExposures(api),
-          attachAttention: (read, retry) => this.attachHubExecutionAttention(read, retry),
+          attachAttention: (read, retry, close) => this.attachHubExecutionAttention(read, retry, close),
           updates: { idle: () => this.hubUpdateIdle(), busy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir),
             canInstall: () => this.hubUpdateCanInstall(), launch: (row, control) => this.launchHubUpdate(row, control),
             active: id => this.hubUpdateOwned?.id === id, outcome: row => this.hubUpdateOutcome(row), notify: n => this.recordHubUpdateNotice(n) },
@@ -3631,6 +3641,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private signInKeepAlive: SignInKeepAlive | null = null;
   private hubExecutionAttention: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null = null;
   /** M-3632: the member's "Try again" for a held Hub question (null while no member runs). */
+  private hubHeldClose: ((id: string) => Promise<HubHeldCloseOutcome>) | null = null;
   private hubHeldRetry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null;
   private missedOfflineStore: MissedOfflineStore | null = null;
   private configHistory: ConfigHistory | null = null;
@@ -4617,7 +4628,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * alpha.2 (M-2300; #2973's agent requests, junsion's §6): on a fleet with no chat connection there is no General to
+   * alpha.2 (M-2300; #2973's agent requests, a colleague's §6): on a fleet with no chat connection there is no General to
    * post an agent's Windows request in — it waited for `agend settings confirm` on the host. Its owner (decision
    * 28c2d3a3: the `agend web --code` session on this computer, web-verified) now sees and decides it from the web's
    * Needs you. The authority is asked from the request each time, and again at execution by the store (`current`):
@@ -5839,6 +5850,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             sender: ticket.source, text: ticket.message, ts: new Date().toISOString(), contactTicket: { id: ticket.id, state: "approved" } });
         }
         this.emitSseEvent("contact-auth", { instance, ...(ticketId ? { ticketId } : {}), revision });
+        // M-3680: a card never stands in the way of the hold (or a decision) that called this.
+        if (ticket) { try { this.syncHeldTicketCard(ticket); } catch (err) { this.logger?.warn?.({ err: (err as Error)?.message, ticket: ticket.id }, "Held contact request card failed"); } }
         this.needsYou?.poke();
         this.emitSseEvent("needs", { items: this.needsYouItems() });
       },
@@ -6029,6 +6042,97 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
+  /**
+   * M-3680 (the user, 11-25): a fleet agent's send held for approval reaches an administrator in General on the target's
+   * Discord or Telegram, as a card with Approve once / Decline — until then a held request had no chat path (the live
+   * Needs you message lists it without buttons). One card per request. Whoever clicks must be one who may decide it
+   * (ContactAuthService.view(...).canDecide, read at the click); the decision is theirs, never the bot's. A request decided
+   * anywhere else (the web, another card) retires its card. #4448 (R21079937): a ClassicBot room's request to a fleet agent
+   * gets the same card, in the General of the target's connection; a room's request to anything else gets none.
+   */
+  /** Requests whose card was posted or tried: forgotten when the request is decided, and at most HELD_CARDS_KEPT. */
+  private heldTicketCards?: Set<string>;
+  private syncHeldTicketCard(ticket: ContactTicket): void {
+    const posted = (this.heldTicketCards ??= new Set<string>());
+    if (ticket.state !== "pending") {
+      posted.delete(ticket.id);
+      for (const [nonce, entry] of [...(this.pendingNonceButtons ?? [])]) {
+        if (entry.prefix !== CONTACT_TICKET_PREFIX || entry.contactTicketId !== ticket.id) continue;
+        this.pendingNonceButtons.delete(nonce);
+        if (entry.timer) clearTimeout(entry.timer);
+        // #4438 review: a card still being posted has no message yet; postHeldTicketCard retires it once it has one.
+        if (entry.messageId) void this.retireNonceButtons(entry, entry.messageId, heldCardOutcome(ticket.state));
+      }
+      return;
+    }
+    // A fleet agent's send, or (R21079937, 11-25: a room's request was in no list and had no card) a ClassicBot room's send
+    // to a fleet agent — the card goes to the General of the TARGET's connection either way (postHeldTicketCard).
+    const room = !this.fleetConfig?.instances[ticket.source] && !!this.contactRoom(ticket.source);
+    if (posted.has(ticket.id) || (!this.fleetConfig?.instances[ticket.source] && !room) || (room && !this.fleetConfig?.instances[ticket.target])) return;
+    posted.add(ticket.id);
+    for (const old of posted) { if (posted.size <= HELD_CARDS_KEPT) break; posted.delete(old); }
+    void this.postHeldTicketCard(ticket).catch((err: unknown) => this.logger?.warn?.({ err: (err as Error)?.message, ticket: ticket.id },
+      "Could not post a held contact request to General"));
+  }
+  private async postHeldTicketCard(ticket: ContactTicket): Promise<void> {
+    const adapter = this.contactAdapter(ticket.target);
+    if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return;
+    const routes = Object.keys(this.fleetConfig?.instances ?? {}).flatMap(n => {
+      const route = this.settingsGeneralRoute(n, adapter.type as "discord" | "telegram", new Set());
+      return route && route.adapterId === adapter.id && route.adapter === adapter ? [{ name: n, ...route }] : [];
+    });
+    if (routes.length !== 1) { this.logger.info({ ticket: ticket.id, routes: routes.length }, "No single General for a held contact request's card"); return; }
+    // A ClassicBot room by its own name (its display name, else its channel's), as Fleet lists it.
+    const route = routes[0]!, label = (n: string) => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || this.contactRoom(n)?.name || n;
+    const shortId = /^R[a-f0-9]{8}-/.test(ticket.id) ? ticket.id.slice(0, 9) : ticket.id;
+    const left = Date.parse(ticket.expiresAt) - Date.now();
+    const text = ticket.message.length > 300 ? `${ticket.message.slice(0, 299)}…` : ticket.message;
+    const posting = this.postNonceButtonPromptOrThrow({ prefix: CONTACT_TICKET_PREFIX, alertType: "clear_confirm", instanceName: route.name,
+      adapter: route.adapter, adapterId: route.adapterId, chatId: route.chatId, threadId: route.topic,
+      message: [t("contactHeld.title", label(ticket.source), label(ticket.target)), `> ${text.replace(/\n+/g, " ")}`,
+        t("contactHeld.meta", shortId, ticket.verb, left < 2 * 3_600_000 ? t("contactHeld.minutes", Math.max(1, Math.round(left / 60_000))) : t("contactHeld.hours", Math.round(left / 3_600_000))),
+        t("contactHeld.hint")].join("\n"),
+      choices: [{ action: "approve", label: t("contactHeld.approve") }, { action: "decline", label: t("contactHeld.decline") }],
+      expiredText: t("contactHeld.expired"), timeoutMs: Math.max(60_000, Math.min(left, 24 * 3_600_000)),
+      extra: { contactTicketId: ticket.id } });
+    // The entry is armed before the platform answers (postNonceButtonPromptOrThrow sets it synchronously).
+    const entry = [...this.pendingNonceButtons.values()].find(e => e.prefix === CONTACT_TICKET_PREFIX && e.contactTicketId === ticket.id);
+    const nonce = await posting;
+    // #4438 review: decided elsewhere, or expired, while the card was being posted — it had no message to retire then; it
+    // has one now. A card still armed for a request still waiting stays.
+    if (!entry?.messageId) return;
+    const fresh = this.contactService().host.store.get(ticket.id), armed = this.pendingNonceButtons.get(nonce) === entry;
+    if (armed && fresh?.state === "pending") return;
+    if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
+    await this.retireNonceButtons(entry, entry.messageId, !fresh || fresh.state === "pending" ? t("contactHeld.expired") : heldCardOutcome(fresh.state));
+  }
+  private async handleContactTicketCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    if (!data.callbackData.startsWith(CONTACT_TICKET_PREFIX)) return false;
+    const person = data.userId && adapter && this.adapters.get(adapterId) === adapter && adapter.id === adapterId
+      && (adapter.type === "discord" || adapter.type === "telegram") && data.userId !== adapter.getBotUserId?.()
+      ? { platform: adapter.type as "discord" | "telegram", adapterId, userId: data.userId, label: data.username || data.userId } : null;
+    const service = this.contactService();
+    const mayDecide = (entry: NonceButtonEntry): boolean => {
+      const ticket = person && entry.contactTicketId ? service.host.store.get(entry.contactTicketId) : undefined;
+      try { return !!ticket && !!person && service.view(ticket, person).canDecide; } catch { return false; }
+    };
+    const claimed = this.consumeNonceCallback(CONTACT_TICKET_PREFIX, /^contact-ticket:([0-9a-f]{32}):(approve|decline)$/, data, adapterId, adapter, undefined,
+      (_user, entry) => !!entry.messageId && !this.webPromptClicks.has(data) && mayDecide(entry));
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const ticket = entry.contactTicketId ? service.host.store.get(entry.contactTicketId) : undefined;
+    let text = t("contactHeld.closed");
+    if (ticket?.state === "pending" && person) {
+      try {
+        const decided = this.decideContactAuthorization(ticket.id, { revision: ticket.revision, decision: action === "approve" ? "approve-once" : "decline" }, person);
+        text = t(decided.state === "approved" ? "contactHeld.approved" : "contactHeld.declined", person.label);
+      } catch { text = t("contactHeld.failed"); }
+    }
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, text);
+    return true;
+  }
+
   contactAuthorization(id: string, actor: ContactPerson) {
     const service = this.contactService(), ticket = service.host.store.get(id);
     if (!ticket) throw Error("not-found");
@@ -6069,6 +6173,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.error({ err }, "Contact outcome notice sweep failed; durable state will retry");
     }
+  }
+  /**
+   * M-3710: how many contact requests wait, and since when — no ids, people or text. Needs you tells an admin session with
+   * no verified person behind it (contactActor null) that they exist, so a request is never silently missing there.
+   */
+  contactPendingCount(): { count: number; since: number } {
+    const pending = this.contactService().host.store.pending();
+    return { count: pending.length, since: pending.reduce((at, ticket) => Math.min(at, Date.parse(ticket.createdAt) || at), Date.now()) };
   }
   contactNeeds(actor: ContactPerson): WebNeedsItem[] {
     const service = this.contactService();
@@ -19557,7 +19669,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "contactChange" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
+    extra?: Pick<NonceButtonEntry, "contactChange" | "contactTicketId" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
     timeoutMs?: number;
     /** #2675: an action the dashboard offers beyond the platform's buttons (a typed answer, which the platform takes as a reply). */
     webInput?: { action: string; label: string } | null;
@@ -19819,6 +19931,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
     if (await this.handleContactChangeCallback(data, adapterId, adapter)) return true;
+    if (await this.handleContactTicketCallback(data, adapterId, adapter)) return true;
     if (await this.handleSettingsChangeCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroMigrateCallback(data, adapterId, adapter)) return true;
     if (await this.handleHubSharingCallback(data, adapterId, adapter)) return true;
@@ -19878,14 +19991,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.needsYou?.webItems() ?? [];
   }
 
-  /** Enabled member composition supplies only a local attention reader, never an approval/execution callback. */
-  attachHubExecutionAttention(read: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null, retry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null): void {
-    this.hubExecutionAttention = read; this.hubHeldRetry = read ? retry : null; this.needsYou?.poke();
+  /** Enabled member composition supplies held-work readers and explicit owner retry/close operations. */
+  attachHubExecutionAttention(read: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null, retry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null, close: ((id: string) => Promise<HubHeldCloseOutcome>) | undefined = undefined): void {
+    this.hubExecutionAttention = read; this.hubHeldRetry = read ? retry : null; this.hubHeldClose = read ? close ?? null : null; this.needsYou?.poke();
   }
   /**
    * M-3632: Needs you → "Try again" on held Hub work (`hub:hold:<row>`). The question goes back through the member's whole
    * hand-off, including the Hub's begin lease; nothing is delivered without it.
    */
+  async closeHubHeld(itemId: string, actor: ContactPerson): Promise<{ status: number; code: string }> {
+    const item = this.hubExecutionAttention?.().find(i => `hub:${i.id}` === itemId && i.kind === "hold");
+    if (!item || !this.hubHeldClose) return { status: 404, code: "not-found" };
+    if (!this.contactAdminOf(item.agent, actor)) return { status: 403, code: "forbidden" };
+    const code = await this.hubHeldClose(item.id);
+    this.needsYou?.poke();
+    return { status: code === "closed" || code === "answered" ? 200 : code === "not-found" ? 404 : 503, code };
+  }
   retryHubHeld(itemId: string): { status: 200 | 404 | 409; code: "queued" | "not-found" | "not-retryable" } {
     const id = itemId.startsWith("hub:") ? itemId.slice(4) : itemId;
     if (!this.hubHeldRetry || !id.startsWith("hold:")) return { status: 404, code: "not-found" };
@@ -20863,7 +20984,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (check.refusal) return { ok: false, refusal: check.refusal };
     const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
     store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
-    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer) };
+    const authorized = store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer);
+    // M-3710: Needs you is projected per session — this one now sees the contact requests it may decide, not just their count.
+    try { this.emitSseEvent("needs", { items: this.needsYouItems() }); } catch (err) { this.logger.warn({ err: (err as Error)?.message }, "Needs you refresh after a web authorization failed"); }
+    return { ok: true, ...authorized };
   }
 
   /**
