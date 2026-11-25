@@ -5,18 +5,20 @@ import type { NativeMachineEndpoint } from "./native-pane-manager.js";
 import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
 import { PaneStdioFramer,paneStdioInput,paneStdioOutput,PANE_STDIO_LIMIT,type PaneStdioInput } from "./runtime-pane-stdio-protocol.js";
 import { validateRuntimePaneShutdown, type RuntimePaneRequest } from "./runtime-pane-protocol.js";
+import { validateRequestContextCallStamp, type RequestContextCallStamp } from "./request-context-call-protocol.js";
 import type { PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 interface Pending {resolve(value:unknown):void;reject(error:Error):void;timer:ReturnType<typeof setTimeout>}
 export interface LocalPaneOptions {
+ requestContextProtocol?:1;
  scope:string;admit():void;maxAgents():number;version(provider:string):string|null;
- launch():Promise<ChildProcess>;mcp(body:PaneMcpBody,current:()=>boolean):Promise<unknown>;
+ launch():Promise<ChildProcess>;mcp(body:PaneMcpBody,current:()=>boolean,stamp?:RequestContextCallStamp):Promise<unknown>;
  /** S-35: the relay's own stderr (bounded) — it was discarded, so a relay that exited at once left no trace. */
  diagnostic?(text:string):void;
 }
 export class LocalPaneEndpoint implements NativeMachineEndpoint {
  readonly machineId="local";private readonly attachment=randomUUID();private child:ChildProcess|undefined;private connected=false;private stopped=false;private mcpPending=0;private cleanupOnly=false;private lastLease=0;
  private pending=new Map<string,Pending>();private listeners=new Set<(event:RuntimeCoordinatorEvent)=>void>();private interval:ReturnType<typeof setInterval>|undefined;
- private hostBootId:string|undefined;
+ private hostBootId:string|undefined;private requestContextProtocol=false;
  private constructor(private options:LocalPaneOptions){}
  static async open(options:LocalPaneOptions):Promise<LocalPaneEndpoint>{
   const endpoint=new LocalPaneEndpoint(options);options.admit();const child=await options.launch();endpoint.child=child;
@@ -40,19 +42,22 @@ export class LocalPaneEndpoint implements NativeMachineEndpoint {
    let told=0;child.stderr?.setEncoding?.("utf8");child.stderr?.on("data",(part:string|Buffer)=>{if(told>=8_192||!this.options.diagnostic)return;const text=String(part).replace(/[\p{Cc}\p{Cf}]+/gu," ").trim().slice(0,8_192-told);told+=text.length;if(text)try{this.options.diagnostic(text);}catch{/* a diagnostic never affects the relay */}});
    child.stdout?.on("data",(bytes:Buffer)=>{try{framer.feed(bytes,raw=>{
     const value=paneStdioOutput(raw);if(value.epoch!==this.attachment)throw Error("Local pane relay epoch differs");
-    if(!ready){if(value.type!=="hello")throw Error("Local pane relay not ready");this.hostBootId=value.hostBootId;ready=true;clearTimeout(timer);this.connected=true;this.lastLease=performance.now();this.lease();this.interval=setInterval(()=>this.lease(),5000);this.interval.unref();resolve();return;}
+    if(!ready){if(value.type!=="hello")throw Error("Local pane relay not ready");if(value.requestContextProtocol!==undefined&&this.options.requestContextProtocol!==1)throw Error("Originating-call protocol not negotiated");this.requestContextProtocol=value.requestContextProtocol===1;this.hostBootId=value.hostBootId;ready=true;clearTimeout(timer);this.connected=true;this.lastLease=performance.now();this.lease();this.interval=setInterval(()=>this.lease(),5000);this.interval.unref();resolve();return;}
     if(value.type==="hello")throw Error("Duplicate local pane hello");
     if(value.type==="output"){for(const listener of this.listeners)listener({type:"pane",machineId:"local",pane:value.snapshot});return;}
     if(value.type==="response"){const row=this.pending.get(value.id);if(!row)return;this.pending.delete(value.id);clearTimeout(row.timer);if(value.ok)row.resolve(value.result);else row.reject(Error("Local pane operation unconfirmed; inspect its owned receipt"));return;}
+    if(value.requestContext!==undefined&&!this.requestContextProtocol||this.requestContextProtocol&&value.requestContext===undefined)throw Error("Originating-call protocol not negotiated or stamp missing");
+    const stamp=value.requestContext?validateRequestContextCallStamp(value.requestContext):undefined;
     if(this.cleanupOnly){this.send({type:"mcp.result",epoch:this.attachment,id:value.id,ok:false});return;}
     if(this.mcpPending>=32)throw Error("Local pane MCP backlog");this.mcpPending++;const current=()=>!this.cleanupOnly&&this.online();
-    void this.options.mcp(value.body,current).then(result=>{if(current())this.send({type:"mcp.result",epoch:this.attachment,id:value.id,ok:true,result});},()=>{if(current())this.send({type:"mcp.result",epoch:this.attachment,id:value.id,ok:false});}).catch(()=>this.stop()).finally(()=>{this.mcpPending--;});
+    void (stamp?this.options.mcp(value.body,current,stamp):this.options.mcp(value.body,current)).then(result=>{if(current())this.send({type:"mcp.result",epoch:this.attachment,id:value.id,ok:true,result});},()=>{if(current())this.send({type:"mcp.result",epoch:this.attachment,id:value.id,ok:false});}).catch(()=>this.stop()).finally(()=>{this.mcpPending--;});
    });}catch{lost();}});
-   try{this.send({type:"init",scope:this.options.scope,epoch:this.attachment,maxAgents:this.options.maxAgents()});}catch(error){clearTimeout(timer);reject(error);this.stop();}
+   try{this.send({type:"init",scope:this.options.scope,epoch:this.attachment,maxAgents:this.options.maxAgents(),...(this.options.requestContextProtocol===1?{requestContextProtocol:1 as const}:{})});}catch(error){clearTimeout(timer);reject(error);this.stop();}
   });
  }
  private lease():void{if(this.stopped)return;if(!this.online()){this.stop();return;}this.lastLease=performance.now();try{this.send({type:"lease",epoch:this.attachment,online:this.online(),maxAgents:this.options.maxAgents()});}catch{this.stop();}}
  call(request:RuntimePaneRequest):Promise<unknown>{
+  if(request.action==="input"&&request.requestContext&&!this.requestContextProtocol)return Promise.reject(Error("Originating-call protocol not negotiated"));
   if(this.cleanupOnly&&!["snapshot","close","list","shutdown"].includes(request.action))return Promise.reject(Error("Local pane relay only permits owned cleanup"));
   if(!this.online()||this.pending.size>=64)return Promise.reject(Error("Local pane relay unavailable or busy"));
   return new Promise((resolve,reject)=>{const id=randomUUID(),timer=setTimeout(()=>{this.pending.delete(id);reject(Error("Local pane result unconfirmed; input was not replayed"));},125_000);timer.unref();this.pending.set(id,{resolve,reject,timer});try{this.send({type:"request",epoch:this.attachment,id,request});}catch(error){clearTimeout(timer);this.pending.delete(id);reject(error);}});

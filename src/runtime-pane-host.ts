@@ -24,7 +24,10 @@ export type RuntimePaneProcess = Pick<IPty, "pid" | "write" | "resize" | "kill" 
   quotaReplay?: { messages: readonly string[]; current(): boolean };
   onFailure?(listener: () => void): { dispose(): void };
 };
+import type { RequestContextCallStamp } from "./request-context-call-protocol.js";
 export interface RuntimePaneHostOptions {
+  requestContextNegotiated?(): boolean;
+  installRequestContext?(owner: PaneMcpOwner, stamp: RequestContextCallStamp): void;
   store: RuntimePaneStore;
   bootId: string;
   systemBootId?: string;
@@ -143,7 +146,7 @@ export class RuntimePaneHost {
       if (existing.openOperationId !== operationId || existing.openDigest !== digest) throw Error("Pane id already belongs to another launch");
       const live = this.live.get(launch.paneId);
       if (!live && existing.snapshot.state !== "exited") throw Error("Pane launch outcome is unknown; no replacement was started");
-      return { ...structuredClone(live?.record.snapshot ?? existing.snapshot), reattached: true };
+      return { ...structuredClone(live?.record.snapshot ?? existing.snapshot), reattached: true, ...(this.options.requestContextNegotiated?.() ? { requestContextProtocol: 1 as const } : {}) };
     }
     // Before any reservation: a profile that is missing or signed out here consumes no pane identity, so the same open works once it is fixed.
     const credentialHome = await this.admitCredentialProfile(launch);
@@ -166,7 +169,7 @@ export class RuntimePaneHost {
       // Never issue this proof for a spawn exception: the factory may have created a child before throwing.
       record.snapshot.state = "exited"; record.snapshot.noLaunch = true;
       this.options.store.put(record);
-      return { ...structuredClone(record.snapshot), reattached: false };
+      return { ...structuredClone(record.snapshot), reattached: false, ...(this.options.requestContextNegotiated?.() ? { requestContextProtocol: 1 as const } : {}) };
     }
     if (launch.generalWorkspace) this.general.verify({ action: "general-workspace", ...launch.generalWorkspace, instance: launch.instance, cli: launch.cli }, launch.cwd);
     // Synchronous reservation before the first await: parallel opens cannot oversubscribe the machine.
@@ -220,7 +223,7 @@ export class RuntimePaneHost {
       });
       this.options.store.put(record);
       if (this.closing) { process.kill(); throw Error("Pane host stopped during launch"); }
-      return { ...structuredClone(record.snapshot), reattached: false };
+      return { ...structuredClone(record.snapshot), reattached: false, ...(this.options.requestContextNegotiated?.() ? { requestContextProtocol: 1 as const } : {}) };
     } catch (error) {
       if (process) { try { process.kill(); } catch { /* retain uncertain reservation */ } }
       // A launch factory may fail after creating a native child. Only onExit proves there is no process.
@@ -293,6 +296,7 @@ export class RuntimePaneHost {
       return structuredClone(record.snapshot);
     }
     if (!current() || !this.options.online()) throw Error("Pane input lease expired");
+    if ((request.action === "input" && request.requestContext || request.action === "key" && request.cancelTurn) && (!this.options.requestContextNegotiated?.() || !this.options.installRequestContext)) throw Error("Originating-call protocol not negotiated");
     const digest = RuntimePaneStore.digest(request);
     if (request.sequence === record.snapshot.commandSequence) {
       if (record.lastCommand?.id !== request.operationId || record.lastCommand.digest !== digest) throw Error("Pane input sequence belongs to another command");
@@ -311,6 +315,13 @@ export class RuntimePaneHost {
     }
     // Durable before input: a crash after this write must hold, never duplicate Enter.
     this.options.store.put(record);
+    const callOwner = { hostBootId: this.options.bootId, paneId: record.snapshot.paneId, launchId: record.snapshot.launchId, agentId: record.snapshot.agentId, instance: record.snapshot.instance };
+    const install = (stamp: RequestContextCallStamp): void => { this.options.installRequestContext?.(callOwner, stamp); };
+    const tracked = this.options.requestContextNegotiated?.() === true;
+    try {
+    // No await between proof installation and PTY write, under the same per-pane serialized command.
+    if (tracked && request.action === "input") install(request.requestContext ?? { version: 1, coverage: "not-covered", reason: "unbound-input" });
+    if (tracked && request.action === "key" && request.cancelTurn === true) install({ version: 1, coverage: "not-covered", reason: "interrupted-launch" });
     if (request.action === "input") live.process.write(request.kind === "paste" ? live.screen.bracketedPaste(request.text) : request.text);
     else if (request.action === "edit") live.process.write(request.keys.map(key => PANE_EDIT_KEYS[key]).join("").repeat(request.repeat ?? 1));
     else if (request.action === "key") live.process.write(KEYS[request.key]);
@@ -323,6 +334,11 @@ export class RuntimePaneHost {
       const stopped = await Promise.race([live.exited.then(() => true), new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), 10_000); })]);
       clearTimeout(timer);
       if (!stopped) record.snapshot.state = "unknown";
+    }
+    } catch (error) {
+      // A prepared input whose write failed is ambiguous. Never restore a covered stamp on replay.
+      if (tracked) install({ version: 1, coverage: "not-covered", reason: "interrupted-launch" });
+      throw error;
     }
     record.lastCommand.state = "applied";
     this.options.store.put(record);

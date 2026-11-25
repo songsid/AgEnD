@@ -1,6 +1,7 @@
 /** Per-turn, instance-bound MCP capabilities for native Windows CLI children. */
 import { agentCredentialPolicy } from "./agent-credentials.js";
 import { nativeAgentAdmissionContext } from "./native-agent-admission.js";
+import type { RequestContextCallLease } from "./request-context-call.js";
 import { windowsCliEnabled } from "./windows-cli.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -28,11 +29,14 @@ type ToolResult = { content:Array<{type:"text";text:string}>;isError?:boolean };
 interface Call { operationId:string; digest:string; result:Promise<ToolResult> }
 interface Session {
   token:string; instance:string; requestId:string; agentId:string; backend:string;
+  requestContext?:RequestContextCallLease;
   sandbox:NativeSandbox; policy:string; expires:number; stillCurrent:()=>boolean; closed:boolean;
   timer:ReturnType<typeof setTimeout>; calls:Map<string,Call>; reported:Map<string,Set<string>>;
 }
 export interface NativeMcpGrant {
   instance:string; requestId:string; sandbox:NativeSandbox; endpoint:string; stillCurrent:()=>boolean;
+  /** Captured from the admitted exec input at claim, never at HTTP arrival. */
+  requestContext?:RequestContextCallLease;
 }
 export interface NativeMcpLease {
   connection:NativeMcpConnection;
@@ -83,10 +87,22 @@ function refuse(req:IncomingMessage,res:ServerResponse,status:number,message:str
 export class NativeMcpSessions {
   private readonly sessions=new Map<string,Session>();
   constructor(private readonly ctx:AgentEndpointContext) {}
+  private requestContextRequired=false;
+  /** Internal rollout only; production stays OFF until L. Existing grants do not acquire a context. */
+  setRequestContextRequired(required:boolean):void {
+    if(required===this.requestContextRequired)return;
+    this.closeAll();this.requestContextRequired=required;
+  }
+
 
   grant(input:NativeMcpGrant):NativeMcpLease {
     this.prune();
     const config=this.ctx.fleetConfig?.instances[input.instance];
+    if(this.requestContextRequired&&!input.requestContext)throw Error("Native MCP requires an admitted request context");
+    if(input.requestContext&&(!input.requestContext.current()||input.requestContext.snapshot.owner.instance!==input.instance)) {
+      throw Error("Native MCP request context is no longer current");
+    }
+
     if(!windowsCliEnabled() || config?.runtime!=="windows" || !UUID.test(config.native_agent_id ?? "")
       || !["codex","claude-code"].includes(config.backend ?? "") || !UUID.test(input.requestId)
       || !["read-only","workspace-write"].includes(input.sandbox) || typeof input.stillCurrent!=="function") throw Error("Native MCP requires an active supported Windows instance");
@@ -96,7 +112,7 @@ export class NativeMcpSessions {
     const address=endpoint(input.endpoint), token=randomBytes(32).toString("hex");
     const session:Session={token,instance:input.instance,requestId:input.requestId,agentId:config.native_agent_id!,backend:config.backend!,sandbox:input.sandbox,policy,
       expires:Date.now()+TTL_MS,stillCurrent:input.stillCurrent,closed:false,calls:new Map(),reported:new Map(),
-      timer:setTimeout(()=>this.closeToken(token),TTL_MS)};
+      timer:setTimeout(()=>this.closeToken(token),TTL_MS),...(input.requestContext?{requestContext:input.requestContext}:{})};
     session.timer.unref?.();this.sessions.set(token,session);
     return {connection:{endpoint:address,token,tools:this.memberNames(session)},close:()=>this.closeToken(token),
       reportedCorrelations:target=>target===undefined ? [...new Set([...session.reported.values()].flatMap(ids=>[...ids]))] : [...(session.reported.get(target) ?? [])]};
@@ -122,6 +138,7 @@ export class NativeMcpSessions {
     const config=this.ctx.fleetConfig?.instances[session.instance];
     let current=false;try{current=session.stillCurrent();}catch{/* a revoked owner is unavailable */}
     return !session.closed && Date.now()<session.expires && windowsCliEnabled() && current
+      && (!session.requestContext || session.requestContext.current())
       && this.policy(session.instance)===session.policy && config?.runtime==="windows" && config.native_agent_id===session.agentId && config.backend===session.backend;
   }
   private prune():void { for(const session of this.sessions.values())if(!this.current(session))this.closeToken(session.token); }
@@ -146,6 +163,7 @@ export class NativeMcpSessions {
       instance: session.instance,
       current: () => this.current(session) && this.canCall(session, name, args),
       taskAllowed: value => this.canCall(session, "task", value),
+      ...(session.requestContext?{requestContext:session.requestContext}:{}),
     });
   }
 

@@ -18,7 +18,8 @@ export interface MemberUpdatesOptions {
   current(): boolean; service(): boolean; idle(): boolean; now(): number; busy?(): boolean;
   lookup: PublishedVersionLookup;
   canInstall(version: string): Promise<boolean>;
-  launch(row: IdleUpdate, control: IdleUpdateLaunch): Promise<boolean>;
+  /** `pressed` (M-3770): the owner pressed Update now for this request (updateNow), not the idle wait starting it. */
+  launch(row: IdleUpdate, control: IdleUpdateLaunch, pressed?: boolean): Promise<boolean>;
   /** The one fleet card mirrors this row. It must not launch a second update. */
   onQueue?(row: IdleUpdate): void;
   /** Only a launch currently owned by this process; never inferred from a stale marker alone. */
@@ -47,7 +48,7 @@ export class HubMemberUpdates {
     this.queue = new IdleUpdateQueue({ db: options.db, now: options.now, current: () => this.current(),
       allowed: r => (this.allowed() || this.forced(r.id)) && this.row(r.id)?.binding === options.binding,
       idle: () => (this.forced(this.queue.pending()?.id) || options.idle()) && this.ownerWasTold(),
-      launch: (r, control) => options.launch(r, control), changed: r => { this.sync(r); try { options.onQueue?.(r); } catch { /* the card cannot change admission */ } } });
+      launch: (r, control) => options.launch(r, control, this.forced(r.id)), changed: r => { this.sync(r); try { options.onQueue?.(r); } catch { /* the card cannot change admission */ } } });
   }
   private current(): boolean { try { return !this.stopped && this.options.current(); } catch { return false; } }
   private service(): boolean { try { return this.options.service() === true; } catch { return false; } }

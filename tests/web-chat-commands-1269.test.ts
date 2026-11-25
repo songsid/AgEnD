@@ -11,6 +11,12 @@ import { fire, settle } from "./helpers/mini-dom.js";
 import type { AppPage } from "./helpers/app-harness.js";
 // @ts-expect-error — a page module: plain JS, no declarations (as the other ../src/ui imports)
 import { CHAT_COMMANDS, needsArgument, paletteFor, parseCommandLine } from "../src/ui/chat-commands.js";
+// M-3770: an update launch proves the machine's pre-flight first (#4480 §4); here the machine is one that may update
+// itself, and no probe (npm, systemctl) runs.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }], Date.now())) };
+});
 
 describe("the palette's rules (pure)", () => {
   it("opens on a leading '/' and only while the command's name is typed; filters by prefix", () => {

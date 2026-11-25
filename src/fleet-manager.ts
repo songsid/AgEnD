@@ -316,6 +316,7 @@ import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { INSTRUCTIONS_FILE } from "./instruction-file-sizes.js";
 import { NativeMcpSessions } from "./native-mcp.js";
+import type { RequestContextLocalCall } from "./request-context-call.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import { cachedNativeModelCatalog, refreshNativeModelCatalogAfterSignIn } from "./native-model-catalog.js";
 import { shapeWebModelCatalog } from "./web-model-groups.js";
@@ -382,6 +383,7 @@ import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoo
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateAnswerLabel, updateOfferReply, type UpdateCardView } from "./update-card.js";
+import { preflightAllows } from "./update-readiness.js";
 import { inUpdatePause, resolveUpdates } from "./update-settings.js";
 import { resolveInstalledAgend, npmForRunningInstall } from "./update-dispatch.js";
 import { HUB_UPDATE_NOTICE_FILE, HUB_UPDATE_REMIND_MS, hubNoticeDue, hubNoticeKey, readHubNoticeState, writeHubNoticeState } from "./hub-update-notice.js";
@@ -1515,6 +1517,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   fleetConfig: FleetConfig | null = null;
   private fleetWindowsRuntime: FleetWindowsRuntime | null = null;
   private nativeMcpStore: NativeMcpSessions | null = null;
+  private readonly requestContextIpcCalls = new WeakMap<object, RequestContextLocalCall>();
+  /** Captured at IPC arrival, not a later lookup of this instance's current turn. */
+  requestContextCallOf(message: object): RequestContextLocalCall | null { return this.requestContextIpcCalls?.get(message) ?? null; }
+  private captureRequestContextIpcCall(name: string, message: Record<string, unknown>, ipc: InstanceClient): boolean {
+    const daemon = this.daemons.get(name);
+    if (!daemon?.requestContextCallsRequired?.()) return message.requestContextCallId === undefined;
+    if (this.instanceIpcClients.get(name) !== ipc || message.sourceDaemonBootId !== daemon.bootId || typeof message.requestContextCallId !== "string") return false;
+    const captured = daemon.requestContextCall(message.requestContextCallId);
+    if (!captured) return false;
+    const tool = message.type === "fleet_outbound" ? String(message.tool ?? "") : toolForIpcType(message.type);
+    const originalBoot = daemon.bootId;
+    const scoped = Object.freeze({ id: captured.id, admission: captured.admission,
+      current: () => captured.current() && this.instanceIpcClients.get(name) === ipc && this.getDaemonBootId(name) === originalBoot
+        && !!tool && this.checkToolPermission("ipc-outbound", name, tool === "hub_room_status" ? "hub_room_list" : tool).allowed });
+    this.requestContextIpcCalls.set(message, scoped); return true;
+  }
   private paneManager: import("./native-pane-manager.js").NativePaneManager | null = null;
   private localPaneRelay: import("./local-pane-endpoint.js").LocalPaneEndpoint | null = null;
   private openingLocalPane: Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> | null = null;
@@ -1610,7 +1628,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if(!this.runtimeHub && this.readPendingOwnerNotices().length)this.scheduleOwnerNoticeFlush(30_000);   // a notice kept before a restart is delivered once the fleet is up
     return this.runtimeHub ??= new RuntimeCoordinator(this.dataDir,{
       handleMcp:(machineId,runId,body)=>this.runtimeWindowsExecutor().mcp(machineId,runId,body),
-      handlePaneMcp:async(machineId,body,current)=>(await this.nativePanes()).handle(machineId,body,current),
+      handlePaneMcp:async(machineId,body,current,stamp)=>stamp?(await this.nativePanes()).handle(machineId,body,current,stamp):(await this.nativePanes()).handle(machineId,body,current),
       warn:(fields,message)=>this.logger.warn(fields,message),
       // Issue, use, revocation (and a refused use) of an install-command token: ids and an opaque actor handle only, never the token.
       audit:entry=>{
@@ -1657,8 +1675,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   nativeInstanceRuntime(): FleetWindowsRuntime {
     return this.fleetWindowsRuntime ??= new FleetWindowsRuntime({
       owner:this,fleet:()=>this.fleetConfig,save:()=>this.saveFleetConfig(),stopping:()=>this.shuttingDown,history:this.webChatHistory,
-      openMcp:(instance,requestId,sandbox,stillCurrent)=>this.healthServerListening
-        ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
+      openMcp:(instance,requestId,sandbox,stillCurrent,requestContext)=>this.healthServerListening
+        ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,...(requestContext?{requestContext}:{}),endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
       warn:(message,error)=>this.logger.warn({err:error},message),
       removed:name=>this.nativeInstanceRemoved(name),
       paneCurrent:name=>this.daemons.get(name)?.nativePaneCurrent?.() === true,
@@ -1850,7 +1868,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         diagnostic: text => this.logger.warn({ stderr: text }, "Local Windows pane relay wrote to stderr"),
         version: provider => inventory.clis.find(row => row.id === provider && row.runnable)?.version ?? null,
         launch: () => launchLocalPaneRelay(this.dataDir, admit),
-        mcp: async (body, current) => (await this.nativePanes()).handle("local", body, current),
+        mcp: async (body, current, stamp) => stamp ? (await this.nativePanes()).handle("local", body, current, stamp) : (await this.nativePanes()).handle("local", body, current),
       });
       try { admit(); this.localPaneRelay = relay; return relay; } catch (error) { relay.stop(); throw error; }
     })(); this.openingLocalPane = opening;
@@ -1920,9 +1938,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           delegate_task: "delegate", request_information: "ask", report_result: "report", delivery_status: "delivery-status" };
         const { nativeAgentAdmissionContext } = await import("./native-agent-admission.js");
         const { dispatchAgentOperation } = await import("./agent-endpoint.js");
-        return daemon.handlePaneToolCall(input, { current, allowed: tool => allowed(name, tool),
+        return daemon.handlePaneToolCall(input, { current, allowed: tool => allowed(name, tool), ...(input.requestContext ? { requestContext: input.requestContext } : {}),
           dispatch: (tool, args) => ops[tool] ? dispatchAgentOperation(nativeAgentAdmissionContext(this, {
             instance: name, current: () => current() && allowed(name, tool), taskAllowed: () => current() && allowed(name, "task"),
+            ...(input.requestContext?.coverage === "covered" ? { requestContext: input.requestContext.lease } : input.requestContext ? { notCoveredReason: input.requestContext.reason } : {}),
           }), name, ops[tool], args, input.operationId, () => current() && allowed(name,tool)) : undefined });
       },
     });
@@ -2391,9 +2410,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { access } = await import("node:fs/promises"), { constants } = await import("node:fs");
     try { await access(found.root, constants.W_OK); await access(found.prefix, constants.W_OK); return true; } catch { return false; }
   }
-  private async launchHubUpdate(row: import("./update-idle.js").IdleUpdate, control: import("./update-idle.js").IdleUpdateLaunch): Promise<boolean> {
+  private async launchHubUpdate(row: import("./update-idle.js").IdleUpdate, control: import("./update-idle.js").IdleUpdateLaunch, pressed = false): Promise<boolean> {
     return this.launchClaimedUpdate({
       id: row.id, version: row.version, origin: `Hub-requested update ${row.id}`, messageId: `hub-fleet-update:${row.id}`, control, hub: true,
+      // M-3770 (#4480 §4.1): the owner's own Update now is a press; the idle wait starting the request is unattended.
+      kind: pressed ? "press" : "unattended",
       onExit: () => {
         const outcome = this.hubUpdateOutcome(row);
         if (outcome) this.hubUpdates?.complete(row.id, outcome.state, outcome.currentVersion, "interrupted");
@@ -2407,6 +2428,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async launchClaimedUpdate(input: {
     id: string; version: string; origin: string; messageId: string;
     control: import("./update-idle.js").IdleUpdateLaunch; hub: boolean; onExit: () => void;
+    /** M-3770: whose start it is, for the pre-flight's class (a press, or a schedule/idle wait nobody pressed). */
+    kind: "press" | "unattended";
   }): Promise<boolean> {
     if (this.shuttingDown || this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !input.control.current()) return false;
     const claim = { startedAt: Date.now() };
@@ -2424,7 +2447,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       || !setUpdateProgressStage(this.dataDir, "preparing", { version: input.version })) { release(); return false; }
     try {
       const child = await this.launchInstalledUpdate(input.origin,
-        () => !this.shuttingDown && owns() && input.control.current() && input.control.claim(), input.version);
+        () => !this.shuttingDown && owns() && input.control.current() && input.control.claim(), input.version, input.kind);
       if (!child) { release(); return false; }
       let endedOnce = false;
       const ended = () => {
@@ -2997,7 +3020,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: (read, retry, close) => this.attachHubExecutionAttention(read, retry, close),
           updates: { idle: () => this.hubUpdateIdle(), busy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !!this.updateCard?.blocksAdmission(),
-            canInstall: () => this.hubUpdateCanInstall(), launch: (row, control) => this.launchHubUpdate(row, control),
+            canInstall: () => this.hubUpdateCanInstall(), launch: (row, control, pressed) => this.launchHubUpdate(row, control, pressed),
             onQueue: row => { this.ensureUpdateCard().observeHub(row); },
             active: id => this.hubUpdateOwned?.id === id, outcome: row => this.hubUpdateOutcome(row), notify: n => this.recordHubUpdateNotice(n) },
           attachUpdates: updates => { this.hubUpdates = updates; },
@@ -3986,6 +4009,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private updateCard?: UpdateOfferCard;
   /** M-2738: a web "check now" in flight, and when the last one ran (one a minute at most). */
   private updateCheckNow: { running: Promise<void> | null; lastAt: number } = { running: null, lastAt: 0 };
+  /** M-3770 (#4480 §4): the last pre-flight — a diagnostic for the page; every launch proves its local checks again. */
+  private updatePreflight: import("./update-readiness.js").UpdatePreflight | null = null;
+  private updatePreflightRunning: Promise<void> | null = null;
   /** M-2738: a web start's Idempotency-Key → its answer (a retried request never starts a second update). */
   private webUpdateStarts = new Map<string, Promise<{ ok: true } | { ok: false; status: number; error: string }>>();
   /**
@@ -7845,8 +7871,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * independently with its log — or a failure in the progress marker. `stillAllowed` is asked again once the awaits
    * are done (the asker may have lost the right, or the fleet begun stopping, meanwhile).
    */
-  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean, pin?: string): Promise<import("node:child_process").ChildProcess | null> {
+  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean, pin?: string, kind: "press" | "unattended" = "press"): Promise<import("node:child_process").ChildProcess | null> {
     const { spawn } = await import("./child-process.js");
+    // M-3770 (#4480 §4): the machine's pre-flight, proven again now — before the installed agend is resolved or run.
+    const refused = await this.updatePreflightGate(kind);
+    if (refused) {
+      this.failUpdateProgress(refused);
+      return null;
+    }
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);
@@ -14331,6 +14363,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await ipc.connect();
       this.instanceIpcClients.set(name, ipc);
       ipc.on("message", safeHandler(async (msg: Record<string, unknown>) => {
+        if ((msg.type === "fleet_outbound" || toolForIpcType(msg.type) !== null) && !this.captureRequestContextIpcCall(name, msg, ipc)) {
+          if (this.instanceIpcClients.get(name) !== ipc) return;
+          if (msg.type === "fleet_outbound") ipc.send({ type: "fleet_outbound_response", fleetRequestId: msg.fleetRequestId, error: "Originating request context is unavailable" });
+          else this.refuseTypedIpc(name, msg, "Originating request context is unavailable");
+          return;
+        }
         if (msg.type === "mcp_ready") {
           // Register external sessions (sessionName differs from instance name)
           const sessionName = msg.sessionName as string | undefined;
@@ -15840,6 +15878,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleOutboundFromInstance(instanceName: string, msg: Record<string, unknown>): Promise<void> {
+    const originatingCall = this.requestContextCallOf(msg);
     this.touchActivity(instanceName);
     this.setTopicIcon(instanceName, "green");
     const tool = msg.tool as string;
@@ -15889,8 +15928,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const handler = outboundHandlers.get(tool);
     if (handler && !usesChannelAddress(tool)) {
       this.eventLog?.logActivity("tool_call", senderSessionName ?? instanceName, this.summarizeToolCall(tool, args));
-      await handler(this, args, respond, {
+      const context = originatingCall ? (await import("./native-agent-admission.js")).nativeAgentAdmissionContext(this, {
+        instance: instanceName, current: () => originatingCall.current(), taskAllowed: () => this.checkToolPermission("ipc-outbound", instanceName, "task").allowed,
+        ...(originatingCall.admission.coverage === "covered" ? { requestContext: originatingCall.admission.lease } : { notCoveredReason: originatingCall.admission.reason }),
+      }) : this;
+      await handler(context, args, respond, {
         instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
+        ...(originatingCall ? { callerCurrent: () => originatingCall.current(), requestContextAdmission: originatingCall.admission } : {}),
       });
       return;
     }
@@ -15901,7 +15945,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const bootNow = this.getDaemonBootId(instanceName), bootSent = sourceDaemonBootId ?? bootNow;
       if (!bootNow || bootSent !== bootNow) { respond(null, "Source daemon generation is no longer current; outcome is unknown"); return; }
       const claimed = this.hubReact({ correlationId: args.message_id, caller: instanceName, emoji: typeof args.emoji === "string" ? args.emoji : "",
-        callerCurrent: () => this.getDaemonBootId(instanceName) === bootSent });
+        callerCurrent: () => this.getDaemonBootId(instanceName) === bootSent && (!originatingCall || originatingCall.current()) });
       if (!claimed) { respond(null, "That message_id is not a Hub room question you were asked."); return; }
       const outcome = await claimed;
       if (outcome.ok) respond("ok"); else respond(null, outcome.message);
@@ -15936,15 +15980,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const restrictedBoot = restrictedRoute ? this.getDaemonBootId(instanceName) : undefined;
     if (restrictedRoute && Array.isArray(args.previews) && args.previews.length) { respond(null, "File previews are not available in restricted rooms; use the room's own attachments"); return; }
     let replyBookkeeping = Promise.resolve();
-    const restrictedExtras = restrictedRoute ? {
-      prepareFiles: (paths: readonly string[]) => this.prepareContactFiles(instanceName, paths),
+    const restrictedExtras = restrictedRoute || originatingCall ? {
+      ...(restrictedRoute ? { prepareFiles: (paths: readonly string[]) => this.prepareContactFiles(instanceName, paths),
+      downloadAttachment: (id: string) => this.downloadRoomAttachment(instanceName, id) } : {}),
       replyFinished: () => replyBookkeeping,
-      downloadAttachment: (id: string) => this.downloadRoomAttachment(instanceName, id),
       beforeSend: () => {
+        if (originatingCall && !originatingCall.current()) throw Error("Originating request context is no longer current");
         const current = this.restrictedClassicRouting(instanceName);
-        if (!current || current.adapterId !== restrictedRoute.adapterId || current.chatId !== restrictedRoute.chatId
+        if (restrictedRoute && (!current || current.adapterId !== restrictedRoute.adapterId || current.chatId !== restrictedRoute.chatId
           || current.threadId !== restrictedRoute.threadId || this.contactGeneration(instanceName) !== restrictedIncarnation
-          || this.getDaemonBootId(instanceName) !== restrictedBoot) throw Error("Restricted room route changed before delivery");
+          || this.getDaemonBootId(instanceName) !== restrictedBoot)) throw Error("Restricted room route changed before delivery");
       },
     } : {};
     // Resolve threadId: use sender's topic_id if sender is a known fleet instance,
@@ -16625,6 +16670,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private dispatchTypedIpc(name: string, msg: Record<string, unknown>): void {
+    const captured = this.requestContextCallOf(msg);
+    if (captured && !captured.current()) { this.refuseTypedIpc(name, msg, "Originating request context is no longer current"); return; }
     const type = String(msg.type);
     if (type.startsWith("fleet_schedule_")) { this.handleScheduleCrud(name, msg); return; }
     if (type.startsWith("fleet_decision_")) { this.handleDecisionCrud(name, msg); return; }
@@ -31829,6 +31876,54 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { target, fromChannel };
   }
 
+  /** M-3770: the pre-flight probes (runUpdatePreflight; tests stub that module, so no real npm or systemctl runs). */
+  protected async probeUpdatePreflight(opts: { target?: string | null; localOnly?: boolean }): Promise<import("./update-readiness.js").UpdatePreflight> {
+    const { runUpdatePreflight } = await import("./update-readiness.js");
+    return runUpdatePreflight(opts);
+  }
+
+  /**
+   * M-3770: refresh the cached pre-flight for the offered version. One at a time; never throws. A run is bound to the
+   * version it judged: if the offer moved meanwhile its result is not published (Prism #4483 3) and the run starts again
+   * for the new one. What it finds is merged by check (mergePreflight): a launch's fresher local rows are kept.
+   */
+  refreshUpdatePreflight(): Promise<void> {
+    if (this.updatePreflightRunning) return this.updatePreflightRunning;
+    const running = (async () => {
+      const { mergePreflight } = await import("./update-readiness.js");
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const target = this.updateCheckState?.offer?.version ?? null;
+        let fresh: import("./update-readiness.js").UpdatePreflight;
+        try { fresh = await this.probeUpdatePreflight({ target }); }
+        catch (err) { this.logger.warn({ err }, "Update pre-flight could not run"); return; }
+        const now = this.updateCheckState?.offer?.version ?? null;
+        if (now !== target) continue;                                     // the offer changed: judge the new one
+        this.updatePreflight = mergePreflight(this.updatePreflight, fresh, now);
+        return;
+      }
+    })().finally(() => { if (this.updatePreflightRunning === running) this.updatePreflightRunning = null; });
+    this.updatePreflightRunning = running;
+    return running;
+  }
+
+  /**
+   * M-3770 (#4480 §4.2): identity is proven at the moment of change. The local checks run again now, whatever the cached
+   * result says, and decide; the network ones (P7, P10) are `agend update`'s own. The cache takes the fresh rows and
+   * keeps a cached P7/P10 only while it still applies, with its own age (mergePreflight).
+   * Returns the refusal in words, or null to go ahead.
+   */
+  async updatePreflightGate(origin: "press" | "unattended"): Promise<string | null> {
+    const { mergePreflight, preflightRefusal } = await import("./update-readiness.js");
+    let fresh: import("./update-readiness.js").UpdatePreflight;
+    try { fresh = await this.probeUpdatePreflight({ localOnly: true }); }
+    catch (err) {
+      this.logger.warn({ err }, "Update pre-flight could not run at launch");
+      return t("update.preflight.refused", t("update.preflight.code.unreadable"));
+    }
+    this.updatePreflight = mergePreflight(this.updatePreflight, fresh, this.updateCheckState?.offer?.version ?? null);
+    return preflightRefusal(fresh, origin, (key, ...args) => t(key, ...args));
+  }
+
   private ensureUpdateCard(): UpdateOfferCard {
     if (this.updateCard) return this.updateCard;
     this.updateCard = new UpdateOfferCard({
@@ -31847,8 +31942,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return await owner.updateNow(id, current) ? { ok: true } : { ok: false, status: 409, error: "update_not_started" };
       },
       cancelHub: id => { this.hubUpdates?.cancelWaiting(id); },
+      // M-3770 (#4480 §4.1): the card refuses (412) what the machine's last pre-flight doesn't allow — a press needs
+      // pressHere, a picked time (a schedule) needs self. No result yet: nothing is refused here; the launch decides.
+      preflight: action => {
+        const p = this.updatePreflight;
+        if (!p || (action !== "when-idle" && action !== "now" && action !== "pick-time")) return null;
+        return preflightAllows(p, action === "pick-time" ? "unattended" : "press") ? null : { preflight: p };
+      },
       launchIdle: (version, control, id) => this.launchClaimedUpdate({
         id, version, origin: `idle update ${version}`, messageId: idleUpdateMessageId(id), control, hub: false,
+        // M-3770 (#4480 §4.1): "Update when idle" is an admin's press that waits for idle; a picked time is a schedule,
+        // which an admin-only machine never takes.
+        kind: this.updateCard?.view()?.lastAnswer?.action === "when-idle" ? "press" : "unattended",
         onExit: () => { this.updateCard?.settleLocal(id, this.claimedIdleOutcome(id, version).state); },
       }),
       currentVersion: () => { try { return this.runningAgendVersion(); } catch { return null; } },
@@ -31941,6 +32046,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const { target, fromChannel } = await this.lookUpUpdateTarget(currentVersion);
       this.recordUpdateCheck(currentVersion, { target, fromChannel });
+      void this.refreshUpdatePreflight();                       // M-3770: the page's "Updates on this machine" line
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
@@ -31972,7 +32078,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         let current: string | null = null;
         try { current = this.runningAgendVersion(); } catch { /* unknown: the page compares nothing */ }
         const s = this.updateCheckState;
-        return { current, offer: s?.offer ?? null, hubRecommendation: this.hubRecommendedUpdate(), checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false };
+        return { current, offer: s?.offer ?? null, hubRecommendation: this.hubRecommendedUpdate(), checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false, preflight: this.updatePreflight };
       },
       checkUpdateNow: () => this.checkUpdateNow(),
       updateProgress: (): WebUpdateProgress | null => webProgressOf(readUpdateProgress(this.dataDir)),
@@ -31995,6 +32101,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try { currentVersion = this.runningAgendVersion(); } catch { return; }
       try { this.recordUpdateCheck(currentVersion, await this.lookUpUpdateTarget(currentVersion)); }
       catch { this.recordUpdateCheck(currentVersion, null); }
+      await this.refreshUpdatePreflight();                      // M-3770: answered with the page's next view
     })();
     try { await c.running; } finally { c.running = null; }
     return { ok: true };

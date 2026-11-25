@@ -306,6 +306,7 @@ describe("sink 1 — the fleet's outbound IPC", () => {
       setTopicIcon: () => {},
       eventLog: null,
       checkToolPermission: (FleetManager.prototype as unknown as Record<string, unknown>).checkToolPermission,
+      requestContextCallOf: (FleetManager.prototype as any).requestContextCallOf,
       // #1774: a reply's sender, taken at the handler's entry (the name's generation and daemon then).
       webChatIdentity: () => ({ generation: 0, daemon: undefined }),
     };
@@ -856,6 +857,7 @@ describe("general administrator orchestration tools (decision 9e3bea6c, #3043)",
         setTopicIcon: () => {},
         eventLog: null,
         checkToolPermission: (FleetManager.prototype as unknown as Record<string, unknown>).checkToolPermission,
+      requestContextCallOf: (FleetManager.prototype as any).requestContextCallOf,
         webChatIdentity: () => ({ generation: 0, daemon: undefined }),
       };
 
