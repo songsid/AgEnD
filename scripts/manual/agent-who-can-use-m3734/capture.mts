@@ -69,8 +69,10 @@ const MEASURE = `(() => {
   const root = document.querySelector(".ap-who"), W = innerWidth;
   if (!root) return null;
   const small = [...root.querySelectorAll("button, a.btn, summary, input")].filter((e) => e.getBoundingClientRect().width > 0)
-    .map((e) => ({ t: (e.textContent || e.getAttribute("aria-label") || e.tagName).trim().slice(0, 30), h: Math.round(e.getBoundingClientRect().height), r: Math.round(e.getBoundingClientRect().right) }))
-    .filter((x) => x.h < 44 || x.r > W + 0.5);
+    // A label that runs out of its pill (wider than the button: scrollWidth) counts too (#4461 capture check, phone 390 px).
+    .map((e) => ({ t: (e.textContent || e.getAttribute("aria-label") || e.tagName).trim().slice(0, 30), h: Math.round(e.getBoundingClientRect().height),
+      l: Math.round(e.getBoundingClientRect().left), r: Math.round(e.getBoundingClientRect().right), over: e.tagName !== "INPUT" && e.scrollWidth > e.clientWidth + 1 }))
+    .filter((x) => x.h < 44 || x.r > W + 0.5 || x.l < -0.5 || x.over);
   const rows = [...root.querySelectorAll(".ap-who-guests .ap-who-list:not(.ap-who-pick) .ap-who-row")].map((r) => ({
     name: r.querySelector("strong")?.textContent, pressed: [...r.querySelectorAll("[aria-pressed=true]")].map((b) => b.dataset.level), text: r.innerText }));
   const link = root.querySelector("#whoHubChoose");
@@ -133,7 +135,7 @@ try {
       const page_text = await page.evaluate(`document.querySelector(".agent-settings-heading")?.innerText || ""`);
       // The phone's heading has no scope line (the page names the agent above it).
       if (c.device === "desk") check(`${tag}: the scope says the agent's display name`, String(page_text).includes(labelOf(c, L.scope)), page_text);
-      check(`${tag}: every control at least 44 px tall and on screen`, m.small.length === 0, m.small);
+      check(`${tag}: every control at least 44 px tall, on screen, its label inside it`, m.small.length === 0, m.small);
       check(`${tag}: no sideways scroll`, m.scroll <= m.W, m.scroll);
       await shot(page, `${tag}-1-who`);
       await page.locator("#who-hub").scrollIntoViewIfNeeded();
@@ -147,7 +149,7 @@ try {
       m = await page.evaluate(MEASURE);
       const picks = await page.locator(".ap-who-pick .ap-who-row strong").allTextContents();
       check(`${tag}: Add a person offers those not listed yet (Bob, Dan)`, JSON.stringify(picks) === JSON.stringify(["Bob", "Dan"]), picks);
-      check(`${tag}: (add) every control at least 44 px tall and on screen`, m.small.length === 0, m.small);
+      check(`${tag}: (add) every control at least 44 px tall, on screen, its label inside it`, m.small.length === 0, m.small);
       check(`${tag}: (add) no sideways scroll`, m.scroll <= m.W, m.scroll);
       await shot(page, `${tag}-2-add`);
 
@@ -177,7 +179,7 @@ try {
       const controls = await page.evaluate(`[!!document.querySelector(".ap-who-add"), !!document.querySelector(".ap-who-guests .btn-danger")]`);
       check(`${tag}: before grants: Start from today's guests, no Remove or Add`, m.text.includes(labelOf(c, L.derived)) && JSON.stringify(controls) === "[false,false]", controls);
       check(`${tag}: no Hub: said plainly, no Hub link`, m.hub === "none" && !m.href && m.text.includes(labelOf(c, L.noHub)), [m.hub, m.href]);
-      check(`${tag}: (no Hub) every control at least 44 px tall and on screen`, m.small.length === 0, m.small);
+      check(`${tag}: (no Hub) every control at least 44 px tall, on screen, its label inside it`, m.small.length === 0, m.small);
       check(`${tag}: (no Hub) no sideways scroll`, m.scroll <= m.W, m.scroll);
       await shot(page, `${tag}-4-nohub`);
       check(`${tag}: no console error, no failed read (but the fixture's task board)`, errors.length === 0, errors);

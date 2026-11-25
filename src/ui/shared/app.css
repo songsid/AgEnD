@@ -5108,7 +5108,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .ap-who-hub-state { margin: 8px 0; font-weight: 600; }
 .ap-who-hub[data-hub-state="shared"] .ap-who-hub-state { color: var(--ok); }
 .ap-who .err { color: var(--danger); }
+.ap-who .field-row { flex-wrap: wrap; }
+.ap-who .field-row .btn { white-space: normal; text-align: center; max-width: 100%; }
 @media (max-width: 599px) {
+  .ap-who .field-row { flex-direction: column; align-items: stretch; }
   .ap-who-actions { margin-left: calc(32px + 12px); width: 100%; }
   .ap-who-actions .ap-who-remove { margin-left: auto; }
 }
