@@ -25,7 +25,7 @@ try{
   if(process.env.NEEDS_ONLY==="1"){
    const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
    const text=await reason.innerText();
-   if(!text.includes("Demo source")||!(c.lang==="en"?text.includes("Demo source → Settings → Permissions"):text.includes("Demo source 的「設定」→「權限」")))throw Error("Missing sender display name/full recovery path");
+   if(!(c.lang==="en"?text.startsWith("Demo source's retained history"):text.startsWith("Demo source 保留的歷史"))||!(c.lang==="en"?text.includes("Demo source → Settings → Permissions"):text.includes("Demo source 的「設定」→「權限」")))throw Error("Missing sender display name/full recovery path");
    if(overflow||errors.length||needsCsp.length)throw Error(JSON.stringify({overflow,errors,csp:needsCsp}));
    results.push({...c,overflow,errors,csp:needsCsp,recoveryText:text});await ctx.close();continue;
   }

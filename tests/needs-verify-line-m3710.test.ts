@@ -200,6 +200,7 @@ describe("Needs you shows the line with Authorize this browser, in en and zh-TW"
       expect(p.root.querySelector(".contact-verify-need")).toBeNull();
       expect(p.root.querySelector(".contact-ticket")).toBeTruthy();
       expect(text()).toContain(hint);
+      expect(text()).toContain(lang==="en"?"Demo source's retained history has an unknown origin":"Demo source 保留的歷史來源不明");
       expect(reqs.some(r=>r.url==="/ui/api/contact-authorizations/Rrecovery")).toBe(true);
     });
   it("one request: singular", async () => {

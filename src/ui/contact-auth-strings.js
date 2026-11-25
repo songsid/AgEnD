@@ -87,6 +87,8 @@ register("contactAuth", {
     from: "From {0}", via: "Via {0}", to: "To {0}", origin_unknown: "Origin unknown", origin_mixed: "Earlier non-admin request",
     "reason_earlier-non-admin": "This agent's retained history includes non-admin input, so this contact needs approval.",
     "reason_unknown-origin": "This agent's retained history has an unknown origin, so this contact needs approval.",
+    "request_reason_earlier-non-admin": "{0}'s retained history includes non-admin input, so this contact needs approval.",
+    "request_reason_unknown-origin": "{0}'s retained history has an unknown origin, so this contact needs approval.",
     // M-3385: under the reason — what an approval leaves as it is, and the one way this agent stops needing approval.
     requestRecoveryNote: "Approving forwards only this request and leaves the receiving agent's origin unchanged. To accept {0}'s current conversation as its own work, open {0} → Settings → Permissions and press Clear retained origin. It never resets on its own.",
     resetNote: "Approving forwards only this request and leaves the receiving agent's origin unchanged. To accept the sending agent's current conversation as their own work, a verified managing admin can use its Permissions → Clear retained origin. It never resets on its own.",
@@ -209,6 +211,8 @@ register("contactAuth", {
     from: "來自 {0}", via: "經由 {0}", to: "給 {0}", origin_unknown: "來源不明", origin_mixed: "先前有非管理員的請求",
     "reason_earlier-non-admin": "這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。",
     "reason_unknown-origin": "這個 Agent 保留的歷史來源不明，因此這次聯絡需要核准。",
+    "request_reason_earlier-non-admin": "{0} 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。",
+    "request_reason_unknown-origin": "{0} 保留的歷史來源不明，因此這次聯絡需要核准。",
     requestRecoveryNote: "核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要接受 {0} 目前的對話作為它自己的工作，請到 {0} 的「設定」→「權限」，按「清除保留的來源」。來源不會自動重設。",
     resetNote: "核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要接受發送 Agent 目前的對話作為自己的工作，管理它的已驗證管理員可以到「權限」→「清除保留的來源」確認。來源不會自動重設。",
     created: "{0} 提出", expires: "{0} 到期", decided: "{1} 於 {0} 處理",
