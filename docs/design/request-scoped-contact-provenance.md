@@ -1,6 +1,8 @@
 # Request-scoped contact provenance
 
-Status: R2, incorporating the four independent reviews; awaits user approval. No product implementation.
+Status: R3. The user chose D1 option (2), request-scoped onward release, on
+2026-11-25. The complete design still awaits final approval. No product implementation;
+implementation also waits for the beta.23 merge freeze to lift.
 Source baseline: `8052c59ee292740b4234c263be47ee95dd27e4fb` on
 `release/2.3.5-alpha`. This follows the user-approved two-phase contact-lock
 simplification. Phase 1 preserves signed-in account identity separately from
@@ -8,8 +10,8 @@ approval authority. This document proposes Phase 2.
 
 ## 1. Policy and limits
 
-A contact decision belongs to a request and an exact operation, not to an Agent's
-lifetime. Remove the accumulated per-Agent `unknown`/`mixed` origin as a permission
+A contact decision starts with an exact held operation and belongs to its request,
+not to an Agent's lifetime. Remove the accumulated per-Agent `unknown`/`mixed` origin as a permission
 switch. Retain history as explanation. Recognizing an administrator does not need
 browser verification; giving an approval or other go-ahead still does.
 
@@ -27,28 +29,32 @@ The following approved policy is preserved:
 5. Exact-operation binding, atomic decision/admission, once-only delivery and
    current administrator/incarnation checks remain. Standing grants are optional.
 6. A later administrator message never cleans a tracked operation of an existing outside request. A
-   person approves the particular operation; there is no blanket origin reset.
+   person approves the displayed request and its onward contacts, as decided in D1;
+   there is no blanket origin reset.
 
 Contact permission is permission to deliver a message. It does not approve the
 receiving Agent's actions, confer the owner's authority, or grant credentials.
-An endorsement releases **one exact delivery**, never the whole request. Its
-label and original ingress survive approval, receiving turns and continuations.
-The same request's next contact is a new operation: guest/restricted work needs
-its own matching grant or approval; the permitted M-3661 Hub path stays labelled.
-A receiver's later **independent root** is unaffected. Nothing marks the receiver
-restricted for life.
+**User decision D1 — option (2), “one press releases the rest”:** when a managing
+administrator presses Continue on outside request A→B, the same request's onward
+contacts B→C and later hops do not ask for contact approval again. This retains
+M-3384's ordinary onward-release behavior, now bounded by an explicit request
+identity instead of lifetime Agent state. GrokCore's stricter per-hop approval
+preference was considered and **declined by the user** on 2026-11-25.
 
-**User decision D1 — recommended policy change to M-3384:** today's ordinary
-endorsement can let approved content flow onward without another contact card.
-R2 recommends retaining its no-lifetime-spread rule, but replacing that onward
-bypass with the exact-edge rule above. GrokCore requires this; Lumen proposes
-propagating the label while preserving no further ordinary hold, and Prism's
-review accepts ordinary endorsement while requiring unendorsed Hub scope to
-survive. Those readings are not identical. This is a deliberate decision for the
-user before code, not an unchanged-M-3384 claim or a claimed four-reviewer
-consensus. A compatibility alternative would retain labelled but unheld ordinary
-onward sends after approval; that alternative explicitly permits a restricted or
-guest request to reach further Agents through one endorsed intermediary.
+The first approved operation still binds exact bytes, source/target incarnations
+and current administrator proof. Its committed ticket then supplies the
+request-scoped onward endorsement. Every later operation has its own immutable
+payload/idempotency/currentness checks, but does not create another approval just
+because it is another hop. The source actors, ingress, audience and labels remain
+unchanged. Hub provenance, `authority: none`, side-effect refusals and the old-peer
+barrier are never removed by Continue.
+
+Only that request's mechanically linked descendants and continuations use this
+release. A new outside request starts unendorsed and needs its own first decision,
+unless a separately configured standing grant matches. Neither the same person,
+room, Agent, conversation history nor a later unrelated request inherits D1.
+Nothing marks a receiving Agent restricted or authorized for life, and Continue
+does not approve the receiving Agent's actions or create a general human go-ahead.
 
 This is not a sandbox, secret isolation or semantic non-interference. A model
 with shell/keys can still misuse them. Native CLI guard coverage remains as
@@ -89,11 +95,12 @@ Proposed server-owned records (a **tree**, not a provenance DAG):
 
 ```text
 RequestContext
-  id, rootReceiptOrAcceptedHubDeliveryId, parentContextId?  # exactly zero or one
+  id, rootContextId, rootReceiptOrAcceptedHubDeliveryId, parentContextId?  # zero or one
   initiatingActor                    # immutable normalized id/kind, or unknown
   ingress                            # owner / free-room / restricted-room / guest / hub
   sourceInstance + incarnation
   sourceAudience
+  requestApprovalTicketId?             # on the root only; reference to existing committed decision
   returnAudience?                    # only if different, especially Hub
 
 TurnBinding
@@ -103,11 +110,12 @@ TurnBinding
 OperationContext
   operationId, source + target incarnations, actual tool verb
   contextId + payload digest
-  ticketId?                          # existing approval/grant record; no second endorsement store
+  ticketId?                          # initial hold/grant decision; later same-request hops need no new ticket
 ```
 
 Do not persist a second `contactPolicy` enum. Derive the decision from immutable
-ingress, real tool, current grant and exact operation/ticket. Existing outbox and
+ingress, real tool, the root's committed approval or a current matching grant,
+and the exact operation/ticket. Existing outbox and
 reply-obligation states track pending/terminal work; there is no new agent-wide
 “awaiting children” lock.
 
@@ -118,11 +126,12 @@ only applies to a non-admin; it does not override an administrator merely becaus
 the room mode is restricted. Once admitted, descendants cannot downgrade
 it. An administrator steer of outside work remains that work, rather than
 re-running ingress selection as `owner`. Hub proof/kind and its side-effect
-constraints survive any target-side contact approval.
+constraints survive any target-side contact approval. D1 is a separate release
+of the contact-approval requirement, not a downgrade to `owner` or `free-room`.
 
 Initially refuse multi-parent derivatives. Do not select one convenient parent,
-union people, intersect/union audiences, or apply one edge's approval to several
-parents. A multiwriter board wake must be split into separate provable inputs,
+union people, intersect/union audiences, or apply one request's approval to
+unrelated parents. A multiwriter board wake must be split into separate provable inputs,
 one parent each, or refused before writing the pane. Reordering contributors or
 retrying cannot turn it into normal work. Durable board/schedule derivative
 creation from outside work remains refused in the first build; it is not a reason
@@ -141,7 +150,27 @@ cannot select a historical context by correlation text. Data that resembles a
 header is ordinary text. UI and `delivery_status(detail)` show provenance and
 `authority: none` separately from genuine human receipt authority.
 
-Approval endorses only its exact contact edge, recorded by the existing ticket.
+The first Continue commits the exact held operation and the root's
+`requestApprovalTicketId` in the same admission/audit transaction. A matching
+administrator-written standing grant has the same request-scoped effect; its
+normal use is consumed for the initial admission, not again for every descendant.
+This reference reuses the existing decision, not a second approval workflow.
+The approved request has no new arbitrary 30-minute onward-release timeout:
+pending-ticket expiry governs the unmade decision, not whether admitted work
+silently loses its request identity. Retain the ticket/root binding while any
+tracked child or recovery can still use it.
+
+For a later operation, follow only the server-owned root/parent/obligation binding;
+verify that its referenced decision is committed for that root and has not been
+invalidated by the supported lifecycle. Never accept an Agent's claimed root,
+header, ticket id or correlation as endorsement. Only a proven durable commit
+establishes the release. An uncommitted/rolled-back transaction does not; a lost
+network ACK neither manufactures nor erases a committed root decision. Uncertain
+physical delivery follows the existing outbox reconciliation, never a blind resend. Source/target
+incarnation, actual caller/turn, tool, audience and peer-capability checks still
+run for each operation. Their refusal is not a demand to approve the same request
+again and must name the actual cause.
+
 The admitted payload already contains the escaped informational label and return
 warning; the companion is for machine enforcement, not the sole place the label
 exists. An old renderer cannot turn these stored bytes into an unlabelled message.
@@ -150,15 +179,16 @@ barrier below is still required.
 
 The receiving binding retains the immutable actor, ingress and audience even
 after Continue. In particular, approving a held Hub relay preserves Hub
-provenance, `authority: none`, and every M-3661 side-effect refusal. An ordinary
-contact approval is never an exemption from those restrictions. Under recommended
-D1, its next peer contact is evaluated as the same outside request, not a Free or
-owner root. No lifetime origin is copied to the receiver.
+provenance, `authority: none`, and every M-3661 side-effect refusal. Its same-request
+onward contact does not ask again under D1, but still has to be a permitted real
+tool under those Hub rules. No contact endorsement exempts it from a Hub tool or
+side-effect refusal. No lifetime origin or permission switch is copied to the
+receiver. A later independent root has neither the old label nor its D1 release.
 
 A reply on an exactly matched obligation uses the existing approved-return path
 without a second contact application, limited to that obligation's recipient and
-audience. The label and audience warning still travel. It is not permission for a
-new unsolicited peer contact or a new human go-ahead. Existing incarnation and
+audience. The label and audience warning still travel. It is not permission for an
+unrelated peer contact or a new human go-ahead. Existing incarnation and
 delivery checks remain. A target that also speaks in a Free room cannot publish a
 guest/Hub reply into that wider room merely because the target's normal output
 route points there.
@@ -185,15 +215,16 @@ Hub sharing rights, scope, file/routing fences and ordinary go-ahead checks.
 | Either room mode, but **Hub ingress** | Hub person or non-person actor without sufficient proof | Name-only, missing proof or wrong destination | No pass-through; fail this operation closed | Retry only after a fresh valid accepted request, never guess by name |
 | Ordinary Fleet work | Current administrator's independent request | Verified | Normal | No card, regardless of old retained history |
 | Ordinary Fleet work | Same administrator | Unverified signed-in account | Same identity and normal contact; no go-ahead | Existing verification for approvals |
-| Ordinary Fleet work | Continuation of restricted/guest/Hub work | Any later administrator message | Retain that work's scope | Decide that work's exact operation; administrator text does not clean it |
+| Ordinary Fleet work | Continuation of restricted/guest/Hub work | Any later administrator message | Retain its scope and committed D1 release, if any | Before the first approval it stays held; after Continue its onward contacts do not ask again; administrator text itself changes neither |
 | Ordinary Fleet topic/DM | Native non-admin admitted by existing access rules | Identified, verified or not | **No contact hold**, unless this is a tracked restricted/guest/Hub continuation | No owner action authority; this follows the approved “holds only in those three modes” rule |
 | Ordinary Fleet work | Agent or system-started input | Proven independent assignment, not recovery/resume | Normal only with an admitted independent root | A recovery/resume/wake follows the mechanical rules below; “system” is not trusted-root evidence |
 
 The two “either room mode” rows describe a different authenticated ingress, not
 someone speaking as a Free-room member. A guest or Hub request cannot become
 Free-room work simply by selecting a target whose own room mode is Free.
-The four reviews support retaining this precedence. Under recommended D1 it
-continues to govern the next hop after a contact approval as well. Native non-admin
+The four reviews support retaining this ingress precedence. Under the user's D1
+choice it continues to label and constrain the next hop after Continue, while the
+request's contact-approval requirement is released. Native non-admin
 Fleet-topic work is explicitly unheld: that is a conscious relaxation of any
 accumulated-history restriction, not an accidental omission. The user approves
 this matrix, including D1, before implementation.
@@ -225,19 +256,27 @@ Transport and deployment coverage:
    after that binding ends. A displayed idle pane with an unresolved active
    binding is not proof that it ended. No “latest speaker wins”.
 3. **Create a contact operation.** Snapshot actual tool verb, bytes/files, target,
-   both incarnations and context before delivery. Match a grant deterministically
+   both incarnations and context before delivery. First check the server-owned
+   root's committed D1 release. If present, admit without another contact ticket
+   while retaining all other checks. Otherwise match a grant deterministically
    or create exactly one immutable ticket. A changed retry conflicts.
+   If several new-engine operations of that **proven same root** already wait,
+   the first Continue queues their re-evaluation under D1 without another human
+   approval. Their exact hashes, currentness and once-only admissions still hold.
+   It never replays terminal/declined/expired operations or unrelated old tickets;
+   legacy tickets without provable common roots are not grouped by inference.
 4. **Hold.** One durable ticket is projected next to the held send, in the source
    chat, General on Discord/Telegram, and Needs you on every link. These are views
    of the same ticket, not four independent applications. Pending delivery is not
    retried by the agent.
 5. **Decide.** Re-read current target managing administrator/approver, ticket and
    policy revisions, expiry and both incarnations. Commit approval/grant-use/audit
-   and outbox admission atomically. Decline/expiry never dispatch. A timer/sweep
+   and outbox admission plus the root's D1 reference atomically. Decline/expiry
+   never dispatch or endorse that root. A timer/sweep
    sends the existing once-only status notice; approved notices distinguish queued,
    delivered and unconfirmed. Status messages contain no new authority.
-6. **Continue.** Approved contact releases its edge and retains its label/scope
-   under recommended D1. M-3661 relays do the same through receiving turns and
+6. **Continue.** The first approval releases contact approval for the same request
+   and its later hops under the user's D1 choice, while retaining label/scope. M-3661 relays do the same through receiving turns and
    exact returns, with their specific pass-through/refusal rules. A permitted
    resume or wake uses its immutable parent. Outside board/schedule creation is
    refused in the initial build; existing wakes are never assumed normal merely
@@ -267,22 +306,36 @@ Transport and deployment coverage:
 | Reply-recovery prompt | Exact recovery job's parent context; never “Agent's own work” |
 | Restart/resume prompt | Restored work's parent; starting a fresh runtime ends the old active binding but does not erase the resumed work's context |
 | Board wake or scheduled input with a captured parent | Same single parent, including labels and audience; outside derivative creation remains disabled until supported end to end |
-| System-started resume/recovery has no trustworthy parent | Use the most recent outside context if no independent administrator root has begun since; this fallback applies only to system recovery, not new human roots |
+| System-started resume/recovery has no trustworthy parent | Conservatively use the most recent outside context's restrictions if no independent administrator root has begun since; **do not inherit its D1 release** without a proven parent |
 | No trustworthy parent and the previous rule cannot identify one | Refuse/defer that resume or wake with a concrete reason; require a deliberately new admitted request, never guess normal work |
 | Several different parents contribute to one wake | Split into separate mapped inputs, or refuse the wake; never pick one parent or reuse one approval |
+
+Each independent external message creates a new unendorsed root, even from the
+same person or room. It queues while another outside turn is active; it is not
+injected under that turn's approval. A server-registered expected answer/return
+may continue its exact parent, and a permitted administrator steer may enter the
+active context. Merely quoting an old message or replying to arbitrary history
+cannot select an endorsed root. All accepted inputs within the active turn still
+inherit that turn; there is no semantic “this text seems independent” override.
 
 This table is a routing rule, not natural-language classification. Keep a bounded
 server-owned recovery pointer tied to context, incarnation and work generation;
 it is not the retired union and never gates a new independent administrator
 request. Clear/replace that pointer only at a proven input boundary. Recovery
 jobs that already name a parent cannot discard it because an administrator root
-has started in the meantime. Unknown or missing metadata is not a new owner root.
+has started in the meantime. Unknown or missing metadata is not a new owner root. An
+unproved recovery fallback starts distinct unendorsed recovery work, recording
+the old context as diagnostic evidence only. It is not a causal parent or a claim
+that the old person asked again. It may preserve conservative audience/scope
+limits, but cannot borrow an old request's approval or standing grant. Genuine
+mapped recovery/returns keep their proven root and its D1 release. This prevents
+“resume the last thing” from authorizing unrelated new system work.
 
 An unrelated member's message must queue as its own root rather than being
-silently added as another actor under somebody else's standing grant. Only the
-same initiating actor or a managing administrator's permitted steer can join the
-active context; if another input is accepted into it, it may not downgrade that
-context or obtain the prior person's grant. Unsupported mixed-actor joining is
+silently added as another actor under somebody else's standing grant. Only a server-registered expected
+answer from that initiating actor or a managing administrator's permitted steer
+can join the active context. Any other external message starts a new root and
+cannot obtain the prior request's approval or person's grant. Unsupported mixed-actor joining is
 refused, not handled by a new `mixed` union.
 
 A context's evidence cannot be pruned while a ticket, obligation, recovery job or
@@ -300,7 +353,12 @@ does not confine raw shell, manually copied text or untracked scripts.
 ## 6. One card and inline verification
 
 The card identifies the sending Agent and exact target, initiating person/platform,
-message, return audience, concrete reason and expiry. Actions are **Continue
+message, return audience, concrete reason and expiry. Continue also states its D1 scope:
+“Continue this request and its later Agent contacts. This does not approve what
+Agents do or authorize unrelated requests.” / 「繼續這筆請求及它後續的 Agent 聯絡；
+這不代表核准 Agent 的操作，也不會授權其他請求。」 Do not describe Continue as
+releasing only this one A→B message. Always allow remains the separate optional
+rule for future matching requests. Actions are **Continue
 (approve once)** / **Always allow…** / **Decline**. Standing grants remain optional,
 with the existing exact person + source room/Agent + target + verb + both
 incarnations, default seven days and explicit expiry/revoke. Legacy tickets containing several people retain their existing explicit-selection
@@ -442,13 +500,14 @@ a pending request, or reset an Agent's whole history to escape the mismatch.
 | Free intermediary launders guest/Hub work | Ingress/context precedence is retained across routing; Free is not a label eraser |
 | Login verification silently executes an approval | Same card, final explicit decision; verification-only and expiry/race negatives |
 | Approval applies to different bytes, recipient or incarnation | Exact operation hash, current source/target, transactional once-only admission |
-| Approval washes a Hub/guest request or grants owner action authority | Exact-edge endorsement only (D1); receiver onward operation retains scope, audience and Hub side-effect refusals |
+| Same request asks repeatedly after Continue | Proven A→B→C→D positive needs only the first approval; each operation still has once-only admission and immutable bytes |
+| Approval leaks into another request or grants owner action authority | D1 follows only the committed root and server-owned descendants; same-person new-root, forged-root and unproved-recovery negatives, label/audience/Hub refusals remain |
 | Wrong bot elevates or misroutes a person | Platform-qualified identity, current central admin gate, original adapter callback/send binding |
 | Timer/restart washes an active Hub request | Actual turn/boot fencing, no elapsed-window release, late report keeps context without reviving turn |
 | Old peer ignores provenance | Negotiated capability, missing/unknown version refusal, supported downgrade barrier |
 | Free receiver publishes an outside reply to its whole room | Guest/Hub result after Continue stays within the captured return audience; a later independent room root remains usable |
 | System-originated turn launders outside work | One negative per recovery prompt, restart/resume, board wake and schedule; exact parent or bounded outside-recovery fallback, never default Normal |
-| Durable or multiwriter work escapes its parent | Single-parent tree; unsupported derivatives refused; mixed-parent and reversed-order/retry negatives, no approval applied across parents |
+| Durable or multiwriter work escapes its parent | Single-parent tree; unsupported derivatives refused; mixed-parent and reversed-order/retry negatives, no approval shared across unrelated roots |
 | Card races or lost ACK resend a message | One ticket across projections; atomic outbox admission; operation-id conflict/idempotency; no agent retry |
 
 Tests are synthetic. No live approval, credential, vendor or model call is needed
@@ -457,7 +516,7 @@ payload evidence and a user look; this design adds no drawn UI or runtime code.
 
 ## 10. Review decisions and build split
 
-Lumen, agy, GrokCore and Prism have reviewed R1 at `31a08ccd`. Before implementation, material resolutions go back through the Leader and the user approves R2. Review covers the entire matrix,
+Lumen, agy, GrokCore and Prism have reviewed R1 at `31a08ccd`. Before implementation, material resolutions go back through the Leader and the user approves the final revised design. Review covers the entire matrix,
 not just the currently failing ingress. Each finding will be mapped to a document
 line/decision or an explicit deferred item. The user approves that revision.
 
@@ -482,11 +541,13 @@ Proposed build cards only after that approval:
 
 Do not create build cards or implement these merely because this draft exists.
 
-## 11. Four-review disposition at R2
+## 11. Four-review disposition after D1
 
 All four independent R1 reports were read in full. These are design dispositions,
-not formal implementation approvals. D1 remains a user decision because the
-reviewers' ordinary-endorsement recommendations differ.
+not formal implementation approvals. D1 is now resolved by the user as option
+(2): one Continue releases the same request's later contacts. GrokCore's stricter
+per-hop preference is recorded below as considered and declined; this is a user
+policy choice, not a claim that every reviewer originally preferred it.
 
 ### agy / Gemini
 
@@ -509,10 +570,10 @@ Source: [independent review](https://github.com/songsid/AgEnD/pull/4456#issuecom
 | Point | Disposition |
 | --- | --- |
 | B1: system-started recovery/resume/wake can wash outside work | Adopted: §5 gives exact-parent binding and bounded most-recent-outside fallback when no independent admin root has started. No system input defaults to Normal. Tests enumerate recovery, restart, board and schedule. |
-| Label must travel after Continue; no lifetime target taint | Adopted in §1/§3. On whether the same request's next ordinary contact is held, D1 explicitly proposes the stricter exact-edge rule rather than silently claiming unchanged M-3384. |
+| Label must travel after Continue; no lifetime target taint | Adopted in §1/§3. D1 now preserves request-scoped onward release after Continue, as chosen by the user; labels and audience remain. |
 | Free-room receiver may publish reply too widely | Adopted: §3 audience contract and §9 negative test forbid guest/Hub results reaching a wider room, including after approval. |
 | Explain an admin steer held under outside work | Adopted: §6 card names the current Agent and original person's request; actor identity is not misreported. |
-| Unify approval/label treatment | Label always survives; approval releases only its exact operation. Whether ordinary onward contacts need another decision is the explicit D1 user choice. Hub refusals always survive. |
+| Unify approval/label treatment | Label always survives; the user chose one approval for that request and its later contacts, not unrelated roots. Hub refusals always survive. |
 | Bake label into admitted bytes for old renderers | Adopted: §3 and §8. This is defense in depth; an older binary still cannot safely execute scoped work without the barrier. |
 | Drop per-origin legacy-context cards at cutover | Adopted: §8 migrates pending tickets/known-parent work, not every old union. Finish/cancel untracked active work before cutover; no mass replacement unknown cards. |
 | Ordinary non-admin Fleet-topic row must say held or not | Adopted: §4 plainly says no hold for admitted ordinary native non-admin input, unless it is a tracked restricted/guest/Hub continuation. User approves this explicit matrix. |
@@ -525,10 +586,10 @@ Source: [independent review](https://github.com/songsid/AgEnD/pull/4456#issuecom
 
 | Point | Disposition |
 | --- | --- |
-| Multiple parents lack policy/audience/endorsement join | Adopted the simpler alternative: §3/§5 refuse multi-parent derivatives, or split into separately mapped inputs. No parent is selected by order, no one endorsement covers another parent. |
+| Multiple parents lack policy/audience/endorsement join | Adopted the simpler alternative: §3/§5 refuse multi-parent derivatives, or split into separately mapped inputs. No parent is selected by order, and no request endorsement covers an unrelated root. |
 | Mixed-parent and order/retry controls | Adopted in §9; repeated/reordered mixed-writer wakes remain refused, and do not become a Normal root. |
 | Keep explicit verification decision and tracked-only limit | Retained in §1/§6; no claim of semantic or memory isolation. |
-| Keep M-3384 ordinary endorsement distinct from unendorsed Hub | Hub constraints are preserved. The ordinary next-hop consequence is surfaced as D1, because R2 recommends a stricter same-request check than this report's compatibility reading. No silent policy change is authorized. |
+| Keep M-3384 ordinary endorsement distinct from unendorsed Hub | Hub constraints are preserved. The user resolved D1 in favor of same-request onward release. Unendorsed new roots still need their own first decision, while Hub provenance and constraints survive every approval. |
 | Prove actual supported older executable barrier | Adopted in §8: not a version warning or optional companion field; enabling waits for zero-dispatch proof. |
 | Cut lifetime union/reset and a second relay engine | Adopted; use existing operation/ticket/outbox/obligation state. |
 | M-3661 can prepare disabled, not enable before shared receiver/continuation | Adopted in §7 and build split. |
@@ -540,7 +601,7 @@ Source: [independent review](https://github.com/songsid/AgEnD/pull/4456#issuecom
 | Point | Disposition |
 | --- | --- |
 | Lock active-turn input inheritance mechanically | Adopted verbatim in substance in §5: every input accepted into an outside active turn inherits it; an independent root starts only after owned end/cancel/fresh-runtime boundary. |
-| An endorsement covers only its edge; same request's next hop keeps scope and is evaluated again | Adopted as recommended D1 in §1/§3, explicitly requiring user approval because ordinary M-3384 compatibility readings differ. |
+| Prefer per-hop endorsement; re-check approval on the same request's next hop | Considered and declined by the user: D1 option (2) releases that request's later contact approvals after one Continue. Adopted the non-laundering portion: the label and audience remain, and no unrelated root inherits the release. |
 | Free intermediary cannot erase guest/Hub context | Adopted at root selection, receiving admission and each derived send. |
 | Same-card verification must not execute a retained choice | Retained with neutral focus and a final explicit decision in §6. |
 | Old-peer refusal and supported rollback | Retained and made concrete in §8, with admitted label bytes plus actual executable barrier proof. |
