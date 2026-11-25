@@ -41,7 +41,7 @@ describe("the live 2.1.332 prompt", () => {
 
   it("its Needs-you card offers the dialog's own choices, cursor on the switch, Esc not offered", () => {
     const card = claudeUsageCreditsPrompt(LIVE)!.card;
-    expect(card).toMatchObject({ kind: "question", title: "Claude Code", page: "options", cursor: 0, freeText: false, noSkip: true, humanOnly: true });
+    expect(card).toMatchObject({ kind: "question", title: "Claude Code", page: "options", cursor: 0, freeText: false, noSkip: true, webOnly: true, humanOnly: true });
     expect(card.question).toBe("Fable 5.2 now uses usage credits\nFable 5.2 runs on usage credits, purchased separately from your plan.");
     expect(card.options.map(o => o.title)).toEqual(["Switch to Opus 5.5 and continue", "Continue with Fable 5.2"]);
     expect(acting(LIVE)[0]!.remoteCard!(LIVE)).toEqual(card);
