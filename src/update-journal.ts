@@ -564,6 +564,20 @@ export function ackGeneration(home: string, attempt: AttemptRecord, nonce: strin
   return substep(home, { ...attempt, fleets }, opts.dead ? "start-dead" : "start-acknowledged", io);
 }
 
+/**
+ * §4.3: the updater takes back a planned handoff (to replace or clear it) by taking its single-use claim itself — the
+ * same O_EXCL file a start's `claimHandoff` creates, so exactly one of them wins. True: revoked (no start can claim it
+ * now; an exact retry by the same updater is fine). False: a start already holds the claim — the updater must not
+ * rewrite fleet.lock; it acknowledges or voids that generation instead.
+ */
+export function revokeHandoff(home: string, attemptId: string, nonce: string, updater: { pid: number; start: ProcessStartRecord }, io: JournalIo = defaultJournalIo): boolean {
+  if (!/^[0-9a-f]{32}$/.test(nonce)) return false;
+  const path = join(attemptDir(home, attemptId), `handoff-${nonce}.claim`);
+  try { writeNew(io, path, JSON.stringify({ revokedBy: updater.pid, start: updater.start }) + "\n"); }
+  catch { return false; }
+  return true;
+}
+
 /** A nonce whose claimant is proven gone with the update's fence still in place: void, never reused (§4.3). */
 export function voidGeneration(home: string, attempt: AttemptRecord, nonce: string, io: JournalIo = defaultJournalIo): AttemptRecord {
   const fleets = generationsOf(attempt).map(g => (g.nonce === nonce ? { ...g, consumed: true, dead: true } : g));

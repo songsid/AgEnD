@@ -6,8 +6,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { acquireFleetLock, fleetLockHeldByAnother, readFleetLockRecord, setFleetLockHandoff } from "../src/fleet-lock.js";
-import { ackGeneration, advance, claimHandoff, newAttemptId, openAttempt, planGeneration, readCurrent, voidGeneration, type AttemptRecord } from "../src/update-journal.js";
+import { acquireFleetLock, fleetLockHeldByAnother, readFleetLockRecord, releaseFleetLock, setFleetLockHandoff } from "../src/fleet-lock.js";
+import { ackGeneration, advance, claimHandoff, revokeHandoff, newAttemptId, openAttempt, planGeneration, readCurrent, voidGeneration, type AttemptRecord } from "../src/update-journal.js";
 import { acquireServiceLock, admitServiceCommand, SERVICE_LOCK_TOKEN_ENV } from "../src/service-lock.js";
 import { takeExclusiveLease, takeSharedLease } from "../src/state-lease.js";
 import type { InstallLockDeps } from "../src/install-lock.js";
@@ -46,7 +46,34 @@ describe("M-3770 2.1b: fleet.lock's update role (§4.3)", () => {
     const taken = acquireFleetLock(h, { pid: 202, handoffNonce: NONCE, claimHandoff: () => true, ...live });
     expect(taken.record).toMatchObject({ pid: 202, role: "fleet", nonce: NONCE });
     expect(readFleetLockRecord(h)).toMatchObject({ pid: 202, role: "fleet", nonce: NONCE });
-    expect(setFleetLockHandoff(planned!, null)).toBeNull();                                          // the fence is no longer the updater's
+    expect(() => setFleetLockHandoff(planned!, null)).toThrow(/revoked/);                            // never replaced unrevoked
+    expect(setFleetLockHandoff(planned!, null, () => true)).toBeNull();                              // the fence is no longer the updater's
+  });
+
+  it("replacing or releasing a planned handoff races the start through the SAME claim: exactly one wins", () => {
+    const h = home();
+    let a = advance(h, open(h), "barrier");
+    a = planGeneration(h, a, "trial", NONCE);
+    const updater = { pid: 100, start: START };
+    const revoke = (id: string, nonce: string) => revokeHandoff(h, id, nonce, updater);
+    const claim = (id: string, nonce: string, pid: number) => claimHandoff(h, id, nonce, { pid, start: START });
+    // The start wins the claim first: the updater's revoke loses, and it rewrites nothing.
+    let fence = setFleetLockHandoff(acquireFleetLock(h, { pid: 100, role: "update", attemptId: ID }), { nonce: NONCE, gen: "trial" })!;
+    expect(releaseFleetLock(fence)).toBe(false);                                                    // planned: never unlinked directly
+    expect(claim(ID, NONCE, 300)).toBe(true);
+    expect(setFleetLockHandoff(fence, null, revoke)).toBeNull();
+    expect(readFleetLockRecord(h)).toMatchObject({ role: "update", handoff: { nonce: NONCE } });     // untouched: the start renames next
+    expect(acquireFleetLock(h, { pid: 300, handoffNonce: NONCE, claimHandoff: claim, ...live })).toMatchObject({ record: { pid: 300, role: "fleet" } });
+    // The updater revokes first: the start's claim loses, and the fence is the updater's to clear and release.
+    a = planGeneration(h, a, "rollback", OTHER);
+    rmSync(join(h, "fleet.lock"));
+    fence = setFleetLockHandoff(acquireFleetLock(h, { pid: 100, role: "update", attemptId: ID }), { nonce: OTHER, gen: "rollback" })!;
+    const cleared = setFleetLockHandoff(fence, null, revoke);
+    expect(cleared?.record.handoff).toBeNull();
+    expect(revoke(ID, OTHER)).toBe(true);                                                           // an exact retry
+    expect(claim(ID, OTHER, 301)).toBe(false);
+    expect(() => acquireFleetLock(h, { pid: 301, handoffNonce: OTHER, claimHandoff: claim, ...live })).toThrow(/AgEnD is updating/);
+    expect(releaseFleetLock(cleared!)).toBe(true);
   });
 });
 
