@@ -1,0 +1,375 @@
+{
+  "version": 1,
+  "sourceCommit": "df3a7f6f39a5e47732342314437e0ee885f2a8a8",
+  "baseCommit": "1ecd6c97a8b0338df36a67acb314d7896cf8681d",
+  "integrationCommit": "2ad7ac481c8654167d8e2cf5f34a7fcefdaa3a89",
+  "flow": "OFF: optional host is not installed by production code; old routes/cards unchanged.",
+  "scope": "Synthetic SQLite/session/HTTP requests only. No renderer/capture/live fleet/provider/account/native login/posting.",
+  "sourceAndTestSha256": [
+    {
+      "path": "src/contact-auth-store.ts",
+      "sha256": "374e1f7e88ca53b4131f2d120b46dc4c5ac6c04ac58f37cff1fbdebeff1995d5"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "f4812fe9f6ffca0389143075efa2f168a50d89c9f678df47346e575941a76db2"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "eb8d4dc29462541e0a9d06ab820a5492341b260a62677bd75e2c23bbb7ea72ad"
+    },
+    {
+      "path": "src/public-web-gateway.ts",
+      "sha256": "593bbb05fece07a6f3cbe3acbd66e19e24bc2ba21f061db3e7e9df6d09ebe725"
+    },
+    {
+      "path": "src/request-contact-api.ts",
+      "sha256": "ff90ae7fdc7409d2bdc2c738dbe3da3cfeef1e9646d3e0869d1fa28c137b0337"
+    },
+    {
+      "path": "src/request-contact-card.ts",
+      "sha256": "7f02ae4d1ad804a0d1a48b38dbbe5b2165e807e728ef1d33808309d6b141632d"
+    },
+    {
+      "path": "src/request-contact-gate.ts",
+      "sha256": "2afa4e626db55555a455a43582d1c96e3e636930731fd5d52ca1e8b1d456d705"
+    },
+    {
+      "path": "src/request-contact-types.ts",
+      "sha256": "5f663869bd170ade946fb328ffb1a63530ef3f1933bd68b8b9390e85934e676e"
+    },
+    {
+      "path": "src/web-api.ts",
+      "sha256": "faf2b86c0c68d1d133adedae783968ebb27c62f2749a38ad8c60bd5faf08f285"
+    },
+    {
+      "path": "tests/request-contact-api-s227.test.ts",
+      "sha256": "8a79e471fd4529eed558b9195c00e34aa097f5cbc5f14ce31aa3e1ef93dc85c1"
+    },
+    {
+      "path": "tests/request-contact-card-s227.test.ts",
+      "sha256": "9c79f7a7b44461b76ed2ddf997d12fded092e17830bfbfa4b4c06a446b12cd89"
+    },
+    {
+      "path": "tests/request-contact-gate-s225.test.ts",
+      "sha256": "781d22df16ba6e9eb14e750852bdec76de7ee1601413e17e9282b02989737436"
+    },
+    {
+      "path": "tests/request-contact-web-s227.test.ts",
+      "sha256": "dd96f58f7f8d61240a04103b352248bff612c28542177e5d4f7e025c9339091d"
+    },
+    {
+      "path": "tests/request-context-drain-s226.test.ts",
+      "sha256": "64086d778bbddf1c8ad605beda7ca7d5716ce23fc1752071c55a51dda6400332"
+    }
+  ],
+  "checks": [
+    {
+      "name": "broader affected and prototype fixtures",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "--maxWorkers",
+        "2",
+        "tests/atomic-write-fsync-1490.test.ts",
+        "tests/auth-per-profile-1699.test.ts",
+        "tests/classic-contact-api-3339.test.ts",
+        "tests/classic-contact-approvers-3339.test.ts",
+        "tests/classic-contact-auth-3339.test.ts",
+        "tests/classic-contact-dispatch-3339.test.ts",
+        "tests/classic-contact-files-3339.test.ts",
+        "tests/classic-start-contact-notice-3339.test.ts",
+        "tests/claude-credential-change-m3419.test.ts",
+        "tests/claude-credential-observation-m3419.test.ts",
+        "tests/claude-credential-profile-1699.test.ts",
+        "tests/claude-mcp-carry-m3749.test.ts",
+        "tests/codex-false-stuck-1641.test.ts",
+        "tests/contact-approval-journey-m3709.test.ts",
+        "tests/contact-auth-public-link-m3680.test.ts",
+        "tests/contact-change-proposals-m3544.test.ts",
+        "tests/contact-held-card-m3680.test.ts",
+        "tests/contact-held-outcome-m3716.test.ts",
+        "tests/contact-origin-clear-3366.test.ts",
+        "tests/contact-origin-feedback-4213.test.ts",
+        "tests/contact-outcome-notices-3372.test.ts",
+        "tests/contact-person-identity-m3679.test.ts",
+        "tests/contact-standing-grants-m3544.test.ts",
+        "tests/contact-suggestion-later-m3410.test.ts",
+        "tests/contact-tool-groups-m3387.test.ts",
+        "tests/context-lost-749.test.ts",
+        "tests/exec-helper-stop-wait-2364.test.ts",
+        "tests/fleet-model-proto-1490.test.ts",
+        "tests/fleet-windows-runtime.test.ts",
+        "tests/grok-input-box-3199.test.ts",
+        "tests/host-monitoring-footprint-integration-m3454.test.ts",
+        "tests/hub-classic-share-m3285.test.ts",
+        "tests/hub-contact-limit-3160.test.ts",
+        "tests/hub-contact-window-settles-m3660.test.ts",
+        "tests/hub-held-close-authority-m3678.test.ts",
+        "tests/hub-quota-fleet.test.ts",
+        "tests/human-receipts-1756.test.ts",
+        "tests/kiro-migrate-2598.test.ts",
+        "tests/kiro-migration-verified-2598.test.ts",
+        "tests/kiro-reconcile-workflow.test.ts",
+        "tests/kiro3-needs-you.test.ts",
+        "tests/link-parity-audit-m3680.test.ts",
+        "tests/link-parity-privileged-m3278.test.ts",
+        "tests/link-parity-routes-m3278.test.ts",
+        "tests/local-pane-relay-2950.test.ts",
+        "tests/login-profile-1699.test.ts",
+        "tests/muse-background-work-1716-1717.test.ts",
+        "tests/needs-verify-line-m3710.test.ts",
+        "tests/needs-verify-line-skew-m3710.test.ts",
+        "tests/needs-you-contact-suggestions-m3381.test.ts",
+        "tests/nonce-button-shutdown.test.ts",
+        "tests/prompt-dedupe-m3528.test.ts",
+        "tests/public-link-sessions-survive-m3399.test.ts",
+        "tests/public-preview-1723.test.ts",
+        "tests/quota-notice-integration-3299.test.ts",
+        "tests/request-contact-api-s227.test.ts",
+        "tests/request-contact-card-s227.test.ts",
+        "tests/request-contact-gate-s225.test.ts",
+        "tests/request-contact-web-s227.test.ts",
+        "tests/request-context-barrier-s221.test.ts",
+        "tests/request-context-call-s224.test.ts",
+        "tests/request-context-commit-s224.test.ts",
+        "tests/request-context-daemon-s223.test.ts",
+        "tests/request-context-daemon-s224.test.ts",
+        "tests/request-context-drain-s226.test.ts",
+        "tests/request-context-legacy-guard-s226.test.ts",
+        "tests/request-context-migration-s226.test.ts",
+        "tests/request-context-pane-s224.test.ts",
+        "tests/request-context-protocol-s221.test.ts",
+        "tests/request-context-recovery-s223.test.ts",
+        "tests/request-context-store-s222.test.ts",
+        "tests/request-context-turns-s223.test.ts",
+        "tests/runtime-durable-recovery.test.ts",
+        "tests/runtime-install.test.ts",
+        "tests/settings-summary-effects-3416.test.ts",
+        "tests/settings-web-authority-1939.test.ts",
+        "tests/signin-keepalive-after-signin-3292.test.ts",
+        "tests/silent-schedule-reply-guard-1843.test.ts",
+        "tests/task-board-contact-4367.test.ts",
+        "tests/update-cleanup-fence-1737.test.ts",
+        "tests/update-terminal-fallback.test.ts",
+        "tests/update-welcome-quiet-1854.test.ts",
+        "tests/web-authority-1939.test.ts",
+        "tests/web-authority-link-3131.test.ts",
+        "tests/web-authority-named-link-2453.test.ts",
+        "tests/web-authority-quick-link.test.ts",
+        "tests/web-authority-revoke-owner-138.test.ts",
+        "tests/web-authority-s2a-1939.test.ts",
+        "tests/web-authority-settings-1939.test.ts",
+        "tests/web-claude-credentials-m3419.test.ts",
+        "tests/web-commands-1269.test.ts",
+        "tests/web-compact-status-003648ac.test.ts",
+        "tests/web-contact-auth-m3339.test.ts",
+        "tests/web-contact-card-copy-m3385.test.ts",
+        "tests/web-contact-grants-m3544.test.ts",
+        "tests/web-contact-later-m3410.test.ts",
+        "tests/web-contact-origin-clear-3366.test.ts",
+        "tests/web-emoji-fetch-log.test.ts",
+        "tests/web-favorites-1664.test.ts",
+        "tests/web-icons-1557.test.ts",
+        "tests/web-mentions-1682.test.ts",
+        "tests/web-needs-contact-suggestions-m3381.test.ts",
+        "tests/web-receipt-rule-1939.test.ts",
+        "tests/web-session-authorization-1939.test.ts",
+        "tests/web-session-contact-origin-m3713.test.ts",
+        "tests/web-session-default-1670.test.ts",
+        "tests/web-session-passive-1373.test.ts",
+        "tests/web-session-policy-1620.test.ts",
+        "tests/web-session-public-link-2850.test.ts",
+        "tests/web-session-small-1490.test.ts",
+        "tests/web-session.test.ts"
+      ],
+      "passed": 2005,
+      "skipped": 1,
+      "files": 111,
+      "limit": "Before final status=all addition and additional card/HTTP controls; later focused run covers that change."
+    },
+    {
+      "name": "restored final core",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-contact-api-s227.test.ts",
+        "tests/request-contact-card-s227.test.ts",
+        "tests/request-contact-web-s227.test.ts",
+        "tests/request-contact-gate-s225.test.ts",
+        "tests/request-context-drain-s226.test.ts",
+        "--maxWorkers",
+        "2"
+      ],
+      "passed": 126,
+      "files": 5
+    },
+    {
+      "name": "typecheck tests",
+      "command": "npm run typecheck:tests",
+      "exitCode": 0
+    },
+    {
+      "name": "build",
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "name": "changelog",
+      "command": "node scripts/changelog-assemble.mjs --check",
+      "fragments": 851,
+      "exitCode": 0
+    },
+    {
+      "name": "integration",
+      "result": "Plain merge of current release c088eb909ddda0956e79ccd96fc70e2af5bb2b5f; only docs/design/update-transaction-m3770.md incoming. All owned source/test paths byte-identical to sourceCommit."
+    }
+  ],
+  "guardReversals": [
+    {
+      "name": "scoped-image-cas",
+      "path": "src/request-contact-gate.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-contact-card-s227.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "scoped image digest"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "legacy-image-cas",
+      "path": "src/contact-auth-store.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-contact-card-s227.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "legacy image digest|legacy file-only"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "legacy-policy-cas",
+      "path": "src/contact-auth-store.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-contact-card-s227.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "legacy image digest"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "readonly-expiry",
+      "path": "src/contact-auth-store.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-contact-card-s227.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "do not persist"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "readonly-policy",
+      "path": "src/contact-auth-store.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-contact-card-s227.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "do not persist"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "cursor-role-binding",
+      "path": "src/request-contact-card.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-contact-card-s227.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "list scopes"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "late-role-rollback",
+      "path": "src/request-contact-card.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-contact-card-s227.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "role change inside"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "arrival-verification",
+      "path": "src/request-contact-api.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-contact-api-s227.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "unverified"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "session-binding",
+      "path": "src/request-contact-api.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-contact-api-s227.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "binding|account|session"
+      ],
+      "exitCode": 1,
+      "killed": true
+    }
+  ],
+  "boundaries": [
+    "Full stored legacy request_json digest, not requestHash; E validated companion digest checked in writer transaction.",
+    "Unverified read does not persist expiry or policy reset. Session PersonKey and current target role/incarnation required; host-tier chat Fleet without mapped identity is denied.",
+    "Decisions require verified arrival and current binding after body. Verification itself never submits; stale/duplicate is409 plus scoped GET.",
+    "Scoped and legacy decisions share SQLite owner and outer rollback on late role/incarnation loss. Optional grants keep E person representability, including mapped native guest actors.",
+    "Only collection404 means uninstalled; per-ticket404/401/403/503 never fall back. Active Needs you returns scoped metadata, OFF keeps legacy projection.",
+    "Native K owns posting destination/bot/message/nonce/interaction checks. I tests internal current-owner callback and shared writer only, not a native bot campaign.",
+    "J owns renderer/inline verification/captures. No UI/CSS/images modified. L installs host and enables flow after later prerequisites."
+  ],
+  "riskAndRollback": "Dormant before L: revert own code with host left uninstalled; no production state created. After L retain compatibility barrier and follow parent drain/downgrade order."
+}

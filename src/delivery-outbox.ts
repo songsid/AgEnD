@@ -1,4 +1,5 @@
 import type { QuiescenceGate } from "./update-quiescence.js";
+import { RequestContactCards, type RequestContactCardsHost } from "./request-contact-card.js";
 import { RequestContextDrain } from "./request-context-drain.js";
 import { RequestContextMigrationShadow, type RequestMigrationHost } from "./request-context-migration.js";
 import { RequestContactGate, type RequestContactGateHost } from "./request-contact-gate.js";
@@ -1164,6 +1165,11 @@ export class DeliveryOutbox extends EventEmitter {
     const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (columns.some(item => item.name === column)) return;
     this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+
+  /** Internal same-card service; no production host installs it before L. */
+  requestContactCards(host:RequestContactCardsHost):RequestContactCards {
+    return new RequestContactCards(this.db,this.contactAuthorizations,()=>this.requestContactGate(host),host);
   }
 
   /** Scratch/cutover assembly only; a certificate is process-bound and never persisted as authority. */

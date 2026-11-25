@@ -1,3 +1,6 @@
+import { permitWebContinuation } from "./web-continuation.js";
+import type { RequestContactApiHost } from "./request-contact-api.js";
+import type { RequestContactPrincipal } from "./request-contact-types.js";
 import { RequestContextReferenceMap, type RequestContextRegistrationGate } from "./request-context-fence.js";
 type HubHeldCloseOutcome = import("./hub/question-close-model.js").HubHeldCloseOutcome;
 import { prepareContactChange, shortContactTicketId, type PreparedContactChange } from "./contact-change-proposals.js";
@@ -6008,6 +6011,55 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       roomTools: { ...policy.roomTools, wouldDisable: [...new Set([...removedTools, ...(nativeGuard.wouldDisable ?? [])])] }, grants: policy.grants, history: store.histories(name, this.contactGeneration(name)),
       ...(service.needsApplication(name) ? { originRestriction: { active: true as const,
         reason: !service.origin(name) || service.origin(name)?.kind === "unknown" ? "unknown-origin" as const : "earlier-non-admin" as const, resetSupported: false as const } } : {}) };
+  }
+
+  /** Identity-only read. This does not install/enable the same-card host. */
+  requestContactPrincipal(req:import("node:http").IncomingMessage,url:URL):RequestContactPrincipal|null {
+    const resolve=()=>{
+      const verdict=evaluateWebRequest(req as unknown as WebGateRequest,url,this.webToken,this.webSessions,{touch:false});
+      if(verdict.kind==="reject"&&(verdict.reason==="csrf"||verdict.reason==="cross-site"))throw Error(verdict.reason);
+      if(verdict.kind!=="allow"||verdict.via!=="session"||verdict.session.tier!=="admin")return null;
+      const identity=this.webSessionIdentity(verdict.session);if(!identity)return null;
+      const authority=this.webAuthority({session:verdict.session,gateway:!!gatewayRequestContext(req),peer:gatewayRequestContext(req)?gatewayRequestContext(req)!.named?"named_link":"quick_link":classifyWebPeer(req)}).authority;
+      const action=this.contactActor(req,url),person:ContactPerson={platform:identity.platform,adapterId:identity.adapter_id,userId:identity.user_id,label:identity.user_id};
+      const verified=!!action&&sameContactPerson(action,person);
+      const binding=JSON.stringify([identity.session_handle,authority.authority_epoch,authority.kind==="web-verified"?authority.session?.authorized_at:null]);
+      return {person,binding,verified};
+    };
+    const first=resolve();if(!first)return null;
+    return {...first,current:()=>{try{const now=resolve();return !!now&&now.binding===first.binding&&sameContactPerson(now.person,first.person)&&now.verified===first.verified;}catch{return false;}}};
+  }
+
+  /** Dormant assembly for L and synthetic rigs; merely defining this method installs no service or route authority. */
+  makeRequestContactCards() {
+    this.ensureDeliveryOutbox();const outbox=this.deliveryOutbox!,legacy=this.contactService();
+    const names=()=>[...new Set([...Object.keys(this.fleetConfig?.instances??{}),...(this.classicChannels?.getAll()??[]).map(room=>room.instanceName)])].sort();
+    const manage=(name:string,person:ContactPerson)=>this.contactAdminOf(name,person);
+    const cards=outbox.requestContactCards({
+      current:(_context,binding)=>this.contactGeneration(binding.source.instance)===binding.source.incarnation&&this.contactGeneration(binding.target.instance)===binding.target.incarnation&&!this.hubContactRestricted(binding.source.instance),
+      generation:name=>{try{return this.contactGeneration(name);}catch{return null;}},
+      canManage:manage,canDecide:(name,person)=>{if(!manage(name,person))return false;const policy=legacy.host.store.policySnapshot(name,this.contactGeneration(name));return person.platform==="host"&&person.userId==="operator"||(policy.approvers??legacy.host.defaultApprovers(name)).some(row=>sameContactPerson(row,person));},
+      adminOf:(name,person)=>this.contactAdminOf(name,person),
+      person:actor=>{
+        if(actor.kind!=="person"||actor.platform==="hub")return null;
+        if(actor.platform==="host")return {platform:"host",adapterId:"host",userId:"operator",label:"Operator"};
+        const channel=(this.fleetConfig?.channels??(this.fleetConfig?.channel?[this.fleetConfig.channel]:[])).find(row=>row.type===actor.platform);
+        const adapter=[...this.adapters.values(),...[...this.worlds.values()].map(world=>world.adapter)].find(row=>row.type===actor.platform);
+        const adapterId=adapter?.id??channel?.id??channel?.type;if(!adapterId)return null;
+        return {platform:actor.platform,adapterId,userId:actor.userId,label:actor.displayName??actor.userId};
+      },
+      managedTargets:person=>names().filter(name=>manage(name,person)),
+      roleRevision:()=>settingsFingerprint([settingsRevision(this.configPath),this.settingsRuntimeRevision,this.fleetConfig,names().map(name=>[name,this.contactGeneration(name),legacy.host.defaultApprovers(name),legacy.host.store.policySnapshot(name).revision])]),
+      label:name=>this.fleetConfig?.instances[name]?.display_name??this.classicChannels?.getAll().find(room=>room.instanceName===name)?.displayName??name,
+      deliveryState:ticket=>ticket.deliveryId?outbox.get(ticket.deliveryId)?.state:undefined,
+      legacyCurrent:request=>!this.hubContactRestricted(request.source)&&this.contactGeneration(request.source)===request.sourceGeneration&&this.contactGeneration(request.target)===request.targetGeneration,
+      admitLegacy:(request,id)=>legacy.host.admit(request,id),changed:ticket=>{this.sweepContactAuthorizationOutcomes();this.emitSseEvent("contact-auth",{instance:ticket.target,ticketId:ticket.id,revision:ticket.revision});this.needsYou?.poke();},
+    });
+    return cards;
+  }
+  makeRequestContactApi():RequestContactApiHost {
+    const cards=this.makeRequestContactCards();
+    return {principal:(req,url)=>this.requestContactPrincipal(req,url),needs:actor=>cards.needs(actor),permitContinuation:(req,res)=>permitWebContinuation(req,res,{webToken:this.webToken,webSessions:this.webSessions}),canRead:(card,actor)=>cards.canRead(card,actor),read:(id,actor)=>cards.read(id,actor),list:(filter,actor)=>cards.list(filter,actor),decide:(id,input,actor)=>cards.decide(id,input,actor)};
   }
 
   contactActor(req: import("node:http").IncomingMessage, url: URL): ContactPerson | null {

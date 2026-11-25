@@ -81,6 +81,12 @@ opened ─► barrier ─► stopping ─► snapshotted ─► installing ─�
   Only then is it `abandoned`. A crash anywhere in it resumes at the substep recorded.
 - `abandoning` is allowed from `stopping` only while no snapshot is published and nothing is installed. Then the state is the old fleet's own, unchanged. Once `snapshotted` is published, every failure goes to `rolling-back` instead (open point 3, §8).
 - `committing` holds 2.5's commit substeps (leave trial, start agents, deliver the inbox, run deferred jobs). A crash there resumes them. It never rolls back after agents have started.
+- **A busy second check closes the attempt it opened** (agreed with 2.2, #4493). The barrier publishes `opened` before it fences, then checks again (§2.6). If that second check finds the fleet busy:
+  1. the fleet clears its fence flag and writes nothing, no prefix included;
+  2. the updater runs `abandoning`: `restart-old` finds the old fleet running (it was never stopped), and `hand-back` has no files;
+  3. the updater writes `abandoned`, and terminal step 3 (§2.4) clears `current`. The home, prefix and service locks release with that write.
+
+  The unfenced wait resumes only after `current` is gone, and the next fence opens a **new** attempt. An unused `opened` attempt never stays open while the fleet waits, so the CLI's state lease (§4.2) isn't refused meanwhile. The fleet still writes no stage.
 
 ### 2.4 Publication order (what is durable when)
 "Fsync" below means the file, and then its directory.

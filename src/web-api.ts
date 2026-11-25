@@ -1,3 +1,4 @@
+import { handleRequestContactApi, type RequestContactApiHost } from "./request-contact-api.js";
 import { historyQuery } from './host-monitoring-history-policy.js';
 import { instructionFileSizes } from "./instruction-file-sizes.js";
 import { handleClaudeCredentials, type ClaudeCredentialApi } from "./web-claude-credentials.js";
@@ -272,6 +273,15 @@ function contactNeedsFor(req: IncomingMessage, url: URL, ctx: WebApiContext, bas
   const admin=auth.kind==='allow'&&auth.via==='session'&&auth.session.tier==='admin';
   base=admin?base:base.filter(item=>!item||typeof item!=='object'||(item as {type?:string}).type!=='host');
   const ordinary = base.filter(item => !item || typeof item !== "object" || (item as { type?: string }).type !== "contact");
+  if(ctx.requestContactApi){
+    // Active host replaces the count-only fallback with per-target scoped ids, including before verification.
+    // The new service never supplies a decision permit through these passive item ids.
+    let scoped:unknown[]=[];
+    try{const viewer=ctx.requestContactApi.principal(req,url);if(viewer?.current())scoped=ctx.requestContactApi.needs?.(viewer)??[];}catch{/* The explicit card API reports unavailable; never leak the legacy global count. */}
+    const observer=ctx.contactSuggestionActor?.(req,url);
+    const suggestions=observer&&ctx.contactNeeds?ctx.contactNeeds(observer).filter(item=>item&&typeof item==="object"&&(item as {reason?:string}).reason==="contact_restricted_suggestion"):[];
+    return [...ordinary,...scoped,...suggestions];
+  }
   const actor = ctx.contactActor?.(req, url);
   if (actor && ctx.contactNeeds) return [...ordinary, ...ctx.contactNeeds(actor)];
   const observer = ctx.contactSuggestionActor?.(req, url);
@@ -437,6 +447,8 @@ export interface AccountMachine { id: string; actor: string }
 export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
 
 export interface WebApiContext extends ClaudeCredentialApi {
+  /** Uninstalled until L. New API reads/decisions do not replace legacy routes while OFF. */
+  requestContactApi?:RequestContactApiHost;
   hostHistoryQuery?(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult>;
   hostHealthSnapshot?(agentOffset?:number): import("./host-monitoring.js").HostHealthSnapshot;
   hostAlertAction?(key:string,revision:number,actor:string,snoozeMs?:number):Promise<boolean>;
@@ -2330,6 +2342,8 @@ export function handleWebRequest(
   }
 
   if (handleAgentRuntimeChange(req, res, url, ctx)) return true;
+  if (handleRequestContactApi(req,res,url,ctx.requestContactApi)) return true;
+
   if (ctx.contactPermissions && ctx.writeContactPermissions && ctx.contactAuthorization && ctx.contactAuthorizations && ctx.decideContactAuthorization && ctx.contactActor
     && handleContactAuthorizationApi(req, res, url, ctx as ContactApiHost)) return true;
   if (handleNativeInstanceRequest(req, res, url, ctx)) return true;

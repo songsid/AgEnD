@@ -29,7 +29,7 @@ function rig(active=true){
  const binding:RequestOperationBindingV1={version:1,operationId,contextId:c.ref.contextId,rootContextId:c.ref.rootContextId,source:c.source,target:{instance:target,incarnation:`${target}-v1`},verb:"send_to_instance",payloadSha256:requestContextDigest(delivery.payload)};return {delivery,context:c,binding};};
  const gate=()=>box.requestContactGate(host);
  const hold=(g:ReturnType<typeof gate>,i:ReturnType<typeof input>)=>{try{g.admit(i.delivery,i.context,i.binding);throw Error("expected hold");}catch(e){if(!(e instanceof ContactHeldError))throw e;return box.contactAuthorizations.get(e.result.authorization_id)!;}};
- const approve=(g:ReturnType<typeof gate>,id:string,grant?:ContactTicketDecision["grant"])=>{const ticket=box.contactAuthorizations.get(id)!;return g.decide(id,{revision:ticket.revision,decision:"approve-once",...(grant?{grant}:{})},manager,box.contactAuthorizations.policy(ticket.target,ticket.targetGeneration).revision);};
+ const approve=(g:ReturnType<typeof gate>,id:string,grant?:ContactTicketDecision["grant"])=>{const ticket=box.contactAuthorizations.get(id)!;return g.decide(id,{revision:ticket.revision,decision:"approve-once",...(grant?{grant}:{})},manager,box.contactAuthorizations.policy(ticket.target,ticket.targetGeneration).revision,g.snapshot(id).imageSha256);};
  const raw=()=>{const db=new Database(file);db.function("agend_request_context_dispatch_version",()=>1);cleanup.push(()=>db.close());return db;};
  return {box,file,raw,host,gate,context,input,hold,approve,current:(v:boolean)=>{current=v;},managerAllowed:(v:boolean)=>{managerAllowed=v;},admin:(v:boolean)=>{admin=v;}};
 }
@@ -74,12 +74,12 @@ it("current permission, policy CAS and approver removal refuse without a root re
  const f=rig(),g=f.gate(),ticket=f.hold(g,f.input());f.managerAllowed(false);
  expect(()=>f.approve(g,ticket.id)).toThrow(/forbidden/);f.managerAllowed(true);f.current(false);
  expect(()=>f.approve(g,ticket.id)).toThrow(/stale|current/);f.current(true);
- expect(()=>g.decide(ticket.id,{revision:ticket.revision,decision:"approve-once"},manager,999)).toThrow(/conflict/);
+ expect(()=>g.decide(ticket.id,{revision:ticket.revision,decision:"approve-once"},manager,999,g.snapshot(ticket.id).imageSha256)).toThrow(/conflict/);
  expect(f.box.contactAuthorizations.get(ticket.id)?.state).toBe("pending");expect(f.box.listPending()).toHaveLength(0);
 });
 it("same-root re-evaluation skips declined operations and admits pending exact operations once",()=>{
  const f=rig(),g=f.gate(),c=f.context(),a=f.hold(g,f.input(c)),b=f.hold(g,f.input(c)),no=f.hold(g,f.input(c));
- g.decide(no.id,{revision:no.revision,decision:"decline"},manager,f.box.contactAuthorizations.policy(no.target,no.targetGeneration).revision);f.approve(g,a.id);
+ g.decide(no.id,{revision:no.revision,decision:"decline"},manager,f.box.contactAuthorizations.policy(no.target,no.targetGeneration).revision,g.snapshot(no.id).imageSha256);f.approve(g,a.id);
  expect(g.reevaluate(c.ref.rootContextId).approved.map(t=>t.id)).toEqual([b.id]);expect(g.reevaluate(c.ref.rootContextId)).toEqual({approved:[],refused:[]});
  expect(f.box.listPending()).toHaveLength(2);expect(f.box.contactAuthorizations.get(no.id)?.state).toBe("declined");
 });
@@ -90,7 +90,7 @@ it("all legacy decision and grant paths reject scoped tickets; scoped decisions 
  expect(()=>f.box.contactAuthorizations.applyStandingGrant(ticket.id,legacy)).toThrow(/scoped-ticket/);
  expect(()=>f.box.admit(i.delivery)).toThrow(/request-context/);expect(called).toBe(false);
  const legacyTicket=f.box.contactAuthorizations.hold({operationId:randomUUID(),source:"other",target:"target",sourceGeneration:"o",targetGeneration:"t",verb:"send_to_instance",origin:{kind:"unknown",people:[],receiptIds:[],chain:[]},message:"legacy",correlationId:"old",resultRecipient:"other",payload:{content:"legacy"}});
- expect(()=>g.decide(legacyTicket.id,{revision:1,decision:"approve-once"},manager,0)).toThrow(/scoped/);
+ expect(()=>g.decide(legacyTicket.id,{revision:1,decision:"approve-once"},manager,0,"0".repeat(64))).toThrow(/scoped/);
 });
 it("matching grants atomically use once and release only their proven request root",()=>{
  const f=rig(),g=f.gate(),first=f.input(),ticket=f.hold(g,first);
@@ -137,7 +137,7 @@ it("explicit drained-root retirement removes ticket, proof and terminal delivery
 });
 
 it("scoped outcome notices and markers roll back together, then announce once without authority",()=>{
- const f=rig(),g=f.gate(),ticket=f.hold(g,f.input());g.decide(ticket.id,{revision:ticket.revision,decision:"decline"},manager,0);
+ const f=rig(),g=f.gate(),ticket=f.hold(g,f.input());g.decide(ticket.id,{revision:ticket.revision,decision:"decline"},manager,0,g.snapshot(ticket.id).imageSha256);
  expect(()=>f.box.contactAuthorizations.notifyOutcomes(t=>{f.box.admitSystemNotice(t.source,`outcome:${t.id}`,"Synthetic informational outcome");throw Error("notice commit failed");})).toThrow(/commit failed/);
  expect(f.box.listPending()).toHaveLength(0);
  const send=(t:any)=>{f.box.admitSystemNotice(t.source,`outcome:${t.id}`,"Synthetic informational outcome");};
@@ -168,7 +168,7 @@ it("two SQLite connections keep one scoped decision and exact delivery",()=>{
  const f=rig(),g=f.gate(),i=f.input(),ticket=f.hold(g,i);
  const second=new DeliveryOutbox(f.file,"fixture-two",{requestContextDispatchVersion:1});cleanup.push(()=>second.close());
  const other=second.requestContactGate(f.host);const approved=f.approve(g,ticket.id);
- expect(()=>other.decide(ticket.id,{revision:ticket.revision,decision:"approve-once"},manager,0)).toThrow(/already-decided/);
+ expect(()=>other.decide(ticket.id,{revision:ticket.revision,decision:"approve-once"},manager,0,other.snapshot(ticket.id).imageSha256)).toThrow(/already-decided/);
  expect(other.admit(i.delivery,i.context,i.binding).delivery.deliveryId).toBe(approved.deliveryId);expect(second.listPending()).toHaveLength(1);
 });
 it("failed automatic grant use consumes nothing and a true retry then consumes exactly once",()=>{
@@ -220,7 +220,7 @@ it.each(["en","zh-TW"]as const)("terminal retry says declined or expired, never 
  setLocale(locale);
  for(const state of ["declined","expired"]as const){
   const f=rig(),g=f.gate(),i=f.input(),ticket=f.hold(g,i);
-  if(state==="declined")g.decide(ticket.id,{revision:ticket.revision,decision:"decline"},manager,0);
+  if(state==="declined")g.decide(ticket.id,{revision:ticket.revision,decision:"decline"},manager,0,g.snapshot(ticket.id).imageSha256);
   else f.raw().prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.expiresAt',?) WHERE id=?").run("2000-01-01T00:00:00.000Z",ticket.id);
   let caught:unknown;try{g.admit(i.delivery,i.context,i.binding);}catch(error){caught=error;}
   expect(caught).toBeInstanceOf(ContactHeldError);const result=(caught as ContactHeldError).result;
