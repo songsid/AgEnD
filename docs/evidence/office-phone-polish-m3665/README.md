@@ -27,6 +27,16 @@ A 10 px name tag at the phone's 29–30 % zoom is 3 px on the page. Below `TAG_R
 
 The Desks style draws its tags into its cached desk layer, not as canvas text, so the reports count 0 for it before and after. Its look is unchanged at a desk's zoom.
 
+### After the capture check (the readable strip, by design)
+
+At a phone's whole-office zoom, the strip below the stage replaces the 3 px tags on purpose: a readable row instead of unreadable labels. Four things were tightened after the capture check:
+
+- **A caller still says who they are on the map.** Too far out to read, each caller's name tag is drawn where they stand at the size it has at `TAG_READ_K`, without the level badge. Their bubble shows as before, and their chip comes first in the row, warning-coloured. See `fleet/after-phone-light-en-cozy.png`: "Stuck one" under the person in the Help desk.
+- **Offline is visible at that zoom.** The power-off mark keeps its `TAG_READ_K` size (scaled about its own centre) and the figure stays faded. At a desk's zoom it's drawn as before.
+- **The row never cuts a chip short.** It scrolls sideways, and while there's more in either direction, that edge fades (as the zone chips' does). See `hub-room/phone-en-light-after-office.png`.
+- **The row is flat:** a border, no shadow.
+- **With Hide names on (#4466),** the row keeps only the callers, and none at all when nobody calls.
+
 ## 3. Area chips whole on a phone
 
 Under the stage the zone chips used to scroll sideways, and on a phone the last ones were cut ("Help desk 1", "Nap corner 2"; 「午睡角 2」; in the Hub room, "Nap corner 6"). Now they wrap onto a second line, and every chip is whole and in view. The before and after reports list every chip that was cut or out of view.

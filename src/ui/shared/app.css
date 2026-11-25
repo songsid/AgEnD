@@ -2813,10 +2813,14 @@ button.oo-tile-label:focus-visible { outline: 2px solid var(--focus); outline-of
    of chips over the stage's foot, scrolling sideways, each a whole touch target that opens that person's card. */
 .oo[data-tags-off] .oo-desks { position: absolute; z-index: 5; left: var(--s-2); right: var(--s-2); bottom: var(--s-2); width: auto; height: auto; max-height: none;
   margin: 0; padding: var(--s-1); clip: auto; overflow-x: auto; overflow-y: hidden; display: flex; flex-wrap: nowrap; gap: var(--s-1); max-width: none; white-space: nowrap;
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-full); box-shadow: var(--shadow-1); overscroll-behavior-x: contain; }
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-full); overscroll-behavior-x: contain; }   /* flat: no shadow (leader's check) */
 .oo[data-tags-off] .oo-desks > li { flex: none; }
 .oo[data-tags-off] .oo-desks > li[data-call] { order: -1; }   /* a call first, in view, its chip in the warning colour */
 .oo[data-tags-off] .oo-desks > li[data-call] .oo-desk { border-color: var(--warn); }
+/* More to scroll (data-more-left/right, desksCue): the row's edge fades, as the zone pills' does — never a chip cut short. */
+.oo[data-tags-off] .oo-desks[data-more-right] { -webkit-mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); }
+.oo[data-tags-off] .oo-desks[data-more-left] { -webkit-mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); }
+.oo[data-tags-off] .oo-desks[data-more-left][data-more-right] { -webkit-mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); }
 /* #4466 Hide names: the zoomed-out row keeps only the callers (as their tags do); nobody calling, no row. */
 .oo[data-tags-off][data-names-off] .oo-desks > li:not([data-call]) { display: none; }
 .oo[data-tags-off][data-names-off] .oo-desks:not(:has(> li[data-call])) { display: none; }

@@ -458,10 +458,12 @@ export function drawOffMark(ctx, x, y, env) {
   ctx.restore();
 }
 /** A person drawn by the skin; stopped (offline): faded, with the power-off mark at (mx, my). */
-function drawPerson(ctx, sk, box, look, ms, env, mx, my) {
+function drawPerson(ctx, sk, box, look, ms, env, mx, my, markScale = 1) {
   if (!offLook(look)) { sk.drawCharacter(ctx, box, look, ms, env); return; }
   ctx.save(); ctx.globalAlpha *= OFF_ALPHA; sk.drawCharacter(ctx, box, look, ms, env); ctx.restore();
-  drawOffMark(ctx, mx, my, env);
+  // M-3665 (leader's check): zoomed out past TAG_READ_K the mark keeps its size at TAG_READ_K, centred where it was.
+  if (markScale === 1) { drawOffMark(ctx, mx, my, env); return; }
+  ctx.save(); ctx.translate(mx, my); ctx.scale(markScale, markScale); drawOffMark(ctx, 0, 0, env); ctx.restore();
 }
 /** Edit layout's faint figures: one on each seat no one is on, { x, y, look } (the pack's default set; drawn at GHOST_ALPHA). */
 export function ghostsOf(pack, people = []) {
@@ -699,7 +701,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       const look = q.at.walking ? { ...q.look, pose: "walk", heading: q.at.heading }
         : canEat ? { ...posed, pose: "eat", basePose: posed.pose }
         : patted || posed;
-      drawPerson(ctx, sk, box, look, ms, env, q.at.x + 20, q.at.y - 34);
+      drawPerson(ctx, sk, box, look, ms, env, q.at.x + 20, q.at.y - 34, a < TAG_READ_K ? TAG_READ_K / a : 1);
       if (canEat && eating.snackId && p.snacksById && sk.drawSnack) {
         const sdef = p.snacksById.get(eating.snackId);
         if (sdef && sdef.eat) sk.drawSnack(ctx, sdef.eat, Math.max(0, t - eating.t0), q.at.x, q.at.y, env);
@@ -735,6 +737,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const over = p.L.over || new Set();
     const pinned = (q) => q.d.key === hot || !!q.look.match;
     const crowded = (q) => over.has(q.d.area) && !pinned(q);
+    // M-3665 (leader's check): too far out to read (tagsOff true), a caller still says who they are on the map — their tag
+    // at the size it has at TAG_READ_K, where they stand (the chip row below lists them too). Drawn after the tags, below.
+    const beacons = tagsOff === true && a < TAG_READ_K ? people.filter((q) => CALLING.has(q.look.state) && !live.hidden.has(q.look.name) && !offView(q.at)) : [];
     // A caller keeps their tag with names hidden (#4467 review): the Help desk always says who needs you.
     const tagged = (q) => pinned(q) || (tagsOff === "names" && CALLING.has(q.look.state)) || !(tagsOff || over.has(q.d.area));
     // Names hidden: a caller's tag is their name only; the level stays hidden (the one hovered or found keeps it).
@@ -778,6 +783,13 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const tagOrder = people.filter((q) => !(live.hidden.has(q.look.name) && q.look.name !== heldName) && tagged(q))
       .map((q, i) => ({ q, i, rank: pinned(q) ? 0 : q.at.walking ? 2 : 1 })).sort((x, y) => x.rank - y.rank || x.i - y.i);
     for (const { q, rank } of tagOrder) place(q.at.x, q.at.y, tagLook(q), FULL_TRIES, rank === 0);
+    // The callers' beacons (above): scaled about where they stand so the tag reads as at TAG_READ_K; their level left out.
+    for (const q of beacons) {
+      const k = TAG_READ_K / a;
+      ctx.save(); ctx.transform(k, 0, 0, k, q.at.x * (1 - k), q.at.y * (1 - k));
+      sk.drawTag(ctx, q.at.x, q.at.y, { ...q.look, badge: null }, env, false);
+      ctx.restore();
+    }
     // A furniture item's own name (#2574: an NPC drawn as furniture), tagged like a person; none on a tile too small to read.
     // #2698: an item hiding its people carries their tags too, in one row at its tag point (its own first; each keeps
     // its place in the row while another's tag is left out), and their bubbles, over its picture. The tags drawn are
@@ -1155,6 +1167,15 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
   // M-3539: the phone's zone chips scroll sideways when they do not fit (English); a fade at the side there is more
   // (data-more-left / data-more-right) says so.
   const pillsRef = useRef(null);
+  // M-3665 (leader's check): the zoomed-out name row scrolls sideways; while there is more, its edge fades (as the pills).
+  const desksRef = useRef(null);
+  const desksCue = () => {
+    const e = desksRef.current;
+    if (!e || typeof e.toggleAttribute !== "function") return;
+    const more = e.scrollWidth - e.clientWidth;
+    e.toggleAttribute("data-more-left", more > 1 && e.scrollLeft > 1);
+    e.toggleAttribute("data-more-right", more > 1 && e.scrollLeft < more - 1);
+  };
   const pillsCue = () => {
     const e = pillsRef.current;
     if (!e || typeof e.toggleAttribute !== "function") return;
@@ -1694,6 +1715,7 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
     // show as a row of chips over its foot (the CSS: a phone's whole office, or a desk zoomed out), each opening their card.
     // #4466 Hide names (data-names-off on the same element): the row keeps only the callers, as the tags do.
     if (ooRef.current && typeof ooRef.current.toggleAttribute === "function") ooRef.current.toggleAttribute("data-tags-off", !overview && view0().k < TAG_READ_K);
+    desksCue();
     const v = view0(), m = miniViewRef.current;
     if (m) {
       const f = miniFrame(v, size, L.width, L.height);
@@ -2115,6 +2137,8 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
         area: tl.zones ? areaName(d.area) : roomOf(tl.L, d), skin: tl.skin, look: lk && lk.get(d.key) })) : []; })
     : desksOf(L).map((d) => ({ key: d.key, node: d.node, box: d, office: null, dot: zones ? d.seat : { x: d.x + d.w / 2, y: d.y + d.h / 2 },
       area: zones ? areaName(d.area) : roomOf(L, d), skin, look: looks.get(d.key) }));
+  // The name row's fade (desksCue) follows who is in it and how wide the stage is, as well as the zoom (mark).
+  useEffect(() => { desksCue(); }, [people.length, size.w, namesOff]);
   // #2861: who the dialogue box may speak for — everyone drawn here (All offices: the first tile they are in), with what
   // draws them; null while it is off (draw() then draws nothing of it).
   replyRef.current = tmode === "bubble" ? { chat, draw: chatUi.drawReply, style: chatUi.replyStyle, pace: chatUi.readPace, read: readMode } : null;
@@ -2844,7 +2868,7 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
         portrait=${cardOf.skin?.pack ? portraitSrc(cardOf.skin.pack, { agent: cardOf.node.name, state: cardOf.node.state }) : null}
         packScale=${cardOf.skin?.pack?.scale || 2} action=${cardAction ? cardAction(cardOf.node.name) : null}
         photo=${cardPhoto ? cardPhoto(cardOf.node.name) : null} />` : null}
-      <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
+      <ul class="oo-desks" ref=${desksRef} onScroll=${desksCue} aria-label=${to("desks")}>${people.map((d) => {
         const nt = nodeText(d.node), cap = nowOf(d.node), where = d.office ? ` · ${d.office}` : "";
         const full = words ? `${nt.primary} — ${stateOf(d.node)}` : nt.full;
         return html`<li key=${d.key} data-call=${CALLING.has(d.node.state) ? "" : undefined}>${d.node.i
