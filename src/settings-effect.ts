@@ -23,7 +23,7 @@ import { agentConflict, draftQuickstart, draftWebOnly, newConnectionConflict, pl
 import type { FleetConfig } from "./types.js";
 import { channelWithDefaults } from "./config.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
-import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
+import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, guestsPreconditionFailure, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
 import { validateFleetConfig, validateClassicBotConfig } from "./config-validator.js";
 import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
@@ -387,6 +387,8 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       after.fleet.web_terminal = wt;
     }
     if (parsed.guests) {
+      // M-3734: a grant changed since the page read it is refused here, before any confirmation is asked for.
+      if (guestsPreconditionFailure(cfg.web?.guests, parsed.guests)) throw new SettingsConfirmationError(409, "guest_grant_changed");
       const applied = applyGuestsPatch(cfg.web?.guests, parsed.guests);
       if (applied.next) after.fleet.web.guests = applied.next; else delete after.fleet.web.guests;
     }

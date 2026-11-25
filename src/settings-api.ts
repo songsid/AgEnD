@@ -20,7 +20,7 @@ import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, 
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
-import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
+import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, guestsPreconditionFailure, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS, effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { parseRuntimesSettingsBody, runtimeSettingsView } from "./runtime-switches.js";
@@ -1752,6 +1752,9 @@ export function handleSettingsRequest(
       }
       // #1920 phase 3: guest sign-in (Settings → Web sign-ins → Guests); widening it is confirmed (settings-change.ts).
       if (parsed.guests) {
+        // M-3734: checked again as it applies (a confirmation's replay comes here): what the page read must still be saved.
+        const stale = guestsPreconditionFailure(cfg.web?.guests, parsed.guests);
+        if (stale) return json(res, 409, { error: "This person's guest access changed since the page read it. Read it again and retry.", key: "guest_grant_changed", ...(stale.account ? { account: stale.account } : {}) });
         // #2348: a new grant names someone AgEnD has seen in chat, on a connection of this fleet, who is not a fleet admin
         // (admins sign in as admins). One already granted may be edited or removed whatever the list says now.
         for (const [key, grant] of Object.entries(parsed.guests.grants ?? {})) {

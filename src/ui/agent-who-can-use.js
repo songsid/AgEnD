@@ -3,10 +3,12 @@
 // - Web guests: web.guests.grants (Settings → Guests' own data, read with GET /api/settings/guests). Each change writes one
 //   person's whole grant with PUT /api/settings/fleet/web { guests: { grants: { <account>: grant | null } } } — the same
 //   write as Settings → Guests' Save, through the same Settings confirmation: adding a person or an agent, or making them
-//   Trusted, waits for a fleet admin (202, followed by settings-confirm.js); taking away applies at once. The grant is read
-//   again just before each write, so a change made meanwhile in Settings → Guests is kept, never written over.
+//   Trusted, waits for a fleet admin (202, followed by settings-confirm.js); taking away applies at once. Each write is made
+//   from the grant this page shows and carries it as `if_grants` (Prism #4461 P2): the server refuses it (409) when that
+//   grant changed since — checked as it is admitted and again as it applies after a confirmation — so a change made
+//   meanwhile in Settings → Guests is never written over, and Remove's question is about exactly what is written.
 //   While the fleet still uses #1920's derived access (no grants saved), the list is read-only, and "Start from today's
-//   guests" saves each guest's current reach as a grant (Settings → Guests' own button, one write here).
+//   guests" saves each guest's current reach as a grant (Settings → Guests' own button, one write here, `if_grants: "unset"`).
 // - Hub: who may ask is kept only on the Hub (its grants: people or AD groups, each with an expiry); the Fleet never reads
 //   or writes it. This says whether the agent is shared and links to the Hub page that chooses who may ask
 //   (`?agent=<exposureId>&grant=1`, as Settings → Hub does) — on the Hub's own address, so only where the Hub is reachable.
@@ -63,8 +65,9 @@ export function nextGrant(saved, name, change, extra = {}) {
 }
 const roomName = (overview, n) => { const r = ((overview && overview.rooms) || []).find((x) => x.name === n); return (r && r.display_name) || n; };
 
-export function WhoCanUsePanel({ name, label }) {
-  const shown = label || name;
+export function WhoCanUsePanel({ name, display }) {
+  // The agent as people know it — its display name, with the name the page heading uses beside it when they differ.
+  const shown = display && display !== name ? wc("agentLabel", display, name) : name;
   return html`<div class="ap-who">
     <p class="note ap-who-admins">${wc("adminsNote")}</p>
     <${GuestsCard} name=${name} shown=${shown} />
@@ -107,36 +110,34 @@ function GuestsCard({ name, shown }) {
       if (!live.current) return;
       if (r.ok) { setMsg(null); toast(wc("saved")); }
       else if (r.ambiguous) setMsg({ error: wc("unknown") });
+      else if (r.status === 409 && r.body && (r.body.key === "guest_grant_changed" || r.body.error === "guest_grant_changed")) setMsg({ error: wc("changed") });
       else if (r.body && r.body.key === "guest_grant_refused") setMsg({ error: wc("refused", r.body.error || "") });
       else setMsg({ error: wc("saveFailed", (r.body && r.body.error) || r.status) });
     } catch { if (live.current) setMsg({ error: wc("unknown") }); }
     finally { if (live.current) { setBusy(null); await read(); } }
   };
-  /** One person's change, against their grant as saved right now (read again first: an edit made elsewhere is kept). */
-  const change = async (key, kind, extra) => {
-    if (busy) return;
-    setBusy(key);
-    const now = await read();
-    if (!now) { setBusy(null); return; }
-    if (!now.explicit) { setBusy(null); return; }
-    const g = (now.guests || []).find((x) => accountKey(x) === key);
-    const next = nextGrant(g && g.grant, name, kind, extra);
-    await write(key, { grants: { [key]: next } });
+  /** One person's change, made from their grant as this page shows it (`shown`: null, none), on condition it is still that. */
+  const change = async (key, shownGrant, kind, extra) => {
+    if (busy || !overview || !overview.explicit) return;
+    const next = nextGrant(shownGrant, name, kind, extra);
+    await write(key, { grants: { [key]: next }, if_grants: { [key]: shownGrant ? grantOf(shownGrant) : null } });
   };
+  const shownGrantOf = (key) => { const g = ((overview && overview.guests) || []).find((x) => accountKey(x) === key); return (g && g.grant) || null; };
   const remove = async (g) => {
+    // Asked about the grant shown, and written only if it is still that one (if_grants): the warning is about what is written.
     const last = !!g.grant && g.grant.instances.length === 1;
     const yes = await confirmDialog({ title: wc("removeTitle", g.name), message: wc(last ? "removeLast" : "removeConfirm", g.name, shown), confirmLabel: wc("remove"), danger: true });
-    if (yes) await change(accountKey(g), "remove");
+    if (yes) await change(accountKey(g), g.grant, "remove");
   };
   const convert = async () => {
+    if (!overview || overview.explicit) return;
     const yes = await confirmDialog({ title: wc("convertTitle"), message: wc("convertConfirm"), confirmLabel: wc("convert") });
     if (!yes) return;
-    const now = await read();
-    if (!now || now.explicit) return;
-    await write("--convert", { grants: todaysGrants(now) });
+    await write("--convert", { grants: todaysGrants(overview), if_grants: "unset" });
   };
 
-  const head = html`<h3>${wc("guestsTitle")}</h3><p class="note">${wc("guestsLead")} <a class="ap-who-go" href=${`${settingsPath("access")}#guests`}>${wc("openGuests")}</a></p>`;
+  const head = html`<h3>${wc("guestsTitle")}</h3><p class="note">${wc("guestsLead")}</p>
+    <div class="field-row"><a class="btn btn-sm ap-who-go" href=${`${settingsPath("access")}#guests`}>${wc("openGuests")}</a></div>`;
   if (state === "loading") return html`<section class="card ap-who-guests" id="who-guests">${head}<${Skeleton} variant="rows" lines=${3} /></section>`;
   if (state === "denied") return html`<section class="card ap-who-guests" id="who-guests">${head}<p class="note" role="status">${wc("notAdmin")}</p></section>`;
   if (state === "failed") return html`<section class="card ap-who-guests" id="who-guests">${head}<p class="note" role="status">${tn("guestsLoadFailed")} <button type="button" class="btn btn-sm" onClick=${read}>${t("app.retry")}</button></p></section>`;
@@ -150,35 +151,36 @@ function GuestsCard({ name, shown }) {
     .filter((p) => !q || [p.name, p.username, p.userId].some((x) => typeof x === "string" && x.toLowerCase().includes(q))).slice(0, 8);
   const others = (g) => (g.grant ? g.grant.instances : g.scope || []).filter((n) => n !== name).map((n) => roomName(overview, n));
   const row = (g) => {
-    const key = accountKey(g), level = levelOf(g.grant), on = g.sessions || g.devices, mine = busy === key, also = others(g);
+    const key = accountKey(g), levelId = `who-level-${key.replace(/[^A-Za-z0-9_-]/g, "_")}`, level = levelOf(g.grant), on = g.sessions || g.devices, mine = busy === key, also = others(g);
     return html`<li key=${key} class="ap-who-row" data-account=${key}>
       <span class="ap-who-av" aria-hidden="true">${(g.name || "?").slice(0, 1).toUpperCase()}</span>
       <div class="ap-who-id"><strong>${g.name || g.userId}</strong> <span class="note">${PLATFORMS[g.platform] || g.platform || ""}</span>
         <div class="note ap-who-state">${on ? tn("grantsSignedIn", g.devices || g.sessions) : tn("grantsNotSignedIn")}${also.length ? html` · ${wc("alsoUses", also.join(", "))}` : null}</div></div>
       ${explicit ? html`<div class="ap-who-actions">
-        <div class="seg-inline" role="group" aria-label=${tn("grantsLevel", g.name)}>${["chat", "trusted"].map((l) => html`<button key=${l} type="button"
+        <span class="note ap-who-level-label" id=${levelId}>${wc("level")}</span>
+        <div class="seg-inline" role="group" aria-labelledby=${levelId}>${["chat", "trusted"].map((l) => html`<button key=${l} type="button"
           class=${`btn btn-sm${level === l ? " btn-primary" : ""}`} aria-pressed=${level === l ? "true" : "false"} data-level=${l} disabled=${!!busy}
-          title=${also.length ? wc("levelAll", g.name) : undefined}
-          onClick=${() => { if (level !== l) void change(key, "level", { level: l }); }}>${tn(l === "trusted" ? "grantsLevelTrusted" : "grantsLevelChat")}</button>`)}</div>
-        <button type="button" class="btn btn-sm btn-danger" disabled=${!!busy} aria-busy=${mine ? "true" : undefined} onClick=${() => remove(g)}>${wc("remove")}</button>
-      </div>` : html`<span class="note ap-who-level">${tn(level === "trusted" ? "grantsLevelTrusted" : "grantsLevelChat")}</span>`}
+          onClick=${() => { if (level !== l) void change(key, g.grant, "level", { level: l }); }}>${tn(l === "trusted" ? "grantsLevelTrusted" : "grantsLevelChat")}</button>`)}</div>
+        <button type="button" class="btn btn-sm btn-danger ap-who-remove" disabled=${!!busy} aria-busy=${mine ? "true" : undefined} onClick=${() => remove(g)}>${wc("remove")}</button>
+      </div>${also.length ? html`<p class="note ap-who-level-all">${wc("levelAll", g.name, also.length + 1)}</p>` : null}` : html`<span class="note ap-who-level">${tn(level === "trusted" ? "grantsLevelTrusted" : "grantsLevelChat")}</span>`}
     </li>`;
   };
   return html`<section class="card ap-who-guests" id="who-guests">${head}
     ${!overview.enabled ? html`<p class="note ap-who-off" role="note">${wc("guestsOff")}</p>` : null}
-    ${!explicit ? html`<div class="ap-who-derived"><p class="note">${wc("derived")}</p>
+    ${!explicit ? html`<div class="ap-who-derived"><p class="note">${wc("derived")}</p><p class="note">${wc("convertHint")}</p>
       <button type="button" class="btn btn-sm" id="whoConvert" disabled=${!!busy} onClick=${convert}>${wc("convert")}</button></div>` : null}
     ${!explicit && rows.length ? html`<p class="note">${wc("derivedList")}</p>` : null}
     ${rows.length ? html`<ul class="ap-who-list">${rows.map(row)}</ul>` : html`<p class="note" id="whoNone">${wc("none")}</p>`}
-    ${rows.some((g) => levelOf(g.grant) === "trusted") ? html`<p class="note ap-who-trusted">${tn("grantsLevelTrustedHint")}</p>` : null}
+    ${rows.some((g) => levelOf(g.grant) === "trusted") ? html`<p class="note ap-who-trusted">${wc("trustedHint")}</p>` : null}
     ${explicit ? html`<details class="ap-who-add" onToggle=${(e) => { if (e.target.open && people === null) void readPeople(); }}><summary>${wc("add")}</summary>
-      <p class="note">${wc("addHint")}</p>
-      <input type="search" class="input" id="whoSearch" value=${query} aria-label=${tn("grantsSearch")} placeholder=${wc("searchShort")} onInput=${(e) => setQuery(e.target.value)} />
-      ${people === null ? html`<${Skeleton} variant="rows" lines=${2} />` : !candidates.length ? html`<p class="note" id="whoNoPeople">${tn("grantsNoPeople")}</p>`
+      <p class="note">${wc("addHint")} ${wc("addMissing")}</p>
+      <p class="note ap-who-confirm-note">${wc("addConfirm")}</p>
+      <input type="search" class="input" id="whoSearch" value=${query} aria-label=${wc("searchLabel")} placeholder=${wc("searchShort")} onInput=${(e) => setQuery(e.target.value)} />
+      ${people === null ? html`<${Skeleton} variant="rows" lines=${2} />` : !candidates.length ? html`<p class="note" id="whoNoPeople">${wc("noPeople")}</p>`
         : html`<ul class="ap-who-list ap-who-pick">${candidates.map((p) => { const key = accountKey(p); return html`<li key=${key} class="ap-who-row" data-account=${key}>
           <span class="ap-who-av" aria-hidden="true">${(p.name || "?").slice(0, 1).toUpperCase()}</span>
           <div class="ap-who-id"><strong>${p.name}</strong> <span class="note">${PLATFORMS[p.platform] || p.platform}${p.username ? ` · @${p.username}` : ""}</span></div>
-          <div class="ap-who-actions"><button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${() => change(key, "add", { name: p.name })}>${busy === key ? wc("adding") : wc("addOne")}</button></div></li>`; })}</ul>`}
+          <div class="ap-who-actions"><button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${() => change(key, shownGrantOf(key), "add", { name: p.name })}>${busy === key ? wc("adding") : wc("addOne")}</button></div></li>`; })}</ul>`}
     </details>` : null}
     ${msg && msg.waiting ? html`<p class="note ap-who-msg" role="status">${wc("waiting")}</p>` : null}
     ${msg && msg.error ? html`<p class="note err ap-who-msg" role="alert">${msg.error}</p>` : null}

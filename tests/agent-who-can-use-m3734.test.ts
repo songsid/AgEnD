@@ -64,7 +64,7 @@ async function open(name = "alpha", over: Record<string, unknown> = {}) {
   overview = { ...structuredClone(OVERVIEW), ...over };
   const { WhoCanUsePanel } = await import("/ui/js/agent-who-can-use.js");
   await p.unmount();
-  await p.mount(h(WhoCanUsePanel, { name, label: name }));
+  await p.mount(h(WhoCanUsePanel, { name, display: over.display as string | undefined }));
   await settle(12);
   const $ = (sel: string) => p.root.querySelector(sel) as any;
   const click = async (el: any) => { fire(el, "click"); await settle(12); };
@@ -112,9 +112,14 @@ describe("Web guests: the people whose grant names this agent (M-3734)", () => {
     expect(pressed(w.row("dc:555"))).toEqual([["Chat", "false"], ["Trusted", "true"]]);
     expect(w.row("dc:111").textContent).toContain("Signed in · 1 device(s)");
     expect(w.row("dc:555").textContent).toContain("Not signed in");
-    expect(w.row("dc:555").textContent, "a ClassicBot room by its display name").toContain("Also uses: Front desk");
-    expect(w.$(".ap-who-trusted").textContent).toContain("Trusted adds watching these agents' screens");
-    expect(w.$("#who-guests a").getAttribute("href")).toBe("/settings/access#guests");
+    expect(w.row("dc:555").textContent, "a ClassicBot room by its display name").toContain("Can also use: Front desk");
+    expect(w.row("dc:555").querySelector(".ap-who-level-all")?.textContent, "Prism #4461 P3: the level's scope, visible").toBe("Carol's level (Chat or Trusted) applies to all 2 agents they can use, not only this one.");
+    expect(w.row("dc:111").querySelector(".ap-who-level-all"), "one agent only: nothing to say").toBeNull();
+    expect(w.$(".ap-who-trusted").textContent).toContain("Trusted can also watch these agents' screens");
+    expect(w.$("#who-guests a.btn").getAttribute("href")).toBe("/settings/access#guests");
+    expect(w.$("#who-guests a.btn").textContent).toBe("Open Settings → Guests");
+    const level = w.row("dc:111").querySelector(".seg-inline");
+    expect(p.root.querySelector(`#${level.getAttribute("aria-labelledby")}`).textContent, "the Chat | Trusted pair is labelled").toBe("Level");
     expect(p.root.textContent, "admins and the bot's allowed users, said once").toContain("Fleet admins can always use every agent.");
     expect(w.$(".ap-who-off")).toBeNull();
   });
@@ -126,44 +131,69 @@ describe("Web guests: the people whose grant names this agent (M-3734)", () => {
   it("Add: a person seen in chat gets a new grant of this agent only (Chat); someone with a grant keeps theirs, plus this agent", async () => {
     const w = await open();
     await w.openAdd();
+    const add = w.$(".ap-who-add").textContent;
+    expect(add, "who is listed, and what to do for someone who isn't").toContain("Not in the list? Ask them to send any of your agents a message once, then look again.");
+    expect(add, "who confirms").toContain("you can confirm it yourself on the confirm card at the top of this page");
+    expect(add).toContain("an admin presses Confirm on the card in General");
     const picks = [...p.root.querySelectorAll(".ap-who-pick .ap-who-row")].map((r: any) => r.getAttribute("data-account"));
     expect(picks, "those already listed are not offered").toEqual(["tg:222", "dc:333"]);
     await w.click(w.button("Add", p.root.querySelector('.ap-who-pick [data-account="dc:333"]')));
-    expect(w.writes()).toEqual([{ guests: { grants: { "dc:333": { name: "Sam Ortiz", instances: ["alpha"] } } } }]);
+    expect(w.writes()).toEqual([{ guests: { grants: { "dc:333": { name: "Sam Ortiz", instances: ["alpha"] } }, if_grants: { "dc:333": null } } }]);
     sent = [];
     await w.openAdd();
     await w.click(w.button("Add", p.root.querySelector('.ap-who-pick [data-account="tg:222"]')));
-    expect(w.writes()).toEqual([{ guests: { grants: { "tg:222": { name: "Bob", instances: ["beta", "alpha"] } } } }]);
+    expect(w.writes()).toEqual([{ guests: { grants: { "tg:222": { name: "Bob", instances: ["beta", "alpha"] } }, if_grants: { "tg:222": { name: "Bob", instances: ["beta"] } } } }]);
   });
   it("Remove asks first; one of several agents keeps the rest (and the level); the only one ends the grant (null), and the question says so", async () => {
     const w = await open();
     expect(await w.answering(w.button("Remove", w.row("dc:555")), true)).toBe("Carol will no longer be able to use alpha.");
-    expect(w.writes()).toEqual([{ guests: { grants: { "dc:555": { name: "Carol", instances: ["room-1"], level: "trusted" } } } }]);
+    expect(w.writes()).toEqual([{ guests: { grants: { "dc:555": { name: "Carol", instances: ["room-1"], level: "trusted" } }, if_grants: { "dc:555": { name: "Carol", instances: ["alpha", "room-1"], level: "trusted" } } } }]);
     sent = [];
     expect(await w.answering(w.button("Remove", w.row("dc:111")), true)).toContain("It's the only agent they can use, so their guest access ends and they're signed out.");
-    expect(w.writes()).toEqual([{ guests: { grants: { "dc:111": null } } }]);
+    expect(w.writes()).toEqual([{ guests: { grants: { "dc:111": null }, if_grants: { "dc:111": { name: "Alice", instances: ["alpha"] } } } }]);
     sent = [];
     await w.answering(w.button("Remove", w.row("dc:111")), false);
     expect(w.writes(), "Cancel writes nothing").toEqual([]);
   });
+  it("the question names the agent as people know it: its display name, with its name beside it (zh: full-width brackets)", async () => {
+    let w = await open("alpha", { display: "Example lead" });
+    expect(await w.answering(w.button("Remove", w.row("dc:555")), false)).toBe("Carol will no longer be able to use Example lead (alpha).");
+    (await import("/assets/app-i18n.js") as any).setLang("zh-TW");
+    w = await open("alpha", { display: "Example lead" });
+    expect(await w.answering(w.button("移除", w.row("dc:555")), false)).toBe("Carol 將無法再使用 Example lead（alpha）。");
+  });
   it("Chat | Trusted writes the person's whole grant with the level; Chat writes none", async () => {
     const w = await open();
     await w.click(w.button("Trusted", w.row("dc:111")));
-    expect(w.writes()).toEqual([{ guests: { grants: { "dc:111": { name: "Alice", instances: ["alpha"], level: "trusted" } } } }]);
+    expect(w.writes()).toEqual([{ guests: { grants: { "dc:111": { name: "Alice", instances: ["alpha"], level: "trusted" } }, if_grants: { "dc:111": { name: "Alice", instances: ["alpha"] } } } }]);
     sent = [];
     await w.click(w.button("Chat", w.row("dc:555")));
-    expect(w.writes()).toEqual([{ guests: { grants: { "dc:555": { name: "Carol", instances: ["alpha", "room-1"] } } } }]);
+    expect(w.writes()).toEqual([{ guests: { grants: { "dc:555": { name: "Carol", instances: ["alpha", "room-1"] } }, if_grants: { "dc:555": { name: "Carol", instances: ["alpha", "room-1"], level: "trusted" } } } }]);
     sent = [];
     await w.click(w.button("Chat", w.row("dc:111")));
     expect(w.writes(), "already Chat: nothing to write").toEqual([]);
   });
-  it("each write starts from the grant as saved right then: an agent added meanwhile in Settings → Guests is kept", async () => {
+  it("Prism #4461 P2: each write is made from the grant shown and only on condition it is still that (if_grants); a 409 says it changed, nothing saved, and the list is read again", async () => {
     const w = await open();
     const later = structuredClone(OVERVIEW);
-    later.guests[0].grant.instances = ["alpha", "gamma"];
+    later.guests[0].grant.instances = ["alpha", "gamma"];                    // changed meanwhile in Settings → Guests
     overviews = [later];
+    webAnswer = { status: 409, body: { error: "changed", key: "guest_grant_changed", account: "dc:111" } };
+    const reads = () => sent.filter((x) => x.method === "GET" && x.path === "/api/settings/guests").length;
+    const before = reads();
     await w.click(w.button("Trusted", w.row("dc:111")));
-    expect(w.writes()).toEqual([{ guests: { grants: { "dc:111": { name: "Alice", instances: ["alpha", "gamma"], level: "trusted" } } } }]);
+    expect(w.writes(), "no read between what was shown and the write").toEqual([{ guests: { grants: { "dc:111": { name: "Alice", instances: ["alpha"], level: "trusted" } },
+      if_grants: { "dc:111": { name: "Alice", instances: ["alpha"] } } } }]);
+    expect(w.$(".ap-who-msg[role=alert]").textContent).toBe("This person's access changed since this list was read, so nothing was saved. The list is up to date now: check it and try again.");
+    expect(reads(), "read again after the refusal").toBe(before + 1);
+    expect(w.row("dc:111").textContent).toContain("Can also use: gamma");
+  });
+  it("Prism #4461 P2: Remove's question is about the grant shown, and that is the condition of the write: shown [alpha, beta] → an ordinary question, written only while it is still [alpha, beta]", async () => {
+    const shownTwo = structuredClone(OVERVIEW);
+    shownTwo.guests[0].grant.instances = ["alpha", "beta"];
+    const w = await open("alpha", shownTwo);
+    expect(await w.answering(w.button("Remove", w.row("dc:111")), true)).toBe("Alice will no longer be able to use alpha.");
+    expect(w.writes()).toEqual([{ guests: { grants: { "dc:111": { name: "Alice", instances: ["beta"] } }, if_grants: { "dc:111": { name: "Alice", instances: ["alpha", "beta"] } } } }]);
   });
   it("the server's confirmation still applies: a 202 says it was sent for confirmation; a refused grant says why", async () => {
     webAnswer = { status: 202, body: { result: "pending_confirmation", pending_change: { id: "a".repeat(32), state: "pending", remaining_ms: 600_000, summary: [] } } };
@@ -186,8 +216,9 @@ describe("Web guests: the people whose grant names this agent (M-3734)", () => {
     expect([...p.root.querySelectorAll(".ap-who-guests .ap-who-row")].map((r: any) => r.getAttribute("data-account"))).toEqual(["dc:111"]);
     expect(w.button("Remove"), "read-only").toBeUndefined();
     expect(w.$(".ap-who-add"), "no Add: one grant alone would take everyone else's access away").toBeNull();
+    expect(w.$(".ap-who-derived").textContent, "what the button does, before it is pressed").toContain("everyone keeps exactly the agents they can use now, nothing more. After that, a guest can use this agent only if you add them here");
     expect(await w.answering(w.$("#whoConvert"), true)).toContain("Each guest keeps exactly the agents they can use now.");
-    expect(w.writes()).toEqual([{ guests: { grants: { "dc:111": { name: "Alice", instances: ["alpha", "beta"] }, "tg:222": { name: "Bob", instances: ["beta"] } } } }]);
+    expect(w.writes()).toEqual([{ guests: { grants: { "dc:111": { name: "Alice", instances: ["alpha", "beta"] }, "tg:222": { name: "Bob", instances: ["beta"] } }, if_grants: "unset" } }]);
   });
   it("not a fleet admin (403): says only an admin can see it; an agent guests can't be given: says so", async () => {
     guestsStatus = 403;
@@ -217,7 +248,7 @@ describe("Hub: this agent's share, and the Hub page that chooses who may ask (M-
     expect(w.state()).toBe("shared");
     expect(w.link().getAttribute("href")).toBe(`https://hub.example.test/ui/hub/exposures?agent=${ID}&grant=1`);
     expect(w.link().getAttribute("target")).toBe("_blank");
-    expect(w.text()).toContain("only opens where the Hub can be reached — for now, on the company network. It doesn't open from outside.");
+    expect(w.text()).toContain("“Choose who may ask on the Hub” opens the Hub's own page. That page opens only on the company network: outside it (for example, at home) it won't open.");
     expect(w.text()).toContain("people or AD groups, each until a date you choose");
   });
   it("no Hub: says so and reads nothing (never the stub client's made-up answers)", async () => {

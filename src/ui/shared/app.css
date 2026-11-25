@@ -5090,14 +5090,19 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .ap-who-id .note { white-space: normal; }
 .ap-who-state { margin-top: 2px; }
 .ap-who-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
-.ap-who-actions .btn, .ap-who-derived .btn, .ap-who-hub .btn { min-height: var(--tap); }
+.ap-who-actions .btn, .ap-who-derived .btn, .ap-who-hub .btn, .ap-who-guests > .field-row .btn { min-height: var(--tap); }
 .ap-who-add { margin-top: 16px; }
 .ap-who-add > summary { min-height: var(--tap); display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; list-style: none; }
 .ap-who-add > summary::-webkit-details-marker { display: none; }
 .ap-who-add > summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); }
 .ap-who-add[open] > summary::before { transform: rotate(45deg); }
-.ap-who-derived .btn { margin-top: 8px; }
+.ap-who-derived { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 8px 0; }
+.ap-who-derived > .note { margin: 0; }
+.ap-who-derived .btn { margin-top: 4px; }
 .ap-who-go { white-space: nowrap; }
+.ap-who-guests > .field-row { margin: 4px 0 8px; }
+.ap-who-actions .ap-who-remove { margin-left: 16px; }
+.ap-who-confirm-note { margin-top: 4px; }
 .ap-who-add .input { width: 100%; max-width: 420px; min-height: var(--tap); margin: 8px 0; }
 .ap-who-off { padding: 2px 0 2px 10px; border-left: 3px solid var(--warn); color: var(--text); }
 .ap-who-hub-state { margin: 8px 0; font-weight: 600; }
@@ -5105,6 +5110,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .ap-who .err { color: var(--danger); }
 @media (max-width: 599px) {
   .ap-who-actions { margin-left: calc(32px + 12px); width: 100%; }
+  .ap-who-actions .ap-who-remove { margin-left: auto; }
 }
 .p-details .d-actions .field-row { flex-wrap: wrap; }
 /* The sidebar's ⚙: one step to an agent's settings — on hover or focus on a desktop and on the open row, always on a touch screen. */

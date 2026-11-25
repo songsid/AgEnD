@@ -9,6 +9,7 @@
  *  2-add      Add a person open (Dan, Bob)
  *  3-remove   Remove Carol's question (nothing is written: Cancel)
  *  4-nohub    grants not saved yet (#1920's derived access: Start from today's guests) and no Hub
+ *  5-hub      the Hub card on screen: shared, its button, and where the Hub page opens (not from outside the company network)
  *  phone also 0-index: the agent page's category list, Who can use before Permissions
  * Checks: the rows and levels, the Hub link (the Hub's own address, grant=1, new tab) and its "only where the Hub can be
  * reached" note, every control in the section at least 44 px tall, no sideways scroll, no console error.
@@ -83,10 +84,13 @@ const CASES: MatrixCase[] = [
   { device: "phone", theme: "light", lang: "zh-TW" }, { device: "phone", theme: "dark", lang: "en" },
 ];
 const L = {
-  where: { en: "for now, on the company network", zh: "目前是公司網路內" },
-  also: { en: "Also uses: beta", zh: "也能用：beta" },
+  where: { en: "That page opens only on the company network: outside it (for example, at home) it won't open.", zh: "這個頁面只在公司網路內打得開，在公司網路以外（例如在家）打不開。" },
+  button: { en: "Choose who may ask on the Hub", zh: "到 Hub 選擇誰可以問" },
+  scope: { en: "Only affects Example lead", zh: "只影響 Example lead" },
+  levelAll: { en: "Carol's level (Chat or Trusted) applies to all 2 agents they can use, not only this one.", zh: "Carol 的等級（聊天或信任）套用到他們能用的全部 2 個 Agent，不只這一個。" },
+  also: { en: "Can also use: beta", zh: "也可以用：beta" },
   remove: { en: "Remove", zh: "移除" },
-  question: { en: "Carol will no longer be able to use Example lead (alpha).", zh: "Carol 將無法再使用 Example lead (alpha)。" },
+  question: { en: "Carol will no longer be able to use Example lead (alpha).", zh: "Carol 將無法再使用 Example lead（alpha）。" },
   derived: { en: "Start from today's guests", zh: "從現有訪客開始" },
   noHub: { en: "This Fleet isn't connected to a Hub.", zh: "這個 Fleet 沒有連接 Hub。" },
   add: { en: "Add a person", zh: "新增人員" },
@@ -124,10 +128,18 @@ try {
       const carol = m.rows.find((r: any) => r.name === "Carol");
       check(`${tag}: Carol is Trusted and also uses beta`, !!carol && carol.pressed[0] === "trusted" && carol.text.includes(labelOf(c, L.also)), carol);
       check(`${tag}: Hub: shared, with the Hub page that chooses who may ask (grant=1, new tab)`, m.hub === "shared" && m.href === `https://hub.example.test/ui/hub/exposures?agent=${EXPOSURE_ID}&grant=1` && m.target === "_blank", [m.hub, m.href, m.target]);
-      check(`${tag}: says the Hub page only opens where the Hub is reachable (company network)`, m.text.includes(labelOf(c, L.where)), m.text);
+      check(`${tag}: says the Hub page only opens on the company network, not from outside (e.g. at home)`, m.text.includes(labelOf(c, L.where)), m.text);
+      check(`${tag}: Carol's row says her level covers both her agents`, !!carol && carol.text.includes(labelOf(c, L.levelAll)), carol?.text);
+      const page_text = await page.evaluate(`document.querySelector(".agent-settings-heading")?.innerText || ""`);
+      // The phone's heading has no scope line (the page names the agent above it).
+      if (c.device === "desk") check(`${tag}: the scope says the agent's display name`, String(page_text).includes(labelOf(c, L.scope)), page_text);
       check(`${tag}: every control at least 44 px tall and on screen`, m.small.length === 0, m.small);
       check(`${tag}: no sideways scroll`, m.scroll <= m.W, m.scroll);
       await shot(page, `${tag}-1-who`);
+      await page.locator("#who-hub").scrollIntoViewIfNeeded();
+      const btn = (await page.locator("#whoHubChoose").innerText()).trim();
+      check(`${tag}: the Hub button is named, on screen`, btn.startsWith(labelOf(c, L.button)) && await page.locator("#whoHubChoose").isVisible(), btn);
+      await shot(page, `${tag}-5-hub`, false);
 
       await page.locator(".ap-who-add > summary").click();
       await page.locator(".ap-who-pick .ap-who-row").first().waitFor({ timeout: 10000 });
@@ -162,7 +174,8 @@ try {
       await page.locator("#who-hub[data-hub-state=none]").waitFor({ timeout: 10000 });
       m = await page.evaluate(MEASURE);
       receipt.measured[`${tag}-nohub`] = m;
-      check(`${tag}: before grants: Start from today's guests, no Remove or Add`, m.text.includes(labelOf(c, L.derived)) && !m.text.includes(labelOf(c, L.add)), m.text);
+      const controls = await page.evaluate(`[!!document.querySelector(".ap-who-add"), !!document.querySelector(".ap-who-guests .btn-danger")]`);
+      check(`${tag}: before grants: Start from today's guests, no Remove or Add`, m.text.includes(labelOf(c, L.derived)) && JSON.stringify(controls) === "[false,false]", controls);
       check(`${tag}: no Hub: said plainly, no Hub link`, m.hub === "none" && !m.href && m.text.includes(labelOf(c, L.noHub)), [m.hub, m.href]);
       check(`${tag}: (no Hub) every control at least 44 px tall and on screen`, m.small.length === 0, m.small);
       check(`${tag}: (no Hub) no sideways scroll`, m.scroll <= m.W, m.scroll);
