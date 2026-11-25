@@ -220,6 +220,18 @@ describe("update_instance_config tool_set stays General-only (M-3733)", () => {
     expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
   });
 
+  it("refuses a coordinator setting tool_set on General or a full agent, and writes nothing", async () => {
+    const ctx = fleet();
+    ctx.fleetConfig.instances.wide = { tool_set: "full" };
+    const general = await call(ctx, "update_instance_config", { name: "admin", config: { tool_set: "minimal" } }, "coord");
+    expect(general.error).toBe(refused);
+    expect(ctx.fleetConfig.instances.admin).toEqual({ general_topic: true });
+    const full = await call(ctx, "update_instance_config", { name: "wide", config: { tool_set: "minimal" } }, "coord");
+    expect(full.error).toBe(refused);
+    expect(ctx.fleetConfig.instances.wide).toEqual({ tool_set: "full" });
+    expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
+  });
+
   it("still lets that coordinator change another field, and lets General set full", async () => {
     const ctx = fleet();
     const other = await call(ctx, "update_instance_config", { name: "dev", config: { display_name: "Dev" } }, "coord");
