@@ -19,7 +19,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { TASK_CARD_REF_HINT } from "./dashboard-permissions.js";
+import { TASK_CARD_REF_HINT, TASK_REPORT_HINT } from "./dashboard-permissions.js";
 
 /**
  * #2163: who an entry is for — General, an instance with the coordinator or full tool set, a fleet worker, a ClassicBot
@@ -138,6 +138,10 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // M-3651: a guest's private /web code verifies who it is; `since` is this line's next beta (it merges after beta.22).
   { id: "2.4-web-guest-verified", since: "2.4.0-beta.23",
     text: "A web guest (`@web:g`) who signed in with the /web code sent privately to their own account now has a verified identity: their receipt says `authority.kind: web-guest` with their `authority.actor`. That tells you who they are; it is never a go-ahead or an admin's authority (the cross-instance-messaging skill's web-chat section)." },
+  // An agent finished with "design document: /data/workspaces/…" and the person could open nothing. `since` is this line's next beta
+  // (2.4.0-beta.23 is published without it); the sentence is TASK_REPORT_HINT.
+  { id: "2.4-task-card-files", since: "2.4.0-beta.24", tools: ["task"],
+    text: `Task cards: ${TASK_REPORT_HINT} \`task\` takes \`attach: ["./survivor.html"]\` on \`update\` and \`move\` (and the action \`attach\`): a file from your working directory goes on the card under that write's comment. Attach the finished thing, not your working files: usually one file, at most three, never source, logs or drafts; a web prototype is ONE .html with its CSS and JS inline (source stays in your workspace or branch; link the PR or repo in the comment); short text goes in the comment, not a file. Pass it even if your copy of the tool does not list it.` },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */
