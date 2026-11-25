@@ -30,7 +30,7 @@ For how *you* look on the dashboard (theme, identity card, colour, widgets and a
 | subscription meters, plan badges, profiles, keep-warm, prompt cache, output speed | [Usage and the cache report](#usage-and-the-cache-report) |
 | what an agent did step by step | [The Log tab](#the-log-tab) |
 | any Settings control, AI accounts (connect, add, remove, keep alive, install / update a CLI), quota notices, Windows computers (Runtime) | [Settings](#settings) |
-| "update AgEnD", the 「AgEnD vX 已推出」 notice, `/update` in a chat, update failed | [Updating AgEnD](#updating-agend) |
+| "update AgEnD", the update card (「AgEnD X 可以更新了。」, Update when idle, Pick a time, Not now), `/update` in a chat, "can't update here", Fix it for me, pause windows and pin, update failed | [Updating AgEnD](#updating-agend) |
 | AgEnD Hub (connecting a Fleet, join codes, the Hub's own pages) | load the `hub` skill |
 | themes, cards, widgets, ambient effects (petals, click stars) | [Look](#look) |
 | blank page, preview refused, link fails, signed out, "live" missing | [Troubleshooting](#troubleshooting) |
@@ -1007,7 +1007,8 @@ Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `prev
 `upload_max_total_mb`, `web_terminal.bind`, `web_terminal.tunnel`.
 
 **Advanced** — on top, **Version and update** (「版本與更新」): **Current version**, **Update line**, **Latest**,
-**Last checked**, **Check for updates** (see [Updating AgEnD](#updating-agend)). Below: fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply**
+**Last checked**, **Check for updates**, the update card with its buttons, **Updates on this machine**, **Don't update
+during** and its own **Advanced** (pin, longest wait for idle) (see [Updating AgEnD](#updating-agend)). Below: fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply**
 (edit mode) adds the edit to the bar, and Save writes it. While it waits, Agents, Shared agent settings and the
 connections are off (and the setup wizard); while those have unsaved changes, the editor only reads.
 
@@ -1029,21 +1030,70 @@ when the host confirms; a directory that is entered must be absolute.
 
 ## Updating AgEnD
 
-A fleet admin sees a notice on top when a newer version is out on the install's own line: **AgEnD v*X* is available
-(current v*Y*)** (「AgEnD vX 已推出（目前 vY）」) · **Update now** (「立即更新」) / **Later** (「稍後」); ✕ dismisses it. The
-same comes from Settings → Advanced → **Version and update** → **Check for updates**, and from `/update` typed in any
-web chat (it opens the Update dialog; it is never sent to the agent). **Update AgEnD?** → **Update and restart** installs
-it and restarts AgEnD; every agent stops briefly and comes back. Progress: **Step *n* of 4** — preparing, downloading and
-installing, installed and restarting, starting ("Closing this page does not affect the update."). A failure says why
-(**the update source could not be reached** / **no permission to install** / **did not finish**), whether anything changed
-("AgEnD is still v*X*; nothing was changed."), with **Try again** and **See the full log** (**Update log**). After it:
-**AgEnD is updated to v*X*** · **Reload this tab to use the new version.** · **Reload**.
-A tab left open across an update may also show, where a page or a part of it would have loaded, **This tab is older
-than AgEnD now.** (這個分頁比 AgEnD 舊。) with **Reload this tab**: what it loads now no longer fits what it loaded before
-the update. Reloading fixes it; nothing saved is lost.
-It stays on the install's line: an alpha install updates to the newest alpha, a stable one to stable. Going from alpha
-back to stable is `agend rollback <version>` on the host, never offered here ("Updating from the web stays on the
-Alpha preview line"). Guests and agents can't update.
+**One update card per fleet** (M-3770). The same card shows in three places, and an answer in one shows in the others:
+the web's top line, Settings → Advanced → **Version and update** (「版本與更新」), and a message in General's chat topic.
+It is edited to the newest version on the install's own line, never one card per version. Only a fleet admin answers
+it; guests and agents can't update.
+
+- **The card:** **AgEnD *X* is ready.** (「AgEnD X 可以更新了。」) and one line that says only what is true here. On a
+  service install it reads "Your work continues; if the new version won't start, AgEnD tries to roll back to *Y*."
+  (「工作不會中斷；新版起不來時，AgEnD 會嘗試退回 Y。」). This is best effort: the package and its service unit are put
+  back, not AgEnD's data. Where this setup can't restart AgEnD by itself, the line says to check on it afterwards.
+- **Update when idle** (「閒置時更新」), the main button, waits until no agent is working, then updates. While it
+  waits, the card names who it waits for ("Waiting for: A, B and 3 more" / 「正在等：A、B，另有 3 個」), with
+  **Update now** (「立即更新」), **Pick a time** and **Cancel** (「取消」). Update now asks once, naming how many agents
+  are working; they stop for a few minutes and pick up where they were. A wait longer than `updates.maxIdleWait`
+  (24 h by default) gives up and the card asks again.
+- **Pick a time** (「選個時間」): tonight (22:00), tomorrow morning (08:00), or another day and time within 7 days
+  (24-hour). At that time it still waits for idle. While scheduled: **Update now**, **Cancel**. Only a machine where
+  AgEnD can update itself takes a schedule (below); elsewhere the button isn't offered.
+- **Not now** (「先不要」) is one choice for the whole fleet, kept on the server: the card comes back a week after the
+  last answer, whatever versions arrive meanwhile. There is no "skip this version"; to stop offers, pin a version.
+- **In General's chat** the card is a message with **Update when idle / Tonight / Not now** (「閒置時更新／今晚／先不要」).
+  Each later state edits that same message ("Updating to *X* as soon as your agents are idle. · answered by …"). Someone
+  who isn't a fleet admin is told privately, and the buttons stay. It replaces the old daily "Run: /update" post. A
+  web-only fleet gets no chat card; its top line covers it.
+- **`/update`** typed in a chat (fleet admin) or in a web chat (it opens the Update dialog) still updates at once, after
+  the same machine checks. Progress: **Step *n* of 4** — preparing, downloading and installing, installed and
+  restarting, starting ("Closing this page does not affect the update."). A failure says why (**the update source
+  could not be reached** / **no permission to install** / **did not finish**), whether anything changed ("AgEnD is still
+  v*X*; nothing was changed."), with **Try again** and **See the full log**. After it: **AgEnD is updated to v*X*** ·
+  **Reload this tab to use the new version.** A tab left open across an update may show **This tab is older than AgEnD
+  now.** (這個分頁比 AgEnD 舊。) with **Reload this tab**; nothing saved is lost.
+
+**Updates on this machine** (「這台機器的更新」, in Version and update): AgEnD checks whether it can update itself here,
+when it starts, once a day, and again right before every update. Three outcomes:
+- **✓ AgEnD can update itself here.** Scheduled and idle-waited updates are allowed.
+- **◐ Updates here need you:** only an admin's own press updates it (no schedule), with each reason as a sentence. Not
+  running as a service, lingering off, a linked or development copy, another AgEnD install under the same user.
+  - **Lingering off** ("AgEnD stops when the *u* account signs out…"): **Keep AgEnD running after sign-out**
+    (「登出後讓 AgEnD 繼續執行」) turns it on (`loginctl enable-linger`, no restart; agents keep working), then checks
+    again. If the computer doesn't allow it, the block says so in place of the button and the line keeps the command:
+    `sudo loginctl enable-linger <user>`.
+  - **Not running as a service:** **Install as a service** (「安裝成服務」) asks first ("Install AgEnD as a service?":
+    every agent stops briefly, then picks up its conversations again, and the page reconnects by itself), then runs
+    this install's own `agend install`; **Install and restart** (「安裝並重新啟動」). While it installs, the block says
+    so and the card's other buttons are off; back as a service, the line is ✓. If it refuses, the block gives the cause
+    in plain words, the command's own words as a detail, and the next step (on WSL before 2.6.0: `wsl --update`;
+    elsewhere check `systemctl --user status`); the button comes back after **Check for updates**. **How to fix**
+    (「修正方式」) gives `agend install` to run as the same user (no sudo) in a terminal on the computer AgEnD runs on;
+    to go back, `agend uninstall`.
+  - **No write access to the install:** no update button anywhere. **How to update** gives `sudo agend update` (in a
+    terminal on the computer AgEnD runs on), or reinstall with the one-line installer.
+- **✗ AgEnD can't update here until this is fixed.** For example: a source checkout, another copy on the PATH, two installs sharing
+  one home, too little disk space, the update source unreachable (network or proxy), a rehearsal or test running, a
+  container (update the image), a Windows Runtime (it updates itself), or a Node too old for the new version. No
+  banner; **Needs you** lists it, as it lists an update that failed.
+
+**When AgEnD updates** (also Version and update): **Don't update during** (「這些時段不更新」), days and 30-minute times
+when an idle-waited or scheduled update doesn't start: it waits for the window to end (`updates.pause`). **Update now**
+and `/update` still update at once. Under **Advanced**: **Pin to a
+version** (no update is offered while pinned; `updates.pin`) and **Longest wait for idle** in hours (1–168, default 24;
+`updates.maxIdleWait`). A change that lets updates go ahead sooner (removing or changing a window, lifting or changing
+a pin) waits for a confirmation, like other held settings; one that only holds updates back applies at once.
+
+The card stays on the install's line: an alpha install updates to the newest alpha, a stable one to stable. Going from
+alpha back to stable is `agend rollback <version>` on the host, never offered here.
 Once the admin has answered the update card (waiting for idle, or a picked time), a phone or a narrow window shows it as
 one line: **AgEnD updates when idle** / **AgEnD updates Thu 22:00** (「AgEnD 閒置時更新」 / 「AgEnD 週四 22:00 更新」) and
 **Change** (「變更」), which opens the full words and buttons; **Hide** (「收起」) folds it again. Opening or hiding it

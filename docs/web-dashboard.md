@@ -649,6 +649,31 @@ blocked reasons reported within five minutes, without viewer identifiers/counts/
 
 It leaves alone the colours people picked for agents, installed mods, uploaded effects and the card upload limits.
 
+## Updating AgEnD
+
+When a new AgEnD version is out on your install's line, a fleet admin gets **one update card for the fleet** (M-3770). The same card is on the web's top line, in **Settings → Advanced → Version and update**, and as a message in General's chat topic; answering it in one place answers it everywhere. A newer version edits the same card. Guests and agents can't update.
+
+- **AgEnD *X* is ready.** and one line that says only what is true on this machine. On a service install: "Your work continues; if the new version won't start, AgEnD tries to roll back to *Y*." (best effort: the package and its service unit are put back, not AgEnD's data).
+- **Update when idle** waits until no agent is working, then restarts AgEnD for a few minutes, and the agents carry on. While it waits, the card names who it waits for, with **Update now**, **Pick a time** and **Cancel**. If the agents stay busy past the longest wait (24 h by default), the card asks again.
+- **Pick a time**: tonight, tomorrow morning, or a day and time in the next 7 days. It still waits for idle then. Only offered where AgEnD can update itself.
+- **Not now** is one answer for the whole fleet: the card comes back a week later, whatever versions come out meanwhile. To stop offers, pin a version.
+- **In General's chat** the card has **Update when idle / Tonight / Not now**, and each later state edits that message. Someone who isn't a fleet admin is told privately. A web-only fleet has no chat card.
+- **`/update`** in a chat, or in a web chat (which opens the Update dialog), still updates at once.
+
+**Updates on this machine** (Version and update) says whether AgEnD can update itself here. It checks when AgEnD starts, once a day, and again right before every update:
+- **✓ AgEnD can update itself here.**
+- **◐ Updates here need you:** only an admin's own press updates it, nothing scheduled, with each reason as a sentence.
+  - **Lingering off** (AgEnD stops when its account signs out): **Keep AgEnD running after sign-out** turns it on (nothing restarts; agents keep working) and checks again. Where the computer doesn't allow that, the block says so and you run `sudo loginctl enable-linger <user>`.
+  - **Not running as a service:** **Install as a service** asks first (every agent stops briefly, then picks up its conversations again; the page reconnects by itself), then installs and restarts AgEnD as a service. If that's refused, the block says why in plain words, with the next step (on WSL before 2.6.0, `wsl --update`), and the button comes back after **Check for updates**. **How to fix** gives `agend install`, run as the same user (no sudo) in a terminal on the computer AgEnD runs on; `agend uninstall` goes back.
+  - **No write access to the install:** there is no update button; run `sudo agend update`, or reinstall with the one-line installer.
+- **✗ AgEnD can't update here until this is fixed**, for example a source checkout, two installs sharing one home, too little disk space, the update source unreachable, a test running, or a container. **Needs you** lists it, as it lists an update that failed.
+
+**When AgEnD updates** (Version and update; `updates.*` in [fleet.yaml](configuration.md)):
+- **Don't update during**: days and times when an idle-waited or scheduled update waits. **Update now** still updates at once.
+- **Advanced** has **Pin to a version** (no update is offered) and **Longest wait for idle**.
+
+A change that lets updates go ahead sooner (removing or changing a window, lifting or changing a pin) waits for a confirmation; one that only holds updates back applies at once.
+
 ## Reaching it from elsewhere
 
 ### Temporary public link from a phone

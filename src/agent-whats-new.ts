@@ -148,6 +148,10 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // M-3749: a credential-profile switch dropped agents' own MCP servers silently. `since` is this line's next beta.
   { id: "2.4-profile-switch-mcp", since: "2.4.0-beta.24",
     text: "Claude account switch: your own MCP servers (`claude mcp add`, user scope and local scope for your folder) now go along to the new account. If any are still missing at launch you get a notice naming them; add one back with `claude mcp add -s local …` and ask the user for any key (the credential-profiles skill)." },
+  // M-3770 Phase 1 (design #4480): the one update card; a topic line, the details in the web-dashboard skill. `since` is
+  // this line's next beta (2.4.0-beta.24 is published without it).
+  { id: "2.4-update-card", since: "2.4.0-beta.25", audience: ["general"],
+    text: "AgEnD updates: one update card per fleet, in your chat topic, on the web's top line and in Settings → Advanced → Version and update, with Update when idle, Pick a time and Not now; and \"Updates on this machine\" says whether AgEnD can update itself here. Load the `web-dashboard` skill's Updating AgEnD section before answering an update question." },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */
