@@ -38,6 +38,15 @@ function poll(ctx: unknown, sessionId: string, gateway = false): Promise<any[]> 
   });
 }
 
+function contactRead(ctx: unknown, sessionId: string, path: string): Promise<{status:number;body:any}> {
+  const req = Object.assign(new EventEmitter(), {method:"GET",url:path,destroy:vi.fn(),socket:{remoteAddress:"127.0.0.1"},
+    headers:{host:"127.0.0.1:19280",origin:LOCAL,cookie:`agend_session=${sessionId}`}});
+  return new Promise(resolve=>{let status=0;const res:any={headersSent:false,destroyed:false,writableEnded:false,setHeader(){},
+    writeHead:(n:number)=>{status=n;},end:(body="")=>resolve({status,body:JSON.parse(String(body))})};
+    handleWebRequest(req as never,res,new URL(path,LOCAL),ctx as never);
+  });
+}
+
 describe("the web handler: who gets the line", () => {
   const ticket = { id: "contact:R1", type: "contact", reason: "contact_request", instance: "worker", since: 1, detail: "", contactTicket: { id: "R1", source: "lead", target: "worker" } };
   function ctx(opts: { actor?: boolean; count?: number } = {}) {
@@ -108,10 +117,17 @@ describe("the fleet: the count, and Needs you again once the account confirms", 
     const s = any.webSessions.create({ tier: "admin", surface: "local", label: "browser", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "a", userId: "fake-admin" } });
     const before = await poll(any, s.sessionId);
     expect(before.map((i: any) => [i.reason, i.contactVerify?.count])).toEqual([["contact_verify_needed", 1]]);
+    const path=`/ui/api/contact-authorizations/${ticket.id}`;
+    expect((await contactRead(any,s.sessionId,path)).status).toBe(403);
+
     expect(any.authorizeWebSession(s.record, "loopback", false)).toMatchObject({ ok: true });
     expect(emitted).toHaveBeenCalledWith("needs", expect.anything());
     const after = await poll(any, s.sessionId);
     expect(after.map((i: any) => [i.reason, i.contactTicket?.id])).toEqual([["contact_request", ticket.id]]);
+    const readable=await contactRead(any,s.sessionId,path);
+    expect(readable.status).toBe(200);
+    expect(readable.body).toMatchObject({id:ticket.id,reason:"unknown-origin",origin:{kind:"unknown"}});
+
   });
   it("a failing refresh never fails the authorization itself (logged)", () => {
     const { any } = fleet();
@@ -125,10 +141,10 @@ describe("the fleet: the count, and Needs you again once the account confirms", 
 
 describe("Needs you shows the line with Authorize this browser, in en and zh-TW", () => {
   type Req = { method: string; url: string };
-  let reqs: Req[] = [], authState: unknown = { state: "none", reason: "not_authorized" };
+  let reqs: Req[] = [], authState: unknown = { state: "none", reason: "not_authorized" }, recoveryTicket: any = null;
   const fetchFake = async (url: string, init: any = {}) => {
     reqs.push({ method: init.method || "GET", url });
-    const body = url === "/ui/authorization" ? (init.method === "POST" ? { ok: true, expiresInMs: 300_000 } : authState) : {};
+    const body = url === "/ui/authorization" ? (init.method === "POST" ? { ok: true, expiresInMs: 300_000 } : authState) : url === "/ui/api/contact-authorizations/Rrecovery" ? recoveryTicket : {};
     return { ok: true, status: 200, json: async () => body };
   };
   let p: AppPage, N: any, app: any, i18n: any, auth: any;
@@ -142,7 +158,7 @@ describe("Needs you shows the line with Authorize this browser, in en and zh-TW"
     N = await import("/ui/js/panel-needs.js");
   });
   afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
-  beforeEach(async () => { await p.unmount(); reqs = []; authState = { state: "none", reason: "not_authorized" }; auth.resetWebAuthorization();
+  beforeEach(async () => { await p.unmount(); reqs = []; recoveryTicket = null; authState = { state: "none", reason: "not_authorized" }; auth.resetWebAuthorization();
     app.appStore.set({ ready: true, needsLoaded: true, needs: [{ ...LINE }], instances: [] }); });
   const text = () => (p.root.textContent || "").replace(/\s+/g, " ").trim();
   const mount = (lang: string) => { i18n.setLang(lang); return p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: `needs:|1|${lang}` })); };
@@ -168,6 +184,24 @@ describe("Needs you shows the line with Authorize this browser, in en and zh-TW"
     app.appStore.set({ needs: [request("R1"), request("R2")] }); await settle(6);
     expect(counts()).toEqual(["2", 2, "2"]);
   });
+  it.each([["en","Authorize this browser","Demo source → Settings → Permissions and press Clear retained origin"],["zh-TW","授權這個瀏覽器","Demo source 的「設定」→「權限」，按「清除保留的來源」"]])(
+    "M-3713 %s: Authorize leads to the unknown-origin recovery hint on the real Needs you card", async(lang,button,hint)=>{
+      await mount(lang);await settle(6);
+      const ask=p.root.querySelectorAll(".contact-verify-need button").find((b:any)=>b.textContent.trim()===button);
+      expect(ask).toBeTruthy();expect(text()).not.toContain(hint);
+      ask.click();await settle(6);
+      expect(reqs.filter(r=>r.url==="/ui/authorization"&&r.method==="POST")).toHaveLength(1);
+      recoveryTicket={id:"Rrecovery",revision:1,state:"pending",source:"lead",target:"worker",verb:"send_to_instance",reason:"unknown-origin",
+        origin:{kind:"unknown",people:[],receiptIds:[],chain:["lead"]},message:"A synthetic request",canDecide:true,
+        createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+1_800_000).toISOString()};
+      authState={state:"verified"};
+      app.appStore.set({instances:[{name:"lead",display_name:"Demo source"},{name:"worker",display_name:"Demo target"}],needs:[{id:"contact:Rrecovery",type:"contact",reason:"contact_request",instance:"worker",since:1,detail:"",
+        contactTicket:{id:"Rrecovery",source:"lead",target:"worker"}}]});await settle(8);
+      expect(p.root.querySelector(".contact-verify-need")).toBeNull();
+      expect(p.root.querySelector(".contact-ticket")).toBeTruthy();
+      expect(text()).toContain(hint);
+      expect(reqs.some(r=>r.url==="/ui/api/contact-authorizations/Rrecovery")).toBe(true);
+    });
   it("one request: singular", async () => {
     app.appStore.set({ needs: [{ ...LINE, contactVerify: { count: 1 } }] });
     await mount("en"); await settle(6);

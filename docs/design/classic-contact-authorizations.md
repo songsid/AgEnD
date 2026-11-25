@@ -38,6 +38,13 @@ Receipt `origin.web_identity` records recognition, while `authority` remains
 unchanged (`none` until the existing verification rules pass). Display names,
 message bodies, client metadata and voter keys never supply this identity.
 The central current-role gate still decides whether that person manages a target.
+A host sign-in on a chat-connected Fleet does not name a Discord/Telegram account,
+so it is not silently substituted for one of that Fleet's administrators. Likewise,
+an approved device with no bound account or explicit host/TOTP sign-in proof does
+not borrow the approving browser's identity, even on a web-only Fleet. Device
+approval grants dashboard access; its display-only `via` field is not identity
+proof. Such browsers must sign in as the account or through the supported host
+path to supply a recognizable person. Tests pin both boundaries.
 **Revoke web authority** removes go-ahead authority, not the signed-in session.
 That session still identifies its account for contact permissions, including its
 current administrator role. To stop recognizing a lost browser as that account,
@@ -205,3 +212,14 @@ Native guard readiness is separate from contact admission. A1 alone reports
 not-covered until the launch guard is present. Prior transcript memory and trusted
 selected MCP servers remain outside this file broker. The CLI guard is not an OS
 sandbox and must report its own backend/version and network-control limitations.
+
+### Unverified browser recovery entry
+
+The M-3710 Needs you projection is retained: an unverified admin browser sees only
+a pending-request count and Authorize this browser. Once verified, the existing
+scoped request card replaces that line and names the sending Agent by display
+name, with its Settings → Permissions → Clear retained origin path. Read-only and
+guest sessions gain neither request details nor the clear action. This is verified
+through the real poll/authorization/scoped-read flow and the mounted Needs you
+card; contactActor remains verified-only. Request-scoped provenance that avoids
+retained taint on signed-in admin sessions belongs to Phase 2 (M-3718), not this fix.

@@ -88,6 +88,22 @@ it("host recognition requires explicit host sign-in provenance on a web-only fle
  r.fm.isWebOnlyFleet=()=>false;expect(r.fm.webSessionIdentity({...session,host:true})).toBeUndefined();
 });
 
+it("a host sign-in on a chat fleet is not silently mapped to a chat administrator",()=>{
+ const r=rig(false);
+ const host=r.ctx.webSessions.create({tier:"admin",surface:"local",label:"Host browser",tokenEpoch:tokenEpoch(token),host:true});
+ expect(r.fm.webSessionIdentity(host.record)).toBeUndefined();
+ // The machine sign-in names no Discord/Telegram account; an explicit bound account remains identifiable.
+ expect(r.fm.webSessionIdentity({...host.record,owner:{adapterId:"demo-bot",userId:"demo-admin"}})).toMatchObject({platform:"discord",user_id:"demo-admin"});
+});
+it("an approved device on a web-only fleet does not borrow its approving browser's identity",()=>{
+ const r=rig(false);r.fm.isWebOnlyFleet=()=>true;
+ const device=r.ctx.webSessions.create({tier:"admin",surface:"local",label:"Approved browser",tokenEpoch:tokenEpoch(token),via:"device"});
+ expect(device.record).toMatchObject({tier:"admin",via:"device"});
+ expect(r.fm.webSessionIdentity(device.record)).toBeUndefined();
+ // Device approval supplies access, not an account join or the explicit host sign-in proof.
+ expect(r.fm.webSessionIdentity({...device.record,host:true})).toMatchObject({platform:"host",user_id:"operator"});
+});
+
 it("a known web account in delivery_status still has authority none",async()=>{
  const r=rig();await r.click();const receipt=r.outbox.getHumanReceipt(r.payload().meta.human_receipt_id)!;
  const item=queryHumanReceipt((r.outbox as any).db,"worker",{messageId:receipt.message_id})!.items[0]!;

@@ -324,6 +324,9 @@ The instance card and Details → Runtime show a localized original → fallback
 Needs you gets one item per new confirmed main-thread switch. Repeated blocks and resumed history do not announce it again; a fresh response returning to the configured/original model removes it. AgEnD does not switch models, restart the agent or change safeguards automatically. Intentional `/model` and next-spawn failover are separate; unresolved default/plan aliases are not guessed. No prompt, answer or refusal explanation is copied into the observation.
 
 A signed-in web account is identifiable for contact permissions even before the browser is verified.
+A host code on a chat-connected Fleet does not name a chat account. An approved device without a
+bound account also does not inherit the approving browser’s identity; use the account sign-in or the
+supported host sign-in path, rather than treating dashboard access as account recognition.
 **Revoke web authority** stops that browser from giving go-aheads, but leaves it signed in: its
 messages still identify the account for contact permissions. For a lost device, use that device’s
 **Sign out** or **Sign out everywhere** to end account recognition as well.

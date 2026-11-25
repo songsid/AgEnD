@@ -22,6 +22,13 @@ try{
   await reason.scrollIntoViewIfNeeded();
   await page.screenshot({path:join(out,`${c.device}-${c.theme}-${c.lang}-needs.png`)});
   const needsCsp=await csp();
+  if(process.env.NEEDS_ONLY==="1"){
+   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
+   const text=await reason.innerText();
+   if(!text.includes("Demo source")||!(c.lang==="en"?text.includes("Demo source → Settings → Permissions"):text.includes("Demo source 的「設定」→「權限」")))throw Error("Missing sender display name/full recovery path");
+   if(overflow||errors.length||needsCsp.length)throw Error(JSON.stringify({overflow,errors,csp:needsCsp}));
+   results.push({...c,overflow,errors,csp:needsCsp,recoveryText:text});await ctx.close();continue;
+  }
   await page.goto(`${fx.base}/ui/fleet/agent/demo-source?cat=permissions`);
   const clear=page.getByRole("button",{name:c.lang==="en"?"Clear retained origin":"清除保留的來源",exact:true});await clear.waitFor();
   if(c.device==="phone"){const box=await clear.boundingBox();if(!box||box.height<44)throw Error("Small recovery tap target");}

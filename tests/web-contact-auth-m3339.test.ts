@@ -367,7 +367,7 @@ describe("why a request needs approval (Sentinel's A1 copy: no reset is offered)
     try {
       const { ContactAuthorizations } = await import("/ui/js/contact-authorizations.js") as any;
       const { pg } = await mountWith(ContactAuthorizations, {});
-      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要接受發送 Agent 目前的對話作為自己的工作，管理它的已驗證管理員可以到「權限」→「清除保留的來源」確認。來源不會自動重設。");
+      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要接受 classic-ops 目前的對話作為它自己的工作，請到 classic-ops 的「設定」→「權限」，按「清除保留的來源」。來源不會自動重設。");
       expect([pg.root.querySelector('[data-ticket="R13"] .contact-reason'), text(pg.root.querySelector('[data-ticket="R13"]')).includes("something-else")]).toEqual([null, false]);
     } finally { i18n.setLang("en", { store: false }); }
   });
