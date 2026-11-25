@@ -186,8 +186,8 @@ it.runIf(!!process.env.M3680_CARD_EVIDENCE)("writes the card evidence", async ()
   for (const language of ["en", "zh-TW"] as const) {
     setLocale(language);
     try {
-      const outcome = async (fn: (r: ReturnType<typeof rig>, ticket: any) => Promise<unknown>) => {
-        const r = rig(), ticket = r.hold();
+      const outcome = async (fn: (r: ReturnType<typeof rig>, ticket: any) => Promise<unknown>, source = "lead") => {
+        const r = rig(), ticket = r.hold(source);
         r.fm.syncHeldTicketCard(ticket); await settle();
         const posted = r.adapter.notifyAlert.mock.calls[0]![1];
         const extra = await fn(r, ticket);
@@ -196,6 +196,8 @@ it.runIf(!!process.env.M3680_CARD_EVIDENCE)("writes the card evidence", async ()
       const evidence = {
         provenance: "Actual FleetManager nonce posting/callback; synthetic adapter, people and contact store; no platform connection. Nonces omitted.",
         approve: await outcome((r) => click(r, cards(r)[0], "approve")),
+        // R21079937: a ClassicBot room's request to a fleet agent — the same card, the room named by its display name.
+        classicRoomApprove: await outcome((r) => click(r, cards(r)[0], "approve"), "room"),
         decline: await outcome((r) => click(r, cards(r)[0], "decline")),
         notAllowed: await outcome(async (r) => { const { ack } = await click(r, cards(r)[0], "approve", other); return { clickerTold: ack.mock.calls.map((c: any) => c[0]) }; }),
         decidedOnTheDashboard: await outcome(async (r, ticket) => { r.service.decide(ticket.id, { revision: ticket.revision, decision: "decline" }, admin); r.fm.syncHeldTicketCard(r.store.get(ticket.id)); }),
