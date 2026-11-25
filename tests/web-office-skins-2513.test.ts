@@ -57,6 +57,15 @@ function png(w: number, h: number, extra: Buffer[] = []): Buffer {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), ...extra, chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
+/** A WebP of w×h: RIFF, a VP8L header (never decoded by the host, only walked), and any extra chunks (EXIF, XMP). */
+function webp(w: number, h: number, extra: Buffer[] = []): Buffer {
+  const chunk = (type: string, data: Buffer) => { const len = Buffer.alloc(4); len.writeUInt32LE(data.length); return Buffer.concat([Buffer.from(type, "ascii"), len, data, data.length & 1 ? Buffer.alloc(1) : Buffer.alloc(0)]); };
+  const head = Buffer.alloc(5); head[0] = 0x2f; head.writeUInt32LE(((w - 1) | ((h - 1) << 14)) >>> 0, 1);
+  const body = Buffer.concat([Buffer.from("WEBP", "ascii"), chunk("VP8L", Buffer.concat([head, Buffer.alloc(7)])), ...extra.map((e) => chunk("EXIF", e))]);
+  const size = Buffer.alloc(4); size.writeUInt32LE(body.length);
+  return Buffer.concat([Buffer.from("RIFF", "ascii"), size, body]);
+}
+
 const dirs: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-skins-")); dirs.push(d); return d; };
@@ -159,8 +168,21 @@ describe("checkSkinUpload: the manifest by the page's rules, then the pictures",
     }
     const cut = png(128, 48).subarray(0, 60);
     expect(refused({ ...UPLOAD(), files: { ...UPLOAD().files, "fox_idle.png": cut.toString("base64") } })?.slice(0, 2)).toEqual([400, "skin_png_unreadable"]);
-    const huge = png(1, 1); huge.writeUInt32BE(5000, 16);                                   // IHDR says 5000 px wide
+    const huge = png(1, 1); huge.writeUInt32BE(5121, 16);                                   // IHDR says 5121 px wide
     expect(refused({ ...UPLOAD(), files: { ...UPLOAD().files, "fox_idle.png": huge.toString("base64") } })?.slice(0, 2)).toEqual([400, "skin_png_dimensions"]);
+  });
+  it("a WebP picture (named .webp): kept with its metadata stripped, 5120 px a side; its signature must match its name", () => {
+    const m = MANIFEST(); m.background = "office_bg.webp";
+    const up = (bg: Buffer) => ({ manifest: m, files: { "office_bg.webp": bg.toString("base64"), "fox_idle.png": b64("fox_idle.png") } });
+    const ok = checkSkinUpload(up(webp(5120, 2880, [Buffer.from("GPS 25.0N")])), "me", 1);
+    if (!ok.ok) throw new Error(JSON.stringify(ok));
+    expect(ok.record.files["office_bg.webp"]).toMatchObject({ width: 5120, height: 2880 });
+    const kept = ok.pictures.get(ok.record.files["office_bg.webp"]!.id)!;
+    expect([kept.subarray(8, 12).toString("ascii"), kept.includes(Buffer.from("GPS 25.0N"))]).toEqual(["WEBP", false]);
+    expect(refused(up(webp(5121, 2881)))?.slice(0, 2)).toEqual([400, "skin_png_dimensions"]);
+    expect(refused(up(png(1280, 720)))).toEqual([400, "skin_not_png", "office_bg.webp: not a WebP (its signature)"]);
+    expect(refused({ ...UPLOAD(), files: { ...UPLOAD().files, "fox_idle.png": webp(128, 48).toString("base64") } })).toEqual([400, "skin_not_png", "fox_idle.png: not a PNG (its signature)"]);
+    expect(refused(up(webp(1280, 720).subarray(0, 30)))?.slice(0, 2)).toEqual([400, "skin_png_unreadable"]);
   });
   it("a STRIP's picture must be exactly frames·w × h; the background 16:9", () => {
     const wrong = png(120, 48);                                                             // 4 frames of 32 need 128
@@ -171,9 +193,10 @@ describe("checkSkinUpload: the manifest by the page's rules, then the pictures",
       .toEqual([400, "skin_background_aspect", "background: office_bg.png is 640×400 px; it must be 16:9"]);
     expect(checkSkinUpload({ ...UPLOAD(), files: { ...UPLOAD().files, "office_bg.png": png(1280, 720).toString("base64") } }, "me", 1).ok).toBe(true);
   });
-  it("file names: no traversal, no hidden or empty part, .png only — in the manifest or among the files", () => {
+  it("file names: no traversal, no hidden or empty part, .png or .webp only — in the manifest or among the files", () => {
     for (const bad of ["../x.png", "a/../x.png", "/x.png", ".x.png", "a//x.png", "a/./x.png", "x.PNG.svg", "x.gif", "a\\x.png", "a/b/c/d/e.png"]) expect(skinFileNameOk(bad), bad).toBe(false);
-    for (const good of ["x.png", "sprites/idle_2.png", "A-b.c.PNG"]) expect(skinFileNameOk(good), good).toBe(true);
+    for (const bad of ["x.webp.svg", "x.jpg"]) expect(skinFileNameOk(bad), bad).toBe(false);
+    for (const good of ["x.png", "sprites/idle_2.png", "A-b.c.PNG", "bg.webp", "a/B.WEBP"]) expect(skinFileNameOk(good), good).toBe(true);
     const m = MANIFEST();
     m.characters.default.idle.src = "./fox_idle.png";                                    // the page's rule allows "./"; the host's does not
     expect(refused({ manifest: m, files: { "office_bg.png": b64("office_bg.png"), "./fox_idle.png": b64("fox_idle.png") } })?.[1]).toBe("skin_file_name");
@@ -326,6 +349,11 @@ describe("the routes", () => {
         .toEqual([200, "image/png", "nosniff", "private, max-age=31536000, immutable", "default-src 'none'; sandbox"]);
       expect(pic.body.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
       expect((await raw(f.port, "GET", `/ui/office-skins/clinic-sample/img/${id}.png`)).status).toBe(401);
+      const m = MANIFEST(); m.id = "clinic-webp"; m.background = "office_bg.webp";             // a WebP is served as one
+      expect(f.fm.officeSkins.add({ manifest: m, files: { "office_bg.webp": webp(1280, 720).toString("base64"), "fox_idle.png": b64("fox_idle.png") } }, "me").ok).toBe(true);
+      const wid = parse(await raw(f.port, "GET", "/ui/office-skins/clinic-webp", reader)).files["office_bg.webp"];
+      const wpic = await raw(f.port, "GET", `/ui/office-skins/clinic-webp/img/${wid}.png`, reader);
+      expect([wpic.status, wpic.headers["content-type"], wpic.headers["x-content-type-options"], wpic.body.subarray(8, 12).toString("ascii")]).toEqual([200, "image/webp", "nosniff", "WEBP"]);
       expect((await raw(f.port, "GET", `/ui/office-skins/clinic-sample/img/${"0".repeat(32)}.png`, reader)).status).toBe(404);
       expect((await raw(f.port, "GET", "/ui/office-skins/clinic-sample/img/..%2Fpack.json", reader)).status).toBe(404);
       expect((await raw(f.port, "GET", "/ui/office-skins/nope", reader)).status).toBe(404);

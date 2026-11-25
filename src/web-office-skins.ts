@@ -1,11 +1,12 @@
 /**
  * Fleet → Org chart → Office: skin packs an admin uploaded (#2513) — a manifest (format v1, src/ui/fleet-office-pack.js)
- * and its PNG pictures, kept on the host for every viewer, never changed once kept (an office moves things on one with
+ * and its PNG or WebP pictures, kept on the host for every viewer, never changed once kept (an office moves things on one with
  * its own layout overrides, web-office-store.ts).
  *
  *   <dataDir>/web-office-skins/<pack-id>/pack.json      { version: 1, id, name, sha, bytes, uploaded_at, by, manifest,
  *                                                         files: { <src>: { id, bytes, width, height } } }   (0600)
  *   <dataDir>/web-office-skins/<pack-id>/<id>.png        each picture, metadata stripped; id = sha of the kept bytes
+ *                                                      (named .png whatever it is: served by its signature, skinPictureType)
  *
  *   <dataDir>/web-office-skins/<pack-id>/pack.prev.json the version it replaced (#2692: one, for a restore), its pictures
  *                                                      beside the current ones'
@@ -18,7 +19,7 @@
  * pack is there entirely or not at all; a delete renames it away before removing it. A replace (#2692) writes the new
  * pictures beside the old and swaps pack.json in one rename (put). The manifest is checked by the
  * page's own module (checkSkinPack) — the page and the host agree on every rule — and then the pictures: each is a PNG
- * (its signature, IHDR first, walked to IEND), within the per-file and per-pack caps and the side and pixel caps; every
+ * or a WebP (its signature, its size header, walked to its end), within the per-file and per-pack caps and the side and pixel caps; every
  * STRIP's picture is exactly frames·w × h; the background and the foreground are 16:9; every file the manifest names is sent and nothing
  * else. What is read back is checked again (a pack a tightened rule refuses is not offered; its files stay on disk).
  */
@@ -26,7 +27,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
-import { imageSize, sniffMedia, stripMetadata } from "./web-image-meta.js";
+import { imageSize, MEDIA_MIME, sniffMedia, stripMetadata } from "./web-image-meta.js";
 import { canvasOf, checkSkinPack, own, packImages, packStrips, stripSheets, type CheckedPack } from "./ui/fleet-office-pack.js";
 
 const MiB = 1024 * 1024;
@@ -38,7 +39,7 @@ const MiB = 1024 * 1024;
  * (was 64, then 160) so the one-picture-per-pose layout still fits 30 × 7.
  */
 export const SKIN_LIMITS = {
-  packs: 16, files: 220, fileBytes: 4 * MiB, packBytes: 42 * MiB, manifestBytes: 64 * 1024, side: 4096, pixels: 16 * MiB, packPixels: 64 * MiB, name: 60, src: 200,
+  packs: 16, files: 220, fileBytes: 4 * MiB, packBytes: 42 * MiB, manifestBytes: 64 * 1024, side: 5120, pixels: 16 * MiB, packPixels: 64 * MiB, name: 60, src: 200,
 } as const;
 /** The most an upload's body may be: every picture's base64 (4/3) plus the manifest and the envelope. */
 export const SKIN_WIRE_BYTES = Math.ceil((SKIN_LIMITS.packBytes * 4) / 3) + SKIN_LIMITS.manifestBytes + 64 * 1024;
@@ -56,7 +57,7 @@ const KEPT = /^\.kept-([A-Za-z0-9_-]{1,40})$/;
 
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 const FILE_ID = /^[0-9a-f]{32}$/;
-/** A file name in a pack: segments of letters, digits, . _ -, never starting with a dot (no "..", no hidden file), .png. */
+/** A file name in a pack: segments of letters, digits, . _ -, never starting with a dot (no "..", no hidden file), .png or .webp. */
 const SEGMENT = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const B64 = /^[A-Za-z0-9+/]*={0,2}$/;
@@ -74,27 +75,31 @@ const hash32 = (b: Uint8Array | string) => createHash("sha256").update(b).digest
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const refuse = (status: SkinRefusal["status"], error: string, detail?: string): SkinRefusal => ({ ok: false, status, error, ...(detail ? { detail } : {}) });
 
+/** The Content-Type of a kept picture: by its signature (a WebP is kept under <id>.png too). */
+export const skinPictureType = (b: Uint8Array): string => sniffMedia(b) === "webp" ? MEDIA_MIME.webp : MEDIA_MIME.png;
+
 /** Whether `src` is a file name a pack may use (fleet-office-pack.js's rule, and no hidden or empty segment). */
 export function skinFileNameOk(src: string): boolean {
-  if (src.length > SKIN_LIMITS.src || CONTROL.test(src) || !/\.png$/i.test(src)) return false;
+  if (src.length > SKIN_LIMITS.src || CONTROL.test(src) || !/\.(png|webp)$/i.test(src)) return false;
   const parts = src.split("/");
   return parts.length <= 4 && parts.every(p => SEGMENT.test(p) && p !== "." && p !== "..");
 }
 
 /**
- * One picture: a PNG, walked to its end, its metadata stripped, within the caps. { kept, width, height } or a refusal
- * naming the file.
+ * One picture: a PNG or a WebP (as its name ends), walked to its end, its metadata stripped, within the caps.
+ * { kept, width, height } or a refusal naming the file.
  */
 export function checkSkinPicture(name: string, bytes: Uint8Array): { ok: true; kept: Buffer; width: number; height: number } | SkinRefusal {
   if (bytes.length > SKIN_LIMITS.fileBytes) return refuse(413, "skin_file_too_large", `${name}: at most ${SKIN_LIMITS.fileBytes / MiB} MiB`);
-  if (sniffMedia(bytes) !== "png") return refuse(400, "skin_not_png", `${name}: not a PNG (its signature)`);
-  const size = imageSize(bytes, "png");
-  if (!size || size.width < 1 || size.height < 1) return refuse(400, "skin_png_unreadable", `${name}: no IHDR`);
+  const kind = /\.webp$/i.test(name) ? "webp" : "png";
+  if (sniffMedia(bytes) !== kind) return refuse(400, "skin_not_png", `${name}: not a ${kind === "webp" ? "WebP" : "PNG"} (its signature)`);
+  const size = imageSize(bytes, kind);
+  if (!size || size.width < 1 || size.height < 1) return refuse(400, "skin_png_unreadable", `${name}: no size in its header`);
   if (size.width > SKIN_LIMITS.side || size.height > SKIN_LIMITS.side || size.width * size.height > SKIN_LIMITS.pixels) {
     return refuse(400, "skin_png_dimensions", `${name}: at most ${SKIN_LIMITS.side}×${SKIN_LIMITS.side} px`);
   }
-  const kept = stripMetadata(bytes, "png");
-  if (!kept) return refuse(400, "skin_png_unreadable", `${name}: its chunks do not run to IEND`);
+  const kept = stripMetadata(bytes, kind);
+  if (!kept) return refuse(400, "skin_png_unreadable", `${name}: its chunks do not run to its end`);
   return { ok: true, kept: Buffer.from(kept), width: size.width, height: size.height };
 }
 
@@ -174,12 +179,12 @@ export function checkSkinUpload(body: unknown, by: string, now: number): SkinChe
     name = body.name.trim();
   }
   const named = packImages(pack);
-  for (const src of named) if (!skinFileNameOk(src)) return refuse(400, "skin_file_name", `${src}: letters, digits, . _ - and /, no hidden or empty part, ending .png`);
+  for (const src of named) if (!skinFileNameOk(src)) return refuse(400, "skin_file_name", `${src}: letters, digits, . _ - and /, no hidden or empty part, ending .png or .webp`);
   if (!isObj(body.files)) return refuse(400, "skin_invalid", "files: { <file name>: <base64> }");
   const sent = Object.keys(body.files);
   if (sent.length > SKIN_LIMITS.files) return refuse(400, "skin_too_many_files", `at most ${SKIN_LIMITS.files}`);
   for (const src of sent) {
-    if (!skinFileNameOk(src)) return refuse(400, "skin_file_name", `${src}: letters, digits, . _ - and /, no hidden or empty part, ending .png`);
+    if (!skinFileNameOk(src)) return refuse(400, "skin_file_name", `${src}: letters, digits, . _ - and /, no hidden or empty part, ending .png or .webp`);
     if (!named.includes(src)) return refuse(400, "skin_file_unused", `${src}: the manifest does not name it`);
   }
   for (const src of named) if (!sent.includes(src)) return refuse(400, "skin_file_missing", `${src}: named by the manifest, not sent`);
