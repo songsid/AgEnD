@@ -15,7 +15,8 @@ const receipt: any = { sourceHead: git("rev-parse", "HEAD"), dirty: git("status"
 const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!ok, ...(ok ? {} : { detail }) }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : ` ${JSON.stringify(detail)}`}`); };
 // A control's box: shown, and (phone) at least the 44 px tap target; controls in order never overlap.
 const boxOf = (els: Element[]) => els.map(e => { const r = e.getBoundingClientRect(); return { w: Math.round(r.width), x: Math.round(r.left), y: Math.round(r.top), h: Math.round(r.height), b: Math.round(r.bottom) }; });
-const tapOk = (bs: Array<{ w: number; h: number; y: number; b: number }>, min: number) => bs.length > 0 && bs.every(b => b.w > 0 && b.h >= min) && bs.every((b, i) => i === 0 || b.y >= bs[i - 1]!.b);
+const tapOk = (bs: Array<{ w: number; x: number; h: number; y: number; b: number }>, min: number) => bs.length > 0 && bs.every(b => b.w > 0 && b.h >= min)
+  && bs.every((p, i) => bs.every((q, j) => j <= i || p.b <= q.y || q.b <= p.y || p.x + p.w <= q.x || q.x + q.w <= p.x));   // no two overlap
 const { claudeUsageCreditsPrompt } = await import(REPO + "/src/backend/claude-usage-credits.ts");
 const { setLocale, t } = await import(REPO + "/src/locale.ts");
 const LIVE = readFileSync(join(REPO, "tests/fixtures/claude-2.1.332-usage-credits-consent-dialog.pane.txt"), "utf8");
@@ -48,29 +49,34 @@ try {
     try {
       const zh = lang === "zh-TW";
       const W = zh
-        ? { title: "Fable 5.2 要另外收費，要換模型嗎？", sw: "換成 Opus 5.5（用方案額度）", cr: "繼續用 Fable 5.2（另外扣點數）", raw: "看 Claude 原文", open: "開啟聊天" }
-        : { title: "Fable 5.2 costs extra. Switch model?", sw: "Switch to Opus 5.5 (uses your plan)", cr: "Keep Fable 5.2 (billed to credits)", raw: "Show Claude's text", open: "Open chat" };
-      const card = page.locator("article.n-compact").first();
+        ? { title: "Fable 5.2 要另外收費，要換模型嗎？", detail: "Opus 5.5 用方案額度；繼續用 Fable 5.2 會另外扣點數。", sw: "換成 Opus 5.5", cr: "繼續用 Fable 5.2", raw: "看 Claude 原文", open: "開啟聊天" }
+        : { title: "Fable 5.2 costs extra. Switch model?", detail: "Opus 5.5 uses your plan; keeping Fable 5.2 bills usage credits.", sw: "Switch to Opus 5.5", cr: "Keep Fable 5.2", raw: "Show Claude's text", open: "Open chat" };
+      const card = page.locator("article.n-item.n-usage-credits").first();
       await card.waitFor({ state: "visible", timeout: 20_000 });
       const titleEl = card.locator(".n-title strong");
       check(`${tag}: the title is in the UI language, without the agent name the group header already shows`, (await titleEl.innerText()).trim() === W.title, await titleEl.innerText());
       const lines = await titleEl.evaluate((e: Element) => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].map(x => Math.round(x.top))).size; });
       check(`${tag}: the title fits on one line`, lines === 1, lines);
-      const buttons = card.locator(".n-stack > .btn");
+      check(`${tag}: one .n-detail sentence carries the bill`, (await card.locator(".n-detail").allInnerTexts()).map(x => x.trim()).join("|") === W.detail, await card.locator(".n-detail").allInnerTexts());
+      const order = await card.evaluate((e: Element) => [...e.querySelector(".n-body")!.children].map(c => c.className || c.tagName.toLowerCase()));
+      check(`${tag}: standard order — title, detail, Claude's text folded right under it, then .n-actions`, JSON.stringify(order) === JSON.stringify(["n-title", "n-detail", "n-raw", "n-actions"]), order);
+      const gap = await card.evaluate((e: Element) => Math.round(e.querySelector("details.n-raw")!.getBoundingClientRect().top - e.querySelector(".n-detail")!.getBoundingClientRect().bottom));
+      check(`${tag}: the fold sits tight under the detail`, gap >= 0 && gap <= 8, gap);
+      const buttons = card.locator(".n-actions > .btn");
       const labels = (await buttons.allInnerTexts()).map(x => x.trim());
-      check(`${tag}: two stacked buttons, named by what they do`, JSON.stringify(labels) === JSON.stringify([W.sw, W.cr]), labels);
-      const boxes = await buttons.evaluateAll(boxOf);
-      const minTap = device === "phone" ? 44 : 24;
-      check(`${tag}: the buttons are one width, stacked, one line each`, boxes.length === 2 && boxes[0].w === boxes[1].w && boxes[0].x === boxes[1].x && boxes.every(b => b.h >= minTap && b.h < 64), boxes);
-      const controls = await card.locator(".n-stack > .btn, details.n-raw > summary, a.n-link").evaluateAll(boxOf);
-      check(`${tag}: every control is shown${device === "phone" ? ", a 44 px tap target," : ""} and none overlaps the next`, controls.length === 4 && tapOk(controls, device === "phone" ? 44 : 12), controls);
-      check(`${tag}: the switch is the primary button`, await buttons.first().evaluate((e: Element) => e.classList.contains("btn-primary")), null);
+      check(`${tag}: the choices are named by what they do, then Open chat`, JSON.stringify(labels) === JSON.stringify([W.sw, W.cr, W.open]), labels);
+      const classes = await buttons.evaluateAll((els: Element[]) => els.map(e => ["btn-primary", "btn-ghost"].filter(c => e.classList.contains(c)).join("") || "plain"));
+      check(`${tag}: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)`, JSON.stringify(classes) === JSON.stringify(["btn-primary", "plain", "btn-ghost"]) && await buttons.evaluateAll((els: Element[]) => els.every(e => e.classList.contains("btn-sm"))), classes);
+      const widths = await card.evaluate((e: Element) => { const row = e.querySelector(".n-actions")!.getBoundingClientRect().width; return [...e.querySelectorAll(".n-actions > .btn")].map(b => Math.round(b.getBoundingClientRect().width / row * 100)); });
+      check(`${tag}: the buttons are content width, not full-width bars`, widths.every(w => w < 80), widths);
+      const controls = await card.locator("details.n-raw > summary, .n-actions > .btn").evaluateAll(boxOf);
+      check(`${tag}: every control is shown${device === "phone" ? ", a 44 px tap target," : ""} and none overlaps another`, controls.length === 4 && tapOk(controls, device === "phone" ? 44 : 12), controls);
       const raw = card.locator("details.n-raw");
       check(`${tag}: Claude's own words are folded by default`, !(await raw.evaluate((e: any) => e.open)) && !(await card.locator(".n-raw-text").isVisible()), null);
       const cardText = await card.innerText();
       check(`${tag}: no emoji, no Claude body or labels on the card`, !/❓|now uses usage credits|Continue with Fable/.test(cardText) && cardText.includes(W.raw), cardText);
-      check(`${tag}: "open chat" is a small link, not a button`, (await card.locator("a.n-link").innerText()).trim() === W.open && (await card.locator("a.btn").count()) === 0, null);
       check(`${tag}: no Esc / Skip choice is offered`, !/\bSkip\b|略過/.test(cardText), cardText);
+      check(`${tag}: no custom compact-card classes are left`, (await page.locator(".n-stack, .n-compact, .n-link, .acts-stack, .prompt-compact").count()) === 0, null);
       let path = shotPath(smoke, tag, "1-needs-card"); await page.screenshot({ path }); receipt.pictures.push(path);
       await raw.locator("summary").click();
       check(`${tag}: the toggle shows Claude's own words`, (await card.locator(".n-raw-text").innerText()).includes("Fable 5.2 now uses usage credits"), null);
@@ -104,12 +110,15 @@ try {
       await dialog.locator(".dlg-x").click();
       await dialog.waitFor({ state: "hidden", timeout: 5_000 });
       check(`${tag}: the ✕ closes the confirmation like Cancel — no answer sent, the card stays`, answers === 0 && (await card.isVisible()), answers);
-      // The chat's compact prompt: the same choices, the same tap targets.
+      // The chat's prompt: the same sentence and choices, the same tap targets.
       await page.goto(page.url().replace(/\/ui\/needs.*$/, "/ui/chat/lumen"));
-      const chat = page.locator(".prompt-compact").first();
+      const chat = page.locator(".prompt.prompt-usage-credits").first();
       await chat.waitFor({ state: "visible", timeout: 20_000 });
       check(`${tag}: the chat names the agent in its title`, (await chat.locator(".txt strong").innerText()).trim() === (zh ? "Lumen：Fable 5.2 要另外收費，要換模型嗎？" : "Lumen: Fable 5.2 now costs extra. Switch model?"), await chat.locator(".txt strong").innerText());
-      const chatControls = await chat.locator(".acts-stack > .btn, details.n-raw > summary").evaluateAll(boxOf);
+      check(`${tag}: the chat carries the same bill sentence`, (await chat.locator(".prompt-detail").innerText()).trim() === W.detail, await chat.locator(".prompt-detail").innerText());
+      const chatLabels = (await chat.locator(".acts > .btn").allInnerTexts()).map(x => x.trim());
+      check(`${tag}: the chat's choices are the same short buttons`, JSON.stringify(chatLabels) === JSON.stringify([W.sw, W.cr]), chatLabels);
+      const chatControls = await chat.locator("details.n-raw > summary, .acts > .btn").evaluateAll(boxOf);
       check(`${tag}: chat — every control is shown${device === "phone" ? ", a 44 px tap target," : ""} and none overlaps the next`, chatControls.length === 3 && tapOk(chatControls, device === "phone" ? 44 : 12), chatControls);
       const pathChat = shotPath(smoke, tag, "4-chat"); await page.screenshot({ path: pathChat }); receipt.pictures.push(pathChat);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);

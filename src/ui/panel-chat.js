@@ -245,7 +245,7 @@ linkWorkBarCss();
 
 import { activityDrawCtx, activityInfo, activityInfoStore, activityOffered, activityPrefs, composeActivity, mountActivity, observeActivity, setActivityOn, setActivityThinking } from "./chat-activity.js";
 import { timeText } from "/assets/clock-text.js";
-import { usageCreditsActions, usageCreditsTitle, showRawLabel } from "./usage-credits-card.js";
+import { usageCreditsActions, usageCreditsTitle, usageCreditsDetail, kindClass, showRawLabel } from "./usage-credits-card.js";
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composers = new Map(); // agent → current mounted refs, never a retained thread's stale closure
 const composerField = (name) => composers.get(name)?.input.current || null;
@@ -1288,14 +1288,15 @@ function Prompts({ name }) {
     ${p.resolved ? null : p.actions.filter(a => a.input).map(a => html`<${PromptText} key=${a.id} p=${p} action=${a} />`)}</div>`)}</div>`;
 }
 
-/** M-3757: Claude's usage-credits prompt, compact (as in Needs you): a one-line title, its options by what they do, its own words folded. */
+/** M-3757: Claude's usage-credits prompt, as in Needs you: the question naming the agent, one sentence on the bill, Claude's own words folded, its choices. */
 function UsageCreditsPrompt({ p }) {
   const title = usageCreditsTitle(p.view);
-  return html`<div class="prompt prompt-compact" role="group" aria-label=${title}>
+  return html`<div class="prompt prompt-usage-credits" role="group" aria-label=${title}>
     <div class="txt"><strong>${title}</strong></div>
-    <div class="acts acts-stack">${usageCreditsActions(p.view, p.actions).filter(a => !a.input).map(a => html`<button key=${a.id} type="button" class=${`btn${a.primary ? " btn-primary" : ""}`} disabled=${!!p.busy} onClick=${() => store.answerPrompt(p, a.id)}>${a.label}</button>`)}
-      ${p.busy && !p.confirming ? html`<span class="wait">${t("chat.promptAnswering")}</span>` : null}</div>
+    <div class="txt prompt-detail">${usageCreditsDetail(p.view)}</div>
     <details class="n-raw"><summary>${showRawLabel()}</summary><pre class="n-raw-text">${p.view.raw || p.text}</pre></details>
+    <div class="acts">${usageCreditsActions(p.view, p.actions).filter(a => !a.input).map(a => html`<button key=${a.id} type="button" class=${`btn btn-sm${kindClass(a.kind)}`} disabled=${!!p.busy} onClick=${() => store.answerPrompt(p, a.id)}>${a.label}</button>`)}
+      ${p.busy && !p.confirming ? html`<span class="wait">${t("chat.promptAnswering")}</span>` : null}</div>
   </div>`;
 }
 
