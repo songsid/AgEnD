@@ -3,7 +3,7 @@
 Design first, following [local turn binding](request-context-local-turns.md) and
 [request-scoped contact provenance](request-scoped-contact-provenance.md).
 Baseline: release `10cd71cca95b761bf412f384905ed922c78a1035`, including merged C.
-No code or capability is enabled by this note. Production remains OFF until L.
+The implementation below is dormant. Production remains OFF until L.
 
 ## Boundary and threat
 
@@ -17,11 +17,11 @@ context. Provenance carries no go-ahead or human-receipt authority.
 | Path | Existing owner | Required binding |
 | --- | --- | --- |
 | Local daemon MCP | daemon/socket or native pane lease | Capture at the first owned IPC hop on the CLI host, synchronously on arrival, before handleToolCall |
-| Windows exec | Per-turn NativeMcpRegistry grant: instance/requestId, policy, expiry, stillCurrent | Resolve the admitted input at claim, apply C's eligibility rules, then freeze it into that run's grant |
+| Windows exec | Per-turn NativeMcpSessions grant: instance/requestId, policy, expiry, stillCurrent | Resolve the admitted input at claim, apply C's eligibility rules, then freeze it into that run's grant |
 | Persistent Windows pane | hostBootId/paneId/launchId/agentId/instance plus helper/call ids | Stamp at the first owned relay hop on the CLI host before body/relay waits; Fleet checks the original snapshot |
 
 Source ports: `Daemon.handlePaneToolCall` / `handleToolCall`,
-`NativeMcpRegistry` issuance and `dispatcherContext`,
+`NativeMcpSessions` issuance and `dispatcherContext`,
 `nativeAgentAdmissionContext`, `PaneMcpAuthorityLease.handle`,
 `runtime-pane-mcp-protocol`, and the runtime client/coordinator/bridge relays.
 Existing policy/sandbox/dashboard/tool checks stay in each currentness predicate.
@@ -68,7 +68,8 @@ helper connection file and old helpers need not change. On a local daemon,
 capture in the IPC message handler before handleToolCall. At Fleet, require C's
 isCurrent on the original snapshot/owner; unstamped scoped calls are refused.
 
-Windows exec has no C input binding today. At fleet-windows-runtime.claim, resolve
+The baseline exec path lacked C input binding. The implementation now resolves at
+fleet-windows-runtime.claim: resolve
 the delivery's admitted input through ports.input(inputId), applying C's same
 independent/expected-return/steer rules. Defer an independent input while another
 context is active. Freeze the selected snapshot in the per-run grant session;
@@ -127,7 +128,7 @@ the sending agent:
 - zh-TW: "{source} 曾中斷執行；這次聯絡需要核准一次。"
 
 The central gate/card slices must consume this reason on the same held card;
-there is no separate approval workflow. A separate follow-up will add originating
+there is no separate approval workflow. Follow-up M-3771 will add originating
 per-turn helper identity and remove this fallback when positively covered.
 
 ## Queued input and capability negotiation
@@ -149,7 +150,11 @@ Both runtime and Fleet must negotiate the new C-bound input-write field and the
 pane-host MCP stamp field before emission. Both frame schemas are strict: old
 peers must refuse, not silently drop a field. Neither field is emitted while OFF.
 Unknown/missing versions refuse the affected operation with a concrete coverage
-reason. Old frames keep their legacy behavior only while the new flow is OFF.
+reason. A genuinely unnegotiated native producer never borrows the latest C context: the
+manager supplies only unbound-input, per operation, to the central gate. A
+negotiated connection missing its stamp refuses before dispatch. A known scoped
+call cannot be retried as legacy/unknown; ledger and first-hop comparisons refuse
+the changed identity. OFF retains the original legacy behavior.
 No new CLI launch refusal or sandbox claim is implied by this protocol fence.
 
 ## Implementation and verification plan
@@ -188,3 +193,24 @@ two-sided strict negotiation and five additional synthetic controls are adopted.
 The leader selected the interrupted-launch per-operation fallback above, not
 acceptance of the pre-first-hop residual or a late central lookup. Implementation review follows on this same PR;
 no repeated design, native, browser or provider campaign is requested.
+
+## Implemented dormant ports
+
+- `FleetWindowsRuntime` resolves the server-owned admitted input at claim, before retiring the previous grant or journaling a new run. Request-id retries retain their original lease. A positive confirmed end retires the binding; an uncertain end does not.
+- `Daemon` captures at the own helper's first IPC arrival. Only an opaque call id plus the existing boot fence goes to Fleet. Fleet captures the original scope in a private WeakMap before handler awaits; a late call cannot resolve as a newer turn. Sibling/unmapped helpers are not covered.
+- `RuntimePanePort` stages the final wire digest and opaque proof from C's final hook. It rechecks the staged owner/currentness after observation waits. The host installs only after durable prepare and stale-sequence checks, immediately before PTY write, under its existing serialized queue. Replay never installs again; a failed prepared write poisons coverage.
+- Runtime/Fleet negotiate `request-context-call-v1` through the existing RuntimeInfo offer and welcome acknowledgment. Host/link and the local stdio init/hello exchange negotiate separately. The input field and MCP envelope field stay absent unless both ends agree. The helper body and connection file stay unchanged.
+- Open-result support is connection-local and is not persisted in the pane receipt. An older host still accepts ordinary input without a stamp; its calls receive only unknown per-operation scope. No latest-owner fallback is available.
+- The v1 MCP ledger atomically stores ids/digests or a not-covered reason with the prepared operation. Comparisons precede cached/in-flight returns. The original call stamp also owns its stdout-written receipt; installing B cannot relabel A's receipt.
+- Generic queued/composer handoff is disabled for scoped ordinary input. It waits for idle, then binds at the final write. Only a server-proven permitted admin steer may join the already bound turn; it retains A's token and requester. No generic queued-consumption proof is claimed.
+- A positive native zero-input result retires only a newly bound turn. Uncertain writes and failed steers that borrowed an existing turn cannot clear it. A transcript abort or interrupt-capable host input marks later contacts not-covered; input itself remains usable.
+- Existing delivery/task mutation proxies and channel pre-send callbacks recheck the captured scope after awaits. Attachments recheck before each send. Private coverage metadata is available to E/F; those slices supply admission/side-effect policy. No new go-ahead authority is introduced here.
+
+All rollout hooks remain uninstalled in production: native exec/local lifecycle,
+Runtime/coordinator negotiation options, pane service activation, native proof
+registry and the central E/F policy. The dormant EN/zh reason key is for the later
+single-card renderer, not a second recovery interface. This is not a sandbox or
+same-user process isolation.
+
+Verification and exact limitations are recorded in
+[the slice D evidence](../evidence/request-context-call-s224/README.md).

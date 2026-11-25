@@ -1,0 +1,157 @@
+{
+  "count": 18,
+  "all_semantic_red": true,
+  "all_restored": true,
+  "cases": [
+    {
+      "name": "scope-never-retires",
+      "exitCode": 1,
+      "failedTests": 2
+    },
+    {
+      "name": "replay-drops-context-comparison",
+      "exitCode": 1,
+      "failedTests": 2
+    },
+    {
+      "name": "relay-retags-after-body",
+      "exitCode": 1,
+      "failedTests": 1
+    },
+    {
+      "name": "exec-does-not-retire-confirmed-run",
+      "exitCode": 1,
+      "failedTests": 1
+    },
+    {
+      "name": "interruption-borrows-B",
+      "exitCode": 1,
+      "failedTests": 1
+    },
+    {
+      "name": "receipt-borrows-latest-input",
+      "exitCode": 1,
+      "failedTests": 1
+    },
+    {
+      "name": "abort-forgets-not-covered",
+      "exitCode": 1,
+      "failedTests": 1
+    },
+    {
+      "name": "ipc-retags-at-Fleet",
+      "exitCode": 1,
+      "failedTests": 1
+    },
+    {
+      "name": "final-write-install",
+      "path": "src/runtime-pane-host.ts",
+      "test": "tests/runtime-pane-host-2950.test.ts",
+      "pattern": "S-224 installs only",
+      "before": "if (tracked && request.action === \"input\") install(request.requestContext ?? { version: 1, coverage: \"not-covered\", reason: \"unbound-input\" });",
+      "after": "// mutant: no final-write stamp installation",
+      "failedTests": 1,
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "staged-current",
+      "path": "src/runtime-pane-port.ts",
+      "test": "tests/runtime-pane-host-2950.test.ts",
+      "pattern": "S-224 actual native input port",
+      "before": "!staged.current() || staged.host",
+      "after": "false || staged.host",
+      "failedTests": 1,
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "coordinator-negotiation",
+      "path": "src/runtime-coordinator.ts",
+      "test": "tests/runtime-pane-mcp-relay-2950.test.ts",
+      "pattern": "S-224 a non-negotiated Runtime",
+      "before": "if (value.requestContext !== undefined && !connection.requestContextProtocol || connection.requestContextProtocol && value.requestContext === undefined) throw new RuntimeProtocolError(\"Originating-call protocol not negotiated or stamp missing\");",
+      "after": "// mutant: accept unsolicited envelope stamp",
+      "failedTests": 1,
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "runtime-negotiation",
+      "path": "src/runtime-client.ts",
+      "test": "tests/runtime-pane-mcp-relay-2950.test.ts",
+      "pattern": "S-224 the Runtime's own",
+      "before": "if (rawStamp && !this.requestContextProtocol || this.requestContextProtocol && !rawStamp) return Promise.reject(Error(\"Originating-call protocol not negotiated or stamp missing\"));",
+      "after": "// mutant: send unsolicited stamp",
+      "failedTests": 1,
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "stdio-stamp",
+      "path": "src/runtime-pane-stdio.ts",
+      "test": "tests/local-pane-relay-2950.test.ts",
+      "pattern": "S-224 retains the stamp",
+      "before": "send({type:\"mcp.request\",id,epoch,body,...(stamp?{requestContext:stamp}:{})})",
+      "after": "send({type:\"mcp.request\",id,epoch,body})",
+      "failedTests": 1,
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "ordinary-queue",
+      "path": "src/daemon.ts",
+      "test": "tests/request-context-daemon-s223.test.ts",
+      "pattern": "S-224 ordinary input",
+      "before": "(!this.requestContextLifecycle || opts?.steer === true) && !!",
+      "after": "!!",
+      "failedTests": 1,
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "commit-current",
+      "path": "src/native-agent-admission.ts",
+      "test": "tests/request-context-commit-s224.test.ts",
+      "pattern": "S-224 original-call",
+      "before": "if (!input.current() || input.requestContext && !input.requestContext.current()) throw Error(\"Native MCP capability or tool access was revoked before admission\");",
+      "after": "if (false) throw Error(\"mutant\");",
+      "failedTests": 1,
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "borrowed-steer-cleanup",
+      "path": "src/daemon.ts",
+      "test": "tests/request-context-daemon-s223.test.ts",
+      "pattern": "S-224 a failed steer",
+      "before": "if (after && after !== prior) newlyBound = after;",
+      "after": "if (after) newlyBound = after;",
+      "failedTests": 1,
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "per-file-current",
+      "path": "src/channel/tool-router.ts",
+      "test": "tests/channel/tool-router-reply-files.test.ts",
+      "pattern": "S-224 rechecks",
+      "before": "for (const filePath of lease?.paths ?? files) {\n          extra.beforeSend?.();",
+      "after": "for (const filePath of lease?.paths ?? files) {",
+      "failedTests": 1,
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "old-host-fallback",
+      "path": "src/native-pane-lifecycle.ts",
+      "test": "tests/runtime-pane-host-2950.test.ts",
+      "pattern": "S-224 an older host",
+      "before": "if (!this.port.requestContextSupported()) return;",
+      "after": "// mutant: publish a stamp to an older host",
+      "failedTests": 1,
+      "exitCode": 1,
+      "restored": true
+    }
+  ]
+}

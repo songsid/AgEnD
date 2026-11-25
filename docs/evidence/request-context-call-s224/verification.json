@@ -1,0 +1,343 @@
+{
+  "sourceRevision": "ab28f32ec5b29369435efb2d71fc0cfc5367713b",
+  "baseRevision": "c12e6c1679c5a54a807d7e9b092fbc12931bc577",
+  "tests": {
+    "passed": 531,
+    "failed": 0,
+    "files": [
+      "tests/request-context-call-s224.test.ts",
+      "tests/request-context-commit-s224.test.ts",
+      "tests/request-context-pane-s224.test.ts",
+      "tests/request-context-daemon-s224.test.ts",
+      "tests/request-context-daemon-s223.test.ts",
+      "tests/request-context-turns-s223.test.ts",
+      "tests/native-mcp.test.ts",
+      "tests/native-mcp-policy-generation.test.ts",
+      "tests/fleet-windows-runtime.test.ts",
+      "tests/runtime-pane-mcp-authority-2950.test.ts",
+      "tests/runtime-pane-mcp-relay-2950.test.ts",
+      "tests/runtime-pane-host-2950.test.ts",
+      "tests/runtime-pane-port-2950.test.ts",
+      "tests/local-pane-relay-2950.test.ts",
+      "tests/native-pane-manager-2950.test.ts",
+      "tests/native-pane-mcp-peer-2950.test.ts",
+      "tests/native-pane-machine-admission-2950.test.ts",
+      "tests/runtime-client.test.ts",
+      "tests/runtime-client-remote.test.ts",
+      "tests/runtime-client-liveness.test.ts",
+      "tests/runtime-client-worker-stop.test.ts",
+      "tests/runtime-client-remote-update.test.ts",
+      "tests/runtime-client-bundle.test.ts",
+      "tests/runtime-coordinator.test.ts",
+      "tests/channel/tool-router-reply-files.test.ts",
+      "tests/channel/tool-router-state-file-refusal.test.ts",
+      "tests/cli-upstream-precheck.test.ts",
+      "tests/child-stdio-errors-2374.test.ts",
+      "tests/local-pane-launcher-2950.test.ts"
+    ],
+    "command": [
+      "node_modules/.bin/vitest",
+      "run",
+      "tests/request-context-call-s224.test.ts",
+      "tests/request-context-commit-s224.test.ts",
+      "tests/request-context-pane-s224.test.ts",
+      "tests/request-context-daemon-s224.test.ts",
+      "tests/request-context-daemon-s223.test.ts",
+      "tests/request-context-turns-s223.test.ts",
+      "tests/native-mcp.test.ts",
+      "tests/native-mcp-policy-generation.test.ts",
+      "tests/fleet-windows-runtime.test.ts",
+      "tests/runtime-pane-mcp-authority-2950.test.ts",
+      "tests/runtime-pane-mcp-relay-2950.test.ts",
+      "tests/runtime-pane-host-2950.test.ts",
+      "tests/runtime-pane-port-2950.test.ts",
+      "tests/local-pane-relay-2950.test.ts",
+      "tests/native-pane-manager-2950.test.ts",
+      "tests/native-pane-mcp-peer-2950.test.ts",
+      "tests/native-pane-machine-admission-2950.test.ts",
+      "tests/runtime-client.test.ts",
+      "tests/runtime-client-remote.test.ts",
+      "tests/runtime-client-liveness.test.ts",
+      "tests/runtime-client-worker-stop.test.ts",
+      "tests/runtime-client-remote-update.test.ts",
+      "tests/runtime-client-bundle.test.ts",
+      "tests/runtime-coordinator.test.ts",
+      "tests/channel/tool-router-reply-files.test.ts",
+      "tests/channel/tool-router-state-file-refusal.test.ts",
+      "tests/cli-upstream-precheck.test.ts",
+      "tests/child-stdio-errors-2374.test.ts",
+      "tests/local-pane-launcher-2950.test.ts",
+      "--maxWorkers=2"
+    ]
+  },
+  "typecheck": {
+    "command": [
+      "node_modules/.bin/tsc",
+      "--noEmit",
+      "-p",
+      "tsconfig.test.json"
+    ],
+    "exitCode": 0
+  },
+  "sourceAndTestSha256": {
+    "src/channel/tool-router.ts": "570c5cd1a579cbf26797659cc372b43f1099027f2329bed7dd33ee432fb02c03",
+    "src/daemon.ts": "a448e66fcb13caccb2615acb9185c38583b965c05e037f1e67fe3db6678e4998",
+    "src/fleet-manager.ts": "b6564cb014a10b941c03c33cf26c8d55892abc7a667084c99dca585dafe3ebe0",
+    "src/fleet-windows-runtime.ts": "8c8ee99df87797b96377efe51348aadf65e17add890f8929648d484e06931bec",
+    "src/local-pane-endpoint.ts": "d1160eb840a9e85967c3ccbdcaa8cc34e062cdaefbbdfbed0b392d4e604c94db",
+    "src/locale.ts": "e5821186bdef32bfe62a3f695c17dab240f416c4663c4763627e0e495a3fe5b4",
+    "src/native-agent-admission.ts": "c72ea8ec93c45797ee434d66e6153de8c0d41973f87171cf3a1d750338394530",
+    "src/native-mcp.ts": "f7822f6b642f732e0d66b5475748e905252612ddde2f31dbc1877684e75f5915",
+    "src/native-pane-lifecycle.ts": "fabb174b244fc3c6292b6da5d8d9bfa80871c689d86bc3ce7ee8caedc6c50847",
+    "src/native-pane-manager.ts": "97a8f08d3d0da246d54b59a9a3c989f66066ccb8423913eac9d79fc4a747cd8f",
+    "src/outbound-handlers.ts": "84ad2693f1a8390241ee54616cba8dc0bc4967b8161876c8da42817aeea25013",
+    "src/request-context-call-protocol.ts": "972f56ea2392bf071bd5bb3d0d3907eb74a60890e7ec28fb8251fa2af79755c9",
+    "src/request-context-call.ts": "226ee3bd418e14b7919e63d9e1acea0f3ef5f314a8ce94f29f49e6abc12611d7",
+    "src/request-context-pane.ts": "c855669ce69b9c49ce4025cb2c46a458632e25498efaa769d6398c5c4bd554f6",
+    "src/request-context-turns.ts": "bdaa5d01fdc5ad88a8ff1330966a716d0dd02679d7e4db488c1abad833473b05",
+    "src/runtime-client.ts": "4e0352848bda77b87a460affa6dafbc7af5346fbf9baaf65f4e504518483186e",
+    "src/runtime-coordinator.ts": "34d5328a2ab458f5b711bf9275df21218e28bff95a927f8571aa93a8aead716f",
+    "src/runtime-pane-assets.ts": "fe4c90e21fe00a852536d5c79d4a58755f5213051c1e2fdcaa84fe1b593809c5",
+    "src/runtime-pane-host.ts": "1ecf4926661e8565cc778c535de72982ba759261baf090533a0898fa6d920c41",
+    "src/runtime-pane-link.ts": "dabdda4f92c15c617ab21182f0243e52ba73a19e232e3a96c9d849ebcb49b989",
+    "src/runtime-pane-mcp-relay.ts": "4f50c435ed3f10cf6120fbdf98f8b95ad1a5bcc426402d9905c4b1558b7a2f08",
+    "src/runtime-pane-mcp.ts": "cbf614383ae7665189a2c726eb948b48656b213187a31b8c9eeae7fb0c2e95d4",
+    "src/runtime-pane-port.ts": "829bcf438e237d6c219f280e9749db39460926414ead9112ace47de46c20630e",
+    "src/runtime-pane-protocol.ts": "18c4d2066bff41606ae44377ddcac8e68e19df664e1956532cb8292499d1acae",
+    "src/runtime-pane-service.ts": "655009d524fd50680bcbe3270d20be9f9477730885401206a40c8b370c028e8b",
+    "src/runtime-pane-stdio-protocol.ts": "7c7ffcf1f96fc6073bc72f48c0f194f5c143fe5bb07421f35823dd0c243a7b6c",
+    "src/runtime-pane-stdio.ts": "b94d8e5b43f06dadf2bf2eac56d7432d459bc2b1f5160a2b7ae8e93de7503a14",
+    "src/runtime-protocol.ts": "dec216809d634ea8a8d232f098cb142269c9f174ee4ca00443f603aaff2dc953",
+    "tests/channel/tool-router-reply-files.test.ts": "0fa27fd8f78898f4fc89f8a9b1e8eba980565bf5a0de5617a6c4c8680f0e292f",
+    "tests/fleet-windows-runtime.test.ts": "412bc6495ed11dd0ff66e79499c7201c39f7244800722febdc774a20db6ebf40",
+    "tests/local-pane-relay-2950.test.ts": "5c1be305f5750e825a004ec5c3520386f86fcd460408eeb49a875d21e4ab8c74",
+    "tests/native-mcp-policy-generation.test.ts": "5a25f05739be08ac6c858f66fa10b0f758c61ff078f45fe6c9baf9ff4e308aa9",
+    "tests/request-context-call-s224.test.ts": "e92b0d9dba9f78e327f49b564291cac38c64b79f96103d9d924dad9141abeb6d",
+    "tests/request-context-commit-s224.test.ts": "18d48668f3714d7743117871141140758a27abe150b204fb7a0a9e303bf57f78",
+    "tests/request-context-daemon-s223.test.ts": "e1e6d1c5040fc0e234377b908325a19a3e638597689a03117914e3a901bb6193",
+    "tests/request-context-daemon-s224.test.ts": "239b11b677a3ee132d9d0948acf2800272bd7a79012d2687920d550c534e3480",
+    "tests/request-context-pane-s224.test.ts": "93ebc3d9b0415597f29cbb374230b3cfd8aea544dc3df6bd80440390f9b7fbd0",
+    "tests/request-context-turns-s223.test.ts": "18dc2aff002412fb4e249fbdb2c6fd8d10892475aee03eb24b9790ff0308df8c",
+    "tests/runtime-pane-host-2950.test.ts": "5e05782600a7000302030a7389395dfee6f3a87f51e6f7d1a6bf6473a3c7439f",
+    "tests/runtime-pane-mcp-relay-2950.test.ts": "43d9fba5697f1d21af32671b7bacef195c2b975523fcf8236a9cd996478036f1"
+  },
+  "integration": {
+    "before": "6e3b5dd4dd1a9da917227376b057c07698314fa2",
+    "incoming": "c12e6c1679c5a54a807d7e9b092fbc12931bc577",
+    "after": "9f484a22de3ffb073929db4905d06874442527f0",
+    "paths": [
+      {
+        "path": "docs/design/request-context-native-capabilities.md",
+        "identical": true,
+        "sequenceSha256": "02d479acecfa72feadabeb2846d9a2e413cb18a411461fe048b29c3847d93390"
+      },
+      {
+        "path": "src/channel/tool-router.ts",
+        "identical": true,
+        "sequenceSha256": "f7841d180efa584d7e81902c3bf08f78ca5462acbea54e01caadb68b97dede47"
+      },
+      {
+        "path": "src/daemon.ts",
+        "identical": true,
+        "sequenceSha256": "89e77991aff2ebbb061919a4866e4bba13176281fe0c2d527f0b04cab512e733"
+      },
+      {
+        "path": "src/fleet-manager.ts",
+        "identical": true,
+        "sequenceSha256": "01cab87878acc374bb1ef4f768ba9d0bbba0d7f74b023735aca411ce330b57c5"
+      },
+      {
+        "path": "src/fleet-windows-runtime.ts",
+        "identical": true,
+        "sequenceSha256": "5529370f77ecded564d5c9d006059bde8ce06705a74989e52db6fad402765c96"
+      },
+      {
+        "path": "src/local-pane-endpoint.ts",
+        "identical": true,
+        "sequenceSha256": "29d3e5a3971f5b5a9ad845571ca3058bcebe5ba1a9e92dc9b7be8063518f5ed4"
+      },
+      {
+        "path": "src/locale.ts",
+        "identical": true,
+        "sequenceSha256": "43311bba9ab5cc7abec035442bc5c161b4a6388c876b7238567306c99f4cec1d"
+      },
+      {
+        "path": "src/native-agent-admission.ts",
+        "identical": true,
+        "sequenceSha256": "88a46f35c533f8809101844b721ad12a2daa9790332415272e1c61bd6eaeb708"
+      },
+      {
+        "path": "src/native-mcp.ts",
+        "identical": true,
+        "sequenceSha256": "51d0ea2e4ea237a7dc298a81b9509ef52c974b604e256300ea58e4acb6b77f50"
+      },
+      {
+        "path": "src/native-pane-lifecycle.ts",
+        "identical": true,
+        "sequenceSha256": "b79cf5627cc463bd4b1298a9b89c89583b12e08945e07637c7df8855227245df"
+      },
+      {
+        "path": "src/native-pane-manager.ts",
+        "identical": true,
+        "sequenceSha256": "a8cb513d8c1377965030fd97461c751274a52890ea12e475fcddb31fc4c8afcc"
+      },
+      {
+        "path": "src/outbound-handlers.ts",
+        "identical": true,
+        "sequenceSha256": "4b1ced4119b44b94c643f697e6425ef50a195e2785016ad42fc66042e4e376b8"
+      },
+      {
+        "path": "src/request-context-call-protocol.ts",
+        "identical": true,
+        "sequenceSha256": "5e2387f588bbf1b23543383034444961a73609a067edfa270afe913985deee47"
+      },
+      {
+        "path": "src/request-context-call.ts",
+        "identical": true,
+        "sequenceSha256": "56e863cd9268caf3cfcdffcc1312e61a052ddbee032e331d44acb2392f843206"
+      },
+      {
+        "path": "src/request-context-pane.ts",
+        "identical": true,
+        "sequenceSha256": "129ca029373ab7adc65112660185d95da64e1650615961c129e9692699bbca52"
+      },
+      {
+        "path": "src/request-context-turns.ts",
+        "identical": true,
+        "sequenceSha256": "b33eeb169624e922699ffcee3115e1a23ac7cb8392d472d97259cd98884d5d84"
+      },
+      {
+        "path": "src/runtime-client.ts",
+        "identical": true,
+        "sequenceSha256": "848cb42ff715d5f016256e047d53da65bc4136b8730d45fb71312a8fa16229a7"
+      },
+      {
+        "path": "src/runtime-coordinator.ts",
+        "identical": true,
+        "sequenceSha256": "906bcb8e8d5af2889c727e13457e71bc7bf7130bdd7ac2a38c88f261a2a184a4"
+      },
+      {
+        "path": "src/runtime-pane-host.ts",
+        "identical": true,
+        "sequenceSha256": "75f015f25f7b4b2297373f92d8496c6e066017e072395b0431d255f5ba867303"
+      },
+      {
+        "path": "src/runtime-pane-link.ts",
+        "identical": true,
+        "sequenceSha256": "db0821b0d0ac841aff0cc59a90ac20b068deb778300a9ee877cd5dcbf56a099e"
+      },
+      {
+        "path": "src/runtime-pane-mcp-relay.ts",
+        "identical": true,
+        "sequenceSha256": "92260cc5afda860526a1bb56777476c0a27e4eb66886ca358063730506276a91"
+      },
+      {
+        "path": "src/runtime-pane-mcp.ts",
+        "identical": true,
+        "sequenceSha256": "58008eea7dae17fb33c4affb032f10de218acb109afc6673547bdfc658604892"
+      },
+      {
+        "path": "src/runtime-pane-port.ts",
+        "identical": true,
+        "sequenceSha256": "555148dd87baef01a53c9e669fdad40383b356d033bbecb4ce071f1e3c060d7a"
+      },
+      {
+        "path": "src/runtime-pane-protocol.ts",
+        "identical": true,
+        "sequenceSha256": "517d13f3f573cc4f6b80815a7ce0f1d8eeccf01bc0337dda1953f0bbdf39efd6"
+      },
+      {
+        "path": "src/runtime-pane-service.ts",
+        "identical": true,
+        "sequenceSha256": "e66383c3e0f7b7e44e310aecc3d6a40c24d0688f5b74aea820f1fbb15846a4f6"
+      },
+      {
+        "path": "src/runtime-pane-stdio-protocol.ts",
+        "identical": true,
+        "sequenceSha256": "6597936ced09ad884062382d9bb9d7bfe6427b5337ecb5d2808d82a14fa93507"
+      },
+      {
+        "path": "src/runtime-pane-stdio.ts",
+        "identical": true,
+        "sequenceSha256": "1bdf6b7058d898386847161346513f53793d6fcb81fe564ccf31264467ab9a1b"
+      },
+      {
+        "path": "src/runtime-protocol.ts",
+        "identical": true,
+        "sequenceSha256": "2d2570403116a3c77b39905407af92a37f14d4eb54d435ad4db9534bd310e482"
+      },
+      {
+        "path": "tests/channel/tool-router-reply-files.test.ts",
+        "identical": true,
+        "sequenceSha256": "f62187d547c68b30631b2a3ca50f5805a86dcfc5954b4ea09b96df0e5d3305c9"
+      },
+      {
+        "path": "tests/fleet-windows-runtime.test.ts",
+        "identical": true,
+        "sequenceSha256": "8a8c1d8b7e9db81b723cd0c35deb7ac6ebff6d7bc947db6eb687bc977287057f"
+      },
+      {
+        "path": "tests/local-pane-relay-2950.test.ts",
+        "identical": true,
+        "sequenceSha256": "001f1f0291e17ca75b59c541bc62ac2ebed06f4d5e0ceebc495a982b8c541305"
+      },
+      {
+        "path": "tests/native-mcp-policy-generation.test.ts",
+        "identical": true,
+        "sequenceSha256": "2945fabad8fdf68bc9a6d80cde6aa90740daf7d2195053d6e2faaa52fbcaf34d"
+      },
+      {
+        "path": "tests/request-context-call-s224.test.ts",
+        "identical": true,
+        "sequenceSha256": "5b2e26ca44fb2a7a2c63bdfb9554575b7a352c467b61318769ffdc4cc45db55a"
+      },
+      {
+        "path": "tests/request-context-commit-s224.test.ts",
+        "identical": true,
+        "sequenceSha256": "407d7cd96236e301d80cacfdf66f146e368391773b97c4eb2c0709bb30a9c0c5"
+      },
+      {
+        "path": "tests/request-context-daemon-s223.test.ts",
+        "identical": true,
+        "sequenceSha256": "53d77bca2eed3f6118d81ab83b9254da01946f692c273fec2f2d71771be80ad8"
+      },
+      {
+        "path": "tests/request-context-daemon-s224.test.ts",
+        "identical": true,
+        "sequenceSha256": "b2c68681a1d05f8364e74eb89ac92b8a552024ed1c56d1d5272736a3635041cf"
+      },
+      {
+        "path": "tests/request-context-pane-s224.test.ts",
+        "identical": true,
+        "sequenceSha256": "b8a33ab5a202903e3c9dd65760e026273cfaa379b8d657330eedb660bd5dc12f"
+      },
+      {
+        "path": "tests/request-context-turns-s223.test.ts",
+        "identical": true,
+        "sequenceSha256": "a0473596c92fe9faf1c1fecde7257ea367efc4594a74ac82182c758e159afa38"
+      },
+      {
+        "path": "tests/runtime-pane-host-2950.test.ts",
+        "identical": true,
+        "sequenceSha256": "4c9efb0d77de19d1bbdd5bd8bf36613c4debfe6a49d958fd5a6d0b5ce99d3711"
+      },
+      {
+        "path": "tests/runtime-pane-mcp-relay-2950.test.ts",
+        "identical": true,
+        "sequenceSha256": "f42fd599f3d26c5d3d1422328e214ec7f50d10b510656071e5524d87bb69a75e"
+      }
+    ]
+  },
+  "oldLedgerProbe": {
+    "base": "10cd71cca95b761bf412f384905ed922c78a1035",
+    "sourceSha256": "c0e789eb2b126abb132f80f49ad5814d9a5016b1fd9ab054261d4fec5cb4d047",
+    "exitCode": 0,
+    "actualOldModule": true
+  },
+  "limits": [
+    "Synthetic tests only; no live Fleet, Windows host, native CLI/provider/account/model call.",
+    "Old ledger test loads the actual extracted baseline module; it is not a full old Fleet startup or real IPC compatibility claim.",
+    "Production factories and persistent covered publication remain OFF until cutover.",
+    "Unknown queued consumption is not supported; ordinary scoped input waits for idle, only a proven existing-turn admin steer joins."
+  ]
+}
