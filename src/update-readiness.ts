@@ -30,6 +30,7 @@ import { startedByServiceManager, systemdServiceOf } from "./service-owner.js";
 import { checkQuiet, checkSharing, checkSpace, procUidBy, type HostDeps } from "./update-readiness-host.js";
 import { lockHolderAt } from "./home-update-lock.js";
 import { isUpdateInProgress } from "./update-marker.js";
+import { readCurrent } from "./update-journal.js";
 import { createRequire } from "node:module";
 
 export type PreflightClass = "self" | "admin-only" | "stop";
@@ -187,6 +188,7 @@ export const defaultReadinessDeps = (): ReadinessDeps => ({
   freeBytes: async path => { try { const s = await statfs(path); return Number(s.bavail) * Number(s.bsize); } catch { return null; } },
   lockHolder: path => lockHolderAt(path, admission()),
   updateInProgress: home => { try { return isUpdateInProgress(home); } catch { return false; } },
+  journalState: home => readCurrent(home).state,
 });
 
 /** The lock-holder helpers the installer's postinstall shares (launcher/install-admission.cjs). */

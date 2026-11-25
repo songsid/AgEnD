@@ -30,6 +30,7 @@ type Opts = {
   /** /proc can't be listed; `missing`: paths whose realpath fails (no such file). */
   pidsUnlisted?: boolean; missing?: string[];
   free?: number | null; duKb?: number | null; locks?: Record<string, { state: "live" | "stale" | "unknown"; pid: number }>; inProgress?: boolean;
+  journal?: "none" | "open" | "unknown" | "manual" | "closing";
   /** This process's fleet.lock pid (default: this process, 4321). */
   fleetLockPid?: number | null;
 };
@@ -105,6 +106,7 @@ function rig(o: Opts = {}) {
     freeBytes: async () => (o.free === undefined ? 50e9 : o.free),
     lockHolder: path => { const l = o.locks?.[path]; return l ? { state: l.state, record: { pid: l.pid } } : { state: "free" }; },
     updateInProgress: () => !!o.inProgress,
+    journalState: () => o.journal ?? "none",
   };
   return { d, runs, pingEnv };
 }
@@ -591,5 +593,14 @@ describe("M-3770 1.3 review R2: a process's owner, proven or unknown", () => {
     expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ texts: OTHER_PKG, procs: [{ pid: 96, argv: fleetArgv(OTHER), env: { HOME: "/home/u" }, uid: "gone" }] }).d), "P2")).toEqual({ id: "P2", ok: true });
     expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ texts: OTHER_PKG, procs: [{ pid: 97, argv: fleetArgv(OTHER), env: { HOME: "/home/v" }, uid: 1001 }] }).d), "P2")).toEqual({ id: "P2", ok: true });
     expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ procs: [{ pid: 98, argv: null, env: null, uid: "gone" }] }).d), "P2")).toEqual({ id: "P2", ok: true });
+  });
+});
+
+describe("M-3770 2.1a: P8 reads the update attempt journal", () => {
+  it("an open, unknown or manual-recovery attempt is update-running, in a launch's re-proof too; none or closing is not", async () => {
+    for (const journal of ["open", "unknown", "manual"] as const) {
+      expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ journal }).d), "P8")).toEqual({ id: "P8", ok: false, code: "update-running", detail: { path: "/home/u/.agend/.update-journal/current" } });
+    }
+    for (const journal of ["none", "closing"] as const) expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ journal }).d), "P8")).toEqual({ id: "P8", ok: true });
   });
 });
