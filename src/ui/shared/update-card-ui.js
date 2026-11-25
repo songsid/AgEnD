@@ -43,6 +43,8 @@ register("updatecard", {
     c_unknown_owner: "AgEnD can't prove which install runs this fleet. Restart it as a service and check again.",
     c_other_install: "Another AgEnD install lives under this user. Updating one could affect the other.",
     c_not_service: "AgEnD isn't running as a service, so it can't bring itself back after an update.",
+    c_service_unknown: "AgEnD can't confirm that its service will bring it back after an update.",
+    notAllChecked: "Some checks haven't run yet; they run when AgEnD starts and once a day.",
     c_linger_off: "AgEnD stops when {user} signs out, so it can't restart itself.",
     c_system_unit_not_root: "AgEnD runs as a system service; updating it needs root.",
     c_unit_reload_pending: "The service definition changed and hasn't been reloaded. Run systemctl --user daemon-reload.",
@@ -89,6 +91,8 @@ register("updatecard", {
     c_unknown_owner: "AgEnD 無法確認是哪一份安裝在執行這個 Fleet。請以服務方式重新啟動後再檢查。",
     c_other_install: "這個使用者底下還有另一份 AgEnD。更新其中一份可能影響另一份。",
     c_not_service: "AgEnD 不是以服務方式執行，更新後無法自己回來。",
+    c_service_unknown: "AgEnD 無法確認它的服務在更新後會讓它重新啟動。",
+    notAllChecked: "有些檢查還沒跑完；AgEnD 啟動時和每天會檢查一次。",
     c_linger_off: "{user} 登出後 AgEnD 會停止，所以無法自行重新啟動。",
     c_system_unit_not_root: "AgEnD 以系統服務執行，更新需要 root。",
     c_unit_reload_pending: "服務定義已變更但尚未重新載入。請執行 systemctl --user daemon-reload。",
@@ -290,7 +294,8 @@ export function MachineLine({ info }) {
   const fails = failedChecks(pf);
   return html`<div class=${`uc-machine uc-${cls}`}>
     <div><strong>${tc("machine")}</strong> <span class="uc-mark" aria-hidden="true">${mark}</span> <span>${tc(cls === "self" ? "self" : cls === "admin-only" ? "adminOnly" : "stop")}</span></div>
-    ${fails.length ? html`<ul class="uc-checks">${fails.map((f) => html`<li key=${f.id}>${checkSentence(f, info.card ? info.card.version : "")}</li>`)}</ul>` : null}
+    ${fails.length ? html`<ul class="uc-checks">${fails.map((f) => html`<li key=${f.id}>${checkSentence(f, info.card ? info.card.version : "")}</li>`)}</ul>`
+      : cls !== "self" ? html`<p class="muted uc-checks">${tc("notAllChecked")}</p>` : null}
   </div>`;
 }
 

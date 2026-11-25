@@ -221,6 +221,13 @@ describe("M-3770 1.4: Settings → Version and update", () => {
     ([...p.root.querySelectorAll(".uc-advanced .btn-primary")] as any[])[0].click(); await settle(6);
     expect(saves()[1]!.body).toEqual({ pin: null, maxIdleWait: 12 });
   });
+  it("admin-only with no failing row (a check not run yet, #4483 r2): says so, never an empty list", async () => {
+    const { UpdateSection } = await import("/ui/js/settings-update.js");
+    answer = r => (r.url === "/ui/update" ? { body: ADMIN({ preflight: { class: "admin-only", checkedAt: 1, pressHere: true, target: null, install: null, checks: [{ id: "P1", ok: true, checkedAt: 1 }] } }) } : r.url === "/api/settings/fleet" ? { body: {} } : undefined);
+    await p.mount(h(UpdateSection, {})); await settle(10);
+    expect(p.root.querySelector(".uc-machine")?.textContent).toContain("Some checks haven't run yet");
+    expect(uc.checkSentence({ id: "P3", ok: false, code: "service-unknown" })).toBe("AgEnD can't confirm that its service will bring it back after an update.");
+  });
   it("no pre-flight yet: \"not checked yet\", never ✓", async () => {
     const { UpdateSection } = await import("/ui/js/settings-update.js");
     answer = r => (r.url === "/ui/update" ? { body: ADMIN({ preflight: null }) } : r.url === "/api/settings/fleet" ? { body: {} } : undefined);
@@ -241,7 +248,7 @@ describe("M-3770 1.4: the words", () => {
   it("every word in English and zh-TW, the same placeholders; every agreed code worded", () => {
     const en = Object.keys((i18n as any).tables?.en ?? {}).filter((k) => k.startsWith("updatecard."));
     const all = en.length ? en : [];
-    for (const code of ["checkout", "other-copy", "path-shadow", "unreadable", "shared-home", "unknown-owner", "other-install", "not-service", "linger-off",
+    for (const code of ["checkout", "other-copy", "path-shadow", "unreadable", "shared-home", "unknown-owner", "other-install", "not-service", "service-unknown", "linger-off",
       "system-unit-not-root", "unit-reload-pending", "no-write", "linked", "vendored", "low-disk", "npm-unreachable", "rehearsal", "update-running", "container", "windows-runtime", "node-too-old"]) {
       i18n.setLang("en", { store: false });
       const e = uc.checkSentence({ id: "P1", ok: false, code }, "2.5.0");
