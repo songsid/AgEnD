@@ -382,7 +382,7 @@ export class NeedsYouHub {
     const reason = item.runtimeUpdate ? this.ctx.t("runtime.update.attention") : item.reason === "usage_limit"
       ? this.ctx.t("needs.reason.usage_limit", item.detail || "Claude")
       : this.ctx.t(`needs.reason.${item.kiroChoice ? "kiro_choice" : item.reason}`);
-    return (item.type === "task" || item.type === "config" || item.type === "missed" || item.type === "runtime" || item.generalLocation || item.keepAlive || item.reason === "backend_missing") && item.detail ? `${reason}: ${item.detail}` : reason;
+    return (item.type === "task" || item.type === "config" || item.type === "missed" || item.type === "runtime" || item.generalLocation || item.keepAlive || item.reason === "backend_missing" || item.reason === "mcp_missing") && item.detail ? `${reason}: ${item.detail}` : reason;
   }
 
   /** #2352: a lane can carry a list here: its instance is this world's now, and has a channel of its own. */

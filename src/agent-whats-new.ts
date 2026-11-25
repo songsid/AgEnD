@@ -145,6 +145,9 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // (2.4.0-beta.23 is published without it); the sentence is TASK_REPORT_HINT.
   { id: "2.4-task-card-files", since: "2.4.0-beta.24", tools: ["task"],
     text: `Task cards: ${TASK_REPORT_HINT} \`task\` takes \`attach: ["./survivor.html"]\` on \`update\` and \`move\` (and the action \`attach\`): a file from your working directory goes on the card under that write's comment. Attach the finished thing, not your working files: usually one file, at most three, never source, logs or drafts; a web prototype is ONE .html with its CSS and JS inline (source stays in your workspace or branch; link the PR or repo in the comment); short text goes in the comment, not a file. Pass it even if your copy of the tool does not list it.` },
+  // M-3749: a credential-profile switch dropped agents' own MCP servers silently. `since` is this line's next beta.
+  { id: "2.4-profile-switch-mcp", since: "2.4.0-beta.24",
+    text: "Claude account switch: your own MCP servers (`claude mcp add`, user scope and local scope for your folder) now go along to the new account. If any are still missing at launch you get a notice naming them; add one back with `claude mcp add -s local …` and ask the user for any key (the credential-profiles skill)." },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */

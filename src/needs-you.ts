@@ -77,7 +77,7 @@ export type NeedsYouReason =
   | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
   | "general_windows_offline" | "general_location_hold"
-  | "model_switch" | "auth_paused" | "stale_auth" | "crashed" | "usage_limit" | "native_pane_hold" | "backend_missing"  // instance
+  | "model_switch" | "auth_paused" | "stale_auth" | "crashed" | "usage_limit" | "native_pane_hold" | "backend_missing" | "mcp_missing"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "missed_offline"                                                // missed while the fleet was down
   | "task_review" | "task_blocked" | "task_stalled" | "backend_signin" | "config_invalid" | "config_fallback"
@@ -148,6 +148,8 @@ export interface InstanceInput {
   kiroCompatibility?: { message: string; since: number } | null;
   /** M-3302 (#4146): held because its backend's CLI is not installed — the binary, and the command that installs it. */
   backendMissing?: { backend: string; binary: string; since: number; fix: string } | null;
+  /** M-3749: MCP servers it had under its previous credential profile (`from`) and does not have now (`to`) — names only. */
+  mcpMissing?: { names: string[]; from: string; to: string; since: number } | null;
 }
 
 export interface DeliveryInput {
@@ -303,6 +305,11 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
       const m = inst.backendMissing;
       items.push({ id: `backend-missing:${inst.name}:${m.since}`, type: "instance", instance: inst.name, reason: "backend_missing",
         detail: m.fix ? `${m.binary} — ${m.fix}` : m.binary, since: m.since });
+    }
+    if (inst.mcpMissing?.names.length) {
+      const m = inst.mcpMissing;
+      items.push({ id: `mcp-missing:${inst.name}:${m.since}`, type: "instance", instance: inst.name, reason: "mcp_missing",
+        detail: oneLine(`${m.names.join(", ")} (${m.from} → ${m.to})`), since: m.since });
     }
     if (inst.crashedAt != null && !inst.generalLocation && !inst.kiroCompatibility) {
       items.push({ id: `crashed:${inst.name}:${inst.crashedAt}`, type: "instance", instance: inst.name, reason: "crashed", detail: "", since: inst.crashedAt });
