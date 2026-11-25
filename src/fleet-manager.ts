@@ -31703,10 +31703,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
-        // S-234: General's daily "Run: /update" post stops. The card (recordUpdateCheck) is the offer.
-        // A web-only fleet still gets one Notice per version until the banner (slice 1.4) replaces it.
-        // #2775: null = a beta install and a stable target; beta users are never told to switch.
-        if (this.webOnlyPromptPlace() && (fromChannel || updateNoticeKey(currentVersion, target))) {
+        // The daily "Run: /update" post stays until the General chat card replaces it.
+        // #2910 D2 (#2925 review): a web-only fleet first — even with a General instance it has no chat for /update.
+        const generalId = this.webOnlyPromptPlace() ? null : this.findGeneralInstance();
+        if (generalId) {
+          // No release URL — Discord's SuppressEmbeds proved unreliable and the
+          // link preview looked bad. Version + /update instruction is enough.
+          // From the install's own channel tag, this is what /update installs — even a stable the release pointed the
+          // tag at (2.2.0 on @alpha / @beta): the plain /update text, never "/update stays on … use --stable" (#1928).
+          const key = fromChannel ? "update.available_current" : updateNoticeKey(currentVersion, target);
+          // #2775: null = a beta install and a stable target; beta users are never told to switch.
+          if (key) this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
+        } else if (this.webOnlyPromptPlace() && (fromChannel || updateNoticeKey(currentVersion, target))) {
+          // #2910 D2: a web-only fleet: a Notice, once per version (the check runs daily). M-2738: updated from the web.
           const text = t("update.available_web_only", `v${target}`, `v${currentVersion}`);
           if (this.webNoticeStore()?.latest("update")?.text !== text) this.recordWebNotice("update", text);
         }

@@ -213,24 +213,30 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     return { posted, views: [...registry.views], card };
   }
 
-  it("an rc install is on @beta: the card records a newer rc, and General is not posted", async () => {
+  it("an rc install is on @beta: it hears about a newer rc, and the card records it", async () => {
     const { posted, views, card } = await notice("2.1.11-rc.1", { "@songsid/agend": "2.1.10", "@songsid/agend@beta": "2.1.11-rc.2" });
     expect(views).toContain("@songsid/agend@beta");
-    expect(posted).toEqual([]);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain("v2.1.11-rc.2");
+    expect(posted[0]).toContain("Run: /update");
     expect(card).toMatchObject({ version: "2.1.11-rc.2", channel: "beta", installable: true });
   });
 
-  it("an alpha install (#1259) looks at @alpha and @latest, never @beta, and the card records the next alpha", async () => {
+  it("an alpha install (#1259) looks at @alpha and @latest, never @beta, and hears about the next alpha", async () => {
     const tags = { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.9", "@songsid/agend@alpha": "2.2.0-alpha.2" };
     const { posted, views, card } = await notice("2.2.0-alpha.1", tags);
     expect(views.sort()).toEqual(["@songsid/agend", "@songsid/agend@alpha"]);
-    expect(posted).toEqual([]);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain("v2.2.0-alpha.2");
     expect(card).toMatchObject({ version: "2.2.0-alpha.2", channel: "alpha", installable: true });
   });
 
-  it("an alpha install records a newer stable as not installable, and a same-core stable is no offer", async () => {
+  it("an alpha install hears about a newer stable without offering an unsupported chat switch", async () => {
     const newer = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.1", "@songsid/agend@alpha": "2.2.0-alpha.3" });
-    expect(newer.posted).toEqual([]);
+    expect(newer.posted).toHaveLength(1);
+    expect(newer.posted[0]).toContain("v2.2.1");
+    expect(newer.posted[0]).toContain("Switching to stable is not available in this chat.");
+    expect(newer.posted[0]).not.toContain("agend update --stable");
     expect(newer.card).toMatchObject({ version: "2.2.1", channel: "stable", installable: false });
     // The rule beta installs already have: a stable of the SAME core is not offered (a prerelease may continue
     // after it). So when 2.2.0 ships, the release moves @alpha to it (see docs/cli.md).
@@ -246,9 +252,12 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
   // as @latest and beta.17 as @beta, a beta.16 install used to be told nothing (2.2.0 became the target, and the
   // same-core guard dropped it).
   describe("a beta install hears about @beta only (#1926)", () => {
-    it("beta.16 with 2.2.0 out records beta.17 as installable, and General is not posted", async () => {
+    it("beta.16 with 2.2.0 out is told about beta.17, with the plain /update text", async () => {
       const { posted, card } = await notice("2.2.0-beta.16", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0-beta.17" });
-      expect(posted).toEqual([]);
+      expect(posted).toHaveLength(1);
+      expect(posted[0]).toContain("v2.2.0-beta.17");
+      expect(posted[0]).toContain("Run: /update");
+      expect(posted[0]).not.toContain("--stable");
       expect(card).toMatchObject({ version: "2.2.0-beta.17", channel: "beta", installable: true });
     });
     it("beta.17 (the newest beta) with 2.2.0 out is silent", async () => {
@@ -262,7 +271,8 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
       expect(quiet.posted).toEqual([]);
       expect(quiet.card).toBeNull();
       const next = await notice("2.3.2-beta.16", { "@songsid/agend": "2.3.3", "@songsid/agend@beta": "2.3.3-beta.1" });
-      expect(next.posted).toEqual([]);
+      expect(next.posted).toEqual([expect.stringContaining("v2.3.3-beta.1")]);
+      expect(next.posted[0]).not.toMatch(/--stable|stable/);
       expect(next.card).toMatchObject({ version: "2.3.3-beta.1", channel: "beta", installable: true });
     });
     it("a stable of a higher core (2.2.1) does not reach a beta install either", async () => {
@@ -276,15 +286,18 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
   it.each([
     ["an alpha, after the release points @alpha at 2.2.0", "2.2.0-alpha.4", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0" }, "alpha"],
     ["a beta, if @beta is pointed at 2.2.0", "2.2.0-beta.17", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0" }, "beta"],
-  ] as const)("%s: the card is installable on that channel", async (_n, version, tags, channel) => {
+  ] as const)("%s: told to run /update, not --stable, and the card is installable", async (_n, version, tags, channel) => {
     const { posted, card } = await notice(version, tags);
-    expect(posted).toEqual([]);
+    expect(posted).toEqual([expect.stringContaining("v2.2.0")]);
+    expect(posted[0]).toContain("Run: /update");
+    expect(posted[0]).not.toContain("--stable");
     expect(card).toMatchObject({ version: "2.2.0", channel, installable: true });
   });
 
-  it("an alpha install is not left without an offer by a same-core stable: the newer alpha is the card (#1926)", async () => {
+  it("an alpha install is not left silent by a same-core stable: it still hears about the newer alpha (#1926)", async () => {
     const { posted, card } = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0-alpha.4" });
-    expect(posted).toEqual([]);
+    expect(posted).toEqual([expect.stringContaining("v2.2.0-alpha.4")]);
+    expect(posted[0]).not.toContain("--stable");
     expect(card).toMatchObject({ version: "2.2.0-alpha.4", channel: "alpha", installable: true });
   });
 
@@ -292,14 +305,14 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     const tags = { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.5", "@songsid/agend@alpha": "2.2.0-alpha.1" };
     const { posted, views, card } = await notice("2.1.12-beta.4", tags);
     expect(views.sort()).toEqual(["@songsid/agend", "@songsid/agend@beta"]);
-    expect(posted).toEqual([]);
+    expect(posted[0]).toContain("v2.1.12-beta.5");
     expect(card).toMatchObject({ version: "2.1.12-beta.5", channel: "beta", installable: true });
   });
 
   it("a stable install looks at @latest only", async () => {
     const { posted, views, card } = await notice("2.1.10", { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.1" });
     expect(views).toEqual(["@songsid/agend"]);
-    expect(posted).toEqual([]);
+    expect(posted[0]).toContain("v2.1.11");
     expect(card).toMatchObject({ version: "2.1.11", channel: "stable", installable: true });
   });
 });
