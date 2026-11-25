@@ -36,6 +36,7 @@ export class RequestContactGate {
       source_instance TEXT NOT NULL, operation_id TEXT NOT NULL, source_key TEXT NOT NULL UNIQUE,
       root_id TEXT NOT NULL, ticket_id TEXT NOT NULL UNIQUE REFERENCES contact_auth_tickets(id),
       image_json TEXT NOT NULL, image_sha256 TEXT NOT NULL, request_sha256 TEXT NOT NULL, last_checked_seq INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(source_instance,operation_id))`);
+    db.exec("CREATE INDEX IF NOT EXISTS request_context_contact_legacy_operation_v1 ON contact_auth_tickets(json_extract(request_json,'$.source'),json_extract(request_json,'$.operationId'))");
   }
   private checked(delivery: NewOutboxDelivery, raw: RequestContextV1, bindingRaw: RequestOperationBindingV1): Image {
     // Clone before any callback; model-owned mutable objects must not change the approved bytes.
@@ -155,8 +156,11 @@ export class RequestContactGate {
       return granted?.deliveryId ? { admitted: this.admitImage(image) } : { ticket };
     })();
     if (result.admitted) return result.admitted;
-    throw new ContactHeldError({ sent: false, held: true, authorization_id: result.ticket.id, authorization_state: result.ticket.state,
-      message: t("contact.heldAgent") });
+    const ticket=result.ticket;
+    const message=ticket.state==="pending" ? t("contact.heldAgent")
+      : ticket.state==="declined" ? t("contact.noticeDeclined",ticket.id,ticket.target)
+      : ticket.state==="expired" ? t("contact.noticeExpired",ticket.id,ticket.target) : t("contact.updated");
+    throw new ContactHeldError({ sent: false, held: true, authorization_id: ticket.id, authorization_state: ticket.state, message });
   }
   decide(id: string, decision: ContactTicketDecision, actor: ContactPerson, policyRevision: number): ContactTicket {
     this.ports.ready(); this.tickets.get(id); // Persist expiry even when the decision refuses.

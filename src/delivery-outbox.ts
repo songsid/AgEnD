@@ -2110,7 +2110,8 @@ export class DeliveryOutbox extends EventEmitter {
       if (hasTable(this.db,"request_context_recovery_v1") && this.db.prepare(`SELECT 1 FROM request_context_recovery_v1 WHERE json_extract(pointer_json,'$.contextId') IN (${slots}) LIMIT 1`).get(root)) throw Error("request-context root has recovery reference");
       if (hasTable(this.db,"request_context_contacts_v1")) {
         const tickets = this.db.prepare("SELECT t.id,t.ticket_json FROM contact_auth_tickets t JOIN request_context_contacts_v1 c ON c.ticket_id=t.id WHERE c.root_id=?").all(root) as Array<{id:string;ticket_json:string}>;
-        if (tickets.some(row=>{const t=JSON.parse(row.ticket_json);const at=Date.parse(t.decidedAt??t.expiresAt??t.createdAt);return !['approved','delivered','declined','expired'].includes(t.state)||!Number.isFinite(at)||at>=Date.parse(cutoff);})) throw Error("request-context root has retained ticket");
+        const resolved=tickets.map(row=>this.contactAuthorizations.get(row.id));
+        if (resolved.some(t=>{if(!t)return true;const at=Date.parse(t.decidedAt??t.expiresAt??t.createdAt);return !['approved','delivered','declined','expired'].includes(t.state)||!Number.isFinite(at)||at>=Date.parse(cutoff);})) throw Error("request-context root has retained ticket");
         for (const ticket of tickets) {
           this.db.prepare("DELETE FROM contact_auth_outcome_notices WHERE ticket_id=?").run(ticket.id);
           this.db.prepare("DELETE FROM contact_auth_approval_notices WHERE ticket_id=?").run(ticket.id);

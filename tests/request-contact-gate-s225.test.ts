@@ -7,12 +7,14 @@ import Database from "better-sqlite3";
 import { afterEach, expect, it, vi } from "vitest";
 import { DeliveryOutbox, type NewOutboxDelivery } from "../src/delivery-outbox.js";
 import type { RequestContactGateHost } from "../src/request-contact-gate.js";
+import { getLocale, setLocale, tForLocale } from "../src/locale.js";
 import { ContactHeldError } from "../src/contact-auth-service.js";
 import { requestContextDigest } from "../src/request-context-store.js";
 import type { ContactPerson, ContactTicketDecision } from "../src/contact-auth-types.js";
 import type { RequestContextV1, RequestOperationBindingV1 } from "../src/request-context-protocol.js";
+const originalLocale=getLocale();
 const cleanup: Array<()=>void> = [];
-afterEach(()=>{vi.restoreAllMocks();for(const fn of cleanup.splice(0).reverse())fn();});
+afterEach(()=>{setLocale(originalLocale);vi.restoreAllMocks();for(const fn of cleanup.splice(0).reverse())fn();});
 const manager:ContactPerson={platform:"discord",adapterId:"fixture",userId:"demo-manager",label:"Demo manager"};
 function rig(active=true){
  const root=mkdtempSync(join(tmpdir(),"s225-gate-")),file=join(root,"outbox.db");cleanup.push(()=>rmSync(root,{recursive:true,force:true}));
@@ -212,4 +214,35 @@ it("a refused pending operation rotates so the next bounded tick reaches a curre
  f.host.current=(_c,b)=>b.target.instance!=="bad";
  expect(g.reevaluate(c.ref.rootContextId,1).refused.map(t=>t.ticketId)).toEqual([bad.id]);
  expect(g.reevaluate(c.ref.rootContextId,1).approved.map(t=>t.id)).toEqual([good.id]);
+});
+
+it.each(["en","zh-TW"]as const)("terminal retry says declined or expired, never waiting, in %s",locale=>{
+ setLocale(locale);
+ for(const state of ["declined","expired"]as const){
+  const f=rig(),g=f.gate(),i=f.input(),ticket=f.hold(g,i);
+  if(state==="declined")g.decide(ticket.id,{revision:ticket.revision,decision:"decline"},manager,0);
+  else f.raw().prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.expiresAt',?) WHERE id=?").run("2000-01-01T00:00:00.000Z",ticket.id);
+  let caught:unknown;try{g.admit(i.delivery,i.context,i.binding);}catch(error){caught=error;}
+  expect(caught).toBeInstanceOf(ContactHeldError);const result=(caught as ContactHeldError).result;
+  expect(result.authorization_state).toBe(state);expect(result.message).toBe(tForLocale(locale,state==="declined"?"contact.noticeDeclined":"contact.noticeExpired",ticket.id,ticket.target));
+  expect(result.message).not.toBe(tForLocale(locale,"contact.heldAgent"));expect(f.box.listPending()).toHaveLength(0);
+ }
+});
+it("the retirement boundary resolves an unread expired ticket before its terminal retention check",()=>{
+ const f=rig(),g=f.gate(),i=f.input(),ticket=f.hold(g,i),db=f.raw(),old="2000-01-01T00:00:00.000Z";
+ db.prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.createdAt',?,'$.expiresAt',?) WHERE id=?").run(old,old,ticket.id);
+ expect(JSON.parse((db.prepare("SELECT ticket_json FROM contact_auth_tickets WHERE id=?").get(ticket.id)as {ticket_json:string}).ticket_json).state).toBe("pending");
+ // Direct internal retirement port: no earlier gate/read is allowed to perform its expiry work for it.
+ expect((f.box as any).retireRequestContextRoot(i.context.ref.rootContextId,()=>true)).toBe(0);
+ expect(f.box.contactAuthorizations.get(ticket.id)).toBeUndefined();expect(f.box.requestContext(i.context.ref.contextId)).toBeNull();
+});
+it("already-pending work preserves its decision after promotion; new operations use the current admin exception",()=>{
+ const f=rig(),g=f.gate(),i=f.input(),held=f.hold(g,i);f.admin(true);
+ expect(f.hold(g,i).id).toBe(held.id);expect(g.sweep().approved).toEqual([]);expect(g.reevaluate(i.context.ref.rootContextId).approved).toEqual([]);
+ const next=f.input(i.context);expect(g.admit(next.delivery,next.context,next.binding).inserted).toBe(true);
+ expect(f.box.contactAuthorizations.get(held.id)?.state).toBe("pending");f.admin(false);expect(f.hold(g,f.input(i.context)).state).toBe("pending");
+});
+it("the legacy-adoption probe uses its scoped-only expression index",()=>{
+ const f=rig();f.gate();const plan=f.raw().prepare("EXPLAIN QUERY PLAN SELECT 1 FROM contact_auth_tickets WHERE json_extract(request_json,'$.source')=? AND json_extract(request_json,'$.operationId')=? LIMIT 1").all("source","operation") as Array<{detail:string}>;
+ expect(plan.some(row=>row.detail.includes("request_context_contact_legacy_operation_v1"))).toBe(true);
 });

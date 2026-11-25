@@ -153,3 +153,9 @@ Fable's source review at `29edc5d65` is adopted:
 Sweep fairness uses only a monotonic `last_checked_seq` in the companion, ordered before row id. It changes scheduling, never immutable image/provenance, policy, or release. Refused candidates rotate too, so an old refused page cannot starve later pending work. No production timer or event route invokes this dormant core yet.
 
 The root-retirement port shares the existing outbox child-row/pruned-id deletion helper. It rejects uncertain deliveries, open replies, recovery pointers, unelapsed 30-day retention, pending tickets, a missing lifecycle proof or a proof that changes during the transaction. The gate validates scoped images before retiring them. Until F/I supplies that lifecycle proof and L activates the flow, retirement refuses by default.
+
+## Implementation review policy clarification
+
+An exact operation already held stays pending until its explicit decision, a matching live grant, or its proven root's committed D1 release. Promoting its initiator does not replay that existing operation in `admit`, `sweep` or `reevaluate`. New operations of the same root use the current-source-admin exception; demotion makes their next contact hold again. This preserves step 3's pending-decision rule and the earlier no-replay guarantee, rather than fabricating an administrator approval/audit entry. A paired regression covers the pending retry/sweeps, promotion/new-operation positive and demotion negative.
+
+The held-result envelope retains the existing API shape, but only pending results say they await approval. Declined and expired retries use the existing localized outcome text (not sent, stop waiting); they never dispatch or re-open a decision. Retirement resolves unread expiry itself inside its transaction before checking terminal retention. The legacy-adoption probe has a compound JSON-expression index created only by the explicitly enabled dormant gate; OFF creates no new index or table.
