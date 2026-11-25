@@ -52,7 +52,7 @@ function rig() {
     const ticket = outbox.contactAuthorizations.get(id)!;
     (outbox as any).db.prepare("UPDATE deliveries SET state=? WHERE delivery_id=?").run(state, ticket.deliveryId);
   };
-  const status = (caller: string, args: unknown = { held_requests: true }) => new Promise<{ result: any; error: any }>(resolve => {
+  const status = (caller: string, args: Record<string, unknown> = { held_requests: true }) => new Promise<{ result: any; error: any }>(resolve => {
     outboundHandlers.get("delivery_status")!(fm, args, (result: any, error: any) => resolve({ result, error }), { instanceName: caller } as any);
   });
   return { fm, outbox, ask, notices, deliver, status };
@@ -86,7 +86,9 @@ it.each(["en", "zh-TW"] as const)("a ClassicBot requester is told who approved i
 it("names a Discord approver by label and platform", () => {
   const r = rig(); const id = r.ask().result.authorization_id;
   r.outbox.contactAuthorizations.decide(id, { revision: 1, decision: "approve-once" }, discordAdmin,
-    { canDecide: () => true, current: () => true, admit: () => "fake-delivery" });
+    { canDecide: () => true, current: () => true, admit: (request, ticketId) => r.fm.contactService().host.admit(request, ticketId) });
+  // A real outbox row, still queued (Prism #4452: no fabricated delivery id).
+  expect(r.outbox.get(r.outbox.contactAuthorizations.get(id)!.deliveryId!)?.state).toBe("queued");
   r.fm.sweepReplyObligations();
   expect(r.notices()).toEqual([]);
   vi.advanceTimersByTime(CONTACT_APPROVAL_NOTICE_WAIT_MS);
@@ -114,6 +116,38 @@ it("a standing rule's approval is not announced: the send itself returned it", (
   (r.outbox as any).db.prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.grantId','fake-grant') WHERE id=?").run(id);
   r.deliver(id); vi.advanceTimersByTime(CONTACT_APPROVAL_NOTICE_WAIT_MS); r.fm.sweepReplyObligations();
   expect(r.notices()).toEqual([]);
+});
+
+it("a missing or pruned delivery row is never promised as queued: not confirmed, at once", async () => {
+  const r = rig(); const id = r.ask().result.authorization_id;
+  r.fm.decideContactAuthorization(id, { revision: 1, decision: "approve-once" }, operator);
+  (r.outbox as any).db.prepare("DELETE FROM deliveries WHERE delivery_id=?").run(r.outbox.contactAuthorizations.get(id)!.deliveryId);
+  const row = (await r.status(ROOM)).result.requests[0];
+  expect(row.state).toBe("not-confirmed");
+  expect(row.next).toContain("no longer on record");
+  r.fm.sweepReplyObligations();
+  expect(r.notices()).toHaveLength(1);
+  expect(r.notices()[0].payload.content).toContain("not confirmed");
+  expect(r.notices()[0].payload.content).not.toContain("queued");
+});
+
+it("a real in-flight row reads as approved-queued; a rule approval keeps its provenance apart from the delivery state", async () => {
+  const r = rig();
+  const queued = r.ask("fake-queued").result.authorization_id;
+  r.fm.decideContactAuthorization(queued, { revision: 1, decision: "approve-once" }, operator);
+  const rule = r.ask("fake-rule").result.authorization_id;
+  r.fm.decideContactAuthorization(rule, { revision: 1, decision: "approve-once" }, operator);
+  (r.outbox as any).db.prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.grantId','fake-grant') WHERE id=?").run(rule);
+  const rows = () => r.status(ROOM).then(s => Object.fromEntries(s.result.requests.map((row: any) => [row.ticket_id, row])));
+  let now = await rows();
+  expect(now[queued]).toMatchObject({ state: "approved-queued", decided_by: "host operator" });
+  expect(now[rule]).toMatchObject({ state: "approved-queued", approved_by_rule: true });
+  expect(now[rule]).not.toHaveProperty("decided_by");
+  r.deliver(rule);
+  now = await rows();
+  expect(now[rule]).toMatchObject({ state: "delivered", approved_by_rule: true });
+  r.deliver(rule, "failed");
+  expect((await rows())[rule].state).toBe("not-confirmed");
 });
 
 it("a failed delivery is announced as not confirmed and points at held_requests", () => {

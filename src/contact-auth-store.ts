@@ -5,6 +5,8 @@ import type { ContactGrant, ContactHistoryRow, ContactOrigin, ContactOriginClear
 export const CONTACT_APPLICATION_TTL_MS = 30 * 60_000;
 /** M-3716: an approved message still queued this long after the decision is announced as approved and queued. */
 export const CONTACT_APPROVAL_NOTICE_WAIT_MS = 2 * 60_000;
+/** M-3716: outbox states of a delivery still on its way to the target. */
+export const CONTACT_DELIVERY_IN_FLIGHT: readonly string[] = ["queued", "delivering", "submission_started", "retry_wait"];
 /** M-3716: what the requester is told about one held request. */
 export type ContactOutcome = "declined" | "expired" | "delivered" | "unconfirmed" | "queued";
 export interface ContactRequest {
@@ -316,8 +318,8 @@ export class ContactAuthStore {
   }
   /**
    * M-3372: the callback admits a system notice on this same outbox connection. M-3716: a person's approval is
-   * announced too, once its delivery to the target settles (`delivery` reads the outbox row): delivered, not confirmed,
-   * or still queued after CONTACT_APPROVAL_NOTICE_WAIT_MS. A standing rule's approval is not: the send itself returned it.
+   * announced too, once its delivery to the target settles (`delivery` reads the outbox row): delivered, still in flight
+   * after CONTACT_APPROVAL_NOTICE_WAIT_MS (queued), or anything else, a missing or pruned row included (not confirmed). A standing rule's approval is not: the send itself returned it.
    */
   notifyOutcomes(admit: (ticket: ContactTicket, outcome: ContactOutcome) => void,
     delivery: (ticket: ContactTicket) => string | undefined = () => undefined): number {
@@ -340,8 +342,9 @@ export class ContactAuthStore {
         const ticket = this.read(row);
         if (ticket.grantId) { this.db.prepare("INSERT INTO contact_auth_approval_notices VALUES (?)").run(row.id); continue; }
         const state = delivery(ticket);
+        // Prism #4452 P2-2: "queued" only for a row really still in flight; a missing or pruned row is not confirmed.
         const outcome: ContactOutcome | undefined = state === "delivered" ? "delivered"
-          : ["failed", "uncertain", "cancelled", "reconciliation_pending"].includes(state ?? "") ? "unconfirmed"
+          : !CONTACT_DELIVERY_IN_FLIGHT.includes(state ?? "") ? "unconfirmed"
           : this.now() - Date.parse(ticket.decidedAt ?? ticket.createdAt) >= CONTACT_APPROVAL_NOTICE_WAIT_MS ? "queued" : undefined;
         if (!outcome) continue;
         admit(ticket, outcome);
