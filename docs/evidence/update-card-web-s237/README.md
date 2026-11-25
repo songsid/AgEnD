@@ -4,7 +4,7 @@ These are captures of the fleet's one update offer (S-234, #4484) as the web sho
 
 The script drives the real server objects: `UpdateOfferCard`, the pre-flight result through `summarize` (the same shape `probeUpdatePreflight` returns), `POST /ui/update/answer` and `PUT /api/settings/fleet/updates`. Nothing installs, because every launch path is stubbed before the first press. Two of the fixture's agents are at work, so Update when idle waits and names them.
 
-Script: `scripts/manual/update-card-web-s237/capture.mts`. It ran at `67b884240` (`src` clean) and passed 74 of 74 checks. `receipt.json` lists the commit, every check, what each frame showed, and each PNG's sha256.
+Script: `scripts/manual/update-card-web-s237/capture.mts`. It ran at `7b7f2f0b4` (`src` clean) and passed 74 of 74 checks. `receipt.json` lists the commit, every check, what each frame showed, and each PNG's sha256.
 
 | Frame | What it shows |
 |---|---|
