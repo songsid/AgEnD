@@ -54,6 +54,8 @@ try {
       void el;
     };
     const title = zh ? "有 2 個聯絡申請需要已驗證的瀏覽器" : "2 contact requests need a verified browser";
+    // #4447 capture check: the header counts the line as its 2 requests, as it does once they replace it.
+    const waiting = zh ? "2 件待處理" : "2 waiting";
     // 1–2. On this computer, as a chat account that has not authorized this browser; then after its Confirm.
     {
       const account = demoAccount(); admins.add(account.userId);
@@ -67,6 +69,7 @@ try {
         // #4447 review: on a phone the Authorize button is a full touch target (44px).
         if (c.device === "phone") { const box = await line.locator(".webauth-chip button").first().boundingBox(); check(`${tag}: Authorize is a 44px tap target`, !!box && box.height >= 44 && box.width >= 44, box); }
         check(`${tag}: no request named before verifying`, !/Example lead|Example worker|release checklist|發版/.test(await page.locator(".p-needs").innerText()));
+        check(`${tag}: localhost — the header counts the line as 2`, new RegExp(waiting).test(await page.locator(".p-needs").innerText()));
         await shot(page, "1-local-unverified");
         let record: any = null;
         fm.webSessions.list(undefined, (r: any) => { if (r.owner?.userId === account.userId) record = r; return false; });
@@ -75,6 +78,12 @@ try {
         const body = await page.locator(".p-needs").innerText();
         check(`${tag}: verified — the requests with Approve once, and no line`, (await page.locator(".contact-verify-need").count()) === 0
           && (await page.locator(".contact-need[data-reason=contact_request]").count()) === 2 && /Approve once|核准這一次/.test(body), body.slice(0, 400));
+        // #4447 capture check: the first request's actions both in view (a phone's 844px cut Decline off).
+        const decide = page.locator(".contact-need[data-reason=contact_request] .contact-decide-controls").first();
+        await decide.evaluate((el: Element) => el.scrollIntoView({ block: "center" }));
+        const inView = await decide.evaluate((el: Element) => [el, ...el.querySelectorAll("button")].every((b) => { const q = b.getBoundingClientRect(); return q.top >= 0 && q.bottom <= innerHeight; }));
+        check(`${tag}: verified — Approve once and Decline both in view`, inView);
+        check(`${tag}: verified — the header still counts 2`, new RegExp(waiting).test(await page.locator(".p-needs").innerText()));
         await shot(page, "2-local-verified");
         check(`${tag}: no page errors (localhost)`, errors.length === 0, errors);
       } finally { await ctx.close(); }
@@ -90,6 +99,7 @@ try {
         // The page looks the same as on this computer (a headless shot has no address bar): where it was, recorded.
         check(`${tag}: frame 3 is on the public link`, new URL(page.url()).origin === `https://${link.host}`, page.url());
         receipt[`linkPage-${tag}`] = page.url();
+        check(`${tag}: public link — the header counts the line as 2`, new RegExp(waiting).test(await page.locator(".p-needs").innerText()));
         await shot(page, "3-link-unverified");
         check(`${tag}: no page errors (link)`, errors.length === 0, errors);
       } finally { await ctx.close(); }

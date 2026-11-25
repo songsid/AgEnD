@@ -159,6 +159,15 @@ describe("Needs you shows the line with Authorize this browser, in en and zh-TW"
     ask.click(); await settle(6);
     expect(reqs.filter((r) => r.url === "/ui/authorization" && r.method === "POST")).toHaveLength(1);
   });
+  it("#4447 capture check: the header, the badge count and the tab title count the line as its requests — and stay put once the requests replace it", async () => {
+    const shell = await import("/assets/app-shell.js") as any;
+    await mount("en"); await settle(6);
+    const counts = () => [p.root.querySelector(".p-needs")?.textContent.match(/(\d+) waiting/)?.[1], shell.needsCount(app.appStore.get()), document.title.match(/^\((\d+)\)/)?.[1]];
+    expect(counts()).toEqual(["2", 2, "2"]);
+    const request = (id: string) => ({ id: `contact:${id}`, type: "contact", reason: "contact_request", instance: "worker", since: 1, detail: "", contactTicket: { id, source: "lead", target: "worker" } });
+    app.appStore.set({ needs: [request("R1"), request("R2")] }); await settle(6);
+    expect(counts()).toEqual(["2", 2, "2"]);
+  });
   it("one request: singular", async () => {
     app.appStore.set({ needs: [{ ...LINE, contactVerify: { count: 1 } }] });
     await mount("en"); await settle(6);

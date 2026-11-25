@@ -31,7 +31,7 @@ import { decideProposal, installProposals } from "./agent-proposals.js";
 import { GeneralLocation } from "./general-location.js";
 import { runtimeUpdateText } from "./runtime-update-status.js";
 import { ContactNeedsItem, ContactSuggestionsGroup, isRestrictedSuggestion } from "./contact-needs.js";
-import { ContactVerifyNeed, isContactVerify } from "./contact-verify-need.js";
+import { ContactVerifyNeed, contactVerifyCount, isContactVerify } from "./contact-verify-need.js";
 import { HostDirectoryNotices, hostDirectoryNoticesOffered } from "./hub-host-security-notices.js";
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
@@ -218,7 +218,8 @@ export function NeedsPanel({ navKey }) {
   // M-3710: "N contact requests need a verified browser" — on top, under no agent's heading.
   const verify = items.find(isContactVerify);
   const groups = groupNeeds(items.filter(item => !item.runtimeUpdate && !isRestrictedSuggestion(item) && !isContactVerify(item)));
-  const shownCount = items.length - suggestions.length + (suggestions.length ? 1 : 0) + asks.length;
+  // M-3710: the verify line counts as the requests it stands for (as the badge and tab title do).
+  const shownCount = items.length - suggestions.length + (suggestions.length ? 1 : 0) + asks.length + (verify ? contactVerifyCount(verify) - 1 : 0);
   if (updates.length) groups.push({ instance: "", items: updates });
   const nowMs = Date.now();
   return html`<div data-effect-panel="needs" class="panel p-needs">

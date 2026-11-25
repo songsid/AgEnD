@@ -27,9 +27,11 @@ export const verifyNeedBody = () => tv("body");
 
 /** A Needs you item that says contact requests wait for a verified browser. */
 export const isContactVerify = (item) => item?.type === "contact" && item.reason === "contact_verify_needed";
+/** How many requests the line stands for: what Needs you's counts add for it (#4447 capture check). */
+export const contactVerifyCount = (item) => Math.max(1, Math.floor(Number(item?.contactVerify?.count) || 1));
 
 export function ContactVerifyNeed({ item }) {
-  const count = Math.max(1, Math.floor(Number(item?.contactVerify?.count) || 1));
+  const count = contactVerifyCount(item);
   const title = verifyNeedTitle(count);
   return html`<section class="n-group n-contact-verify" aria-label=${title}>
     <article data-trust="permission" class="n-item contact-need contact-verify-need" data-reason="contact_verify_needed">
