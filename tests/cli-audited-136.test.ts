@@ -52,7 +52,7 @@ describe("the ledger", () => {
   it("the newest audited release is the one an update goes to, compared by number (not as text)", () => {
     expect(Object.fromEntries(CLI_IDS.map(id => [id, auditedVersion(id)]))).toEqual({
       // Current audited targets; Muse 1.4.24-R9131.1 was added with M-3396, 1.4.25-R9361.1 with M-3550.
-      "claude-code": "2.1.332", "codex": "0.171.0", "kiro-cli": "3.5.0", "antigravity": "1.5.15", "grok": "1.0.92", "muse": "1.4.25-R9361.1", "opencode": "1.19.6",
+      "claude-code": "2.1.332", "codex": "0.171.0", "kiro-cli": "3.6.0", "antigravity": "1.5.15", "grok": "1.0.92", "muse": "1.4.25-R9361.1", "opencode": "1.19.6",
     });
     expect(compareVersions("2.1.99", "2.1.316")).toBe(-1);
     expect(compareVersions("1.4.14", "1.4.4")).toBe(1);
@@ -156,7 +156,7 @@ describe("the update command", () => {
     expect(hostUpdatePlan("grok")).toEqual({ command: "curl -fsSL https://x.ai/cli/install.sh | bash -s 1.0.92", target: "1.0.92" });
     expect(hostUpdatePlan("claude-code")!.command).toBe("curl -fsSL https://claude.ai/install.sh | bash -s 2.1.332");
     expect(hostUpdatePlan("codex")!.command).toBe("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh -s -- --release 0.171.0");
-    expect(hostUpdatePlan("kiro-cli")!.command).toBe("curl -fsSL https://cli.kiro.dev/install | bash -s -- --version 3.5.0 --force");
+    expect(hostUpdatePlan("kiro-cli")!.command).toBe("curl -fsSL https://cli.kiro.dev/install | bash -s -- --version 3.6.0 --force");
     expect(hostUpdatePlan("opencode")!.command).toBe("curl -fsSL https://opencode.ai/install | bash -s -- --version 1.19.6");
   });
   it("a CLI that updates itself with no exception, or an id that is not a CLI, has none", () => {
