@@ -1,9 +1,33 @@
 {
-  "sourceHead": "0ade269f100e5d9d8ae0f309d56deb92f46f492b",
+  "sourceHead": "c37dc38753c56553c64d5b02a96d8ce5612e6f2d",
   "dirty": [],
   "checks": [
     {
-      "name": "desk-en-light: Needs you shows the prompt and both of its choices",
+      "name": "desk-en-light: one-line title in the UI language",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: two stacked buttons, named by what they do",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the switch is the primary button",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: \"open chat\" is a small link, not a button",
       "ok": true
     },
     {
@@ -11,7 +35,7 @@
       "ok": true
     },
     {
-      "name": "desk-en-light: a subtitle under each choice, in the UI language",
+      "name": "desk-en-light: the toggle shows Claude's own words",
       "ok": true
     },
     {
@@ -43,7 +67,31 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: Needs you shows the prompt and both of its choices",
+      "name": "desk-zh-TW-dark: one-line title in the UI language",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: two stacked buttons, named by what they do",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the switch is the primary button",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: \"open chat\" is a small link, not a button",
       "ok": true
     },
     {
@@ -51,7 +99,7 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: a subtitle under each choice, in the UI language",
+      "name": "desk-zh-TW-dark: the toggle shows Claude's own words",
       "ok": true
     },
     {
@@ -83,7 +131,31 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-light: Needs you shows the prompt and both of its choices",
+      "name": "desk-zh-TW-light: one-line title in the UI language",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: two stacked buttons, named by what they do",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the switch is the primary button",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: \"open chat\" is a small link, not a button",
       "ok": true
     },
     {
@@ -91,7 +163,7 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-light: a subtitle under each choice, in the UI language",
+      "name": "desk-zh-TW-light: the toggle shows Claude's own words",
       "ok": true
     },
     {
@@ -123,7 +195,31 @@
       "ok": true
     },
     {
-      "name": "phone-en-light: Needs you shows the prompt and both of its choices",
+      "name": "phone-en-light: one-line title in the UI language",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: two stacked buttons, named by what they do",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the switch is the primary button",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: \"open chat\" is a small link, not a button",
       "ok": true
     },
     {
@@ -131,7 +227,7 @@
       "ok": true
     },
     {
-      "name": "phone-en-light: a subtitle under each choice, in the UI language",
+      "name": "phone-en-light: the toggle shows Claude's own words",
       "ok": true
     },
     {
@@ -163,7 +259,31 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: Needs you shows the prompt and both of its choices",
+      "name": "phone-zh-TW-dark: one-line title in the UI language",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: two stacked buttons, named by what they do",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the switch is the primary button",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: \"open chat\" is a small link, not a button",
       "ok": true
     },
     {
@@ -171,7 +291,7 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: a subtitle under each choice, in the UI language",
+      "name": "phone-zh-TW-dark: the toggle shows Claude's own words",
       "ok": true
     },
     {
@@ -201,48 +321,144 @@
     {
       "name": "phone-zh-TW-dark: no page errors",
       "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: one-line title in the UI language",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: two stacked buttons, named by what they do",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the buttons are one width, stacked, one line each",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the switch is the primary button",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: \"open chat\" is a small link, not a button",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the toggle shows Claude's own words",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the credits choice asks to be confirmed first, naming the agent in plain words",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: cancelling the confirmation leaves the card (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: no page errors",
+      "ok": true
     }
   ],
   "pictures": [
     {
       "path": "claude-usage-credits-m3757/desk-en-light-1-needs-card.png",
-      "sha256": "6b366d0e83bcfea5a690bee4175f4975b5ae4788bf5f7fc2506e753bef0743e0"
+      "sha256": "c6395b14bac93939709383f07d2d7b6e669466dc79adb5b0df1abcb955d3ba1d"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-en-light-3-claude-text.png",
+      "sha256": "92b96263cf4b46d7cd5c54efc5906faeec6c2b78d90a2e9cfb966ee3789ded10"
     },
     {
       "path": "claude-usage-credits-m3757/desk-en-light-2-confirm-credits.png",
-      "sha256": "e8b8522e5dee2373c3ab35b122ac4bd04d5a8229ce608355c6706556f9d1b4f3"
+      "sha256": "e8b15c4ad074007df69f628b7784d0994a3ef9a122cde06d4181f29152a220c8"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-1-needs-card.png",
-      "sha256": "ee7e586a1592ec337b8057e157fc32703d2775ffb22817ba8ddd3b466bad0db2"
+      "sha256": "6720ee0c2b83796c825ee7b2bccd97fd95e2afb797c9cad88fcbf13174edfd64"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-dark-3-claude-text.png",
+      "sha256": "d4a44c3d644076a234e70a065f8db3311046fa52f20d5d86fa88239fe64008fa"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-2-confirm-credits.png",
-      "sha256": "db6f19c2e6545f2e7df6952a8dbf2e2641bb1b03aff5a47e0556c1b22150e0b7"
+      "sha256": "f646e79d4004dcba67c9a8a6b18e8bf091dc503d82cd5856015af3eda6910ebf"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-1-needs-card.png",
-      "sha256": "5a020d41703831c3ae707b14b67dcc897494faf6ea175ed2f3769317624a099b"
+      "sha256": "8eea20dca74012717d857bcad83a6181290e58f4080c9a32153e890ee09b7c3e"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-light-3-claude-text.png",
+      "sha256": "69d3139529db733df90439b4d391d3c13eba4edae3919b769f34e9aad4671b7c"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-2-confirm-credits.png",
-      "sha256": "ffa69cc9faa288096be78737bf7f9f657aed111f85c79f3486549b7c736bd3d2"
+      "sha256": "e68a3d653ca5a18a410247cd140514ad9284c587ed6d36dd7b0ac6aba687a120"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-1-needs-card.png",
-      "sha256": "aa0d4e443b74cdd7ed5213d8e91e6a38140e1b64c8fe728781c4c02db487ad9f"
+      "sha256": "c5fd7fdafbcddf4f16c7a2db4c90d5e964af635aed216cd5b203ae0a63ad6b0a"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-en-light-3-claude-text.png",
+      "sha256": "04c08961921e2ba24fea2d4f2800ef0ee127e3a106a012936c1129f650fe77d2"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-2-confirm-credits.png",
-      "sha256": "a79fdc281e51fc6ffc78fe729f97371117d6da1a6f388024a5561bf9f31675b1"
+      "sha256": "cf06923f2cd097c92f6084b536e873ee9200b496c96c2d6337d81a01497f2aa3"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-1-needs-card.png",
-      "sha256": "24f28aee7f5ea01f5e3d72e813393cba72c2a322ee5ce330ed2313c057aefe84"
+      "sha256": "1f56b4a0b01a3e56ea84f033277f5e4519a67fcc08975ab0da5a7b03ef7c0be2"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-dark-3-claude-text.png",
+      "sha256": "42ea193f981fc1f2381bba62560e7fd7f2f312cf30a834b4579465da48822813"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-2-confirm-credits.png",
-      "sha256": "b03f8ec9b566cbdab44f70ca0e90baf5ef52cbf0d38b82f49b9950b0be13ce43"
+      "sha256": "f1a353b88e53d10d3f835c66665fdc4d8e55393271bd5b39a05454e5dfdb417f"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-light-1-needs-card.png",
+      "sha256": "f6e65edd80d2f37ad20602127faa36d8ca520f412ff78965184199e9108114e1"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-light-3-claude-text.png",
+      "sha256": "41a5a7fcc9f73b5e0aee70f75e370778a14b2c970b14b75a6d712374ec4ba851"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-light-2-confirm-credits.png",
+      "sha256": "b7bcb0ae271e6fa19476cc7b9b5cdf7384662eec9e250635acbf49002cf23c44"
     }
   ]
 }
