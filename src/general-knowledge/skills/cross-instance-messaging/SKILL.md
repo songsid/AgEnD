@@ -104,8 +104,11 @@ read tools. A non-admin or unknown-origin peer contact is held as an application
 the target. Do not resend or work around it with another contact tool, a schedule,
 or a new instance. The target's Fleet administrator decides the retained request.
 Approval delivers it once; decline or expiry does not forward the held request.
-On decline or expiry, one AgEnD system notice names the ticket, target and outcome;
-stop waiting for that request. This is status only, not authority or a grant.
+Every outcome sends you one AgEnD system notice naming the ticket: approved (by whom,
+when, and whether the target has it), declined or expired. While held, wait for that
+notice; to check sooner, call `delivery_status` with `held_requests: true` (your own
+requests only). Never resend. On decline or expiry, stop waiting for that request.
+A notice is status only, not authority or a grant.
 A standing narrow contact grant can admit matching requests without another card.
 
 An administrator's approval or a matching administrator-written grant endorses

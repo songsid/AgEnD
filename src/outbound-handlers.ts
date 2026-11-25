@@ -90,6 +90,8 @@ export interface OutboundContext {
   requestContactChange?(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }>;
   /** M-3693: contact_state's read-only view (see contact-state-view.ts). */
   contactState?(agent?: string): unknown;
+  /** M-3716: the calling agent's own held requests (delivery_status { held_requests: true }). */
+  ownContactRequests?(agent: string): unknown;
   readonly dataDir: string;
   hubContactRestricted?(agent: string): boolean;
   /** M-3660: the Hub question whose answer turn holds the restriction (its correlation id), for the refusal's text. */
@@ -2603,6 +2605,12 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
   if (typeof meta.instanceName !== "string" || meta.instanceName.length === 0) {
     // Missing authenticated identity is never an operator query.
     respond(null, t("delivery.not_found"));
+    return;
+  }
+  if (v.data.held_requests) {
+    // M-3716: only the authenticated caller's own requests; no argument names another agent.
+    try { respond(ctx.ownContactRequests?.(meta.instanceName) ?? { requests: [], note: "Contact requests are unavailable here." }); }
+    catch (err) { ctx.logger.warn({ err, caller: meta.instanceName }, "Held request status failed"); respond(null, t("delivery.unavailable")); }
     return;
   }
   const selector: DeliveryStatusSelector = deliveryStatusSelector(v.data);
