@@ -8,7 +8,7 @@ It also fixes the interfaces that 2.2 (the quiescence barrier, GrokCore) and 2.5
 
 **Scope.** Phase 2 runs only on a machine in class **self** (§4 of the design), and only when both the running version and the target speak this transaction (from- and to-version ≥ V_tx). Anywhere else, Phase 1's updater runs unchanged.
 
-**Revision 2** answers Prism's design review (6065369545). The new contracts are §2.4–2.6, §3, §4, §5 and §6; the changes are mapped in §9.
+**Revision 2** answers Prism's design review (6065369545); **revision 3** answers its scoped pass (6065419816). The changes are mapped in §9.
 
 ---
 
@@ -137,24 +137,32 @@ Ownership = { uid; home: realpath; prefix: realpath; packagePath: "<root>/@songs
 ArtifactTuple = { version; integrity; bins: Record<"agend"|"agend-agent", realpath>; entry: realpath of dist/cli.js;
                   interpreter: realpath of the Node it runs on; execStart: the service's ExecStart/ProgramArguments }
 ```
-- `expected.old` is recorded at open.
-- `expected.new` is recorded after the install verifies (today's `verifyInstalledPackage` result, plus the service refresh's `ExecStart`).
-- Each stage compares the live tuple with the one it expects:
+`expected.old` is recorded at open. `expected.new` is recorded after the install verifies.
+
+**The forward-install intent (rev 3).** A crash inside npm happens before `expected.new` exists. So before npm runs, the updater journals `installing` with substep `intent`:
+```ts
+installIntent = { preimage: { dir, manifestSha256 }, destination: { packagePath, binLinks: string[] }, target: Artifact, command: string[] }
+```
+- The preimage must already be verified (§6.3) when this is written.
+- **While `installing`:** the package path's contents may be anything partial, *inside the recorded destination only*: the package path and the named bin links. Such a partial package authorizes exactly one thing, a restore from the verified preimage.
+- **Ownership** (uid, home, prefix, unit, fragment; §3.1) is still required to match, and the **service definition** must still be the attempt's own (its drop-in, §6.2, and `unit.preimage`'s fragment). Any change there fails closed into manual-recovery.
+
+Each stage compares the live tuple with the one it expects:
 
 | Stage | Expected |
 |---|---|
-| `opened` to `stopping` | `old` |
-| `snapshotted` | `old` (nothing installed yet) |
-| `installing` | `old` or `new` or a recorded partial state of the package substeps (§6.3) |
+| `opened` to `stopping`, `snapshotted` | `old` |
+| `installing` | `old`, or `new`, or partial within the intent's destination |
 | `trial`, `proving`, `committing` | `new` |
 | `rolling-back` | whatever the restore's journaled substeps say is current |
 
-- A tuple that matches neither what the stage allows nor a recorded partial state goes to **manual-recovery**.
+Anything else goes to manual-recovery.
 
 ### 3.3 Fleet generations
-- `fleets[]` records each fleet the attempt knows: `{ gen: "old" | "trial" | "rollback", pid, start, bootId, exe, argv, mainPid }`. A generation is recorded when the updater starts it, or, for `old`, at open.
-- **Stopping a fleet requires it to be the recorded generation that the stage expects:** `old` before the snapshot, `trial` on rollback. MainPID is read from the service manager and compared with the generation's pid.
-- An unrecorded process holding `fleet.lock`, or a MainPID that matches no recorded generation, is not stopped. The attempt goes to manual-recovery.
+- `fleets[]` records each fleet the attempt knows: `{ gen: "old" | "trial" | "rollback", nonce, pid?, start?, bootId, exe?, argv?, mainPid? }`.
+- **Planned before it is started (rev 3).** Before the updater, or the recovery runner, starts a fleet, it journals the generation with a fresh `nonce` and no pid (substep `start-planned`). The started fleet takes `fleet.lock` through the handoff (§4.3) with that nonce. Its pid is then recorded from the lock record, so a start whose pid line never landed is still recognised by its nonce.
+- **Stopping a fleet** requires it to be the recorded generation that the stage expects: `old` before the snapshot, `trial` on rollback. Identity comes from the `fleet.lock` record (pid plus nonce) and the service manager's MainPID.
+- **An unrecorded holder** of `fleet.lock`, or a MainPID that matches no generation, is not stopped. The attempt goes to manual-recovery.
 
 ### 3.4 The locks
 - **Order:** home, then prefix, then service. That is the order the shipped CLI already takes home and prefix in (#4489). Release is in reverse.
@@ -172,28 +180,53 @@ ArtifactTuple = { version; integrity; bins: Record<"agend"|"agend-agent", realpa
 
 ## 4. Writers: excluded for the whole interval (2.3)
 
-The snapshot and the restore run only while nothing else can write the home's state. **Exclusion is held, not inferred from one scan.**
+The snapshot and the restore run only while nothing else can write the home's state. **Exclusion is enforced, not inferred from one scan.**
 
-### 4.1 What is stopped and fenced
-1. **Stop all writers:**
+### 4.1 Who can write an included file
+By the writer inventory (§5.1), every included path is written only by **this install's AgEnD processes**:
+- the fleet;
+- its daemons;
+- the `agend` CLI's state-writing commands (for example `agend task`, which writes `scheduler.db` from a shell).
+
+Neither CLI-owned files nor files in a CLI's profile are included, rev 3. `credential-profiles/` is now excluded whole (§5.1), so no included file has an external writer.
+- **Other installs:** none can be present. Phase 2 runs only in class self, so P2 has proven no other install's fleet, service or global copy.
+
+### 4.2 Stop, fence, and enforce
+1. **Stop:**
    - the old fleet (its recorded generation, §3.3);
    - its daemons;
    - the agents' CLI processes it started for this home;
    - the home's private tmux server.
+   The agents stop through the fleet's own stop, then each recorded pane process is confirmed gone.
+2. **Fence the fleet:** the updater takes `fleet.lock` itself, with role `update` and its attempt id. Every fleet start, and with it every agent start, is refused until the handoff (§4.3).
+3. **Fence the CLI:** every state-writing `agend` command checks the journal before it opens a file of the scope. While `current` names an open, unknown or manual attempt, it refuses with the attempt's id and stage.
+   - The check sits in one place: the CLI's state-open helpers, which `scheduler/db.ts`, the config writer and the like already go through. The writer inventory's test lists every state-writing command and fails if one bypasses the check.
+   - Only the authenticated helpers (§4.4) are exempt.
+4. **The proof:** the writers-gone proof (§4.4) runs after the fences, and again after the copy or restore, before its result is published.
+5. **The wait:** a writer still present gets 60 s, polled. On expiry the recorded abandon procedure runs: restart the old fleet, hand back the inbox and the deferred jobs, then `abandoned` (open point 4, §8).
 
-   The agents are stopped through the fleet's own stop (`stopAll`), as `agend stop` does, then each recorded pane process is confirmed gone.
-2. **The fence:** the updater then takes `fleet.lock` itself, with role `update` (a new `FleetLockRole`). That keeps every fleet start out, of this install or any other, and with it every agent start. It holds the lock until it starts a fleet itself (`trial` or `rollback`), handing the lock to that start through the service lock's token.
-3. **The proof:** the writers-gone proof runs **after** the fence, and again **after** the copy or restore and before its result is published.
-   - It finds no process of this uid that has this home as `AGEND_HOME`, its cwd under the home, or a file under the home open or mapped (`/proc/*/fd`, `/proc/*/maps`; macOS `lsof -Fn +D`).
-   - A scan that fails or can't read a process of this uid is **incomplete**, never proof of absence (as P2).
-   - A writer found after the copy discards that copy, and the attempt goes on as the stage says:
-     - before `snapshotted`: abandoning;
-     - on restore: retry, bounded, then manual-recovery.
-4. **Wait bound:** a writer that is still present gets 60 s, polled. On expiry the recorded abandon procedure runs: restart the old fleet, hand back the inbox and the deferred jobs, then `abandoned`. Accepted work is never discarded (open point 4, §8).
+### 4.3 The fleet.lock handoff: no unowned gap
+- `fleet.lock` holds the updater's record `{ pid, role: "update", attemptId, handoff: null }` from the fence until a fleet the attempt starts takes it over.
+- **To start a generation** (`trial`, `rollback`, or `old` on abandon):
+  1. The updater or runner journals the planned generation (§3.3).
+  2. It writes `handoff: { nonce, gen }` into its own lock record: tmp, fsync, rename.
+  3. It starts the service, or spawns the fleet when there is no service.
+- **The starting fleet's `acquireFleetLock`**, finding role `update`:
+  - takes it over only when the attempt's journal names a planned generation with exactly that nonce, unconsumed, and the lock record's handoff carries the same;
+  - takes over by writing its own record `{ pid, role: "fleet", nonce }` to a tmp file and renaming it over the lock: one atomic replacement, never a release and a re-acquire;
+  - refuses on any other record or nonce.
+- **The nonce** reaches a service start through the journal: the pre-start step (§6.2) passes it on as `AGEND_UPDATE_HANDOFF`. A spawned fleet gets it in its environment. It is single-use: the journal marks it consumed when the pid lands.
 
-**CLI writers of included files:** `credential-profiles/*/*/.claude.json` is AgEnD-written and included, and the CLIs also write it. The agents' CLIs are stopped (step 1), and a CLI run by hand with that profile is found by the proof (step 3). Its hash is taken again right after the copy; a change means the copy is redone, bounded, and otherwise the attempt is abandoned.
+### 4.4 The writers-gone proof, and who is exempt
+- **The proof looks for** any process of this uid that has `AGEND_HOME` equal to this home, its cwd under the home, or a file of the scope open or mapped (Linux `/proc/*/{environ,cwd,fd,maps}`; macOS `lsof -Fn +D`).
+- **An incomplete scan** (a failed listing, or a process of this uid that can't be read) is never proof of absence.
+- **The exempt set** is exactly these, each recorded with its start time:
+  - the updater (`attempt.updater`);
+  - the recovery runner (`attempt.runner`, §6.2);
+  - processes whose ancestor chain, by `/proc/<pid>/stat` ppid read with start times, reaches one of those two and that the attempt itself spawned (`attempt.helpers[]`, written before the spawn is acknowledged).
+  Nothing else is exempt, by name or by argv.
 
-### 4.2 SQLite: committed content only, checkpoint checked
+### 4.5 SQLite: committed content only, checkpoint checked
 For each included database:
 1. Open it, alone, at its **confined real path** (§5.2).
 2. Run `PRAGMA wal_checkpoint(TRUNCATE)` and read its result row `(busy, log, checkpointed)`. Require `busy = 0` and `log = checkpointed`; after TRUNCATE, `log = 0`. Anything else is an incomplete checkpoint: the attempt is abandoned.
@@ -212,18 +245,30 @@ The test seeds committed WAL frames that aren't checkpointed yet (they must be i
 - **Excluded:**
   - `.update-journal/`;
   - `workspaces/` (the agents' working directories);
-  - `credential-profiles/*/*/` except `.claude.json`;
+  - `credential-profiles/` (whole, rev 3: the CLIs' homes, including the profiles' `.claude.json`);
   - `cx/`;
   - `cache/`, `cache-codex-rollouts.json`, `usage-last-good.json`, `search.db*` (caches and a rebuildable index);
   - logs (`*.log`, `instances/*/output.log`, `profiles/`);
   - runtime (`tmux/`, `operator/`, `*.sock`, `fleet.pid`, `fleet.lock`, the update and service locks, `tunnel.lease`, `web.token`, `view.token`);
   - `update-in-progress.json`.
-- **Why the snapshot exists:** the Hub databases (`hub/hub.sqlite`, `hub-member/**/member.sqlite`) are included. An older build refuses a newer Hub schema.
+- **Why the snapshot exists:** the Hub databases are included. An older build refuses a newer Hub schema.
 
-**The ownership contract** (open point 1, §8):
-- `src/update-snapshot-scope.ts` holds the list. Next to it is the **writer inventory**: every module that writes under the home or outside it, with the paths it writes. That covers the default CLI profiles outside the home that AgEnD configures; today those are only paths inside the home, and the inventory says so explicitly.
-- A test fails when code writes a path, judged by a scan of the `join(dataDir, …)` and `homedir()` path literals plus the private list in `agent-file-read.ts`, that the inventory doesn't classify.
-- **A release whose own writer inventory writes into an excluded or outside path** isn't eligible for an automatic rollback (Phase 5, required updates). Phase 3's index carries that flag; until then, the running build's inventory is the record. Such a release updates through Phase 1, on an admin's press.
+**The writer inventory and eligibility (rev 3).** `src/update-snapshot-scope.ts` holds the scope and, next to it, the **writer inventory**: every module that writes a file, with its path and its **phase**.
+- **pre-commit:** fleet startup in trial mode, migrations, the update and rollback themselves.
+- **post-commit:** agent launch, CLI activity, ordinary operation.
+
+Paths outside the home are listed too. Today these are:
+- the default Claude Code config, `$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json` (`backend/claude-code.ts:158-161`, written when an agent launches, for trust and onboarding);
+- a profile's own `.claude.json` (`credential-profiles/claude-code/*/.claude.json`, at agent launch);
+- the CLIs' own files, which AgEnD never writes.
+
+The test fails when a path literal written by the code (a scan of `join(dataDir, …)`, `homedir()`, `CLAUDE_CONFIG_DIR`) isn't classified.
+
+**Eligibility.** A release is eligible for the transaction's automatic rollback only when **no pre-commit writer touches an excluded or outside path**. Ordinary post-commit writes to excluded state (logs, caches, agent and CLI activity, a `.claude.json` at agent launch) don't count:
+- agents aren't started before commit (trial mode, 2.4);
+- a rollback after commit is Go back, which names what it can't restore.
+
+Today's inventory has no pre-commit writer outside the scope. A release that adds one updates through Phase 1, on an admin's press. Phase 3's index carries the flag; until then it is the running build's inventory.
 
 ### 5.2 Confinement (before anything is opened)
 - The scope is walked from `realpath(home)` with `lstat`, never following a link.
@@ -243,34 +288,45 @@ The test seeds committed WAL frames that aren't checkpointed yet (they must be i
 ### 5.4 Space
 P6 adds the scope's size, measured before the barrier opens.
 
-### 5.5 Restore: a per-path protocol, crash-safe
-**The plan.** Under the three locks, after re-proving ownership (§3.1) and with the writers excluded (§4):
-1. Write `restore.log`'s header: the snapshot manifest's sha256, plus the **current inventory** of the scope (every path present now, with `{ type, size, mtime, ino }`). Fsync.
-2. Every step appends one line `{ rel, step, … }` and fsyncs it **after** the effect is durable.
+### 5.5 Restore: a per-unit protocol, crash-safe
 
-**Per path** `rel` in (current inventory ∪ manifest), in a fixed order (deepest first for moves, shallowest first for copies):
-- **`aside`** (rel exists now): rename `<home>/rel` to `replaced/<rel>`, then fsync both directories, then log `aside`.
-  - `replaced/<rel>` is created only by this rename. If it already exists and the log has no `aside` for rel, the run stops in manual-recovery: something unknown happened.
-- **`restored`** (rel in the manifest):
-  - a regular file: copy `snapshot/<rel>` to `<home>/<rel>.restore-tmp`, fsync, rename to `<home>/<rel>`, fsync the directory, then log `restored`;
-  - a directory: create it with its mode;
-  - a link: create `<rel>.restore-tmp` as a link to the recorded target, then rename it into place.
+**Units and containers (rev 3).** The scope splits into two kinds of path:
+- **A unit** is the largest path whose whole subtree is in scope: a file, a link, or a directory with no excluded descendant. A unit moves and is restored **whole**, as one subtree.
+- **A container** is a directory with some excluded descendants: the home itself, `instances/<name>/` (its `output.log` is excluded), `hub/`. A container is **never moved**. Its included children are units of their own, and its mode is restored separately at the end.
+- Units never nest, so no move lands on a non-empty destination it created itself.
 
-**A retry** (a crash at any point) replays the log. For each rel:
-| Logged | Found now | Action |
+**The plan.** Under the three locks, with ownership re-proven (§3.1) and the writers fenced (§4):
+1. Compute the current units: every unit present now, with `{ type, dev, ino, size, mtime }` for its root.
+2. Write `restore.log`'s header: those units plus the snapshot manifest's sha256. Fsync.
+
+Nothing is moved before the header is durable. A crash before then means no `restore.log`, and the restore starts again from the plan.
+
+**Per unit** `u`, in a fixed order: (current units ∪ manifest units), sorted by path:
+- **`aside`** (u is in the current units): rename `<home>/u` to `replaced/u` (its parent containers are created there first), fsync both parent directories, then log `aside`.
+- **`restored`** (u is in the manifest):
+  1. Build the unit from `snapshot/u` at `<home>/u.restore-tmp`: a file copied; a directory copied as a tree (each file fsynced, then directories bottom-up); a link created with its recorded target.
+  2. Rename `<home>/u.restore-tmp` to `<home>/u`, fsync the parent, then log `restored`.
+- A **new-only unit** (current, not in the manifest) is only moved aside.
+- **Containers** missing in the home are created, and every container's mode is set as recorded. This is logged as `containers`.
+
+**A retry** replays the log. For each unit `u`:
+| Logged | Found | Action |
 |---|---|---|
 | `restored` | — | done |
-| `aside`, not `restored` | `<home>/rel` equals the manifest (type, sha256 or target) | log `restored`: the rename landed and the log line didn't |
-| `aside`, not `restored` | anything else | remove `<rel>.restore-tmp` if present, then copy again |
-| neither | `<home>/rel` exists, and so does `replaced/<rel>` | **manual-recovery** (never overwrite `replaced/`) |
-| neither | otherwise | do `aside`, then `restored` |
+| `aside`, not `restored` | `<home>/u` exists and matches the manifest | log `restored` (the rename landed; its log line didn't) |
+| `aside`, not `restored` | otherwise | remove `<home>/u.restore-tmp` if present; build and rename again |
+| neither | `<home>/u` absent, and `replaced/u` exists with the header's `{ dev, ino, type }` for u | log `aside` (the move landed; its log line didn't); go on as above |
+| neither | `<home>/u` present, and `replaced/u` absent | do `aside`, then `restored` |
+| neither | `<home>/u` absent, and u isn't in the current units (manifest-only) | `restored` |
+| neither | anything else (both present; or `replaced/u` with another identity) | manual-recovery |
 
-**After every path:**
-- verify the restored scope against the manifest as an exact set: nothing extra, because the inventory moved everything else aside;
-- run the writers-gone proof again (§4.1, step 3);
+**After every unit:**
+- run `containers`;
+- verify the restored scope against the manifest as an exact set;
+- run the writers-gone proof (§4.4) again;
 - log `verified`.
 
-`replaced/` and `snapshot/` are never modified by a retry. The crash test injects a crash after every rename, every fsync and before each log line, and requires the same end state from every point.
+`replaced/` and `snapshot/` are never modified by a retry. The crash test seeds nested directories, links, a new-only file and a new-only directory, a container with an excluded child, and a manifest-only unit. It crashes after every rename, every fsync and before every log line, including before the first `aside` line, and requires the same end state from each point.
 
 ### 5.6 Commit
 - At commit (2.5), the attempt's artifacts are recorded in `retained.json` for **Go back**: the snapshot, the package preimage, the unit preimage and the recovery kit. They are kept for 7 days.
@@ -307,21 +363,45 @@ Before the install starts (still in `snapshotted`), the updater writes `<home>/.
 
 The kit is kept as long as anything can still need it: through `rolled-back`/`manual-recovery` until resolved, and through the Go-back window after a commit.
 
-### 6.2 How it is reached
-- **Through the service.** Before the install, under the service lock, the service definition gains a pre-start step:
-  - **systemd:** a drop-in `<unit>.d/agend-update-recovery.conf` with `ExecStartPre=<kit>/node <kit>/recover.cjs --home <home> --pre-start`, then `daemon-reload`;
-  - **launchd:** the plist's `ProgramArguments` is wrapped as `<kit>/node <kit>/recover.cjs --home <home> --then <the original arguments…>`, then reloaded.
+### 6.2 How it is reached: a pre-start check that hands off, never runs the transaction itself
+**The pre-start step (rev 3).** Before the install, under the service lock, the service definition gains a pre-start step:
+- **systemd:** a drop-in `<unit>.d/agend-update-recovery.conf` with `ExecStartPre=<kit>/node <kit>/recover.cjs --home <home> --pre-start`;
+- **launchd:** a wrapper in `ProgramArguments`.
 
-  The original definition's bytes are `unit.preimage`.
-- **On any start of the service**, `recover.cjs --pre-start` reads the journal:
-  - **none, or open with a live updater:** go on (exit 0, or exec `--then`);
-  - **open with a gone updater:** take the three locks, run `recoveryPlan` (§7), restore if it says so, and remove its own drop-in or wrapper (the unit preimage). Then go on: systemd runs the restored ExecStart after a `daemon-reload` recover.cjs requests. launchd: it execs the restored program;
-  - **unknown, manual, or an unknown updater:** exit non-zero with the attempt, the paths and the operator command. The service fails visibly; nothing is guessed.
-- **Through the operator:** `<home>/.update-journal/recovery/<id>/node …/recover.cjs --home <home>` is printed in every manual-recovery message, and in `agend update --resolve`'s help. It works with the package missing or broken.
-- **At the end:** commit and rollback both remove the drop-in or wrapper, as their last service step.
+The original definition's bytes are `unit.preimage`. The pre-start step runs **inside the service's start**, so it never stops, starts or reloads that service, and never restores anything. It only decides, from the journal:
+| Journal | Pre-start does |
+|---|---|
+| none | exit 0: a normal start (launchd: exec the original arguments) |
+| open; updater or runner live; a planned generation with an unconsumed handoff nonce (§4.3) | pass `AGEND_UPDATE_HANDOFF=<nonce>` on (systemd: written to `attempts/<id>/handoff.env`, read by the unit's `EnvironmentFile=-` in the same drop-in); exit 0 |
+| open; updater or runner live; no planned generation | exit non-zero: "AgEnD is updating (attempt, stage); this start is refused". The updater owns the service until the end |
+| open; updater and runner gone | start the **independent runner**, then exit non-zero (the start is refused) |
+| open; updater or runner liveness unknown, or unknown or manual | exit non-zero with the paths and the operator command |
+
+**The independent runner** runs outside the service's cgroup and job:
+- **systemd:** `systemd-run --user --unit=agend-update-recovery-<id> --collect --property=KillMode=process <kit>/node <kit>/recover.cjs --home <home> --run`. That is a transient service of its own, not a child of the unit.
+- **launchd:** a separate job, `launchctl submit -l com.agend.update-recovery.<id> -- <kit>/node … --run`.
+
+**The bootstrap handshake:**
+1. The pre-start step starts the runner and waits up to 10 s for `attempts/<id>/runner.json` (the runner's `{ pid, start }`, written after it holds the three locks).
+2. It then exits non-zero.
+3. If the runner can't be started or doesn't answer, the pre-start step still exits non-zero, with the operator command. The service fails visibly, and nothing is half-done: the runner only acts under the locks.
+4. While a runner is live, any further start (the unit's own `Restart=`) is refused at pre-start (the "live, no planned generation" row).
+
+**The runner owns the final service transition:**
+1. It waits until the refused start has ended: the unit is `inactive` or `failed`, and launchd's job is not running.
+2. It runs `recoveryPlan` (§7) and restores, under the locks.
+3. It removes the drop-in or wrapper (the unit restore, §6.3), then `daemon-reload` or the plist reload. That happens only with no start job in progress, so it never relies on a reload changing an active start's ExecStart.
+4. It plans the `rollback` generation (§3.3).
+5. It runs `systemctl --user reset-failed` and `start`, or `launchctl kickstart`, and waits for the generation's handoff.
+
+**The operator command**, `<home>/.update-journal/recovery/<id>/node …/recover.cjs --home <home> --run`, is the same runner, run from a shell outside the service. It works with the package missing or broken.
+
+**The live updater's own starts** (trial, abandon's restart) go through the same pre-start check, carrying their planned generation's nonce.
 
 ### 6.3 Package and unit restore: retryable substeps
 `restorePackagePreimage` consumes its copy, so the transaction doesn't use it. Its own preimage is a **copy**, taken before the install: `<prefix>/.agend-rollback/attempt-<id>/agend` (with the bin links' targets recorded), fsynced and hashed into `kit.json`.
+
+**The install** writes the forward intent (§3.2) after this preimage verifies and before npm runs.
 
 **Package restore**, with each substep journaled after its effect:
 1. `pkg-aside`: rename the current `<root>/@songsid/agend` to `<preimage>/replaced-package` (if present, and that destination is new).
@@ -333,7 +413,7 @@ A retry recognises each effect by the path's presence and its hash against the p
 
 **Unit restore:** write `unit.preimage`'s bytes to `<fragment>.restore-tmp`, fsync, rename, remove the drop-in, then `daemon-reload`, under the service lock. A retry compares the fragment's bytes.
 
-**The order** is state (§5.5), then package, then unit, then start the old version, recorded as generation `rollback`. Nothing starts a fleet on mixed state: the fence (§4.1) holds until that start.
+**The order** is state (§5.5), then package, then unit, then start the old version, recorded as generation `rollback`. Nothing starts a fleet on mixed state: the fences (§4.2) hold until that start's handoff (§4.3).
 
 ---
 
@@ -358,7 +438,7 @@ A retry recognises each effect by the path's presence and its hash against the p
 1. **Exclusions:** conditional on the ownership contract (§5.1). A release that writes excluded or outside state isn't eligible for automatic rollback, and the inventory gate covers who writes what, not only file names. External or default CLI profile configuration that an update can change is inventoried too.
 2. **Service commands during an attempt:** refused promptly with the attempt's id and stage; nothing queued (§3.4).
 3. **Full restore from `snapshotted`/`installing`:** one rule, now that the snapshot and the retry protocol are specified (§5.5, §6.3).
-4. **The 60 s writer wait:** bounded; expiry runs the recorded abandon procedure (restart, hand back), never discarding accepted work (§4.1).
+4. **The 60 s writer wait:** bounded; expiry runs the recorded abandon procedure (restart, hand back), never discarding accepted work (§4.2).
 
 ---
 
@@ -374,13 +454,25 @@ A retry recognises each effect by the path's presence and its hash against the p
 
 ---
 
+### Revision 3 (Prism 6065419816)
+| Review point | Where |
+|---|---|
+| 1. A landed `aside` before its log line; nested directories as units vs containers; new-only, manifest-only and link units; a crash before the first log line | §5.5 |
+| 2. The recovery runner outside the service or job; the pre-start check only decides and hands off; the bootstrap handshake and its failures; the runner owns the final transition after the refused start ends; the live updater's starts carry a planned nonce | §6.2 |
+| 3. Writers: `credential-profiles/` excluded whole, so no included file has an external writer; the CLI fence on state-writing commands; the atomic fleet.lock handoff by nonce; the authenticated exempt set | §4.1–4.4, §5.1 |
+| 4. The forward-install intent before npm; partial contents only within the destination, authorizing a preimage restore; the planned generation and nonce before a start | §3.2, §3.3, §6.3 |
+| Inventory: the default `.claude.json` outside the home named; eligibility by pre-commit writers only | §5.1 |
+
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
 - `update-journal.ts`: the layout, publication order, readers, stages and marks;
 - `install-ownership.ts`: ownership, tuples, generations;
 - the service lock, with the CLI's service commands taking it;
-- `fleet.lock`'s `update` role;
-- `update-recovery/`: `recoveryPlan` and the kit builder (`recover.cjs` bundled at build);
+- `fleet.lock`'s `update` role and the nonce handoff (§4.3);
+- the CLI's state-writing fence (§4.2, step 3);
+- the writers-gone proof with the exempt set (§4.4);
+- `update-recovery/`: `recoveryPlan`, the kit builder (`recover.cjs` bundled at build), and the pre-start decision table and runner handshake (§6.2);
+- the forward-install intent (§3.2) and planned generations (§3.3);
 - P8 reading `current`.
 
 2.1's tests:
