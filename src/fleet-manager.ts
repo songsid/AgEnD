@@ -2189,7 +2189,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { access } = await import("node:fs/promises"), { constants } = await import("node:fs");
     try { await access(found.root, constants.W_OK); await access(found.prefix, constants.W_OK); return true; } catch { return false; }
   }
-  private async launchHubUpdate(row: import("./update-idle.js").IdleUpdate, control: import("./update-idle.js").IdleUpdateLaunch): Promise<boolean> {
+  private async launchHubUpdate(row: import("./update-idle.js").IdleUpdate, control: import("./update-idle.js").IdleUpdateLaunch, pressed = false): Promise<boolean> {
     if (this.shuttingDown || this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !control.current()) return false;
     const claim = { startedAt: Date.now() }, owned = { id: row.id, claim };
     this.hubUpdateOwned = owned; this.webUpdateOwned = claim;
@@ -2198,7 +2198,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       || !setUpdateProgressStage(this.dataDir, "preparing", { version: row.version })) { release(); return false; }
     try {
       const child = await this.launchInstalledUpdate(`Hub-requested update ${row.id}`,
-        () => !this.shuttingDown && this.hubUpdateOwned === owned && control.current() && control.claim(), row.version);
+        () => !this.shuttingDown && this.hubUpdateOwned === owned && control.current() && control.claim(), row.version, pressed ? "press" : "unattended");
       if (!child) { release(); return false; }
       let endedOnce = false;
       const ended = () => {
@@ -2761,7 +2761,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: (read, retry, close) => this.attachHubExecutionAttention(read, retry, close),
           updates: { idle: () => this.hubUpdateIdle(), busy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir),
-            canInstall: () => this.hubUpdateCanInstall(), launch: (row, control) => this.launchHubUpdate(row, control),
+            canInstall: () => this.hubUpdateCanInstall(), launch: (row, control, pressed) => this.launchHubUpdate(row, control, pressed),
             active: id => this.hubUpdateOwned?.id === id, outcome: row => this.hubUpdateOutcome(row), notify: n => this.recordHubUpdateNotice(n) },
           attachUpdates: updates => { this.hubUpdates = updates; },
           attachRecommendations: read => { this.hubRecommendationRead = read; },
@@ -3747,6 +3747,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private updateCheckState: { offer: UpdateOffer | null; checkedAt: number; failed: boolean } | null = null;
   /** M-2738: a web "check now" in flight, and when the last one ran (one a minute at most). */
   private updateCheckNow: { running: Promise<void> | null; lastAt: number } = { running: null, lastAt: 0 };
+  /** M-3770 (#4480 §4): the last pre-flight — a diagnostic for the page; every launch proves its local checks again. */
+  private updatePreflight: import("./update-readiness.js").UpdatePreflight | null = null;
+  private updatePreflightRunning: Promise<void> | null = null;
   /** M-2738: a web start's Idempotency-Key → its answer (a retried request never starts a second update). */
   private webUpdateStarts = new Map<string, Promise<{ ok: true } | { ok: false; status: number; error: string }>>();
   /**
@@ -7598,8 +7601,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * independently with its log — or a failure in the progress marker. `stillAllowed` is asked again once the awaits
    * are done (the asker may have lost the right, or the fleet begun stopping, meanwhile).
    */
-  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean, pin?: string): Promise<import("node:child_process").ChildProcess | null> {
+  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean, pin?: string, kind: "press" | "unattended" = "press"): Promise<import("node:child_process").ChildProcess | null> {
     const { spawn } = await import("./child-process.js");
+    // M-3770 (#4480 §4): the machine's pre-flight, proven again now — before the installed agend is resolved or run.
+    const refused = await this.updatePreflightGate(kind);
+    if (refused) {
+      this.failUpdateProgress(refused);
+      return null;
+    }
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);
@@ -31575,6 +31584,41 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { target, fromChannel };
   }
 
+  /** M-3770: the pre-flight probes (runUpdatePreflight; tests stub that module, so no real npm or systemctl runs). */
+  protected async probeUpdatePreflight(opts: { target?: string | null; localOnly?: boolean }): Promise<import("./update-readiness.js").UpdatePreflight> {
+    const { runUpdatePreflight } = await import("./update-readiness.js");
+    return runUpdatePreflight(opts);
+  }
+
+  /** M-3770: refresh the cached pre-flight for the offered version. One at a time; never throws. */
+  refreshUpdatePreflight(): Promise<void> {
+    if (this.updatePreflightRunning) return this.updatePreflightRunning;
+    const running = (async () => {
+      try { this.updatePreflight = await this.probeUpdatePreflight({ target: this.updateCheckState?.offer?.version ?? null }); }
+      catch (err) { this.logger.warn({ err }, "Update pre-flight could not run"); }
+    })().finally(() => { if (this.updatePreflightRunning === running) this.updatePreflightRunning = null; });
+    this.updatePreflightRunning = running;
+    return running;
+  }
+
+  /**
+   * M-3770 (#4480 §4.2): identity is proven at the moment of change. The local checks run again now, whatever the cached
+   * result says; the network ones (P7, P10) are `agend update`'s own. The cache keeps them and takes the fresh rest.
+   * Returns the refusal in words, or null to go ahead.
+   */
+  async updatePreflightGate(origin: "press" | "unattended"): Promise<string | null> {
+    const { preflightRefusal, summarize } = await import("./update-readiness.js");
+    let fresh: import("./update-readiness.js").UpdatePreflight;
+    try { fresh = await this.probeUpdatePreflight({ localOnly: true }); }
+    catch (err) {
+      this.logger.warn({ err }, "Update pre-flight could not run at launch");
+      return t("update.preflight.refused", t("update.preflight.code.unreadable"));
+    }
+    const kept = (this.updatePreflight?.checks ?? []).filter(c => c.id === "P7" || c.id === "P10");
+    this.updatePreflight = summarize([...fresh.checks, ...kept].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1))), fresh.checkedAt);
+    return preflightRefusal(fresh, origin, (key, ...args) => t(key, ...args));
+  }
+
   /** M-2738: record a look's answer for the web — the same offer the notice below would make. */
   private recordUpdateCheck(currentVersion: string, found: { target: string; fromChannel: boolean } | null): void {
     const offer = found ? updateOffer(currentVersion, found.target, found.fromChannel, !!found.target && this.semverGt(found.target, currentVersion)) : null;
@@ -31587,6 +31631,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const { target, fromChannel } = await this.lookUpUpdateTarget(currentVersion);
       this.recordUpdateCheck(currentVersion, { target, fromChannel });
+      void this.refreshUpdatePreflight();                       // M-3770: the page's "Updates on this machine" line
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
@@ -31619,7 +31664,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         let current: string | null = null;
         try { current = this.runningAgendVersion(); } catch { /* unknown: the page compares nothing */ }
         const s = this.updateCheckState;
-        return { current, offer: s?.offer ?? null, hubRecommendation: this.hubRecommendedUpdate(), checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false };
+        return { current, offer: s?.offer ?? null, hubRecommendation: this.hubRecommendedUpdate(), checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false, preflight: this.updatePreflight };
       },
       checkUpdateNow: () => this.checkUpdateNow(),
       updateProgress: (): WebUpdateProgress | null => webProgressOf(readUpdateProgress(this.dataDir)),
@@ -31640,6 +31685,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try { currentVersion = this.runningAgendVersion(); } catch { return; }
       try { this.recordUpdateCheck(currentVersion, await this.lookUpUpdateTarget(currentVersion)); }
       catch { this.recordUpdateCheck(currentVersion, null); }
+      await this.refreshUpdatePreflight();                      // M-3770: answered with the page's next view
     })();
     try { await c.running; } finally { c.running = null; }
     return { ok: true };

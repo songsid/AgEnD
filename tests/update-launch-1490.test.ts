@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const boundaries = vi.hoisted(() => ({ commands: [] as any[], reads: [] as any[], version: "systemd 255\n", cgroup: "0::/\n", fail: false }));
+// M-3770: the launch's pre-flight (#4480 §4) is proven on a real install; here the machine is one that may update itself.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }], Date.now())) };
+});
 vi.mock("node:fs/promises", async original => {
   const real = await original<typeof import("node:fs/promises")>();
   return { ...real, readFile: ((path: unknown, options: unknown) => {

@@ -11,6 +11,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const spawned = vi.hoisted(() => [] as Array<{ cmd: string; args: string[]; env?: Record<string, string | undefined>; child: any }>);
+// M-3770: the launch's pre-flight (#4480 §4) is proven on a real install; here the machine is one that may update itself
+// (`preflight.checks` set: what the probes find instead; `preflight.calls`: what each run was asked).
+const preflight = vi.hoisted(() => ({ checks: null as null | Array<Record<string, unknown>>, calls: [] as unknown[] }));
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async (opts: unknown) => { preflight.calls.push(opts); return real.summarize((preflight.checks ?? [{ id: "P1", ok: true }]) as never, Date.now()); }) };
+});
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return { ...real, spawn: ((cmd: string, args: string[], o?: { env?: Record<string, string | undefined> }) => {
@@ -40,7 +47,7 @@ const { readUpdateProgress, beginUpdateProgress, setUpdateProgressStage } = awai
 const { failureCause, updateOffer, webProgressOf, webUpdateTarget, WEB_UPDATE_ADAPTER, SETTLED_SHOWN_MS } = await import("../src/web-update.js");
 
 const dirs: string[] = [];
-afterEach(() => { spawned.length = 0; installed.ok = true; installed.gate = null; vi.useRealTimers(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { spawned.length = 0; preflight.checks = null; preflight.calls.length = 0; installed.ok = true; installed.gate = null; vi.useRealTimers(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 function raw(port: number, method: string, path: string, headers: Record<string, string> = {}, body?: string): Promise<{ status: number; body: any }> {
   return new Promise((resolve, reject) => {
@@ -185,6 +192,55 @@ describe("M-2738: /ui/update on the dashboard", () => {
       // The GET itself never carries the updater's words.
       expect(JSON.stringify((await raw(f.port, "GET", "/ui/update", admin.read)).body)).not.toContain("npm could not say");
     } finally { await f.stop(); }
+  });
+
+  it("M-3770: the admin's view carries the machine's pre-flight (refreshed by the check); a read session's never does", async () => {
+    const f = await fleet();
+    try {
+      preflight.checks = [{ id: "P1", ok: true }, { id: "P3", ok: false, code: "linger-off", detail: { user: "u" } }];
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight).toMatchObject({
+        class: "admin-only", pressHere: true, checks: [{ id: "P1", ok: true }, { id: "P3", ok: false, code: "linger-off", detail: { user: "u" } }] }));
+      expect(preflight.calls[0]).toEqual({ target: "2.3.5-beta.3" });                 // P10 judges the offered version
+      expect((await raw(f.port, "GET", "/ui/update", f.session("read").read)).body).toEqual({ admin: false, current: "2.3.5-beta.2" });
+    } finally { await f.stop(); }
+  });
+
+  it("M-3770: a launch proves the pre-flight again (local checks only); a stop refuses it in words, and nothing runs", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");                                                   // cached: self
+      const admin = f.session("admin");
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight?.class).toBe("self"));
+      preflight.calls.length = 0;
+      preflight.checks = [{ id: "P1", ok: false, code: "checkout" }];                 // … but the machine changed since
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-pf-0001"), START)).status).toBe(202);
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.progress).toMatchObject({ stage: "failed", failed_stage: "preparing" }));
+      expect(preflight.calls).toEqual([{ localOnly: true }]);
+      expect(spawned).toEqual([]);
+      expect((await raw(f.port, "GET", "/ui/update/log", admin.read)).body.error).toMatch(/^This machine can't be updated from here: this AgEnD runs from a source checkout/);
+      expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight).toMatchObject({ class: "stop", pressHere: false });
+    } finally { await f.stop(); }
+  });
+
+  it("M-3770: an admin-only machine (no service) still takes an admin's press; P4 (no write access) does not", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      preflight.checks = [{ id: "P1", ok: true }, { id: "P4", ok: false, code: "no-write", detail: { path: "/usr/local/lib/node_modules" } }];
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-pf-0003"), START)).status).toBe(202);
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update/log", admin.read)).body.error).toContain("run `sudo agend update` in a terminal there"));
+      expect(spawned).toEqual([]);
+    } finally { await f.stop(); }
+    const g = await fleet();
+    try {
+      await g.offer("2.3.5-beta.3");
+      preflight.checks = [{ id: "P1", ok: true }, { id: "P3", ok: false, code: "not-service" }];
+      expect((await raw(g.port, "POST", "/ui/update/start", g.session("admin").write("k-pf-0004"), START)).status).toBe(202);
+      await vi.waitFor(() => expect(spawned).toHaveLength(1));
+    } finally { await g.stop(); }
   });
 
   it("Check for updates: looks now, no chat notice; once a minute", async () => {

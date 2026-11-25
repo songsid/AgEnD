@@ -13,6 +13,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const spawned = vi.hoisted(() => [] as Array<{ cmd: string; args: string[] }>);
 const registry = vi.hoisted(() => ({ tags: {} as Record<string, string>, views: [] as string[], prefix: null as string | null }));
+// M-3770: the launch's pre-flight (#4480 §4) is proven on a real install; here the machine is one that may update itself.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }], Date.now())) };
+});
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return {
@@ -162,6 +167,27 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
     expect(await commands.handleGeneralCommand(msg)).toBe(true);
     expect(spawned).toEqual([]);
     expect(failed).toEqual([expect.stringContaining("not the installed package's")]);
+  });
+});
+
+describe("M-3770 (#4480 §4.2): chat /update proves the machine's pre-flight at launch", () => {
+  it("Telegram /update asks the fleet's gate as a press; a refusal is the progress's words, and nothing is resolved or run", async () => {
+    globalInstall();
+    const failed: string[] = [], asked: string[] = [];
+    const sendText = vi.fn().mockResolvedValue({ messageId: "p1", chatId: "chat", threadId: "1" });
+    const adapter = { id: "telegram-main", type: "telegram", sendText };
+    const commands = new TopicCommands({
+      adapter, adapters: new Map([["telegram-main", adapter]]),
+      fleetConfig: { channel: { access: { allowed_users: ["admin"] } } },
+      hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin", isFleetStopping: () => false,
+      dataDir: scratch(), failUpdateProgress: (m: string) => { failed.push(m); },
+      updatePreflightGate: async (origin: string) => { asked.push(origin); return "This machine can't be updated from here: AgEnD runs in a container; update the image. Nothing was changed."; },
+    } as any);
+    const msg = { text: "/update", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;
+    expect(await commands.handleGeneralCommand(msg)).toBe(true);
+    expect(asked).toEqual(["press"]);
+    expect(spawned).toEqual([]);
+    expect(failed).toEqual(["This machine can't be updated from here: AgEnD runs in a container; update the image. Nothing was changed."]);
   });
 });
 

@@ -129,6 +129,8 @@ export interface FleetContext {
   /** Persist and edit one `/update` message across the fleet process restart. */
   beginUpdateProgress?(adapter: import("./channel/types.js").ChannelAdapter, chatId: string, threadId: string | undefined, messageId: string): void;
   failUpdateProgress?(message: string): void;
+  /** M-3770 (#4480 §4.2): the pre-flight proven again at launch; the refusal in words, or null to go ahead. */
+  updatePreflightGate?(origin: "press" | "unattended"): Promise<string | null>;
   /** Persist `/restart full`, wait for idle, then launch the environment-aware service restart. */
   requestFullRestart?(
     adapter: import("./channel/types.js").ChannelAdapter,

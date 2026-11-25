@@ -37,7 +37,7 @@ async function world() {
   let now = Date.now();
   const options: MemberUpdatesOptions = { db, binding: "profile-A", hubName: "Team Hub", version: "2.3.5", current: () => true, service: () => true,
     idle: () => fm.hubUpdateIdle(), busy: () => false, now: () => now, lookup: vi.fn(async () => "found" as const), canInstall: vi.fn(async () => true),
-    launch: (row, control) => fm.launchHubUpdate(row, control), active: id => fm.hubUpdateOwned?.id === id, outcome: row => fm.hubUpdateOutcome(row), notify: n => fm.recordHubUpdateNotice(n) };
+    launch: (row, control, pressed) => fm.launchHubUpdate(row, control, pressed), active: id => fm.hubUpdateOwned?.id === id, outcome: row => fm.hubUpdateOutcome(row), notify: n => fm.recordHubUpdateNotice(n) };
   const updates = new HubMemberUpdates(options); fm.hubUpdates = updates; cleanup.push(() => updates.close());
   const link = { features: new Set(["fleet-update-v1"]), linkEpoch: 1, current: () => true, send: async () => {} } as unknown as HubMemberLink;
   const admit = async () => { updates.setConsent(true); const value = { id: randomUUID(), version: "2.4.0", requestedAt: now, expiresAt: now + 7 * 86_400_000, requestedBy: { name: "Alex" } }; updates.receive(value, link); await updates.tick(); return value; };
@@ -148,4 +148,14 @@ it("refuses the expired-request Update button without a committed local verifica
   const request = await w.admit(); expect(w.updates.view(request.id)?.state).toBe("expired");
   const result = await raw(w.port, "POST", "/ui/update/start", a.write, { confirm: "update-agend", hubRequestId: request.id });
   expect(result).toEqual({ status: 404, body: { error: "request_not_found" } }); expect(w.launcher).not.toHaveBeenCalled();
+});
+it("M-3770 (#4480 §4.1): the idle launch of a Hub request is unattended — its pre-flight must be self; the owner's own press is a press", async () => {
+  const w = await world(); await w.admit();
+  w.fm.getInstanceExecutionState.mockReturnValue("idle");
+  await w.updates.tick();
+  await vi.waitFor(() => expect(w.launcher).toHaveBeenCalledTimes(1));
+  expect(w.launcher.mock.calls[0]![3]).toBe("unattended");
+  const p = await world(), owner = p.session(), asked = await p.admit();
+  expect((await raw(p.port, "POST", "/ui/update/start", owner.write, { confirm: "update-agend", hubRequestId: asked.id })).status).toBe(202);
+  expect(p.launcher.mock.calls[0]![3]).toBe("press");
 });
