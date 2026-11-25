@@ -1,6 +1,6 @@
 # Updates people actually take (M-3762)
 
-**Status:** design, revision 3. It folds in Lumen's and Prism's reviews of revisions 1 and 2 (§10). The user approves it before any code.
+**Status:** design, revision 4. It folds in Lumen's and Prism's reviews of revisions 1–3, and the user's CLI compatibility input (§10). The user approves it before any code.
 **Asked by:** the user, 11-25, through the leader.
 - Most people don't know `/update`.
 - Like Windows Update, they press "Later": they fear their agents' work will stop or that the update will break something.
@@ -29,7 +29,7 @@ The leader added triggers, a pre-flight check and never-auto rules.
   - an attempt journal that survives the rollback.
 - **A signed release index**, published with every release, lets a fleet learn about newer builds without installing them. It covers:
   - known-bad versions and the security floor: a required update, which can't be deferred past its deadline;
-  - CLI drift, from each build's audited-CLI ledger;
+  - CLI compatibility: each build's audited CLIs, and a known high-impact list the daily patrol flags between releases (§5.4). Notices only under *Ask me*;
   - what a Hub needs;
   - how far behind the fleet is (a reminder only).
   The index binds the exact package bytes, only ever moves forward, and fails safe: if it is unverified, the fleet is notified and nothing is forced.
@@ -335,7 +335,9 @@ Both are signed and published on the docs site, mirrored as GitHub release asset
   "releases": [ { "version": "2.4.0-beta.25", "manifest": "2.4.0-beta.25.json", "sha256": "…" } ],
   "floor": { "id": "SEC-2026-03", "version": "2.4.0-beta.20", "dueAt": "2026-11-28T10:00:00Z", "summary": "…" },
   "knownBad": [ { "id": "BAD-2026-07", "versions": ">=2.4.0-beta.21 <2.4.0-beta.23", "kind": "lockup", "summary": "…", "fixedIn": "2.4.0-beta.23", "dueAt": "…" } ],
-  "hubMinMember": null }
+  "hubMinMember": null,
+  "cliCompat": {                            // §5.4: maintained by the daily upstream patrol, between releases
+    "claude-code": { "highImpact": [ { "version": "2.1.335", "since": "2026-11-26T03:00:00Z", "reason": "New permission prompt layout: agents may stall on it" } ] } } }
 // releases/<channel>/<version>.json (+ .sig)
 { "package": "@songsid/agend", "version": "2.4.0-beta.25", "channel": "beta",
   "integrity": "sha512-…",                 // npm's dist.integrity for that exact tarball
@@ -394,8 +396,8 @@ Recovery is a new trust epoch signed by the recovery key: it revokes the key, na
 |---|---|---|---|
 | T1 | **Known-bad version** (lockups, data errors, security) | `knownBad` matches the running version | **Required** (§5.3) |
 | T2 | **Below the security floor** | running < `floor.version` | **Required** |
-| T3 | **CLI drift** | below | **Recommended**; it schedules itself only under `auto-when-idle` |
-| T3b | **CLI drift that nothing covers yet** | drifted, in no newer manifest, and N or more releases past this build's newest audited (claude-code 5, others 2) | **Notify only**: "…6 versions past what AgEnD has checked; no version covers it yet. If an agent gets stuck, pin Claude Code to 2.1.333 in Accounts." |
+| T3 | **CLI drift** | below, and the CLI compatibility section (§5.4) | **Recommended**; it schedules itself only under `auto-when-idle` (D7). The notice itself is §5.4. |
+| T3b | **CLI drift that nothing covers yet**, or a **known high-impact** CLI version (§5.4) | drifted, in no newer manifest, and N or more releases past this build's newest audited (claude-code 5, others 2) | **Notify only**: "…6 versions past what AgEnD has checked; no version covers it yet. If an agent gets stuck, pin Claude Code to 2.1.333 in Accounts." |
 | T4 | **A vendor sign-in or API change** | a newer manifest's `vendorChanges` matches an installed CLI version, or the fleet sees an unknown sign-in screen or API error, and a newer manifest names a change for it | As T3 |
 | T5 | **The Hub needs a newer member** | the paired Hub's `hubMinMember`, carried in its signed recommendation | **Recommended**: a reminder, or scheduled only under `auto-when-idle` |
 | T6 | **Staleness** | stable 2 versions, or 30 days, behind | **Reminder only**, at most weekly |
@@ -440,6 +442,54 @@ Settings shows, **before any of this happens**, that "the publisher can mark a v
 
 ---
 
+### 5.4 CLI compatibility: the audited versions and the known high-impact list
+
+The user's input, extending C and D7. The agents' CLIs (Claude Code, Codex, Kiro…) update themselves. AgEnD reads each CLI's screens, and a release it hasn't audited can stall an agent. So the signed index carries a **CLI compatibility section**, published from our GitHub on the same signing path (§5.1).
+
+**What it holds**
+- **Audited versions, per AgEnD version, per CLI**, e.g. "AgEnD 2.4.0 is adapted to claude-code ≤ 2.1.333". This is each release manifest's `auditedCli`, which the release workflow takes from that build's `src/cli-audited.ts`. It isn't edited by hand.
+- **Known high-impact** (`cliCompat.<cli>.highImpact`): CLI versions with a confirmed breaking change that no shipped AgEnD handles yet. Each entry has a version, the time it was raised, and a one-line reason.
+  - The daily upstream patrol finds these: its precheck comes out **MAJOR (hard > 0)** while the full audit isn't merged.
+  - The leader marks it: "claude-code 2.1.335: major changes, not yet supported".
+
+**How the patrol publishes a flag** (a script and a signed index update, not a release)
+1. The leader runs the **`cli-compat` workflow** (`workflow_dispatch` on our GitHub) with `cli`, `version`, `reason`, and `add` or `clear`. Its script, `scripts/release/cli-compat.mjs`:
+   - edits only `cliCompat` in the channel's index;
+   - bumps `generation` and refreshes `issuedAt` and `expiresAt`;
+   - signs with the operational key that the publish workflow already holds (§5.1);
+   - publishes to the docs site and the release assets.
+2. Nothing is built or published to npm.
+3. **Clearing happens automatically** when the audit lands and an AgEnD that audits that version ships: the release workflow removes every `highImpact` entry the new release's `auditedCli` covers. An entry can also be cleared by hand (`clear`), for example if the change turns out harmless.
+4. Every change is public and attributable: it lands as a commit on the site's `releases/` path, with the reason.
+
+**What a fleet does with it** (the daily check, §1.1, and on the first start after an update)
+
+For each CLI version its agents **actually run** (§5.2, T3: each instance's executable, and the paired Runtime's report):
+
+| Case | Notice |
+|---|---|
+| The version is **known high-impact**, and a newer AgEnD on this channel audits it (it is in that release's `auditedCli`, and the release meets §5.2's target rule) | "Your Claude Code 2.1.335 may not work well with AgEnD 2.4.0: *reason*. AgEnD 2.4.1 supports it." |
+| **Known high-impact**, and no AgEnD supports it yet | "Your Claude Code 2.1.335 may not work well with AgEnD yet: *reason*. No AgEnD version supports it yet. Consider holding Claude Code at 2.1.333 (Accounts → Claude Code)." |
+| **Newer than this build's audited versions**, and a newer AgEnD audits it (T3) | "Your Claude Code 2.1.336 is newer than AgEnD 2.4.0 has checked. AgEnD 2.4.1 supports it." |
+| Newer than audited, nothing covers it, and N or more versions past (T3b) | as T3b |
+
+zh-TW:
+- 「你的 Claude Code 2.1.335 可能和 AgEnD 2.4.0 不太相容：*原因*。AgEnD 2.4.1 已支援。」
+- 「……目前還沒有支援它的 AgEnD 版本，建議先把 Claude Code 固定在 2.1.333（帳號 → Claude Code）。」
+
+**Where it shows**
+- The **update card** (§3.1) gets a reason line: "also: supports your Claude Code 2.1.335". The **Settings → Version and update** row shows the same.
+- **Needs you** gets one item per affected CLI version, naming the agents that run it. It is withdrawn by itself when the CLI moves to a supported version, an AgEnD that supports it is installed, or the flag is cleared.
+- The CLI's row in **Accounts** (and the Runtime page for a paired PC) shows a small "may not work well with this AgEnD" badge, linking to the same item.
+- **General** is told, with one fleet-context line while the item is open, so an agent asked "why is Claude stuck?" can point to it.
+
+**Under *Ask me*** these are notices only. A supporting AgEnD is offered on the card as usual; it schedules itself only under *Automatically when idle* (D7). A high-impact flag is **never** a required update (T1/T2), so it can never force an install. Its worst case, even from a stolen key, is a misleading notice.
+
+**Offline and fail-safe**
+- **Index verified within its validity:** as above.
+- **Expired or unverifiable, with a cached copy:** the cached last-verified section is still shown, labelled "as of <time>". It never names a newer AgEnD as supporting a CLI unless that came from a verified index, and it schedules nothing.
+- **Nothing cached, or no index at all** (Phase 1–2 builds): only the local rule runs, from this build's own `cli-audited.ts`: "Claude Code 2.1.336 is newer than this AgEnD has checked; if an agent gets stuck, hold it at 2.1.333." No claim about other AgEnD versions.
+
 ## 6. Rules and controls
 
 **Never automatically** (a scheduled, required, CLI-drift or Hub-triggered update):
@@ -472,7 +522,8 @@ Settings shows, **before any of this happens**, that "the publisher can mark a v
 | D4 | Signing keys: who holds the operational key (the publish step's secret store) and the offline recovery key (the user, offline); where the index lives (docs site + release assets) | As stated |
 | D5 | Phase 2: rollback restores the snapshot | Yes. The trial has no outside effects (§3.3), so nothing is lost. After the commit, **Go back** is a manual choice. |
 | D6 | Card cadence | One card per fleet. It reappears a week after the admin's last answer; required updates daily in the last 24 h. |
-| D7 | CLI drift under *Ask me* | The card only. It schedules under *Automatically when idle*. |
+| D7 | CLI drift, and the CLI compatibility notices (§5.4), under *Ask me* | Notices only: the card's reason line, Needs you, and the Accounts badge. A supporting AgEnD schedules itself only under *Automatically when idle*. |
+| D10 | Who may raise a **known high-impact** flag between releases (§5.4) | **The leader**, through the `cli-compat` workflow, with a one-line public reason, after the patrol's MAJOR precheck. It clears automatically when an AgEnD that audits the version ships. It is notice-only and can never require an update. |
 | D8 | Hub minimum member version | A reminder; it schedules only under *Automatically when idle* |
 | D9 | Two installs (P2) | Unknown or shared means **Stop**; proven disjoint means **Admin only** |
 
@@ -538,3 +589,14 @@ A rehearsal (like S-233's) proves phases 2–4 on real installs: a forced trial 
 | Prism R2-6: operator settings in the UI | §6: Advanced in Settings (pin, longest wait), and `fleet.yaml` |
 | Lumen nits | §6 pin follows D3's option; P6 counts the snapshot from Phase 2; P4 has no button on the card |
 | Prism R3 clarifications | §5.1: `epoch` in the index example. §3.3, step 5: `send_to_instance` refused before acceptance (the caller may resend) vs accepted or uncertain (the outbox retries; the caller never resends) |
+
+### Revision 4 (the user's CLI compatibility input, through the leader)
+
+| Input | Where |
+|---|---|
+| Per AgEnD version, per CLI: the audited versions, from `src/cli-audited.ts` at release | §5.4 (each manifest's `auditedCli`, written by the release workflow) |
+| A known high-impact list from the daily patrol (MAJOR precheck, audit not merged), cleared when the audit ships | §5.4: `cliCompat.<cli>.highImpact`; the `cli-compat` workflow (script plus signed index update, not a release); cleared automatically by the release that audits it |
+| The daily check, notices in the update surface and Needs you, wording | §5.4: the cases table (en/zh), where it shows (card reason line, Settings, Needs you per CLI, Accounts badge, General) |
+| Under Ask me, notify only; scheduling as D7 | §5.4, D7. A high-impact flag is never a required update |
+| Offline fallback | §5.4: cached and labelled "as of"; with no index, only the local rule from this build's ledger |
+| Who raises a flag | D10 |
