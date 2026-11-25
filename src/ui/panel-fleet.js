@@ -24,6 +24,7 @@ import { ContactAuthorizations } from "./contact-authorizations.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
+import { TabIcon } from "./fleet-tab-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
@@ -105,7 +106,7 @@ const DOCS_SITE = "https://songsid.github.io/AgEnD";
 export function docsUrl(language = lang()) {
   return `${DOCS_SITE}${language === "zh-TW" ? "/zh-tw" : ""}/docs/web-guide/`;
 }
-// M-3722: one icon each (a phone's tabs are icons only): Cache, Usage and Host health no longer share "chart".
+// M-3722: one icon each (a phone's tabs are icons only): Cache, Usage and Host health no longer share "chart" (fleet-tab-icons.js).
 const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "database", usage: "gauge", authorizations: "key", "host-health": "pulse" };
 const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"];
 
@@ -233,7 +234,7 @@ export function FleetPanel({ route, navKey }) {
     else if (a.left < n.left) nav.scrollLeft -= n.left - a.left;
   }, [phone, tab, admin, wide]);
   const tabs = (cls) => html`<nav data-trust="panel-navigation" class=${cls} aria-label=${t("fleet.title")}>${visibleTabs.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
-    aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>`;
+    aria-current=${k === tab ? "page" : undefined}><${TabIcon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>`;
   return html`<div ref=${root} data-effect-panel="fleet" class="panel p-fleet">
     ${/* M-2542: the tabs share the title row (PanelHeader's nav slot, as the instance tabs do) when everything fits
          there (useTabsInHeader), saving a line; otherwise — a phone, a narrow window, a long host memory warning — they
