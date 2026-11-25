@@ -14,8 +14,8 @@
  *
  * Synchronous on purpose: the updater and a fleet start read and write it before anything else runs.
  */
-import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, writeSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { closeSync, fsyncSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
+import { basename, dirname, join, parse as parsePath } from "node:path";
 
 export type Stage =
   | "opened" | "barrier" | "stopping" | "abandoning" | "abandoned"
@@ -64,36 +64,100 @@ export interface AttemptRecord {
   [extra: string]: unknown;
 }
 
-/** The I/O the journal does. `step` is called after every durable effect; a test throws there to crash the writer. */
+/**
+ * The journal's I/O, as primitives (Prism #4494 4). Every primitive that changes the disk calls `step` right after it
+ * with `<op>:<file name>`, so a test can stop the writer at any boundary: after a tmp file's fsync, after a rename,
+ * after a directory fsync. `trace` records the order. (A process crash between steps is what this exercises; the
+ * order itself is what a power loss relies on, and the trace test checks it.)
+ */
 export interface JournalIo {
   now(): Date;
-  /** Write a file atomically and durably: tmp, fsync, rename, fsync the directory. */
-  writeAtomic(path: string, data: string): void;
-  /** Rename, then fsync the destination's directory. */
-  renameDurable(from: string, to: string): void;
-  mkdirp(path: string): void;
+  /** Create or truncate `path`, write `data`, fsync it. */
+  writeSynced(path: string, data: string): void;
+  rename(from: string, to: string): void;
+  /** Hard-link `from` to `to`; throws with code EEXIST when `to` exists (a no-overwrite publication). */
+  link(from: string, to: string): void;
+  unlink(path: string): void;
+  /** Create one directory (not recursive); throws with code EEXIST when it exists. */
+  mkdir(path: string): void;
+  fsyncDir(path: string): void;
   read(path: string): string | null;            // null: absent (ENOENT); throws on any other error
   list(path: string): string[];                 // [] when absent
   step(name: string): void;
 }
 
-const fsyncDir = (dir: string): void => { const fd = openSync(dir, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } };
+const fsyncDirReal = (dir: string): void => { const fd = openSync(dir, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } };
 
 export const defaultJournalIo: JournalIo = {
   now: () => new Date(),
-  writeAtomic: (path, data) => {
-    const tmp = `${path}.tmp-${process.pid}`;
-    const fd = openSync(tmp, "w", 0o600);
-    try { writeSync(fd, data); fsyncSync(fd); } finally { closeSync(fd); }
-    renameSync(tmp, path);
-    fsyncDir(dirname(path));
-  },
-  renameDurable: (from, to) => { renameSync(from, to); fsyncDir(dirname(to)); if (dirname(from) !== dirname(to)) fsyncDir(dirname(from)); },
-  mkdirp: path => { mkdirSync(path, { recursive: true, mode: 0o700 }); },
+  writeSynced: (path, data) => { const fd = openSync(path, "w", 0o600); try { writeSync(fd, data); fsyncSync(fd); } finally { closeSync(fd); } },
+  rename: (from, to) => renameSync(from, to),
+  link: (from, to) => linkSync(from, to),
+  unlink: path => unlinkSync(path),
+  mkdir: path => mkdirSync(path, { mode: 0o700 }),
+  fsyncDir: fsyncDirReal,
   read: path => { try { return readFileSync(path, "utf8"); } catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; throw err; } },
   list: path => { try { return readdirSync(path); } catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return []; throw err; } },
   step: () => {},
 };
+
+const tmpOf = (path: string) => `${path}.tmp-${process.pid}`;
+
+/** Replace `path` atomically and durably: tmp written and fsynced, renamed over, the directory fsynced. */
+function writeAtomic(io: JournalIo, path: string, data: string): void {
+  const tmp = tmpOf(path);
+  io.writeSynced(tmp, data); io.step(`write:${basename(tmp)}`);
+  io.rename(tmp, path); io.step(`rename:${basename(path)}`);
+  io.fsyncDir(dirname(path)); io.step(`fsync-dir:${basename(dirname(path))}`);
+}
+
+/**
+ * Publish `path` only if it doesn't exist (Prism #4494 3): tmp written and fsynced, hard-linked into place (never
+ * replacing anything), tmp removed, the directory fsynced. An exact retry (the same bytes already there) succeeds; a
+ * conflicting one throws and the original stays.
+ */
+function writeNew(io: JournalIo, path: string, data: string): void {
+  const tmp = tmpOf(path);
+  io.writeSynced(tmp, data); io.step(`write:${basename(tmp)}`);
+  try { io.link(tmp, path); }
+  catch (err) {
+    try { io.unlink(tmp); } catch { /* best effort */ }
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    if (io.read(path) === data) return;                                      // an exact retry: already published
+    throw new Error(`${path} already exists with other content; the original is kept`);
+  }
+  io.step(`link:${basename(path)}`);
+  io.unlink(tmp);
+  io.fsyncDir(dirname(path)); io.step(`fsync-dir:${basename(dirname(path))}`);
+}
+
+/** Rename and make it durable: the destination's directory fsynced (and the source's, when different). */
+function renameDurable(io: JournalIo, from: string, to: string): void {
+  io.rename(from, to); io.step(`rename:${basename(to)}`);
+  io.fsyncDir(dirname(to)); io.step(`fsync-dir:${basename(dirname(to))}`);
+  if (dirname(from) !== dirname(to)) { io.fsyncDir(dirname(from)); io.step(`fsync-dir:${basename(dirname(from))}`); }
+}
+
+/**
+ * Create a directory chain durably (Prism #4494 4): each missing component made, then its parent fsynced, so a durable
+ * `current` can never name a directory whose link from its parent was lost. `exclusive`: the last component must not
+ * exist yet (an attempt's directory is never reused).
+ */
+function mkdirDurable(io: JournalIo, path: string, exclusive = false): void {
+  const parts: string[] = [];
+  for (let p = path; p !== parsePath(p).root; p = dirname(p)) parts.unshift(p);
+  parts.forEach((dir, i) => {
+    const last = i === parts.length - 1;
+    try { io.mkdir(dir); }
+    catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if (last && exclusive) throw new Error(`${dir} already exists; an attempt's directory is never reused`);
+      return;
+    }
+    io.step(`mkdir:${basename(dir)}`);
+    io.fsyncDir(dirname(dir)); io.step(`fsync-dir:${basename(dirname(dir))}`);
+  });
+}
 
 export const journalDir = (home: string) => join(home, ".update-journal");
 const currentPath = (home: string) => join(journalDir(home), "current");
@@ -109,14 +173,41 @@ export function newAttemptId(now: Date, hex8: string): string {
 }
 
 const STAGES = new Set<Stage>(Object.keys(NEXT) as Stage[]);
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+const isTime = (v: unknown): boolean => nonEmpty(v) && Number.isFinite(Date.parse(v));
+const isPid = (v: unknown): boolean => Number.isSafeInteger(v) && (v as number) > 0;
+const isArtifact = (v: unknown): boolean => isObj(v) && nonEmpty(v.name) && nonEmpty(v.version) && (v.integrity === null || nonEmpty(v.integrity));
+const isStart = (v: unknown): boolean => isObj(v) && nonEmpty(v.processStart)
+  && (v.startTicks === undefined || (typeof v.startTicks === "string" && /^\d+$/.test(v.startTicks)))
+  && (v.bootId === undefined || nonEmpty(v.bootId));
+
+/**
+ * Every required field, by shape (Prism #4494 2): a record that's valid JSON but malformed is invalid, so it reads
+ * unknown and is never cleared. Future opaque fields (ownership, tuples, generations) are 2.1b's.
+ */
 function parseRecord(text: string, id: string): AttemptRecord | null {
   let r: unknown;
   try { r = JSON.parse(text); } catch { return null; }
-  const a = r as Partial<AttemptRecord> | null;
-  if (!a || a.schema !== 1 || a.id !== id || !STAGES.has(a.stage as Stage) || !Array.isArray(a.history)
-    || typeof a.updater?.pid !== "number" || typeof a.updater?.start?.processStart !== "string") return null;
-  if (TERMINAL.has(a.stage as Stage) && (!a.outcome || a.outcome.kind !== a.stage)) return null;
-  return a as AttemptRecord;
+  if (!isObj(r) || r.schema !== 1 || r.id !== id || !(r.kind === "update" || r.kind === "go-back") || !isTime(r.createdAt)) return null;
+  if (!isObj(r.updater) || !isPid(r.updater.pid) || !isStart(r.updater.start) || !isArtifact(r.from) || !isArtifact(r.to)) return null;
+  const stage = r.stage as Stage;
+  if (!STAGES.has(stage) || (r.substep !== undefined && !nonEmpty(r.substep))) return null;
+  if (r.goBackOf !== undefined && !(typeof r.goBackOf === "string" && ID.test(r.goBackOf))) return null;
+  if (r.kind === "go-back" && r.goBackOf === undefined) return null;
+  const h = r.history;
+  if (!Array.isArray(h) || h.length === 0 || h[0]?.stage !== "opened") return null;
+  for (const e of h) {
+    if (!isObj(e) || !STAGES.has(e.stage as Stage) || !isTime(e.at) || (e.substep !== undefined && !nonEmpty(e.substep)) || (e.note !== undefined && typeof e.note !== "string")) return null;
+  }
+  if ((h[h.length - 1] as { stage: Stage }).stage !== stage) return null;
+  const terminal = TERMINAL.has(stage);
+  if (terminal !== (r.outcome !== undefined)) return null;
+  if (terminal) {
+    const o = r.outcome;
+    if (!isObj(o) || o.kind !== stage || !isTime(o.at) || (o.reason !== undefined && typeof o.reason !== "string")) return null;
+  }
+  return r as AttemptRecord;
 }
 
 export type JournalRead =
@@ -148,7 +239,7 @@ export function readCurrent(home: string, io: JournalIo = defaultJournalIo): Jou
 /** §2.4 step 3, for a "closing" journal: clear `current` (rename it into the attempt). Only under the home lock. */
 export function finishClosing(home: string, attempt: AttemptRecord, io: JournalIo = defaultJournalIo): void {
   if (!TERMINAL.has(attempt.stage) || attempt.stage === "manual-recovery") throw new Error(`attempt ${attempt.id} is not closing`);
-  io.renameDurable(currentPath(home), join(attemptDir(home, attempt.id), "current.closed"));
+  renameDurable(io, currentPath(home), join(attemptDir(home, attempt.id), "current.closed"));
   io.step("current-cleared");
 }
 
@@ -173,16 +264,17 @@ export function openAttempt(home: string, init: AttemptInit, io: JournalIo = def
   const at = io.now().toISOString();
   const attempt: AttemptRecord = { ...(init.extra ?? {}), schema: 1, id: init.id, kind: init.kind, createdAt: at, updater: init.updater, from: init.from, to: init.to,
     ...(init.goBackOf ? { goBackOf: init.goBackOf } : {}), stage: "opened", history: [{ stage: "opened", at }] };
-  io.mkdirp(attemptDir(home, init.id));
-  io.writeAtomic(recordPath(home, init.id), JSON.stringify(attempt, null, 2) + "\n");
+  // The chain .update-journal/attempts/<id> made durable first; the attempt's directory must be new (never rebound).
+  mkdirDurable(io, attemptDir(home, init.id), true);
+  writeNew(io, recordPath(home, init.id), JSON.stringify(attempt, null, 2) + "\n");
   io.step("record-written");
-  io.writeAtomic(currentPath(home), init.id + "\n");
+  writeAtomic(io, currentPath(home), init.id + "\n");
   io.step("current-written");
   return { ok: true, attempt };
 }
 
 function write(home: string, attempt: AttemptRecord, io: JournalIo, step: string): void {
-  io.writeAtomic(recordPath(home, attempt.id), JSON.stringify(attempt, null, 2) + "\n");
+  writeAtomic(io, recordPath(home, attempt.id), JSON.stringify(attempt, null, 2) + "\n");
   io.step(step);
 }
 
@@ -235,7 +327,9 @@ export function readMarks(home: string, io: JournalIo = defaultJournalIo): Marks
   if (text === null) return { ok: true, marks: [] };
   try {
     const v = JSON.parse(text) as unknown;
-    if (!Array.isArray(v) || !v.every(m => m && typeof (m as Mark).version === "string" && typeof (m as Mark).attemptId === "string")) return { ok: false, reason: "marks.json isn't a list of marks" };
+    const valid = (m: unknown) => isObj(m) && nonEmpty(m.version) && (m.integrity === null || nonEmpty(m.integrity))
+      && typeof m.attemptId === "string" && ID.test(m.attemptId) && isTime(m.at);
+    if (!Array.isArray(v) || !v.every(valid)) return { ok: false, reason: "marks.json isn't a list of valid marks" };
     return { ok: true, marks: v as Mark[] };
   } catch { return { ok: false, reason: "marks.json isn't JSON" }; }
 }
@@ -245,8 +339,8 @@ export function appendMark(home: string, mark: Mark, io: JournalIo = defaultJour
   const read = readMarks(home, io);
   if (!read.ok) throw new Error(`marks.json can't be read, so no mark is written over it: ${read.reason}`);
   if (read.marks.some(m => m.attemptId === mark.attemptId)) return;           // a retry after the mark landed
-  io.mkdirp(journalDir(home));
-  io.writeAtomic(marksPath(home), JSON.stringify([...read.marks, { ...mark, at: mark.at ?? io.now().toISOString() }], null, 2) + "\n");
+  mkdirDurable(io, journalDir(home));
+  writeAtomic(io, marksPath(home), JSON.stringify([...read.marks, { ...mark, at: mark.at ?? io.now().toISOString() }], null, 2) + "\n");
   io.step("mark-written");
 }
 
@@ -270,15 +364,15 @@ export const handbackSourceKey = (attemptId: string, seq: number) => `update-han
 
 export function writeInboxItem(home: string, attemptId: string, seq: number, source: InboxSource, item: InboxItem, io: JournalIo = defaultJournalIo): void {
   const dir = join(attemptDir(home, attemptId), "inbox");
-  io.mkdirp(dir);
-  io.writeAtomic(join(dir, inboxName(seq, source)), JSON.stringify(item) + "\n");
+  mkdirDurable(io, dir);
+  writeNew(io, join(dir, inboxName(seq, source)), JSON.stringify(item) + "\n");      // an accepted item is never replaced
   io.step(`inbox-${seq}`);
 }
 
 export function writeDeferred(home: string, attemptId: string, seq: number, job: { scheduleId: string; runId: string }, io: JournalIo = defaultJournalIo): void {
   const dir = join(attemptDir(home, attemptId), "deferred");
-  io.mkdirp(dir);
-  io.writeAtomic(join(dir, deferredName(seq)), JSON.stringify({ seq, ...job }) + "\n");
+  mkdirDurable(io, dir);
+  writeNew(io, join(dir, deferredName(seq)), JSON.stringify({ seq, ...job }) + "\n");
   io.step(`deferred-${seq}`);
 }
 
@@ -321,7 +415,9 @@ export function listHandback(home: string, attemptId: string, io: JournalIo = de
 /** `<file>.started` (a deferred job, before it runs) and `<file>.acked` (after its hand-back took effect). */
 export function markHandback(entry: HandbackEntry, mark: "started" | "acked", io: JournalIo = defaultJournalIo): void {
   if (mark === "started" && entry.kind !== "deferred") throw new Error("only a deferred job is marked started");
-  io.writeAtomic(`${entry.file}.${mark}`, JSON.stringify({ at: io.now().toISOString(), ...(entry.kind === "deferred" ? { runId: entry.job.runId } : {}) }) + "\n");
+  const path = `${entry.file}.${mark}`;
+  if (io.read(path) !== null) return;                                        // already marked: a mark is a fact, never rewritten
+  writeNew(io, path, JSON.stringify({ at: io.now().toISOString(), ...(entry.kind === "deferred" ? { runId: entry.job.runId } : {}) }) + "\n");
   io.step(`${mark}-${entry.seq}`);
 }
 
@@ -337,21 +433,41 @@ export function handbackAction(entry: HandbackEntry): "skip" | "claim" | "admit-
 
 /** The fleet's cancel request (§2.6): written only while the card is cancellable. */
 export function writeCancel(home: string, attemptId: string, cancel: { reason: string; by: string }, io: JournalIo = defaultJournalIo): void {
-  io.writeAtomic(join(attemptDir(home, attemptId), "cancel"), JSON.stringify({ ...cancel, at: io.now().toISOString() }) + "\n");
+  const path = join(attemptDir(home, attemptId), "cancel");
+  if (io.read(path) !== null) return;                                        // one cancel stands; a second one adds nothing
+  writeNew(io, path, JSON.stringify({ ...cancel, at: io.now().toISOString() }) + "\n");
   io.step("cancel-written");
 }
 
 /**
- * The updater consumes a cancel by the stage it finds (§2.6): honoured through `stopping` with no snapshot (the caller
- * then advances to abandoning), otherwise set aside as too late. Returns what was done.
+ * The updater consumes a cancel by the stage it finds (§2.6), under the home lock, crash-safe (Prism #4494 1):
+ *   honoured (opened, barrier, stopping with no snapshot): `abandoning` is journaled FIRST, then the marker becomes
+ *     `cancel.consumed`. A retry finds either the marker still there with the attempt already abandoning (it only
+ *     retires the marker), or no marker (nothing to do).
+ *   too late: a history note is journaled first, then the marker becomes `cancel.ignored-<stage>`.
+ * Returns the outcome and the attempt as now recorded.
  */
-export function consumeCancel(home: string, attempt: AttemptRecord, snapshotPublished: boolean, io: JournalIo = defaultJournalIo): "none" | "honoured" | "too-late" {
+export function consumeCancel(home: string, attempt: AttemptRecord, snapshotPublished: boolean, io: JournalIo = defaultJournalIo):
+  { result: "none" | "honoured" | "too-late"; attempt: AttemptRecord } {
   const path = join(attemptDir(home, attempt.id), "cancel");
-  if (io.read(path) === null) return "none";
-  const honour = (attempt.stage === "opened" || attempt.stage === "barrier" || (attempt.stage === "stopping" && !snapshotPublished));
-  io.renameDurable(path, honour ? `${path}.consumed` : `${path}.ignored-${attempt.stage}`);
-  io.step(honour ? "cancel-consumed" : "cancel-ignored");
-  return honour ? "honoured" : "too-late";
+  const text = io.read(path);
+  if (text === null) return { result: "none", attempt };
+  let reason = "cancelled";
+  try { const c = JSON.parse(text) as { reason?: unknown }; if (nonEmpty(c.reason)) reason = c.reason; } catch { /* the request stands; its words don't */ }
+  const honour = attempt.stage === "abandoning" || attempt.stage === "opened" || attempt.stage === "barrier" || (attempt.stage === "stopping" && !snapshotPublished);
+  let next = attempt;
+  if (honour) {
+    if (attempt.stage !== "abandoning") next = advance(home, attempt, "abandoning", { note: `cancel: ${reason}` }, io);
+    renameDurable(io, path, `${path}.consumed`);
+    return { result: "honoured", attempt: next };
+  }
+  const note = `cancel too late at ${attempt.stage}: ${reason}`;
+  if (attempt.history[attempt.history.length - 1]?.note !== note) {
+    next = { ...attempt, history: [...attempt.history, { stage: attempt.stage, at: io.now().toISOString(), note }] };
+    write(home, next, io, "cancel-ignored-noted");
+  }
+  renameDurable(io, path, `${path}.ignored-${attempt.stage}`);
+  return { result: "too-late", attempt: next };
 }
 
 // ── §7: crash recovery ─────────────────────────────────────────────────────────────────────────────────────────────

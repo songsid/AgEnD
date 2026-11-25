@@ -11,6 +11,16 @@ import {
   writeCancel, writeDeferred, writeInboxItem, type AttemptRecord, type JournalIo, type Stage,
 } from "../src/update-journal.js";
 
+/** The real I/O, recording every boundary, crashing at the n-th one (n < 0: never). */
+function traced(n = -1): { io: JournalIo; trace: string[] } {
+  const trace: string[] = [];
+  let steps = 0;
+  return { trace, io: { ...defaultJournalIo,
+    // The fsync itself is recorded too, so the order check sees the call, not only the step that follows it.
+    fsyncDir: dir => { trace.push(`(fsync ${dir.split("/").pop()})`); defaultJournalIo.fsyncDir(dir); },
+    step: name => { trace.push(name); if (steps++ === n) throw new Error(`crash at ${name}`); } } };
+}
+
 const homes: string[] = [];
 afterEach(() => { for (const h of homes.splice(0)) rmSync(h, { recursive: true, force: true }); });
 const home = () => { const h = mkdtempSync(join(tmpdir(), "journal-")); homes.push(h); return h; };
@@ -178,9 +188,11 @@ describe("M-3770 2.1a: the fleet's files (§2.6)", () => {
     for (const [stages, snapshot, want] of cases) {
       const h = home();
       const a = walk(h, opened(h), stages);
-      expect(consumeCancel(h, a, snapshot)).toBe("none");
+      expect(consumeCancel(h, a, snapshot).result).toBe("none");
       writeCancel(h, ID1, { reason: "the admin cancelled", by: "admin" });
-      expect(consumeCancel(h, a, snapshot)).toBe(want);
+      const done = consumeCancel(h, a, snapshot);
+      expect(done.result).toBe(want);
+      expect(done.attempt.stage).toBe(want === "honoured" ? "abandoning" : a.stage);
       const files = readdirSync(attemptDir(h, ID1));
       expect(files).toContain(want === "honoured" ? "cancel.consumed" : `cancel.ignored-${a.stage}`);
       expect(files).not.toContain("cancel");
@@ -202,5 +214,111 @@ describe("M-3770 2.1a: recoveryPlan (§7)", () => {
     for (const s of ["snapshotted", "installing", "trial", "proving", "rolling-back"] as Stage[]) expect(recoveryPlan(open(s, "pkg-staged"), "gone")).toEqual({ kind: "resume-rolling-back", attemptId: ID1, substep: "pkg-staged" });
     expect(recoveryPlan(open("committing", "deliver-inbox"), "gone")).toEqual({ kind: "resume-committing", attemptId: ID1, substep: "deliver-inbox" });
     expect(recoveryPlan({ state: "manual", attempt: { ...a, stage: "manual-recovery" } }, "gone")).toMatchObject({ kind: "refuse", reason: "manual" });
+  });
+});
+
+// Prism #4494: the four fixes.
+describe("M-3770 2.1a review: cancel, validation, immutable items, durable publication", () => {
+  it("(1) a crash after abandoning is journaled but before the marker is retired: the retry finds abandoning and only retires the marker", () => {
+    const h = home();
+    const a = walk(h, opened(h), ["barrier"]);
+    writeCancel(h, ID1, { reason: "the admin cancelled", by: "admin" });
+    expect(() => consumeCancel(h, a, false, crashAfter("stage-abandoning"))).toThrow(/crash/);
+    const read = readCurrent(h);
+    expect(read).toMatchObject({ state: "open", attempt: { stage: "abandoning" } });
+    expect(readdirSync(attemptDir(h, ID1))).toContain("cancel");                                  // the request still stands
+    const again = consumeCancel(h, (read as { attempt: AttemptRecord }).attempt, false);
+    expect(again.result).toBe("honoured");
+    expect(readCurrent(h)).toMatchObject({ attempt: { stage: "abandoning", history: expect.arrayContaining([expect.objectContaining({ note: "cancel: the admin cancelled" })]) } });
+    expect((readCurrent(h) as { attempt: AttemptRecord }).attempt.history.filter(x => x.stage === "abandoning")).toHaveLength(1);
+    expect(readdirSync(attemptDir(h, ID1))).toContain("cancel.consumed");
+  });
+
+  it("(1) a too-late cancel: its note is journaled before the marker moves, and a retry adds no second note", () => {
+    const h = home();
+    const a = walk(h, opened(h), ["barrier", "stopping", "snapshotted", "installing", "trial"]);
+    writeCancel(h, ID1, { reason: "late", by: "admin" });
+    expect(() => consumeCancel(h, a, true, crashAfter("cancel-ignored-noted"))).toThrow(/crash/);
+    const now = (readCurrent(h) as { attempt: AttemptRecord }).attempt;
+    expect(consumeCancel(h, now, true).result).toBe("too-late");
+    const notes = (readCurrent(h) as { attempt: AttemptRecord }).attempt.history.filter(x => x.note?.startsWith("cancel too late"));
+    expect(notes).toHaveLength(1);
+    expect(readdirSync(attemptDir(h, ID1))).toContain("cancel.ignored-trial");
+  });
+
+  it("(2) valid JSON with a missing or malformed required field is unknown, never closing, and current is never cleared", () => {
+    const h = home();
+    const a = walk(h, opened(h), ["abandoning"]);
+    expect(() => finish(h, a, { kind: "abandoned" }, crashAfter("terminal-abandoned"))).toThrow(/crash/);   // closing, then corrupt it
+    const good = JSON.parse(readFileSync(join(attemptDir(h, ID1), "attempt.json"), "utf8"));
+    const bad: Array<Record<string, unknown>> = [
+      { ...good, outcome: undefined }, { ...good, outcome: { kind: "abandoned" } }, { ...good, updater: { pid: 0, start: { processStart: "x" } } },
+      { ...good, updater: { pid: 4242, start: { processStart: "" } } }, { ...good, from: { name: "@songsid/agend", version: "2.4.0" } },
+      { ...good, to: undefined }, { ...good, kind: "other" }, { ...good, createdAt: "yesterday" }, { ...good, history: [] },
+      { ...good, history: [{ stage: "opened", at: "x" }] }, { ...good, stage: "abandoning" }, { ...good, kind: "go-back" },
+    ];
+    for (const rec of bad) {
+      writeFileSync(join(attemptDir(h, ID1), "attempt.json"), JSON.stringify(rec));
+      expect(readCurrent(h).state).toBe("unknown");
+      expect(openAttempt(h, init(ID2)).ok).toBe(false);
+      expect(existsSync(join(journalDir(h), "current"))).toBe(true);
+    }
+  });
+
+  it("(2) a mark missing its integrity, or otherwise malformed, makes the marks unknown (never 'not marked')", () => {
+    const h = home();
+    mkdirSync(journalDir(h), { recursive: true });
+    for (const marks of [[{ version: "2.4.1", attemptId: ID1, at: "2026-11-26T00:00:00Z" }], [{ version: "", integrity: null, attemptId: ID1, at: "2026-11-26T00:00:00Z" }],
+      [{ version: "2.4.1", integrity: null, attemptId: "x", at: "2026-11-26T00:00:00Z" }], [{ version: "2.4.1", integrity: null, attemptId: ID1 }]]) {
+      writeFileSync(join(journalDir(h), "marks.json"), JSON.stringify(marks));
+      expect(isMarked(h, { version: "2.4.1", integrity: "sha512-new" })).toBe("unknown");
+    }
+  });
+
+  it("(3) an accepted hand-back item is never replaced: an exact retry succeeds, a conflicting one refuses and keeps the original", () => {
+    const h = home();
+    opened(h);
+    writeInboxItem(h, ID1, 7, "outbox", { kind: "reference", deliveryId: "d-7", createdSeq: 70 });
+    writeInboxItem(h, ID1, 7, "outbox", { kind: "reference", deliveryId: "d-7", createdSeq: 70 });     // the same bytes: fine
+    expect(() => writeInboxItem(h, ID1, 7, "outbox", { kind: "reference", deliveryId: "d-OTHER", createdSeq: 71 })).toThrow(/other content/);
+    expect(JSON.parse(readFileSync(join(attemptDir(h, ID1), "inbox", "000000000007-outbox.json"), "utf8"))).toEqual({ kind: "reference", deliveryId: "d-7", createdSeq: 70 });
+    writeDeferred(h, ID1, 8, { scheduleId: "s", runId: "r" });
+    expect(() => writeDeferred(h, ID1, 8, { scheduleId: "s", runId: "r2" })).toThrow(/other content/);
+    expect(readdirSync(join(attemptDir(h, ID1), "inbox")).some(f => f.includes(".tmp-"))).toBe(false);
+  });
+
+  it("(3) an attempt id whose directory exists is never reused, even with no current", () => {
+    const h = home();
+    const a = walk(h, opened(h), ["abandoning"]);
+    finish(h, a, { kind: "abandoned" });
+    expect(readCurrent(h)).toEqual({ state: "none" });
+    expect(() => openAttempt(h, init(ID1))).toThrow(/never reused/);
+    expect(JSON.parse(readFileSync(join(attemptDir(h, ID1), "attempt.json"), "utf8")).stage).toBe("abandoned");
+  });
+
+  it("(4) publication order: the directory chain is durable (each new link's parent fsynced), then the record, then current", () => {
+    const h = home();
+    const { io, trace } = traced();
+    openAttempt(h, init(), io);
+    const hb = h.split("/").pop();
+    expect(trace).toEqual([
+      "mkdir:.update-journal", `(fsync ${hb})`, `fsync-dir:${hb}`, "mkdir:attempts", "(fsync .update-journal)", "fsync-dir:.update-journal",
+      `mkdir:${ID1}`, "(fsync attempts)", "fsync-dir:attempts",
+      `write:attempt.json.tmp-${process.pid}`, "link:attempt.json", `(fsync ${ID1})`, `fsync-dir:${ID1}`, "record-written",
+      `write:current.tmp-${process.pid}`, "rename:current", "(fsync .update-journal)", "fsync-dir:.update-journal", "current-written",
+    ]);
+  });
+
+  it("(4) a crash at every boundary of an open leaves either no attempt or the open one, never a current without its record", () => {
+    const full = traced(); openAttempt(home(), init(), full.io);
+    const steps = full.trace.filter(t => !t.startsWith("(fsync"));
+    const renamedAt = steps.indexOf("rename:current");
+    for (let i = 0; i < steps.length; i++) {
+      const h = home();
+      expect(() => openAttempt(h, init(), traced(i).io)).toThrow(/crash/);
+      const read = readCurrent(h);
+      expect(read.state).toBe(i >= renamedAt ? "open" : "none");                                    // current exists only once renamed in
+      if (read.state === "open") expect(read.attempt.id).toBe(ID1);
+    }
   });
 });
