@@ -332,6 +332,15 @@ function looksOf(L, work, q, mode, zones, badge = () => null) {
       badge: badge(n.name), fit: n.i && n.i.tag_fit && typeof n.i.tag_fit === "object" ? n.i.tag_fit : null }];
   }));
 }
+/**
+ * #4466: whoever's card is open (`carded`, the page's cardDesk) stands where they are now: `to` gets their place. Not
+ * while carried (the hold sets that), and not while calling (#4467 review: a caller walks to the Help desk as usual).
+ */
+export function cardStay(to, carded, held, walkers, t) {
+  if (!carded || !carded.walks || CALLING.has(carded.state) || (held && held.name === carded.name)) return;
+  const at = walkers.at(carded.name, t);
+  if (at) to.set(carded.name, { x: at.x, y: at.y });
+}
 /** `view` (buildOrgView's) with each renamed person's nickname set to the name this browser gives them. */
 export function renamedView(view, renames) {
   if (!view || !renames || !Object.keys(renames).length) return view;
@@ -491,7 +500,7 @@ function paintLayers(p, env, ls, tagsOff = false) {
     for (const d of all) skin.drawDeskBack(g, d, looks.get(d.key), env);
   });
   const front = zones ? null : layer((g) => {
-    for (const d of all) { const lk = looks.get(d.key); skin.drawDeskFront(g, d, tagsOff && lk && !lk.match ? { ...lk, notag: true } : lk, env); }
+    for (const d of all) { const lk = looks.get(d.key); skin.drawDeskFront(g, d, tagsOff && lk && !lk.match && !(tagsOff === "names" && CALLING.has(lk.state)) ? { ...lk, notag: true } : lk, env); }
   });
   return { ls, tagsOff, back, front };
 }
@@ -671,7 +680,8 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const over = p.L.over || new Set();
     const pinned = (q) => q.d.key === hot || !!q.look.match;
     const crowded = (q) => over.has(q.d.area) && !pinned(q);
-    const tagged = (q) => pinned(q) || !(tagsOff || over.has(q.d.area));
+    // A caller keeps their tag with names hidden (#4467 review): the Help desk always says who needs you.
+    const tagged = (q) => pinned(q) || (tagsOff === "names" && CALLING.has(q.look.state)) || !(tagsOff || over.has(q.d.area));
     const keep = [...titles.map((x) => x.box), ...(env.keepClear || [])];
     titleBoxes.push(...titles.map((x) => x.box)); titleDraws.push(...titles);
     const taken = [];
@@ -1483,8 +1493,7 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
       for (const [name, at] of snacks.targets(t)) to.set(name, at);
       const held = hold.held();                                     // M-3293: carried: where the pointer is, no walk
       if (held) to.set(held.name, held.at);
-      const carded = cardDesk.current, stay = carded && carded.walks ? walkers.at(carded.name, t) : null;
-      if (stay && (!held || held.name !== carded.name)) to.set(carded.name, { x: stay.x, y: stay.y });   // their card is open: no walk
+      cardStay(to, cardDesk.current, held, walkers, t);             // their card is open: no walk, unless calling
       // M-3539: a new office or style (a room's office reads its style after it opens) puts everyone at their place at
       // once: walking there from the old one's seats drew the asleep standing in the help desk for seconds.
       const placed = `${officeKey}\n${skin.id}`, fresh = placedRef.current !== placed;
@@ -1860,7 +1869,7 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
         s.part.cover = r.width > 0 && r.height > 0 ? { x: (r.left - c.left) * s.ratio, y: (r.top - c.top) * s.ratio, w: r.width * s.ratio, h: r.height * s.ratio } : null;
       } else s.part.cover = null;
       const e0 = clocked(""), kc = keepClearOf(canvasRef.current, v);
-      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, kc.length ? { ...e0, keepClear: kc } : e0, !!s.namesOff, null, s.bubbleHits);
+      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, kc.length ? { ...e0, keepClear: kc } : e0, s.namesOff ? "names" : false, null, s.bubbleHits);
       if (seenClips) clipClocks.current.prune(seenClips);
       return drawDialogue(ctx, s, ms) || moved;
     }
@@ -1875,7 +1884,7 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.beginPath(); ctx.rect(tx, ty, tw, th); ctx.clip();
-      if (drawPart(ctx, p, a * tt.s, tx, ty, ms, still, hot && hot.startsWith(p.prefix) ? hot.slice(p.prefix.length) : null, clocked(p.prefix), v.k * tt.s < TAG_MIN_K || !!s.namesOff, said, s.bubbleHits)) moving = true;
+      if (drawPart(ctx, p, a * tt.s, tx, ty, ms, still, hot && hot.startsWith(p.prefix) ? hot.slice(p.prefix.length) : null, clocked(p.prefix), v.k * tt.s < TAG_MIN_K || (s.namesOff ? "names" : false), said, s.bubbleHits)) moving = true;
       ctx.restore();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.strokeStyle = env.pal.border; ctx.lineWidth = 1;
@@ -2499,7 +2508,7 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
   const tipText = tipDesk ? nodeText(tipDesk.node) : null;
   // #2661: the card's person (gone from the office, filtered out or the office changed: it closes).
   const cardOf = card ? people.find((d) => d.key === card && d.node.i) || null : null;
-  cardDesk.current = cardOf ? { name: cardOf.node.name, box: cardOf.box, walks: zones && !overview, skin: cardOf.skin } : null;
+  cardDesk.current = cardOf ? { name: cardOf.node.name, state: cardOf.node.state, box: cardOf.box, walks: zones && !overview, skin: cardOf.skin } : null;
   useEffect(() => { if (card && !cardOf) setCard(null); }, [card, !!cardOf]);
   useEffect(() => { walkNow.current?.(); }, [cardOf ? cardOf.node.name : null]);   // stop there now; walk again once it closes
   const closeCard = () => {
