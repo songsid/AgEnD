@@ -155,7 +155,7 @@ export function claudeKeychainService(configDir: string): string {
 }
 
 /** Claude Code's top-level config file: `<profile dir>/.claude.json` for a profile, else honoring CLAUDE_CONFIG_DIR. */
-function claudeJsonPath(profileDir?: string | null): string {
+export function claudeJsonPath(profileDir?: string | null): string {
   const configDir = profileDir || process.env.CLAUDE_CONFIG_DIR?.trim();
   return configDir ? join(configDir, ".claude.json") : join(homedir(), ".claude.json");
 }
@@ -226,7 +226,7 @@ export function releaseClaudeJsonLock(lockPath: string, token: string): void {
  * unparseable file is likewise left untouched — never clobber the user's whole
  * config over a parse error. Both give up to the getStartupDialogs() fallback.
  */
-function updateClaudeJson(mutate: (cfg: Record<string, unknown>) => boolean, profileDir?: string | null): void {
+export function updateClaudeJson(mutate: (cfg: Record<string, unknown>) => boolean, profileDir?: string | null): void {
   const path = claudeJsonPath(profileDir);
   // The parent must exist before both the lock create and the rename — on a
   // fresh machine (no ~/.claude.json yet) an ENOENT here previously made every
@@ -238,7 +238,11 @@ function updateClaudeJson(mutate: (cfg: Record<string, unknown>) => boolean, pro
   try {
     let cfg: Record<string, unknown> = {};
     let raw: string | null = null;
-    try { raw = readFileSync(path, "utf-8"); } catch { /* missing file — create a minimal one */ }
+    try { raw = readFileSync(path, "utf-8"); } catch (err) {
+      // Only a missing file starts empty. Any other read error (permission, I/O) leaves the file untouched (M-3749 review):
+      // writing a fresh document would replace the user's whole config.
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") return;
+    }
     if (raw !== null) {
       try {
         const parsed: unknown = JSON.parse(raw);

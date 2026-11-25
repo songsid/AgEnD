@@ -544,6 +544,7 @@ type ReconcileObserver = (
 import { kiroHome } from "./backend/kiro-kas-store.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, claudeStoreEnded, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLaunch, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
+import { carryClaudeMcpServers, claudeJsonFor, dismissClaudeMcpMissing, recordClaudeMcpBeforeSwitch } from "./backend/claude-mcp-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, accountUsage, buildAccountsView, profilesOnDisk, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import { accountFolderExists, addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
@@ -10904,6 +10905,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (credentialSwitchStartsFresh(sw.backend)) this.writeFreshStartMarker(name);
       return null;
     }
+    // M-3749: the agent's own MCP servers (user scope, and local scope for its folder) go along too, merged — whatever
+    // becomes of the conversation. A failure is logged; the next launch's check tells the agent what it lacks.
+    if (sw.backend === "claude-code") {
+      const profileDir = (profile: string | null) => profile ? credentialProfileHome(this.dataDir, sw.backend, profile) : null;
+      try {
+        // What it has in the profile it leaves now (added this session too), so the next launch can say what is missing.
+        recordClaudeMcpBeforeSwitch({ instanceDir: this.getInstanceDir(name), configDir: claudeConfigDirFor(profileDir(sw.from)),
+          jsonPath: claudeJsonFor(profileDir(sw.from)), workingDirectory: sw.workingDirectory ?? "" });
+        const mcp = carryClaudeMcpServers({ fromProfileDir: profileDir(sw.from), toProfileDir: profileDir(sw.to), workingDirectory: sw.workingDirectory ?? "" });
+        const where = { name, from: sw.from ?? "default", to: sw.to ?? "default" };
+        if (!mcp.carried) this.logger.warn({ ...where, reason: mcp.reason }, "MCP servers not carried to the new credential profile");
+        else if (mcp.user.length || mcp.local.length || mcp.keptTarget.length) this.logger.info({ ...where, user: mcp.user, local: mcp.local, keptTarget: mcp.keptTarget }, "MCP servers carried to the new credential profile");
+      } catch (err) {
+        this.logger.warn({ name, err: (err as Error).message }, "MCP servers not carried to the new credential profile");
+      }
+    }
     let sessionId: string | null = null;
     try { sessionId = readFileSync(join(this.getInstanceDir(name), "session-id"), "utf-8"); } catch { /* none: nothing to carry */ }
     const dir = (profile: string | null) => claudeConfigDirFor(profile ? credentialProfileHome(this.dataDir, sw.backend, profile) : null);
@@ -19999,6 +20016,38 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.needsYou?.poke();
   }
 
+  /** M-3749: the credential profile a Claude config dir belongs to, for people and agents: its name, or "default". */
+  private claudeProfileLabel(configDir: string): string {
+    const dir = resolvePath(configDir);
+    return dirname(dir) === resolvePath(dirname(credentialProfileHome(this.dataDir, "claude-code", "x"))) ? basename(dir) : "default";
+  }
+
+  /**
+   * M-3749: a launch found MCP servers the agent had under its previous profile and does not have now. Told to the agent
+   * once per set (the outbox key), held until it is delivered; Needs you lists it from the daemon (instancesForNeeds).
+   */
+  onMcpMissing(name: string, missing: import("./backend/claude-mcp-carry.js").McpMissing | null): void {
+    if (!missing?.names.length) return;
+    try {
+      this.ensureDeliveryOutbox();
+      const outbox = this.deliveryOutbox;
+      if (!outbox) return;
+      const digest = createHash("sha256").update(`${missing.fromConfigDir}\u0000${missing.toConfigDir}\u0000${missing.names.join(",")}`).digest("hex").slice(0, 16);
+      const text = t("inst.mcp_missing", this.claudeProfileLabel(missing.fromConfigDir), this.claudeProfileLabel(missing.toConfigDir), missing.names.join(t("needs.mcp_missing_sep")));
+      outbox.admitSystemNotice(name, `mcp-missing:${name}:${digest}`, text, new Date(missing.since));
+    } catch (err) {
+      this.logger.warn({ err, name }, "Could not queue the MCP-missing notice");
+    }
+  }
+
+  /** M-3749: a person dismissed an agent's missing-MCP item (web or chat Acknowledge). false: nothing was outstanding. */
+  acknowledgeMcpMissing(name: string): boolean {
+    const daemon = this.daemons.get(name);
+    if (daemon?.dismissMcpMissing) return daemon.dismissMcpMissing();
+    dismissClaudeMcpMissing(this.getInstanceDir(name));
+    return false;
+  }
+
   /** The list for the web: every world's items, and those of instances with no world (#1386 §5.0). */
   needsYouItems(): WebNeedsItem[] {
     return this.needsYou?.webItems() ?? [];
@@ -20265,6 +20314,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
         modelSwitch: this.modelObservationForInstance(name)?.active ?? null,
         usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
+        mcpMissing: (() => { const m = this.daemons.get(name)?.mcpMissing?.(); return m ? { names: m.names, from: this.claudeProfileLabel(m.fromConfigDir), to: this.claudeProfileLabel(m.toConfigDir), since: m.since } : null; })(),
         nativeDeliveryHold: this.daemons.get(name)?.nativeDeliveryHold?.() ?? null,
         generalLocation: this.generalLocationAttention(name),
         paneRecovery: (()=>{const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config)||!config.native_agent_id)return null;
@@ -20347,6 +20397,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         id: m.id, instance: m.instance, owner: m.adapterId, username: m.username, place: m.place, preview: m.preview, since: m.since,
       })),
       acknowledgeMissed: (id, by) => this.missedOfflineStore?.acknowledge(id, by) ?? false,
+      acknowledgeMcpMissing: instance => this.acknowledgeMcpMissing(instance),
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
       signInKeepAlive: () => this.keepAliveAttention(),

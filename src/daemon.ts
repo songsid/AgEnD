@@ -126,7 +126,8 @@ import {
 import type { TurnFingerprint } from "./backend/session-signals.js";
 import { codexLiveRowMatches } from "./backend/codex.js";
 import { codexPackageProblemMessage } from "./backend/codex-package.js";
-import { claudeConfigDirFor, claudeProfileConfigDir, claudeProjectKey, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
+import { claudeConfigDirFor, claudeJsonPath, claudeProfileConfigDir, claudeProjectKey, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
+import { checkClaudeMcpAtLaunch, dismissClaudeMcpMissing, type McpMissing } from "./backend/claude-mcp-carry.js";
 import { MuseBackend } from "./backend/muse.js";
 import { BACKEND_LABELS, InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt.js";
@@ -2297,6 +2298,41 @@ export class Daemon extends EventEmitter {
   private transcriptEventSeq = 0;
   private usageLimitErrorSeq = 0;
   static readonly MODEL_USAGE_LIMIT = CLAUDE_MODEL_USAGE_LIMIT;
+
+  /** M-3749: the MCP servers missing since a profile switch — Needs you lists them until they are back or dismissed. */
+  private mcpMissingState: McpMissing | null = null;
+  mcpMissing(): McpMissing | null {
+    return this.mcpMissingState ? { ...this.mcpMissingState, names: [...this.mcpMissingState.names] } : null;
+  }
+
+  /** M-3749: a person dismissed the missing-MCP list (Needs you → Acknowledge). false: nothing was outstanding. */
+  dismissMcpMissing(): boolean {
+    dismissClaudeMcpMissing(this.instanceDir);
+    if (!this.mcpMissingState) return false;
+    this.mcpMissingState = null;
+    this.emit("mcp_missing", { name: this.name, missing: null });
+    return true;
+  }
+
+  /**
+   * M-3749: at each Claude launch, the user/local-scope MCP servers it had before a credential-profile switch and does not
+   * have now (outstanding until back or dismissed). Never fails a launch; names only, never an entry.
+   */
+  private checkClaudeMcpServers(backendConfig: CliBackendConfig): void {
+    const before = this.mcpMissingState;
+    this.mcpMissingState = null;
+    if ((this.config.backend ?? "claude-code") === "claude-code") {
+      try {
+        const profileDir = claudeProfileConfigDir(backendConfig.backendOptions);
+        this.mcpMissingState = checkClaudeMcpAtLaunch({ instanceDir: this.instanceDir, configDir: claudeConfigDirFor(profileDir),
+          jsonPath: claudeJsonPath(profileDir), workingDirectory: this.config.working_directory });
+      } catch (err) {
+        this.logger.debug({ err }, "MCP server check at launch skipped");
+      }
+    }
+    if (this.mcpMissingState) this.logger.warn({ missing: this.mcpMissingState.names }, "MCP servers from the previous credential profile are not in this one");
+    if (before || this.mcpMissingState) this.emit("mcp_missing", { name: this.name, missing: this.mcpMissing() });
+  }
 
   /** #2822: the usage-limit hold, while it lasts — Needs you lists it. */
   usageHold(): { model: string; since: number } | null {
@@ -14529,6 +14565,7 @@ export class Daemon extends EventEmitter {
     if (freshInboundInstructions) this.installCompactInboundInstructions();
     else { this.compactInboundInstructions = false; this.inboundCompatibilityPending = true; this.resetInboundPresentation(); }
     this.backend!.preTrust?.(this.config.working_directory, backendConfig);
+    this.checkClaudeMcpServers(backendConfig);
 
     // Resolve working directory (e.g. symlink for hidden paths)
     const resolvedCwd = this.backend!.resolveWorkingDirectory?.(this.config.working_directory, this.name) ?? this.config.working_directory;

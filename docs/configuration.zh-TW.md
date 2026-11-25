@@ -665,9 +665,17 @@ session 的對話紀錄（`projects/<目錄>/<session>.jsonl`）、它的資料�
   通常會沿用原本的快取。快取範圍、模型或 profile 設定不同，或快取已過期時，下一次回覆可能要重建快取（這一輪會比較慢，並以完整價格計費）。
 - 回覆會帶 `conversation_carried_over: true`。
 - 設定與登入仍各屬各的 profile，兩邊其他對話紀錄維持原狀。專案自動記憶依上文共用；profile 已有非空記憶目錄時會保留。
+- Agent 自己的 MCP 伺服器也會一起帶過去（M-3749）：用 `claude mcp add` 加在 user scope、以及加在這個 instance 資料夾
+  local scope 的伺服器，會合併進新 profile 的 `.claude.json`。新 profile 已有同名的伺服器時保留它原本的設定，不會覆蓋。
+  不論對話有沒有帶過去都會這樣做。切換前會先記下 Agent 當下有哪些伺服器（包括這次工作中才加的），
+  之後啟動時才能看出哪些沒帶過來。
 
 無法複製時，切換會開新對話，交接方式與 Kiro 相同，回覆的 `carry_failed` 會說明原因。可能的原因有：還沒有 session、
 新 profile 已有這段對話的另一個版本、空間不足，或複製失敗。
+
+Agent 換到另一個 profile 啟動時，若少了上次啟動時有的 MCP 伺服器（例如在停止狀態下切換，或合併寫不進去），
+AgEnD 會告訴它少了哪些，並附上加回來的 `claude mcp add -s local` 指令；「需要你」會列出
+**切換 AI 帳號後缺少 MCP 伺服器**，直到伺服器加回來或有人在那裡按確認。沒換 profile 時自己移除的伺服器不算，不會提醒。
 
 ### 各自的額度
 

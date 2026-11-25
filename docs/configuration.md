@@ -678,10 +678,20 @@ file history into the new profile, then dates the copy as the newest so the rela
   or the cache has expired.
 - The reply says `conversation_carried_over: true`.
 - Settings and the login stay per profile; other transcripts in either profile are left as they are. Project auto-memory is shared as described above (an existing non-empty profile memory folder is preserved).
+- The agent's own MCP servers go along too (M-3749): those added with `claude mcp add` at user scope, and at local
+  scope for the instance's folder, are merged into the new profile's `.claude.json`. A server the new profile already
+  has under that name is kept as it is, never overwritten. This happens whether or not the conversation is carried.
+  First the switch records which servers the agent has at that moment (added during its session included), so a later
+  launch can tell what did not come along.
 
 When the copy can't be made, the switch starts fresh with the same handover as Kiro, and the reply gives the reason in
 `carry_failed`. That happens when there is no session yet, when the new profile already holds a different version of
 that conversation, when there isn't enough free space, or when the copy fails.
+
+If an agent starts on another profile without some MCP servers it had at its previous launch (a switch made while it
+was stopped, or a merge that could not be written), it is told which ones, with the `claude mcp add -s local` command to
+add one back, and Needs you lists **MCP servers missing after an AI account switch** until they are back or someone
+acknowledges it there. A server removed while the agent stays on the same profile is its own choice and is not reported.
 
 ### Seeing both quotas
 

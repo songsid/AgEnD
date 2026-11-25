@@ -36,8 +36,8 @@ import { HostDirectoryNotices, hostDirectoryNoticesOffered } from "./hub-host-se
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
 register("app", {
-  en: { needs_reason_host_health: "Host health", needs_reason_stale_auth: "Codex needs a restart", needs_stale_auth_detail: "Codex cannot refresh this agent’s current sign-in. Restart the agent; sign in again only if Codex asks.", needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running", needs_reason_tmux_hold: "Held: an old tmux server or window" },
-  "zh-TW": { needs_reason_host_health: "主機狀態", needs_reason_stale_auth: "Codex 需要重新啟動", needs_stale_auth_detail: "Codex 無法更新這個 Agent 執行中使用的登入。請重新啟動 Agent；只有 Codex 要求時才需要重新登入。", needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視", needs_reason_hub_unavailable: "Hub 未在執行", needs_reason_tmux_hold: "已暫停：舊的 tmux 伺服器或視窗" },
+  en: { needs_reason_mcp_missing: "MCP servers missing after an AI account switch", needs_reason_host_health: "Host health", needs_reason_stale_auth: "Codex needs a restart", needs_stale_auth_detail: "Codex cannot refresh this agent’s current sign-in. Restart the agent; sign in again only if Codex asks.", needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running", needs_reason_tmux_hold: "Held: an old tmux server or window" },
+  "zh-TW": { needs_reason_mcp_missing: "切換 AI 帳號後缺少 MCP 伺服器", needs_reason_host_health: "主機狀態", needs_reason_stale_auth: "Codex 需要重新啟動", needs_stale_auth_detail: "Codex 無法更新這個 Agent 執行中使用的登入。請重新啟動 Agent；只有 Codex 要求時才需要重新登入。", needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視", needs_reason_hub_unavailable: "Hub 未在執行", needs_reason_tmux_hold: "已暫停：舊的 tmux 伺服器或視窗" },
 });
 
 register("needs", {
@@ -344,7 +344,7 @@ function NeedsItem({ item, nowMs, owner }) {
         ${item.type === "hub" && item.hubRetry ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!!hubAck || !!closeAck} onClick=${retryHub}>
             <${Icon} name="restart" size=${14} />${hubAck === "busy" ? tn("hubRetrying") : tn("hubRetry")}</button>` : null}
         ${item.type === "hub" && item.hubClose ? html`<button type="button" class="btn btn-sm hub-close" disabled=${!!closeAck || !!hubAck} onClick=${closeHub}>${tn(closeAck === "busy" ? "hubClosing" : "hubClose")}</button>` : null}
-        ${item.type === "delivery" || item.type === "missed" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
+        ${item.type === "delivery" || item.type === "missed" || item.reason === "mcp_missing" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
         ${(item.reason === "auth_paused" || item.reason === "backend_signin") && item.signIn && signInOffered() ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}
         ${item.type === "task" && item.card ? html`<a class="btn btn-sm" href=${`/ui/fleet?card=${encodeURIComponent(item.card.code)}`}>${tn("openCard")}</a>` : null}
