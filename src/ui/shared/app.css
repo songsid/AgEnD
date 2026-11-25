@@ -5394,4 +5394,4 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 }
 
 /* M-3678: the new owner stop action follows the phone tap target. */
-@media (max-width: 899px) { .n-actions .hub-close { min-height: var(--tap); min-width: var(--tap); } }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .n-actions .hub-close { min-height: var(--tap); min-width: var(--tap); } }

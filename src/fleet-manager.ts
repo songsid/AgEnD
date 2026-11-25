@@ -1,4 +1,4 @@
-import type { HubHeldCloseOutcome } from "./hub/question-close-model.js";
+type HubHeldCloseOutcome = import("./hub/question-close-model.js").HubHeldCloseOutcome;
 import { prepareContactChange, type PreparedContactChange } from "./contact-change-proposals.js";
 import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
 import { SharedDefaultAdoption } from "./shared-default-adoption.js";

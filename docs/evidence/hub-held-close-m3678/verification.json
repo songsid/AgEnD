@@ -74,5 +74,16 @@
       "phone-light-zh-TW-confirm.png": "8ae56e687b2737b00ade348e9fbb2162de7c40932e8847cb923fa232a0058f16",
       "phone-light-zh-TW-held.png": "921ab54e04288d8b060d28dd5289198b6565a2e5cd4b91e9423c2fbf76419b33"
     }
+  },
+  "ciCorrection": {
+    "baseHead": "518052560f5854577bc1259a642876a1a8c823ce",
+    "inlineTypeOnly": true,
+    "sharedPhoneQuery": true,
+    "approvedPngBlobsUnchanged": true,
+    "focusedSuites": 2,
+    "focusedTests": 15,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0,
+    "neighborTimingCorrection": "Existing 400ms startup/apply wait replaced with the actual mocked apply completion signal; no retries or timeout increase."
   }
 }

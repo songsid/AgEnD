@@ -53,3 +53,15 @@ and an actual Hub HTTP retry-key control pass 26 tests in two suites; test
 TypeScript passes. Reusing a closed message's retry key returns that same
 cancelled receipt, creates no new message and sends no new question. This verifies
 the warning; there is no new runtime reopening restriction in this revision.
+
+
+## CI correction after visual approval
+
+The FleetManager close-result type uses an inline type reference, preserving the
+runtime's dynamic-import boundary. The close tap-target rule now uses the shared
+phone query, including landscape phones. The approved desktop/portrait-phone
+conditions and every retained PNG blob are unchanged; no capture was rerun.
+Both failing CI checks pass. A neighboring Hub hook's fixed 400 ms positive wait
+also exposed a cold-import race locally; it now waits on the mock's actual apply
+completion for initial and changed configuration. No timeout or retry was added.
+The two suites pass 15 tests; source and test TypeScript pass.
