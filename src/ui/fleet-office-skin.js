@@ -38,7 +38,7 @@
 // @property {(look, at) => {x, y, w, h}} [charBox]   zones: the box drawCharacter covers with the feet at `at`
 //   ({ x, y, walking, heading }): what hover and click hit (fleet-office-zones.js personAt)
 // @property {(ctx, prop, ms, env) => void} drawProp      a traffic item in the air: { kind, hue, x, y, t }
-// @property {(ctx, x, y, text, env, lift?, flip?) => void} drawBubble  a speech bubble whose tail points at (x, y), its box `lift` px higher (`flip`: on the tail's left)
+// @property {(ctx, x, y, text, env, lift?, flip?, fit?) => void} drawBubble  a speech bubble whose tail points at (x, y), its box `lift` px higher (`flip`: on the tail's left)
 // @property {(env) => string} matte   #2540: the colour around the scene (the Office fills the panel; the scene is 16:9)
 // @property {object|null} [backdrop]  a pack's loaded background picture (the page samples its edges for the matte)
 // The desks layout's back and front layers change only when the fleet (or the zoom) does: the renderer keeps them as
@@ -343,29 +343,48 @@ const BUBBLE_FONT = "600 11px system-ui, sans-serif";
 /**
  * The box a speech bubble with its tail at (x, y) takes for `text` (its tail excluded): what drawBubble draws, and what
  * the Office places so no two overlap (#2431: two neighbours' bubbles covered each other on a phone).
+ * M-3743: `fit` { l, r, t, b } (the part of the scene on screen, in its units) keeps the box on screen, as a reply's is
+ * (#4406): slid along between l and r, still over its speaker (the tail's foot slides along its edge; the tail still points at the speaker);
+ * lowered (a shorter tail) when its top would pass t; under the head (`below`: its tail up) only when even that does not fit.
  */
-export function bubbleBox(ctx, x, y, text, lift = 0, flip = false) {
+export function bubbleBox(ctx, x, y, text, lift = 0, flip = false, fit = null) {
   ctx.save();
   ctx.font = BUBBLE_FONT;
   const t = fitText(ctx, text, 150), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + 14), h = 19;
   ctx.restore();
   // M-3722: `flip` puts the box on the tail's left (its tail still under it), for a call whose usual place covers a name.
-  const bx = Math.round(flip ? x - w + 14 : x - 10), by = Math.round(y - h - 6 - lift);
-  return { x: bx, y: by, w, h, text: t };
+  let bx = flip ? x - w + 14 : x - 10, by = y - h - 6 - lift, below = false;
+  if (fit) {
+    // Slid along, but always over its speaker's x (the tail's foot then slides along its edge, bubbleFoot): a speaker
+    // in the margin or off screen keeps its bubble with it rather than one pinned to the edge.
+    if (Number.isFinite(fit.l) && Number.isFinite(fit.r)) bx = Math.max(x - w + 1, Math.min(x - 1, Math.max(fit.l, Math.min(bx, fit.r - w))));
+    if (Number.isFinite(fit.t) && by < fit.t) {
+      const lowest = y - h - 3, under = y + 6 + lift;            // over the head with a 3 px tail; under it
+      if (fit.t <= lowest) by = fit.t;
+      else if (!Number.isFinite(fit.b) || under + h <= fit.b) { by = under; below = true; }
+    }
+  }
+  return { x: Math.round(bx), y: Math.round(by), w, h, text: t, ...(below ? { below: true } : {}) };
 }
+/** M-3743: where a bubble's tail leaves its box (its left foot; the right one 5 px on): under the speaker, else as near as the corners allow. */
+const bubbleFoot = (b, x) => Math.max(b.x + 4, Math.min(x + 1, b.x + b.w - 9));
 
 /**
  * A speech bubble, its tail at (x, y): short words on light paper in either theme; `lift` raises the box (its tail
- * longer); `flip` (M-3722) draws the box on the tail's left.
+ * longer); `flip` (M-3722) draws the box on the tail's left; `fit` (M-3743, bubbleBox) keeps it on screen — under the
+ * head, its tail up, when there is no room over it.
  */
-function drawBubble(ctx, x, y, text, env, lift = 0, flip = false) {
+function drawBubble(ctx, x, y, text, env, lift = 0, flip = false, fit = null) {
   if (!text) return;
-  const { x: bx, y: by, w, h, text: t } = bubbleBox(ctx, x, y, text, lift, flip);
+  const box = bubbleBox(ctx, x, y, text, lift, flip, fit), { x: bx, y: by, w, h, text: t, below } = box, f = fit ? bubbleFoot(box, x) : x + 1;
   ctx.save();
   ctx.font = BUBBLE_FONT;
   ctx.fillStyle = "#fffdf6"; ctx.strokeStyle = env.mode === "light" ? "rgba(0, 0, 0, 0.35)" : "rgba(0, 0, 0, 0.6)"; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(bx + 4, by); ctx.lineTo(bx + w - 4, by); ctx.lineTo(bx + w, by + 4); ctx.lineTo(bx + w, by + h - 4); ctx.lineTo(bx + w - 4, by + h);
-  ctx.lineTo(x + 6, by + h); ctx.lineTo(x, y); ctx.lineTo(x + 1, by + h); ctx.lineTo(bx + 4, by + h); ctx.lineTo(bx, by + h - 4); ctx.lineTo(bx, by + 4); ctx.closePath();
+  ctx.beginPath(); ctx.moveTo(bx + 4, by);
+  if (below) { ctx.lineTo(f, by); ctx.lineTo(x, y); ctx.lineTo(f + 5, by); }
+  ctx.lineTo(bx + w - 4, by); ctx.lineTo(bx + w, by + 4); ctx.lineTo(bx + w, by + h - 4); ctx.lineTo(bx + w - 4, by + h);
+  if (!below) { ctx.lineTo(f + 5, by + h); ctx.lineTo(x, y); ctx.lineTo(f, by + h); }
+  ctx.lineTo(bx + 4, by + h); ctx.lineTo(bx, by + h - 4); ctx.lineTo(bx, by + 4); ctx.closePath();
   ctx.fill(); ctx.stroke();
   ctx.fillStyle = "#1d1d22"; ctx.textBaseline = "middle"; ctx.textAlign = "left";
   ctx.fillText(t, bx + 7, by + h / 2 + 0.5);

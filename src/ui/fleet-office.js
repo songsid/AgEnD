@@ -819,6 +819,11 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   // Speech bubbles: a short line for the state, now and then (typed out; whole at once when still), placed so no two
   // overlap (placeBubbles; #2431).
   const bubbles = [], rp = p.reply, tSaid = Date.now(), replies = [];
+  // M-3743: the part of the scene on screen (the canvas, in this part's units, 8 bitmap px in): a bubble stays inside it,
+  // its tail still at the speaker (bubbleBox's `fit`; a speaker near an edge — a rider along the map's rim — had its
+  // bubble cut off). All offices: the whole canvas too (the bubbles are drawn after every tile, unclipped).
+  const cw = ctx.canvas && ctx.canvas.width, chh = ctx.canvas && ctx.canvas.height, edge = 8 / a;
+  const fit = cw > 0 && chh > 0 ? { l: -ox / a + edge, r: (cw - ox) / a - edge, t: -oy / a + edge, b: (chh - oy) / a - edge } : null;
   for (let sp of speakers) {
     if (sp.look.dim || sp.look.pose === "away") continue;
     // Talk "Over their head": a live reply, in full (wrapped), in place of the state's line.
@@ -840,9 +845,10 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     // M-3533 R2c (Lumen): a room's own characters stand taller than the style's figures; their bubble stays inside the
     // area's box, as a figure's does (the Fleet's own office is unchanged).
     const ar = b && sk.ownCharacters && p.zones && sp.area != null ? p.L.areas && p.L.areas[sp.area] : null;
-    if (ar && ar.rect) { const bx = bubbleBox(ctx, sp.x, sp.y, b.text), min = ar.rect.y + BUBBLE_IN_AREA; if (bx.y < min) sp = { ...sp, y: sp.y + (min - bx.y) }; }
+    if (ar && ar.rect) { const bx = bubbleBox(ctx, sp.x, sp.y, b.text, 0, false, fit), min = ar.rect.y + BUBBLE_IN_AREA; if (bx.y < min) sp = { ...sp, y: sp.y + (min - bx.y) }; }
     if (b) bubbles.push({ key: sp.look.name, area: sp.area, state: sp.look.state, calling: CALLING.has(sp.look.state), rank: own ? 0 : scText ? 1 : bubbleRank(sp.look.state), shown: b.shown, ...(raSays ? { keep: true } : {}),
-      box: bubbleBox(ctx, sp.x, sp.y, b.text), ...(CALLING.has(sp.look.state) ? { flipBox: bubbleBox(ctx, sp.x, sp.y, b.text, 0, true) } : {}), tail: { x: sp.x, y: sp.y }, sp, b });
+      box: bubbleBox(ctx, sp.x, sp.y, b.text, 0, false, fit), ...(CALLING.has(sp.look.state) ? { flipBox: bubbleBox(ctx, sp.x, sp.y, b.text, 0, true, fit) } : {}), tail: { x: sp.x, y: sp.y }, sp, b,
+      boxAt: ((at) => (dy, flip) => bubbleBox(ctx, at.x, at.y, b.text, -dy, flip, fit))(sp) });
   }
   // A crowded area speaks less (thinBubbles: calls, then work, a few at most); no bubble covers a name tag. `defer`
   // (All offices): drawn after every tile, unclipped, so a bubble at a tile's edge is whole.
@@ -854,15 +860,18 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   const inArea = (sp, text, dy, flip) => {
     const ar = sk.ownCharacters && p.zones && sp.area != null ? p.L.areas && p.L.areas[sp.area] : null;
     if (!ar || !ar.rect || !dy) return dy;
-    const over = ar.rect.y + BUBBLE_IN_AREA - bubbleBox(ctx, sp.x, sp.y, text, -dy, flip).y;
+    const over = ar.rect.y + BUBBLE_IN_AREA - bubbleBox(ctx, sp.x, sp.y, text, -dy, flip, fit).y;
     return over > 0 ? Math.max(0, dy - over) : dy;
   };
   const say = () => { T(); const tails = []; for (const { sp, b, dy: lifted, flip = false } of placed) {
     const text = [...b.text].slice(0, b.shown).join(""), dy = inArea(sp, b.text, lifted, flip);
-    sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy, flip);
-    if (text) { const box = bubbleBox(ctx, sp.x, sp.y, text, -dy, flip); tails.push({ x: sp.x - 1, y: box.y + box.h, w: 9, h: Math.max(0, sp.y - (box.y + box.h)) }); }
+    sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy, flip, fit);
+    if (text) {
+      const box = bubbleBox(ctx, sp.x, sp.y, text, -dy, flip, fit);
+      tails.push(box.below ? { x: sp.x - 1, y: sp.y, w: 9, h: Math.max(0, box.y - sp.y) } : { x: sp.x - 1, y: box.y + box.h, w: 9, h: Math.max(0, sp.y - (box.y + box.h)) });
+    }
     if (bubbleHits && text) {
-      const box = bubbleBox(ctx, sp.x, sp.y, text, -dy, flip);
+      const box = bubbleBox(ctx, sp.x, sp.y, text, -dy, flip, fit);
       bubbleHits.push({ name: sp.look.name, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
     }
   }
