@@ -8,6 +8,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t, lang } from "/assets/app-i18n.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
+import { timeText } from "/assets/clock-text.js";
 
 register("hubOverview", {
   en: {
@@ -110,7 +111,7 @@ export function HubAdminOverview({ client, onOpen = () => {}, onGone = () => {} 
       <div class="hub-ov-range" role="group" aria-label=${ho("rangeLabel")}>
         ${["today", "7d"].map((r) => html`<button key=${r} type="button" class=${`hub-ov-range-item${range === r ? " is-current" : ""}`} aria-pressed=${range === r ? "true" : "false"} onClick=${() => pick(r)}>${ho(r === "today" ? "today" : "week")}</button>`)}
       </div>
-      ${at ? html`<span class="note hub-ov-updated">${ho("updated", new Date(at).toLocaleTimeString(lang() === "zh-TW" ? "zh-TW" : "en", { hour: "2-digit", minute: "2-digit" }))}</span>` : null}
+      ${at ? html`<span class="note hub-ov-updated">${ho("updated", timeText(at, { hour: "2-digit", minute: "2-digit" }, lang() === "zh-TW" ? "zh-TW" : "en"))}</span>` : null}
     </div>
     <p class="note hub-ov-privacy">${ho("privacy")}</p>`;
   if (!data) return html`<div class="hub-ov">${head}${error ? html`<${ErrorState} onRetry=${() => load(range)} />` : html`<${Skeleton} variant="rows" lines=${6} />`}</div>`;

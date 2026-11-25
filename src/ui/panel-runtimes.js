@@ -18,6 +18,7 @@ import { identityText } from "./account-identity.js";
 import { CliInstall, offersCliInstall } from "./runtime-cli-install.js";
 import { useWindowsCliCatalog, refreshWindowsCliCatalog, useWindowsCliCatalogSnapshot } from "./windows-cli-catalog.js";
 import { assetUrl } from "/assets/asset-url.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 /** The install tabs', command cards' and account list's stylesheet, linked once by this lazy page (a tab opened before an upgrade has an app.css without these rules). */
 export function linkRuntimeInstallCss(doc = typeof document !== "undefined" ? document : null) {
@@ -210,7 +211,7 @@ function paneVerificationTag(cli, text) {
   const key = cli.paneVerification === "unverified" ? "paneUnverified" : cli.paneVerification === "denied" ? "paneDenied" : "";
   return key ? html`<span class="tag" title=${text(`${key}Hint`)}>${text(key)}</span>` : null;
 }
-export function machineTime(value) { const date=new Date(value); return value && Number.isFinite(date.getTime()) ? date.toLocaleString() : machineText("unknown"); }
+export function machineTime(value) { const date=new Date(value); return value && Number.isFinite(date.getTime()) ? dateTimeText(date) : machineText("unknown"); }
 function MachineCard({ machine, sameName, busy, action, openDiagnostics, probe, repairUpdate, lease, onChanged }) {
   const [editing,setEditing] = useState(false), [name,setName] = useState(machine.name), [info,setInfo] = useState(false);
   const detection = useWindowsCliCatalogSnapshot(machine.isLocal ? "" : machine.id);

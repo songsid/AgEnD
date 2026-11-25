@@ -12,6 +12,7 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { HubSharingNotice } from "./notice-hub-sharing.js";
 import { HubUpdateNotice, useHubUpdateActions } from "./notice-hub-update.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 register("notices", {
   en: {
@@ -92,7 +93,7 @@ export function NoticesPanel({ navKey }) {
           <div class="n-body">
             <div class="n-title"><strong>${tn(`kind_${n.kind}`)}${n.instance ? ` · ${n.instance}` : ""}</strong>
               ${n.id > seenAtOpen ? html`<span class="notice-new">${tn("unread")}</span>` : null}
-              <span class="n-age" title=${new Date(n.at).toLocaleString()}>${noticeAge(n.at, nowMs)}</span></div>
+              <span class="n-age" title=${dateTimeText(n.at)}>${noticeAge(n.at, nowMs)}</span></div>
             ${n.hubSharing ? html`<${HubSharingNotice} notice=${n} />` : n.hubUpdate ? html`<${HubUpdateNotice} notice=${n} actions=${hubActions} />` : html`<p class="n-detail notice-text">${n.text}</p>`}
             ${n.instance && known.has(n.instance) ? html`<div class="n-actions"><a class="btn btn-sm btn-ghost" href=${chatPath(n.instance)}>${tn("open")}</a></div>` : null}
           </div>

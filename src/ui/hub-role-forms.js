@@ -4,6 +4,7 @@ import {PeopleSearch} from "./hub-subject-picker.js";
 import {GroupSearch} from "./hub-group-search.js";
 import {hr} from "./hub-roles-strings.js";
 import {personKey,personName,roleName,roleDescription,permissionGroups,management,changeLines,reviewImpact,scopeName,valueLines} from "./hub-role-view.js";
+import { dateTimeText } from "/assets/clock-text.js";
 const copy=value=>structuredClone(value);
 const dateValue=at=>at?new Date(at-new Date(at).getTimezoneOffset()*60000).toISOString().slice(0,16):"";
 export function RoleSearch({client,kind,onPick,disabled,id}){
@@ -45,8 +46,8 @@ export function Review({view,checked}){
    ${line.after?.description!==undefined?html`<p>${hr("rolePurpose")}: ${line.before?.description||"–"} → ${line.after.description||"–"}</p>`:null}
    ${line.after?.defaultMaxFleets!==undefined?html`<p>${hr("quota")}: ${line.before?.defaultMaxFleets??"–"} → ${line.after.defaultMaxFleets}</p>`:null}
    ${line.after?.scope?html`<p>${hr("scope")}: ${line.before?.scope?scopeName(line.before.scope):"–"} → ${scopeName(line.after.scope)}</p>
-    ${line.after.startsAt||line.before?.startsAt?html`<p>${hr("start")}: ${line.before?.startsAt?new Date(line.before.startsAt).toLocaleString():"–"} → ${line.after.startsAt?new Date(line.after.startsAt).toLocaleString():"–"}</p>`:null}
-    <p>${hr("ends")}: ${line.before?.expiresAt?new Date(line.before.expiresAt).toLocaleString():hr("noEnd")} → ${line.after.expiresAt?new Date(line.after.expiresAt).toLocaleString():hr("noEnd")}</p>
+    ${line.after.startsAt||line.before?.startsAt?html`<p>${hr("start")}: ${line.before?.startsAt?dateTimeText(line.before.startsAt):"–"} → ${line.after.startsAt?dateTimeText(line.after.startsAt):"–"}</p>`:null}
+    <p>${hr("ends")}: ${line.before?.expiresAt?dateTimeText(line.before.expiresAt):hr("noEnd")} → ${line.after.expiresAt?dateTimeText(line.after.expiresAt):hr("noEnd")}</p>
     ${line.after.maxFleets!==null||line.before?.maxFleets!=null?html`<p>${hr("override")}: ${line.before?.maxFleets??"–"} → ${line.after.maxFleets??"–"}</p>`:null}`:null}
    ${line.deleted?html`<p class="note">${hr("deleteAssignments",line.removedAssignments)}</p>`:null}</section>`)}
   ${!lines.length?html`<p>${hr("nothingChanged")}</p>`:null}

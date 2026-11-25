@@ -8,6 +8,7 @@ import { html } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { Empty } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
+import { unitText } from "/assets/clock-text.js";
 
 register("cache", {
   en: {
@@ -82,7 +83,7 @@ export function tokens(n) {
   return String(Math.round(n));
 }
 export function bytes(n) { return n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${Math.round(n / 1e6)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`; }
-export function ttlText(sec) { return sec >= 3600 ? `${sec / 3600} h` : `${Math.round(sec / 60)} min`; }
+export function ttlText(sec) { return sec >= 3600 ? unitText(sec / 3600, "h") : unitText(Math.round(sec / 60), "min"); }
 const pct = (x) => `${x >= 0.1 ? Math.round(x * 100) : (x * 100).toFixed(1)}%`;
 
 /** The one line under an instance's recommendation. */

@@ -17,6 +17,7 @@ import { Menu } from "/assets/ui-menu.js";
 import { Icon } from "/assets/ui-icons.js";
 import "./hub-room-strings.js";
 import { presenceDot } from "./hub-room-presence.js";
+import { timeText } from "/assets/clock-text.js";
 
 const tr = (key, ...a) => t(`hubRoom.${key}`, ...a);
 /** The Fleet sidebar's own words for favourites (view.*, with named values; agentRow.*): no Hub copy of them. */
@@ -90,7 +91,7 @@ export function rowView(r) {
 const listTime = (ms) => {
   if (!ms) return "";
   const d = new Date(ms), now = new Date();
-  return d.toDateString() === now.toDateString() ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+  return d.toDateString() === now.toDateString() ? timeText(d, { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
 };
 
 /**

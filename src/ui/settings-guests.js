@@ -19,6 +19,7 @@ import { DEFAULT_SCHEMA, impactOf } from "./settings-model.js";
 import "./settings-strings.js";
 import { layoutText } from "./settings-layout.js";
 import { Feedback, Impact, InEffect } from "./settings-dialogs.js";
+import { dateTimeText, timeText } from "/assets/clock-text.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const PLATFORMS = { discord: "Discord", telegram: "Telegram" };
@@ -112,7 +113,7 @@ function Names({ id, all, rooms = [], value, wrote = [], onChange }) {
     ${rooms.map((r) => box(r.name, r.display_name || r.name, !!r.display_name))}</div>`;
 }
 
-const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const clock = (ms) => timeText(ms, { hour: "2-digit", minute: "2-digit" }, []);
 const COOLDOWN_MS = 60_000;
 
 /** A draft as staged (#2365 review: carried in the staged change, so leaving the section and coming back keeps it). */
@@ -326,13 +327,13 @@ export function GuestsSection({ ctx, staged }) {
         ${people === null ? html`<${Skeleton} variant="rows" lines=${3} />` : !candidates.length ? html`<p class="note" id="grantsNoPeople">${tn("grantsNoPeople")}</p>`
           : html`<ul class="g-pick">${candidates.map((p) => html`<li key=${accountKey(p)} class="g-cand" data-account=${accountKey(p)}>
             <span class="g-av" aria-hidden="true">${(p.name || "?").slice(0, 1).toUpperCase()}</span>
-            <div class="g-id"><strong>${p.name}</strong> <span class="note">${PLATFORMS[p.platform] || p.platform}${p.username ? ` · @${p.username}` : ""} · <span class="g-when">${tn("grantsLastSeen", new Date(p.lastSeen).toLocaleString())}</span></span>
+            <div class="g-id"><strong>${p.name}</strong> <span class="note">${PLATFORMS[p.platform] || p.platform}${p.username ? ` · @${p.username}` : ""} · <span class="g-when">${tn("grantsLastSeen", dateTimeText(p.lastSeen))}</span></span>
               ${p.instances && p.instances.length ? html`<div class="note">${wroteTo(p.instances)}</div>` : null}</div>
             <button type="button" class="btn btn-sm" onClick=${() => { const k = accountKey(p); setGrant(k, { ...(p.name ? { name: p.name } : {}), instances: choosable.filter((n) => (p.instances || []).includes(n)) }); setEditing(k); }}>${tn("grantsChoose")}</button></li>`)}</ul>`}</div></details>`}
     </fieldset>
     ${overview && overview.audit ? html`<details class="s-guest-audit"><summary>${tn("grantsRecent")}</summary>${!overview.audit.length ? html`<p class="note" id="grantsRecentNone">${tn("grantsRecentNone")}</p>`
       : html`<ul class="g-audit" id="grantsRecentList">${overview.audit.map((e, i) => html`<li key=${`${e.at}-${i}`} class="g-audit-row" data-kind=${e.kind}>
-        <span class="g-when">${new Date(e.at).toLocaleString()}</span> <strong>${e.name}</strong>
+        <span class="g-when">${dateTimeText(e.at)}</span> <strong>${e.name}</strong>
         ${e.kind === "grant" ? html`${e.added.map((n) => html` <span key=${`+${n}`} class="g-wrote g-add">+${n}</span>`)}${e.removed.map((n) => html` <span key=${`-${n}`} class="g-wrote g-del">−${n}</span>`)}${e.level ? html` <span class="g-wrote g-level-to">${tn("grantsAuditLevel", tn(e.level === "trusted" ? "grantsLevelTrusted" : "grantsLevelChat"))}</span>` : null}
           <span class="note"> · <span class="g-wrote">${tn(e.via === "confirmed" ? "grantsAuditConfirmed" : "grantsAuditDirect")}</span>${e.endedSessions ? html` · <span class="g-wrote">${tn("grantsAuditEnded", e.endedSessions)}</span>` : null}</span>`
         : html` <span class="note">${e.outcome === "sent" ? tn("grantsAuditCodeSent") : tn("grantsAuditCodeNot", auditOutcome(e.outcome))}</span>`}</li>`)}</ul>`}</details>` : null}

@@ -12,6 +12,7 @@ import { register, t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import { InfoTip } from "./settings-shared.js";
 import { assetUrl } from "/assets/asset-url.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 register("accountsKeepAlive", {
   en: {
@@ -60,7 +61,7 @@ export function linkKeepAliveCss(doc = typeof document !== "undefined" ? documen
   } catch { /* the control still works without it */ }
 }
 
-const stamp = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleString(); };
+const stamp = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : dateTimeText(d); };
 
 /** POST the setting; the server answers ok or a refusal code. */
 export async function saveKeepAlive(row, enabled, fallback, fetchImpl = fetch) {

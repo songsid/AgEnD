@@ -22,6 +22,7 @@ import "./view-strings.js";
 import { themesShown, themesStore } from "./app-themes.js";
 import { machineName } from "./machine-name.js";
 import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "./identity-color.js";
+import { dateTimeText } from "./clock-text.js";
 
 // Keep new copy beside its caller: a retained view-strings.js still links and renders the menu.
 register("agentRow", {
@@ -519,7 +520,7 @@ export function agentTurnAge(it, now = Date.now()) {
  */
 export function activityText(it, replyMins, agentMins) {
   if (replyMins == null && agentMins == null) return null;
-  const at = (k) => new Date(Date.parse(it[k])).toLocaleString();
+  const at = (k) => dateTimeText(Date.parse(it[k]));
   const agentNewer = agentMins != null && (replyMins == null || agentMins < replyMins);
   const lines = [replyMins != null ? tn("whenPersonTitle", { time: at("last_reply") }) : null, agentMins != null ? tn("whenAgentTitle", { time: at("last_agent_turn") }) : null]
     .filter(Boolean);

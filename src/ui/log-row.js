@@ -7,6 +7,7 @@ import { register, t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import "/assets/chat-strings.js";
 import { chatTime, chatTimeFull } from "/assets/chat-time.js";
+import { unitText } from "/assets/clock-text.js";
 
 register("log", {
   en: {
@@ -129,11 +130,11 @@ function size(bytes) {
 }
 function duration(ms) {
   if (!(ms >= 0)) return "";
-  if (ms < 1000) return `${ms} ms`;
+  if (ms < 1000) return unitText(ms, "ms");
   const s = ms / 1000;
-  if (s < 60) return `${s < 10 ? s.toFixed(1) : Math.round(s)} s`;
+  if (s < 60) return unitText(s < 10 ? s.toFixed(1) : Math.round(s), "s");
   const m = Math.floor(s / 60);
-  return `${m} m ${Math.round(s - m * 60)} s`;
+  return `${unitText(m, "m")} ${unitText(Math.round(s - m * 60), "s")}`;
 }
 const eventLabel = (type) => { const k = `log.ev_${type}`; const v = t(k); return v === k ? String(type).replace(/_/g, " ") : v; };
 

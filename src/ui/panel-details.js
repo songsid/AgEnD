@@ -36,6 +36,7 @@ import { AgentCategoryNav, AgentPageHead, AgentSettingsPanels, agentKind, catego
 import { ContactPermissionsPanel } from "./contact-permissions.js";
 import "./agent-page-strings.js";
 import { pt } from "./agent-page-strings.js";
+import { timeText } from "/assets/clock-text.js";
 
 // Local registration also works when this lazy page is paired with retained string modules.
 register("agentNavigation", { en: { backToChat: "Back to chat" }, "zh-TW": { backToChat: "回到聊天" } });
@@ -195,7 +196,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
       ${loaded(d.instruction_files)}
       <${InstanceBoardWork} name=${name} onOpen=${(id) => navigate(`/ui/fleet?card=${encodeURIComponent(id)}`)} />
       <section class="card"><h3>${t("chat.dActivity")}</h3>${d.recent_activity?.length ? d.recent_activity.map((a, i) => html`<div key=${i} class="activity">
-        <span class="mono muted">${a.timestamp ? new Date(`${a.timestamp.replace(" ", "T")}Z`).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</span>
+        <span class="mono muted">${a.timestamp ? timeText(`${a.timestamp.replace(" ", "T")}Z`, { hour: "2-digit", minute: "2-digit" }, []) : ""}</span>
         <span class="ev">${a.event}</span> ${a.summary || ""}</div>`) : html`<p class="note">${t("chat.dNoActivity")}</p>`}</section>`;
   }
   const actions = items.filter((i) => i && ["start", "restart", "stop", "pause", "wake"].includes(i.key));

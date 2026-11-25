@@ -19,8 +19,9 @@ import { labelOf } from "/assets/instance-nav.js";
 import { ContactGrantEditor } from "./contact-grant-editor.js";
 import { REASONS } from "./contact-authorizations.js";
 import { groupWouldDisable } from "./contact-tool-groups.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
-const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""; };
+const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? dateTimeText(d, { dateStyle: "medium", timeStyle: "short" }, []) : ""; };
 /** A3's guard reason codes (ContactGuardStatus.reason), each said in words (contact-auth-strings.js guardReason_<code>). */
 const GUARD_REASONS = new Set(["legacy-mode", "unsupported-backend", "unsupported-platform", "unsupported-version", "cli-mode", "load-not-verified", "stale-policy",
   "stale-launch", "not-running", "invalid-policy", "missing-bound-mcp", "missing-selected-mcp", "guard-files-changed", "invalid-load-receipt", "guard-unavailable", "binary-changed"]);
