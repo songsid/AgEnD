@@ -14,7 +14,7 @@ Two seams are stubbed:
 - **The principal.** The fixture signs in with a host code, which has no chat identity on a chat fleet, so the request's person is one fixed, recognized managing admin. It is unverified or verified per frame.
 - **`GET` / `POST /ui/authorization` in the browser.** "Authorize this browser" goes from not verified to waiting to verified without a Discord DM.
 
-Script: `scripts/manual/request-contact-card-s228/capture.mts`. It ran at `0746db6f9` (`src` clean) and passed 116 of 116 checks. `receipt.json` lists the commit, every check, and each PNG's sha256.
+Script: `scripts/manual/request-contact-card-s228/capture.mts`. It ran at `fe4aa6613` (`src` clean) and passed 116 of 116 checks. `receipt.json` lists the commit, every check, and each PNG's sha256.
 
 | Frame | What it shows |
 |---|---|
