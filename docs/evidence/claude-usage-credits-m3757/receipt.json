@@ -1,5 +1,5 @@
 {
-  "sourceHead": "e97174d863a2afe2320e631bf204f25b2e120749",
+  "sourceHead": "0ade269f100e5d9d8ae0f309d56deb92f46f492b",
   "dirty": [],
   "checks": [
     {
@@ -11,7 +11,11 @@
       "ok": true
     },
     {
-      "name": "desk-en-light: the credits choice asks to be confirmed first",
+      "name": "desk-en-light: a subtitle under each choice, in the UI language",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the credits choice asks to be confirmed first, naming the agent in plain words",
       "ok": true
     },
     {
@@ -20,6 +24,10 @@
     },
     {
       "name": "desk-en-light: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
       "ok": true
     },
     {
@@ -43,7 +51,11 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: the credits choice asks to be confirmed first",
+      "name": "desk-zh-TW-dark: a subtitle under each choice, in the UI language",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the credits choice asks to be confirmed first, naming the agent in plain words",
       "ok": true
     },
     {
@@ -52,6 +64,10 @@
     },
     {
       "name": "desk-zh-TW-dark: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
       "ok": true
     },
     {
@@ -67,6 +83,46 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-light: Needs you shows the prompt and both of its choices",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: a subtitle under each choice, in the UI language",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the credits choice asks to be confirmed first, naming the agent in plain words",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: cancelling the confirmation leaves the card (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: no page errors",
+      "ok": true
+    },
+    {
       "name": "phone-en-light: Needs you shows the prompt and both of its choices",
       "ok": true
     },
@@ -75,7 +131,11 @@
       "ok": true
     },
     {
-      "name": "phone-en-light: the credits choice asks to be confirmed first",
+      "name": "phone-en-light: a subtitle under each choice, in the UI language",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the credits choice asks to be confirmed first, naming the agent in plain words",
       "ok": true
     },
     {
@@ -84,6 +144,10 @@
     },
     {
       "name": "phone-en-light: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
       "ok": true
     },
     {
@@ -107,7 +171,11 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: the credits choice asks to be confirmed first",
+      "name": "phone-zh-TW-dark: a subtitle under each choice, in the UI language",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the credits choice asks to be confirmed first, naming the agent in plain words",
       "ok": true
     },
     {
@@ -116,6 +184,10 @@
     },
     {
       "name": "phone-zh-TW-dark: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
       "ok": true
     },
     {
@@ -134,35 +206,43 @@
   "pictures": [
     {
       "path": "claude-usage-credits-m3757/desk-en-light-1-needs-card.png",
-      "sha256": "54b66b995201d353980e6737e8852291a642dcd1ae8ee682596418def6c7b851"
+      "sha256": "6b366d0e83bcfea5a690bee4175f4975b5ae4788bf5f7fc2506e753bef0743e0"
     },
     {
       "path": "claude-usage-credits-m3757/desk-en-light-2-confirm-credits.png",
-      "sha256": "33de4e8768119c9621ccc380b94ada52df0c9288007c4215f6ef23a43d05a1be"
+      "sha256": "e8b8522e5dee2373c3ab35b122ac4bd04d5a8229ce608355c6706556f9d1b4f3"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-1-needs-card.png",
-      "sha256": "b1fd45870fc16f68a46861347038b00f75c59baa7d23fd57fa1740e010f31d07"
+      "sha256": "ee7e586a1592ec337b8057e157fc32703d2775ffb22817ba8ddd3b466bad0db2"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-2-confirm-credits.png",
-      "sha256": "4304eb93ad390204ffb1a8d912dbe8e05ac5049bc1656dcb0591945b16770774"
+      "sha256": "db6f19c2e6545f2e7df6952a8dbf2e2641bb1b03aff5a47e0556c1b22150e0b7"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-light-1-needs-card.png",
+      "sha256": "5a020d41703831c3ae707b14b67dcc897494faf6ea175ed2f3769317624a099b"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-light-2-confirm-credits.png",
+      "sha256": "ffa69cc9faa288096be78737bf7f9f657aed111f85c79f3486549b7c736bd3d2"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-1-needs-card.png",
-      "sha256": "22b64cbd4f3569360a3f876923a1ba1599e586847c68e5bae761fbf3516a2088"
+      "sha256": "aa0d4e443b74cdd7ed5213d8e91e6a38140e1b64c8fe728781c4c02db487ad9f"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-2-confirm-credits.png",
-      "sha256": "d9c0de1410c62db650adf6a4f3899996e0deaca9f06de4f5244adb3396cf6f9d"
+      "sha256": "a79fdc281e51fc6ffc78fe729f97371117d6da1a6f388024a5561bf9f31675b1"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-1-needs-card.png",
-      "sha256": "7b0dd6d562cf63f632dc56fc42f640a19644f1c6fb40371e97eaed4f45c60d15"
+      "sha256": "24f28aee7f5ea01f5e3d72e813393cba72c2a322ee5ce330ed2313c057aefe84"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-2-confirm-credits.png",
-      "sha256": "ed09df34e561b7fee14ab49e68cc3cdec1db6241988c40e955b58de64e42ea53"
+      "sha256": "b03f8ec9b566cbdab44f70ca0e90baf5ef52cbf0d38b82f49b9950b0be13ce43"
     }
   ]
 }
