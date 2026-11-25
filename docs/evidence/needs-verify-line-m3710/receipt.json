@@ -1,0 +1,241 @@
+{
+  "sourceHead": "9879eb92cd79c3bc36d67b24d268d04fc1a5d318",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: the app mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: localhost, unverified — the line with the count",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: localhost — Authorize this browser offered",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no request named before verifying",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the account confirms (as the DM's Confirm)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: verified — the requests with Approve once, and no line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors (localhost)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: public link, unverified — the line with the count",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: public link — no request named",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: frame 3 is on the public link",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors (link)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the app mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: localhost, unverified — the line with the count",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: localhost — Authorize this browser offered",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no request named before verifying",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the account confirms (as the DM's Confirm)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: verified — the requests with Approve once, and no line",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no page errors (localhost)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: public link, unverified — the line with the count",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: public link — no request named",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: frame 3 is on the public link",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no page errors (link)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: the app mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: localhost, unverified — the line with the count",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: localhost — Authorize this browser offered",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: no request named before verifying",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: the account confirms (as the DM's Confirm)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: verified — the requests with Approve once, and no line",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: no page errors (localhost)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: public link, unverified — the line with the count",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: public link — no request named",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: frame 3 is on the public link",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: no page errors (link)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the app mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: localhost, unverified — the line with the count",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: localhost — Authorize this browser offered",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no request named before verifying",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the account confirms (as the DM's Confirm)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: verified — the requests with Approve once, and no line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors (localhost)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: public link, unverified — the line with the count",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: public link — no request named",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: frame 3 is on the public link",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors (link)",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3710-desk-light-en-1-local-unverified.png",
+      "sha256": "6c03ea914154533cdf59f3d31d4f00a8574e1e7cd621c9a82f31bc55268295f2"
+    },
+    {
+      "path": "m3710-desk-light-en-2-local-verified.png",
+      "sha256": "9a8d892c6f4985d76c0cdffe2124c529fb5ea15d9aa40e997702a064ea83b9c6"
+    },
+    {
+      "path": "m3710-desk-light-en-3-link-unverified.png",
+      "sha256": "6c03ea914154533cdf59f3d31d4f00a8574e1e7cd621c9a82f31bc55268295f2"
+    },
+    {
+      "path": "m3710-desk-dark-zh-TW-1-local-unverified.png",
+      "sha256": "bdfef44550cd94db92e14eb257e06917ad14f63d184142f00e53ffe281c78e3a"
+    },
+    {
+      "path": "m3710-desk-dark-zh-TW-2-local-verified.png",
+      "sha256": "776b3b25438aa7c4833b95f31d418c7d357c1f5c20522145c107a48155f44027"
+    },
+    {
+      "path": "m3710-desk-dark-zh-TW-3-link-unverified.png",
+      "sha256": "25978a0edeb8a43a1e206bfdb84cdebaac2875f1804b110d742ef27d99cc0521"
+    },
+    {
+      "path": "m3710-phone-light-en-1-local-unverified.png",
+      "sha256": "44dd669b7c510be5ead570709a2f040344b857060af3bc29887b456b48f9613a"
+    },
+    {
+      "path": "m3710-phone-light-en-2-local-verified.png",
+      "sha256": "313c6f8d14ebe28a41dde43cc503fa9f7ab327da0d4e32dd067101526cf5dce5"
+    },
+    {
+      "path": "m3710-phone-light-en-3-link-unverified.png",
+      "sha256": "44dd669b7c510be5ead570709a2f040344b857060af3bc29887b456b48f9613a"
+    },
+    {
+      "path": "m3710-phone-dark-zh-TW-1-local-unverified.png",
+      "sha256": "54d28ee948914b053ad05a5ecc3c2e3d0f9e3d44c654132234a45cee8bf32015"
+    },
+    {
+      "path": "m3710-phone-dark-zh-TW-2-local-verified.png",
+      "sha256": "8ee794eaa675cf30b3585aeaf1fecd95cb44946bd9113d3db9efa0ee7b000fe7"
+    },
+    {
+      "path": "m3710-phone-dark-zh-TW-3-link-unverified.png",
+      "sha256": "54d28ee948914b053ad05a5ecc3c2e3d0f9e3d44c654132234a45cee8bf32015"
+    }
+  ],
+  "linkChip-desk-light-en": "Not verified ·\nAuthorize this browser",
+  "linkPage-desk-light-en": "https://demo-smoke-link.trycloudflare.com/ui/needs",
+  "linkChip-desk-dark-zh-TW": "未驗證 ·\n授權這個瀏覽器",
+  "linkPage-desk-dark-zh-TW": "https://demo-smoke-link.trycloudflare.com/ui/needs",
+  "linkChip-phone-light-en": "Not verified ·\nAuthorize this browser",
+  "linkPage-phone-light-en": "https://demo-smoke-link.trycloudflare.com/ui/needs",
+  "linkChip-phone-dark-zh-TW": "未驗證 ·\n授權這個瀏覽器",
+  "linkPage-phone-dark-zh-TW": "https://demo-smoke-link.trycloudflare.com/ui/needs",
+  "summary": "44/44"
+}
