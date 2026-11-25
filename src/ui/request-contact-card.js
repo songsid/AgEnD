@@ -49,6 +49,7 @@ register("rcard", {
     noGrant: "This request's person can't become an allowed contact; Continue or Decline it.",
     decidedAt: "Decided {0}",
     upgrade: "This request stays held until its target is upgraded.",
+    readFailed: "Couldn't read this request's current state.", readRetry: "Read again",
   },
   "zh-TW": {
     continue: "繼續（核准這次）", alwaysAllow: "一律允許…", approveOnce: "核准這一次", decline: "拒絕",
@@ -75,6 +76,7 @@ register("rcard", {
     noGrant: "這筆申請的提出者無法設為允許的聯絡；請繼續或拒絕。",
     decidedAt: "{0} 已處理",
     upgrade: "這份申請會繼續保留，等接收端升級後才能處理。",
+    readFailed: "無法讀取這筆申請目前的狀態。", readRetry: "重新讀取",
   },
 });
 const tr = (k, ...a) => t(`rcard.${k}`, ...a);
@@ -161,6 +163,15 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   const [busy, setBusy] = useState(false);
   const [grantOpen, setGrantOpen] = useState(false);
   const [granted, setGranted] = useState(false);
+  // A read of this card that failed (after verifying, or after a decision whose answer was unknown): its state here may be
+  // stale, so it says so, its decision buttons stay off, and Read again only reads (#4497 review R2). Never a POST.
+  const [readFailed, setReadFailed] = useState(false);
+  const readCard = async () => {
+    const r = await getCard(tk.id);
+    if (r.ok) { setReadFailed(false); onChange?.(r.data); return true; }
+    setReadFailed(true);
+    return false;
+  };
   const auth = useWebAuthorization();
   const tk = card.ticket, st = stateOf(tk.state);
   const root = card.approvalScope === "root-request";
@@ -176,7 +187,7 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   const waits = useRef(needsVerify);
   waits.current = needsVerify;
   const readAgain = useRef(null);
-  readAgain.current = () => { void getCard(tk.id).then((r) => { if (r.ok) onChange?.(r.data); }); };
+  readAgain.current = () => { void readCard(); };
   const ear = useRef(null);
   useEffect(() => {
     const hear = () => { if (waits.current) readAgain.current(); };
@@ -192,9 +203,8 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   }, [needsVerify, verified, tk.id]);
 
   const reread = async (say) => {
-    const again = await getCard(tk.id);
     if (say) toast(say, false);
-    if (again.ok) onChange?.(again.data);
+    await readCard();
   };
   const decide = async (decision, grant) => {
     if (busy) return false;
@@ -217,7 +227,7 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   };
   // A click decides (Always allow opens its rule first). Before verification the buttons are off: nothing to press.
   const press = (which) => {
-    if (!canDecide) return;
+    if (!canDecide || readFailed) return;
     if (which === "always") { setGrantOpen(true); return; }
     void decide(which === "decline" ? "decline" : "approve-once");
   };
@@ -231,7 +241,7 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   };
   const links = openHref ? html`<a class="btn btn-sm btn-ghost rc-open" href=${openHref}>${ca("needsOpen")}</a>` : null;
   const button = (which, cls) => html`<button type="button" class=${`btn btn-sm${cls}`}
-    disabled=${busy || !canDecide || (which === "always" && !grantable)} data-choice=${which} onClick=${() => press(which)}>${label(which)}</button>`;
+    disabled=${busy || readFailed || !canDecide || (which === "always" && !grantable)} data-choice=${which} onClick=${() => press(which)}>${label(which)}</button>`;
 
   // The one-card style the user approved for the credits card (the leader, #4492 merge note): a standard Needs-you item —
   // a one-line title, one line of detail (the reason), the rest folded, then normal-size buttons; no raised card.
@@ -249,6 +259,7 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
         ${open ? html`<p class="rc-scope-more">${tr(root ? "scopeRoot" : "scopeOperation")}</p>` : null}
         ${st === "delivered" ? html`<p>${ca("deliveryNote")}</p>` : null}
       </details>
+      ${readFailed ? html`<p class="n-detail rc-read-failed" role="status">${tr("readFailed")} <button type="button" class="btn btn-sm rc-read-again" disabled=${busy} onClick=${() => void readCard()}>${tr("readRetry")}</button></p>` : null}
       ${granted ? html`<p class="n-detail"><a class="st-link rc-grant-view" href=${`${detailsPath(tk.target)}?cat=permissions`}>${tr("grantView")}</a></p>` : null}
       ${actions && needsVerify ? html`<div class="rc-verify" role="group" aria-label=${tr("verifyTitle")}><span>${tr("verifyTitle")}</span>${authorizeControl(auth)}</div>` : null}
       ${actions ? html`<div class="n-actions rc-decide">${button("continue", " btn-primary")}${button("always", "")}${button("decline", " btn-ghost")}${links}</div>

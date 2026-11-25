@@ -1634,7 +1634,7 @@ img.amb-p { object-fit: contain; }
   .dlg-actions { padding-bottom: max(var(--s-5), env(safe-area-inset-bottom)); }
   .dlg-actions .btn { flex: 1; min-height: var(--tap); }
   .dlg-head .dlg-x { min-width: var(--tap); min-height: var(--tap); }
-  .row-item .btn, .s-row .btn, .n-actions .btn, .rc-verify .btn { min-height: var(--tap); }
+  .row-item .btn, .s-row .btn, .n-actions .btn, .rc-verify .btn, .rc-read-failed .btn { min-height: var(--tap); }
   /* Settings buttons share one phone target, including compact card actions. */
   .p-settings .btn { min-width: var(--tap); min-height: var(--tap); }
   /* Grow the clickable label around its text without moving the surrounding layout. */

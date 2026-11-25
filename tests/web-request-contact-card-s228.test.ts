@@ -246,6 +246,50 @@ describe("J: #4497 review — a decision whose answer is unknown, and the grant 
     expect(shown.ticket.state).toBe("approved");
     expect(toasts(pg.root)).toContain("Couldn't confirm the decision. Here is the request as it stands now; nothing was sent again.");
   });
+  it("R2: the read after verifying fails (503): says so, buttons stay off, Read again only reads, then the card is current", async () => {
+    let authState: unknown = NOT_VERIFIED, getOk = false;
+    const calls = api({ "GET /ui/authorization": () => ({ body: authState }), "POST /ui/authorization": () => { authState = { state: "pending", expiresInMs: 300_000 }; return { body: { ok: true, expiresInMs: 300_000 } }; },
+      [`GET ${BASE}/${ID}`]: () => (getOk ? { body: card() } : { status: 503, body: { error: "unavailable" } }) });
+    let shown: CardV1 = card({ actions: { canDecide: false, canGrant: true, requiresVerification: true } });
+    const { useState } = await import("/assets/app-html.js") as any;
+    function Page() { const [c, setC] = useState(shown); return h(cardMod.RequestContactCard, { card: c, onChange: (n: CardV1) => { shown = n; setC(n); } }); }
+    const pg = await mountWith(Page, {});
+    (pg.root.querySelector(".rc-auth-ask") as any).click(); await settle(6);
+    authState = VERIFIED;
+    await vi.waitFor(() => expect(pg.root.querySelector(".rc-read-failed")).toBeTruthy(), { timeout: 6000 });
+    expect(text(pg.root.querySelector(".rc-read-failed"))).toBe("Couldn't read this request's current state. Read again");
+    expect(buttons(pg.root).filter((b) => b.dataset.choice).every((b) => b.disabled)).toBe(true);
+    getOk = true;
+    (pg.root.querySelector(".rc-read-again") as any).click(); await settle(8);
+    expect(pg.root.querySelector(".rc-read-failed")).toBeNull();
+    expect(choice(pg.root, "continue").disabled).toBe(false);
+    expect(calls.filter((c) => c.method === "POST" && c.url.startsWith(BASE)).length).toBe(0);
+  }, 15_000);
+  it("R2: an unknown decision whose read-again fails too: says so, buttons off, Read again only reads — one POST in all", async () => {
+    let getOk = false;
+    const calls: Array<{ method: string; url: string; body: any }> = [];
+    g.fetch = async (url: string, init: any = {}) => {
+      const method = (init.method || "GET").toUpperCase(); calls.push({ method, url, body: init.body ? JSON.parse(init.body) : undefined });
+      if (url === "/ui/authorization") return { ok: true, status: 200, json: async () => VERIFIED };
+      if (method === "POST") throw new TypeError("network");
+      if (method === "GET" && url === `${BASE}/${ID}`) return getOk ? { ok: true, status: 200, json: async () => card({ actions: { canDecide: false, canGrant: false, requiresVerification: false } }, { state: "approved" }) }
+        : { ok: false, status: 503, json: async () => ({ error: "unavailable" }) };
+      return { ok: false, status: 404, json: async () => ({}) };
+    };
+    let shown = card();
+    const { useState } = await import("/assets/app-html.js") as any;
+    function Page() { const [c, setC] = useState(shown); return h(cardMod.RequestContactCard, { card: c, onChange: (n: CardV1) => { shown = n; setC(n); } }); }
+    const pg = await mountWith(Page, {});
+    choice(pg.root, "continue").click(); await settle(10);
+    expect(pg.root.querySelector(".rc-read-failed")).toBeTruthy();
+    expect(buttons(pg.root).filter((b) => b.dataset.choice).every((b) => b.disabled)).toBe(true);
+    choice(pg.root, "continue").click(); await settle(6);                                        // off: nothing sent
+    getOk = true;
+    (pg.root.querySelector(".rc-read-again") as any).click(); await settle(8);
+    expect(shown.ticket.state).toBe("approved");
+    expect(pg.root.querySelector(".rc-read-failed")).toBeNull();
+    expect(decisions(calls).length).toBe(1);
+  }, 15_000);
   it("a definite refusal (403 forbidden) is said, not read again", async () => {
     const calls = api({ "GET /ui/authorization": () => ({ body: VERIFIED }), [`POST ${BASE}/${ID}/decision`]: () => ({ status: 403, body: { error: "forbidden" } }) });
     const pg = await mountWith(cardMod.RequestContactCard, { card: card() });
