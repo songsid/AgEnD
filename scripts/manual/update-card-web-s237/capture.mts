@@ -134,6 +134,9 @@ async function walk(c: any, full: boolean) {
     check(`${tag} 6: no top line while Settings is open`, (await page.locator(".update-line").count()) === 0, await lineText(page));
     check(`${tag} 6: no AM/PM time inputs`, (await page.locator("#settings-update input[type=time]").count()) === 0, null);
     check(`${tag} 6: the linger line without jargon, with the command to fix it`, s.includes("example") && !s.includes("lingering") && (await page.locator("#settings-update .uc-cmd").allInnerTexts()).join("|") === "sudo loginctl enable-linger example", s.slice(0, 300));
+    const row6 = await page.evaluate(`[...document.querySelectorAll("#settings-update .s-update-row button")].map((b) => b.innerText.trim())`) as string[];
+    check(`${tag} 6: admin-only: Update when idle and Not now, no Pick a time (the server takes no schedule here; #4487 review P2)`,
+      row6.includes(W(zh, "Update when idle", "閒置時更新")) && row6.includes(W(zh, "Not now", "先不要")) && !row6.includes(W(zh, "Pick a time", "選個時間")), row6);
     await shot(page, `${tag}-6-settings`);
     await page.locator(".uc-advanced summary").click(); await page.waitForTimeout(300);
     await page.evaluate(`document.querySelector(".uc-advanced")?.scrollIntoView({ block: "center" })`);
@@ -144,6 +147,8 @@ async function walk(c: any, full: boolean) {
     const n = await page.evaluate(`(document.querySelector(".uc-needs") || {}).innerText || ""`) as string;
     check(`${tag} 7: Needs you: the one line`, n.includes(W(zh, "AgEnD runs in a container; update the image.", "AgEnD 在容器裡執行，請更新映像檔。")) && !n.includes(W(zh, "can't update itself", "無法在這台機器上自行更新")), n);
     check(`${tag} 7: and not on the banner too`, (await page.locator(".update-line").count()) === 0, await lineText(page));
+    const page7 = await page.evaluate(`document.querySelector(".p-needs")?.innerText || ""`) as string;
+    check(`${tag} 7: no "nothing needs you" above it; counted (#4487 review P2)`, !page7.includes(W(zh, "Nothing needs you right now", "目前沒有需要你處理的事")) && page7.includes(W(zh, "1 waiting", "1 件待處理")), page7.slice(0, 300));
     await shot(page, `${tag}-7-needs`);
     check(`${tag}: no page errors`, errors.length === 0, errors);
   } finally { await ctx.close(); }

@@ -35,7 +35,7 @@ import { ContactNeedsItem, ContactSuggestionsGroup, isRestrictedSuggestion } fro
 import { ContactVerifyNeed, contactVerifyCount, isContactVerify } from "./contact-verify-need.js";
 import { HostDirectoryNotices, hostDirectoryNoticesOffered } from "./hub-host-security-notices.js";
 // M-3770 1.4: AgEnD's own update in Needs you — only a failure or "can't update here" (design §3.1).
-import { UpdateNeedsItem } from "/assets/update-card-ui.js";
+import { UpdateNeedsItem, updateAttention } from "/assets/update-card-ui.js";
 import { updateStore } from "/assets/app-update.js";
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
@@ -225,7 +225,9 @@ export function NeedsPanel({ navKey }) {
   const verify = items.find(isContactVerify);
   const groups = groupNeeds(items.filter(item => !item.runtimeUpdate && !isRestrictedSuggestion(item) && !isContactVerify(item)));
   // M-3710: the verify line counts as the requests it stands for (as the badge and tab title do).
-  const shownCount = items.length - suggestions.length + (suggestions.length ? 1 : 0) + asks.length + (verify ? contactVerifyCount(verify) - 1 : 0);
+  // #4487 review P2: AgEnD's own update item — rendered, counted and weighed for the empty state from the one answer.
+  const updateInfo = useStore(updateStore).info, updateNeed = !!updateAttention(updateInfo);
+  const shownCount = items.length - suggestions.length + (suggestions.length ? 1 : 0) + asks.length + (verify ? contactVerifyCount(verify) - 1 : 0) + (updateNeed ? 1 : 0);
   if (updates.length) groups.push({ instance: "", items: updates });
   const nowMs = Date.now();
   return html`<div data-effect-panel="needs" class="panel p-needs">
@@ -237,8 +239,9 @@ export function NeedsPanel({ navKey }) {
         ${decidedHere.map(([id, d]) => html`<${ProposalResult} key=${id} result=${d} />`)}
       </section>` : null}
       ${verify ? html`<${ContactVerifyNeed} item=${verify} />` : null}
-      ${(!ready || needsLoaded === false) && !items.length && !asks.length ? html`<${Skeleton} variant="rows" lines=${3} />`
-        : !items.length && !asks.length && !decidedHere.length ? hostDirectoryNoticesOffered() ? html`<p class="muted">${tn("otherEmpty")}</p>` : html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
+      ${updateNeed ? html`<${UpdateNeedsItem} info=${updateInfo} settingsHref=${`${settingsPath("advanced")}#settings-update`} />` : null}
+      ${(!ready || needsLoaded === false) && !items.length && !asks.length && !updateNeed ? html`<${Skeleton} variant="rows" lines=${3} />`
+        : !items.length && !asks.length && !decidedHere.length ? updateNeed ? null : hostDirectoryNoticesOffered() ? html`<p class="muted">${tn("otherEmpty")}</p>` : html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
         : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config",g.items[0]?.type === 'host', !!g.items[0]?.runtimeUpdate])} class="n-group" aria-label=${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance}>
           <h2 class="n-group-head">${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type==='host'?hostAlertText('title'):g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
           ${g.items.map((item) => item.type === "contact"
@@ -246,16 +249,10 @@ export function NeedsPanel({ navKey }) {
             ? html`<${ContactNeedsItem} key=${item.id} item=${item} />`
             : html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
         </section>`).concat(suggestions.length ? [html`<${ContactSuggestionsGroup} key="contact-suggestions" items=${suggestions} />`] : [])}
-      <${UpdateNeeds} />
       <${HostDirectoryNotices} />
       <${NotifyToggle} />
     </div></div>
   </div>`;
-}
-
-function UpdateNeeds() {
-  const { info } = useStore(updateStore);
-  return html`<${UpdateNeedsItem} info=${info} settingsHref=${`${settingsPath("advanced")}#settings-update`} />`;
 }
 
 function NeedsItem({ item, nowMs, owner }) {

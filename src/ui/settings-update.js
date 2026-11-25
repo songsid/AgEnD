@@ -9,7 +9,7 @@ import { toast } from "/assets/ui-toast.js";
 import { checkUpdateNow, hubNeed, openHubUpdateDialog, openUpdateDialog, refreshUpdate, updateActive, updateStore } from "/assets/app-update.js";
 import { dateTimeText } from "/assets/clock-text.js";
 // M-3770 1.4: the update card's Settings part (a module of its own; its deps are passed, never imported back).
-import { UpdateCardSettings, answerCard, pickTime, pressHere } from "/assets/update-card-ui.js";
+import { UpdateCardSettings, cardActions } from "/assets/update-card-ui.js";
 
 register("supdate", {
   en: { title: "Version and update", current: "Current version", line: "Update line", latest: "Latest", checked: "Last checked",
@@ -73,13 +73,12 @@ export function UpdateSection() {
 }
 /** M-3770 1.4: what update-card-ui.js needs from app-update.js, passed in. */
 const CARD_DEPS = { refresh: () => refreshUpdate(), setInfo: (i) => updateStore.set({ info: i }), getInfo: () => updateStore.get().info };
-/** M-3770 1.4: with the card, the same answers as the banner: Update when idle and Pick a time (only where pressHere). */
+/** M-3770 1.4: with the card, the banner's answers in every state (#4487 review P2: the banner is hidden on this page, so
+ *  waiting and scheduled keep Cancel and Update now here; Pick a time only where a schedule is taken). One policy: cardActions. */
 function cardButtons(info, starting) {
-  const c = info.card;
-  if (!c || c.state !== "offered" && c.state !== "not-now" || !pressHere(info)) return null;
   const busy = starting || updateActive(info);
-  return html`<button type="button" class="btn btn-primary" disabled=${busy} onClick=${() => { void answerCard({ action: "when-idle" }, CARD_DEPS); }}>${t("updatecard.whenIdle")}</button>
-    <button type="button" class="btn" disabled=${busy} onClick=${() => { void pickTime(CARD_DEPS); }}>${t("updatecard.pickTime")}</button>`;
+  const actions = cardActions(info, CARD_DEPS);
+  return actions.length ? actions.map((a) => html`<button type="button" key=${a.key} class=${`btn${a.primary ? " btn-primary" : ""}`} disabled=${busy} onClick=${() => { void a.run(); }}>${a.label}</button>`) : null;
 }
 
 /** The "new version" mark beside Settings' version pill (admins, an installable offer). */

@@ -5,13 +5,13 @@
 // An older server (no /ui/update) answers 404: nothing is shown.
 import { html, useEffect, useState } from "./app-html.js";
 import { register, t } from "./app-i18n.js";
-import { createStore, useStore } from "./app-store.js";
+import { appStore, createStore, useStore } from "./app-store.js";
 import { confirmDialog } from "./ui-confirm.js";
 import { Dialog } from "./ui-dialog.js";
 import { Icon } from "./ui-icons.js";
 import { toast } from "./ui-toast.js";
 // M-3770 1.4: the one update card (a module of its own: the module-skew rule).
-import { PickTimeHost, cardLine } from "./update-card-ui.js";
+import { PickTimeHost, cardLine, updateAttention } from "./update-card-ui.js";
 import { navStore } from "./app-nav.js";
 
 register("update", {
@@ -74,6 +74,9 @@ const LATER_HUB_KEY = "agend_update_later_hub", LATER_HUB_MS = 24 * 60 * 60 * 10
  */
 export const updateStore = createStore({ info: null, loadedVersion: null, skew: 0, starting: false, later: remembered(LATER_KEY),
   dismissed: remembered(DISMISSED_KEY), reloadDismissed: null, log: null, laterHub: remembered(LATER_HUB_KEY) });
+// #4487 review P2: AgEnD's own update item (a failure, or can't update here) counts in Needs you like any other — its badge,
+// the tab's and the page's count and empty state read it from appStore (app-shell.js needsCount; panel-needs.js).
+updateStore.subscribe((st) => { const n = updateAttention(st && st.info) ? 1 : 0; if ((appStore.get().updateNeeds || 0) !== n) appStore.set({ updateNeeds: n }); });
 
 /** Semver "a > b" (major.minor.patch, then a release over its prereleases, then prerelease identifiers) — the server's rule. */
 export function newerVersion(a, b) {

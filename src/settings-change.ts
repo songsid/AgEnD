@@ -1,4 +1,5 @@
 import { quotaNoticeProblem } from "./quota-notice-config.js";
+import { updatesLoosened, updatesProblems } from "./update-settings.js";
 import { createHash } from "node:crypto";
 import { t } from "./locale.js";
 import { SettingsConfirmationError, type SettingsChangeSection } from "./settings-confirmation.js";
@@ -512,6 +513,17 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
         for (const [key, a, b] of looser) add(changeLine(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`, [settingsDisplay([...path, key].join("."))], a, b, true));
         return;
       }
+    }
+    // M-3770 1.4 (#4487 review P1): Settings → Version and update. What lets an update go ahead sooner (automatic mode, a pin
+    // lifted or changed, a pause window removed or changed) is confirmed; what only holds updates back applies at once.
+    // At the fleet's root here and at the bare fleet's in the authority classifier (settings-authority.ts), as systemPrompt below.
+    if ((path.length === 2 && path[0] === "fleet" && path[1] === "updates") || (path.length === 1 && path[0] === "updates")) {
+      if (updatesProblems(next).length) throw new SettingsConfirmationError(400, "invalid_updates");
+      for (const key of updatesLoosened(old, next)) {
+        const was = object(old) ? old[key] : undefined, now = object(next) ? next[key] : undefined;
+        add(changeLine(`${settingsDisplay(`fleet.updates.${key}`)}: ${settingsDisplay(was ?? "none")} → ${settingsDisplay(now ?? "none")}`, [settingsDisplay(`fleet.updates.${key}`)], was, now, true));
+      }
+      return;
     }
     const direction = loosens(path, old, next);
     if (direction === false) return;                             // #1620: tightening applies directly

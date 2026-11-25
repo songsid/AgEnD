@@ -32,6 +32,7 @@ register("updatecard", {
     stop: "AgEnD can't update here until this is fixed.", notChecked: "not checked yet", checking: "Not checked yet: it's checked when AgEnD starts and once a day.",
     pauseTitle: "Don't update during", pauseHint: "Days and hours when AgEnD never updates (a waiting update waits for the window to end).",
     pauseAdd: "Add a time", pauseRemove: "Remove", from: "From", to: "To", save: "Save", saved: "Saved.", saveFailed: "Couldn't save: {0}",
+    settingsLabel: "When AgEnD updates", pending: "Waiting for confirmation: this lets updates go ahead sooner.", applied: "Confirmed and saved.",
     advanced: "Advanced", pin: "Pin to a version", pinHint: "No update is offered while a version is pinned. Leave empty for none.",
     maxWait: "Longest wait for idle (hours)", maxWaitHint: "After this, AgEnD asks again instead of waiting (1–168, default 24).",
     days: "Sun,Mon,Tue,Wed,Thu,Fri,Sat",
@@ -80,6 +81,7 @@ register("updatecard", {
     stop: "這個問題解決前，AgEnD 無法在這裡更新。", notChecked: "尚未檢查", checking: "尚未檢查：AgEnD 啟動時和每天會檢查一次。",
     pauseTitle: "這些時段不更新", pauseHint: "AgEnD 絕不會在這些日子和時段更新（等待中的更新會等時段結束）。",
     pauseAdd: "新增時段", pauseRemove: "移除", from: "從", to: "到", save: "儲存", saved: "已儲存。", saveFailed: "無法儲存：{0}",
+    settingsLabel: "AgEnD 何時更新", pending: "等待確認中：這項變更會讓更新提早進行。", applied: "已確認並儲存。",
     advanced: "進階", pin: "固定在某個版本", pinHint: "固定版本時不會提供任何更新。留空表示不固定。",
     maxWait: "等 Agent 閒下來的上限（小時）", maxWaitHint: "超過之後，AgEnD 會再問你，而不是繼續等（1–168，預設 24）。",
     days: "日,一,二,三,四,五,六",
@@ -242,33 +244,47 @@ export async function pickTime(deps) {
  * The banner's line for the card (null: nothing to show — not-now, done, no card). `Line` is app-update.js's line
  * component and `busy` its starting flag (passed in). The progress and the failure lines stay app-update.js's own.
  */
+/** Whether Pick a time is offered: the server takes a schedule only on a machine whose pre-flight says it can update itself
+ *  (class self; no result yet: as today, yes) — an admin-only machine updates on a press only (#4487 review P2). */
+export function canSchedule(info) {
+  const pf = info && info.preflight;
+  return pressHere(info) && (!pf || pf.class === "self");
+}
+/** One action policy for the banner and Settings (#4487 review P2): what an admin can do with the card in its state, on
+ *  this machine. Update now is never the filled button once the admin has chosen to wait (#4487 UX look). */
+export function cardActions(info, deps) {
+  const c = info && info.card;
+  if (!c || !info.admin) return [];
+  const press = pressHere(info), sched = canSchedule(info);
+  const act = (key, label, run, primary = false) => ({ key, label, primary, run });
+  const whenIdle = act("when-idle", tc("whenIdle"), () => answerCard({ action: "when-idle" }, deps), true);
+  const pick = act("pick-time", tc("pickTime"), () => pickTime(deps));
+  const later = act("not-now", tc("notNow"), () => answerCard({ action: "not-now" }, deps));
+  const cancel = act("cancel", tc("cancel"), () => answerCard({ action: "cancel" }, deps));
+  const now = act("now", tc("updateNow"), () => updateNow(info, deps));
+  if (c.state === "offered") return [press && whenIdle, sched && pick, later].filter(Boolean);
+  if (c.state === "not-now") return [press && whenIdle, sched && pick].filter(Boolean);
+  if (c.state === "waiting-idle") return [press && now, sched && pick, cancel].filter(Boolean);
+  if (c.state === "scheduled") return [press && now, cancel].filter(Boolean);
+  return [];
+}
 export function cardLine(info, { Line, busy, deps }) {
   const c = info && info.card;
   if (!c || !info.admin) return null;
   const press = pressHere(info), fails = failedChecks(info.preflight);
   // "Can't update here" (class stop): one line, in one place — Needs you (the leader's copy pass), not the banner too.
   if (info.preflight && info.preflight.class === "stop" && (c.state === "offered" || c.state === "cant")) return null;
-  const btn = (label, onClick, primary = false) => html`<button type="button" class=${`btn btn-sm${primary ? " btn-primary" : ""}`} disabled=${busy} onClick=${onClick}>${label}</button>`;
-  const whenIdle = () => { void answerCard({ action: "when-idle" }, deps); };
-  const later = () => { void answerCard({ action: "not-now" }, deps); };
-  const cancel = () => { void answerCard({ action: "cancel" }, deps); };
-  const now = () => { void updateNow(info, deps); };
-  const pick = () => { void pickTime(deps); };
+  const buttons = cardActions(info, deps).map((a) => html`<button type="button" key=${a.key} class=${`btn btn-sm${a.primary ? " btn-primary" : ""}`} disabled=${busy} onClick=${() => { void a.run(); }}>${a.label}</button>`);
   const how = fails.length ? html`<details class="uc-how"><summary>${tc("howTo")}</summary>${fails.map((f) => html`<p>${checkRich(f, c.version)}</p>`)}</details>` : null;
   if (c.state === "offered") {
     const sub = press ? [backSentence(info)] : [tc("pressOnlyLine"), how];
-    return html`<${Line} title=${tc("ready", c.version)} sub=${sub}>
-      ${press ? html`${btn(tc("whenIdle"), whenIdle, true)}${btn(tc("pickTime"), pick)}` : null}${btn(tc("notNow"), later)}</${Line}>`;
+    return html`<${Line} title=${tc("ready", c.version)} sub=${sub}>${buttons}</${Line}>`;
   }
   if (c.state === "waiting-idle") {
     const names = Array.isArray(c.waitingFor) && c.waitingFor.length ? tc("waitingFor", namesShown(c.waitingFor)) : null;
-    return html`<${Line} spinner title=${tc("waiting", c.version)} sub=${[names]}>
-      ${press ? html`${btn(tc("updateNow"), now)}${btn(tc("pickTime"), pick)}` : null}${btn(tc("cancel"), cancel)}</${Line}>`;
+    return html`<${Line} spinner title=${tc("waiting", c.version)} sub=${[names]}>${buttons}</${Line}>`;
   }
-  if (c.state === "scheduled") {
-    return html`<${Line} icon="clock" title=${tc("scheduled", c.version, fmtTime(c.scheduledAt))}>
-      ${press ? btn(tc("updateNow"), now) : null}${btn(tc("cancel"), cancel)}</${Line}>`;
-  }
+  if (c.state === "scheduled") return html`<${Line} icon="clock" title=${tc("scheduled", c.version, fmtTime(c.scheduledAt))}>${buttons}</${Line}>`;
   if (c.state === "updating" && !(info.progress && info.progress.stage)) return html`<${Line} spinner title=${tc("starting", c.version)} />`;
   return null;
 }
@@ -336,13 +352,21 @@ export function UpdatesControls() {
   }, []);
   if (!cfg) return null;
   const dayNames = tc("days").split(",");
+  // #4487 review P1: a held settings change. What only holds updates back applies at once ("Saved."); what lets an update go
+  // ahead sooner waits for a confirmation (the pending card), and says so — never "Saved." before it is applied.
   const save = async (patch) => {
     setBusy(true);
-    let res = null, out = null;
-    try { res = await fetch("/api/settings/fleet/updates", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) }); try { out = await res.json(); } catch { out = null; } } catch { res = null; }
+    let r = null, waiting = false;
+    try {
+      // Settings' own module, loaded here only (the banner, on every page, never needs it).
+      const { confirmedWrite } = await import("/ui/js/settings-confirm.js");
+      r = await confirmedWrite("/api/settings/fleet/updates", { method: "PUT", body: patch, label: tc("settingsLabel"), resendable: true,
+        onPending: () => { waiting = true; setBusy(false); toast(tc("pending")); } });
+    } catch { r = null; }
     setBusy(false);
-    if (res && res.ok) { toast(tc("saved")); return true; }
-    const why = out && Array.isArray(out.problems) && out.problems[0] ? `${out.problems[0].path}: ${out.problems[0].message}` : (out && out.error) || (res ? String(res.status) : "network");
+    if (r && r.ok) { toast(tc(waiting ? "applied" : "saved")); return true; }
+    const out = r && r.body;
+    const why = out && Array.isArray(out.problems) && out.problems[0] ? `${out.problems[0].path}: ${out.problems[0].message}` : (out && out.error) || (r ? String(r.status) : "network");
     toast(tc("saveFailed", why), false);
     return false;
   };
@@ -372,18 +396,24 @@ export function UpdatesControls() {
 }
 
 /** Needs you (§3.1: only a failure or "can't update here"): one item from the store, not counted in the server's badge. */
-export function UpdateNeedsItem({ info, settingsHref }) {
+/** #4487 review P2: the one update item Needs you shows, counts and weighs for its empty state — "failed", "cant" (can't
+ *  update here: the card says so, or the pre-flight is class stop; never while Not now), or null. */
+export function updateAttention(info) {
   const c = info && info.admin ? info.card : null;
   if (!c) return null;
-  const fails = failedChecks(info.preflight);
-  if (c.state === "failed") return html`<section class="n-group uc-needs"><div class="n-item"><strong>${t("update.failed_" + ((c.failed && c.failed.cause) || "other"))}</strong>
+  if (c.state === "failed") return "failed";
+  if ((c.state === "cant" || (info.preflight && info.preflight.class === "stop")) && c.state !== "not-now") return "cant";
+  return null;
+}
+export function UpdateNeedsItem({ info, settingsHref }) {
+  const kind = updateAttention(info);
+  if (!kind) return null;
+  const c = info.card, fails = failedChecks(info.preflight);
+  if (kind === "failed") return html`<section class="n-group uc-needs"><div class="n-item"><strong>${t("update.failed_" + ((c.failed && c.failed.cause) || "other"))}</strong>
     <p class="muted">${c.failed && c.failed.rolledBack ? t("update.unchanged", info.current) : t("update.afterInstall")}</p>
     <a class="btn btn-sm" href=${settingsHref}>${t("app.settings")}</a></div></section>`;
   // Can't update here: the reason itself is the one line (the leader's copy pass), with the way to Settings.
-  if ((c.state === "cant" || (info.preflight && info.preflight.class === "stop")) && c.state !== "not-now") {
-    const first = fails[0];
-    return html`<section class="n-group uc-needs"><div class="n-item"><strong>${first ? checkRich(first, c.version) : tc("cantTitle")}</strong>
-      <a class="btn btn-sm" href=${settingsHref}>${t("app.settings")}</a></div></section>`;
-  }
-  return null;
+  const first = fails[0];
+  return html`<section class="n-group uc-needs"><div class="n-item"><strong>${first ? checkRich(first, c.version) : tc("cantTitle")}</strong>
+    <a class="btn btn-sm" href=${settingsHref}>${t("app.settings")}</a></div></section>`;
 }

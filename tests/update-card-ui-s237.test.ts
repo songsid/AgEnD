@@ -230,10 +230,48 @@ describe("M-3770 1.4: Settings → Version and update", () => {
     expect(p.root.querySelectorAll('input[type="time"]').length).toBe(0);              // never the browser's AM/PM time input
     expect(([...p.root.querySelectorAll(".uc-time select option")] as any[]).some((o) => o.textContent === "18:00")).toBe(true);
     const saves = () => reqs.filter(r => r.url === "/api/settings/fleet/updates");
-    ([...p.root.querySelectorAll(".uc-pause .btn-primary")] as any[])[0].click(); await settle(6);
+    ([...p.root.querySelectorAll(".uc-pause .btn-primary")] as any[])[0].click();
+    await vi.waitFor(() => expect(saves().length).toBe(1)); await settle(6);
     expect(saves()[0]!.body).toEqual({ pause: [{ days: [1, 2, 3, 4, 5], from: "09:00", to: "18:00" }] });
-    ([...p.root.querySelectorAll(".uc-advanced .btn-primary")] as any[])[0].click(); await settle(6);
+    ([...p.root.querySelectorAll(".uc-advanced .btn-primary")] as any[])[0].click();
+    await vi.waitFor(() => expect(saves().length).toBe(2)); await settle(6);
     expect(saves()[1]!.body).toEqual({ pin: null, maxIdleWait: 12 });
+  });
+  it("the card's actions in every state, the same as the banner's; Pick a time only where a schedule is taken (#4487 review P2)", async () => {
+    const { UpdateSection } = await import("/ui/js/settings-update.js");
+    const SELF = { class: "self", checkedAt: 1, pressHere: true, checks: [{ id: "P3", ok: true }] };
+    const ADMIN_ONLY = { class: "admin-only", checkedAt: 1, pressHere: true, checks: [{ id: "P3", ok: false, code: "linger-off", detail: { user: "example" } }] };
+    const PRESS_ONLY = { class: "admin-only", checkedAt: 1, pressHere: false, checks: [{ id: "P4", ok: false, code: "no-write", detail: { path: "/opt/npm" } }] };
+    const want: Record<string, Record<string, string[]>> = {
+      self: { offered: ["Update when idle", "Pick a time", "Not now"], "waiting-idle": ["Update now", "Pick a time", "Cancel"], scheduled: ["Update now", "Cancel"] },
+      "admin-only": { offered: ["Update when idle", "Not now"], "waiting-idle": ["Update now", "Cancel"], scheduled: ["Update now", "Cancel"] },
+      "press-only": { offered: ["Not now"], "waiting-idle": ["Cancel"], scheduled: ["Cancel"] },
+    };
+    for (const [name, pf] of [["self", SELF], ["admin-only", ADMIN_ONLY], ["press-only", PRESS_ONLY]] as const) {
+      for (const state of ["offered", "waiting-idle", "scheduled"]) {
+        const info = ADMIN({ preflight: pf, card: CARD({ state, ...(state === "scheduled" ? { scheduledAt: Date.now() + 864e5 } : {}), ...(state === "waiting-idle" ? { waitingFor: ["A"] } : {}) }) });
+        answer = r => (r.url === "/ui/update" ? { body: info } : r.url === "/api/settings/fleet" ? { body: {} } : undefined);
+        await p.unmount(); await p.mount(h(UpdateSection, {})); await settle(10);
+        const shown = ([...p.root.querySelectorAll(".s-update-row button")] as any[]).map((b) => b.textContent.trim()).filter((x) => x !== "Check for updates");
+        expect(shown, `${name} ${state}`).toEqual(want[name]![state]);
+        expect(uc.cardActions(info, {}).map((x: any) => x.label), `banner ${name} ${state}`).toEqual(want[name]![state]);
+        expect(p.root.querySelectorAll(".s-update-row .btn-primary").length, `${name} ${state}`).toBe(state === "offered" && pf.pressHere ? 1 : 0);
+      }
+    }
+  });
+  it("a save the server holds for confirmation says it is waiting, never Saved. (#4487 review P1)", async () => {
+    const { UpdateSection } = await import("/ui/js/settings-update.js");
+    const { Toasts } = await import("/assets/ui-toast.js");
+    answer = r => (r.url === "/ui/update" ? { body: ADMIN() }
+      : r.url === "/api/settings/fleet" && r.method === "GET" ? { body: { updates: { pin: "2.4.0" } } }
+      : r.url === "/api/settings/fleet/updates" ? { status: 202, body: { ok: true, result: "pending_confirmation", pending_change: { id: "a".repeat(32), state: "pending", remaining_ms: 600_000, summary: [] } } }
+      : undefined);
+    await p.mount(h("div", {}, h(UpdateSection, {}), h(Toasts, {}))); await settle(10);
+    const toasts = () => [...p.root.querySelectorAll(".toasts .toast")].map((e: any) => e.textContent);
+    const before = toasts().length;
+    ([...p.root.querySelectorAll(".uc-advanced .btn-primary")] as any[])[0].click();
+    await vi.waitFor(() => expect(toasts().length).toBeGreaterThan(before)); await settle(4);
+    expect(toasts().slice(before)).toEqual(["Waiting for confirmation: this lets updates go ahead sooner."]);
   });
   it("admin-only with no failing row (a check not run yet, #4483 r2): says so, never an empty list", async () => {
     const { UpdateSection } = await import("/ui/js/settings-update.js");
@@ -275,6 +313,26 @@ describe("M-3770 1.4: the words", () => {
     }
     i18n.setLang("en", { store: false });
     void all;
+  });
+  it("Needs you counts the update item like any other: no empty state above it, in the page's count and the badge; gone when resolved (#4487 review P2)", async () => {
+    const app = await import("/assets/app-store.js");
+    const panel = await import("/ui/js/panel-needs.js");
+    app.appStore.set({ chatOwner: null, ready: true, needsLoaded: true, needs: [], instances: [], proposals: [], connections: 0 });
+    upd.updateStore.set({ info: ADMIN({ card: CARD({ state: "failed", failed: { cause: "network", rolledBack: true } }) }) });
+    await p.mount(h(panel.NeedsPanel, { navKey: "needs|s237" })); await settle(6);
+    const body = () => p.root.textContent ?? "";
+    expect(body()).toContain("Update failed: the update source could not be reached.");
+    expect(body()).not.toContain("Nothing needs you right now");
+    expect(body()).toContain("1 waiting");
+    expect(shell.needsCount(app.appStore.get())).toBe(1);
+    upd.updateStore.set({ info: ADMIN({ preflight: { class: "stop", checkedAt: 1, pressHere: false, checks: [{ id: "P9", ok: false, code: "container" }] } }) }); await settle(6);
+    expect(body()).toContain("AgEnD runs in a container; update the image.");
+    expect(p.root.querySelectorAll(".uc-needs").length).toBe(1);                     // once, never twice
+    expect(shell.needsCount(app.appStore.get())).toBe(1);
+    upd.updateStore.set({ info: ADMIN() }); await settle(6);                           // resolved: offered again
+    expect(body()).toContain("Nothing needs you right now");
+    expect(body()).not.toContain("waiting");
+    expect(shell.needsCount(app.appStore.get())).toBe(0);
   });
   it("Needs you: only a failure or \"can't update here\"", async () => {
     const mount = async (info: any) => { await p.unmount(); await p.mount(h(uc.UpdateNeedsItem, { info, settingsHref: "/settings/advanced#settings-update" })); await settle(4); return p.root.textContent ?? ""; };

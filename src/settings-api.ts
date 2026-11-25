@@ -90,7 +90,7 @@ import {
 } from "./connection-secrets.js";
 import type { ProviderSecretStatus } from "./provider-secret-registry.js";
 import { providerRegistryEnvKeys, isReservedProviderEnvKey } from "./provider-secret-registry.js";
-import { resolveUpdates, updatesFromRaw, updatesProblems } from "./update-settings.js";
+import { applyUpdatesPatch, resolveUpdates, updatesFromRaw } from "./update-settings.js";
 import { topicFields, type TopicDeleteOutcome } from "./instance-topic-delete.js";
 import {
   STATUS_EMOJI_CONFIG_KEYS, STATUS_EMOJI_SUGGESTIONS, TELEGRAM_REACTION_EMOJIS,
@@ -1660,34 +1660,37 @@ export function handleSettingsRequest(
 
   // ── M-3770 1.4 (design #4480 §6): Settings → Version and update's controls — `updates.*` in fleet.yaml: when not to
   // update (pause windows), the pin and the longest wait for idle (Advanced), and the mode (Phase 1 acts only on "ask").
-  // A partial patch: only the keys sent change; `pin: null` removes the pin. Validated as fleet.yaml is (updatesProblems).
-  // M-3278: over the public link too, for its admin session.
+  // A partial patch: only the keys sent change; `pin: null` removes the pin. Validated as fleet.yaml is (applyUpdatesPatch).
+  // #4487 review P1: a held settings change (isSettingsMutation; settings-effect.ts). What lets an update go ahead sooner is
+  // confirmed and what only holds updates back applies at once (updatesLoosened); either way it reaches here only through the
+  // settings transaction, as a current admin session's (local or the public link's), checked again after the body is read
+  // and inside the write.
   if (method === "PUT" && path === "/api/settings/fleet/updates") {
-    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+    const execution = settingsRequestExecution(req), configPath = ctx.configPath;
+    let allowed = false; try { allowed = !!execution && settingsRequestLocalAdmin(req); } catch { /* stale */ }
+    if (!allowed || !execution) { json(res, 403, { error: "admin_required" }); return true; }
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
+    const stillAdmin = (): boolean => { try { execution.assert(); return settingsRequestLocalAdmin(req) && ctx.fleetConfig === cfg && ctx.configPath === configPath; } catch { return false; } };
     void readBody(req, 4096).then(buf => {
-      if (!permitWebContinuation(req, res, ctx)) return;
+      if (!stillAdmin()) return json(res, 403, { error: "admin_required" });
       let body: unknown;
       try { body = JSON.parse(buf.toString("utf8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
-      if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "updates: a mapping of mode, pause, pin, maxIdleWait" });
-      const patch = body as Record<string, unknown>;
-      const keys = Object.keys(patch).filter((k) => ["mode", "pause", "pin", "maxIdleWait"].includes(k));
-      if (!keys.length || keys.length !== Object.keys(patch).length) return json(res, 400, { error: "updates: only mode, pause, pin, maxIdleWait" });
       const current = (cfg as { updates?: Record<string, unknown> }).updates;
-      const next: Record<string, unknown> = { ...(current ?? {}), ...patch };
-      if (next.pin === null) delete next.pin;
-      const problems = updatesProblems(next);
-      if (problems.length) return json(res, 400, { error: "invalid_updates", problems });
+      const applied = applyUpdatesPatch(current, body);
+      if (!applied.ok) return json(res, 400, { error: applied.error, ...(applied.problems ? { problems: applied.problems } : {}) });
+      const { next, keys, patch } = applied;
       const before = validateFleet(cfg), after = validateFleet({ ...cfg, updates: next } as typeof cfg);
       if (rejectIfWorse(res, before, after)) return;
       const previous = { value: current, had: Object.hasOwn(cfg, "updates") };
       try {
         settingsWrite(req, () => {
+          if (!stillAdmin()) throw new Error("admin_required");
           (cfg as { updates?: unknown }).updates = next;
           ctx.saveFleetConfig(keys.map((key): RawConfigPatch => (key === "pin" && patch.pin === null ? { path: ["updates", "pin"], remove: true } : { path: ["updates", key], value: next[key] })));
         });
       } catch (error) {
         if (previous.had) (cfg as { updates?: unknown }).updates = previous.value; else delete (cfg as { updates?: unknown }).updates;
+        if (error instanceof Error && error.message === "admin_required") return json(res, 403, { error: "admin_required" });
         ctx.logger.warn({ error }, "settings: updates save refused");
         return json(res, 500, { error: "updates_save_failed" });
       }

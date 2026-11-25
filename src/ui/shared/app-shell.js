@@ -573,7 +573,8 @@ register("phoneNav", {
 export function needsCount(app) {
   const needs = Array.isArray(app.needs) ? app.needs : [], proposals = Array.isArray(app.proposals) ? app.proposals : [];
   const suggestions = needs.filter(i => i?.type === "contact" && i.reason === "contact_restricted_suggestion").length;
-  return needsTotal(needs) - suggestions + (suggestions ? 1 : 0) + proposals.length;
+  // #4487 review P2: AgEnD's own update item (app-update.js keeps it in appStore), counted once.
+  return needsTotal(needs) - suggestions + (suggestions ? 1 : 0) + proposals.length + (app.updateNeeds ? 1 : 0);
 }
 
 export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions, back = null }) {
