@@ -2,7 +2,7 @@ import { NativePaneOutputLog } from "./native-pane-output-log.js";
 import { validatePaneOutputBatch } from "./runtime-pane-output.js";
 /** Coordinator-side pane handle. Remote PIDs are never exposed as local supervision targets. */
 import { EventEmitter } from "node:events";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { runtimeJobDigest } from "./runtime-client-store.js";
@@ -10,6 +10,7 @@ import { PANE_EDIT_KEYS, validatePaneQuotaHistory, validateRuntimePaneRequest, v
 import type { Pane, PaneHost, PaneInputProof, PaneInputDiagnostic, PaneKey, PaneObservation, PaneOutputEvent, PaneSize, PaneStatus } from "./pane-port.js";
 import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
 import { validateRuntimeTranscriptReference, validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, sameRuntimeTranscriptScope, type PaneTranscriptCursor, type PaneTranscriptWireBatch, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
+import { validateRequestContextCallStamp, type RequestContextCallStamp } from "./request-context-call-protocol.js";
 export interface PaneEndpoint {
   online(): boolean;
   call(request: RuntimePaneRequest): Promise<unknown>;
@@ -19,6 +20,15 @@ export interface PaneEndpoint {
 interface OwnedPane { version: 1; machineId: string; launch: RuntimePaneLaunch; openId: string; snapshot?: RuntimePaneSnapshot; statusRequested?: boolean;
   pending?: Extract<RuntimePaneRequest, { action: "reconcile" }>; pendingClose?: Extract<RuntimePaneRequest, { action: "close" }> }
 export class RuntimePanePort implements Pane {
+  private requestContextProtocol = false;
+  requestContextSupported(): boolean { return this.requestContextProtocol; }
+  private stagedRequestContext?: { stamp: RequestContextCallStamp; wireSha256: string; host: string; launch: string; current(): boolean };
+  /** Called synchronously by C's final-write hook, never by a model request or pane queue. */
+  stageRequestContext(stamp: RequestContextCallStamp, wireSha256: string, current: () => boolean): void {
+    const owner = this.record.snapshot;
+    if (!owner || !current() || !/^[a-f0-9]{64}$/.test(wireSha256)) throw Error("Originating input owner unavailable");
+    this.stagedRequestContext = Object.freeze({ stamp: validateRequestContextCallStamp(stamp), wireSha256, host: owner.hostBootId, launch: owner.launchId, current });
+  }
   private record: OwnedPane;
   private tail: Promise<unknown> = Promise.resolve();
   private error: string | null = null;
@@ -74,7 +84,8 @@ export class RuntimePanePort implements Pane {
     return this.serialize(async () => {
       if (this.closing || this.record.pendingClose) throw Error("Pane close outcome is retained; inspect its exit before starting again");
       this.save(); // The open identity exists before the runtime may spawn.
-      const { reattached, ...raw } = validateRuntimePaneOpenResult(await this.endpoint.call({ action: "open", operationId: this.record.openId, launch: this.record.launch }));
+      const { reattached, requestContextProtocol, ...raw } = validateRuntimePaneOpenResult(await this.endpoint.call({ action: "open", operationId: this.record.openId, launch: this.record.launch }));
+      this.requestContextProtocol = requestContextProtocol === 1;
       if (this.record.snapshot && !reattached) throw Error("Retained pane was not reattached by its host");
       const snapshot = this.accept(raw);
       this.record.snapshot = snapshot; this.save();
@@ -259,7 +270,7 @@ export class RuntimePanePort implements Pane {
     if (!keys.length || keys.length > 64 || keys.some(key => !Object.hasOwn(PANE_EDIT_KEYS, key))) return false;
     return this.mutate((snapshot, expectedSeq) => ({ action: "edit", ...this.target(snapshot), expectedSeq, keys: [...keys] as PaneEditKey[] }));
   }
-  sendSpecialKey(key: PaneKey, _timeoutMs?: number, proof?: PaneInputProof): Promise<boolean> { return this.mutate((snapshot, expectedSeq) => ({ action: "key", ...this.target(snapshot), expectedSeq, key }), proof); }
+  sendSpecialKey(key: PaneKey, _timeoutMs?: number, proof?: PaneInputProof): Promise<boolean> { return this.mutate((snapshot, expectedSeq) => ({ action: "key", ...this.target(snapshot), expectedSeq, key, ...(proof?.cancelTurn && this.requestContextProtocol ? { cancelTurn: true as const } : {}) }), proof); }
   async deleteBackward(count: number): Promise<boolean> {
     if (!Number.isInteger(count) || count <= 0) return true;
     if (count > 8192) return false;
@@ -280,7 +291,13 @@ export class RuntimePanePort implements Pane {
     if (opts.guard && !opts.guard()) return false;
     return this.mutate((snapshot, expectedSeq) => {
       if (opts.guard && !opts.guard()) throw Error("Delivery admission expired");
-      return { action: "input", ...this.target(snapshot), expectedSeq, kind: "paste", text };
+      const staged = this.stagedRequestContext;
+      if (staged) {
+        if (!staged.current() || staged.host !== snapshot.hostBootId || staged.launch !== snapshot.launchId
+          || staged.wireSha256 !== createHash("sha256").update(text).digest("hex")) throw Error("Originating input binding changed");
+        this.stagedRequestContext = undefined;
+      }
+      return { action: "input", ...this.target(snapshot), expectedSeq, kind: "paste", text, ...(staged ? { requestContext: staged.stamp } : {}) };
     }, opts.proof);
   }
   async pipeOutput(logPath: string): Promise<void> {

@@ -7,10 +7,10 @@ import {PassThrough} from 'node:stream';import {EventEmitter} from 'node:events'
 import {LocalPaneEndpoint} from '../src/local-pane-endpoint.js';import {serveLocalPaneRelay} from '../src/runtime-pane-stdio.js';import {PaneStdioFramer,paneStdioInput,paneStdioOutput,PANE_STDIO_LIMIT} from '../src/runtime-pane-stdio-protocol.js';import type {PaneLinkOptions, RuntimePaneLink} from '../src/runtime-pane-link.js';
 import {FleetManager} from '../src/fleet-manager.js';
 const stops:Array<()=>unknown>=[];afterEach(()=>{for(const f of stops.splice(0).reverse())f();vi.useRealTimers();});
-async function fixture(){
+async function fixture(scoped=false,hostSupport=scoped){
  const input=new PassThrough(),output=new PassThrough(),stderr=new PassThrough();const child=Object.assign(new EventEmitter(),{stdin:input,stdout:output,stderr,kill:vi.fn()}),request=vi.fn<RuntimePaneLink["request"]>(async()=>({hostBootId,panes:[]})),stop=vi.fn(async()=>{}),changed=vi.fn();let settings!:PaneLinkOptions,allowed=true,limit=4;const hostBootId=randomUUID();
- const detach=serveLocalPaneRelay(input,output,async options=>{settings=options;return{hostBootId,request,stop,connectionChanged:changed} as never;});stops.push(detach);const mcp=vi.fn(async()=>({tools:[]}));
- const options={scope:'a'.repeat(64),admit:()=>{if(!allowed)throw Error('off');},maxAgents:()=>limit,version:()=> 'Codex 0.165.0',launch:async()=>child as never,mcp};const endpoint=await LocalPaneEndpoint.open(options);stops.push(()=>endpoint.stop());return{endpoint,hostBootId,settings,options,input,output,child,request,stop,changed,mcp,setAllowed:(value:boolean)=>{allowed=value;},setLimit:(value:number)=>{limit=value;}};
+ const detach=serveLocalPaneRelay(input,output,async options=>{settings=options;return{hostBootId,request,stop,connectionChanged:changed,requestContextSupported:()=>hostSupport&&options.requestContextProtocol===1} as never;});stops.push(detach);const mcp=vi.fn(async()=>({tools:[]}));
+ const options={...(scoped?{requestContextProtocol:1 as const}:{}),scope:'a'.repeat(64),admit:()=>{if(!allowed)throw Error('off');},maxAgents:()=>limit,version:()=> 'Codex 0.165.0',launch:async()=>child as never,mcp};const endpoint=await LocalPaneEndpoint.open(options);stops.push(()=>endpoint.stop());return{endpoint,hostBootId,settings,options,input,output,child,request,stop,changed,mcp,setAllowed:(value:boolean)=>{allowed=value;},setLimit:(value:number)=>{limit=value;}};
 }
 it('fragments UTF-8, coalesces frames and rejects malformed/oversized/arbitrary-command frames',()=>{
  const got:unknown[]=[],framer=new PaneStdioFramer(),epoch=randomUUID(),line=Buffer.from(JSON.stringify({label:'中文'})+'\n');for(const byte of line)framer.feed(Buffer.from([byte]),value=>got.push(value));framer.feed(Buffer.from('{}\n{}\n'),value=>got.push(value));expect(got).toEqual([{label:'中文'},{},{}]);
@@ -116,4 +116,13 @@ it("local Windows relay preserves optional quota metadata and an old or invalid 
   }
   expect(f.request.mock.calls.every(([request])=>['open','capture'].includes((request as {action:string}).action))).toBe(true);
  }finally{f.endpoint.stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+it("S-224 retains the stamp through negotiated stdio and refuses an older host",async()=>{
+ const f=await fixture(true),stamp={version:1 as const,coverage:"covered" as const,proof:"d".repeat(64)};
+ const body={op:"pane-mcp" as const,owner:{hostBootId:f.hostBootId,paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),instance:"native"},helperId:randomUUID(),method:"tools/list" as const,params:{}};
+ await f.settings.mcp!(body,()=>true,stamp);expect(f.mcp).toHaveBeenCalledWith(body,expect.any(Function),stamp);
+ const old=await fixture(true,false);
+ await expect(old.endpoint.call({action:"input",paneId:randomUUID(),launchId:randomUUID(),operationId:randomUUID(),sequence:1,expectedSeq:0,kind:"paste",text:"do not write",requestContext:stamp})).rejects.toThrow(/not negotiated/);
+ expect(old.request).not.toHaveBeenCalled();
 });

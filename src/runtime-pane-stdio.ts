@@ -20,14 +20,14 @@ export function serveLocalPaneRelay(input:Readable,output:Writable,open:(options
    // The coordinator supplies an opaque installation digest, never a user-chosen path.
    // Keep the path short for PS5.1 Job exit receipts; the descriptor still verifies the full digest.
    const directory=join(process.env.LOCALAPPDATA||join(homedir(),"AppData","Local"),"AgEnD","pane-adapter",value.scope.slice(0,16),"state");
-   void open({directory,server:"http://127.0.0.1",machineId:value.scope,online:current,maxAgents:()=>maxAgents,epoch:()=>epoch,
+   void open({directory,server:"http://127.0.0.1",machineId:value.scope,...(value.requestContextProtocol===1?{requestContextProtocol:1 as const}:{}),online:current,maxAgents:()=>maxAgents,epoch:()=>epoch,
     disconnected:()=>{stop();output.destroy();},
     output:snapshot=>{if(!link)return;try{send({type:"output",epoch,snapshot});}catch{stop();}},
-    mcp:(body,owner)=>new Promise((resolve,reject)=>{
-     if(!link||!current()||!owner()||pending.size>=32){reject(Error("Local pane MCP admission refused"));return;}
+    mcp:(body,owner,stamp)=>new Promise((resolve,reject)=>{
+     if(!link||!current()||!owner()||pending.size>=32||stamp&&link.requestContextSupported?.() !== true){reject(Error("Local pane MCP admission refused"));return;}
      const id=randomUUID(),timer=setTimeout(()=>{pending.delete(id);reject(Error("Local pane MCP result unconfirmed"));},90_000);timer.unref();pending.set(id,{resolve,reject,timer});
-     try{send({type:"mcp.request",id,epoch,body});}catch(error){clearTimeout(timer);pending.delete(id);reject(error);stop();}
-    })}).then(value=>{if(closed){void value.stop();return;}link=value;clearTimeout(initTimer);send({type:"hello",epoch,hostBootId:link.hostBootId});}).catch(()=>{stop();output.destroy();});return;
+     try{send({type:"mcp.request",id,epoch,body,...(stamp?{requestContext:stamp}:{})});}catch(error){clearTimeout(timer);pending.delete(id);reject(error);stop();}
+    })}).then(value=>{if(closed){void value.stop();return;}link=value;clearTimeout(initTimer);send({type:"hello",epoch,hostBootId:link.hostBootId,...(link.requestContextSupported?.() === true?{requestContextProtocol:1 as const}:{})});}).catch(()=>{stop();output.destroy();});return;
   }
   if(value.epoch!==epoch||!link)throw Error("Local pane owner is not ready");
   if(value.type==="lease"){if(!value.online)leaseGeneration++;online=value.online;lastLease=performance.now();maxAgents=value.maxAgents;link.connectionChanged();return;}

@@ -11,6 +11,8 @@ import {runtimeJobDigest} from "./runtime-client-store.js";
 import {RuntimeNativePaneLifecycle} from "./native-pane-lifecycle.js";
 import {assertRunnableNativePaneVersion,nativeCliVersionState} from "./runtime-pane-native.js";
 import {nativeCredentialProfile} from "./native-instance-registry.js";
+import type { RequestContextPaneProofs } from "./request-context-pane.js";
+import type { PaneMcpAuthority } from "./runtime-pane-mcp.js";
 import {PaneMcpAuthorityLease} from "./runtime-pane-mcp.js";
 import {validateRuntimePaneLaunch,validateRuntimePaneSnapshot,validateRuntimePaneSessionProof,type RuntimePaneLaunch,type RuntimePaneSnapshot} from "./runtime-pane-protocol.js";
 import {validatePaneMcpBody,type PaneMcpBody} from "./runtime-pane-mcp-protocol.js";
@@ -24,6 +26,7 @@ interface Manifest {version:1;machineId:string;configuration:string;launch:Runti
  fresh?:{previous:RuntimePaneSnapshot;automatic:boolean;announced?:true;previousLaunch?:RuntimePaneLaunch;sessionId?:string;decisionLaunchId?:string}}
 export interface NativeMachineEndpoint extends PaneEndpoint {epoch():string|null; version(provider:string):string|null}
 export interface NativePaneManagerOptions {
+ requestContexts?: RequestContextPaneProofs;
  home:string;
  store:WindowsAgents;
  config(name:string):InstanceConfig|undefined;
@@ -34,7 +37,7 @@ export interface NativePaneManagerOptions {
  allowed(name:string,tool:string,args:Record<string,unknown>):boolean;
  published(name:string,daemon:Daemon):boolean;
  freshNotice?(name:string,provider?:"codex"|"claude-code"):Promise<void>|void;
- invoke(daemon:Daemon,input:{tool:string;args:Record<string,unknown>;operationId:string},current:()=>boolean,name:string):Promise<{result:unknown;error?:string;errorCode?:string|number}>;
+ invoke(daemon:Daemon,input:Parameters<PaneMcpAuthority["invoke"]>[0],current:()=>boolean,name:string):Promise<{result:unknown;error?:string;errorCode?:string|number}>;
 }
 interface Binding {native:RuntimeNativePaneLifecycle;lease:PaneMcpAuthorityLease;bind(daemon:Daemon):void}
 export class NativePaneManager {
@@ -102,6 +105,7 @@ export class NativePaneManager {
   if(manifest.launch.cli==="codex"&&manifest.fresh&&snapshot.sessionId&&snapshot.sessionId!==manifest.fresh.previous.sessionId
     &&this.options.store.get(snapshot.agentId).threadId!==snapshot.sessionId)next=this.bindFreshCodex(file,manifest,snapshot);
   next={...next,exited:snapshot};this.save(file,next);
+  this.options.requestContexts?.retire({hostBootId:snapshot.hostBootId,paneId:snapshot.paneId,launchId:snapshot.launchId,agentId:snapshot.agentId,instance:snapshot.instance});
   const profile=this.options.store.get(snapshot.agentId);
   if(!snapshot.noLaunch&&!profile.threadId&&snapshot.sessionId&&profile.activeId)this.options.store.pinPaneSession(snapshot.agentId,snapshot.launchId,snapshot.sessionId);
   if(this.options.store.get(snapshot.agentId).activeId){
@@ -234,6 +238,7 @@ export class NativePaneManager {
   };
   const owned=()=>!!daemon&&current()&&this.options.published(name,daemon);
   const lease=new PaneMcpAuthorityLease(join(directory,`${launch.launchId}.mcp.json`),{
+   ...(this.options.requestContexts ? { requestContexts: this.options.requestContexts } : {}),
    toolCeiling:launch.mcpTools??[],
    machineId:endpoint.machineId,owner:{hostBootId,paneId:launch.paneId,launchId:launch.launchId!,agentId:id,instance:name},current,transportEpoch:()=>endpoint.epoch(),
    menu:()=>this.options.menu(name),allowed:(tool,args)=>current()&&this.options.allowed(name,tool,args),
@@ -241,7 +246,7 @@ export class NativePaneManager {
    responseWritten:operationId=>daemon?.paneToolResponseWritten(operationId,owned),
    toolFailed:details=>daemon?.logNativeToolFailure(details),
   });
-  const native:RuntimeNativePaneLifecycle=new RuntimeNativePaneLifecycle({endpoint,launch,receiptFile:join(directory,`${launch.launchId}.pane.json`),...(launch.cli==="codex"&&retained.fresh?{freshPrevious:retained.fresh.previous}:{}),
+  const native:RuntimeNativePaneLifecycle=new RuntimeNativePaneLifecycle({endpoint,launch,...(this.options.requestContexts ? { requestContexts: this.options.requestContexts } : {}),receiptFile:join(directory,`${launch.launchId}.pane.json`),...(launch.cli==="codex"&&retained.fresh?{freshPrevious:retained.fresh.previous}:{}),
    admit:()=>{assertCurrent();this.options.admit(name,config);},reserve:launchId=>{this.options.store.reservePane(id,launchId);},pin:(launchId,sessionId)=>{
     if(launch.cli==="codex"&&retained.fresh){const observed=native.port.ownedSnapshot();if(!observed||observed.launchId!==launchId||observed.sessionId!==sessionId)throw Error("Fresh Codex observation differs");retained=this.bindFreshCodex(file,retained,observed);}
     else this.options.store.pinPaneSession(id,launchId,sessionId);
@@ -357,8 +362,11 @@ export class NativePaneManager {
   });
   await native.release("close");
  }
- async handle(machineId:string,raw:PaneMcpBody,transport:()=>boolean):Promise<unknown>{
+ async handle(machineId:string,raw:PaneMcpBody,transport:()=>boolean,stamp?:import("./request-context-call-protocol.js").RequestContextCallStamp):Promise<unknown>{
   const body=validatePaneMcpBody(raw),binding=this.bindings.get(body.owner.agentId);
-  if(!binding)throw Error("Native pane tool owner is unavailable");return binding.lease.handle(machineId,body,transport);
+  if(!binding)throw Error("Native pane tool owner is unavailable");
+  // Negotiated transports refuse missing stamps before this callback. Old transports get only unknown per-operation scope.
+  const captured = stamp ?? (this.options.requestContexts ? { version:1 as const, coverage:"not-covered" as const, reason:"unbound-input" as const } : undefined);
+  return captured ? binding.lease.handle(machineId,body,transport,captured) : binding.lease.handle(machineId,body,transport);
  }
 }

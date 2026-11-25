@@ -1,6 +1,7 @@
 import { ProposeContactChangeArgs, ContactStateArgs, contactProposalRefusal } from "./contact-change-proposals.js";
 import { compactDeliveryStatus, compactSendAck } from "./tool-receipt-output.js";
 import { ContactHeldError } from "./contact-auth-service.js";
+import type { RequestContextCallAdmission } from "./request-context-call.js";
 import { KNOWN_BACKENDS, validateFleetConfig, type ValidationResult } from "./config-validator.js";
 import { resolve as pathResolve, isAbsolute } from "node:path";
 import { homedir } from "node:os";
@@ -243,6 +244,8 @@ export interface OutboundMeta {
   operationId?: string;
   sourceDaemonBootId?: string;
   callerCurrent?: () => boolean;
+  /** Server-owned original admission, never tool args, a human authority field or a late current-turn query. */
+  requestContextAdmission?: RequestContextCallAdmission;
   /** report_result's Hub-only fields (files, buttons, poll), already validated for the agend-hub target. */
   hubExtras?: HubReportExtras;
 }

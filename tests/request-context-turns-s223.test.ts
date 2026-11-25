@@ -160,3 +160,13 @@ it("a stale snapshot cannot retire its successor under the same unchanged owner"
   expect(r.turns.ended(changedSnapshot, owner)).toBe(false);
   expect(r.turns.current(owner)).toBe(second);
 });
+
+it("S-224 never binds ordinary queued input; a current permitted steer keeps A's original token", () => {
+  const r=rig(),a=r.turns.beforeWrite("a",r.prepare("a"),owner);
+  expect(()=>r.turns.beforeQueuedSteer("ordinary",r.prepare("ordinary"),owner)).toThrow(RequestContextInputDeferred);
+  const actor={kind:"person" as const,platform:"discord" as const,userId:"demo-admin"};
+  const digest=r.prepare("steer",context(),{kind:"admin-steer",activeToken:a.token,actor});
+  expect(r.turns.beforeQueuedSteer("steer",digest,owner)).toBe(a);
+  r.admin(false);expect(()=>r.turns.beforeQueuedSteer("steer",digest,owner)).toThrow(/permitted/);
+  expect(r.turns.current(owner)).toBe(a);
+});

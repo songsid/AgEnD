@@ -102,3 +102,12 @@ describe("reply with files", () => {
     expect(adapter.sendFile).not.toHaveBeenCalled();
   });
 });
+it("S-224 rechecks the original call before each attachment after an awaited text send",async()=>{
+ const adapter=makeAdapter(),file=vi.fn();let current=true,release!:(value:SentMessage)=>void;
+ adapter.sendText.mockImplementationOnce(()=>new Promise(done=>{release=done;}));adapter.sendFile=file;
+ const response=new Promise<{result:unknown;error?:string}>(done=>{
+  routeToolCall(adapter,"reply",{chat_id:"chan",text:"fixture",files:["/tmp/one.txt","/tmp/two.txt"]},undefined,(result,error)=>done({result,error}),{beforeSend:()=>{if(!current)throw Error("Originating call ended");}});
+ });
+ expect(adapter.sendText).toHaveBeenCalledOnce();current=false;release(sent("already-posted"));
+ expect((await response).error).toContain("Originating call ended");expect(file).not.toHaveBeenCalled();
+});

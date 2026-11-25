@@ -32,6 +32,7 @@ function rig() {
   const responses: Array<{ result: unknown; error?: string }> = [];
   const adapter = { type: "telegram" };
   const fm = {
+    requestContextCallOf: (FleetManager.prototype as any).requestContextCallOf,
     fleetConfig: config, dataDir: home, saveFleetConfig,
     classicHubPrivateBlocked: () => false, restrictedClassicRouting: () => undefined,
     lifecycle: { handleCreate, has: () => false },

@@ -77,6 +77,15 @@ export class RequestContextLocalTurns {
     const active = this.active;
     return active !== null && same(active.owner, owner) && active.token === snapshot.token && same(active, snapshot);
   }
+  beforeQueuedSteer(inputId: string | null, wireSha256: string, owner: RequestContextRuntimeOwner): RequestContextTurnSnapshot {
+    const input = inputId === null ? null : this.ports.input(inputId);
+    const active = this.current(owner);
+    if (!input || input.inputId !== inputId || input.proof.kind !== "admin-steer" || !active) throw new RequestContextInputDeferred();
+    // apply validates live canManage, exact actor, original parent/token and unchanged wire digest.
+    const snapshot = this.apply(input, wireSha256, owner);
+    if (snapshot.token !== active.token) throw new RequestContextInputDeferred();
+    return snapshot;
+  }
   /** Called synchronously under the final pane-write lock, after every await/current-owner check. */
   beforeWrite(inputId: string | null, wireSha256: string, owner: RequestContextRuntimeOwner): RequestContextTurnSnapshot {
     const input: PreparedRequestContextInput | null = inputId === null

@@ -70,7 +70,7 @@ it("all old consumers stop before commit; a second busy pane recovers only the f
 });
 it("daemon quiescence uses the pane lock and rejects busy or a changed spawn before fencing input",async()=>{
  const daemon:any=Object.create(Daemon.prototype);Object.defineProperty(daemon,"paneHost",{value:{getPanePid:async()=>123},writable:true,configurable:true});let generation=1;
- Object.assign(daemon,{backend:{binaryName:"claude"},spawnGeneration:1,launchFenceEpoch:1,pauseWakeState:"active",spawning:false,healthCheckPaused:false,deliveryWritesStopping:false,startupAborted:false,deliveryEpoch:0,
+ Object.assign(daemon,{requestContextCalls:new Map(),backend:{binaryName:"claude"},spawnGeneration:1,launchFenceEpoch:1,pauseWakeState:"active",spawning:false,healthCheckPaused:false,deliveryWritesStopping:false,startupAborted:false,deliveryEpoch:0,
   turnReplyGuard:new TurnReplyGuard(),tmux:{getWindowId:()=>"@fixture"},tmuxSessionName:"fixture",paneHost:{getPanePid:async()=>123},usesNativePane:()=>false,paneWriteLock:{run:vi.fn(async(fn:any)=>fn())},isPaneAuthoritativelyIdle:vi.fn(async()=>false)});
  expect(await daemon.quiesceClaudeCredential()).toBe(false);expect(daemon.deliveryWritesStopping).toBe(false);
  daemon.isPaneAuthoritativelyIdle.mockImplementation(async()=>{daemon.spawnGeneration=++generation;return true;});
@@ -128,7 +128,7 @@ it("retirement proof rejects unreadable, same or unknown panes and accepts a mis
 function logicalTurnDaemon(){
  const daemon:any=Object.create(Daemon.prototype),turn=new TurnReplyGuard();
  Object.defineProperty(daemon,"paneHost",{value:{getPanePid:vi.fn(async()=>123)},writable:true,configurable:true});
- Object.assign(daemon,{backend:{binaryName:"claude"},spawnGeneration:1,launchFenceEpoch:1,pauseWakeState:"active",spawning:false,healthCheckPaused:false,deliveryWritesStopping:false,startupAborted:false,deliveryEpoch:0,turnReplyGuard:turn,
+ Object.assign(daemon,{requestContextCalls:new Map(),backend:{binaryName:"claude"},spawnGeneration:1,launchFenceEpoch:1,pauseWakeState:"active",spawning:false,healthCheckPaused:false,deliveryWritesStopping:false,startupAborted:false,deliveryEpoch:0,turnReplyGuard:turn,
   tmux:{getWindowId:()=>"@fixture"},tmuxSessionName:"fixture",usesNativePane:()=>false,paneWriteLock:{run:async(fn:any)=>fn()},isPaneAuthoritativelyIdle:vi.fn(async()=>true)});
  return {daemon,turn};
 }

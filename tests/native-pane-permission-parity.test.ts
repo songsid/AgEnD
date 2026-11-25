@@ -51,7 +51,7 @@ describe("Stop clears a native pane's permission card through the pane's own key
   it("a native pane sends Escape keyed on the dialog screen it just read, so the composer proof does not withhold it", async () => {
     const { daemon, sent } = daemonWithPane(true, () => windowsCard);
     await daemon.sendEscape();
-    expect(sent).toEqual([["Escape", undefined, { kind: "dialog", screen: windowsCard }]]);
+    expect(sent).toEqual([["Escape", undefined, { kind: "dialog", screen: windowsCard, cancelTurn: true }]]);
   });
 
   it("a native pane with an unreadable screen sends nothing (no blind key)", async () => {
