@@ -644,6 +644,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .dlg-title { flex: 1; font-size: var(--fs-lg); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
 .dlg-body { padding: var(--s-2) var(--s-5) var(--s-4); overflow-y: auto; display: flex; flex-direction: column; gap: var(--s-3); }
 .dlg-actions { display: flex; justify-content: flex-end; gap: var(--s-2); padding: var(--s-3) var(--s-5) var(--s-5); }
+.dlg-even .dlg-actions .btn { flex: 1 1 0; min-width: 0; }
 /* A drawer (ui-dialog.js `drawer`): on a desk, the right edge at full height, the page in view beside it. A phone keeps
    the bottom sheet (the rules below are for 900 px and up only). */
 @media (min-width: 900px) and (pointer: fine), (min-width: 900px) and (pointer: none), (min-width: 900px) and (min-height: 501px), (min-width: 1024px) {

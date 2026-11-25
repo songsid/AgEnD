@@ -135,9 +135,9 @@ describe("the compact card (M-3757 redesign): one-line title, options by what th
   });
 
   it.each([
-    ["en", "Lumen: Fable 5.2 now costs extra. Switch model?", ["Switch to Opus 5.5 (uses your plan)", "Keep Fable 5.2 (billed to credits)"], "Keep Lumen on Fable 5.2?", "Continue on credits", "Show Claude's text"],
-    ["zh-TW", "Lumen：Fable 5.2 要另外收費，要換模型嗎？", ["換成 Opus 5.5（用方案額度）", "繼續用 Fable 5.2（另外扣點數）"], "讓 Lumen 繼續用 Fable 5.2？", "繼續（用點數）", "看 Claude 原文"],
-  ] as const)("%s: the page names the card and its choices in the UI's language", async (lang, title, labels, confirmTitle, confirmLabel, raw) => {
+    ["en", "Lumen: Fable 5.2 now costs extra. Switch model?", "Fable 5.2 now costs extra. Switch model?", ["Switch to Opus 5.5 (uses your plan)", "Keep Fable 5.2 (billed to credits)"], "Keep Lumen on Fable 5.2?", "Continue on credits", "Show Claude's text"],
+    ["zh-TW", "Lumen：Fable 5.2 要另外收費，要換模型嗎？", "Fable 5.2 要另外收費，要換模型嗎？", ["換成 Opus 5.5（用方案額度）", "繼續用 Fable 5.2（另外扣點數）"], "讓 Lumen 繼續用 Fable 5.2？", "繼續（用點數）", "看 Claude 原文"],
+  ] as const)("%s: the page names the card and its choices in the UI's language", async (lang, title, short, labels, confirmTitle, confirmLabel, raw) => {
     const i18n = await import("/assets/app-i18n.js");
     const ui = await import("/ui/js/usage-credits-card.js");
     i18n.setLang(lang);
@@ -146,12 +146,13 @@ describe("the compact card (M-3757 redesign): one-line title, options by what th
       const prompt = remoteCardPrompt("x", claudeUsageCreditsPrompt(LIVE)!.card, "Lumen");
       const actions = prompt.choices.map(c => ({ id: c.action, label: c.label, role: c.role, confirmation: c.confirmation }));
       expect(ui.usageCreditsTitle(prompt.view)).toBe(title);
+      expect(ui.usageCreditsTitle(prompt.view, { named: false })).toBe(short);     // under Needs you's agent group
       const shown = ui.usageCreditsActions(prompt.view, actions);
       expect(shown.map((a: any) => a.label)).toEqual(labels);
       expect(shown.map((a: any) => a.id)).toEqual(["opt-1", "opt-2"]);                 // the server's ids, unchanged
       expect(shown.map((a: any) => a.primary)).toEqual([true, false]);
       expect(shown[0].confirmation).toBeUndefined();
-      expect(shown[1].confirmation).toMatchObject({ title: confirmTitle, confirmLabel });
+      expect(shown[1].confirmation).toMatchObject({ title: confirmTitle, confirmLabel, even: true });
       expect(ui.showRawLabel()).toBe(raw);
     } finally { i18n.setLang("en"); }
   });

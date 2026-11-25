@@ -45,11 +45,14 @@ try {
     try {
       const zh = lang === "zh-TW";
       const W = zh
-        ? { title: "Lumen：Fable 5.2 要另外收費，要換模型嗎？", sw: "換成 Opus 5.5（用方案額度）", cr: "繼續用 Fable 5.2（另外扣點數）", raw: "看 Claude 原文", open: "開啟聊天" }
-        : { title: "Lumen: Fable 5.2 now costs extra. Switch model?", sw: "Switch to Opus 5.5 (uses your plan)", cr: "Keep Fable 5.2 (billed to credits)", raw: "Show Claude's text", open: "Open chat" };
+        ? { title: "Fable 5.2 要另外收費，要換模型嗎？", sw: "換成 Opus 5.5（用方案額度）", cr: "繼續用 Fable 5.2（另外扣點數）", raw: "看 Claude 原文", open: "開啟聊天" }
+        : { title: "Fable 5.2 now costs extra. Switch model?", sw: "Switch to Opus 5.5 (uses your plan)", cr: "Keep Fable 5.2 (billed to credits)", raw: "Show Claude's text", open: "Open chat" };
       const card = page.locator("article.n-compact").first();
       await card.waitFor({ state: "visible", timeout: 20_000 });
-      check(`${tag}: one-line title in the UI language`, (await card.locator(".n-title strong").innerText()).trim() === W.title, await card.locator(".n-title strong").innerText());
+      const titleEl = card.locator(".n-title strong");
+      check(`${tag}: the title is in the UI language, without the agent name the group header already shows`, (await titleEl.innerText()).trim() === W.title, await titleEl.innerText());
+      const lines = await titleEl.evaluate((e: Element) => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].map(x => Math.round(x.top))).size; });
+      check(`${tag}: the title fits on one line`, lines === 1, lines);
       const buttons = card.locator(".n-stack > .btn");
       const labels = (await buttons.allInnerTexts()).map(x => x.trim());
       check(`${tag}: two stacked buttons, named by what they do`, JSON.stringify(labels) === JSON.stringify([W.sw, W.cr]), labels);
@@ -76,6 +79,8 @@ try {
         : ["讓 Lumen 繼續用 Fable 5.2？", "Lumen 之後的回覆可能會另外從用量點數扣款（不在方案內）。", "繼續（用點數）", "取消"];
       check(`${tag}: the credits choice asks to be confirmed first, naming the agent in plain words`, want.every(w => words.includes(w)) && !/回合|answers/.test(words), words);
       check(`${tag}: no key went to the pane before the confirmation`, answers === 0, answers);
+      const cw = await dialog.locator(".dlg-actions .btn").evaluateAll((els: Element[]) => els.map(e => Math.round(e.getBoundingClientRect().width)));
+      check(`${tag}: the confirmation's two buttons are one width`, cw.length === 2 && Math.abs(cw[0] - cw[1]) <= 1, cw);
       path = shotPath(smoke, tag, "2-confirm-credits"); await page.screenshot({ path }); receipt.pictures.push(path);
       await dialog.getByRole("button", { name: lang === "en" ? "Cancel" : "取消", exact: true }).click();
       await page.waitForTimeout(300);

@@ -336,7 +336,7 @@ function NeedsItem({ item, nowMs, owner }) {
   if (ucView) return html`<article data-trust="permission" class="n-item n-compact">
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
-      <div class="n-title"><strong>${usageCreditsTitle(ucView)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
+      <div class="n-title"><strong>${usageCreditsTitle(ucView, { named: false })}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
       <div class="n-stack">
         ${shownActions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class=${`btn btn-sm${a.primary ? " btn-primary" : ""}`}
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${answering ? tn("answering") : a.label}</button>`)}
