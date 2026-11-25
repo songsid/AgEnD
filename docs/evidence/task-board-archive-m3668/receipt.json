@@ -1,5 +1,5 @@
 {
-  "sourceHead": "65ec9021ff706f33a4070d35b427b35fec374016",
+  "sourceHead": "a63c74a626d6fe6ad20eb4c85150390d65a21fca",
   "dirty": [],
   "checks": [
     {
@@ -219,6 +219,10 @@
       "ok": true
     },
     {
+      "name": "phone-en-light: the archive-days field is a 44px tap target",
+      "ok": true
+    },
+    {
       "name": "phone-en-light: Settings refuses a fraction of a day",
       "ok": true
     },
@@ -295,6 +299,10 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-dark: the archive-days field is a 44px tap target",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-dark: Settings refuses a fraction of a day",
       "ok": true
     },
@@ -306,195 +314,195 @@
   "pictures": [
     {
       "path": "m3668-desk-en-light-1-home.png",
-      "sha256": "9514663026472abc9d8ef8e5a4c9ba151a360a034638496d92945ab314a52372"
+      "sha256": "08db2a03c3f3a590d7eb3fe41d4c2027864621c50f32d992e8d1fd74a2a83a90"
     },
     {
       "path": "m3668-desk-en-light-2-board.png",
-      "sha256": "bc4d8a3b52040103f7d0275b6b235400977b790ada79321e6e45f69420bd44ef"
+      "sha256": "0f2a4921c700adf5b4c5cd6c8dfb9d5c1c7ce0cb64b4411dc07d383beca13d3b"
     },
     {
       "path": "m3668-desk-en-light-2b-show-more-before.png",
-      "sha256": "4ce7b3031ca9f562ba4f42b6b69443fd2f4388f7891a10247e0093709f247f87"
+      "sha256": "e4e5886e71747c876b794d47626e7dd13e79576f544bb27bf28fff887cabd506"
     },
     {
       "path": "m3668-desk-en-light-2c-show-more-after.png",
-      "sha256": "884cc4ac4626f3433baffd6de2db0654387a02de6c95af56a6a5681eb2b4f149"
+      "sha256": "980b044715f4e4050bad5039c3edb375ac32279d477bdd95b592ea1a5d94a76f"
     },
     {
       "path": "m3668-desk-en-light-3-archive.png",
-      "sha256": "bdcceaab56d88f65d9bd5bc8a1bfd44c2731632672bb7231f2f36aef20e3c803"
+      "sha256": "d807de3aebb197da077f979288b130b820d94f044e68e7344c44d6ec81ddc467"
     },
     {
       "path": "m3668-desk-en-light-3b-archive-next-page.png",
-      "sha256": "cb305e845fc415781dfe72f6e629ebf80c2833985b4eca7a8622863281cff7a6"
+      "sha256": "f22e6659d5d386f5bf0fd348f0ea52ee1c0a71b099be339cf362529e2cd188c1"
     },
     {
       "path": "m3668-desk-en-light-3c-archive-filtered.png",
-      "sha256": "ac5f1bc7cc52e9578aa769ff57a9d4f37d08cf66493c6e69b43af2143431eb8f"
+      "sha256": "6ff1c66c413ea1fbd1e74cd8826565b94fef99dfaa2d44f486fbb8e5806daa8b"
     },
     {
       "path": "m3668-desk-en-light-7-reopened.png",
-      "sha256": "ebb1f6a49784b78dc463818ca0efa7aaf4862caa193fc96c55ac5862931677dc"
+      "sha256": "107ae09fdcf6ebbd4f1eb82e518859639c3caab2bc521ce87208599930f055b9"
     },
     {
       "path": "m3668-desk-en-light-4-search.png",
-      "sha256": "8cdac8d6a30c4867d37b4ae842f80f2e7df8310075ab669a6db5a89e389b6eec"
+      "sha256": "f8eac8f93b83b37056f712fc46ea1a78275ec42cb9dc9dbf1229b49d60e145e0"
     },
     {
       "path": "m3668-desk-en-light-5-card.png",
-      "sha256": "324ac2f2122d30baa57ffc653cabb3105e0c4715db165a054d070bd9dcece510"
+      "sha256": "a658ae11af049f8d1958113b141e9855cbc3e54487ab53f977cd388535205605"
     },
     {
       "path": "m3668-desk-en-light-6-settings.png",
-      "sha256": "6eda15a22fe494cdfe0d5427e78554be9d132c07aaf1e8f1a2fe379dff5649a6"
+      "sha256": "b0755aa3716209f65d96532042f6935e6393ccccc094c9f21212197636936cb5"
     },
     {
       "path": "m3668-desk-en-light-6b-settings-refused.png",
-      "sha256": "93366eb78d56dae8f67e3ee3f483b5e2cb54b85e4e4f4d18487690232f729d2f"
+      "sha256": "fa4037d374d4eaff727e5822761b347a671c45847f06a07d693a2cbb1e307757"
     },
     {
       "path": "m3668-desk-zh-TW-dark-1-home.png",
-      "sha256": "5e64d1e97d3aefb854f92e75d79929600483010f58c00bc6ef4dcc4ed2565913"
+      "sha256": "b2565f7ecbe8d8dc8d01437e22ae65b88420b724a0a1a4e39e462a175dfdd63a"
     },
     {
       "path": "m3668-desk-zh-TW-dark-2-board.png",
-      "sha256": "8bc688353cec42e1b56b4179198685d113227e27f155f77414f6f58211c7f0be"
+      "sha256": "8f8542d4f8fb22c99dc1af5afca61bae325aabec74e483e6bf2ae72ae7183e9e"
     },
     {
       "path": "m3668-desk-zh-TW-dark-2b-show-more-before.png",
-      "sha256": "437554c3425a0f7a531f0c1ee5f5b85a53b7ffdf463962046cdeaadcf6d92f0f"
+      "sha256": "1f7b217334a11a50b6df1fac6de19586fcde56276f0d1a775a720632531cc654"
     },
     {
       "path": "m3668-desk-zh-TW-dark-2c-show-more-after.png",
-      "sha256": "0ea581f562d4180b0bc2696b0eaf7d97e4335c51a76d931e4384e3e8d0a3cd85"
+      "sha256": "2c385c23d59518a4fa0f6ece0cdf4e80d2a1f46d7e6d0ba38fe7b44572de51b6"
     },
     {
       "path": "m3668-desk-zh-TW-dark-3-archive.png",
-      "sha256": "cda868911c62b2557de0a5306189212af45e44b771edaee7ae3f49530a86cf89"
+      "sha256": "87f3c999267e544bfe0c6829f84192e186678556e4e86dd7263ee1650d116104"
     },
     {
       "path": "m3668-desk-zh-TW-dark-3b-archive-next-page.png",
-      "sha256": "67c5470bdad8ac01848f065bddb4a5018d8a42052b2d26b838c228c8400e99fe"
+      "sha256": "fa2c133bf787ff6fd55120a959ad14e33017b3666f25947d0f639b04ca0d22d2"
     },
     {
       "path": "m3668-desk-zh-TW-dark-3c-archive-filtered.png",
-      "sha256": "c838324bff7ed8d163d91d8420d3a55d3f707d2e02bcaafe96927dd4366928c7"
+      "sha256": "4d04b95a142d64aee00e7a4bdf9200abba52941666a419dfcbffd3bcc8bd16cb"
     },
     {
       "path": "m3668-desk-zh-TW-dark-7-reopened.png",
-      "sha256": "26c15a147a95acffc1975ad83e0564cbf921958ff94f09751fb3419841652c5b"
+      "sha256": "c4829f3144ccb29eb5dffdb5fa8d73fc7725557f6a635a4097f209c706933109"
     },
     {
       "path": "m3668-desk-zh-TW-dark-4-search.png",
-      "sha256": "63a9ede28e24c7a9eeaadb89a7db1eee57e2b42ef555ec942f634d09d096393c"
+      "sha256": "1b4a889c9de6b5558e7c28bfdb03f061df34659ece87e9b3996e46cef5f3d48b"
     },
     {
       "path": "m3668-desk-zh-TW-dark-5-card.png",
-      "sha256": "2d93cb3a69e59e4a6a5348c52c93e5506894c959fff04031da0f3153a95fb345"
+      "sha256": "9d36df30d04530cd5bdc897c806d10252e7bf8dbb1fc3d62f3de787dcdbbdcc4"
     },
     {
       "path": "m3668-desk-zh-TW-dark-6-settings.png",
-      "sha256": "ecfeba0145d5a5b9054ea1e8f7ed526182a3484f634147b171704b7438c93fa9"
+      "sha256": "ca47d2c58f3ba750ef5b08ef17b0a15ae2ead92834c895d2052bcf544b6e41ca"
     },
     {
       "path": "m3668-desk-zh-TW-dark-6b-settings-refused.png",
-      "sha256": "fe508f74f7c3775731bcd6beaa74180a20536187cb1ed18758b1a5d971139b53"
+      "sha256": "4a3b6f621168b5c05ef304daf64ebf742f61b9473a4ad804f5e35c4fb4fe1df5"
     },
     {
       "path": "m3668-phone-en-light-1-home.png",
-      "sha256": "4e2dad08404f8fb9739838bbe66ad7b56576b0125fd0e4209f682bf3dacefaa3"
+      "sha256": "d4f10d69fd5c110f7ca685aa8149dba8139ebe37c547e6dc46289a797eb55f6f"
     },
     {
       "path": "m3668-phone-en-light-2-board.png",
-      "sha256": "b38c34fa7bf2428bbe2ce0f19ec88e96251c3f430baa56db5acbf4d3e6776154"
+      "sha256": "02edbc8c94d818efc91ac7de822b9a7b0c183fa9d444aa006dd6af02e29cb379"
     },
     {
       "path": "m3668-phone-en-light-2b-show-more-before.png",
-      "sha256": "834ac76c839e9f84a27b396aa01a15aad0b27b568f4c55891aee98dee664f06f"
+      "sha256": "4c57c77c8336fce8c7a68be7d05a38400bfe38077eda61d6bb553e0ed54583a9"
     },
     {
       "path": "m3668-phone-en-light-2c-show-more-after.png",
-      "sha256": "2d550490ce50f8d0949590c335e4b6614b47fe295c5bd1d3894d1abdb793e439"
+      "sha256": "112a2d6fba75aebf176a4e72dcba033781456874b8a066efcd8aeff143d45e50"
     },
     {
       "path": "m3668-phone-en-light-3-archive.png",
-      "sha256": "591de0720c47cc919f72164fbec5afb51f18e4824a5c9d7c3edf027bd6751d03"
+      "sha256": "06f71fd9a3427733e01cae7d1b1d44345cacd944984e44b6e1b89fc2d353d93d"
     },
     {
       "path": "m3668-phone-en-light-3b-archive-next-page.png",
-      "sha256": "8eaf4f223639e1b5672cfaa3e5f73ab10c746538879eb25dadcf3f642b025d34"
+      "sha256": "243b8e7ca7971bcd699d3814448a17b544321e65ec7d25036fd56b59ee4d690f"
     },
     {
       "path": "m3668-phone-en-light-3c-archive-filtered.png",
-      "sha256": "0f71ad285d04dcfe2f8038d78e6893db820533714d5b160412371f0d9381852d"
+      "sha256": "64d8d795e7ec2e1f5cdc65933350b49826458990fcbc4b507ffab15197d5a7ec"
     },
     {
       "path": "m3668-phone-en-light-7-reopened.png",
-      "sha256": "fba73229a00c23bd91992cdd6e07ee9cfd827756196ffda2367d41853a0184dd"
+      "sha256": "1e12b5d77e79767d0d576d850515ad7651e4e490ab8cd3bd69d291fb31fc93b7"
     },
     {
       "path": "m3668-phone-en-light-4-search.png",
-      "sha256": "08d926f3db5d813c6363918e94907b64ad1ecba7f94d3c3012054b9ad83c6178"
+      "sha256": "51bc08aba4c8068716383a88a98f85d3e29b1b01cdb89c1b47311cf63a38a356"
     },
     {
       "path": "m3668-phone-en-light-5-card.png",
-      "sha256": "d4f9cc70b25cec3d8aac612bc7a7b5094baa1fafa6b254219212a5b86e3a4712"
+      "sha256": "bc0e1960d3b488a6802e597dadd5fc568100523b6ea0e4a72ea6e72d1f7b349c"
     },
     {
       "path": "m3668-phone-en-light-6-settings.png",
-      "sha256": "dce46f97e2f66a446d4308f322f03e54d40ef9d92bae724b5cebdc1cd45f39d6"
+      "sha256": "13716e709b64f73d2e779399603699086d4b8bbf7771024ea2d62e0d4645ecd1"
     },
     {
       "path": "m3668-phone-en-light-6b-settings-refused.png",
-      "sha256": "64f36a78b1409ed677a41fb101c94e7d75d6bf10bee3711a386f0a551ff32730"
+      "sha256": "96f1baed777a27b95508f71f870d0d86a781979b4bf68c11d32fba4b1eb8c0a1"
     },
     {
       "path": "m3668-phone-zh-TW-dark-1-home.png",
-      "sha256": "a8c52e7da2fbd1f5657ffe6938e5aae15a6b487df02654ebeea14c851957efff"
+      "sha256": "ae0e6cd904188015d12c3aef73667ad14add0956d13b003e8b778d2b7f1f2dbd"
     },
     {
       "path": "m3668-phone-zh-TW-dark-2-board.png",
-      "sha256": "a1f1440b7821e01db27fdd8944fcafaa48a6ce021ca3ecc9fa263025b6046c10"
+      "sha256": "5b02b8bad436290855e484dda41f9085df810f45b29f8879137562c8bc9541d7"
     },
     {
       "path": "m3668-phone-zh-TW-dark-2b-show-more-before.png",
-      "sha256": "49d223de674e56aacd75edaf65696a3a8187e3e13f819d72beaf77d3c16efbcc"
+      "sha256": "956a37563047d74c776d69be9c5490afec7ac46744ffffd891b541220968eba0"
     },
     {
       "path": "m3668-phone-zh-TW-dark-2c-show-more-after.png",
-      "sha256": "406459ff057655766da3996ad1c8a25bca967bdd5969e23e51e8fa335736c492"
+      "sha256": "c065916269de2aa681c1becff8546928eaf5016f4372929981ad12ee359bc930"
     },
     {
       "path": "m3668-phone-zh-TW-dark-3-archive.png",
-      "sha256": "cb09105b19b246220bb075056b79816a35e2ab7aead218d37ff8483c668a4f7b"
+      "sha256": "b20281e72dbe8f0835de6c34d0c0bf6569042fe32739a131aefd83dd32d2e400"
     },
     {
       "path": "m3668-phone-zh-TW-dark-3b-archive-next-page.png",
-      "sha256": "8c85a95a5e055287bd12c85d2d50d9b39d8b4cad265b11218f25326c6cc30c06"
+      "sha256": "becc5b5ecb3fa05800173c6f344e3f03b5f73965fb8c41b714a302b396e2d35a"
     },
     {
       "path": "m3668-phone-zh-TW-dark-3c-archive-filtered.png",
-      "sha256": "bb191142f4d8b1c278e09a89143d58cc9ee8b3a0a9d62c13310fc1b7737ce127"
+      "sha256": "448ccd5f37914a345435c41d95718aa12883732c008229819a742a5f0291cadb"
     },
     {
       "path": "m3668-phone-zh-TW-dark-7-reopened.png",
-      "sha256": "1aa67d2e32fe3edd80d99a17d612032b590a6276cd9b5d143caa84f44582c1fc"
+      "sha256": "6083b59164117db535c406508dc7653771f4d23074672779069476b5566ad2cd"
     },
     {
       "path": "m3668-phone-zh-TW-dark-4-search.png",
-      "sha256": "a29b7e72174836be3e5cb87f54214ed270ca45646c62cc5540a7a29429b2d393"
+      "sha256": "58fae49b06d254bf46d04613f58e0ebbb7202828ec1fd86787d08aaf633fb62c"
     },
     {
       "path": "m3668-phone-zh-TW-dark-5-card.png",
-      "sha256": "bbf54e1dc9ed03d72bd0d12073c91e8db88dce07735431c0f7d7003ce53993e4"
+      "sha256": "5b08fb08740ef44427107f342669128f753cca9dd06ecc560b0077ef7a8df081"
     },
     {
       "path": "m3668-phone-zh-TW-dark-6-settings.png",
-      "sha256": "344f529dcb32417b6eba5a9a41c0fc042cce3d65630129bd8ee91d9f631f1be8"
+      "sha256": "95ceba588592ecc2194fef6b1f93aeb18f063400fd17142d4108d6f95a0486bc"
     },
     {
       "path": "m3668-phone-zh-TW-dark-6b-settings-refused.png",
-      "sha256": "bc84435cec4b7dc066276c65ddf9aa3f0b4b4da98a0a8e8f4d8f3b172020bde4"
+      "sha256": "1e9876fab0eaf7dd4549fab245c5ba5dc2d2de1cc173c17c108c5010f9758b05"
     }
   ],
   "board": {
@@ -517,8 +525,8 @@
   "measured": {
     "desk-en-light-nameLines": 1,
     "desk-zh-TW-dark-nameLines": 1,
-    "phone-en-light-nameLines": 3,
+    "phone-en-light-nameLines": 2,
     "phone-zh-TW-dark-nameLines": 2
   },
-  "summary": "75/75"
+  "summary": "77/77"
 }

@@ -1,6 +1,6 @@
 # M-3668: finished work off the board (real app)
 
-These are captures of the real web app and task board (`scripts/manual/smoke-fixture`), with a scratch scheduler database of made-up cards. The board's real data stays off GitHub. The captures were taken headless with Chromium, with motion reduced. Script: `scripts/manual/task-board-archive-m3668/capture.mts`. `receipt.json` lists the commit (its `src` clean), every check (75/75) and each PNG's sha256.
+These are captures of the real web app and task board (`scripts/manual/smoke-fixture`), with a scratch scheduler database of made-up cards. The board's real data stays off GitHub. The captures were taken headless with Chromium, with motion reduced. Script: `scripts/manual/task-board-archive-m3668/capture.mts`. `receipt.json` lists the commit (its `src` clean), every check (77/77) and each PNG's sha256. On a phone, the Settings field (archive after N days) is measured as a 44px tap target.
 
 **The fixture.** "Example project" holds 120 main tasks finished over the last 4 weeks: 40 of them in the last 3 days. Every 13th is cancelled (M-8, M-21, M-34, …); cancelled cards are not in the Done column, so its numbering skips them. Three more are at work (In progress, Blocked, To do). With the default `archive_after_days` (3), the first combination starts with:
 - 37 cards in the Done column;
