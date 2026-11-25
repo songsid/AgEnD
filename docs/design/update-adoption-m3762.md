@@ -235,7 +235,9 @@ The full flow runs only on a machine in class **Self** (§4). Both the running v
    - **Hub.** The Hub holds what it sends to an offline member until it reconnects, as today.
    - **Telegram.** Unconfirmed updates stay with the platform (long-poll) and are read on reconnect.
    - **Discord.** The gateway doesn't replay. On start the fleet (trial or old) **reads each bound channel's history since its last-seen message id** and admits what it missed into the inbox. Phase 2 adds this catch-up; until it exists, the card says "a message sent in Discord during the restart may need sending again".
-   - **`send_to_instance`** from another fleet process. Refused while the fleet is down; the sender's delivery already retries.
+   - **`send_to_instance`** from another fleet process. Two cases, kept apart:
+     - **Refused before acceptance** (nothing listening, or a 503 from the trial): the caller is told it wasn't accepted, and may send it again.
+     - **Accepted, or uncertain**: the sender's durable outbox keeps retrying delivery. The caller **never resends** it, as the cross-instance rule already says: check its delivery status, don't send a duplicate.
 6. **Health proof**, against the baseline, for up to 5 minutes:
    - the process stays up, with no restart loop;
    - the web's health route answers;
@@ -328,7 +330,7 @@ Both are signed and published on the docs site, mirrored as GitHub release asset
 
 ```jsonc
 // releases/<channel>/index.json (+ .sig)
-{ "schema": 1, "channel": "beta", "generation": 418, "issuedAt": "…", "expiresAt": "…",
+{ "schema": 1, "channel": "beta", "epoch": 0, "generation": 418, "issuedAt": "…", "expiresAt": "…",   // epoch: the trust epoch whose operational key signed it
   "latest": "2.4.0-beta.25",
   "releases": [ { "version": "2.4.0-beta.25", "manifest": "2.4.0-beta.25.json", "sha256": "…" } ],
   "floor": { "id": "SEC-2026-03", "version": "2.4.0-beta.20", "dueAt": "2026-11-28T10:00:00Z", "summary": "…" },
@@ -535,3 +537,4 @@ A rehearsal (like S-233's) proves phases 2–4 on real installs: a forced trial 
 | Prism R2-5: Try again is reachable | §5.1 exception for the exact failed artifact; §6 rule 6 |
 | Prism R2-6: operator settings in the UI | §6: Advanced in Settings (pin, longest wait), and `fleet.yaml` |
 | Lumen nits | §6 pin follows D3's option; P6 counts the snapshot from Phase 2; P4 has no button on the card |
+| Prism R3 clarifications | §5.1: `epoch` in the index example. §3.3, step 5: `send_to_instance` refused before acceptance (the caller may resend) vs accepted or uncertain (the outbox retries; the caller never resends) |
