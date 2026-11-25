@@ -67,7 +67,7 @@ try {
           receipt.seen[`${tag}-confirm`] = await page.evaluate(`document.querySelector("dialog.dlg[open]")?.innerText.replace(/\\s+/g, " ").trim()`);
           await shot(page, `${tag}-2-confirm`);
           await page.keyboard.press("Escape");
-          await page.goto(fx.base + "/ui/settings/advanced"); await mounted(page, 30000);
+          await page.goto(fx.base + "/settings/advanced"); await mounted(page, 30000);
           await page.waitForSelector("#settings-update", { timeout: 15000 });
           await page.evaluate(`document.querySelector("#settings-update")?.scrollIntoView({ block: "start" })`);
           receipt.seen[`${tag}-settings`] = await page.evaluate(`document.querySelector("#settings-update")?.innerText.replace(/\\s+/g, " ").trim()`);
