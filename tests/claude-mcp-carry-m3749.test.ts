@@ -9,6 +9,7 @@ import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox, SYSTEM_NOTICE_KIND } from "../src/delivery-outbox.js";
 import { deriveNeedsYou } from "../src/needs-you.js";
 import { getLocale, setLocale } from "../src/locale.js";
+import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
 
 // A fake value shaped like a key, to prove an MCP entry's env is copied but never printed.
 const SECRET = "fake-mcp-token-0000-not-real";
@@ -192,5 +193,24 @@ describe("M-3749: a launch reports MCP servers that did not come along", () => {
       expect(daemon.mcpMissing()).toBeNull();
       vi.unstubAllEnvs();
     }
+  });
+
+  it("the lifecycle relays the daemon's event to the fleet and recomputes Needs you", () => {
+    const onMcpMissing = vi.fn(), onAttentionChanged = vi.fn();
+    const ctx = { fleetConfig: { instances: { agent: { backend: "claude-code" } }, defaults: {} }, logger: { info() {}, warn() {}, error() {}, debug() {} },
+      eventLog: null, isPlannedRestart: () => false, notifyInstanceTopic: vi.fn(), webhookEmit: vi.fn(), clearCancelButton: vi.fn(),
+      checkModelFailover() {}, restartSingleInstance: async () => {}, getInstanceDir: (n: string) => `/nonexistent/${n}`,
+      onMcpMissing, onAttentionChanged } as unknown as LifecycleContext;
+    const lc = new InstanceLifecycle(ctx);
+    const daemon = new EventEmitter();
+    lc.attachIncidentHandlers("agent", daemon as any);
+    const missing = { names: ["outline"], fromConfigDir: "/a", toConfigDir: "/b", since: 1 };
+    daemon.emit("mcp_missing", { name: "agent", missing });
+    daemon.emit("mcp_missing", { name: "agent", missing: null });
+    expect(onMcpMissing.mock.calls).toEqual([["agent", missing], ["agent", null]]);
+    expect(onAttentionChanged).toHaveBeenCalledTimes(2);
+    onMcpMissing.mockImplementation(() => { throw Error("fake-failure"); });
+    expect(() => daemon.emit("mcp_missing", { name: "agent", missing })).not.toThrow();
+    expect(onAttentionChanged).toHaveBeenCalledTimes(3);
   });
 });
