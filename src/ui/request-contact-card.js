@@ -4,13 +4,15 @@
 //   it came in, the message, where replies go, the reason, when it expires; a continued request says so and has no actions.
 // - Continue (approve once) / Always allow… / Decline. Continue states its D1 scope (a root request: this request and its
 //   later Agent contacts, nothing else); a legacy ticket keeps its old one-request wording.
-// - Not verified yet: the same card, with Authorize this browser inline. A press then only marks the choice; nothing is
-//   decided. Once this browser is verified the card is read again: still waiting → the marked choice, focus left where it
-//   was, and the person presses it (or another) to decide. Changed meanwhile → its outcome, in place. A decision is only
-//   ever sent from a click on a decision button: never from an effect, a poll, a key or the authorization's completion.
+// - Not verified yet: the same card, its buttons off, with one line and Authorize this browser inline. Once this browser
+//   is verified the card is read again and shows its buttons; one click decides. Verifying never decides anything: a
+//   decision is only ever sent from a click on a decision button, never from an effect, a poll, a key or the
+//   authorization's completion.
+// - Each card's detail line says its scope in a few words (Continue = this request and its follow-ups; Approve once = this
+//   one request), so the two verbs in one list explain themselves; the long wording is in its details.
 // - 409 (decided or changed elsewhere) → read the same card again and show it; never retried.
 // A module of its own, with its own words (the module-skew rule): an older cached page keeps today's cards.
-import { html, useEffect, useRef, useState } from "/assets/app-html.js";
+import { html, useEffect, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import { dateTimeText } from "/assets/clock-text.js";
@@ -26,6 +28,7 @@ register("rcard", {
     continue: "Continue (approve once)", alwaysAllow: "Always allow…", approveOnce: "Approve once", decline: "Decline",
     scopeRoot: "Continue this request and its later Agent contacts. This does not approve what Agents do or authorize unrelated requests.",
     scopeOperation: "Approve = forward this request once.",
+    scopeShortRoot: "Continue = this request and its follow-up contacts only.", scopeShortOperation: "Approve once = this one request only.",
     askedBy: "Asked by {0}", askedByNone: "No single known person asked", unknownPerson: "Unknown person", hubPerson: "{0} (Hub)",
     ingress_owner: "An admin's request", "ingress_free-room": "Free room", "ingress_restricted-room": "Restricted room", ingress_guest: "Guest", ingress_hub: "Hub",
     repliesTo: "Replies go back to {0}.", audience_room: "the original room", audience_web: "the web conversation", audience_hub: "the Hub conversation", audience_instance: "the requesting Agent",
@@ -39,9 +42,8 @@ register("rcard", {
     continuedFrom: "Continued from request #{0}: it needs no decision here.",
     state_approved_root: "Continued",
     verifyTitle: "Authorize this browser to decide.",
-    chosen: "Your choice: {0}. Authorize this browser to finish.", chosenReady: "This browser is verified. Your choice is marked: press it to finish, or choose another.",
-    changed: "This request changed while you were authorizing. Here it is now.",
     decidedElsewhere: "This request was decided elsewhere. Here is its outcome.",
+    uncertain: "Couldn't confirm the decision. Here is the request as it stands now; nothing was sent again.",
     failed: "Couldn't record the decision: {0}", forbidden: "You can't decide this request.", signIn: "Sign in again to decide.",
     unavailable: "Contact approvals are unavailable right now.", grantInvalid: "That allowed contact can't be saved; approve once or decline.",
     noGrant: "This request's person can't become an allowed contact; Continue or Decline it.",
@@ -52,7 +54,8 @@ register("rcard", {
     continue: "繼續（核准這次）", alwaysAllow: "一律允許…", approveOnce: "核准這一次", decline: "拒絕",
     scopeRoot: "繼續這筆請求及它後續的 Agent 聯絡；這不代表核准 Agent 的操作，也不會授權其他請求。",
     scopeOperation: "核准＝只轉交這一次。",
-    askedBy: "由 {0} 提出", askedByNone: "不是由單一已知的人提出", unknownPerson: "身分不明", hubPerson: "{0}（Hub）",
+    scopeShortRoot: "繼續＝只放行這筆請求和它後續的聯絡。", scopeShortOperation: "核准這一次＝只轉交這一筆請求。",
+    askedBy: "由 {0} 提出", askedByNone: "不是單一已知的人提出的", unknownPerson: "身分不明", hubPerson: "{0}（Hub）",
     ingress_owner: "管理員的請求", "ingress_free-room": "自由模式房間", "ingress_restricted-room": "受限模式房間", ingress_guest: "訪客", ingress_hub: "Hub",
     repliesTo: "回覆會回到{0}。", audience_room: "原本的房間", audience_web: "網頁對話", audience_hub: "Hub 對話", audience_instance: "提出請求的 Agent",
     "reason_restricted-room-request": "這是 {0} 處理 {1} 在受限模式房間提出的請求時送出的。",
@@ -65,9 +68,8 @@ register("rcard", {
     continuedFrom: "接續申請 #{0}：這裡不需要再決定。",
     state_approved_root: "已繼續",
     verifyTitle: "授權這個瀏覽器後才能決定。",
-    chosen: "你的選擇：{0}。授權這個瀏覽器即可完成。", chosenReady: "這個瀏覽器已驗證。你的選擇已標出：按下它即可完成，或改選其他。",
-    changed: "你授權期間這筆申請有變動，以下是目前狀態。",
     decidedElsewhere: "這筆申請已在別處處理，以下是結果。",
+    uncertain: "無法確認這次決定是否完成。以下是這筆申請目前的狀態；沒有再次送出。",
     failed: "無法記錄決定：{0}", forbidden: "你無法決定這筆申請。", signIn: "請重新登入後再決定。",
     unavailable: "目前無法處理聯絡核准。", grantInvalid: "無法儲存這項允許的聯絡；請核准這次或拒絕。",
     noGrant: "這筆申請的提出者無法設為允許的聯絡；請繼續或拒絕。",
@@ -101,6 +103,25 @@ export function reasonText(card) {
   if (code === "unproved-recovery") return tr("reason_unproved-recovery", card.sourceLabel);
   return tr("reason_other");
 }
+/**
+ * The card's server-owned candidates as people any copy of the grant editor keys the same way (#4497 review): the
+ * server's key is JSON [platform, userId], so each carries the userId its key names — an older cached editor, which keys
+ * by [platform, userId] and knows no `keyOf`, still selects exactly these keys.
+ */
+export function candidatePeople(card) {
+  return (card.grantCandidates || []).map((c) => ({ key: c.key, label: c.label, platform: c.platform, userId: candidateUserId(c) }));
+}
+/** Save control: the rule to send, only for keys this card offered (at least one, never one an editor made up); else null. */
+export function grantFromChoice(card, c) {
+  const offered = new Set((card.grantCandidates || []).map((x) => x.key));
+  const keys = Array.isArray(c && c.personKeys) ? c.personKeys : [];
+  if (!keys.length || !keys.every((k) => typeof k === "string" && offered.has(k))) return null;
+  return { expiresAt: c.expiresAt, remainingUses: c.remainingUses, personKeys: keys };
+}
+/** The userId a candidate's server key names (JSON [platform, userId]), or null when the key isn't that shape. */
+export function candidateUserId(c) {
+  try { const k = JSON.parse(String(c && c.key)); return Array.isArray(k) && k.length === 2 && k[0] === c.platform && typeof k[1] === "string" ? k[1] : null; } catch { return null; }
+}
 /** The time a request was asked, as Needs you's items show theirs: the clock today, else the date. */
 const clockOf = (iso) => { const d = new Date(iso); if (!Number.isFinite(d.getTime())) return ""; return new Date().toDateString() === d.toDateString()
   ? dateTimeText(d, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }, []) : dateTimeText(d, { month: "short", day: "numeric" }, []); };
@@ -115,16 +136,6 @@ export function requesterText(actor) {
   return tr("askedBy", actor.displayName || actor.userId);
 }
 
-/**
- * The choice each ticket's person made before this browser was verified, for this page load only: a re-sign-in (as
- * anyone) is a new page load and starts with none. Keyed by ticket id and the revision it was made on.
- */
-const retained = new Map();
-export function retainedChoice(card) {
-  const r = card && retained.get(card.ticket.id);
-  return r && r.revision === card.snapshot.ticketRevision ? r.choice : null;
-}
-export function forgetChoices() { retained.clear(); }
 
 /**
  * Authorize this browser, from the card's own reading of it (so the card itself sees pending turn into verified): the
@@ -146,7 +157,6 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   const [busy, setBusy] = useState(false);
   const [grantOpen, setGrantOpen] = useState(false);
   const [granted, setGranted] = useState(false);
-  const [choice, setChoice] = useState(() => retainedChoice(card));
   const auth = useWebAuthorization();
   const tk = card.ticket, st = stateOf(tk.state);
   const root = card.approvalScope === "root-request";
@@ -154,25 +164,20 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   const needsVerify = open && card.actions.requiresVerification;
   const canDecide = open && card.actions.canDecide && !card.actions.requiresVerification;
   const grantable = card.actions.canGrant && Array.isArray(card.grantCandidates) && card.grantCandidates.length > 0;
-  const shown = useRef(card.snapshot.ticketRevision);
 
-  // Once this browser is verified, read the same card again (only reading: a decision waits for a click).
+  // Once this browser is verified, read the same card again (only reading: a decision waits for a click on its buttons).
   const verified = auth.st && auth.st.state === "verified";
   useEffect(() => {
     if (!needsVerify || !verified) return undefined;
     let live = true;
     void getCard(tk.id).then((r) => {
-      if (!live || !r.ok) return;
-      if (r.data.snapshot.ticketRevision !== shown.current || stateOf(r.data.ticket.state) !== "pending") { retained.delete(tk.id); setChoice(null); toast(tr("changed"), false); }
-      onChange?.(r.data);
+      if (live && r.ok) onChange?.(r.data);
     });
     return () => { live = false; };
   }, [needsVerify, verified, tk.id]);
-  useEffect(() => { shown.current = card.snapshot.ticketRevision; }, [card.snapshot.ticketRevision]);
 
   const reread = async (say) => {
     const again = await getCard(tk.id);
-    retained.delete(tk.id); setChoice(null);
     if (say) toast(say, false);
     if (again.ok) onChange?.(again.data);
   };
@@ -181,27 +186,37 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
     setBusy(true);
     const r = await decideCard(card, decision, grant);
     setBusy(false);
-    if (r.ok) { retained.delete(tk.id); setChoice(null); if (grant) { setGranted(true); toast(ca("grantSaved"), true); } onChange?.(r.data); return true; }
+    if (r.ok) { if (grant) { setGranted(true); toast(ca("grantSaved"), true); } onChange?.(r.data); return true; }
     if (r.code === "upgrade-required") { toast(r.message || tr("upgrade"), false, { detail: true }); await reread(null); return false; }
     if (r.status === 409 || RC_REREAD.has(r.code)) { await reread(tr("decidedElsewhere")); return false; }
     if (r.code === "verification-required") { resetWebAuthorization(); await reread(null); return false; }
-    toast(r.code === "forbidden" ? tr("forbidden") : r.code === "sign-in-required" ? tr("signIn") : r.code === "unavailable" ? tr("unavailable")
-      : r.code === "invalid-grant" || r.code === "invalid-grant-origin" ? tr("grantInvalid") : tr("failed", r.code), false);
+    // A definite refusal (the server said no before deciding) is said; anything else — no answer, an answer that can't be
+    // read, a server error — may have committed: read the same card and show what it is now. Never sent again.
+    if (r.status === 400 || r.status === 401 || r.status === 403 || r.status === 404) {
+      toast(r.code === "forbidden" ? tr("forbidden") : r.code === "sign-in-required" ? tr("signIn") : r.code === "not-found" ? tr("forbidden")
+        : r.code === "invalid-grant" || r.code === "invalid-grant-origin" ? tr("grantInvalid") : tr("failed", r.code), false);
+      return false;
+    }
+    await reread(tr("uncertain"));
     return false;
   };
-  // A press: before verification it only marks the choice; after, it decides (Always allow opens its rule first).
+  // A click decides (Always allow opens its rule first). Before verification the buttons are off: nothing to press.
   const press = (which) => {
-    if (needsVerify) { retained.set(tk.id, { choice: which, revision: card.snapshot.ticketRevision }); setChoice(which); return; }
     if (!canDecide) return;
     if (which === "always") { setGrantOpen(true); return; }
     void decide(which === "decline" ? "decline" : "approve-once");
   };
   const label = (which) => (which === "continue" ? (root ? tr("continue") : tr("approveOnce")) : which === "always" ? tr("alwaysAllow") : tr("decline"));
   const stateText = st === "approved" && root ? tr("state_approved_root") : ca(`state_${st}`);
-  const people = (card.grantCandidates || []).map((c) => ({ key: c.key, label: c.label, platform: c.platform }));
+  const people = candidatePeople(card);
+  const saveRule = (c) => {
+    const grant = grantFromChoice(card, c);
+    if (!grant) { toast(tr("grantInvalid"), false); return false; }
+    return decide("approve-once", grant);
+  };
   const links = openHref ? html`<a class="btn btn-sm btn-ghost rc-open" href=${openHref}>${ca("needsOpen")}</a>` : null;
-  const button = (which, cls) => html`<button type="button" class=${`btn btn-sm${cls}${choice === which ? " rc-chosen" : ""}`} aria-pressed=${needsVerify || choice ? (choice === which ? "true" : "false") : undefined}
-    disabled=${busy || (which === "always" && !grantable)} data-choice=${which} onClick=${() => press(which)}>${choice === which ? `✓ ${label(which)}` : label(which)}</button>`;
+  const button = (which, cls) => html`<button type="button" class=${`btn btn-sm${cls}`}
+    disabled=${busy || !canDecide || (which === "always" && !grantable)} data-choice=${which} onClick=${() => press(which)}>${label(which)}</button>`;
 
   // The one-card style the user approved for the credits card (the leader, #4492 merge note): a standard Needs-you item —
   // a one-line title, one line of detail (the reason), the rest folded, then normal-size buttons; no raised card.
@@ -210,23 +225,22 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
     <span class="n-icon"><${Icon} name="key" size=${18} /></span>
     <div class="n-body">
       <div class="n-title"><strong>${ca("needsTitle", card.sourceLabel, card.targetLabel)}</strong><span class="n-age">${clockOf(tk.createdAt)}</span></div>
-      <p class="n-detail rc-reason" data-reason=${card.reason}>${st !== "pending" ? html`<span class=${`tag rc-state${TONE[st] === "ok" ? " s-state ok" : TONE[st] === "bad" ? " s-state bad" : ""}`}>${stateText}</span> ` : null}${card.continuedFrom ? tr("continuedFrom", shortId(card.continuedFrom)) : reasonText(card)}</p>
+      <p class="n-detail rc-reason" data-reason=${card.reason}>${st !== "pending" ? html`<span class=${`tag rc-state${TONE[st] === "ok" ? " s-state ok" : TONE[st] === "bad" ? " s-state bad" : ""}`}>${stateText}</span> ` : null}${card.continuedFrom ? tr("continuedFrom", shortId(card.continuedFrom)) : reasonText(card)}${open ? html` <span class="rc-scope" data-scope=${card.approvalScope}>${tr(root ? "scopeShortRoot" : "scopeShortOperation")}</span>` : null}</p>
       <details class="n-raw rc-more"><summary>${ca("messageLabel")}</summary>
         ${tk.message ? html`<pre class="n-raw-text rc-message">${tk.message}</pre>` : null}
         <p class="rc-facts"><span class="rc-requester">${requesterText(card.requester)}</span>${INGRESS.has(card.ingress) ? html` · <span class="rc-ingress" data-ingress=${card.ingress}>${tr(`ingress_${card.ingress}`)}</span>` : null}${VERBS.has(tk.verb) ? html` · ${ca(`verb_${tk.verb}`)}` : null}</p>
         ${card.returnAudience && AUDIENCE.has(card.returnAudience.kind) ? html`<p class="rc-return">${tr("repliesTo", tr(`audience_${card.returnAudience.kind}`))}</p>` : null}
         <p class="rc-times">${ca("created", when(tk.createdAt))} · ${tk.decidedAt ? tr("decidedAt", when(tk.decidedAt)) : ca("expires", when(tk.expiresAt))} · <code title=${tk.id}>#${shortId(tk.id)}</code></p>
+        ${open ? html`<p class="rc-scope-more">${tr(root ? "scopeRoot" : "scopeOperation")}</p>` : null}
         ${st === "delivered" ? html`<p>${ca("deliveryNote")}</p>` : null}
       </details>
       ${granted ? html`<p class="n-detail"><a class="st-link rc-grant-view" href=${`${detailsPath(tk.target)}?cat=permissions`}>${tr("grantView")}</a></p>` : null}
-      ${actions && needsVerify ? html`<div class="rc-verify" role="group" aria-label=${tr("verifyTitle")}><span>${choice ? tr("chosen", label(choice)) : tr("verifyTitle")}</span>${authorizeControl(auth)}</div>` : null}
-      ${actions && !needsVerify && choice ? html`<p class="n-detail rc-ready" role="status">${tr("chosenReady")}</p>` : null}
-      ${actions ? html`<p class="n-detail rc-scope" data-scope=${card.approvalScope}>${root ? tr("scopeRoot") : tr("scopeOperation")}</p>
-        <div class="n-actions rc-decide">${button("continue", " btn-primary")}${button("always", "")}${button("decline", " btn-ghost")}${links}</div>
+      ${actions && needsVerify ? html`<div class="rc-verify" role="group" aria-label=${tr("verifyTitle")}><span>${tr("verifyTitle")}</span>${authorizeControl(auth)}</div>` : null}
+      ${actions ? html`<div class="n-actions rc-decide">${button("continue", " btn-primary")}${button("always", "")}${button("decline", " btn-ghost")}${links}</div>
         ${!grantable ? html`<p class="n-detail rc-no-grant">${tr("noGrant")}</p>` : null}` : links ? html`<div class="n-actions">${links}</div>` : null}
       ${grantOpen && grantable && canDecide ? html`<${ContactGrantEditor} key=${`${tk.id}:${card.snapshot.ticketRevision}`} people=${people} keyOf=${(p) => p.key}
         source=${card.sourceLabel} target=${card.targetLabel} verb=${tk.verb}
-        onClose=${() => setGrantOpen(false)} onSave=${(c) => decide("approve-once", { expiresAt: c.expiresAt, remainingUses: c.remainingUses, personKeys: c.personKeys })} />` : null}
+        onClose=${() => setGrantOpen(false)} onSave=${saveRule} />` : null}
     </div>
   </article>`;
 }

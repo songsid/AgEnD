@@ -8,10 +8,10 @@
  * Two seams are stubbed, both disclosed in README.md: the principal (one recognized managing admin, verified or not per
  * frame — the fixture signs in with a host code, which has no chat identity), and GET/POST /ui/authorization in the
  * browser (so "Authorize this browser" can go not verified → waiting → verified without a Discord DM).
- *   1 Needs you, not verified: the same card, Authorize this browser inline · 2 a choice marked before verification (no
- *   decision) · 3 verified: the card read again, the choice marked, only a click decides · 4 Continue pressed: Continued ·
- *   5 Fleet → Authorizations (a guest's request and a legacy one), 5b a legacy request's details folded out ·
- *   6 Always allow… on the legacy request (its people from the card's grant candidates).
+ *   1 Needs you, not verified: the same card, its buttons off, one line and Authorize this browser · 2 verified: the
+ *   card read again, its buttons on, nothing decided · 3 one click: Continued · 4 Fleet → Authorizations (a guest's
+ *   request and a legacy one, each detail line saying its scope), 4b a legacy request's details folded out ·
+ *   5 Always allow… on the legacy request (its people from the card's grant candidates).
  * Desk light en, desk dark zh-TW, phone light en, phone dark zh-TW.
  *   CHROME=<chromium> PW_DIR=<playwright-core> REPO=<checkout> OUT=<dir> npx tsx scripts/manual/request-contact-card-s228/capture.mts
  */
@@ -92,7 +92,7 @@ const scroll = async (page: any) => page.evaluate(`({ w: innerWidth, s: document
 const cardText = async (page: any, id: string) => page.evaluate(`(document.querySelector('.rc-card[data-ticket="${id}"]') || {}).innerText || ""`) as Promise<string>;
 const taps = async (page: any) => page.evaluate(`[...document.querySelectorAll(".rc-card .btn")].filter((e) => e.getBoundingClientRect().width).map((e) => Math.round(e.getBoundingClientRect().height))`) as Promise<number[]>;
 const waitFor = async (page: any, expr: string, ms = 12000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await page.evaluate(expr)) return true; await page.waitForTimeout(150); } return false; };
-const pressed = async (page: any, id: string, which: string) => page.evaluate(`(document.querySelector('.rc-card[data-ticket="${id}"] button[data-choice="${which}"]') || {}).getAttribute?.("aria-pressed")`);
+const offOn = async (page: any, id: string) => page.evaluate(`[...document.querySelectorAll('.rc-card[data-ticket="${id}"] button[data-choice]')].map((b) => b.disabled)`) as Promise<boolean[]>;
 
 async function walk(c: any) {
   const tag = caseName(c), zh = c.lang === "zh-TW", phone = c.device === "phone";
@@ -115,61 +115,53 @@ async function walk(c: any) {
     await page.waitForTimeout(600);
     let t = await cardText(page, A.id);
     check(`${tag} 1: the standard item: the title names both Agents`, t.includes(W(zh, "Front desk wants to contact Billing", "Front desk 想聯絡 Billing")), t);
-    check(`${tag} 1: one line of reason, naming who and where`, t.includes(W(zh, "This was sent while Front desk was working on Alex's request from a restricted room.", "這是 Front desk 處理 Alex 在受限模式房間提出的請求時送出的。")), t);
+    check(`${tag} 1: one detail line: the reason, then this card's scope in a few words`, t.includes(W(zh, "This was sent while Front desk was working on Alex's request from a restricted room. Continue = this request and its follow-up contacts only.", "這是 Front desk 處理 Alex 在受限模式房間提出的請求時送出的。 繼續＝只放行這筆請求和它後續的聯絡。")), t);
     check(`${tag} 1: no raised card (an .n-item, not .card)`, await page.evaluate(`(() => { const e = document.querySelector('.rc-card[data-ticket="${A.id}"]'); return e.classList.contains("n-item") && !e.classList.contains("card") && getComputedStyle(e).boxShadow === "none"; })()`), null);
-    check(`${tag} 1: Authorize this browser, inline`, t.includes(W(zh, "Authorize this browser to decide.", "授權這個瀏覽器後才能決定。")) && t.includes(W(zh, "Authorize this browser", "授權這個瀏覽器")), t);
-    check(`${tag} 1: Continue states its D1 scope`, t.includes(W(zh, "Continue this request and its later Agent contacts. This does not approve what Agents do or authorize unrelated requests.", "繼續這筆請求及它後續的 Agent 聯絡；這不代表核准 Agent 的操作，也不會授權其他請求。")), t);
+    check(`${tag} 1: Authorize this browser, inline, in one line`, t.includes(W(zh, "Authorize this browser to decide.", "授權這個瀏覽器後才能決定。")) && (await page.locator(`.rc-card[data-ticket="${A.id}"] .rc-auth-ask`).count()) === 1, t);
+    check(`${tag} 1: the buttons are off until verified`, (await offOn(page, A.id)).length === 3 && (await offOn(page, A.id)).every(Boolean), await offOn(page, A.id));
+    check(`${tag} 1: the long scope only in the details`, !t.includes(W(zh, "This does not approve what Agents do", "這不代表核准 Agent 的操作")), t);
     check(`${tag} 1: the guest's request too, worded as one`, (await cardText(page, B.id)).includes(W(zh, "This was sent while Research was working on a request from Sam, a guest.", "這是 Research 處理訪客 Sam 的請求時送出的。")), await cardText(page, B.id));
     check(`${tag} 1: no count-only verify line under the host`, (await page.locator(".contact-verify-need").count()) === 0, null);
     if (phone) check(`${tag} 1: 44 px buttons`, (await taps(page)).every((h) => h >= 44), await taps(page));
     const sc = await scroll(page); check(`${tag} 1: no sideways scroll`, sc.s <= sc.w, sc);
     await page.evaluate(`document.querySelector('.rc-card[data-ticket="${A.id}"]').scrollIntoView({ block: "start" })`);
     await shot(page, `${tag}-1-needs-unverified`);
-    // 2 a choice before verification: marked, nothing decided
-    await page.locator(`.rc-card[data-ticket="${A.id}"] button[data-choice="continue"]`).click(); await page.waitForTimeout(400);
-    t = await cardText(page, A.id);
-    check(`${tag} 2: the choice marked, nothing decided`, (await pressed(page, A.id, "continue")) === "true" && state(A.id) === "pending" && box.listPending().length === base, { pressed: await pressed(page, A.id, "continue"), state: state(A.id) });
-    check(`${tag} 2: the choice reads as a selection (✓), not a focus ring`, await page.evaluate(`(() => { const b = document.querySelector('.rc-card[data-ticket="${A.id}"] button[data-choice="continue"]'); return b.innerText.trim().startsWith("✓") && getComputedStyle(b).boxShadow === "none"; })()`), null);
-    check(`${tag} 2: says to authorize to finish`, t.includes(W(zh, "Your choice: Continue (approve once). Authorize this browser to finish.", "你的選擇：繼續（核准這次）。授權這個瀏覽器即可完成。")), t);
-    await shot(page, `${tag}-2-chosen`);
-    // 3 Authorize this browser → (the account confirms) → verified: the card is read again; still only marked
+    // 2 Authorize this browser → (the account confirms) → verified: the card is read again, its buttons on; nothing decided
     await page.locator(`.rc-card[data-ticket="${A.id}"] .rc-auth-ask`).click(); await page.waitForTimeout(300);
     verified = true; auth = { state: "verified", until: Date.now() + 3_600_000 };
-    check(`${tag} 3: read again once verified`, await waitFor(page, `!!document.querySelector('.rc-card[data-ticket="${A.id}"] .rc-ready')`), await cardText(page, A.id));
+    check(`${tag} 2: read again once verified: the buttons on`, await waitFor(page, `[...document.querySelectorAll('.rc-card[data-ticket="${A.id}"] button[data-choice]')].some((b) => !b.disabled)`), await offOn(page, A.id));
     t = await cardText(page, A.id);
-    check(`${tag} 3: verification decided nothing`, state(A.id) === "pending" && box.listPending().length === base, state(A.id));
-    check(`${tag} 3: the choice still marked, press it to finish`, (await pressed(page, A.id, "continue")) === "true" && t.includes(W(zh, "This browser is verified. Your choice is marked: press it to finish, or choose another.", "這個瀏覽器已驗證。你的選擇已標出：按下它即可完成，或改選其他。")), t);
-    check(`${tag} 3: focus not on the choice`, !(await page.evaluate(`document.activeElement && document.activeElement.dataset && document.activeElement.dataset.choice === "continue"`)), null);
+    check(`${tag} 2: no verify line, no marked choice`, !t.includes(W(zh, "Authorize this browser to decide.", "授權這個瀏覽器後才能決定。")) && !/Your choice|你的選擇|✓/.test(t), t);
     await page.keyboard.press("Enter"); await page.waitForTimeout(300);
-    check(`${tag} 3: Enter decides nothing`, state(A.id) === "pending", state(A.id));
-    await shot(page, `${tag}-3-verified`);
-    // 4 the explicit click: Continued
+    check(`${tag} 2: verifying (and Enter) decided nothing`, state(A.id) === "pending" && box.listPending().length === base, state(A.id));
+    await shot(page, `${tag}-2-verified`);
+    // 3 one click: Continued
     await page.locator(`.rc-card[data-ticket="${A.id}"] button[data-choice="continue"]`).click();
-    check(`${tag} 4: one click continues it`, await waitFor(page, `((document.querySelector('.rc-card[data-ticket="${A.id}"]') || {}).innerText || "").includes(${JSON.stringify(W(zh, "Continued", "已繼續"))})`), await cardText(page, A.id));
-    check(`${tag} 4: admitted once`, state(A.id) === "approved" && box.listPending().length === base + 1, { state: state(A.id), pending: box.listPending().length });
-    check(`${tag} 4: no buttons after`, (await page.locator(`.rc-card[data-ticket="${A.id}"] button[data-choice]`).count()) === 0, null);
-    await shot(page, `${tag}-4-continued`);
-    // 5 Fleet → Authorizations: the guest's scoped request and a legacy one
+    check(`${tag} 3: one click continues it`, await waitFor(page, `((document.querySelector('.rc-card[data-ticket="${A.id}"]') || {}).innerText || "").includes(${JSON.stringify(W(zh, "Continued", "已繼續"))})`), await cardText(page, A.id));
+    check(`${tag} 3: admitted once`, state(A.id) === "approved" && box.listPending().length === base + 1, { state: state(A.id), pending: box.listPending().length });
+    check(`${tag} 3: no buttons after`, (await page.locator(`.rc-card[data-ticket="${A.id}"] button[data-choice]`).count()) === 0, null);
+    await shot(page, `${tag}-3-continued`);
+    // 4 Fleet → Authorizations: the guest's scoped request and a legacy one
     await page.goto(fx.base + "/ui/fleet/authorizations"); await mounted(page, 30000);
-    check(`${tag} 5: the page lists the waiting ones (not the continued one)`, await waitFor(page, `document.querySelectorAll(".rc-page .rc-card").length === 2 && !!document.querySelector('.rc-card[data-ticket="${B.id}"]') && !!document.querySelector('.rc-card[data-ticket="${C.id}"]')`), await page.evaluate(`document.querySelectorAll(".rc-card").length`));
+    check(`${tag} 4: the page lists the waiting ones (not the continued one)`, await waitFor(page, `document.querySelectorAll(".rc-page .rc-card").length === 2 && !!document.querySelector('.rc-card[data-ticket="${B.id}"]') && !!document.querySelector('.rc-card[data-ticket="${C.id}"]')`), await page.evaluate(`document.querySelectorAll(".rc-card").length`));
     const tc = await cardText(page, C.id);
-    check(`${tag} 5: a legacy request keeps its one-request words`, tc.includes(W(zh, "Approve = forward this request once.", "核准＝只轉交這一次。")) && tc.includes(W(zh, "Approve once", "核准這一次")), tc);
-    check(`${tag} 5: the legacy reason`, tc.includes(W(zh, "Front desk's retained history includes non-admin input, so this contact needs approval.", "Front desk 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。")), tc);
-    check(`${tag} 5: no Clear retained origin anywhere`, !(await page.evaluate(`document.body.innerText`) as string).includes(W(zh, "Clear retained origin", "清除保留的來源")), null);
-    if (phone) check(`${tag} 5: 44 px buttons`, (await taps(page)).every((h) => h >= 44), await taps(page));
-    const sc5 = await scroll(page); check(`${tag} 5: no sideways scroll`, sc5.s <= sc5.w, sc5);
-    await shot(page, `${tag}-5-authorizations`);
+    check(`${tag} 4: a legacy request's detail line says its own scope; its verb is Approve once`, tc.includes(W(zh, "Front desk's retained history includes non-admin input, so this contact needs approval. Approve once = this one request only.", "Front desk 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。 核准這一次＝只轉交這一筆請求。")) && tc.includes(W(zh, "Approve once", "核准這一次")), tc);
+    check(`${tag} 4: the guest's (new-model) request says Continue's scope`, (await cardText(page, B.id)).includes(W(zh, "Continue = this request and its follow-up contacts only.", "繼續＝只放行這筆請求和它後續的聯絡。")), await cardText(page, B.id));
+    check(`${tag} 4: no Clear retained origin anywhere`, !(await page.evaluate(`document.body.innerText`) as string).includes(W(zh, "Clear retained origin", "清除保留的來源")), null);
+    if (phone) check(`${tag} 4: 44 px buttons`, (await taps(page)).every((h) => h >= 44), await taps(page));
+    const sc5 = await scroll(page); check(`${tag} 4: no sideways scroll`, sc5.s <= sc5.w, sc5);
+    await shot(page, `${tag}-4-authorizations`);
     await page.locator(`.rc-card[data-ticket="${C.id}"] details.rc-more summary`).click(); await page.waitForTimeout(300);
     const folded = await cardText(page, C.id);
-    check(`${tag} 5b: the details: the message, who asked, the times`, folded.includes(W(zh, "Summarize yesterday's support tickets.", "整理昨天的客服單。")) && folded.includes(W(zh, "No single known person asked", "不是由單一已知的人提出")), folded);
+    check(`${tag} 4b: the details: the message, who asked, the times`, folded.includes(W(zh, "Summarize yesterday's support tickets.", "整理昨天的客服單。")) && folded.includes(W(zh, "No single known person asked", "不是單一已知的人提出的")) && folded.includes(W(zh, "Approve = forward this request once.", "核准＝只轉交這一次。")), folded);
     await page.evaluate(`document.querySelector('.rc-card[data-ticket="${C.id}"]').scrollIntoView({ block: "start" })`);
-    await shot(page, `${tag}-5b-details`);
-    // 6 Always allow… on the legacy request: its people, from the card's grant candidates
+    await shot(page, `${tag}-4b-details`);
+    // 5 Always allow… on the legacy request (the grant editor predates J; the leader cards its layout separately): its people, from the card's grant candidates
     await page.locator(`.rc-card[data-ticket="${C.id}"] button[data-choice="always"]`).click(); await page.waitForTimeout(500);
     const dlg = await page.evaluate(`(document.querySelector("dialog.contact-grant-dialog") || {}).innerText || ""`) as string;
-    check(`${tag} 6: the rule lists the request's people`, dlg.includes("Alex") && dlg.includes("Robin"), dlg.slice(0, 300));
-    check(`${tag} 6: nothing decided by opening it`, state(C.id) === "pending", state(C.id));
-    await shot(page, `${tag}-6-always-allow`);
+    check(`${tag} 5: the rule lists the request's people`, dlg.includes("Alex") && dlg.includes("Robin"), dlg.slice(0, 300));
+    check(`${tag} 5: nothing decided by opening it`, state(C.id) === "pending", state(C.id));
+    await shot(page, `${tag}-5-always-allow`);
     check(`${tag}: no page errors`, errors.length === 0, errors);
   } finally {
     await ctx.close();

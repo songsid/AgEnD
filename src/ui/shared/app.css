@@ -5336,9 +5336,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .rc-auth { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .rc-more > p { margin-top: var(--s-1); }
 .rc-card .rc-reason .rc-state { margin-right: var(--s-1); }
-/* The choice made before verification: "✓" in its label and an accent border — a selection, never a focus ring. */
-.rc-card .btn.rc-chosen:not(.btn-primary) { border-color: var(--accent); color: var(--accent); }
-.rc-card :is(.rc-reason, .rc-scope, .rc-ready, .rc-verify > span) { word-break: keep-all; overflow-wrap: anywhere; }
+.rc-card :is(.rc-reason, .rc-verify > span) { word-break: keep-all; overflow-wrap: anywhere; }
 .rc-unknown { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
 .rc-unknown > * { margin: 0; }
 .contact-allow .field { flex: 1; min-width: 10em; }

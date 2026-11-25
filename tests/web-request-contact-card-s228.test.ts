@@ -1,15 +1,17 @@
 /**
  * M-3736 J (S-228; design #4456 §6; slice I's V1 contract, docs/design/request-contact-same-card-api.md on #4492): the web
  * same card, over a faked server in the V1 shape (src/request-contact-types.ts, merged with #4492).
- * - The host: a 200 from the new namespace shows the same card; 404 (dormant), 401 and 403 keep today's page.
+ * - The host, from the collection only (Sentinel, #4492): 200 → the same card; 404 (dormant) → today's page; anything
+ *   else (401, 403, 503, a network failure) → why, with Try again — never today's less-scoped reads.
  * - The card: the route by the server's labels, who asked (the recorded person, a Hub person, unknown, or none), how it
  *   came in, the message, where replies go, the reason; Continue's D1 scope for a root request, the old words for a
  *   legacy one; a continued request has no actions.
  * - A decision: the snapshot exactly as read; Always allow only through the card's grant candidates, their server keys;
  *   a 409 reads the same card again and shows it, never retried.
- * - Not verified: the same card with Authorize this browser; a press only marks the choice (no decision is sent); once
- *   verified the card is read again, the choice marked and focus left alone, and only a click decides. Changed meanwhile:
- *   the outcome, the choice dropped.
+ * - Not verified: the same card, its buttons off, with Authorize this browser; verifying decides nothing — the card is
+ *   read again and one click decides. Changed meanwhile: its outcome.
+ * - A decision whose answer is unknown (no answer, an unreadable one, a server error) reads the same card again; never
+ *   resent. Always allow sends only the card's candidate keys, whichever copy of the grant editor the page holds.
  * - Permissions: with the host installed, Clear retained origin is gone and its section is history.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,7 +61,7 @@ beforeEach(async () => {
   cardMod = await import("/ui/js/request-contact-card.js");
   auth = await import("/assets/web-authorize.js");
   i18n = await import("/assets/app-i18n.js");
-  client.resetSameCardActive(); cardMod.forgetChoices(); auth.resetWebAuthorization(); i18n.setLang("en");
+  client.resetSameCardActive(); auth.resetWebAuthorization(); i18n.setLang("en");
 });
 afterEach(async () => { for (const p of mounted.splice(0).reverse()) { await p.unmount(); p.restore(); } g.fetch = realFetch; });
 
@@ -111,10 +113,12 @@ describe("J: the card", () => {
     expect(item.className.split(/\s+/)).not.toContain("card");                     // no raised card
     expect(item.className).not.toContain("lbar");
     expect(item.querySelectorAll(".n-title").length).toBe(1);
-    expect(text(item.querySelector(".n-detail"))).toBe("This was sent while Front desk was working on Alex's request from a restricted room.");
+    // The detail line: the reason, then this card's scope in a few words (the leader's capture check); the long wording folded.
+    expect(text(item.querySelector(".n-detail"))).toBe("This was sent while Front desk was working on Alex's request from a restricted room. Continue = this request and its follow-up contacts only.");
     expect(item.querySelector("details.n-raw .rc-message")).toBeTruthy();
     expect(buttons(pg.root).every((b) => b.className.includes("btn-sm"))).toBe(true);
-    expect(text(pg.root.querySelector(".rc-scope"))).toBe("Continue this request and its later Agent contacts. This does not approve what Agents do or authorize unrelated requests.");
+    expect(text(pg.root.querySelector(".rc-scope"))).toBe("Continue = this request and its follow-up contacts only.");
+    expect(text(pg.root.querySelector("details.rc-more .rc-scope-more"))).toBe("Continue this request and its later Agent contacts. This does not approve what Agents do or authorize unrelated requests.");
     expect(buttons(pg.root).map(text)).toEqual(["Continue (approve once)", "Always allow…", "Decline"]);
     expect(c).not.toContain("Clear retained origin");
   });
@@ -122,7 +126,8 @@ describe("J: the card", () => {
     i18n.setLang("zh-TW");
     api({ "GET /ui/authorization": () => ({ body: VERIFIED }) });
     const pg = await mountWith(cardMod.RequestContactCard, { card: card() });
-    expect(text(pg.root.querySelector(".rc-scope"))).toBe("繼續這筆請求及它後續的 Agent 聯絡；這不代表核准 Agent 的操作，也不會授權其他請求。");
+    expect(text(pg.root.querySelector(".rc-scope"))).toBe("繼續＝只放行這筆請求和它後續的聯絡。");
+    expect(text(pg.root.querySelector(".rc-scope-more"))).toBe("繼續這筆請求及它後續的 Agent 聯絡；這不代表核准 Agent 的操作，也不會授權其他請求。");
     expect(buttons(pg.root).map(text)).toEqual(["繼續（核准這次）", "一律允許…", "拒絕"]);
     expect(text(pg.root.querySelector(".rc-card"))).toContain("由 Alex 提出");
     expect(text(pg.root.querySelector(".rc-card"))).not.toMatch(/代理|艦隊|公司/);
@@ -133,7 +138,8 @@ describe("J: the card", () => {
     expect(cardMod.requesterText({ kind: "unknown", reason: "unidentified" })).toBe("Asked by Unknown person");
     expect(cardMod.requesterText(null)).toBe("No single known person asked");
     const pg = await mountWith(cardMod.RequestContactCard, { card: card({ engine: "legacy", approvalScope: "operation", ingress: "legacy", requester: null, returnAudience: null }) });
-    expect(text(pg.root.querySelector(".rc-scope"))).toBe("Approve = forward this request once.");
+    expect(text(pg.root.querySelector(".rc-scope"))).toBe("Approve once = this one request only.");
+    expect(text(pg.root.querySelector(".rc-scope-more"))).toBe("Approve = forward this request once.");
     expect(buttons(pg.root).map(text)[0]).toBe("Approve once");
     expect(pg.root.querySelector(".rc-ingress")).toBeNull();
     expect(pg.root.querySelector(".rc-return")).toBeNull();
@@ -217,8 +223,70 @@ describe("J: the merged server's other answers", () => {
   });
 });
 
+describe("J: #4497 review — a decision whose answer is unknown, and the grant editor's keys", () => {
+  const committed = () => card({ actions: { canDecide: false, canGrant: false, requiresVerification: false } }, { state: "approved", decidedAt: "2026-11-26T08:10:00Z" });
+  it.each([
+    ["no answer (a network failure)", () => { throw new TypeError("network"); }],
+    ["an answer that can't be read (200, bad JSON)", () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("bad"); } })],
+    ["a server error (503)", () => ({ ok: false, status: 503, json: async () => ({ error: "unavailable" }) })],
+  ] as const)("%s: reads the same card once, shows what it is now, never resends", async (_name, answer) => {
+    const calls: Array<{ method: string; url: string; body: any }> = [];
+    g.fetch = async (url: string, init: any = {}) => {
+      const method = (init.method || "GET").toUpperCase(); calls.push({ method, url, body: init.body ? JSON.parse(init.body) : undefined });
+      if (url === "/ui/authorization") return { ok: true, status: 200, json: async () => VERIFIED };
+      if (method === "POST" && url === `${BASE}/${ID}/decision`) return (answer as any)();
+      if (method === "GET" && url === `${BASE}/${ID}`) return { ok: true, status: 200, json: async () => committed() };   // the server had committed
+      return { ok: false, status: 404, json: async () => ({}) };
+    };
+    let shown = card();
+    const pg = await mountWith(cardMod.RequestContactCard, { card: shown, onChange: (c: CardV1) => { shown = c; } });
+    choice(pg.root, "continue").click(); await settle(10);
+    expect(decisions(calls).length).toBe(1);
+    expect(calls.filter((c) => c.method === "GET" && c.url === `${BASE}/${ID}`).length).toBe(1);
+    expect(shown.ticket.state).toBe("approved");
+    expect(toasts(pg.root)).toContain("Couldn't confirm the decision. Here is the request as it stands now; nothing was sent again.");
+  });
+  it("a definite refusal (403 forbidden) is said, not read again", async () => {
+    const calls = api({ "GET /ui/authorization": () => ({ body: VERIFIED }), [`POST ${BASE}/${ID}/decision`]: () => ({ status: 403, body: { error: "forbidden" } }) });
+    const pg = await mountWith(cardMod.RequestContactCard, { card: card() });
+    choice(pg.root, "continue").click(); await settle(8);
+    expect(calls.filter((c) => c.method === "GET" && c.url === `${BASE}/${ID}`).length).toBe(0);
+    expect(toasts(pg.root)).toContain("You can't decide this request.");
+  });
+  it("an older cached grant editor (no keyOf) still selects the server's keys: the candidates carry the userId their key names", async () => {
+    const c = card({ grantCandidates: [{ key: '["discord","1001"]', label: "Alex", platform: "discord" }, { key: '["telegram","2002"]', label: "Robin", platform: "telegram" }] });
+    const people = cardMod.candidatePeople(c);
+    const { personKey } = await import("/ui/js/contact-auth-client.js") as any;
+    expect(people.map(personKey)).toEqual(['["discord","1001"]', '["telegram","2002"]']);              // what the old editor sends
+    const { ContactGrantEditor } = await import("/ui/js/contact-grant-editor.js") as any;
+    let saved: any = null;
+    api({});
+    const pg = await mountWith(ContactGrantEditor, { people: [people[0]], source: "Front desk", target: "Billing", verb: "send_to_instance", onClose: () => {}, onSave: async (x: any) => { saved = x; return true; } });
+    ([...pg.document.querySelectorAll("dialog.contact-grant-dialog button")] as any[]).find((b) => b.className.includes("btn-primary")).click(); await settle(6);
+    expect(saved.personKeys).toEqual(['["discord","1001"]']);                                         // no keyOf: the default key, the server's
+    expect(cardMod.candidateUserId({ key: "opaque", platform: "discord" })).toBeNull();
+  });
+  it("save control: a rule is sent only for keys the card offered", () => {
+    const c = card();
+    const choice1 = { personKeys: ['["discord","1001"]'], expiresAt: "2026-12-01T00:00:00.000Z", remainingUses: null };
+    expect(cardMod.grantFromChoice(c, choice1)).toEqual(choice1);
+    for (const bad of [[], ['["discord",null]'], ['["discord","1001"]', '["discord","9999"]'], [7]]) expect(cardMod.grantFromChoice(c, { ...choice1, personKeys: bad }), JSON.stringify(bad)).toBeNull();
+    expect(cardMod.grantFromChoice(c, { expiresAt: "x" })).toBeNull();
+  });
+  it("the current editor sends the card's own key, even one that isn't [platform, userId]", async () => {
+    const calls = api({ "GET /ui/authorization": () => ({ body: VERIFIED }), [`POST ${BASE}/${ID}/decision`]: () => ({ body: card({}, { state: "approved" }) }) });
+    // A candidate whose key isn't [platform, userId]: the old editor's own key would differ from it — so nothing is sent.
+    const pg = await mountWith(cardMod.RequestContactCard, { card: card({ grantCandidates: [{ key: "opaque-key", label: "Alex", platform: "discord" }] }) });
+    choice(pg.root, "always").click(); await settle(6);
+    expect(pg.document.querySelector("dialog.contact-grant-dialog")).toBeTruthy();
+    ([...pg.document.querySelectorAll("dialog.contact-grant-dialog button")] as any[]).find((b) => b.className.includes("btn-primary")).click(); await settle(8);
+    const sent = decisions(calls).map((x) => x.body.grant?.personKeys);
+    expect(sent.every((k: string[]) => k.every((x) => x === "opaque-key"))).toBe(true);               // the new editor keys by the card's key
+  });
+});
+
 describe("J: not verified yet — the same card, then an explicit decision", () => {
-  it("a press marks the choice and sends nothing; once verified the card is read again, the choice marked, focus untouched; only a click decides", async () => {
+  it("the buttons are off until verified (one line, Authorize inline); once verified the card is read again and one click decides", async () => {
     let authState: unknown = NOT_VERIFIED;
     const unverified = card({ actions: { canDecide: false, canGrant: true, requiresVerification: true } });
     const calls = api({ "GET /ui/authorization": () => ({ body: authState }), "POST /ui/authorization": () => { authState = { state: "pending", expiresInMs: 300_000 }; return { body: { ok: true, expiresInMs: 300_000 } }; },
@@ -230,45 +298,33 @@ describe("J: not verified yet — the same card, then an explicit decision", () 
     pg = await mountWith(cardMod.RequestContactCard, { card: shown, onChange: (c: CardV1) => { shown = c; void remount(); } });
     const c = text(pg.root.querySelector(".rc-card"));
     expect(c).toContain("Asked by Alex");                                                   // the scoped read before verification
-    expect(c).toContain("Authorize this browser to decide.");
-    choice(pg.root, "continue").click(); await settle(6);
+    expect(text(pg.root.querySelector(".rc-verify > span"))).toBe("Authorize this browser to decide.");
+    expect(text(pg.root.querySelector(".rc-verify .rc-auth-ask"))).toBe("Authorize this browser");
+    expect(buttons(pg.root).filter((b) => b.dataset.choice).every((b) => b.disabled)).toBe(true);
+    expect(c).not.toMatch(/Your choice|marked/);
+    choice(pg.root, "continue").click(); fire(pg.document as any, "keydown", { key: "Enter" }); await settle(6);
     expect(decisions(calls)).toEqual([]);
-    expect(choice(pg.root, "continue").getAttribute("aria-pressed")).toBe("true");
-    expect(text(pg.root.querySelector(".rc-verify"))).toContain("Your choice: Continue (approve once). Authorize this browser to finish.");
-    // Enter anywhere decides nothing.
-    fire(pg.document as any, "keydown", { key: "Enter" }); fire(choice(pg.root, "continue"), "keydown", { key: "Enter" }); await settle(4);
-    expect(decisions(calls)).toEqual([]);
-    // Authorize this browser → pending → (the account confirms) → verified: the card is read again, nothing decided.
+    // Authorize this browser → pending → (the account confirms) → verified: the card is read again; verifying decides nothing.
     pg.root.querySelector(".rc-verify .rc-auth-ask").click(); await settle(6);
     authState = VERIFIED;
     await vi.waitFor(() => expect(calls.some((x) => x.method === "GET" && x.url === `${BASE}/${ID}`)).toBe(true), { timeout: 6000 });
     await settle(10);
     expect(decisions(calls)).toEqual([]);
-    expect(shown.actions.canDecide).toBe(true);
     expect(pg.root.querySelector(".rc-verify")).toBeNull();
-    expect(text(pg.root.querySelector(".rc-ready"))).toBe("This browser is verified. Your choice is marked: press it to finish, or choose another.");
-    expect(choice(pg.root, "continue").getAttribute("aria-pressed")).toBe("true");
-    expect(choice(pg.root, "continue").className).toContain("rc-chosen");
-    expect(text(choice(pg.root, "continue"))).toBe("✓ Continue (approve once)");                 // a selection, said in the label
-    expect(pg.document.activeElement === choice(pg.root, "continue")).toBe(false);          // focus left alone
+    expect(choice(pg.root, "continue").disabled).toBe(false);
     choice(pg.root, "continue").click(); await settle(6);
     expect(decisions(calls).map((x) => x.body.decision)).toEqual(["approve-once"]);
   }, 15_000);
-  it("changed while authorizing: the outcome in place, the choice dropped", async () => {
+  it("changed while authorizing: the read-again card shows its outcome, nothing decided", async () => {
     let authState: unknown = NOT_VERIFIED;
     const calls = api({ "GET /ui/authorization": () => ({ body: authState }), "POST /ui/authorization": () => { authState = { state: "pending", expiresInMs: 300_000 }; return { body: { ok: true, expiresInMs: 300_000 } }; },
-      // Same revision, now expired (a lapse writes no revision): the choice made on revision 3 must not outlive it.
       [`GET ${BASE}/${ID}`]: () => ({ body: card({ actions: { canDecide: false, canGrant: false, requiresVerification: false } }, { state: "expired" }) }) });
     let shown: CardV1 = card({ actions: { canDecide: false, canGrant: true, requiresVerification: true } });
     const pg = await mountWith(cardMod.RequestContactCard, { card: shown, onChange: (c: CardV1) => { shown = c; } });
-    choice(pg.root, "decline").click(); await settle(4);
     pg.root.querySelector(".rc-verify .rc-auth-ask").click(); await settle(6);
     authState = VERIFIED;
     await vi.waitFor(() => expect(shown.ticket.state).toBe("expired"), { timeout: 6000 });
-    await settle(6);
     expect(decisions(calls)).toEqual([]);
-    expect(toasts(pg.root)).toContain("This request changed while you were authorizing. Here it is now.");
-    expect(cardMod.retainedChoice(shown)).toBeNull();
   }, 15_000);
   it("a decision refused for verification (it lapsed) reads the card again instead of retrying", async () => {
     const calls = api({ "GET /ui/authorization": () => ({ body: VERIFIED }),
