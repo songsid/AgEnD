@@ -1,5 +1,5 @@
 {
-  "sourceHead": "ace2f170e8d6ff5dee290fcd76d44a6ed48cc917",
+  "sourceHead": "3b5001f7b9b9e2e121e8d5a01e22d39e5831ae55",
   "dirty": [],
   "checks": [
     {
@@ -15,7 +15,7 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 1: one line of reason, naming who and where",
+      "name": "desk-light-en 1: one detail line: the reason, then this card's scope in a few words",
       "ok": true
     },
     {
@@ -23,11 +23,15 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 1: Authorize this browser, inline",
+      "name": "desk-light-en 1: Authorize this browser, inline, in one line",
       "ok": true
     },
     {
-      "name": "desk-light-en 1: Continue states its D1 scope",
+      "name": "desk-light-en 1: the buttons are off until verified",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the long scope only in the details",
       "ok": true
     },
     {
@@ -43,79 +47,67 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 2: the choice marked, nothing decided",
+      "name": "desk-light-en 2: read again once verified: the buttons on",
       "ok": true
     },
     {
-      "name": "desk-light-en 2: the choice reads as a selection (✓), not a focus ring",
+      "name": "desk-light-en 2: no verify line, no marked choice",
       "ok": true
     },
     {
-      "name": "desk-light-en 2: says to authorize to finish",
+      "name": "desk-light-en 2: every card on the page read again (one Authorize serves them all)",
       "ok": true
     },
     {
-      "name": "desk-light-en 3: read again once verified",
+      "name": "desk-light-en 2: the scope never breaks at its 「＝」/\"=\"",
       "ok": true
     },
     {
-      "name": "desk-light-en 3: verification decided nothing",
+      "name": "desk-light-en 2: verifying (and Enter) decided nothing",
       "ok": true
     },
     {
-      "name": "desk-light-en 3: the choice still marked, press it to finish",
+      "name": "desk-light-en 3: one click continues it",
       "ok": true
     },
     {
-      "name": "desk-light-en 3: focus not on the choice",
+      "name": "desk-light-en 3: admitted once",
       "ok": true
     },
     {
-      "name": "desk-light-en 3: Enter decides nothing",
+      "name": "desk-light-en 3: no buttons after",
       "ok": true
     },
     {
-      "name": "desk-light-en 4: one click continues it",
+      "name": "desk-light-en 4: the page lists the waiting ones (not the continued one)",
       "ok": true
     },
     {
-      "name": "desk-light-en 4: admitted once",
+      "name": "desk-light-en 4: a legacy request's detail line says its own scope; its verb is Approve once",
       "ok": true
     },
     {
-      "name": "desk-light-en 4: no buttons after",
+      "name": "desk-light-en 4: the guest's (new-model) request says Continue's scope",
       "ok": true
     },
     {
-      "name": "desk-light-en 5: the page lists the waiting ones (not the continued one)",
+      "name": "desk-light-en 4: no Clear retained origin anywhere",
       "ok": true
     },
     {
-      "name": "desk-light-en 5: a legacy request keeps its one-request words",
+      "name": "desk-light-en 4: no sideways scroll",
       "ok": true
     },
     {
-      "name": "desk-light-en 5: the legacy reason",
+      "name": "desk-light-en 4b: the details: the message, who asked, the times",
       "ok": true
     },
     {
-      "name": "desk-light-en 5: no Clear retained origin anywhere",
+      "name": "desk-light-en 5: the rule lists the request's people",
       "ok": true
     },
     {
-      "name": "desk-light-en 5: no sideways scroll",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en 5b: the details: the message, who asked, the times",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en 6: the rule lists the request's people",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en 6: nothing decided by opening it",
+      "name": "desk-light-en 5: nothing decided by opening it",
       "ok": true
     },
     {
@@ -135,7 +127,7 @@
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 1: one line of reason, naming who and where",
+      "name": "desk-dark-zh-TW 1: one detail line: the reason, then this card's scope in a few words",
       "ok": true
     },
     {
@@ -143,11 +135,15 @@
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 1: Authorize this browser, inline",
+      "name": "desk-dark-zh-TW 1: Authorize this browser, inline, in one line",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 1: Continue states its D1 scope",
+      "name": "desk-dark-zh-TW 1: the buttons are off until verified",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: the long scope only in the details",
       "ok": true
     },
     {
@@ -163,79 +159,67 @@
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 2: the choice marked, nothing decided",
+      "name": "desk-dark-zh-TW 2: read again once verified: the buttons on",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 2: the choice reads as a selection (✓), not a focus ring",
+      "name": "desk-dark-zh-TW 2: no verify line, no marked choice",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 2: says to authorize to finish",
+      "name": "desk-dark-zh-TW 2: every card on the page read again (one Authorize serves them all)",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 3: read again once verified",
+      "name": "desk-dark-zh-TW 2: the scope never breaks at its 「＝」/\"=\"",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 3: verification decided nothing",
+      "name": "desk-dark-zh-TW 2: verifying (and Enter) decided nothing",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 3: the choice still marked, press it to finish",
+      "name": "desk-dark-zh-TW 3: one click continues it",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 3: focus not on the choice",
+      "name": "desk-dark-zh-TW 3: admitted once",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 3: Enter decides nothing",
+      "name": "desk-dark-zh-TW 3: no buttons after",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 4: one click continues it",
+      "name": "desk-dark-zh-TW 4: the page lists the waiting ones (not the continued one)",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 4: admitted once",
+      "name": "desk-dark-zh-TW 4: a legacy request's detail line says its own scope; its verb is Approve once",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 4: no buttons after",
+      "name": "desk-dark-zh-TW 4: the guest's (new-model) request says Continue's scope",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 5: the page lists the waiting ones (not the continued one)",
+      "name": "desk-dark-zh-TW 4: no Clear retained origin anywhere",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 5: a legacy request keeps its one-request words",
+      "name": "desk-dark-zh-TW 4: no sideways scroll",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 5: the legacy reason",
+      "name": "desk-dark-zh-TW 4b: the details: the message, who asked, the times",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 5: no Clear retained origin anywhere",
+      "name": "desk-dark-zh-TW 5: the rule lists the request's people",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW 5: no sideways scroll",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW 5b: the details: the message, who asked, the times",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW 6: the rule lists the request's people",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW 6: nothing decided by opening it",
+      "name": "desk-dark-zh-TW 5: nothing decided by opening it",
       "ok": true
     },
     {
@@ -255,7 +239,7 @@
       "ok": true
     },
     {
-      "name": "phone-light-en 1: one line of reason, naming who and where",
+      "name": "phone-light-en 1: one detail line: the reason, then this card's scope in a few words",
       "ok": true
     },
     {
@@ -263,11 +247,15 @@
       "ok": true
     },
     {
-      "name": "phone-light-en 1: Authorize this browser, inline",
+      "name": "phone-light-en 1: Authorize this browser, inline, in one line",
       "ok": true
     },
     {
-      "name": "phone-light-en 1: Continue states its D1 scope",
+      "name": "phone-light-en 1: the buttons are off until verified",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: the long scope only in the details",
       "ok": true
     },
     {
@@ -287,83 +275,71 @@
       "ok": true
     },
     {
-      "name": "phone-light-en 2: the choice marked, nothing decided",
+      "name": "phone-light-en 2: read again once verified: the buttons on",
       "ok": true
     },
     {
-      "name": "phone-light-en 2: the choice reads as a selection (✓), not a focus ring",
+      "name": "phone-light-en 2: no verify line, no marked choice",
       "ok": true
     },
     {
-      "name": "phone-light-en 2: says to authorize to finish",
+      "name": "phone-light-en 2: every card on the page read again (one Authorize serves them all)",
       "ok": true
     },
     {
-      "name": "phone-light-en 3: read again once verified",
+      "name": "phone-light-en 2: the scope never breaks at its 「＝」/\"=\"",
       "ok": true
     },
     {
-      "name": "phone-light-en 3: verification decided nothing",
+      "name": "phone-light-en 2: verifying (and Enter) decided nothing",
       "ok": true
     },
     {
-      "name": "phone-light-en 3: the choice still marked, press it to finish",
+      "name": "phone-light-en 3: one click continues it",
       "ok": true
     },
     {
-      "name": "phone-light-en 3: focus not on the choice",
+      "name": "phone-light-en 3: admitted once",
       "ok": true
     },
     {
-      "name": "phone-light-en 3: Enter decides nothing",
+      "name": "phone-light-en 3: no buttons after",
       "ok": true
     },
     {
-      "name": "phone-light-en 4: one click continues it",
+      "name": "phone-light-en 4: the page lists the waiting ones (not the continued one)",
       "ok": true
     },
     {
-      "name": "phone-light-en 4: admitted once",
+      "name": "phone-light-en 4: a legacy request's detail line says its own scope; its verb is Approve once",
       "ok": true
     },
     {
-      "name": "phone-light-en 4: no buttons after",
+      "name": "phone-light-en 4: the guest's (new-model) request says Continue's scope",
       "ok": true
     },
     {
-      "name": "phone-light-en 5: the page lists the waiting ones (not the continued one)",
+      "name": "phone-light-en 4: no Clear retained origin anywhere",
       "ok": true
     },
     {
-      "name": "phone-light-en 5: a legacy request keeps its one-request words",
+      "name": "phone-light-en 4: 44 px buttons",
       "ok": true
     },
     {
-      "name": "phone-light-en 5: the legacy reason",
+      "name": "phone-light-en 4: no sideways scroll",
       "ok": true
     },
     {
-      "name": "phone-light-en 5: no Clear retained origin anywhere",
+      "name": "phone-light-en 4b: the details: the message, who asked, the times",
       "ok": true
     },
     {
-      "name": "phone-light-en 5: 44 px buttons",
+      "name": "phone-light-en 5: the rule lists the request's people",
       "ok": true
     },
     {
-      "name": "phone-light-en 5: no sideways scroll",
-      "ok": true
-    },
-    {
-      "name": "phone-light-en 5b: the details: the message, who asked, the times",
-      "ok": true
-    },
-    {
-      "name": "phone-light-en 6: the rule lists the request's people",
-      "ok": true
-    },
-    {
-      "name": "phone-light-en 6: nothing decided by opening it",
+      "name": "phone-light-en 5: nothing decided by opening it",
       "ok": true
     },
     {
@@ -383,7 +359,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 1: one line of reason, naming who and where",
+      "name": "phone-dark-zh-TW 1: one detail line: the reason, then this card's scope in a few words",
       "ok": true
     },
     {
@@ -391,11 +367,15 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 1: Authorize this browser, inline",
+      "name": "phone-dark-zh-TW 1: Authorize this browser, inline, in one line",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 1: Continue states its D1 scope",
+      "name": "phone-dark-zh-TW 1: the buttons are off until verified",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the long scope only in the details",
       "ok": true
     },
     {
@@ -415,83 +395,71 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 2: the choice marked, nothing decided",
+      "name": "phone-dark-zh-TW 2: read again once verified: the buttons on",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 2: the choice reads as a selection (✓), not a focus ring",
+      "name": "phone-dark-zh-TW 2: no verify line, no marked choice",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 2: says to authorize to finish",
+      "name": "phone-dark-zh-TW 2: every card on the page read again (one Authorize serves them all)",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 3: read again once verified",
+      "name": "phone-dark-zh-TW 2: the scope never breaks at its 「＝」/\"=\"",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 3: verification decided nothing",
+      "name": "phone-dark-zh-TW 2: verifying (and Enter) decided nothing",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 3: the choice still marked, press it to finish",
+      "name": "phone-dark-zh-TW 3: one click continues it",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 3: focus not on the choice",
+      "name": "phone-dark-zh-TW 3: admitted once",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 3: Enter decides nothing",
+      "name": "phone-dark-zh-TW 3: no buttons after",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 4: one click continues it",
+      "name": "phone-dark-zh-TW 4: the page lists the waiting ones (not the continued one)",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 4: admitted once",
+      "name": "phone-dark-zh-TW 4: a legacy request's detail line says its own scope; its verb is Approve once",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 4: no buttons after",
+      "name": "phone-dark-zh-TW 4: the guest's (new-model) request says Continue's scope",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 5: the page lists the waiting ones (not the continued one)",
+      "name": "phone-dark-zh-TW 4: no Clear retained origin anywhere",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 5: a legacy request keeps its one-request words",
+      "name": "phone-dark-zh-TW 4: 44 px buttons",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 5: the legacy reason",
+      "name": "phone-dark-zh-TW 4: no sideways scroll",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 5: no Clear retained origin anywhere",
+      "name": "phone-dark-zh-TW 4b: the details: the message, who asked, the times",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 5: 44 px buttons",
+      "name": "phone-dark-zh-TW 5: the rule lists the request's people",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 5: no sideways scroll",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW 5b: the details: the message, who asked, the times",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW 6: the rule lists the request's people",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW 6: nothing decided by opening it",
+      "name": "phone-dark-zh-TW 5: nothing decided by opening it",
       "ok": true
     },
     {
@@ -502,116 +470,100 @@
   "pictures": [
     {
       "path": "s228-desk-light-en-1-needs-unverified.png",
-      "sha256": "b7b2fb5e2c629697a360b20abc2a027ca48dda8fa470e6315425d4d7ea12a32e"
+      "sha256": "12b72c16b4f7fa397eaefc740be26915e316904de65d36166c85e4d1e49e5c4a"
     },
     {
-      "path": "s228-desk-light-en-2-chosen.png",
-      "sha256": "9011ea48bcb57787926e342673d2c2562a466f77ad0efda6b1aede1ddce0bbf8"
+      "path": "s228-desk-light-en-2-verified.png",
+      "sha256": "65eaab5db2929ac8f44dc91a2c90cdbda10fa03efbe0f8470cca3aefd0da40a0"
     },
     {
-      "path": "s228-desk-light-en-3-verified.png",
-      "sha256": "70d6b94484245cf85302ac2a9aeaa8169825eaa84f5fa7b5dc8b5f8f90fe99c6"
+      "path": "s228-desk-light-en-3-continued.png",
+      "sha256": "d50faf6c435fc6f0d0f0391ed86b1e8e993b6d81aca2299c0deaed1bd9a88647"
     },
     {
-      "path": "s228-desk-light-en-4-continued.png",
-      "sha256": "76d2d907bbf3c3157bb65a5baa670caf1f1654d42d40d4514cb2dd84ead5c129"
+      "path": "s228-desk-light-en-4-authorizations.png",
+      "sha256": "19d37e3fb2010ac68525af554b3ac21e546e0061f46658b8684c472e45c1bb7a"
     },
     {
-      "path": "s228-desk-light-en-5-authorizations.png",
-      "sha256": "d80ad7f076fbf7e420eedb629fb2b44e855bd90be63c77dd9e125153e6f54990"
+      "path": "s228-desk-light-en-4b-details.png",
+      "sha256": "590c5bf74b44bbb358ae4bf142192e2364c5c8007800458d9ecded70629f5d20"
     },
     {
-      "path": "s228-desk-light-en-5b-details.png",
-      "sha256": "50a50132ca248e386e1911db1bcca13877468e7fb0bf860152958a10fe07cf92"
-    },
-    {
-      "path": "s228-desk-light-en-6-always-allow.png",
-      "sha256": "a5db10e446f36b57caa646b557b234a54dac6b585f943543271ee73734f42952"
+      "path": "s228-desk-light-en-5-always-allow.png",
+      "sha256": "279918470d4fa8969b2dc11c04e35507fe19cdad97959c019ccbffac1aed2f0d"
     },
     {
       "path": "s228-desk-dark-zh-TW-1-needs-unverified.png",
-      "sha256": "d4e4f873026cac22bde115a4dbac9448d6b13e55b2fb56359ad23815c2a687ca"
+      "sha256": "01f3737e64341add30df7a24ee20e181a5eba549c0bdce3194a30dc547721a36"
     },
     {
-      "path": "s228-desk-dark-zh-TW-2-chosen.png",
-      "sha256": "e6c2673092bd35b99dcd38e00c06df6897a9bf35a27438a7a80e0298485f8052"
+      "path": "s228-desk-dark-zh-TW-2-verified.png",
+      "sha256": "24ba2bf0174f94190e07db860441e06d18cf4ed0427c5240bcd1c4310c9c28cd"
     },
     {
-      "path": "s228-desk-dark-zh-TW-3-verified.png",
-      "sha256": "66d894b668bc3eaeea7724976adf16325768825e3cbcfcc42c9c40d5accef6cb"
+      "path": "s228-desk-dark-zh-TW-3-continued.png",
+      "sha256": "57fd9afb24bbb0b8fb3ddaa02588747083ab2b95ff85c522db9763c81d98b7af"
     },
     {
-      "path": "s228-desk-dark-zh-TW-4-continued.png",
-      "sha256": "0b751165818612b2fd05bebd308b9bdc4c27ce18ecc1158619edc835461de76f"
+      "path": "s228-desk-dark-zh-TW-4-authorizations.png",
+      "sha256": "c103f9dd0eadca84ab6f6ba97c33960f5040a319cacfa92bec08f784647eb815"
     },
     {
-      "path": "s228-desk-dark-zh-TW-5-authorizations.png",
-      "sha256": "b3c1a3708c14d409b882147ac4d9c0cddbf86ed101f58599febe6f906bd7dd68"
+      "path": "s228-desk-dark-zh-TW-4b-details.png",
+      "sha256": "cbb2f0d602cfc4eddf0405814d92417254a6a5ea719f973937e1ca5a777891d5"
     },
     {
-      "path": "s228-desk-dark-zh-TW-5b-details.png",
-      "sha256": "d3321f5ad1df8fc6e858e7e599a2eb20c962170f0b00ef688f43c6d92dfddc93"
-    },
-    {
-      "path": "s228-desk-dark-zh-TW-6-always-allow.png",
-      "sha256": "a5dc0c96fa91341681c837c6ee289b7ee089b99ed7a58e5816092f99fb686b66"
+      "path": "s228-desk-dark-zh-TW-5-always-allow.png",
+      "sha256": "e64f36cd3d36f08dfa5b22a9edf9db5064c60bd4ee80ab2f16973c391b40187f"
     },
     {
       "path": "s228-phone-light-en-1-needs-unverified.png",
-      "sha256": "05c2eebaccdf8a2dfcd9a5d3128dbb16a32636880e84bcae6a0c6c8ea1ffd0af"
+      "sha256": "b807f4bfd138aa0e7b177784e28de30c5d124618d776720abe7e3b194639aea0"
     },
     {
-      "path": "s228-phone-light-en-2-chosen.png",
-      "sha256": "098c60ae8f4020adca6bdc8068ddd3c7fe088ded54e7e398d5f3845e63b3bca0"
+      "path": "s228-phone-light-en-2-verified.png",
+      "sha256": "2b05162dde8aa321a2c19b60bc9ae51583d7f2d211d9858ba2107b879c7c9d71"
     },
     {
-      "path": "s228-phone-light-en-3-verified.png",
-      "sha256": "d10b660a388ff137b9bda1eee59be0bc844a18608bb3b4628c3f56d919e40d50"
+      "path": "s228-phone-light-en-3-continued.png",
+      "sha256": "d26fbd0728b587bcf325360545945bb6b8b6550a583aa928c7fa7677ac5f7273"
     },
     {
-      "path": "s228-phone-light-en-4-continued.png",
-      "sha256": "c7ebffe90c612bd3719591ae461eb1f2eb035008d2b8d47a9ea3d0c8d448cb07"
+      "path": "s228-phone-light-en-4-authorizations.png",
+      "sha256": "2cb1b58b3a191a5a77403bf7a9ce505f08ad517d0b676e4d108d4d39fcb55a63"
     },
     {
-      "path": "s228-phone-light-en-5-authorizations.png",
-      "sha256": "f74c2f0a5c5e8e5498d1258cbb88648e5e3df9eda53ebaf5d6ae4785883084b0"
+      "path": "s228-phone-light-en-4b-details.png",
+      "sha256": "f01c49c54dc165db0525c3398427593b1adc41044e78290d3af0ab42fbcce643"
     },
     {
-      "path": "s228-phone-light-en-5b-details.png",
-      "sha256": "11b53e32f2f064a461e07d69ffed417e31f7633197181401cd5cfd96dcbc4f8f"
-    },
-    {
-      "path": "s228-phone-light-en-6-always-allow.png",
-      "sha256": "44a21df79cd8e3edcf930c40b22ae5fd054a18d9af9f603c671542e32f34d7cf"
+      "path": "s228-phone-light-en-5-always-allow.png",
+      "sha256": "e36a9d284822cd3a20b0c0c5763b8013ea396cdfdc84ff0ec5929ea833893105"
     },
     {
       "path": "s228-phone-dark-zh-TW-1-needs-unverified.png",
-      "sha256": "a1814f62598a2e2f102d1254671abb4bf4ce35253ec7febb568cf420d18f6665"
+      "sha256": "2b968d4db77bbf75e98be1327856a7a0ceb910fa68f4875568632faaa26f1810"
     },
     {
-      "path": "s228-phone-dark-zh-TW-2-chosen.png",
-      "sha256": "c74bf83da984b6b07bd3c1b0735f6e794bd3e22870ca49c4896657e7fa43f50a"
+      "path": "s228-phone-dark-zh-TW-2-verified.png",
+      "sha256": "5a8f196e080f9dcc0da9fc0e910643342b490586adb3c79f7744302fed8ff379"
     },
     {
-      "path": "s228-phone-dark-zh-TW-3-verified.png",
-      "sha256": "d13ed216decd8713467728ec8526aa1e0c0b2ba492d1a5f0924a3a1cb33aaab4"
+      "path": "s228-phone-dark-zh-TW-3-continued.png",
+      "sha256": "393fec2f1a3551be420c0c18c81ac85cdd65727c4f1d2382de956677920861fe"
     },
     {
-      "path": "s228-phone-dark-zh-TW-4-continued.png",
-      "sha256": "67abdb4ad378b1ddeb6c6137b02d31624ccd53d6626a008c74911ad74e6f191a"
+      "path": "s228-phone-dark-zh-TW-4-authorizations.png",
+      "sha256": "c28239620d4452b1551a88c96cf49bd94beabc54e6c717fe3385f92b97212ff7"
     },
     {
-      "path": "s228-phone-dark-zh-TW-5-authorizations.png",
-      "sha256": "3af1b446f334cec033e65c3863b0ebbd4d745ae14b44a8241933faed8e56f760"
+      "path": "s228-phone-dark-zh-TW-4b-details.png",
+      "sha256": "5c269a5a5d2d21ac3393e3f6e64e665d70f2a4d2ee6aa29288ad41d7d9c38569"
     },
     {
-      "path": "s228-phone-dark-zh-TW-5b-details.png",
-      "sha256": "3860f1b442ae5574e92609bbff901076bb34a37701e31e387b734ee0cba96bb4"
-    },
-    {
-      "path": "s228-phone-dark-zh-TW-6-always-allow.png",
-      "sha256": "e39d425db5105ce79cc37a832fe65c0c3d9e6d403fe1afffc8db01244ca973c4"
+      "path": "s228-phone-dark-zh-TW-5-always-allow.png",
+      "sha256": "9a23faffb4d6f064cfa1e5dc0d2a891268f3d2fe04b77d05e8034dc62aac5604"
     }
   ],
-  "summary": "124/124"
+  "summary": "116/116"
 }
