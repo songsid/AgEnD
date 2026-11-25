@@ -1613,7 +1613,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if(!this.runtimeHub && this.readPendingOwnerNotices().length)this.scheduleOwnerNoticeFlush(30_000);   // a notice kept before a restart is delivered once the fleet is up
     return this.runtimeHub ??= new RuntimeCoordinator(this.dataDir,{
       handleMcp:(machineId,runId,body)=>this.runtimeWindowsExecutor().mcp(machineId,runId,body),
-      handlePaneMcp:async(machineId,body,current)=>(await this.nativePanes()).handle(machineId,body,current),
+      handlePaneMcp:async(machineId,body,current,stamp)=>stamp?(await this.nativePanes()).handle(machineId,body,current,stamp):(await this.nativePanes()).handle(machineId,body,current),
       warn:(fields,message)=>this.logger.warn(fields,message),
       // Issue, use, revocation (and a refused use) of an install-command token: ids and an opaque actor handle only, never the token.
       audit:entry=>{
@@ -1853,7 +1853,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         diagnostic: text => this.logger.warn({ stderr: text }, "Local Windows pane relay wrote to stderr"),
         version: provider => inventory.clis.find(row => row.id === provider && row.runnable)?.version ?? null,
         launch: () => launchLocalPaneRelay(this.dataDir, admit),
-        mcp: async (body, current) => (await this.nativePanes()).handle("local", body, current),
+        mcp: async (body, current, stamp) => stamp ? (await this.nativePanes()).handle("local", body, current, stamp) : (await this.nativePanes()).handle("local", body, current),
       });
       try { admit(); this.localPaneRelay = relay; return relay; } catch (error) { relay.stop(); throw error; }
     })(); this.openingLocalPane = opening;
@@ -1923,9 +1923,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           delegate_task: "delegate", request_information: "ask", report_result: "report", delivery_status: "delivery-status" };
         const { nativeAgentAdmissionContext } = await import("./native-agent-admission.js");
         const { dispatchAgentOperation } = await import("./agent-endpoint.js");
-        return daemon.handlePaneToolCall(input, { current, allowed: tool => allowed(name, tool),
+        return daemon.handlePaneToolCall(input, { current, allowed: tool => allowed(name, tool), ...(input.requestContext ? { requestContext: input.requestContext } : {}),
           dispatch: (tool, args) => ops[tool] ? dispatchAgentOperation(nativeAgentAdmissionContext(this, {
             instance: name, current: () => current() && allowed(name, tool), taskAllowed: () => current() && allowed(name, "task"),
+            ...(input.requestContext?.coverage === "covered" ? { requestContext: input.requestContext.lease } : input.requestContext ? { notCoveredReason: input.requestContext.reason } : {}),
           }), name, ops[tool], args, input.operationId, () => current() && allowed(name,tool)) : undefined });
       },
     });
@@ -15657,7 +15658,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const handler = outboundHandlers.get(tool);
     if (handler && !usesChannelAddress(tool)) {
       this.eventLog?.logActivity("tool_call", senderSessionName ?? instanceName, this.summarizeToolCall(tool, args));
-      await handler(this, args, respond, {
+      const context = originatingCall ? (await import("./native-agent-admission.js")).nativeAgentAdmissionContext(this, {
+        instance: instanceName, current: () => originatingCall.current(), taskAllowed: () => this.checkToolPermission("ipc-outbound", instanceName, "task").allowed,
+        ...(originatingCall.admission.coverage === "covered" ? { requestContext: originatingCall.admission.lease } : { notCoveredReason: originatingCall.admission.reason }),
+      }) : this;
+      await handler(context, args, respond, {
         instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
         ...(originatingCall ? { callerCurrent: () => originatingCall.current(), requestContextAdmission: originatingCall.admission } : {}),
       });
@@ -15670,7 +15675,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const bootNow = this.getDaemonBootId(instanceName), bootSent = sourceDaemonBootId ?? bootNow;
       if (!bootNow || bootSent !== bootNow) { respond(null, "Source daemon generation is no longer current; outcome is unknown"); return; }
       const claimed = this.hubReact({ correlationId: args.message_id, caller: instanceName, emoji: typeof args.emoji === "string" ? args.emoji : "",
-        callerCurrent: () => this.getDaemonBootId(instanceName) === bootSent });
+        callerCurrent: () => this.getDaemonBootId(instanceName) === bootSent && (!originatingCall || originatingCall.current()) });
       if (!claimed) { respond(null, "That message_id is not a Hub room question you were asked."); return; }
       const outcome = await claimed;
       if (outcome.ok) respond("ok"); else respond(null, outcome.message);
@@ -15705,15 +15710,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const restrictedBoot = restrictedRoute ? this.getDaemonBootId(instanceName) : undefined;
     if (restrictedRoute && Array.isArray(args.previews) && args.previews.length) { respond(null, "File previews are not available in restricted rooms; use the room's own attachments"); return; }
     let replyBookkeeping = Promise.resolve();
-    const restrictedExtras = restrictedRoute ? {
-      prepareFiles: (paths: readonly string[]) => this.prepareContactFiles(instanceName, paths),
+    const restrictedExtras = restrictedRoute || originatingCall ? {
+      ...(restrictedRoute ? { prepareFiles: (paths: readonly string[]) => this.prepareContactFiles(instanceName, paths),
+      downloadAttachment: (id: string) => this.downloadRoomAttachment(instanceName, id) } : {}),
       replyFinished: () => replyBookkeeping,
-      downloadAttachment: (id: string) => this.downloadRoomAttachment(instanceName, id),
       beforeSend: () => {
+        if (originatingCall && !originatingCall.current()) throw Error("Originating request context is no longer current");
         const current = this.restrictedClassicRouting(instanceName);
-        if (!current || current.adapterId !== restrictedRoute.adapterId || current.chatId !== restrictedRoute.chatId
+        if (restrictedRoute && (!current || current.adapterId !== restrictedRoute.adapterId || current.chatId !== restrictedRoute.chatId
           || current.threadId !== restrictedRoute.threadId || this.contactGeneration(instanceName) !== restrictedIncarnation
-          || this.getDaemonBootId(instanceName) !== restrictedBoot) throw Error("Restricted room route changed before delivery");
+          || this.getDaemonBootId(instanceName) !== restrictedBoot)) throw Error("Restricted room route changed before delivery");
       },
     } : {};
     // Resolve threadId: use sender's topic_id if sender is a known fleet instance,
@@ -16394,6 +16400,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private dispatchTypedIpc(name: string, msg: Record<string, unknown>): void {
+    const captured = this.requestContextCallOf(msg);
+    if (captured && !captured.current()) { this.refuseTypedIpc(name, msg, "Originating request context is no longer current"); return; }
     const type = String(msg.type);
     if (type.startsWith("fleet_schedule_")) { this.handleScheduleCrud(name, msg); return; }
     if (type.startsWith("fleet_decision_")) { this.handleDecisionCrud(name, msg); return; }

@@ -1,6 +1,7 @@
 /** Closed pane RPC. No executable, argv, shell source, environment or host path is accepted. */
 import { validNativeSessionId, validateNativeModel } from "./windows-cli-providers.js";
 import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker.js";
+import { validateRequestContextCallStamp, type RequestContextCallStamp } from "./request-context-call-protocol.js";
 import type { PaneKey, PaneSize } from "./pane-port.js";
 import { validatePaneTranscriptCursor, type PaneTranscriptCursor } from "./runtime-pane-transcript-protocol.js";
 import { validateGeneralWorkspaceRequest, type GeneralWorkspaceRequest } from "./runtime-general-protocol.js";
@@ -50,7 +51,7 @@ export interface RuntimePaneSnapshot extends PaneSize {
   exitProof?: "system-reboot" | "admin-confirmed";
 }
 /** Host-origin open outcome, never inferred from a coordinator's possibly lost ACK. */
-export type RuntimePaneOpenResult = RuntimePaneSnapshot & { reattached: boolean };
+export type RuntimePaneOpenResult = RuntimePaneSnapshot & { reattached: boolean; requestContextProtocol?: 1 };
 export interface RuntimePaneShutdown { hostBootId: string; shutdown: true }
 export interface RuntimePaneCapture { snapshot: RuntimePaneSnapshot; text: string; quotaHistory?: string[] }
 /** Optional proof from a new runner. Missing/invalid/old-host metadata never grants an exemption. */
@@ -74,7 +75,7 @@ export type RuntimePaneRequest =
   | { action: "bind-session"; paneId: string; launchId: string; sessionId: string }
   | { action: "transcript"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
   | { action: "transcript-baseline"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
-  | { action: "input"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq: number; kind: "literal" | "paste"; text: string }
+  | { action: "input"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq: number; kind: "literal" | "paste"; text: string; requestContext?: RequestContextCallStamp }
   | { action: "key"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq: number; key: PaneKey }
   | { action: "resize"; paneId: string; launchId: string; operationId: string; sequence: number; columns: number; rows: number }
   | { action: "edit"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq: number; keys: PaneEditKey[]; repeat?: number }
@@ -147,7 +148,8 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
     case "transcript":
       closed(value, ["action", "paneId", "launchId", "cursor"]); validatePaneTranscriptCursor(value.cursor); break;
     case "input":
-      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "expectedSeq", "kind", "text"]);
+      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "expectedSeq", "kind", "text", "requestContext"]);
+      if (value.requestContext !== undefined) validateRequestContextCallStamp(value.requestContext);
       if (value.kind !== "literal" && value.kind !== "paste") throw Error("Invalid pane input kind");
       if (typeof value.text !== "string" || Buffer.byteLength(value.text) > PANE_MAX_INPUT_BYTES || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value.text)) throw Error("Invalid pane literal input");
       if(value.kind === "literal" && /[\r\n]/.test(value.text as string))throw Error("Multiline input requires bracketed paste");
@@ -205,8 +207,9 @@ export function validateRuntimePaneSessionProof(value: unknown): RuntimePaneSess
 
 export function validateRuntimePaneOpenResult(value: unknown): RuntimePaneOpenResult {
   if (!object(value) || typeof value.reattached !== "boolean") throw Error("Pane open disposition is unconfirmed");
-  const { reattached, ...snapshot } = value;
-  return { ...validateRuntimePaneSnapshot(snapshot), reattached };
+  const { reattached, requestContextProtocol, ...snapshot } = value;
+  if (requestContextProtocol !== undefined && requestContextProtocol !== 1) throw Error("Invalid originating-call negotiation");
+  return { ...validateRuntimePaneSnapshot(snapshot), reattached, ...(requestContextProtocol === 1 ? { requestContextProtocol: 1 as const } : {}) };
 }
 export function validateRuntimePaneShutdown(value: unknown, hostBootId: string): RuntimePaneShutdown {
   closed(value, ["hostBootId", "shutdown"]);

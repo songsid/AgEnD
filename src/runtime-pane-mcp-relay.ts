@@ -88,7 +88,10 @@ export class PaneMcpRelay {
       if (arrivalStamp && (body.method === "tools/call" || body.method === "response-written")) {
         const callKey = `${arrivalToken}:${body.helperId}:${body.callId}`;
         if (body.method === "tools/call") {
-          if (!this.callStamps.has(callKey)) {
+          const original = this.callStamps.get(callKey);
+          const identity = (stamp: RequestContextCallStamp): string => stamp.coverage === "covered" ? `covered:${stamp.proof}` : `not-covered:${stamp.reason}`;
+          if (original && identity(original) !== identity(arrivalStamp)) throw Error("Pane MCP call identity changed originating input");
+          if (!original) {
             if (this.callStamps.size >= 65_536) throw Error("Pane MCP call-stamp registry requires retirement");
             this.callStamps.set(callKey, arrivalStamp);
           }

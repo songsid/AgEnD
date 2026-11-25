@@ -15,6 +15,7 @@ import { RuntimeUpdateActivity } from "./runtime-update-activity.js";
 import { CredentialProfileRefusal, rememberCredentialStatus, requireCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
 import { probeCredentialProfileStatus, validWindowsDirectory, type CredentialProfileAnswer } from "./windows-cli-worker.js";
 export interface PaneServiceOptions {
+  requestContextProtocol?: 1;
   directory: string;
   scope: string;
   /** This Runtime's credential profile root (given by the Runtime that starts this host). Absent: the host refuses every launch that names a profile. */
@@ -30,11 +31,14 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   const bootId = randomUUID(), token = randomBytes(32).toString("hex");
   const systemBootId = await readPaneSystemBootId();
   const unlock = new RuntimeClientStore(options.directory).lock(bootId, systemBootId);
+  let requestContextNegotiated = false;
   let current: WebSocket | null = null, generation = 0, onlineUntil = 0, limit = 4, closing = false, leaseEpoch = "";
   const store = new RuntimePaneStore(join(options.directory, PANE_HOST_STATE_DIRECTORY)); store.recoverInterrupted(systemBootId);
   const output = new Map<string, RuntimePaneSnapshot>();
   let relay!: PaneMcpRelay;
   const hostOptions: RuntimePaneHostOptions = { store, bootId, ...(systemBootId ? { systemBootId } : {}), online: () => !!current && current.readyState === WebSocket.OPEN && performance.now() < onlineUntil,
+    ...(options.requestContextProtocol === 1 ? { requestContextNegotiated: () => requestContextNegotiated,
+      installRequestContext: (owner: import("./runtime-pane-mcp-protocol.js").PaneMcpOwner, stamp: import("./request-context-call-protocol.js").RequestContextCallStamp) => relay.installRequestContext(owner, stamp) } : {}),
     maxAgents: () => limit, mcpConnection: (owner, tools) => relay.connection(owner, tools), output: snapshot => { output.set(snapshot.paneId, snapshot); },
     ...(options.credentialRoot ? {
       credentialHome: (cli: string, name: string) => requireCredentialProfile(options.credentialRoot!, cli, name),
@@ -49,16 +53,17 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   const mcpPending = new Map<string, { epoch: string; socket: WebSocket; accept(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
   const cancelMcp = (): void => { for (const row of mcpPending.values()) { clearTimeout(row.timer); row.reject(Error("Pane MCP connection changed")); } mcpPending.clear(); };
   let port = 0, descriptor: PaneHostDescriptor | undefined, closePromise: Promise<void> | undefined;
-  relay = new PaneMcpRelay({ secret: token, endpoint: () => `http://127.0.0.1:${port}/agent`,
+  relay = new PaneMcpRelay({ ...(options.requestContextProtocol === 1 ? { requestContextProtocol: 1 as const } : {}), secret: token, endpoint: () => `http://127.0.0.1:${port}/agent`,
     owned: owner => !closing && owner.hostBootId === bootId && host.owns(owner),
-    forward: (body, owned) => {
+    forward: (body, owned, stamp) => {
+      if (stamp && !requestContextNegotiated) return Promise.reject(Error("Originating-call protocol not negotiated"));
       const socket = current, capturedEpoch = leaseEpoch;
       if (!socket || !hostOptions.online() || !owned() || mcpPending.size >= 32) return Promise.reject(Error("Pane MCP coordinator is unavailable"));
       const id = randomUUID();
       return new Promise((accept, reject) => {
         const timer = setTimeout(() => { mcpPending.delete(id); reject(Error("Pane MCP result is unconfirmed")); }, 90_000); timer.unref();
         mcpPending.set(id, { epoch: capturedEpoch, socket, timer, accept: value => owned() ? accept(value) : reject(Error("Pane MCP owner changed")), reject });
-        send(socket, { type: "mcp.request", id, epoch: capturedEpoch, body });
+        send(socket, { type: "mcp.request", id, epoch: capturedEpoch, body, ...(stamp ? { requestContext: stamp } : {}) });
       });
     } });
   const server = createServer((req, res) => {
@@ -82,9 +87,9 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   });
   wss.on("connection", (socket: WebSocket) => {
     cancelMcp();
-    const epoch = ++generation; const previous = current; current = socket; onlineUntil = 0; leaseEpoch = "";
+    const epoch = ++generation; const previous = current; current = socket; onlineUntil = 0; leaseEpoch = ""; requestContextNegotiated = false;
     previous?.close(1008, "Pane client replaced");
-    send(socket, { type: "hello", hostBootId: bootId, idleShutdown: 1 });
+    send(socket, { type: "hello", hostBootId: bootId, idleShutdown: 1, ...(options.requestContextProtocol === 1 ? { requestContextProtocol: 1 } : {}) });
     socket.on("error", () => {});
     socket.on("close", () => { if (current === socket) { current = null; onlineUntil = 0; generation++; cancelMcp(); } });
     let pending = 0;
@@ -94,8 +99,12 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
         const value = JSON.parse(bytes.toString());
         if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("Invalid pane frame");
         if (value.type === "lease") {
-          if (Object.keys(value).some(key => !["type", "epoch", "online", "maxAgents"].includes(key)) || typeof value.online !== "boolean" || !/^[a-f0-9-]{36}$/i.test(value.epoch)
+          if (Object.keys(value).some(key => !["type", "epoch", "online", "maxAgents", "requestContextProtocol"].includes(key)) || typeof value.online !== "boolean" || !/^[a-f0-9-]{36}$/i.test(value.epoch)
             || !Number.isInteger(value.maxAgents) || value.maxAgents < 1 || value.maxAgents > 16) throw Error("Invalid pane lease");
+          if (value.requestContextProtocol !== undefined && (value.requestContextProtocol !== 1 || options.requestContextProtocol !== 1)) throw Error("Originating-call protocol not negotiated");
+          const scoped = value.requestContextProtocol === 1;
+          if (leaseEpoch === value.epoch && requestContextNegotiated && !scoped) throw Error("Originating-call protocol cannot downgrade a connection");
+          requestContextNegotiated = scoped;
           if (value.epoch !== leaseEpoch || !value.online) cancelMcp();
           leaseEpoch = value.epoch; onlineUntil = value.online ? performance.now() + 15_000 : 0; limit = value.maxAgents; return;
         }
@@ -161,9 +170,9 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   } catch (error) { clearInterval(flush); server.close(); wss.close(); unlock(); throw error; }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const root = process.argv[4];
-  if (process.platform !== "win32" || process.argv.length < 4 || process.argv.length > 5 || root !== undefined && !validWindowsDirectory(root)) process.exitCode = 1;
-  else void startPaneService({ directory: process.argv[2], scope: process.argv[3], ...(root ? { credentialRoot: root } : {}) }).then(service => {
+  const args = process.argv.slice(4), scoped = args.includes("--request-context-call-v1"), roots = args.filter(arg => arg !== "--request-context-call-v1"), root = roots[0];
+  if (process.platform !== "win32" || process.argv.length < 4 || process.argv.length > 6 || roots.length > 1 || args.filter(arg => arg === "--request-context-call-v1").length > 1 || root !== undefined && !validWindowsDirectory(root)) process.exitCode = 1;
+  else void startPaneService({ directory: process.argv[2], scope: process.argv[3], ...(scoped ? { requestContextProtocol: 1 as const } : {}), ...(root ? { credentialRoot: root } : {}) }).then(service => {
     const stop = (): void => { void service.close().catch(() => { process.exitCode = 1; }); };
     process.once("SIGINT", stop); process.once("SIGTERM", stop);
   }).catch(() => { process.exitCode = 1; });

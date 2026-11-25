@@ -2690,7 +2690,7 @@ export class Daemon extends EventEmitter {
     }
   }
   setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }): void {
-    if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle) throw Error("Request context must be bound before local daemon startup");
+    if (this.tmux || this.ipcServer || this.requestContextLifecycle || this.nativePaneLifecycle && !this.nativePaneLifecycle.requestContextAvailable?.()) throw Error("Request context must be bound before a supported daemon startup");
     this.requestContextLifecycle = { turns, identity };
   }
   private requestContextOwner(): RequestContextRuntimeOwner | null {
@@ -2709,11 +2709,15 @@ export class Daemon extends EventEmitter {
   private bindRequestContextWrite(inputId: string | null, text: string, queued: boolean,
     recovery?: { inputId: string; parent: RequestContextTurnSnapshot; current: () => boolean }): void {
     const owner = this.requestContextOwner(); if (!owner) return;
-    // Native/composer queued input must bind at actual consumption, not at enqueue (slice D).
-    if (queued) throw Error("request-context queued input consumption is not covered yet");
+    // Ordinary queues are never evidence of consumption. Only a proven steer can join the EXISTING turn.
+    if (queued && recovery) throw Error("request-context queued input consumption is not covered yet");
     if (recovery && !recovery.current()) throw Error("request-context recovery job is no longer current");
-    const snapshot = recovery ? this.requestContextLifecycle!.turns.beforeRecoveryWrite(recovery.inputId, deliveryContentDigest(text), owner, recovery.parent)
+    const previous = this.requestContextTurnSnapshot();
+    const snapshot = queued ? this.requestContextLifecycle!.turns.beforeQueuedSteer(inputId, deliveryContentDigest(text), owner)
+      : recovery ? this.requestContextLifecycle!.turns.beforeRecoveryWrite(recovery.inputId, deliveryContentDigest(text), owner, recovery.parent)
       : this.requestContextLifecycle!.turns.beforeWrite(inputId, deliveryContentDigest(text), owner);
+    try { this.nativePaneLifecycle?.stageRequestContext?.(snapshot, deliveryContentDigest(text), () => this.requestContextTurnCurrent(snapshot), this.requestContextInterruptedLaunch === this.requestContextLaunch()); }
+    catch (error) { if (snapshot !== previous) this.requestContextLifecycle!.turns.ended(snapshot, owner); throw error; }
     if (this.requestContextWrite?.snapshot.token !== snapshot.token) {
       const id = snapshot.inputId;
       const humanId = id.startsWith("human:") ? id.slice(6) : null;
@@ -2737,7 +2741,7 @@ export class Daemon extends EventEmitter {
 
   /** Internal lifecycle injection, before start. Native paths and provider files stay on their runner. */
   setNativePaneLifecycle(native: NativePaneLifecycle): void {
-    if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle) throw Error("Native pane adapter must be bound before daemon startup");
+    if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle && !native.requestContextAvailable?.()) throw Error("Native pane adapter must be bound before daemon startup with a supported request-context producer");
     this.nativePaneLifecycle = native; this.backend = native.backend; this.paneTransport = native.host; this.controlClient = native.observation;
   }
 
@@ -9303,7 +9307,7 @@ export class Daemon extends EventEmitter {
     // M-3660: a Hub question is never handed into a running turn (Claude would merge it into that turn's work), and while
     // a Hub answer turn runs, nothing else is handed into it: each waits for the idle pane and becomes a turn of its own.
     const exclusiveTurn = opts?.hubQuestion !== undefined || this.hubAnswerTurnMayRun();
-    const handOffEligible = !exclusiveTurn && !!(supportsQueuedInput || opts?.steer || composerQueue);
+    const handOffEligible = !exclusiveTurn && (!this.requestContextLifecycle || opts?.steer === true) && !!(supportsQueuedInput || opts?.steer || composerQueue);
     const handOffAdmissible = async (): Promise<boolean> => (await this.probeBlockingDialog()).state === "clear"
       && await this.hasPositiveDeliveryInput(true)
       && ((!opts?.steer && !composerQueue) || (this.launchTakesSteer() && await this.steerComposerAdmits(false, opts?.steer === true)));
@@ -9466,6 +9470,7 @@ export class Daemon extends EventEmitter {
         const residue = await this.clearRestoredInputDraft(handingOffToNativeQueue, writeCurrent);
         if (residue === "stale") return stale();
         if (residue !== "clear") return this.failDelivery(verdict, status, "input-residue", residue);
+        let newlyBound: RequestContextTurnSnapshot | null = null;
         const written = await this.writeMessageToPane(
           formatted,
           windowId,
@@ -9482,13 +9487,20 @@ export class Daemon extends EventEmitter {
             const receiptId = opts?.humanMeta?.verification_id ?? opts?.humanVerificationId;
             const inputId = opts?.requestContextInputId ?? (receiptId ? `human:${receiptId}` : opts?.durableAttempt
               ? `delivery:${opts.durableAttempt.deliveryId}:${opts.durableAttempt.attemptNo}` : null);
+            const prior = this.requestContextTurnSnapshot();
             this.bindRequestContextWrite(inputId, wireText, handingOffToNativeQueue, opts?.requestContextRecovery);
+            const after = this.requestContextTurnSnapshot();
+            if (after && after !== prior) newlyBound = after;
             if (!handingOffToNativeQueue) this.hubAnswerTurnBegins(opts?.hubQuestion, opts?.hubContactLimit !== false);
             opts?.beforePaneWrite?.();
           },
           opts?.lookBeforePaneWrite,
           opts?.humanMeta,
         );
+        if (written === false && newlyBound && this.nativePaneLifecycle?.lastInputWasNotSent?.()) {
+          const owner = this.requestContextOwner();
+          if (owner && this.requestContextLifecycle!.turns.ended(newlyBound, owner)) this.requestContextWrite = undefined;
+        }
         // #1690: still under the lock — whatever waits on it next must already see what this write started.
         if (verdict.paneWriteStarted) opts?.onPaneWritten?.();
         // The hand-off's last capture had no box: nothing was begun or written — wait for readiness, then try again.
@@ -12872,18 +12884,20 @@ export class Daemon extends EventEmitter {
    * Routes to the channel adapter via MessageBus.
    */
   /** Internal native-MCP admission. The pane/machine/launch owner supplies a current, dynamically checked tool lease. */
-  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined }): Promise<{ result: unknown; error?: string; errorCode?: string | number }> {
+  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined; requestContext?: import("./request-context-call.js").RequestContextCallAdmission }): Promise<{ result: unknown; error?: string; errorCode?: string | number }> {
     const refusal = nativePaneToolRefusal(input.tool, input.args);
     if (refusal) return Promise.resolve({ result: null, error: refusal });
     if (!lease.current() || !lease.allowed(input.tool, input.args) || this.deliveryWritesStopping) return Promise.resolve({ result: null, error: "Pane tool permission is no longer current" });
     const fence = this.launchFenceEpoch;
     const current = (): boolean => lease.current() && lease.allowed(input.tool, input.args) && !this.deliveryWritesStopping && fence === this.launchFenceEpoch;
     return new Promise(resolve => {
-      let settled = false;
-      const finish = (value: { result: unknown; error?: string; errorCode?: string | number }): void => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
+      let settled = false; let call: RequestContextLocalCall | undefined;
+      const finish = (value: { result: unknown; error?: string; errorCode?: string | number }): void => { if (settled) return; settled = true; if (call) this.requestContextCalls.delete(call.id); clearTimeout(timer); resolve(value); };
       const timer = setTimeout(() => finish({ result: null, error: "Pane tool result is unconfirmed; inspect its operation before retrying" }), daemonBudgetMs(input.tool) + 1000);
       timer.unref?.();
       try {
+        call = lease.requestContext ? Object.freeze({ id: randomUUID(), admission: lease.requestContext, current }) : undefined;
+        if (call) this.requestContextCalls.set(call.id, call);
         this.handleToolCall({ ...input, requestId: ++this.fleetRequestSeq }, undefined, {
           current,
           dispatch: (tool, args, respond) => {
@@ -12896,7 +12910,7 @@ export class Daemon extends EventEmitter {
           // Resolving the relay is not proof that its HTTP response reached the provider. No response-written receipt yet.
           send: value => { finish({ result: value.result, ...(typeof value.error === "string" ? { error: value.error } : {}),
             ...(typeof value.errorCode === "string" || typeof value.errorCode === "number" ? { errorCode: value.errorCode } : {}) }); return false; },
-        });
+        }, call);
       } catch { finish({ result: null, error: "Pane tool operation failed" }); }
     });
   }

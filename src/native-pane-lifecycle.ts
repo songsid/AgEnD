@@ -12,8 +12,13 @@ import { PANE_TRANSCRIPT_EMPTY_ANCHOR, type RuntimeTranscriptReference } from ".
 import type { TranscriptSource } from "./transcript-sources.js";
 import type { TranscriptNeedle } from "./transcript-needles.js";
 import type { RuntimePaneLaunch, RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import type { RequestContextTurnSnapshot } from "./request-context-turns.js";
+import type { RequestContextPaneProofs } from "./request-context-pane.js";
 export interface NativePaneAcquisition { pane: Pane; source: TranscriptSource; disposition: "reattached" | "resumed" | "fresh" }
 export interface NativePaneLifecycle {
+  requestContextAvailable?(): boolean;
+  stageRequestContext?(snapshot: RequestContextTurnSnapshot, wireSha256: string, current: () => boolean, interrupted: boolean): void;
+  lastInputWasNotSent?(): boolean;
   bindDaemon?(daemon: import("./daemon.js").Daemon): void;
   readonly host: PaneHost;
   readonly observation: PaneObservation;
@@ -28,6 +33,7 @@ export interface NativePaneLifecycle {
   quotaReplayHistory?(): { messages: readonly string[]; current(): boolean } | null;
 }
 export interface NativePaneLifecycleOptions {
+  requestContexts?: RequestContextPaneProofs;
   endpoint: PaneEndpoint;
   receiptFile: string;
   launch: RuntimePaneLaunch;
@@ -69,6 +75,19 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     this.observation = new RuntimePaneObservation(options.endpoint, () => this.port.ownedSnapshot());
     this.backend = createNativePaneBackend(options.launch.cli, () => ({ sessionId: this.port.ownedSnapshot()?.sessionId ?? null,
       cwd: options.launch.cwd, contextPercentage: null, statusLineItems: ["context-remaining"], resumes: !!options.launch.sessionId || !!this.port.ownedSnapshot()?.sessionId }), { contextlessResume: !!options.launch.sessionId });
+  }
+  requestContextAvailable(): boolean { return !!this.options.requestContexts; }
+  lastInputWasNotSent(): boolean { return this.port.lastInputWasNotSent(); }
+  stageRequestContext(snapshot: RequestContextTurnSnapshot, wireSha256: string, current: () => boolean, interrupted: boolean): void {
+    const pane = this.port.ownedSnapshot(), proofs = this.options.requestContexts;
+    const bound = (): boolean => { try { if (!current() || !this.current()) return false; this.options.admit(); return true; } catch { return false; } };
+    if (!pane || !proofs || !bound()) throw Error("Originating input proof unavailable");
+    // An older, unnegotiated producer is always per-operation not-covered at admission, never the latest owner.
+    if (!this.port.requestContextSupported()) return;
+    const owner = { hostBootId: pane.hostBootId, paneId: pane.paneId, launchId: pane.launchId, agentId: pane.agentId, instance: pane.instance };
+    const stamp = interrupted ? { version: 1 as const, coverage: "not-covered" as const, reason: "interrupted-launch" as const }
+      : proofs.mint(owner, snapshot, () => bound());
+    this.port.stageRequestContext(stamp, wireSha256, bound);
   }
   bindDaemon(daemon: import("./daemon.js").Daemon): void {
     this.port.setInputRefusalLogger(details => daemon.logNativeInputRefusal(details));

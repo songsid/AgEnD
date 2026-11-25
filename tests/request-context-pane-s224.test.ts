@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, expect, it, vi } from "vitest";
+import { NativePaneManager } from "../src/native-pane-manager.js";
 import { paneMcpHttp } from "../src/windows-pane-mcp.js";
 import { PaneMcpRelay } from "../src/runtime-pane-mcp-relay.js";
 import { PaneMcpAuthorityLease, type PaneMcpAuthority } from "../src/runtime-pane-mcp.js";
@@ -115,4 +116,16 @@ it("an awaited A invocation cannot mutate or return under B, and its prepared op
   await entry; f.replace(); resume(); await rejected; expect(commit).not.toHaveBeenCalled();
   const row = Object.values(JSON.parse(readFileSync(f.file, "utf8")).calls)[0] as any;
   expect(row.state).toBe("done"); expect(row.requestContext.contextId).toBe(f.a.context.ref.contextId); expect(f.invoke).toHaveBeenCalledOnce();
+});
+
+it("S-224 the native manager gives an old unnegotiated transport only unknown per-operation scope",async()=>{
+ const f=rig(),manager=new NativePaneManager({requestContexts:f.proofs}as any);
+ (manager as any).bindings.set(f.owner.agentId,{lease:f.lease});
+ await manager.handle(f.authority.machineId,f.body,()=>true);
+ expect(f.invoke.mock.calls[0][0].requestContext).toEqual({coverage:"not-covered",reason:"unbound-input"});
+ await expect(manager.handle(f.authority.machineId,f.body,()=>true,f.stamp)).rejects.toThrow(/different originating/);
+ await manager.handle(f.authority.machineId,{...f.body,callId:"b".repeat(64)},()=>true,f.stamp);
+ expect(f.invoke.mock.calls[1][0].requestContext?.coverage).toBe("covered");
+ await expect(manager.handle(f.authority.machineId,{...f.body,callId:"b".repeat(64)},()=>true)).rejects.toThrow(/different originating/);
+ expect(f.invoke).toHaveBeenCalledTimes(2);
 });

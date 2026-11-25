@@ -134,3 +134,30 @@ it("the daemon refuses an older snapshot after the next input binds under the sa
   expect(r.daemon.requestContextTurnCurrent({ ...second, wireSha256: wireDigest("different snapshot") })).toBe(false);
   expect(r.daemon.requestContextTurnSnapshot()).toBe(second);
 });
+
+it("S-224 ends a newly bound turn on positive native no-input, but never on an uncertain write",async()=>{
+ const r=rig(),d=r.daemon,text="[hid:demo-receipt] Synthetic input";r.prepare("human:demo-receipt",text);
+ d.writeMessageToPane.mockImplementation(async(...args:any[])=>{args[10](text);d.nativePaneLifecycle={lastInputWasNotSent:()=>true};return false;});
+ const pending=d.deliverMessage(text,undefined,{humanVerificationId:"demo-receipt"});await vi.runAllTimersAsync();expect(await pending).toBe(false);expect(d.requestContextTurnSnapshot()).toBeNull();
+ d.nativePaneLifecycle=undefined;r.prepare("human:demo-receipt",text);
+ d.writeMessageToPane.mockImplementation(async(...args:any[])=>{args[10](text);d.nativePaneLifecycle={lastInputWasNotSent:()=>false};return false;});
+ const uncertain=d.deliverMessage(text,undefined,{humanVerificationId:"demo-receipt"});await vi.runAllTimersAsync();await uncertain;expect(d.requestContextTurnSnapshot()).not.toBeNull();
+});
+it("S-224 a failed steer with positive no-input cannot retire the turn it borrowed",async()=>{
+ const r=rig(),d=r.daemon,text="[hid:demo-receipt] Synthetic input";r.prepare("human:demo-receipt",text);
+ const pending=d.deliverMessage(text,undefined,{humanVerificationId:"demo-receipt"});await vi.runAllTimersAsync();await pending;const a=d.requestContextTurnSnapshot();
+ const steer="[hid:steer-receipt] Clarification";r.prepare("human:steer-receipt",steer);r.inputs.get("human:steer-receipt")!.proof={kind:"admin-steer",activeToken:a.token,actor:{kind:"person",platform:"discord",userId:"demo-admin"}};
+ d.writeMessageToPane.mockImplementation(async(...args:any[])=>{args[10](steer);d.nativePaneLifecycle={lastInputWasNotSent:()=>true};return false;});
+ const next=d.deliverMessage(steer,undefined,{humanVerificationId:"steer-receipt"});await vi.runAllTimersAsync();await next;expect(d.requestContextTurnSnapshot()).toBe(a);
+});
+
+it("S-224 ordinary input on a queue-capable backend waits for owned idle before binding",async()=>{
+ const r=rig(),d=r.daemon,aText="[hid:a] Outside input";r.prepare("human:a",aText);
+ const first=d.deliverMessage(aText,undefined,{humanVerificationId:"a"});await vi.runAllTimersAsync();await first;const a=d.requestContextTurnSnapshot();
+ d.backend={...d.backend,supportsQueuedInput:()=>true};d.paneReadinessForDelivery.mockResolvedValueOnce("busy").mockResolvedValue("ready");
+ d.waitForPaneReadyForDelivery.mockImplementation(async()=>{r.turns.ended(a,a.owner);return true;});
+ const bText="[hid:b] Independent input";r.prepare("human:b",bText);
+ const next=d.deliverMessage(bText,undefined,{humanVerificationId:"b"});await vi.runAllTimersAsync();expect(await next).toBe(true);
+ expect(d.waitForPaneReadyForDelivery).toHaveBeenCalled();expect(d.writeMessageToPane.mock.calls.at(-1)[2]).toBe(false);
+ expect(d.requestContextTurnSnapshot().inputId).toBe("human:b");
+});

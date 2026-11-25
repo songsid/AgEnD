@@ -17,6 +17,7 @@ import { parseAccountIdentity } from "./claude-auth-status.js";
 import { RuntimeUpdateActivity, type RuntimeUpdateFence } from "./runtime-update-activity.js";
 import { parseRuntimeUpdateControl, RUNTIME_MANAGED_UPDATE_CAPABILITY, validRuntimeUpdateId, type RuntimeUpdateServerPhase } from "./runtime-update-protocol.js";
 import { parseRuntimeUpdateReport, parseRuntimeUpdateStatusFrame, RUNTIME_UPDATE_STATUS_CAPABILITY } from "./runtime-update-status.js";
+import { REQUEST_CONTEXT_CALL_CAPABILITY, validateRequestContextCallStamp, type RequestContextCallStamp } from "./request-context-call-protocol.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { withNativePaneVerification } from "./runtime-pane-native.js";
@@ -185,7 +186,7 @@ const COMMAND_HARD_CAP = 4096, COMMAND_SOFT_CAP = 2048, COMMAND_KEEP_MS = 7 * 24
 const TOMBSTONE_CAP = 65_536, TOMBSTONE_KEEP_MS = 30 * 24 * 3_600_000;
 interface Connection {
   ws: WebSocket; machineId: string; generation: number; bootId?: string; ready: boolean; alive: boolean; helloTimer: NodeJS.Timeout;
-  activity: RuntimeUpdateActivity; managedUpdate?: boolean; updateStatusProtocol?: boolean;
+  activity: RuntimeUpdateActivity; requestContextProtocol?: boolean; managedUpdate?: boolean; updateStatusProtocol?: boolean;
   statusAllowance?: { at: number; tokens: number };
   hello?: { runtimeInfo?: RuntimeInfo; paneProtocol?: 1; inventory?: WindowsCliProbe };
   update?: { id: string; phase: "prepared" | "committed" | "trial"; fence: RuntimeUpdateFence };
@@ -200,8 +201,10 @@ const interrupted = (command: { operation: RuntimeOperation }): "failed" | "unce
 interface Pending { machineId: string; generation: number; resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }
 export interface RuntimeCoordinatorEvent { type: "machine" | "task" | "pane"; machineId: string; task?: WindowsCliTask; pane?: RuntimePaneSnapshot }
 export interface RuntimeCoordinatorOptions {
+  /** Internal dormant rollout seam, not a remote configuration knob. */
+  requestContextProtocol?: 1;
   changed?(event?: RuntimeCoordinatorEvent): void;
-  handlePaneMcp?(machineId: string, body: PaneMcpBody, current: () => boolean): Promise<unknown>;
+  handlePaneMcp?(machineId: string, body: PaneMcpBody, current: () => boolean, stamp?: RequestContextCallStamp): Promise<unknown>;
   handleMcp?(machineId: string, runId: string, body: unknown): Promise<unknown>;
   /** Injectable clock for pairing expiry and offline tests. */
   now?(): number;
@@ -740,6 +743,7 @@ export class RuntimeCoordinator {
       connection.bootId = value.bootId; connection.managedUpdate = managed;
       connection.updateStatusProtocol = runtimeInfo?.capabilities.includes(RUNTIME_UPDATE_STATUS_CAPABILITY) === true;
       if (connection.updateStatusProtocol && !validRuntimeUpdateId(value.bootId)) throw new RuntimeProtocolError("Invalid Runtime status handshake");
+      connection.requestContextProtocol = this.options.requestContextProtocol === 1 && runtimeInfo?.capabilities.includes(REQUEST_CONTEXT_CALL_CAPABILITY) === true && value.paneProtocol === 1;
       connection.hello = { runtimeInfo, ...(value.paneProtocol === 1 ? { paneProtocol: 1 } : {}), inventory: reportedInventory };
       if (value.updateTrialId !== undefined) {
         const fence = connection.activity.tryFence(value.updateTrialId as string, () => this.current(connection), () => this.updateIdle(connection));
@@ -748,7 +752,7 @@ export class RuntimeCoordinator {
       }
       connection.ready = true; clearTimeout(connection.helloTimer);
       if (!connection.update) this.promoteRuntime(connection);
-      this.send(connection, { v: 1, type: "welcome", machineId: connection.machineId, generation: connection.generation, ...(managed ? { updateProtocol: 1 } : {}), ...(connection.updateStatusProtocol ? { updateStatusProtocol: 1 } : {}) });
+      this.send(connection, { v: 1, type: "welcome", machineId: connection.machineId, generation: connection.generation, ...(managed ? { updateProtocol: 1 } : {}), ...(connection.updateStatusProtocol ? { updateStatusProtocol: 1 } : {}), ...(connection.requestContextProtocol ? { requestContextProtocol: 1 } : {}) });
       if (connection.update) return; // A trial has authenticated, but cannot receive tasks or an automatic CLI probe.
       this.emit({ type: "machine", machineId: connection.machineId });
       // alpha.2 polish (dev-claude's no-chat e2e): a runner that brings no CLI inventory (just paired, nothing detected
@@ -774,7 +778,9 @@ export class RuntimeCoordinator {
       this.save(); this.emit({ type: "machine", machineId: connection.machineId }); return;
     }
     if (value.type === "pane.tool.request") {
-      if (row.machine.paneProtocol !== 1 || Object.keys(value).some(key => !["v", "type", "id", "body"].includes(key)) || !UUID.test(String(value.id))) throw new RuntimeProtocolError("Invalid pane MCP transport request");
+      if (row.machine.paneProtocol !== 1 || Object.keys(value).some(key => !["v", "type", "id", "body", "requestContext"].includes(key)) || !UUID.test(String(value.id))) throw new RuntimeProtocolError("Invalid pane MCP transport request");
+      if (value.requestContext !== undefined && !connection.requestContextProtocol || connection.requestContextProtocol && value.requestContext === undefined) throw new RuntimeProtocolError("Originating-call protocol not negotiated or stamp missing");
+      const stamp = value.requestContext !== undefined ? validateRequestContextCallStamp(value.requestContext) : undefined;
       const body = validatePaneMcpBody(value.body), id = value.id as string;
       const key = `${connection.machineId}:${connection.generation}:${id}`;
       if (this.paneToolPending.size >= 128 || this.paneToolPending.has(key)) throw new RuntimeProtocolError("Pane MCP transport backlog or duplicate request");
@@ -785,7 +791,7 @@ export class RuntimeCoordinator {
       try {
         if (!current() || !this.options.handlePaneMcp || !connection.activity.accepting || connection.activity.pending >= 128) throw new RuntimeProtocolError("Pane MCP scope unavailable");
         // The activity token belongs to the underlying handler, not the deadline race that may finish first.
-        const physical = connection.activity.run(() => this.options.handlePaneMcp!(connection.machineId, body, current));
+        const physical = connection.activity.run(() => stamp ? this.options.handlePaneMcp!(connection.machineId, body, current, stamp) : this.options.handlePaneMcp!(connection.machineId, body, current));
         const result = await Promise.race([physical, new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => { active = false; reject(Error("Pane MCP deadline")); }, 80_000); timer.unref();
         })]);
@@ -937,6 +943,7 @@ export class RuntimeCoordinator {
     if (!Number.isInteger(maxAgents) || maxAgents < 1 || maxAgents > 16) throw Error("Invalid machine pane limit");
     const machine = this.entry(machineId).machine, connection = this.connections.get(machineId);
     if (this.closed || machine.status !== "online" || machine.paneProtocol !== 1 || !connection || !this.admitting(connection)) throw Error("Pane runtime is offline, updating or unsupported");
+    if (request.action === "input" && request.requestContext && !connection.requestContextProtocol) throw Error("Originating-call protocol not negotiated");
     if (this.panePending.size >= 64) throw Error("Pane transport capacity reached");
     const id = randomUUID();
     return new Promise((resolve, reject) => {

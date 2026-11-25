@@ -30,6 +30,7 @@ import { spawn as childSpawn } from "./child-process.js";
 import { RuntimeUpdateActivity, type RuntimeUpdateFence } from "./runtime-update-activity.js";
 import { parseRuntimeUpdateControl, RUNTIME_MANAGED_UPDATE_CAPABILITY, validRuntimeUpdateId, type RuntimeUpdateClientPhase, type RuntimeUpdateServerPhase } from "./runtime-update-protocol.js";
 import { parseRuntimeUpdateStatus, RUNTIME_UPDATE_STATUS_CAPABILITY, type RuntimeUpdateStatus } from "./runtime-update-status.js";
+import { REQUEST_CONTEXT_CALL_CAPABILITY, validateRequestContextCallStamp, type RequestContextCallStamp } from "./request-context-call-protocol.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneShutdown } from "./runtime-pane-protocol.js";
 import type { PaneLinkOptions } from "./runtime-pane-link.js";
@@ -86,6 +87,7 @@ export interface RuntimeClientOptions {
   socketFactory?: (url: string, credential: string) => WebSocket;
   /** Offline transport acceptance supplies its own process factory, never a public configuration field. */
   openPaneLink?: (options: PaneLinkOptions) => Promise<RuntimePaneLink>;
+  requestContextProtocol?: 1;
   createPaneHost?: (options: RuntimePaneHostOptions) => RuntimePaneHost;
   /**
    * This Runtime's credential profile root (<runtime home>\credential-profiles). Absent: the Runtime does not offer profiles, says so in its
@@ -220,6 +222,7 @@ export class RuntimeClient {
   private generation = 0;
   private updateProtocol = false;
   private updateStatusProtocol = false;
+  private requestContextProtocol = false;
   private updateStatus: RuntimeUpdateStatus | undefined;
   private preparingUpdate = false;
   private trialFence: RuntimeUpdateFence | undefined;
@@ -241,6 +244,7 @@ export class RuntimeClient {
     // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
     const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
     this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => (name === REMOTE_SIGNIN_CAPABILITY || name === MODEL_REFRESH_CAPABILITY || runtimeSignInCapabilities().includes(name) || runtimeAccountsCapabilities().includes(name)) ? remote : (name === CLI_INSTALL_CAPABILITY || name === CLI_UPDATE_CAPABILITY) ? remote && !!(options.remoteAccounts?.installer || nativeInstallSupported()) : true) };
+    if (options.requestContextProtocol === 1 && !options.personalAgent) this.runtimeInfo = { ...this.runtimeInfo, capabilities: [...this.runtimeInfo.capabilities, REQUEST_CONTEXT_CALL_CAPABILITY] };
     if (options.personalAgent) this.runtimeInfo = { ...info, capabilities: ["exec", PERSONAL_AGENT_PROFILE, PERSONAL_AGENT_ANSWER_ONLY_PROFILE] };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE), undefined, !!options.personalAgent, options.personalAgent?.folder);
   }
@@ -298,7 +302,7 @@ export class RuntimeClient {
     const socket = this.socket = this.options.socketFactory?.(url.href, this.credentials.credential)
       ?? new WebSocket(url.href, { headers: { Authorization: `Bearer ${this.credentials.credential}` }, followRedirects: false,
         maxPayload: MAX_FRAME, handshakeTimeout: 15_000, perMessageDeflate: false });
-    this.welcomed = false; this.updateProtocol = false; this.updateStatusProtocol = false; this.paneEpoch = randomUUID();
+    this.welcomed = false; this.requestContextProtocol = false; this.updateProtocol = false; this.updateStatusProtocol = false; this.paneEpoch = randomUUID();
     socket.on("open", () => {
       if (this.stopped || this.socket !== socket) { socket.close(); return; }
       this.send({ v: 1, type: "hello", bootId: this.bootId, name: this.credentials!.name, platform: process.platform, runtimeInfo: this.runtimeInfo,
@@ -360,6 +364,8 @@ export class RuntimeClient {
     if (!object(value) || value.v !== 1 || typeof value.type !== "string") throw new Error("Unsupported runtime protocol");
     if (value.type === "welcome") {
       if (value.machineId !== this.credentials?.machineId || !Number.isSafeInteger(value.generation)) throw new Error("Runtime machine identity mismatch");
+      if (value.requestContextProtocol !== undefined && (value.requestContextProtocol !== 1 || this.options.requestContextProtocol !== 1 || this.options.personalAgent)) throw Error("Originating-call protocol not negotiated");
+      this.requestContextProtocol = value.requestContextProtocol === 1;
       this.welcomed = true;
       this.generation = value.generation as number; this.updateProtocol = !this.options.personalAgent && value.updateProtocol === 1;
       this.updateStatusProtocol = !this.options.personalAgent && value.updateStatusProtocol === 1;
@@ -407,6 +413,7 @@ export class RuntimeClient {
         || typeof value.id !== "string" || !validWindowsAgentId(value.id) || !Number.isInteger(value.maxAgents)
         || (value.maxAgents as number) < 1 || (value.maxAgents as number) > 16) throw Error("Invalid pane transport envelope");
       const request = validateRuntimePaneRequest(value.request);
+        if (request.action === "input" && request.requestContext && !this.requestContextProtocol) throw Error("Originating-call protocol not negotiated");
       this.machinePaneLimit = value.maxAgents as number;
       const epoch = this.paneEpoch;
       let leave: (() => void) | undefined, opening: string | undefined, openingDefault: string | undefined;
@@ -485,22 +492,24 @@ export class RuntimeClient {
       else this.paneOpening = import("./runtime-pane-link.js").then(({ RuntimePaneLink }) => (this.options.openPaneLink ?? RuntimePaneLink.open.bind(RuntimePaneLink))({
         directory: this.options.store.directory, server: this.credentials!.server, machineId: this.credentials!.machineId,
         ...(this.options.credentialProfilesRoot ? { credentialRoot: this.options.credentialProfilesRoot } : {}),
-        online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, epoch: () => this.paneEpoch, output, mcp: (body, current) => this.paneMcp(body, current),
+        online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, epoch: () => this.paneEpoch, output, ...(this.requestContextProtocol ? { requestContextProtocol: 1 as const } : {}), mcp: (body, current, stamp) => this.paneMcp(body, current, stamp),
       })).then(host => this.paneHost = host);
       const opening = this.paneOpening;
       void opening.catch(() => { if (this.paneOpening === opening) this.paneOpening = null; });
     }
     return this.paneOpening;
   }
-  private paneMcp(raw: PaneMcpBody, current: () => boolean): Promise<unknown> { return this.activity.run(() => this.forwardPaneMcp(raw, current)); }
-  private forwardPaneMcp(raw: PaneMcpBody, current: () => boolean): Promise<unknown> {
+  private paneMcp(raw: PaneMcpBody, current: () => boolean, stamp?: RequestContextCallStamp): Promise<unknown> { return this.activity.run(() => this.forwardPaneMcp(raw, current, stamp)); }
+  private forwardPaneMcp(raw: PaneMcpBody, current: () => boolean, rawStamp?: RequestContextCallStamp): Promise<unknown> {
+    if (rawStamp && !this.requestContextProtocol || this.requestContextProtocol && !rawStamp) return Promise.reject(Error("Originating-call protocol not negotiated or stamp missing"));
+    const stamp = rawStamp ? validateRequestContextCallStamp(rawStamp) : undefined;
     const body = validatePaneMcpBody(raw), epoch = this.paneEpoch;
     if (!current() || !this.online() || this.pendingPaneTools.size >= 32) return Promise.reject(Error("Pane MCP transport is unavailable"));
     const id = randomUUID();
     return new Promise((accept, reject) => {
       const timer = setTimeout(() => { this.pendingPaneTools.delete(id); reject(Error("Pane MCP response is unconfirmed")); }, 85_000); timer.unref();
       this.pendingPaneTools.set(id, { timer, reject, accept: value => current() && this.online() && this.paneEpoch === epoch ? accept(value) : reject(Error("Pane MCP lease expired")) });
-      try { this.send({ v: 1, type: "pane.tool.request", id, body }); }
+      try { this.send({ v: 1, type: "pane.tool.request", id, body, ...(stamp ? { requestContext: stamp } : {}) }); }
       catch { this.pendingPaneTools.delete(id); clearTimeout(timer); reject(Error("Pane MCP response is unconfirmed")); }
     });
   }

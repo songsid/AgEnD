@@ -108,6 +108,7 @@ export function routeToolCall(
         // back from sendFile; they were being thrown away.
         const attachmentMessageIds: string[] = [];
         for (const filePath of lease?.paths ?? files) {
+          extra.beforeSend?.();
           const file = await adapter.sendFile(chatId, filePath, { threadId: replyThreadId });
           if (file?.messageId) attachmentMessageIds.push(file.messageId);
         }

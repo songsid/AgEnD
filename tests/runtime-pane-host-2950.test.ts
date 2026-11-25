@@ -7,6 +7,10 @@ import { RuntimePaneHost, persistentNativeArguments, type RuntimePaneProcess, ty
 import { PANE_TRANSCRIPT_EMPTY_ANCHOR } from "../src/runtime-pane-transcript-protocol.js";
 import type { PaneTranscriptBatch } from "../src/runtime-pane-transcript.js";
 import { RuntimePaneStore, writeNativePaneExit } from "../src/runtime-pane-store.js";
+import { RuntimeNativePaneLifecycle } from "../src/native-pane-lifecycle.js";
+import { RequestContextPaneProofs } from "../src/request-context-pane.js";
+import { createHash } from "node:crypto";
+import type { RequestContextTurnSnapshot } from "../src/request-context-turns.js";
 import { RuntimePaneScreen } from "../src/runtime-pane-screen.js";
 import { validateRuntimePaneRequest, type RuntimePaneLaunch, type RuntimePaneSnapshot } from "../src/runtime-pane-protocol.js";
 
@@ -271,4 +275,46 @@ it('persistent Claude workspace access follows the native acceptEdits policy wit
 
 it.each([undefined,-1,1.5,NaN])('requires a bounded output-sequence precondition for every native input (%s)',expectedSeq=>{
  const f=setup(),request={action:'key',paneId:randomUUID(),launchId:randomUUID(),operationId:randomUUID(),sequence:1,key:'Enter',expectedSeq};expect(()=>validateRuntimePaneRequest(request)).toThrow();expect(f.spawn).not.toHaveBeenCalled();
+});
+
+it("S-224 installs only under the final write lock, after durable prepare, and never on stale seq/replay",async()=>{
+ const stamp={version:1 as const,coverage:"covered" as const,proof:"d".repeat(64)},install=vi.fn();
+ const f=setup(4,{requestContextNegotiated:()=>true,installRequestContext:install}),pane=await f.open();
+ const input={action:"input" as const,paneId:pane.paneId,launchId:pane.launchId,operationId:randomUUID(),sequence:1,expectedSeq:pane.seq,kind:"paste" as const,text:"synthetic",requestContext:stamp};
+ install.mockImplementation(()=>{expect(f.processes[0].write).not.toHaveBeenCalled();expect(f.store.list()[0].lastCommand?.state).toBe("prepared");});
+ await f.host.request(input);expect(install).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({launchId:pane.launchId,hostBootId:pane.hostBootId}),stamp);
+ expect(f.processes[0].write).toHaveBeenCalledExactlyOnceWith("\x1b[200~synthetic\x1b[201~");await f.host.request(input);expect(install).toHaveBeenCalledOnce();
+ await f.host.request({...input,operationId:randomUUID(),sequence:2,expectedSeq:99});expect(install).toHaveBeenCalledOnce();expect(f.processes[0].write).toHaveBeenCalledOnce();
+});
+it("S-224 poisons attribution on a prepared write failure; the unknown input is never replayed",async()=>{
+ const stamps:unknown[]=[],f=setup(4,{requestContextNegotiated:()=>true,installRequestContext:(_owner,stamp)=>{stamps.push(stamp);}}),pane=await f.open();
+ f.processes[0].write.mockImplementationOnce(()=>{throw Error("synthetic write lost");});
+ const input={action:"input" as const,paneId:pane.paneId,launchId:pane.launchId,operationId:randomUUID(),sequence:1,expectedSeq:pane.seq,kind:"paste" as const,text:"synthetic",requestContext:{version:1 as const,coverage:"covered" as const,proof:"d".repeat(64)}};
+ await expect(f.host.request(input)).rejects.toThrow("write lost");expect(stamps).toEqual([input.requestContext,{version:1,coverage:"not-covered",reason:"interrupted-launch"}]);
+ await expect(f.host.request(input)).rejects.toThrow(/unknown/);expect(f.processes[0].write).toHaveBeenCalledOnce();expect(stamps).toHaveLength(2);
+});
+
+it("S-224 actual native input port stages the final wire but keeps a steer's original context, and refuses stale staged input",async()=>{
+ const proofs=new RequestContextPaneProofs("synthetic-key-".repeat(4)),install=vi.fn(),f=setup(4,{requestContextNegotiated:()=>true,installRequestContext:install});
+ const config={...launch(),launchId:randomUUID()},endpoint={machineId:"local",online:()=>true,call:(request:any)=>f.host.request(request),subscribe:()=>()=>{}};
+ const native=new RuntimeNativePaneLifecycle({endpoint,launch:config,receiptFile:join(f.directory,"coordinator.json"),requestContexts:proofs,admit:()=>{},reserve:()=>{},pin:()=>{},exited:()=>{},mcpProof:()=>"unknown",releaseAuthority:()=>{}});
+ await native.port.open();f.processes[0].emit("❯ ");const captured=await native.port.capturePane();
+ const contextId=randomUUID(),original:RequestContextTurnSnapshot={token:randomUUID(),inputId:"original-a",wireSha256:"a".repeat(64),owner:{instance:config.instance,incarnation:"incarnation",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0},context:{ref:{version:1,contextId,rootContextId:contextId},rootEvidenceRef:"fixture",ingress:"guest",initiatingActor:{kind:"person",platform:"discord",userId:"demo-person"},source:{instance:config.instance,incarnation:"incarnation"},sourceAudience:{kind:"web",ref:randomUUID()}}};
+ let current=true;const wire="a permitted steer with different wire bytes";
+ native.stageRequestContext(original,createHash("sha256").update(wire).digest("hex"),()=>current,false);
+ expect(await native.port.pasteBuffer(wire,{proof:{kind:"dialog",screen:captured}})).toBe(true);
+ const [owner,stamp]=install.mock.calls[0];expect(proofs.resolve(owner,stamp).lease.snapshot.inputId).toBe("original-a");
+ const again=await native.port.capturePane();native.stageRequestContext(original,createHash("sha256").update(wire).digest("hex"),()=>current,false);
+ const pending=native.port.pasteBuffer(wire,{proof:{kind:"dialog",screen:again}});current=false;
+ expect(await pending).toBe(false);expect(f.processes[0].write).toHaveBeenCalledOnce();expect(install).toHaveBeenCalledOnce();
+});
+it("S-224 an older host keeps normal input usable without emitting a covered stamp",async()=>{
+ const install=vi.fn(),f=setup(),config={...launch(),launchId:randomUUID()},proofs=new RequestContextPaneProofs("synthetic-key-".repeat(4));
+ const endpoint={machineId:"local",online:()=>true,call:(request:any)=>{if(request.action==="input")expect(request).not.toHaveProperty("requestContext");return f.host.request(request);},subscribe:()=>()=>{}};
+ const native=new RuntimeNativePaneLifecycle({endpoint,launch:config,receiptFile:join(f.directory,"old-host.json"),requestContexts:proofs,admit:()=>{},reserve:()=>{},pin:()=>{},exited:()=>{},mcpProof:()=>"unknown",releaseAuthority:()=>{}});
+ await native.port.open();expect(native.port.requestContextSupported()).toBe(false);f.processes[0].emit("❯ ");const captured=await native.port.capturePane();
+ // No context is minted by this producer. The Manager's unnegotiated call path supplies per-operation unknown.
+ const id=randomUUID(),snapshot:RequestContextTurnSnapshot={token:randomUUID(),inputId:"old-input",wireSha256:"a".repeat(64),owner:{instance:config.instance,incarnation:"generation",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0},context:{ref:{version:1,contextId:id,rootContextId:id},rootEvidenceRef:"fixture",ingress:"guest",initiatingActor:{kind:"unknown",reason:"unidentified"},source:{instance:config.instance,incarnation:"generation"},sourceAudience:{kind:"web",ref:randomUUID()}}};
+ native.stageRequestContext(snapshot,createHash("sha256").update("ordinary input").digest("hex"),()=>true,false);
+ expect(await native.port.pasteBuffer("ordinary input",{proof:{kind:"dialog",screen:captured}})).toBe(true);expect(f.processes[0].write).toHaveBeenCalledOnce();expect(install).not.toHaveBeenCalled();
 });

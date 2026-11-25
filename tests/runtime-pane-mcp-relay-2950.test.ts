@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RuntimeClient } from "../src/runtime-client.js";
+import { RuntimeClient, RUNTIME_CONNECTED_REPORT } from "../src/runtime-client.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator, type RuntimeCoordinatorOptions } from "../src/runtime-coordinator.js";
 import { PaneMcpRelay } from "../src/runtime-pane-mcp-relay.js";
@@ -19,16 +19,17 @@ const clean: Array<()=>unknown|Promise<unknown>>=[];
 afterEach(async()=>{ for (const done of clean.splice(0).reverse()) await done(); vi.restoreAllMocks(); });
 function dir(){const path=mkdtempSync(join(tmpdir(),'agend-pane-mcp-relay-'));clean.push(()=>rmSync(path,{recursive:true,force:true}));return path;}
 function fakeProcess(){let exit:(v:{exitCode:number})=>void=()=>{};return{pid:12345,write:vi.fn(),resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:()=>exit({exitCode:0}),onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};},onData:()=>({dispose(){}})};}
-async function rig(handle:RuntimeCoordinatorOptions['handlePaneMcp']){
- const home=dir(),hub=new RuntimeCoordinator(home,{handlePaneMcp:handle});clean.push(()=>hub.close());
+async function rig(handle:RuntimeCoordinatorOptions['handlePaneMcp'], protocol: { server?:1; client?:1; host?:1 } = {}){
+ const home=dir(),hub=new RuntimeCoordinator(home,{handlePaneMcp:handle,...(protocol.server?{requestContextProtocol:1 as const}:{})});clean.push(()=>hub.close());
  const pair=hub.createPairing(),pending=hub.pair({code:pair.code,name:'MCP fixture',platform:'win32'});hub.approve(pending.machineId,hub.machine(pending.machineId)!.pairingFingerprint);
  const claim=hub.claim({machineId:pending.machineId,claimSecret:pending.claimSecret});if(claim.status!=='approved')throw Error('pair fixture');
  const server=createServer();clean.push(()=>new Promise<void>(done=>server.close(()=>done())));server.on('upgrade',(req,socket,head)=>{if(!hub.handleUpgrade(req,socket,head))socket.destroy();});server.listen(0,'127.0.0.1');await once(server,'listening');
  let hostOptions!:RuntimePaneHostOptions;
- const service=await startPaneService({directory:dir(),scope:'a'.repeat(64),createHost:opts=>{hostOptions=opts;return new RuntimePaneHost({...opts,spawn:async()=>fakeProcess()});}});clean.push(()=>service.close());
+ const service=await startPaneService({...(protocol.host?{requestContextProtocol:1 as const}:{}),directory:dir(),scope:'a'.repeat(64),createHost:opts=>{hostOptions=opts;return new RuntimePaneHost({...opts,spawn:async()=>fakeProcess()});}});clean.push(()=>service.close());
  const store=new RuntimeClientStore(dir());store.saveCredentials({server:`http://127.0.0.1:${(server.address()as any).port}`,name:'MCP fixture',machineId:claim.machineId,credential:claim.credential});
- const client=new RuntimeClient({store,reconnectMs:10,bridge:{probe:async()=>({home:'C:\\fixture',clis:[],probedAt:Date.now()}),prepareWorkspace:async()=>{throw Error('unused');},start:()=>{throw Error('no exec');},get:()=>null,cancel:()=>{throw Error('unused');},close(){},releaseUnknown(){}},
- openPaneLink:opts=>RuntimePaneLink.attach(service.descriptor,opts)});clean.push(()=>client.stop());await client.start();await vi.waitFor(()=>expect(client.online()).toBe(true));
+ let connected!:()=>void;const welcomed=new Promise<void>(done=>{connected=done;});
+ const client=new RuntimeClient({report:text=>{if(text===RUNTIME_CONNECTED_REPORT)connected();},store,...(protocol.client?{requestContextProtocol:1 as const}:{}),reconnectMs:10,bridge:{probe:async()=>({home:'C:\\fixture',clis:[],probedAt:Date.now()}),prepareWorkspace:async()=>{throw Error('unused');},start:()=>{throw Error('no exec');},get:()=>null,cancel:()=>{throw Error('unused');},close(){},releaseUnknown(){}},
+ openPaneLink:opts=>RuntimePaneLink.attach(service.descriptor,opts)});clean.push(()=>client.stop());await client.start();await welcomed;expect(client.online()).toBe(true);
  const launch={paneId:randomUUID(),agentId:randomUUID(),instance:'pane-agent',cli:'codex'as const,cwd:'C:\\fixture',sandbox:'read-only'as const,columns:80,rows:24};
  const pane=await hub.callPane(claim.machineId,{action:'open',operationId:randomUUID(),launch})as RuntimePaneSnapshot;
  const owner={hostBootId:pane.hostBootId,paneId:pane.paneId,launchId:pane.launchId,agentId:pane.agentId,instance:pane.instance};
@@ -84,4 +85,35 @@ it.each(['finish','close'] as const)('retains physical HTTP ownership until a he
  finally{if(outcome==='finish')flush();else destroy();}
  expect(await response).toBe(outcome==='finish'?403:0);
  await vi.waitFor(()=>{expect(relay.pendingCount).toBe(0);expect(settled).toBe(true);});
+});
+
+it("S-224 carries the final-write stamp through both negotiated WS hops without changing the helper body", async () => {
+ const handler=vi.fn(async(_machine,_body,_current,_stamp)=>({result:{tools:[]}}));
+ const f=await rig(handler,{server:1,client:1,host:1}), stamp={version:1 as const,coverage:"covered" as const,proof:"d".repeat(64)};
+ const input={action:"input" as const,paneId:f.pane.paneId,launchId:f.pane.launchId,operationId:randomUUID(),sequence:1,expectedSeq:f.pane.seq,kind:"paste" as const,text:"Synthetic admitted input",requestContext:stamp};
+ await f.hub.callPane(f.machineId,input);
+ const body={op:"pane-mcp" as const,method:"tools/list" as const,params:{},owner:f.owner,helperId:randomUUID()};
+ await paneMcpHttp(f.connection,body);expect(handler).toHaveBeenCalledExactlyOnceWith(f.machineId,body,expect.any(Function),stamp);
+ expect(body).not.toHaveProperty("requestContext");
+});
+it.each([{server:1 as const,client:1 as const},{server:1 as const,host:1 as const},{client:1 as const,host:1 as const}])("S-224 refuses stamped input with a missing negotiation participant %j",async protocol=>{
+ const handler=vi.fn(async()=>({})),f=await rig(handler,protocol);
+ await expect(f.hub.callPane(f.machineId,{action:"input",paneId:f.pane.paneId,launchId:f.pane.launchId,operationId:randomUUID(),sequence:1,expectedSeq:f.pane.seq,kind:"paste",text:"must not write",requestContext:{version:1,coverage:"covered",proof:"d".repeat(64)}})).rejects.toThrow();
+ expect(handler).not.toHaveBeenCalled();
+ const after=await f.hub.callPane(f.machineId,{action:"snapshot",paneId:f.pane.paneId,launchId:f.pane.launchId})as RuntimePaneSnapshot;
+ expect(after.commandSequence).toBe(0);
+});
+
+it("S-224 a non-negotiated Runtime cannot inject a stamped tool envelope at the coordinator boundary",async()=>{
+ let invoked!:()=>void;const invocation=new Promise<void>(done=>{invoked=done;}),handler=vi.fn(async()=>{invoked();return{};});
+ const f=await rig(handler),socket=(f.client as any).socket;const closed=once(socket,"close");
+ const body={op:"pane-mcp",method:"tools/list",params:{},owner:f.owner,helperId:randomUUID()};
+ (f.client as any).send({v:1,type:"pane.tool.request",id:randomUUID(),body,requestContext:{version:1,coverage:"covered",proof:"d".repeat(64)}});
+ expect(await Promise.race([closed.then(()=>"refused"),invocation.then(()=>"dispatched")])).toBe("refused");expect(handler).not.toHaveBeenCalled();
+});
+it("S-224 the Runtime's own non-negotiated outgoing boundary emits no stamp or frame",async()=>{
+ const f=await rig(vi.fn(async()=>({}))),send=vi.spyOn(f.client as any,"send").mockImplementation(()=>{throw Error("boundary probe");});
+ const body={op:"pane-mcp",method:"tools/list",params:{},owner:f.owner,helperId:randomUUID()};
+ await expect((f.client as any).forwardPaneMcp(body,()=>true,{version:1,coverage:"covered",proof:"d".repeat(64)})).rejects.toThrow(/not negotiated/);
+ expect(send).not.toHaveBeenCalled();send.mockRestore();
 });
