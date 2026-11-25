@@ -19,7 +19,7 @@ import { t, register } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
-import { fleetPath, chatPath } from "/assets/app-route.js";
+import { fleetPath, chatPath, settingsPath } from "/assets/app-route.js";
 import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -34,6 +34,9 @@ import { runtimeUpdateText } from "./runtime-update-status.js";
 import { ContactNeedsItem, ContactSuggestionsGroup, isRestrictedSuggestion } from "./contact-needs.js";
 import { ContactVerifyNeed, contactVerifyCount, isContactVerify } from "./contact-verify-need.js";
 import { HostDirectoryNotices, hostDirectoryNoticesOffered } from "./hub-host-security-notices.js";
+// M-3770 1.4: AgEnD's own update in Needs you — only a failure or "can't update here" (design §3.1).
+import { UpdateNeedsItem } from "/assets/update-card-ui.js";
+import { updateStore } from "/assets/app-update.js";
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
 register("app", {
@@ -243,10 +246,16 @@ export function NeedsPanel({ navKey }) {
             ? html`<${ContactNeedsItem} key=${item.id} item=${item} />`
             : html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
         </section>`).concat(suggestions.length ? [html`<${ContactSuggestionsGroup} key="contact-suggestions" items=${suggestions} />`] : [])}
+      <${UpdateNeeds} />
       <${HostDirectoryNotices} />
       <${NotifyToggle} />
     </div></div>
   </div>`;
+}
+
+function UpdateNeeds() {
+  const { info } = useStore(updateStore);
+  return html`<${UpdateNeedsItem} info=${info} settingsHref=${`${settingsPath("advanced")}#settings-update`} />`;
 }
 
 function NeedsItem({ item, nowMs, owner }) {

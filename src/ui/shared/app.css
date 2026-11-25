@@ -2258,6 +2258,32 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
   .update-actions.indent { margin-left: 26px; }
 }
 /* M-2738: Settings → Advanced → Version and update */
+/* M-3770 1.4: the update card's Settings part — its state, "Updates on this machine", and the controls (pause windows;
+   Advanced: pin, longest wait). Phone: every control a 44 px box, the day ticks wrap. */
+.uc-settings { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-3); border-top: 1px solid var(--border); padding-top: var(--s-3); }
+.uc-status { margin: 0; font-size: var(--fs-sm); }
+.uc-machine { font-size: var(--fs-sm); }
+.uc-machine .uc-mark { font-weight: var(--fw-semibold); margin: 0 2px; }
+.uc-self .uc-mark { color: var(--ok); } .uc-admin-only .uc-mark { color: var(--warn); } .uc-stop .uc-mark { color: var(--danger); }
+.uc-checks { margin: var(--s-1) 0 0; padding-left: var(--s-4); color: var(--text-2); }
+.uc-controls { display: flex; flex-direction: column; gap: var(--s-3); }
+.uc-pause { border: 0; padding: 0; margin: 0; min-width: 0; }
+.uc-pause legend { font-weight: var(--fw-semibold); font-size: var(--fs-sm); padding: 0; }
+.uc-hint { margin: 2px 0 var(--s-2); font-size: var(--fs-xs); }
+.uc-pause-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding: var(--s-2) 0; border-bottom: 1px solid var(--border); }
+.uc-days { display: flex; flex-wrap: wrap; gap: 2px var(--s-2); }
+.uc-day { font-size: var(--fs-sm); }
+.uc-time { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-sm); color: var(--text-2); }
+.uc-time .input { width: auto; }
+.uc-row-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+.uc-advanced .field { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--s-2); max-width: 320px; }
+.uc-pick { display: flex; flex-direction: column; gap: var(--s-2); }
+.uc-pick-row { font-size: var(--fs-sm); }
+.uc-needs .n-item { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
+@media (max-width: 899px), (pointer: coarse) {
+  .uc-settings :is(.btn, .input, .uc-day, .uc-pick-row), .uc-needs .btn { min-height: var(--tap); }
+  .uc-day, .uc-pick-row { display: inline-flex; align-items: center; }
+}
 .s-update dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px var(--s-4); margin: 0 0 var(--s-3); font-size: var(--fs-sm); }
 .s-update dt { color: var(--text-2); }
 .s-update dd { margin: 0; }

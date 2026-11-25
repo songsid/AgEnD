@@ -10,6 +10,8 @@ import { confirmDialog } from "./ui-confirm.js";
 import { Dialog } from "./ui-dialog.js";
 import { Icon } from "./ui-icons.js";
 import { toast } from "./ui-toast.js";
+// M-3770 1.4: the one update card (a module of its own: the module-skew rule).
+import { PickTimeHost, cardLine } from "./update-card-ui.js";
 
 register("update", {
   en: {
@@ -287,11 +289,17 @@ export function UpdateLine() {
     line = html`<${Line} title=${t("update.hubAvailable", rec.hubName, rec.version, info.current)} sub=${[t("update.hubSub")]}>
       <button type="button" class="btn btn-sm btn-primary" disabled=${s.starting} onClick=${() => { void openHubUpdateDialog(); }}>${t("update.now")}</button>
       <button type="button" class="btn btn-sm" onClick=${() => { const v = `${rec.hubId}:${rec.revision}@${Date.now()}`; remember(LATER_HUB_KEY, v); updateStore.set({ laterHub: v }); }}>${t("update.later")}</button></${Line}>`;
+  } else if (info.card !== undefined) {
+    // M-3770 1.4: a server with the update card — its line (offered, waiting for idle, scheduled, can't), never the
+    // per-browser Later below (Not now is the server's, for the whole fleet).
+    line = cardLine(info, { Line, busy: s.starting, deps: cardDeps });
   } else if (info.offer && info.offer.installable && s.later !== info.offer.version && !hubNeed(info)) {
     const o = info.offer;
     line = html`<${Line} title=${t("update.available", o.version, info.current)} sub=${[t("update.availableSub", channelWord(o.channel))]}>
       <button type="button" class="btn btn-sm btn-primary" disabled=${s.starting} onClick=${openUpdateDialog}>${t("update.now")}</button>
       <button type="button" class="btn btn-sm" onClick=${() => { remember(LATER_KEY, o.version); updateStore.set({ later: o.version }); }}>${t("update.later")}</button></${Line}>`;
   }
-  return html`${line}<${LogDialog} />`;
+  return html`${line}<${LogDialog} /><${PickTimeHost} />`;
 }
+/** M-3770 1.4: what update-card-ui.js needs from this module, passed in (it never imports this one). */
+export const cardDeps = { refresh: () => refreshUpdate(), setInfo: (info) => updateStore.set({ info }), getInfo: () => updateStore.get().info };

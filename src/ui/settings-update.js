@@ -8,6 +8,8 @@ import { useStore } from "/assets/app-store.js";
 import { toast } from "/assets/ui-toast.js";
 import { checkUpdateNow, hubNeed, openHubUpdateDialog, openUpdateDialog, refreshUpdate, updateActive, updateStore } from "/assets/app-update.js";
 import { dateTimeText } from "/assets/clock-text.js";
+// M-3770 1.4: the update card's Settings part (a module of its own; its deps are passed, never imported back).
+import { UpdateCardSettings, answerCard, pickTime, pressHere } from "/assets/update-card-ui.js";
 
 register("supdate", {
   en: { title: "Version and update", current: "Current version", line: "Update line", latest: "Latest", checked: "Last checked",
@@ -62,10 +64,22 @@ export function UpdateSection() {
     ${offer && !offer.installable ? html`<p class="s-update-note">${t("supdate.alphaNote")}</p>` : null}
     <div class="s-update-row">
       ${need ? html`<button type="button" class="btn btn-primary" disabled=${starting || updateActive(info)} onClick=${() => { void openHubUpdateDialog(); }}>${t("update.now")}</button>`
+        : info.card !== undefined ? cardButtons(info, starting)
         : offer && offer.installable ? html`<button type="button" class="btn btn-primary" disabled=${starting || updateActive(info)} onClick=${openUpdateDialog}>${t("update.now")}</button>` : null}
       <button type="button" class="btn" disabled=${checking || updateActive(info)} onClick=${check}>${checking ? t("supdate.checking") : t("supdate.check")}</button>
     </div>
+    ${info.card !== undefined ? html`<${UpdateCardSettings} info=${info} deps=${CARD_DEPS} />` : null}
   </section>`;
+}
+/** M-3770 1.4: what update-card-ui.js needs from app-update.js, passed in. */
+const CARD_DEPS = { refresh: () => refreshUpdate(), setInfo: (i) => updateStore.set({ info: i }), getInfo: () => updateStore.get().info };
+/** M-3770 1.4: with the card, the same answers as the banner: Update when idle and Pick a time (only where pressHere). */
+function cardButtons(info, starting) {
+  const c = info.card;
+  if (!c || c.state !== "offered" && c.state !== "not-now" || !pressHere(info)) return null;
+  const busy = starting || updateActive(info);
+  return html`<button type="button" class="btn btn-primary" disabled=${busy} onClick=${() => { void answerCard({ action: "when-idle" }, CARD_DEPS); }}>${t("updatecard.whenIdle")}</button>
+    <button type="button" class="btn" disabled=${busy} onClick=${() => { void pickTime(CARD_DEPS); }}>${t("updatecard.pickTime")}</button>`;
 }
 
 /** The "new version" mark beside Settings' version pill (admins, an installable offer). */

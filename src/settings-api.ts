@@ -90,6 +90,7 @@ import {
 } from "./connection-secrets.js";
 import type { ProviderSecretStatus } from "./provider-secret-registry.js";
 import { providerRegistryEnvKeys, isReservedProviderEnvKey } from "./provider-secret-registry.js";
+import { resolveUpdates, updatesFromRaw, updatesProblems } from "./update-settings.js";
 import { topicFields, type TopicDeleteOutcome } from "./instance-topic-delete.js";
 import {
   STATUS_EMOJI_CONFIG_KEYS, STATUS_EMOJI_SUGGESTIONS, TELEGRAM_REACTION_EMOJIS,
@@ -1653,6 +1654,44 @@ export function handleSettingsRequest(
         return json(res, 500, { error: "monitoring_save_failed" });
       }
       json(res, 200, { ok: true, monitoring:ctx.hostMonitoringSettings?.()??monitoringConfig(monitoring) });
+    }).catch(() => { if (!res.headersSent) json(res, 400, { error: "bad request" }); });
+    return true;
+  }
+
+  // ── M-3770 1.4 (design #4480 §6): Settings → Version and update's controls — `updates.*` in fleet.yaml: when not to
+  // update (pause windows), the pin and the longest wait for idle (Advanced), and the mode (Phase 1 acts only on "ask").
+  // A partial patch: only the keys sent change; `pin: null` removes the pin. Validated as fleet.yaml is (updatesProblems).
+  // M-3278: over the public link too, for its admin session.
+  if (method === "PUT" && path === "/api/settings/fleet/updates") {
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+    if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
+    void readBody(req, 4096).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
+      let body: unknown;
+      try { body = JSON.parse(buf.toString("utf8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "updates: a mapping of mode, pause, pin, maxIdleWait" });
+      const patch = body as Record<string, unknown>;
+      const keys = Object.keys(patch).filter((k) => ["mode", "pause", "pin", "maxIdleWait"].includes(k));
+      if (!keys.length || keys.length !== Object.keys(patch).length) return json(res, 400, { error: "updates: only mode, pause, pin, maxIdleWait" });
+      const current = (cfg as { updates?: Record<string, unknown> }).updates;
+      const next: Record<string, unknown> = { ...(current ?? {}), ...patch };
+      if (next.pin === null) delete next.pin;
+      const problems = updatesProblems(next);
+      if (problems.length) return json(res, 400, { error: "invalid_updates", problems });
+      const before = validateFleet(cfg), after = validateFleet({ ...cfg, updates: next } as typeof cfg);
+      if (rejectIfWorse(res, before, after)) return;
+      const previous = { value: current, had: Object.hasOwn(cfg, "updates") };
+      try {
+        settingsWrite(req, () => {
+          (cfg as { updates?: unknown }).updates = next;
+          ctx.saveFleetConfig(keys.map((key): RawConfigPatch => (key === "pin" && patch.pin === null ? { path: ["updates", "pin"], remove: true } : { path: ["updates", key], value: next[key] })));
+        });
+      } catch (error) {
+        if (previous.had) (cfg as { updates?: unknown }).updates = previous.value; else delete (cfg as { updates?: unknown }).updates;
+        ctx.logger.warn({ error }, "settings: updates save refused");
+        return json(res, 500, { error: "updates_save_failed" });
+      }
+      json(res, 200, { ok: true, updates: resolveUpdates(updatesFromRaw(next)) });
     }).catch(() => { if (!res.headersSent) json(res, 400, { error: "bad request" }); });
     return true;
   }
