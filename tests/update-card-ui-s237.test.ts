@@ -80,7 +80,7 @@ describe("M-3770 1.4: the card on the banner", () => {
   it("the second sentence only where it is true: not a service → no way back; no pre-flight yet → none", async () => {
     answer = r => (r.url === "/ui/update" ? { body: ADMIN({ preflight: { ...SELF, class: "admin-only", checks: [{ id: "P3", ok: false, code: "not-service" }] } }) } : undefined);
     await mountShell();
-    expect(text()).toContain("This setup can't restart AgEnD on its own");
+    expect(text()).toContain("this setup can't restart AgEnD by itself");
     expect(text()).not.toContain("rolls back");
     await p.unmount(); upd.updateStore.set({ info: null });
     answer = r => (r.url === "/ui/update" ? { body: ADMIN({ preflight: null }) } : undefined);

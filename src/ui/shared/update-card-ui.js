@@ -15,7 +15,7 @@ register("updatecard", {
     ready: "AgEnD {0} is ready.",
     continues: "Your work continues.",
     backPhase1: "Your work continues; if it won't start, AgEnD rolls back to {0}.",
-    noWayBack: "Your work continues. This setup can't restart AgEnD on its own, so check on it after the update.",
+    noWayBack: "Your work continues; this setup can't restart AgEnD by itself, so check on it afterwards.",
     howTo: "How to update", pressOnlyLine: "AgEnD can't update itself on this machine; update it by hand.", more: "+{0}",
     whenIdle: "Update when idle", pickTime: "Pick a time", notNow: "Not now", updateNow: "Update now", cancel: "Cancel",
     waiting: "Updating to {0} as soon as your agents are idle.", waitingFor: "Waiting for: {0}", waitingSince: "Waiting since {0}",
@@ -61,7 +61,7 @@ register("updatecard", {
     ready: "AgEnD {0} 可以更新了。",
     continues: "工作不會中斷。",
     backPhase1: "工作不會中斷；新版起不來會自動退回 {0}。",
-    noWayBack: "工作不會中斷。這台機器無法自行重新啟動 AgEnD，更新後請確認一下。",
+    noWayBack: "工作不會中斷；這台機器無法自行重新啟動 AgEnD，更新後請確認一下。",
     howTo: "如何更新", pressOnlyLine: "這台機器上 AgEnD 無法自行更新，請手動更新。", more: "+{0}",
     whenIdle: "閒置時更新", pickTime: "選個時間", notNow: "先不要", updateNow: "立即更新", cancel: "取消",
     waiting: "Agent 一閒置就更新到 {0}。", waitingFor: "正在等：{0}", waitingSince: "從 {0} 開始等",
@@ -140,7 +140,7 @@ export function namesShown(names, max = 2) {
   return list.length <= max ? list.join(", ") : `${list.slice(0, max).join(", ")} ${tc("more", list.length - max)}`;
 }
 
-const fmtTime = (ms) => { try { return new Date(ms).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return String(ms); } };
+const fmtTime = (ms) => { try { return new Date(ms).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }); } catch { return String(ms); } };
 
 /**
  * POST /ui/update/answer. The answer's card replaces the store's; 412 carries a fresh pre-flight; 409 card_changed reads
