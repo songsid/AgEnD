@@ -1,5 +1,5 @@
 {
-  "sourceRevision": "54bbb2c14541a0a3d9d7e48e2cce810aaef92504",
+  "sourceRevision": "b3b18f2fe5fbe64b0bfcfbbd9d46056525e6d19e",
   "baseRevision": "c12e6c1679c5a54a807d7e9b092fbc12931bc577",
   "tests": {
     "passed": 636,
@@ -162,7 +162,8 @@
           "--maxWorkers=2"
         ]
       }
-    ]
+    ],
+    "sourceRevision": "54bbb2c14541a0a3d9d7e48e2cce810aaef92504"
   },
   "typecheck": {
     "command": [
@@ -177,7 +178,7 @@
     "src/channel/tool-router.ts": "570c5cd1a579cbf26797659cc372b43f1099027f2329bed7dd33ee432fb02c03",
     "src/daemon.ts": "c7c44b74bd98d7b99ff378abb41ee245ed12872a8a3e2266ca8fd4ac7c684719",
     "src/fleet-manager.ts": "b6564cb014a10b941c03c33cf26c8d55892abc7a667084c99dca585dafe3ebe0",
-    "src/fleet-windows-runtime.ts": "5a9e09647772fbf7031459fc699e07f68609d8676a52f532ea3fe3c1b21b8c8c",
+    "src/fleet-windows-runtime.ts": "803b3e57c94a266faa70cb941712b000a10fa20b70caef014ddcb72543216c75",
     "src/local-pane-endpoint.ts": "d1160eb840a9e85967c3ccbdcaa8cc34e062cdaefbbdfbed0b392d4e604c94db",
     "src/locale.ts": "e5821186bdef32bfe62a3f695c17dab240f416c4663c4763627e0e495a3fe5b4",
     "src/native-agent-admission.ts": "c72ea8ec93c45797ee434d66e6153de8c0d41973f87171cf3a1d750338394530",
@@ -203,7 +204,7 @@
     "src/runtime-pane-stdio.ts": "b94d8e5b43f06dadf2bf2eac56d7432d459bc2b1f5160a2b7ae8e93de7503a14",
     "src/runtime-protocol.ts": "dec216809d634ea8a8d232f098cb142269c9f174ee4ca00443f603aaff2dc953",
     "tests/channel/tool-router-reply-files.test.ts": "0fa27fd8f78898f4fc89f8a9b1e8eba980565bf5a0de5617a6c4c8680f0e292f",
-    "tests/fleet-windows-runtime.test.ts": "5e64c1c6723697bef16340c48ee5636b325a69869c3b8305b797f847a730db25",
+    "tests/fleet-windows-runtime.test.ts": "a67e18f26553b0564024ac77cc2f5308742e186b52265d08d6378b66c323a7f3",
     "tests/local-pane-relay-2950.test.ts": "5c1be305f5750e825a004ec5c3520386f86fcd460408eeb49a875d21e4ab8c74",
     "tests/native-mcp-policy-generation.test.ts": "5a25f05739be08ac6c858f66fa10b0f758c61ff078f45fe6c9baf9ff4e308aa9",
     "tests/request-context-call-s224.test.ts": "e92b0d9dba9f78e327f49b564291cac38c64b79f96103d9d924dad9141abeb6d",
@@ -442,5 +443,31 @@
     "base": "19f95f9d33d3441660d33ec07b7149cd5a76f3d6",
     "sourceRevision": "54bbb2c14541a0a3d9d7e48e2cce810aaef92504",
     "ciRepair": "Three constructor-free test rigs initialized with dormant fields or real lookup method; production lookup enforcement unchanged."
+  },
+  "revisionValidation": {
+    "sourceRevision": "b3b18f2fe5fbe64b0bfcfbbd9d46056525e6d19e",
+    "base": "687b4acaa674f4f04876c63fcdf863482784c504",
+    "baseRegression": {
+      "test": "execute retires recovered confirmed A at claim without a prior status read, then accepts independent B",
+      "exitCode": 1,
+      "failure": "Expected active input b, received a"
+    },
+    "passed": 36,
+    "failed": 0,
+    "files": [
+      "tests/fleet-windows-runtime.test.ts",
+      "tests/request-context-call-s224.test.ts",
+      "tests/request-context-commit-s224.test.ts"
+    ],
+    "command": [
+      "node_modules/.bin/vitest",
+      "run",
+      "tests/fleet-windows-runtime.test.ts",
+      "tests/request-context-call-s224.test.ts",
+      "tests/request-context-commit-s224.test.ts",
+      "--maxWorkers=2"
+    ],
+    "typecheckExitCode": 0,
+    "scope": "Shared recovery helper called by get and claim; no other runtime/source change."
   }
 }

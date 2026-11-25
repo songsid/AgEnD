@@ -6,7 +6,8 @@ and rechecks that original scope. No production rollout hook is installed.
 
 ## Results
 
-- Implementation-review corrections: 538 tests pass across the 29 affected/neighbor files, plus 98 tests in the three CI-regression files (636 total across 32 distinct files). Source and test type checking is clean. The separate commands are recorded in verification.json.
+- R1 implementation-review corrections: 538 tests pass across the 29 affected/neighbor files, plus 98 tests in the three CI-regression files (636 total across 32 distinct files). Source and test type checking is clean. The separate commands are recorded in verification.json.
+- R2 closes the direct durable `execute()` lane: the new no-status-read regression fails on R1 (A remains active), then passes after shared cleanup is called by `claim()` as well as `get()`. All 36 tests across the three affected files pass; source/test types remain clean. The earlier 636-test run is retained as R1 evidence, not a repeated full-suite claim.
 - The initial 18 semantic guard reversals are retained from the initial implementation; six additional review-correction reversals fail and are restored at the current source revision. The ten transport/write/commit reversals include exact edits and test patterns in [mutations.json](mutations.json). Earlier immutable-scope, replay, interruption and local-hop controls are retained there too.
 - The actual baseline v1 MCP ledger module loads an additive context reference and refuses redispatch. Its source hash/base are in [verification.json](verification.json). This is an old ledger-reader check, not a full old Fleet/IPC launch claim.
 - A plain merge preserves all 40 owned ordered +/- patches against their respective bases. The later intentional caller-lease, relay cleanup and portable-module corrections are part of the final source hashes.
