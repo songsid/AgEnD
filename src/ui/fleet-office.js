@@ -568,6 +568,9 @@ export function officeBubbleAt(hits, x, y, minSize = 0) {
 export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false, defer = null, bubbleHits = null) {
   const sk = p.skin;
   const ls = layerScale(a, p.L.width, p.L.height);
+  // M-3665: the view's CSS zoom (a is bitmap px a unit: the zoom × the device ratio, Prism #4423). Below TAG_READ_K what must
+  // stay readable — a caller's tag, the offline mark — is drawn readScale times larger, at the size it has at TAG_READ_K.
+  const zk = a / ((env && env.ratio) || 1), readScale = zk < TAG_READ_K ? TAG_READ_K / zk : 1;
   // Zones zoomed in past the layers' budget (a big pack): the layer would be coarser than the screen and the picture,
   // so the background and foreground are drawn from their pictures instead (only the part on screen is rasterised).
   const direct = !!p.zones && ls < a - 1e-6;
@@ -701,7 +704,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       const look = q.at.walking ? { ...q.look, pose: "walk", heading: q.at.heading }
         : canEat ? { ...posed, pose: "eat", basePose: posed.pose }
         : patted || posed;
-      drawPerson(ctx, sk, box, look, ms, env, q.at.x + 20, q.at.y - 34, a < TAG_READ_K ? TAG_READ_K / a : 1);
+      drawPerson(ctx, sk, box, look, ms, env, q.at.x + 20, q.at.y - 34, readScale);
       if (canEat && eating.snackId && p.snacksById && sk.drawSnack) {
         const sdef = p.snacksById.get(eating.snackId);
         if (sdef && sdef.eat) sk.drawSnack(ctx, sdef.eat, Math.max(0, t - eating.t0), q.at.x, q.at.y, env);
@@ -739,9 +742,10 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const crowded = (q) => over.has(q.d.area) && !pinned(q);
     // M-3665 (leader's check): too far out to read (tagsOff true), a caller still says who they are on the map — their tag
     // at the size it has at TAG_READ_K, where they stand (the chip row below lists them too). Drawn after the tags, below.
-    const beacons = tagsOff === true && a < TAG_READ_K ? people.filter((q) => CALLING.has(q.look.state) && !live.hidden.has(q.look.name) && !offView(q.at)) : [];
+    const beaconOn = tagsOff === true && readScale > 1;
+    const beacon = (q) => beaconOn && CALLING.has(q.look.state);
     // A caller keeps their tag with names hidden (#4467 review): the Help desk always says who needs you.
-    const tagged = (q) => pinned(q) || (tagsOff === "names" && CALLING.has(q.look.state)) || !(tagsOff || over.has(q.d.area));
+    const tagged = (q) => !beacon(q) && (pinned(q) || (tagsOff === "names" && CALLING.has(q.look.state)) || !(tagsOff || over.has(q.d.area)));
     // Names hidden: a caller's tag is their name only; the level stays hidden (the one hovered or found keeps it).
     const tagLook = (q) => (tagsOff === "names" && !pinned(q) && q.look.badge ? { ...q.look, badge: null } : q.look);
     const keep = [...titles.map((x) => x.box), ...(env.keepClear || [])];
@@ -783,12 +787,21 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const tagOrder = people.filter((q) => !(live.hidden.has(q.look.name) && q.look.name !== heldName) && tagged(q))
       .map((q, i) => ({ q, i, rank: pinned(q) ? 0 : q.at.walking ? 2 : 1 })).sort((x, y) => x.rank - y.rank || x.i - y.i);
     for (const { q, rank } of tagOrder) place(q.at.x, q.at.y, tagLook(q), FULL_TRIES, rank === 0);
-    // The callers' beacons (above): scaled about where they stand so the tag reads as at TAG_READ_K; their level left out.
-    for (const q of beacons) {
-      const k = TAG_READ_K / a;
-      ctx.save(); ctx.transform(k, 0, 0, k, q.at.x * (1 - k), q.at.y * (1 - k));
-      sk.drawTag(ctx, q.at.x, q.at.y, { ...q.look, badge: null }, env, false);
-      ctx.restore();
+    // The callers' tags in that mode (above), as the tags are placed: the box scaled about where they stand so it reads as
+    // at TAG_READ_K, never under an open card, clear of the kept-clear controls and of each other (there, else a row
+    // lower), registered (bubbles keep off it); their level left out. None clear: left to their chip in the row.
+    if (beaconOn) for (const q of people) {
+      if (!CALLING.has(q.look.state) || live.hidden.has(q.look.name) || offView(q.at)) continue;
+      const k = readScale, look = { ...q.look, badge: null }, sc = (b) => ({ x: q.at.x + (b.x - q.at.x) * k, y: q.at.y + (b.y - q.at.y) * k, w: b.w * k, h: b.h * k });
+      for (const dy of [0, TAG_ROW]) {
+        const box = sc(tagBox(ctx, q.at.x, q.at.y + dy, look.label, false, look.fit));
+        if (covered(box) || touches(box)) continue;
+        ctx.save(); ctx.transform(k, 0, 0, k, q.at.x * (1 - k), q.at.y * (1 - k));
+        sk.drawTag(ctx, q.at.x, q.at.y + dy, look, env, false);
+        ctx.restore();
+        tags.push(box); taken.push(box);
+        break;
+      }
     }
     // A furniture item's own name (#2574: an NPC drawn as furniture), tagged like a person; none on a tile too small to read.
     // #2698: an item hiding its people carries their tags too, in one row at its tag point (its own first; each keeps
@@ -823,7 +836,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       place(q.at.x, q.at.y, q.look, [[0, true], [COMPACT_ROW, true]]);
     }
   } else {
-    for (const d of p.desks) { const look = p.looks.get(d.key); drawPerson(ctx, sk, d, actPosed(p, look), ms, env, d.x + d.w - 14, d.y + 14); speakers.push({ look, x: d.x + 58, y: d.y + 12, area: p.roomOf.get(d.key) ?? null }); }
+    for (const d of p.desks) { const look = p.looks.get(d.key); drawPerson(ctx, sk, d, actPosed(p, look), ms, env, d.x + d.w - 14, d.y + 14, readScale); speakers.push({ look, x: d.x + 58, y: d.y + 12, area: p.roomOf.get(d.key) ?? null }); }
     blit(p.layers.front);
     // Tags left out of the layer: the hovered desk's front again, with its tag.
     const hd = tagsOff && hot ? p.desks.find((d) => d.key === hot) : null;
@@ -1948,7 +1961,7 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
     const s = scene.current;
     if (!s) return false;
     placeCard();
-    const { ctx, BW, BH, env } = s;
+    const { ctx, BW, BH } = s, env = { ...s.env, ratio: s.ratio };   // ratio: drawPart's CSS zoom is a / ratio (Prism #4423)
     s.bubbleHits = [];
     const seenClips = ms > 0 ? new Set() : null;
     const clocked = (prefix) => (seenClips

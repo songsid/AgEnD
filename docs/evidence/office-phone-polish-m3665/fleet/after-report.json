@@ -60,13 +60,13 @@
       "errors": [],
       "csp": [],
       "style": "studio",
-      "calls": 104,
+      "calls": 97,
       "tagNames": [
-        "General",
         "Paused one",
         "Offline one",
         "Stuck one",
-        "Worker"
+        "Worker",
+        "General"
       ],
       "tagCss": 8.6,
       "zoom": "86%",
@@ -164,7 +164,7 @@
       "errors": [],
       "csp": [],
       "style": "guild",
-      "calls": 104,
+      "calls": 106,
       "tagNames": [
         "General",
         "Worker",
@@ -219,7 +219,7 @@
       "errors": [],
       "csp": [],
       "style": "school",
-      "calls": 106,
+      "calls": 104,
       "tagNames": [
         "Stuck one",
         "General",
@@ -509,5 +509,9 @@
         "overlap": false
       }
     }
+  },
+  "source": {
+    "src_tree": "1c151aa660476fd99b4f45994f0ca8aecc44e358",
+    "note": "captured from a checkout whose src/ is this tree (the PR head's src/ tree; no tracked change besides it; untracked: the capture script and the node_modules link), in the pinned Playwright image"
   }
 }
