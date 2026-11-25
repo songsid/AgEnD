@@ -1,0 +1,20 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-asker-identity-m3664.test.ts (35 tests | 1 failed | 34 skipped) 21ms
+     × refuses tampering with signed signature 18ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-asker-identity-m3664.test.ts > M3664 signed room asker proof > refuses tampering with signed signature
+AssertionError: expected [Function] to throw an error
+ ❯ tests/hub-room-asker-identity-m3664.test.ts:22:375
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 34 skipped (35)
+   Start at  23:37:30
+   Duration  1.46s (transform 1.08s, setup 115ms, import 1.14s, tests 21ms, environment 0ms)

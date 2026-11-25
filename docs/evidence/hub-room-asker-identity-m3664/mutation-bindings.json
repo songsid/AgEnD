@@ -1,0 +1,30 @@
+[
+  {
+    "name": "signature",
+    "path": "src/hub/room-asker-identity.ts",
+    "baselineDigest": "62ecc277673eafd76e683616885ed58ecd0d0de5d5b16c3b5b9865182283c35f",
+    "mutantDigest": "8135f5044323d51d0e820b74d8b0f6088fd6827890d6eaad49cb2ab76819439a",
+    "exit": 1
+  },
+  {
+    "name": "destination",
+    "path": "src/hub/member/room-ask.ts",
+    "baselineDigest": "37ed6f48a1abd7bab0df861eaf0a8d23b6881d7127aa8c42eff68437d40a857a",
+    "mutantDigest": "e70de27ebbd0a67c6a4d8b363edc737ed0eb617243c6f315b16d59dbf4ca9256",
+    "exit": 1
+  },
+  {
+    "name": "two-phase",
+    "path": "src/hub/member/room-asker-store.ts",
+    "baselineDigest": "e76348e47aac871e0db29c05af8c0d6528641ecf2850385d8f156238233a20d6",
+    "mutantDigest": "3196e0c7c4c8ab0871eefd8b1beb3c67c95fe48934a0ea54c654a8817c0cfc89",
+    "exit": 1
+  },
+  {
+    "name": "actor-kind",
+    "path": "src/hub/rooms/asker-identity.ts",
+    "baselineDigest": "38f3a027bce4180e129fc1a99dc61f7ca0ecbac42c3297d41b29e3a00cb858d2",
+    "mutantDigest": "47a3946cac1e20f25e700fd4d7615b70a4894743dac9350b6263b0efd38be658",
+    "exit": 1
+  }
+]

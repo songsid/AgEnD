@@ -1,0 +1,11 @@
+--- a/src/hub/member/room-ask.ts
++++ b/src/hub/member/room-ask.ts
+@@ -204,7 +204,7 @@
+       this.options.askerStore!.prepare(proof,this.accepted(saved),{linkEpoch:source.linkEpoch!,exposureRevision:saved.local.revision},{replay,legacyAbsent:!replay,canCollect:id=>{const row=this.row(id);if(!row)return true;this.read(row);return ["answered","acked","held"].includes(row.state);}});
+       if(this.clockHolds.delete(saved.ask.exposureId))this.options.attentionChanged?.();
+     }catch(error){
+-      if(error instanceof HubRoomAskerClockError&&(!replay||["queued","dispatching"].includes(this.row(saved.ask.messageId)?.state??""))){
++      if(true&&(!replay||["queued","dispatching"].includes(this.row(saved.ask.messageId)?.state??""))){
+         if(this.clockHolds.size>=4096&&!this.clockHolds.has(saved.ask.exposureId))this.clockHolds.delete(this.clockHolds.keys().next().value!);
+         this.clockHolds.set(saved.ask.exposureId,{id:`room-clock:${saved.ask.exposureId}`,kind:"hold",agent:saved.local.agent,messageId:saved.ask.messageId,exposureId:saved.ask.exposureId,since:this.options.now?.()??Date.now(),
+           detail:this.options.locale==="zh-TW"?"這台電腦與 Hub 的時鐘可能不同，或問題送達得太晚。請檢查兩邊的時間；Hub 會重試，這個問題尚未交給 Agent。":"This computer’s clock differs from the Hub’s, or the request arrived too late. Check both clocks; the Hub will retry. This question has not reached the agent."});

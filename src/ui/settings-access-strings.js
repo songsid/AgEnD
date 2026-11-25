@@ -35,7 +35,7 @@ register("settingsLayout", {
     revAuthorityRule: "Signing in a device and authorizing an action are judged separately. When this is off, even a verified web session cannot approve actions that need authority.",
   },
   "zh-TW": {
-    revAuthorityBriefWeb: "這個 fleet 未連接聊天平台。主機 owner 可直接驗證；遠端工作階段需透過驗證器確認擁有者身分。",
+    revAuthorityBriefWeb: "這個 fleet 未連接聊天平台。主機擁有者可直接驗證；遠端工作階段需透過驗證器確認擁有者身分。",
     revAuthorityEnabledWeb: "允許已驗證擁有者的網頁授權",
     revAuthorityRule: "裝置登入與擁有者授權分開判斷。關閉後，已驗證的網頁工作階段也不能核准需授權的操作。",
   },

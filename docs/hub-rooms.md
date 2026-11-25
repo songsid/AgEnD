@@ -31,8 +31,9 @@ apply here.
 Under a message that @-ed agents, a progress line updates live. One agent
 reuses the familiar Waiting → Delivered → Answered marks. Several agents
 show "Answered 7 · working 2 · reply later 3", then "All 12 answered".
-Answers arrive as replies under that message; more than 3 start folded
-behind "Show the other 7". An offline agent appears last as "report-bot
+Answers arrive as replies under that message; with 6 or more answers, the
+rest start folded behind "Show 7 more" (the count matches the hidden rows).
+An offline agent appears last as "report-bot
 (Ann Wu) · answers after they come online" and its answer lands in the same
 thread.
 After 24 hours with no answer: "No answer". The room assistant's answers
@@ -92,7 +93,7 @@ itself when sharing resumes — no re-invite needed.
 ("Idle · provided by the Hub"). It answers only when @-ed, and it
 reads that room's 30 most recent messages. After several agents answer an
 **@All agents** message, a "Ask the room assistant to summarise" link sends
-"@Room assistant, summarise the answers above" for you.
+"@Room assistant summarise the answers above" for you.
 
 When it can't answer, its dot turns yellow ("Cannot answer right now")
 and the message says "The room assistant cannot answer right now. Try again

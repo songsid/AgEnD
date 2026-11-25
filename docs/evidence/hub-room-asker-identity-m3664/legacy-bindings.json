@@ -1,0 +1,24 @@
+{
+  "base": "3ed153b1541f020aa027781f905a615b2d3e63df",
+  "unchanged": [
+    {
+      "path": "src/hub/compose/member.ts",
+      "start": "function openMemberState(",
+      "end": "export function createHubMemberFactory(",
+      "sha256": "1975cb22ee5a088871517acf3526f77c6c0ddce170a62533e61414132c6642ae",
+      "equal": true
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "start": "const askSchema =",
+      "end": "/** Injectable until Track R",
+      "sha256": "624d062e658a8172a89bd507d6109f087a0bfae8188855774180444dfc6e47ee",
+      "equal": true
+    },
+    {
+      "path": "src/hub/db.ts",
+      "sha256": "20fe73d290ea03044e16e6453b51e33ac0e2f28a4ed586a571f4e476ac3ad0a8",
+      "equal": true
+    }
+  ]
+}

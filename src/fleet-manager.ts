@@ -1,4 +1,5 @@
 import { prepareContactChange, type PreparedContactChange } from "./contact-change-proposals.js";
+import { contactStateView } from "./contact-state-view.js";
 import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
 import { SharedDefaultAdoption } from "./shared-default-adoption.js";
 import { scopedDefaultModel } from "./model-defaults.js";
@@ -24,7 +25,7 @@ import { ContactAuthService } from "./contact-auth-service.js";
 import { stageContactFiles, type ContactFileLease } from "./contact-auth-files.js";
 import { ContactOriginClearSchema, ContactPermissionsSchema, sameContactPerson } from "./contact-auth-policy.js";
 import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus, type ContactOrigin, type ContactOriginClear, type ContactPerson, type ContactPermissions, type ContactPermissionsWrite, type ContactRoomTools, type ContactTicket, type ContactTicketDecision } from "./contact-auth-types.js";
-import type { ContactRequest } from "./contact-auth-store.js";
+import { contactPersonKey, normalizeContactPersonKey, type ContactRequest } from "./contact-auth-store.js";
 import { hubSharingNoticeText, type HubSharingNotice, type HubSharingController } from "./hub-sharing-notice.js";
 import { hubPageSharingSettings } from "./hub-page-sharing-settings.js";
 import { replyPreviews } from "./reply-preview-spec.js";
@@ -1034,6 +1035,12 @@ interface PendingClassicStart {
   messageId?: string;
   timer: ReturnType<typeof setTimeout>;
   complete: (text: string, messageId?: string) => Promise<void>;
+  /** backend: the backend menu is up. mode: Restricted or Free is still required. */
+  phase?: "backend" | "mode";
+  /** Chosen backend, kept until the mode click creates the room. */
+  backend?: string;
+  /** Posts the mode menu. Absent means the menu cannot be shown, so nothing is created. */
+  showMenu?: (text: string, choices: Choice[]) => Promise<string | undefined>;
 }
 
 export interface DeliveryOptions {
@@ -1074,6 +1081,7 @@ export interface DeliveryOptions {
 
 const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
 const CLASSIC_BACKEND_CALLBACK_PREFIX = "classic-backend:";
+const CLASSIC_MODE_CALLBACK_PREFIX = "classic-mode:";
 const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
 const EFFORT_SELECT_CALLBACK_PREFIX = "effort-select:";
 const BACKEND_SELECT_CALLBACK_PREFIX = "backend-select:";
@@ -5783,12 +5791,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return incarnation;
   }
 
+  /** Eligible connections share a platform; the current Fleet-admin gate still decides each user's role. */
+  private contactAdminAdapterIds(adapter: ChannelAdapter): string[] {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    return [...new Set([adapter.id, ...channels.filter(ch => ch.type === adapter.type).map(ch => ch.id ?? ch.type)])];
+  }
+  /** Contact permissions identify a person by platform/user; sibling bot connections do not create new people. */
+  private contactDefaultApprovers(name: string): ContactPerson[] {
+    const adapter = this.contactAdapter(name);
+    if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return [];
+    const people = this.contactAdminAdapterIds(adapter).flatMap(id => (this.adminListOf(id) ?? []).map(userId => ({
+      platform: adapter.type as "discord" | "telegram", adapterId: id, userId, label: userId })));
+    return [...new Map(people.map(person => [contactPersonKey(person), person])).values()];
+  }
   contactAdminOf(name: string, actor: ContactPerson): boolean {
     if (actor.platform === "host" && actor.adapterId === "host" && actor.userId === "operator") return true;
     const adapter = this.contactAdapter(name);
-    if (!adapter || actor.adapterId !== adapter.id || actor.platform !== adapter.type) return false;
-    return this.isFleetAdmin(actor.userId, adapter.id)
-      || (!!this.contactRoom(name) && this.classicChannels?.isAdmin(actor.userId) === true);
+    if (!adapter || actor.platform !== adapter.type) return false;
+    if (this.contactAdminAdapterIds(adapter).some(id => this.isFleetAdmin(actor.userId, id))) return true;
+    return !!this.contactRoom(name) && this.classicChannels?.isAdmin(actor.userId) === true;
   }
 
   private contactService(): ContactAuthService {
@@ -5797,11 +5818,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       restricted: name => this.contactRoom(name)?.restrictedMode === true,
       legacyClassic: name => !!this.contactRoom(name) && this.contactRoom(name)?.restrictedMode !== true,
       adminOf: (name, actor) => this.contactAdminOf(name, actor),
-      defaultApprovers: name => {
-        const adapter = this.contactAdapter(name);
-        if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return [];
-        return (this.adminListOf(adapter.id) ?? []).map(userId => ({ platform: adapter.type as "discord" | "telegram", adapterId: adapter.id, userId, label: userId }));
-      },
+      defaultApprovers: name => this.contactDefaultApprovers(name),
       generation: name => this.contactGeneration(name),
       hubRestricted: name => this.hubContactRestricted(name),
       delivered: ticket => !!ticket.deliveryId && this.deliveryOutbox!.get(ticket.deliveryId)?.state === "delivered",
@@ -5943,6 +5960,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** General can propose only. The platform callback supplies the human actor. */
+  /** M-3693: what contact permissions hold now, for General (read-only; no write, no identity computed here). */
+  contactState(agent?: string) {
+    const store = this.contactService().host.store;
+    const names = [...new Set([...Object.keys(this.fleetConfig?.instances ?? {}), ...(this.classicChannels?.getAll?.() ?? []).map(room => room.instanceName)])];
+    return contactStateView({
+      store, names: () => names, now: () => Date.now(), generation: n => this.contactGeneration(n),
+      label: n => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || n,
+      roomMode: n => { const room = this.contactRoom(n); return room ? room.restrictedMode ? "restricted" : "legacy" : undefined; },
+    }, agent ? { agent } : {});
+  }
   async requestContactChange(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }> {
     if (!callerCurrent() || this.fleetConfig?.instances[requester]?.general_topic !== true) throw Error("general-only");
     if (this.hubContactRestricted(requester)) throw Error("hub-contact-restricted");
@@ -6100,7 +6127,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try {
         const view = service.view(ticket, actor);
         if (filter.status && view.state !== filter.status) return [];
-        if (filter.person && !view.origin.people.some(person => JSON.stringify([person.platform, person.adapterId, person.userId]) === filter.person)) return [];
+        if (filter.person && !view.origin.people.some(person => contactPersonKey(person) === normalizeContactPersonKey(filter.person ?? ""))) return [];
         return [view];
       } catch { return []; }
     }) };
@@ -7152,6 +7179,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   // ── ArchiverContext bridge ────────────────────────────────────────────
+  /** M-3674: the last turn another agent started for `name` (the delivery outbox), ISO or null; never throws. */
+  lastAgentTurnOf(name: string): string | null {
+    try { return this.deliveryOutbox?.lastAgentTurn(name) ?? null; } catch { return null; }
+  }
+
   lastActivityMs(name: string): number {
     return this.lastActivity.get(name) ?? 0;
   }
@@ -9046,6 +9078,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Fleet admin is an explicit config allowlist entry, not merely an open/paired user. See adminGate. */
   isFleetAdmin(userId: string, adapterId?: string): boolean {
+    return this.adminGate(userId, adapterId) === "ok";
+  }
+
+  /**
+   * Free mode at /start is the fleet-admin allowlist of the adapter that owns the room (adminGate).
+   * A ClassicBot admin (`classicBot.yaml` admin_users) is not enough. A stub with no fleet and no worlds
+   * is not an admin: the menu offers Restricted only.
+   */
+  private canChooseFreeMode(userId: string, adapterId?: string): boolean {
+    if (!this.fleetConfig && !this.worlds) return false;
     return this.adminGate(userId, adapterId) === "ok";
   }
 
@@ -14939,11 +14981,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (blocker) { await msgAdapter?.sendText(chatId, blocker); return; }
           const channelName = msg.username || chatId;
           if (requestedBackend) {
-            // Advisory before the new-room policy is persisted, including direct /start BACKEND.
-            await msgAdapter?.sendText(chatId, this.getClassicStartWarning(requestedBackend));
-            // handleClassicStart binds the instance to this adapter authoritatively.
-            const reply = await this.handleClassicStart(chatId, channelName, msg.userId, undefined, msg.adapterId, requestedBackend);
-            await msgAdapter?.sendText(chatId, reply);
+            // The backend is only half of /start. The room waits for Restricted or Free.
+            await this.beginClassicModeSelection({
+              command: "start",
+              channelId: chatId,
+              channelName,
+              userId: msg.userId,
+              respond: async (reply: string) => (await msgAdapter?.sendText(chatId, reply))?.messageId,
+            }, msgAdapter ?? undefined, requestedBackend, msg.adapterId);
           } else if (msgAdapter) {
             await this.beginClassicBackendSelection({
               command: "start",
@@ -19870,6 +19915,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return true;
     if (await this.handleRemoteCardClick(data, adapterId, adapter)) return true;
     if (await this.handleClassicBackendSelection(data)) return true;
+    if (await this.handleClassicModeSelection(data)) return true;
     if (await this.handleModelSelection(data, adapterId)) return true;
     if (await this.handleEffortSelection(data, adapterId)) return true;
     if (await this.handleBackendSelection(data, adapterId)) return true;
@@ -28642,12 +28688,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return t("classic.backend_not_installed", backend, installation.binary, installation.install);
   }
 
-  /** Coverage is not proven before launch; disclose the fallback without blocking an unsupported CLI. */
-  private getClassicStartWarning(backend: string | undefined): string {
-    return [t("classic.restricted_start_notice"), this.getMissingBackendWarning(backend)].filter(Boolean).join("\n\n");
+  /** Discord buttons when the interaction can draw them; otherwise the adapter's own chooser. Never the backend select. */
+  private classicModePoster(data: ClassicStartSlashData, adapter?: ChannelAdapter): PendingClassicStart["showMenu"] {
+    if (data.respondButtons) return (text, choices) => data.respondButtons!(text, choices);
+    if (adapter?.promptUser) return (text, choices) => adapter.promptUser(data.channelId, text, choices);
+    return undefined;
   }
 
-  /** Handle Discord's required static slash choice, warning before a likely startup failure. */
+  /** Where the finished start (and a hold notice) lands: the Discord interaction, or the Telegram menu message. */
+  private classicStartComplete(data: ClassicStartSlashData, adapter?: ChannelAdapter): PendingClassicStart["complete"] {
+    if (data.retireButtons) return async (text) => { await data.retireButtons!(text); };
+    return async (text, messageId) => {
+      if (messageId && adapter?.editMessageRemoveButtons) {
+        try {
+          await adapter.editMessageRemoveButtons(data.channelId, messageId, text);
+          return;
+        } catch { /* fall back to a new message */ }
+      }
+      await data.respond(text);
+    };
+  }
+
+  /** Handle Discord's required static slash choice. The room waits for the mode menu. */
   private async handleClassicStartSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     return withSpawnHoldReply(text => data.respond(text), () => this.handleClassicStartSlashCore(data, adapterId));
   }
@@ -28666,22 +28728,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const blocker = this.validateClassicStart(data.channelId, data.userId, data.guildId, adapterId);
     if (blocker) { await data.respond(blocker); return; }
-    const warning = this.getClassicStartWarning(requestedBackend);
-    // Keep the deferred ephemeral response useful even if daemon startup later
-    // fails because the executable is absent. This is advisory, not a gate.
-    if (warning) await data.respond(warning);
-    const reply = await this.handleClassicStart(
-      data.channelId,
-      data.channelName,
-      data.userId,
-      data.guildId,
-      adapterId,
-      requestedBackend,
-    );
-    await data.respond(warning ? `${warning}\n\n${reply}` : reply);
+    // A missing binary is advisory and stays on the mode menu. The room is not created yet.
+    await this.beginClassicModeSelection(data, undefined, requestedBackend, adapterId);
   }
 
-  /** Present platform-native backend choices, then start on selection or timeout. */
+  /** Present platform-native backend choices. A choice opens the mode menu; a timeout or a failed menu creates nothing. */
   private async beginClassicBackendSelection(data: ClassicStartSlashData, adapter: ChannelAdapter): Promise<void> {
     const adapterId = adapter.id;
     const blocker = this.validateClassicStart(data.channelId, data.userId, data.guildId, adapterId);
@@ -28695,17 +28746,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       id: `${CLASSIC_BACKEND_CALLBACK_PREFIX}${nonce}:${choice.id}`,
       label: `${this.isBackendInstalled(choice.id) ? "✅" : "❌"} ${choice.label}`,
     }));
-    const complete = data.respondChoices
-      ? async (text: string) => { await data.respond(text); }
-      : async (text: string, messageId?: string) => {
-          if (messageId && adapter.editMessageRemoveButtons) {
-            try {
-              await adapter.editMessageRemoveButtons(data.channelId, messageId, text);
-              return;
-            } catch { /* fall back to a new message */ }
-          }
-          await data.respond(text);
-        };
+    const complete = this.classicStartComplete(data, adapter);
 
     const timer = setTimeout(() => {
       // Timeout: cancel the selection — do NOT fall back to default.
@@ -28718,38 +28759,50 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     timer.unref?.();
     const pending: PendingClassicStart = {
       channelId: data.channelId,
-      channelName: data.channelName,
+      channelName: data.channelName || data.channelId,
       userId: data.userId,
       guildId: data.guildId,
       adapterId,
       timer,
       complete,
+      phase: "backend",
+      showMenu: this.classicModePoster(data, adapter),
     };
     this.pendingClassicStarts.set(nonce, pending);
 
     try {
+      const prompt = t("classic.choose_backend");
       pending.messageId = data.respondChoices
-        ? await data.respondChoices(`${t("classic.choose_backend")}\n\n${t("classic.restricted_start_notice")}`, choices)
-        : await adapter.promptUser(data.channelId, `${t("classic.choose_backend")}\n\n${t("classic.restricted_start_notice")}`, choices);
+        ? await data.respondChoices(prompt, choices)
+        : await adapter.promptUser(data.channelId, prompt, choices);
     } catch (err) {
-      // A menu transport failure should not make /start unusable: consume the
-      // pending request and immediately use the configured default.
-      this.logger.warn({ err, channelId: data.channelId, adapterId }, "Classic backend menu failed; using default");
-      await this.finishClassicBackendSelection(nonce);
+      // No silent default backend and no silent Restricted room.
+      this.logger.warn({ err, channelId: data.channelId, adapterId }, "Classic backend menu failed; nothing created");
+      await this.cancelClassicPending(nonce, t("classic.backend_menu_failed"));
     }
   }
 
-  /** Consume a selection callback. Returns true for all ClassicBot callback IDs, including stale ones. */
+  /** Drop a pending /start without creating a room. */
+  private async cancelClassicPending(nonce: string, text: string): Promise<void> {
+    const pending = this.pendingClassicStarts.get(nonce);
+    if (!pending) return;
+    this.pendingClassicStarts.delete(nonce);
+    clearTimeout(pending.timer);
+    await pending.complete(text, pending.messageId);
+  }
+
+  /** Consume a backend click. Returns true for every classic-backend id, including a stale one. */
   private async handleClassicBackendSelection(data: AdapterCallbackData): Promise<boolean> {
     if (!data.callbackData.startsWith(CLASSIC_BACKEND_CALLBACK_PREFIX)) return false;
     const match = data.callbackData.match(/^classic-backend:([0-9a-f]+):(.+)$/);
     if (!match) return true;
     const pending = this.pendingClassicStarts.get(match[1]);
-    if (!pending) return true;
+    if (!pending || pending.phase === "mode") return true;
 
     // Telegram keyboards are visible to everyone in a group. Only the user who
-    // issued /start may consume the pending selection.
-    if (data.userId && data.userId !== pending.userId) return true;
+    // issued /start may consume the pending selection. No user id fails closed:
+    // choosing the backend is part of creating the room.
+    if (!data.userId || data.userId !== pending.userId) return true;
     const callbackChannelId = data.threadId ?? data.chatId;
     if (callbackChannelId !== pending.channelId && data.chatId !== pending.channelId) return true;
 
@@ -28757,30 +28810,136 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
-  /** Atomically claim one pending request so timeout/click races create at most one instance. */
+  /** The backend is chosen. Retire that menu and ask for the mode. Nothing is registered here. */
   private async finishClassicBackendSelection(nonce: string, backend?: string): Promise<void> {
     const pending = this.pendingClassicStarts.get(nonce);
-    if (!pending) return;
+    if (!pending || pending.phase === "mode") return;
     this.pendingClassicStarts.delete(nonce);
     clearTimeout(pending.timer);
-    const selectedBackend = isSelectableClassicBackend(backend) ? backend : undefined;
-    const effectiveBackend = selectedBackend
-      ?? this.classicChannels?.getDefaults().backend
-      ?? this.fleetConfig?.defaults?.backend
-      ?? "claude-code";
-    const warning = this.getClassicStartWarning(effectiveBackend);
-    // Show the warning before starting so it survives a missing-binary startup
-    // failure. The selected backend is still attempted as requested.
-    if (warning) await pending.complete(warning, pending.messageId);
-    const reply = await withSpawnHoldReply(text => pending.complete(text, pending.messageId), () => this.handleClassicStart(
-      pending.channelId,
-      pending.channelName,
-      pending.userId,
-      pending.guildId,
-      pending.adapterId,
-      selectedBackend,
-    ));
-    await pending.complete(warning ? `${warning}\n\n${reply}` : reply, pending.messageId);
+    if (!isSelectableClassicBackend(backend)) {
+      await pending.complete(t("classic.backend_required"), pending.messageId);
+      return;
+    }
+    // The grant can be revoked while the backend menu is up. Do not offer a mode, or create a room, after that.
+    const blocker = this.validateClassicStart(pending.channelId, pending.userId, pending.guildId, pending.adapterId);
+    if (blocker) {
+      await pending.complete(blocker, pending.messageId);
+      return;
+    }
+    await pending.complete(t("classic.backend_chosen", backend), pending.messageId);
+    await this.openClassicModeMenu(pending, backend);
+  }
+
+  /** After a backend is known (slash, `/start BACKEND`, or a backend click). The room waits for a mode click. */
+  private async beginClassicModeSelection(data: ClassicStartSlashData, adapter: ChannelAdapter | undefined, backend: string, adapterId?: string): Promise<void> {
+    const ownerId = adapterId ?? adapter?.id;
+    const blocker = this.validateClassicStart(data.channelId, data.userId, data.guildId, ownerId);
+    if (blocker) { await data.respond(blocker); return; }
+    await this.openClassicModeMenu({
+      channelId: data.channelId,
+      channelName: data.channelName || data.channelId,
+      userId: data.userId,
+      guildId: data.guildId,
+      adapterId: ownerId,
+      complete: this.classicStartComplete(data, adapter),
+      showMenu: this.classicModePoster(data, adapter),
+    }, backend);
+  }
+
+  /** For a fleet admin, Free is first and labeled recommended. Restricted stays a button.
+   *  Anyone else sees only Restricted. Either way the room waits for a tap. */
+  private async openClassicModeMenu(origin: {
+    channelId: string;
+    channelName: string;
+    userId: string;
+    guildId?: string;
+    adapterId?: string;
+    complete: PendingClassicStart["complete"];
+    showMenu?: PendingClassicStart["showMenu"];
+  }, backend: string): Promise<void> {
+    const free = this.canChooseFreeMode(origin.userId, origin.adapterId);
+    const missing = this.getMissingBackendWarning(backend);
+    const prompt = [missing, t(free ? "classic.choose_mode" : "classic.choose_mode_fixed")].filter(Boolean).join("\n\n");
+    if (!origin.showMenu) {
+      await origin.complete(t("classic.mode_menu_failed"));
+      return;
+    }
+    const nonce = randomBytes(6).toString("hex");
+    const restrictedChoice: Choice = {
+      id: `${CLASSIC_MODE_CALLBACK_PREFIX}${nonce}:restricted`,
+      label: t("classic.mode_restricted"),
+    };
+    const choices: Choice[] = free
+      ? [{ id: `${CLASSIC_MODE_CALLBACK_PREFIX}${nonce}:free`, label: t("classic.mode_free_recommended") }, restrictedChoice]
+      : [restrictedChoice];
+    const timer = setTimeout(() => {
+      const pending = this.pendingClassicStarts.get(nonce);
+      if (!pending) return;
+      this.pendingClassicStarts.delete(nonce);
+      pending.complete(t("classic.mode_selection_expired"), pending.messageId).catch(() => {});
+    }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
+    timer.unref?.();
+    const pending: PendingClassicStart = {
+      channelId: origin.channelId,
+      channelName: origin.channelName || origin.channelId,
+      userId: origin.userId,
+      guildId: origin.guildId,
+      adapterId: origin.adapterId,
+      timer,
+      complete: origin.complete,
+      phase: "mode",
+      backend,
+      showMenu: origin.showMenu,
+    };
+    this.pendingClassicStarts.set(nonce, pending);
+    try {
+      pending.messageId = await origin.showMenu(prompt, choices);
+    } catch (err) {
+      this.logger.warn({ err, channelId: origin.channelId, adapterId: origin.adapterId }, "Classic mode menu failed; nothing created");
+      await this.cancelClassicPending(nonce, t("classic.mode_menu_failed"));
+    }
+  }
+
+  /** Consume a mode click. A Free click from anyone else is ignored and the menu stays up. */
+  private async handleClassicModeSelection(data: AdapterCallbackData): Promise<boolean> {
+    if (!data.callbackData.startsWith(CLASSIC_MODE_CALLBACK_PREFIX)) return false;
+    const match = data.callbackData.match(/^classic-mode:([0-9a-f]+):(restricted|free)$/);
+    if (!match) return true;
+    const pending = this.pendingClassicStarts.get(match[1]);
+    if (!pending || pending.phase !== "mode") return true;
+    // Same identity rule as the backend click. A missing user id must not settle
+    // Restricted or Free, including Free opened by a fleet admin.
+    if (!data.userId || data.userId !== pending.userId) return true;
+    const callbackChannelId = data.threadId ?? data.chatId;
+    if (callbackChannelId !== pending.channelId && data.chatId !== pending.channelId) return true;
+    if (match[2] === "free" && !this.canChooseFreeMode(pending.userId, pending.adapterId)) {
+      data.ack?.(t("classic.mode_free_admin_only"));
+      return true;
+    }
+    await this.finishClassicModeSelection(match[1], match[2] === "restricted");
+    return true;
+  }
+
+  /** Claim the mode choice and create the room. A second click or the timeout finds nothing. */
+  private async finishClassicModeSelection(nonce: string, restricted: boolean): Promise<void> {
+    const pending = this.pendingClassicStarts.get(nonce);
+    if (!pending || pending.phase !== "mode" || !pending.backend) return;
+    this.pendingClassicStarts.delete(nonce);
+    clearTimeout(pending.timer);
+    const missing = this.getMissingBackendWarning(pending.backend);
+    const reply = await withSpawnHoldReply(
+      text => pending.complete(text, pending.messageId),
+      () => this.handleClassicStart(
+        pending.channelId,
+        pending.channelName,
+        pending.userId,
+        pending.guildId,
+        pending.adapterId,
+        pending.backend,
+        restricted,
+      ),
+    );
+    await pending.complete(missing ? `${missing}\n\n${reply}` : reply, pending.messageId);
   }
 
   /** Start a classic channel instance with lightweight config */
@@ -28845,7 +29004,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Handle /start slash command — register classic channel */
-  async handleClassicStart(channelId: string, channelName: string, userId: string, guildId?: string, adapterId?: string, backend?: string): Promise<string> {
+  async handleClassicStart(channelId: string, channelName: string, userId: string, guildId?: string, adapterId?: string, backend?: string, restricted = true): Promise<string> {
     const blocker = this.validateClassicStart(channelId, userId, guildId, adapterId);
     if (blocker) return blocker;
     const classicChannels = this.classicChannels;
@@ -28854,7 +29013,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const instanceName = classicChannels.deriveInstanceName(channelName || channelId, channelId, adapterId);
     clearPausedMarker(this.getInstanceDir(instanceName));
     const selectedBackend = isSelectableClassicBackend(backend) ? backend : undefined;
-    classicChannels.register(channelId, adapterId, instanceName, channelName || channelId, userId, selectedBackend);
+    classicChannels.register(channelId, adapterId, instanceName, channelName || channelId, userId, selectedBackend, restricted);
     // Bind this classic instance to the bot that started it (authoritative), so
     // replies/cancel go out through that bot even though every same-guild bot
     // also sees the channel's messages.
@@ -31848,6 +32007,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               // User activity is persisted by the daemon, so both the board and
               // auto-pause retain an accurate age across fleet restarts.
               lastActivity,
+              // M-3674: the last turn another agent started (lastActivity is a person's side).
+              lastAgentTurn: inst.classic ? null : this.lastAgentTurnOf(inst.name),
               currentTask,
               idle: this.getInstanceIdle(inst.name),
               ...this.instancePresentation(inst.name),
@@ -32267,7 +32428,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           model:nativeConfig.model || "default",model_source:nativeConfig.model ? "instance" : "cli-default",
           status:agent && runtime ? runtime.status(name) : "crashed",state:agent && runtime ? runtime.execution(name) : null,execution_state:agent && runtime ? runtime.execution(name) : null,
           interaction:null,interaction_summary:null,context_pct:null,cost:null,
-          last_reply:this.webChatHistory.lastAgentReply(name) ?? undefined,
+          last_reply:this.webChatHistory.lastAgentReply(name) ?? undefined,last_agent_turn:this.lastAgentTurnOf(name) ?? undefined,
           avatar:avatarFor({name,displayName:display_name}),
           capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:nativeProviderMcpSupported(backend),channels:false,terminal:false,attachments:false,usage:false,send_while_busy:false},
           ...(!agent ? {runtime_error:"Windows profile is missing or invalid; restore its saved conversation before using this instance"}
@@ -32337,6 +32498,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #3008 G2: a web-only fleet's General (the agent its owner ticked) — the sidebar pins it first.
         ...(this.isWebOnlyFleet() && this.fleetConfig?.instances[name]?.general_topic === true ? { general: true } : {}),
         last_reply: this.webChatHistory.lastAgentReply(name) ?? undefined,   // #2179: its last reply to a person (ISO)
+        // M-3674: its last turn another agent started (a message from another instance it took up), beside last_reply.
+        last_agent_turn: this.lastAgentTurnOf(name) ?? undefined,
         // #2855: its last reply that reached the channel — the only reply time a guest's sidebar gets (guestStatus).
         last_reply_channel: this.webChatHistory.lastAgentReply(name, { channel: true }) ?? undefined,
         // #2855: the web commands a guest may run here — the table's "anyone" cells for this channel (guestWebCommands);

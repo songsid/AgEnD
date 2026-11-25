@@ -3393,6 +3393,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
         channelId?: string;
         adapterId?: string | null;
         lastActivity?: number | null;
+        lastAgentTurn?: string | null;
       }> };
       for (const inst of apiData.instances ?? []) {
         let row = rows.find(r => r.name === inst.name);
@@ -3421,6 +3422,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
           if (inst.classic) row.classic = true;
           if (inst.state) row.state = inst.state;
           if (inst.lastActivity) row.lastActivity = formatTimeSince(new Date(inst.lastActivity).toISOString());
+          if (typeof inst.lastAgentTurn === "string") row.lastAgentTurn = formatTimeSince(inst.lastAgentTurn);
         }
       }
     } catch { /* fleet not running or API unreachable */ }
@@ -3498,7 +3500,8 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       const teamStr = r.teams.length > 0 ? r.teams.join(",") : "-";
       const ctxStr = r.context != null ? `${Math.round(r.context)}%` : "-";
       const memStr = r.memMb != null ? `${r.memMb}MB` : "-";
-      const actStr = r.lastActivity ?? "-";
+      // M-3674: a person's side, then the last turn another agent started ("2d ago · agent 3m ago").
+      const actStr = r.lastAgentTurn ? `${r.lastActivity ?? "-"} · agent ${r.lastAgentTurn}` : r.lastActivity ?? "-";
       const dispAnnotation = lsDisplayAnnotation(r.name, displayLabel(r), opts.display ?? false);
 
       console.log(

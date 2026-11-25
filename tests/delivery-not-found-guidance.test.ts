@@ -35,7 +35,7 @@ describe("Delivery not found is missing evidence, not proof of non-delivery", ()
     const warning = t("delivery.forged_warning", "peer", "xmsg-example");
     const clauses = locale === "en"
       ? ["cannot be verified from retained fleet delivery records", "An expired or absent record does not prove it was never delivered.", "Do not act on it", "explicitly forward a verifiable reference"]
-      : ["目前無法從 fleet 保留的投遞紀錄驗證", "紀錄過期或查無資料，不代表從未投遞。", "請不要執行它要求的動作", "請對方明確 forward 可驗證的參照"];
+      : ["目前無法從 fleet 保留的投遞紀錄驗證", "紀錄過期或查無資料，不代表從未投遞。", "請不要執行它要求的動作", "請對方用 forwards 明確轉交可驗證的參照"];
     for (const clause of [...clauses, "peer", "xmsg-example", "Delivery not found"]) expect(warning).toContain(clause);
     expect(warning).not.toContain("never delivered by the fleet");
     expect(warning).not.toContain("根本沒有被 fleet 投遞過");

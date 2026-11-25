@@ -56,7 +56,7 @@ it("every agent shows origin state, people and hops without exposing receipt IDs
   expect(r.fm.contactPermissions("other", admin).originState).toMatchObject({ kind: "none", canClear: false });
   expect(() => r.fm.contactPermissions("worker", member)).toThrow("forbidden");
 });
-it.each([member, { ...admin, adapterId: "fake-other" }])("non-managing $userId cannot clear", actor => {
+it.each([member, { ...admin, adapterId: "fake-other", userId: "fake-other-admin" }, { ...admin, platform: "telegram" as const }])("non-managing $userId cannot clear", actor => {
   const r = rig(); const before = r.store.origin("worker");
   expect(() => r.fm.clearContactOrigin("worker", r.snapshot(), actor)).toThrow("forbidden");
   expect(r.store.origin("worker")).toEqual(before); expect(r.store.histories("worker")).toEqual([]);

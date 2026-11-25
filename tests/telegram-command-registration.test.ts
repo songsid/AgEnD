@@ -88,7 +88,7 @@ describe("Telegram command-menu registration", () => {
     const payloads = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
     const fleetCommands = payloads.find(p => p.scope.type === "chat").commands;
     expect(fleetCommands.find((c: { command: string }) => c.command === "login")?.description)
-      .toBe("🔒 遠端登入或安裝 CLI Backend");
+      .toBe("🔒 遠端登入或安裝 CLI 後端");
   });
 
   it("does not report success when Telegram rejects setMyCommands", async () => {
