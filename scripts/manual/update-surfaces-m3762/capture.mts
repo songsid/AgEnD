@@ -3,7 +3,8 @@
  * accounts, npm or external services). `/ui/update` is answered with each state the page draws (the server's own shape,
  * web-api.ts handleWebUpdate); nothing is installed.
  *   1 the offer line (banner) · 2 its confirmation · 3 Settings → Advanced → Version and update · 4 an update running ·
- *   5 a failed one · 6 a finished one · 7 a Hub's recommendation · 8 a read-only (non-admin) session sees no offer
+ *   5 a failed one · 6 a finished one · 7 a Hub's recommendation · 8 a read-only (non-admin) session sees no offer ·
+ *   9 a web-only fleet's "update available" Notice in Needs you (a chat fleet's is General's topic post: not on the web)
  * Desk light en and phone dark zh-TW.
  *   CHROME=<chromium> PW_DIR=<playwright-core> REPO=<checkout> OUT=<dir> npx tsx scripts/manual/update-surfaces-m3762/capture.mts
  */
@@ -41,6 +42,12 @@ const STATES: Record<string, any> = {
 const body = (state: string, admin = true) => (admin
   ? { admin: true, current: state === "complete" ? NEXT : CURRENT, checked_at: now - 3_600_000, check_failed: false, now: Date.now(), ...STATES[state] }
   : { admin: false, current: CURRENT });
+// 9 a web-only fleet's "update available" Notice (what checkForUpdates records when there is no chat for General's post),
+// worded by the fleet's own string (locale.ts update.available_web_only), in Needs you.
+const { t: tr } = await import(REPO + "/src/locale.ts");
+const noticeText = tr("update.available_web_only", `v${NEXT}`, `v${CURRENT}`);
+fx.fm.recordWebNotice("update", noticeText);
+receipt.seen.webOnlyNotice = noticeText;
 const lineText = async (page: any) => page.evaluate(`[...document.querySelectorAll(".update-line")].map((e) => e.innerText.replace(/\\s+/g, " ").trim())`);
 
 try {
@@ -76,6 +83,11 @@ try {
           await page.goto(fx.base + "/ui/fleet");
         }
       }
+      // 9 the web-only Notice in Needs you
+      await page.goto(fx.base + "/ui/needs"); await mounted(page, 30000); await page.waitForTimeout(1500);
+      const needs = await page.evaluate(`document.body.innerText`) as string;
+      check(`${tag}: Needs you shows the update Notice`, needs.includes(`v${NEXT}`), needs.slice(0, 400));
+      await shot(page, `${tag}-9-needs-notice`);
       check(`${tag}: no page errors`, errors.length === 0, errors);
     } finally { await ctx.close(); }
     // A read-only session: no offer, only the stale-tab reload line when its tab is old.
