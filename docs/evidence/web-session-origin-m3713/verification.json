@@ -143,5 +143,13 @@
       "files": 2,
       "change": "TicketCard first sentence names sender; other copy, CSS, Permissions and identity gates unchanged"
     }
+  },
+  "ciRepair": {
+    "promptAndScopeTests": 176,
+    "files": 2,
+    "changelogCheck": "819 fragment(s) OK",
+    "rootCause": "Short WEB_CHAT_LINE diverged from CLI reference; worker-collaboration lacked full receipt-rule identity sentence.",
+    "fix": "Restore short pinned wording; retain full receipt guidance and synchronize worker skill; prefix paired fragments with list markers.",
+    "uiCssAndPngUnchanged": true
   }
 }
