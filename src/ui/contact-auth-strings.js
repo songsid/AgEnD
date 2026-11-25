@@ -11,6 +11,9 @@ register("contactAuth", {
     loading: "Loading permissions…", loadFailed: "Couldn't load permissions.", retry: "Try again",
     forbidden: "Only this agent's managers can see its permissions.",
     verifyFirst: "Permissions and contact requests need a verified administrator. Verify your identity in Sign-in status (Authorize this browser), then try again.",
+    // M-3710: Needs you, for an admin session with no verified person behind it — the count only.
+    verifyNeedOne: "1 contact request needs a verified browser", verifyNeedMany: "{0} contact requests need a verified browser",
+    verifyNeedBody: "Authorize this browser to see who is asking, and to approve or decline.",
     unavailable: "Permissions are unavailable right now. Try again in a moment.",
     stale: "Someone changed these permissions just now. They have been reloaded — check them and try again.",
     saved: "Saved.", saveFailed: "Couldn't save.", readOnly: "You can see these permissions but not change them.",
@@ -140,6 +143,8 @@ register("contactAuth", {
     loading: "正在載入權限…", loadFailed: "無法載入權限。", retry: "重試",
     forbidden: "只有這個 Agent 的管理員可以查看權限。",
     verifyFirst: "權限和聯絡申請需要已驗證的管理員。請先在「登入狀態」按「授權這個瀏覽器」驗證身分，再試一次。",
+    verifyNeedOne: "有 1 個聯絡申請需要已驗證的瀏覽器", verifyNeedMany: "有 {0} 個聯絡申請需要已驗證的瀏覽器",
+    verifyNeedBody: "授權這個瀏覽器後，才能看到是誰提出，並核准或拒絕。",
     unavailable: "目前無法取得權限，請稍後再試。",
     stale: "剛才有人修改了這些權限，已重新載入，請確認後再試一次。",
     saved: "已儲存。", saveFailed: "無法儲存。", readOnly: "你可以查看這些權限，但無法修改。",

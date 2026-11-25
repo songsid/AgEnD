@@ -31,6 +31,7 @@ import { decideProposal, installProposals } from "./agent-proposals.js";
 import { GeneralLocation } from "./general-location.js";
 import { runtimeUpdateText } from "./runtime-update-status.js";
 import { ContactNeedsItem, ContactSuggestionsGroup, isRestrictedSuggestion } from "./contact-needs.js";
+import { ContactVerifyNeed, isContactVerify } from "./contact-verify-need.js";
 import { HostDirectoryNotices, hostDirectoryNoticesOffered } from "./hub-host-security-notices.js";
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
@@ -214,7 +215,9 @@ export function NeedsPanel({ navKey }) {
   const updates = items.filter(item => item.runtimeUpdate);
   // M-3381: the rooms' restricted-mode suggestions are one group (below the rest), counted once.
   const suggestions = items.filter(isRestrictedSuggestion);
-  const groups = groupNeeds(items.filter(item => !item.runtimeUpdate && !isRestrictedSuggestion(item)));
+  // M-3710: "N contact requests need a verified browser" — on top, under no agent's heading.
+  const verify = items.find(isContactVerify);
+  const groups = groupNeeds(items.filter(item => !item.runtimeUpdate && !isRestrictedSuggestion(item) && !isContactVerify(item)));
   const shownCount = items.length - suggestions.length + (suggestions.length ? 1 : 0) + asks.length;
   if (updates.length) groups.push({ instance: "", items: updates });
   const nowMs = Date.now();
@@ -226,6 +229,7 @@ export function NeedsPanel({ navKey }) {
         ${asks.map((p) => html`<${ProposalItem} key=${p.id} proposal=${p} nowMs=${nowMs} />`)}
         ${decidedHere.map(([id, d]) => html`<${ProposalResult} key=${id} result=${d} />`)}
       </section>` : null}
+      ${verify ? html`<${ContactVerifyNeed} item=${verify} />` : null}
       ${(!ready || needsLoaded === false) && !items.length && !asks.length ? html`<${Skeleton} variant="rows" lines=${3} />`
         : !items.length && !asks.length && !decidedHere.length ? hostDirectoryNoticesOffered() ? html`<p class="muted">${tn("otherEmpty")}</p>` : html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
         : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config",g.items[0]?.type === 'host', !!g.items[0]?.runtimeUpdate])} class="n-group" aria-label=${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance}>
