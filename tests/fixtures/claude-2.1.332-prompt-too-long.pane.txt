@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.332
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /tmp/agend-audit/w/hE400LONG332
+
+
+❯ trigger E400LONG now
+  ⎿  Prompt is too long · the request is ~213487 tokens (limit 200000) but this conversation is only ~2967 tokens — the rest is system prompt, tool definitions,
+     and attachment content. A single-exchange conversation cannot be compacted; reduce attached files/tools or start with less context. · /clear to start
+     fresh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Once fixed, resend your message
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
