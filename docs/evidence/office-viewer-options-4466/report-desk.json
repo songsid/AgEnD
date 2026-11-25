@@ -7,6 +7,20 @@
       "miniBack": true,
       "cardName": "陽奈",
       "deskName": "陽奈",
+      "pencil": {
+        "w": 24,
+        "h": 24,
+        "rowH": 24,
+        "bg": "rgb(236, 236, 236)",
+        "reach": false,
+        "reachPx": {
+          "left": 12,
+          "right": 11,
+          "up": 12,
+          "down": 11
+        },
+        "closeUp": 18
+      },
       "cardState": "Paused · Novice",
       "callerState": "Crashed · Novice",
       "errors": [],
@@ -18,6 +32,20 @@
       "miniBack": true,
       "cardName": "陽奈",
       "deskName": "陽奈",
+      "pencil": {
+        "w": 24,
+        "h": 24,
+        "rowH": 24,
+        "bg": "rgb(236, 236, 236)",
+        "reach": false,
+        "reachPx": {
+          "left": 12,
+          "right": 11,
+          "up": 12,
+          "down": 11
+        },
+        "closeUp": 18
+      },
       "cardState": "已暫停 · 新手",
       "callerState": "已當掉 · 新手",
       "errors": [],
@@ -29,6 +57,20 @@
       "miniBack": true,
       "cardName": "陽奈",
       "deskName": "陽奈",
+      "pencil": {
+        "w": 24,
+        "h": 24,
+        "rowH": 24,
+        "bg": "rgb(58, 58, 58)",
+        "reach": false,
+        "reachPx": {
+          "left": 12,
+          "right": 11,
+          "up": 12,
+          "down": 11
+        },
+        "closeUp": 18
+      },
       "cardState": "Paused · Novice",
       "callerState": "Crashed · Novice",
       "errors": [],
@@ -40,6 +82,20 @@
       "miniBack": true,
       "cardName": "陽奈",
       "deskName": "陽奈",
+      "pencil": {
+        "w": 24,
+        "h": 24,
+        "rowH": 24,
+        "bg": "rgb(58, 58, 58)",
+        "reach": false,
+        "reachPx": {
+          "left": 12,
+          "right": 11,
+          "up": 12,
+          "down": 11
+        },
+        "closeUp": 18
+      },
       "cardState": "已暫停 · 新手",
       "callerState": "已當掉 · 新手",
       "errors": [],

@@ -97,6 +97,15 @@ try {
     r.cardName = (await page.locator(".oo-card .oo-card-name").innerText()).trim();
     r.deskName = (await alpha.innerText()).trim();
     await shot("6-renamed");
+    // The pencil: its drawn size, the name row's height, and how far from its centre a press still hits it (reachPx; 22 is the 44 px target).
+    r.pencil = await page.evaluate(`(() => {
+      const b = document.querySelector(".oo-card-rename-btn"), row = document.querySelector(".oo-card-name-row"), rb = b.getBoundingClientRect();
+      const cx = rb.left + rb.width / 2, cy = rb.top + rb.height / 2, hits = (x, y) => b.contains(document.elementFromPoint(x, y));
+      return { w: Math.round(rb.width), h: Math.round(rb.height), rowH: Math.round(row.getBoundingClientRect().height), bg: getComputedStyle(b).backgroundColor,
+        reach: [hits(cx - 20, cy), hits(cx + 20, cy), hits(cx, cy - 20), hits(cx, cy + 20)].every(Boolean),
+        reachPx: Object.fromEntries([["left", -1, 0], ["right", 1, 0], ["up", 0, -1], ["down", 0, 1]].map(([k, dx, dy]) => { let d = 0; while (d < 40 && hits(cx + dx * (d + 1), cy + dy * (d + 1))) d++; return [k, d]; })),
+        closeUp: (() => { const c = document.querySelector(".oo-card-close"), cb = c.getBoundingClientRect(), x = cb.left + cb.width / 2, y = cb.top + cb.height / 2; let d = 0; while (d < 40 && c.contains(document.elementFromPoint(x, y - d - 1))) d++; return d; })() };
+    })()`);
 
     // The card's state line, once it is no longer `was` (the page polls the status).
     const stateNot = async (was: string) => {
