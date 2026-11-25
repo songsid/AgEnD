@@ -325,6 +325,7 @@ describe("M-3770 1.4: the words", () => {
     expect(body()).not.toContain("Nothing needs you right now");
     expect(body()).toContain("1 waiting");
     expect(shell.needsCount(app.appStore.get())).toBe(1);
+    expect(p.document.title.startsWith("(1) "), p.document.title).toBe(true);                   // the tab's title too (#4487 review P3)
     upd.updateStore.set({ info: ADMIN({ preflight: { class: "stop", checkedAt: 1, pressHere: false, checks: [{ id: "P9", ok: false, code: "container" }] } }) }); await settle(6);
     expect(body()).toContain("AgEnD runs in a container; update the image.");
     expect(p.root.querySelectorAll(".uc-needs").length).toBe(1);                     // once, never twice
@@ -333,6 +334,7 @@ describe("M-3770 1.4: the words", () => {
     expect(body()).toContain("Nothing needs you right now");
     expect(body()).not.toContain("waiting");
     expect(shell.needsCount(app.appStore.get())).toBe(0);
+    expect(p.document.title.startsWith("("), p.document.title).toBe(false);
   });
   it("Needs you: only a failure or \"can't update here\"", async () => {
     const mount = async (info: any) => { await p.unmount(); await p.mount(h(uc.UpdateNeedsItem, { info, settingsHref: "/settings/advanced#settings-update" })); await settle(4); return p.root.textContent ?? ""; };

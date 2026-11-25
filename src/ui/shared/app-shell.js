@@ -314,7 +314,8 @@ export function setTitle(text) { titleBase = text || ""; drawTitle(); }
 const needsWeight = (i) => (i?.type === "contact" && i.reason === "contact_verify_needed" ? Math.max(1, Math.floor(Number(i.contactVerify?.count) || 1)) : 1);
 const needsTotal = (needs) => needs.reduce((n, i) => n + needsWeight(i), 0);
 appStore.subscribe((s) => {
-  const n = Array.isArray(s.needs) ? needsTotal(s.needs) : 0;
+  // #4487 review P3: AgEnD's own update item (app-update.js keeps it in appStore) counts in the tab's title too.
+  const n = (Array.isArray(s.needs) ? needsTotal(s.needs) : 0) + (s.updateNeeds ? 1 : 0);
   if (n !== titleCount) { titleCount = n; drawTitle(); }
 });
 
