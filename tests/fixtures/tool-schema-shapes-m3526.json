@@ -1,5 +1,5 @@
 {
- "_note": "M-3526 / M-2133: the schemas of the tools whose descriptions were shortened or folded into a composite, descriptions stripped, as at dev 63a41c9c. No field, enum or bound may change with a description edit.",
+ "_note": "M-3526 / M-2133: the schemas of the tools whose descriptions were shortened or folded into a composite, descriptions stripped, as at dev 63a41c9c. No field, enum or bound may change with a description edit. The task tool's `attach` field (file paths) and action were added with files on task cards.",
  "task": {
   "type": "object",
   "properties": {
@@ -31,7 +31,8 @@
      "create_project",
      "move_project",
      "watch",
-     "unwatch"
+     "unwatch",
+     "attach"
     ]
    },
    "title": {
@@ -132,6 +133,9 @@
    "name": {
     "type": "string"
    },
+   "watcher": {
+    "type": "string"
+   },
    "ids": {
     "type": "array",
     "items": {
@@ -178,6 +182,13 @@
    "comment": {
     "type": "string"
    },
+   "attach": {
+    "maxItems": 10,
+    "type": "array",
+    "items": {
+     "type": "string"
+    }
+   },
    "needs_review": {
     "type": "boolean"
    },
@@ -217,9 +228,6 @@
     "type": "integer",
     "minimum": -9007199254740991,
     "maximum": 9007199254740991
-   },
-   "watcher": {
-    "type": "string"
    }
   },
   "required": [

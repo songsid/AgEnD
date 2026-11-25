@@ -1,8 +1,10 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
 import type { Schedule, ScheduleRetry, ScheduleRun, CreateScheduleParams, UpdateScheduleParams, Decision, CreateDecisionParams, UpdateDecisionParams, Task, TaskCompact, ListTasksOpts, CreateTaskParams, UpdateTaskParams } from "./types.js";
 import { cardCode, TaskBoard, type Actor } from "./task-board.js";
 import { LivenessLedger } from "./task-liveness.js";
+import { TaskFileStore } from "./task-files.js";
 
 /**
  * The project_root a team decision is stored under (#3421 review): never a working directory — a NUL is in no path —
@@ -161,6 +163,8 @@ export class SchedulerDb {
     this.board = new TaskBoard(this.db);
     this.liveness = new LivenessLedger(this.db);
     this.board.migrate();
+    // files on cards live beside the database (`task-files/`); a database with no place on disk takes none.
+    if (dbPath && dbPath !== ":memory:") this.board.setFiles(new TaskFileStore(join(dirname(dbPath), "task-files")));
     // #2293: each committed board write, as the tasks it touched (the search index keeps a doc per task).
     this.board.onChange(({ ids }) => {
       if (!this.onTaskChange) return;
@@ -409,12 +413,16 @@ export class SchedulerDb {
           AND (k.status NOT IN ('done', 'cancelled') OR k.updated_at >= ? OR k.id IN (${liveDeps})))
       ORDER BY m.updated_at LIMIT ?`);
     const children = this.db.prepare("SELECT id FROM tasks WHERE parent_id = ?");
+    // The cards pruned: their files leave the disk once the rows are gone (a failed delete is swept later).
+    const gone = new Set<string>();
     const remove = (ids: string[]) => {
       const marks = ids.map(() => "?").join(",");
       this.db.prepare(`DELETE FROM tasks WHERE id IN (${marks})`).run(...ids);
       this.db.prepare(`DELETE FROM task_entries WHERE task_id IN (${marks})`).run(...ids);
       this.db.prepare(`DELETE FROM task_events WHERE task_id IN (${marks})`).run(...ids);
       this.db.prepare(`DELETE FROM task_watchers WHERE task_id IN (${marks})`).run(...ids);
+      this.db.prepare(`DELETE FROM task_attachments WHERE task_id IN (${marks})`).run(...ids);
+      for (const id of ids) gone.add(id);
     };
     let total = 0;
     for (const family of [false, true]) {
@@ -435,7 +443,20 @@ export class SchedulerDb {
       this.db.exec("DELETE FROM task_entries WHERE task_id NOT IN (SELECT id FROM tasks)");
       this.db.exec("DELETE FROM task_events WHERE task_id NOT IN (SELECT id FROM tasks)");
       this.db.exec("DELETE FROM task_watchers WHERE task_id NOT IN (SELECT id FROM tasks)");
+      // Files left behind by a release that pruned without knowing them (it deletes the card, not its files).
+      for (const r of this.db.prepare("SELECT DISTINCT task_id FROM task_attachments WHERE task_id NOT IN (SELECT id FROM tasks)").all() as Array<{ task_id: string }>) gone.add(r.task_id);
+      this.db.exec("DELETE FROM task_attachments WHERE task_id NOT IN (SELECT id FROM tasks)");
     }).immediate();
+    const files = this.board.files();
+    if (files) {
+      for (const id of gone) files.removeCard(id);
+      // Anything on disk the table does not hold: a folder of a card that is gone, a file whose write never committed.
+      const held = this.db.prepare("SELECT id FROM task_attachments WHERE task_id = ?");
+      files.sweepOrphans((uuid) => {
+        if (!this.db.prepare("SELECT 1 FROM tasks WHERE id = ?").get(uuid)) return null;
+        return new Set((held.all(uuid) as Array<{ id: string }>).map((r) => r.id));
+      });
+    }
     return total;
   }
 
