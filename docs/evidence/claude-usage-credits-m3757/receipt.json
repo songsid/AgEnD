@@ -1,9 +1,13 @@
 {
-  "sourceHead": "c37dc38753c56553c64d5b02a96d8ce5612e6f2d",
+  "sourceHead": "068d4e4909669f022fe3d897abe521a3a9d7b011",
   "dirty": [],
   "checks": [
     {
-      "name": "desk-en-light: one-line title in the UI language",
+      "name": "desk-en-light: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the title fits on one line",
       "ok": true
     },
     {
@@ -47,6 +51,10 @@
       "ok": true
     },
     {
+      "name": "desk-en-light: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
       "name": "desk-en-light: cancelled, still no answer sent",
       "ok": true
     },
@@ -67,7 +75,11 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: one-line title in the UI language",
+      "name": "desk-zh-TW-dark: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the title fits on one line",
       "ok": true
     },
     {
@@ -111,6 +123,10 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-dark: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
       "name": "desk-zh-TW-dark: cancelled, still no answer sent",
       "ok": true
     },
@@ -131,7 +147,11 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-light: one-line title in the UI language",
+      "name": "desk-zh-TW-light: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the title fits on one line",
       "ok": true
     },
     {
@@ -175,6 +195,10 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-light: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
       "name": "desk-zh-TW-light: cancelled, still no answer sent",
       "ok": true
     },
@@ -195,7 +219,11 @@
       "ok": true
     },
     {
-      "name": "phone-en-light: one-line title in the UI language",
+      "name": "phone-en-light: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the title fits on one line",
       "ok": true
     },
     {
@@ -239,6 +267,10 @@
       "ok": true
     },
     {
+      "name": "phone-en-light: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
       "name": "phone-en-light: cancelled, still no answer sent",
       "ok": true
     },
@@ -259,7 +291,11 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: one-line title in the UI language",
+      "name": "phone-zh-TW-dark: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the title fits on one line",
       "ok": true
     },
     {
@@ -303,6 +339,10 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-dark: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-dark: cancelled, still no answer sent",
       "ok": true
     },
@@ -323,7 +363,11 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-light: one-line title in the UI language",
+      "name": "phone-zh-TW-light: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the title fits on one line",
       "ok": true
     },
     {
@@ -367,6 +411,10 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-light: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-light: cancelled, still no answer sent",
       "ok": true
     },
@@ -390,75 +438,75 @@
   "pictures": [
     {
       "path": "claude-usage-credits-m3757/desk-en-light-1-needs-card.png",
-      "sha256": "c6395b14bac93939709383f07d2d7b6e669466dc79adb5b0df1abcb955d3ba1d"
+      "sha256": "cdb7363d91cd621a3c319fabf643c7e79e5485e22871850ca3f93fbdc32813bc"
     },
     {
       "path": "claude-usage-credits-m3757/desk-en-light-3-claude-text.png",
-      "sha256": "92b96263cf4b46d7cd5c54efc5906faeec6c2b78d90a2e9cfb966ee3789ded10"
+      "sha256": "2a840b534d9ac957257f9834b9c490a5d4e2e245d0c03ccffddbdcd3734d7830"
     },
     {
       "path": "claude-usage-credits-m3757/desk-en-light-2-confirm-credits.png",
-      "sha256": "e8b15c4ad074007df69f628b7784d0994a3ef9a122cde06d4181f29152a220c8"
+      "sha256": "e8704779bb81827cefd01482323ebf1ca64cb5126b188b6157b773feb6865e27"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-1-needs-card.png",
-      "sha256": "6720ee0c2b83796c825ee7b2bccd97fd95e2afb797c9cad88fcbf13174edfd64"
+      "sha256": "79ba5ea362f163390163ff57eb944a827ba9e1a3fb29d148c9f5d1966d0e3ffd"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-3-claude-text.png",
-      "sha256": "d4a44c3d644076a234e70a065f8db3311046fa52f20d5d86fa88239fe64008fa"
+      "sha256": "6433fe05b8c2f63ded71db60bb2e4c9c7d347eb8256391f72f851501a26404fa"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-2-confirm-credits.png",
-      "sha256": "f646e79d4004dcba67c9a8a6b18e8bf091dc503d82cd5856015af3eda6910ebf"
+      "sha256": "cd076b7da7ab15f58494f17944d13b5a452ae1e11c4a29cb188aef46d88b534d"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-1-needs-card.png",
-      "sha256": "8eea20dca74012717d857bcad83a6181290e58f4080c9a32153e890ee09b7c3e"
+      "sha256": "6b32d085daaf2f2ad77d767a04de02aa3ecb10acb2b262854d2db70b1cb41cd9"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-3-claude-text.png",
-      "sha256": "69d3139529db733df90439b4d391d3c13eba4edae3919b769f34e9aad4671b7c"
+      "sha256": "1a33529801a0b4509a69f366504534877f4ee3d9809781a0d3c7c4a94292586c"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-2-confirm-credits.png",
-      "sha256": "e68a3d653ca5a18a410247cd140514ad9284c587ed6d36dd7b0ac6aba687a120"
+      "sha256": "ebee912330d4bab324ec80454bd34ca0939dd921ae5b9adb25ba74d111282c40"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-1-needs-card.png",
-      "sha256": "c5fd7fdafbcddf4f16c7a2db4c90d5e964af635aed216cd5b203ae0a63ad6b0a"
+      "sha256": "7c63b621bdad18691f86434cd4434b35b53732f0f0f47ac18819a96d58f8408d"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-3-claude-text.png",
-      "sha256": "04c08961921e2ba24fea2d4f2800ef0ee127e3a106a012936c1129f650fe77d2"
+      "sha256": "4d468e405ad1c91643c9377e968aaa6a0b53b41181dd045c1d82c26cd7aba736"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-2-confirm-credits.png",
-      "sha256": "cf06923f2cd097c92f6084b536e873ee9200b496c96c2d6337d81a01497f2aa3"
+      "sha256": "8cb3589a8eb5f91dbee397ec08002ac8eb033ece6a31a2253bde934661176503"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-1-needs-card.png",
-      "sha256": "1f56b4a0b01a3e56ea84f033277f5e4519a67fcc08975ab0da5a7b03ef7c0be2"
+      "sha256": "c611e2aba4ab98c6b795d3806813e3919dcc32831c56775251ff6bbe065947bb"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-3-claude-text.png",
-      "sha256": "42ea193f981fc1f2381bba62560e7fd7f2f312cf30a834b4579465da48822813"
+      "sha256": "f03423fe72e8ce6b8528478ffebf80e40f5d77f5d35ae3b9efa16e035b52d2ba"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-2-confirm-credits.png",
-      "sha256": "f1a353b88e53d10d3f835c66665fdc4d8e55393271bd5b39a05454e5dfdb417f"
+      "sha256": "53f4081f81d74e2df741d5140c8903147ce68200f7e8aec32e3fd466a40ba838"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-light-1-needs-card.png",
-      "sha256": "f6e65edd80d2f37ad20602127faa36d8ca520f412ff78965184199e9108114e1"
+      "sha256": "0996f5cac7ca40afb7cb52411c2a9db6c9540200b0ce2cc913c7d6d97acb88f1"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-light-3-claude-text.png",
-      "sha256": "41a5a7fcc9f73b5e0aee70f75e370778a14b2c970b14b75a6d712374ec4ba851"
+      "sha256": "365fe0b8af2c60961c3c2b1bb85be28a06fce353f29e58a2a3aa2da837b294ff"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-light-2-confirm-credits.png",
-      "sha256": "b7bcb0ae271e6fa19476cc7b9b5cdf7384662eec9e250635acbf49002cf23c44"
+      "sha256": "7ce56e9f3eec2b2421cac30e6f23f8a6ea78672b85f7ec1ab555f7f9ad9a3df8"
     }
   ]
 }
