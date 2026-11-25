@@ -666,6 +666,19 @@ export function styleSeats(id) {
 // ── Skin packs ──
 
 /**
+ * A whole-scene picture (`im`, drawn `w` logical units wide): unsmoothed at 1 device px per picture px or more (pixel
+ * art), smoothed (high) when shrunk below that — nearest-neighbour there drops most of its thin lines and keeps others
+ * in uneven clusters (a big pack's fit on a phone). Read from the canvas's transform (none: unsmoothed, as before).
+ */
+export function sceneSmoothing(ctx, im, w) {
+  const t = typeof ctx.getTransform === "function" ? ctx.getTransform() : null;
+  const shrunk = !!t && !!im.width && Math.hypot(t.a, t.b) * w < im.width;
+  ctx.imageSmoothingEnabled = shrunk;
+  if (shrunk) ctx.imageSmoothingQuality = "high";
+  return shrunk;
+}
+
+/**
  * An OfficeSkin from a checked pack (fleet-office-pack.js checkSkinPack) and its loaded pictures (`images`: src → a
  * drawable image). What it lacks, or a picture not loaded, is drawn by the built-in skins.
  */
@@ -756,12 +769,12 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     drawBackground(ctx, L, env) {
       const im = img(pack.background);
       if (!im) { drawBackground(ctx, L, env); return; }
-      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
+      ctx.save(); sceneSmoothing(ctx, im, canvasOf(pack).w); ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
     },
     drawForeground(ctx, L, env) {
       const im = img(pack.foreground);
       if (!im) return;
-      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
+      ctx.save(); sceneSmoothing(ctx, im, canvasOf(pack).w); ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
     },
     /** A pack's vehicle where it is (`at`, fleet-office-vehicles.js vehicleAt): its picture for the way it faces
      * (`sprites` by heading; else `sprite`, mirrored going left), playing while it moves, its first frame at a stop. */

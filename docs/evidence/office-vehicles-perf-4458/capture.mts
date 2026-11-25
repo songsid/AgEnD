@@ -129,6 +129,19 @@ try {
     } else {
       await sleep(4000); await shot("1-fit");
       const fit = await pct();
+      if (process.env.PERF) {                               // at Fit: main-thread busy share, CPU 4× slower, 3 × 10 s
+        const cdp = await ctx.newCDPSession(page), M = async () => Object.fromEntries((await cdp.send("Performance.getMetrics")).metrics.map((x: any) => [x.name, x.value]));
+        await cdp.send("Performance.enable"); await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 }); await sleep(3000);
+        const runs: any[] = [];
+        for (let k = 0; k < 3; k++) {
+          const m0 = await M();
+          const frames = Number(await page.evaluate(`new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 10000) requestAnimationFrame(f); else res(n); }; requestAnimationFrame(f); })`));
+          const m1 = await M(), dt = m1.Timestamp - m0.Timestamp;
+          runs.push({ busyPct: Math.round(((m1.TaskDuration - m0.TaskDuration) / dt) * 1000) / 10, scriptMsPerS: Math.round(((m1.ScriptDuration - m0.ScriptDuration) / dt) * 1000), rafPerS: Math.round(frames / 10) });
+        }
+        await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+        report.perf = runs;
+      }
       const zin = page.locator(".oo-zoom-in");
       for (let i = 0; i < Number(process.env.PRESSES ?? 8); i++) { await zin.click(); await sleep(200); }
       await sleep(2000); await shot("2-zoomed");
