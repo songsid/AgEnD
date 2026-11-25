@@ -610,22 +610,35 @@ export function bubbleAt(name, state, ms, lines) {
  * another bubble (no two bubbles overlap) — so a name alone never keeps a call out (on Cozy a stuck agent stands right
  * under "Help desk", and its "Hmm, stuck?" went missing in beta.20).
  */
-export function placeBubbles(items, lift = 22, blocked = [], soft = []) {
+/** M-3722: the space (logical px) a bubble's box keeps off an area's name (placeBubbles' `air`). */
+export const NAME_AIR = 3;
+export function placeBubbles(items, lift = 22, blocked = [], soft = [], air = 0) {
+  if (air) soft = soft.map((b) => ({ x: b.x - air, y: b.y - air, w: b.w + 2 * air, h: b.h + 2 * air }));
   const rank = (it) => (it.rank ?? (it.calling ? 0 : 2));
   const order = [...items].sort((a, b) => (rank(a) - rank(b)) || (b.shown - a.shown) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   const taken = [...blocked], out = [];
   const hit = (list, r) => list.some((t) => r.x < t.x + t.w && t.x < r.x + r.w && r.y < t.y + t.h && t.y < r.y + r.h);
-  const at = (it, dy) => {
-    const r = { x: it.box.x, y: it.box.y + dy, w: it.box.w, h: it.box.h };
+  // M-3722: `flipBox` (the box on the tail's left) is a call's other side: tried before a call covers an area's name.
+  const at = (it, dy, flip = false) => {
+    const box = flip && it.flipBox ? it.flipBox : it.box;
+    const r = { x: box.x, y: box.y + dy, w: box.w, h: box.h };
     return { r, t: it.tail ? { x: it.tail.x - 1, y: r.y + r.h, w: 9, h: Math.max(0, it.tail.y - (r.y + r.h)) } : null };
   };
-  const first = (it, dys, lists) => dys.find((dy) => { const { r, t } = at(it, dy); return !lists.some((l) => hit(l, r) || (t && hit(l, t))); });
+  // M-3722: an area's name (`soft`) keeps a bubble's BOX off it; a tail may cross a name (the Office writes the name again
+  // over it) — a caller standing at a name's height would otherwise always cover it.
+  const free = (it, [dy, flip], names) => { const { r, t } = at(it, dy, flip); return !hit(taken, r) && !(t && hit(taken, t)) && !(names && hit(soft, r)); };
+  const first = (it, spots, names) => spots.find((spot) => free(it, spot, names));
+  const sides = (dys) => dys.map((dy) => [dy, false]);
   for (const it of order) {
-    let dy = first(it, [0, -lift], [taken, soft]);
-    if (dy === undefined && it.calling) dy = first(it, [-2 * lift], [taken, soft]) ?? first(it, [0, -lift, -2 * lift], [taken]);
-    if (dy === undefined) continue;
-    const { r, t } = at(it, dy);
-    taken.push(r); if (t) taken.push(t); out.push({ ...it, dy });
+    let spot = first(it, sides([0, -lift]), true);
+    if (spot === undefined && it.calling) {
+      spot = (it.flipBox ? first(it, [[0, true], [-lift, true]], true) : undefined)
+        ?? first(it, [[-2 * lift, false], ...(it.flipBox ? [[-2 * lift, true]] : [])], true)
+        ?? first(it, sides([0, -lift, -2 * lift]), false);                       // M-3648: a name never keeps a call out
+    }
+    if (spot === undefined) continue;
+    const [dy, flip] = spot, { r, t } = at(it, dy, flip);
+    taken.push(r); if (t) taken.push(t); out.push({ ...it, dy, ...(flip ? { flip: true } : {}) });
   }
   return out;
 }

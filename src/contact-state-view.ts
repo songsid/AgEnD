@@ -6,6 +6,7 @@
 import type { ContactStoredPolicy } from "./contact-auth-store.js";
 import type { ContactOrigin, ContactPerson, ContactTicket } from "./contact-auth-types.js";
 import { shortContactTicketId } from "./contact-change-proposals.js";
+import { CONTACT_DELIVERY_IN_FLIGHT } from "./contact-auth-store.js";
 
 export interface ContactStateHost {
   store: {
@@ -78,4 +79,34 @@ export function contactStateView(host: ContactStateHost, filter: { agent?: strin
       "A retained origin is cleared by an admin on the agent's Permissions tab in the web dashboard; General cannot propose it.",
     ],
   };
+}
+
+/**
+ * M-3716 (the user, 11-25): what one agent may read about the requests IT sent that were held — never anyone else's,
+ * and never the people or message text (its own context already has those). `delivery` reads the outbox row of an
+ * approved request, so "approved" becomes "delivered" or "not confirmed" as the target's copy settles.
+ */
+export function ownContactRequestsView(tickets: ContactTicket[], host: {
+  label(name: string): string; delivery(ticket: ContactTicket): string | undefined;
+}) {
+  const by = (p?: ContactPerson) => !p ? undefined : p.platform === "host" ? "host operator" : person(p);
+  const requests = tickets.map(t => {
+    // Prism #4452 P2-1/P2-2: an approved request's state is its real delivery row's — delivered, still in flight, or not
+    // confirmed (failed, uncertain, or a row that is missing or pruned). How it was approved is a separate field.
+    const delivery = t.state === "approved" ? host.delivery(t) : undefined;
+    const state = t.state !== "approved" ? t.state : delivery === "delivered" ? "delivered"
+      : CONTACT_DELIVERY_IN_FLIGHT.includes(delivery ?? "") ? "approved-queued" : "not-confirmed";
+    const next = state === "pending" ? "Waiting for an admin. Do not send it again; you get a notice when it is decided."
+      : state === "delivered" || state === "approved-queued" ? "The target has it or will get it. Wait for its answer; do not send it again."
+      : state === "not-confirmed" ? (delivery ? "Approved, but delivery is not confirmed. Check delivery_status with its delivery_id before sending anything again."
+        : "Approved, but its delivery is no longer on record, so it cannot be confirmed. Ask the target whether it got it before sending anything again.")
+      : "Not forwarded. Send again only if it is still needed (a new request needs approval again).";
+    return {
+      short_id: shortContactTicketId(t.id), ticket_id: t.id, to: host.label(t.target), verb: t.verb, state,
+      asked_at: t.createdAt, ...(t.decidedAt ? { decided_at: t.decidedAt } : {}),
+      ...(t.grantId ? { approved_by_rule: true } : t.decidedBy ? { decided_by: by(t.decidedBy) } : {}),
+      ...(state === "pending" ? { expires_at: t.expiresAt } : {}), ...(t.deliveryId ? { delivery_id: t.deliveryId } : {}), next,
+    };
+  });
+  return { requests, ...(requests.length ? {} : { note: "None of your messages to other agents were held." }) };
 }

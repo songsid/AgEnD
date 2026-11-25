@@ -271,7 +271,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .pop .devices .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .pop .row { display: flex; gap: var(--s-2); flex-wrap: wrap; }
 .pop .err { color: var(--danger); }
-.pop .role { margin: 0; display: flex; gap: var(--s-2); align-items: baseline; flex-wrap: wrap; }
+.pop .role { margin: 0; display: flex; gap: var(--s-2); align-items: baseline; }
+/* M-3651: a long role ("Guest · Verified until 09:16 AM") wraps beside its label, never under a lone "Role". */
+.pop .role strong { flex: 1; min-width: 0; }
 .pop .webauth-rebind-form { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-1); }
 .pop .webauth-rebind-form .note, .pop .webauth-rebind-form .err { margin: 0; }
 .pop .webauth-rebind-field { flex: 1; min-width: 0; }   /* the shared .field input (token-sized), not a one-off box */
@@ -2877,7 +2879,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 }
 /* M-3253 (Argon's phone review): the Office on a phone, held upright or turned sideways (a coarse pointer in a short window,
    as fleet-office.js OFFICE_PHONE_Q). Above the office two rows only: Fleet's header, then Find, the view switch and one
-   44 px ⋯ (the Office's tools and Live in a sheet: .oo-sheet) — no wrapping bar. The stage takes the rest; its zoom pill is
+   44 px ⋯ (the Office's tools and Live in a sheet: .oo-sheet) — no wrapping bar (except under 370 px, M-3727: Find on its own
+   row, the switch and ⋯ under it, so ⋯ stays on screen). The stage takes the rest; its zoom pill is
    −, the zoom, +, fullscreen (Fit and Fill are in the sheet), 44 px each; the zone pills along its foot. */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .oc-office:has(.oo-more-btn) > .oc-bar { flex-wrap: nowrap; padding: var(--s-1) var(--s-3); }
@@ -2887,6 +2890,13 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .oc-tools:has(.oo-more-btn) .seg-inline { flex: none; }
   .oc-tools .oo-more-btn { flex: none; width: var(--tap); height: var(--tap); }
   @media (hover: none) { .oc-tools .oo-more-btn:hover { background: none; } }   /* a tap leaves :hover stuck on touch */
+  /* M-3727: Find (at least 88 px), the view switch and ⋯ need about 342 px (en) — more than a 320–360 px phone has: ⋯ went
+     off-screen. There, Find takes the first row and the switch and ⋯ (at the right) the second; every control stays whole. */
+  @media (max-width: 369px) {
+    .oc-office .oc-bar .oc-tools:has(.oo-more-btn) { flex-wrap: wrap; row-gap: var(--s-1); }
+    .oc-tools:has(.oo-more-btn) .oc-find { flex: 1 0 100%; }
+    .oc-tools .oo-more-btn { margin-left: auto; }
+  }
   .oo.phone > :not(.oo-stage):not(dialog) { margin-left: var(--s-3); margin-right: var(--s-3); }
   .oo.phone .oo-stage { min-height: 160px; }
   .oo.phone .oo-mini { display: none; }
@@ -5158,15 +5168,30 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .sidebar.fleet-side .side-new { position: absolute; top: calc(var(--header-h) + max(var(--s-1), env(safe-area-inset-top))); right: var(--s-2); width: var(--tap); height: var(--tap); padding: 0; justify-content: center; }
   .sidebar.fleet-side .side-new .grow { display: none; }
   .sidebar.fleet-side .inst-row-menu, .sidebar.fleet-side .av-cli, .sidebar.fleet-side .v-group-kind, .sidebar.fleet-side .v-meta { display: none !important; }
-  .p-fleet > .panel-head .sb-search, .p-fleet > .panel-head .panel-title h1, .p-fleet > .panel-head .panel-actions { display: none !important; }
-  /* The title gives way, but a host-memory warning (its subtitle) stays: a line of its own under ☰ and the tabs (#4008 review). */
-  .p-fleet > .panel-head .panel-title:not(:has(.host-mem)) { display: none; }
-  .p-fleet > .panel-head:has(.host-mem) { flex-wrap: wrap; }
-  .p-fleet > .panel-head .panel-title:has(.host-mem) { order: 10; flex: 1 0 100%; min-height: 0; padding-bottom: var(--s-1); }
+  .p-fleet > .panel-head .sb-search, .p-fleet > .panel-head .panel-actions { display: none !important; }
+  /* M-3722: two rows — ☰ and this page's name (a host-memory warning, its subtitle, under it, #4008 review), then every tab
+     as an icon across the whole width, each a full touch target: eight no longer fit beside ☰ at 390 px. A tab's name stays
+     its accessible name (visually hidden). */
+  .p-fleet > .panel-head { flex-wrap: wrap; }
+  .p-fleet > .panel-head .panel-title { flex: 1 1 0; min-width: 0; }
+  .p-fleet > .panel-head .panel-title h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .p-fleet > .panel-head .panel-title .panel-sub:has(.host-mem) { flex: 1 1 auto; width: auto; }
-  .p-fleet > .panel-head .fleet-phone-tabs { flex: 1; min-width: 0; order: initial; padding: 0; margin: 0; overflow-x: auto; flex-wrap: nowrap; }
+  .p-fleet > .panel-head .fleet-phone-tabs { order: 20; flex: 1 0 100%; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0; min-width: 0; padding: 0; margin: 0; overflow: visible; }
+  .p-fleet > .panel-head .fleet-phone-tabs .seg-item { min-height: var(--tap); min-width: 0; padding: 0; justify-content: center; }
+  /* The tab you are on: a flat accent-tinted pill and the accent icon (≥ 3:1: the cue). The grey tile alone was about 1.2:1; a
+     line under it read as a raised key (the user, #4453). No line, border or shadow; the same in dark. */
+  .p-fleet > .panel-head .fleet-phone-tabs .seg-item.active { color: var(--accent); background: var(--surface-2); background: color-mix(in srgb, var(--accent) 14%, var(--bg)); box-shadow: none; border-color: transparent; }
+  .p-fleet > .panel-head .fleet-phone-tabs .seg-item span { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   .p-fleet .oc-bar > span:first-child, .p-fleet .oc-bar .org-counts { display: none; }
   .p-fleet .oc-bar .oc-tools { flex-wrap: nowrap; overflow-x: auto; width: 100%; }
+}
+/* M-3722 (#4453 review): eight 44 px tabs need 352 px. Under 384 px (the gutters would leave less: 360 px phones, 375 px
+   ones) the row runs edge to edge; under 352 px it is two rows of four. Every tab stays a 44 × 44 target. */
+@media (max-width: 383px) {
+  .p-fleet > .panel-head .fleet-phone-tabs { margin-left: calc(-1 * max(var(--s-4), env(safe-area-inset-left))); margin-right: calc(-1 * max(var(--s-4), env(safe-area-inset-right))); }
+}
+@media (max-width: 351px) {
+  .p-fleet > .panel-head .fleet-phone-tabs { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 /* M-3166 (Argon 2, the user's OK of round 2): on a phone a toast (an agent waiting for you, a result) is one line — a pill that a
    tap puts away — and none shows while the keyboard is up. */
@@ -5394,3 +5419,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-fleet :is(.tb-head-actions, .tb-title, .tb-stats) .btn { min-height: var(--tap); }
   .p-fleet .tb-project-menu .icon-btn { width: var(--tap); height: var(--tap); }   /* a project tile's ⋯ */
 }
+
+/* M-3678: the new owner stop action follows the phone tap target. */
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .n-actions .hub-close { min-height: var(--tap); min-width: var(--tap); } }

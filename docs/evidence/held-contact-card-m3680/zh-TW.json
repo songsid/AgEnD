@@ -1,0 +1,73 @@
+{
+  "provenance": "Actual FleetManager nonce posting/callback; synthetic adapter, people and contact store; no platform connection. Nonces omitted.",
+  "approve": {
+    "posted": {
+      "message": "Example lead 想聯絡 Example worker。訊息已暫留，等管理員決定。\n> Please run the release checklist.\n#R12345678 · send_to_instance · 30 分鐘後到期\n「核准這一次」只放行這一則訊息。網頁的 Fleet › 授權 也有這筆申請，選項更多。",
+      "buttons": [
+        "核准這一次",
+        "拒絕"
+      ]
+    },
+    "cardAfter": "Demo admin 已核准這一次，訊息已送出。",
+    "state": "approved",
+    "extra": {
+      "handled": true
+    }
+  },
+  "classicRoomApprove": {
+    "posted": {
+      "message": "classic: agend-limit 想聯絡 Example worker。訊息已暫留，等管理員決定。\n> Please run the release checklist.\n#R12345678 · send_to_instance · 30 分鐘後到期\n「核准這一次」只放行這一則訊息。網頁的 Fleet › 授權 也有這筆申請，選項更多。",
+      "buttons": [
+        "核准這一次",
+        "拒絕"
+      ]
+    },
+    "cardAfter": "Demo admin 已核准這一次，訊息已送出。",
+    "state": "approved",
+    "extra": {
+      "handled": true
+    }
+  },
+  "decline": {
+    "posted": {
+      "message": "Example lead 想聯絡 Example worker。訊息已暫留，等管理員決定。\n> Please run the release checklist.\n#R12345678 · send_to_instance · 30 分鐘後到期\n「核准這一次」只放行這一則訊息。網頁的 Fleet › 授權 也有這筆申請，選項更多。",
+      "buttons": [
+        "核准這一次",
+        "拒絕"
+      ]
+    },
+    "cardAfter": "Demo admin 已拒絕，已通知該 Agent。",
+    "state": "declined",
+    "extra": {
+      "handled": true
+    }
+  },
+  "notAllowed": {
+    "posted": {
+      "message": "Example lead 想聯絡 Example worker。訊息已暫留，等管理員決定。\n> Please run the release checklist.\n#R12345678 · send_to_instance · 30 分鐘後到期\n「核准這一次」只放行這一則訊息。網頁的 Fleet › 授權 也有這筆申請，選項更多。",
+      "buttons": [
+        "核准這一次",
+        "拒絕"
+      ]
+    },
+    "cardAfter": "(still waiting)",
+    "state": "pending",
+    "extra": {
+      "clickerTold": [
+        "⛔ 只有 Fleet 管理員可以使用這個按鈕。"
+      ]
+    }
+  },
+  "decidedOnTheDashboard": {
+    "posted": {
+      "message": "Example lead 想聯絡 Example worker。訊息已暫留，等管理員決定。\n> Please run the release checklist.\n#R12345678 · send_to_instance · 30 分鐘後到期\n「核准這一次」只放行這一則訊息。網頁的 Fleet › 授權 也有這筆申請，選項更多。",
+      "buttons": [
+        "核准這一次",
+        "拒絕"
+      ]
+    },
+    "cardAfter": "已在別處拒絕（網頁或另一張卡片）。",
+    "state": "declined"
+  },
+  "expiredText": "這張卡片已過期。申請在到期前仍可在 Fleet › 授權 處理。"
+}

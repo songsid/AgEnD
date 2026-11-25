@@ -151,5 +151,33 @@
     "rootCause": "Short WEB_CHAT_LINE diverged from CLI reference; worker-collaboration lacked full receipt-rule identity sentence.",
     "fix": "Restore short pinned wording; retain full receipt guidance and synchronize worker skill; prefix paired fragments with list markers.",
     "uiCssAndPngUnchanged": true
+  },
+  "guestReceiptMerge": {
+    "incoming": "75ee63adb93904411effde6a146b6e28e253f337",
+    "oldHead": "a379a6c9ef21c0088d3314949caf1914a525f18d",
+    "uiOwnPatchIdentical": true,
+    "pngBlobsIdentical": 40,
+    "cliPinnedLineIdentical": true,
+    "initialAffectedRun": {
+      "files": 48,
+      "passed": 962,
+      "failed": 1,
+      "skipped": 1,
+      "failure": "Instruction matrix golden needed reviewed identity sentence."
+    },
+    "finalInstructionRun": {
+      "files": 3,
+      "passed": 203
+    },
+    "matrix": {
+      "checked": 1728,
+      "changed": 960,
+      "onlyChange": "A known session account (including a receipt's `web_identity`) identifies the person; it does not grant a go-ahead.",
+      "allIncomingHashesMatchAfterRemovingOnlyIdentitySentence": true
+    },
+    "sourceTypecheck": 0,
+    "testTypecheck": 0,
+    "changelogFragmentsChecked": 827,
+    "conflictResolution": "Keep known-account identity/no-go-ahead and web-guest identity/never-go-ahead in full rule and both skills; keep sender recovery and incoming held-status guidance in locale."
   }
 }

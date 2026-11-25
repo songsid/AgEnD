@@ -146,7 +146,13 @@ account.
   DMs are closed, or Telegram's `/start web` DM) makes the browser **Verified** at once, with no card. The same DM gets
   "*browser* signed in with the code sent to you, and is verified until …" with **Not me**, which signs that browser
   out. With no DM, General gets one line with no details: `/web revoke` if it wasn't you.
-- **Codes that don't verify:** a guest code, or `agend web --code` on a fleet with a chat connection.
+- **A guest's private /web code (M-3651)** makes the guest's browser verified as that account, for identity only. The
+  same DM gets "*browser* signed in as a guest … verified as you until …" with **Not me**, and the session menu says
+  **Guest · Verified until …**. Agents still see `@web:g`; the receipt says `authority.kind: web-guest` naming the
+  account, which is who it is and never a go-ahead or an admin's authority. A guest never gets a card: once it runs out,
+  send `/web` again. The switch, **Only this computer**, the link options and **Revoke web authority** end it as they
+  end an admin's.
+- **Codes that don't verify:** `agend web --code` on a fleet with a chat connection.
 - **Otherwise** (and to re-verify once the authorization runs out) the one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
 session menu says **Not verified · Authorize this browser**. Pressing it
 sends a card to that account's DM, saying which browser (device, on this computer or the network, when, until when), with
@@ -360,6 +366,12 @@ tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `n
 `needs_you.dm` (default off), `needs_you.task_board` (default off: the task board's cards waiting
 for you — set `true` to list them).
 
+Held Hub one-to-one questions offer **Close this question** (不處理這題), including an uncertain hold
+without **Try again**. A verified administrator who manages that Agent confirms in the dashboard; the Hub then
+marks it not answered for the asker and the item clears only after acknowledgement. An existing Hub answer is
+preserved. Closing is final: the same message cannot be retried, but the asker may send a new question. Closing does not resend the question or stop work already running. Offline or unsupported Hubs leave
+the item in place and explain what to do. **Try again** remains a separate action that can deliver the question.
+
 **Notices** (#2910): on a fleet with no chat connection, what General would have posted (a version's new features, a
 restart, a sign-in) is listed on the **Notices** page in the sidebar ("What General would have said"; **New**, **Open
 chat**).
@@ -398,6 +410,9 @@ values reloaded after Save. Password fields keep the browser's behaviour.
 
 `/ui/fleet/<tab>`: **Tasks**, **Schedules**, **Teams**, **Org chart**, **Cache**, plus a **Docs** link
 (`/ui/fleet/config` leads to Settings → Shared agent settings: each of its settings lives in Settings, #2347).
+On a phone (#4453) Fleet's header is two rows: ☰ and the page's name, then every Fleet tab (Tasks, Schedules, Teams,
+Org chart, Cache, Usage, Authorizations, Host health) as an icon across the width — tap one; its name is the icon's
+label for a screen reader. On a very narrow phone (under 352 px) the icons are two rows of four. Nothing scrolls off.
 The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet tab open the Fleet tab this device used last
 (`agend_last_fleet_tab`; the Org chart the first time). The sidebar has no separate Fleet (Details) or View row.
 - **Tasks** — the task board: Home lists **projects** (with % done) and what waits for the person (**Confirm** /
@@ -463,8 +478,9 @@ pack tools, and rolling back. Point people there for more than the summary below
 
 **Office** (the third view, remembered per device; M-3556: its bar is one row — Office, Show, People on the left; Edit
 offices, Share… and **⚙ Display options** on the right, a dropdown holding Style, Hide paused and stopped, Drag and pat,
-Bedtime, Lobby tile, Dialogue, Talk and Key; a phone's ⋯ sheet lists the same in that order; a Hub room's gear opens the same
-dropdown) draws the same fleet as a pixel office: a room per team, a desk
+Bedtime, Lobby tile, Dialogue, Talk and Key; a phone's ⋯ sheet lists the same in that order — on a phone the bar is Find, the
+Canvas / List / Office switch and ⋯ in one row, or on a narrow phone (under 370 px, #4454) Find on its own row with the switch
+and ⋯ under it; a Hub room's gear opens the same dropdown) draws the same fleet as a pixel office: a room per team, a desk
 per instance with a name tag, General and "Not in a team" in the **Lobby**. Each little person is its state: typing
 with the lamp on (working), tea break (idle), asleep behind a **Closed** sign (paused/stopped), a hand up under a
 blinking light (needs you, crashed, looks stuck). With **Live** on, each message, delegation and report is carried
@@ -497,7 +513,10 @@ packs** on (`office_pack_access`, Dashboard access) can check, upload, replace, 
 previous version kept per pack); **Agents changing packs** under the packs names those agents, sets whether their changes
 **Need my yes** (the default) or **Apply at once**, and approves or rejects the waiting ones (also from the notice's
 buttons in General); every change is logged and told in General. **Style** (per office for a stored one; for the whole fleet, #2716, an admin's pick is kept on the host for every device and share link, anyone else's stays in their browser): **Desks**,
-**Studio** (one scene — Work, Lounge, Help desk, Nap corner — where each instance walks to the area for its state),
+**Studio** (one scene — Work, Lounge, Help desk, Nap corner — where each instance walks to the area for its state; the Help
+desk is for an agent that is calling: a Needs you item that names it, such as a held contact request to approve, a failed
+delivery, a crash or a prompt waiting at its terminal. A ClassicBot room's low-key "can switch to restricted mode"
+suggestion alone does not send it there, and the org chart doesn't mark it calling for it either, #4449),
 **Cozy** (#2631: the same in a warm pixel-art office drawn as one picture; its notice board says a skin pack can
 restyle it; the default for a browser that has not picked a style and for a new office — a saved office keeps its
 own), **Guild** and **School** (#2947: two more pictures on the Cozy's arrangement — an adventurers' guild hall and a
@@ -1073,5 +1092,10 @@ fleet.yaml (Advanced, or the file) and `agend reload`.
 For the Hub's **My shared agents → Who may ask** person/name search, AD group grants, expiry and revoke controls, load the `hub` skill. Those controls use the Hub's company-account session, not this Fleet dashboard's guest grants.
 
 ## General contact-change proposals
+
+A held message from an agent, or from a ClassicBot room to an agent, also gets its own card in General on the target's
+Discord or Telegram, with **Approve once** / **Decline**. Only someone who may decide it can use them (anyone else is
+told so, and the card stays). Deciding it anywhere else, on the web or with another card, closes the card. A proposal
+(below) is a separate path: General posts a card that the admin must **Confirm**.
 
 General can call `contact_state` (read-only) to see held messages, rules, room modes and restricting origins, and `propose_contact_change` with a structured `change`: room `mode` (`restricted` or `legacy`, which is unrestricted), `ticket-decision` (the ticket ID or the 9-character short ID people see, approve-once/decline, optionally exact originating-person keys and expiry/uses), `grant-adjust` (expiry/uses only), or `grant-revoke`. A refusal says why and what to do next. The daemon freezes the current revision and identities and posts its own confirmation in the target connection’s Discord/Telegram General. An authorized person must press Confirm; the tool call, a quoted approval, or General's own buttons never apply it. The card expires after five minutes; a changed revision, route or incarnation requires a new proposal. Unknown origins remain approve-once only. Host-only targets and unavailable platform routes use web Permissions/Authorizations. Contact approval never restricts what the receiving agent does afterward.

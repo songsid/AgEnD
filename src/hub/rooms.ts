@@ -1,3 +1,4 @@
+import { HUB_QUESTION_CLOSE_CAPABILITY, questionCloseSchema, type HubQuestionClose, type HubQuestionCloseResult } from "./question-close-model.js";
 /**
  * AgEnD Hub P1, slice 3: one-asker/one-exposure rooms and the Hub's half of durable delivery (hub.md §2, §5 HubRooms).
  *
@@ -554,6 +555,24 @@ export class HubRoomsService {
     } finally { this.flushing.delete(fleetId); }
   }
 
+  /** The verified owner stops one held question. This cannot erase an answer or create permission. */
+  closeQuestion(input: HubQuestionClose, link: HubLinkContext): HubQuestionCloseResult {
+    const request = validated(questionCloseSchema, input);
+    if (!link.current() || !link.features.has(HUB_QUESTION_CLOSE_CAPABILITY)) throw new HubProtocolError("incompatible");
+    return this.core.atomic((db, tx) => {
+      if (!link.current()) throw new HubProtocolError("stale");
+      const msg = readMessage(db, request.messageId);
+      if (!msg || msg.fleet_id !== link.fleetId || msg.owner !== personKeyString(link.owner) || msg.exposure_id !== request.exposureId) throw new HubProtocolError("not-found");
+      if (msg.answer_id) return { messageId: msg.id, outcome: "answered" };
+      if (msg.reason_code !== "owner-declined") {
+        db.prepare("UPDATE hub_messages SET stage='cancelled',reason_code='owner-declined',stage_at=? WHERE id=?").run(this.core.now(), msg.id);
+        this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "member", fleetId: link.fleetId }, action: "question.owner-closed", result: "completed",
+          messageId: msg.id, roomId: msg.room_id, fleetId: link.fleetId, exposureId: msg.exposure_id, ownerAtEvent: link.owner, reasonCode: "owner-declined" });
+      }
+      return { messageId: msg.id, outcome: "closed" };
+    });
+  }
+
   /** A member's receipt: its own durable evidence for one of the messages sent to it. Echoed back as the ACK. */
   receipt(r: HubReceipt, link: HubLinkContext): HubReceipt {
     const now = this.core.now();
@@ -571,7 +590,7 @@ export class HubRoomsService {
       if (POSITIVE.includes(msg.stage) && next !== 0 && next < known) throw new HubProtocolError("stale");   // never downgrade evidence
       db.prepare("INSERT INTO hub_receipts(fleet_id, sequence, message_id, content_digest, stage, at, member_delivery_id, reason_code) VALUES(?,?,?,?,?,?,?,?)")
         .run(link.fleetId, r.sequence, r.messageId, r.contentDigest, r.stage, r.at, r.memberDeliveryId ?? null, r.reasonCode ?? null);
-      const stopped = msg.stage === "cancelled" && (msg.reason_code === "owner-stopped-sharing" || msg.reason_code === "share-needs-reshare");
+      const stopped = msg.stage === "cancelled" && (msg.reason_code === "owner-stopped-sharing" || msg.reason_code === "share-needs-reshare" || msg.reason_code === "owner-declined");
       const stage = stopped ? msg.stage : msg.stage === "answered" && r.stage !== "answered" && !TERMINAL.has(r.stage) ? msg.stage : r.stage;
       db.prepare("UPDATE hub_messages SET stage=?, member_sequence=?, reason_code=?, stage_at=? WHERE id=?").run(stage, r.sequence, stopped ? msg.reason_code : r.reasonCode ?? null, stopped ? msg.stage_at : now, msg.id);
       this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "member", fleetId: link.fleetId }, action: `receipt.${r.stage}`, result: r.stage === "uncertain" ? "held" : "completed",
@@ -588,6 +607,7 @@ export class HubRoomsService {
     if (a.buttons && !link.features.has("buttons-v1")) throw new HubProtocolError("incompatible");
     const first = this.core.atomic((db) => readMessage(db, a.messageId));
     if (!first || first.fleet_id !== link.fleetId) throw new HubProtocolError("not-found");
+    if (first.reason_code === "owner-declined") throw new HubProtocolError("denied");
     if (first.answer_id) {
       if (first.answer_id !== a.answerId || first.answer_digest !== a.contentDigest) throw new HubProtocolError("conflict");
       return { ...receiptOf(first), contentDigest: first.content_digest, stage: "answered", sequence: Math.max(1, first.member_sequence) };
@@ -597,6 +617,7 @@ export class HubRoomsService {
     const now = this.core.now();
     const receipt = this.core.atomic((db, tx) => {
       const msg = readMessage(db, a.messageId)!;
+      if (msg.reason_code === "owner-declined") throw new HubProtocolError("denied");
       this.policy.spendReleaseLease(db, a.releaseLease, a, link, now);
       if (msg.answer_id) {
         if (msg.answer_id !== a.answerId || msg.answer_digest !== a.contentDigest) throw new HubProtocolError("conflict");

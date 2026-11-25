@@ -132,6 +132,7 @@ export interface HubRevocation {
 }
 
 export type HubMemberFrame =
+  | HubFrame<"question.close", import("./question-close-model.js").HubQuestionClose>
   | HubFrame<"agent.intro", import("./agent-intro-model.js").HubAgentIntro>
   | HubFrame<"agent.pictures", import("./agent-pictures-model.js").HubAgentPictures>
   | HubFrame<"agent.picture", import("./agent-pictures-model.js").HubAgentPictureChunk>
@@ -170,6 +171,7 @@ export type HubPairingNotice = {
 /** #3429 option B: an issuer-signed member-address relocation (member-origin.ts). */
 export interface HubRelocation { v: 1; from: string; to: string; spkiSha256: Sha256; revision: Epoch; signature: string }
 export type HubServerFrame =
+  | HubFrame<"question.close-result", import("./question-close-model.js").HubQuestionCloseResult>
   | HubFrame<"agent.intro-result", import("./agent-intro-model.js").HubAgentIntroResult>
   | HubFrame<"agent.pictures-result", import("./agent-pictures-model.js").HubAgentPicturesResult>
   | HubFrame<"agent.picture-result", import("./agent-pictures-model.js").HubAgentPictureResult>
