@@ -31,7 +31,7 @@ const WORDS: Record<(typeof LANGS)[number], Record<string, string>> = {
   },
   "zh-TW": {
     vaRevokeOthers: "撤銷其他裝置的授權", vaRevokeOthersTitle: "撤銷其他裝置的授權？",
-    vaRevokeOthersConfirm: "其他裝置的授權都會結束，到目前為止從網頁給出的授權也都視為無。不會登出任何人，也不會讓任何 session 失去確認設定變更的能力：要讓某個 session 失效，請用「全部登出」或 /web revoke。",
+    vaRevokeOthersConfirm: "其他裝置的授權都會結束，到目前為止從網頁給出的授權也都視為無。不會登出任何人，也不會讓任何工作階段失去確認設定變更的能力：要讓某個工作階段失效，請用「全部登出」或 /web revoke。",
     vaRevokeAffected: "這些裝置會失去授權：{0}。", vaRevokeNoOthers: "目前沒有其他已授權的裝置。", vaRevokeKept: "這台裝置（你）會保留授權。",
     vaRevokeOwnerOnly: "只有已驗證擁有者能撤銷。", vaRevokedOthers: "已撤銷其他裝置的授權，這台裝置仍保有授權。", vaRevokedAll: "已撤銷到目前為止的網頁授權，包含這台裝置。",
   },
@@ -102,11 +102,11 @@ describe("PR #3553 review: one home for each word, and every reader imports it",
     const ph = (s: string) => (s.match(/\{\d+\}/g) ?? []).sort().join(",");
     for (const k of KEYS) expect(ph(t["zh-TW"][k]!), k).toBe(ph(t.en[k]!));
   });
-  it("a key is in this file only: not in settings-strings.js, settings-layout.js or settings-access-strings.js (only the approved S-118 character-wording changes in the base copy)", () => {
+  it("a key is in this file only: not in settings-strings.js, settings-layout.js or settings-access-strings.js (only the approved S-118 character-wording and M-3666 glossary changes in the base copy)", () => {
     for (const other of ["settings-strings.js", "settings-access-strings.js"]) for (const lang of LANGS) expect(registerBlock(other)[lang].filter((k) => KEYS.includes(k)), `${other} ${lang}`).toEqual([]);
-    // S-118's approved glossary correction changes this one phrase; preserve byte equality for every other base word.
+    // S-118's approved glossary correction and M-3666's 主機擁有者 change one phrase each; preserve byte equality for every other base word.
     const base = readFileSync(join(__dirname, "fixtures", "skew", "settings-access-strings.base-d5e2a3c87.js"), "utf8");
-    expect(readFileSync(join(UI, "settings-access-strings.js"), "utf8")).toBe(base.replace("8 碼裝置登入碼", "8 字元裝置登入碼"));
+    expect(readFileSync(join(UI, "settings-access-strings.js"), "utf8")).toBe(base.replace("8 碼裝置登入碼", "8 字元裝置登入碼").replace("主機 owner 可直接驗證", "主機擁有者可直接驗證"));
   });
   const modules = (d = UI): string[] => readdirSync(d).flatMap((n) => {
     const q = join(d, n);

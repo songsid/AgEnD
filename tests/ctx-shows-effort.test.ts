@@ -103,7 +103,7 @@ describe("/ctx effort line", () => {
     const text = await commandsFor({ backend: "claude-code", strategy: "runtime", effort: "high" })
       .getCtxText(inst);
 
-    expect(text).toContain("Effort：high");
+    expect(text).toContain("推理強度：high");
     expect(text).toContain("設定值");
   });
 

@@ -117,7 +117,7 @@ register("settings", {
     sec_accounts: "AI 帳號與金鑰",
     updateDefaults: "更新 Agent 共用設定",
     devFormsUnsaved: "請先儲存或捨棄 Agent、Agent 共用設定或連線中未儲存的變更：這個編輯器會寫入相同的設定。",
-    help4: "一般：Agent 共用設定與 ClassicBot 預設值。網頁：儀表板的登入 session、瀏覽器終端機、網頁轉發、紀錄與公開連結。「檢查變更」會把它們暫存。",
+    help4: "一般：Agent 共用設定與 ClassicBot 預設值。網頁：儀表板的登入工作階段、瀏覽器終端機、網頁轉發、紀錄與公開連結。「檢查變更」會把它們暫存。",
     // 新增的 key。
     defaultMarkTip: "fleet.yaml 沒有設定這一項，目前使用的是內建值。修改後會存成你自己的值。",
     dashboardShort_appearance: "外觀", dashboardShort_task_board: "任務看板", dashboardShort_web_settings: "網頁外觀設定", dashboardShort_office: "辦公室", dashboardShort_office_packs: "辦公室外觀包",
@@ -157,7 +157,7 @@ register("settings", {
     usageTipParts: "Agent 在 Agents 頁自己設定了某一項，這裡改那一項就不會影響它；其他項目仍然跟著這裡。自己設定的：{0}。",
     usageRooms: "另有 {0} 個 ClassicBot 房間也沿用這個值（不在上面的數字裡）。",
     backendInfo: "只檢查這台主機。Windows 電腦上的 CLI，請在個別 Agent 的設定裡按「切換 Runtime／CLI」。", backendInfoLink: "查看 Windows 電腦與 CLI：Runtime",
-    tipBackend: "Agent 用哪一種 coding CLI 執行（claude-code、codex、kiro-cli…）。每個名稱旁的「已安裝／已登入」狀態，是在 AgEnD 所在的這台主機上檢查的，不包含其他電腦。",
+    tipBackend: "Agent 用哪一種程式開發 CLI 執行（claude-code、codex、kiro-cli…）。每個名稱旁的「已安裝／已登入」狀態，是在 AgEnD 所在的這台主機上檢查的，不包含其他電腦。",
     tipModel: "Agent 向 CLI 要求使用的模型。「CLI 自己的預設」就是讓 CLI 自己決定。清單跟著預設後端換，內容是這台主機上讀到的。",
     tipAutoPause: "Agent 閒置這麼久就暫停、釋放記憶體，有新訊息會自動喚醒。0＝不自動暫停。",
     tipToolProgress: "Agent 工作時，聊天室顯示多少工具活動。關：不顯示。標準：簡短說明（例如「正在讀取檔案」）。詳細：說明加上指令預覽。",

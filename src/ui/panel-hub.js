@@ -61,6 +61,7 @@ import { DropOverlay, MAX_FILES, PendingFiles, hf, pageCarriesFiles, pasteToAtta
 import { composerCaret, insertQuote, installQuoteSelection, showCaret } from "/assets/chat-quote.js";
 import { installTableSelection } from "/assets/chat-table-select.js";
 import { assetUrl } from "/assets/asset-url.js";
+import { dateTimeText } from "/assets/clock-text.js";
 register("hubAccess", {
   en: { tag: "Access needs checking", refused: "Asking was refused. Check your access before trying again.", check: "Check access", limited: "Asking was refused; the previous access information needs checking." },
   "zh-TW": { tag: "需要確認權限", refused: "提問遭到拒絕。請先重新檢查權限，再試一次。", check: "重新檢查權限", limited: "提問遭到拒絕，先前的權限資訊需要重新確認。" },
@@ -160,7 +161,7 @@ function useSession() {
   }, []);
   return s;
 }
-const when = (ms) => new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+const when = (ms) => dateTimeText(ms, { dateStyle: "medium", timeStyle: "short" });
 // M-2988: words added after a release; a tab holding the older hub-strings dictionary falls back to the older sentence.
 const newer = (key, args, older) => { const s = hw(key, ...args); return s === `hub.${key}` ? older() : s; };
 const errText = (r) => hw(r.code === "conflict" || r.code === "stale" ? "errConflictHub" : r.code === "not-found" ? "errNotFound"

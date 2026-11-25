@@ -9,11 +9,12 @@ import { lang, t } from "/assets/app-i18n.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
 import { hroom } from "./hub-room-strings.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 /** The Hub's limit per person per room (src/hub/rooms/service.ts ROOM_PINS_MAX). */
 export const ROOM_PINS_MAX = 50;
 
-const when = (ms) => { const d = new Date(ms); return Number.isFinite(d.getTime()) ? d.toLocaleString(lang(), { dateStyle: "medium", timeStyle: "short" }) : ""; };
+const when = (ms) => { const d = new Date(ms); return Number.isFinite(d.getTime()) ? dateTimeText(d, { dateStyle: "medium", timeStyle: "short" }, lang()) : ""; };
 const snippet = (s, n = 40) => { const one = String(s || "").replace(/\s+/g, " ").trim(); return one.length > n ? `${one.slice(0, n - 1)}…` : one; };
 const textOf = (m) => String(m?.text || "");
 const filesOf = (m) => (Array.isArray(m?.files) ? m.files.map((f) => f && f.name).filter(Boolean) : []);

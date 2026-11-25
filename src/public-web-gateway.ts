@@ -87,6 +87,8 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // page, the old /ui/tasks create and update included: the handlers refuse a write over the public link too
   // (confirming, sending back and assigning are the person's authority, never carried here).
   if (method === "GET" && /^\/ui\/tasks\/cards\/[^/]+$/.test(path)) return true;
+  // a file on a card, as a download — read with the card (the handler hides a hidden instance's from the link).
+  if (method === "GET" && /^\/ui\/tasks\/files\/[0-9a-f]{32}$/.test(path)) return true;
   // #2636 follow-up (the user's choice): Office share links — list, make, revoke — for an admin session over the link too
   // (the handler refuses read-only sessions and guests; the share itself runs on its own tunnel, never this one).
   if ((method === "GET" || method === "POST") && path === "/ui/office-share") return true;
@@ -115,6 +117,18 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // none gave a reason): the model and effort pickers, and an agent's export/import (admin only, in their handlers).
   if (method === "GET" && (path === "/ui/models" || path === "/ui/effort-options")) return true;
   if (method === "POST" && (path === "/ui/models/refresh" || path === "/ui/agent-export/build" || path === "/ui/agent-export/parse")) return true;
+  // M-3680 (decision 7933bf90): contact permissions and held contact requests — Fleet › 授權, an agent's Permissions tab
+  // and Needs you's Approve — were simply missing here, so the link answered 404 and the page said only "Couldn't load
+  // permissions". The handler (contact-auth-api.ts) admits a verified admin only, asking the authority on every request.
+  if (method === "GET" && /^\/ui\/api\/contact-authorizations(?:\/R[a-f0-9-]{36})?$/.test(path)) return true;
+  if (method === "POST" && /^\/ui\/api\/contact-authorizations\/R[a-f0-9-]{36}\/decision$/.test(path)) return true;
+  if ((method === "GET" || method === "PUT") && /^\/ui\/api\/instances\/[^/]+\/contact-permissions$/.test(path)) return true;
+  if (method === "POST" && /^\/ui\/api\/instances\/[^/]+\/contact-permissions\/origin-clear$/.test(path)) return true;
+  // M-3680 (decision 7933bf90; found by the link-parity audit): Needs you's "Try again" on held Hub work (M-3632) was
+  // missing here. The handler admits an admin session only over the link.
+  if (method === "POST" && path === "/ui/needs/hub-retry") return true;
+  // M-3678: same verified target-manager check as the local held-question close.
+  if (method === "POST" && path === "/ui/needs/hub-close") return true;
   // #1827: the person's own name (a profile edit, which the public link may make).
   if ((method === "GET" || method === "POST") && path === "/ui/profile") return true;
   if (isPublicPrivilegedRoute(method, path)) return true;

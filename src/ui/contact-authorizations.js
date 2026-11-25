@@ -18,11 +18,12 @@ import { ContactGrantEditor } from "./contact-grant-editor.js";
 import { InfoTip } from "/assets/info-tip.js";
 import { ca } from "./contact-auth-strings.js";
 import { decideTicket, getTicket, listTickets, personKey, shortTicketId } from "./contact-auth-client.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 // The Fleet tab's own label (panel-fleet.js reads fleet.<tab>).
 register("fleet", { en: { authorizations: "Authorizations" }, "zh-TW": { authorizations: "授權" } });
 
-const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""; };
+const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? dateTimeText(d, { dateStyle: "medium", timeStyle: "short" }, []) : ""; };
 /** The server's reason codes (ContactTicket.reason, ContactPermissions.originRestriction.reason). */
 export const REASONS = new Set(["earlier-non-admin", "unknown-origin"]);
 const TONE = { pending: "warn", approved: "ok", delivered: "ok", declined: "bad", expired: "muted", unknown: "bad" };
@@ -51,7 +52,7 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
       if (again.ok) onChange?.(again.data);
       return false;
     }
-    toast(ca(r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "decideFailed"), false);
+    toast(ca(r.code === "verification-required" ? "verifyFirst" : r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "decideFailed"), false);
   };
   const people = tk.origin?.people || [];
   const grantable = ["human", "mixed"].includes(tk.origin?.kind) && people.length > 0 && people.length <= 16;
@@ -74,7 +75,7 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
       <div class="contact-ticket-times"><span class="contact-time-item" title=${ca("created", when(tk.createdAt))}>${ca("created", when(tk.createdAt))}</span>
         <span class=${`contact-time-item${!tk.decidedAt && st === "pending" && waitMinutes(tk) ? " contact-time-wait" : ""}`} title=${endsText}>${endsText}</span></div>
       ${st === "delivered" ? html`<p class="note">${ca("deliveryNote")}</p>` : null}
-      ${REASONS.has(tk.reason) ? html`<p class="note contact-reason" data-reason=${tk.reason}>${ca(`reason_${tk.reason}`)}${st === "pending" ? html`${lang() === "zh-TW" ? "" : " "}${ca("resetNote")}` : null}</p>` : null}
+      ${REASONS.has(tk.reason) ? html`<p class="note contact-reason" data-reason=${tk.reason}>${ca(`request_reason_${tk.reason}`, agentLabel(tk.source))}${st === "pending" ? html`${lang() === "zh-TW" ? "" : " "}${ca("requestRecoveryNote", agentLabel(tk.source))}` : null}</p>` : null}
     </div>
     ${tk.grantIds?.length ? html`<p><a class="st-link" href=${`${detailsPath(tk.target)}?cat=permissions`}>${ca("grantView")}</a></p>` : null}
     ${tk.canDecide && st === "pending" ? html`<div class="contact-decide">
@@ -131,7 +132,8 @@ export function ContactAuthorizations() {
     </div>
     ${focus ? html`<${TicketCard} ticket=${focus} focus=${true} onChange=${replace} onPerson=${setPerson} />` : null}
     ${page.loading ? html`<${Skeleton} variant="cards" lines=${2} label=${ca("loading")} />`
-      : page.error && !page.items.length ? (page.error === "forbidden" ? html`<p class="note">${ca("forbidden")}</p>` : html`<${ErrorState} message=${ca(page.error === "unavailable" ? "unavailable" : "loadFailed")} onRetry=${() => void read()} />`)
+      : page.error && !page.items.length ? (page.error === "verification-required" ? html`<p class="note contact-verify">${ca("verifyFirst")}</p>`
+        : page.error === "forbidden" ? html`<p class="note">${ca("forbidden")}</p>` : html`<${ErrorState} message=${ca(page.error === "unavailable" ? "unavailable" : "loadFailed")} onRetry=${() => void read()} />`)
       : !list.length && !focus ? html`<${Empty} icon="key" title=${ca(status === "pending" ? "emptyPending" : "empty")} hint=${ca("emptyHint")} action=${status === "pending" ? html`<button type="button" class="btn btn-sm" onClick=${() => setStatus("all")}>${ca("viewAll")}</button>` : null} />`
       : html`<div class="contact-ticket-list">${list.map((tk) => html`<${TicketCard} key=${tk.id} ticket=${tk} onChange=${replace} onPerson=${setPerson} />`)}</div>`}
     ${page.next ? html`<div class="field-row"><button type="button" class="btn btn-sm" onClick=${() => void read(page.next)}>${ca("more")}</button></div>` : null}

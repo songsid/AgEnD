@@ -48,3 +48,33 @@ Actual delivery/reply evidence advances the journal. Freeze answer ID, bytes and
 Use real installed Claude Code and Codex in the existing isolated rig, with mock model APIs and dummy credentials, never real accounts or a live fleet. For each backend: (1) publish an agent, observe the question in its normal CLI, return a correlated answer to the Hub and inspect audit; (2) withdraw, ask again and verify refusal with no CLI delivery. These prove integration, not subscription authentication. No container-provider P1 run or new credential/sandbox matrix is required.
 
 A focused adapter fixture covers a legacy tuple refusing delivery, an old provider block leaving agent delivery available without constructing a provider, and wrong/duplicate reply correlation. Reuse existing journal/lease/revocation tests. S3c owns picker/store compatibility; S5 owns composition, the delivery hook, representative outbox and answer bridge; S1 coordinates its contract wording. Implementation PRs follow this note's approval and post exact-head acceptance before parity review.
+
+
+## Closing held one-to-one questions
+
+Needs you offers **Close this question** for every representative held row,
+including uncertain input or a saved answer whose release could not be confirmed.
+The verified managing administrator confirms in the existing dashboard dialog.
+The model has no close tool. The web route requires the signed-in session, CSRF,
+current verified contact actor and target management role.
+
+The member sends `question.close` only with negotiated `question-close-v1`.
+The Hub checks the current member link, original Fleet, owner and exposure and
+atomically records `owner-declined` with audit. An existing answer wins; otherwise
+the direct chat shows that the owner chose not to answer. Later receipt evidence
+or an in-flight answer cannot reopen the question. This changes no grant or
+consent and cannot stop work already entered into the agent's conversation.
+
+The member audits intent, suspends retry, and clears the held row only after an
+exact-message ACK on its still-current binding and link. Concurrent clicks share
+one exchange. Missing/invalid ACK or an older/offline Hub keeps the item; another
+explicit close retries that idempotent operation, never question or answer input.
+The original strict journal format and existing released representative state are
+unchanged for rollback. Close-pending rows remain held after restart. The newer
+room-identity clock diagnostic is a separate pre-admission hold with its own expiry;
+this operation addresses representative one-to-one questions, not group asks.
+
+UI follows the existing Needs you row and `confirmDialog`/`toast` components;
+phone close buttons have a 44 px minimum, shared tokens, and translated EN/zh-TW
+copy. The capture recipe checks no POST or busy wording before confirmation,
+Cancel then retry, one confirmed POST, success removal and no horizontal overflow.

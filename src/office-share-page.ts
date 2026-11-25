@@ -19,7 +19,7 @@ const JS = "text/javascript; charset=utf-8";
  * pictures of the built-in Cozy (#2631), Guild and School (#2947) styles. */
 export const SHARE_ASSETS: Readonly<Record<string, string>> = {
   ...Object.fromEntries([
-    "model-observation.js", "app-ctx.js", "app-html.js", "app-i18n.js", "app-nav.js", "app-prefs.js", "app-route.js", "app-store.js", "app-themes.js", "asset-url.js", "header-tools.js",
+    "model-observation.js", "app-ctx.js", "app-html.js", "app-i18n.js", "clock-text.js", "app-nav.js", "app-prefs.js", "app-route.js", "app-store.js", "app-themes.js", "asset-url.js", "header-tools.js",
     "htm.module.js", "identity-color.js", "instance-nav.js", "machine-name.js", "owner-css.js", "preact-hooks.module.js", "preact.module.js", "read-stream.js",
     "side-panel.js", "side-rail.js", "text-undo.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-icons.js", "ui-states.js", "ui-toast.js", "usage-dialog.js", "usage-meter.js", "info-tip.js",
     "view-roster-store.js", "view-strings.js",
@@ -36,7 +36,7 @@ export const SHARE_ASSET_FILES: Readonly<Record<string, string>> = {
 export const SHARE_MODULES: readonly string[] = [
   "office-share-page.js", "fleet-office.js", "fleet-office-model.js", "fleet-office-skin.js", "fleet-office-zones.js", "fleet-office-store.js", "fleet-office-play.js",
   "fleet-office-editor.js", "fleet-office-layout.js", "fleet-office-pack.js", "fleet-office-overview.js", "fleet-office-carousel.js", "fleet-office-view.js",
-  "fleet-org.js", "fleet-canvas-layout.js", "fleet-canvas-view.js", "fleet-traffic.js", "office-share-dialog.js", "fleet-office-levels.js", "fleet-office-card.js", "fleet-office-dialogue.js",
+  "fleet-org.js", "fleet-canvas-layout.js", "fleet-canvas-view.js", "fleet-traffic.js", "office-share-dialog.js", "fleet-office-levels.js", "fleet-office-card.js", "fleet-office-dialogue.js", "fleet-office-vehicles.js",
 ];
 
 const cache = new Map<string, Buffer>();

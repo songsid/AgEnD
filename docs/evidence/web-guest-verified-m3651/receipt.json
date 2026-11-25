@@ -1,0 +1,249 @@
+{
+  "sourceHead": "f956792491cf2cf343d7cf520e8905f9b95e80af",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-en-light guest-verified: its messages would carry web-guest, never web-verified",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-verified: /auth/session says until when",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-verified: the session menu's role reads \"Guest · Verified until 12:23 AM\"",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-verified: the role starts beside its label (never under a lone \"Role\")",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-verified: the time stays on one line (1 line(s) in all)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-verified: no Authorize line for a guest",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-verified: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-not-verified: its messages would carry none, never web-verified",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-not-verified: /auth/session says not verified",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-not-verified: the session menu's role reads \"Guest\"",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-not-verified: the role starts beside its label (never under a lone \"Role\")",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-not-verified: no Authorize line for a guest",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light guest-not-verified: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-verified: its messages would carry web-guest, never web-verified",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-verified: /auth/session says until when",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-verified: the session menu's role reads \"訪客 · 驗證有效至 上午12:23\"",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-verified: the role starts beside its label (never under a lone \"Role\")",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-verified: the time stays on one line (1 line(s) in all)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-verified: no Authorize line for a guest",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-verified: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-not-verified: its messages would carry none, never web-verified",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-not-verified: /auth/session says not verified",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-not-verified: the session menu's role reads \"訪客\"",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-not-verified: the role starts beside its label (never under a lone \"Role\")",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-not-verified: no Authorize line for a guest",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark guest-not-verified: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-verified: its messages would carry web-guest, never web-verified",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-verified: /auth/session says until when",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-verified: the session menu's role reads \"Guest · Verified until 12:23 AM\"",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-verified: the role starts beside its label (never under a lone \"Role\")",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-verified: the time stays on one line (1 line(s) in all)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-verified: no Authorize line for a guest",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-verified: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-not-verified: its messages would carry none, never web-verified",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-not-verified: /auth/session says not verified",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-not-verified: the session menu's role reads \"Guest\"",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-not-verified: the role starts beside its label (never under a lone \"Role\")",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-not-verified: no Authorize line for a guest",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light guest-not-verified: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-verified: its messages would carry web-guest, never web-verified",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-verified: /auth/session says until when",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-verified: the session menu's role reads \"訪客 · 驗證有效至 上午12:23\"",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-verified: the role starts beside its label (never under a lone \"Role\")",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-verified: the time stays on one line (1 line(s) in all)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-verified: no Authorize line for a guest",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-verified: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-not-verified: its messages would carry none, never web-verified",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-not-verified: /auth/session says not verified",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-not-verified: the session menu's role reads \"訪客\"",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-not-verified: the role starts beside its label (never under a lone \"Role\")",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-not-verified: no Authorize line for a guest",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark guest-not-verified: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "web-guest-verified-m3651/desk-en-light-guest-verified.png",
+      "sha256": "df3d8152c5b5e5e727eea37d6b056a7de3c62268118ea0b9ad8d5338cb78bb98"
+    },
+    {
+      "path": "web-guest-verified-m3651/desk-en-light-guest-not-verified.png",
+      "sha256": "259025d397bb3bf67378a349b06a4b051c159be4d32a4d57efb22123dcb42c0a"
+    },
+    {
+      "path": "web-guest-verified-m3651/desk-zh-TW-dark-guest-verified.png",
+      "sha256": "6f2198a069cf734aadc0df9e297dd0595ef5dd15349a4c6b9c88a5e8212af42f"
+    },
+    {
+      "path": "web-guest-verified-m3651/desk-zh-TW-dark-guest-not-verified.png",
+      "sha256": "f33b3011766dec826450abdb0adfbf229daba0f134165703c6e5746ce56ad2a6"
+    },
+    {
+      "path": "web-guest-verified-m3651/phone-en-light-guest-verified.png",
+      "sha256": "309941e930083d5609cd4577d886b9f64611808e43c45fcf6406788593ab4639"
+    },
+    {
+      "path": "web-guest-verified-m3651/phone-en-light-guest-not-verified.png",
+      "sha256": "53d99e852e3f381d68a7789bf32ebb1c64ebadeba06c1dac9c3747129e05531a"
+    },
+    {
+      "path": "web-guest-verified-m3651/phone-zh-TW-dark-guest-verified.png",
+      "sha256": "134c6e755cadf837bb60e512e0afe7e339527a48be0a2fe7e12cc64cc3d690d9"
+    },
+    {
+      "path": "web-guest-verified-m3651/phone-zh-TW-dark-guest-not-verified.png",
+      "sha256": "2bb1fe97aea24125461668997a3635f4968f147de53a2df2f7871ba29d9a6a9d"
+    }
+  ],
+  "summary": "52/52"
+}

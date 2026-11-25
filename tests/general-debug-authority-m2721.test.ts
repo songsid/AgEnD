@@ -87,7 +87,7 @@ describe("General debug and tool-set authority (36525f1b)", () => {
     const r = rig(); expect((await r.call("general", tool, argsFor(tool, { tool_set: "worker" }))).error).toBeUndefined();
   });
 
-  it.each(configTools)("%s refuses non-General callers, even with full/coordinator or a forged sender", async tool => {
+  it.each(configTools)("%s still refuses tool_set full from a non-General caller, including a coordinator, a full profile, or a forged sender", async tool => {
     const r = rig();
     for (const caller of ["worker", "coord", "wide"]) {
       const out = await r.call(caller, tool, argsFor(tool, { tool_set: "full", general_topic: true }), "admin");

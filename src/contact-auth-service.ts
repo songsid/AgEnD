@@ -44,16 +44,21 @@ export class ContactAuthService {
     return !this.host.adminOf(instance, origin.people[0]!);
   }
   requireApplication(input: Omit<ContactRequest, "origin" | "sourceGeneration" | "targetGeneration">): string | undefined {
-    if (!this.needsApplication(input.source)) return;
+    const previous = this.host.store.operationTicket(input.source, input.operationId, input.target, input.verb);
+    const required = this.needsApplication(input.source);
+    // Recovery of the person identity does not replay or bypass a decision for this exact old operation.
+    if (!required && !previous) return;
     // M-3160 always precedes even ticket persistence, including a standing grant.
     if (this.host.hubRestricted(input.source)) throw Error("hub-contact-restricted");
     const request: ContactRequest = { ...input, origin: this.origin(input.source) ?? unknown(),
       sourceGeneration: this.host.generation(input.source), targetGeneration: this.host.generation(input.target) };
-    const previous = this.host.store.operationTicket(request.source, request.operationId, request.target, request.verb);
     if (!previous && input.verb === "report_result" && this.host.store.approvedReturn(input.source, input.target, input.correlationId)
       .some(ticket => ticket.targetGeneration === this.host.generation(input.source)
         && ticket.sourceGeneration === this.host.generation(input.target) && this.host.delivered(ticket))) return;
     const ticket = this.host.store.hold(request);
+    // Validate the immutable operation payload before preserving its pending decision.
+    if (!required && ticket.state === "pending") throw new ContactHeldError({ sent: false, held: true,
+      authorization_id: ticket.id, authorization_state: ticket.state, message: t("contact.heldAgent") });
     const granted = this.host.store.applyStandingGrant(ticket.id, {
       canDecide: (target, person) => this.canManage(target, person),
       current: current => !this.host.hubRestricted(current.source)

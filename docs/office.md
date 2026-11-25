@@ -44,7 +44,7 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 
 **Hover and click.** Hover over a person for their name, state and backend. Click (or tap) them, or press Enter on their entry in the desk list, to open their [profile card](#the-profile-card). Double-click a person to open their chat directly. **Find** dims everyone who doesn't match.
 
-**The Office bar** is one row (M-3556). On the left is what you're looking at; on the right are the actions (**Edit offices**, **Share…**) and **⚙ Display options**. On a phone, **⋯** opens all of it in a sheet, in the same order, with a **Display options** heading. A Hub room's office opens the same Display options from the gear under its zoom buttons.
+**The Office bar** is one row. On the left is what you're looking at; on the right are the actions (**Edit offices**, **Share…**) and **⚙ Display options**. On a phone, **⋯** opens all of it in a sheet, in the same order, with a **Display options** heading. A Hub room's office opens the same Display options from the gear under its zoom buttons.
 
 | Control | What it does | Kept |
 |---|---|---|
@@ -57,8 +57,10 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 
 | Option | What it does | Kept |
 |---|---|---|
-| **Style** | **Desks**, **Studio**, **Cozy** or an uploaded skin pack (for Whole fleet; a stored office has its own) | for the whole fleet when a fleet admin picks it; anyone else's pick is their own browser's |
+| **Style** | **Desks**, **Studio**, **Cozy**, **Guild**, **School** or an uploaded skin pack (for Whole fleet; a stored office has its own) | for the whole fleet when a fleet admin picks it; anyone else's pick is their own browser's |
 | **Hide paused and stopped** | leaves the sleepers out | per browser |
+| **Hide names and levels** | no name tags or level badges over the people; the one hovered or found keeps theirs, and anyone calling for you keeps their name (not the level) | per browser |
+| **Hide the minimap** | no minimap in the corner | per browser |
 | **Bedtime (0–6): idle agents sleep** | see [Bedtime](#bedtime-strolls-and-mail) (zones styles and All offices) | per device, off by default |
 | **Lobby tile** | in All offices, a tile for the instances in no office | per browser, on by default |
 | **Drag and pat** | pick people up and pat or feed them: see [Bedtime, strolls and mail](#bedtime-strolls-and-mail) (zones styles) | per device, on by default |
@@ -86,7 +88,7 @@ Studio, Cozy, Guild, School and zones packs are called **zones styles** below. O
 
 ## Set up an office
 
-A fleet admin, on the dashboard reached directly (not over the public link), uses **Edit offices** in the Office bar. On a screen 1200 px or wider it opens as a panel on the right, in place of the AI usage rail, with the Office still usable beside it. Narrower, it's a centred dialog. × or Esc closes it.
+A fleet admin, from an admin session, uses **Edit offices** in the Office bar. On a screen 1200 px or wider it opens as a panel on the right, in place of the AI usage rail, with the Office still usable beside it. Narrower, it's a centred dialog. × or Esc closes it.
 
 1. **Add office**, and give it a name.
 2. **Who is in it**: **Everyone**; **Picked**, then whole teams or single instances (with none ticked yet it still shows everyone); or **Nobody (NPCs only)**: no agent sits there, only its style's NPCs (#2752). In `web-offices.json` everyone is `"members": []` and nobody is `"members": ["team:"]`, a team with no name, which no team has.
@@ -102,9 +104,9 @@ If someone saved the offices while you were editing, your save is refused and no
 
 ## Use a skin pack
 
-A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG files. Making one is described in [Make a skin pack](#make-a-skin-pack).
+A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG (or WebP) files. Making one is described in [Make a skin pack](#make-a-skin-pack).
 
-**Upload one.** In **Edit offices → Skin packs**, use **Upload a skin pack** and pick the pack's `manifest.json` and all its PNG files together, or use **Upload a folder**. The host checks everything (see [Limits](#limits)). On the first problem it refuses the upload and says where the problem is, for example `furniture[3].sprite.w: a whole number from 1 to 512`. Packs are kept whole in `web-office-skins/<id>/` in the AgEnD home and never changed.
+**Upload one.** In **Edit offices → Skin packs**, use **Upload a skin pack** and pick the pack's `manifest.json` and all its PNG and WebP files together, or use **Upload a folder**. The host checks everything (see [Limits](#limits)). On the first problem it refuses the upload and says where the problem is, for example `furniture[3].sprite.w: a whole number from 1 to 512`. Packs are kept whole in `web-office-skins/<id>/` in the AgEnD home and never changed.
 
 **Use it.** Kept packs appear in every **Style** picker. Pick one for an office in Edit offices, or for Whole fleet in the Office bar. A pack the page can't load is drawn as Desks, with a note.
 
@@ -114,7 +116,7 @@ A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG fi
 
 ## Make a skin pack
 
-A pack describes one scene on a **1280×720 logical canvas** (16:9), or on its own size with `"canvas": [w, h]` (640×360 to 5120×2880, any shape: a bigger office, or a wide one). Every coordinate in the manifest is in these logical units, within the canvas; the background and the foreground have the canvas's shape (a picture is at most 4096 px a side, so a 5120-wide canvas's background is drawn scaled up). The view fits the whole canvas, on a phone too, and zooms out as far as it needs to; in All offices a big office is scaled down into its tile. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
+A pack describes one scene on a **1280×720 logical canvas** (16:9), or on its own size with `"canvas": [w, h]` (640×360 to 5120×2880, any shape: a bigger office, or a wide one). Every coordinate in the manifest is in these logical units, within the canvas; the background and the foreground have the canvas's shape (a picture is at most 5120 px a side and 16 Mpx, so a 5120×2880 background fits at full size; save a big one as WebP to fit the 4 MiB a file). The view fits the whole canvas, on a phone too, and zooms out as far as it needs to; in All offices a big office is scaled down into its tile. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
 
 A minimal zones pack:
 
@@ -156,7 +158,7 @@ A minimal zones pack:
 
 - **Frame list with per-frame durations:** omit `src` and pass `frames` as a list of `{ "src", "ms"? }` entries (up to 600 steps, each image `w × h` px, `ms` 33–60000). The same file may appear in multiple steps and is only uploaded and decoded once. Any single-sheet or multi-sheet strip can also pass a `durations` array (`ms` per frame) instead of `fps`.
 - **Playback:** strips loop from frame 0 by default. Set `"once": true` to play once and hold the last frame, or `"loopFrom": <index>` to play an intro (`0 .. loopFrom - 1`) once and loop the rest. With reduced motion (`prefers-reduced-motion: reduce`), every strip holds frame 0.
-- **Splitting tip:** keep each sheet within 32 frames and 4096 px wide (e.g., 10 sheets × 30 frames of 64×96 px = 300 frames, 10 s at 30 FPS). Keep the whole pack within 220 files, 42 MiB, and 64 Mpx of total decoded pixels so phones stay smooth. To save files, put several poses in one sheet and cut each strip from it with `row` / `col` (see [Strips](#strips)).
+- **Splitting tip:** keep each sheet within 32 frames and 5120 px wide (e.g., 10 sheets × 30 frames of 64×96 px = 300 frames, 10 s at 30 FPS). Keep the whole pack within 220 files, 42 MiB, and 64 Mpx of total decoded pixels so phones stay smooth. To save files, put several poses in one sheet and cut each strip from it with `row` / `col` (see [Strips](#strips)).
 
 **Areas, seats and states.** An area is a rect `[x, y, w, h]` and its seats in the order they fill up. A seat is `[x, y]`, where the person's feet go, inside its area's rect. `stateZones` sends each state (`needs`, `crashed`, `stuck`, `working`, `idle`, `paused`, `stopped`, `missing`) to an area; a state it doesn't name goes to `"default"`, else the first area. Bedtime sends the idle to the area `paused` uses.
 
@@ -308,7 +310,7 @@ These need a zones style.
 
 - **Bedtime** (the **Bedtime (0–6): idle agents sleep** box, per device, off by default): from 00:00 to 06:00 on the viewer's clock, idle people go to the sleeping area (the area `paused` uses) while it has a free seat, and sleep there with Zzz bubbles. The rest doze where they are. Working people keep working. Furniture with a `night` is drawn asleep at its night place.
 - **Strolls:** now and then an idle person walks to a nearby waypoint that no seat is on, stays a few seconds and walks back. A furniture item with `walk` strolls the same way. Strolls happen in a single office (not All offices), not with reduced motion, and not while Edit layout is open. With the office's **Idle people stay in their own area** (#4104), a stroll ends only at a waypoint inside the area the person (or the furniture's spot) is in. The walk there and back stays inside that area where the graph allows, or else crosses only corridors (outside every area). A spot that can only be reached through another area isn't used, so the person stays seated, and nobody goes on a visit. A walking furniture item whose spot is in no area strolls as before.
-- **Drag and pat** (the **Drag and pat** box in **⚙ Display options**, per device, on by default; #4119, #4266, #4267): pick someone up and carry them around — while held they lift above the floor in a `dragged` pose (the pack's optional `characters.<set>.dragged` / `default.dragged` strip, or a built-in dangling animation), and valid seats in their current area show floor rings. Drop them onto another valid seat in their area to seat them there immediately (swapping cleanly if another non-owner occupies it, respecting reserved seats and **Idle people stay in their own area**; your seat choice persists per device for that office and style, and they keep working in the new seat). Drop them on empty floor instead and they return to their seat (walking back along the route, staying inside their area when **Idle people stay in their own area** is on). Press Escape to cancel a drag. With a mouse, press on them and move. On a phone, press and hold until they lift (a finger that moves first pans the view, as before). Their card has **Pat** and **Feed**: a few hearts rise over their head and they say something in a bubble. It's in a single office of your own dashboard only: not in All offices, the carousel, Edit layout or a share link, and never with reduced motion: the box is then off and locked, with one line under it in **⚙ Display options**, "Off: your system asks for reduced motion" (M-3547, M-3556). There's no switch to play anyway; turn off reduced motion on the device to play. It's yours alone: nothing is stored on the host or shown to anyone else, and the agent isn't told, unless you tick **Tell <agent> (with their next message)** on their card (per agent, off by default). Then each pat or feed is queued, and the next message that reaches that agent anyway carries one line in its `[Recent reactions: …]`, such as `[Office] <your name> patted your head ×3`. It never wakes the agent or sends anything by itself. At most 20 of each kind wait per person, and the line is cut at 200 characters. A skin pack can give its own words for a pat and a feed (`bubbles.<lang>.pat` and `.feed`, see below).
+- **Drag and pat** (the **Drag and pat** box in **⚙ Display options**, per device, on by default; #4119, #4266, #4267): pick someone up and carry them around — while held they lift above the floor in a `dragged` pose (the pack's optional `characters.<set>.dragged` / `default.dragged` strip, or a built-in dangling animation), and valid seats in their current area show floor rings. Drop them onto another valid seat in their area to seat them there immediately (swapping cleanly if another non-owner occupies it, respecting reserved seats and **Idle people stay in their own area**; your seat choice persists per device for that office and style, and they keep working in the new seat). Drop them on empty floor instead and they return to their seat (walking back along the route, staying inside their area when **Idle people stay in their own area** is on). Press Escape to cancel a drag. With a mouse, press on them and move. On a phone, press and hold until they lift (a finger that moves first pans the view, as before). Their card has **Pat** and **Feed**: a few hearts rise over their head and they say something in a bubble. It's in a single office of your own dashboard only: not in All offices, the carousel, Edit layout or a share link, and never with reduced motion: the box is then off and locked, with one line under it in **⚙ Display options**, "Off: your system asks for reduced motion". There's no switch to play anyway; turn off reduced motion on the device to play. It's yours alone: nothing is stored on the host or shown to anyone else, and the agent isn't told, unless you tick **Tell <agent> (with their next message)** on their card (per agent, off by default). Then each pat or feed is queued, and the next message that reaches that agent anyway carries one line in its `[Recent reactions: …]`, such as `[Office] <your name> patted your head ×3`. It never wakes the agent or sends anything by itself. At most 20 of each kind wait per person, and the line is cut at 200 characters. A skin pack can give its own words for a pat and a feed (`bubbles.<lang>.pat` and `.feed`, see below).
 - **Custom snacks** (when the active skin pack defines `snacks` and **Drag and pat** is on; #4255): a floating snack tray appears at the bottom-left (above the zone pills on a phone). Drag a snack onto any awake character — or tap a snack to select it and tap a character — to feed them directly (plays their `eat` strip if supplied, or `default.eat`, with hearts, `feed` words, and optional **Tell**). Drop a snack on empty floor to place it (up to 6 on the floor at once; unclaimed snacks expire after 30 s): up to 4 nearest idle characters within its `radius` race along the room's corridors to claim it (respecting **Idle people stay in their own area**). The first to reach it eats it; the other racers briefly say "Too slow!" and walk back to their seats. Sleeping characters are never woken. Everything stays client-local and is hidden on share links, All offices, the carousel, Edit layout, and with reduced motion.
 - **Visits** (a pack's `idleVisits`, #3685): now and then an idle person goes to another area instead, such as a garden or a hot spring, sits on a free seat there for a while and walks back to their own seat. A free seat is one nobody sits on, no other visitor is heading for, and that isn't reserved for someone else (unless it's lent). With no free seat they stroll as usual. At each turn when they could stroll, each entry's `weight` is weighed against 100 for the usual stroll, so one entry of weight 20 sends them off at 20 of every 120 turns. The stay is `minSeconds`–`maxSeconds` after they get there. Nobody visits their own area, anyone who isn't idle stays put, and visits follow the same rules as strolls (a single office, no reduced motion, not in Edit layout). Whether and when someone visits, and which area, follows from the name and the time alone, so it is the same on every screen. Which free seat they take there can differ between screens: each open page keeps the seats its visitors are already in, so someone who turns idle later doesn't move them, and a page opened later works the seats out afresh.
 - **Mail:** a message to someone in this office from someone outside it flies in at the door as a letter and lands at the pack's `mailDrop` (or the office's own from Edit layout). Without one it lands at the waypoint nearest the middle of the room, off every seat. More letters wait 16 px apart to the right, never on a seat. With reduced motion no letters are shown. Its person walks over and picks it up, unless they're asleep. A letter waits up to a minute.
@@ -364,6 +366,28 @@ What it shows:
 | **Fast** | Typed quickly, and goes on after a short pause. |
 | **Skip** | Closes every reply shown now. |
 
+## Vehicles
+
+A zones pack can run a train (or any vehicle) round a loop of track with `vehicles` (at most 4):
+
+```json
+"vehicles": [{
+  "id": "loop-line", "label": "Loop line",
+  "sprite": { "src": "train.png", "frames": 2, "w": 192, "h": 96, "fps": 4 },
+  "path": [[80, 80], [5040, 80], [5040, 2800], [80, 2800]],
+  "speed": 120,
+  "stops": [{ "at": 1, "seconds": 10, "platform": [4980, 1650] }],
+  "seats": [{ "dx": -48 }, { "dx": 0 }, { "dx": 48 }]
+}]
+```
+
+- `path`: 3–64 points; the last joins the first, and the vehicle goes round and round, lap after lap. `speed` is logical units a second (5–600, default 80).
+- `stops`: the path points it waits at (`at`, a point's index), for `seconds` (1–600, default 8), and the `platform` point where riders wait, board and get off. A vehicle with seats needs at least one stop.
+- `seats` (up to 16): where riders sit, as offsets from the vehicle's anchor along the way it goes (`dx` ahead, `dy` to its right), so they turn with it at the corners.
+- `sprite`: its picture heading right (mirrored going left); or `sprites` by heading (`right`, `left`, `up`, `down`), each a frame strip. It plays while moving and holds its first frame at a stop.
+- Where a vehicle is depends on the clock alone, so every page shows it in the same place.
+- **Who rides is the agents' own choice** (`office_set { ride }`, see [Agents in the office](#agents-in-the-office)), not the pack's: the rider walks to the platform nearest its seat, waits there until the vehicle stops, takes a free seat and works there as it goes round (its name tag, bubble and card go with it). When the ride ends, it stays on until the next stop, gets off at that platform and walks back. A full vehicle: the next one. Bedtime, or being paused or stopped, ends a ride the same way. Calling for a person (needs, crashed, stuck) is different: the rider gets off at once, where it is, and walks to its place, so nothing keeps a caller from the Help desk; the ride resumes after the call while it lasts.
+
 ## Share a view
 
 A fleet admin can show the live Office to people outside the fleet for a while, with no sign-in. Use **Share…** in the Office bar, on the dashboard reached directly or signed in over the temporary public link; a read-only session or a guest can't share. There is no chat command for it.
@@ -385,6 +409,7 @@ An agent can see the offices it's in and direct its own character for a moment, 
 
 - `office_view { office? }`: the stored offices it's in, with their members and states. For an office in an uploaded zones pack it also lists the seats (`"area:index"`), waypoints, furniture (NPCs) and the door, with the office's layout overrides applied. Any other office (Desks, Studio, Cozy, or a pack without zones) returns `walks: false` and no spots.
 - `office_set { office?, go?, say?, pose?, seconds?, clear? }`: walk to a seat, a waypoint or another member (`go`); say a line of 1–40 characters (`say`); hold a pose: idle, working, needs or paused (`pose`); for 5–120 seconds (default 30). `clear: true` ends it. Where `walks` is false, the line and the pose show, and `go` is refused.
+- `office_set { ride, seconds? }`: work on board one of the office's vehicles (see [Vehicles](#vehicles)): the agent walks to the platform, waits for the train to stop there, takes a free seat and goes round with it. A ride lasts 60–28800 seconds (default 3600); new work does not end it, `clear: true` or a new `office_set` does, and the agent gets off at the next stop. Calling for a person takes it off at once, until the call is over. `office_view` lists the vehicles (`spots.vehicles`: id, label, seat count, platforms).
 - Each act replaces the last. It ends when its time is up or the agent starts new work, and it isn't shown while the agent calls for a person, is paused or stopped, or is asleep at bedtime. Acts are kept in memory only.
 - At most 6 calls a minute and 60 an hour per agent; a refusal says `cooldown_ms`.
 - Also on the command line: `agend-agent office view [office]` and `agend-agent office set '<json>'`.
@@ -459,7 +484,7 @@ When someone goes up a level, a short ring shows over their head, and the people
 
 ### The profile card
 
-Clicking a person opens their card beside them. It's a popover, not a dialog: the Office keeps running and isn't dimmed, and the card follows the person if they walk off. Click the same person again, press Esc, or click anywhere else to close it; click someone else to switch to their card. On a phone the card is a sheet at the bottom of the screen; swipe it down to close it.
+Clicking a person opens their card beside them. It's a popover, not a dialog: the Office keeps running and isn't dimmed, and the person stays where they are while their card is open (they walk on once it closes). Someone who starts calling for you still walks to the Help desk. Click the same person again, press Esc, or click anywhere else to close it; click someone else to switch to their card. On a phone the card is a sheet at the bottom of the screen; swipe it down to close it.
 
 The card is 320 px wide and shows:
 
@@ -468,6 +493,7 @@ The card is 320 px wide and shows:
 - The office and area, the model, the backend, today's work tokens and requests, and the day count since first seen.
 - **Now:** the same activity line as the hover tooltip.
 - **Find in office** pans and zooms to them; **Chat** opens their chat.
+- **✎** beside the name renames them for you: the name you type (up to 24 characters) shows on their tag, card and dialogue in this browser only; the instance name stays on the card. Empty gives back their own. Not on a share link.
 
 Rows the viewer may not see are left out: no token rows where the numbers aren't served (see above), and on a share link only the name, title, state, office and level.
 
@@ -492,7 +518,7 @@ To use the same titles in every office without editing each pack, set them once 
 
 - Every office uses the fleet's titles, whatever its style.
 - An office drawn in a pack that has its own `levels` uses the pack's `titles` instead, if the pack has any. Pinned titles are merged: the fleet's `fixed` and the pack's both apply, and the pack's entry wins for a name that's in both.
-- Only an admin session on the dashboard reached directly can change them (`PUT /ui/office-level-titles`, counted with the offices' saves). They're kept in `web-offices.json` beside the offices and served with them (`GET /ui/offices`'s `levels`), so every page and share link picks a change up at once.
+- Only an admin session can change them (`PUT /ui/office-level-titles`, counted with the offices' saves). They're kept in `web-offices.json` beside the offices and served with them (`GET /ui/offices`'s `levels`), so every page and share link picks a change up at once.
 - A share link gets every title, but a pinned title only for the people it shows, and for names that aren't instances (NPCs).
 
 ## Who can do what
@@ -500,8 +526,9 @@ To use the same titles in every office without editing each pack, set them once 
 | | Fleet admin, dashboard reached directly | Fleet admin, public link | Read-only session | Guest | Share-link viewer |
 |---|---|---|---|---|---|
 | See the Office | ✅ | ✅ | ✅ | ❌ | ✅ one office or all, read-only |
-| Edit offices, upload or delete packs, Edit layout | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Level titles for every office | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Edit offices, Edit layout | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Upload or delete skin packs | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Level titles for every office | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Approve agents' pack changes | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Share… and Revoke | ✅ | ✅ | ❌ | ❌ | ❌ |
 
@@ -597,7 +624,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 |---|---|
 | Packs kept | 16 (plus one previous version each, kept for agents' restores) |
 | Files in a pack | 220 |
-| One file | 4 MiB, 4096 × 4096 px (16 Mpx), PNG only (checked by signature, every chunk read, metadata stripped) |
+| One file | 4 MiB, 5120 px a side and 16 Mpx, PNG or WebP as its name ends (`.png`, `.webp`; checked by signature, every chunk read, metadata stripped) |
 | A whole pack | 42 MiB, 64 Mpx of decoded pixels in all |
 | One strip | up to 32 frames per sheet, 32 sheets, 600 total frames, 33–60000 ms per frame |
 | The manifest | 64 KiB |

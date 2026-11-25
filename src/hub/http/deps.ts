@@ -22,6 +22,7 @@ export interface HubHttpConfig {
 /** S1's `signAsker` over `hub/keys/issuer-key.pem`; S3 never opens a key file. */
 export interface HubIssuer {
   readonly keyId: string;
+  signRoomAsker?(envelope: Omit<import("../room-asker-identity-model.js").HubRoomAskerIdentity,"signature">):import("../room-asker-identity-model.js").HubRoomAskerIdentity;
   sign(envelope: Omit<HubAskerEnvelope, "signature">): HubAskerEnvelope;
 }
 /** Encrypted question/answer payloads (S5, under content.key). One payload per record; S5 chooses the ref. */

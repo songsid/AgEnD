@@ -384,7 +384,7 @@ stores were copied to scratch, WAL files included, before any query.
 | Backend | Tokens | Amount |
 |---|---|---|
 | grok | measured | list price where the bundled table has the model; otherwise grok's own `costUsdTicks` (× 1e-10 USD), marked "reported by grok". tokscale uses that reported cost too. |
-| muse | measured; cache write "not reported" (as Codex) | **not priced**: Meta publishes no per-token price |
+| muse | measured; cache write "not reported" (as Codex) | Spark 1.3 at Meta's published Standard list price; other Muse models not priced |
 | opencode | measured | list price of `modelID`. The provider is often `github-copilot`, a subscription, so the amount is API-equivalent as everywhere |
 | antigravity | measured, marked "decoded" (the field map is tokscale's reverse engineering, checked here against 41 databases) | list price for Gemini and Claude models once the table has them |
 | kiro-cli | **estimated** (tokscale's method at the commit above), flagged "estimated" on every row and on any total that includes one | the estimate at the named model's list price, the company report's basis; `auto` **not priced** |
@@ -441,7 +441,7 @@ Hours written before that change keep `reasoning` 0, and output as recorded.
    the API, the page and the CSV. It goes first among the readers because Kiro is the largest unmeasured share
    (13 fleet instances, including General and the coordinator, plus the ClassicBot rooms).
 3. **Grok:** real and per turn, a small parser of `updates.jsonl`.
-4. **Muse:** real; not priced.
+4. **Muse:** real. Spark 1.3 is at Meta's published Standard list price; other Muse models stay not priced.
 5. **OpenCode:** real, by SQL on a read-only connection to `opencode.db`; little current use on this fleet.
 6. **Antigravity:** a protobuf wire reader on tokscale's field map, kept behind a version check (agy 1.4.6 verified).
 

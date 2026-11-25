@@ -1,0 +1,11 @@
+--- a/src/hub/rooms/asker-identity.ts
++++ b/src/hub/rooms/asker-identity.ts
+@@ -11,7 +11,7 @@
+   if(operations.length){const op=operations[0]!;if(operations.length!==1||app||op.room_id!==post.room_id||op.owner!==post.author_subject)return null;
+    const source=db.prepare('SELECT id,fleet_id,owner,display_name FROM hub_exposures WHERE id=?').get(op.exposure_id)as{id:string;fleet_id:string|null;owner:string;display_name:string}|undefined;
+    if(!source||source.owner!==op.owner||(source.fleet_id??'')!==(op.fleet_id??''))return null;
+-   return roomAskerSchema.parse({kind:'agent',id:`exposure/${source.id}`,displayName:op.via_name??(post.author_kind==='agent'?post.author_name:source.display_name)});
++   return roomAskerSchema.parse({kind:'person',id:op.owner,displayName:op.via_name??(post.author_kind==='agent'?post.author_name:source.display_name)});
+   }
+   if(app){if(post.author_kind!=='person')return null;const principal=personKeyString(personFromString(post.author_subject));return roomAskerSchema.parse({kind:'assistant',id:`application/${app.app_id}/principal/${principal}`,displayName:app.app_name});}
+   if(post.author_kind==='person')return roomAskerSchema.parse({kind:'person',id:personKeyString(personFromString(post.author_subject)),displayName:post.author_name});

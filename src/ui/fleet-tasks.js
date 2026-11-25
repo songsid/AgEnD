@@ -774,6 +774,7 @@ function Tile({ card, dragging, flash, subs = [], runs, expanded, writable, card
         ${card.acceptance.length ? html`<span class=${accepted === card.acceptance.length ? "all" : ""} title=${t(card.kind === "main" ? "tasks.definition" : "tasks.acceptance")}><${Icon} name="check" size=${13} />${accepted}/${card.acceptance.length}</span>` : null}
         ${waitsOn(card) ? html`<span title=${t("tasks.waitsFor", waitsList(card, ", "))}><${Icon} name="clock" size=${13} /></span>` : null}
         ${card.commentCount ? html`<span class=${replied ? "reply" : ""} title=${replied ? t("tasks.agentReplied") : t("tasks.comments")}><${Icon} name="chat" size=${13} />${card.commentCount}</span>` : null}
+        ${card.attachmentCount ? html`<span title=${t("taskfiles.title")}><${Icon} name="attach" size=${13} />${card.attachmentCount}</span>` : null}
       </span>
     </div>
   </div>`;

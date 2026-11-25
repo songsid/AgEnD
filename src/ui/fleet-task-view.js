@@ -10,9 +10,11 @@ import { t, register, lang } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { RunMark, runOf } from "./fleet-task-run.js";
+import "./fleet-task-files.js";
 import { OwnerChip } from "./fleet-task-owner.js";
 import { COLUMNS, ProgressBar, UNASSIGNED, Who, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, waitsList, waitsOn, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { assetUrl } from "/assets/asset-url.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 /** The task board's stylesheet, linked once (a tab opened before an upgrade has an app.css without these rules). */
 export function linkTaskBoardCss(doc = typeof document !== "undefined" ? document : null) {
@@ -53,15 +55,15 @@ register("taskview", {
   "zh-TW": {
     display: "顯示", displayTip: "看板或清單、分組、排序、已完成的卡", filter: "篩選", filterTip: "只看部分卡片",
     view: "檢視", board: "看板", list: "清單", groupBy: "分組", orderBy: "排序", finished: "已完成的卡", doneHide: "隱藏",
-    "group.status": "狀態", "group.assignee": "負責人", "group.priority": "優先度", "group.none": "不分組",
-    "order.manual": "看板順序", "order.priority": "優先度", "order.updated": "最近變動", "order.created": "最新建立", "order.title": "標題",
+    "group.status": "狀態", "group.assignee": "負責人", "group.priority": "優先級", "group.none": "不分組",
+    "order.manual": "看板順序", "order.priority": "優先級", "order.updated": "最近變動", "order.created": "最新建立", "order.title": "標題",
     subsRows: "子任務也各列一行",
-    fieldstatus: "狀態", fieldassignee: "負責人", fieldpriority: "優先度", fieldsize: "大小",
+    fieldstatus: "狀態", fieldassignee: "負責人", fieldpriority: "優先級", fieldsize: "大小",
     filters: "篩選條件", is: "是", isNot: "不是", opTip: "切換「是」與「不是」", values: "{0}：選擇項目",
     nValues: "{0} 項", remove: "移除這個條件", clear: "清除篩選", changed: "{0}變動", inMain: "{0} {1} 的子任務",
     fieldwaits: "等我處理", waitsYou: "等我確認", viewLabel: "看板或清單", scrollColumns: "捲動欄位", columnsLeft: "左邊的欄位", columnsRight: "右邊的欄位", search: "搜尋", searchLabel: "搜尋這個專案的卡片（卡號、標題、欄位、完成定義）",
     "order.assignee": "負責人", "order.code": "卡號", sortBy: "依{0}排序", sortedBy: "{0}，{1}排序", asc: "由小到大", desc: "由大到小",
-    colId: "卡號", colTitle: "標題", colPriority: "優先度", colAssignee: "負責人", colUpdated: "更新",
+    colId: "卡號", colTitle: "標題", colPriority: "優先級", colAssignee: "負責人", colUpdated: "更新",
     collapse: "收合 {0}", expand: "展開 {0}", more: "卡片動作", statusTabs: "一次看一個狀態", noMatch: "沒有符合「{0}」的卡片", clearSearch: "清除搜尋",
   },
 });
@@ -402,7 +404,7 @@ function groupHead(group, key) {
   return html`<span class=${`tb-tag p-${key}`}>${t(`tasks.${key}`)}</span>`;
 }
 const groupWord = (group, key) => (group === "assignee" ? (key === NONE ? t("tasks.nobody") : key) : t(`tasks.${key}`));
-const longTime = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString(lang() === "zh-TW" ? "zh-TW" : "en") : ""; };
+const longTime = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? dateTimeText(d, undefined, lang() === "zh-TW" ? "zh-TW" : "en") : ""; };
 
 // The groups a person folded away, remembered on this device, per project (by what heads them: "1/status:done",
 // "none/assignee:alpha" — the project's id, or "none" for No project).
@@ -499,6 +501,7 @@ function Row({ card, subs, main, flash, now, runs, subsAsRows, who, expanded, on
         ${card.acceptance.length ? html`<span class=${accepted === card.acceptance.length ? "all" : ""} title=${t(card.kind === "main" ? "tasks.definition" : "tasks.acceptance")}><${Icon} name="check" size=${13} />${accepted}/${card.acceptance.length}</span>` : null}
         ${waitsOn(card) ? html`<span title=${t("tasks.waitsFor", waitsList(card, ", "))}><${Icon} name="clock" size=${13} /></span>` : null}
         ${card.commentCount ? html`<span class=${replied ? "reply" : ""} title=${replied ? t("tasks.agentReplied") : t("tasks.comments")}><${Icon} name="chat" size=${13} />${card.commentCount}</span>` : null}
+        ${card.attachmentCount ? html`<span title=${t("taskfiles.title")}><${Icon} name="attach" size=${13} />${card.attachmentCount}</span>` : null}
       </span>
       <span class=${`tb-row-prio p-${card.priority}`}>${t(`tasks.${card.priority}`)}</span>
       ${who ? html`<span class="tb-row-who"><${OwnerChip} card=${card} cards=${cards} lead=${lead} canAssign=${writable && card.status !== "done" && card.status !== "cancelled"} onPick=${onOwner} /></span>` : null}

@@ -39,3 +39,52 @@ The Hub keeps one copy per hash (`hub_agent_picture_files`). A file lives only w
 - `private, max-age=86400` when `?v=` is the current hash, else `no-cache`.
 
 The room's member detail and office state carry the hashes (`look.disc`, `look.portrait`; `picture` in the office state), never bytes.
+
+## R2c: the agent's own character (`agent-characters-v1`)
+
+Design: [hub-office-visit.md](hub-office-visit.md) §2.3, "its own character pictures from the owner's skin pack, when the pack
+gives it some". Decided with Lumen while building (11-24, all six as recommended, with conditions):
+
+1. **Which character is its own.** Only a set the owner gave the agent by name, the pack's `byInstance`; a pack's `default` is
+   nobody's own. The pack is that of the first office in the owner's own office order that holds the agent and whose pack
+   names it; else the page's own "All" office's pack (`autoSkin`). If two offices name different sets, the first wins and
+   nothing else is sent (`src/hub-character-plan.ts` `ownCharacter`). With none, the agent stays the style's figure
+   in its colour (R2a).
+2. **What is sent.** That one set, only the poses a room office shows: `working`, `idle`, `paused` (offline and later draw as
+   paused, as the Fleet draws stopped), `stand` (the card), and the walks (`walk`, `walkDown`, `walkUp`, `walkSide`,
+   `walkLeft`). Never `needs` (a room has no such state), `eat`, `dragged`, `pat` (no Pat or Feed in rooms) or `prop`.
+   - A missing `working`, `paused` or `stand` is filled inside the set from `stand`, else `idle`; a missing `idle` from
+     `stand`. A set with neither `idle` nor `stand` is not sent. A missing walk is the Fleet's own fallback, walk then idle.
+     So an agent is drawn wholly with its set or wholly as the figure.
+   - Each pose is cut into its own PNG, its frames side by side (`src/hub-picture-reduce.ts` `cropCharacter`, in the worker):
+     a pack's shared sheet never crosses. A pack picture that is not a PNG, or does not decode or cut, sends no set at all.
+     A pose of more than 32 frames sends no set.
+   - Sent with each strip: its hash, type and size, and the pack's playback and placement fields (frames, w, h, fps,
+     durations, once, loopFrom, ax, ay, dw, dh). Never a file name, the pack, its name, the scene or other sets.
+3. **Cap.** The set has what the avatar and portrait leave of the 512 KB, counting each picture once (a filled pose shares
+   its source's). It is all or nothing: one that does not fit is dropped whole, first, and the row says `tooLarge:
+   ["character"]`; the owner's My agents row says so.
+4. **Drawing.** The Fleet's office draws a pack strip at the size its pack gives (`dw` × `dh`) with no further limit. A room's
+   built-in style has no pack scale, so the page draws it at most 88 × 96 scene units (a built-in desk cell's width, a pack
+   character's suggested height), in proportion, never larger (`hub-room-office.js` `CHARACTER_FIT`). The name tag and its
+   colour stay as R2a. The card shows the portrait, else the set's `stand`, else the figure. An agent's set is drawn only
+   once all its pictures have loaded.
+5. **Follows the owner** as the pictures do: the source's key is the pack's version and the set's name, so a changed pack,
+   `byInstance` or office changes it with no re-share; unsharing removes it.
+
+### The exchange
+
+- The Hub offers `agent-characters-v1` beside `agent-pictures-v1`, in the welcome only, like it (a 32-name welcome). A member
+  that took the offer sends `character` on its `agent.pictures` rows (`{ <pose>: { sha256, mime: "image/png", size, …fields } }`)
+  and `"character"` in `tooLarge`. An older Hub's strict row never sees either; a Hub that did not offer it refuses a report
+  naming one (`incompatible`).
+- The strips go as `agent.picture` chunks, as the pictures do, kept once per hash in `hub_agent_picture_files`. The Hub keeps a
+  set in `hub_agent_character_strips` (migration `s3-agent-characters`), one row a pose, whole: a strip held already with
+  another type or size than declared drops the set. A room shows it only when every strip is held; a file lives only while
+  some row names it as it is.
+- **One frame.** A report must fit the link's 256 KiB frame (a refused one would be sent unchanged on every tick), and a
+  report replaces the Fleet's rows, so none may be left out: every row keeps its disc and portrait, and whole character
+  sets are left out from the last row back until it fits (`fitReport`). Such a set is not "too large" (the agent's own cap
+  is not why); it is sent when the report has room. The report's revision hashes the rows' own JSON (Prism #4421).
+- `GET /hub/v1/rooms/<room>/agents/<exposure>/character/<pose>` serves one strip, to the room's members only, with the
+  picture route's headers.

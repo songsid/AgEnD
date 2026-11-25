@@ -5,8 +5,9 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { hubClient } from "./hub-client.js";
 import { he } from "./hub-enrolment-code-strings.js";
 import { jf } from "./hub-joincode-flow-strings.js";
+import { dateTimeText } from "/assets/clock-text.js";
 export const enrolmentCodeV1 = true;
-const time = value => new Date(value).toLocaleString();
+const time = value => dateTimeText(value);
 const supported = client => client?.enrolmentCodeV1 === true && ["enrolmentCodes", "createEnrolmentCode", "revokeEnrolmentCode"].every(key => typeof client[key] === "function");
 const integer = (value, max) => Number.isSafeInteger(Number(value)) && Number(value) >= 1 && Number(value) <= max;
 const errorText = (result, fallback) => result?.code === "backpressure" && result.reason === "live-code-limit" ? jf("liveLimit")

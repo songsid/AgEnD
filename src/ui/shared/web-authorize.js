@@ -4,6 +4,7 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { register, t } from "./app-i18n.js";
 import { guestPage } from "./app-store.js";
+import { dateTimeText, timeText } from "./clock-text.js";
 
 register("webauth", {
   en: {
@@ -93,8 +94,8 @@ const REASONS = ["disabled", "loopback_only", "no_account", "host_sign_in", "not
 // Until when: the time, with the day when it isn't today (an authorization lasts up to 48 h).
 const clock = (ms) => {
   const d = new Date(ms), today = new Date().toDateString() === d.toDateString();
-  return today ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : d.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return today ? timeText(d, { hour: "2-digit", minute: "2-digit" }, [])
+    : dateTimeText(d, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }, []);
 };
 const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 

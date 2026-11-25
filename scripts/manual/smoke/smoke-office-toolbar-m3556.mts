@@ -77,9 +77,14 @@ for (const c of CASES) {
       ok(res, "all offices: lobby tile offered", (await page.locator(".oo-display-pop .oo-lobby-tile input").count()) === 1 && !(await page.locator(".oo-display-pop .oo-lobby-tile input").isDisabled()));
       await page.screenshot({ path: shotPath(SMOKE, tag, "2-options") });
     } else if (short) {
-      // The whole list is reachable on a short window: the last option is on screen and takes a click.
+      // The whole list is reachable on a short window: the dropdown ends on screen, a list longer than it scrolls, and
+      // the last option, scrolled to, is on screen and takes a click.
       await page.locator(".oo-display-btn").click(); await page.waitForTimeout(300);
-      const last = page.locator(".oo-display-pop .oo-display-list > .check").last(), lb = await last.boundingBox(), vh = await page.evaluate(() => innerHeight);
+      const vh = await page.evaluate(() => innerHeight), pb = await page.locator(".oo-display-pop").boundingBox();
+      ok(res, "short: the dropdown fits on screen", !!pb && pb.y >= 0 && pb.y + pb.height <= vh, { pb, vh });
+      const last = page.locator(".oo-display-pop .oo-display-list > .check").last();
+      await last.scrollIntoViewIfNeeded(); await page.waitForTimeout(150);
+      const lb = await last.boundingBox();
       ok(res, "short: last option on screen", !!lb && lb.y >= 0 && lb.y + lb.height <= vh, { lb, vh });
       const was = await last.locator("input").isChecked(); await last.locator("input").click(); await page.waitForTimeout(200);
       ok(res, "short: last option works", (await last.locator("input").isChecked()) !== was);

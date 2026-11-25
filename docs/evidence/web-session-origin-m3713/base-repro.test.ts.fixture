@@ -1,0 +1,63 @@
+import { afterEach, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { FleetManager } from "../src/fleet-manager.js";
+import { DeliveryOutbox } from "../src/delivery-outbox.js";
+import { ReplyButtonStore } from "../src/reply-buttons.js";
+import { ReplyButtonsController } from "../src/reply-buttons-controller.js";
+import { handleWebRequest } from "../src/web-api.js";
+import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
+import { noAuthority } from "../src/authority/web-authority.js";
+const cleanup:Array<()=>void>=[], token="d".repeat(48),base="http://127.0.0.1:19280";
+afterEach(()=>{cleanup.splice(0).forEach(f=>f());});
+function rig(owner=true, userId="demo-admin",tier:"admin"|"guest"="admin"){
+ const dir=mkdtempSync(join(tmpdir(),"web-origin-")),outbox=new DeliveryOutbox(join(dir,"outbox.db")),buttons=new ReplyButtonStore(join(dir,"buttons.db"));
+ const fm:any=Object.assign(Object.create(FleetManager.prototype),{deliveryOutbox:outbox,managerBootId:"demo-boot",adapters:new Map([["demo-bot",{id:"demo-bot",type:"discord"}]]),worlds:new Map(),
+  fleetConfig:{channels:[{id:"demo-bot",type:"discord"}],instances:{worker:{}}},contactRoom:()=>({restrictedMode:true}),getInstanceAdapterId:()=>"demo-bot",contactGeneration:()=>"demo-generation",
+  isFleetAdmin:(id:string)=>id==="demo-admin",isWebOnlyFleet:()=>false,logger:{warn:vi.fn(),error:vi.fn()}});
+ let payload:any;
+ const ctl=new ReplyButtonsController({store:buttons,now:Date.now,adapterFor:()=>undefined,mayClick:()=>true,
+  deliver:async(_set,_button,by)=>{payload=fm.humanReceiptPayload("worker",{type:"fleet_inbound",content:"[button] Continue",meta:{user_id:"forged-admin",web_verified:"1"}},by.humanOrigin,"[button] Continue");return true;},
+  publish:()=>{},admitResults:()=>true,monotonic:()=>performance.now(),logger:{info:()=>{},warn:()=>{}},setTimer:()=>0,clearTimer:()=>{}});
+ fm.replyButtons=()=>ctl;
+ const set=ctl.prepare({instance:"worker",adapterId:"demo-bot",chatId:"demo-room"},[{label:"Continue",value:"Continue"}]);buttons.bind(set.id,"demo-post");
+ const sessions=new WebSessionStore(),session=sessions.create({tier,surface:"local",label:"Demo browser",tokenEpoch:tokenEpoch(token),...(owner?{owner:{adapterId:"demo-bot",userId}}:{})});
+ const ctx:any={webToken:token,webSessions:sessions,fleetConfig:fm.fleetConfig,instanceIpcClients:new Map(),emitSseEvent:vi.fn(),logger:fm.logger,sseClients:new Set(),getUiStatus:()=>({instances:[]}),listWebPrompts:()=>[],
+  webPerson:()=>({key:"demo",bound:owner,userId,name:"Demo person",voterKey:"demo-voter",set:false}),webAuthority:()=>({authority:noAuthority(0),refusal:"not_verified"}),
+  ...(fm.webSessionIdentity?{webSessionIdentity:fm.webSessionIdentity.bind(fm)}:{}),clickWebReplyButton:fm.clickWebReplyButton.bind(fm)};
+ cleanup.push(()=>{ctl.stop();buttons.close();outbox.close();rmSync(dir,{recursive:true,force:true});});
+ async function click(options:{revoke?:boolean;cookie?:boolean;spoof?:boolean;path?:string;body?:Record<string,unknown>}={}){
+  const req:any=Object.assign(new EventEmitter(),{method:"POST",url:options.path??"/ui/reply-button",headers:{host:"127.0.0.1:19280",origin:base,"x-agend-csrf":csrfTokenFor(session.sessionId),...(options.cookie===false?{authorization:`Bearer ${token}`}:{cookie:`agend_session=${session.sessionId}`})},socket:{remoteAddress:"127.0.0.1"},destroy:vi.fn()});
+  let status=0,body="";const res:any={headersSent:false,destroyed:false,setHeader:()=>{},writeHead:(n:number)=>{status=n;},end:(s="")=>{body=s;}};
+  handleWebRequest(req,res,new URL(req.url,base),ctx);
+  if(options.revoke)sessions.revokeByHandle(session.record.handle);
+  req.emit("data",Buffer.from(JSON.stringify(options.body??{instance:"worker",id:set.id,index:0,...(options.spoof?{identity:{platform:"discord",adapter_id:"demo-bot",user_id:"demo-admin"}}:{})})));req.emit("end");
+  for(let i=0;i<100&&!status;i++)await new Promise<void>(r=>setImmediate(r));
+  return {status,body:JSON.parse(body)};
+ }
+ return {fm,outbox,click,session,ctx,payload:()=>payload};
+}
+it("an unverified account's actual web button keeps its identity without go-ahead authority",async()=>{
+ const r=rig();expect((await r.click()).status).toBe(200);
+ expect(r.outbox.contactAuthorizations.origin("worker")).toMatchObject({kind:"human",people:[{platform:"discord",adapterId:"demo-bot",userId:"demo-admin"}]});
+ const payload=r.payload(),receipt=r.outbox.getHumanReceipt(payload.meta.human_receipt_id)!;
+ expect(JSON.parse(receipt.authority_json!)).toEqual(noAuthority(0));expect(payload.meta.web_verified).toBeUndefined();
+ expect(JSON.parse(receipt.origin_json).web_identity).toMatchObject({platform:"discord",adapter_id:"demo-bot",user_id:"demo-admin",session_handle:r.session.record.handle});
+});
+it("an identified non-admin stays that person rather than unknown, and remains contact-restricted",async()=>{
+ const r=rig(true,"demo-member");expect((await r.click({spoof:true})).status).toBe(200);
+ const origin=r.outbox.contactAuthorizations.origin("worker")!;expect(origin).toMatchObject({kind:"human",people:[{userId:"demo-member"}]});expect(r.fm.contactAdminOf("worker",origin.people[0])).toBe(false);
+});
+it("an unbound session cannot acquire the payload's claimed admin identity",async()=>{
+ const r=rig(false);expect((await r.click({spoof:true})).status).toBe(200);expect(r.outbox.contactAuthorizations.origin("worker")?.kind).toBe("unknown");
+});
+it("revocation while reading the body prevents the click and any origin record",async()=>{
+ const r=rig();expect((await r.click({revoke:true})).status).toBe(401);expect(r.payload()).toBeUndefined();expect(r.outbox.contactAuthorizations.origin("worker")).toBeUndefined();
+});
+it("old unknown history is not laundered by a new identified admin input",async()=>{
+ const r=rig();r.outbox.contactAuthorizations.inheritOrigin("worker",{kind:"unknown",people:[],receiptIds:[],chain:["worker"]});
+ expect((await r.click()).status).toBe(200);expect(r.outbox.contactAuthorizations.origin("worker")?.kind).toBe("unknown");
+});
+

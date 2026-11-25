@@ -131,6 +131,22 @@ export class HubGroupRooms {
     if (!file) throw new HubRoomRefusal(404, "not-found");
     return { sha256, ...file };
   }
+  /** M-3533 R2c: one pose of a room agent's own character, for the room's members only — the strip the room shows for it now. */
+  async characterStrip(ctx: HubRequestContext, id: string, exposureId: string, pose: string) {
+    const me = await this.who(ctx);
+    const sha256 = this.core.atomic(db => {
+      this.member(db, id, me);
+      if (!db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(id, exposureId)) throw new HubRoomRefusal(404, "not-found");
+      const e = readExposure(db, exposureId);
+      const character = e?.fleet_id && this.looks ? this.looks(e.fleet_id)?.get(exposureId)?.character : undefined;
+      const h = character && Object.hasOwn(character, pose) ? character[pose]?.sha256 : undefined;
+      if (!h) throw new HubRoomRefusal(404, "not-found");
+      return h;
+    }, this.fence(ctx));
+    const file = this.pictureFile?.(sha256);
+    if (!file) throw new HubRoomRefusal(404, "not-found");
+    return { sha256, ...file };
+  }
   /** M-3533 R2b: these agents' pictures changed — every room holding one re-reads its members (open pages follow). */
   lookChanged(exposureIds: readonly string[]): void {
     const ids = [...new Set(exposureIds)].slice(0, 512);

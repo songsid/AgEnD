@@ -103,15 +103,24 @@ describe("#1712 memory protection without chat broadcasts", () => {
     // The spawning handler is inert; the real command handler, gate and sampler run.
     vi.spyOn(fm, "handleClassicStart").mockImplementation(() => fm.spawnGate.run({ instanceName: "requested", workingDirectory: "/fixture/requested", reason: "startup" }, operation));
     const respond = vi.fn().mockResolvedValue(undefined);
-    const result = f.handleClassicStartSlash({ channelId: "requested-room", channelName: "fixture", userId: "admin", options: { backend: "codex" }, respond }, "dc");
-    await vi.advanceTimersByTimeAsync(30_000);
-    const notice = t("classic.restricted_start_notice"), held = t("memory.action_held");
+    const respondButtons = vi.fn().mockResolvedValue("menu");
+    const slash = f.handleClassicStartSlash({ channelId: "requested-room", channelName: "fixture", userId: "admin", options: { backend: "codex" }, respond, respondButtons }, "dc");
+    await vi.advanceTimersByTimeAsync(0);
+    await slash;
+    const phrase = language === "en" ? "only contact approval applies" : "只有聯絡申請需要核准";
+    const held = t("memory.action_held");
     expect(operation).not.toHaveBeenCalled();
-    expect(respond.mock.calls).toEqual([[notice], [held]]);
+    expect(respondButtons.mock.calls[0][0]).toContain(phrase);
+    expect(respond).not.toHaveBeenCalled();
+    const choice = respondButtons.mock.calls[0][1][0];
+    const click = f.handleClassicModeSelection({ callbackData: choice.id, chatId: "requested-room", messageId: "menu", userId: "admin" });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(operation).not.toHaveBeenCalled();
+    expect(respond.mock.calls).toEqual([[held]]);
     expect(notify).not.toHaveBeenCalled();
-    set("normal"); await vi.advanceTimersByTimeAsync(120_000); await result;
+    set("normal"); await vi.advanceTimersByTimeAsync(120_000); await click;
     expect(operation).toHaveBeenCalledOnce();
-    expect(respond.mock.calls).toEqual([[notice], [held], [`${notice}\n\nstarted`]]);
+    expect(respond.mock.calls).toEqual([[held], ["started"]]);
     expect(respond.mock.calls.filter(([text]) => text === held)).toHaveLength(1);
   });
 

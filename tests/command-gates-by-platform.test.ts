@@ -119,6 +119,7 @@ async function rig(): Promise<Rig> {
   any.promptClassicApproval = async () => { reached.push("approval"); };
   any.handleClassicStart = async () => { reached.push("start"); return "ok:start"; };
   any.beginClassicBackendSelection = async () => { reached.push("start"); };
+  any.beginClassicModeSelection = async () => { reached.push("start"); };
   // Registered: the stop is recorded and not performed. Not registered: what the real one says.
   any.handleClassicStop = async (chatId: string, adapterId?: string) => {
     if (!cm.getInstanceByChannel(chatId, adapterId)) return t("classic.no_agent");

@@ -18,6 +18,7 @@ import { identityText } from "./account-identity.js";
 import { CliInstall, offersCliInstall } from "./runtime-cli-install.js";
 import { useWindowsCliCatalog, refreshWindowsCliCatalog, useWindowsCliCatalogSnapshot } from "./windows-cli-catalog.js";
 import { assetUrl } from "/assets/asset-url.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 /** The install tabs', command cards' and account list's stylesheet, linked once by this lazy page (a tab opened before an upgrade has an app.css without these rules). */
 export function linkRuntimeInstallCss(doc = typeof document !== "undefined" ? document : null) {
@@ -77,7 +78,7 @@ register("machines", {
     machines:"已連接的電腦", cli:"CLI", version:"Runtime 版本", platform:"平台",
     switches:"這個 Fleet 可以使用", switchesNote:"開啟時，和其他存取設定一樣需要 Fleet 管理員確認；關閉不需 Fleet 管理員確認，你在這裡確認後就會立即生效。",
     windowsCli:"使用這台電腦 Windows 上的 CLI", windowsCliHelp:"Agent 可以使用這台電腦 Windows 上安裝的 CLI（例如 Codex 或 Claude Code），沿用你在 Windows 的登入。需要 Windows Node.js。",
-    remoteRuntime:"允許其他 Windows 電腦配對", remoteRuntimeHelp:"這台電腦仍是你的 Fleet。另一台 Windows 電腦只執行一個小 runner，不是 Fleet；你在這裡核准後，Agent 就能使用那台電腦的 CLI 與檔案。那台電腦必須能用 HTTPS 位址連到這個 Fleet，做法見下方說明。",
+    remoteRuntime:"允許其他 Windows 電腦配對", remoteRuntimeHelp:"這台電腦仍是你的 Fleet。另一台 Windows 電腦只執行一個小執行程式，不是 Fleet；你在這裡核准後，Agent 就能使用那台電腦的 CLI 與檔案。那台電腦必須能用 HTTPS 位址連到這個 Fleet，做法見下方說明。",
     remoteRuntimeDocs:"完整說明", setByEnv:"由環境變數設定（{0}={1}）。若要變更，請從 AgEnD 的環境移除它並重新啟動 AgEnD。",
     switchPending:"等待 Fleet 管理員確認，確認後就會開啟。", switchFailed:"無法變更此設定：{0}", switchesUnavailable:"這些開關只能在這個 Fleet 自己的儀表板上變更。",
     windowsCliOffAsk:"要關閉這台電腦的 Windows CLI 嗎？這台電腦上進行中的 Windows Agent 回合會停止，這些 Agent 會保持停止，直到你再次開啟。",
@@ -195,7 +196,7 @@ register("machines", {
 });
 register("machines", {
   en: { profilesTitle:"Claude accounts", profileDefault:"Default", profilesNone:"No Claude accounts reported yet.", profilesHow:"To add one, run agend-runtime login claude-code NAME on that computer, then choose Detect again in CLI diagnostics.", profilesOld:"Update the Runtime on that computer to choose a Claude account for an agent.", profilesList:"Claude accounts on {0}", profileSignedIn:"Signed in", profileSignedOut:"Not signed in", profileUnchecked:"Not checked", capability_credentialProfiles:"Claude accounts (credential profiles)" },
-  "zh-TW": { profilesTitle:"Claude 帳號", profileDefault:"預設", profilesNone:"尚未回報任何 Claude 帳號。", profilesHow:"要新增，請在那台電腦執行 agend-runtime login claude-code 名稱，再在「CLI 診斷」按「重新偵測」。", profilesOld:"請更新那台電腦上的 Runtime，才能為 Agent 選擇 Claude 帳號。", profilesList:"{0} 上的 Claude 帳號", profileSignedIn:"已登入", profileSignedOut:"尚未登入", profileUnchecked:"未確認", capability_credentialProfiles:"Claude 帳號（credential profile）" },
+  "zh-TW": { profilesTitle:"Claude 帳號", profileDefault:"預設", profilesNone:"尚未回報任何 Claude 帳號。", profilesHow:"要新增，請在那台電腦執行 agend-runtime login claude-code 名稱，再在「CLI 診斷」按「重新偵測」。", profilesOld:"請更新那台電腦上的 Runtime，才能為 Agent 選擇 Claude 帳號。", profilesList:"{0} 上的 Claude 帳號", profileSignedIn:"已登入", profileSignedOut:"尚未登入", profileUnchecked:"未確認", capability_credentialProfiles:"Claude 帳號（帳號設定檔）" },
 });
 function CredentialProfiles({ machine }) {
   const view = credentialProfileView(machine);
@@ -210,7 +211,7 @@ function paneVerificationTag(cli, text) {
   const key = cli.paneVerification === "unverified" ? "paneUnverified" : cli.paneVerification === "denied" ? "paneDenied" : "";
   return key ? html`<span class="tag" title=${text(`${key}Hint`)}>${text(key)}</span>` : null;
 }
-export function machineTime(value) { const date=new Date(value); return value && Number.isFinite(date.getTime()) ? date.toLocaleString() : machineText("unknown"); }
+export function machineTime(value) { const date=new Date(value); return value && Number.isFinite(date.getTime()) ? dateTimeText(date) : machineText("unknown"); }
 function MachineCard({ machine, sameName, busy, action, openDiagnostics, probe, repairUpdate, lease, onChanged }) {
   const [editing,setEditing] = useState(false), [name,setName] = useState(machine.name), [info,setInfo] = useState(false);
   const detection = useWindowsCliCatalogSnapshot(machine.isLocal ? "" : machine.id);

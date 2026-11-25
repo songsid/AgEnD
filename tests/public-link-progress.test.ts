@@ -104,7 +104,7 @@ describe("rendering", () => {
   it("zh-TW: the words and the seconds unit follow the locale", () => {
     setLocale("zh-TW");
     const p = track(); p.installChecked(false, "2026.9.3"); p.begin("tunnel"); clock = 2_000;
-    expect(renderPublicLinkProgress(p.snapshot, clock)).toContain("⏳ ④ 啟動 tunnel · 2 秒");
+    expect(renderPublicLinkProgress(p.snapshot, clock)).toContain("⏳ ④ 啟動通道 · 2 秒");
   });
 
   // #1767: an exit before the address says what it was — only a real timeout is "no address in time".

@@ -1,0 +1,105 @@
+{
+  "dev": "phone",
+  "cases": {
+    "phone-light-en": {
+      "miniBefore": false,
+      "miniHidden": 0,
+      "miniBack": false,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "pencil": {
+        "w": 24,
+        "h": 24,
+        "rowH": 24,
+        "bg": "rgba(0, 0, 0, 0)",
+        "reach": true,
+        "reachPx": {
+          "left": 22,
+          "right": 21,
+          "up": 22,
+          "down": 21
+        },
+        "closeUp": 22
+      },
+      "cardState": "Paused · Novice",
+      "callerState": "Crashed · Novice",
+      "errors": [],
+      "csp": []
+    },
+    "phone-light-zh-TW": {
+      "miniBefore": false,
+      "miniHidden": 0,
+      "miniBack": false,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "pencil": {
+        "w": 24,
+        "h": 24,
+        "rowH": 24,
+        "bg": "rgba(0, 0, 0, 0)",
+        "reach": true,
+        "reachPx": {
+          "left": 22,
+          "right": 21,
+          "up": 22,
+          "down": 21
+        },
+        "closeUp": 22
+      },
+      "cardState": "已暫停 · 新手",
+      "callerState": "已當掉 · 新手",
+      "errors": [],
+      "csp": []
+    },
+    "phone-dark-en": {
+      "miniBefore": false,
+      "miniHidden": 0,
+      "miniBack": false,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "pencil": {
+        "w": 24,
+        "h": 24,
+        "rowH": 24,
+        "bg": "rgba(0, 0, 0, 0)",
+        "reach": true,
+        "reachPx": {
+          "left": 22,
+          "right": 21,
+          "up": 22,
+          "down": 21
+        },
+        "closeUp": 22
+      },
+      "cardState": "Paused · Novice",
+      "callerState": "Crashed · Novice",
+      "errors": [],
+      "csp": []
+    },
+    "phone-dark-zh-TW": {
+      "miniBefore": false,
+      "miniHidden": 0,
+      "miniBack": false,
+      "cardName": "陽奈",
+      "deskName": "陽奈",
+      "pencil": {
+        "w": 24,
+        "h": 24,
+        "rowH": 24,
+        "bg": "rgba(0, 0, 0, 0)",
+        "reach": true,
+        "reachPx": {
+          "left": 22,
+          "right": 21,
+          "up": 22,
+          "down": 21
+        },
+        "closeUp": 22
+      },
+      "cardState": "已暫停 · 新手",
+      "callerState": "已當掉 · 新手",
+      "errors": [],
+      "csp": []
+    }
+  }
+}

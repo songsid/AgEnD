@@ -10,6 +10,8 @@
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { detailsPath } from "/assets/app-route.js";
 import { Icon } from "/assets/ui-icons.js";
+import { appStore, useStore } from "/assets/app-store.js";
+import { labelOf } from "/assets/instance-nav.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { ca } from "./contact-auth-strings.js";
@@ -22,12 +24,15 @@ const ID = /^[A-Za-z0-9_-]{1,64}$/;
 function RequestNeed({ item }) {
   const ref = item.contactTicket || {};
   const [tk, setTk] = useState(null);
+  // M-3680: the agents by the names the page shows them (the request card below does the same).
+  const { instances } = useStore(appStore);
+  const agent = (name) => (name ? labelOf((instances || []).find((i) => i.name === name) || { name }) : "");
   useEffect(() => {
     let live = true;
     if (ID.test(String(ref.id || ""))) void getTicket(ref.id).then((r) => { if (live && r.ok) setTk(r.data); });
     return () => { live = false; };
   }, [ref.id]);
-  return html`<div class="n-title"><strong>${ca("needsTitle", ref.source || "", ref.target || "")}</strong></div>
+  return html`<div class="n-title"><strong>${ca("needsTitle", agent(ref.source), agent(ref.target))}</strong></div>
     ${tk ? html`<${TicketCard} ticket=${tk} onChange=${setTk} />` : null}
     <div class="n-actions">${ID.test(String(ref.id || "")) ? html`<a class="btn btn-sm btn-ghost" href=${`/ui/fleet/authorizations?ticket=${encodeURIComponent(ref.id)}`}>${ca("needsOpen")}</a>` : null}</div>`;
 }

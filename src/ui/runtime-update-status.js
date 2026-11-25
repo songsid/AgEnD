@@ -19,7 +19,7 @@ register("runtimeUpdate", {
   },
   "zh-TW": {
     unknown: "無法取得更新狀態", current: "與配對 AgEnD 的版本相符", pending: "更新待執行：{0}／套件 {1}",
-    failed: "更新失敗：{0}／套件 {1}", pendingHint: "正在等待閒置，執行中的 pane 與傳遞會保留。",
+    failed: "更新失敗：{0}／套件 {1}", pendingHint: "正在等待閒置，執行中的窗格與傳遞會保留。",
     failedHint: "已保留原本程式。配對的 AgEnD 提供不同雜湊前，不會重試此套件。",
     unmanaged: "使用一行安裝指令重新安裝一次，即可啟用自動更新。",
     shared: "此安裝目錄由多個 AgEnD 共用。請為每個配對的 AgEnD 使用獨立安裝目錄，再啟用自動更新。",

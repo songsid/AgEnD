@@ -1,0 +1,52 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-asker-source-m3664.test.ts (11 tests | 2 failed | 9 skipped) 29ms
+     × operation-backed agent projection remains the immediate agent, never the human owner/onBehalfOf 23ms
+     × operation-backed person projection remains the immediate agent, never the human owner/onBehalfOf 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-asker-source-m3664.test.ts > M3664 immediate source mapping > operation-backed agent projection remains the immediate agent, never the human owner/onBehalfOf
+AssertionError: expected { …(3) } to deeply equal { kind: 'agent', …(2) }
+
+- Expected
++ Received
+
+  {
+    "displayName": "Actual agent",
+-   "id": "exposure/85d5aed9-0525-4e58-9003-31bb86c4713b",
+-   "kind": "agent",
++   "id": "example/6f5a7a4e-958b-4e41-8ef4-96075e4cd773",
++   "kind": "person",
+  }
+
+ ❯ tests/hub-room-asker-source-m3664.test.ts:6:519
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-room-asker-source-m3664.test.ts > M3664 immediate source mapping > operation-backed person projection remains the immediate agent, never the human owner/onBehalfOf
+AssertionError: expected { …(3) } to deeply equal { kind: 'agent', …(2) }
+
+- Expected
++ Received
+
+  {
+    "displayName": "Actual agent",
+-   "id": "exposure/83ca95e0-9386-4a33-a251-9bf942a2f658",
+-   "kind": "agent",
++   "id": "example/cb88f236-4986-4a16-b0c8-5a2be322fd85",
++   "kind": "person",
+  }
+
+ ❯ tests/hub-room-asker-source-m3664.test.ts:6:519
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 9 skipped (11)
+   Start at  23:40:37
+   Duration  25.36s (transform 20.79s, setup 169ms, import 24.89s, tests 29ms, environment 0ms)

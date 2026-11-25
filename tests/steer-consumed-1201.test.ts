@@ -211,8 +211,9 @@ describe("the schema migration", () => {
     const h = outboxWith("delivered");
     const path = join(h.root, "outbox.db");
     h.outbox.close();
-    // Make it an old database: drop what #1201 added.
+    // Make it an old database: drop what #1201 added (and M-3674's index over it, which no old database had).
     const db = new Database(path);
+    db.prepare("DROP INDEX idx_delivery_agent_turn").run();
     db.prepare("ALTER TABLE deliveries DROP COLUMN consumed_at").run();
     db.prepare("ALTER TABLE deliveries DROP COLUMN consumed_via").run();
     db.close();
@@ -222,6 +223,7 @@ describe("the schema migration", () => {
     const reopened = new DeliveryOutbox(path, "manager-2");
     const cols = (reopened as any).db.prepare("PRAGMA table_info(deliveries)").all().map((c: { name: string }) => c.name);
     expect(cols).toEqual(expect.arrayContaining(["consumed_at", "consumed_via"]));
+    expect((reopened as any).db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_delivery_agent_turn'").get()).toBeTruthy();   // M-3674: built once the column is back
     expect(reopened.queryStatusForInstance("source", { deliveryId: h.row.deliveryId }).items[0]).toMatchObject({ state: "delivered", consumed_at: null });
     expect(reopened.markConsumed(h.row.deliveryId, "boot-1", h.attemptNo, "turn", "e")).toBe("marked");
     reopened.close();

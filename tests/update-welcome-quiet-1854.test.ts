@@ -19,7 +19,7 @@ describe("the copy from the approved proposal", () => {
     setLocale("en");
     expect(formatRestartProgressCompletion("update", healthy, 0, 42_000)).toBe("✅ Update complete — v2.2.0 · 3/3 agents ready (42s)");
     setLocale("zh-TW");
-    expect(formatRestartProgressCompletion("update", healthy, 0, 42_000)).toBe("✅ 更新完成 — v2.2.0 · 3/3 個 Agent 已就緒 (42s)");
+    expect(formatRestartProgressCompletion("update", healthy, 0, 42_000)).toBe("✅ 更新完成 — v2.2.0 · 3/3 個 Agent 已就緒（42s）");
   });
 
   it("every warning line is still there", () => {

@@ -336,6 +336,16 @@ it("counts only handed-off room asks as private model work, avoiding a queued-in
  expect(await f.report()).toMatchObject({ok:true});expect(f.adapter.hasOpenQuestion("existing-agent")).toBe(false);
 });
 
+it("M-3660: a room ask's contact window ends once it is answered, never while it is open or held (a held ask takes a late answer)",async()=>{
+ const f=member();f.adapter.accept(f.ask,f.link);await f.adapter.settled();const cid=f.inputs[0]!.correlationId;
+ expect(f.adapter.questionSettled(cid,"existing-agent")).toBe(false);
+ expect(f.adapter.questionSettled(cid,"someone-else")).toBeNull();expect(f.adapter.questionSettled(`hub-room-${randomUUID()}`,"existing-agent")).toBeNull();
+ expect(await f.report()).toMatchObject({ok:true});expect(f.adapter.questionSettled(cid,"existing-agent")).toBe(true);
+ const g=member();let gid="";g.options.deliver=vi.fn(async input=>{gid=input.correlationId;expect(await input.beforeInput()).toBe(true);throw Error("lost handoff result");});
+ g.adapter.accept(g.ask,g.link);await g.adapter.settled();g.adapter.close();const reopened=new HubRoomAskAdapter(g.options);
+ try{expect(g.db.prepare("SELECT state FROM hub_room_asks").get()).toEqual({state:"held"});expect(reopened.questionSettled(gid,"existing-agent")).toBe(false);}finally{reopened.close();}
+});
+
 it("M3300 H7 adapter renders each ask with the current configured history limit",async()=>{
  const f=member();let limit=512;f.options.maxCrossInstanceMessageBytes=()=>limit;f.ask.context=Array.from({length:10},(_,i)=>({author:"A colleague",text:String(i)+"x".repeat(1000),at:i+1}));
  for(const expected of [512,4096]){limit=expected;f.adapter.accept({...f.ask,messageId:randomUUID()},f.link);await f.adapter.settled();const parsed=JSON.parse(f.inputs.at(-1)!.text.split("```json\n")[1]!.split("\n```")[0]!);expect(Buffer.byteLength(JSON.stringify({context:parsed.context},null,2))).toBeLessThanOrEqual(expected);expect(parsed.question.text).toBe(f.ask.text);}

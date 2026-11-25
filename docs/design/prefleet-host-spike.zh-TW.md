@@ -29,7 +29,7 @@ INFO: Killed old fleet process          ← 無關的 process 真的被殺了
 ERROR: Health port still in use after takeover — dashboard disabled
 ```
 
-之後 port 仍由占用者提供服務，**fleet 活著但整個生命週期沒有 dashboard**，瀏覽器輪詢到的是占用者而不是 fleet。這正是 #722/#748 的形狀。
+之後 port 仍由佔用者提供服務，**fleet 活著但整個生命週期沒有 dashboard**，瀏覽器輪詢到的是佔用者而不是 fleet。這正是 #722/#748 的形狀。
 
 這是**既有行為、不是票 5 引入的**，但票 5 會把「port 被非 fleet 行程占住」從異常變成**常態**。
 

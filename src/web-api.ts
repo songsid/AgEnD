@@ -11,7 +11,7 @@ import { MACHINE_ACCOUNT_CLIS } from "./accounts-view.js";
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { MachineSlotLimitError } from "./windows-agents.js";
 import { daemonTopicMode } from "./web-only-fleet.js";
-import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
+import { webHumanOrigin, type HumanOrigin, type WebSessionIdentity } from "./human-delivery-receipts.js";
 import { classifyWebPeer, confirmAfterBody, noAuthority, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { guestChatRefusal, guestCommandText, guestDeliveries, GUEST_PREF_MAX_BYTES, GUEST_SEARCHES, guestFrameData, guestHistory, guestMessages, guestOwnPrefs, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
@@ -33,7 +33,7 @@ import { canonicalText } from "./web-theme.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import { parsePinKey, type PinWrite, type WebPinStore } from "./web-pin-store.js";
-import { SKIN_WIRE_BYTES, type OfficeSkinStore } from "./web-office-skins.js";
+import { SKIN_WIRE_BYTES, skinPictureType, type OfficeSkinStore } from "./web-office-skins.js";
 import type { OfficeActs } from "./web-office-acts.js";
 import type { OfficePackTools } from "./web-office-pack-tools.js";
 import type { WebAppearance } from "./web-appearance.js";
@@ -57,7 +57,8 @@ import { ROUTE_WORKER_CSP, ROUTE_WORKER_PATH, sendPanelHtml } from "./web-host-g
 import { libavoidFile } from "./web-libavoid.js";
 import { shellRoute } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createReadStream, createWriteStream, existsSync, readFileSync, closeSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, readFileSync, closeSync, constants as fsConstants } from "node:fs";
+import { open as openFile } from "node:fs/promises";
 import { servedAssets } from "./auth-api.js";
 import { assetIntact, assetsUnchanged, assetVersion, assetVersionMark, answerStaleAsset, buildModuleGraph, staticClosure, versionShell, IMMUTABLE_PRIVATE, type ModuleGraph } from "./web-asset-version.js";
 import { join, dirname } from "node:path";
@@ -276,7 +277,12 @@ function contactNeedsFor(req: IncomingMessage, url: URL, ctx: WebApiContext, bas
   // A session identity may see benign room suggestions, never pending approval tickets.
   const suggestions = observer && ctx.contactNeeds ? ctx.contactNeeds(observer).filter(item => item && typeof item === "object"
     && (item as { reason?: string }).reason === "contact_restricted_suggestion") : [];
-  return [...ordinary, ...suggestions];
+  // M-3710 (R21079937, 11-25: a pending request was in no list, even on this computer): an admin session with no verified
+  // person behind it is told how many requests wait and to authorize this browser — the count only, never which.
+  const waiting = admin ? ctx.contactPendingCount?.() : undefined;
+  const verify = waiting && waiting.count > 0 ? [{ id: "contact-verify", type: "contact", reason: "contact_verify_needed", instance: "",
+    since: waiting.since, detail: "", contactVerify: { count: waiting.count } }] : [];
+  return [...ordinary, ...verify, ...suggestions];
 }
 
 /**
@@ -441,6 +447,8 @@ export interface WebApiContext extends ClaudeCredentialApi {
   decideContactAuthorization?: ContactApiHost["decideContactAuthorization"];
   contactActor?(req: IncomingMessage, url: URL): import("./contact-auth-types.js").ContactPerson | null;
   contactNeeds?(actor: import("./contact-auth-types.js").ContactPerson): unknown[];
+  /** M-3710: the pending contact requests' count and the oldest one's time — nothing that names them. */
+  contactPendingCount?(): { count: number; since: number };
   acknowledgeContactSuggestion?(instance: string, actor: import("./contact-auth-types.js").ContactPerson): void;
   acknowledgeContactSuggestionFromWeb?(instance: string, req: IncomingMessage, url: URL): void;
   contactSuggestionActor?(req: IncomingMessage, url: URL): import("./contact-auth-types.js").ContactPerson | null;
@@ -645,11 +653,13 @@ export interface WebApiContext extends ClaudeCredentialApi {
   /** #2122: the usage report (Fleet → Usage); absent: not offered. */
   usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup }): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
-  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string; action?: WebModelAction }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; guest?: boolean }): Promise<{ status: number; body: unknown }>;
+  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string; action?: WebModelAction }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; identity?: WebSessionIdentity; guest?: boolean }): Promise<{ status: number; body: unknown }>;
   /** #1939 S2b: "Authorize this browser" — the Confirm card in the account's DM; and what the app shows for this browser. */
   requestSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: string; retryAfterMs?: number }>;
   webSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): { state: string; until?: number; expiresInMs?: number; reason?: string };
-  /** #1939 S1: the design's §3 for one request (`instance` once the body names it); absent: web carries no authority. */
+  /** Session-account recognition only, independent of verification and action authority. */
+  webSessionIdentity?(session: SessionRecord): WebSessionIdentity | undefined;
+  /** #1939 S1: authority for one request; absent means no web authority. */
   webAuthority?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string }): WebAuthorityResult;
   /**
    * #1827: a web person — for the account a session is bound to (none: the operator) — as agents and chats see them.
@@ -661,6 +671,7 @@ export interface WebApiContext extends ClaudeCredentialApi {
   /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
   /** M-3632: Needs you → "Try again" on held Hub work. */
+  closeHubHeld?(id: string, actor: import("./contact-auth-types.js").ContactPerson): Promise<{ status: number; code: string }>;
   retryHubHeld?(id: string): { status: number; code: string };
   /** alpha.2 (M-2300): agents' requests waiting for a web-only fleet's verified owner; null: not that owner. */
   webAgentProposals?(req: IncomingMessage): import("./settings-confirmation.js").SettingsPendingView[] | null;
@@ -687,7 +698,7 @@ export interface WebApiContext extends ClaudeCredentialApi {
   webPromptNeedsHuman?(nonce: string): boolean;
   clickWebPrompt?(instance: string, nonce: string, action: string, text?: string, humanSession?: boolean): Promise<{ status: number; error?: string }>;
   /** #1266: a click on an agent reply's button. */
-  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority }): Promise<{ status: number; error?: string; options?: number[] }>;
+  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority; identity?: WebSessionIdentity }): Promise<{ status: number; error?: string; options?: number[] }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
@@ -1093,7 +1104,7 @@ function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ct
 
 /**
  * #2716/#3679: an Office-wide setting kept in web-offices.json beside the offices (PUT { <key>: value }): who may save
- * the offices may set it — an admin session, never the CLI token or the public link; asked again once the body is in;
+ * the offices may set it — an admin session (over the public link too, M-3278), never the CLI token; asked again once the body is in;
  * counted with the offices' saves (OfficeWriteLimiter); every page hears `offices` and reads again.
  */
 function officeSettingPut(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, o: {
@@ -1161,7 +1172,7 @@ function handleOfficeSkins(req: IncomingMessage, res: ServerResponse, url: URL, 
     if (picture) {
       const bytes = store.picture(picture[1]!, picture[2]!);
       if (!bytes) { res.setHeader("Cache-Control", "private, no-store"); json(res, 404, { error: "No such image" }); return true; }
-      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Type", skinPictureType(bytes));
       // Keyed by the sha of its bytes: a picture at this URL never changes.
       res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
       res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
@@ -1925,6 +1936,11 @@ function webPersonOf(req: IncomingMessage, url: URL, ctx: WebApiContext): WebPer
   const who = webAccountOf(req, url, ctx);
   return who ? ctx.webPerson(who.owner) : null;
 }
+/** Current session recognition only; no header token, body, display name or voter key supplies an account. */
+function webIdentityOf(req: IncomingMessage, url: URL, ctx: WebApiContext): WebSessionIdentity | undefined {
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  return v.kind === "allow" && v.via === "session" ? ctx.webSessionIdentity?.(v.session) : undefined;
+}
 /**
  * #1939 S1: whether this request carries `web-session` authority, asked as it stands now — on arrival without an instance,
  * after the body with the one it names (then confirmAfterBody joins the two). Never touches the session.
@@ -2087,6 +2103,47 @@ function boardActor(req: IncomingMessage, url: URL, ctx: WebApiContext, p: WebPe
  * A board refusal as the dashboard reads it: the board's sentence, its code and the status that fits, and — when the
  * person can meet it — the key and values the page says it with in its own language.
  */
+/**
+ * GET /ui/tasks/files/<id> — a file an agent put on a card, sent as a DOWNLOAD. It is read with the card: any
+ * session that may read the card may fetch it, and over the public link a card kept out of sight (or its main task), or a
+ * file one of those instances wrote, is "no such file" — the same answer an unknown id gets. Never sent as a page: an image
+ * as an image, text as plain text, everything else (HTML and SVG included) as an opaque download, under a sandboxing CSP and
+ * `nosniff`; what the dashboard shows of an HTML file it fetches and runs in the preview frame, never from here.
+ */
+async function serveCardFile(
+  res: ServerResponse,
+  board: TaskBoard,
+  id: string,
+  rules: { hidden: (c: NonNullable<ReturnType<TaskBoard["findCard"]>>) => boolean; hiddenName: (n: string) => boolean },
+): Promise<void> {
+  const miss = () => { if (!res.headersSent) json(res, 404, { error: "No such file" }); };
+  try {
+    const found = board.attachment(id);
+    const store = board.files();
+    if (!found || !store || rules.hidden(found.card) || rules.hiddenName(found.file.author)) return miss();
+    const on = store.pathOf(found.card.uuid, id);
+    if (!on || on.size !== found.file.size) return miss();
+    // O_NOFOLLOW is undefined on Windows (the flag is then 0): there the isFile and size checks below stand alone (docs/design/task-board.md).
+    const fh = await openFile(on.path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    let bytes: Buffer;
+    try {
+      const st = await fh.stat();
+      if (!st.isFile() || st.size !== found.file.size) return miss();
+      bytes = await fh.readFile();
+    } finally { await fh.close().catch(() => {}); }
+    const { file } = found;
+    const inline = INLINE_MIME.has(file.mime);
+    res.setHeader("Content-Type", inline ? file.mime : file.mime.startsWith("text/") ? "text/plain; charset=utf-8" : "application/octet-stream");
+    res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(wellFormed(file.name))}`);
+    res.setHeader("Content-Length", bytes.length);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    res.writeHead(200);
+    res.end(bytes);
+  } catch { miss(); }
+}
+
 function boardError(res: ServerResponse, err: unknown): void {
   if (res.headersSent) return;
   if (err instanceof TaskBoardError) {
@@ -3061,8 +3118,9 @@ export function handleWebRequest(
   // ── Fleet → Org chart → Office: the offices people made (web-offices.json, web-office-store.ts) ──
   // GET /ui/offices: { rev, offices, readable } for whoever may open the org chart (the public link too: it reads the
   // chart; a guest's routes do not include it). PUT /ui/offices { offices, rev? }: a person's change, as a theme's reset
-  // or lock is — an admin session only, never the CLI token, never the public link (absent from its manifest, and
-  // refused here too); asked again once the body is in. Every page hears `offices` on the stream and reads again.
+  // or lock is — an admin session only (over the public link too since M-3278, decision 7933bf90; a read-only session
+  // there is refused below), never the CLI token; asked again once the body is in. Every page hears `offices` on the
+  // stream and reads again.
   if (method === "GET" && path === "/ui/offices") {
     const store = ctx.officeStore;
     if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
@@ -3109,7 +3167,7 @@ export function handleWebRequest(
 
   // #2716: PUT /ui/office-style { skin }: the whole-fleet office's style for every viewer, device and share link (a skin
   // id, or null for the default; read back as GET /ui/offices's autoSkin). Who may save the offices may set it, as they
-  // would: an admin session, never the CLI token or the public link; asked again once the body is in; counted with the
+  // would: an admin session (over the public link too, M-3278), never the CLI token; asked again once the body is in; counted with the
   // offices' saves. Every page hears `offices` and reads again.
   if (method === "PUT" && path === "/ui/office-style") {
     return officeSettingPut(req, res, url, ctx, { key: "skin", invalid: "office_style_invalid", shape: "{ skin: a skin id, or null }", failed: "Saving the office style failed",
@@ -3299,7 +3357,8 @@ export function handleWebRequest(
       if (!person) return;
       // #1920 review: a guest's choice reaches the agent marked as a guest's, as its typed messages do.
       const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
-      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name, ...(guest ? { guest: true as const } : {}), authority });
+      const identity = webIdentityOf(req, url, ctx);
+      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name, ...(guest ? { guest: true as const } : {}), authority, ...(identity ? { identity } : {}) });
       json(res, r.status, r.status === 200 ? { answered: true, ...(r.options ? { options: r.options } : {}) } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");
@@ -3593,9 +3652,25 @@ export function handleWebRequest(
     return true;
   }
 
+  if (method === "POST" && path === "/ui/needs/hub-close") {
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "invalid" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const actor = ctx.contactActor?.(req, url);
+      if (!actor) { json(res, 403, { error: "verification-required", code: "verification-required" }); return; }
+      if (typeof body.id !== "string" || body.id.length > 200) { json(res, 400, { error: "invalid" }); return; }
+      if (!ctx.closeHubHeld) { json(res, 503, { error: "unavailable", code: "unavailable" }); return; }
+      const out = await ctx.closeHubHeld(body.id, actor);
+      json(res, out.status, { code: out.code, ...(out.status === 200 ? { ok: true } : { error: out.code }) });
+    })().catch(() => { if (!res.headersSent) json(res, 503, { error: "unavailable", code: "unavailable" }); });
+    return true;
+  }
   // M-3632: Needs you → "Try again" on held Hub work: back through the Hub's checks, never a blind delivery.
   if (method === "POST" && path === "/ui/needs/hub-retry") {
     if (!ctx.retryHubHeld) { json(res, 404, { error: "not-found", code: "not-found" }); return true; }
+    // M-3680: over the public link, an admin session's (decision 7933bf90); a read-only session or a guest there: no.
+    if (linkRestricted(req, url, ctx)) { json(res, 403, { error: "forbidden", code: "forbidden" }); return true; }
     const retry = ctx.retryHubHeld.bind(ctx);
     (async () => {
       let body: Record<string, unknown>;
@@ -3734,10 +3809,11 @@ export function handleWebRequest(
       }
       try {
         const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
+        const identity = webIdentityOf(req, url, ctx);
         const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined, ...(body.action ? { action: body.action as WebModelAction } : {}) },
           // M-3278 (decision 7933bf90): `publicLink` is a request over the link by anyone but an admin session — the link's
           // admin runs /save and gets /model and /backend's Sign in, as on the local dashboard.
-          { publicLink: !!gatewayRequestContext(req) && !adminAdmissionOf(req, url, ctx), person, authority, ...(guest ? { guest: true } : {}) });
+          { publicLink: !!gatewayRequestContext(req) && !adminAdmissionOf(req, url, ctx), person, authority, ...(identity ? { identity } : {}), ...(guest ? { guest: true } : {}) });
         if (!stillAuthorized(req, res, url, ctx)) return;
         json(res, r.status, r.body);
       } finally { if (guest) guestCommandsRunning.delete(account); }
@@ -4028,7 +4104,7 @@ export function handleWebRequest(
   // ── Task board (scheduler/task-board.ts) ──────────────
   // Reads are the session's; every write is the signed-in person's, through the same rules an instance's tools use.
 
-  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/refs" || path === "/ui/tasks/work" || path === "/ui/tasks/archive" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects")) {
+  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/refs" || path === "/ui/tasks/work" || path === "/ui/tasks/archive" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects") || path.startsWith("/ui/tasks/files/")) {
     const board = ctx.scheduler?.db.board;
     // M-3668: how many days after it finished a main task leaves the board (defaults.task_board.archive_after_days).
     const archiveDays = archiveAfterDays(ctx.fleetConfig?.defaults?.task_board?.archive_after_days);
@@ -4194,6 +4270,15 @@ export function handleWebRequest(
         json(res, 200, { refs: board.suggest((url.searchParams.get("q") ?? "").slice(0, 100), limit, (c) => !hidden(c)).map(taskRefView) });
         return true;
       }
+      // a file on a card, as a download — the gate of reading the card (below), plus the file's own author.
+      const cardFile = method === "GET" ? /^\/ui\/tasks\/files\/([0-9a-f]{32})$/.exec(path) : null;
+      if (cardFile) {
+        void serveCardFile(res, board, cardFile[1]!, {
+          hidden: (c) => !!gateway && (hidden(c) || (!!c.parent && hiddenRef(c.parent))),
+          hiddenName: (n) => !!gateway && hiddenName(n),
+        });
+        return true;
+      }
       if (method === "GET" && card && !card[2]) {
         const found = board.getCard(ref);
         if (hidden(found)) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
@@ -4319,7 +4404,7 @@ export function handleWebRequest(
   };
 
   if (method === "POST" && path === "/ui/schedules") {
-    // #1724: schedules are not created, edited or deleted over the public link (absent from its manifest too, #1689).
+    // #1724: an admin session's (M-3278, decision 7933bf90: over the public link too).
     if (!ctx.scheduler) { json(res, 500, { error: "Scheduler not initialized" }); return true; }
     (async () => {
       try {
@@ -4502,7 +4587,7 @@ export function handleWebRequest(
   }
 
   if (method === "POST" && path === "/ui/teams") {
-    // #1689: not over the public link (absent from its manifest too), like editing and deleting a team.
+    // #1689: an admin session's (M-3278, decision 7933bf90: over the public link too), like editing and deleting a team.
     (async () => {
       try {
         const body = await parseBody(req);
@@ -4522,7 +4607,7 @@ export function handleWebRequest(
   }
 
   // #1689: edit a team — the same update as the update_team tool (applyTeamUpdate), from the members the page sends:
-  // what to add and remove is worked out against the team as it is now. Never over the public link.
+  // what to add and remove is worked out against the team as it is now. An admin session's, over the public link too (M-3278).
   const teamEditMatch = path.match(/^\/ui\/teams\/(.+)$/);
   if ((method === "PATCH" || method === "PUT") && teamEditMatch) {
     const name = decodeURIComponent(teamEditMatch[1]);
@@ -4748,7 +4833,7 @@ async function handleResendMessage(req: IncomingMessage, res: ServerResponse, ct
   } };
   let handedOff = false;
   try {
-    const delivered = ctx.deliverHumanToInstance ? await ctx.deliverHumanToInstance(instance, payload, webHumanOrigin(false, authority), row.text, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
+    const delivered = ctx.deliverHumanToInstance ? await ctx.deliverHumanToInstance(instance, payload, webHumanOrigin(false, authority, webIdentityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx)), row.text, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
       : await ctx.deliverToInstance(instance, payload, { stillCurrent, ...(native ? { authorityCurrent } : {}) });
     if (delivered === false) throw new Error("delivery changed");
     handedOff = true;
@@ -4960,7 +5045,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       const reactions = ctx.pendingReactionsMeta?.(instance) ?? { meta: {}, consume: () => {} };
       try {
         const deliver = (name: string, payload: Record<string, unknown>) => ctx.deliverHumanToInstance
-          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority), typed, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
+          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority, webIdentityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx)), typed, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
           : ctx.deliverToInstance(name, payload, { stillCurrent, ...(native ? { authorityCurrent } : {}) });
         delivered = await deliver(instance, {
           type: "fleet_inbound",
@@ -5359,7 +5444,7 @@ function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVi
 /**
  * AgEnD Hub P1 (docs/design/hub.md, docs/design/hub-ui-client.md): the page's Hub mark — presentation only, never
  * authority, set by the listener that serves the page (never a client's choice): `member` on this fleet's listener when
- * `hub_member.enabled`, never over the public link. `hub` is only the Hub listener's own workspace page
+ * `hub_member.enabled` (over the public link, an admin session's only: M-3278). `hub` is only the Hub listener's own workspace page
  * (serveHubWorkspaceShell). Nothing otherwise: no Hub UI is drawn and no Hub module loads.
  */
 function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {

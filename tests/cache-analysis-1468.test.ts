@@ -38,6 +38,14 @@ describe("prices", () => {
     expect(ratesFor("claude-opus-5-5")).toMatchObject({ input: 4, read: 0.2, write5m: 5, write1h: 8, output: 20 });
     expect(ratesFor("claude-sonnet-5-5")).toMatchObject({ input: 2, read: 0.1, write1h: 4 });
     expect(ratesFor("gpt-6.1-sol")).toMatchObject({ input: 2, read: 0.1, write: 2.5, output: 10 });
+    // M-3672: rows added 2026-11-24 from the vendors' standard-tier pages.
+    expect(ratesFor("claude-fable-5-2")).toMatchObject({ input: 8, read: 0.2, write5m: 10, write1h: 16, output: 40 });
+    expect(ratesFor("claude-mythos-5-2")).toMatchObject({ input: 8, read: 0.2, write5m: 10, write1h: 16, output: 40 });
+    expect(priceKey("claude-fable-5-2-20261109")).toBe("claude-fable-5-2");
+    expect(ratesFor("gpt-6.1-terra")).toMatchObject({ input: 1, read: 0.05, write: 1.25, output: 5 });
+    expect(ratesFor("muse-spark-1.3")).toMatchObject({ input: 1.25, read: 0.15, write: 1.25, output: 4.25 });
+    expect(priceKey("muse-spark-1.3-contributor")).toBeNull();
+    expect(priceKey("muse-wonder-1.0")).toBeNull();
     expect(priceKey("gpt-reserve")).toBeNull();
     // A model the table does not know never borrows a shorter key's prices.
     expect(priceKey("claude-opus-5-6")).toBeNull();
@@ -50,6 +58,9 @@ describe("prices", () => {
     expect(ratesFor("claude-haiku-5-5", 100_001)!.input).toBe(0.5);
     expect(ratesFor("gpt-6.1-sol", 272_000)!.read).toBe(0.1);
     expect(ratesFor("gpt-6.1-sol", 272_001)).toMatchObject({ input: 4, read: 0.2, write: 5 });
+    expect(ratesFor("gpt-6.1-terra", 272_000)!.output).toBe(5);
+    expect(ratesFor("gpt-6.1-terra", 272_001)).toMatchObject({ input: 2, read: 0.1, write: 2.5, output: 7.5 });
+    expect(ratesFor("muse-spark-1.3", 900_000)!.input).toBe(1.25);
     expect(ratesFor("claude-opus-5-5", 900_000)!.input).toBe(4);       // the full window at standard price
   });
 });

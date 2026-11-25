@@ -12,7 +12,7 @@ AgEnD runs your AI coding agents as a system service and puts them in your Teleg
 - To chat from Telegram or Discord: a Telegram bot token from [@BotFather](https://t.me/BotFather), or a Discord bot token. Without a bot, the fleet runs from the web dashboard alone: see the [Web Guide](/AgEnD/docs/web-guide/).
 - At least one AI coding CLI, installed and logged in — see [Backends](#install-a-backend)
 
-macOS and Linux are supported. musl Linux such as Alpine, and Linux hosts without systemd, are not: AgEnD may install there, but it is not tested or promised to work. Native Windows is not supported either: run AgEnD inside WSL, which the [Windows installation guide](/AgEnD/install-windows/) sets up for you.
+macOS and Linux are supported. musl Linux such as Alpine, and Linux hosts without systemd, are not: AgEnD may install there, but it is not tested or promised to work. Native Windows is in alpha preview: AgEnD can use this PC's Windows CLIs and paired Windows PCs (see **Settings → Runtime**). Otherwise run AgEnD inside WSL, which the [Windows installation guide](/AgEnD/install-windows/) sets up for you.
 
 ## Install
 
@@ -63,7 +63,7 @@ Check the one you picked before going further:
 agend backend doctor claude-code
 ```
 
-Once the fleet is running you can also do this from chat: `/login` in General installs a missing CLI and signs it in (Claude Code, Codex, Kiro CLI, Grok), so you don't need SSH. OpenCode and Muse are install-only there, and Antigravity is signed in on the host.
+Once the fleet is running you can also do this from chat: `/login` in General installs a missing CLI and signs it in (Claude Code, Codex, Kiro CLI, Grok), so you don't need SSH. OpenCode and Muse are install-only there; Antigravity accounts connect in **Settings → AI accounts & keys → Accounts**.
 
 ## Set up
 
@@ -124,7 +124,7 @@ agend web          # on the machine: prints the code and opens the sign-in page
 agend web --code   # only prints them
 ```
 
-Or send `/web` in General (fleet admins). The bot sends you the link and the code privately, and can also offer a temporary public link for a phone that can't reach the machine. A code works once, for 5 minutes. A sign-in on the dashboard reached directly lasts 48 hours by default; one through the public link lasts 4 hours (30 minutes idle) and ends when the link closes.
+Or send `/web` in General (fleet admins). The bot sends you the link and the code privately, and can also offer a temporary public link for a phone that can't reach the machine. A code works once, for 5 minutes. A sign-in on the dashboard reached directly lasts 48 hours by default; one through the public link lasts at most 8 hours (30 minutes idle) and ends when the link closes — longer with your own domain (`web.session.public_link`).
 
 The dashboard listens only on `127.0.0.1`. To open it from a phone, and for sessions and signing out, see the [Web Guide](/AgEnD/docs/web-guide/).
 
@@ -136,7 +136,7 @@ agend health
 
 ## Updating
 
-Send `/update` in General (fleet admins), or run this on the host:
+Send `/update` in General or any web chat (fleet admins), or run this on the host. The dashboard also shows an **Update now** banner, with **Check for updates** under **Settings → Advanced → Version and update**.
 
 ```bash
 agend update

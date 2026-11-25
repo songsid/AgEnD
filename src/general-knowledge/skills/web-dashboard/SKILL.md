@@ -119,6 +119,17 @@ as their own Discord or Telegram account. What a guest sees:
   ClassicBot room, and ClassicBot group rooms while their membership is verified, minus any `web.guests.narrow`.
   **Start from today's guests** turns that into grants.
 
+**Who can use, on an agent's page (M-3734, #4459).** Each agent's page (and a ClassicBot room's) has a **Who can use**
+category (「誰能用」), before Permissions. It lists and edits the same two records, with no permissions of its own:
+- **Web guests:** everyone whose grant names this agent, each with their level, **Add a person**, **Chat | Trusted** and
+  **Remove**. Each change writes that person's grant in `web.guests.grants`, the same data as Settings → Guests, under the
+  same confirmations. Before any grant is saved, the list is read-only and offers **Start from today's guests**.
+- **Hub:** whether the agent is shared on the Hub and, when it is, **Choose who may ask on the Hub**. That button opens the
+  Hub's own page (people or AD groups, each until a chosen date), which only opens where the Hub can be reached (today, the
+  internal network). The Fleet itself never reads or changes who may ask.
+
+Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram (`allowed_users`) is unchanged.
+
 Guests can filter their granted agents and rooms, change sorting, and use **Custom** (「自訂」) for detailed or compact
 rows and a compact row's display name or instance name. Choices belong to that guest's account, including over the
 public link; they never change the host's preferences. Desktop and phone keep separate density choices and share the
@@ -146,7 +157,13 @@ account.
   DMs are closed, or Telegram's `/start web` DM) makes the browser **Verified** at once, with no card. The same DM gets
   "*browser* signed in with the code sent to you, and is verified until …" with **Not me**, which signs that browser
   out. With no DM, General gets one line with no details: `/web revoke` if it wasn't you.
-- **Codes that don't verify:** a guest code, or `agend web --code` on a fleet with a chat connection.
+- **A guest's private /web code (M-3651)** makes the guest's browser verified as that account, for identity only. The
+  same DM gets "*browser* signed in as a guest … verified as you until …" with **Not me**, and the session menu says
+  **Guest · Verified until …**. Agents still see `@web:g`; the receipt says `authority.kind: web-guest` naming the
+  account, which is who it is and never a go-ahead or an admin's authority. A guest never gets a card: once it runs out,
+  send `/web` again. The switch, **Only this computer**, the link options and **Revoke web authority** end it as they
+  end an admin's.
+- **Codes that don't verify:** `agend web --code` on a fleet with a chat connection.
 - **Otherwise** (and to re-verify once the authorization runs out) the one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
 session menu says **Not verified · Authorize this browser**. Pressing it
 sends a card to that account's DM, saying which browser (device, on this computer or the network, when, until when), with
@@ -323,6 +340,20 @@ The instance card and Details → Runtime show a localized original → fallback
 
 Needs you gets one item per new confirmed main-thread switch. Repeated blocks and resumed history do not announce it again; a fresh response returning to the configured/original model removes it. AgEnD does not switch models, restart the agent or change safeguards automatically. Intentional `/model` and next-spawn failover are separate; unresolved default/plan aliases are not guessed. No prompt, answer or refusal explanation is copied into the observation.
 
+A signed-in web account is identifiable for contact permissions even before the browser is verified.
+A host code on a chat-connected Fleet does not name a chat account. An approved device without a
+bound account also does not inherit the approving browser’s identity; use the account sign-in or the
+supported host sign-in path, rather than treating dashboard access as account recognition.
+**Revoke web authority** stops that browser from giving go-aheads, but leaves it signed in: its
+messages still identify the account for contact permissions. For a lost device, use that device’s
+**Sign out** or **Sign out everywhere** to end account recognition as well.
+Its messages and reply-button choices still carry no go-ahead authority until verification; a known
+account is not a verified approval. Unidentified sources remain unknown. Older retained unknown origins
+cannot be inferred from today's session: a verified managing administrator can use the sending Agent's
+**Permissions → Clear retained origin**, accepting the current conversation as their own work. This is
+an explicit audited reset, not an automatic repair; existing contact applications are not replayed.
+Needs you's contact card and the refused contact response name this recovery path.
+
 ## Needs you
 
 `/ui/needs`, the sidebar row **Needs you** with a count, the phone tab of the same name, and "(N)" in the browser
@@ -336,10 +367,21 @@ tab title. Items, grouped by instance, oldest first:
 for answering in words (on Discord/Telegram: reply to the post); an MCP input request offers Decline / Cancel and is
 filled in at the terminal (View).
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
+A held contact request (an agent or ClassicBot room asking another agent, waiting for approval) is shown only to a
+verified administrator: with **Approve once** / **Decline**. A browser not yet verified (Authorize this browser not
+done, or run out) sees one line instead — "N contact requests need a verified browser" with **Authorize this browser**
+(or why this browser can't be authorized here) — the count only, never who or what; once the account confirms in its
+DM, the requests replace the line. The same on the public link.
 "Paused: AI account not connected" and "AI account needs connecting" have **Connect account** when the dashboard can run that login (#2233), in the group **AI accounts**; every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
 `needs_you.dm` (default off), `needs_you.task_board` (default off: the task board's cards waiting
 for you — set `true` to list them).
+
+Held Hub one-to-one questions offer **Close this question** (不處理這題), including an uncertain hold
+without **Try again**. A verified administrator who manages that Agent confirms in the dashboard; the Hub then
+marks it not answered for the asker and the item clears only after acknowledgement. An existing Hub answer is
+preserved. Closing is final: the same message cannot be retried, but the asker may send a new question. Closing does not resend the question or stop work already running. Offline or unsupported Hubs leave
+the item in place and explain what to do. **Try again** remains a separate action that can deliver the question.
 
 **Notices** (#2910): on a fleet with no chat connection, what General would have posted (a version's new features, a
 restart, a sign-in) is listed on the **Notices** page in the sidebar ("What General would have said"; **New**, **Open
@@ -379,6 +421,9 @@ values reloaded after Save. Password fields keep the browser's behaviour.
 
 `/ui/fleet/<tab>`: **Tasks**, **Schedules**, **Teams**, **Org chart**, **Cache**, plus a **Docs** link
 (`/ui/fleet/config` leads to Settings → Shared agent settings: each of its settings lives in Settings, #2347).
+On a phone (#4453) Fleet's header is two rows: ☰ and the page's name, then every Fleet tab (Tasks, Schedules, Teams,
+Org chart, Cache, Usage, Authorizations, Host health) as an icon across the width — tap one; its name is the icon's
+label for a screen reader. On a very narrow phone (under 352 px) the icons are two rows of four. Nothing scrolls off.
 The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet tab open the Fleet tab this device used last
 (`agend_last_fleet_tab`; the Org chart the first time). The sidebar has no separate Fleet (Details) or View row.
 - **Tasks** — the task board: Home lists **projects** (with % done) and what waits for the person (**Confirm** /
@@ -451,8 +496,9 @@ pack tools, and rolling back. Point people there for more than the summary below
 
 **Office** (the third view, remembered per device; M-3556: its bar is one row — Office, Show, People on the left; Edit
 offices, Share… and **⚙ Display options** on the right, a dropdown holding Style, Hide paused and stopped, Drag and pat,
-Bedtime, Lobby tile, Dialogue, Talk and Key; a phone's ⋯ sheet lists the same in that order; a Hub room's gear opens the same
-dropdown) draws the same fleet as a pixel office: a room per team, a desk
+Bedtime, Lobby tile, Dialogue, Talk and Key; a phone's ⋯ sheet lists the same in that order — on a phone the bar is Find, the
+Canvas / List / Office switch and ⋯ in one row, or on a narrow phone (under 370 px, #4454) Find on its own row with the switch
+and ⋯ under it; a Hub room's gear opens the same dropdown) draws the same fleet as a pixel office: a room per team, a desk
 per instance with a name tag, General and "Not in a team" in the **Lobby**. Each little person is its state: typing
 with the lamp on (working), tea break (idle), asleep behind a **Closed** sign (paused/stopped), a hand up under a
 blinking light (needs you, crashed, looks stuck). With **Live** on, each message, delegation and report is carried
@@ -474,8 +520,8 @@ in each (Everyone, Picked: whole teams or single instances, or #2752 Nobody: its
 someone onto another valid seat in their area (#4266) to seat them there immediately (persisted per device/office/style, swapping cleanly and respecting reserved seats and `stayInArea`) or drop on empty floor to walk back; while held they play a `dragged` pose (#4267: optional `characters.<set>.dragged` / `default.dragged` strip or built-in lifted dangle, returning to their prior pose on drop); their card's Pat/Feed show hearts and words; nothing reaches the agent unless that card's
 **Tell <agent> (with their next message)** is ticked (per agent, off) — then one `[Office] … patted your head ×N` line rides
 its next real message's `[Recent reactions: …]` (never a wake; capped); a pack's `bubbles.<lang>.pat` / `.feed` give the words; (#4255) packs with optional `snacks` (1–12 items, `sprite`, optional `eat` overlay, `radius`) and `characters.<set>.eat` show a floating snack tray (bottom-left; above zone pills on phone) for drag-to-feed, tap-to-arm, and placed snacks (up to 6 on floor, 30 s TTL, up to 4 nearest idle racers honoring `stayInArea`, first eats and others scatter; packs without `snacks` stay unchanged), and upload or delete **skin packs** (an
-artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
-checks every rule — PNG only, each strip sheet exactly frames·w × h (or, cut with `row`/`col`, at least (col+frames)·w × (row+1)·h), a 16:9 background (or the shape of the pack's own `canvas: [w, h]`, 640×360 to 5120×2880), 220 files, 42 MiB and 64 Mpx decoded-pixel caps — and never changes a
+artist's pictures: `manifest.json` plus PNG or WebP pictures, format v1, kept in `web-office-skins/` in the AgEnD home; the host
+checks every rule — PNG or WebP as each name ends (5120 px a side, 16 Mpx), each strip sheet exactly frames·w × h (or, cut with `row`/`col`, at least (col+frames)·w × (row+1)·h), a 16:9 background (or the shape of the pack's own `canvas: [w, h]`, 640×360 to 5120×2880), 220 files, 42 MiB and 64 Mpx decoded-pixel caps — and never changes a
 pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, a character may walk four
 ways with `walkDown`, `walkUp` and `walkSide` (the side one mirrored for left unless the set gives `walkLeft`), a set may give `pat` (played in full when patted) and `stand` (the card's still avatar), and (#4231) any strip may chain
 multiple sheets (`src: [...]`, up to 32 sheets / 600 frames) or list individual frames with per-frame `ms`
@@ -485,7 +531,10 @@ packs** on (`office_pack_access`, Dashboard access) can check, upload, replace, 
 previous version kept per pack); **Agents changing packs** under the packs names those agents, sets whether their changes
 **Need my yes** (the default) or **Apply at once**, and approves or rejects the waiting ones (also from the notice's
 buttons in General); every change is logged and told in General. **Style** (per office for a stored one; for the whole fleet, #2716, an admin's pick is kept on the host for every device and share link, anyone else's stays in their browser): **Desks**,
-**Studio** (one scene — Work, Lounge, Help desk, Nap corner — where each instance walks to the area for its state),
+**Studio** (one scene — Work, Lounge, Help desk, Nap corner — where each instance walks to the area for its state; the Help
+desk is for an agent that is calling: a Needs you item that names it, such as a held contact request to approve, a failed
+delivery, a crash or a prompt waiting at its terminal. A ClassicBot room's low-key "can switch to restricted mode"
+suggestion alone does not send it there, and the org chart doesn't mark it calling for it either, #4449),
 **Cozy** (#2631: the same in a warm pixel-art office drawn as one picture; its notice board says a skin pack can
 restyle it; the default for a browser that has not picked a style and for a new office — a saved office keeps its
 own), **Guild** and **School** (#2947: two more pictures on the Cozy's arrangement — an adventurers' guild hall and a
@@ -591,9 +640,11 @@ chooses one visible name: **Display name** (暱稱) or **Instance name** (實際
 both desktop and phone; density still belongs to each layout. Until a compact name is chosen, the existing leading-name
 choice is kept (normally the display name, falling back to the instance name). The other name remains in the tooltip
 and accessible name, and search matches both. Detailed keeps the current presentation.
-Each detailed row (#2179): name and context % on the first line, the time of the agent's last reply to a person at the end of the
-second ("2 min ago"; cross-instance messages don't count); a reply under 10 minutes old is highlighted, fading by itself
-(nothing to mark read). The sort button beside Edit: **Custom** (default; a reply never moves a row) or **Recent replies**
+Each detailed row (#2179): name and context % on the first line; at the end of the second (on a compact row, after the name)
+one time, its most recent response (M-3707): its last reply to a person or the last turn another agent started for it
+(send_to_instance, a task, a report, a broadcast), whichever is newer, unlabelled ("2 min ago"); the tooltip says which
+kind it was. Only a reply to a person highlights the row (under 10 minutes old, fading by itself; nothing to mark read) or
+moves it in Recent replies; an agent's turn updates the time silently. The sort button beside Edit: **Custom** (default; a reply never moves a row) or **Recent replies**
 (the rest by last reply, no groups, no dragging; favorites pinned in their order, or **Sorted by last reply too**); synced
 as `nav.sort`. Guests sort, star and filter as their own preferences (kept on the host under their account; reply times
 count only replies their channel showed; no dragging); the anonymous View reader: no times, no sort (always Custom).
@@ -744,7 +795,7 @@ confirm. After a failure, unapplied changes are staged again
 |---|---|---|
 | Your name (**Save**, **Use web-user** / **Use <account>**) | the name agents see on your web messages | your profile |
 | Theme: System / Light / Dark | page theme | host prefs `theme` |
-| Language: English / 中文 | page language (not the bots' replies — that is Shared agent settings → Language) | host prefs `lang` |
+| Language: English / 中文 | page language (not the bots' replies — that is Shared agent settings → Language). In 中文 every time on the dashboard is a 24-hour clock (00:19, 19:45; never 上午/下午) and durations say 小時/分鐘/秒; English keeps its own time format. Times keep their zone either way: chat lines in the fleet's zone, other times in the browser's | host prefs `lang` |
 | Names: Nickname first / Real name first | sidebar names | host prefs `names.primary` |
 | Allow HTML previews | the preview opt-in | host prefs `preview.optIn` |
 | Chat tour (this device) | replays the chat tour | browser |
@@ -1060,4 +1111,9 @@ For the Hub's **My shared agents → Who may ask** person/name search, AD group 
 
 ## General contact-change proposals
 
-General can call `propose_contact_change` with a structured `change`: room `mode` (`restricted` or `legacy`), `ticket-decision` (full ticket ID, approve-once/decline, optionally exact originating-person keys and expiry/uses), `grant-adjust` (expiry/uses only), or `grant-revoke`. The daemon freezes the current revision and identities and posts its own confirmation in the target connection’s Discord/Telegram General. An authorized person must press Confirm; the tool call, a quoted approval, or General's own buttons never apply it. The card expires after five minutes; a changed revision, route or incarnation requires a new proposal. Unknown origins remain approve-once only. Host-only targets and unavailable platform routes use web Permissions/Authorizations. Contact approval never restricts what the receiving agent does afterward.
+A held message from an agent, or from a ClassicBot room to an agent, also gets its own card in General on the target's
+Discord or Telegram, with **Approve once** / **Decline**. Only someone who may decide it can use them (anyone else is
+told so, and the card stays). Deciding it anywhere else, on the web or with another card, closes the card. A proposal
+(below) is a separate path: General posts a card that the admin must **Confirm**.
+
+General can call `contact_state` (read-only) to see held messages, rules, room modes and restricting origins, and `propose_contact_change` with a structured `change`: room `mode` (`restricted` or `legacy`, which is unrestricted), `ticket-decision` (the ticket ID or the 9-character short ID people see, approve-once/decline, optionally exact originating-person keys and expiry/uses), `grant-adjust` (expiry/uses only), or `grant-revoke`. A refusal says why and what to do next. The daemon freezes the current revision and identities and posts its own confirmation in the target connection’s Discord/Telegram General. An authorized person must press Confirm; the tool call, a quoted approval, or General's own buttons never apply it. The card expires after five minutes; a changed revision, route or incarnation requires a new proposal. Unknown origins remain approve-once only. Host-only targets and unavailable platform routes use web Permissions/Authorizations. Contact approval never restricts what the receiving agent does afterward.

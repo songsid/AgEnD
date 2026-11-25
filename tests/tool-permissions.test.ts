@@ -87,7 +87,7 @@ const BEFORE: Record<string, string[]> = {
     "create_team", "delete_team", "update_team",
     "update_fleet_defaults", "update_instance_config",
     "get_web_settings", "set_web_settings",
-    "migrate_kiro_instance", "reconcile_kiro_instance", "propose_contact_change",
+    "migrate_kiro_instance", "reconcile_kiro_instance", "propose_contact_change", "contact_state",
     "update_decision",
     "task", "list_decisions", "post_decision",
     // #895 added update_schedule: general could already create and delete.
@@ -613,9 +613,9 @@ describe("own-appearance family consistency (#2132)", () => {
     }
   });
 
-  it("general equals coordinator except repository leases and its confirmed-contact proposal tool", () => {
+  it("general equals coordinator except repository leases and its contact tools (confirmed proposals; the read-only contact_state, M-3693)", () => {
     const excluded = new Set(["checkout_repo", "release_repo"]);
-    expect([...toolsFor("general")].sort()).toEqual([...toolsFor("coordinator")].filter(t => !excluded.has(t)).concat("propose_contact_change").sort());
+    expect([...toolsFor("general")].sort()).toEqual([...toolsFor("coordinator")].filter(t => !excluded.has(t)).concat("propose_contact_change", "contact_state").sort());
   });
 });
 

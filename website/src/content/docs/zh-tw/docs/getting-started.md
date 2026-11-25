@@ -12,7 +12,7 @@ AgEnD 把你的 AI coding agent 變成系統服務，放進 Telegram 或 Discord
 - 要從 Telegram 或 Discord 聊天：Telegram bot token（跟 [@BotFather](https://t.me/BotFather) 要）或 Discord bot token。沒有 bot 也能只用網頁儀表板，見[網頁使用說明](/AgEnD/zh-tw/docs/web-guide/)。
 - 至少一個已安裝並登入的 AI coding CLI — 見[安裝後端](#安裝後端)
 
-支援 macOS 和 Linux。不支援 musl Linux（例如 Alpine）與沒有 systemd 的 Linux 主機：AgEnD 也許裝得起來，但沒有測試過，也不保證能用。同樣不支援原生 Windows：請在 WSL 裡執行 AgEnD，[Windows 安裝指南](/AgEnD/zh-tw/install-windows/)會幫你設好。
+支援 macOS 和 Linux。不支援 musl Linux（例如 Alpine）與沒有 systemd 的 Linux 主機：AgEnD 也許裝得起來，但沒有測試過，也不保證能用。原生 Windows 是 alpha 預覽功能：AgEnD 可以用這台電腦的 Windows CLI 和已配對的 Windows 電腦（見**設定 → Runtime**）。否則請在 WSL 裡執行 AgEnD，[Windows 安裝指南](/AgEnD/zh-tw/install-windows/)會幫你設好。
 
 ## 安裝
 
@@ -63,7 +63,7 @@ AgEnD 是驅動你本來就在用的 CLI。先裝一個並登入，再跑設定�
 agend backend doctor claude-code
 ```
 
-fleet 跑起來之後，也可以在聊天裡做這件事：在 General 用 `/login`，會安裝缺少的 CLI 並登入（Claude Code、Codex、Kiro CLI、Grok），不需要 SSH。OpenCode 和 Muse 在那裡只能安裝，Antigravity 要在主機上登入。
+fleet 跑起來之後，也可以在聊天裡做這件事：在 General 用 `/login`，會安裝缺少的 CLI 並登入（Claude Code、Codex、Kiro CLI、Grok），不需要 SSH。OpenCode 和 Muse 在那裡只能安裝；Antigravity 帳號在**設定 → AI 帳號與金鑰 → 帳號**連接。
 
 ## 設定
 
@@ -124,7 +124,7 @@ agend web          # 在這台機器上：印出登入碼並打開登入頁
 agend web --code   # 只印出來
 ```
 
-或在 General 傳 `/web`（fleet 管理員）。bot 會私訊給你連結和登入碼；手機連不到這台機器時，也可以選臨時公開連結。登入碼只能用一次、5 分鐘內有效。直接連到儀表板的登入預設維持 48 小時；透過公開連結的登入維持 4 小時（閒置 30 分鐘），連結關閉時也會結束。
+或在 General 傳 `/web`（fleet 管理員）。bot 會私訊給你連結和登入碼；手機連不到這台機器時，也可以選臨時公開連結。登入碼只能用一次、5 分鐘內有效。直接連到儀表板的登入預設維持 48 小時；透過公開連結的登入最多維持 8 小時（閒置 30 分鐘），連結關閉時也會結束 — 用自己的網域可以更久（`web.session.public_link`）。
 
 儀表板只聽 `127.0.0.1`。要用手機開啟，以及登入期限和登出，見[網頁使用說明](/AgEnD/zh-tw/docs/web-guide/)。
 
@@ -136,7 +136,7 @@ agend health
 
 ## 更新
 
-在 General 傳 `/update`（fleet 管理員），或在主機上執行：
+在 General 或任何網頁聊天傳 `/update`（fleet 管理員），或在主機上執行。儀表板也會有 **Update now** 橫幅，**設定 → 進階** 的版本與更新區可以 **Check for updates**。
 
 ```bash
 agend update

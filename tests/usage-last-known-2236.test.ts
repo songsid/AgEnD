@@ -222,7 +222,7 @@ describe("the chat, MCP and Discord text", () => {
     setLocale("zh-TW");
     const cached = usageClock(iso(now - 20 * 60_000)), reset = usageClock(iso(now - 10 * 60_000));
     for (const text of [renderUsageMarkdown(payload()), renderUsageHtml(payload()), formatUsageSummary(payload())]) {
-      expect(text).toContain(`已過期 · 快取於 ${cached} — Access token 已過期`);
+      expect(text).toContain(`已過期 · 快取於 ${cached} — 存取 token 已過期`);
       expect(text).toContain(`已於 ${reset} 重置`);
       expect(text).toContain("64%");
       expect(text).not.toMatch(/\b0%/);                                          // never the reset window as 0% or its old number

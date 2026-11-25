@@ -56,7 +56,7 @@ register("orgc", {
     expand: "展開", collapse: "收合", members: "{0} 名成員", member: "1 名成員", inFolded: "找到 {0} 個 · 展開", noMembers: "沒有成員",
     openChat: "開啟聊天", minimap: "總覽：點一下移到那裡",
     live: "即時", liveOn: "隱藏即時往來", liveOff: "顯示即時往來", lgTask: "delegate_task", lgSend: "send_to_instance",
-    lgReport: "report_result", lgBroadcast: "broadcast", lgQueued: "排隊中", lgFading: "已送達", lgTeam: "team 之間", legend: "圖例",
+    lgReport: "report_result", lgBroadcast: "broadcast", lgQueued: "排隊中", lgFading: "已送達", lgTeam: "團隊之間", legend: "圖例",
     lgWork: "進行中（直到回報）", lgReturn: "完成（回報送回）", lgStale: "尚未回報",
   },
 });

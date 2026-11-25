@@ -3,6 +3,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { ErrorState } from "/assets/ui-states.js";
 import { assetUrl } from "/assets/asset-url.js";
+import { dateTimeText } from "/assets/clock-text.js";
 register("subagents", {
   en: { title: "Subagents", completed: "{0} finished", running: "{0} running", unknown: "{0} unconfirmed", parent: "Main Agent task: {0}", turn: "Main Agent task turn: {0}", done: "Finished", live: "Running", unsure: "Unconfirmed", seconds: "{0} s", elapsed: "{0} s elapsed", note: "A subagent's report is not the main Agent's final answer.", gap: "Some records are missing or no longer current. Their state is unconfirmed.", failed: "Subagent status could not be checked.", fallback: "Subagent", scroll: "Scroll to see all child runs.", bound: "Up to 16 recent child runs are shown." },
   "zh-TW": { title: "子 Agent", completed: "{0} 已完成", running: "{0} 執行中", unknown: "{0} 待確認", parent: "主 Agent 工作：{0}", turn: "主 Agent 工作回合：{0}", done: "已完成", live: "執行中", unsure: "待確認", seconds: "{0} 秒", elapsed: "已經過 {0} 秒", note: "子 Agent 的回報不是主 Agent 的最終答覆。", gap: "部分紀錄缺漏或已不再是目前的紀錄，狀態待確認。", failed: "暫時無法確認子 Agent 的狀態。", fallback: "子 Agent", scroll: "捲動檢視所有子工作回合。", bound: "最多顯示最近 16 個子工作回合。" },
@@ -63,7 +64,7 @@ export function SubagentRow({ name }) {
   for (const row of runs) { if (!groups.has(row.parentTurn)) groups.set(row.parentTurn, []); groups.get(row.parentTurn).push(row); }
   return html`<details class="subagent-progress" data-trust="subagent-observation"><summary><span>${copy("title")}</span><span class="note">${counts.join(" · ")}</span></summary><p class="note subagent-scroll-hint">${copy("scroll")}</p><div class="subagent-scroll">
     ${value.error ? html`<${ErrorState} message=${copy("failed")} onRetry=${() => observer.current?.retry()} />` : null}
-    ${[...groups].map(([turn, rows]) => html`<section key=${turn} class="subagent-group"><p class="note subagent-parent">${rows[0].parentTask ? copy("parent", rows[0].parentTask) : copy("turn", new Date(Math.min(...rows.map(r => r.parentStartedAt))).toLocaleString())}</p>
+    ${[...groups].map(([turn, rows]) => html`<section key=${turn} class="subagent-group"><p class="note subagent-parent">${rows[0].parentTask ? copy("parent", rows[0].parentTask) : copy("turn", dateTimeText(Math.min(...rows.map(r => r.parentStartedAt))))}</p>
       ${rows.map(r => html`<article key=${r.key} class="subagent-item"><div class="subagent-head"><strong>${r.name || copy("fallback")}</strong>${r.type ? html`<span class="note">${r.type}</span>` : null}<span class="tag">${copy(r.state === "completed" ? "done" : r.state === "running" ? "live" : "unsure")}</span></div>
         <p>${r.task}</p>${r.state === "completed" && Number.isFinite(r.durationMs) ? html`<p class="note">${copy("seconds", (r.durationMs / 1000).toFixed(1).replace(/\.0$/, ""))}</p>` : r.state === "running" ? html`<p class="note">${copy("elapsed", Math.max(0, Math.floor((tick - r.startedAt) / 1000)))}</p>` : null}
         ${r.state === "completed" && r.summary ? html`<p class="subagent-report">${r.summary}</p>` : null}</article>`)}

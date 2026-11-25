@@ -299,7 +299,10 @@ describe("every web surface uses the person: the header, the echo, tasks, activi
     expect(formatHumanInboundMessage("hello", payload.meta, "mcp").split("\n")[0]).toBe("[user:Hanhan@web#admin] hello");
     // The origin is still the web's, with no adapter, user or username (#1756). #1939 S1: the receipt also records that
     // this session — signed in by a code DMed to the account, from this machine, and authorized once — carries web-verified authority.
-    expect(origin).toEqual(webHumanOrigin(false, origin.authority));
+    // M-3713: recognition is separate metadata; it does not replace the native origin or authority actor.
+    expect(origin).toEqual(webHumanOrigin(false, origin.authority, {
+      platform: "telegram", adapter_id: "owner", user_id: "admin", session_handle: mine.handle,
+    }));
     expect(origin.authority).toMatchObject({ kind: "web-verified", actor: { adapter_id: "owner", user_id: "admin" }, session: { peer: "loopback" } });
     expect(h.fm.webChatHistory.list("general").at(-1)).toMatchObject({ sender: "Hanhan", role: "user" });
     expect(h.s.lastInboundUser.get("general")).toBe("Hanhan");

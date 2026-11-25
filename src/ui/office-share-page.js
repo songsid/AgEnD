@@ -12,6 +12,7 @@ import { buildOrgView } from "./fleet-org.js";
 import { createTrafficStore, POLL_MS } from "./fleet-traffic.js";
 import { Office } from "./fleet-office.js";
 import { ALL_ID } from "./fleet-office-overview.js";
+import { clockFormat } from "/assets/clock-text.js";
 
 register("share", {
   en: { title: "Office", live: "Live view", ends: "until {0}", readOnly: "Read-only: names and states only.", ended: "This Office link has ended.", loading: "Loading the office…", offline: "Can't reach the office right now. Trying again…" },
@@ -111,7 +112,7 @@ export function appFromState(d) {
 }
 
 const clock = (ms) => {
-  try { return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(new Date(ms)); } catch { return ""; }
+  try { return clockFormat({ hour: "2-digit", minute: "2-digit" }, undefined).format(new Date(ms)); } catch { return ""; }
 };
 
 export function SharePage({ base, timers = globalThis, pollMs = POLL_MS }) {

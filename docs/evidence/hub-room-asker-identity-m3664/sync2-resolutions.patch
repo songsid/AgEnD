@@ -1,0 +1,40 @@
+diff --git a/src/hub/compose/member.ts b/src/hub/compose/member.ts
+index 503fa2909..ff01422e0 100644
+--- a/src/hub/compose/member.ts
++++ b/src/hub/compose/member.ts
+@@ -0,0 +1,2 @@
++import {HubRoomAskerStore} from "../member/room-asker-store.js";
++import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY} from "../room-asker-identity-model.js";
+@@ -124,0 +127 @@ export interface HubMemberFactoryOptions {
++  attachRoomAskers?(port: Pick<HubRoomAskAdapter,"verifiedAsker"> | null): void;
+@@ -594 +597,4 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
+-      const room = new HubRoomAskAdapter({ db, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
++      const askerStore=options.representative.readState ? new HubRoomAskerStore({home:options.home,binding:roomBinding,encryptionKey:roomKey,now,
++        identity:{hubId,issuerKeyId:profile.issuerKeyId,issuerPublicKey:createPublicKey(profile.hub.issuerPublicKey),fleetId:profile.fleetId}}) : undefined;
++      teardown.add("room author provenance",()=>askerStore?.close());
++      const room = new HubRoomAskAdapter({ askerStore,db,now,attentionChanged:options.pokeAttention, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
+@@ -641 +647 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
+-          view = { features: l.features,
++          view = { features: l.features,linkEpoch:l.linkEpoch,
+@@ -833 +839 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
+-        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY, HUB_ASKER_NAME_CAPABILITY,...(options.representative.readState&&options.attachAgentRooms&&options.roomNotify?[HUB_DIRECT_POST_CAPABILITY]:[])] : []),
++        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY, HUB_ASKER_NAME_CAPABILITY,...(askerStore?[HUB_ROOM_ASKER_IDENTITY_CAPABILITY]:[]),...(options.representative.readState&&options.attachAgentRooms&&options.roomNotify?[HUB_DIRECT_POST_CAPABILITY]:[])] : []),
+@@ -941 +947 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
+-          options.attachAttention(() => service.attentionItems(), (id) => service.retryHeld(id));
++          options.attachAttention(() => [...service.attentionItems(),...room.attentionItems()], (id) => service.retryHeld(id));
+@@ -943,0 +950 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
++          options.attachRoomAskers?.({verifiedAsker:(id,expected)=>room.verifiedAsker(id,expected)});
+@@ -961 +968 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
+-            options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);
++            options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);options.attachRoomAskers?.(null);
+@@ -988 +995 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
+-            options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);
++            options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);options.attachRoomAskers?.(null);
+diff --git a/src/locale.ts b/src/locale.ts
+index 1c1fd5379..d04553757 100644
+--- a/src/locale.ts
++++ b/src/locale.ts
+@@ -446,0 +447 @@ const enMessages = {
++    "hub.room.clockSkew": "This computer’s clock differs from the Hub’s, or the request arrived too late. Check both clocks; the Hub will retry. This question has not reached the agent.",
+@@ -2344,0 +2346 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
++    "hub.room.clockSkew": "這台電腦與 Hub 的時鐘可能不同，或問題送達得太晚。請檢查兩邊的時間；Hub 會重試，這個問題尚未交給 Agent。",

@@ -511,7 +511,7 @@ describe("Owner verification and Web authorization: the reference page's words",
       authWebOnly = true;
       const w = await open();
       expect([text(w.$(".s-authority-brief")), text(w.$("#vaEnabled").parentNode), text(w.$(".s-authority-rule"))]).toEqual([
-        "這個 fleet 未連接聊天平台。主機 owner 可直接驗證；遠端工作階段需透過驗證器確認擁有者身分。",
+        "這個 fleet 未連接聊天平台。主機擁有者可直接驗證；遠端工作階段需透過驗證器確認擁有者身分。",
         "允許已驗證擁有者的網頁授權",
         "裝置登入與擁有者授權分開判斷。關閉後，已驗證的網頁工作階段也不能核准需授權的操作。"]);
     } finally { i18n.setLang("en"); }

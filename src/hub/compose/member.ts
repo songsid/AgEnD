@@ -1,3 +1,7 @@
+import type { HubHeldCloseOutcome } from "../question-close-model.js";
+import { HUB_QUESTION_CLOSE_CAPABILITY } from "../question-close-model.js";
+import {HubRoomAskerStore} from "../member/room-asker-store.js";
+import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY} from "../room-asker-identity-model.js";
 import { HubDirectRooms } from "../member/direct-rooms.js";
 import { HUB_DIRECT_POST_CAPABILITY } from "../direct-posts-model.js";
 import {HubMemberAgentIntro} from "../member/agent-intro.js";
@@ -7,7 +11,7 @@ import { HubMemberSharingLink } from "../member/sharing-link.js";
 import { sharingNotice } from "../member/sharing-result.js";
 import { HubMemberAgentCatalog, memberAgentCatalog, hubPageSharingEnabled, type MemberCatalogAgent } from "../member/agent-catalog.js";
 import { HubMemberAgentPictures, type MemberPictureSources } from "../member/agent-pictures.js";
-import { reduceInWorker } from "../../hub-picture-reduce.js";
+import { cropInWorker, reduceInWorker } from "../../hub-picture-reduce.js";
 import {HubRoomMentionFeedback,HUB_ROOM_MENTION_FEEDBACK_MIGRATION,verifyRoomMentionFeedback} from "../member/room-mention-feedback.js";
 import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-model.js";
 /**
@@ -122,6 +126,7 @@ export interface HubMemberFactoryOptions {
   roomToolsChanged?(): void;
   roomConversationGeneration?(agent: string): string | null;
   attachRoomOwed?(port:{replyWarning(agent:string):string|undefined;turnEnded(agent:string,generation:string,turn:string):Promise<void>}|null):void;
+  attachRoomAskers?(port: Pick<HubRoomAskAdapter,"verifiedAsker"> | null): void;
   attachRoomInputs?(handler: ((correlationId: string, agent: string, generation: string) => void) | null): void;
   roomReceipt?(caller: import("../member/room-post.js").RoomCaller, receiptId: string): import("../member/room-post-receipt.js").RoomReceiptProof | null;
   roomNotify?(input: import("../member/room-post-answers.js").RoomPostNotification): Promise<boolean>;
@@ -133,7 +138,7 @@ export interface HubMemberFactoryOptions {
   sawText?(text: string): void;
   attachExposures(api: import("../member/exposure-api.js").HubMemberExposureApi | null): void;
   /** M-3632: `retry` sends one held question back through the Hub's checks (Needs you → "Try again"). */
-  attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null, retry?: (id: string) => "queued" | "not-found" | "not-retryable"): void;
+  attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null, retry?: (id: string) => "queued" | "not-found" | "not-retryable", close?: (id: string) => Promise<HubHeldCloseOutcome>): void;
   /** Security inbox is available to the current binding's local Settings page, on chat and web-only fleets. */
   attachPairingNotices?(read: (() => import("../types.js").HubPairingNotice[]) | null): void;
   pokeAttention(): void;
@@ -170,6 +175,8 @@ export interface HubRepresentativeHost {
   ): void;
   /** Private Classic input may reopen room output only after its Hub work has ended and a fresh idle proof. */
   attachPrivateQuestions?(read: ((agent: string) => boolean) | null): void;
+  /** M-3660: whether a Hub question is no longer being answered, so its contact window ends (null: detached). */
+  attachQuestionSettled?(read: ((agent: string, correlationId: string) => boolean) | null): void;
   /** M-3127: the `react` hook for a room question's correlation id (null: detached). Absent: this Fleet has none. */
   attachReacts?(handler: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<HubReportOutcome> | null) | null): void;
 }
@@ -589,7 +596,10 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             &&options.representative.agentToken(source.agent)===source.token&&service.readiness(source.exposureId,source.revision).ok;
         },deliver:input=>options.roomNotify?.(input)??Promise.resolve(false),held:id=>options.log("warn","Hub mention feedback delivery held",{notificationId:id})});
       const receiveFeedback=feedback.receive.bind(feedback);
-      const room = new HubRoomAskAdapter({ db, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
+      const askerStore=options.representative.readState ? new HubRoomAskerStore({home:options.home,binding:roomBinding,encryptionKey:roomKey,now,
+        identity:{hubId,issuerKeyId:profile.issuerKeyId,issuerPublicKey:createPublicKey(profile.hub.issuerPublicKey),fleetId:profile.fleetId}}) : undefined;
+      teardown.add("room author provenance",()=>askerStore?.close());
+      const room = new HubRoomAskAdapter({ askerStore,db,now,attentionChanged:options.pokeAttention, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
         locale: options.representative.locale, generation: options.roomConversationGeneration,feedback:receiveFeedback,
         maxCrossInstanceMessageBytes: options.maxCrossInstanceMessageBytes,remind:options.roomNotify,
         localExposure: id => {
@@ -636,7 +646,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         let view = roomLinks.get(l);
         if (!view) {
           const version = l.revocationVersion;
-          view = { features: l.features,
+          view = { features: l.features,linkEpoch:l.linkEpoch,
             current: () => roomCurrent() && online === l && links.link() === l && l.current() && l.revocationVersion === version,
             contextState: async payload => { const result=await l.exchange({v:1,type:"room.context-state",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload},"room.context-state-result");
               if(result.type!=="room.context-state-result")throw new HubProtocolError("invalid");return result.payload; },
@@ -809,7 +819,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         failed: () => options.log("warn", "The owner agent catalog was not sent") }) : null;
       teardown.add("owner agent catalog", () => catalog?.close());
       // M-3533 R2b: each published share's pictures, for the Hub's room offices (agent-pictures-v1, when the Hub offers it).
-      const pictures: HubMemberAgentPictures | null = options.pictureSources ? new HubMemberAgentPictures({ current: live, reduce: reduceInWorker,
+      const pictures: HubMemberAgentPictures | null = options.pictureSources ? new HubMemberAgentPictures({ current: live, reduce: reduceInWorker, crop: cropInWorker,
         exposures: () => exposures.list().flatMap(row => { const e = row.committed?.exposure; return e && e.state === "published" ? [{ id: e.id, agent: row.agent }] : []; }),
         sources: agent => options.pictureSources!(agent),
         failed: () => options.log("warn", "Shared agents' pictures were not sent to the Hub") }) : null;
@@ -822,12 +832,13 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         agentIntro: true,
         agentCatalog: !!catalog,
         agentPictures: !!pictures,
+        agentCharacters: !!pictures,
         exposureRequests: !!sharing,
         roomContext: !!options.roomConversationGeneration && !!options.attachRoomInputs,
         roomMentionFeedback:!!options.roomNotify,
         home: options.home,
         hubId,
-        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY, HUB_ASKER_NAME_CAPABILITY,...(options.representative.readState&&options.attachAgentRooms&&options.roomNotify?[HUB_DIRECT_POST_CAPABILITY]:[])] : []),
+        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY, HUB_ASKER_NAME_CAPABILITY, HUB_QUESTION_CLOSE_CAPABILITY,...(askerStore?[HUB_ROOM_ASKER_IDENTITY_CAPABILITY]:[]),...(options.representative.readState&&options.attachAgentRooms&&options.roomNotify?[HUB_DIRECT_POST_CAPABILITY]:[])] : []),
           ...(options.representative.readState ? [HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])],
         memberOrigin: profile.hub.memberOrigin,
         revocationFloor: () => journal.revocationVersion(),
@@ -935,9 +946,10 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         async leave(expected: import("../types.js").HubMemberLeaveBinding) { return live() && await client!.leave(expected); },
         async start() {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub member was switched off while starting");
-          options.attachAttention(() => service.attentionItems(), (id) => service.retryHeld(id));
+          options.attachAttention(() => [...service.attentionItems(),...room.attentionItems()], (id) => service.retryHeld(id), (id) => service.closeHeld(id));
           options.attachExposures(api);
           options.attachSharing?.(sharingController);
+          options.attachRoomAskers?.({verifiedAsker:(id,expected)=>room.verifiedAsker(id,expected)});
           options.attachAgentRooms?.(posts);
           options.attachShareLapse?.({ lapsed: shareLapsed, agents: lapsedAgents });
           options.representative.attachReports(input => room.report(input) ?? service.report(input), (cid, agent) => {
@@ -946,6 +958,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             room.deliveryFailed(cid, agent); service.deliveryFailed(cid, agent);
           });
           options.representative.attachPrivateQuestions?.(agent => service.hasOpenQuestion(agent) || room.hasOpenQuestion(agent));
+          options.representative.attachQuestionSettled?.((agent, cid) => (service.questionSettled(cid, agent) ?? room.questionSettled(cid, agent)) === true);
           options.representative.attachReacts?.(input => room.react(input));
           options.attachRoomInputs?.((cid,agent,generation) => room.inputHandoff(cid,agent,generation));
           options.attachRoomOwed?.(room);
@@ -953,7 +966,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             options.representative.attachReacts?.(null);
             options.representative.attachReports(null, null);
             options.representative.attachPrivateQuestions?.(null);
-            options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);
+            options.representative.attachQuestionSettled?.(null);
+            options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);options.attachRoomAskers?.(null);
             options.attachExposures(null);
           options.attachSharing?.(null);
             intro.connected(null);
@@ -979,7 +993,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           client?.fence();
           options.representative.attachReports(null, null);
           options.representative.attachPrivateQuestions?.(null);
-            options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);
+          options.representative.attachQuestionSettled?.(null);
+            options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);options.attachRoomAskers?.(null);
           options.attachExposures(null);
           options.attachSharing?.(null);
           intro.connected(null);

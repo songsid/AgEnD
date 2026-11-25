@@ -1,0 +1,69 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-asker-delivery-m3664.test.ts (7 tests | 3 failed | 4 skipped) 32ms
+   × button click cannot sign a post whose author differs from the delivery principal/member 24ms
+   × reply-triggered ask cannot sign a post whose author differs from the delivery principal/member 3ms
+   × re-mention cannot sign a post whose author differs from the delivery principal/member 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-asker-delivery-m3664.test.ts > button click cannot sign a post whose author differs from the delivery principal/member
+AssertionError: expected { …(3) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "displayName": "Example person",
+  "id": "example/66ad92b0-020b-4fe6-afb7-84b8808a3063",
+  "kind": "person",
+}
+
+ ❯ tests/hub-room-asker-delivery-m3664.test.ts:4:318
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-room-asker-delivery-m3664.test.ts > reply-triggered ask cannot sign a post whose author differs from the delivery principal/member
+AssertionError: expected { …(3) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "displayName": "Example person",
+  "id": "example/21b6309a-c145-4cd2-bc76-8823cb020812",
+  "kind": "person",
+}
+
+ ❯ tests/hub-room-asker-delivery-m3664.test.ts:4:318
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-room-asker-delivery-m3664.test.ts > re-mention cannot sign a post whose author differs from the delivery principal/member
+AssertionError: expected { …(3) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "displayName": "Example person",
+  "id": "example/a6967718-8a82-46d0-b33d-bf6102f9d72d",
+  "kind": "person",
+}
+
+ ❯ tests/hub-room-asker-delivery-m3664.test.ts:4:318
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 4 skipped (7)
+   Start at  23:57:08
+   Duration  1.52s (transform 949ms, setup 196ms, import 1.08s, tests 32ms, environment 0ms)

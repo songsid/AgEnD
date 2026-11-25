@@ -68,7 +68,7 @@ Built-in safeguards:
 ### Night shift and scheduled work
 
 - Schedules (cron, one-shot or silent) let assistants work on a timer. For example: "every weekday at 6 pm, write up today's dev log and post it to this channel", or "every five minutes, check each instance's progress and @ me if one is stuck".
-- A daily summary is sent at 21:00 by default.
+- A daily summary is sent at 21:00 if `daily_summary` is on (off by default).
 - You can set a daily spending limit, with a warning at 80%.
 
 ---
@@ -204,7 +204,7 @@ Slash commands are handled by AgEnD itself, not guessed by a model. `/web` (the 
 **Limits**
 
 - The host and the CLIs have to stay available. Login, quota and bot-permission problems in the CLIs themselves still need handling.
-- On Windows it installs and runs through WSL; it can't operate the native Windows desktop.
+- On Windows it installs and runs through WSL; operating the native Windows desktop (local Windows CLIs, paired PCs) is in alpha preview under **Settings → Runtime**.
 
 ## Who it's for, and who it isn't
 

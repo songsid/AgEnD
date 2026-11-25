@@ -1,3 +1,7 @@
+import {tForLocale} from "../../locale.js";
+import {HubRoomAskerClockError} from "../room-asker-identity.js";
+import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY,type RoomAskerDestination,type VerifiedHubAsker,type HubRoomAskerIdentity} from "../room-asker-identity-model.js";
+import type {HubRoomAskerStore,RoomAskerAccepted} from "./room-asker-store.js";
 import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "../room-answer-status-model.js";
 import {HUB_ROOM_BRIEF_CAPABILITY,roomBriefSchema,formatRoomBrief,type RoomBrief} from "../room-brief-model.js";
 /** Track C / seam2: injectable Fleet adapter. Track R owns the negotiated wire schemas and socket routing. */
@@ -42,6 +46,7 @@ export interface RoomExposure { agent: string; consentId: string; revision: numb
 export interface RoomAskLink {
   current(): boolean;
   readonly features?: ReadonlySet<string>;
+  readonly linkEpoch?: number;
   sendAnswer(answer: RoomAnswer): Promise<void>;
   /** M-3127 (agent reactions, on room-answer-buttons-v1): the agent's reaction to the room question it was asked (absent: an older link). */
   sendReact?(react: { messageId: string; roomId: string; exposureId: string; emoji: string }): Promise<void>;
@@ -53,6 +58,10 @@ export interface RoomAskLink {
 }
 export interface RoomAskOptions {
   db: Database.Database;
+  /** Optional separately encrypted provenance; never changes the strict legacy row. */
+  askerStore?: HubRoomAskerStore;
+  now?():number;
+  attentionChanged?():void;
   /** Stable immutable Hub issuer / Fleet / owner binding, from the selected member state set. */
   bindingKey: string;
   encryptionKey: Buffer;
@@ -133,6 +142,7 @@ export function verifyRoomAskJournal(db: Database.Database, options: Pick<RoomAs
 /** Injectable until Track R's negotiated socket dispatcher and room membership checks are composed. */
 export class HubRoomAskAdapter {
   private closed = false;
+  private readonly clockHolds=new Map<string,{item:import("../../needs-you.js").HubExecutionAttentionInput;expiresAt:number}>();
   private link: RoomAskLink | null = null;
   private readonly binding: string;
   private readonly key: Buffer;
@@ -149,12 +159,24 @@ export class HubRoomAskAdapter {
     this.binding = createHash("sha256").update(options.bindingKey).digest("hex");
     // Authenticate the whole retained set before changing any recovery state. Never replace corrupt history.
     const retained = this.rows().map(row => ({ row, saved: this.read(row) }));
+    options.askerStore?.recover(id => {const row=this.row(id);return row?this.accepted(this.read(row)):null;});
     options.db.transaction(() => {
       for (const { row, saved } of retained) {
         if (row.state === "input") this.save(row.message_id, "held", saved);
         else if (row.state === "dispatching") this.save(row.message_id, "queued", saved);
       }
     }).immediate();
+  }
+  /**
+   * M-3660: whether this agent's room question on `correlationId` is no longer being answered (answered, acked). A held
+   * room ask still takes the agent's late answer, so it is not settled: its window runs to its deadline. null: not one here.
+   */
+  questionSettled(correlationId: string, agent: string): boolean | null {
+    if (this.closed) return null;
+    const row = this.options.db.prepare("SELECT * FROM hub_room_asks WHERE cid=?").get(correlationId) as Row | undefined;
+    if (!row) return null;
+    try { if (this.read(row).local.agent !== agent) return null; } catch { return null; }
+    return row.state === "answered" || row.state === "acked";
   }
   hasOpenQuestion(agent:string):boolean {
     return !this.closed&&this.rows().some(row=>["input","delivered"].includes(row.state)&&this.read(row).local.agent===agent);
@@ -174,6 +196,42 @@ export class HubRoomAskAdapter {
     this.options.db.prepare("INSERT INTO hub_room_asks VALUES(?,?,?,?,?) ON CONFLICT(message_id) DO UPDATE SET state=excluded.state,value=excluded.value")
       .run(id, this.binding, state, saved.cid, value);
   }
+  private accepted(saved:Saved):RoomAskerAccepted {
+    const destination={agent:saved.local.agent,exposureId:saved.ask.exposureId,incarnation:createHash("sha256").update(JSON.stringify([saved.local.token,saved.generation??null])).digest("hex")};
+    return {ask:saved.ask,destination,journalDigest:createHash("sha256").update(JSON.stringify([saved.ask,saved.local,saved.cid,saved.generation??null])).digest("hex")};
+  }
+  /** Historical author of this exact accepted payload; never current consent, lease or active turn. */
+  verifiedAsker(messageId:string,expected:RoomAskerDestination):VerifiedHubAsker|null {
+    if(this.closed)return null;
+    try {const row=this.row(messageId);if(!row)return null;const accepted=this.accepted(this.read(row)),d=accepted.destination;
+      if(d.agent!==expected.agent||d.exposureId!==expected.exposureId||d.incarnation!==expected.incarnation)return null;
+      return this.options.askerStore?.get(messageId,accepted)??null;
+    }catch{return null;}
+  }
+  attentionItems():import("../../needs-you.js").HubExecutionAttentionInput[]{
+    if(this.closed)return [];
+    const now=this.options.now?.()??Date.now(),items:import("../../needs-you.js").HubExecutionAttentionInput[]=[];
+    for(const [key,hold]of this.clockHolds){
+      if(now>=hold.expiresAt||this.options.localExposure(hold.item.exposureId)?.agent!==hold.item.agent){this.clockHolds.delete(key);continue;}
+      items.push(hold.item);
+    }
+    return items;
+  }
+  private prepareAsker(proof:HubRoomAskerIdentity,saved:Saved,source:RoomAskLink,replay:boolean):void{
+    try{
+      this.options.askerStore!.prepare(proof,this.accepted(saved),{linkEpoch:source.linkEpoch!,exposureRevision:saved.local.revision},{replay,legacyAbsent:!replay,canCollect:id=>{const row=this.row(id);if(!row)return true;this.read(row);return ["answered","acked","held"].includes(row.state);}});
+      if(this.clockHolds.delete(saved.ask.exposureId))this.options.attentionChanged?.();
+    }catch(error){
+      if(error instanceof HubRoomAskerClockError&&(!replay||["queued","dispatching"].includes(this.row(saved.ask.messageId)?.state??""))){
+        if(this.clockHolds.size>=4096&&!this.clockHolds.has(saved.ask.exposureId))this.clockHolds.delete(this.clockHolds.keys().next().value!);
+        this.clockHolds.set(saved.ask.exposureId,{expiresAt:proof.retainedUntil,item:{id:`room-clock:${saved.ask.exposureId}`,kind:"hold",agent:saved.local.agent,messageId:saved.ask.messageId,exposureId:saved.ask.exposureId,since:this.options.now?.()??Date.now(),
+          detail:tForLocale(this.options.locale??"en","hub.room.clockSkew")}});
+        this.options.attentionChanged?.();
+      }
+      throw error;
+    }
+  }
+  private provenanceReady(saved:Saved):boolean{return this.options.askerStore?.permitsInput(saved.ask.messageId,this.accepted(saved))??true;}
   private usable(source: RoomAskLink | null): source is RoomAskLink {
     return !this.closed && this.options.current() && source !== null && source === this.link && source.current()
       && !!source.features?.has("welcome-caps-v1") && source.features.has(ROOM_ASK_CAPABILITY);
@@ -189,15 +247,21 @@ export class HubRoomAskAdapter {
     // Reconnection can resend a frozen answer, but cannot itself authorize a queued first input.
   }
   /** Synchronous admission only: callers must not await agent work on the socket's control/ACK queue. */
-  accept(input: RoomAsk, source: RoomAskLink): "accepted" | "duplicate" {
+  accept(input: RoomAsk & {askerIdentity?:HubRoomAskerIdentity}, source: RoomAskLink): "accepted" | "duplicate" {
     if (!this.usable(source)) throw new HubProtocolError("stale");
-    const ask = validated(askSchema, input);
+    const {askerIdentity,...legacy}=input;
+    if(askerIdentity!==undefined && (!this.options.askerStore||!source.features?.has(HUB_ROOM_ASKER_IDENTITY_CAPABILITY)||source.linkEpoch===undefined))throw new HubProtocolError("incompatible");
+    const ask = validated(askSchema, legacy);
     if (!ask.text.trim() || Buffer.byteLength(JSON.stringify(ask)) > HUB_LIMITS.frame - 1024) throw new HubProtocolError("invalid");
     const old = this.row(ask.messageId);
     if (old) {
       const saved = this.read(old);
       if (JSON.stringify(saved.ask) !== JSON.stringify(ask)) throw new HubProtocolError("conflict");
       if (!this.current(saved)) throw new HubProtocolError("stale");
+      if(askerIdentity!==undefined)this.prepareAsker(askerIdentity,saved,source,true);
+      // Finish only an exact previously prepared binding; a proofless retry cannot invent one.
+      if(askerIdentity!==undefined)this.options.askerStore!.commit(ask.messageId,this.accepted(saved));
+      if(!this.provenanceReady(saved))throw new HubProtocolError("uncertain");
       this.admitted.set(ask.messageId, source);
       if (old.state === "queued") this.kick(ask.messageId);
       return "duplicate";
@@ -209,7 +273,10 @@ export class HubRoomAskAdapter {
     if (ask.contextState && (!generation || ask.contextState.generation!==generation || !source.contextState || !source.contextInput)) throw new HubProtocolError("stale");
     const pending = this.options.db.prepare("SELECT count(*) AS n FROM hub_room_asks WHERE state NOT IN ('acked','held')").get() as { n: number };
     if (pending.n >= 4096) throw new HubProtocolError("backpressure");
-    this.save(ask.messageId, "queued", { ask, local: { agent: local.agent, consentId: local.consentId, revision: local.revision, token: local.token }, cid: `hub-room-${randomUUID()}`, ...(generation ? {generation} : {}) });
+    const saved:Saved={ ask, local: { agent: local.agent, consentId: local.consentId, revision: local.revision, token: local.token }, cid: `hub-room-${randomUUID()}`, ...(generation ? {generation} : {}) };
+    if(askerIdentity!==undefined)this.prepareAsker(askerIdentity,saved,source,false);
+    this.save(ask.messageId,"queued",saved);
+    if(askerIdentity!==undefined)this.options.askerStore!.commit(ask.messageId,this.accepted(this.read(this.row(ask.messageId)!)));
     this.admitted.set(ask.messageId, source); this.kick(ask.messageId);
     return "accepted";
   }
@@ -223,9 +290,9 @@ export class HubRoomAskAdapter {
     const row = this.row(id), source = this.admitted.get(id);
     if (!row || row.state !== "queued" || !source || !this.usable(source)) return;
     const saved = this.read(row);
-    if (!this.current(saved)) return;
+    if (!this.current(saved)||!this.provenanceReady(saved)) return;
     this.save(id, "dispatching", saved);
-    const current = () => this.usable(source) && this.admitted.get(id) === source && this.current(saved);
+    const current = () => this.usable(source) && this.admitted.get(id) === source && this.current(saved) && this.provenanceReady(saved);
     try {
       if (saved.generation && source.features?.has(HUB_ROOM_CONTEXT_CAPABILITY) && !await this.ensureContext(source,saved.ask.exposureId,saved.local.agent,saved.generation)) throw new HubProtocolError("stale");
       // M-3125: the asking post's files go to the agent's inbox first, with the 1:1 chat's own safe lines; a file that cannot be
@@ -238,8 +305,10 @@ export class HubRoomAskAdapter {
           ? await store.receive(saved.local.agent, saved.ask.messageId, files, (fid, offset) => fetch(fid, offset)).catch(() => files.map(f => `(${f.name}: could not be fetched)`))
           : files.map(f => `(${f.name}: not available on this Fleet)`);
       }
+      const verifiedHubAsker=this.options.askerStore?.get(id,this.accepted(saved));
       const delivered = await this.options.deliver({ agent: saved.local.agent, correlationId: saved.cid, contactLimit: this.options.localExposure(saved.ask.exposureId)?.contactLimit !== false,
         ...(saved.generation ? {roomContextGeneration:saved.generation} : {}),
+        ...(verifiedHubAsker ? {verifiedHubAsker,roomAskerMessageId:id,roomAskerDestination:Object.freeze(this.accepted(saved).destination)} : {}),
         text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, { maxContextBytes: this.options.maxCrossInstanceMessageBytes?.(), react: !!source.features?.has(HUB_ROOM_REACT_CAPABILITY) && typeof source.sendReact === "function", fileLines }), stillCurrent: current,
         beforeInput: async () => {
           if (!current() || this.row(id)?.state !== "dispatching") return false;
@@ -486,7 +555,7 @@ export class HubRoomAskAdapter {
     const saved = this.read(row);
     if (saved.local.agent === agent) this.save(row.message_id, "held", saved);
   }
-  close(): void { this.closed = true; this.link = null; this.admitted.clear(); }
+  close(): void { this.closed = true; this.link = null; this.admitted.clear();this.clockHolds.clear(); }
 }
 
 export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale: "en" | "zh-TW" = "en", { react = false, fileLines = [], maxContextBytes }: { react?: boolean; fileLines?: readonly string[]; maxContextBytes?: number } = {}): string {

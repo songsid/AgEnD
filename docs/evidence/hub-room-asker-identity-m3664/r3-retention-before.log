@@ -1,0 +1,27 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-asker-source-m3664.test.ts (11 tests | 1 failed | 10 skipped) 900ms
+   × actual Hub HTTP room routing signs only a negotiated projected payload, preserving old member output 894ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-asker-source-m3664.test.ts > actual Hub HTTP room routing signs only a negotiated projected payload, preserving old member output
+AssertionError: expected [Function] to not throw an error but 'Error: Hub protocol: conflict' was thrown
+
+- Expected:
+undefined
+
++ Received:
+"Error: Hub protocol: conflict"
+
+ ❯ tests/hub-room-asker-source-m3664.test.ts:33:88
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  00:27:06
+   Duration  43.89s (transform 33.94s, setup 221ms, import 42.18s, tests 900ms, environment 0ms)

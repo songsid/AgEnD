@@ -1,0 +1,266 @@
+{
+ "label": "before",
+ "cases": {
+  "desk-light-en-compact": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 166,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 113,
+     "nameCut": false,
+     "text": "33 d ago",
+     "title": "Last replied: 10/22/2026, 4:06:32 PM",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 108,
+     "nameCut": false,
+     "text": "5 min ago",
+     "title": "Last replied: 11/24/2026, 4:01:32 PM",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 166,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    }
+   ]
+  },
+  "desk-dark-zh-TW-compact": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 166,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 123,
+     "nameCut": false,
+     "text": "33 天前",
+     "title": "最後回覆：2026/10/22 下午4:06:32",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 119,
+     "nameCut": false,
+     "text": "5 分鐘前",
+     "title": "最後回覆：2026/11/24 下午4:01:32",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 166,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    }
+   ]
+  },
+  "desk-light-en-detailed": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 142,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": "33 d ago",
+     "title": "Last replied: 10/22/2026, 4:06:32 PM",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": "5 min ago",
+     "title": "Last replied: 11/24/2026, 4:01:32 PM",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    }
+   ]
+  },
+  "desk-dark-zh-TW-detailed": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 142,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": "33 天前",
+     "title": "最後回覆：2026/10/22 下午4:06:32",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": "5 分鐘前",
+     "title": "最後回覆：2026/11/24 下午4:01:32",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    }
+   ]
+  },
+  "phone-dark-zh-TW-detailed": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 284,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false,
+     "visible": true
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": "33 天前",
+     "title": "最後回覆：2026/10/22 下午4:19:33",
+     "inRow": true,
+     "timeWhole": true,
+     "visible": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": "5 分鐘前",
+     "title": "最後回覆：2026/11/24 下午4:14:33",
+     "inRow": true,
+     "timeWhole": true,
+     "visible": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false,
+     "visible": true
+    }
+   ]
+  },
+  "phone-light-en-detailed": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 284,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false,
+     "visible": true
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": "33 d ago",
+     "title": "Last replied: 10/22/2026, 4:19:33 PM",
+     "inRow": true,
+     "timeWhole": true,
+     "visible": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": "5 min ago",
+     "title": "Last replied: 11/24/2026, 4:14:33 PM",
+     "inRow": true,
+     "timeWhole": true,
+     "visible": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false,
+     "visible": true
+    }
+   ]
+  }
+ },
+ "source": "3ed153b1"
+}

@@ -8,6 +8,7 @@ import { html } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { Empty } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
+import { unitText } from "/assets/clock-text.js";
 
 register("cache", {
   en: {
@@ -43,19 +44,19 @@ register("cache", {
     pricesNote: "牌價查證日期：{0}。", quotaNote: "訂閱方案：Anthropic 與 OpenAI 未公布快取讀取如何計入方案額度，因此節省金額以牌價計算為準，換算成額度則是估算。",
     estimateNote: "估算：Codex 不記錄快取寫入，寫入量以該次請求未命中快取的輸入估算。",
     notPricedNote: "有些模型不在價目表中，這些 Agent 以「輸入價格單位」比較。",
-    scanning: "仍在讀取 transcript——還剩 {0}。重新整理可看到更多。", scanningFirst: "第一次讀取 transcript 中——重新整理可看到更多。", refresh: "重新整理",
+    scanning: "仍在讀取對話紀錄——還剩 {0}。重新整理可看到更多。", scanningFirst: "第一次讀取對話紀錄中——重新整理可看到更多。", refresh: "重新整理",
     keepWarm: "建議保溫", leaveOff: "不需保溫", estimate: "估算", notPriced: "未定價",
     requests: "請求數", pastTtl: "超過 TTL（{0}）", expired: "已過期（重寫）", rewritten: "重寫的 token",
-    expiryCost: "過期成本", share: "占其成本 {0}", pings: "保溫 ping 次數", pingsAfter: "其中 {0} 次在最後一次請求之後",
+    expiryCost: "過期成本", share: "佔其成本 {0}", pings: "保溫 ping 次數", pingsAfter: "其中 {0} 次在最後一次請求之後",
     pingCost: "ping 成本", net: "保溫後淨額", gaps: "請求間隔", ttlLine: "TTL {0}",
     quiet: "這段期間活動太少，無法判斷。",
     neverExpired: "沒有任何間隔超過 {0} 的快取時效。", survived: "有 {0} 個間隔超過 {1} TTL，但快取仍在。",
-    onlyIdle: "沒有任何請求在快取過期後回來使用：每個 session 閒置後就不再使用。保溫只會送出 {0} 次沒人讀的 ping。",
+    onlyIdle: "沒有任何請求在快取過期後回來使用：每個工作階段閒置後就不再使用。保溫只會送出 {0} 次沒人讀的 ping。",
     saves: "常閒置超過 {0} TTL 後又再使用：保溫可省 {1}（過期成本的 {2}）。",
     costsMore: "每次過期約需送 {0} 次 ping——保溫的花費比省下的多 {1}。",
     costsMoreUnits: "每次過期約需送 {0} 次 ping——保溫的花費比省下的多。",
-    unavailable: "不提供", creditBilled: "以 credit 計費，沒有快取資料", unsupported: "這個 CLI 沒有快取資料", noData: "尚未讀到任何請求",
-    shared: "與 {0} 共用工作目錄，無法分辨各自的 transcript",
+    unavailable: "不提供", creditBilled: "以點數計費，沒有快取資料", unsupported: "這個 CLI 沒有快取資料", noData: "尚未讀到任何請求",
+    shared: "與 {0} 共用工作目錄，無法分辨各自的對話紀錄",
     empty: "沒有 Agent", emptyHint: "fleet 有 Agent 後會顯示在這裡。",
     b0: "≤5分", b1: "≤30分", b2: "≤1時", b3: "≤2時", b4: "≤6時", b5: "≤24時", b6: ">24時", tokensUnit: "輸入 token 當量",
     writeMix: "快取寫入 5 分 / 1 時", effectiveTtl: "實際存活", gapMiss: "{1} 個 5–60 分鐘空檔中有 {0} 個重寫", gapMissNone: "還沒有 5–60 分鐘的空檔",
@@ -82,7 +83,7 @@ export function tokens(n) {
   return String(Math.round(n));
 }
 export function bytes(n) { return n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${Math.round(n / 1e6)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`; }
-export function ttlText(sec) { return sec >= 3600 ? `${sec / 3600} h` : `${Math.round(sec / 60)} min`; }
+export function ttlText(sec) { return sec >= 3600 ? unitText(sec / 3600, "h") : unitText(Math.round(sec / 60), "min"); }
 const pct = (x) => `${x >= 0.1 ? Math.round(x * 100) : (x * 100).toFixed(1)}%`;
 
 /** The one line under an instance's recommendation. */

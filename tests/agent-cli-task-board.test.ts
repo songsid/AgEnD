@@ -26,10 +26,11 @@ import { withoutTaskCommands } from "../src/dashboard-permissions.js";
 
 const run = promisify(execFile);
 const ANN: Actor = { kind: "person", name: "Ann" };
-const MODULES = ["agent-cli", "cli-flags", "agent-token-header", "agent-file-read", "instance-names", "web-asset-parts", "bundled-skills", "web-experimental"];
+const MODULES = ["agent-cli", "cli-flags", "agent-token-header", "agent-file-read", "instance-names", "web-asset-parts", "bundled-skills", "web-experimental", "task-attach-client", "task-file-limits"];
 
 let root: string, dir: string, server: Server, port = 0, recording: Server, recordPort = 0;
 const recorded: Array<{ op: string; args: Record<string, unknown> }> = [];
+const staged: Array<Record<string, unknown>> = [];
 let fm: FleetManager, db: SchedulerDb, boards = 0;
 
 beforeAll(async () => {
@@ -44,7 +45,14 @@ beforeAll(async () => {
   // A request-recording stub, for what the command line sends.
   recording = createServer((req, res) => {
     let body = ""; req.on("data", c => { body += c; });
-    req.on("end", () => { recorded.push(JSON.parse(body)); res.writeHead(200, { "Content-Type": "application/json" }); res.end('"ok"'); });
+    req.on("end", () => {
+      const msg = JSON.parse(body);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      // a file the client stages (an internal `upload`) is answered as the fleet answers it, and not recorded as the
+      // command's own request: the write that follows it is.
+      if (msg.op === "task" && msg.args?.action === "upload") { staged.push(msg.args); res.end(JSON.stringify(JSON.stringify({ upload: "a".repeat(31) + "1", name: msg.args.name, size: 1, done: true }))); return; }
+      recorded.push(msg); res.end('"ok"');
+    });
   });
   await new Promise<void>(r => recording.listen(0, "127.0.0.1", r));
   recordPort = (recording.address() as { port: number }).port;
@@ -74,6 +82,7 @@ afterAll(async () => {
 });
 beforeEach(() => {
   recorded.length = 0;
+  staged.length = 0;
   // A database of its own for each test: card numbers count from 1 again.
   try { db?.close(); } catch { /* closed */ }
   db = new SchedulerDb(join(dir, `scheduler-${++boards}.db`));
@@ -102,8 +111,8 @@ describe("the command line sends the tool's own arguments (parity with ACTION_FI
     create: [["create", "T", "D", "high", "dev-a", "--depends-on", "S-1,S-2", "--depends-on", "S-3", "--project", "Game", "--parent", "M-1", "--scope", "s", "--acceptance", "a, b", "--acceptance", "c",
       "--context", "ctx", "--needs-review", "--size", "m", "--dispatcher", "lead"]],
     update: [["update", "M-1", "claimed", "high", "--title", "t", "--description", "d", "--assignee", "x", "--depends-on", "S-1", "--result", "r", "--scope", "s", "--acceptance", "a", "--check", "1,2", "--check", "4", "--uncheck", "3",
-      "--context", "c", "--state", "s", "--log", "l", "--comment", "c", "--no-needs-review", "--size", "S", "--dispatcher", "none", "--version", "3", "--project", "none"]],
-    move: [["move", "M-1", "blocked", "why", "--comment", "c", "--version", "2"], ["move", "M-1", "done", "the result"], ["move", "M-1", "--status", "claimed"]],
+      "--context", "c", "--state", "s", "--log", "l", "--comment", "c", "--no-needs-review", "--size", "S", "--dispatcher", "none", "--version", "3", "--project", "none", "--attach", "./a.md"]],
+    move: [["move", "M-1", "blocked", "why", "--comment", "c", "--version", "2"], ["move", "M-1", "done", "the result"], ["move", "M-1", "--status", "claimed"], ["move", "M-1", "review", "r", "--attach", "./a.md"]],
     claim: [["claim", "M-1"]],
     done: [["done", "M-1", "finished"]],
     get: [["get", "M-1", "--detail"]],
@@ -114,10 +123,14 @@ describe("the command line sends the tool's own arguments (parity with ACTION_FI
     move_project: [["move-project", "2", "M-1", "M-2"]],
     watch: [["watch", "M-1", "dev-b"]],
     unwatch: [["unwatch", "M-1", "dev-b"]],
+    // the files are read and staged by the client; the write carries their ids (`uploads`) in place of the paths.
+    attach: [["attach", "M-1", "./a.md", "--comment", "c", "--version", "2"]],
   };
+  beforeAll(() => { writeFileSync(join(root, "a.md"), "# hello\n"); });
   const EXPECT: Record<string, Record<string, unknown>> = {
     create: { action: "create", title: "T", description: "D", priority: "high", assignee: "dev-a", depends_on: ["S-1", "S-2", "S-3"], project: "Game", parent: "M-1", scope: "s", acceptance: ["a, b", "c"], context: "ctx", needs_review: true, size: "M", dispatcher: "lead" },
-    update: { action: "update", id: "M-1", status: "claimed", priority: "high", title: "t", description: "d", assignee: "x", depends_on: ["S-1"], result: "r", scope: "s", acceptance: ["a"], check: [1, 2, 4], uncheck: [3], context: "c", state: "s", log: "l", comment: "c", needs_review: false, size: "S", dispatcher: "none", version: 3, project: "none" },
+    attach: { action: "attach", id: "M-1", comment: "c", version: 2, uploads: ["a".repeat(31) + "1"] },
+    update: { action: "update", id: "M-1", status: "claimed", priority: "high", title: "t", description: "d", assignee: "x", depends_on: ["S-1"], result: "r", scope: "s", acceptance: ["a"], check: [1, 2, 4], uncheck: [3], context: "c", state: "s", log: "l", comment: "c", needs_review: false, size: "S", dispatcher: "none", version: 3, project: "none", uploads: ["a".repeat(31) + "1"] },
     list: { action: "list", filter_assignee: "dev-a", filter_status: ["open", "claimed"], verbose: true, project: "Game", parent: "M-1", stale: true, detail: true, limit: 5, cursor: "next" },
     create_project: { action: "create_project", name: "Game", description: "all the game's work" },
     move_project: { action: "move_project", project: "2", ids: ["M-1", "M-2"] },
@@ -149,7 +162,8 @@ describe("the command line sends the tool's own arguments (parity with ACTION_FI
       }
     }
     for (const [action, fields] of Object.entries(ACTION_FIELDS)) {
-      const missing = fields.filter((f) => !reached[action]?.has(f));
+      // `attach` (paths) reaches the fleet as `uploads` (the ids the client staged the files under).
+      const missing = fields.filter((f) => !reached[action]?.has(f === "attach" ? "uploads" : f));
       expect({ action, missing }).toEqual({ action, missing: [] });
     }
     // And the other way: every action the tool has is one the CLI has.
@@ -303,6 +317,20 @@ describe("every action, through the real endpoint: the tool's rules", () => {
     expect(db.board.getCard(a).version).toBe(before);
   });
 
+  it("a file a refused write did not use is given back to the fleet — the real client against the real endpoint; a write that went through keeps it on the card", async () => {
+    writeFileSync(join(root, "rel.md"), "# rel");
+    const a = await card("dev-a", "Files");
+    const store = db.board.files() as unknown as { staged: Map<string, unknown> };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const stale = await task("dev-a", "attach", a, "./rel.md", "--version", "99");
+      expect(stale.json.error, `attempt ${attempt}`).toBeTruthy();
+      expect(store.staged.size, "given back").toBe(0);
+    }
+    const ok = await task("dev-a", "attach", a, "./rel.md", "--comment", "here");
+    expect(ok.out).toMatch(/attached to M-\d+: rel\.md/);
+    expect(store.staged.size).toBe(0);
+    expect(db.board.attachments(db.board.getCard(a).uuid).map((f) => f.name)).toEqual(["rel.md"]);
+  });
   it("an instance without the task tool, or with the board off, is refused by the endpoint — the CLI is no way around it", async () => {
     const minimal = await task("min", "mine");
     expect(minimal.json.error).toMatch(/task/);

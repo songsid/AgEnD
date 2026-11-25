@@ -1,6 +1,7 @@
 /** M-3339 wire contract. All identities and origins are resolved by the server. */
 export interface ContactPerson {
   platform: "discord" | "telegram" | "host";
+  /** Transport/proof routing only; authorization identity is platform + userId. */
   adapterId: string;
   userId: string;
   label: string;
@@ -116,9 +117,9 @@ export interface ContactPermissions {
   classicRoom: boolean;
   mode: "legacy" | "restricted";
   approvers: ContactPerson[];
-  /** Slice 1: only the target adapter's Fleet admins (or verified host operator). */
+  /** Slice 1: only the target platform's configured Fleet admins (or verified host operator). */
   eligibleApprovers: ContactPerson[];
-  /** True when approvers are inherited from the target's owning adapter. */
+  /** True when approvers are inherited from Fleet admins on the target's platform. */
   inheritedApprovers: boolean;
   nativeGuard: ContactGuardStatus;
   roomTools: ContactRoomTools;

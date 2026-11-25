@@ -218,8 +218,8 @@ register("settingsLayout", {
   "zh-TW": {
     "revDashboard_log": "Agent 紀錄分頁",
     "revDashboardHint_log": "顯示提示、回覆、工具步驟與 Fleet 事件；機密值會遮蔽，公開連結也看得到。開啟需確認。",
-    "revDashboard_thinking": "顯示思考（僅 admin，預設關閉）",
-    "revDashboardHint_thinking": "把模型的思考加進 Agent 聊天裡的活動區塊與紀錄分頁；只有登入的 admin 會收到（透過公開連結也一樣），訪客一律不會。同時會請 Claude Code 寫出思考摘要，這可能改變每一輪的花費。",
+    "revDashboard_thinking": "顯示思考（僅管理員，預設關閉）",
+    "revDashboardHint_thinking": "把模型的思考加進 Agent 聊天裡的活動區塊與紀錄分頁；只有登入的管理員會收到（透過公開連結也一樣），訪客一律不會。同時會請 Claude Code 寫出思考摘要，這可能改變每一輪的花費。",
     "revDashboard_usagePub": "公開連結提供用量報告",
     "revDashboardHint_usagePub": "透過公開連結提供 Fleet 用量報告給管理員（預設開啟）；訪客一律看不到。",
     "revDashboard_levels": "辦公室等級",

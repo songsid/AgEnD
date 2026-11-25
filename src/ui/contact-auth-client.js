@@ -47,9 +47,9 @@ export const decideTicket = (id, decision) => call("POST", `/ui/api/contact-auth
 /** A request's id as people read it: the server's ids are R + a UUID — shown as R + its first 8 hex digits (links keep it whole). */
 export const shortTicketId = (id) => { const s = String(id || ""); return /^R[a-f0-9]{8}-[a-f0-9-]{27}$/.test(s) ? s.slice(0, 9) : s; };
 
-/** A person's whole server identity as the server's canonical key — JSON of [platform, adapterId, userId] (ids may hold any
+/** A person's whole server identity as the server's canonical key — JSON of [platform, userId] (ids may hold any
  * punctuation) — what the person filter takes; never a name. */
-export const personKey = (p) => (p ? JSON.stringify([p.platform, p.adapterId, p.userId]) : "");
+export const personKey = (p) => (p ? JSON.stringify([p.platform, p.userId]) : "");
 
 /** Reminder dismissal only; never a contact approval or a permissions write. */
 export const dismissSuggestion = (id) => call("POST", "/ui/needs/ack", { id });

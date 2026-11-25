@@ -4,20 +4,23 @@
  * zh-TW (admin is 管理員). A module of its own (namespace contactAuth); imports only app-i18n.
  */
 import { register, t, lang } from "/assets/app-i18n.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 register("contactAuth", {
   en: {
     tab: "Permissions", lead: "Who may ask this agent to forward requests to other agents, and what this room may use.",
     loading: "Loading permissions…", loadFailed: "Couldn't load permissions.", retry: "Try again",
-    forbidden: "Only this agent's managers can see its permissions.", unavailable: "Permissions are unavailable right now. Try again in a moment.",
+    forbidden: "Only this agent's managers can see its permissions.",
+    verifyFirst: "Permissions and contact requests need a verified administrator. Verify your identity in Sign-in status (Authorize this browser), then try again.",
+    unavailable: "Permissions are unavailable right now. Try again in a moment.",
     stale: "Someone changed these permissions just now. They have been reloaded — check them and try again.",
     saved: "Saved.", saveFailed: "Couldn't save.", readOnly: "You can see these permissions but not change them.",
     // Mode (a ClassicBot room)
-    modeTitle: "Room mode", modeRestricted: "Restricted", modeLegacy: "Not restricted (older setting)",
+    modeTitle: "Room mode", modeRestricted: "Restricted", modeLegacy: "Free",
     modeRestrictedNote: "Requests from people who aren't admins to other agents wait for approval before anything is sent.",
-    modeLegacyNote: "Requests from this room go to other agents without approval.",
-    switchRestricted: "Switch to restricted", switchLegacy: "Turn restricted mode off",
-    confirmRestricted: "Switch this room to restricted mode?", confirmLegacy: "Turn restricted mode off? Requests from this room will go to other agents without approval. Work already handed to another agent stays as it is.",
+    modeLegacyNote: "In Free mode, requests from this room go to other agents without approval.",
+    switchRestricted: "Switch to restricted", switchLegacy: "Switch to Free",
+    confirmRestricted: "Switch this room to restricted mode?", confirmLegacy: "Switch this room to Free? Requests from this room will go to other agents without approval. Work already handed to another agent stays as it is.",
     wouldDisableTitle: "These tools will stop in this room:", wouldDisableNone: "No tool this room uses now will stop.",
     // M-3387: what stops, by kind and layer.
     toolsLostTitle: "AgEnD tools this room loses ({0}):", toolGroupLine: "• {0} ({1})",
@@ -39,9 +42,9 @@ register("contactAuth", {
     guardTitle: "Command-line guard", guard_ready: "Active", "guard_restart-required": "Restart needed", "guard_not-covered": "Not covered", guard_failed: "Failed",
     guardNote: "The guard limits what the backend's own tools can do in this room. It is a policy control, not a security boundary on this computer.",
     notCoveredWarning: "This AI tool or version isn't covered by the guard: it runs with its normal permissions; only contact approval applies.",
-    newRoomsRestricted: "New ClassicBot rooms start in restricted mode: requests from people who aren't admins to other agents wait for approval. Where the guard doesn't cover a room's AI tool or version, that tool runs with its normal permissions; only contact approval applies.",
+    newRoomsRestricted: "At /start you choose Free or Restricted before the room is created. For a fleet admin, Free comes first and is recommended; Restricted is still a choice, and the tap is still required. Anyone else is offered Restricted only. Change it later in the room's Settings → Permissions, or from General's contact-change card. Where the guard doesn't cover a room's AI tool or version, that tool runs with its normal permissions; only contact approval applies.",
     guardBackend: "Backend: {0}", guardReasonOther: "The guard reported a state this page doesn't know.",
-    "guardReason_legacy-mode": "This room isn't in restricted mode, so the guard isn't used.",
+    "guardReason_legacy-mode": "This room is in Free mode, so the guard isn't used.",
     "guardReason_unsupported-backend": "This backend isn't covered by the guard.",
     "guardReason_unsupported-platform": "The guard isn't available on this computer's system.",
     "guardReason_unsupported-version": "This version of the backend isn't covered by the guard.",
@@ -85,8 +88,11 @@ register("contactAuth", {
     from: "From {0}", via: "Via {0}", to: "To {0}", origin_unknown: "Origin unknown", origin_mixed: "Earlier non-admin request",
     "reason_earlier-non-admin": "This agent's retained history includes non-admin input, so this contact needs approval.",
     "reason_unknown-origin": "This agent's retained history has an unknown origin, so this contact needs approval.",
+    "request_reason_earlier-non-admin": "{0}'s retained history includes non-admin input, so this contact needs approval.",
+    "request_reason_unknown-origin": "{0}'s retained history has an unknown origin, so this contact needs approval.",
     // M-3385: under the reason — what an approval leaves as it is, and the one way this agent stops needing approval.
-    resetNote: "Approving forwards only this request and leaves the receiving agent's origin unchanged. For this agent's contacts to stop needing approval, a managing administrator can clear its retained origin in its Permissions; it never resets on its own.",
+    requestRecoveryNote: "Approving forwards only this request and leaves the receiving agent's origin unchanged. To accept {0}'s current conversation as its own work, open {0} → Settings → Permissions and press Clear retained origin. It never resets on its own.",
+    resetNote: "Approving forwards only this request and leaves the receiving agent's origin unchanged. To accept the sending agent's current conversation as their own work, a verified managing admin can use its Permissions → Clear retained origin. It never resets on its own.",
     created: "Asked {0}", expires: "Expires {0}", decided: "{0} by {1}",
 
     grantFutureExpiry: "Choose an expiry in the future.", grantValidUses: "Set a use limit from 1 to 10,000, or leave it empty for unlimited uses.",
@@ -136,14 +142,16 @@ register("contactAuth", {
   "zh-TW": {
     tab: "權限", lead: "誰可以請這個 Agent 把請求轉交給其他 Agent，以及這個房間可以使用什麼。",
     loading: "正在載入權限…", loadFailed: "無法載入權限。", retry: "重試",
-    forbidden: "只有這個 Agent 的管理員可以查看權限。", unavailable: "目前無法取得權限，請稍後再試。",
+    forbidden: "只有這個 Agent 的管理員可以查看權限。",
+    verifyFirst: "權限和聯絡申請需要已驗證的管理員。請先在「登入狀態」按「授權這個瀏覽器」驗證身分，再試一次。",
+    unavailable: "目前無法取得權限，請稍後再試。",
     stale: "剛才有人修改了這些權限，已重新載入，請確認後再試一次。",
     saved: "已儲存。", saveFailed: "無法儲存。", readOnly: "你可以查看這些權限，但無法修改。",
-    modeTitle: "房間模式", modeRestricted: "受限模式", modeLegacy: "未受限（舊設定）",
+    modeTitle: "房間模式", modeRestricted: "受限模式", modeLegacy: "自由模式",
     modeRestrictedNote: "非管理員對其他 Agent 的請求，要先經過核准才會送出。",
-    modeLegacyNote: "這個房間的請求會直接送給其他 Agent，不需核准。",
-    switchRestricted: "切換為受限模式", switchLegacy: "關閉受限模式",
-    confirmRestricted: "要將這個房間切換為受限模式嗎？", confirmLegacy: "要關閉受限模式嗎？這個房間的請求將直接送給其他 Agent，不需核准。已交給其他 Agent 的工作不會因此改變。",
+    modeLegacyNote: "自由模式下，這個房間的請求會直接送給其他 Agent，不需核准。",
+    switchRestricted: "切換為受限模式", switchLegacy: "切換為自由模式",
+    confirmRestricted: "要將這個房間切換為受限模式嗎？", confirmLegacy: "要將這個房間切換為自由模式嗎？這個房間的請求將直接送給其他 Agent，不需核准。已交給其他 Agent 的工作不會因此改變。",
     wouldDisableTitle: "這個房間將停用下列工具：", wouldDisableNone: "這個房間目前使用的工具都不會停用。",
     toolsLostTitle: "這個房間會失去的 AgEnD 工具（{0} 個）：", toolGroupLine: "• {0}（{1}）",
     toolGroup_fleet: "Fleet 狀態與設定", toolGroup_agents: "建立、啟動與停止 Agent 和團隊", toolGroup_usage: "用量與紀錄",
@@ -162,9 +170,9 @@ register("contactAuth", {
     guardTitle: "命令列防護", guard_ready: "已啟用", "guard_restart-required": "需要重新啟動", "guard_not-covered": "未涵蓋", guard_failed: "失敗",
     guardNote: "防護會限制後端內建工具在這個房間能做的事。這是政策控制，不是這台電腦上的安全邊界。",
     notCoveredWarning: "這個 AI 工具或版本不在防護範圍內：它會以原本的權限執行，只有聯絡申請需要核准。",
-    newRoomsRestricted: "新的 ClassicBot 房間預設為受限模式：非管理員對其他 Agent 的請求要先經過核准。若防護不涵蓋房間的 AI 工具或版本，該工具會以原本的權限執行，只有聯絡申請需要核准。",
+    newRoomsRestricted: "執行 /start 時，房間建立前要選擇自由模式或受限模式。Fleet 管理員會先看到自由模式（建議），受限模式仍是一個按鈕，仍要點選。其他人只會看到受限模式。之後可在房間的設定 → 權限，或從 General 的聯絡變更卡片更改。若防護不涵蓋房間的 AI 工具或版本，該工具會以原本的權限執行，只有聯絡申請需要核准。",
     guardBackend: "後端：{0}", guardReasonOther: "防護回報了這個頁面不認得的狀態。",
-    "guardReason_legacy-mode": "這個房間不是受限模式，因此不使用防護。",
+    "guardReason_legacy-mode": "這個房間是自由模式，因此不使用防護。",
     "guardReason_unsupported-backend": "防護不支援這個後端。",
     "guardReason_unsupported-platform": "這台電腦的系統無法使用防護。",
     "guardReason_unsupported-version": "防護不支援這個版本的後端。",
@@ -204,7 +212,10 @@ register("contactAuth", {
     from: "來自 {0}", via: "經由 {0}", to: "給 {0}", origin_unknown: "來源不明", origin_mixed: "先前有非管理員的請求",
     "reason_earlier-non-admin": "這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。",
     "reason_unknown-origin": "這個 Agent 保留的歷史來源不明，因此這次聯絡需要核准。",
-    resetNote: "核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要讓這個 Agent 之後的聯絡不再需要核准，具管理權限的管理員可以在它的「權限」頁清除保留的來源；來源不會自動重設。",
+    "request_reason_earlier-non-admin": "{0} 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。",
+    "request_reason_unknown-origin": "{0} 保留的歷史來源不明，因此這次聯絡需要核准。",
+    requestRecoveryNote: "核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要接受 {0} 目前的對話作為它自己的工作，請到 {0} 的「設定」→「權限」，按「清除保留的來源」。來源不會自動重設。",
+    resetNote: "核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要接受發送 Agent 目前的對話作為自己的工作，管理它的已驗證管理員可以到「權限」→「清除保留的來源」確認。來源不會自動重設。",
     created: "{0} 提出", expires: "{0} 到期", decided: "{1} 於 {0} 處理",
 
     grantFutureExpiry: "請選擇未來的到期時間。", grantValidUses: "請設定 1 至 10,000 次，或留空表示不限次數。",
@@ -253,4 +264,4 @@ export const ca = (k, ...a) => t(`contactAuth.${k}`, ...a);
 
 export const contactPlatformLabel = platform => ({ discord: "Discord", telegram: "Telegram" }[platform] || platform);
 export const contactPersonLabel = person => person?.platform === "host" && person?.userId === "operator" ? ca("operator") : person?.label || person?.userId || "";
-export const contactWhen = value => { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toLocaleString(lang() === "zh-TW" ? "zh-TW" : "en", { dateStyle: "long", timeStyle: "short" }) : ""; };
+export const contactWhen = value => { const d = new Date(value); return Number.isFinite(d.getTime()) ? dateTimeText(d, { dateStyle: "long", timeStyle: "short" }, lang() === "zh-TW" ? "zh-TW" : "en") : ""; };

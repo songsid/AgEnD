@@ -1,4 +1,4 @@
-export { ProposeContactChangeArgs } from "./contact-change-proposals.js";
+export { ProposeContactChangeArgs, ContactStateArgs } from "./contact-change-proposals.js";
 import {roomMemberOptions} from "./hub/room-members-model.js";
 /**
  * zod schemas for outbound tool-call args.
@@ -137,7 +137,7 @@ export const TaskBoardArgs = z.object({
   limit: z.number().int().min(1).max(100).optional().describe("Page size, default20; maximum100"),
   cursor: z.string().min(1).max(128).optional().describe("next_cursor from the previous page; keep the same filters"),
 
-  action: z.enum(["create", "list", "claim", "done", "update", "get", "mine", "move", "projects", "create_project", "move_project", "watch", "unwatch"])
+  action: z.enum(["create", "list", "claim", "done", "update", "get", "mine", "move", "projects", "create_project", "move_project", "watch", "unwatch", "attach"])
     .describe("Operation to perform"),
   title: z.string().optional().describe("Task title (create/update)"),
   description: z.string().optional().describe("Task details; a board card's goal (create/update)"),
@@ -172,7 +172,8 @@ export const TaskBoardArgs = z.object({
   context: z.string().optional().describe("Pointers only: paths, related cards, decisions (create/update)"),
   state: z.string().optional().describe("Overwritten each time: done / next / watch out, at most 5 lines (update)"),
   log: z.string().optional().describe("One progress line appended to the card's log (update)"),
-  comment: z.string().optional().describe("A comment on the card (update/move)"),
+  comment: z.string().optional().describe("A comment on the card, Markdown (update/move/attach)"),
+  attach: z.array(z.string()).max(10).optional().describe("Files to put on the card (update/move/attach)"),
   needs_review: z.boolean().optional().describe("Stop at review when finished (create/update)"),
   size: z.enum(["S", "M", "L"]).optional().describe("S small, M one unit, L too big: split it (create/update)"),
   dispatcher: z.string().nullable().optional().describe("The instance that handed the work out; a blocked card's question goes to them (create/update)"),
@@ -321,7 +322,8 @@ export const OfficeSetArgs = z.object({
   }).strict().optional().describe("Where to walk: exactly one of seat, waypoint or person"),
   say: z.string().min(1).max(40).optional().describe("A speech bubble over your character: 1..40 characters, one line"),
   pose: z.enum(["idle", "working", "needs", "paused"]).optional().describe("How your character is drawn meanwhile"),
-  seconds: z.number().min(5).max(120).optional().describe("How long it lasts, 5..120 (default 30); then the dashboard puts you back by your state"),
+  ride: z.string().min(1).max(40).optional().describe("Ride one of the office's vehicles (its id, as office_view lists it): you walk to its platform, wait for it to stop there, board and work in a seat as it goes round; you get off at a stop once the ride ends (clear, a new office_set, or its seconds). Not with go"),
+  seconds: z.number().min(5).max(28800).optional().describe("How long it lasts, 5..120 (default 30); a ride 60..28800 (default 3600); then the dashboard puts you back by your state"),
   clear: z.boolean().optional().describe("true: end your current act now (alone, with nothing else)"),
 }).strict();
 
@@ -527,7 +529,7 @@ const WritableToolSet = z.enum(["full", "standard", "worker", "coordinator", "mi
 export const UpdateInstanceConfigArgs = z.object({
   name: NonEmptyString.describe("Instance name to update"),
   config: z.object({
-    tool_set: WritableToolSet.optional().describe("AgEnD tool profile. Only General may set another agent’s profile directly; self-targets and other callers are refused (#804/#814)."),
+    tool_set: WritableToolSet.optional().describe("AgEnD tool profile. Only General may set another agent's profile directly; self-targets and other callers are refused (#804/#814)."),
     backend: z.string().optional().describe("CLI backend. A switch restarts a running instance in a fresh session (a stopped or paused one stays so, and starts on it next time), and drops the instance's own model and effort: give `model` here for the new backend, or it inherits the fleet default, else that backend's own default."),
     model: z.string().optional().describe("Model override. With a backend switch: a model the new backend takes, else the switch is refused."),
     resume_interrupted_work: z.boolean().optional().describe("Automatically continue known interrupted work after a stable restart"),
@@ -570,7 +572,7 @@ export const ReplaceInstanceArgs = z.object({
 // any unknown keys so internal callers (deploy_template) can forward extras
 // (profile-derived fields, start_point, …) without the schema stripping them.
 export const CreateInstanceArgs = z.object({
-  tool_set: WritableToolSet.optional().describe("AgEnD tool profile for the new instance. Only General may set another agent’s profile directly; self-targets and other callers are refused (#804/#814)."),
+  tool_set: WritableToolSet.optional().describe("Tool profile for the new instance, at or below the caller's own. Never full or general; the refusal names the cap. General may set any writable profile. Self-targets are refused (#804/#814)."),
   directory: z.string().optional().describe(
     "Absolute path or ~-prefixed path to the project directory. Optional — omit to auto-create a workspace at ~/.agend/workspaces/<name>.",
   ),
@@ -739,9 +741,10 @@ export const DeliveryStatusArgs = z.object({
   message_id: NonEmptyString.optional().describe("The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. On uncertain, it may already have arrived: confirm it, and resend only if it shows failed."),
   limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for operation/correlation queries (default 20, maximum 100)."),
   cursor: NonEmptyString.optional().describe("Opaque next-page cursor returned by the previous query."),
+  held_requests: z.literal(true).optional().describe("Your own messages that were held for approval: state, who decided, when. Use alone."),
 }).strict().refine(args => args.content_includes === undefined || args.message_id !== undefined, { message: "content_includes requires message_id" }).refine(args =>
-  [args.delivery_id, args.operation_id, args.correlation_id, args.message_id].filter(value => value !== undefined).length === 1,
-{ message: "Provide exactly one of delivery_id, operation_id, correlation_id, or message_id" })
+  [args.delivery_id, args.operation_id, args.correlation_id, args.message_id, args.held_requests].filter(value => value !== undefined).length === 1,
+{ message: "Provide exactly one of delivery_id, operation_id, correlation_id, message_id, or held_requests" })
   .refine(args => !args.cursor || !args.delivery_id, {
     message: "cursor is only valid with operation_id, correlation_id or message_id",
     path: ["cursor"],

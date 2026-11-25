@@ -24,11 +24,11 @@ register("org", {
     sending: "Sending:", queuedNote: "(queued)", workingNote: "(in progress)",
   },
   "zh-TW": {
-    starting: "啟動中", queued: "等待啟動", title: "組織圖", general: "General", unteamed: "未加入 team", members: "{0} 名成員", member: "1 名成員", instances: "{0} 個 Agent", instance: "1 個 Agent",
+    starting: "啟動中", queued: "等待啟動", title: "組織圖", general: "General", unteamed: "未加入團隊", members: "{0} 名成員", member: "1 名成員", instances: "{0} 個 Agent", instance: "1 個 Agent",
     needs: "等你回應", working: "工作中", idle: "閒置", stuck: "似乎卡住", paused: "已暫停", stopped: "已停止", crashed: "已當掉",
     missing: "不在 fleet 中", thread_discord: "Discord 討論串", thread_telegram: "Telegram topic", openChat: "開啟聊天",
-    classic: "ClassicBot 頻道", empty: "還沒有 Agent", emptyHint: "fleet 有 Agent 和 team 後會顯示在這裡。",
-    noTeams: "還沒有 team——到 Fleet → Teams 定義後，組織圖會依 team 分組。", newTab: "（在新分頁開啟）",
+    classic: "ClassicBot 頻道", empty: "還沒有 Agent", emptyHint: "fleet 有 Agent 和團隊後會顯示在這裡。",
+    noTeams: "還沒有團隊——到 Fleet → 團隊 定義後，組織圖會依團隊分組。", newTab: "（在新分頁開啟）",
     sending: "傳送中：", queuedNote: "（排隊中）", workingNote: "（進行中）",
   },
 });
@@ -78,7 +78,12 @@ export function nodeText(n) {
 export function buildOrgView(org, app) {
   const live = new Map((app.instances || []).map((i) => [i.name, i]));
   const needs = new Map();
-  for (const item of Array.isArray(app.needs) ? app.needs : []) needs.set(item.instance, (needs.get(item.instance) || 0) + 1);
+  // M-3720 (the user, 11-25): a ClassicBot room's "can switch to restricted mode" suggestion is a low-key hint (Needs you
+  // folds them into one quiet group), not a call — it alone never sends the room to the Help desk. Every other item does.
+  for (const item of Array.isArray(app.needs) ? app.needs : []) {
+    if (item && item.type === "contact" && item.reason === "contact_restricted_suggestion") continue;
+    needs.set(item.instance, (needs.get(item.instance) || 0) + 1);
+  }
   const awaiting = app.awaiting || {};
   const info = (org && org.instances) || {};
   const node = (name) => {

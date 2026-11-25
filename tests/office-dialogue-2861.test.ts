@@ -303,6 +303,17 @@ describe("the box on the page", () => {
   };
   const texts = () => (p.root.querySelector(".oo-dialogue-canvas")?._ctx?.calls ?? []).filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]));
   const tick = async (n = 8) => { for (let i = 0; i < n; i++) await settle(2); };
+  /**
+   * The words are typed at DLG.CPS on the page's clock (performance.now), so how much is typed after N frames depended on
+   * how fast the machine ran them: 40 quick setTimeout(0) frames can finish inside the first character's 25 ms, and the
+   * box then holds only "" (release CI 45608520508 at 9c8ba7a5, after #4458 made the drawing lighter). The typing cases
+   * run on a page clock the test moves: `ms` per frame.
+   */
+  const pageClock = () => {
+    let at = performance.now();
+    const spy = vi.spyOn(performance, "now").mockImplementation(() => at);
+    return { frames: async (n: number, ms: number) => { for (let i = 0; i < n; i++) { at += ms; await settle(2); } }, restore: () => spy.mockRestore() };
+  };
   const toggle = () => p.root.querySelector(".oo-dialogue input");
 
   it("off by default: an unticked checkbox, no stream listener, and a message draws nothing", async () => {
@@ -320,10 +331,13 @@ describe("the box on the page", () => {
     fire(toggle(), "change"); await settle(4);
     expect(localStorage.getItem("agend_org_office_dialogue")).toBe("1");
     expect(listeners.get("message")?.size).toBe(1);
-    emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "deploy the docs please", ts: new Date().toISOString() });
-    await tick(20);
-    expect(texts()).toEqual(expect.arrayContaining(["Alex"]));
-    expect(texts().some((s: string) => "deploy the docs please".startsWith(s) && s.length > 0)).toBe(true);
+    const clock = pageClock();
+    try {
+      emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "deploy the docs please", ts: new Date().toISOString() });
+      await clock.frames(20, 50);
+      expect(texts()).toEqual(expect.arrayContaining(["Alex"]));
+      expect(texts().some((s: string) => "deploy the docs please".startsWith(s) && s.length > 0)).toBe(true);
+    } finally { clock.restore(); }
     expect(p.root.querySelector(".oo-dialogue-live").textContent).toBe("Alex: deploy the docs please");
     emit("message", { instance: "atlas", role: "agent", sender: "atlas", text: "Done.", ts: new Date().toISOString() });
     await tick(20);
@@ -337,19 +351,36 @@ describe("the box on the page", () => {
     fire(toggle(), "change"); await settle(4);
     expect(listeners.get("message")?.size ?? 0).toBe(0);
   });
-  it("a share's talk: no words and no one named — 'Someone', 'Sent Atlas a message.', then 'Replied.'; no stream listener", async () => {
+  const shareTalk = async (clock: ReturnType<typeof pageClock>, msPerFrame: number) => {
     localStorage.setItem("agend_org_office_dialogue", "1");
     const { Office } = await import("/ui/js/fleet-office.js");
     const { buildOrgView } = await import("/ui/js/fleet-org.js");
     const view = buildOrgView(ORG, app.appStore.get());
     const t0 = Date.now();
-    await p.mount(h(Office, { view, traffic: [], talk: { now: t0, items: [{ instance: "atlas", kind: "heard", at: t0 - 1000 }] } })); await tick(20);
-    expect(listeners.get("message")?.size ?? 0).toBe(0);
-    expect(texts()).toEqual(expect.arrayContaining(["Someone"]));
-    expect(texts().some((s: string) => s.length > 0 && "Sent Atlas a message.".startsWith(s))).toBe(true);
-    expect(p.root.querySelector(".oo-dialogue-live").textContent).toBe("Someone: Sent Atlas a message.");
-    await p.mount(h(Office, { view, traffic: [], talk: { now: t0 + 2000, items: [{ instance: "atlas", kind: "heard", at: t0 - 1000 }, { instance: "atlas", kind: "answered", at: t0 + 1500 }] } })); await tick(20);
-    expect(p.root.querySelector(".oo-dialogue-live").textContent).toBe("Atlas: Replied.");
+    await p.mount(h(Office, { view, traffic: [], talk: { now: t0, items: [{ instance: "atlas", kind: "heard", at: t0 - 1000 }] } })); await clock.frames(20, msPerFrame);
+    return { view, t0, Office };
+  };
+  it("a share's talk: no words and no one named — 'Someone', 'Sent Atlas a message.', then 'Replied.'; no stream listener", async () => {
+    const clock = pageClock();
+    try {
+      const { view, t0, Office } = await shareTalk(clock, 50);            // 20 frames, 1 s on the page clock: typed out
+      expect(listeners.get("message")?.size ?? 0).toBe(0);
+      expect(texts()).toEqual(expect.arrayContaining(["Someone"]));
+      expect(texts().some((s: string) => s.length > 0 && "Sent Atlas a message.".startsWith(s))).toBe(true);
+      expect(p.root.querySelector(".oo-dialogue-live").textContent).toBe("Someone: Sent Atlas a message.");
+      await p.mount(h(Office, { view, traffic: [], talk: { now: t0 + 2000, items: [{ instance: "atlas", kind: "heard", at: t0 - 1000 }, { instance: "atlas", kind: "answered", at: t0 + 1500 }] } })); await clock.frames(20, 50);
+      expect(p.root.querySelector(".oo-dialogue-live").textContent).toBe("Atlas: Replied.");
+    } finally { clock.restore(); }
+  });
+  it("control (the CI race, forced): frames that take no time on the page clock type nothing yet — the name is up, the words wait", async () => {
+    const clock = pageClock();
+    try {
+      await shareTalk(clock, 0);
+      expect(texts()).toEqual(expect.arrayContaining(["Someone"]));
+      expect(texts().some((s: string) => s.length > 0 && "Sent Atlas a message.".startsWith(s))).toBe(false);
+      await clock.frames(4, 50);                                           // 200 ms later: the first words are typed
+      expect(texts().some((s: string) => s.length > 0 && "Sent Atlas a message.".startsWith(s))).toBe(true);
+    } finally { clock.restore(); }
   });
   it("reduced motion: the box is drawn whole at once (no typing)", async () => {
     const real = (globalThis as any).matchMedia;
@@ -369,10 +400,13 @@ describe("the box on the page", () => {
     emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "are you there", ts: new Date().toISOString() });
     await tick(20);
     expect(texts().some((s: string) => s.startsWith("are"))).toBe(false);
-    emit("message", { instance: "quill", role: "user", sender: "Alex", text: "quill please", ts: new Date().toISOString() });
-    await tick(20);
-    // This pins speaker selection, not how many characters fit into a wall-clock animation frame.
-    expect(texts().some((s: string) => s.length > 0 && "quill please".startsWith(s))).toBe(true);
+    // This pins speaker selection, not how many characters fit into a wall-clock animation frame: the page clock moves.
+    const clock = pageClock();
+    try {
+      emit("message", { instance: "quill", role: "user", sender: "Alex", text: "quill please", ts: new Date().toISOString() });
+      await clock.frames(20, 50);
+      expect(texts().some((s: string) => s.length > 0 && "quill please".startsWith(s))).toBe(true);
+    } finally { clock.restore(); }
   });
   it("keeps the dialogue outside the map viewport", async () => {
     await office(); fire(toggle(), "change"); await settle(4);

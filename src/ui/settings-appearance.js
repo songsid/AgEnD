@@ -22,6 +22,7 @@ import { ownChoiceImpact } from "./settings-model.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { colorsOff, defaultPlaces, identityClasses, identityOf, PLACEMENTS, paintIdentity, setColorsOff, setDefaultPlaces, useIdentityColors } from "/assets/identity-color.js";
 import { CardTitle } from "./settings-learn.js";
+import { dateTimeText } from "/assets/clock-text.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -587,7 +588,7 @@ function OwnerCssCard() {
     </div>
     ${state.versions.length ? html`<details class="s-css-versions"><summary>${tn("cssVersions", state.versions.length)}</summary>
       <ul class="s-css-list">${state.versions.map((v) => html`<li key=${v.sha}>
-        <code>${short(v.sha)}</code><span class="muted">${new Date(v.at).toLocaleString()} · ${kib(v.bytes)}</span>
+        <code>${short(v.sha)}</code><span class="muted">${dateTimeText(v.at)} · ${kib(v.bytes)}</span>
         ${v.sha === state.active ? html`<span class="pill">${tn("cssCurrent")}</span>`
           : html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => restore(v.sha)}>${tn("cssRestore")}</button>`}
       </li>`)}</ul></details>` : null}

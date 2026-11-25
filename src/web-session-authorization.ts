@@ -43,7 +43,8 @@ export interface AuthorizationCardText {
   ask(c: { label: string; peer: WebPeer; askedAt: number; until: number }): string;
   confirmed(c: { label: string; peer: WebPeer; until: number }): string;
   /** M-3277: a browser signed in with a code sent to this account privately — verified at once, Not me below. */
-  signedIn(c: { label: string; peer: WebPeer; until: number }): string;
+  /** M-3651 `guest`: a guest's browser — verified as that account, its messages never carrying its authority. */
+  signedIn(c: { label: string; peer: WebPeer; until: number; guest?: boolean }): string;
   /** M-3277: that notice could not go by DM — one line with no details in General (where to end it: /web revoke). */
   signedInHint(): string;
   denied(c: { label: string }): string;
@@ -168,12 +169,12 @@ export class SessionAuthorizationRequests {
    * already confirmed): it signs that browser out, and the notice says when the authorization ends. No DM: one line with
    * no details in General, as for a card (the browser stays signed in and verified; /web revoke ends it).
    */
-  async noteAuthorized(input: { handle: string; owner: AuthorizationOwner; label: string; peer: WebPeer; until: number }): Promise<{ sent: boolean }> {
+  async noteAuthorized(input: { handle: string; owner: AuthorizationOwner; label: string; peer: WebPeer; until: number; guest?: boolean }): Promise<{ sent: boolean }> {
     const key = `${input.owner.adapterId}:${input.owner.userId}`;
     const c: Card = { nonce: randomBytes(16).toString("hex"), handle: input.handle, owner: { ...input.owner }, label: input.label, peer: input.peer,
       expiresAt: this.deps.now(), state: "confirmed", where: null, until: input.until };
     let where: { chatId: string; messageId: string } | null = null;
-    try { where = await this.deps.sendDirect(c.owner, this.deps.text.signedIn({ label: c.label, peer: c.peer, until: input.until }), this.choices(c, false)); }
+    try { where = await this.deps.sendDirect(c.owner, this.deps.text.signedIn({ label: c.label, peer: c.peer, until: input.until, ...(input.guest ? { guest: true } : {}) }), this.choices(c, false)); }
     catch (err) { this.deps.log.warn({ err: (err as Error)?.message }, "Web sign-in notice could not be sent"); }
     this.deps.event("session_authorization_verified", { challenge: c.nonce, session: c.handle, actor: key, peer: c.peer, via: "private_code" });
     if (!where) {

@@ -133,3 +133,8 @@ export function agentPictureSrc(roomId, exposureId, slot, hash) {
   return roomId && exposureId && typeof hash === "string" && /^[a-f0-9]{64}$/.test(hash)
     ? `/hub/v1/rooms/${encodeURIComponent(roomId)}/agents/${encodeURIComponent(exposureId)}/picture/${slot}?v=${hash}` : null;
 }
+/** M-3533 R2c: one pose of an agent's own character in this room (its strip's picture), as agentPictureSrc; null when none. */
+export function agentCharacterSrc(roomId, exposureId, pose, hash) {
+  return roomId && exposureId && typeof pose === "string" && /^[A-Za-z]{1,16}$/.test(pose) && typeof hash === "string" && /^[a-f0-9]{64}$/.test(hash)
+    ? `/hub/v1/rooms/${encodeURIComponent(roomId)}/agents/${encodeURIComponent(exposureId)}/character/${pose}?v=${hash}` : null;
+}

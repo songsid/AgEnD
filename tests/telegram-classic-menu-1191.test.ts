@@ -186,7 +186,7 @@ describe("TopicCommands.registerBotCommands (#1191; #2870: the ClassicBot menu o
     const { tc } = commands([tg()], { defaults: { allowed_users: ["111"] } });
     await tc.registerBotCommands();
     const chat = sent().find(p => p.scope.type === "chat")!;
-    expect(chat.commands.find((c: { command: string }) => c.command === "compact").description).toBe("🔒 壓縮 Agent 的 Context [選填：摘要重點，僅 Claude Code]");
+    expect(chat.commands.find((c: { command: string }) => c.command === "compact").description).toBe("🔒 壓縮 Agent 的上下文 [選填：摘要重點，僅 Claude Code]");
     expect(chat.commands.find((c: { command: string }) => c.command === "stop").description).toContain("🔒");
   });
 

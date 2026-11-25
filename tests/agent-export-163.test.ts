@@ -290,7 +290,8 @@ describe("deploy_template: a role's Agent instructions travel as systemPrompt on
   const deploy = async (instanceDef: Record<string, unknown>) => {
     const r = rig(instanceDef);
     let error: unknown = null;
-    await outboundHandlers.get("deploy_template")!(r.ctx, { template: "t", directory: temp("agend-163-") }, (_res: unknown, e: unknown) => { error = e ?? null; }, undefined as any);
+    // "x" resolves to worker, so an explicit worker tool_set is within the cap (M-3733).
+    await outboundHandlers.get("deploy_template")!(r.ctx, { template: "t", directory: temp("agend-163-") }, (_res: unknown, e: unknown) => { error = e ?? null; }, { instanceName: "x" } as any);
     return { ...r, error };
   };
   it("passes a template role's systemPrompt to the instance it creates, and nothing named instructions", async () => {

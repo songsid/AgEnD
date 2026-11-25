@@ -271,7 +271,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .pop .devices .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .pop .row { display: flex; gap: var(--s-2); flex-wrap: wrap; }
 .pop .err { color: var(--danger); }
-.pop .role { margin: 0; display: flex; gap: var(--s-2); align-items: baseline; flex-wrap: wrap; }
+.pop .role { margin: 0; display: flex; gap: var(--s-2); align-items: baseline; }
+/* M-3651: a long role ("Guest · Verified until 09:16 AM") wraps beside its label, never under a lone "Role". */
+.pop .role strong { flex: 1; min-width: 0; }
 .pop .webauth-rebind-form { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-1); }
 .pop .webauth-rebind-form .note, .pop .webauth-rebind-form .err { margin: 0; }
 .pop .webauth-rebind-field { flex: 1; min-width: 0; }   /* the shared .field input (token-sized), not a one-off box */
@@ -1107,10 +1109,15 @@ html.lb-open .scroller { overflow: hidden; }
 .pv-banner[hidden] { display: none; }
 .pv-banner-text { flex: 1; min-width: 0; }
 /* #1568: "I understand" hides the banner until the next sign-in; .preview-frame's border below never depends on it. */
-.pv-banner .pv-ack { flex: none; }
+/* M-3742 (Prism #4462 triage): a real flat button — its own background and a visible edge on the notice's tint, no shadow —
+   not a ghost that reads as text; a 44 px box on a phone. Shared by the chat, the preview panel and a task card's files. */
+.pv-banner .pv-ack, .pv-banner .pv-ack.btn-ghost { flex: none; background: var(--bg); border-color: var(--border-strong); color: var(--text); box-shadow: none; }
+.pv-banner .pv-ack:hover:not(:disabled) { background: var(--surface); }
+@media (max-width: 899px), (pointer: coarse) { .pv-banner .pv-ack { min-height: var(--tap); } }
 .pv-holder:empty { display: none; }
 .pv-holder { margin-top: var(--s-2); }
-.preview-frame { display: block; width: 100%; border: 2px solid var(--warn-line); border-radius: var(--r-sm); background: #ffffff; }
+/* M-3742: the frame's edge at least 3:1 against the page in light and dark (--warn-line alone was ~1.9:1 on white, ~2.5:1 on dark). */
+.preview-frame { display: block; width: 100%; border: 2px solid var(--warn-line); border-color: color-mix(in srgb, var(--warn) 85%, var(--bg)); border-radius: var(--r-sm); background: #ffffff; }
 /* #1481: the preview beside the conversation. A split on a wide screen (width: --pv-w, set by the divider through
    CSSOM), a full-screen sheet on a narrow one. The frame is the card's (preview.js), sized by the panel here. */
 .chat-split { flex: 1; min-height: 0; display: flex; }
@@ -1443,6 +1450,8 @@ img.amb-p { object-fit: contain; }
 .webauth-chip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); margin: var(--s-1) 0 0; font-size: var(--fs-xs); }
 .webauth-chip .webauth-ok { color: var(--ok); }
 .webauth-chip .btn-sm { min-height: 24px; }
+/* M-3710 (#4447 review): Needs you's Authorize this browser is a full touch target on a phone. */
+@media (pointer: coarse), (max-width: 479px) { .contact-verify-need .webauth-chip .btn-sm { min-height: var(--tap); min-width: var(--tap); } }
 /* #1939 S2a: Settings → Web → Web authority. */
 .s-web-authority .s-va-sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .s-web-authority .s-va-sessions li { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); overflow-wrap: anywhere; }
@@ -1694,7 +1703,10 @@ img.amb-p { object-fit: contain; }
 .inst-nav.compact .v-inst { height: 30px; min-height: 30px; padding-block: 0; gap: var(--s-2); }
 .inst-nav.compact .inst-text { flex-direction: row; align-items: center; gap: var(--s-2); }
 .inst-nav.compact .inst-line { flex: 1; min-width: 0; }
-.inst-nav.compact .inst-line2 { flex: none; }
+.inst-nav.compact .inst-line2 { flex: 0 1 auto; min-width: 0; }
+/* M-3674: the name keeps room beside two times (a person's and an agent's); the times ellipsize, the title has them whole. */
+.inst-nav.compact .inst-line { min-width: 40%; }
+.inst-nav.compact .inst-line2 > .inst-when { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .inst-nav.compact .inst-when { color: var(--text-3); font-weight: var(--fw-normal); }
 .inst-nav.compact .inst-row-menu > .icon-btn { height: 28px; min-height: 28px; }
 .inst-status.off { background: var(--text-2); }
@@ -2700,6 +2712,14 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card-avatar .oo-badge { position: absolute; left: -6px; top: -6px; }
 .oo-card-names { flex: 1; min-width: 0; }
 .oo-card-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oo-card-name-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.oo-card-name-row .oo-card-name { min-width: 0; }
+.oo-card-rename-btn { flex: none; width: 24px; height: 24px; font-size: var(--fs-sm); color: var(--text-2); }
+.oo-card-rename { width: 100%; font: inherit; font-weight: 600; }
+/* A phone: the pencil keeps its size (the name's row does not grow) and no square behind it; a clear ::after reaches --tap. */
+.oo-card-rename-btn { position: relative; }
+.oo-card.sheet .oo-card-rename-btn, .oo-card.sheet .oo-card-rename-btn:hover { background: transparent; }
+.oo-card.sheet .oo-card-rename-btn::after { content: ""; position: absolute; inset: calc((24px - var(--tap)) / 2); z-index: 4; }   /* over the grip (z 3), as the close button reaches */
 /* One line, cut; a fixed line height so a CJK fallback in the mono stack doesn't make it taller. */
 .oo-card-instance { height: 18px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-2); }
 .oo-card-state { color: var(--text-2); }
@@ -2874,7 +2894,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 }
 /* M-3253 (Argon's phone review): the Office on a phone, held upright or turned sideways (a coarse pointer in a short window,
    as fleet-office.js OFFICE_PHONE_Q). Above the office two rows only: Fleet's header, then Find, the view switch and one
-   44 px ⋯ (the Office's tools and Live in a sheet: .oo-sheet) — no wrapping bar. The stage takes the rest; its zoom pill is
+   44 px ⋯ (the Office's tools and Live in a sheet: .oo-sheet) — no wrapping bar (except under 370 px, M-3727: Find on its own
+   row, the switch and ⋯ under it, so ⋯ stays on screen). The stage takes the rest; its zoom pill is
    −, the zoom, +, fullscreen (Fit and Fill are in the sheet), 44 px each; the zone pills along its foot. */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .oc-office:has(.oo-more-btn) > .oc-bar { flex-wrap: nowrap; padding: var(--s-1) var(--s-3); }
@@ -2884,6 +2905,13 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .oc-tools:has(.oo-more-btn) .seg-inline { flex: none; }
   .oc-tools .oo-more-btn { flex: none; width: var(--tap); height: var(--tap); }
   @media (hover: none) { .oc-tools .oo-more-btn:hover { background: none; } }   /* a tap leaves :hover stuck on touch */
+  /* M-3727: Find (at least 88 px), the view switch and ⋯ need about 342 px (en) — more than a 320–360 px phone has: ⋯ went
+     off-screen. There, Find takes the first row and the switch and ⋯ (at the right) the second; every control stays whole. */
+  @media (max-width: 369px) {
+    .oc-office .oc-bar .oc-tools:has(.oo-more-btn) { flex-wrap: wrap; row-gap: var(--s-1); }
+    .oc-tools:has(.oo-more-btn) .oc-find { flex: 1 0 100%; }
+    .oc-tools .oo-more-btn { margin-left: auto; }
+  }
   .oo.phone > :not(.oo-stage):not(dialog) { margin-left: var(--s-3); margin-right: var(--s-3); }
   .oo.phone .oo-stage { min-height: 160px; }
   .oo.phone .oo-mini { display: none; }
@@ -4556,7 +4584,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-color-summary { display: grid; grid-template-columns: 112px minmax(0, 1fr) 16px; gap: 16px; align-items: center; min-height: 38px; cursor: pointer; list-style: none; }
 .p-settings .s-color-summary::-webkit-details-marker { display: none; }
 .p-settings .s-color-summary > .s-ap-title { margin: 0; }
-.p-settings .s-color-summary > svg { color: var(--text-3); transition: transform .15s; }
+.p-settings .s-color-summary > svg { color: var(--text-3); }
 .p-settings .s-colors[open] > .s-color-summary > svg { transform: rotate(90deg); }
 .p-settings .s-color-summary-places { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .p-settings .s-color-summary-places > span { padding: 4px 8px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.5; }
@@ -5065,6 +5093,43 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* A category's panel takes no box of its own: its cards are stacked by .s-section-layout's gap, like Settings' cards. */
 .ap-panel { display: contents; }
 .ap-panel[hidden] { display: none; }
+/* M-3734: an agent page's Who can use (agent-who-can-use.js): Web guests and Hub, each a card of the section's column. */
+.ap-who { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.ap-who .ap-who-admins { margin: 0; }
+.ap-who-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; }
+.ap-who-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0; border-top: 1px solid var(--border); min-width: 0; }
+.ap-who-row:first-child { border-top: 0; }
+.ap-who-av { flex: none; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--text-2); font-weight: 600; }
+.ap-who-id { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.ap-who-id .note { white-space: normal; }
+.ap-who-state { margin-top: 2px; }
+.ap-who-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+.ap-who-actions .btn, .ap-who-derived .btn, .ap-who-hub .btn, .ap-who-guests > .field-row .btn { min-height: var(--tap); }
+.ap-who-add { margin-top: 16px; }
+.ap-who-add > summary { min-height: var(--tap); display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; list-style: none; }
+.ap-who-add > summary::-webkit-details-marker { display: none; }
+.ap-who-add > summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); }
+.ap-who-add[open] > summary::before { transform: rotate(45deg); }
+.ap-who-derived { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 8px 0; }
+.ap-who-derived > .note { margin: 0; }
+.ap-who-derived .btn { margin-top: 4px; }
+.ap-who-go { white-space: nowrap; }
+.ap-who-guests > .field-row { margin: 4px 0 8px; }
+.ap-who-actions .ap-who-remove { margin-left: 16px; }
+.ap-who-confirm-note { margin-top: 4px; }
+.ap-who-add .input { width: 100%; max-width: 420px; min-height: var(--tap); margin: 8px 0; }
+.ap-who-off { padding: 2px 0 2px 10px; border-left: 3px solid var(--warn); color: var(--text); }
+.ap-who-hub-state { margin: 8px 0; font-weight: 600; }
+.ap-who-hub[data-hub-state="shared"] .ap-who-hub-state { color: var(--ok); }
+.ap-who .err { color: var(--danger); }
+.ap-who .field-row { flex-wrap: wrap; }
+.ap-who .field-row .btn { white-space: normal; text-align: center; max-width: 100%; }
+@media (max-width: 599px) {
+  .ap-who .field-row { flex-direction: column; align-items: stretch; }
+  .ap-who-actions { margin-left: calc(32px + 12px); width: 100%; }
+  .ap-who-actions .ap-who-remove { margin-left: auto; }
+}
 .p-details .d-actions .field-row { flex-wrap: wrap; }
 /* The sidebar's ⚙: one step to an agent's settings — on hover or focus on a desktop and on the open row, always on a touch screen. */
 .inst-gear { flex: none; width: 28px; height: 28px; padding: 0; color: var(--text-3); display: inline-grid; place-items: center; }
@@ -5155,15 +5220,30 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .sidebar.fleet-side .side-new { position: absolute; top: calc(var(--header-h) + max(var(--s-1), env(safe-area-inset-top))); right: var(--s-2); width: var(--tap); height: var(--tap); padding: 0; justify-content: center; }
   .sidebar.fleet-side .side-new .grow { display: none; }
   .sidebar.fleet-side .inst-row-menu, .sidebar.fleet-side .av-cli, .sidebar.fleet-side .v-group-kind, .sidebar.fleet-side .v-meta { display: none !important; }
-  .p-fleet > .panel-head .sb-search, .p-fleet > .panel-head .panel-title h1, .p-fleet > .panel-head .panel-actions { display: none !important; }
-  /* The title gives way, but a host-memory warning (its subtitle) stays: a line of its own under ☰ and the tabs (#4008 review). */
-  .p-fleet > .panel-head .panel-title:not(:has(.host-mem)) { display: none; }
-  .p-fleet > .panel-head:has(.host-mem) { flex-wrap: wrap; }
-  .p-fleet > .panel-head .panel-title:has(.host-mem) { order: 10; flex: 1 0 100%; min-height: 0; padding-bottom: var(--s-1); }
+  .p-fleet > .panel-head .sb-search, .p-fleet > .panel-head .panel-actions { display: none !important; }
+  /* M-3722: two rows — ☰ and this page's name (a host-memory warning, its subtitle, under it, #4008 review), then every tab
+     as an icon across the whole width, each a full touch target: eight no longer fit beside ☰ at 390 px. A tab's name stays
+     its accessible name (visually hidden). */
+  .p-fleet > .panel-head { flex-wrap: wrap; }
+  .p-fleet > .panel-head .panel-title { flex: 1 1 0; min-width: 0; }
+  .p-fleet > .panel-head .panel-title h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .p-fleet > .panel-head .panel-title .panel-sub:has(.host-mem) { flex: 1 1 auto; width: auto; }
-  .p-fleet > .panel-head .fleet-phone-tabs { flex: 1; min-width: 0; order: initial; padding: 0; margin: 0; overflow-x: auto; flex-wrap: nowrap; }
+  .p-fleet > .panel-head .fleet-phone-tabs { order: 20; flex: 1 0 100%; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0; min-width: 0; padding: 0; margin: 0; overflow: visible; }
+  .p-fleet > .panel-head .fleet-phone-tabs .seg-item { min-height: var(--tap); min-width: 0; padding: 0; justify-content: center; }
+  /* The tab you are on: a flat accent-tinted pill and the accent icon (≥ 3:1: the cue). The grey tile alone was about 1.2:1; a
+     line under it read as a raised key (the user, #4453). No line, border or shadow; the same in dark. */
+  .p-fleet > .panel-head .fleet-phone-tabs .seg-item.active { color: var(--accent); background: var(--surface-2); background: color-mix(in srgb, var(--accent) 14%, var(--bg)); box-shadow: none; border-color: transparent; }
+  .p-fleet > .panel-head .fleet-phone-tabs .seg-item span { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   .p-fleet .oc-bar > span:first-child, .p-fleet .oc-bar .org-counts { display: none; }
   .p-fleet .oc-bar .oc-tools { flex-wrap: nowrap; overflow-x: auto; width: 100%; }
+}
+/* M-3722 (#4453 review): eight 44 px tabs need 352 px. Under 384 px (the gutters would leave less: 360 px phones, 375 px
+   ones) the row runs edge to edge; under 352 px it is two rows of four. Every tab stays a 44 × 44 target. */
+@media (max-width: 383px) {
+  .p-fleet > .panel-head .fleet-phone-tabs { margin-left: calc(-1 * max(var(--s-4), env(safe-area-inset-left))); margin-right: calc(-1 * max(var(--s-4), env(safe-area-inset-right))); }
+}
+@media (max-width: 351px) {
+  .p-fleet > .panel-head .fleet-phone-tabs { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 /* M-3166 (Argon 2, the user's OK of round 2): on a phone a toast (an agent waiting for you, a result) is one line — a pill that a
    tap puts away — and none shows while the keyboard is up. */
@@ -5391,3 +5471,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-fleet :is(.tb-head-actions, .tb-title, .tb-stats) .btn { min-height: var(--tap); }
   .p-fleet .tb-project-menu .icon-btn { width: var(--tap); height: var(--tap); }   /* a project tile's ⋯ */
 }
+
+/* M-3678: the new owner stop action follows the phone tap target. */
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .n-actions .hub-close { min-height: var(--tap); min-width: var(--tap); } }

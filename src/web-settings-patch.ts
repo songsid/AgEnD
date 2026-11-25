@@ -121,6 +121,13 @@ export type GuestsPatch = {
   grants?: Record<string, { name?: string; instances: string[]; level?: "trusted" } | null>;
   /** M-3276: the guest session limits, each a number or null (back to the default). */
   session?: { absolute_hours?: number | null; idle_minutes?: number | null };
+  /**
+   * M-3734 (Prism #4461 P2): a precondition, never written — each named person's grant as the page showed it (null: none),
+   * or "unset": no grants saved yet (#1920's derived access). Checked when the change is admitted and again when it
+   * applies (a confirmation's replay): a grant changed since it was read refuses the whole save (409), so a whole-grant
+   * write never puts back what someone else changed meanwhile, and what the page warned about is what is written.
+   */
+  if_grants?: Record<string, { name?: string; instances: string[]; level?: "trusted" } | null> | "unset";
 };
 const GUEST_ACCOUNT_KEY = /^[A-Za-z0-9_.-]{1,64}:[0-9A-Za-z_-]{1,64}$/;
 /** #2348: one grant as the patch carries it: `{ name?, instances, level? }`, or null (removed). #2855: level "chat" (the
@@ -176,6 +183,21 @@ export function guestsPatch(raw: unknown): GuestsPatch | null | "invalid" {
       if (Object.keys(session).length) out.session = session;
       continue;
     }
+    if (k === "if_grants") {
+      if (v === "unset") { out.if_grants = "unset"; continue; }
+      if (!v || typeof v !== "object" || Array.isArray(v)) return "invalid";
+      const expected: Record<string, { name?: string; instances: string[]; level?: "trusted" } | null> = Object.create(null);
+      const entries = Object.entries(v);
+      if (!entries.length || entries.length > 500) return "invalid";
+      for (const [key, raw] of entries) {
+        if (!GUEST_ACCOUNT_KEY.test(key)) return "invalid";
+        const grant = guestGrant(raw);
+        if (grant === "invalid") return "invalid";
+        expected[key] = grant;
+      }
+      out.if_grants = expected;
+      continue;
+    }
     if (k === "grants") {
       if (!v || typeof v !== "object" || Array.isArray(v)) return "invalid";
       const grants: Record<string, { name?: string; instances: string[] } | null> = Object.create(null);
@@ -195,6 +217,44 @@ export function guestsPatch(raw: unknown): GuestsPatch | null | "invalid" {
   }
   return Object.keys(out).length ? out : null;
 }
+/**
+ * M-3734: why a guests patch's precondition (`if_grants`) no longer holds against `current` (web.guests now), or null when
+ * it holds or there is none. A grant is compared as the patch carries one: its name, its agents in order, its level.
+ */
+export function guestsPreconditionFailure(current: WebGuestsConfig | undefined, patch: GuestsPatch): { account?: string } | null {
+  const want = patch.if_grants;
+  if (!want) return null;
+  const saved = current?.grants;
+  if (want === "unset") return saved === undefined ? null : {};
+  if (saved === undefined) return { account: Object.keys(want)[0] };
+  const norm = (g: unknown) => {
+    const v = guestGrant(g);
+    return v && v !== "invalid" ? JSON.stringify([v.name ?? "", v.instances, v.level ?? "chat"]) : v === null ? "none" : "invalid";
+  };
+  for (const [account, grant] of Object.entries(want)) {
+    const have = Object.hasOwn(saved, account) ? saved[account] : null;
+    if (norm(have) !== norm(grant)) return { account };
+  }
+  return null;
+}
+
+/**
+ * M-3734 (Prism #4461 R1): "Start from today's guests" (`if_grants: "unset"` with `grants`) must be today's derived access
+ * exactly — each guest with any agent now gets a grant of exactly those agents, and no one else gets one. Checked against
+ * the scopes the fleet computes now (`scopes`: each account's derived agents; undefined: not known here, refused), when
+ * the save is admitted and again as it applies, so access narrowed since the page read it is never put back.
+ */
+export function guestsConversionFailure(patch: GuestsPatch, scopes: Record<string, string[]> | undefined): { account?: string } | null {
+  if (patch.if_grants !== "unset" || !patch.grants) return null;
+  if (!scopes) return {};
+  const now = new Map(Object.entries(scopes).filter(([, list]) => Array.isArray(list) && list.length > 0));
+  const asked = Object.entries(patch.grants).filter(([, grant]) => grant && grant.instances.length > 0);
+  if (asked.length !== now.size) return { account: [...now.keys()].find((k) => !asked.some(([a]) => a === k)) ?? asked.find(([a]) => !now.has(a))?.[0] };
+  const same = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((n, i) => n === [...b].sort()[i]);
+  for (const [account, grant] of asked) if (!now.has(account) || !same(grant!.instances, now.get(account)!)) return { account };
+  return null;
+}
+
 /** `web.guests` after a patch (a copy; null removes; an emptied map leaves; nothing left: undefined), and the file edits. */
 export function applyGuestsPatch(current: WebGuestsConfig | undefined, patch: GuestsPatch):
   { next: WebGuestsConfig | undefined; changes: Array<{ path: string[]; value: unknown; remove?: true }> } {

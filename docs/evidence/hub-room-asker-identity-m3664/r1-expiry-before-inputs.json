@@ -1,0 +1,18 @@
+[
+  {
+    "path": "src/hub/member/room-ask.ts",
+    "sha256": "fee1f13fb64e05d93d6cd9f22fe6f1950d8cd5db13cbc918fe325b1ded0433ce"
+  },
+  {
+    "path": "src/hub/member/room-asker-store.ts",
+    "sha256": "79a539774d658b5a50812db06015ee1fe437f9917d53dc9d958927dc10dc623b"
+  },
+  {
+    "path": "tests/hub-room-asker-adapter-m3664.test.ts",
+    "sha256": "f4aeffb6f6d9528febed04a888bc53dc93f981d0232a90bb88484d79fe7f48f4"
+  },
+  {
+    "path": "src/hub/room-asker-identity.ts",
+    "sha256": "178f7b12e434e8bd06d139f6ced74c223f6d5d24d6007480ad648f678e855266"
+  }
+]

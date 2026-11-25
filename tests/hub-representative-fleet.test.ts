@@ -334,7 +334,7 @@ describe("report_result to the Hub", () => {
 
 
 describe("Hub contact window at the Fleet handoff", () => {
-  it("activates at input, persists across Fleet replacement, and only a successful matching report closes it", async () => {
+  it("activates at the daemon's write (M-3660: not while the question waits), persists across Fleet replacement, and a successful matching report closes it", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hub-contact-fleet-"));
     const fm = new FleetManager(dir), restored = new FleetManager(dir);
     try {
@@ -344,13 +344,20 @@ describe("Hub contact window at the Fleet handoff", () => {
       await (fm as any).deliverHubQuestion({ agent: "worker", correlationId: "hub-first", text: "Q", stillCurrent: () => true, beforeInput: async () => true });
       expect(fm.hubContactRestricted("worker")).toBe(false); // queued/waiting delivery is not input
       expect(await hook!()).toBe(true);
+      expect(fm.hubContactRestricted("worker")).toBe(false); // M-3660: handed to the daemon, still waiting for the idle pane
+      (fm as any).hubQuestionInput("worker", "hub-first");    // the daemon's hub_question_input, just before its write
       expect(restored.hubContactRestricted("worker")).toBe(true);
       (fm as any).hubReports = () => Promise.resolve({ ok: false });
       await fm.hubReport({ caller: "worker", correlationId: "hub-first", text: "invalid", callerCurrent: () => true });
       expect(fm.hubContactRestricted("worker")).toBe(true);
       (fm as any).hubReports = () => Promise.resolve({ ok: true });
       await fm.hubReport({ caller: "worker", correlationId: "hub-first", text: "answer", callerCurrent: () => true });
+      expect(fm.hubContactRestricted("worker")).toBe(true);   // M-3660: inside its own running turn the answer lifts nothing
+      (fm as any).hubQuestionTurnEnded("worker", "hub-first");
       expect(fm.hubContactRestricted("worker")).toBe(false);
+      (fm as any).hubAnswerTurns.set("worker", null); (fm as any).contactWindows().begin("worker", "hub-late");   // a window outside any turn (the daemon said none runs)
+      await fm.hubReport({ caller: "worker", correlationId: "hub-late", text: "answer", callerCurrent: () => true });
+      expect(fm.hubContactRestricted("worker")).toBe(false);  // …a successful matching report still closes it
     } finally { fm.stormWindow.shutdown(); restored.stormWindow.shutdown(); rmSync(dir, { recursive: true, force: true }); }
   });
   it("does not open a window for a declined input or an opted-out share", async () => {
@@ -361,6 +368,7 @@ describe("Hub contact window at the Fleet handoff", () => {
       for (const [before, limit] of [[false, true], [true, false]]) {
         await (fm as any).deliverHubQuestion({ agent: "worker", correlationId: "hub-first", text: "Q", contactLimit: limit, stillCurrent: () => true, beforeInput: async () => before });
         expect(fm.hubContactRestricted("worker")).toBe(false);
+        if (!limit) { (fm as any).hubQuestionInput("worker", "hub-first", false); expect(fm.hubContactRestricted("worker")).toBe(false); } // opted out (meta): the write opens nothing
       }
     } finally { fm.stormWindow.shutdown(); rmSync(dir, { recursive: true, force: true }); }
   });

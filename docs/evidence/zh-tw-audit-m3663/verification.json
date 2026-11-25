@@ -1,0 +1,82 @@
+{
+  "implementationHead": "694681fd913ac2d53baa82c268eaadc884d1e527",
+  "sourceHashes": {
+    "changes/3663-zh-tw-audit.md": "190d511878d7096cd0a4ff6ded7007152c569d1c1edde1c520f50f20a775faf0",
+    "changes/3663-zh-tw-audit.zh-TW.md": "cabf5e9dec0e488502214daf521723bfdf4b9edfa1af4c46a3ec9ad4b5925601",
+    "src/locale.ts": "11bf9b1444a08c532513a1e9e6dfaa68d5df7e39ac02c9fc061ddb58347529ab",
+    "src/ui/fleet-cache.js": "803d1da690c3847821f6c26cc3fa535a4b292536e6a58b0cdc91715bed6ba5f7",
+    "src/ui/hub-admin-overview.js": "dc621ed65b66fddf95081b39d10653368bc4efe5bbdbb8a8347ca0a490e3dad2",
+    "src/ui/settings-hub-setup-strings.js": "d0c890198493105bc4144e90596f246ef90ea0f442fc8b9ac0a0ba04529401ce",
+    "tests/hub-web-setup-ui.test.ts": "80e210e991c1dbd48e3c85a12634ff4fc9bd36a54e4ad9c329f997791a9cd5e0",
+    "tests/update-live-progress.test.ts": "b303989de893a065547abd883fa46f987832bca1850e93711845739843756d45",
+    "tests/update-progress-honest-2476.test.ts": "881b7dc99f8aca5337ecf1375201d2c0e1e90301dc898ee62a99dd146223d7d1",
+    "tests/live-progress-cancel.test.ts": "ddd04312c50db49c9d99c671f3e8c7b1e1489a842d64585b0363450eccf32c51",
+    "tests/restart-progress.test.ts": "6af54411cb3dc417e6c9e066a7ccb14d5c5308bd8c12568516fafbdef9bd34f7",
+    "tests/update-welcome-quiet-1854.test.ts": "018a0835d5da7106f16dca9b05bb834c47c92ba146b57449bf1a7a1e3f22db3e"
+  },
+  "catalogChecks": {
+    "count": 15,
+    "englishUnchanged": true,
+    "keysAndPlaceholdersUnchanged": true,
+    "exactReverseRestoresAllFourSources": true
+  },
+  "sourceGlyphScan": "rg 覧 src returned no matches after correction",
+  "directCharacters": "no added source line contains a Unicode escape",
+  "proofs": {
+    "focused": {
+      "sha256": "d4c91989e4694b6b12fe0ebc32a7555a675f8195998fd8de820af91516818c06",
+      "result": "7 suites61 tests PASS; locale/CLI/web/zh terms/admin and affected copy assertions"
+    },
+    "values": {
+      "sha256": "c28bae131852978ae502363e8b91011c71c15a3f13967c6823c0fbefb0f95f75",
+      "result": "15value changes; actual catalogs evaluated; reverse restores sources"
+    },
+    "changelog": {
+      "sha256": "e67b1b2d0c2cb16d372889da9aa71cdd424301f1cbbe941001d610c7da8fa063",
+      "result": "changelog-assemble: 805 fragment(s) OK"
+    },
+    "initialCopyExpectations": {
+      "sha256": "e319004ae7d9705b59cdf7ac04f04db4cd2834bf23cd020d593355a3632503b2",
+      "result": "5 failures from old zh bracket expected text; corrected literals only, not behavior assertions"
+    },
+    "r1ExpandedSuites": {
+      "sha256": "0bfd2413e4a555137dae822632847a77a721e532b5bb3ee21f9ecedcd9564265",
+      "result": "all8 grep-matched full suites176/176 PASS; overlaps initial61 cases, not additive"
+    },
+    "r1MatchedFiles": {
+      "sha256": "25ea9dbc12e136ae19b353d6d3609d1d55b479c86cf99c9f2d285202f60d0a9a",
+      "result": "search includes all changed message text and update.progress/progress.trace_title key references"
+    }
+  },
+  "limits": [
+    "wording-only; no new browser/native/visual matrix",
+    "no local typecheck claim; CI typecheck remains required",
+    "main twin only for12 present rows; no Hub or trace feature backport",
+    "English glossary separate and unchanged"
+  ],
+  "productionImplementationHead": "805ea0863ee53831177ee270ad59bd6ecd5e0b87",
+  "reviewedProductionHead": "c8e306320275ae2effbe429d6b7843c89273d7cc",
+  "r1Delta": {
+    "tests": [
+      "tests/live-progress-cancel.test.ts",
+      "tests/restart-progress.test.ts",
+      "tests/update-welcome-quiet-1854.test.ts"
+    ],
+    "changedExpectationLines": 4,
+    "productionByteEqualReviewedHead": true,
+    "englishAndBehaviorAssertionsUnchanged": true,
+    "exactFailedJobsInspected": [
+      138547210046,
+      138547210165,
+      138547210169,
+      138553753400
+    ],
+    "privateLogHashes": {
+      "138547210046": "f752055ac4804697f60a973e474f4316e396dae53ae5f303806615bf19a48df3",
+      "138547210165": "16034491dc8f2c9310f592ccff2766d10e375b484aec6e624ac0d81b4cc88d4b",
+      "138547210169": "5cb471460fad3eb9ba846aedc9882f9ddc78fd1b2aed27c8e7f895ef8ceaf916",
+      "138553753400": "6d6984b266db1664c67d53d6d556b3b5410ef8bf040b90e3c6e915775813aa03"
+    },
+    "unrelatedCase": "codex-audit-mcp-start-m3653 reached:hello assertion not modified; reviewer reports local pass, no author local-run claim"
+  }
+}

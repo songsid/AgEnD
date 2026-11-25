@@ -24,6 +24,7 @@ import { ContactAuthorizations } from "./contact-authorizations.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
+import { TabIcon } from "./fleet-tab-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
@@ -33,6 +34,7 @@ import { CacheReport } from "./fleet-cache.js";
 import { UsageTab } from "./fleet-usage.js";
 import { BackendSelect, ModelSelect } from "./settings-dialogs.js";
 import { TaskBoardTab } from "./fleet-tasks.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 /** #2015: one of the largest processes as text: "python3 18.1 GB (dev-a)". */
 export function memoryHogText(p) {
@@ -77,9 +79,9 @@ register("fleet", {
     hostMemory_top: "最大：{0}", hostMemory_ownerFleet: "fleet 本身", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "不屬於任何 Agent",
     title: "Fleet", tasks: "任務", schedules: "排程", teams: "團隊", org: "組織圖", cache: "快取", usage: "用量", "host-health": "主機狀態",
     docs: "文件", docsNewTab: "文件（在新分頁開啟）",
-    newSchedule: "新增排程", newTeam: "新增 team",
+    newSchedule: "新增排程", newTeam: "新增團隊",
     noSchedules: "還沒有排程", noSchedulesHint: "用 cron 自動執行例行工作。",
-    noTeams: "還沒有 team", noTeamsHint: "把 Agent 分組一起工作。", countSchedules: "{0} 個排程", countTeams: "{0} 個 team", countSchedule: "1 個排程", countTeam: "1 個 team",
+    noTeams: "還沒有團隊", noTeamsHint: "把 Agent 分組一起工作。", countSchedules: "{0} 個排程", countTeams: "{0} 個團隊", countSchedule: "1 個排程", countTeam: "1 個團隊",
     delete: "刪除", on: "開", off: "關", cancel: "取消", create: "建立", creating: "建立中…", save: "儲存變更",
     taskDesc: "說明", cron: "Cron 表示式", message: "訊息", target: "目標 Agent", label: "標籤", teamName: "Team 名稱", members: "成員",
     schedOnce: "一次 · {0}", schedNext: "下次 {0}", schedRetrying: "重試中", schedDisabled: "已停用", schedSilent: "靜默", schedTz: "時區：{0}",
@@ -89,9 +91,9 @@ register("fleet", {
     cronEveryMinute: "每分鐘", cronEveryMinutes: "每 {0} 分鐘", cronEveryHours: "每 {0} 小時", cronDaily: "每天 {0}",
     cronWeekdays: "每週一到五 {0}", cronDays: "每週{0} {1}", cronMonthly: "每月 {0} 日 {1}", dayNames: "日,一,二,三,四,五,六", dayJoin: "、",
     scheduleFieldsRequired: "必須填寫 Cron、訊息與目標 Agent", teamFieldsRequired: "必須填寫名稱並選擇至少一名成員",
-    deleteSchedule: "確定刪除此排程嗎？", deleteTeam: "確定刪除 team「{0}」嗎？", scheduleCreated: "排程已建立", scheduleDeleted: "排程已刪除",
-    teamCreated: "Team 已建立", teamDeleted: "Team 已刪除", teamUpdated: "Team 已更新", edit: "編輯", editTeam: "編輯 team",
-    teamNoRename: "不支援重新命名：請建立新的 team，再刪除這個。",
+    deleteSchedule: "確定刪除此排程嗎？", deleteTeam: "確定刪除團隊「{0}」嗎？", scheduleCreated: "排程已建立", scheduleDeleted: "排程已刪除",
+    teamCreated: "Team 已建立", teamDeleted: "Team 已刪除", teamUpdated: "Team 已更新", edit: "編輯", editTeam: "編輯團隊",
+    teamNoRename: "不支援重新命名：請建立新的團隊，再刪除這個。",
     backend: "Backend",
     newInstance: "新增 Agent", directory: "目錄", directoryHint: "可留空——留空會自動建立工作區", topic: "名稱", topicHint: "預設取自目錄名稱",
     topicRequired: "目錄留空時必須填寫名稱", description: "說明", descriptionHint: "這個 Agent 做什麼", model: "模型", modelHint: "例如 sonnet、opus、gpt-5",
@@ -105,7 +107,8 @@ const DOCS_SITE = "https://songsid.github.io/AgEnD";
 export function docsUrl(language = lang()) {
   return `${DOCS_SITE}${language === "zh-TW" ? "/zh-tw" : ""}/docs/web-guide/`;
 }
-const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", usage: "chart", authorizations: "key", "host-health": "chart" };
+// M-3722: one icon each (a phone's tabs are icons only): Cache, Usage and Host health no longer share "chart" (fleet-tab-icons.js).
+const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "database", usage: "gauge", authorizations: "key", "host-health": "pulse" };
 const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"];
 
 async function api(method, path, body, lease) {
@@ -232,7 +235,7 @@ export function FleetPanel({ route, navKey }) {
     else if (a.left < n.left) nav.scrollLeft -= n.left - a.left;
   }, [phone, tab, admin, wide]);
   const tabs = (cls) => html`<nav data-trust="panel-navigation" class=${cls} aria-label=${t("fleet.title")}>${visibleTabs.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
-    aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>`;
+    aria-current=${k === tab ? "page" : undefined}><${TabIcon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>`;
   return html`<div ref=${root} data-effect-panel="fleet" class="panel p-fleet">
     ${/* M-2542: the tabs share the title row (PanelHeader's nav slot, as the instance tabs do) when everything fits
          there (useTabsInHeader), saving a line; otherwise — a phone, a narrow window, a long host memory warning — they
@@ -240,8 +243,10 @@ export function FleetPanel({ route, navKey }) {
          and chosen here rather than by CSS: a previous release's app.css, cached in an open tab, has no rule for the
          header slot — this way either stylesheet lays both out (smoke-2542 SKEW). */ ""}
     ${/* M-3166 (Argon 5, the user's OK of round 2): a phone's Fleet is two rows — its tabs in the header's row (☰, then the
-         tabs; the title, search, docs and text size give way: app.css), then the page's own tools. */ ""}
-    <${PanelHeader} title=${t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : phone ? tabs("seg fleet-phone-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
+         tabs; the title, search, docs and text size give way: app.css), then the page's own tools.
+         M-3722: eight tabs no longer fit beside ☰ at 390 px (Authorizations, Host health). On a phone the header is ☰ and
+         this page's name, then every tab as an icon, each a whole touch target (app.css): nothing scrolls off. */ ""}
+    <${PanelHeader} title=${phone && !wide ? t(`fleet.${tab}`) : t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : phone ? tabs("seg fleet-phone-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
     ${wide || phone ? null : tabs("seg fleet-tabs-row")}
     <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "tasks" || tab === "org" || tab === "cache" || tab === "usage" || tab === "authorizations" || tab === "host-health" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;
@@ -622,7 +627,7 @@ export function CreateInstanceDialog({ onClose }) {
   const cliLabel = productLabel(f.backend) || `${t("fleet.fleetDefault")} (${productLabel(defaultBackend)})`;
   const backendField = windows ? html`<div class="field"><div class="cli-discovery-heading"><span>${tr("backend")}</span>${native && !machineId ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${discovery.loading} onClick=${discovery.refresh}><${Icon} name="restart" size=${14} />${detectionText("refresh")}</button>` : null}</div>
     <div aria-busy=${!machineId && discovery.loading ? "true" : "false"}>${native ? html`<${CliPicker} label=${tr("backend")} value=${f.backend} choices=${nativeChoices} onChange=${value => { setCredentialProfile(""); setF(x => ({...x,backend:value,model:""})); }} disabled=${!nativeChoices.length || !!machineId && machine?.status !== "online"} />` : null}</div>
-    ${machineId ? html`<p class="note">${tr(!nativeChoices.length ? "noRemoteCli" : "remotePolicy")}</p>${machine?.inventoryUpdatedAt ? html`<p class="note">${t("runtime.inventoryAt",new Date(machine.inventoryUpdatedAt).toLocaleString())}</p>` : null}` : html`<${WindowsCliDiscoveryStatus} state=${discovery} />`}
+    ${machineId ? html`<p class="note">${tr(!nativeChoices.length ? "noRemoteCli" : "remotePolicy")}</p>${machine?.inventoryUpdatedAt ? html`<p class="note">${t("runtime.inventoryAt",dateTimeText(machine.inventoryUpdatedAt))}</p>` : null}` : html`<${WindowsCliDiscoveryStatus} state=${discovery} />`}
     ${!machineId && native && !discovery.loading && !discovery.error ? html`<p class="note">${!nativeChoices.length ? tr("noCli") : tr("nativeHint")}</p>` : null}
     ${machineId ? html`<${ClaudeAccountSelect} id="native-create-claude-account" machine=${machine} backend=${f.backend} value=${credentialProfile} onChange=${setCredentialProfile} disabled=${machine?.status !== "online"} />` : null}</div>`
     : html`${field(tr("backend"),backends ? html`<${CliPicker} label=${tr("backend")} value=${f.backend} choices=${[{value:"",label:t("fleet.fleetDefault")},...backends.filter(b => backendState(b) !== "not_installed" && !b.deprecated).map(b => ({value:b.name,label:productLabel(b.name),disabled:backendBlocked(b),description:backendNote(b)}))]} onChange=${value => { setCredentialProfile(""); setF(x => ({...x,backend:value,model:""})); }} />` : html`<div role="status" aria-busy="true"><${Skeleton} lines=${1} /><span class="note">${tr("loadingClis")}</span></div>`)}${hostAccount ? html`<${AccountSelect} id="create-host-account" backend=${hostBackend} value=${credentialProfile} onChange=${setCredentialProfile} creating=${true} />` : null}`;

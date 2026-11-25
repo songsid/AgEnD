@@ -98,7 +98,7 @@ describe("#2799 Canvas Worker effects removed", () => {
     await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
     try {
       // The real client, transpiled to a private module tree; only this loopback stub is reachable (as agent-cli-forwards-1756).
-      for (const name of ["agent-cli", "cli-flags", "agent-token-header", "agent-file-read", "instance-names", "web-asset-parts", "bundled-skills", "web-experimental"]) {
+      for (const name of ["agent-cli", "cli-flags", "agent-token-header", "agent-file-read", "instance-names", "web-asset-parts", "bundled-skills", "web-experimental", "task-attach-client", "task-file-limits"]) {
         const source = readFileSync(join(process.cwd(), "src", name + ".ts"), "utf8");
         writeFileSync(join(root, name + ".js"), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText);
       }

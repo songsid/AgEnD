@@ -44,7 +44,7 @@ The page says what happened and what to do. The most common messages:
 | The Hub is handling other connections and will retry shortly. | Nothing to do; it tries again by itself. |
 | This attempt timed out and nothing was created. | Press **Sign in with company account** again. |
 | Another connection with a pairing code is still in progress for you. | Finish or stop it on the Hub first. |
-| The result could not be confirmed. | Choose **Check this connection**. Do not start again. |
+| The result could not be confirmed. | Choose **Check again**. Do not start again. |
 | The Hub did not accept this join code… | It may have ended or been mistyped, or your account may not connect a Fleet. Ask your Hub administrator for a current code, then start again. |
 | This join code is no longer valid or has been used up. | Ask your Hub administrator for a new code. |
 | Another connection attempt is still open (shown above). | Use **Recover this connection** or **Cancel connection** on it, then start again. |

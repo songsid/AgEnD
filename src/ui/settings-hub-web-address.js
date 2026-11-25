@@ -8,6 +8,7 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { Skeleton } from "/assets/ui-states.js";
 import { register, t, lang } from "/assets/app-i18n.js";
 import { api } from "./settings-confirm.js";
+import { clockFormat } from "/assets/clock-text.js";
 
 register("hubWebAddress", {
   en: {
@@ -88,7 +89,7 @@ const errorText = (r) => {
     try {
       // Round up: the displayed minute must not invite a retry before the exact deadline.
       const at = new Date(Math.ceil(r.retryAt / 60_000) * 60_000);
-      if (!Number.isNaN(at.getTime())) time = new Intl.DateTimeFormat(lang(), { hour: "2-digit", minute: "2-digit" }).format(at);
+      if (!Number.isNaN(at.getTime())) time = clockFormat({ hour: "2-digit", minute: "2-digit" }, lang()).format(at);
     } catch { /* The no-time wording also supports an older response or browser. */ }
   }
   return copy(time ? "err_joining" : "err_joining_no_time", time);
