@@ -1,0 +1,183 @@
+{
+  "startingBase": "dd331d957",
+  "captureSource": "771114ae160055ea5476610a567e72c80aee51d5",
+  "baseRegression": {
+    "semanticFailures": 2,
+    "negativeControlsPassed": 3
+  },
+  "targeted": {
+    "files": 4,
+    "tests": 71,
+    "newCases": 14,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0
+  },
+  "instructionChecks": {
+    "files": 3,
+    "tests": 64
+  },
+  "afterReleaseSync": {
+    "files": 3,
+    "tests": 48,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0
+  },
+  "affected": {
+    "files": 59,
+    "tests": 922,
+    "passed": 916,
+    "failed": 6,
+    "updatedCopyAssertions": 2,
+    "baselineHostFailures": {
+      "file": "tests/web-guest-trusted-2855.test.ts",
+      "startingBaseFailed": 4,
+      "startingBasePassed": 15,
+      "headFailed": 4
+    },
+    "testFiles": [
+      "tests/web-commands-1269.test.ts",
+      "tests/settings-web-authority-1939.test.ts",
+      "tests/web-guest-mentions-m3279.test.ts",
+      "tests/web-guest-chat-1920.test.ts",
+      "tests/classic-contact-dispatch-3339.test.ts",
+      "tests/web-guest-scope-1920.test.ts",
+      "tests/inbound-owner-gate.test.ts",
+      "tests/reply-buttons-late-bind-3011.test.ts",
+      "tests/web-authority-s2a-1939.test.ts",
+      "tests/contact-person-identity-m3679.test.ts",
+      "tests/web-guest-stream-1920.test.ts",
+      "tests/web-authority-revoke-owner-138.test.ts",
+      "tests/hub-contact-window-settles-m3660.test.ts",
+      "tests/web-authority-quick-link.test.ts",
+      "tests/web-contact-card-copy-m3385.test.ts",
+      "tests/web-authority-named-link-2453.test.ts",
+      "tests/web-guest-signin-1920.test.ts",
+      "tests/web-chat-resend-m3502.test.ts",
+      "tests/web-guest-rooms-1920.test.ts",
+      "tests/web-guest-access-1920.test.ts",
+      "tests/web-contact-origin-clear-3366.test.ts",
+      "tests/web-needs-contact-suggestions-m3381.test.ts",
+      "tests/classic-start-contact-notice-3339.test.ts",
+      "tests/web-authority-settings-1939.test.ts",
+      "tests/web-contact-later-m3410.test.ts",
+      "tests/classic-contact-api-3339.test.ts",
+      "tests/contact-outcome-notices-3372.test.ts",
+      "tests/web-authority-1939.test.ts",
+      "tests/web-guest-devices-1920.test.ts",
+      "tests/contact-origin-feedback-4213.test.ts",
+      "tests/web-guest-trusted-2855.test.ts",
+      "tests/task-board-contact-4367.test.ts",
+      "tests/web-session-contact-origin-m3713.test.ts",
+      "tests/contact-origin-clear-3366.test.ts",
+      "tests/web-contact-grants-m3544.test.ts",
+      "tests/contact-change-proposals-m3544.test.ts",
+      "tests/web-chat-resend-http-m3502.test.ts",
+      "tests/classic-contact-auth-3339.test.ts",
+      "tests/web-authority-link-3131.test.ts",
+      "tests/web-command-copy-1655.test.ts",
+      "tests/web-guest-prefs-public-1920.test.ts",
+      "tests/needs-you-contact-suggestions-m3381.test.ts",
+      "tests/contact-standing-grants-m3544.test.ts",
+      "tests/web-guest-sidebar-prefs-m3280.test.ts",
+      "tests/web-guest-settings-1920.test.ts",
+      "tests/human-receipts-1756.test.ts",
+      "tests/web-chat-resend-ui-m3502.test.ts",
+      "tests/web-guest-tg-classic-1920.test.ts",
+      "tests/contact-tool-groups-m3387.test.ts",
+      "tests/classic-contact-files-3339.test.ts",
+      "tests/hub-contact-limit-3160.test.ts",
+      "tests/web-guest-public-1920.test.ts",
+      "tests/reply-buttons-adapters-1266.test.ts",
+      "tests/web-guest-shell-1920.test.ts",
+      "tests/classic-contact-approvers-3339.test.ts",
+      "tests/web-guest-history-1920.test.ts",
+      "tests/contact-suggestion-later-m3410.test.ts",
+      "tests/web-contact-auth-m3339.test.ts",
+      "tests/reply-buttons-1266.test.ts"
+    ]
+  },
+  "mutation": {
+    "knownAccountMarkedVerified": {
+      "caught": true,
+      "failedAssertions": 1,
+      "restored": true
+    }
+  },
+  "captures": {
+    "before": 16,
+    "after": 16,
+    "casesPerStage": 8,
+    "surfaces": [
+      "Needs you unknown contact",
+      "source Agent Permissions"
+    ],
+    "beforeSource": "dd331d957",
+    "afterSource": "771114ae160055ea5476610a567e72c80aee51d5",
+    "pageErrors": 0,
+    "cspReports": 0,
+    "horizontalOverflow": false,
+    "recoveryNeeds": {
+      "count": 8,
+      "source": "65cee97eb2dd6ec71d80607c3314d19590887d19",
+      "supersedes": "after/*-needs.png",
+      "permissionsUnchanged": true
+    }
+  },
+  "limits": [
+    "Historical unknown origins are not inferred or automatically cleared.",
+    "Phone English Needs-you lower actions are below the screenshot; the full recovery hint is visible.",
+    "Existing disabled standing-grant labels are ellipsized.",
+    "No live state, real account, provider, model or CLI calls."
+  ],
+  "geminiFollowup": {
+    "identityCases": 16,
+    "identityAndContactUiTests": 54,
+    "verificationNeedsTests": 14,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0,
+    "identityEdgeCases": "Host-only chat-fleet and approved account-less device remain unidentified; neither borrows an administrator account.",
+    "recoveryFlow": "real poll + authorize + scoped read; mounted EN/zh count/Authorize to unknown-origin recovery card",
+    "phase2": "M-3718 request-scoped provenance, no scope expansion here",
+    "senderReasonFollowup": {
+      "tests": 52,
+      "files": 2,
+      "change": "TicketCard first sentence names sender; other copy, CSS, Permissions and identity gates unchanged"
+    }
+  },
+  "ciRepair": {
+    "promptAndScopeTests": 176,
+    "files": 2,
+    "changelogCheck": "819 fragment(s) OK",
+    "rootCause": "Short WEB_CHAT_LINE diverged from CLI reference; worker-collaboration lacked full receipt-rule identity sentence.",
+    "fix": "Restore short pinned wording; retain full receipt guidance and synchronize worker skill; prefix paired fragments with list markers.",
+    "uiCssAndPngUnchanged": true
+  },
+  "guestReceiptMerge": {
+    "incoming": "75ee63adb93904411effde6a146b6e28e253f337",
+    "oldHead": "a379a6c9ef21c0088d3314949caf1914a525f18d",
+    "uiOwnPatchIdentical": true,
+    "pngBlobsIdentical": 40,
+    "cliPinnedLineIdentical": true,
+    "initialAffectedRun": {
+      "files": 48,
+      "passed": 962,
+      "failed": 1,
+      "skipped": 1,
+      "failure": "Instruction matrix golden needed reviewed identity sentence."
+    },
+    "finalInstructionRun": {
+      "files": 3,
+      "passed": 203
+    },
+    "matrix": {
+      "checked": 1728,
+      "changed": 960,
+      "onlyChange": "A known session account (including a receipt's `web_identity`) identifies the person; it does not grant a go-ahead.",
+      "allIncomingHashesMatchAfterRemovingOnlyIdentitySentence": true
+    },
+    "sourceTypecheck": 0,
+    "testTypecheck": 0,
+    "changelogFragmentsChecked": 827,
+    "conflictResolution": "Keep known-account identity/no-go-ahead and web-guest identity/never-go-ahead in full rule and both skills; keep sender recovery and incoming held-status guidance in locale."
+  }
+}

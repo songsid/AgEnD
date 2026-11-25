@@ -1,0 +1,78 @@
+{
+  "stage": "after",
+  "sourceHead": "771114ae160055ea5476610a567e72c80aee51d5",
+  "results": [
+    {
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "clearEnabled": true
+    },
+    {
+      "device": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "clearEnabled": true
+    },
+    {
+      "device": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "clearEnabled": true
+    },
+    {
+      "device": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "clearEnabled": true
+    },
+    {
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "clearEnabled": true
+    },
+    {
+      "device": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "clearEnabled": true
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "clearEnabled": true
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "clearEnabled": true
+    }
+  ]
+}

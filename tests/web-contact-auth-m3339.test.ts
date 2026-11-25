@@ -367,7 +367,7 @@ describe("why a request needs approval (Sentinel's A1 copy: no reset is offered)
     try {
       const { ContactAuthorizations } = await import("/ui/js/contact-authorizations.js") as any;
       const { pg } = await mountWith(ContactAuthorizations, {});
-      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要讓這個 Agent 之後的聯絡不再需要核准，具管理權限的管理員可以在它的「權限」頁清除保留的來源；來源不會自動重設。");
+      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("classic-ops 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要接受 classic-ops 目前的對話作為它自己的工作，請到 classic-ops 的「設定」→「權限」，按「清除保留的來源」。來源不會自動重設。");
       expect([pg.root.querySelector('[data-ticket="R13"] .contact-reason'), text(pg.root.querySelector('[data-ticket="R13"]')).includes("something-else")]).toEqual([null, false]);
     } finally { i18n.setLang("en", { store: false }); }
   });
@@ -375,7 +375,7 @@ describe("why a request needs approval (Sentinel's A1 copy: no reset is offered)
     api({ "GET /ui/api/instances/classic-ops/contact-permissions": () => ({ body: roomPerm({ originRestriction: { active: true, reason: "unknown-origin", resetSupported: false } } as any) }) });
     const { ContactPermissionsPanel } = await import("/ui/js/contact-permissions.js") as any;
     const { pg } = await mountWith(ContactPermissionsPanel, { name: "classic-ops" });
-    expect(text(pg.root.querySelector(".contact-origin-restriction"))).toBe("This agent's retained history has an unknown origin, so this contact needs approval. Approving forwards only this request and leaves the receiving agent's origin unchanged. For this agent's contacts to stop needing approval, a managing administrator can clear its retained origin in its Permissions; it never resets on its own.");
+    expect(text(pg.root.querySelector(".contact-origin-restriction"))).toBe("This agent's retained history has an unknown origin, so this contact needs approval. Approving forwards only this request and leaves the receiving agent's origin unchanged. To accept the sending agent's current conversation as their own work, a verified managing admin can use its Permissions → Clear retained origin. It never resets on its own.");
   });
 });
 

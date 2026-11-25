@@ -74,7 +74,7 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
       <div class="contact-ticket-times"><span class="contact-time-item" title=${ca("created", when(tk.createdAt))}>${ca("created", when(tk.createdAt))}</span>
         <span class=${`contact-time-item${!tk.decidedAt && st === "pending" && waitMinutes(tk) ? " contact-time-wait" : ""}`} title=${endsText}>${endsText}</span></div>
       ${st === "delivered" ? html`<p class="note">${ca("deliveryNote")}</p>` : null}
-      ${REASONS.has(tk.reason) ? html`<p class="note contact-reason" data-reason=${tk.reason}>${ca(`reason_${tk.reason}`)}${st === "pending" ? html`${lang() === "zh-TW" ? "" : " "}${ca("resetNote")}` : null}</p>` : null}
+      ${REASONS.has(tk.reason) ? html`<p class="note contact-reason" data-reason=${tk.reason}>${ca(`request_reason_${tk.reason}`, agentLabel(tk.source))}${st === "pending" ? html`${lang() === "zh-TW" ? "" : " "}${ca("requestRecoveryNote", agentLabel(tk.source))}` : null}</p>` : null}
     </div>
     ${tk.grantIds?.length ? html`<p><a class="st-link" href=${`${detailsPath(tk.target)}?cat=permissions`}>${ca("grantView")}</a></p>` : null}
     ${tk.canDecide && st === "pending" ? html`<div class="contact-decide">

@@ -7,6 +7,23 @@ import { t } from "./locale.js";
 import { renderCrossInstanceHandoffMetadata, type AgentMode } from "./cross-instance-envelope.js";
 import { isHumanAuthority, platformAuthority, receiptAuthority, type HumanAuthority } from "./authority/web-authority.js";
 
+/** Recognition only, stamped from a current signed-in session; never a go-ahead. */
+export interface WebSessionIdentity {
+  readonly platform: "discord" | "telegram" | "host";
+  readonly adapter_id: string;
+  readonly user_id: string;
+  readonly session_handle: string;
+}
+export function isWebSessionIdentity(value: unknown): value is WebSessionIdentity {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return ["platform", "adapter_id", "user_id", "session_handle"].every(key => Object.hasOwn(v, key))
+    && typeof v.platform === "string" && ["discord", "telegram", "host"].includes(v.platform)
+    && [v.adapter_id, v.user_id].every(x => typeof x === "string" && x.length > 0 && x.length <= 256 && !/[\r\n\x00]/.test(x))
+    && typeof v.session_handle === "string" && /^[a-f0-9]{16}$/.test(v.session_handle)
+    && (v.platform !== "host" || v.adapter_id === "host" && v.user_id === "operator");
+}
+
 /** Server-owned ingress facts. Labels and Web session identity are not platform authority. */
 export interface HumanOrigin {
   platform: "discord" | "telegram" | "web";
@@ -22,6 +39,8 @@ export interface HumanOrigin {
    * Server-owned like the rest, never read from a message; the receipt stores it in its own column, not in `origin`.
    */
   authority?: HumanAuthority;
+  /** Session account recognition is independent of the receipt's authority. */
+  web_identity?: WebSessionIdentity;
 }
 
 /** Called only by trusted SDK event producers, never on text/agent metadata. */
@@ -36,10 +55,10 @@ export function nativeHumanOrigin(platform: "telegram" | "discord", adapterId: s
   };
 }
 
-/** The actor fields stay null whatever the session (§4: HumanOrigin.platform stays "web"); its account is in `authority`. */
-export function webHumanOrigin(action = false, authority?: HumanAuthority): HumanOrigin {
+/** Platform actor fields stay null. Independent session recognition never grants web-verified authority. */
+export function webHumanOrigin(action = false, authority?: HumanAuthority, identity?: WebSessionIdentity): HumanOrigin {
   return { platform: "web", adapter_id: null, user_id: null, username: null,
-    platform_message_id: null, ingress: action ? "action" : "web", ...(authority ? { authority } : {}) };
+    platform_message_id: null, ingress: action ? "action" : "web", ...(authority ? { authority } : {}), ...(identity ? { web_identity: { ...identity } } : {}) };
 }
 
 export type HumanWriteMode = "idle_submit" | "native_queue_handoff" | "steer" | "raw_paste";
@@ -137,6 +156,9 @@ export function createHumanReceipt(db: Database.Database, input: {
     || (input.origin.platform !== "web" && (!input.origin.adapter_id || !input.origin.user_id || input.origin.ingress === "web"))
     || (input.origin.platform === "web" && (input.origin.adapter_id !== null || input.origin.user_id !== null || input.origin.username !== null || input.origin.platform_message_id !== null))
     || (input.origin.ingress === "action" && input.origin.platform_message_id !== null)
+    || (input.origin.web_identity !== undefined && (input.origin.platform !== "web" || !isWebSessionIdentity(input.origin.web_identity)
+      || input.origin.authority?.actor && (input.origin.authority.actor.adapter_id !== input.origin.web_identity.adapter_id
+        || input.origin.authority.actor.user_id !== input.origin.web_identity.user_id)))
     // #1939: only web admission writes authority, and only the shape it writes; platform authority comes from the origin.
     || (input.origin.authority !== undefined && (input.origin.platform !== "web" || !isHumanAuthority(input.origin.authority)
       || input.origin.authority.kind === "platform"))) throw new Error("Human verification evidence is unavailable");
@@ -241,10 +263,12 @@ export function queryHumanReceipt(db: Database.Database, caller: string | null, 
   const origin = JSON.parse(row.origin_json) as HumanOrigin;
   // #1939 S1: who authorized it, next to origin and proof_kind (delivery evidence); a web-verified receipt names its account.
   const authority = receiptAuthority(origin, row.authority_json ?? null);
+  const identity = origin.platform === "web" && isWebSessionIdentity(origin.web_identity) ? origin.web_identity : null;
   const item: DeliveryStatusItem = {
     delivery_id: row.receipt_id, operation_id: row.receipt_id, correlation_id: null,
     source_instance: authority.kind === "web-verified" && authority.actor
       ? "human:web:" + authority.actor.adapter_id + ":" + authority.actor.user_id
+      : identity ? "human:web:" + identity.adapter_id + ":" + identity.user_id
       : "human:" + origin.platform + ":" + (origin.user_id ?? "unknown"),
     target_instance: row.target_instance, kind: "human_inbound", state: row.state, attempt_no: 0,
     created_at: row.created_at, updated_at: row.updated_at,
