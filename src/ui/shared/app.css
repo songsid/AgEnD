@@ -2877,7 +2877,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 }
 /* M-3253 (Argon's phone review): the Office on a phone, held upright or turned sideways (a coarse pointer in a short window,
    as fleet-office.js OFFICE_PHONE_Q). Above the office two rows only: Fleet's header, then Find, the view switch and one
-   44 px ⋯ (the Office's tools and Live in a sheet: .oo-sheet) — no wrapping bar. The stage takes the rest; its zoom pill is
+   44 px ⋯ (the Office's tools and Live in a sheet: .oo-sheet) — no wrapping bar (except under 370 px, M-3727: Find on its own
+   row, the switch and ⋯ under it, so ⋯ stays on screen). The stage takes the rest; its zoom pill is
    −, the zoom, +, fullscreen (Fit and Fill are in the sheet), 44 px each; the zone pills along its foot. */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .oc-office:has(.oo-more-btn) > .oc-bar { flex-wrap: nowrap; padding: var(--s-1) var(--s-3); }
