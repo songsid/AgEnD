@@ -381,7 +381,7 @@ import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
-import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateOfferReply, type UpdateCardView } from "./update-card.js";
+import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateAnswerLabel, updateOfferReply, type UpdateCardView } from "./update-card.js";
 import { inUpdatePause, resolveUpdates } from "./update-settings.js";
 import { resolveInstalledAgend, npmForRunningInstall } from "./update-dispatch.js";
 import { HUB_UPDATE_NOTICE_FILE, HUB_UPDATE_REMIND_MS, hubNoticeDue, hubNoticeKey, readHubNoticeState, writeHubNoticeState } from "./hub-update-notice.js";
@@ -1124,6 +1124,13 @@ const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
 /** M-3140: Update now on a Hub-recommended-version notice in General ("hub-update:" + 32 hex + ":update" = 50 bytes). */
 const HUB_UPDATE_CALLBACK_PREFIX = "hub-update:";
+/** M-3770 1.5: the update card in General's chat ("update-card:" + 32 hex + ":" + its answer). */
+const UPDATE_CARD_CALLBACK_PREFIX = "update-card:";
+/** M-3770 1.5: where the chat card's message is (one per fleet), so later states edit it in place across a restart. */
+const UPDATE_CHAT_CARD_FILE = "update-chat-card.json";
+/** The chat card's buttons live a week (Not now's own length); a newer card replaces them sooner. */
+const UPDATE_CHAT_CARD_MS = 7 * 24 * 60 * 60_000;
+interface UpdateChatCardRecord { version: string; state: string; nonce: string | null; messageId: string; chatId: string; threadId?: string; adapterId: string; at: number }
 const HUB_SHARING_CALLBACK_PREFIX = "hub-share:";
 /** M-3680: a held contact request's card in General ("contact-ticket:" + 32 hex + ":approve" = 55 bytes, under Telegram's 64). */
 const CONTACT_TICKET_PREFIX = "contact-ticket:";
@@ -2163,6 +2170,125 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (messageId && entry.adapter) this.beginUpdateProgress(entry.adapter, entry.chatId, entry.threadId, messageId);
     await this.launchInstalledUpdate(`hub-recommended /update by ${adapterId}:${by}`,
       () => this.fleetAdminGate(by, adapterId) === "ok" && !this.shuttingDown && this.hubRecommendationFor(pin) !== null, advice.version);
+    return true;
+  }
+  // ── M-3770 1.5 (design #4480 §3.1): the update card in General's chat ──────────────────────────────────────────
+  private updateChatCardBusy = false;
+  private updateChatCardTimer: ReturnType<typeof setInterval> | null = null;
+  private readUpdateChatCard(): UpdateChatCardRecord | null {
+    try { const r = JSON.parse(readFileSync(join(this.dataDir, UPDATE_CHAT_CARD_FILE), "utf8")); return r && typeof r.messageId === "string" ? r as UpdateChatCardRecord : null; }
+    catch { return null; }
+  }
+  private writeUpdateChatCard(r: UpdateChatCardRecord | null): void {
+    try { if (r) writeFileSync(join(this.dataDir, UPDATE_CHAT_CARD_FILE), JSON.stringify(r)); else rmSync(join(this.dataDir, UPDATE_CHAT_CARD_FILE), { force: true }); }
+    catch (err) { this.logger.warn({ err }, "Update chat card state could not be saved"); }
+  }
+  /** The card's words for a state (the offer: two sentences, the second only where true — §3.1, Phase 1). */
+  private updateChatCardText(view: UpdateCardView | null, current: string | null): string {
+    if (view && view.state === "offered") {
+      // M-3770 1.2's cached pre-flight, when this build has it (#4483): the second sentence only where it is true.
+      const pre = (this as unknown as { updatePreflight?: { checks: Array<{ id: string; ok: boolean }> } | null }).updatePreflight;
+      const p3 = pre?.checks.find(c => c.id === "P3");
+      // The leader's copy pass (S-237): a title and one line, as on the web.
+      const line = !p3 ? t("update.chatcard.continues") : p3.ok ? t("update.chatcard.back", current ?? "?") : t("update.chatcard.noWayBack");
+      return `${t("update.chatcard.offer", view.version)}\n${line}`;
+    }
+    const reply = updateOfferReply(view, current, !!resolveUpdates(this.fleetConfig?.updates).pin);
+    return t(reply.key, ...reply.args);
+  }
+  /** General's chat place for the card, or null (no General, no chat: a web-only fleet's banner says it). */
+  private updateChatCardPlace(): { general: string; adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string } | null {
+    if (this.webOnlyPromptPlace()) return null;
+    const general = this.findGeneralInstance();
+    const adapterId = general ? this.getInstanceAdapterId(general) : undefined;
+    const adapter = general ? this.getAdapterForInstance(general) : undefined;
+    const chatId = general ? this.getGroupIdForInstance(general) : undefined;
+    const topic = general ? String(this.fleetConfig?.instances[general]?.topic_id ?? "") : "";
+    if (!general || !adapterId || !adapter || !chatId) return null;
+    return { general, adapter, adapterId, chatId, ...(topic ? { threadId: topic } : {}) };
+  }
+  /**
+   * M-3770 1.5: keep General's one update card in step with the fleet's card (S-234's UpdateOfferCard). An offer that
+   * newly qualifies (a new version, or back after Not now) is posted with its buttons; every later state edits that same
+   * message (its buttons retired: the adapters cannot swap them). Never throws; one at a time.
+   */
+  async syncUpdateChatCard(): Promise<void> {
+    if (this.updateChatCardBusy || this.shuttingDown) return;
+    this.updateChatCardBusy = true;
+    try {
+      const view = this.updateOfferView();
+      let current: string | null = null;
+      try { current = this.runningAgendVersion(); } catch { /* unknown */ }
+      const posted = this.readUpdateChatCard();
+      const state = view?.state ?? "none";
+      if (view && state === "offered" && view.installable && (!posted || posted.version !== view.version || posted.state !== "offered")) {
+        const place = this.updateChatCardPlace();
+        if (!place) return;
+        if (posted) await this.editUpdateChatCard(posted, posted.version === view.version ? t("update.chatcard.cancelled", `v${posted.version}`) : t("update.chatcard.replaced", `v${view.version}`));
+        const nonce = await this.postNonceButtonPromptOrThrow({
+          prefix: UPDATE_CARD_CALLBACK_PREFIX, alertType: "tip", instanceName: place.general, adapter: place.adapter, adapterId: place.adapterId,
+          chatId: place.chatId, ...(place.threadId ? { threadId: place.threadId } : {}),
+          message: this.updateChatCardText(view, current),
+          choices: [{ action: "when-idle", label: t("update.chatcard.when_idle") }, { action: "tonight", label: t("update.chatcard.tonight") }, { action: "not-now", label: t("update.chatcard.not_now") }],
+          expiredText: t("update.chatcard.expired"),
+          timeoutMs: UPDATE_CHAT_CARD_MS,
+        });
+        const entry = this.pendingNonceButtons.get(nonce);
+        this.writeUpdateChatCard({ version: view.version, state: "offered", nonce, messageId: String(entry?.messageId ?? ""), chatId: place.chatId,
+          ...(place.threadId ? { threadId: place.threadId } : {}), adapterId: place.adapterId, at: Date.now() });
+        return;
+      }
+      if (posted && posted.state !== state) {
+        const text = state === "none" && posted.state !== "done" ? t("update.chatcard.cancelled", `v${posted.version}`) : this.updateChatCardText(view, current);
+        await this.editUpdateChatCard(posted, text);
+        this.writeUpdateChatCard(state === "none" ? null : { ...posted, state, nonce: null });
+      }
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message }, "Update chat card not posted");
+    } finally { this.updateChatCardBusy = false; }
+  }
+  /** Edit the posted card: retire its buttons if they are still live (with `text`), else edit its text. */
+  private async editUpdateChatCard(posted: UpdateChatCardRecord, text: string): Promise<void> {
+    const entry = posted.nonce ? this.pendingNonceButtons.get(posted.nonce) : undefined;
+    if (entry && entry.prefix === UPDATE_CARD_CALLBACK_PREFIX) {
+      this.pendingNonceButtons.delete(posted.nonce!);
+      await this.retireNonceButtons(entry, entry.messageId ?? posted.messageId, text);
+      return;
+    }
+    const place = this.updateChatCardPlace();
+    const adapter = this.adapters.get(posted.adapterId) ?? this.worlds.get(posted.adapterId)?.adapter ?? (place && place.adapterId === posted.adapterId ? place.adapter : undefined);
+    if (adapter && posted.messageId) await adapter.editMessage(posted.chatId, posted.messageId, text, posted.threadId).catch(() => {});
+  }
+  /**
+   * M-3770 1.5: a press on the chat card — a fleet admin's only (anyone else is told privately, the buttons stay: the
+   * same gate as the Hub's Update now). The answer is the web's (the one card); the message is edited to its new state.
+   */
+  private async handleUpdateCardCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(UPDATE_CARD_CALLBACK_PREFIX, /^update-card:([0-9a-f]{32}):(when-idle|tonight|not-now)$/, data, adapterId, adapter,
+      undefined, userId => this.fleetAdminGate(userId, adapterId) === "ok");
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const nonce = data.callbackData.slice(UPDATE_CARD_CALLBACK_PREFIX.length, UPDATE_CARD_CALLBACK_PREFIX.length + 32);
+    const messageId = entry.messageId ?? data.messageId;
+    const tonight = (() => { const d = new Date(); d.setHours(22, 0, 0, 0); if (d.getTime() - Date.now() < 30 * 60_000) d.setDate(d.getDate() + 1); return d.getTime(); })();
+    const body = action === "tonight" ? { action: "pick-time" as const, at: tonight } : { action: action as "when-idle" | "not-now" };
+    const by = updateAnswerLabel(data.username ?? "");
+    let text: string;
+    try {
+      const r = await this.ensureUpdateCard().answer(`chat-${nonce}`, by, body);
+      const view = this.updateOfferView();
+      let current: string | null = null;
+      try { current = this.runningAgendVersion(); } catch { /* unknown */ }
+      const why = r.ok ? "" : ("key" in r.body && r.body.key !== "preflight" ? r.body.key : "error" in r.body ? r.body.error : r.body.key);
+      text = r.ok ? t("update.chatcard.by", this.updateChatCardText(view, current), by) : t("update.chatcard.refused", why || String(r.status));
+      const posted = this.readUpdateChatCard();
+      // The press carries the message's own id (the post's may not be known yet): later states edit that message.
+      if (posted && posted.nonce === nonce) this.writeUpdateChatCard({ ...posted, state: view?.state ?? "none", nonce: null, messageId: posted.messageId || String(messageId ?? "") });
+    } catch (err) {
+      text = t("update.chatcard.refused", (err as Error).message);
+    }
+    await this.retireNonceButtons(entry, messageId, text);
     return true;
   }
   private hubUpdates: import("./hub/member/updates.js").HubMemberUpdates | null = null;
@@ -13196,6 +13322,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.checkForUpdates();
       this.updateCheckTimer = setInterval(() => this.checkForUpdates(), 24 * 60 * 60 * 1000);
     }, 60 * 60 * 1000);
+    // M-3770 1.5: General's update card follows the fleet's card (a Not now that ran out, a wait that started or ended).
+    this.updateChatCardTimer = setInterval(() => { void this.syncUpdateChatCard(); }, 60_000);
+    this.updateChatCardTimer.unref?.();
 
     const onRestart = () => this.onGracefulRestartSignal(() => process.once("SIGUSR2", onRestart));
     process.once("SIGUSR2", onRestart);
@@ -20025,6 +20154,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleHubSharingCallback(data, adapterId, adapter)) return true;
     if (await this.handleHubFleetUpdateCallback(data, adapterId, adapter)) return true;
     if (await this.handleHubUpdateCallback(data, adapterId, adapter)) return true;
+    if (await this.handleUpdateCardCallback(data, adapterId, adapter)) return true;   // M-3770 1.5
     if (await this.handleKiroReconcileCallback(data, adapterId, adapter)) return true;
     if (await this.handleOfficePackCallback(data, adapterId, adapter)) return true;
     if (await this.handleDashboardCallback(data, adapterId, adapter)) return true;
@@ -29478,6 +29608,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.dailyTipScheduler?.stop();
     this.dailyTipScheduler = null;
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
+    if (this.updateChatCardTimer) { clearInterval(this.updateChatCardTimer); this.updateChatCardTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
     if (this.guestRoomsTimer) { clearInterval(this.guestRoomsTimer); this.guestRoomsTimer = null; }
     this.logService?.unwatchAll();   // #1218: a Log's watch timers end with the fleet
@@ -31693,6 +31824,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         });
       }
       card.tick();
+      void this.syncUpdateChatCard();   // M-3770 1.5: an answer from the web edits the chat card too
       return card.view();
     } catch (err) {
       this.logger.warn({ err }, "Update card could not be read");
@@ -31733,6 +31865,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         card.noteOffer({ version: offer.version, channel, installable: offer.installable });
       } else if (found) card.clearQuietOffer();
     } catch (err) { this.logger.warn({ err }, "Update offer could not be recorded"); }
+    void this.syncUpdateChatCard();   // M-3770 1.5
   }
 
   private async checkForUpdates(): Promise<void> {
@@ -31744,17 +31877,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
-        // The daily "Run: /update" post stays until the General chat card replaces it.
         // #2910 D2 (#2925 review): a web-only fleet first — even with a General instance it has no chat for /update.
         const generalId = this.webOnlyPromptPlace() ? null : this.findGeneralInstance();
         if (generalId) {
-          // No release URL — Discord's SuppressEmbeds proved unreliable and the
-          // link preview looked bad. Version + /update instruction is enough.
-          // From the install's own channel tag, this is what /update installs — even a stable the release pointed the
-          // tag at (2.2.0 on @alpha / @beta): the plain /update text, never "/update stays on … use --stable" (#1928).
-          const key = fromChannel ? "update.available_current" : updateNoticeKey(currentVersion, target);
+          // M-3770 1.5: an offer this install can take is General's update card (syncUpdateChatCard, from
+          // recordUpdateCheck above) — posted once, edited in place — never the daily "Run: /update" post any more.
+          // What stays is the line about a stable an alpha install can't take here (no card: nothing to press).
+          const key = fromChannel ? null : updateNoticeKey(currentVersion, target);
           // #2775: null = a beta install and a stable target; beta users are never told to switch.
-          if (key) this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
+          if (key && key !== "update.available_current") this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
         } else if (this.webOnlyPromptPlace() && (fromChannel || updateNoticeKey(currentVersion, target))) {
           // #2910 D2: a web-only fleet: a Notice, once per version (the check runs daily). M-2738: updated from the web.
           const text = t("update.available_web_only", `v${target}`, `v${currentVersion}`);
