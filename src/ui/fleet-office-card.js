@@ -342,10 +342,11 @@ function drawPortraitAvatar(cv, im, W) {
 function CardName({ name, rename }) {
   const [editing, setEditing] = useState(false);
   const field = useRef(null);
-  useEffect(() => { if (editing && field.current) { field.current.focus(); field.current.select(); } }, [editing]);
+  // Filled once, as the field appears: a `value` prop would put the name back over what is typed at each redraw.
+  useLayoutEffect(() => { if (editing && field.current) { field.current.value = (rename && rename.value) || name; field.current.focus(); field.current.select(); } }, [editing]);
   if (!rename) return html`<strong class="oo-card-name">${name}</strong>`;
   const done = (keep) => { if (!editing) return; setEditing(false); if (keep && field.current) rename.save(field.current.value.trim()); };
-  if (editing) return html`<input ref=${field} class="oo-card-rename" maxlength=${RENAME_LEN} value=${rename.value || name} aria-label=${tc("renameField")}
+  if (editing) return html`<input ref=${field} class="oo-card-rename" maxlength=${RENAME_LEN} aria-label=${tc("renameField")}
     onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); done(true); } else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(false); } }} onBlur=${() => done(true)} />`;
   return html`<span class="oo-card-name-row"><strong class="oo-card-name">${name}</strong><button type="button" class="icon-btn oo-card-rename-btn"
     aria-label=${tc("rename")} title=${tc("rename")} onClick=${() => setEditing(true)}>✎</button></span>`;

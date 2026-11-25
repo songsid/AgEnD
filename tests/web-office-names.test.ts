@@ -48,10 +48,13 @@ describe("names this browser gives", () => {
 describe("the card's pencil", () => {
   const mounted: AppPage[] = [];
   afterEach(async () => { for (const m of mounted.splice(0)) { await m.unmount(); m.restore(); } });
+  const el = (rename: any, state = "Idle") => {
+    const model = card.cardModel({ node: { name: "general", i: { name: "general", display_name: "" } }, lv: null, levels: null, share: true, rows: [], display: "", state, now: "", where: "" });
+    return h(card.OfficeCard, { model, avatar: () => {}, sheet: false, place: () => {}, onFind: () => {}, onClose: () => {}, rename });
+  };
   const open = async (rename: any) => {
     const m = page(); mounted.push(m);
-    const model = card.cardModel({ node: { name: "general", i: { name: "general", display_name: "" } }, lv: null, levels: null, share: true, rows: [], display: "", state: "Idle", now: "", where: "" });
-    await m.mount(h(card.OfficeCard, { model, avatar: () => {}, sheet: false, place: () => {}, onFind: () => {}, onClose: () => {}, rename }));
+    await m.mount(el(rename));
     await settle(4);
     return m;
   };
@@ -71,5 +74,17 @@ describe("the card's pencil", () => {
     expect(saved).toEqual(["陽奈"]);
     f = await edit(); f.value = ""; fire(f, "blur"); await settle(4);
     expect(saved).toEqual(["陽奈", ""]);
+  });
+  it("what is typed stays when the card draws again (a live office redraws it with each status)", async () => {
+    const saved: string[] = [];
+    const rename = { value: "", save: (v: string) => saved.push(v) };
+    const m = await open(rename);
+    fire(m.root.querySelector(".oo-card-rename-btn") as any, "click"); await settle(4);
+    const f = m.root.querySelector(".oo-card-rename") as any;
+    f.value = "陽奈";
+    await m.mount(el(rename, "Crashed")); await settle(4);
+    expect(m.root.querySelector(".oo-card-rename")?.value).toBe("陽奈");
+    fire(f, "keydown", { key: "Enter" }); await settle(4);
+    expect(saved).toEqual(["陽奈"]);
   });
 });
