@@ -2667,8 +2667,15 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
     ${hasActions ? html`<hr class="oo-sheet-rule" />` : null}${actionItems}`;
   // A room's dropdown hangs from the zoom stack's top, inside the stage (which clips): it is never taller than the
   // stage's room below its top (Prism #3556 P2: a 340 px stage); a longer list scrolls.
+  // The bar's dropdown hangs below the bar: never past the window's bottom either (#4466: a longer list, a short window).
   const fitPop = (el) => {
-    if (!el || !roomGear || !stageRef.current || typeof el.getBoundingClientRect !== "function") return;
+    if (!el || typeof el.getBoundingClientRect !== "function") return;
+    if (!roomGear) {
+      const vh = globalThis.innerHeight;
+      if (vh > 0) el.style.maxHeight = `${Math.min(popMaxHeight(vh, el.getBoundingClientRect().top), Math.floor(vh * 0.7), 480)}px`;
+      return;
+    }
+    if (!stageRef.current) return;
     const st = stageRef.current.getBoundingClientRect(), top = el.getBoundingClientRect().top;
     if (st && st.height > 0) el.style.maxHeight = `${popMaxHeight(st.bottom, top)}px`;
   };
