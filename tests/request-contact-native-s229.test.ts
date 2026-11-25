@@ -252,6 +252,24 @@ it("General's proposal: an Always allow proposal goes to the web; a non-General,
   await expect(propose("general", { decision: "approve-once" })).rejects.toThrow("contact-proposal-ticket-unavailable");
 });
 
+it("Prism #4501 P2: decided on the web while General's proposal is still being posted — the posted card closes with the committed outcome; a late click decides nothing", async () => {
+  const r = rig(), ticket = r.hold();
+  let deliver!: (v: unknown) => void;
+  r.adapter.notifyAlert.mockImplementationOnce(() => new Promise(resolve => { deliver = resolve; }));
+  const proposing = r.fm.requestContactChange("general", { kind: "ticket-decision", ticket_id: ticket.id, decision: "approve-once" }, () => true);
+  const entry = entries(r).find((e: any) => e.generalName)!;
+  expect(entry.messageId).toBeUndefined();
+  r.cards.decide(ticket.id, { snapshot: r.cards.read(ticket.id, r.webActor()).snapshot, decision: "decline" }, r.webActor());
+  r.fm.syncHeldTicketCard(r.box.contactAuthorizations.get(ticket.id));   // the real changed hook: it drops the unposted entry
+  expect([entries(r).length, retired(r)]).toEqual([0, []]);
+  deliver({ chatId: "channel", messageId: "late-card", threadId: "general-thread" });
+  await expect(proposing).rejects.toThrow("conflict");
+  await settle();
+  expect(r.fm.retireNonceButtons.mock.calls.map((c: any[]) => [c[1], c[2]])).toEqual([["late-card", "Declined elsewhere (the dashboard or another card)."]]);
+  await click(r, entry, "approve");
+  expect([r.box.contactAuthorizations.get(ticket.id)!.state, pendingDeliveries(r), r.fm.retireNonceButtons.mock.calls.length]).toEqual(["declined", 0, 1]);
+});
+
 it("a proposal past its five minutes, or whose General changed, decides nothing", async () => {
   const r = rig(), ticket = r.hold();
   let general = true;

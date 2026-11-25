@@ -6309,13 +6309,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && this.fleetConfig?.instances[requester]?.general_topic === true && !this.hubContactRestricted(requester)
       && found.route.current() && this.contactAdapter(ticket.target) === found.adapter && this.adapters.get(found.adapter.id) === found.adapter;
     if (!current()) throw Error("conflict");
+    const armedBefore = new Set(this.pendingNonceButtons.values());
     const posted = this.postSameContactCard(port, ticket.id, found, { proposal: input.decision, generalName: requester, proposalCurrent: current });
-    const retire = (nonce: string): void => { const entry = this.pendingNonceButtons.get(nonce); if (!entry) return;
-      this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer);
-      void this.retireNonceButtons(entry, entry.messageId ?? "", t("contactProposal.expired")); };
-    void posted.then(nonce => { if (retired || !current()) retire(nonce); }, () => {});
+    // The entry is armed synchronously; keep it, because a decision while the post is in flight removes it from the map
+    // before it has a message (Prism #4501 P2) — the posted message must still close with the committed outcome.
+    const entry = [...this.pendingNonceButtons.values()].find(e => !armedBefore.has(e) && e.contactTicketId === ticket.id && e.generalName === requester);
+    let closed = false;
+    const retire = (nonce: string): void => {
+      if (!entry || closed) return;
+      const armed = this.pendingNonceButtons.get(nonce) === entry, fresh = this.contactService().host.store.get(ticket.id);
+      if (armed && fresh?.state === "pending" && !retired && current()) return;
+      if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
+      if (!entry.messageId) return;   // never an edit without a message
+      closed = true;
+      void this.retireNonceButtons(entry, entry.messageId, fresh && fresh.state !== "pending" ? heldCardOutcome(fresh.state, !!fresh.requestContext) : t("contactProposal.expired"));
+    };
+    void posted.then(retire, () => {});
     try { const nonce = await withinBudget(posted, performance.now() + 5000);
-      if (!current()) { retire(nonce); throw Error("conflict"); }
+      if (!current() || this.contactService().host.store.get(ticket.id)?.state !== "pending") { retire(nonce); throw Error("conflict"); }
       return { status: "awaiting_platform_admin_confirmation" };
     } catch (error) { retired = true; throw error; }
   }
