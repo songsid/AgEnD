@@ -1,3 +1,4 @@
+import { requestContextDigest } from "./request-context-store.js";
 import type Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
 import type { ContactGrant, ContactHistoryRow, ContactOrigin, ContactOriginClear, ContactPerson, ContactPermissionsWrite, ContactRoomTools, ContactTicket, ContactTicketDecision, ContactVerb } from "./contact-auth-types.js";
@@ -163,13 +164,15 @@ export class ContactAuthStore {
     const row = this.db.prepare("SELECT origin_json FROM contact_auth_origins WHERE instance=?").get(instance) as { origin_json: string } | undefined;
     return row ? normalizeContactOrigin(JSON.parse(row.origin_json) as ContactOrigin) : undefined;
   }
-  policy(instance: string, generation?: string): ContactStoredPolicy {
+  policy(instance: string, generation?: string): ContactStoredPolicy {return this.readPolicy(instance,generation,true);}
+  policySnapshot(instance:string,generation?:string):ContactStoredPolicy {return this.readPolicy(instance,generation,false);}
+  private readPolicy(instance: string, generation: string|undefined, persist:boolean): ContactStoredPolicy {
     const row = this.db.prepare("SELECT policy_json FROM contact_auth_policies WHERE instance=?").get(instance) as { policy_json: string } | undefined;
     const previous = row ? JSON.parse(row.policy_json) as ContactStoredPolicy : undefined;
     if (previous && (!generation || previous.generation === generation)) return previous;
     const fresh: ContactStoredPolicy = { revision: previous ? previous.revision + 1 : 0,
       ...(generation ? { generation } : {}), grants: [], roomTools: { publicRead: true, allowedMcpTools: [], wouldDisable: [] } };
-    if (previous && generation) this.db.prepare("UPDATE contact_auth_policies SET revision=?,policy_json=? WHERE instance=?")
+    if (persist && previous && generation) this.db.prepare("UPDATE contact_auth_policies SET revision=?,policy_json=? WHERE instance=?")
       .run(fresh.revision, JSON.stringify(fresh), instance);
     return fresh;
   }
@@ -280,12 +283,12 @@ export class ContactAuthStore {
       .get(JSON.stringify([source, operationId, target, verb])) as TicketRow | undefined;
     return row ? this.read(row) : undefined;
   }
-  private read(row: TicketRow): ContactTicket {
+  private read(row: TicketRow,persist=true): ContactTicket {
     const ticket = JSON.parse(row.ticket_json) as ContactTicket;
     ticket.origin = normalizeContactOrigin(ticket.origin);
     if (ticket.state === "pending" && Date.parse(ticket.expiresAt) <= this.now()) {
       ticket.state = "expired"; ticket.revision++;
-      this.write(ticket);
+      if(persist)this.write(ticket);
     }
     return ticket;
   }
@@ -295,6 +298,29 @@ export class ContactAuthStore {
   get(id: string): ContactTicket | undefined {
     const row = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE id=?").get(id) as TicketRow | undefined;
     return row ? this.read(row) : undefined;
+  }
+  /** Read-only card snapshot; logical expiry is not persisted by a pre-verification read. */
+  peek(id:string):ContactTicket|undefined {
+    const row=this.db.prepare("SELECT * FROM contact_auth_tickets WHERE id=?").get(id) as TicketRow|undefined;
+    return row?this.read(row,false):undefined;
+  }
+  requestSnapshot(id:string):{ticket:ContactTicket;request:ContactRequest;imageSha256:string}|null {
+    const row=this.db.prepare("SELECT * FROM contact_auth_tickets WHERE id=?").get(id) as (TicketRow&{operation_key:string})|undefined;
+    if(!row)return null;
+    const ticket=this.read(row,false),request=JSON.parse(row.request_json) as ContactRequest;
+    if(ticket.id!==row.id||!request.operationId||request.source!==ticket.source||request.target!==ticket.target||request.verb!==ticket.verb||request.sourceGeneration!==ticket.sourceGeneration||request.targetGeneration!==ticket.targetGeneration||request.message!==ticket.message||!!request.requestContext!==!!ticket.requestContext||requestContextDigest(normalizeContactOrigin(request.origin))!==requestContextDigest(ticket.origin)||row.operation_key!==JSON.stringify([request.source,request.operationId,request.target,request.verb]))throw Error("operation-conflict");
+    return {ticket,request,imageSha256:createHash("sha256").update(row.request_json).digest("hex")};
+  }
+  /** Legacy-only CAS on the same connection/transaction as the existing decision writer. */
+  decideExpected(id:string,input:ContactTicketDecision,actor:ContactPerson,authority:ContactDecisionAuthority,expected:{policyRevision:number;imageSha256:string}):ContactTicket {
+    return this.db.transaction(()=>{
+      if(authority.requestContextVersion!==undefined)throw Error("request-context legacy decision required");
+      this.assertDecisionScope(id,authority);
+      const snapshot=this.requestSnapshot(id);if(!snapshot)throw Error("not-found");
+      if(snapshot.imageSha256!==expected.imageSha256)throw Error("operation-conflict");
+      if(this.policy(snapshot.ticket.target,snapshot.ticket.targetGeneration).revision!==expected.policyRevision)throw Error("policy-conflict");
+      return this.decide(id,input,actor,authority);
+    })();
   }
   /**
    * M-3693: pending tickets as they stand, WITHOUT the expiry write the other reads do (General's contact_state is
