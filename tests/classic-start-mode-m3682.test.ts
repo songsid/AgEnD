@@ -109,12 +109,12 @@ async function click(r: ReturnType<typeof rig>, callbackData: string, chatId: st
 const LABELS = {
   en: {
     restricted: "Restricted",
-    recommended: "Restricted (recommended)",
+    recommended: "Free (recommended)",
     free: "Free",
   },
   "zh-TW": {
     restricted: "受限模式",
-    recommended: "受限模式（建議）",
+    recommended: "自由模式（建議）",
     free: "自由模式",
   },
 } as const;
@@ -123,7 +123,7 @@ describe("Classic /start mode menu (M-3682)", () => {
   for (const platform of ["discord", "telegram"] as const) {
     for (const locale of ["en", "zh-TW"] as const) {
       const words = LABELS[locale];
-      it(`${platform} ${locale}: a fleet admin must still choose, Restricted first`, async () => {
+      it(`${platform} ${locale}: a fleet admin must still choose, Free first and recommended`, async () => {
         setLocale(locale);
         const r = rig(platform, true);
         const chatId = platform === "discord" ? "room-1" : "12345";
@@ -132,12 +132,13 @@ describe("Classic /start mode menu (M-3682)", () => {
         expect(r.classic.getAll()).toHaveLength(0);
         expect(menu.text).toBe(t("classic.choose_mode"));
         expect(shown(menu.choices)).toEqual([
-          { id: "classic-mode:NONCE:restricted", label: words.recommended },
-          { id: "classic-mode:NONCE:free", label: words.free },
+          { id: "classic-mode:NONCE:free", label: words.recommended },
+          { id: "classic-mode:NONCE:restricted", label: words.restricted },
         ]);
-        expect(t("classic.mode_restricted_recommended")).toBe(words.recommended);
+        expect(t("classic.mode_free_recommended")).toBe(words.recommended);
         expect(t("classic.mode_free")).toBe(words.free);
-        await click(r, menu.choices[1]!.id, chatId);
+        expect(t("classic.mode_restricted")).toBe(words.restricted);
+        await click(r, menu.choices[0]!.id, chatId);
         expect(r.classic.get(chatId, r.adapterId)?.restrictedMode).toBe(false);
         expect(readFileSync(join(r.dir, "classicBot.yaml"), "utf8")).toContain("restricted_mode: false");
         expect(r.start).toHaveBeenCalledOnce();
@@ -167,6 +168,16 @@ describe("Classic /start mode menu (M-3682)", () => {
       });
     }
   }
+
+  it("telegram: a fleet admin can still tap Restricted, and that creates a restricted room", async () => {
+    const r = rig("telegram", true);
+    const menu = await telegramMenu(r);
+    expect(shown(menu.choices)[1]).toEqual({ id: "classic-mode:NONCE:restricted", label: "Restricted" });
+    await click(r, menu.choices[1]!.id, "12345");
+    expect(r.classic.get("12345", r.adapterId)?.restrictedMode).toBe(true);
+    expect(readFileSync(join(r.dir, "classicBot.yaml"), "utf8")).toContain("restricted_mode: true");
+    expect(r.start).toHaveBeenCalledOnce();
+  });
 
   it("telegram: an unknown backend token still opens the mode menu and creates nothing yet", async () => {
     const r = rig("telegram", false);
@@ -245,7 +256,7 @@ describe("Classic /start mode menu (M-3682)", () => {
     expect(r.start).not.toHaveBeenCalled();
     expect(r.classic.getAll()).toHaveLength(0);
     await click(r, menu.choices[0]!.id, "12345");
-    expect(r.classic.get("12345", r.adapterId)?.restrictedMode).toBe(true);
+    expect(r.classic.get("12345", r.adapterId)?.restrictedMode).toBe(false);
     expect(r.start).toHaveBeenCalledOnce();
   });
 

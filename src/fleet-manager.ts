@@ -28747,7 +28747,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, backend);
   }
 
-  /** Restricted is first. Free is present only for a fleet admin, and still has to be tapped. */
+  /** For a fleet admin, Free is first and labeled recommended. Restricted stays a button.
+   *  Anyone else sees only Restricted. Either way the room waits for a tap. */
   private async openClassicModeMenu(origin: {
     channelId: string;
     channelName: string;
@@ -28765,11 +28766,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const nonce = randomBytes(6).toString("hex");
-    const choices: Choice[] = [{
+    const restrictedChoice: Choice = {
       id: `${CLASSIC_MODE_CALLBACK_PREFIX}${nonce}:restricted`,
-      label: free ? t("classic.mode_restricted_recommended") : t("classic.mode_restricted"),
-    }];
-    if (free) choices.push({ id: `${CLASSIC_MODE_CALLBACK_PREFIX}${nonce}:free`, label: t("classic.mode_free") });
+      label: t("classic.mode_restricted"),
+    };
+    const choices: Choice[] = free
+      ? [{ id: `${CLASSIC_MODE_CALLBACK_PREFIX}${nonce}:free`, label: t("classic.mode_free_recommended") }, restrictedChoice]
+      : [restrictedChoice];
     const timer = setTimeout(() => {
       const pending = this.pendingClassicStarts.get(nonce);
       if (!pending) return;
