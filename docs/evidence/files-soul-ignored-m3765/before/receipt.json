@@ -1,0 +1,332 @@
+{
+  "sourceHead": "0e72bcff1c37ff2f823ac6df842c801052ee23c9",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "link-desk-light-en: on the public link",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: soul.md listed, marked ignored by git",
+      "ok": false
+    },
+    {
+      "name": "link-desk-light-en: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: the toggle is there, off",
+      "ok": false,
+      "detail": null
+    },
+    {
+      "name": "link-desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: on the public link",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: soul.md listed, marked ignored by git",
+      "ok": false
+    },
+    {
+      "name": "link-phone-dark-zh-TW: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: the toggle is there, off",
+      "ok": false,
+      "detail": null
+    },
+    {
+      "name": "link-phone-dark-zh-TW: the toggle is a 44 px row",
+      "ok": false,
+      "detail": null
+    },
+    {
+      "name": "link-phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: soul.md listed, marked ignored by git",
+      "ok": false
+    },
+    {
+      "name": "desk-light-en: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the toggle is there, off",
+      "ok": false,
+      "detail": null
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: soul.md listed, marked ignored by git",
+      "ok": false
+    },
+    {
+      "name": "desk-dark-zh-TW: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the toggle is there, off",
+      "ok": false,
+      "detail": null
+    },
+    {
+      "name": "desk-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: soul.md listed, marked ignored by git",
+      "ok": false
+    },
+    {
+      "name": "phone-light-zh-TW: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: the toggle is there, off",
+      "ok": false,
+      "detail": null
+    },
+    {
+      "name": "phone-light-zh-TW: the toggle is a 44 px row",
+      "ok": false,
+      "detail": null
+    },
+    {
+      "name": "phone-light-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: soul.md listed, marked ignored by git",
+      "ok": false
+    },
+    {
+      "name": "phone-dark-en: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: the toggle is there, off",
+      "ok": false,
+      "detail": null
+    },
+    {
+      "name": "phone-dark-en: the toggle is a 44 px row",
+      "ok": false,
+      "detail": null
+    },
+    {
+      "name": "phone-dark-en: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3765-link-desk-light-en-1-top.png",
+      "sha256": "ebe9e0a69ca2f5edc0e41181266f5e3717160b2d36dc672ff60e18f7572844f6"
+    },
+    {
+      "path": "m3765-link-phone-dark-zh-TW-1-top.png",
+      "sha256": "6d28e7c82016e6ea9b07346f2a838fef88a8910a2e1a496f68cce5557f416f0d"
+    },
+    {
+      "path": "m3765-desk-light-en-1-top.png",
+      "sha256": "bd16fad05fc0d75dcea77de0b1b040918f4c9295f28948748ebe7c14d6e19fae"
+    },
+    {
+      "path": "m3765-desk-dark-zh-TW-1-top.png",
+      "sha256": "2a5cb907675007387e9a245eee747218773486817ddbad1a0139cf7c65923efb"
+    },
+    {
+      "path": "m3765-phone-light-zh-TW-1-top.png",
+      "sha256": "07a4664878ec1a9ba951d40f00bc3f4e02b10ae57e08145be37f2a2e79c8b457"
+    },
+    {
+      "path": "m3765-phone-dark-en-1-top.png",
+      "sha256": "a9a022b329516c0337734079fae3cf5bb9f7b0b6e8f431cd842546f08be3a962"
+    }
+  ],
+  "seen": {
+    "link-desk-light-en-top": [
+      {
+        "name": ".git/",
+        "meta": "hidden: may contain secrets",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      }
+    ],
+    "link-phone-dark-zh-TW-top": [
+      {
+        "name": ".git/",
+        "meta": "已隱藏：可能含有機密",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      }
+    ],
+    "desk-light-en-top": [
+      {
+        "name": ".git/",
+        "meta": "hidden: may contain secrets",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      }
+    ],
+    "desk-dark-zh-TW-top": [
+      {
+        "name": ".git/",
+        "meta": "已隱藏：可能含有機密",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      }
+    ],
+    "phone-light-zh-TW-top": [
+      {
+        "name": ".git/",
+        "meta": "已隱藏：可能含有機密",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      }
+    ],
+    "phone-dark-en-top": [
+      {
+        "name": ".git/",
+        "meta": "hidden: may contain secrets",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      }
+    ]
+  },
+  "summary": "18/33"
+}
