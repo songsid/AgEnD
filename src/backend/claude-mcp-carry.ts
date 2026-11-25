@@ -98,7 +98,7 @@ export function carryClaudeMcpServers(req: { fromProfileDir: string | null; toPr
   }
   if (!Object.keys(user).length && !Object.keys(local).length) return { carried: true, user: [], local: [], keptTarget: [] };
   const added = { user: [] as string[], local: [] as string[] }, kept = new Set<string>();
-  let looked = false;
+  let looked = false, seeded = false;
   updateClaudeJson(cfg => {
     looked = true;
     if (Object.keys(user).length) {
@@ -122,6 +122,7 @@ export function carryClaudeMcpServers(req: { fromProfileDir: string | null; toPr
       if (isObject(projects) && projects[key] === undefined) {
         const seed = key !== literal ? serversOf(projects[literal]) : {};
         projects[key] = Object.keys(seed).length ? { mcpServers: structuredClone(seed) } : {};
+        seeded = Object.keys(seed).length > 0;   // a write of its own, even when every carried name is the target's
       }
       const entry = isObject(projects) ? projects[key] : undefined;
       if (isObject(entry) && entry.mcpServers === undefined) entry.mcpServers = {};
@@ -132,7 +133,7 @@ export function carryClaudeMcpServers(req: { fromProfileDir: string | null; toPr
         added.local.push(name);
       }
     }
-    return added.user.length + added.local.length > 0;
+    return seeded || added.user.length + added.local.length > 0;
   }, req.toProfileDir);
   if (!looked) return { carried: false, reason: "the new profile's config is locked or unreadable" };
   return { carried: true, user: added.user.sort(), local: added.local.sort(), keptTarget: [...kept].sort() };

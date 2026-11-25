@@ -340,6 +340,20 @@ describe("M-3749 review: target spellings, unreadable targets, the default login
     expect(checkClaudeMcpAtLaunch({ instanceDir, configDir: to, jsonPath: join(to, ".claude.json"), workingDirectory: link })).toBeNull();
   });
 
+  it("every carried name already in the target's symlink-spelled entry: the seeded real-path entry is still written and stays effective after preTrust", () => {
+    vi.stubEnv("AGEND_HOME", join(root, "data"));
+    const link = join(root, "link"); symlinkSync(cwd, link);
+    const from = profile("old"), to = profile("new");
+    const theirs = { type: "stdio", command: "their-m365" };
+    write(from, { projects: { [link]: { mcpServers: { m365 } } } });
+    write(to, { projects: { [link]: { hasTrustDialogAccepted: true, mcpServers: { m365: theirs } } } });
+    expect(carryClaudeMcpServers({ fromProfileDir: from, toProfileDir: to, workingDirectory: link }))
+      .toEqual({ carried: true, user: [], local: [], keptTarget: ["m365"] });
+    new ClaudeCodeBackend(join(root, "instance")).preTrust(link, { backendOptions: { credential_profile: "new" } } as any);
+    expect(read(to).projects[cwd]).toEqual({ hasTrustDialogAccepted: true, mcpServers: { m365: theirs } });
+    expect(claudeMcpNames(join(to, ".claude.json"), link)).toEqual({ user: [], local: ["m365"] });
+  });
+
   it("switching back to the default login writes CLAUDE_CONFIG_DIR's .claude.json, or ~/.claude.json with it unset", () => {
     const from = profile("old");
     write(from, { mcpServers: { outline } });
