@@ -24,9 +24,13 @@ Fences never hold back the work that has to finish for the fleet to become idle 
 
 That stretch is the gap between the flag and the second check. A handler already awaiting when the flag goes up resumes only after the check has returned. Adapter routing or receipt binding, the IPC connect, a web body parse, and Hub inbound are all past a start-of-turn read by then. Each of those reads the flag again at its last synchronous commit point, in the same turn as the write, with no await between the read and the commit. A handler that has already passed its commit point is in flight, and the idle predicate already counts it. A handler still before its commit point is journaled there and does not commit. Those uncommitted handlers stay out of the idle predicate; the commit-point read is what diverts them.
 
-If the second check finds the fleet busy, the flag is cleared before any reference, copy, or deferred job is written. The updater does not advance to `barrier`. The wait starts again. If it finds the fleet idle, still in that same synchronous stretch, the fleet writes the outbox prefix below. The updater then advances to `barrier`. The fences stay up for 2.3.
+If the second check finds the fleet busy, the flag is cleared before any reference, copy, or deferred job is written. The fleet writes no stage. The updater does not advance to `barrier`. It closes this unused attempt before the unfenced wait resumes. `current` still names an open attempt until that close finishes, and a state-writing CLI command refuses while it does (#4491 §4.2): the command takes the state lease, then reads `current`, and refuses when `current` names an open, unknown, or manual attempt. Leaving the attempt `opened` would make the whole wait refuse ordinary state writes.
 
-`agend update --now`, and the card's **Update now**, skip the wait and do step 2 once. They do not skip the barrier. If the second check fails, nothing is installed, the fences come down, and the caller is told the fleet is not idle. A busy fleet is not held for `updates.maxIdleWait`.
+The close is the updater's `abandoning` procedure. The fleet was not stopped, so `restart-old` finds it running. Hand-back has no files. Then `abandoned`, and terminal step 3 clears `current`. The home, prefix, and service locks are released with that terminal write. The wait starts again only after `current` is gone. The next fence publishes a new attempt.
+
+If the second check finds the fleet idle, still in that same synchronous stretch, the fleet writes the outbox prefix below. The updater then advances to `barrier`. The fences stay up for 2.3.
+
+`agend update --now`, and the card's **Update now**, skip the wait and do step 2 once. They do not skip the barrier. If the second check fails, the same close runs, nothing is installed, and the caller is told the fleet is not idle. A busy fleet is not held for `updates.maxIdleWait`.
 
 ## What the journal holds, and in which order
 
@@ -74,14 +78,16 @@ One flag on the fleet. The read is the last synchronous commit point. A hit appe
 - the task claim write: `TaskBoard.legacyClaim`, and `applyMove` when the move is from `open` to `claimed`, after the board transaction is held and before the status write. A card that is already claimed may still be finished, blocked, or sent on. Creating an open card is not a claim. A refused claim is not a journal file;
 - `Scheduler.runWithLock`, after the per-schedule lock (`executing`) is held and before `markHandled`, and before a one-shot row is deleted. While the flag is set, the occurrence is recorded as *deferred by update*, `onTrigger` is not called, and the schedule row stays. `handleScheduleTrigger` is too late: `runWithLock` would already have consumed a one-shot. Today's `runWithLock` calls `markHandled` before `executing.add`; the implementation reads the flag after the lock and before `markHandled`.
 
-Control commands are not agent turns, and the fence does not apply to them. They run while the flag is set:
+Control commands are not agent turns. The agent-turn fence does not apply to them. That does not exempt them from the service lock (#4491 §3.4). `agend start`, `stop`, `restart`, and `service install`, and chat `/stop` and `/restart` when they are those commands, take the service lock. While an open attempt holds it they are refused promptly, with the attempt's id and stage, and nothing is queued. They are admitted again once that attempt's terminal write releases the lock.
 
-- `/status`, `/stop`, and `/restart`;
+These do not take the service lock, so the agent-turn fence is the only fence they skip:
+
+- `/status`;
 - `/cancel`. Slash `/cancel` (`fleet-manager.ts`, the slash dispatcher) and classic text `/cancel` both call `cancelInstance`. That interrupts the agent's current generation. It leaves the update attempt running;
 - `/update`, and the card's cancel;
 - admin actions, including the update card's own edits.
 
-An attempt is cancelled by the card action `cancel`: POST `/ui/update/answer` with `{ action: "cancel" }`, and the Cancel button on a Hub waiting notice. The fleet writes `attempts/<id>/cancel` (`{ reason, at, by }`) only while the card is cancellable: waiting, or the barrier. `by` is the card's display label, the same kind Phase 1 stores on `lastAnswer.by`. The updater, or the recovery runner, consumes that file under the home lock, by the stage it finds, not by when the file was written:
+An attempt is cancelled by the card action `cancel`: POST `/ui/update/answer` with `{ action: "cancel" }`, and the Cancel button on a Hub waiting notice. The fleet writes `attempts/<id>/cancel` (`{ reason, at, by }`) only while the card is cancellable: waiting, or the barrier. `by` is the card's display label, the same kind Phase 1 stores on `lastAnswer.by`. Writing the marker does not abandon the attempt. The updater, or the recovery runner, consumes that file under the home lock, by the stage it finds, not by when the file was written:
 
 - `opened`, `barrier`, or `stopping` with no snapshot published: the cancel is honoured. It journals `abandoning` with the cancel's reason, then renames `cancel` to `cancel.consumed`;
 - `snapshotted` onwards, `committing`, or a terminal stage: the cancel is too late. It renames `cancel` to `cancel.ignored-<stage>` and journals that. The card says "too late to cancel: the update is past the point of no return" (#4491 §2.6). It does not enter `abandoning`, and it does not roll back `committing`.
@@ -109,8 +115,9 @@ S-243 owns the files under `<home>/.update-journal/` and the locks. 2.2 does not
 - the updater publishes `opened`, with `current` naming the attempt, before the fleet writes anything;
 - the fleet writes `inbox/<seq>-<source>.json`, `deferred/<seq>.json`, and, only while the card is cancellable, `attempts/<id>/cancel`, each atomically;
 - the updater advances to `barrier` after the prefix is written, and consumes `cancel` by the stage it finds;
-- hand-back runs only at substep `hand-back`. A copy is admitted once, under `source_key` `update-handback:<attemptId>:<seq>`, and then treated as a reference. A deferred job writes `.started` before it runs. Each finished entry gets a `<file>.acked` sibling;
-- a crash still in `opened`, with those files present, hands them back. A resumed entry is reconciled before it is done again.
+- hand-back runs only at substep `hand-back`. A copy is one insert under `source_key` `update-handback:<attemptId>:<seq>`, then treated as a reference. A deferred job writes `.started` before it runs, and runs at most once across a crash. Each finished entry gets a `<file>.acked` sibling after the effect;
+- a crash still in `opened`, with those files present, hands them back. A resumed entry is reconciled before it is done again;
+- a busy second check closes that unused attempt and clears `current` before the unfenced wait resumes. The fleet writes no stage on that path.
 
 If §2.6's names differ from these, this note is updated to match them before the code starts.
 
@@ -119,7 +126,7 @@ If §2.6's names differ from these, this note is updated to match them before th
 No production caller. The tests drive the module with a fake journal and a fake clock:
 
 - the wait does not set the flag, and a message during the wait is delivered;
-- a busy second check clears the flag, writes nothing, does not advance to `barrier`, and waits again;
+- a busy second check clears the flag, writes nothing, and does not advance to `barrier`. The updater closes the unused attempt and clears `current` before the wait resumes. A state-writing CLI command after that close is admitted, and the same command while `current` still names the attempt is refused;
 - an idle second check holds the flag and writes the outbox prefix as reference files, in `created_seq` order, while the attempt is still `opened`, without claiming the rows;
 - the fleet writes no stage;
 - a handler resumed from an await after that check (routing, receipt binding, IPC connect, web body parse, Hub inbound) hits its commit point and does not start the turn;
@@ -130,10 +137,10 @@ No production caller. The tests drive the module with a fake journal and a fake 
 - the ingress-inventory test fails when a commit point is missing: pane write or delivery admission, `claimNext`, the task claim write, and `runWithLock` after the lock and before `markHandled`;
 - a schedule already inside `runWithLock` does not fail the check and is not killed;
 - a one-shot deferred by the fence is still in the schedule table. Hand-back writes `.started` before the trigger. A replay that finds `.started` and no `.acked` does not run it again, and records `schedule_runs` status `interrupted-by-update`;
-- `/status`, `/stop`, `/restart`, `/cancel`, `/update`, the card's cancel, and an admin card edit, still run while the flag is set;
-- `/cancel` leaves the attempt running. The card action `cancel` writes `attempts/<id>/cancel` only while the card is waiting or at the barrier, and does not run hand-back until the substep is `hand-back`;
-- a cancel the updater finds at `snapshotted` or later becomes `cancel.ignored-<stage>` and does not abandon;
-- hand-back writes `<file>.acked` after each entry, and a crash resumes at the first entry without one, reconciling it before doing it again;
+- `/status`, `/cancel`, `/update`, the card's cancel, and an admin card edit skip the agent-turn fence. `/stop` and `/restart` skip that fence and are still refused while the attempt holds the service lock;
+- `/cancel` leaves the attempt running. The card action `cancel` writes `attempts/<id>/cancel` only while the card is waiting or at the barrier. The write itself does not abandon. Hand-back runs only when the substep is `hand-back`;
+- a marker written while the card is cancellable, then consumed after the stage has reached `snapshotted`, becomes `cancel.ignored-<stage>` and does not abandon;
+- the effect is durable before `.acked`: a crash after the reference claim, after the copy's insert, or after `.started`, and before `.acked`, resumes by reconciling that entry and does not do it a second time;
 - `waiting` counts as idle here and still counts as busy for `hubUpdateIdle`;
 - `--now` checks once and does not wait;
-- timeout and the card's cancel leave the card offering **Update now** or **Keep waiting** rather than `updating`.
+- a honoured timeout or card cancel leaves the card offering **Update now** or **Keep waiting** rather than `updating`. A cancel consumed after the snapshot does not.
