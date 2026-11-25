@@ -44,6 +44,7 @@ describe("the live 2.1.332 prompt", () => {
     expect(card).toMatchObject({ kind: "question", title: "Claude Code", page: "options", cursor: 0, freeText: false, noSkip: true, webOnly: true, humanOnly: true });
     expect(card.question).toBe("Fable 5.2 now uses usage credits\nFable 5.2 runs on usage credits, purchased separately from your plan.");
     expect(card.options.map(o => o.title)).toEqual(["Switch to Opus 5.5 and continue", "Continue with Fable 5.2"]);
+    expect(card.options.map(o => o.hint)).toEqual(["Uses your plan", "Billed to usage credits, separate from your plan"]);
     expect(acting(LIVE)[0]!.remoteCard!(LIVE)).toEqual(card);
   });
 
@@ -78,6 +79,13 @@ describe("the renderer's other shapes (2.1.332's own words)", () => {
     expect(acting(p).map(d => d.holdOnly)).toEqual([true]);
     const card = claudeUsageCreditsPrompt(p)!.card;
     expect(card.options.map(o => o.title)).toEqual(options);
+    expect(card.options.every(o => typeof o.hint === "string" || o.title.startsWith("Upgrade"))).toBe(true);
+  });
+
+  it("the dashboard's buttons carry each subtitle (remoteCardPrompt)", async () => {
+    const { remoteCardPrompt } = await import("../src/remote-card-prompt.js");
+    const p = remoteCardPrompt("x", claudeUsageCreditsPrompt(LIVE)!.card);
+    expect(p.choices.map(c => c.hint)).toEqual(["Uses your plan", "Billed to usage credits, separate from your plan"]);
   });
 });
 

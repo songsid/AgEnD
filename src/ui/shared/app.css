@@ -967,6 +967,9 @@ img.amb-p { object-fit: contain; }
 .st-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .st-link:hover { text-decoration-thickness: 2px; }
 .prompt .acts { display: flex; gap: var(--s-2); margin-top: var(--s-2); align-items: center; flex-wrap: wrap; }
+/* M-3757: a plain subtitle under a CLI choice's own words (what it means for the plan). */
+.btn:has(> .btn-hint) { flex-direction: column; align-items: flex-start; text-align: left; height: auto; }
+.btn .btn-hint { display: block; font-size: var(--fs-xs); font-weight: 400; color: var(--text-2); white-space: normal; }
 .prompt .wait { font-size: var(--fs-xs); color: var(--text-3); }
 /* #2675: a prompt's typed answer. 16px keeps iOS from zooming in on focus (#1612). */
 .prompt .prompt-text { display: flex; gap: var(--s-2); margin-top: var(--s-2); }

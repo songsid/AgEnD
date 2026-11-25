@@ -835,7 +835,7 @@ interface NonceButtonEntry {
    * Set when the prompt is also offered in the web dashboard (web track C4): what the page shows. The same
    * nonce, the same single claim and the same expiry as the platform's buttons — whoever clicks first wins.
    */
-  web?: { text: string; actions: Array<{ id: string; label: string; input?: true }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
+  web?: { text: string; actions: Array<{ id: string; label: string; hint?: string; input?: true }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
   /** When the prompt was offered (epoch ms): its age in "Needs you" (#1386). */
   createdAt?: number;
   /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
@@ -15441,7 +15441,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     chatId: string;
     threadId?: string;
     message: string;
-    choices: Array<{ action: string; label: string }>;
+    choices: Array<{ action: string; label: string; hint?: string }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
     extra?: Pick<NonceButtonEntry, "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
@@ -15518,7 +15518,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         entry.web = {
           text: web.text,
           ...(links ? { links } : {}),
-          actions: [...opts.choices.map(c => ({ id: c.action, label: c.label })), ...(opts.webInput ? [{ id: opts.webInput.action, label: opts.webInput.label, input: true as const }] : [])],
+          actions: [...opts.choices.map(c => ({ id: c.action, label: c.label, ...(c.hint ? { hint: c.hint } : {}) })), ...(opts.webInput ? [{ id: opts.webInput.action, label: opts.webInput.label, input: true as const }] : [])],
           expiresAt: Date.now() + (opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS),
         };
         this.emitSseEvent("prompt", { instance: entry.instanceName, nonce, ...entry.web });
@@ -16199,7 +16199,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The prompts open on the dashboard right now (a page that loads after one was posted asks for them). */
-  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] }> {
+  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string; hint?: string }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] }> {
     const open: ReturnType<FleetManager["listWebPrompts"]> = [];
     for (const [nonce, e] of this.pendingNonceButtons) {
       if (e.web) open.push({ instance: e.instanceName, nonce, ...e.web });

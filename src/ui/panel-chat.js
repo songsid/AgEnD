@@ -707,7 +707,7 @@ function Prompts({ name }) {
   if (!list.length) return null;
   return html`<div data-trust="permission" class="prompts" aria-live="polite">${list.map(p => html`<div key=${p.nonce} class=${`prompt${p.resolved ? " done" : ""}`} role="group" aria-label=${p.text}>
     <div class="txt">${p.resolved ? (p.outcome || t("chat.promptGone")) : textLinkSegments(p.text, p.links).map(sg => sg.href ? html`<a data-trust="link" class="st-link" href=${sg.href}>${sg.text}</a>` : sg.text)}</div>
-    ${p.resolved ? null : html`<div class="acts">${p.actions.filter(a => !a.input).map(a => html`<button key=${a.id} type="button" class="btn" disabled=${!!p.busy} onClick=${() => store.answerPrompt(p, a.id)}>${a.label}</button>`)}
+    ${p.resolved ? null : html`<div class="acts">${p.actions.filter(a => !a.input).map(a => html`<button key=${a.id} type="button" class="btn" disabled=${!!p.busy} onClick=${() => store.answerPrompt(p, a.id)}>${a.label}${a.hint ? html`<span class="btn-hint">${a.hint}</span>` : null}</button>`)}
       ${p.busy ? html`<span class="wait">${t("chat.promptAnswering")}</span>` : null}</div>`}
     ${p.resolved ? null : p.actions.filter(a => a.input).map(a => html`<${PromptText} key=${a.id} p=${p} action=${a} />`)}</div>`)}</div>`;
 }

@@ -333,6 +333,8 @@ export interface RemoteCardOption {
   description: string | null;
   /** A filtered CLI card retains the physical row, independent of its displayed choices. */
   row?: number;
+  /** M-3757: a plain subtitle shown under the option's button (the CLI's own label stays the button's words). */
+  hint?: string;
   /** A static report closes with q, never Enter. Only a code-owned reader sets this. */
   submitKey?: "q";
   /** Sub-options page only: whether its box is ticked. */

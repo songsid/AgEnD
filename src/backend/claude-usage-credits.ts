@@ -19,6 +19,7 @@
  */
 import { createHash } from "node:crypto";
 import type { RemoteCardOption, RemoteQuestionCard } from "./types.js";
+import { t } from "../locale.js";
 
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const FOOTER = /^[ \t]*Enter to confirm · Esc to cancel[ \t]*$/;
@@ -27,6 +28,16 @@ const TITLE = /^[ \t]*(\S.* now uses usage credits|\S.* now runs on usage credit
 const FIRST = /^(?:Switch to \S.* and continue|Not now|No, keep my current model)$/;
 /** An option row: the cursor `❯` two columns in, or the label four columns in (the body sits two columns in). */
 const OPTION = /^( {2})(❯| ) (\S.*)$/;
+const REQUEST = /^Request (?:usage credits|more) from your admin/;
+const SPENDS = /^(?!Request )(?:.*usage credits|Continue with |Yes, (?:re-enable|buy)|Buy )/;
+/** The subtitle under an option's button: what it means for the plan, in the fleet's language. */
+function hintOf(label: string): string | undefined {
+  if (/^Switch to \S.* and continue$|^No, keep my current model$/.test(label)) return t("claude.usage_credits.hint_plan");
+  if (label === "Not now") return t("claude.usage_credits.hint_not_now");
+  if (REQUEST.test(label)) return t("claude.usage_credits.hint_request");
+  if (SPENDS.test(label)) return t("claude.usage_credits.hint_credits");
+  return undefined;
+}
 
 export interface ClaudeUsageCreditsPrompt { title: string; options: string[]; cursor: number; card: RemoteQuestionCard }
 
@@ -57,9 +68,10 @@ export function claudeUsageCreditsPrompt(pane: string): ClaudeUsageCreditsPrompt
   const body = above.slice(at + 1).map(row => row.trim());
   if (!/usage credits|Fable limit/.test([title, ...body].join(" "))) return null;
   const identity = createHash("sha256").update(`claude-usage-credits\n${title}\n${options.join("\n")}`).digest("hex");
-  const cardOptions: RemoteCardOption[] = options.map((label, n) => ({
-    n: n + 1, title: label, recommended: false, description: null, row: n,
-  }));
+  const cardOptions: RemoteCardOption[] = options.map((label, n) => {
+    const hint = hintOf(label);
+    return { n: n + 1, title: label, recommended: false, description: null, row: n, ...(hint ? { hint } : {}) };
+  });
   const card: RemoteQuestionCard = {
     kind: "question", identity, title: "Claude Code", question: [title, ...body.filter(row => !/^Learn more:/.test(row))].join("\n"),
     page: "options", options: cardOptions, freeText: false, cursor, typed: null, rowWidth: Math.max(...rows.map(row => row.length)),

@@ -67,7 +67,7 @@ export interface PromptInput {
   prefix: string;
   instance: string;
   text: string;
-  actions: Array<{ id: string; label: string; input?: true }>;
+  actions: Array<{ id: string; label: string; hint?: string; input?: true }>;
   createdAt: number;
   adapterId: string;
   chatId: string;
