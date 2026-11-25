@@ -72,7 +72,7 @@ export interface AttemptRecord {
  */
 export interface JournalIo {
   now(): Date;
-  /** Create or truncate `path`, write `data`, fsync it. */
+  /** Create `path` exclusively (it must not exist: O_EXCL), write `data`, fsync it. */
   writeSynced(path: string, data: string): void;
   rename(from: string, to: string): void;
   /** Hard-link `from` to `to`; throws with code EEXIST when `to` exists (a no-overwrite publication). */
@@ -90,7 +90,7 @@ const fsyncDirReal = (dir: string): void => { const fd = openSync(dir, "r"); try
 
 export const defaultJournalIo: JournalIo = {
   now: () => new Date(),
-  writeSynced: (path, data) => { const fd = openSync(path, "w", 0o600); try { writeSync(fd, data); fsyncSync(fd); } finally { closeSync(fd); } },
+  writeSynced: (path, data) => { const fd = openSync(path, "wx", 0o600); try { writeSync(fd, data); fsyncSync(fd); } finally { closeSync(fd); } },
   rename: (from, to) => renameSync(from, to),
   link: (from, to) => linkSync(from, to),
   unlink: path => unlinkSync(path),
@@ -101,7 +101,12 @@ export const defaultJournalIo: JournalIo = {
   step: () => {},
 };
 
-const tmpOf = (path: string) => `${path}.tmp-${process.pid}`;
+/**
+ * A fresh tmp name per write (Prism #4494 R2): a crash between a link and the tmp's unlink leaves that tmp as a second
+ * name of the published file, so a tmp name is never reused. Opened with O_EXCL, a retry can't truncate it.
+ */
+let tmpSeq = 0;
+const tmpOf = (path: string) => `${path}.tmp-${process.pid}-${Date.now().toString(36)}-${(tmpSeq++).toString(36)}`;
 
 /** Replace `path` atomically and durably: tmp written and fsynced, renamed over, the directory fsynced. */
 function writeAtomic(io: JournalIo, path: string, data: string): void {
@@ -123,8 +128,10 @@ function writeNew(io: JournalIo, path: string, data: string): void {
   catch (err) {
     try { io.unlink(tmp); } catch { /* best effort */ }
     if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-    if (io.read(path) === data) return;                                      // an exact retry: already published
-    throw new Error(`${path} already exists with other content; the original is kept`);
+    if (io.read(path) !== data) throw new Error(`${path} already exists with other content; the original is kept`);
+    // An exact retry: published already, but maybe not durably (a crash between the link and the directory fsync).
+    io.fsyncDir(dirname(path)); io.step(`fsync-dir:${basename(dirname(path))}`);
+    return;
   }
   io.step(`link:${basename(path)}`);
   io.unlink(tmp);
@@ -139,22 +146,24 @@ function renameDurable(io: JournalIo, from: string, to: string): void {
 }
 
 /**
- * Create a directory chain durably (Prism #4494 4): each missing component made, then its parent fsynced, so a durable
- * `current` can never name a directory whose link from its parent was lost. `exclusive`: the last component must not
- * exist yet (an attempt's directory is never reused).
+ * Create the directory chain from `base` (which must exist: the AgEnD home) down to `path` durably (Prism #4494 4, R2):
+ * each component's parent is fsynced whether this call made the component or a crashed earlier call did (a retry
+ * finding it present can't tell, so it syncs again before going on). `exclusive`: the last component must be new (an
+ * attempt's directory is never reused).
  */
-function mkdirDurable(io: JournalIo, path: string, exclusive = false): void {
-  const parts: string[] = [];
-  for (let p = path; p !== parsePath(p).root; p = dirname(p)) parts.unshift(p);
-  parts.forEach((dir, i) => {
-    const last = i === parts.length - 1;
-    try { io.mkdir(dir); }
+function mkdirDurable(io: JournalIo, base: string, path: string, exclusive = false): void {
+  const root = base.replace(/\/+$/, "");
+  const rel = path.slice(root.length).split("/").filter(Boolean);
+  if (!path.startsWith(root + "/") || rel.length === 0) throw new Error(`${path} is not below ${base}`);
+  let dir = root;
+  rel.forEach((part, i) => {
+    dir = join(dir, part);
+    const last = i === rel.length - 1;
+    try { io.mkdir(dir); io.step(`mkdir:${part}`); }
     catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
       if (last && exclusive) throw new Error(`${dir} already exists; an attempt's directory is never reused`);
-      return;
     }
-    io.step(`mkdir:${basename(dir)}`);
     io.fsyncDir(dirname(dir)); io.step(`fsync-dir:${basename(dirname(dir))}`);
   });
 }
@@ -265,7 +274,7 @@ export function openAttempt(home: string, init: AttemptInit, io: JournalIo = def
   const attempt: AttemptRecord = { ...(init.extra ?? {}), schema: 1, id: init.id, kind: init.kind, createdAt: at, updater: init.updater, from: init.from, to: init.to,
     ...(init.goBackOf ? { goBackOf: init.goBackOf } : {}), stage: "opened", history: [{ stage: "opened", at }] };
   // The chain .update-journal/attempts/<id> made durable first; the attempt's directory must be new (never rebound).
-  mkdirDurable(io, attemptDir(home, init.id), true);
+  mkdirDurable(io, home, attemptDir(home, init.id), true);
   writeNew(io, recordPath(home, init.id), JSON.stringify(attempt, null, 2) + "\n");
   io.step("record-written");
   writeAtomic(io, currentPath(home), init.id + "\n");
@@ -339,7 +348,7 @@ export function appendMark(home: string, mark: Mark, io: JournalIo = defaultJour
   const read = readMarks(home, io);
   if (!read.ok) throw new Error(`marks.json can't be read, so no mark is written over it: ${read.reason}`);
   if (read.marks.some(m => m.attemptId === mark.attemptId)) return;           // a retry after the mark landed
-  mkdirDurable(io, journalDir(home));
+  mkdirDurable(io, home, journalDir(home));
   writeAtomic(io, marksPath(home), JSON.stringify([...read.marks, { ...mark, at: mark.at ?? io.now().toISOString() }], null, 2) + "\n");
   io.step("mark-written");
 }
@@ -364,14 +373,14 @@ export const handbackSourceKey = (attemptId: string, seq: number) => `update-han
 
 export function writeInboxItem(home: string, attemptId: string, seq: number, source: InboxSource, item: InboxItem, io: JournalIo = defaultJournalIo): void {
   const dir = join(attemptDir(home, attemptId), "inbox");
-  mkdirDurable(io, dir);
+  mkdirDurable(io, home, dir);
   writeNew(io, join(dir, inboxName(seq, source)), JSON.stringify(item) + "\n");      // an accepted item is never replaced
   io.step(`inbox-${seq}`);
 }
 
 export function writeDeferred(home: string, attemptId: string, seq: number, job: { scheduleId: string; runId: string }, io: JournalIo = defaultJournalIo): void {
   const dir = join(attemptDir(home, attemptId), "deferred");
-  mkdirDurable(io, dir);
+  mkdirDurable(io, home, dir);
   writeNew(io, join(dir, deferredName(seq)), JSON.stringify({ seq, ...job }) + "\n");
   io.step(`deferred-${seq}`);
 }
@@ -503,3 +512,6 @@ export function recoveryPlan(read: JournalRead, updater: UpdaterState, ownStart 
     default: return { kind: "refuse", reason: "unknown" };
   }
 }
+
+/** The publication primitives, for the crash tests only. */
+export const journalPrimitivesForTests = { writeNew, writeAtomic, mkdirDurable };

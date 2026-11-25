@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  journalPrimitivesForTests,
   advance, appendMark, attemptDir, canAdvance, consumeCancel, defaultJournalIo, finish, finishClosing, handbackAction, handbackSourceKey,
   isMarked, journalDir, listHandback, markHandback, newAttemptId, openAttempt, readCurrent, readMarks, recoveryPlan, substep,
   writeCancel, writeDeferred, writeInboxItem, type AttemptRecord, type JournalIo, type Stage,
@@ -301,11 +302,12 @@ describe("M-3770 2.1a review: cancel, validation, immutable items, durable publi
     const { io, trace } = traced();
     openAttempt(h, init(), io);
     const hb = h.split("/").pop();
-    expect(trace).toEqual([
+    const norm = trace.map(t => t.replace(/\.tmp-[^:]*$/, ".tmp-*"));
+    expect(norm).toEqual([
       "mkdir:.update-journal", `(fsync ${hb})`, `fsync-dir:${hb}`, "mkdir:attempts", "(fsync .update-journal)", "fsync-dir:.update-journal",
       `mkdir:${ID1}`, "(fsync attempts)", "fsync-dir:attempts",
-      `write:attempt.json.tmp-${process.pid}`, "link:attempt.json", `(fsync ${ID1})`, `fsync-dir:${ID1}`, "record-written",
-      `write:current.tmp-${process.pid}`, "rename:current", "(fsync .update-journal)", "fsync-dir:.update-journal", "current-written",
+      "write:attempt.json.tmp-*", "link:attempt.json", `(fsync ${ID1})`, `fsync-dir:${ID1}`, "record-written",
+      "write:current.tmp-*", "rename:current", "(fsync .update-journal)", "fsync-dir:.update-journal", "current-written",
     ]);
   });
 
@@ -320,5 +322,51 @@ describe("M-3770 2.1a review: cancel, validation, immutable items, durable publi
       expect(read.state).toBe(i >= renamedAt ? "open" : "none");                                    // current exists only once renamed in
       if (read.state === "open") expect(read.attempt.id).toBe(ID1);
     }
+  });
+});
+
+// Prism #4494 R2: a link that landed before its tmp was unlinked; a retry finding its effect already there.
+describe("M-3770 2.1a review R2: tmp aliases and retry durability", () => {
+  const { writeNew, writeAtomic, mkdirDurable } = journalPrimitivesForTests;
+  const crashAt = (name: string): { io: JournalIo; trace: string[] } => {
+    const trace: string[] = [];
+    return { trace, io: { ...defaultJournalIo, fsyncDir: d => { trace.push(`(fsync ${d.split("/").pop()})`); defaultJournalIo.fsyncDir(d); },
+      step: n => { trace.push(n); if (n === name) throw new Error(`crash at ${n}`); } } };
+  };
+  const tmps = (dir: string, base: string) => readdirSync(dir).filter(f => f.startsWith(`${base}.tmp-`));
+
+  it("a crash after the link and before the tmp's unlink: a conflicting retry refuses and the original bytes stay; the alias is never truncated", () => {
+    const h = home(), path = join(h, "item.json");
+    expect(() => writeNew(crashAt("link:item.json").io, path, "ORIGINAL\n")).toThrow(/crash/);
+    expect(tmps(h, "item.json")).toHaveLength(1);                                                // the alias left behind
+    expect(() => writeNew(defaultJournalIo, path, "CONFLICT\n")).toThrow(/other content/);
+    expect(readFileSync(path, "utf8")).toBe("ORIGINAL\n");
+    const alias = tmps(h, "item.json").find(f => readFileSync(join(h, f), "utf8") === "ORIGINAL\n");
+    expect(alias).toBeDefined();
+  });
+
+  it("an exact retry after a landed link syncs the directory before it succeeds", () => {
+    const h = home(), path = join(h, "item.json");
+    expect(() => writeNew(crashAt("link:item.json").io, path, "SAME\n")).toThrow(/crash/);
+    const retry = crashAt("never");
+    writeNew(retry.io, path, "SAME\n");
+    expect(retry.trace).toContain(`(fsync ${h.split("/").pop()})`);
+    expect(retry.trace).toContain(`fsync-dir:${h.split("/").pop()}`);
+  });
+
+  it("a record published, its link's alias left by a crash, then replaced atomically: the new record lands, the alias keeps the old bytes", () => {
+    const h = home(), path = join(h, "attempt.json");
+    expect(() => writeNew(crashAt("link:attempt.json").io, path, "{\"v\":1}\n")).toThrow(/crash/);
+    writeAtomic(defaultJournalIo, path, "{\"v\":2}\n");
+    expect(readFileSync(path, "utf8")).toBe("{\"v\":2}\n");
+    expect(tmps(h, "attempt.json").map(f => readFileSync(join(h, f), "utf8"))).toEqual(["{\"v\":1}\n"]);
+  });
+
+  it("a crash after a mkdir and before its parent's fsync: the retry, finding the directory, syncs the parent again", () => {
+    const h = home();
+    expect(() => mkdirDurable(crashAt("mkdir:.update-journal").io, h, join(h, ".update-journal", "attempts"))).toThrow(/crash/);
+    const retry = crashAt("never");
+    mkdirDurable(retry.io, h, join(h, ".update-journal", "attempts"));
+    expect(retry.trace).toEqual([`(fsync ${h.split("/").pop()})`, `fsync-dir:${h.split("/").pop()}`, "mkdir:attempts", "(fsync .update-journal)", "fsync-dir:.update-journal"]);
   });
 });
