@@ -1,6 +1,6 @@
 # M-3770 1.5: General's update card — what the chat adapter receives
 
-Source `28fa1d040af5f4abd27b48fddcc7950cd4de0c0b` (src clean: true). Real FleetManager; a recording adapter in place of Discord/Telegram.
+Source `cdabbcb40bf127eae1df67a4062101f6fb2b6858` (src clean: true). Real FleetManager; a recording adapter in place of Discord/Telegram.
 
 ### en
 _the daily check, twice_
@@ -25,7 +25,7 @@ _press [tonight] by a fleet admin_
 **posted** — "🆕 AgEnD 1.22.2 is ready.\nYour work continues; if it won't start, AgEnD tries to roll back to 1.22.0."
   buttons: [Update when idle] [Tonight] [Not now]
 _press [not-now] by a fleet admin_
-**edited, buttons removed** m18 — "Not now. The card for 1.22.2 comes back on 2026-12-03 02:52. · answered by Example owner"
+**edited, buttons removed** m18 — "Not now. The card for 1.22.2 comes back on 2026-12-03 02:57. · answered by Example owner"
 
 ### zh-TW
 _the daily check, twice_
@@ -50,6 +50,6 @@ _press [tonight] by a fleet admin_
 **posted** — "🆕 AgEnD 1.22.2 可以更新了。\n工作不會中斷；新版起不來時，AgEnD 會嘗試退回 1.22.0。"
   buttons: [閒置時更新] [今晚] [先不要]
 _press [not-now] by a fleet admin_
-**edited, buttons removed** m18 — "先不要。1.22.2 的更新卡片會在 2026-12-03 02:52 再出現。 · 由 Example owner 回覆"
+**edited, buttons removed** m18 — "先不要。1.22.2 的更新卡片會在 2026-12-03 02:57 再出現。 · 由 Example owner 回覆"
 
 Checks: 14/14.
