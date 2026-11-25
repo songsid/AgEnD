@@ -72,12 +72,17 @@ try {
         const tabs = [...document.querySelectorAll(".fleet-phone-tabs .seg-item")], on = document.querySelector(".fleet-phone-tabs .seg-item.active");
         const L1 = lum(rgb(getComputedStyle(on).color)), L2 = lum(bgOf(document.querySelector(".p-fleet > .panel-head")));
         return { icons: tabs.map((t) => (t.querySelector("svg") || {}).innerHTML || ""), names: tabs.map((t) => (t.textContent || "").trim()),
-          contrast: (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05), underline: getComputedStyle(on).boxShadow };
+          contrast: (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05), underline: getComputedStyle(on).boxShadow,
+          border: getComputedStyle(on).borderBottomWidth + " " + getComputedStyle(on).borderBottomStyle + " " + getComputedStyle(on).borderBottomColor,
+          tint: getComputedStyle(on).backgroundColor, headBg: getComputedStyle(document.querySelector(".p-fleet > .panel-head")).backgroundColor };
       })()`) as any;
-      receipt[`look-${tag}`] = { names: look.names, contrast: Math.round(look.contrast * 100) / 100, underline: look.underline };
+      receipt[`look-${tag}`] = { names: look.names, contrast: Math.round(look.contrast * 100) / 100, underline: look.underline, border: look.border, tint: look.tint };
       check(`${tag}: each tab its own icon`, look.icons.every((x: string) => x) && new Set(look.icons).size === look.icons.length, look.names);
       check(`${tag}: each tab its own accessible name`, look.names.every((x: string) => x) && new Set(look.names).size === look.names.length, look.names);
-      check(`${tag}: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)`, look.contrast >= 3 && /inset/.test(look.underline), { contrast: look.contrast, underline: look.underline });
+      // #4453 (the user: the line read as a raised key): flat — a tinted pill and the accent icon, no line, shadow or border.
+      check(`${tag}: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)`,
+        look.contrast >= 3 && look.underline === "none" && /^0px|none/.test(look.border) && /^(rgb|color\()/.test(look.tint) && look.tint !== "rgba(0, 0, 0, 0)",
+        { contrast: look.contrast, underline: look.underline, border: look.border, tint: look.tint });
       check(`${tag}: every tab inside the screen`, m.tabs.length >= 8 && m.tabs.every((t: any) => t.l >= 0 && t.r <= m.W + 0.5), m.tabs.map((t: any) => [t.name, Math.round(t.l), Math.round(t.r)]));
       check(`${tag}: each tab a 44px touch target`, m.tabs.every((t: any) => t.w >= 44 && t.h >= 44), m.tabs.map((t: any) => [t.name, Math.round(t.w), Math.round(t.h)]));
       check(`${tag}: no sideways scroll`, m.scroll <= m.W, m.scroll);

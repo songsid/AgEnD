@@ -54,7 +54,8 @@ describe("M-3722: Fleet's header on a phone names the page", () => {
     expect(new Set(icons).size).toBe(icons.length);
     expect(new Set(names).size).toBe(names.length);
     const css = readFileSync("src/ui/shared/app.css", "utf8");
-    expect(css).toMatch(/\.fleet-phone-tabs \.seg-item\.active \{ color: var\(--accent\); box-shadow: inset 0 -3px 0 var\(--accent\); \}/);
+    // #4453 (the user: "立體的按鈕"): flat — an accent-tinted pill and the accent icon, no line, border or shadow.
+    expect(css).toMatch(/\.fleet-phone-tabs \.seg-item\.active \{ color: var\(--accent\); background: var\(--surface-2\); background: color-mix\(in srgb, var\(--accent\) 14%, var\(--bg\)\); box-shadow: none; border-color: transparent; \}/);
   });
   it("the phone rules: the tab row spans the width in equal columns, each a --tap target; the page's name shows", () => {
     const css = readFileSync("src/ui/shared/app.css", "utf8");
