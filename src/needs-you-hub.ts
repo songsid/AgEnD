@@ -86,6 +86,8 @@ export interface NeedsYouHubContext {
   missedOffline?(): MissedOfflineInput[];
   /** true when this call removed the missed row. */
   acknowledgeMissed?(id: string, by: string): boolean;
+  /** M-3749: dismiss an agent's missing-MCP item; false when nothing was outstanding. */
+  acknowledgeMcpMissing?(instance: string): boolean;
   /** Task board cards waiting for the person (#2246 step 3); none when the board is not open. */
   tasks?(): TaskInput[];
   backendSignIns?(): BackendSignInInput[];
@@ -169,6 +171,8 @@ interface AckEntry {
   verb: "ack" | TaskVerb;
   deliveryId?: string;
   missedId?: string;
+  /** M-3749: Acknowledge dismisses this instance's missing-MCP item. */
+  mcpMissing?: true;
   card?: { code: string; version: number };
   instance: string;
   /** #2352: the lane whose message showed it (absent: General). */
@@ -449,6 +453,7 @@ export class NeedsYouHub {
         world, owner, generation, deadline: this.ctx.mono() + ACK_TTL_MS, chatId: place.chatId, ...(place.threadId !== undefined ? { threadId: place.threadId } : {}),
         ...(place.messageId ? { messageId: place.messageId } : {}), verb, instance: item.instance, ...(lane ? { lane } : {}),
         ...(item.deliveryId ? { deliveryId: item.deliveryId } : {}), ...(item.missedId ? { missedId: item.missedId } : {}), ...(item.card ? { card: { ...item.card } } : {}),
+        ...(item.reason === "mcp_missing" ? { mcpMissing: true as const } : {}),
       };
       this.acks.set(nonce, entry);
       minted.push(entry);
@@ -457,6 +462,7 @@ export class NeedsYouHub {
     const choices = items.flatMap(item => {
       if (item.deliveryId) return [mint(item, "ack", this.ctx.t("needs.ack_button", item.instance))];
       if (item.missedId) return [mint(item, "ack", this.ctx.t("needs.ack_button", item.instance || item.missedId))];
+      if (item.reason === "mcp_missing") return [mint(item, "ack", this.ctx.t("needs.ack_button", item.instance))];
       if (item.type !== "task" || !item.card || item.reason === "task_stalled") return [];   // #3647: nothing to answer here
       const code = item.card.code;
       return item.reason === "task_review"
@@ -502,8 +508,8 @@ export class NeedsYouHub {
     const platform = this.ctx.worlds().find(w => w.id === adapterId)?.place.type ?? "chat";
     if (entry.verb === "ack") {
       const who = `${platform}:${data.userId}`;
-      const outcome = entry.missedId
-        ? this.acknowledgeMissed(entry.missedId, who)
+      const outcome = entry.mcpMissing ? this.acknowledgeMcpMissing(entry.instance, who)
+        : entry.missedId ? this.acknowledgeMissed(entry.missedId, who)
         : this.acknowledge(entry.deliveryId!, who);
       data.ack?.(this.ctx.t(`needs.ack_${outcome}`));
       return true;
@@ -657,10 +663,12 @@ export class NeedsYouHub {
   webAcknowledge(itemId: string, principal: string): { status: 200 | 400 | 404 | 409 | 500; message: string } {
     const delivery = /^delivery:([A-Za-z0-9._:-]{1,128})$/.exec(itemId);
     const missed = /^missed:([A-Za-z0-9._:-]{1,128})$/.exec(itemId);
-    if (!delivery && !missed) return { status: 400, message: "Not an item that can be acknowledged" };
+    const mcp = itemId.startsWith("mcp-missing:") ? this.items.find(i => i.id === itemId && i.reason === "mcp_missing") : undefined;
+    if (!delivery && !missed && !itemId.startsWith("mcp-missing:")) return { status: 400, message: "Not an item that can be acknowledged" };
     const listed = this.items.some(i => i.id === itemId);
     if (!listed) return { status: 409, message: this.ctx.t("needs.ack_already") };
-    const outcome = missed ? this.acknowledgeMissed(itemId, principal) : this.acknowledge(delivery![1], principal);
+    const outcome = mcp ? this.acknowledgeMcpMissing(mcp.instance, principal)
+      : missed ? this.acknowledgeMissed(itemId, principal) : this.acknowledge(delivery![1], principal);
     return { status: outcome === "failed" ? 500 : 200, message: this.ctx.t(`needs.ack_${outcome}`) };
   }
 
@@ -675,6 +683,20 @@ export class NeedsYouHub {
     }
     this.poke();
     if (done) this.ctx.log("info", "Needs you: delivery acknowledged", { deliveryId, by });
+    return done ? "done" : "already";
+  }
+
+  private acknowledgeMcpMissing(instance: string, by: string): "done" | "already" | "failed" {
+    if (!this.ctx.acknowledgeMcpMissing) return "failed";
+    let done: boolean;
+    try {
+      done = this.ctx.acknowledgeMcpMissing(instance);
+    } catch (err) {
+      this.ctx.log("warn", "Needs you: could not dismiss a missing-MCP item", { instance, err: String((err as Error)?.message ?? err) });
+      return "failed";
+    }
+    this.poke();
+    if (done) this.ctx.log("info", "Needs you: missing-MCP item dismissed", { instance, by });
     return done ? "done" : "already";
   }
 

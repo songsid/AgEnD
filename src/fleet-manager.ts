@@ -544,7 +544,7 @@ type ReconcileObserver = (
 import { kiroHome } from "./backend/kiro-kas-store.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, claudeStoreEnded, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLaunch, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
-import { carryClaudeMcpServers } from "./backend/claude-mcp-carry.js";
+import { carryClaudeMcpServers, claudeJsonFor, dismissClaudeMcpMissing, recordClaudeMcpBeforeSwitch } from "./backend/claude-mcp-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, accountUsage, buildAccountsView, profilesOnDisk, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import { accountFolderExists, addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
@@ -10910,6 +10910,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (sw.backend === "claude-code") {
       const profileDir = (profile: string | null) => profile ? credentialProfileHome(this.dataDir, sw.backend, profile) : null;
       try {
+        // What it has in the profile it leaves now (added this session too), so the next launch can say what is missing.
+        recordClaudeMcpBeforeSwitch({ instanceDir: this.getInstanceDir(name), configDir: claudeConfigDirFor(profileDir(sw.from)),
+          jsonPath: claudeJsonFor(profileDir(sw.from)), workingDirectory: sw.workingDirectory ?? "" });
         const mcp = carryClaudeMcpServers({ fromProfileDir: profileDir(sw.from), toProfileDir: profileDir(sw.to), workingDirectory: sw.workingDirectory ?? "" });
         const where = { name, from: sw.from ?? "default", to: sw.to ?? "default" };
         if (!mcp.carried) this.logger.warn({ ...where, reason: mcp.reason }, "MCP servers not carried to the new credential profile");
@@ -20037,6 +20040,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /** M-3749: a person dismissed an agent's missing-MCP item (web or chat Acknowledge). false: nothing was outstanding. */
+  acknowledgeMcpMissing(name: string): boolean {
+    const daemon = this.daemons.get(name);
+    if (daemon?.dismissMcpMissing) return daemon.dismissMcpMissing();
+    dismissClaudeMcpMissing(this.getInstanceDir(name));
+    return false;
+  }
+
   /** The list for the web: every world's items, and those of instances with no world (#1386 §5.0). */
   needsYouItems(): WebNeedsItem[] {
     return this.needsYou?.webItems() ?? [];
@@ -20386,6 +20397,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         id: m.id, instance: m.instance, owner: m.adapterId, username: m.username, place: m.place, preview: m.preview, since: m.since,
       })),
       acknowledgeMissed: (id, by) => this.missedOfflineStore?.acknowledge(id, by) ?? false,
+      acknowledgeMcpMissing: instance => this.acknowledgeMcpMissing(instance),
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
       signInKeepAlive: () => this.keepAliveAttention(),

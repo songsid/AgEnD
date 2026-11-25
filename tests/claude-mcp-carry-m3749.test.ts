@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
-import { carryClaudeMcpServers, checkClaudeMcpAtLaunch, claudeMcpNames } from "../src/backend/claude-mcp-carry.js";
+import { carryClaudeMcpServers, checkClaudeMcpAtLaunch, claudeMcpNames, dismissClaudeMcpMissing } from "../src/backend/claude-mcp-carry.js";
+import { NeedsYouHub, type NeedsYouHubContext } from "../src/needs-you-hub.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox, SYSTEM_NOTICE_KIND } from "../src/delivery-outbox.js";
@@ -124,7 +125,15 @@ describe("M-3749: a launch reports MCP servers that did not come along", () => {
     write(a, { mcpServers: { outline }, projects: { [cwd]: { mcpServers: { m365 } } } });
     expect(at(a)).toBeNull();
     expect(at(b)).toEqual({ names: ["m365", "outline"], fromConfigDir: a, toConfigDir: b, since: 1000 });
-    expect(at(b)).toBeNull();                                             // told once; the next launch is clean
+    // Another launch is no evidence of recovery: still outstanding, since the same time.
+    expect(checkClaudeMcpAtLaunch({ instanceDir, configDir: b, jsonPath: join(b, ".claude.json"), workingDirectory: cwd, now: 2000 }))
+      .toEqual({ names: ["m365", "outline"], fromConfigDir: a, toConfigDir: b, since: 1000 });
+    write(b, { mcpServers: { outline } });
+    expect(at(b)).toEqual({ names: ["m365"], fromConfigDir: a, toConfigDir: b, since: 1000 });   // one is back
+    write(b, { mcpServers: { outline }, projects: { [cwd]: { mcpServers: { m365 } } } });
+    expect(at(b)).toBeNull();                                             // all back: gone
+    write(b, { mcpServers: {} });
+    expect(at(b)).toBeNull();                                             // removed later under the same profile: its own choice
     expect(JSON.stringify(JSON.parse(readFileSync(join(instanceDir, "claude-mcp-seen.json"), "utf8")))).not.toContain(SECRET);
   });
 
@@ -137,6 +146,36 @@ describe("M-3749: a launch reports MCP servers that did not come along", () => {
     expect(checkClaudeMcpAtLaunch({ instanceDir, configDir: b, jsonPath: join(b, ".claude.json"), workingDirectory: cwd })).toBeNull();
     expect(claudeMcpNames(join(b, ".claude.json"), cwd)).toEqual({ user: ["outline"], local: [] });
   });
+
+  it("a person's dismissal forgets the outstanding list; a later switch can report again", () => {
+    const a = profile("old"), b = profile("new");
+    const instanceDir = join(root, "instance"); mkdirSync(instanceDir);
+    write(a, { mcpServers: { outline } });
+    const at = (dir: string) => checkClaudeMcpAtLaunch({ instanceDir, configDir: dir, jsonPath: join(dir, ".claude.json"), workingDirectory: cwd, now: 7 });
+    at(a);
+    expect(at(b)?.names).toEqual(["outline"]);
+    dismissClaudeMcpMissing(instanceDir);
+    expect(at(b)).toBeNull();
+    expect(at(a)).toBeNull();
+    expect(at(b)?.names).toEqual(["outline"]);
+  });
+
+  it("servers added during the session are what the switch records, so a carry that could not be written is still reported", async () => {
+    const dataDir = join(root, "data");
+    const a = profile("old"), b = profile("new");
+    const instanceDir = join(root, "instance"); mkdirSync(instanceDir);
+    write(a, {});
+    expect(checkClaudeMcpAtLaunch({ instanceDir, configDir: a, jsonPath: join(a, ".claude.json"), workingDirectory: cwd })).toBeNull();
+    write(a, { mcpServers: { outline } });                                    // added while it ran
+    write(b, {});
+    writeFileSync(join(b, ".claude.json.agend.lock"), JSON.stringify({ pid: process.pid, token: "held" }));
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const fm: any = Object.assign(Object.create(FleetManager.prototype), { dataDir, logger, getInstanceDir: () => instanceDir });
+    await fm.switchConversation("agent", { backend: "claude-code", from: "old", to: "new", workingDirectory: cwd });
+    expect(read(b)).toEqual({});
+    expect(JSON.stringify(logger.warn.mock.calls)).toContain("MCP servers not carried to the new credential profile");
+    expect(checkClaudeMcpAtLaunch({ instanceDir, configDir: b, jsonPath: join(b, ".claude.json"), workingDirectory: cwd })?.names).toEqual(["outline"]);
+  }, 20_000);
 
   it("an unreadable config records nothing and reports nothing", () => {
     const a = profile("old");
@@ -187,9 +226,19 @@ describe("M-3749: a launch reports MCP servers that did not come along", () => {
         instances: [{ name: "agent", mcpMissing: { names: ["m365", "outline"], from: "old", to: "new", since: 5 } }] });
       expect(items).toEqual([expect.objectContaining({ type: "instance", instance: "agent", reason: "mcp_missing", detail: "m365, outline (old → new)", since: 5 })]);
 
-      daemon.checkClaudeMcpServers({ backendOptions: { credential_profile: "new" } });   // the next launch: nothing missing, the item goes
+      daemon.checkClaudeMcpServers({ backendOptions: { credential_profile: "new" } });   // the next launch: still outstanding
       expect(events).toHaveLength(2);
-      expect(events[1].missing).toBeNull();
+      expect(events[1].missing.names).toEqual(["m365", "outline"]);
+      fm.onMcpMissing("agent", events[1].missing);                     // and not told again
+      expect(outbox.listPending().filter(row => row.kind === SYSTEM_NOTICE_KIND)).toHaveLength(1);
+      // A person's Acknowledge (through the fleet, as Needs you calls it) clears it now and at the next launch.
+      fm.lifecycle = { daemons: new Map([["agent", daemon]]) };
+      expect(fm.acknowledgeMcpMissing("agent")).toBe(true);
+      expect(events).toHaveLength(3);
+      expect(events[2].missing).toBeNull();
+      expect(daemon.mcpMissing()).toBeNull();
+      expect(fm.acknowledgeMcpMissing("agent")).toBe(false);
+      daemon.checkClaudeMcpServers({ backendOptions: { credential_profile: "new" } });
       expect(daemon.mcpMissing()).toBeNull();
       vi.unstubAllEnvs();
     }
@@ -212,5 +261,76 @@ describe("M-3749: a launch reports MCP servers that did not come along", () => {
     onMcpMissing.mockImplementation(() => { throw Error("fake-failure"); });
     expect(() => daemon.emit("mcp_missing", { name: "agent", missing })).not.toThrow();
     expect(onAttentionChanged).toHaveBeenCalledTimes(3);
+  });
+
+  it("Needs you offers Acknowledge for it in chat and on the web, and the web's goes to the fleet", () => {
+    const acked: string[] = [];
+    const ctx = { dataDir: root, now: () => 0, mono: () => 0, setTimer: () => 1, clearTimer: () => {}, prompts: () => [],
+      instances: () => [{ name: "agent", mcpMissing: { names: ["outline"], from: "old", to: "new", since: 9 } }], deliveries: () => [],
+      ownerOf: () => undefined, worlds: () => [], noticeTarget: () => null, instanceTopic: () => undefined, instanceName: (i: string) => i,
+      isFleetAdmin: () => false, fleetAdmins: () => [], emitSse: () => {}, acknowledge: () => false,
+      acknowledgeMcpMissing: (i: string) => { acked.push(i); return true; }, settings: () => ({ liveMessage: false, dm: false }), stopping: () => false,
+      t: (k: string, ...a: string[]) => `${k}${a.length ? `(${a.join(",")})` : ""}`, log: () => {} } as unknown as NeedsYouHubContext;
+    const hub = new NeedsYouHub(ctx);
+    hub.start();
+    const [item] = (hub as any).items;
+    expect(item).toMatchObject({ id: "mcp-missing:agent:9", reason: "mcp_missing" });
+    const acks = (hub as any).mintAcks("dcA", Symbol("r"), 1, { chatId: "c" }, [item]);
+    expect(acks.choices).toEqual([{ id: expect.stringMatching(/:ack$/), label: "needs.ack_button(agent)" }]);
+    expect([...(hub as any).acks.values()][0]).toMatchObject({ instance: "agent", mcpMissing: true });
+    expect(hub.webAcknowledge("mcp-missing:agent:9", "web:x")).toEqual({ status: 200, message: "needs.ack_done" });
+    expect(acked).toEqual(["agent"]);
+    expect(hub.webAcknowledge("mcp-missing:other:1", "web:x").status).toBe(409);
+    hub.stop?.();
+  });
+});
+
+describe("M-3749 review: target spellings, unreadable targets, the default login", () => {
+  it("a read-denied target is left exactly as it was (not treated as empty)", () => {
+    if (process.getuid?.() === 0) return;                                  // root reads anything: nothing to deny
+    const from = profile("old"), to = profile("new");
+    write(from, { mcpServers: { outline } });
+    write(to, { oauthAccount: { accountUuid: "fake-account" }, mcpServers: { mine: { command: "x" } } });
+    chmodSync(join(to, ".claude.json"), 0o000);
+    cleanup.push(() => chmodSync(join(to, ".claude.json"), 0o600));
+    expect(carryClaudeMcpServers({ fromProfileDir: from, toProfileDir: to, workingDirectory: cwd }))
+      .toEqual({ carried: false, reason: "the new profile's config is locked or unreadable" });
+    chmodSync(join(to, ".claude.json"), 0o600);
+    expect(read(to)).toEqual({ oauthAccount: { accountUuid: "fake-account" }, mcpServers: { mine: { command: "x" } } });
+  });
+
+  it("local servers under another spelling of the folder land in the entry Claude reads; the target's name wins across spellings", () => {
+    const link = join(root, "link"); symlinkSync(cwd, link);
+    const from = profile("old"), to = profile("new");
+    const theirs = { type: "stdio", command: "their-m365" };
+    write(from, { projects: { [link]: { mcpServers: { m365, extra: m365 } } } });
+    write(to, { projects: { [cwd]: { hasTrustDialogAccepted: true }, [link]: { mcpServers: { m365: theirs } } } });
+    expect(carryClaudeMcpServers({ fromProfileDir: from, toProfileDir: to, workingDirectory: link }))
+      .toEqual({ carried: true, user: [], local: ["extra"], keptTarget: ["m365"] });
+    const after = read(to);
+    expect(after.projects[cwd]).toEqual({ hasTrustDialogAccepted: true, mcpServers: { extra: m365 } });
+    expect(after.projects[link]).toEqual({ mcpServers: { m365: theirs } });
+    // Present means present in the entry Claude reads, not under some alias.
+    expect(claudeMcpNames(join(to, ".claude.json"), link)).toEqual({ user: [], local: ["extra"] });
+    write(to, { projects: { [link]: { mcpServers: { only: m365 } } } });
+    expect(carryClaudeMcpServers({ fromProfileDir: from, toProfileDir: to, workingDirectory: cwd }))
+      .toEqual({ carried: true, user: [], local: ["extra", "m365"], keptTarget: [] });
+    expect(Object.keys(read(to).projects[cwd].mcpServers).sort()).toEqual(["extra", "m365"]);
+  });
+
+  it("switching back to the default login writes CLAUDE_CONFIG_DIR's .claude.json, or ~/.claude.json with it unset", () => {
+    const from = profile("old");
+    write(from, { mcpServers: { outline } });
+    const home = join(root, "home"); mkdirSync(home);
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("CLAUDE_CONFIG_DIR", undefined);
+    writeFileSync(join(home, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "fake-default" } }));
+    expect(carryClaudeMcpServers({ fromProfileDir: from, toProfileDir: null, workingDirectory: cwd })).toMatchObject({ carried: true, user: ["outline"] });
+    expect(JSON.parse(readFileSync(join(home, ".claude.json"), "utf8"))).toEqual({ oauthAccount: { accountUuid: "fake-default" }, mcpServers: { outline } });
+    const own = join(root, "own-config"); mkdirSync(own);
+    vi.stubEnv("CLAUDE_CONFIG_DIR", own);
+    expect(carryClaudeMcpServers({ fromProfileDir: from, toProfileDir: null, workingDirectory: cwd })).toMatchObject({ carried: true, user: ["outline"] });
+    expect(read(own).mcpServers).toEqual({ outline });
+    expect(existsSync(join(own, ".claude.json"))).toBe(true);
   });
 });

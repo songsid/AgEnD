@@ -238,7 +238,11 @@ export function updateClaudeJson(mutate: (cfg: Record<string, unknown>) => boole
   try {
     let cfg: Record<string, unknown> = {};
     let raw: string | null = null;
-    try { raw = readFileSync(path, "utf-8"); } catch { /* missing file — create a minimal one */ }
+    try { raw = readFileSync(path, "utf-8"); } catch (err) {
+      // Only a missing file starts empty. Any other read error (permission, I/O) leaves the file untouched (M-3749 review):
+      // writing a fresh document would replace the user's whole config.
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") return;
+    }
     if (raw !== null) {
       try {
         const parsed: unknown = JSON.parse(raw);

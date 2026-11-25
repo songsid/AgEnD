@@ -673,8 +673,8 @@ session 的對話紀錄（`projects/<目錄>/<session>.jsonl`）、它的資料�
 新 profile 已有這段對話的另一個版本、空間不足，或複製失敗。
 
 Agent 換到另一個 profile 啟動時，若少了上次啟動時有的 MCP 伺服器（例如在停止狀態下切換，或合併寫不進去），
-AgEnD 會告訴它少了哪些，並附上加回來的 `claude mcp add -s local` 指令；在它下次啟動前，「需要你」會列出
-**切換 AI 帳號後缺少 MCP 伺服器**。
+AgEnD 會告訴它少了哪些，並附上加回來的 `claude mcp add -s local` 指令；「需要你」會列出
+**切換 AI 帳號後缺少 MCP 伺服器**，直到伺服器加回來或有人在那裡按確認。沒換 profile 時自己移除的伺服器不算，不會提醒。
 
 ### 各自的額度
 

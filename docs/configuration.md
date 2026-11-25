@@ -688,7 +688,8 @@ that conversation, when there isn't enough free space, or when the copy fails.
 
 If an agent starts on another profile without some MCP servers it had at its previous launch (a switch made while it
 was stopped, or a merge that could not be written), it is told which ones, with the `claude mcp add -s local` command to
-add one back, and Needs you lists **MCP servers missing after an AI account switch** until its next launch.
+add one back, and Needs you lists **MCP servers missing after an AI account switch** until they are back or someone
+acknowledges it there. A server removed while the agent stays on the same profile is its own choice and is not reported.
 
 ### Seeing both quotas
 
