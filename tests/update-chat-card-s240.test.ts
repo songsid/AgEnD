@@ -107,7 +107,7 @@ describe("M-3770 1.5: the update card in General's chat", () => {
       offer(f); await vi.waitFor(() => expect(g.alerts).toHaveLength(1));
       const a = g.alerts[0];
       expect(a.message ?? a.text ?? JSON.stringify(a)).toContain("AgEnD 2.3.5-beta.3 is ready.");
-      expect(JSON.stringify(a)).toContain("Your work continues; if it won't start, AgEnD rolls back to 2.3.5-beta.2.");
+      expect(JSON.stringify(a)).toContain("Your work continues; if it won't start, AgEnD tries to roll back to 2.3.5-beta.2.");
       expect(a.choices.map((c: any) => c.label)).toEqual(["Update when idle", "Tonight", "Not now"]);
       expect(a.choices.map((c: any) => c.id)).toEqual(expect.arrayContaining([expect.stringMatching(/^update-card:[0-9a-f]{32}:when-idle$/)]));
       await f.fm.syncUpdateChatCard(); offer(f); await settle(); await f.fm.syncUpdateChatCard();
@@ -179,6 +179,108 @@ describe("M-3770 1.5: the update card in General's chat", () => {
       await f.fm.checkForUpdates(); await f.fm.checkForUpdates();
       await vi.waitFor(() => expect(g.alerts).toHaveLength(1));
       expect(topic.mock.calls.map((c) => String(c[1]))).not.toEqual(expect.arrayContaining([expect.stringContaining("Run: /update")]));
+    } finally { await f.stop(); }
+  });
+  // ── #4485 review: lifecycle cases ──
+  it("restart or expiry: an offered card with no live buttons is marked expired and a live one is posted; a stale click answers nothing", async () => {
+    setLocale("en");
+    const f = await fleet();
+    try {
+      const g = await general(f);
+      offer(f); await vi.waitFor(() => expect(g.alerts).toHaveLength(1));
+      const oldId = g.alerts[0].choices[0].id as string;
+      await vi.waitFor(() => expect(f.fm.readUpdateChatCard()?.nonce).toBeTruthy());
+      f.fm.pendingNonceButtons.clear();                                    // a restart (or the week's expiry)
+      await f.fm.syncUpdateChatCard();
+      await vi.waitFor(() => expect(g.alerts).toHaveLength(2));
+      expect(g.edits.at(-1)).toMatch(/expired/);
+      // A click on the dead card: nothing is answered.
+      const ack = vi.fn();
+      await f.fm.handleUpdateCardCallback({ callbackData: oldId, userId: "1", username: "Example owner", chatId: "-100", threadId: "7", messageId: "m1", ack }, "tg", g.adapter);
+      expect(f.fm.updateOfferView().state).toBe("offered");
+      await f.fm.syncUpdateChatCard();
+      expect(g.alerts).toHaveLength(2);                                     // one usable card, not a new one per sync
+    } finally { await f.stop(); }
+  });
+  it("a click while the card is still being posted: answered, recorded, and a later state edits the real message", async () => {
+    setLocale("en");
+    const f = await fleet();
+    try {
+      const g = await general(f);
+      let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+      g.adapter.notifyAlert.mockImplementationOnce(async (_c: string, alert: any) => { g.alerts.push(alert); await gate; return { chatId: "-100", threadId: "7", messageId: "m-real" }; });
+      offer(f); await vi.waitFor(() => expect(g.alerts).toHaveLength(1));
+      const id = g.alerts[0].choices.find((c: any) => c.id.endsWith(":when-idle")).id as string;
+      await f.fm.handleUpdateCardCallback({ callbackData: id, userId: "1", username: "Example owner", chatId: "-100", threadId: "7", messageId: "m-real", ack: vi.fn() }, "tg", g.adapter);
+      expect(f.fm.updateOfferView().state).toBe("waiting-idle");
+      release(); await vi.waitFor(() => expect(f.fm.readUpdateChatCard()).toMatchObject({ state: "waiting-idle", messageId: "m-real", nonce: null }));
+      await settle();
+      expect(g.edits).toEqual([]);                                          // the "· answered by" reply stands (not re-edited)
+      await f.fm.ensureUpdateCard().answer("web-cancel-x", "Example owner", { action: "cancel" });
+      g.adapter.editMessage.mockClear();
+      await f.fm.syncUpdateChatCard();
+      expect(g.adapter.editMessage.mock.calls.some((c: any[]) => c[1] === "m-real")).toBe(true);   // the real message, never ""
+    } finally { await f.stop(); }
+  });
+  it("a newer version while the card is being posted: the posted one is replaced after, and its button never answers the newer offer", async () => {
+    setLocale("en");
+    const f = await fleet();
+    try {
+      const g = await general(f);
+      let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+      g.adapter.notifyAlert.mockImplementationOnce(async (_c: string, alert: any) => { g.alerts.push(alert); await gate; return { chatId: "-100", threadId: "7", messageId: "mA" }; });
+      offer(f, "2.3.5-beta.3"); await vi.waitFor(() => expect(g.alerts).toHaveLength(1));
+      offer(f, "2.3.5-beta.4");                                            // while A is being posted
+      release();
+      await vi.waitFor(() => expect(g.alerts).toHaveLength(2));
+      expect(JSON.stringify(g.alerts[1])).toContain("2.3.5-beta.4");
+      expect(g.retired.some((t) => /replaced this one \(2\.3\.5-beta\.4\)/.test(t))).toBe(true);
+      // A stale button still live (the card moved on without a sync): pressing it answers nothing.
+      const live = g.alerts[1].choices.find((c: any) => c.id.endsWith(":when-idle")).id as string;
+      f.fm.ensureUpdateCard().noteOffer({ version: "2.3.5-beta.5", channel: "beta", installable: true });
+      await f.fm.handleUpdateCardCallback({ callbackData: live, userId: "1", username: "Example owner", chatId: "-100", threadId: "7", messageId: "m2", ack: vi.fn() }, "tg", g.adapter);
+      expect(f.fm.updateOfferView()).toMatchObject({ version: "2.3.5-beta.5", state: "offered" });
+      expect(g.retired.at(-1)).toMatch(/replaced this one \(2\.3\.5-beta\.5\)/);
+    } finally { await f.stop(); }
+  });
+  it("a change while an edit is in flight is not lost: the sync runs again when the edit is done", async () => {
+    setLocale("en");
+    const f = await fleet();
+    try {
+      const g = await general(f);
+      offer(f); await vi.waitFor(() => expect(f.fm.readUpdateChatCard()?.nonce).toBeTruthy());
+      expect(await press(f, g, "when-idle").run).toBe(true);
+      await vi.waitFor(() => expect(f.fm.readUpdateChatCard()?.state).toBe("waiting-idle"));
+      let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+      g.adapter.editMessage.mockImplementationOnce(async (_c: string, _m: string, text: string) => { g.edits.push(text); await gate; });
+      // waiting → scheduled (from the web): an edit of the message, held open.
+      await f.fm.ensureUpdateCard().answer("web-pick-z", "Example owner", { action: "pick-time", at: Date.now() + 3 * 3600_000 });
+      const editing = f.fm.syncUpdateChatCard();
+      await vi.waitFor(() => expect(g.edits.length).toBe(1));
+      // Meanwhile it is cancelled on the web: offered again. This sync is asked for while the edit runs.
+      await f.fm.ensureUpdateCard().answer("web-cancel-z", "Example owner", { action: "cancel" });
+      await f.fm.syncUpdateChatCard();
+      const before = g.alerts.length;
+      release(); await editing;
+      await vi.waitFor(() => expect(g.alerts.length).toBe(before + 1));    // the fresh card, without waiting for the minute timer
+    } finally { await f.stop(); }
+  });
+  it("the second line is Phase 1's best effort: passing P3 → tries to roll back; failing → can't restart itself; none → work continues", async () => {
+    setLocale("en");
+    const f = await fleet();
+    try {
+      await general(f);
+      const view = { version: "2.3.5-beta.3", state: "offered", installable: true, channel: "beta" };
+      f.fm.updatePreflight = { checks: [{ id: "P3", ok: true }] };
+      expect(f.fm.updateChatCardText(view, "2.3.5-beta.2")).toBe("🆕 AgEnD 2.3.5-beta.3 is ready.\nYour work continues; if it won't start, AgEnD tries to roll back to 2.3.5-beta.2.");
+      f.fm.updatePreflight = { checks: [{ id: "P3", ok: false, code: "not-service" }] };
+      expect(f.fm.updateChatCardText(view, "2.3.5-beta.2")).toContain("this setup can't restart AgEnD by itself");
+      f.fm.updatePreflight = null;
+      expect(f.fm.updateChatCardText(view, "2.3.5-beta.2")).toBe("🆕 AgEnD 2.3.5-beta.3 is ready.\nYour work continues.");
+      setLocale("zh-TW");
+      f.fm.updatePreflight = { checks: [{ id: "P3", ok: true }] };
+      expect(f.fm.updateChatCardText(view, "2.3.5-beta.2")).toContain("新版起不來時，AgEnD 會嘗試退回 2.3.5-beta.2");
+      setLocale("en");
     } finally { await f.stop(); }
   });
   it("never posts an offer this install can't take (an alpha's stable)", async () => {

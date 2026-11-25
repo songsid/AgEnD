@@ -2174,6 +2174,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   // ── M-3770 1.5 (design #4480 §3.1): the update card in General's chat ──────────────────────────────────────────
   private updateChatCardBusy = false;
+  /** #4485 review 2: a sync asked for while one ran; the running one runs again. */
+  private updateChatCardAgain = false;
+  /** #4485 review 2: each posted card's delivery address and the version it shows, by nonce (independent of the pending map). */
+  private updateChatCardSent = new Map<string, { version: string; chatId: string; threadId?: string; messageId: string }>();
+  /** #4485 review 2: an answer that came while its card was still being posted (the post records it when it returns). */
+  private updateChatCardAnswered = new Map<string, string>();
   private updateChatCardTimer: ReturnType<typeof setInterval> | null = null;
   private readUpdateChatCard(): UpdateChatCardRecord | null {
     try { const r = JSON.parse(readFileSync(join(this.dataDir, UPDATE_CHAT_CARD_FILE), "utf8")); return r && typeof r.messageId === "string" ? r as UpdateChatCardRecord : null; }
@@ -2221,7 +2227,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * message (its buttons retired: the adapters cannot swap them). Never throws; one at a time.
    */
   async syncUpdateChatCard(): Promise<void> {
-    if (this.updateChatCardBusy || this.shuttingDown) return;
+    // A call while one runs is not dropped: the running one syncs again when it is done (#4485 review 2).
+    if (this.shuttingDown) return;
+    if (this.updateChatCardBusy) { this.updateChatCardAgain = true; return; }
     this.updateChatCardBusy = true;
     try {
       const view = this.updateOfferView();
@@ -2229,10 +2237,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try { current = this.runningAgendVersion(); } catch { /* unknown */ }
       const posted = this.readUpdateChatCard();
       const state = view?.state ?? "none";
-      if (view && state === "offered" && view.installable && (!posted || posted.version !== view.version || posted.state !== "offered")) {
+      // #4485 review 1: an offered card whose buttons are gone (a restart empties the nonce map; they also expire) is not
+      // a usable card: it is marked expired and one with live buttons is posted.
+      const live = !!posted?.nonce && this.pendingNonceButtons.get(posted.nonce)?.prefix === UPDATE_CARD_CALLBACK_PREFIX;
+      if (view && state === "offered" && view.installable && (!posted || posted.version !== view.version || posted.state !== "offered" || !live)) {
         const place = this.updateChatCardPlace();
         if (!place) return;
-        if (posted) await this.editUpdateChatCard(posted, posted.version === view.version ? t("update.chatcard.cancelled", posted.version) : t("update.chatcard.replaced", view.version));
+        if (posted) {
+          const old = posted.state === "offered" && posted.version === view.version && !live ? t("update.chatcard.expired")
+            : posted.version === view.version ? t("update.chatcard.cancelled", posted.version) : t("update.chatcard.replaced", view.version);
+          await this.editUpdateChatCard(posted, old);
+        }
+        const version = view.version;
         const nonce = await this.postNonceButtonPromptOrThrow({
           prefix: UPDATE_CARD_CALLBACK_PREFIX, alertType: "tip", instanceName: place.general, adapter: place.adapter, adapterId: place.adapterId,
           chatId: place.chatId, ...(place.threadId ? { threadId: place.threadId } : {}),
@@ -2240,10 +2256,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           choices: [{ action: "when-idle", label: t("update.chatcard.when_idle") }, { action: "tonight", label: t("update.chatcard.tonight") }, { action: "not-now", label: t("update.chatcard.not_now") }],
           expiredText: t("update.chatcard.expired"),
           timeoutMs: UPDATE_CHAT_CARD_MS,
+          // #4485 review 2: the provider's own delivery address, kept per nonce as it is sent — a click may consume the
+          // pending entry before this post returns, so the entry is never the place to read it from.
+          deliver: async choices => {
+            const shown = this.renderPlaces(place.adapterId, this.updateChatCardText(view, current), place.threadId ? { threadId: place.threadId } : undefined);
+            const sent = await place.adapter.notifyAlert(place.chatId, { type: "tip", instanceName: place.general, message: shown.text, choices }, shown.opts);
+            const id = choices[0]?.id ?? "";
+            this.updateChatCardSent.set(id.slice(UPDATE_CARD_CALLBACK_PREFIX.length, UPDATE_CARD_CALLBACK_PREFIX.length + 32),
+              { version, chatId: sent.chatId, ...(sent.threadId !== undefined ? { threadId: sent.threadId } : {}), messageId: String(sent.messageId ?? "") });
+            return sent;
+          },
         });
-        const entry = this.pendingNonceButtons.get(nonce);
-        this.writeUpdateChatCard({ version: view.version, state: "offered", nonce, messageId: String(entry?.messageId ?? ""), chatId: place.chatId,
-          ...(place.threadId ? { threadId: place.threadId } : {}), adapterId: place.adapterId, at: Date.now() });
+        const sent = this.updateChatCardSent.get(nonce);
+        const answered = this.updateChatCardAnswered.get(nonce);
+        this.updateChatCardAnswered.delete(nonce);
+        this.writeUpdateChatCard({ version, state: answered ?? "offered", nonce: answered ? null : nonce, messageId: sent?.messageId ?? "",
+          chatId: sent?.chatId ?? place.chatId, ...((sent?.threadId ?? place.threadId) ? { threadId: sent?.threadId ?? place.threadId } : {}),
+          adapterId: place.adapterId, at: Date.now() });
+        // The card may have moved on while this was being posted (a newer version, an answer on the web): sync again.
+        const after = this.updateOfferView();
+        if (!answered && (after?.version !== version || (after?.state ?? "none") !== "offered")) this.updateChatCardAgain = true;
         return;
       }
       if (posted && posted.state !== state) {
@@ -2253,9 +2285,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     } catch (err) {
       this.logger.warn({ err: (err as Error).message }, "Update chat card not posted");
-    } finally { this.updateChatCardBusy = false; }
+    } finally {
+      this.updateChatCardBusy = false;
+      if (this.updateChatCardAgain && !this.shuttingDown) { this.updateChatCardAgain = false; void this.syncUpdateChatCard(); }
+    }
   }
-  /** Edit the posted card: retire its buttons if they are still live (with `text`), else edit its text. */
+  /** Edit the posted card: retire its buttons if they are still live (with `text`), else edit its text without buttons. */
   private async editUpdateChatCard(posted: UpdateChatCardRecord, text: string): Promise<void> {
     const entry = posted.nonce ? this.pendingNonceButtons.get(posted.nonce) : undefined;
     if (entry && entry.prefix === UPDATE_CARD_CALLBACK_PREFIX) {
@@ -2265,7 +2300,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const place = this.updateChatCardPlace();
     const adapter = this.adapters.get(posted.adapterId) ?? this.worlds.get(posted.adapterId)?.adapter ?? (place && place.adapterId === posted.adapterId ? place.adapter : undefined);
-    if (adapter && posted.messageId) await adapter.editMessage(posted.chatId, posted.messageId, text, posted.threadId).catch(() => {});
+    if (!adapter || !posted.messageId) return;
+    // Dead buttons (after a restart, or expired) go with the edit where the adapter can drop them.
+    if (adapter.editMessageRemoveButtons) await adapter.editMessageRemoveButtons(posted.chatId, posted.messageId, text, posted.threadId).catch(() => {});
+    else await adapter.editMessage(posted.chatId, posted.messageId, text, posted.threadId).catch(() => {});
   }
   /**
    * M-3770 1.5: a press on the chat card — a fleet admin's only (anyone else is told privately, the buttons stay: the
@@ -2278,7 +2316,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === "consumed") return true;
     const { entry, action } = claimed;
     const nonce = data.callbackData.slice(UPDATE_CARD_CALLBACK_PREFIX.length, UPDATE_CARD_CALLBACK_PREFIX.length + 32);
-    const messageId = entry.messageId ?? data.messageId;
+    const sent = this.updateChatCardSent.get(nonce);
+    const messageId = entry.messageId ?? sent?.messageId ?? data.messageId;
+    // #4485 review 2: a press answers the offer its message showed — never a newer one that came since.
+    const before = this.updateOfferView();
+    if (sent && (!before || before.version !== sent.version)) {
+      await this.retireNonceButtons(entry, messageId, before ? t("update.chatcard.replaced", before.version) : t("update.chatcard.expired"));
+      return true;
+    }
     const tonight = (() => { const d = new Date(); d.setHours(22, 0, 0, 0); if (d.getTime() - Date.now() < 30 * 60_000) d.setDate(d.getDate() + 1); return d.getTime(); })();
     const body = action === "tonight" ? { action: "pick-time" as const, at: tonight } : { action: action as "when-idle" | "not-now" };
     const by = updateAnswerLabel(data.username ?? "");
@@ -2291,14 +2336,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const why = r.ok ? "" : ("key" in r.body && r.body.key !== "preflight" ? r.body.key : "error" in r.body ? r.body.error : r.body.key);
       text = r.ok ? t("update.chatcard.by", this.updateChatCardText(view, current), by) : t("update.chatcard.refused", why || String(r.status));
       const posted = this.readUpdateChatCard();
-      // The press carries the message's own id (the post's may not be known yet): later states edit that message.
-      if (posted && posted.nonce === nonce) this.writeUpdateChatCard({ ...posted, state: view?.state ?? "none", nonce: null, messageId: posted.messageId || String(messageId ?? "") });
+      const nextState = view?.state ?? "none";
+      if (posted && posted.nonce === nonce) {
+        // The press carries the message's own id where the post's record has none yet.
+        this.writeUpdateChatCard({ ...posted, state: nextState, nonce: null, messageId: posted.messageId || sent?.messageId || String(messageId ?? "") });
+      } else if (r.ok) {
+        // The card is still being posted (its record is written when the post returns): it records this answer then.
+        this.updateChatCardAnswered.set(nonce, nextState);
+      }
     } catch (err) {
       text = t("update.chatcard.refused", (err as Error).message);
     }
     await this.retireNonceButtons(entry, messageId, text);
     return true;
   }
+
   private hubUpdates: import("./hub/member/updates.js").HubMemberUpdates | null = null;
   private hubUpdateOwned: { id: string; claim: { startedAt: number } } | null = null;
   private hubUpdateBootProgress: ReturnType<typeof readUpdateProgress> = null;
