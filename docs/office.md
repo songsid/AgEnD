@@ -102,9 +102,9 @@ If someone saved the offices while you were editing, your save is refused and no
 
 ## Use a skin pack
 
-A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG files. Making one is described in [Make a skin pack](#make-a-skin-pack).
+A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG (or WebP) files. Making one is described in [Make a skin pack](#make-a-skin-pack).
 
-**Upload one.** In **Edit offices → Skin packs**, use **Upload a skin pack** and pick the pack's `manifest.json` and all its PNG files together, or use **Upload a folder**. The host checks everything (see [Limits](#limits)). On the first problem it refuses the upload and says where the problem is, for example `furniture[3].sprite.w: a whole number from 1 to 512`. Packs are kept whole in `web-office-skins/<id>/` in the AgEnD home and never changed.
+**Upload one.** In **Edit offices → Skin packs**, use **Upload a skin pack** and pick the pack's `manifest.json` and all its PNG and WebP files together, or use **Upload a folder**. The host checks everything (see [Limits](#limits)). On the first problem it refuses the upload and says where the problem is, for example `furniture[3].sprite.w: a whole number from 1 to 512`. Packs are kept whole in `web-office-skins/<id>/` in the AgEnD home and never changed.
 
 **Use it.** Kept packs appear in every **Style** picker. Pick one for an office in Edit offices, or for Whole fleet in the Office bar. A pack the page can't load is drawn as Desks, with a note.
 
@@ -114,7 +114,7 @@ A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG fi
 
 ## Make a skin pack
 
-A pack describes one scene on a **1280×720 logical canvas** (16:9), or on its own size with `"canvas": [w, h]` (640×360 to 5120×2880, any shape: a bigger office, or a wide one). Every coordinate in the manifest is in these logical units, within the canvas; the background and the foreground have the canvas's shape (a picture is at most 4096 px a side, so a 5120-wide canvas's background is drawn scaled up). The view fits the whole canvas, on a phone too, and zooms out as far as it needs to; in All offices a big office is scaled down into its tile. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
+A pack describes one scene on a **1280×720 logical canvas** (16:9), or on its own size with `"canvas": [w, h]` (640×360 to 5120×2880, any shape: a bigger office, or a wide one). Every coordinate in the manifest is in these logical units, within the canvas; the background and the foreground have the canvas's shape (a picture is at most 5120 px a side and 16 Mpx, so a 5120×2880 background fits at full size; save a big one as WebP to fit the 4 MiB a file). The view fits the whole canvas, on a phone too, and zooms out as far as it needs to; in All offices a big office is scaled down into its tile. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
 
 A minimal zones pack:
 
@@ -156,7 +156,7 @@ A minimal zones pack:
 
 - **Frame list with per-frame durations:** omit `src` and pass `frames` as a list of `{ "src", "ms"? }` entries (up to 600 steps, each image `w × h` px, `ms` 33–60000). The same file may appear in multiple steps and is only uploaded and decoded once. Any single-sheet or multi-sheet strip can also pass a `durations` array (`ms` per frame) instead of `fps`.
 - **Playback:** strips loop from frame 0 by default. Set `"once": true` to play once and hold the last frame, or `"loopFrom": <index>` to play an intro (`0 .. loopFrom - 1`) once and loop the rest. With reduced motion (`prefers-reduced-motion: reduce`), every strip holds frame 0.
-- **Splitting tip:** keep each sheet within 32 frames and 4096 px wide (e.g., 10 sheets × 30 frames of 64×96 px = 300 frames, 10 s at 30 FPS). Keep the whole pack within 220 files, 42 MiB, and 64 Mpx of total decoded pixels so phones stay smooth. To save files, put several poses in one sheet and cut each strip from it with `row` / `col` (see [Strips](#strips)).
+- **Splitting tip:** keep each sheet within 32 frames and 5120 px wide (e.g., 10 sheets × 30 frames of 64×96 px = 300 frames, 10 s at 30 FPS). Keep the whole pack within 220 files, 42 MiB, and 64 Mpx of total decoded pixels so phones stay smooth. To save files, put several poses in one sheet and cut each strip from it with `row` / `col` (see [Strips](#strips)).
 
 **Areas, seats and states.** An area is a rect `[x, y, w, h]` and its seats in the order they fill up. A seat is `[x, y]`, where the person's feet go, inside its area's rect. `stateZones` sends each state (`needs`, `crashed`, `stuck`, `working`, `idle`, `paused`, `stopped`, `missing`) to an area; a state it doesn't name goes to `"default"`, else the first area. Bedtime sends the idle to the area `paused` uses.
 
@@ -598,7 +598,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 |---|---|
 | Packs kept | 16 (plus one previous version each, kept for agents' restores) |
 | Files in a pack | 220 |
-| One file | 4 MiB, 4096 × 4096 px (16 Mpx), PNG only (checked by signature, every chunk read, metadata stripped) |
+| One file | 4 MiB, 5120 px a side and 16 Mpx, PNG or WebP as its name ends (`.png`, `.webp`; checked by signature, every chunk read, metadata stripped) |
 | A whole pack | 42 MiB, 64 Mpx of decoded pixels in all |
 | One strip | up to 32 frames per sheet, 32 sheets, 600 total frames, 33–60000 ms per frame |
 | The manifest | 64 KiB |

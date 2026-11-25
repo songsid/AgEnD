@@ -33,7 +33,7 @@ import { canonicalText } from "./web-theme.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import { parsePinKey, type PinWrite, type WebPinStore } from "./web-pin-store.js";
-import { SKIN_WIRE_BYTES, type OfficeSkinStore } from "./web-office-skins.js";
+import { SKIN_WIRE_BYTES, skinPictureType, type OfficeSkinStore } from "./web-office-skins.js";
 import type { OfficeActs } from "./web-office-acts.js";
 import type { OfficePackTools } from "./web-office-pack-tools.js";
 import type { WebAppearance } from "./web-appearance.js";
@@ -1169,7 +1169,7 @@ function handleOfficeSkins(req: IncomingMessage, res: ServerResponse, url: URL, 
     if (picture) {
       const bytes = store.picture(picture[1]!, picture[2]!);
       if (!bytes) { res.setHeader("Cache-Control", "private, no-store"); json(res, 404, { error: "No such image" }); return true; }
-      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Type", skinPictureType(bytes));
       // Keyed by the sha of its bytes: a picture at this URL never changes.
       res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
       res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");

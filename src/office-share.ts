@@ -28,6 +28,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
+import { skinPictureType } from "./web-office-skins.js";
 import { officeMembers, type OfficeAct, type OfficeChart } from "./web-office-acts.js";
 import { LEVEL, levelsFor, type OfficeLevel } from "./office-levels.js";
 import type { Office } from "./web-office-store.js";
@@ -654,7 +655,7 @@ export function createOfficeShareGateway(opts: {
     }
     if (picture) {
       const bytes = used.has(picture[1]!) ? skins.picture(picture[1]!, picture[2]!) : null;
-      return bytes ? send(200, "image/png", bytes, "public, max-age=31536000, immutable") : empty(res, 404);
+      return bytes ? send(200, skinPictureType(bytes), bytes, "public, max-age=31536000, immutable") : empty(res, 404);
     }
     return empty(res, 404);
   };

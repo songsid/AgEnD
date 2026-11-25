@@ -91,7 +91,7 @@ export async function packUpload(files) {
   try { manifest = JSON.parse(await man.file.text()); } catch { return { error: te("badManifest") }; }
   const out = {};
   for (const x of named) {
-    if (x === man || !/\.png$/i.test(x.name)) continue;
+    if (x === man || !/\.(png|webp)$/i.test(x.name)) continue;
     out[x.name] = base64Of(new Uint8Array(await x.file.arrayBuffer()));
   }
   return { body: { manifest, files: out } };
@@ -126,7 +126,7 @@ function Packs({ packs, store }) {
       <span>${pk.name}</span>${pk.name !== pk.id ? html` <span class="muted mono">${pk.id}</span>` : null}
       <button type="button" class="btn btn-sm btn-danger oe-pack-remove" onClick=${() => remove(pk)} aria-label=${te("removePack", pk.name)}>${te("remove")}</button></li>`)}</ul>`
       : html`<p class="note" id="oePacksNone">${te("packsNone")}</p>`}
-    <label class="btn btn-sm oe-upload">${te("upload")}<input type="file" class="sr-only oe-upload-files" multiple accept=".json,.png,application/json,image/png" onChange=${send} /></label>
+    <label class="btn btn-sm oe-upload">${te("upload")}<input type="file" class="sr-only oe-upload-files" multiple accept=".json,.png,.webp,application/json,image/png,image/webp" onChange=${send} /></label>
     <label class="btn btn-sm oe-upload">${te("uploadFolder")}<input type="file" class="sr-only oe-upload-dir" webkitdirectory="" multiple onChange=${send} /></label>
     ${msg ? html`<p class="note oe-pack-msg" role="status">${msg}</p>` : null}
   </fieldset>`;
