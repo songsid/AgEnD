@@ -15,7 +15,7 @@
         "exclude": ["COLD_RESUME_DESCRIPTION", "COLD_RESUME_HOLD_DESCRIPTION", "CLAUDE_DANGEROUS_COMMAND_BLOCKED_NOTICE",
           "claudeConfirmDialogEntries", "CLAUDE_TRUST_ENTRIES", "CLAUDE_BYPASS_ENTRIES", "writeStatusLineScript", "buildCommand",
           "writeConfig", "preTrust", "preApproveApiKey", "hasOAuthSession", "hasProjectSession", "listModels", "listApiModels",
-          "getContextUsage", "getSessionId", "probeCLIEnv"],
+          "getContextUsage", "getSessionId", "probeCLIEnv", "updateClaudeJson"],
         "surfaces": { "getStartupDialogs": "dialog", "getRuntimeDialogs": "dialog", "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy",
           "CLAUDE_BOX_RULE": "input-box", "CLAUDE_CONFIRM_FOOTER": "dialog", "THEME_TITLE": "onboarding", "THEME_BELOW_ROW": "onboarding",
           "BYPASS_TITLE": "trust", "CLAUDE_BYPASS_DIALOG_PATTERN": "trust", "CLAUDE_DANGEROUS_COMMAND_PROMPT": "approval",
