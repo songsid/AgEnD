@@ -1,7 +1,6 @@
 /**
  * M-3736 J (S-228; design #4456 §6; slice I's V1 contract, docs/design/request-contact-same-card-api.md on #4492): the web
- * same card, over a faked server in the agreed V1 shape (I is not merged: the fixture type below mirrors §2 and moves to
- * src/request-contact-types.ts's own once it lands).
+ * same card, over a faked server in the V1 shape (src/request-contact-types.ts, merged with #4492).
  * - The host: a 200 from the new namespace shows the same card; 404 (dormant), 401 and 403 keep today's page.
  * - The card: the route by the server's labels, who asked (the recorded person, a Hub person, unknown, or none), how it
  *   came in, the message, where replies go, the reason; Continue's D1 scope for a root request, the old words for a
@@ -17,21 +16,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
-type Actor = { kind: "person"; platform: "discord" | "telegram" | "host"; userId: string; displayName?: string }
-  | { kind: "person" | "agent" | "assistant"; platform: "hub"; hubId: string; id: string; displayName?: string }
-  | { kind: "unknown"; reason: "unidentified" | "unproved-recovery" | "legacy-operation" };
-type CardV1 = {
-  version: 1; engine: "legacy" | "request-v1";
-  ticket: { id: string; revision: number; state: "pending" | "approved" | "delivered" | "declined" | "expired" | "unknown"; source: string; target: string; verb: string;
-    message: string; createdAt: string; expiresAt: string; decidedAt?: string; deliveryId?: string };
-  sourceLabel: string; targetLabel: string; requester: Actor | null;
-  ingress: "owner" | "free-room" | "restricted-room" | "guest" | "hub" | "legacy";
-  sourceAudience: { kind: "room" | "web" | "hub" | "instance"; ref: string } | null; returnAudience: { kind: "room" | "web" | "hub" | "instance"; ref: string } | null;
-  grantCandidates: Array<{ key: string; label: string; platform: "discord" | "telegram" | "host" }>;
-  reason: string; continuedFrom?: string; approvalScope: "root-request" | "operation"; authority: "none";
-  snapshot: { ticketRevision: number; policyRevision: number; imageSha256: string };
-  actions: { canDecide: boolean; canGrant: boolean; requiresVerification: boolean };
-};
+import type { RequestContactCardV1 } from "../src/request-contact-types.js";
+type CardV1 = RequestContactCardV1;
 
 const g = globalThis as any;
 const mounted: AppPage[] = [];
@@ -118,7 +104,16 @@ describe("J: the card", () => {
     const pg = await mountWith(cardMod.RequestContactCard, { card: card() });
     const c = text(pg.root.querySelector(".rc-card"));
     for (const s of ["Front desk", "Billing", "Asked by Alex", "Restricted room", "Please refund order 1042.", "Replies go back to the original room.",
-      "This was sent while Front desk was working on Alex's request from a restricted room.", "Waiting for approval"]) expect(c, s).toContain(s);
+      "This was sent while Front desk was working on Alex's request from a restricted room.", "Front desk wants to contact Billing"]) expect(c, s).toContain(s);
+    // The credits card's layout (the leader): a standard Needs-you item, one detail line, the rest folded, normal buttons.
+    const item = pg.root.querySelector("article.n-item.rc-card") as any;
+    expect(item, "a standard .n-item").toBeTruthy();
+    expect(item.className.split(/\s+/)).not.toContain("card");                     // no raised card
+    expect(item.className).not.toContain("lbar");
+    expect(item.querySelectorAll(".n-title").length).toBe(1);
+    expect(text(item.querySelector(".n-detail"))).toBe("This was sent while Front desk was working on Alex's request from a restricted room.");
+    expect(item.querySelector("details.n-raw .rc-message")).toBeTruthy();
+    expect(buttons(pg.root).every((b) => b.className.includes("btn-sm"))).toBe(true);
     expect(text(pg.root.querySelector(".rc-scope"))).toBe("Continue this request and its later Agent contacts. This does not approve what Agents do or authorize unrelated requests.");
     expect(buttons(pg.root).map(text)).toEqual(["Continue (approve once)", "Always allow…", "Decline"]);
     expect(c).not.toContain("Clear retained origin");
@@ -146,7 +141,7 @@ describe("J: the card", () => {
   it("a continued request says so and has no actions", async () => {
     api({ "GET /ui/authorization": () => ({ body: VERIFIED }) });
     const pg = await mountWith(cardMod.RequestContactCard, { card: card({ continuedFrom: ID2 }) });
-    expect(text(pg.root.querySelector(".rc-continued"))).toBe("Continued from request #R9f8e7d6c: it needs no decision here.");
+    expect(text(pg.root.querySelector(".rc-reason"))).toBe("Continued from request #R9f8e7d6c: it needs no decision here.");
     expect(buttons(pg.root)).toEqual([]);
   });
 });
@@ -194,6 +189,31 @@ describe("J: deciding (a verified browser)", () => {
     expect(calls.filter((c) => c.method === "GET" && c.url === `${BASE}/${ID}`).length).toBe(1);
     expect(shown.ticket.state).toBe("declined");
     expect(toasts(pg.root)).toContain("This request was decided elsewhere. Here is its outcome.");
+  });
+});
+
+describe("J: the merged server's other answers", () => {
+  it("409 upgrade-required: the server's own words, shown in full, the card read again, never resent", async () => {
+    const said = "This request stays held: its target needs an upgraded request-input path before it can continue.";
+    const calls = api({ "GET /ui/authorization": () => ({ body: VERIFIED }),
+      [`POST ${BASE}/${ID}/decision`]: () => ({ status: 409, body: { error: "upgrade-required", message: said } }), [`GET ${BASE}/${ID}`]: () => ({ body: card() }) });
+    const pg = await mountWith(cardMod.RequestContactCard, { card: card({ engine: "legacy", approvalScope: "operation" }) });
+    choice(pg.root, "continue").click(); await settle(8);
+    expect(decisions(calls).length).toBe(1);
+    expect(toasts(pg.root)).toContain(said);
+    expect(calls.filter((c) => c.method === "GET" && c.url === `${BASE}/${ID}`).length).toBe(1);
+  });
+  it("Show more with a cursor the server no longer takes (400 invalid-cursor) reads the list from the top", async () => {
+    let first = true;
+    const calls = api({ "GET /ui/authorization": () => ({ body: VERIFIED }),
+      [`GET ${BASE}`]: (_b, url) => (url.includes("cursor=") ? { status: 400, body: { error: "invalid-cursor" } }
+        : first ? (first = false, { body: { version: 1, items: [card()], nextCursor: "c1" } }) : { body: { version: 1, items: [card()], nextCursor: null } }) });
+    const { RequestContactAuthorizations } = await import("/ui/js/request-contact-page.js") as any;
+    const pg = await mountWith(RequestContactAuthorizations, {});
+    ([...pg.root.querySelectorAll("button")] as any[]).find((b) => text(b) === "Show more").click(); await settle(8);
+    const lists = calls.filter((c) => c.url.startsWith(BASE) && !c.url.startsWith(`${BASE}/`)).map((c) => c.url);
+    expect(lists).toEqual([`${BASE}?status=pending`, `${BASE}?status=pending&cursor=c1`, `${BASE}?status=pending`]);
+    expect(pg.root.querySelectorAll(".rc-card").length).toBe(1);
   });
 });
 

@@ -5330,11 +5330,14 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .contact-decide-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-4); }
 /* M-3736 J (S-228): the one card — Authorize this browser inline while unverified; the choice made before verification
    marked (a ring, not focus: focus stays where it was); a host whose state isn't known says why. */
-.rc-verify { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-2) var(--s-3); border: 1px solid var(--warn-line); border-radius: var(--r-md); background: var(--warn-bg); }
-.rc-verify > * { margin: 0; }
-.contact-decide .rc-verify .note, .contact-decide .rc-ready { color: var(--text-2); }
-.rc-auth { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
-.contact-decide .btn.rc-chosen { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+/* The credits card's layout (the user's approved one-card style): a standard .n-item; the verify line is one row. */
+.rc-verify { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); margin-top: var(--s-1); font-size: var(--fs-sm); color: var(--text-2); }
+.rc-verify > *, .rc-auth > *, .rc-more > p { margin: 0; }
+.rc-auth { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.rc-more > p { margin-top: var(--s-1); }
+.rc-card .n-title .rc-state { margin-left: var(--s-1); }
+.rc-card .btn.rc-chosen { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.rc-card .rc-reason, .rc-card .rc-scope { word-break: keep-all; overflow-wrap: anywhere; }
 .rc-unknown { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
 .rc-unknown > * { margin: 0; }
 .contact-allow .field { flex: 1; min-width: 10em; }

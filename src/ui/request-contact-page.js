@@ -39,7 +39,7 @@ export function RequestContactAuthorizations() {
   const read = async (cursor) => {
     const r = await listCards({ ...filters, ...(cursor ? { cursor } : {}) });
     if (!r.ok) {
-      if (cursor && r.status === 409) { void read(); return; }                    // the cursor's snapshot changed: from the top
+      if (cursor && (r.code === "invalid-cursor" || r.status === 409)) { void read(); return; }   // its role snapshot changed: from the top
       setPage((p) => ({ ...p, loading: false, error: r.code })); return;
     }
     const items = Array.isArray(r.data.items) ? r.data.items : [];

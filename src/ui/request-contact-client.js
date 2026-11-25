@@ -11,7 +11,8 @@
 const BASE = "/ui/api/request-contact-authorizations";
 /** The stable error codes the contract lists (§3). */
 export const RC_CODES = new Set(["invalid-request", "invalid-grant", "sign-in-required", "forbidden", "verification-required", "not-found",
-  "conflict", "policy-conflict", "operation-conflict", "expired", "already-decided", "stale-generation", "unavailable"]);
+  "conflict", "policy-conflict", "operation-conflict", "expired", "already-decided", "stale-generation", "unavailable",
+  "upgrade-required", "invalid-grant-origin", "invalid-cursor"]);
 /** The 409s that mean "it was decided or changed elsewhere": read the same card again and show its outcome. */
 export const RC_REREAD = new Set(["conflict", "policy-conflict", "operation-conflict", "expired", "already-decided", "stale-generation"]);
 const byStatus = (s) => (s === 401 ? "sign-in-required" : s === 403 ? "forbidden" : s === 404 ? "not-found" : s === 409 ? "conflict" : s === 503 ? "unavailable" : s === 400 ? "invalid-request" : "failed");
@@ -25,8 +26,10 @@ async function call(method, url, body) {
   } catch { return { ok: false, status: 0, code: "failed" }; }
   if (!r.ok) {
     let code = byStatus(r.status);
-    try { const b = await r.json(); const c = b && b.error; if (typeof c === "string" && RC_CODES.has(c)) code = c; } catch { /* no body: the status's own code */ }
-    return { ok: false, status: r.status, code };
+    let message = null;
+    try { const b = await r.json(); const c = b && b.error; if (typeof c === "string" && RC_CODES.has(c)) code = c; if (b && typeof b.message === "string") message = b.message.slice(0, 500); } catch { /* no body: the status's own code */ }
+    // upgrade-required (409): the server's own words (its locale) — the request stays held until its target is upgraded.
+    return { ok: false, status: r.status, code, ...(message && code === "upgrade-required" ? { message } : {}) };
   }
   try { return { ok: true, data: await r.json() }; } catch { return { ok: false, status: r.status, code: "failed" }; }
 }

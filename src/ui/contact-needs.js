@@ -43,9 +43,18 @@ function RequestNeed({ item }) {
     });
     return () => { live = false; };
   }, [ref.id]);
-  return html`<div class="n-title"><strong>${ca("needsTitle", agent(ref.source), agent(ref.target))}</strong></div>
-    ${host === "on" && rc ? html`<${RequestContactCard} card=${rc} onChange=${setRc} />` : host === "off" && tk ? html`<${TicketCard} ticket=${tk} onChange=${setTk} />` : null}
-    <div class="n-actions">${ID.test(String(ref.id || "")) ? html`<a class="btn btn-sm btn-ghost" href=${`/ui/fleet/authorizations?ticket=${encodeURIComponent(ref.id)}`}>${ca("needsOpen")}</a>` : null}</div>`;
+  const open = ID.test(String(ref.id || "")) ? `/ui/fleet/authorizations?ticket=${encodeURIComponent(ref.id)}` : null;
+  // The same-card host: the item IS the one card (its own standard Needs-you layout, with Open in Authorizations).
+  if (host === "on" && rc) return html`<${RequestContactCard} card=${rc} onChange=${setRc} openHref=${open} />`;
+  return html`<${NeedShell} reason=${item.reason}><div class="n-title"><strong>${ca("needsTitle", agent(ref.source), agent(ref.target))}</strong></div>
+    ${host === "off" && tk ? html`<${TicketCard} ticket=${tk} onChange=${setTk} />` : null}
+    <div class="n-actions">${open ? html`<a class="btn btn-sm btn-ghost" href=${open}>${ca("needsOpen")}</a>` : null}</div></${NeedShell}>`;
+}
+
+/** A contact item's standard Needs-you frame (the key icon, then its body). */
+function NeedShell({ reason, children }) {
+  return html`<article data-trust="permission" class="n-item contact-need" data-reason=${reason}>
+    <span class="n-icon"><${Icon} name="key" size=${18} /></span><div class="n-body">${children}</div></article>`;
 }
 
 function SuggestionNeed({ item }) {
@@ -109,8 +118,7 @@ export function ContactSuggestionsGroup({ items }) {
 
 /** One contact item of Needs you (item.type "contact"); null for a reason this page doesn't know. */
 export function ContactNeedsItem({ item }) {
-  const body = item.reason === "contact_request" ? html`<${RequestNeed} item=${item} />` : item.reason === "contact_restricted_suggestion" ? html`<${SuggestionNeed} item=${item} />` : null;
-  if (!body) return null;
-  return html`<article data-trust="permission" class="n-item contact-need" data-reason=${item.reason}>
-    <span class="n-icon"><${Icon} name="key" size=${18} /></span><div class="n-body">${body}</div></article>`;
+  if (item.reason === "contact_request") return html`<${RequestNeed} item=${item} />`;          // its own frame (or the one card)
+  if (item.reason !== "contact_restricted_suggestion") return null;
+  return html`<${NeedShell} reason=${item.reason}><${SuggestionNeed} item=${item} /></${NeedShell}>`;
 }
