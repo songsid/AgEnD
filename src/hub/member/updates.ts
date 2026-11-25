@@ -20,6 +20,8 @@ export interface MemberUpdatesOptions {
   canInstall(version: string): Promise<boolean>;
   /** `pressed` (M-3770): the owner pressed Update now for this request (updateNow), not the idle wait starting it. */
   launch(row: IdleUpdate, control: IdleUpdateLaunch, pressed?: boolean): Promise<boolean>;
+  /** The one fleet card mirrors this row. It must not launch a second update. */
+  onQueue?(row: IdleUpdate): void;
   /** Only a launch currently owned by this process; never inferred from a stale marker alone. */
   active?(id: string): boolean;
   outcome?(row: IdleUpdate): { state: "done" | "rolled-back" | "failed"; currentVersion?: string } | null;
@@ -46,7 +48,7 @@ export class HubMemberUpdates {
     this.queue = new IdleUpdateQueue({ db: options.db, now: options.now, current: () => this.current(),
       allowed: r => (this.allowed() || this.forced(r.id)) && this.row(r.id)?.binding === options.binding,
       idle: () => (this.forced(this.queue.pending()?.id) || options.idle()) && this.ownerWasTold(),
-      launch: (r, control) => options.launch(r, control, this.forced(r.id)), changed: r => this.sync(r) });
+      launch: (r, control) => options.launch(r, control, this.forced(r.id)), changed: r => { this.sync(r); try { options.onQueue?.(r); } catch { /* the card cannot change admission */ } } });
   }
   private current(): boolean { try { return !this.stopped && this.options.current(); } catch { return false; } }
   private service(): boolean { try { return this.options.service() === true; } catch { return false; } }
@@ -67,6 +69,9 @@ export class HubMemberUpdates {
     void this.tick(); return this.consent();
   }
   private forced(id?: string): boolean { try { return !!id && this.force?.id === id && this.force.current(); } catch { return false; } }
+  idlePending(): IdleUpdate | null { return this.current() ? this.queue.pending() : null; }
+  /** The fleet card cancelled the wait. A row already updating is left to finish. */
+  cancelWaiting(id: string): boolean { return this.current() && this.queue.cancel(id, "owner"); }
   manualCandidate(id: string): string | null {
     const row = this.row(id); return this.current() && row?.binding === this.options.binding && row.verified ? row.version : null;
   }

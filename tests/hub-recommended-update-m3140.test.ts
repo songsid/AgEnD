@@ -76,7 +76,7 @@ async function fleet(advice: typeof ADVICE | null = ADVICE) {
   const { sessionId } = fm.webSessions.create({ tier: "admin", surface: "local", label: "t", tokenEpoch: tokenEpoch(fm.webToken), owner: { adapterId: "discord", userId: "1" } });
   const write = (key: string) => ({ cookie: `agend_session=${sessionId}`, origin, "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json", "idempotency-key": key });
   const start = (key: string, recommended?: unknown) => raw(port, "POST", "/ui/update/start", write(key), JSON.stringify({ confirm: "update-agend", ...(recommended !== undefined ? { recommended } : {}) }));
-  const stop = async () => { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); await new Promise<void>(r => (fm.healthServer as Server).close(() => r())); };
+  const stop = async () => { try { (fm as any).updateCard?.close(); } catch { /* already closed */ } fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); await new Promise<void>(r => (fm.healthServer as Server).close(() => r())); };
   return { fm, dir, start, stop, setAdvice: (a: typeof ADVICE | null) => { current = a; } };
 }
 const settle = () => new Promise(r => setTimeout(r, 30));

@@ -89,7 +89,8 @@ async function rig(): Promise<Rig> {
     replies.push(String(text));
     if (text === t("restart.usage")) reached.push("restart");
     if (text === "ok:usage") reached.push("usage");
-    if (text === t("update.progress.preparing", 0)) { reached.push("update"); throw stop; }
+    // Bare /update reaches the handler when it posts the card. /update now still stops at the preparing line.
+    if (text === t("update.progress.preparing", 0) || String(text).includes("already current")) { reached.push("update"); if (text === t("update.progress.preparing", 0)) throw stop; }
     if (text === t("doctor.running")) { reached.push("doctor"); throw stop; }
     if (String(text).startsWith(t("visibility.current", "full"))) reached.push("visibility");
     return { messageId: "m", chatId };

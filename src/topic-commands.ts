@@ -528,6 +528,8 @@ const PROFILE_RE = /^\/profile(?:@\w+)?(?:\s+([\s\S]*))?$/;
 const RESTART_RE = /^\/restart(?:@[A-Za-z0-9_]*)?(?:\s+(.*))?$/i;
 const LEGACY_INSTALL_RE = /^\/install[-_]cli(?:@\S+)?(?:\s+([\s\S]*))?$/;
 const VISIBILITY_RE = /^\/visibility(?:@\S+)?(?:\s+([\s\S]*))?$/i;
+/** `/update`, `/update@bot`, and the same with a trailing `now`. `/update nowhere` is the agent's text. */
+const UPDATE_RE = /^\/update(?:@\S+)?(?:\s+now)?$/i;
 /** `/name` or `/name@bot`. */
 const bare = (name: string) => (text: string) => text === `/${name}` || text.startsWith(`/${name}@`);
 /** `/name`, `/name@bot`, or `/name <args>`. */
@@ -549,7 +551,7 @@ const GENERAL_FORMS: TypedForms = [
   ["tips", withArgs("tips")],
   ["login", withArgs("login")],
   ["install-cli", text => LEGACY_INSTALL_RE.test(text)],
-  ["update", bare("update")],
+  ["update", text => UPDATE_RE.test(text.trim())],
   // #1569: /web is the same command — recognized here as /dashboard, so the gate, refusals and handler are one path.
   ["dashboard", text => withArgs("dashboard")(text) || withArgs("web")(text)],
   ["visibility", text => VISIBILITY_RE.test(text)],
@@ -1767,14 +1769,26 @@ export class TopicCommands {
       return;
     }
 
+    // Bare `/update` posts the card. `/update now` keeps today's immediate path.
+    const immediate = /^\/update(?:@\S+)?\s+now\b/i.test((msg.text ?? "").trim());
+    if (!immediate) {
+      await adapter.sendText(chatId, this.ctx.describeUpdateOffer?.() ?? t("update.offer.none", "AgEnD"), { threadId });
+      return;
+    }
+    const refused = this.ctx.refuseImmediateUpdate?.();
+    if (refused) {
+      await adapter.sendText(chatId, refused, { threadId });
+      return;
+    }
+
     const sent = await adapter.sendText(chatId, t("update.progress.preparing", 0), { threadId });
     this.ctx.beginUpdateProgress?.(adapter, chatId, threadId, sent.messageId);
 
     // The CLI picks the channel from the installed version it replaces; see UPDATE_COMMAND. #1450 C5: the INSTALLED
     // agend, verified by identity, by absolute path — or a refusal, never whatever `agend` is first on PATH.
     // M-3770 (#4480 §4): the machine's pre-flight, proven again now, before the installed agend is resolved or run.
-    const refused = await this.ctx.updatePreflightGate?.("press");
-    if (refused) { this.ctx.failUpdateProgress?.(refused); return; }
+    const preflightRefusal = await this.ctx.updatePreflightGate?.("press");
+    if (preflightRefusal) { this.ctx.failUpdateProgress?.(preflightRefusal); return; }
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
       this.ctx.failUpdateProgress?.(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);
@@ -1792,6 +1806,7 @@ export class TopicCommands {
       this.ctx.failUpdateProgress?.(t("not_authorized"));
       return;
     }
+    this.ctx.beginUpdateRun?.();
     const logPath = updateLogPath(this.ctx.dataDir);
     const ts = new Date().toISOString();
     const logFd = openUpdateLog(logPath, `--- /update ${ts} ---`);

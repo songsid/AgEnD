@@ -148,12 +148,12 @@ async function handler(platform: "discord" | "telegram", admin = () => true) {
   if (platform === "discord") {
     const fm = new FleetManager(scratch()); managers.push(fm);
     Object.assign(fm, { fleetAdminGate: () => admin() ? "ok" : "denied", failUpdateProgress: failed });
-    await (fm as any).handleUpdateSlash({ channelId: "general", userId: "admin", respond: vi.fn().mockResolvedValue(undefined) }, "discord-main");
+    await (fm as any).handleUpdateSlash({ channelId: "general", userId: "admin", options: { now: true }, respond: vi.fn().mockResolvedValue(undefined) }, "discord-main");
   } else {
     const adapter = { id: "telegram-main", type: "telegram", sendText: vi.fn().mockResolvedValue({ messageId: "m" }) };
     const commands = new TopicCommands({ adapter, adapters: new Map([[adapter.id, adapter]]), dataDir: scratch(),
       hasFleetAdmins: () => true, isFleetAdmin: admin, isFleetStopping: () => false, failUpdateProgress: failed, fleetConfig: { channel: {} } } as any);
-    await (commands as any).handleUpdateCommand({ chatId: "group", threadId: "1", userId: "admin", adapterId: adapter.id });
+    await (commands as any).handleUpdateCommand({ text: "/update now", chatId: "group", threadId: "1", userId: "admin", adapterId: adapter.id });
   }
   return failed;
 }
@@ -235,8 +235,8 @@ function fleetHandler(platform: "discord" | "telegram") {
   vi.spyOn(fm as any, "shutdownLoginWindows").mockResolvedValue(undefined);
   vi.spyOn(fm as any, "stopPreviewListener").mockReturnValue(undefined);
   const run = () => platform === "discord"
-    ? (fm as any).handleUpdateSlash({ channelId: "general", userId: "admin", respond: vi.fn().mockResolvedValue("m") }, adapter.id)
-    : (fm as any).topicCommands.handleUpdateCommand({ chatId: "group", threadId: "1", userId: "admin", adapterId: adapter.id });
+    ? (fm as any).handleUpdateSlash({ channelId: "general", userId: "admin", options: { now: true }, respond: vi.fn().mockResolvedValue("m") }, adapter.id)
+    : (fm as any).topicCommands.handleUpdateCommand({ text: "/update now", chatId: "group", threadId: "1", userId: "admin", adapterId: adapter.id });
   return { fm, config, adapter, failed, run };
 }
 

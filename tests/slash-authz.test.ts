@@ -359,7 +359,7 @@ describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admin
     expect((await slash(r, "discord", { command: "visibility", userId: "admin" }))[0]).toContain(t("visibility.current", "full"));
     expect((await slash(r, "discord", { command: "visibility", userId: "admin", options: { mode: "summary" } }))[0]).toContain(t("visibility.set", "summary"));
     expect(r.fm.fleetConfig!.defaults.cross_instance_visibility).toBe("summary");
-    const update = await slash(r, "discord", { command: "update", userId: "admin" });
+    const update = await slash(r, "discord", { command: "update", userId: "admin", options: { now: true } });
     expect(update).toEqual([t("update.progress.preparing", 0)]);
     await vi.waitFor(() => expect(spawned).toHaveLength(1)); // the stubbed spawn: nothing real ran (M-3770: after the pre-flight)
     // #1120: the update the fleet launches names who asked, so the CLI it starts is a recorded, authorised call
@@ -452,7 +452,7 @@ describe("the typed versions of /update /doctor /dashboard follow the same rule"
 
   it("typed /update is served to the invoking adapter's own admin and to nobody else", async () => {
     const r = await rig({ primary: OPEN, second: { mode: "open", allowed_users: ["ops"] } });
-    expect(await typed(r, "second", "/update", "ops")).toEqual([t("update.progress.preparing", 0)]);
+    expect(await typed(r, "second", "/update now", "ops")).toEqual([t("update.progress.preparing", 0)]);
     expect(spawned).toHaveLength(1);                                        // the stubbed spawn
     expect((spawned[0]![2] as any).env.AGEND_RESTART_ORIGIN).toBe("command /update by second:ops");
     expect(await typed(r, "second", "/update", "admin")).toEqual([t("not_authorized")]);   // admin of "discord", not of "second"
