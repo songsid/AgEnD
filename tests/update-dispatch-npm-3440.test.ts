@@ -5,12 +5,18 @@
  * on PATH, so the CLI's own npm checks use the same npm. An npm is accepted only when its global root is the running
  * package's own. (From the 雲晴家 fleet operator's patch, adapted to that acceptance rule.)
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { colocatedNpm, DELAYED_UPDATE_SCRIPT, resolveInstalledAgend, type DispatchDeps } from "../src/update-dispatch.js";
+// M-3770: an update launch proves the machine's pre-flight first (#4480 §4); here the machine is one that may update
+// itself, and no probe (npm, systemctl) runs.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }], Date.now())) };
+});
 
 const NVM = "/home/u/.nvm/versions/node/v22.23.1";
 const NVM_PKG = `${NVM}/lib/node_modules/@songsid/agend`;
