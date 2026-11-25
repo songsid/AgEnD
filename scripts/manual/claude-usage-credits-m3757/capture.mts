@@ -58,6 +58,17 @@ try {
       const lines = await titleEl.evaluate((e: Element) => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].map(x => Math.round(x.top))).size; });
       check(`${tag}: the title fits on one line`, lines === 1, lines);
       check(`${tag}: one .n-detail sentence carries the bill`, (await card.locator(".n-detail").allInnerTexts()).map(x => x.trim()).join("|") === W.detail, await card.locator(".n-detail").allInnerTexts());
+      // The bill sentence: no stub last line, and in Chinese no break inside a word (it wraps at spaces and punctuation).
+      const detailLines = (sel: string, root: any) => root.locator(sel).first().evaluate((e: Element) => {
+        const r = document.createRange(); r.selectNodeContents(e); const rows = new Map<number, number>();
+        for (const x of r.getClientRects()) { const k = Math.round(x.top); rows.set(k, (rows.get(k) ?? 0) + x.width); }
+        const w = [...rows.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => Math.round(v));
+        const text = (e as HTMLElement).innerText; return { w, split: w.length > 1 && /[\u4e00-\u9fff][\u4e00-\u9fff]/.test(text) ? text : null };
+      });
+      const wrapOk = (d: { w: number[] }) => d.w.length === 1 || d.w[d.w.length - 1]! >= 0.4 * d.w[d.w.length - 2]!;
+      const nd = await detailLines(".n-detail", card);
+      check(`${tag}: the bill sentence leaves no stub last line`, wrapOk(nd), nd);
+      check(`${tag}: the bill sentence wraps only at spaces and punctuation`, await card.locator(".n-detail").evaluate((e: Element) => getComputedStyle(e).wordBreak === "keep-all"), null);
       const order = await card.evaluate((e: Element) => [...e.querySelector(".n-body")!.children].map(c => c.className || c.tagName.toLowerCase()));
       check(`${tag}: standard order — title, detail, Claude's text folded right under it, then .n-actions`, JSON.stringify(order) === JSON.stringify(["n-title", "n-detail", "n-raw", "n-actions"]), order);
       const gap = await card.evaluate((e: Element) => Math.round(e.querySelector("details.n-raw")!.getBoundingClientRect().top - e.querySelector(".n-detail")!.getBoundingClientRect().bottom));
@@ -116,6 +127,8 @@ try {
       await chat.waitFor({ state: "visible", timeout: 20_000 });
       check(`${tag}: the chat names the agent in its title`, (await chat.locator(".txt strong").innerText()).trim() === (zh ? "Lumen：Fable 5.2 要另外收費，要換模型嗎？" : "Lumen: Fable 5.2 now costs extra. Switch model?"), await chat.locator(".txt strong").innerText());
       check(`${tag}: the chat carries the same bill sentence`, (await chat.locator(".prompt-detail").innerText()).trim() === W.detail, await chat.locator(".prompt-detail").innerText());
+      const cd = await detailLines(".prompt-detail", chat);
+      check(`${tag}: the chat's bill sentence leaves no stub last line`, wrapOk(cd), cd);
       const chatLabels = (await chat.locator(".acts > .btn").allInnerTexts()).map(x => x.trim());
       check(`${tag}: the chat's choices are the same short buttons`, JSON.stringify(chatLabels) === JSON.stringify([W.sw, W.cr]), chatLabels);
       const chatControls = await chat.locator("details.n-raw > summary, .acts > .btn").evaluateAll(boxOf);
