@@ -97,6 +97,9 @@ Links inside a directory or archive are listed as notes and not followed.
   - the fields of a dialog/error entry that hold AgEnD's own words (`description`, `message`, …), and the `name`/`key`/`description` arguments of the file's own helpers (`claudeConfirmDialogEntries(pattern, "Claude workspace trust dialog", …)`);
   - the arguments of `t()`, logger calls and Error constructors;
   - the declarations `sources.json` excludes (command builders, config writers, CLI help parsers).
+- **What it marks** (`sources.json`, per top-level declaration: a release or place for all of its text, or a map from exact texts to one):
+  - `retired`: text upstream removed after the release named. AgEnD keeps the detector for hosts still on an older release, and the precheck lists the text under `RETIRED UPSTREAM`, not as a finding. kiro-cli 3.6.0 deleted its dead Classic (v1) harness; the 15 texts that went with it are retired after 3.5.0 (M-3752).
+  - `embedded`: text the CLI keeps where this stdlib-only precheck cannot read. kiro-cli carries its TUI (`tui.js`) and its engine as zstd frames inside the binary, and Python's standard library before 3.14 has no zstd. The precheck never takes a third-party decoder, because it parses untrusted downloads. A marked text whose plain copy goes is listed under `EMBEDDED ONLY`, not judged, and every kiro-cli run prints a note that the frames were not read, so the blind spot shows in every report.
 
 When a detector changes in `src/`, rebuild it:
 
