@@ -65,7 +65,7 @@ describe("M-3770 1.4: the card on the banner", () => {
     answer = r => (r.url === "/ui/update" ? { body: info } : r.url === "/ui/update/answer" ? { body: { card: CARD({ state: "waiting-idle", waitingFor: ["Example helper", "writer"], waitingSince: Date.now() }) } } : undefined);
     await mountShell();
     expect(text()).toContain("AgEnD 2.4.1 is ready.");
-    expect(text()).toContain("Your work continues; if it won't start, AgEnD rolls back to 2.4.0.");
+    expect(text()).toContain("Your work continues; if it won't start, AgEnD tries to roll back to 2.4.0.");
     expect(["Update when idle", "Pick a time", "Not now"].every((b) => !!button(b))).toBe(true);
     expect(button("Later")).toBeUndefined();                                  // the per-browser Later is gone with the card
     await press("Update when idle");
@@ -81,12 +81,12 @@ describe("M-3770 1.4: the card on the banner", () => {
     answer = r => (r.url === "/ui/update" ? { body: ADMIN({ preflight: { ...SELF, class: "admin-only", checks: [{ id: "P3", ok: false, code: "not-service" }] } }) } : undefined);
     await mountShell();
     expect(text()).toContain("this setup can't restart AgEnD by itself");
-    expect(text()).not.toContain("rolls back");
+    expect(text()).not.toContain("roll back");
     await p.unmount(); upd.updateStore.set({ info: null });
     answer = r => (r.url === "/ui/update" ? { body: ADMIN({ preflight: null }) } : undefined);
     await mountShell();
     expect(text()).toContain("Your work continues.");
-    expect(text()).not.toContain("rolls back");
+    expect(text()).not.toContain("roll back");
     expect(text()).not.toContain("can't restart");
     expect(!!button("Update when idle")).toBe(true);                         // no pre-flight yet: as today, the admin may press
   });

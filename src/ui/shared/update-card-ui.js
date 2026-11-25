@@ -15,7 +15,7 @@ register("updatecard", {
   en: {
     ready: "AgEnD {0} is ready.",
     continues: "Your work continues.",
-    backPhase1: "Your work continues; if it won't start, AgEnD rolls back to {0}.",
+    backPhase1: "Your work continues; if it won't start, AgEnD tries to roll back to {0}.",
     noWayBack: "Your work continues; this setup can't restart AgEnD by itself, so check on it afterwards.",
     howTo: "How to update", pressOnlyLine: "AgEnD can't update itself on this machine; update it by hand.", more: "+{0}",
     whenIdle: "Update when idle", pickTime: "Pick a time", notNow: "Not now", updateNow: "Update now", cancel: "Cancel",
@@ -63,7 +63,7 @@ register("updatecard", {
   "zh-TW": {
     ready: "AgEnD {0} 可以更新了。",
     continues: "工作不會中斷。",
-    backPhase1: "工作不會中斷；新版起不來會自動退回 {0}。",
+    backPhase1: "工作不會中斷；新版起不來時，AgEnD 會嘗試退回 {0}。",
     noWayBack: "工作不會中斷；這台機器無法自行重新啟動 AgEnD，更新後請確認一下。",
     howTo: "如何更新", pressOnlyLine: "這台機器上 AgEnD 無法自行更新，請手動更新。", more: "+{0}",
     whenIdle: "閒置時更新", pickTime: "選個時間", notNow: "先不要", updateNow: "立即更新", cancel: "取消",
