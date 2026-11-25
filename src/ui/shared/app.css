@@ -977,6 +977,7 @@ img.amb-p { object-fit: contain; }
 .prompt .prompt-detail { color: var(--text-2); }
 /* The bill sentence wraps at spaces and punctuation only (never inside 「另外」), balanced so no stub is left alone. */
 .n-usage-credits .n-detail, .prompt-usage-credits .prompt-detail { word-break: keep-all; overflow-wrap: anywhere; text-wrap: balance; }
+.prompt-usage-credits > .txt:first-child { text-wrap: balance; }
 /* Phone and touch: the fold and the chat prompt's choices are tap targets, as .n-actions buttons are. */
 @media (max-width: 899px), (pointer: coarse) {
   .n-raw > summary { min-height: var(--tap); line-height: var(--tap); }
