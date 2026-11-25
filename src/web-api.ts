@@ -2816,7 +2816,8 @@ export function handleWebRequest(
         // The session must still be the same one when the answer goes out (it may have ended while git ran).
         const answer = async () => {
           if (op === "changes") return { kind: "json" as const, body: await workspaceChanges(ws) };
-          if (op === "list") return { kind: "json" as const, body: await workspaceList(ws, p.get("path") ?? "") };
+          // M-3765: `ignored=1` lists what git ignores too (each marked); soul.md at the top is listed either way.
+          if (op === "list") return { kind: "json" as const, body: await workspaceList(ws, p.get("path") ?? "", { showIgnored: p.get("ignored") === "1" }) };
           if (op === "file") return { kind: "json" as const, body: await workspaceFile(ws, p.get("path")) };
           if (op === "diff") return { kind: "json" as const, body: await workspaceFileDiff(ws, p.get("path")) };
           if (op === "follow") {

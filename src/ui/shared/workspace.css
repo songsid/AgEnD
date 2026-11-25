@@ -18,3 +18,10 @@
 .ws-viewer-head { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-2); }
 .ws-text .ws-ln { color: var(--text-3); user-select: none; padding-right: var(--s-3); }
 .ws-image { max-width: 100%; height: auto; display: block; border-radius: var(--r-sm); }
+/* M-3765: what git ignores, listed on request (soul.md always): a toggle above the tree, and the entries a little quieter. */
+.ws-ignored-toggle { display: inline-flex; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-2); font-size: var(--fs-sm); color: var(--text-2); cursor: pointer; }
+.ws-entry.is-ignored .ws-name { color: var(--text-2); }
+@media (max-width: 899px), (pointer: coarse) { .ws-ignored-toggle { min-height: var(--tap); } }
+/* M-3765 capture check: a folder in the tree opens as its own listing, never expanded in place, so its chevron points right
+   (collapsed); the chevron icon itself points down. */
+.ws-entry.t-dir .ws-entry-btn > .icon { transform: rotate(-90deg); }

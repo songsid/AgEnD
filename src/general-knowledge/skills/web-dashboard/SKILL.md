@@ -268,7 +268,9 @@ model wrote a summary.
 **Files & changes (#3153, #3160, alpha).** An agent's **⋯ → Files & changes** opens the folder it works in, read-only
 (secret-looking files such as `.env` and keys are hidden): tabs **Changes** and **Files**, **Refresh**. **Follow
 agent** shows the file a local Claude Code or Codex agent is reading, editing or searching as it works; scrolling or
-choosing a file pauses it (**Paused · Resume**).
+choosing a file pauses it (**Paused · Resume**). **Files** leaves out what git ignores, except the agent's `soul.md` at the
+folder's top (marked "ignored by git"). **Show git-ignored files** lists the rest too (`node_modules`, build output…), each
+marked; secret-looking files stay hidden.
 
 **Buttons and polls.** An agent's reply can carry up to 10 buttons ("Choices"); a click shows as a 🔘 chip and the
 agent receives `[button] <label>` (with `(value: …)` when it differs). Buttons expire after 24 h ("Expired — reply in
