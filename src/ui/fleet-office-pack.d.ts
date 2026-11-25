@@ -50,6 +50,8 @@ export interface CheckedPack {
   idleVisits?: Array<{ area: string; weight: number; minSeconds: number; maxSeconds: number }>;
   /** M-3432 (#4255): optional custom snacks the viewer may drag-to-feed or place on the floor. */
   snacks?: PackSnack[];
+  /** A train on a loop of track (fleet-office-vehicles.js); agents ride by office_set `ride`. */
+  vehicles?: PackVehicle[];
 }
 /** M-3432 (#4255): one custom snack item from a pack's `snacks` list. */
 export interface PackSnack {
@@ -149,3 +151,11 @@ export function overridesBetween(pack: CheckedPack, edited: CheckedPack): Layout
 export function poseStrip(set: Record<string, PackStrip> | null | undefined, pose: string, heading?: { dx: number; dy: number } | null): { strip: PackStrip; mirror: boolean } | null;
 export function walkStrip(f: { walk?: Record<string, PackStrip> | null; walking?: boolean; heading?: { dx: number; dy: number } | null } | null | undefined): { strip: PackStrip; mirror: boolean } | null;
 export function stripBox(st: PackStrip, x: number, y: number, mirror?: boolean): { x: number; y: number; w: number; h: number };
+
+/** A pack's vehicle, checked: round its closed `path` at `speed` units a second, waiting at each stop; riders sit at `seats`. */
+export interface PackVehicle {
+  id: string; label?: string; sprite: PackStrip | null; sprites?: Partial<Record<"right" | "left" | "up" | "down", PackStrip>>;
+  fronts?: Partial<Record<"right" | "left" | "up" | "down", PackStrip>>;
+  path: PackPoint[]; speed: number; stops: Array<{ at: number; seconds: number; platform: PackPoint }>; seats: Array<{ dx: number; dy: number }>;
+}
+export const VEHICLE_LIMITS: { vehicles: number; path: number; stops: number; seats: number; minSpeed: number; maxSpeed: number; defaultSpeed: number; maxSeconds: number; defaultSeconds: number; offset: number };

@@ -322,7 +322,8 @@ export const OfficeSetArgs = z.object({
   }).strict().optional().describe("Where to walk: exactly one of seat, waypoint or person"),
   say: z.string().min(1).max(40).optional().describe("A speech bubble over your character: 1..40 characters, one line"),
   pose: z.enum(["idle", "working", "needs", "paused"]).optional().describe("How your character is drawn meanwhile"),
-  seconds: z.number().min(5).max(120).optional().describe("How long it lasts, 5..120 (default 30); then the dashboard puts you back by your state"),
+  ride: z.string().min(1).max(40).optional().describe("Ride one of the office's vehicles (its id, as office_view lists it): you walk to its platform, wait for it to stop there, board and work in a seat as it goes round; you get off at a stop once the ride ends (clear, a new office_set, or its seconds). Not with go"),
+  seconds: z.number().min(5).max(28800).optional().describe("How long it lasts, 5..120 (default 30); a ride 60..28800 (default 3600); then the dashboard puts you back by your state"),
   clear: z.boolean().optional().describe("true: end your current act now (alone, with nothing else)"),
 }).strict();
 
