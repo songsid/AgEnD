@@ -1,0 +1,55 @@
+{
+  "baseline": "bb91baddbd36e78fea74d10b0e9197032b0108ec",
+  "featureEnabled": false,
+  "productionDispatcherCapability": 0,
+  "baseRegression": {
+    "semanticFailures": 1,
+    "legacyPositivePassed": 1
+  },
+  "focused": {
+    "files": 2,
+    "tests": 22
+  },
+  "neighbors": {
+    "files": 11,
+    "tests": 174,
+    "finalSource": true
+  },
+  "sourceBuildAndTypes": 0,
+  "testTypes": 0,
+  "mutations": {
+    "startupCompatibilityCheckRemoved": "semantic red",
+    "legacyUdfGuardRemoved": "semantic red",
+    "sourcesRestored": true
+  },
+  "publishedProbes": {
+    "cases": 12,
+    "activeCases": 9,
+    "activeClaims": 0,
+    "activeStubDispatchCalls": 0,
+    "allActiveRowsUnchanged": true,
+    "oldStartupOutboxPublished": false,
+    "inactivePositiveControls": 3
+  },
+  "sourceSha256": {
+    "src/delivery-outbox.ts": "6d7f385aa22e60778d7cd69e42a532750d92f1ab2af88b8fceb8bba12be984ff",
+    "src/request-context-protocol.ts": "fa9dcc66281ac0c6b9edcb48bed0e703de7eab1e0ec6e7cdf334159e48ade5fe",
+    "src/request-context-compatibility.ts": "80c66d0438d0085686fede5261ff5773acd8760d9469e27245c1692991b78714",
+    "scripts/check-request-context-downgrade.mjs": "7bcb7169d2c741fa3486866ae2af7f4eb47b09f9613dc0092f9a73489fa0ac01",
+    "scripts/request-context-downgrade-phase.mjs": "d18a932db52b56e4cafa7102df191f9e43ae93692a88f983997d60d53efbb476"
+  },
+  "executedCurrentArtifactSha256": {
+    "dist/delivery-outbox.js": "571a951b64ee5016e4fae42abf115660d3b8e2c6313cc213a90031256adc4c37",
+    "dist/request-context-compatibility.js": "fa4e8b5a92b0b86f5db568267f718d777b87e9387698a0334bf35503d6e46aa6"
+  },
+  "limits": [
+    "Old published outbox and startup recovery helper code executed in isolated Node children; no product launcher/service or real IPC input started.",
+    "Default production constructors stay capability0; capability1 is exercised only as a future-dispatch fixture.",
+    "No deactivation path before the later drain/cutover contract.",
+    "Barrier is compatibility protection, not isolation from same-UID database/code modification."
+  ],
+  "nullDispatcherRegression": {
+    "beforeFix": "semantic red",
+    "afterFix": "pass"
+  }
+}
