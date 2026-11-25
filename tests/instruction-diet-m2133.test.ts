@@ -72,7 +72,8 @@ describe("M-3526: shorter words, the same schemas", () => {
   });
   it("the default worker menu stays inside its budget (13.9k o200k before; about 9.9k after)", () => {
     expect(Buffer.byteLength(JSON.stringify(menu("worker")))).toBeLessThan(46_000);   // 43.4 KB now; 59.9 KB before
-    expect(Buffer.byteLength(JSON.stringify(menu("general")))).toBeLessThan(66_000);   // 80.9 KB before
+    // 80.9 KB before; M-3693 adds 0.8 KB (contact_state and a propose_contact_change description General can use — Lumen's admin audit).
+    expect(Buffer.byteLength(JSON.stringify(menu("general")))).toBeLessThan(67_000);
   });
   it("the task tool tells an agent how to point at a card (#M-3, not a URL) in one sentence — what it costs: tests/task-card-ref-hint.test.ts", () => {
     const description = TOOLS.find(t => t.name === "task")!.description!;

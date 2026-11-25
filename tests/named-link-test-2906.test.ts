@@ -337,8 +337,8 @@ describe("#2906 at launch: a registered tunnel whose self-probe cannot connect i
     expect(t("dashboard.progress.fail.named-self-unreachable")).toMatch(/^the tunnel is connected to Cloudflare, but this machine can't open its own address — this machine's network may block/);
     expect(t("dashboard.progress.fail.named-connection-failed")).toMatch(/^the tunnel could not connect to Cloudflare from this machine — ask the network administrator/);
     setLocale("zh-TW");
-    expect(t("dashboard.progress.fail.named-self-unreachable")).toMatch(/^tunnel 已連上 Cloudflare，但這台主機打不開自己的網址 — 這台主機所在的網路可能擋了/);
-    expect(t("dashboard.progress.fail.named-connection-failed")).toMatch(/^這台主機連不上 Cloudflare，tunnel 沒有連線 — 請網路管理員/);
+    expect(t("dashboard.progress.fail.named-self-unreachable")).toMatch(/^通道已連上 Cloudflare，但這台主機打不開自己的網址 — 這台主機所在的網路可能擋了/);
+    expect(t("dashboard.progress.fail.named-connection-failed")).toMatch(/^這台主機連不上 Cloudflare，通道沒有連線 — 請網路管理員/);
   });
 });
 

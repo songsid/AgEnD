@@ -38,17 +38,17 @@ The most used keys. The [full reference](https://github.com/songsid/AgEnD/blob/m
 | Key | Default | What it does |
 |---|---|---|
 | `web.usage_panel` | `true` | `false` hides subscription usage everywhere and disables `/api/ai-usage` |
-| `web.log_tab` | `false` | Turns on each instance's **Log** tab. For Claude Code and Codex it shows the prompts, replies, tool calls and errors from the agent's transcript, secrets masked. Other backends (Kiro included) show fleet events only, with the reason |
+| `web.log_tab` | `false` | Turns on each instance's **Log** tab. For Claude Code, Codex, Antigravity and Grok it shows the prompts, replies, tool calls and errors from the agent's transcript, secrets masked. Other backends (Kiro included) show fleet events only, with the reason |
 | `web.allowed_hosts` | — | Extra `Host` names the dashboard answers to behind a reverse proxy or port forward. Any other `Host` gets 403 |
 | `web.view_access` | `open` | `session` closes `/view` to anyone not signed in |
 | `web.notify_login` | `true` | `false` stops General being told about each local web sign-in |
-| `web.session.local.absolute_hours` / `.idle_hours` | `48` / `48` | How long a sign-in on the directly reached dashboard lasts (up to 720). A public-link session is fixed at 4 h / 30 min idle |
+| `web.session.local.absolute_hours` / `.idle_hours` | `48` / `48` | How long a sign-in on the directly reached dashboard lasts (up to 720). A public-link session lasts at most 8 h / 30 min idle, longer with your own domain (`web.session.public_link`: absolute 1–168 h, idle 5–1440 min) |
 | `web.preview` | `true` | `false` turns off HTML previews in web chat |
 | `web.public_link.allow_public` | `true` | `false` removes the temporary public link from `/web` and closes one already open |
 | `web.public_link.ttl_minutes` | `120` | Lifetime of a public link: 1–480 on a quick tunnel; 1–10080, or `0` for no expiry, with your own domain |
 | `web.public_link.hostname` | — | Your own domain for a named Cloudflare tunnel. The link keeps the same address each time. The tunnel token is set in Settings and never shown back |
 | `web.public_link.auto_open` | `false` | With your own domain: reopen the public link after a fleet restart, for the admin who opened it last |
-| `web.verified_authority.named_link` | `false` | Lets a browser you have verified act with your account, through your own domain only. A quick tunnel is `quick_link`'s |
+| `web.verified_authority.named_link` | `true` | Lets a browser you have verified act with your account, through your own domain only. A quick tunnel is `quick_link`'s |
 | `web.verified_authority.quick_link` | `true` | Lets a browser you have verified act with your account over the temporary public link `/web` opens (each browser still confirmed in your DM). `false` turns it off |
 | `web.search.retention_days` | `90` in 2.3.0; unset (`0`) from 2.3.1 | From 2.3.1, unset and `0` = no age limit (300,000-row cap still applies); 1–3650 age-prunes. 2.3.0 default is 90 days |
 | `web.experimental.canvas_worker` | — | Ignored: Canvas Worker effects were removed (#2793). A saved value still loads. The built-in ambient effects are not affected |
@@ -256,7 +256,7 @@ The events sent are `hang`, `mcp_died`, `pty_error`, `pty_recovered`, `cost_warn
 
 ## Credential profiles
 
-A CLI backend keeps its login in one place, so every instance shares one account. For **Kiro CLI, Codex and Claude Code**, `credential_profile` gives an instance a named, separate login. Other backends ignore it, with a warning.
+A CLI backend keeps its login in one place, so every instance shares one account. For **Kiro CLI, Codex, Claude Code and Antigravity**, `credential_profile` gives an instance a named, separate login. Other backends ignore it, with a warning.
 
 ```yaml
 instances:
@@ -272,7 +272,7 @@ instances:
         credential_profile: personal
 ```
 
-Instances naming the same profile share a login. An instance without its own `credential_profile` inherits the fleet default. Only an effective empty/unset profile uses the shared login without creating a profile directory. Profiles live under `~/.agend/credential-profiles/<backend>/<profile>`.
+Instances naming the same profile share a login. An instance without its own `credential_profile` inherits the fleet default. Only an effective empty/unset profile uses the shared login without creating a profile directory. Profiles live under `~/.agend/credential-profiles/<backend>/<profile>`. Saved (managed) credentials are kept in a private host store and managed in **Settings → AI accounts & keys → Accounts**; their usage rows show no subscription meters.
 
 Log a profile in once:
 
@@ -281,6 +281,7 @@ Log a profile in once:
 | Claude Code | `/login claude-code work` from chat (works from a phone), or on the host: `CLAUDE_CONFIG_DIR=~/.agend/credential-profiles/claude-code/work claude auth login` |
 | Kiro CLI | On the host: `XDG_DATA_HOME=~/.agend/credential-profiles/kiro-cli/work kiro-cli login` |
 | Codex | On the host: `CODEX_HOME=~/.agend/credential-profiles/codex/work codex login` |
+| Antigravity | In **Settings → AI accounts & keys → Accounts** (default and named accounts) |
 
 To move an existing agent, ask General in plain language, for example "move research-a to the personal subscription". AgEnD changes the config and restarts a running agent; a paused/stopped agent uses it on the next start. **A config change that switches to a profile that was never logged in is refused**,  and the error carries the command that logs it in. `credential_profile: null` clears the agent's own setting, so it follows the fleet default again (normally the shared login). Going back to the shared login is never refused.
 
@@ -337,7 +338,7 @@ channels:
 | `auto_pause_after` / `tool_progress` | as above | inherited | Per-channel overrides |
 | `backend_options` | object | merged defaults | Backend-specific options and credential profile |
 | `display_name` / `description` | string | — | Agent label and description |
-| `web_echo` | boolean | `false` | Copy this room’s web chat to the platform, independent of `web.echo_to_channel` |
+| `web_echo` | boolean | follows `web.echo_to_channel` | Copy this room’s web chat to the platform. An explicit room value overrides the fleet-wide switch; unset rooms inherit it (default `true`); `false` never echoes |
 | `pre_task_command` | string | — | Pasted before every message |
 | `reply_completion_guard` | boolean | from defaults | Override for this channel |
 | `reply_triggers` | boolean | from defaults | Override native-reply triggering for this collab room |

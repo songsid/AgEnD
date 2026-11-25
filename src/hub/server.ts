@@ -1,3 +1,4 @@
+import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY} from "./room-asker-identity-model.js";
 import { HUB_DIRECT_POST_CAPABILITY } from "./direct-posts-model.js";
 import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "./room-answer-status-model.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "./room-members-model.js";
@@ -38,7 +39,7 @@ export interface HubRelocationAck { fleetId: string; linkEpoch: number; digest: 
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
 /** fleet-update-v1 is the existing explicit signal that this peer accepts a 32-name welcome. */
 export function hubWelcomeCapabilities(configured:readonly string[],member:readonly string[]):string[]{
-  return configured.filter(c=>![HUB_FLEET_UPDATE_CAPABILITY,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,HUB_AGENT_CATALOG_CAPABILITY,HUB_EXPOSURE_REQUEST_CAPABILITY,HUB_AGENT_CATALOG_LAPSE_CAPABILITY,HUB_AGENT_INTRO_CAPABILITY,HUB_AGENT_PICTURES_CAPABILITY,HUB_AGENT_CHARACTERS_CAPABILITY,HUB_ROOM_BRIEF_CAPABILITY,HUB_ROOM_MEMBERS_CAPABILITY,HUB_ROOM_ANSWER_STATUS_CAPABILITY,HUB_ASKER_NAME_CAPABILITY,HUB_DIRECT_POST_CAPABILITY].includes(c)||member.includes(HUB_FLEET_UPDATE_CAPABILITY));
+  return configured.filter(c=>(c!==HUB_ROOM_ASKER_IDENTITY_CAPABILITY||(member.includes(c)&&member.includes(HUB_ROOM_ASK_CAPABILITY)&&member.includes("welcome-caps-v1")))&&(![HUB_ROOM_ASKER_IDENTITY_CAPABILITY,HUB_FLEET_UPDATE_CAPABILITY,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,HUB_AGENT_CATALOG_CAPABILITY,HUB_EXPOSURE_REQUEST_CAPABILITY,HUB_AGENT_CATALOG_LAPSE_CAPABILITY,HUB_AGENT_INTRO_CAPABILITY,HUB_AGENT_PICTURES_CAPABILITY,HUB_AGENT_CHARACTERS_CAPABILITY,HUB_ROOM_BRIEF_CAPABILITY,HUB_ROOM_MEMBERS_CAPABILITY,HUB_ROOM_ANSWER_STATUS_CAPABILITY,HUB_ASKER_NAME_CAPABILITY,HUB_DIRECT_POST_CAPABILITY].includes(c)||member.includes(HUB_FLEET_UPDATE_CAPABILITY)));
 }
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout;
   introOffered?: boolean;

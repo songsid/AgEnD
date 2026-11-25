@@ -1694,7 +1694,10 @@ img.amb-p { object-fit: contain; }
 .inst-nav.compact .v-inst { height: 30px; min-height: 30px; padding-block: 0; gap: var(--s-2); }
 .inst-nav.compact .inst-text { flex-direction: row; align-items: center; gap: var(--s-2); }
 .inst-nav.compact .inst-line { flex: 1; min-width: 0; }
-.inst-nav.compact .inst-line2 { flex: none; }
+.inst-nav.compact .inst-line2 { flex: 0 1 auto; min-width: 0; }
+/* M-3674: the name keeps room beside two times (a person's and an agent's); the times ellipsize, the title has them whole. */
+.inst-nav.compact .inst-line { min-width: 40%; }
+.inst-nav.compact .inst-line2 > .inst-when { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .inst-nav.compact .inst-when { color: var(--text-3); font-weight: var(--fw-normal); }
 .inst-nav.compact .inst-row-menu > .icon-btn { height: 28px; min-height: 28px; }
 .inst-status.off { background: var(--text-2); }

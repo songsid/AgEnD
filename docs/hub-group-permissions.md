@@ -20,7 +20,7 @@ A person who is in several groups gets everything any of their groups allows, an
 
 Group permissions need the Hub's directory to be **Active Directory over LDAPS (port 636)**. With any other directory the editor is read-only and says *"This Hub's directory can't be used for group permissions. Group permissions need Active Directory over LDAPS (port 636)."*
 
-Only the Hub's directory administrator can open it. Either:
+Only the Hub administrator can open it. Either:
 
 - **On the Hub:** open the menu on your account in the sidebar (**Menu**), choose **Administration**, then, on the **Group permissions** card (tagged *Preview*), choose **Open group permissions**.
 - **From your fleet's dashboard** (the fleet that hosts the Hub): **Settings → Fleet → Hub**, then, on the **Group permissions** card, choose **Open on the Hub**. It opens the Hub's editor in a new tab.
@@ -32,7 +32,7 @@ Someone who is not the Hub administrator sees *"Only the Hub administrator can s
 1. In **Group (distinguished name)**, type the group's distinguished name, for example `CN=Hub-Members,OU=Groups,DC=example,DC=test`.
 2. Choose **Add group**. The Hub looks the group up in your directory (*"Looking up the group…"*).
 
-The group must be a **security group** that exists in the directory. The editor says so plainly if it is not: *"No such group in the directory."*, *"That is not a security group."*, *"That is not a distinguished name."*, or *"That group is already listed."*
+The group must be a **security group** that exists in the directory. The editor says so plainly if it is not: *"No such group in the directory."*, *"That is not a security group."*, *"That is not a distinguished name."*, or *"That group, team or person is already listed."*
 
 A new group starts with **Chat with agents** only, and **Fleets** set to 1. Tick **Share agents** or **Connect a fleet** as needed. **Fleets** (how many fleets each member may connect, 0–8) can only be changed while **Connect a fleet** is ticked. **Remove** takes a group off the list.
 
@@ -50,7 +50,7 @@ As soon as your draft differs from what is saved, the editor checks who it affec
 | **Paused by this change** | Fleets, shared agents or chat access that the change pauses (see [Pause and resume](#4-turn-off-pause-and-resume)). |
 | **Held, unchanged: N people** | See below. |
 
-If no one loses anything, it says *"No one loses anything they can do now."* If the change would stop **you** from chatting with agents, it warns you first: *"After saving, you won't be able to chat with agents: you are not in a group that allows it."*
+If no one loses anything, it says *"No one loses anything they can do now."* If the change would stop **you** from chatting with agents, it warns you first: *"After saving, you won't be able to chat with agents: no allowed row applies to you."*
 
 **Held.** *"AD did not report group membership for these people. Nothing changes for them now: they gain nothing and nothing of theirs is paused. They are checked again at their next action."* Held people do not stop you from saving. The next time each of them does something on the Hub, the Hub asks the directory again and applies the policy then.
 
@@ -62,21 +62,21 @@ Then choose **Save**, or **Turn on and save** the first time. *"Saved."* confirm
 
 ## 2. What a colleague sees after signing in
 
-After signing in, **Chats** opens the colleague's most recent room or chat. With nothing to open yet (and on **New chat**), it shows one list, *"Who do you want to talk to today?"*. That list has one row for each agent they can talk to: those shared with them, the Hub assistant, and the agents in their rooms. When nobody has shared an agent with them directly, one small card says what to do next, with **New room** and **Share my agent**. On a wide screen a line under the list shows their fleets, for example *"2 fleets connected (Han, My fleet)"*, and links to **My shared agents**.
+After signing in, **Chats** opens the colleague's most recent room or chat. With nothing to open yet (and on **New chat**), it shows one list, *"Who do you want to talk to today?"*. That list has one row for each agent they can talk to: those shared with them, the Hub assistant, and the agents in their rooms. When nobody has shared an agent with them directly, one small card says what to do next, with **New room** and **Share my agent**. On a wide screen a line under the list shows their fleets, for example *"2 fleets connected (Han, My fleet)"*, and links to **My agents**.
 
-Their fleets are listed in **My shared agents** → **My fleets**. Each fleet is a row with its state. When they may revoke it, **Revoke this fleet** is in the row's **⋯** menu and asks first. While they have no fleet, the steps to connect one are shown. Once they have one, the steps sit behind **+ Connect another fleet**: the address to paste in AgEnD's **Settings → Hub**, with **Copy**. What they see depends on what their groups allow:
+Their fleets are listed in **My agents** → **My fleets**. Each fleet is a row with its state. When they may revoke it, **Revoke this fleet** is in the row's **⋯** menu and asks first. While they have no fleet, the steps to connect one are shown. Once they have one, the steps sit behind **+ Connect another fleet**: the address to paste in AgEnD's **Settings → Hub**, with **Copy**. What they see depends on what their groups allow:
 
 | Their access | What they see |
 |---|---|
 | **Chat and Connect a fleet** | The list in **Chats**. **My fleets** shows *"N of M"*, their fleets and the steps to connect one. An older Hub or cached client keeps the administrator pairing-code guidance. |
 | **Chat only** | The list in **Chats**. **My fleets** says *"Connecting a fleet is not included in your access."* |
-| **Nothing allowed** | **Chats** says *"Your account can sign in, but no actions are allowed yet."* *"Contact your Hub admin."* |
-| **At their fleet limit** | **My fleets** says *"You have connected as many fleets as you may. Manage them, or ask your Hub admin for more."* |
+| **Nothing allowed** | **Chats** says *"Your account can sign in, but no actions are allowed yet."* *"Contact your Hub administrator."* |
+| **At their fleet limit** | **My fleets** says *"You have connected as many fleets as you may. Manage them, or ask your Hub administrator for more."* |
 | **Directory not answering** | *"The directory didn't answer, so this can't be checked right now."* with **Retry**. The Hub never falls back to an old answer. |
 | **Group permissions never turned on** | Chat works as before. **My fleets** isn't shown. |
-| **Group permissions switched off** | **Chats** says *"Paused by your Hub admin."*, and *"Your account can sign in, but no actions are allowed yet."* *"Contact your Hub admin."* |
+| **Group permissions switched off** | **Chats** says *"Paused by your Hub administrator."*, and *"Your account can sign in, but no actions are allowed yet."* *"Contact your Hub administrator."* |
 
-When chatting isn't available to them now, **Chats** says why in one line: *"Your Hub admin has excluded your account from this."*, *"Your directory account can't use this right now."*, or *"Paused by your Hub admin."* Each of their fleets shows its state: **Active**, **Paused**, **Revoked**, or **Can't be checked right now**.
+When chatting isn't available to them now, **Chats** says why in one line: *"Your Hub administrator has excluded your account from this."*, *"Your directory account can't use this right now."*, or *"Paused by your Hub administrator."* Each of their fleets shows its state: **Active**, **Paused**, **Revoked**, or **Can't be checked right now**.
 
 An administrator gets the same **Chats**. On a Hub with no fleet connected yet, they also get one line that can be dismissed: *"Your Hub is ready: create a pairing code to invite colleagues, or set up the room assistant → Open Administration"*.
 
@@ -85,8 +85,8 @@ An administrator gets the same **Chats**. On a Hub with no fleet connected yet, 
 When **Connect a fleet** is allowed and there is a free slot:
 
 1. On the Hub welcome page, type a **Fleet name** you and your Hub admin will recognise and choose **Connect my fleet**. The Hub shows its **Hub address**, a **One-time code** and when the code expires (ten minutes).
-2. In that fleet's web dashboard, open **Settings → Fleet → Hub**. If **Allow this fleet to connect to a Hub** (under **Hub membership**) is off, turn it on first. That change waits for its confirmation (*"Waiting for owner confirmation…"*): confirm it where its card says, in General or on this dashboard.
-3. As soon as it is on, the pairing fields appear below it, with no reload. Enter that address in **Hub address** and the code in **One-time pairing code**, then choose **Connect**. Complete the local Settings confirmation if one is offered.
+2. In that fleet's web dashboard, open **Settings → Fleet → Hub**. If **Allow this fleet to connect to a Hub** (under **Hub membership**) is off, turn it on first. That change waits for its confirmation (*"Waiting for your confirmation…"*): confirm it where its card says, in General or on this dashboard.
+3. Type the Hub address into the fleet's **Hub address** box and choose **Sign in with company account**; a Hub tab opens for company sign-in, then the fleet connects. (If the Hub doesn't offer company sign-in, use **Other ways** below the box instead: enter the member address shown with the code — it ends in a port — in **Hub address** and the 12-character code in **Pairing code**, then choose **Connect**.) Complete the local Settings confirmation if one is offered.
 4. The fleet shows a **Waiting for approval** card with a pairing fingerprint, and the Hub shows its own. Compare them. On the fleet, choose **It matches the Hub's screen**; on the Hub, choose **They match**. If they differ, choose **They differ** and check the address before starting again. Neither screen's confirmation replaces the other.
 5. The Hub shows **Connected** only after the fleet has saved its pin and connected. Pairing does not share any agent. Sharing still needs its own permission and confirmation. **Connect another fleet** starts another pairing while capacity remains.
 

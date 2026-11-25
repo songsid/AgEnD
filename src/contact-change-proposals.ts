@@ -1,8 +1,9 @@
+import { contactPersonKey, normalizeContactPersonKey } from "./contact-auth-store.js";
 /** Contact changes are proposals, never agent-held approval capabilities. */
 import { z } from "zod";
 import { ContactDecisionSchema } from "./contact-auth-policy.js";
 import type { ContactAuthService } from "./contact-auth-service.js";
-import type { ContactPermissionsWrite, ContactPerson, ContactTicketDecision } from "./contact-auth-types.js";
+import type { ContactPermissionsWrite, ContactPerson, ContactTicket, ContactTicketDecision } from "./contact-auth-types.js";
 import { t, getLocale } from "./locale.js";
 const name = z.string().min(1).max(160).regex(/^[^\x00-\x1f\x7f]+$/);
 const revision = z.number().int().nonnegative().optional();
@@ -26,6 +27,8 @@ export const ProposeContactChangeArgs = z.strictObject({ change: z.strictObject(
   const parsed = ContactChangeSchema.safeParse(value);
   if (!parsed.success) for (const issue of parsed.error.issues) ctx.addIssue({ code: "custom", path: issue.path, message: issue.message });
 }) });
+/** M-3693: contact_state's arguments — read-only; `agent` narrows to what involves that agent or room. */
+export const ContactStateArgs = z.strictObject({ agent: z.string().min(1).max(160).optional() });
 export interface ContactChangeHost {
   service: ContactAuthService;
   label?(target: string): string;
@@ -44,18 +47,43 @@ export interface PreparedContactChange {
   authorized(person: ContactPerson): boolean;
   apply(person: ContactPerson): void;
 }
+/** The short id people see — the same rule as the web's shortTicketId (src/ui/contact-auth-client.js): R + 8 hex. */
+export const shortContactTicketId = (id: string): string => /^R[a-f0-9]{8}-[a-f0-9-]{27}$/.test(id) ? id.slice(0, 9) : id;
+/**
+ * M-3693: the held message a person names. People see a 9-character short id (cards, notices, contact_state); the
+ * full id still works. A prefix of at least 9 characters resolves to the one pending ticket starting with it; none or
+ * several are refused, never guessed.
+ */
+export function resolvePendingTicket(store: { get(id: string): ContactTicket | undefined; pendingByPrefix(prefix: string): ContactTicket[] }, id: string): ContactTicket {
+  const exact = store.get(id);
+  if (exact) { if (exact.state !== "pending") throw Error("contact-proposal-ticket-unavailable"); return exact; }
+  if (id.length < 9) throw Error("contact-proposal-ticket-unavailable");
+  // One query over every pending ticket (Prism #4436 P2-1: no page limit can hide a second match).
+  const found = store.pendingByPrefix(id);
+  if (found.length > 1) throw Error("contact-proposal-ticket-ambiguous");
+  if (!found.length) throw Error("contact-proposal-ticket-unavailable");
+  return found[0]!;   // live: the query leaves out a ticket past its expiry; the card re-checks it before Confirm
+}
+const REFUSAL_CODES = new Set(["general-only", "hub-contact-restricted", "contact-proposal-limit", "contact-proposal-ticket-unavailable",
+  "contact-proposal-ticket-ambiguous", "conflict", "stale-generation", "invalid-grant-origin", "contact-proposal-not-room", "not-found",
+  "invalid-grant", "forbidden", "contact-proposal-use-web", "contact-proposal-route-unavailable"]);
+/** M-3693: a refusal General can act on — a sentence with the next step, never a bare code. */
+export function contactProposalRefusal(error: unknown): string {
+  if (error instanceof z.ZodError) return t("contactProposal.err_invalid", error.issues.map(i => `${i.path.join(".") || "change"}: ${i.message}`).join("; "));
+  const code = error instanceof Error ? error.message : String(error);
+  return REFUSAL_CODES.has(code) ? t(`contactProposal.err_${code}`) : t("contactProposal.err_other", code);
+}
 /** Snapshots are daemon-owned and cloned; no identity or confirmation flag is accepted from the tool. */
 export function prepareContactChange(raw: unknown, host: ContactChangeHost): PreparedContactChange {
   const input = ContactChangeSchema.parse(raw), store = host.service.host.store;
-  const ticket = input.kind === "ticket-decision" ? store.get(input.ticket_id) : undefined;
-  if (input.kind === "ticket-decision" && (!ticket || ticket.state !== "pending")) throw Error("contact-proposal-ticket-unavailable");
+  const ticket = input.kind === "ticket-decision" ? resolvePendingTicket(store, input.ticket_id) : undefined;
   const target = input.kind === "ticket-decision" ? ticket!.target : input.target;
   const targetGeneration = host.generation(target), policy = structuredClone(store.policy(target, targetGeneration));
   const pins = new Map([[target, targetGeneration]]);
   const mode = host.mode(target);
   let payload: ContactPermissionsWrite | ContactTicketDecision;
   const label = (name: string) => host.label?.(name) || name;
-  const shortId = (id: string) => id.slice(0, 9);
+  const shortId = shortContactTicketId;
   // A Latin-ending name gets a space before following Chinese prose; punctuation does not.
   const beforeCjk = (value: string): string => getLocale() === "zh-TW" && /[\p{Script=Latin}\p{Number}]$/u.test(value) ? value + " " : value;
   const timeZone = host.timeZone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -76,8 +104,8 @@ export function prepareContactChange(raw: unknown, host: ContactChangeHost): Pre
     const requestLine = t(input.grant ? "contactProposal.request" : input.decision === "decline" ? "contactProposal.declineRequest" : "contactProposal.approveRequest", shortId(ticket!.id), beforeCjk(label(ticket!.source)));
     summary.push(`${requestLine}${getLocale() === "zh-TW" ? "（" : " ("}${t(`contactProposal.verb_${ticket!.verb}`)}${getLocale() === "zh-TW" ? "）" : ")"}`);
     if (input.grant) {
-      const keys = input.grant.personKeys ?? (ticket!.origin.people.length === 1 ? [JSON.stringify([ticket!.origin.people[0]!.platform, ticket!.origin.people[0]!.adapterId, ticket!.origin.people[0]!.userId])] : []);
-      const people = ticket!.origin.people.filter(p => keys.includes(JSON.stringify([p.platform, p.adapterId, p.userId])));
+      const keys = (input.grant.personKeys ?? (ticket!.origin.people.length === 1 ? [contactPersonKey(ticket!.origin.people[0]!)] : [])).map(key => normalizeContactPersonKey(key) ?? "");
+      const people = ticket!.origin.people.filter(p => keys.includes(contactPersonKey(p)));
       if (ticket!.origin.kind === "unknown" || !keys.length || new Set(keys).size !== keys.length || people.length !== keys.length) throw Error("invalid-grant-origin");
       const names = people.map(personName).join(getLocale() === "zh-TW" ? "、" : ", ");
       summary.push(t("contactProposal.allowUntil", beforeCjk(names), label(ticket!.target), when(input.grant.expiresAt)),

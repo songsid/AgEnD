@@ -34,20 +34,37 @@ export interface ContactStoredPolicy {
   roomTools: ContactRoomTools;
 }
 export function contactPersonKey(person: ContactPerson): string {
-  return JSON.stringify([person.platform, person.adapterId, person.userId]);
+  return JSON.stringify([person.platform, person.userId]);
 }
 function unique<T>(values: T[], key: (value: T) => string): T[] {
   return [...new Map(values.map(value => [key(value), value])).values()];
 }
+/** A bot adapter records the route/proof, not a different human on the same platform. */
+export function normalizeContactPersonKey(value: string): string | undefined {
+  try {
+    const parts: unknown = JSON.parse(value);
+    if (!Array.isArray(parts) || ![2, 3].includes(parts.length) || !["discord", "telegram", "host"].includes(parts[0])
+      || !parts.every(part => typeof part === "string" && part.length > 0)) return;
+    return JSON.stringify([parts[0], parts[parts.length - 1]]);
+  } catch { return; }
+}
+export function normalizeContactOrigin(origin: ContactOrigin): ContactOrigin {
+  const people = unique(origin.people, contactPersonKey);
+  // Only collapse a known duplicate-person union. Explicit unknown and a mixed single-person marker stay restricted.
+  const duplicatePerson = origin.kind === "mixed" && origin.people.length > 1 && people.length === 1;
+  const kind = origin.kind === "unknown" || people.length > 16 ? "unknown"
+    : origin.kind === "mixed" && !duplicatePerson ? "mixed" : people.length === 1 ? "human" : "mixed";
+  return { kind, people: people.slice(0, 16), receiptIds: [...new Set(origin.receiptIds)].slice(-64), chain: [...new Set(origin.chain)].slice(-32) };
+}
 export function mergeContactOrigins(before: ContactOrigin | undefined, next: ContactOrigin): ContactOrigin {
-  before ??= { kind: next.kind, people: [], receiptIds: [], chain: [] };
+  next = normalizeContactOrigin(next);
+  if (!before) return next;
+  before = normalizeContactOrigin(before);
   const people = unique([...before.people, ...next.people], contactPersonKey);
-  const receipts = [...new Set([...before.receiptIds, ...next.receiptIds])];
-  const chain = [...new Set([...before.chain, ...next.chain])];
-  // Receipt/hop history is diagnostic. Trimming it must not change the known people's authority.
   const unknown = before.kind === "unknown" || next.kind === "unknown" || people.length > 16;
   return { kind: unknown ? "unknown" : people.length === 1 && before.kind !== "mixed" && next.kind !== "mixed" ? "human" : "mixed",
-    people: people.slice(0, 16), receiptIds: receipts.slice(-64), chain: chain.slice(-32) };
+    people: people.slice(0, 16), receiptIds: [...new Set([...before.receiptIds, ...next.receiptIds])].slice(-64),
+    chain: [...new Set([...before.chain, ...next.chain])].slice(-32) };
 }
 
 /** Server-private data, on the durable outbox connection so approval and admission commit together. */
@@ -131,7 +148,7 @@ export class ContactAuthStore {
   }
   origin(instance: string): ContactOrigin | undefined {
     const row = this.db.prepare("SELECT origin_json FROM contact_auth_origins WHERE instance=?").get(instance) as { origin_json: string } | undefined;
-    return row ? JSON.parse(row.origin_json) as ContactOrigin : undefined;
+    return row ? normalizeContactOrigin(JSON.parse(row.origin_json) as ContactOrigin) : undefined;
   }
   policy(instance: string, generation?: string): ContactStoredPolicy {
     const row = this.db.prepare("SELECT policy_json FROM contact_auth_policies WHERE instance=?").get(instance) as { policy_json: string } | undefined;
@@ -183,6 +200,7 @@ export class ContactAuthStore {
   }
   /** Every known originating person needs an exact row; an unknown origin never matches. */
   matchingGrants(request: ContactRequest): ContactGrant[] {
+    request = { ...request, origin: normalizeContactOrigin(request.origin) };
     if (request.origin.kind === "unknown" || request.origin.people.length === 0) return [];
     const table = this.policy(request.target, request.targetGeneration).grants;
     const matched = request.origin.people.map(person => table.find(grant => grant.target === request.target && grant.source === request.source
@@ -249,6 +267,7 @@ export class ContactAuthStore {
   }
   private read(row: TicketRow): ContactTicket {
     const ticket = JSON.parse(row.ticket_json) as ContactTicket;
+    ticket.origin = normalizeContactOrigin(ticket.origin);
     if (ticket.state === "pending" && Date.parse(ticket.expiresAt) <= this.now()) {
       ticket.state = "expired"; ticket.revision++;
       this.write(ticket);
@@ -261,6 +280,24 @@ export class ContactAuthStore {
   get(id: string): ContactTicket | undefined {
     const row = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE id=?").get(id) as TicketRow | undefined;
     return row ? this.read(row) : undefined;
+  }
+  /**
+   * M-3693: pending tickets as they stand, WITHOUT the expiry write the other reads do (General's contact_state is
+   * read-only). A ticket past its expiry or the application TTL is left out, exactly as those reads would mark it.
+   * `limit` rows at most; `truncated` says more were pending.
+   */
+  pendingSnapshot(limit = 1000): { items: ContactTicket[]; truncated: boolean } {
+    const rows = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE json_extract(ticket_json,'$.state')='pending' AND created_at>? ORDER BY created_at DESC,id LIMIT ?")
+      .all(this.now() - CONTACT_APPLICATION_TTL_MS, limit + 1) as TicketRow[];
+    const items = rows.slice(0, limit).map(row => JSON.parse(row.ticket_json) as ContactTicket).filter(t => Date.parse(t.expiresAt) > this.now());
+    return { items, truncated: rows.length > limit };
+  }
+  /** M-3693: up to two live pending tickets whose id starts with `prefix` (no write); [] for a prefix that is not an id's. */
+  pendingByPrefix(prefix: string): ContactTicket[] {
+    if (!/^[A-Za-z0-9-]+$/.test(prefix)) return [];
+    const rows = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE substr(id,1,?)=? AND json_extract(ticket_json,'$.state')='pending' AND created_at>?")
+      .all(prefix.length, prefix, this.now() - CONTACT_APPLICATION_TTL_MS) as TicketRow[];
+    return rows.map(row => JSON.parse(row.ticket_json) as ContactTicket).filter(t => Date.parse(t.expiresAt) > this.now()).slice(0, 2);
   }
   pending(): ContactTicket[] {
     this.db.prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.state','expired','$.revision',json_extract(ticket_json,'$.revision')+1) "
@@ -300,6 +337,7 @@ export class ContactAuthStore {
       const row = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE id=?").get(id) as TicketRow | undefined;
       if (!row) throw Error("not-found");
       const ticket = this.read(row), request = JSON.parse(row.request_json) as ContactRequest;
+      request.origin = normalizeContactOrigin(request.origin);
       if (!authority.canDecide(ticket.target, actor)) throw Error("forbidden");
       if (ticket.state === "expired") throw Error("expired");
       if (ticket.state !== "pending") throw Error("already-decided");
@@ -315,7 +353,7 @@ export class ContactAuthStore {
           const choice = decision.grant;
           if (!["human", "mixed"].includes(request.origin.kind) || !request.origin.people.length || request.origin.people.length > 16
             || (!choice.personKeys && (request.origin.kind !== "human" || request.origin.people.length !== 1))) throw Error("invalid-grant-origin");
-          const keys = choice.personKeys ?? [contactPersonKey(request.origin.people[0]!)];
+          const keys = choice.personKeys ? choice.personKeys.map(key => normalizeContactPersonKey(key) ?? "") : [contactPersonKey(request.origin.people[0]!)];
           if (!keys.length || keys.length > 16 || new Set(keys).size !== keys.length
             || keys.some(key => !request.origin.people.some(person => contactPersonKey(person) === key))) throw Error("invalid-grant-origin");
           if (!Number.isFinite(Date.parse(choice.expiresAt)) || Date.parse(choice.expiresAt) <= this.now()
@@ -347,6 +385,7 @@ export class ContactAuthStore {
       const ticket = this.read(row);
       if (ticket.state !== "pending") return ticket;
       const request = JSON.parse(row.request_json) as ContactRequest;
+      request.origin = normalizeContactOrigin(request.origin);
       const grants = this.matchingGrants(request), grant = grants[0];
       if (!grant || !grants.every(row => authority.canDecide(request.target, row.createdBy))) return undefined;
       const next = this.decide(id, { revision: ticket.revision, decision: "approve-once" }, grant.createdBy,

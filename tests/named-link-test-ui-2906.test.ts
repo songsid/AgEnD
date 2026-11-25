@@ -52,9 +52,9 @@ describe("#2906 Test connection on the page", () => {
     i18n.setLang("zh-TW");
     answer = steps([["values", true, "ok"], ["origin", true, "ok"], ["tunnel", false, "auth"]]);
     expect(await run()).toEqual([
-      "✓ 網域、port 與 token — 填寫正確。",
-      "✓ 這台主機在 port 19282 回應 — 這次測試有回應。",
-      "✗ tunnel 連上 Cloudflare — Cloudflare 拒絕這個 token：它是錯的或已被更換。請到 Cloudflare 的 tunnel 頁面複製目前的 token 再貼上。",
+      "✓ 網域、連接埠與 token — 填寫正確。",
+      "✓ 這台主機在連接埠 19282 回應 — 這次測試有回應。",
+      "✗ 通道連上 Cloudflare — Cloudflare 拒絕這個 token：它是錯的或已被更換。請到 Cloudflare 的通道頁面複製目前的 token 再貼上。",
       "– 查得到 agend.example.com — 未測試（前面的步驟失敗）。",
       "– agend.example.com 連得到這台 AgEnD — 未測試（前面的步驟失敗）。",
     ]);
@@ -63,7 +63,7 @@ describe("#2906 Test connection on the page", () => {
     answer = steps([["values", true, "ok"], ["origin", true, "ok"], ["tunnel", true, "ok"], ["dns", true, "ok"], ["reach", false, "self-unreachable"]]);
     expect((await run()).at(-1)).toBe("✗ agend.example.com reaches this AgEnD — The tunnel is connected, but this machine's network can't open agend.example.com (some networks filter new domains). From another network, such as a phone on mobile data, it may still work. Ask the network administrator to allow agend.example.com.");
     i18n.setLang("zh-TW"); await p.unmount();
-    expect((await run()).at(-1)).toBe("✗ agend.example.com 連得到這台 AgEnD — tunnel 已連上，但這台主機所在的網路打不開 agend.example.com（有些網路會擋新的網域）。從其他網路（例如手機行動網路）可能可以正常使用。請網路管理員允許 agend.example.com。");
+    expect((await run()).at(-1)).toBe("✗ agend.example.com 連得到這台 AgEnD — 通道已連上，但這台主機所在的網路打不開 agend.example.com（有些網路會擋新的網域）。從其他網路（例如手機行動網路）可能可以正常使用。請網路管理員允許 agend.example.com。");
   });
   it("every code the server can answer has words in both languages (no raw key shown)", async () => {
     const all: Record<string, string[]> = {

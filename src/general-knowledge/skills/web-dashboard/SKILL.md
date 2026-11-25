@@ -589,9 +589,11 @@ chooses one visible name: **Display name** (暱稱) or **Instance name** (實際
 both desktop and phone; density still belongs to each layout. Until a compact name is chosen, the existing leading-name
 choice is kept (normally the display name, falling back to the instance name). The other name remains in the tooltip
 and accessible name, and search matches both. Detailed keeps the current presentation.
-Each detailed row (#2179): name and context % on the first line, the time of the agent's last reply to a person at the end of the
-second ("2 min ago"; cross-instance messages don't count); a reply under 10 minutes old is highlighted, fading by itself
-(nothing to mark read). The sort button beside Edit: **Custom** (default; a reply never moves a row) or **Recent replies**
+Each detailed row (#2179): name and context % on the first line; at the end of the second (on a compact row, after the name)
+one time, its most recent response (M-3707): its last reply to a person or the last turn another agent started for it
+(send_to_instance, a task, a report, a broadcast), whichever is newer, unlabelled ("2 min ago"); the tooltip says which
+kind it was. Only a reply to a person highlights the row (under 10 minutes old, fading by itself; nothing to mark read) or
+moves it in Recent replies; an agent's turn updates the time silently. The sort button beside Edit: **Custom** (default; a reply never moves a row) or **Recent replies**
 (the rest by last reply, no groups, no dragging; favorites pinned in their order, or **Sorted by last reply too**); synced
 as `nav.sort`. Guests sort, star and filter as their own preferences (kept on the host under their account; reply times
 count only replies their channel showed; no dragging); the anonymous View reader: no times, no sort (always Custom).
@@ -1058,4 +1060,4 @@ For the Hub's **My shared agents → Who may ask** person/name search, AD group 
 
 ## General contact-change proposals
 
-General can call `propose_contact_change` with a structured `change`: room `mode` (`restricted` or `legacy`), `ticket-decision` (full ticket ID, approve-once/decline, optionally exact originating-person keys and expiry/uses), `grant-adjust` (expiry/uses only), or `grant-revoke`. The daemon freezes the current revision and identities and posts its own confirmation in the target connection’s Discord/Telegram General. An authorized person must press Confirm; the tool call, a quoted approval, or General's own buttons never apply it. The card expires after five minutes; a changed revision, route or incarnation requires a new proposal. Unknown origins remain approve-once only. Host-only targets and unavailable platform routes use web Permissions/Authorizations. Contact approval never restricts what the receiving agent does afterward.
+General can call `contact_state` (read-only) to see held messages, rules, room modes and restricting origins, and `propose_contact_change` with a structured `change`: room `mode` (`restricted` or `legacy`, which is unrestricted), `ticket-decision` (the ticket ID or the 9-character short ID people see, approve-once/decline, optionally exact originating-person keys and expiry/uses), `grant-adjust` (expiry/uses only), or `grant-revoke`. A refusal says why and what to do next. The daemon freezes the current revision and identities and posts its own confirmation in the target connection’s Discord/Telegram General. An authorized person must press Confirm; the tool call, a quoted approval, or General's own buttons never apply it. The card expires after five minutes; a changed revision, route or incarnation requires a new proposal. Unknown origins remain approve-once only. Host-only targets and unavailable platform routes use web Permissions/Authorizations. Contact approval never restricts what the receiving agent does afterward.

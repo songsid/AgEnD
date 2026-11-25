@@ -151,7 +151,7 @@ WebFetch refuses explicit non-public URL forms. DNS and redirects are not pinned
 selected MCP tools keep their own access, and old conversation memory is not erased.
 When it delegates work for a person in the room, it keeps the requester with the worker and correlation, then summarizes the matching result in its bound channel and mentions that requester. Unrelated peer reports, chatter and FYI stay quiet.
 
-New rooms start in restricted mode. Non-admin peer relays are held for a target's Fleet administrator to approve; existing rooms stay legacy until an administrator switches them. Contact approval authorizes dispatch only, not the worker's later actions. Native tool coverage is reported separately. General may use `propose_contact_change` to propose room mode, contact-ticket or existing-rule changes. The daemon posts a bound confirmation to the target connection’s General; only a currently authorized Discord/Telegram person may confirm. General never confirms or applies its own proposal. Host-only targets use the web.
+`/start` asks for a backend and a mode, Restricted or Free (受限模式 or 自由模式). The room is not created until both are chosen. For a fleet admin, Free (recommended) / 自由模式（建議） comes first. Restricted / 受限模式 stays a button, and the tap is still required. Only a fleet admin can choose Free; anyone else is offered Restricted and told why Free is not offered. Change it later in the room's Details → Permissions (權限), or from General's contact-change card. A room that already exists stays as it is until an administrator switches it. Non-admin peer relays in a Restricted room are held for a target's Fleet administrator to approve. Contact approval authorizes dispatch only, not the worker's later actions. Native tool coverage is reported separately. General may read the current state with `contact_state` and use `propose_contact_change` to propose room mode (`legacy` is Free, unrestricted), contact-ticket (the short ID works) or existing-rule changes. The daemon posts a bound confirmation to the target connection’s General; only a currently authorized Discord/Telegram person may confirm. General never confirms or applies its own proposal. Host-only targets use the web.
 
 - Code: `src/classic-channel-manager.ts`.
 - Refs: `docs/permissions.md`.
@@ -165,7 +165,7 @@ can still message each other from the dashboard.
 - Can: everything chat fleets do, through `/ui` instead of chat.
 - Can't: chat ingress; `/web revoke` (there is no `/web`) — its Notice names
   the host's way, signing every browser out.
-- Code: `src/web-only-fleet.ts:10-22`; `src/fleet-manager.ts:7807-7808`.
+- Code: `src/web-only-fleet.ts:10-22`; `src/fleet-manager.ts:1132-1141` (WEB_ONLY_REPLY_SINK: replies on a fleet with no chat platform are shown in the web chat).
 - Refs: 28c2d3a3.
 
 ## host owner / operator
@@ -219,7 +219,7 @@ the General topic (approved by the user 2026-11-04).
 - Can't: anything while unlisted — an empty list grants nobody, and open
   access or a saved chat grant alone does not grant the role
   (`docs/SECURITY.md:13`).
-- Code: `src/config-validator.ts:368-376`, `:677`.
+- Code: `src/config-validator.ts:385-393` (empty `allowed_users` grants nobody).
 - Refs: —
 
 ## guest (web)
@@ -234,7 +234,7 @@ chat they could already use.
   anyone who may open the View (#3069).
 - Can't: admin routes, Notices, the usage report, or anything over surfaces
   the fleet closed to guests.
-- Code: `src/config-validator.ts:738-740`.
+- Code: `src/config-validator.ts:859-862` (`validateWebGuests`).
 - Refs: #1920.
 
 ## tool set / tool profile (`full`, `coordinator`, `general`, `worker`, `standard`, `minimal`)
@@ -270,7 +270,7 @@ not answer, unconfirmed deliveries.
 
 - Can: be acknowledged per item.
 - Can't: be answered by an agent on the person's behalf.
-- Code: `src/config.ts:284-293`; `src/web-api.ts` (`/ui/needs/ack`);
+- Code: `src/config.ts:309-317` (`needsYouConfig`); `src/web-api.ts` (`/ui/needs/ack`);
   `src/daemon.ts:1564`, `:2071`, `:9888`.
 - Refs: —
 
@@ -282,7 +282,7 @@ have said in chat, kept, pushed and listed. Admins only, never a guest.
 - Can: be listed and marked seen.
 - Can't: be read by guests; on a chat fleet the feed is null because General
   says them.
-- Code: `src/web-api.ts:2346-2349`; `src/fleet-manager.ts:7807-7808`.
+- Code: `src/web-api.ts:3391-3399` (`GET /ui/notices/list`, `POST /ui/notices/seen`; #2910 D2); `src/web-notices.ts:2-7`.
 - Refs: #2910 D2.
 
 ## delivery: ✅ 👀 ❌, "uncertain", queued hand-off (#3030)
@@ -300,7 +300,7 @@ takes it, ❌ when it never does.
 - Can't: prove permission. A receipt proves the CLI accepted the bytes, not
   that the person authorized the act — verify the human receipt before anything
   irreversible.
-- Code: `src/daemon.ts:7907-7913`; `:2450-2545`; `docs/delivery-verification.md`.
+- Code: `src/queued-handoffs.ts`; `src/web-notices.ts`; `docs/delivery-verification.md`.
 - Refs: #3030, 7244b130, 954e5e96.
 
 ## schedule
@@ -360,7 +360,7 @@ finishing it from review with done.
   `--acceptance`, `--check`, `--version`, …). The fleet judges them by the same
   rules as a tool call (who may edit a card, a stale `version`, one card at a
   time, the tool profile), so a CLI agent can do exactly what an MCP one can.
-- Code: the `task` tool (`src/channel/mcp-tools.ts:79-80`); the command line
+- Code: the `task` tool (`src/channel/mcp-tools.ts:90`); the command line
   (`taskArgs` in `src/agent-cli.ts`).
 - Refs: —
 
@@ -451,7 +451,7 @@ with authority.
   Office shares) without a chat account.
 - Can't: admin surfaces that require the dashboard reached directly (guests,
   web authority, the dashboard's own web settings).
-- Code: `src/config-validator.ts:424-429`;
+- Code: `src/config-validator.ts:457-460`;
   `src/office-share-service.ts:6` (quick-tunnel 429s);
   `src/public-preview.ts:4-5`.
 - Refs: `docs/named-tunnel.md`.
@@ -533,14 +533,11 @@ right after the agent's Role, with a fixed preface.
 
 Real code-vs-decision gaps only. Nothing here is papered over.
 
-1. **General's orchestration tools (temporal, expected to resolve).** Code on
-   main is pre-beta.8: the `general` profile
-   (`src/tool-permissions.ts:107-136`) holds only
-   `create/start/restart/wake_instance` plus the web settings. Fleet decision
-   9e3bea6c moves it to
-   the full ORCHESTRATION set in beta.8 (agy's PR). No live mismatch once beta.8
-   lands; until then the code half is verified and the change half is the
-   decision's word.
+1. **General's read-only debug tools and direct `tool_set` assignment
+   (convention, not enforced in code).** The extra abilities listed in the
+   General section come from user decision 36525f1b (2026-11-09); there is no
+   corresponding enforcement in tool-permissions. Recorded as convention;
+   where implementation differs, code wins.
 
 [繁體中文](concepts.zh-TW.md)
 

@@ -1,0 +1,359 @@
+{
+  "label": "after",
+  "cases": {
+    "desk-light-en-compact": {
+      "errors": [],
+      "csp": [],
+      "rows": [
+        {
+          "name": "general",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 96,
+          "nameCut": false,
+          "text": null,
+          "title": null,
+          "inRow": false,
+          "timeWhole": false,
+          "visible": true
+        },
+        {
+          "name": "busy-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 96,
+          "nameCut": false,
+          "text": "2 min ago",
+          "title": "Last turn another agent started (send_to_instance, a task, a report, a broadcast): 11/25/2026, 12:56:10 AM\nLast reply to a person: 10/23/2026, 12:58:10 AM",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "chat-agent",
+          "replied": true,
+          "glow": "0.499",
+          "fresh": true,
+          "nameW": 96,
+          "nameCut": false,
+          "text": "5 min ago",
+          "title": "Last reply to a person: 11/25/2026, 12:53:10 AM",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "relay-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 96,
+          "nameCut": false,
+          "text": "3 h ago",
+          "title": "Last turn another agent started (send_to_instance, a task, a report, a broadcast): 11/24/2026, 9:58:10 PM",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        }
+      ]
+    },
+    "desk-dark-zh-TW-compact": {
+      "errors": [],
+      "csp": [],
+      "rows": [
+        {
+          "name": "general",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 96,
+          "nameCut": false,
+          "text": null,
+          "title": null,
+          "inRow": false,
+          "timeWhole": false,
+          "visible": true
+        },
+        {
+          "name": "busy-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 96,
+          "nameCut": false,
+          "text": "2 \u5206\u9418\u524d",
+          "title": "\u6700\u5f8c\u4e00\u6b21\u7531\u5176\u4ed6 Agent \u767c\u8d77\u7684\u56de\u5408\uff08send_to_instance\u3001\u4efb\u52d9\u3001\u56de\u5831\u3001\u5ee3\u64ad\uff09\uff1a2026/11/25 \u4e0a\u534812:56:10\n\u6700\u5f8c\u56de\u8986\u4eba\u7684\u6642\u9593\uff1a2026/10/23 \u4e0a\u534812:58:10",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "chat-agent",
+          "replied": true,
+          "glow": "0.494",
+          "fresh": true,
+          "nameW": 96,
+          "nameCut": false,
+          "text": "5 \u5206\u9418\u524d",
+          "title": "\u6700\u5f8c\u56de\u8986\u4eba\u7684\u6642\u9593\uff1a2026/11/25 \u4e0a\u534812:53:10",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "relay-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 96,
+          "nameCut": false,
+          "text": "3 \u5c0f\u6642\u524d",
+          "title": "\u6700\u5f8c\u4e00\u6b21\u7531\u5176\u4ed6 Agent \u767c\u8d77\u7684\u56de\u5408\uff08send_to_instance\u3001\u4efb\u52d9\u3001\u56de\u5831\u3001\u5ee3\u64ad\uff09\uff1a2026/11/24 \u4e0b\u53489:58:10",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        }
+      ]
+    },
+    "desk-light-en-detailed": {
+      "errors": [],
+      "csp": [],
+      "rows": [
+        {
+          "name": "general",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 142,
+          "nameCut": false,
+          "text": null,
+          "title": null,
+          "inRow": false,
+          "timeWhole": false,
+          "visible": true
+        },
+        {
+          "name": "busy-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 142,
+          "nameCut": false,
+          "text": "2 min ago",
+          "title": "Last turn another agent started (send_to_instance, a task, a report, a broadcast): 11/25/2026, 12:56:10 AM\nLast reply to a person: 10/23/2026, 12:58:10 AM",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "chat-agent",
+          "replied": true,
+          "glow": "0.490",
+          "fresh": true,
+          "nameW": 142,
+          "nameCut": false,
+          "text": "5 min ago",
+          "title": "Last reply to a person: 11/25/2026, 12:53:10 AM",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "relay-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 142,
+          "nameCut": false,
+          "text": "3 h ago",
+          "title": "Last turn another agent started (send_to_instance, a task, a report, a broadcast): 11/24/2026, 9:58:10 PM",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        }
+      ]
+    },
+    "desk-dark-zh-TW-detailed": {
+      "errors": [],
+      "csp": [],
+      "rows": [
+        {
+          "name": "general",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 142,
+          "nameCut": false,
+          "text": null,
+          "title": null,
+          "inRow": false,
+          "timeWhole": false,
+          "visible": true
+        },
+        {
+          "name": "busy-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 142,
+          "nameCut": false,
+          "text": "2 \u5206\u9418\u524d",
+          "title": "\u6700\u5f8c\u4e00\u6b21\u7531\u5176\u4ed6 Agent \u767c\u8d77\u7684\u56de\u5408\uff08send_to_instance\u3001\u4efb\u52d9\u3001\u56de\u5831\u3001\u5ee3\u64ad\uff09\uff1a2026/11/25 \u4e0a\u534812:56:10\n\u6700\u5f8c\u56de\u8986\u4eba\u7684\u6642\u9593\uff1a2026/10/23 \u4e0a\u534812:58:10",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "chat-agent",
+          "replied": true,
+          "glow": "0.485",
+          "fresh": true,
+          "nameW": 142,
+          "nameCut": false,
+          "text": "5 \u5206\u9418\u524d",
+          "title": "\u6700\u5f8c\u56de\u8986\u4eba\u7684\u6642\u9593\uff1a2026/11/25 \u4e0a\u534812:53:10",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "relay-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 142,
+          "nameCut": false,
+          "text": "3 \u5c0f\u6642\u524d",
+          "title": "\u6700\u5f8c\u4e00\u6b21\u7531\u5176\u4ed6 Agent \u767c\u8d77\u7684\u56de\u5408\uff08send_to_instance\u3001\u4efb\u52d9\u3001\u56de\u5831\u3001\u5ee3\u64ad\uff09\uff1a2026/11/24 \u4e0b\u53489:58:10",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        }
+      ]
+    },
+    "phone-dark-zh-TW-detailed": {
+      "errors": [],
+      "csp": [],
+      "rows": [
+        {
+          "name": "general",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 284,
+          "nameCut": false,
+          "text": null,
+          "title": null,
+          "inRow": false,
+          "timeWhole": false,
+          "visible": true
+        },
+        {
+          "name": "busy-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 284,
+          "nameCut": false,
+          "text": "2 \u5206\u9418\u524d",
+          "title": "\u6700\u5f8c\u4e00\u6b21\u7531\u5176\u4ed6 Agent \u767c\u8d77\u7684\u56de\u5408\uff08send_to_instance\u3001\u4efb\u52d9\u3001\u56de\u5831\u3001\u5ee3\u64ad\uff09\uff1a2026/11/25 \u4e0a\u534812:56:10\n\u6700\u5f8c\u56de\u8986\u4eba\u7684\u6642\u9593\uff1a2026/10/23 \u4e0a\u534812:58:10",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "chat-agent",
+          "replied": true,
+          "glow": "0.480",
+          "fresh": true,
+          "nameW": 284,
+          "nameCut": false,
+          "text": "5 \u5206\u9418\u524d",
+          "title": "\u6700\u5f8c\u56de\u8986\u4eba\u7684\u6642\u9593\uff1a2026/11/25 \u4e0a\u534812:53:10",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "relay-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 284,
+          "nameCut": false,
+          "text": "3 \u5c0f\u6642\u524d",
+          "title": "\u6700\u5f8c\u4e00\u6b21\u7531\u5176\u4ed6 Agent \u767c\u8d77\u7684\u56de\u5408\uff08send_to_instance\u3001\u4efb\u52d9\u3001\u56de\u5831\u3001\u5ee3\u64ad\uff09\uff1a2026/11/24 \u4e0b\u53489:58:10",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        }
+      ]
+    },
+    "phone-light-en-detailed": {
+      "errors": [],
+      "csp": [],
+      "rows": [
+        {
+          "name": "general",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 284,
+          "nameCut": false,
+          "text": null,
+          "title": null,
+          "inRow": false,
+          "timeWhole": false,
+          "visible": true
+        },
+        {
+          "name": "busy-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 284,
+          "nameCut": false,
+          "text": "2 min ago",
+          "title": "Last turn another agent started (send_to_instance, a task, a report, a broadcast): 11/25/2026, 12:56:10 AM\nLast reply to a person: 10/23/2026, 12:58:10 AM",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "chat-agent",
+          "replied": true,
+          "glow": "0.474",
+          "fresh": true,
+          "nameW": 284,
+          "nameCut": false,
+          "text": "5 min ago",
+          "title": "Last reply to a person: 11/25/2026, 12:53:10 AM",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        },
+        {
+          "name": "relay-agent",
+          "replied": false,
+          "glow": "",
+          "fresh": false,
+          "nameW": 284,
+          "nameCut": false,
+          "text": "3 h ago",
+          "title": "Last turn another agent started (send_to_instance, a task, a report, a broadcast): 11/24/2026, 9:58:10 PM",
+          "inRow": true,
+          "timeWhole": true,
+          "visible": true
+        }
+      ]
+    }
+  },
+  "source": {
+    "commit": "6576902ac (local, before the squash into this PR's 3fb15910)",
+    "src_tree": "38159c492c751c45f8252e4027e5052e06fb4d16",
+    "src_ui_shared_tree": "3ae900acd54ec359ef9fc33569c1f2bf50737263",
+    "note": "src/ at the capture commit and at 3fb15910 is the same tree; the checkout had no tracked change (untracked: the capture script, the node_modules link)"
+  }
+}
