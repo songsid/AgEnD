@@ -33,7 +33,7 @@ It also fixes the interfaces that 2.2 (the quiescence barrier, GrokCore) and 2.5
   current                       the open attempt's id: THE authority for "an attempt is open" (§2.4)
   attempts/<attemptId>/
     attempt.json                the record (§2.2), replaced atomically
-    inbox/  deferred.json       2.2/2.4: held inbound, deferred jobs (one atomically written file per item)
+    inbox/  deferred/  cancel   2.2/2.4: held inbound, deferred jobs, the fleet's cancel request (§2.6)
     snapshot/  snapshot.json    2.3: the state copy and its manifest (§5)
     restore.log                 2.3: the restore's per-path progress, append-only (§5.5)
     replaced/                   2.3: the new version's state, moved aside on restore; never overwritten
@@ -113,7 +113,26 @@ A crash between 1 and 2 leaves an attempt directory that no `current` names. It 
 - **unknown blocks everything:** P8 reads it as `update-running`, a fleet start refuses (§7), and a new attempt can't open. The words name the path and `agend update --resolve`.
 - **`marks.json` is never pruned.** An unreadable `marks.json` means automatic and required updates refuse every version until it is repaired. It is never read as "no marks".
 
-### 2.6 Updater liveness
+### 2.6 The fleet's files: inbox, deferred jobs, cancel (2.2's interface, agreed with GrokCore)
+The fleet never writes a stage. It writes only these files, each atomically (tmp, fsync, rename, fsync the directory).
+
+- **One sequence.** Every held item and every deferred job takes the next value of one counter, zero-padded, so directory order is the order of hand-back. A job that came due between two held messages is handed back between them.
+- **`inbox/<seq>-<source>.json`**, where `source` is `outbox`, `adapter`, `web` or `hub`. Its body is one of:
+  - `{ kind: "reference", deliveryId, createdSeq }`, for a durable outbox row: a reference only, no payload. Hand-back has the pump claim that delivery id; the file is never admitted as a new message. Copying the row and leaving it queued would deliver it twice.
+  - `{ kind: "copy", body }`, for adapter, web or Hub ingress that never became a durable row. Under the fence, `admitDurableDelivery` inserts the outbox row and writes a reference instead, whenever it can.
+- **`deferred/<seq>.json`**: `{ seq, scheduleId, runId }`, one file per job.
+- **Acknowledgement:** after each claim, the single admission of a copy, or the single run of a job, the fleet writes a sibling `<file>.acked`. A crash resumes hand-back at the first entry in sequence order without its `.acked`.
+- **When the fleet writes:**
+  1. The updater publishes `opened`, with `current` naming the attempt, before the fleet writes anything.
+  2. On the barrier's successful second check, in that same turn, the fleet writes the **prefix**: every `queued` or `retry_wait` outbox row not in flight, in `created_seq` order, as references.
+  3. Then the updater advances to `barrier`.
+
+  A crash still in `opened` with those files present hands them back (§7).
+- **`cancel`:** the card's Cancel, or the wait passing `updates.maxIdleWait`, can't write `abandoned`. The fleet writes `attempts/<id>/cancel` (`{ reason, at, by }`). The updater, or the recovery runner, treats it as the start of `abandoning`.
+- **The fleet runs hand-back only when the attempt's substep is `hand-back`** (§2.3), then acknowledges it.
+- **Task-board claims are not journal files.** The fence refuses the claim write.
+
+### 2.7 Updater liveness
 `updaterState(attempt) → live | gone | unknown`, by install-lock's `holderState` on `{ pid, start }`.
 - `gone` only on proof: no such pid, or a pid with another start in the same boot.
 - `unknown` (start unreadable, a boot id that can't be read) never authorizes taking over. A fleet start then refuses with the attempt's id and stage. The recovery runner refuses too, unless an operator runs it with `--takeover <attemptId>`, which is recorded.
@@ -494,6 +513,7 @@ A retry recognises each effect by the path's presence and its hash against the p
 | 2. The takeover serialized by an `O_EXCL` claim per nonce: exactly one contender; a dead claimant voids the nonce, which is never reused | §4.3 |
 | 3. The CLI fence as a lease held for the writer's whole lifetime (SQLite SHARED vs EXCLUSIVE on `.state-lease.sqlite`); the updater publishes `current`, then drains; the check runs after the lease | §4.2 |
 | 4. The handoff route kept until the rollback generation's takeover is acknowledged; systemd removes the drop-in afterwards; launchd keeps a harmless wrapper until the next load | §6.2, §4.3 |
+| 2.2's interface (GrokCore): reference vs copy inbox files, one sequence with deferred jobs, `.acked` siblings, the cancel marker, the prefix written under `opened` | §2.6 |
 
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
