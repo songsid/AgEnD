@@ -31,7 +31,9 @@ export interface NeedsYouItem {
   since: number;
   /** prompt: the nonce the web answers through POST /ui/prompt, its buttons, and where the buttons are. */
   nonce?: string;
-  actions?: Array<{ id: string; label: string; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  actions?: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  /** M-3757: a card the dashboard shows compact; `raw` is the CLI's own words, folded behind a toggle. */
+  view?: import("./backend/types.js").RemoteCardView;
   promptAt?: { adapterId: string; chatId: string; threadId?: string; messageId?: string };
   /** delivery: the outbox row; Acknowledge offered. */
   deliveryId?: string;
@@ -116,7 +118,9 @@ export interface PromptInput {
   prefix: string;
   instance: string;
   text: string;
-  actions: Array<{ id: string; label: string; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  actions: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  /** M-3757: the card's compact form. */
+  view?: import("./backend/types.js").RemoteCardView;
   createdAt: number;
   adapterId: string;
   chatId: string;
@@ -254,6 +258,7 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     if (!reason) continue;
     items.push({
       id: `prompt:${p.nonce}`, type: "prompt", instance: p.instance, reason,
+      ...(p.view ? { view: p.view } : {}),
       detail: oneLine(p.text), since: p.createdAt, nonce: p.nonce, actions: p.actions,
       promptAt: { adapterId: p.adapterId, chatId: p.chatId, ...(p.threadId !== undefined ? { threadId: p.threadId } : {}), ...(p.messageId ? { messageId: p.messageId } : {}) },
     });

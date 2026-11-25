@@ -1,0 +1,50 @@
+ ▐▛███▛█   Claude Code v2.1.332
+▝▜██████▀  Fable 5.2 · Claude Pro
+ ▝▝   ▝▝   /tmp/fb332/w2
+
+
+❯ hello fable
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Fable 5.2 now uses usage credits
+
+  Fable 5.2 runs on usage credits, purchased separately from your plan.
+
+  Learn more: https://support.claude.com/en/articles/12429409-extra-usage-for-paid-claude-plans
+
+    Switch to Opus 5.5 and continue
+  ❯ Continue with Fable 5.2
+
+  Enter to confirm · Esc to cancel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

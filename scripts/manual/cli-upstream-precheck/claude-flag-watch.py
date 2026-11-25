@@ -10,6 +10,11 @@ Watched flags:
                       "Resume this conversation?" prompt shows, so AgEnD cannot press Escape to keep the full context.
                       Remedy (decision B, only once this fires): pass `idleCompaction: false` in the settings AgEnD
                       writes for Claude instances; the prompt then comes back and AgEnD answers it with Escape.
+  tengu_saffron_lattice
+                      From 2.1.332, the usage-credits billing of a model (Fable on Pro/Team plans): when it bills one,
+                      Claude asks before each turn "… now uses usage credits", focused on switching the model (M-3757:
+                      AgEnD holds it for a person). An object: "active" when it bills a model (overageConsentRequired,
+                      planLimitsEndDate, or a perModel entry enabled, and not enabled:false), else "present, inactive".
 
 It prints only a profile's name, the flag's name, and whether the flag is on. It prints no tokens, no account fields
 and no other flag's value. It reads each file once and writes nothing.
@@ -24,7 +29,10 @@ import sys
 
 WATCHED = {
     "tengu_eager_brooks": "a cold --continue compacts to a summary with no prompt; remedy: idleCompaction:false (M-3652)",
+    "tengu_saffron_lattice": "a credits-billed model gets the usage-credits prompt before each turn; AgEnD holds it for a person (M-3757)",
 }
+# Flags whose value is an object of settings, read by their own rule instead of on/off.
+OBJECT_FLAGS = {"tengu_saffron_lattice"}
 
 
 def default_files() -> list[str]:
@@ -46,6 +54,24 @@ def is_on(value: object) -> bool:
     return value is True
 
 
+def billing_state(value: object) -> str:
+    """tengu_saffron_lattice: whether it bills any model to usage credits (the 2.1.332 bundle's _c rule)."""
+    if isinstance(value, dict) and "defaultValue" in value and isinstance(value.get("defaultValue"), dict):
+        value = value["defaultValue"]
+    if not isinstance(value, dict):
+        return "present, unreadable"
+    per_model = value.get("perModel")
+    any_model = isinstance(per_model, dict) and any(isinstance(v, dict) and v.get("enabled") is True for v in per_model.values())
+    active = value.get("enabled") is not False and (value.get("overageConsentRequired") is True or "planLimitsEndDate" in value or any_model)
+    return "active" if active or any_model else "present, inactive"
+
+
+def state(flag: str, value: object) -> str:
+    if flag in OBJECT_FLAGS:
+        return billing_state(value)
+    return "on" if is_on(value) else "not on"
+
+
 def check(path: str) -> list[str]:
     name = profile_name(path)
     try:
@@ -56,7 +82,7 @@ def check(path: str) -> list[str]:
     if not isinstance(features, dict):
         return []
     return [
-        f"WARN claude-flags {name}: server flag {flag} is present ({'on' if is_on(features[flag]) else 'not on'}) - {why}"
+        f"WARN claude-flags {name}: server flag {flag} is present ({state(flag, features[flag])}) - {why}"
         for flag, why in WATCHED.items() if flag in features
     ]
 

@@ -29,7 +29,9 @@
       { "file": "src/daemon.ts", "symbols": ["detectMalformedClaudeToolCall"], "surfaces": { "detectMalformedClaudeToolCall": "error" } },
       { "file": "src/login-flows.ts", "symbols": ["claude-code"], "surfaces": { "claude-code": "onboarding" } },
       { "file": "src/backend/claude-transcript-errors.ts",
-        "surfaces": { "CLAUDE_MODEL_USAGE_LIMIT": "error", "CLAUDE_USAGE_LIMIT_PAUSE": "error", "CLAUDE_CREDIT_BALANCE_LOW": "error" } }
+        "surfaces": { "CLAUDE_MODEL_USAGE_LIMIT": "error", "CLAUDE_USAGE_LIMIT_PAUSE": "error", "CLAUDE_CREDIT_BALANCE_LOW": "error" } },
+      { "file": "src/backend/claude-usage-credits.ts", "symbols": ["FOOTER", "TITLE", "FIRST", "claudeUsageCreditsPrompt"],
+        "surfaces": { "FOOTER": "dialog", "TITLE": "dialog", "FIRST": "dialog", "claudeUsageCreditsPrompt": "dialog" } }
     ],
     "codex": [
       { "file": "src/backend/codex-precaution.ts", "symbols": ["STOPPED", "ACK", "ROOT", "FALLBACK", "CONFIRM", "codexPrecaution"],

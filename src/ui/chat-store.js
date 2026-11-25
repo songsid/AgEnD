@@ -9,6 +9,7 @@
 // navigation — it counts as use, as the old click did). Coming back to it reads nothing; the stream keeps it current.
 import "/assets/chat-render.js";
 import { createLiveAgentReplies } from "./chat-live-replies.js";
+import { usageCreditsActions } from "./usage-credits-card.js";
 /** A message's identity on this page (ids restart with each fleet process; the boot makes them unique). */
 const msgKeyOf = (m) => `${m.boot}-${m.id}`;
 
@@ -236,7 +237,7 @@ export function createChatStore(deps) {
     // A prompt already held (being answered, or claimed from Needs you) keeps its busy/answered state: a repeat of it
     // only refreshes its text and buttons (#1463 review).
     if (!had) s.prompts[p.nonce] = { ...p, resolved: false, busy: false };
-    else if (!had.resolved) Object.assign(had, { text: p.text, links: p.links, actions: p.actions, expiresAt: p.expiresAt });
+    else if (!had.resolved) Object.assign(had, { text: p.text, links: p.links, actions: p.actions, view: p.view, expiresAt: p.expiresAt });
     if (shown().has(p.instance)) changed(p.instance);
     else if (fresh) deps.toast(tf("chat.promptFor", p.instance, p.text), false);
   }
@@ -248,7 +249,7 @@ export function createChatStore(deps) {
     for (const p of list) {
       const had = s.prompts[p.nonce];
       if (!had) s.prompts[p.nonce] = { ...p, resolved: false, busy: false };
-      else if (!had.resolved) Object.assign(had, { text: p.text, links: p.links, actions: p.actions, expiresAt: p.expiresAt });
+      else if (!had.resolved) Object.assign(had, { text: p.text, links: p.links, actions: p.actions, view: p.view, expiresAt: p.expiresAt });
     }
     for (const n of Object.keys(s.prompts)) if (!s.prompts[n].resolved && !open.has(n)) s.prompts[n].resolved = true;
     changed(null);
@@ -264,7 +265,7 @@ export function createChatStore(deps) {
   /** `text`: #2675 — the typed answer, for an action the prompt shows a text box for. */
   async function answerPrompt(p, action, text) {
     if (p.busy || p.resolved) return;
-    const confirmation = p.actions?.find(a => a.id === action)?.confirmation;
+    const confirmation = (p.view && p.view.kind === "usage-credits" ? usageCreditsActions(p.view, p.actions) : p.actions)?.find(a => a.id === action)?.confirmation;
     p.busy = true; p.confirming = !!confirmation; changed(p.instance);
     if (confirmation) {
       const yes = deps.confirm ? await deps.confirm({ ...confirmation, danger: true }) : false;
@@ -291,7 +292,7 @@ export function createChatStore(deps) {
   function answerByNonce(item, action) {
     if (!item || typeof item.nonce !== "string") return Promise.resolve();
     let p = s.prompts[item.nonce];
-    if (!p) p = s.prompts[item.nonce] = { instance: item.instance, nonce: item.nonce, text: item.text || item.detail || "", actions: item.actions || [], resolved: false, busy: false };
+    if (!p) p = s.prompts[item.nonce] = { instance: item.instance, nonce: item.nonce, text: item.text || item.detail || "", actions: item.actions || [], ...(item.view ? { view: item.view } : {}), resolved: false, busy: false };
     return answerPrompt(p, action);
   }
   /** A claim taken elsewhere before this store existed (Needs you, before Chat booted): held here from now on. */
