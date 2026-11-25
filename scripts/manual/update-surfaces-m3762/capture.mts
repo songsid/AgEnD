@@ -4,7 +4,7 @@
  * web-api.ts handleWebUpdate); nothing is installed.
  *   1 the offer line (banner) · 2 its confirmation · 3 Settings → Advanced → Version and update · 4 an update running ·
  *   5 a failed one · 6 a finished one · 7 a Hub's recommendation · 8 a read-only (non-admin) session sees no offer ·
- *   9 a web-only fleet's "update available" Notice in Needs you (a chat fleet's is General's topic post: not on the web)
+ *   9 a web-only fleet's "update available" Notice in Notices (a chat fleet's is General's topic post: not on the web)
  * Desk light en and phone dark zh-TW.
  *   CHROME=<chromium> PW_DIR=<playwright-core> REPO=<checkout> OUT=<dir> npx tsx scripts/manual/update-surfaces-m3762/capture.mts
  */
@@ -46,20 +46,20 @@ const body = (state: string, admin = true) => (admin
 // worded by the fleet's own string (locale.ts update.available_web_only), in Needs you.
 const { t: tr } = await import(REPO + "/src/locale.ts");
 const noticeText = tr("update.available_web_only", `v${NEXT}`, `v${CURRENT}`);
-fx.fm.recordWebNotice("update", noticeText);
+receipt.seen.webOnlyNoticeRecorded = fx.fm.recordWebNotice("update", noticeText);
 receipt.seen.webOnlyNotice = noticeText;
 const lineText = async (page: any) => page.evaluate(`[...document.querySelectorAll(".update-line")].map((e) => e.innerText.replace(/\\s+/g, " ").trim())`);
 
 try {
   for (const c of matrix("desk-light-en,phone-dark-zh-TW")) {
-    const tag = caseName(c), zh = c.lang === "zh-TW";
+    const tag = caseName(c);
     let state = "offer";
-    const { page, ctx } = await fx.page(c, { path: "/ui/fleet" });
+    const { page, ctx } = await fx.page(c, { path: "/ui/needs" });
     await ctx.route("**/ui/update", (r: any) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body(state)) }));
     await ctx.route("**/ui/update/start", (r: any) => r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "capture: never started" }) }));
     const errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
     try {
-      await page.goto(fx.base + "/ui/fleet"); check(`${tag}: mounted`, await mounted(page, 30000));
+      await page.goto(fx.base + "/ui/needs"); check(`${tag}: mounted`, await mounted(page, 30000));
       for (const s of ["offer", "running", "failed", "complete", "hub"]) {
         state = s;
         await page.reload(); await mounted(page, 30000);
@@ -80,27 +80,28 @@ try {
           receipt.seen[`${tag}-settings`] = await page.evaluate(`document.querySelector("#settings-update")?.innerText.replace(/\\s+/g, " ").trim()`);
           check(`${tag}: Settings → Version and update`, !!receipt.seen[`${tag}-settings`], null);
           await shot(page, `${tag}-3-settings`);
-          await page.goto(fx.base + "/ui/fleet");
+          await page.goto(fx.base + "/ui/needs");
         }
       }
-      // 9 the web-only Notice in Needs you
-      await page.goto(fx.base + "/ui/needs"); await mounted(page, 30000); await page.waitForTimeout(1500);
-      const needs = await page.evaluate(`document.body.innerText`) as string;
-      check(`${tag}: Needs you shows the update Notice`, needs.includes(`v${NEXT}`), needs.slice(0, 400));
-      await shot(page, `${tag}-9-needs-notice`);
+      // 9 the web-only Notice, in Notices (the banner back on its offer)
+      state = "offer";
+      await page.goto(fx.base + "/ui/notices"); await mounted(page, 30000); await page.waitForTimeout(1500);
+      const notices = await page.evaluate(`(document.querySelector("main") || document.body).innerText`) as string;
+      // Worded once, when recorded, in the fleet's language (not the viewer's): a zh-TW page shows the same text.
+      check(`${tag}: Notices shows the update Notice`, notices.includes(noticeText.slice(0, 40)), notices.slice(0, 400));
+      await shot(page, `${tag}-9-notice`);
       check(`${tag}: no page errors`, errors.length === 0, errors);
     } finally { await ctx.close(); }
     // A read-only session: no offer, only the stale-tab reload line when its tab is old.
-    const ro = await fx.page(c, { path: "/ui/fleet" });
+    const ro = await fx.page(c, { path: "/ui/needs" });
     await ro.ctx.route("**/ui/update", (r: any) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body("offer", false)) }));
     try {
-      await ro.page.goto(fx.base + "/ui/fleet"); await mounted(ro.page, 30000); await ro.page.waitForTimeout(1500);
+      await ro.page.goto(fx.base + "/ui/needs"); await mounted(ro.page, 30000); await ro.page.waitForTimeout(1500);
       const seen = await lineText(ro.page);
       receipt.seen[`${tag}-readonly`] = seen;
       check(`${tag} read-only: no offer line`, seen.length === 0, seen);
       await shot(ro.page, `${tag}-8-readonly`);
     } finally { await ro.ctx.close(); }
-    void zh;
   }
 } finally {
   await fx.close();
