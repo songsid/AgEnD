@@ -1,3 +1,4 @@
+import {freezeHubRequestSnapshot,type HubRequestSnapshotV1} from "../../request-hub-context.js";
 import {tForLocale} from "../../locale.js";
 import {HubRoomAskerClockError} from "../room-asker-identity.js";
 import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY,type RoomAskerDestination,type VerifiedHubAsker,type HubRoomAskerIdentity} from "../room-asker-identity-model.js";
@@ -305,9 +306,15 @@ export class HubRoomAskAdapter {
           ? await store.receive(saved.local.agent, saved.ask.messageId, files, (fid, offset) => fetch(fid, offset)).catch(() => files.map(f => `(${f.name}: could not be fetched)`))
           : files.map(f => `(${f.name}: not available on this Fleet)`);
       }
-      const verifiedHubAsker=this.options.askerStore?.get(id,this.accepted(saved));
+      const currentLocal=this.options.localExposure(saved.ask.exposureId),currentGeneration=currentLocal?this.options.generation?.(currentLocal.agent):undefined;
+      const currentDestination=currentLocal?{agent:currentLocal.agent,exposureId:saved.ask.exposureId,incarnation:createHash("sha256").update(JSON.stringify([currentLocal.token,currentGeneration??null])).digest("hex")}:null;
+      const verifiedHubAsker=currentDestination?this.verifiedAsker(id,currentDestination):null;
+      let acceptedHubRequest:HubRequestSnapshotV1|undefined;
+      if(verifiedHubAsker)try{const accepted=this.accepted(saved);acceptedHubRequest=freezeHubRequestSnapshot({version:1,kind:"room",messageId:id,roomId:saved.ask.roomId,exposureId:saved.ask.exposureId,
+        actor:{...verifiedHubAsker,platform:"hub"},destination:accepted.destination,questionSha256:accepted.journalDigest});}catch{/* no schema-compatible accepted capture */}
       const delivered = await this.options.deliver({ agent: saved.local.agent, correlationId: saved.cid, contactLimit: this.options.localExposure(saved.ask.exposureId)?.contactLimit !== false,
         ...(saved.generation ? {roomContextGeneration:saved.generation} : {}),
+        ...(acceptedHubRequest?{acceptedHubRequest}:{}),
         ...(verifiedHubAsker ? {verifiedHubAsker,roomAskerMessageId:id,roomAskerDestination:Object.freeze(this.accepted(saved).destination)} : {}),
         text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, { maxContextBytes: this.options.maxCrossInstanceMessageBytes?.(), react: !!source.features?.has(HUB_ROOM_REACT_CAPABILITY) && typeof source.sendReact === "function", fileLines }), stillCurrent: current,
         beforeInput: async () => {
