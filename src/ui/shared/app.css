@@ -2291,7 +2291,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 /* #4487 UX look: a command in a check's sentence is code to copy (one tap selects it all); the banner's secondary buttons
    keep a visible outline on any banner colour (先不要 on the phone's dark press-only banner). */
 .uc-cmd { font-family: var(--font-mono); font-size: 0.92em; padding: 1px 5px; border-radius: var(--r-sm); background: var(--surface);
-  border: 1px solid var(--border); user-select: all; overflow-wrap: anywhere; word-break: break-all; }
+  border: 1px solid var(--border); user-select: all; display: inline-block; max-width: 100%; white-space: nowrap; overflow-x: auto;
+  vertical-align: bottom; }   /* a command stays on one line (never "sudo agen / d update"); a long one scrolls in its box */
 .update-actions .btn:not(.btn-primary):not(.update-x) { border-color: var(--border-strong); }
 .uc-needs .n-item { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
 @media (max-width: 899px), (pointer: coarse) {

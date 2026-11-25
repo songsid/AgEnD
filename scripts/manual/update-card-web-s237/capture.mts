@@ -121,6 +121,8 @@ async function walk(c: any, full: boolean) {
     check(`${tag} 5: How to update holds the command, as code`, (await page.locator(".update-line .uc-how .uc-cmd").allInnerTexts()).join("|") === "sudo agend update", await lineText(page));
     const howPx = await page.evaluate(`[parseFloat(getComputedStyle(document.querySelector(".uc-how p")).fontSize), parseFloat(getComputedStyle(document.body).fontSize)]`) as number[];
     check(`${tag} 5: How to update at body size`, howPx[0] >= howPx[1], howPx);
+    const cmdLines = async () => page.evaluate(`[...document.querySelectorAll(".uc-cmd")].filter((e) => e.getBoundingClientRect().width).map((e) => e.getClientRects().length)`) as Promise<number[]>;
+    check(`${tag} 5: the command on one line`, (await cmdLines()).every((n) => n === 1), await cmdLines());
     await shot(page, `${tag}-5b-how-to`);
     // 6 Settings → Version and update (◐: lingering off)
     setPreflight(pre([{ id: "P1", ok: true }, { id: "P3", ok: false, code: "linger-off", detail: { user: "example" } }, { id: "P4", ok: true }]));
@@ -137,6 +139,8 @@ async function walk(c: any, full: boolean) {
     const row6 = await page.evaluate(`[...document.querySelectorAll("#settings-update .s-update-row button")].map((b) => b.innerText.trim())`) as string[];
     check(`${tag} 6: admin-only: Update when idle and Not now, no Pick a time (the server takes no schedule here; #4487 review P2)`,
       row6.includes(W(zh, "Update when idle", "閒置時更新")) && row6.includes(W(zh, "Not now", "先不要")) && !row6.includes(W(zh, "Pick a time", "選個時間")), row6);
+    const cmd6 = await page.evaluate(`[...document.querySelectorAll("#settings-update .uc-cmd")].map((e) => e.getClientRects().length)`) as number[];
+    check(`${tag} 6: the command on one line`, cmd6.length === 1 && cmd6[0] === 1, cmd6);
     await shot(page, `${tag}-6-settings`);
     await page.locator(".uc-advanced summary").click(); await page.waitForTimeout(300);
     await page.evaluate(`document.querySelector(".uc-advanced")?.scrollIntoView({ block: "center" })`);
