@@ -350,5 +350,10 @@
       ]
     }
   },
-  "source": "feat/activity-one-time-m3707 (this branch's sidebar code)"
+  "source": {
+    "commit": "6576902ac (local, before the squash into this PR's 3fb15910)",
+    "src_tree": "38159c492c751c45f8252e4027e5052e06fb4d16",
+    "src_ui_shared_tree": "3ae900acd54ec359ef9fc33569c1f2bf50737263",
+    "note": "src/ at the capture commit and at 3fb15910 is the same tree; the checkout had no tracked change (untracked: the capture script, the node_modules link)"
+  }
 }

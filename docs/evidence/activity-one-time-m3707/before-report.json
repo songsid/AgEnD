@@ -350,5 +350,9 @@
       ]
     }
   },
-  "source": "release/2.3.5-alpha 9cf845147"
+  "source": {
+    "commit": "9cf845147a7a4517b66421ad6cd546776e9393e0 (release/2.3.5-alpha)",
+    "src_tree": "5018d8f8ceb7e3f577147668a62b50dd5d017431",
+    "note": "a clean detached checkout (untracked: the capture script, the node_modules link)"
+  }
 }
