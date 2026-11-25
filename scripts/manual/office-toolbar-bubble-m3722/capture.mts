@@ -65,7 +65,7 @@ try {
       check(`${tag}: every tab inside the screen`, m.tabs.length >= 8 && m.tabs.every((t: any) => t.l >= 0 && t.r <= m.W + 0.5), m.tabs.map((t: any) => [t.name, Math.round(t.l), Math.round(t.r)]));
       check(`${tag}: each tab a 44px touch target`, m.tabs.every((t: any) => t.w >= 44 && t.h >= 44), m.tabs.map((t: any) => [t.name, Math.round(t.w), Math.round(t.h)]));
       check(`${tag}: no sideways scroll`, m.scroll <= m.W, m.scroll);
-      if (key === "tasks") check(`${tag}: the board shows its cards`, /Draft the release notes|Check the phone layout|Review the help desk/.test(await page.locator(".p-fleet").innerText()), "no cards");
+      if (key === "tasks") check(`${tag}: the board shows its project`, /Example project/.test(await page.locator(".p-fleet").innerText()), "no project");
       check(`${tag}: the header names the page`, m.titleShown && m.title.trim() === (c.lang === "zh-TW" ? name.zh : name.en), m.title);
       await shot(page, `${tag}`);
     } finally { await ctx.close(); }
