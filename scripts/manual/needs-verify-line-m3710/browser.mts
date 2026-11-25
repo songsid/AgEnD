@@ -69,10 +69,10 @@ try {
         let record: any = null;
         fm.webSessions.list(undefined, (r: any) => { if (r.owner?.userId === account.userId) record = r; return false; });
         check(`${tag}: the account confirms (as the DM's Confirm)`, fm.authorizeWebSession(record, "loopback", false).ok === true);
-        await page.reload(); await page.locator(".contact-need[data-reason=contact_request]").first().waitFor({ timeout: 15000 });
+        await page.reload(); await page.locator(".contact-need[data-reason=contact_request] .contact-decide").nth(1).waitFor({ timeout: 15000 });
         const body = await page.locator(".p-needs").innerText();
         check(`${tag}: verified — the requests with Approve once, and no line`, (await page.locator(".contact-verify-need").count()) === 0
-          && (await page.locator(".contact-need[data-reason=contact_request]").count()) === 2 && /Approve once|核准一次/.test(body), body.slice(0, 400));
+          && (await page.locator(".contact-need[data-reason=contact_request]").count()) === 2 && /Approve once|核准這一次/.test(body), body.slice(0, 400));
         await shot(page, "2-local-verified");
         check(`${tag}: no page errors (localhost)`, errors.length === 0, errors);
       } finally { await ctx.close(); }
