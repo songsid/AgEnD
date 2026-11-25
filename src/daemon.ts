@@ -68,6 +68,7 @@ import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
 import type { RequestContextLocalTurns, RequestContextRuntimeOwner, RequestContextTurnSnapshot } from "./request-context-turns.js";
+import { captureRequestContextCall, type RequestContextLocalCall } from "./request-context-call.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, InputBox, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog, SteerComposerMode } from "./backend/types.js";
 import { shellQuote, KiroCompatibilityError, UnsupportedCliError, ResumeBlockedError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
@@ -2656,6 +2657,38 @@ export class Daemon extends EventEmitter {
   /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
   private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string } };
   private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean };
+  private readonly requestContextCalls = new Map<string, RequestContextLocalCall>();
+  private requestContextInterruptedLaunch: string | undefined;
+  private requestContextLaunch(): string { return JSON.stringify([this.bootId, this.spawnGeneration, this.nativePaneLifecycle?.snapshot?.()?.launchId ?? null]); }
+  /** First local owned hop only. No lookup at a later Fleet receipt may retag this call. */
+  private beginRequestContextCall(socket?: import("node:net").Socket): RequestContextLocalCall | undefined {
+    if (!this.requestContextLifecycle) return;
+    if (this.requestContextCalls.size >= 128) throw Error("Request context call admission backlog");
+    const launch = this.requestContextLaunch();
+    const snapshot = socket && this.socketSessionNames.get(socket) === this.name ? this.requestContextTurnSnapshot() : null;
+    const reason: "interrupted-launch" | "unbound-input" = this.requestContextInterruptedLaunch === launch ? "interrupted-launch" : "unbound-input";
+    const admission = snapshot && reason !== "interrupted-launch"
+      ? { coverage: "covered" as const, lease: captureRequestContextCall(snapshot, captured => this.requestContextTurnCurrent(captured)) }
+      : { coverage: "not-covered" as const, reason };
+    const call: RequestContextLocalCall = Object.freeze({ id: randomUUID(), admission: Object.freeze(admission),
+      current: () => !this.deliveryWritesStopping && this.requestContextLaunch() === launch
+        && (admission.coverage !== "covered" || admission.lease.current()) });
+    this.requestContextCalls.set(call.id, call); return call;
+  }
+  /** Internal Fleet accessor, paired with the current daemon/IPC connection; returns original scope or nothing. */
+  requestContextCall(callId: string): RequestContextLocalCall | null {
+    const call = this.requestContextCalls.get(callId);
+    return call?.current() ? call : null;
+  }
+  requestContextCallsRequired(): boolean { return this.requestContextLifecycle !== undefined; }
+  private handleOwnedToolCall(message: Record<string, unknown>, socket: import("node:net").Socket): void {
+    let call: RequestContextLocalCall | undefined;
+    try { call = this.beginRequestContextCall(socket); this.handleToolCall(message, socket, undefined, call); }
+    catch {
+      if (call) this.requestContextCalls.delete(call.id);
+      this.ipcServer?.send(socket, { requestId: message.requestId, result: null, error: "Request context call admission is unavailable" });
+    }
+  }
   setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }): void {
     if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle) throw Error("Request context must be bound before local daemon startup");
     this.requestContextLifecycle = { turns, identity };
@@ -2697,6 +2730,7 @@ export class Daemon extends EventEmitter {
     if (!write || !write.endAnchor || !owner || !this.requestContextLifecycle!.turns.isCurrent(write.snapshot, owner)) return;
     const verdict = write.ledger.verdict(write.text, write.at);
     if (verdict === "ended" || verdict === "aborted" || verdict === "error") {
+      if (verdict !== "ended") this.requestContextInterruptedLaunch = this.requestContextLaunch();
       this.requestContextLifecycle!.turns.ended(write.snapshot, owner); this.requestContextWrite = undefined;
     }
   }
@@ -2831,6 +2865,7 @@ export class Daemon extends EventEmitter {
     this.deliveryWritesStopping = true;
     this.deliveryEpoch++;
     this.requestContextLifecycle?.turns.fence();
+    this.requestContextCalls.clear();
   }
 
   /** Bounded drain: timeout remains safe because Enter has a write-ahead fence. */
@@ -3543,7 +3578,7 @@ export class Daemon extends EventEmitter {
     this.ipcServer.on("message", (msg: Record<string, unknown>, socket: import("node:net").Socket) => {
       if (msg.type === "tool_call") {
         // MCP server forwarding a Claude tool call (reply, react, edit, download)
-        this.handleToolCall(msg, socket);
+        this.handleOwnedToolCall(msg, socket);
       } else if (msg.type === "mcp_ready") {
         this.handleMcpReady(msg, socket);
       } else if (msg.type === "pong") {
@@ -12872,7 +12907,7 @@ export class Daemon extends EventEmitter {
     this.emit("mcp_tool_response_written", { operationId, daemonBootId: this.bootId });
   }
 
-  private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }): void {
+  private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }, originatingCall?: RequestContextLocalCall): void {
     const tool = msg.tool as string;
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number;
@@ -12897,6 +12932,8 @@ export class Daemon extends EventEmitter {
 
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
     const respond = (result: unknown, error?: string, errorCode?: string | number) => {
+      if (originatingCall && !originatingCall.current()) { result = null; error = "Originating request context is no longer current"; }
+      if (originatingCall) this.requestContextCalls.delete(originatingCall.id);
       // A message that verifiably went out stands down the dead-MCP proxy reply
       // for this turn: the agent proved it can still speak for itself.
       if (!error && result != null && TURN_OUTBOUND_TOOLS.has(tool)) {
@@ -12946,6 +12983,24 @@ export class Daemon extends EventEmitter {
       }
     };
 
+    const sendFleet = (message: Record<string, unknown>): void => {
+      if (originatingCall && !originatingCall.current()) {
+        const id = String(message.fleetRequestId ?? ""), callback = this.pendingIpcRequests.get(id);
+        this.pendingIpcRequests.delete(id);
+        if (callback) callback({ error: "Originating request context is no longer current" });
+        else respond(null, "Originating request context is no longer current");
+        return;
+      }
+      this.broadcastFleetMessage(originatingCall ? { ...message, requestContextCallId: originatingCall.id, sourceDaemonBootId: this.bootId } : message);
+    };
+    if (this.requestContextLifecycle && !peer && !originatingCall || originatingCall && !originatingCall.current()) {
+      respond(null, "Originating request context is unavailable"); return;
+    }
+    // These local shell mutations have no scoped admission boundary yet (F); never imply coverage.
+    if (originatingCall && (tool === "checkout_repo" || tool === "release_repo")) {
+      respond(null, "This operation is not covered by request-context admission"); return;
+    }
+
     // Native Fleet/task operations carry their lease to the existing dispatcher mutation admission points.
     if (peer?.dispatch?.(tool, args, respond)) return;
 
@@ -12978,7 +13033,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.broadcastFleetMessage({
+      sendFleet({
         type,
         payload: args,
         meta: { instance_name: this.name },
@@ -13004,7 +13059,7 @@ export class Daemon extends EventEmitter {
           clearTimeout(timeout);
           resolve({ result: respMsg.result, error: respMsg.error as string | undefined });
         });
-        this.broadcastFleetMessage({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
+        sendFleet({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
       });
       void (async () => {
         if (tool === "preview_web_appearance") {
@@ -13060,7 +13115,7 @@ export class Daemon extends EventEmitter {
           clearTimeout(timeout);
           resolve({ result: respMsg.result, error: respMsg.error as string | undefined });
         });
-        this.broadcastFleetMessage({
+        sendFleet({
           type: "fleet_task",
           payload,
           meta: { instance_name: this.name },
@@ -13091,7 +13146,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.broadcastFleetMessage({
+      sendFleet({
         type: typeMap[tool],
         payload: args,
         meta: { instance_name: this.name, working_directory: this.config.working_directory },
@@ -13121,7 +13176,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.broadcastFleetMessage({
+      sendFleet({
         type: typeMap[tool],
         payload: args,
         meta: {
@@ -13153,7 +13208,7 @@ export class Daemon extends EventEmitter {
           clearTimeout(timeout);
           respond(respMsg.result, respMsg.error as string | undefined);
         });
-        this.broadcastFleetMessage({
+        sendFleet({
           type: "fleet_outbound",
           tool,
           args,
@@ -13212,7 +13267,7 @@ export class Daemon extends EventEmitter {
       // Register the waiter before broadcasting. A fast/mock adapter can settle
       // immediately; broadcasting first left a response-before-registration
       // window that degraded into a timeout despite a completed POST.
-      this.broadcastFleetMessage({
+      sendFleet({
         type: "fleet_outbound",
         tool,
         args,

@@ -6,8 +6,24 @@ import { runtimeJobDigest } from "./runtime-client-store.js";
 import { validatePaneMcpBody, validatePaneMcpOwner, samePaneMcpOwner, type PaneMcpBody, type PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
 import { OUTBOUND_TOOL_SCHEMAS, withComposites, expandCompositeCall } from "./channel/mcp-tools.js";
 import { redactDiagnostics } from "./diagnostic-redaction.js";
+import { validateRequestContextCallStamp, type RequestContextCallStamp } from "./request-context-call-protocol.js";
+import type { RequestContextCallLease, RequestContextCallAdmission } from "./request-context-call.js";
+import type { RequestContextCallReference } from "./request-context-pane.js";
 interface ToolMenu { name: string; [key: string]: unknown }
-interface Call { digest: string; operationId: string; responseId: string; state: "prepared" | "done" | "written" }
+interface Call { digest: string; operationId: string; responseId: string; state: "prepared" | "done" | "written"; requestContext?: CallContextReference }
+interface CallContextReference { stampSha256: string; coverage: "covered" | "not-covered"; contextId?: string; rootContextId?: string; proofSha256?: string; reason?: "interrupted-launch" | "unbound-input" }
+export type PaneRequestContextAdmission = RequestContextCallAdmission;
+function validCallContext(raw: unknown): raw is CallContextReference {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const value = raw as CallContextReference;
+  const digest = (s: unknown): boolean => typeof s === "string" && /^[a-f0-9]{64}$/.test(s);
+  const id = (s: unknown): boolean => typeof s === "string" && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(s);
+  return digest(value.stampSha256) && (value.coverage === "covered"
+    ? Object.keys(value).every(key => ["stampSha256", "coverage", "contextId", "rootContextId", "proofSha256"].includes(key))
+      && id(value.contextId) && id(value.rootContextId) && digest(value.proofSha256)
+    : value.coverage === "not-covered" && Object.keys(value).every(key => ["stampSha256", "coverage", "reason"].includes(key))
+      && ["interrupted-launch", "unbound-input"].includes(String(value.reason)));
+}
 interface Ledger { version: 1; machineId: string; owner: PaneMcpOwner; calls: Record<string, Call> }
 export interface PaneToolFailure { tool: string; operationId: string; reason: string; code: string | number | null }
 export interface PaneMcpAuthority {
@@ -19,7 +35,9 @@ export interface PaneMcpAuthority {
   current(): boolean;
   menu(): ToolMenu[];
   allowed(tool: string, args: Record<string, unknown>): boolean;
-  invoke(input: { tool: string; args: Record<string, unknown>; operationId: string }, current: () => boolean): Promise<{ result: unknown; error?: string; errorCode?: string | number }>;
+  invoke(input: { tool: string; args: Record<string, unknown>; operationId: string; requestContext?: PaneRequestContextAdmission }, current: () => boolean): Promise<{ result: unknown; error?: string; errorCode?: string | number }>;
+  /** Internal covered-proof resolver; absent in production until end-to-end cutover. */
+  requestContexts?: { resolve(owner: PaneMcpOwner, stamp: RequestContextCallStamp): { lease: RequestContextCallLease; reference: RequestContextCallReference } };
   toolFailed?(details: PaneToolFailure): void;
   responseWritten(operationId: string): void;
   /** Stable authenticated connection generation, distinct from one RPC's short-lived current() fence. */
@@ -45,7 +63,8 @@ export class PaneMcpAuthorityLease {
       if (raw?.version !== 1 || raw.machineId !== authority.machineId || !samePaneMcpOwner(validatePaneMcpOwner(raw.owner), authority.owner)
         || !raw.calls || typeof raw.calls !== "object" || Array.isArray(raw.calls) || Object.keys(raw.calls).length > 65_536
         || Object.entries(raw.calls).some(([key, row]) => !/^[a-f0-9]{64}$/.test(key) || !row || !/^[a-f0-9]{64}$/.test(row.digest)
-          || !/^[a-f0-9]{64}$/.test(row.responseId) || !/^[a-f0-9-]{36}$/i.test(row.operationId) || !["prepared", "done", "written"].includes(row.state))) throw Error("Pane tool ledger scope differs");
+          || !/^[a-f0-9]{64}$/.test(row.responseId) || !/^[a-f0-9-]{36}$/i.test(row.operationId) || !["prepared", "done", "written"].includes(row.state)
+          || row.requestContext !== undefined && !validCallContext(row.requestContext))) throw Error("Pane tool ledger scope differs");
       this.ledger = raw;
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
@@ -62,9 +81,23 @@ export class PaneMcpAuthorityLease {
   private key(body: Extract<PaneMcpBody, { method: "tools/call" | "response-written" }>): string {
     return createHash("sha256").update(JSON.stringify([body.helperId, body.callId])).digest("hex");
   }
-  async handle(machineId: string, raw: unknown, transport: () => boolean): Promise<unknown> {
+  async handle(machineId: string, raw: unknown, transport: () => boolean, rawStamp?: unknown): Promise<unknown> {
     const body = validatePaneMcpBody(raw);
-    const current = (): boolean => this.current(transport);
+    let admission: PaneRequestContextAdmission | undefined, reference: CallContextReference | undefined;
+    if (rawStamp !== undefined && !this.authority.requestContexts) throw Error("Originating-call protocol not negotiated");
+    if (this.authority.requestContexts && body.method !== "presence" && body.method !== "tools/list") {
+      const stamp = validateRequestContextCallStamp(rawStamp), stampSha256 = runtimeJobDigest(stamp);
+      if (stamp.coverage === "covered") {
+        const captured = this.authority.requestContexts.resolve(body.owner, stamp);
+        admission = { coverage: "covered", lease: captured.lease };
+        reference = { stampSha256, coverage: "covered", ...captured.reference };
+      } else {
+        admission = { coverage: "not-covered", reason: stamp.reason };
+        reference = { stampSha256, coverage: "not-covered", reason: stamp.reason };
+      }
+    }
+    const captured = admission;
+    const current = (): boolean => this.current(transport) && (captured?.coverage !== "covered" || captured.lease.current());
     if (machineId !== this.authority.machineId || !samePaneMcpOwner(body.owner, this.authority.owner) || !current()) throw Error("Pane tool owner is no longer current");
     if (body.method === "presence") {
       const epoch = this.authority.transportEpoch?.(); if (!epoch) throw Error("Pane helper transport identity is unavailable");
@@ -72,6 +105,8 @@ export class PaneMcpAuthorityLease {
     }
     if (body.method === "tools/list") return { result: { tools: withComposites(this.authority.menu().filter(tool => this.toolCeiling.has(tool.name))) } };
     const key = this.key(body), previous = this.ledger.calls[key];
+    // Compare BEFORE cached/in-flight results and response-written receipts. A legacy row never acquires a context.
+    if (previous && runtimeJobDigest(previous.requestContext ?? null) !== runtimeJobDigest(reference ?? null)) throw Error("Pane tool identity has different originating context");
     if (body.method === "response-written") {
       if (!previous || previous.state === "prepared" || previous.responseId !== body.responseId) throw Error("Pane tool response receipt differs");
       if (previous.state !== "written") {
@@ -98,7 +133,7 @@ export class PaneMcpAuthorityLease {
       return { result: errorResult(`Tool outcome is retained and will not be repeated. Inspect operation ${previous.operationId}.`) };
     }
     if (this.inFlight.size >= 32 || this.results.size >= 64 || Object.keys(this.ledger.calls).length >= 65_536) throw Error("Pane tool receipt backlog or ledger capacity reached");
-    const call: Call = { digest, operationId: randomUUID(), responseId: randomBytes(32).toString("hex"), state: "prepared" };
+    const call: Call = { digest, operationId: randomUUID(), responseId: randomBytes(32).toString("hex"), state: "prepared", ...(reference ? { requestContext: reference } : {}) };
     this.ledger.calls[key] = call;
     try { this.save(); } catch (error) { delete this.ledger.calls[key]; throw error; }
     const allowed = (): boolean => current() && this.allowed(tool, checked);
@@ -106,7 +141,7 @@ export class PaneMcpAuthorityLease {
       if (!allowed()) throw Error("Pane tool permission was revoked before dispatch");
       let response: Record<string, unknown>;
       try {
-        const value = await this.authority.invoke({ tool, args: checked, operationId: call.operationId }, allowed);
+        const value = await this.authority.invoke({ tool, args: checked, operationId: call.operationId, ...(admission ? { requestContext: admission } : {}) }, allowed);
         if (value.error) {
           // No args, reply bodies or raw provider errors in diagnostics. Redact BEFORE truncating so a
           // credential cannot survive as a partial token. An absent lower-level code stays explicitly unknown.

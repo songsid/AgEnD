@@ -316,6 +316,7 @@ import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { INSTRUCTIONS_FILE } from "./instruction-file-sizes.js";
 import { NativeMcpSessions } from "./native-mcp.js";
+import type { RequestContextLocalCall } from "./request-context-call.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import { cachedNativeModelCatalog, refreshNativeModelCatalogAfterSignIn } from "./native-model-catalog.js";
 import { shapeWebModelCatalog } from "./web-model-groups.js";
@@ -1506,6 +1507,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   fleetConfig: FleetConfig | null = null;
   private fleetWindowsRuntime: FleetWindowsRuntime | null = null;
   private nativeMcpStore: NativeMcpSessions | null = null;
+  private readonly requestContextIpcCalls = new WeakMap<object, RequestContextLocalCall>();
+  /** Captured at IPC arrival, not a later lookup of this instance's current turn. */
+  requestContextCallOf(message: object): RequestContextLocalCall | null { return this.requestContextIpcCalls?.get(message) ?? null; }
+  private captureRequestContextIpcCall(name: string, message: Record<string, unknown>, ipc: InstanceClient): boolean {
+    const daemon = this.daemons.get(name);
+    if (!daemon?.requestContextCallsRequired?.()) return message.requestContextCallId === undefined;
+    if (this.instanceIpcClients.get(name) !== ipc || message.sourceDaemonBootId !== daemon.bootId || typeof message.requestContextCallId !== "string") return false;
+    const captured = daemon.requestContextCall(message.requestContextCallId);
+    if (!captured) return false;
+    this.requestContextIpcCalls.set(message, captured); return true;
+  }
   private paneManager: import("./native-pane-manager.js").NativePaneManager | null = null;
   private localPaneRelay: import("./local-pane-endpoint.js").LocalPaneEndpoint | null = null;
   private openingLocalPane: Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> | null = null;
@@ -1648,8 +1660,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   nativeInstanceRuntime(): FleetWindowsRuntime {
     return this.fleetWindowsRuntime ??= new FleetWindowsRuntime({
       owner:this,fleet:()=>this.fleetConfig,save:()=>this.saveFleetConfig(),stopping:()=>this.shuttingDown,history:this.webChatHistory,
-      openMcp:(instance,requestId,sandbox,stillCurrent)=>this.healthServerListening
-        ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
+      openMcp:(instance,requestId,sandbox,stillCurrent,requestContext)=>this.healthServerListening
+        ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,...(requestContext?{requestContext}:{}),endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
       warn:(message,error)=>this.logger.warn({err:error},message),
       removed:name=>this.nativeInstanceRemoved(name),
       paneCurrent:name=>this.daemons.get(name)?.nativePaneCurrent?.() === true,
@@ -14080,6 +14092,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await ipc.connect();
       this.instanceIpcClients.set(name, ipc);
       ipc.on("message", safeHandler(async (msg: Record<string, unknown>) => {
+        if ((msg.type === "fleet_outbound" || toolForIpcType(msg.type) !== null) && !this.captureRequestContextIpcCall(name, msg, ipc)) {
+          if (this.instanceIpcClients.get(name) !== ipc) return;
+          if (msg.type === "fleet_outbound") ipc.send({ type: "fleet_outbound_response", fleetRequestId: msg.fleetRequestId, error: "Originating request context is unavailable" });
+          else this.refuseTypedIpc(name, msg, "Originating request context is unavailable");
+          return;
+        }
         if (msg.type === "mcp_ready") {
           // Register external sessions (sessionName differs from instance name)
           const sessionName = msg.sessionName as string | undefined;
@@ -15589,6 +15607,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleOutboundFromInstance(instanceName: string, msg: Record<string, unknown>): Promise<void> {
+    const originatingCall = this.requestContextCallOf(msg);
     this.touchActivity(instanceName);
     this.setTopicIcon(instanceName, "green");
     const tool = msg.tool as string;
@@ -15640,6 +15659,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.eventLog?.logActivity("tool_call", senderSessionName ?? instanceName, this.summarizeToolCall(tool, args));
       await handler(this, args, respond, {
         instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
+        ...(originatingCall ? { callerCurrent: () => originatingCall.current(), requestContextAdmission: originatingCall.admission } : {}),
       });
       return;
     }

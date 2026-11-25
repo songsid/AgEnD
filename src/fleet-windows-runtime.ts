@@ -18,6 +18,9 @@ import type { SettingsExecution } from "./settings-transaction.js";
 import type { NativeMcpLease } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import type { AgentRuntimeTarget, PreparedAgentRuntime } from "./agent-runtime-change.js";
+import { captureRequestContextCall, type RequestContextCallLease } from "./request-context-call.js";
+import { deliveryContentDigest } from "./delivery-outbox.js";
+import { RequestContextInputDeferred, type RequestContextLocalTurns, type RequestContextRuntimeOwner } from "./request-context-turns.js";
 
 export interface FleetWindowsRuntimeHost {
   owner: object & { dataDir?: string };
@@ -26,7 +29,7 @@ export interface FleetWindowsRuntimeHost {
   emit(event: string, data: unknown): void;
   stopping(): boolean;
   history?: Pick<WebChatHistory,"findByMessageId"> & Partial<Pick<WebChatHistory,"reconcileNativeMessages" | "findByNativeHistoryId">>;
-  openMcp?(instance: string, requestId: string, sandbox: WindowsAgent["sandbox"], stillCurrent: () => boolean): NativeMcpLease | null;
+  openMcp?(instance: string, requestId: string, sandbox: WindowsAgent["sandbox"], stillCurrent: () => boolean, requestContext?: RequestContextCallLease): NativeMcpLease | null;
   warn?(message: string,error: unknown): void;
   removed?(name: string,config: InstanceConfig): void;
   machineAvailable?(machineId: string): boolean;
@@ -37,6 +40,8 @@ export interface FleetWindowsRuntimeHost {
   paneAvailable?(machineId:string):boolean;
 }
 export interface NativeRuntimeDeliveryOptions {
+  /** Internal admitted-input key; never selected from a model's payload or correlation id. */
+  requestContextInputId?: string;
   /** The handoff fence: checked before the turn is journaled (it may include the sending request's own lifetime). */
   stillCurrent?: () => boolean;
   /**
@@ -52,6 +57,13 @@ export type NativeRuntimePatch = Pick<InstanceConfig,"display_name"|"description
 export type NativeExecutionResult = WindowsCliTask & {reportedCorrelationIds?: readonly string[]};
 
 export class FleetWindowsRuntime {
+  private hasClaimed = false;
+  private requestContextLifecycle?: { turns: RequestContextLocalTurns; owner(instance: string): RequestContextRuntimeOwner };
+  /** Uninstalled in production until L. The lane owner is stable across exec claims, not the new run id. */
+  setRequestContextExecLifecycle(turns: RequestContextLocalTurns, owner: (instance: string) => RequestContextRuntimeOwner): void {
+    if (this.requestContextLifecycle || this.hasClaimed || this.mcpLeases.size) throw Error("Native request context must be installed before claims");
+    this.requestContextLifecycle = { turns, owner };
+  }
   private readonly mcpLeases = new Map<string,{requestId:string;lease:NativeMcpLease}>();
   private readonly store: WindowsAgents;
   private readonly bridge: WindowsCliExecutor;
@@ -276,6 +288,7 @@ export class FleetWindowsRuntime {
   }
   private claim(name: string, payload: Record<string,unknown>, options: NativeRuntimeDeliveryOptions, settled: (task:NativeExecutionResult)=>void): WindowsCliTask | import("./windows-agents.js").WindowsTurn {
     this.enabled();
+    this.hasClaimed = true;
     if (this.host.stopping() || options.stillCurrent?.() === false) throw new Error("Windows delivery is no longer current");
     const config=this.config(name);
     if (!config || !this.has(name)) throw new Error("Windows instance not found");
@@ -290,35 +303,55 @@ export class FleetWindowsRuntime {
     if (typeof raw !== "string" || !raw.trim()) throw new Error("Windows delivery needs a text message");
     if (["raw_paste","steer"].includes(String(payload.type))) throw new Error("This Windows runtime supports messages, not terminal input or steering");
     const requestId=validWindowsAgentId(payload.requestId) ? payload.requestId : randomUUID();
-    options.beforeStart?.();
     const meta=payload.meta && typeof payload.meta === "object" ? payload.meta as Record<string,unknown> : {};
+    const prompt=meta.source === "app" ? formatHumanInboundMessage(raw,{source:"app"},"mcp") : raw;
     const authority=options.authorityCurrent ?? options.stillCurrent;
     const existing=agent.turns.some(turn=>turn.id===requestId);
+    let requestContext: RequestContextCallLease | undefined;
+    let retireContext = (): void => {};
+    if (!existing && this.requestContextLifecycle) {
+      // Even a valid return cannot replace a still-running exec grant. Queue it before touching C or the lease.
+      if (agent.activeId) throw new RequestContextInputDeferred();
+      const { turns, owner: ownerOf } = this.requestContextLifecycle, owner = ownerOf(name);
+      if (owner.instance !== name) throw Error("Native request context owner differs");
+      const previous = turns.current(owner);
+      // Resolve the admitted input with C's exact parent/actor/wire checks BEFORE retiring any old grant.
+      const snapshot = turns.beforeWrite(options.requestContextInputId ?? null, deliveryContentDigest(prompt), owner);
+      retireContext = () => { if (snapshot !== previous) turns.ended(snapshot, owner); };
+      try { requestContext = captureRequestContextCall(snapshot, captured => turns.isCurrent(captured, ownerOf(name))); }
+      catch (error) { retireContext(); throw error; }
+    }
+    try { options.beforeStart?.(); } catch (error) { retireContext(); throw error; }
     let lease:NativeMcpLease|null=null;
+    try {
     if (!existing && nativeProviderMcpSupported(agent.cli) && this.host.openMcp) {
       this.closeMcp(name);
-      lease=this.host.openMcp(name,requestId,agent.sandbox,()=>{
+      const current=()=>{
         if (this.host.stopping() || !switchedOn(agent) || authority?.() === false
           || agent.machineId && this.host.machineAvailable?.(agent.machineId) !== true) return false;
         try { const current=this.get(name);return !!current && current.activeId===requestId && !current.paused && !current.blocked; }
         catch { return false; }
-      });
+      };
+      lease=requestContext ? this.host.openMcp(name,requestId,agent.sandbox,current,requestContext)
+        : this.host.openMcp(name,requestId,agent.sandbox,current);
       if (lease) this.mcpLeases.set(name,{requestId,lease});
     }
+    } catch (error) { retireContext(); throw error; }
     const closeLease=()=>{if(lease){lease.close();if(this.mcpLeases.get(name)?.lease===lease)this.mcpLeases.delete(name);}};
     const context=lease ? [
       `Your AgEnD instance is ${name}. AgEnD tools query Fleet agents, tasks and delivery receipts. ${agent.sandbox === "read-only" ? "This turn permits queries only; delegation and task changes are unavailable." : "Send/delegate tools enqueue work and return a receipt; do not wait for another Windows agent while holding this turn."}`,
       ...(typeof meta.from_instance === "string" ? [`Incoming Fleet context: ${JSON.stringify({from_instance:meta.from_instance.slice(0,128),correlation_id:typeof meta.correlation_id === "string" ? meta.correlation_id.slice(0,256) : undefined,requires_reply:meta.requires_reply === "true"})}`] : []),
     ].join("\n") : undefined;
     let task:ReturnType<WindowsAgents["send"]>;
-    const prompt=meta.source === "app" ? formatHumanInboundMessage(raw,{source:"app"},"mcp") : raw;
     try { task=this.store.send(agent.id,{requestId,prompt},()=>!this.host.stopping() && authority?.() !== false,{...(lease ? {mcp:lease.connection,context} : {}),...(credentialProfile ? {credentialProfile} : {}),onSettled:task=>{
       const reportedCorrelationIds=lease?.reportedCorrelations(typeof meta.from_instance === "string" ? meta.from_instance : undefined) ?? [];
       closeLease();
+      // A confirmed run end is terminal. An uncertain native outcome is not proof that work ended.
+      if (task.outcomeConfirmed) retireContext();
       const replyId=`native:${task.id}:reply`;
       if (!this.host.history?.findByMessageId(name,replyId)) this.host.emit("message",{instance:name,role:task.status === "completed" ? "agent" : "status",sender:this.config(name)?.display_name || agent.name,text:task.status === "completed" ? task.output || "(No text output)" : [task.output,task.error || task.status].filter(Boolean).join("\n"),ts:new Date(task.finishedAt ?? Date.now()).toISOString(),messageId:replyId});
       this.changed(name);settled({...task,reportedCorrelationIds});
-    }}); } catch(error) { closeLease();throw error; }
+    }}); } catch(error) { closeLease();retireContext();throw error; }
     if (task.finishedAt) closeLease();
     if (meta.source !== "web" && meta.source !== "app") {
       const userId=`native:${requestId}:user`;

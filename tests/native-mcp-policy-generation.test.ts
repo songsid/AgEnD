@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { captureRequestContextCall } from "../src/request-context-call.js";
+import type { RequestContextTurnSnapshot } from "../src/request-context-turns.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleAgentRequest } from "../src/agent-endpoint.js";
 const roots: string[] = [], managers: any[] = [];
@@ -102,3 +104,35 @@ describe("native capability issuing policy", () => {
   });
 });
 function nativeInstanceYaml() { return `    runtime: windows\n    native_agent_id: ${agentId}\n    native_sandbox: workspace-write\n    working_directory: 'C:\\Scratch'\n    backend: codex`; }
+
+function scopeFixture() {
+  const id = randomUUID(); let current = true;
+  const snapshot: RequestContextTurnSnapshot = { token: randomUUID(), inputId: "server-input", wireSha256: "a".repeat(64),
+    owner: { instance: name, incarnation: "native-generation", workGeneration: "session", daemonBootId: "boot", spawnGeneration: 1, launchFenceEpoch: 0, deliveryEpoch: 0 },
+    context: { ref: { version: 1, contextId: id, rootContextId: id }, rootEvidenceRef: "fixture", ingress: "guest",
+      initiatingActor: { kind: "person", platform: "discord", userId: "demo-person" }, source: { instance: name, incarnation: "native-generation" },
+      sourceAudience: { kind: "web", ref: randomUUID() } } };
+  return { scope: captureRequestContextCall(snapshot, () => current), retire: () => { current = false; } };
+}
+describe("S-224 exec request-context grant", () => {
+  it("keeps delayed body A bound to A after another turn becomes current", async () => {
+    const f = fixture(); f.lease.close(); f.fm.fleetConfig.instances[name].tool_set = "worker"; f.fm.saveFleetConfig();
+    const a = scopeFixture(); f.sessions.setRequestContextRequired(true);
+    const lease = f.sessions.grant({ instance: name, requestId: randomUUID(), sandbox: "workspace-write", endpoint: "http://127.0.0.1:19280/agent", stillCurrent: () => true, requestContext: a.scope });
+    const held = request(f, lease.connection.token); a.retire();
+    expect((await held.finish()).status).toBe(401); expect(f.crud).not.toHaveBeenCalled();
+    const b = scopeFixture(); const next = f.sessions.grant({ instance: name, requestId: randomUUID(), sandbox: "workspace-write", endpoint: lease.connection.endpoint, stillCurrent: () => true, requestContext: b.scope });
+    expect((await request(f, next.connection.token).finish()).status).toBe(200);
+    expect(f.crud).toHaveBeenCalledExactlyOnceWith(name, expect.objectContaining({ action: "create" }), b.scope.snapshot);
+    expect(JSON.stringify(next.connection)).not.toContain(b.scope.snapshot.token);
+    expect(JSON.stringify(next.connection)).not.toContain(b.scope.snapshot.context.ref.contextId);
+  });
+  it("requires a captured input when enabled, retires old grants, and keeps OFF legacy positive", async () => {
+    const f = fixture(); expect((await request(f, f.lease.connection.token, { op: "native-mcp", method: "tools/list", params: {} }).finish()).status).toBe(200);
+    f.sessions.setRequestContextRequired(true);
+    expect((await request(f).finish()).status).toBe(401);
+    expect(() => f.grant()).toThrow(/admitted request context/);
+    f.sessions.setRequestContextRequired(false);
+    expect((await request(f, f.grant().connection.token, { op: "native-mcp", method: "tools/list", params: {} }).finish()).status).toBe(200);
+  });
+});
