@@ -240,8 +240,10 @@ export function FleetPanel({ route, navKey }) {
          and chosen here rather than by CSS: a previous release's app.css, cached in an open tab, has no rule for the
          header slot — this way either stylesheet lays both out (smoke-2542 SKEW). */ ""}
     ${/* M-3166 (Argon 5, the user's OK of round 2): a phone's Fleet is two rows — its tabs in the header's row (☰, then the
-         tabs; the title, search, docs and text size give way: app.css), then the page's own tools. */ ""}
-    <${PanelHeader} title=${t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : phone ? tabs("seg fleet-phone-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
+         tabs; the title, search, docs and text size give way: app.css), then the page's own tools.
+         M-3722: eight tabs no longer fit beside ☰ at 390 px (Authorizations, Host health). On a phone the header is ☰ and
+         this page's name, then every tab as an icon, each a whole touch target (app.css): nothing scrolls off. */ ""}
+    <${PanelHeader} title=${phone && !wide ? t(`fleet.${tab}`) : t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : phone ? tabs("seg fleet-phone-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
     ${wide || phone ? null : tabs("seg fleet-tabs-row")}
     <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "tasks" || tab === "org" || tab === "cache" || tab === "usage" || tab === "authorizations" || tab === "host-health" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;

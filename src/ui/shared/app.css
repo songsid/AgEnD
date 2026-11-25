@@ -5158,13 +5158,17 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .sidebar.fleet-side .side-new { position: absolute; top: calc(var(--header-h) + max(var(--s-1), env(safe-area-inset-top))); right: var(--s-2); width: var(--tap); height: var(--tap); padding: 0; justify-content: center; }
   .sidebar.fleet-side .side-new .grow { display: none; }
   .sidebar.fleet-side .inst-row-menu, .sidebar.fleet-side .av-cli, .sidebar.fleet-side .v-group-kind, .sidebar.fleet-side .v-meta { display: none !important; }
-  .p-fleet > .panel-head .sb-search, .p-fleet > .panel-head .panel-title h1, .p-fleet > .panel-head .panel-actions { display: none !important; }
-  /* The title gives way, but a host-memory warning (its subtitle) stays: a line of its own under ☰ and the tabs (#4008 review). */
-  .p-fleet > .panel-head .panel-title:not(:has(.host-mem)) { display: none; }
-  .p-fleet > .panel-head:has(.host-mem) { flex-wrap: wrap; }
-  .p-fleet > .panel-head .panel-title:has(.host-mem) { order: 10; flex: 1 0 100%; min-height: 0; padding-bottom: var(--s-1); }
+  .p-fleet > .panel-head .sb-search, .p-fleet > .panel-head .panel-actions { display: none !important; }
+  /* M-3722: two rows — ☰ and this page's name (a host-memory warning, its subtitle, under it, #4008 review), then every tab
+     as an icon across the whole width, each a full touch target: eight no longer fit beside ☰ at 390 px. A tab's name stays
+     its accessible name (visually hidden). */
+  .p-fleet > .panel-head { flex-wrap: wrap; }
+  .p-fleet > .panel-head .panel-title { flex: 1 1 0; min-width: 0; }
+  .p-fleet > .panel-head .panel-title h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .p-fleet > .panel-head .panel-title .panel-sub:has(.host-mem) { flex: 1 1 auto; width: auto; }
-  .p-fleet > .panel-head .fleet-phone-tabs { flex: 1; min-width: 0; order: initial; padding: 0; margin: 0; overflow-x: auto; flex-wrap: nowrap; }
+  .p-fleet > .panel-head .fleet-phone-tabs { order: 20; flex: 1 0 100%; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0; min-width: 0; padding: 0; margin: 0; overflow: visible; }
+  .p-fleet > .panel-head .fleet-phone-tabs .seg-item { min-height: var(--tap); min-width: 0; padding: 0; justify-content: center; }
+  .p-fleet > .panel-head .fleet-phone-tabs .seg-item span { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   .p-fleet .oc-bar > span:first-child, .p-fleet .oc-bar .org-counts { display: none; }
   .p-fleet .oc-bar .oc-tools { flex-wrap: nowrap; overflow-x: auto; width: 100%; }
 }
