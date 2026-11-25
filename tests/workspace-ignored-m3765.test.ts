@@ -2,7 +2,7 @@
  * M-3765: the read-only Files view left out everything git ignores, so an agent's soul.md (AgEnD's own long-form memory,
  * which projects list in .gitignore) could not be found. Now:
  * - soul.md at the folder's top is always listed (marked `ignored` when git ignores it) and opens as any other file;
- * - `ignored=1` (the Files tab's "Show files git ignores") lists every ignored entry, each marked; a dependency folder is
+ * - `ignored=1` (the Files tab's "Show git-ignored files") lists every ignored entry, each marked; a dependency folder is
  *   one entry, its contents only when it is opened;
  * - secret-looking names stay hidden (listed, never read), AgEnD's state directory stays out, either way.
  * On a REAL scratch git repository, through workspaceList / workspaceFile and the /ui/workspace route.
@@ -69,7 +69,7 @@ describe("soul.md is always listed (M-3765)", () => {
   });
 });
 
-describe("Show files git ignores (M-3765)", () => {
+describe("Show git-ignored files (M-3765)", () => {
   it("lists every ignored entry, each marked; the secret filter and AgEnD's state directory are unchanged", async () => {
     const ws = await workspaceRoot(work, state);
     const l = await workspaceList(ws, "", { showIgnored: true });

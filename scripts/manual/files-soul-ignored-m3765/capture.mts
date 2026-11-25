@@ -4,7 +4,7 @@
  * ⋯ → Files & changes → Files:
  *  1 the folder's top: soul.md listed ("ignored by git"), the other ignored entries not;
  *  2 soul.md opened;
- *  3 "Show files git ignores" on: node_modules, dist, debug.log, .env listed and marked; .env still hidden (not openable).
+ *  3 "Show git-ignored files" on: node_modules, dist, debug.log, .env listed and marked; .env still hidden (not openable).
  * Desk and phone × light / dark × en / zh-TW on the fleet's own address, and desk light en + phone dark zh-TW over the public
  * link (the real gateway; only the tunnel and the Discord-side owner check are stubbed).
  *   CHROME=<chromium> PW_DIR=<playwright-core> REPO=<checkout> OUT=<dir> npx tsx scripts/manual/files-soul-ignored-m3765/capture.mts
@@ -76,8 +76,11 @@ async function walk(page: any, tag: string, zh: boolean, phone: boolean) {
   check(`${tag}: soul.md listed, marked ignored by git`, !!soul && soul.ignored && soul.meta.includes(zh ? "git 已忽略" : "ignored by git") && !soul.disabled, soul);
   check(`${tag}: the other ignored entries are not listed`, !top.some((e) => ["node_modules/", "dist/", "debug.log", ".env"].includes(e.name)), top.map((e) => e.name));
   const toggle = await page.evaluate(`(() => { const l = document.querySelector(".ws-ignored-toggle"), r = l && l.getBoundingClientRect(); return l ? { text: l.innerText.trim(), h: Math.round(r.height), checked: l.querySelector("input").checked } : null; })()`) as any;
-  check(`${tag}: the toggle is there, off`, !!toggle && toggle.text === (zh ? "顯示 git 忽略的檔案" : "Show files git ignores") && !toggle.checked, toggle);
+  check(`${tag}: the toggle is there, off`, !!toggle && toggle.text === (zh ? "顯示 git 忽略的檔案" : "Show git-ignored files") && !toggle.checked, toggle);
   if (phone) check(`${tag}: the toggle is a 44 px row`, !!toggle && toggle.h >= 44, toggle);
+  // A folder opens as its own listing: its chevron points right (collapsed), never down with nothing under it.
+  const chevrons = await page.evaluate(`[...document.querySelectorAll(".ws-panel .ws-entry.t-dir .ws-entry-btn > .icon")].map((i) => getComputedStyle(i).transform)`) as string[];
+  check(`${tag}: folders show a collapsed (right-pointing) chevron`, chevrons.length > 0 && chevrons.every((m) => /^matrix\(\s*0(\.0+)?(e-\d+)?,\s*-1/.test(m) || /^matrix\(\s*-?\d(\.\d+)?e-\d+,\s*-1/.test(m)), chevrons);
   await shot(page, `${tag}-1-top`);
   if (!soul || !toggle) { check(`${tag}: no page errors`, errors.length === 0, errors); return; }   // the release tip ("before"): nothing more to walk
   await page.locator(".ws-panel .ws-entry", { hasText: "soul.md" }).locator("button").click();

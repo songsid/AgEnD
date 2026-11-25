@@ -4,7 +4,7 @@ import { register } from "/assets/app-i18n.js";
 
 register("chat", {
   en: {
-    wsShowIgnored: "Show files git ignores",
+    wsShowIgnored: "Show git-ignored files",
     wsShowIgnoredTitle: "Also list what .gitignore leaves out, such as build output and dependencies. Secret-looking files stay hidden. soul.md is always listed.",
     wsIgnored: "ignored by git",
   },

@@ -1,6 +1,6 @@
 /**
  * M-3765: the Files tab of the Files & changes panel (the real modules) — soul.md listed though git ignores it (marked
- * "ignored by git") and opened like any file; "Show files git ignores" asks the server for everything (ignored=1), marks
+ * "ignored by git") and opened like any file; "Show git-ignored files" asks the server for everything (ignored=1), marks
  * each ignored entry, keeps a secret-looking one hidden, and is off again for the next agent. In en and zh-TW.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -95,7 +95,7 @@ describe("Files: what git ignores (M-3765)", () => {
     expect(row("app.js").className).not.toContain("is-ignored");
     expect(row("node_modules")).toBeUndefined();
     const toggle = doc.querySelector(".ws-ignored-toggle input");
-    expect(doc.querySelector(".ws-ignored-toggle").textContent).toBe("Show files git ignores");
+    expect(doc.querySelector(".ws-ignored-toggle").textContent).toBe("Show git-ignored files");
     expect(toggle.checked).toBe(false);
     expect(calls.filter((u) => u.includes("op=list")).every((u) => !u.includes("ignored="))).toBe(true);
     toggle.checked = true; toggle.dispatchEvent(new (globalThis as any).Event("change", { bubbles: true })); await settleAll();
@@ -125,6 +125,10 @@ describe("Files: what git ignores (M-3765)", () => {
     expect(doc.querySelector(".ws-ignored-toggle").textContent).toBe("顯示 git 忽略的檔案");
     const soul = ([...doc.querySelectorAll(".ws-entry")] as any[]).find((e) => e.querySelector(".ws-name").textContent === "soul.md");
     expect(soul.querySelector(".ws-meta").textContent).toBe("120 B · git 已忽略");
+  });
+  it("a folder's chevron points right (collapsed): the tree opens a folder as its own listing", async () => {
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync("src/ui/shared/workspace.css", "utf8")).toContain(".ws-entry.t-dir .ws-entry-btn > .icon { transform: rotate(-90deg); }");
   });
   it("its words come from a module of their own (an older cached workspace-strings.js lacks them)", async () => {
     const { readFileSync } = await import("node:fs");

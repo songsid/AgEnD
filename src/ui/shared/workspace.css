@@ -22,3 +22,6 @@
 .ws-ignored-toggle { display: inline-flex; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-2); font-size: var(--fs-sm); color: var(--text-2); cursor: pointer; }
 .ws-entry.is-ignored .ws-name { color: var(--text-2); }
 @media (max-width: 899px), (pointer: coarse) { .ws-ignored-toggle { min-height: var(--tap); } }
+/* M-3765 capture check: a folder in the tree opens as its own listing, never expanded in place, so its chevron points right
+   (collapsed); the chevron icon itself points down. */
+.ws-entry.t-dir .ws-entry-btn > .icon { transform: rotate(-90deg); }
