@@ -41,6 +41,8 @@ export interface HostDeps {
   lockHolder(path: string): { state: "free" | "unreadable" } | { state: "live" | "stale" | "unknown"; record: { pid: number } };
   /** An AgEnD update in progress for this home (its progress marker). */
   updateInProgress(home: string): boolean;
+  /** M-3770 2.1a: the update attempt journal's state for this home (update-journal.ts readCurrent). */
+  journalState(home: string): "none" | "open" | "unknown" | "manual" | "closing";
 }
 
 const same = (a: string, b: string) => resolve(a) === resolve(b);
@@ -250,6 +252,9 @@ export async function checkQuiet(d: HostDeps, home: string, install: { prefix: s
     if (holder.state === "unreadable") return { id: "P8", ok: false, code: "update-running", detail: { path } };
     if ((holder.state === "live" || holder.state === "unknown") && holder.record.pid !== d.pid) return { id: "P8", ok: false, code: "update-running", detail: { path } };
   }
+  // M-3770 2.1a: an open, unknown or manual-recovery attempt in the journal is another update as far as anyone can tell.
+  const journal = d.journalState(home);
+  if (journal === "open" || journal === "unknown" || journal === "manual") return { id: "P8", ok: false, code: "update-running", detail: { path: join(home, ".update-journal", "current") } };
   if (!localOnly && d.updateInProgress(home)) return { id: "P8", ok: false, code: "update-running", detail: { path: join(home, "update-in-progress.json") } };
   return { id: "P8", ok: true };
 }
