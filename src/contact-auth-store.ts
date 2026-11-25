@@ -3,6 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import type { ContactGrant, ContactHistoryRow, ContactOrigin, ContactOriginClear, ContactPerson, ContactPermissionsWrite, ContactRoomTools, ContactTicket, ContactTicketDecision, ContactVerb } from "./contact-auth-types.js";
 
 export const CONTACT_APPLICATION_TTL_MS = 30 * 60_000;
+/** M-3716: an approved message still queued this long after the decision is announced as approved and queued. */
+export const CONTACT_APPROVAL_NOTICE_WAIT_MS = 2 * 60_000;
+/** M-3716: what the requester is told about one held request. */
+export type ContactOutcome = "declined" | "expired" | "delivered" | "unconfirmed" | "queued";
 export interface ContactRequest {
   operationId: string;
   source: string;
@@ -86,6 +90,10 @@ export class ContactAuthStore {
       db.exec("CREATE TABLE IF NOT EXISTS contact_auth_outcome_notices (ticket_id TEXT PRIMARY KEY)");
       // Do not re-announce decisions already terminal before this feature was installed.
       if (!existed) db.exec("INSERT INTO contact_auth_outcome_notices SELECT id FROM contact_auth_tickets WHERE json_extract(ticket_json,'$.state') IN ('declined','expired')");
+      // M-3716: approvals are announced too; approvals from before this table are not.
+      const approvals = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='contact_auth_approval_notices'").get();
+      db.exec("CREATE TABLE IF NOT EXISTS contact_auth_approval_notices (ticket_id TEXT PRIMARY KEY)");
+      if (!approvals) db.exec("INSERT INTO contact_auth_approval_notices SELECT id FROM contact_auth_tickets WHERE json_extract(ticket_json,'$.state')='approved'");
     })();
   }
   roomContext(instance: string, generation?: string): { threadId?: string; fileIds: string[] } {
@@ -249,6 +257,7 @@ export class ContactAuthStore {
       this.db.prepare("DELETE FROM contact_auth_tickets WHERE created_at<?")
         .run(now - 30 * 24 * 60 * 60_000);
       this.db.exec("DELETE FROM contact_auth_outcome_notices WHERE ticket_id NOT IN (SELECT id FROM contact_auth_tickets)");
+      this.db.exec("DELETE FROM contact_auth_approval_notices WHERE ticket_id NOT IN (SELECT id FROM contact_auth_tickets)");
       this.db.prepare("DELETE FROM contact_auth_history WHERE at<?").run(now - 90 * 24 * 60 * 60_000);
       const ticket: ContactTicket = { id: `R${randomUUID()}`, revision: 1, scope: "peer.dispatch", state: "pending",
         source: input.source, target: input.target, sourceGeneration: input.sourceGeneration, targetGeneration: input.targetGeneration,
@@ -305,8 +314,13 @@ export class ContactAuthStore {
     return (this.db.prepare("SELECT * FROM contact_auth_tickets WHERE json_extract(ticket_json,'$.state')='pending' ORDER BY created_at,id LIMIT 512")
       .all() as TicketRow[]).map(row => this.read(row));
   }
-  /** M-3372: the callback admits a system notice on this same outbox connection. */
-  notifyOutcomes(admit: (ticket: ContactTicket) => void): number {
+  /**
+   * M-3372: the callback admits a system notice on this same outbox connection. M-3716: a person's approval is
+   * announced too, once its delivery to the target settles (`delivery` reads the outbox row): delivered, not confirmed,
+   * or still queued after CONTACT_APPROVAL_NOTICE_WAIT_MS. A standing rule's approval is not: the send itself returned it.
+   */
+  notifyOutcomes(admit: (ticket: ContactTicket, outcome: ContactOutcome) => void,
+    delivery: (ticket: ContactTicket) => string | undefined = () => undefined): number {
     return this.db.transaction(() => {
       // A timer calls this even if no person opens the web page.
       this.pending();
@@ -314,11 +328,41 @@ export class ContactAuthStore {
         + "WHERE n.ticket_id IS NULL AND json_extract(t.ticket_json,'$.state') IN ('declined','expired') ORDER BY t.created_at,t.id LIMIT 64")
         .all() as TicketRow[];
       for (const row of rows) {
-        admit(this.read(row));
+        const ticket = this.read(row);
+        admit(ticket, ticket.state === "declined" ? "declined" : "expired");
         this.db.prepare("INSERT INTO contact_auth_outcome_notices VALUES (?)").run(row.id);
       }
-      return rows.length;
+      const approved = this.db.prepare("SELECT t.* FROM contact_auth_tickets t LEFT JOIN contact_auth_approval_notices n ON n.ticket_id=t.id "
+        + "WHERE n.ticket_id IS NULL AND json_extract(t.ticket_json,'$.state')='approved' ORDER BY t.created_at,t.id LIMIT 256")
+        .all() as TicketRow[];
+      let sent = rows.length;
+      for (const row of approved) {
+        const ticket = this.read(row);
+        if (ticket.grantId) { this.db.prepare("INSERT INTO contact_auth_approval_notices VALUES (?)").run(row.id); continue; }
+        const state = delivery(ticket);
+        const outcome: ContactOutcome | undefined = state === "delivered" ? "delivered"
+          : ["failed", "uncertain", "cancelled", "reconciliation_pending"].includes(state ?? "") ? "unconfirmed"
+          : this.now() - Date.parse(ticket.decidedAt ?? ticket.createdAt) >= CONTACT_APPROVAL_NOTICE_WAIT_MS ? "queued" : undefined;
+        if (!outcome) continue;
+        admit(ticket, outcome);
+        this.db.prepare("INSERT INTO contact_auth_approval_notices VALUES (?)").run(row.id);
+        sent++;
+      }
+      return sent;
     })();
+  }
+  /**
+   * M-3716: the requests one agent sent that were held, newest first, for that agent's own delivery_status. No write:
+   * a pending request past its expiry reads as expired, exactly as the sweep will mark it.
+   */
+  requestsBy(source: string, limit = 20): ContactTicket[] {
+    const rows = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE json_extract(ticket_json,'$.source')=? ORDER BY created_at DESC,id LIMIT ?")
+      .all(source, limit) as Array<TicketRow & { created_at: number }>;
+    return rows.map(row => {
+      const ticket = JSON.parse(row.ticket_json) as ContactTicket;
+      return ticket.state === "pending" && (Date.parse(ticket.expiresAt) <= this.now() || row.created_at <= this.now() - CONTACT_APPLICATION_TTL_MS)
+        ? { ...ticket, state: "expired" as const } : ticket;
+    });
   }
   list(filter: { agent?: string; status?: string; cursor?: string } = {}): { items: ContactTicket[]; nextCursor: string | null } {
     const offset = filter.cursor ? Number(filter.cursor) : 0;

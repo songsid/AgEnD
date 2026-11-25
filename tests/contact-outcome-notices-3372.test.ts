@@ -62,11 +62,13 @@ it.each(["en", "zh-TW"] as const)("expiry is detected by the periodic sweep with
   vi.advanceTimersByTime(90_000);
   expect(r.notices()).toHaveLength(1);
 });
-it("approval emits no outcome notice, including after its original deadline", () => {
+it("approval emits no declined/expired notice after its original deadline (M-3716: only its own approval notice)", () => {
   const r = rig();
   r.fm.decideContactAuthorization(r.held.id, { revision: 1, decision: "approve-once" }, r.actor);
   vi.advanceTimersByTime(31 * 60_000); r.fm.sweepReplyObligations();
-  expect(r.notices()).toEqual([]);
+  expect(r.notices()).toHaveLength(1);
+  expect(r.notices()[0].sourceKey).toBe(`contact-approval:${r.held.id}`);
+  expect(r.notices()[0].payload.content).not.toMatch(/declined|expired/);
 });
 it("a page-expired ticket is still notified once by the sweep and store recreation cannot replay it", () => {
   const r = rig(); vi.advanceTimersByTime(31 * 60_000);

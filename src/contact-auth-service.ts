@@ -58,7 +58,7 @@ export class ContactAuthService {
     const ticket = this.host.store.hold(request);
     // Validate the immutable operation payload before preserving its pending decision.
     if (!required && ticket.state === "pending") throw new ContactHeldError({ sent: false, held: true,
-      authorization_id: ticket.id, authorization_state: ticket.state, message: t("contact.held") });
+      authorization_id: ticket.id, authorization_state: ticket.state, message: t("contact.heldAgent") });
     const granted = this.host.store.applyStandingGrant(ticket.id, {
       canDecide: (target, person) => this.canManage(target, person),
       current: current => !this.host.hubRestricted(current.source)

@@ -1,5 +1,5 @@
-import { prepareContactChange, type PreparedContactChange } from "./contact-change-proposals.js";
-import { contactStateView } from "./contact-state-view.js";
+import { prepareContactChange, shortContactTicketId, type PreparedContactChange } from "./contact-change-proposals.js";
+import { contactStateView, ownContactRequestsView } from "./contact-state-view.js";
 import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
 import { SharedDefaultAdoption } from "./shared-default-adoption.js";
 import { scopedDefaultModel } from "./model-defaults.js";
@@ -5598,6 +5598,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const badge = row?.payload.contactTicket as { id?: string } | undefined;
         const ticket = badge?.id ? outbox.contactAuthorizations.get(badge.id) : undefined;
         if (ticket && ticket.deliveryId === row?.deliveryId) {
+          // M-3716: the approval notice waits for this delivery to settle.
+          queueMicrotask(() => this.sweepContactAuthorizationOutcomes());
           const state = event.state === "delivered" ? "delivered" : ["failed", "uncertain", "cancelled", "reconciliation_pending"].includes(event.state ?? "") ? "unknown" : "approved";
           for (const instance of new Set([ticket.source, ticket.target])) {
             this.webChatHistory?.updateContactTicket(instance, ticket.id, state);
@@ -5959,6 +5961,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       roomMode: n => { const room = this.contactRoom(n); return room ? room.restrictedMode ? "restricted" : "legacy" : undefined; },
     }, agent ? { agent } : {});
   }
+  /** M-3716: the caller's OWN held requests (delivery_status { held_requests: true }); the caller is the authenticated agent. */
+  ownContactRequests(agent: string) {
+    const outbox = this.deliveryOutbox;
+    if (!outbox?.isOpen) return { requests: [], note: "Contact requests are unavailable right now." };
+    return ownContactRequestsView(outbox.contactAuthorizations.requestsBy(agent), {
+      label: n => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || n,
+      delivery: ticket => ticket.deliveryId ? outbox.get(ticket.deliveryId)?.state : undefined,
+    });
+  }
   async requestContactChange(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }> {
     if (!callerCurrent() || this.fleetConfig?.instances[requester]?.general_topic !== true) throw Error("general-only");
     if (this.hubContactRestricted(requester)) throw Error("hub-contact-restricted");
@@ -6042,10 +6053,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const outbox = this.deliveryOutbox;
     if (!outbox?.isOpen || this.shuttingDown) return;
     try {
-      outbox.contactAuthorizations.notifyOutcomes(ticket => {
-        outbox.admitSystemNotice(ticket.source, `contact-outcome:${ticket.id}`,
-          t(ticket.state === "declined" ? "contact.noticeDeclined" : "contact.noticeExpired", ticket.id, ticket.target));
-      });
+      outbox.contactAuthorizations.notifyOutcomes((ticket, outcome) => {
+        if (outcome === "declined" || outcome === "expired") {
+          outbox.admitSystemNotice(ticket.source, `contact-outcome:${ticket.id}`,
+            t(outcome === "declined" ? "contact.noticeDeclined" : "contact.noticeExpired", ticket.id, ticket.target));
+          return;
+        }
+        // M-3716 (the user, 11-25): the requester learns who approved it, when, and whether the target has it.
+        const by = ticket.decidedBy, when = ticket.decidedAt ? `${ticket.decidedAt.slice(0, 16).replace("T", " ")} UTC` : "";
+        const who = !by ? "?" : by.platform === "host" ? t("contactProposal.host")
+          : `${by.label}${getLocale() === "zh-TW" ? "（" : " ("}${by.platform === "discord" ? "Discord" : "Telegram"}${getLocale() === "zh-TW" ? "）" : ")"}`;
+        outbox.admitSystemNotice(ticket.source, `contact-approval:${ticket.id}`,
+          t(`contact.noticeApproved_${outcome}`, shortContactTicketId(ticket.id), ticket.target, who, when));
+      }, ticket => ticket.deliveryId ? outbox.get(ticket.deliveryId)?.state : undefined);
     } catch (err) {
       this.logger.error({ err }, "Contact outcome notice sweep failed; durable state will retry");
     }

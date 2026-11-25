@@ -79,3 +79,30 @@ export function contactStateView(host: ContactStateHost, filter: { agent?: strin
     ],
   };
 }
+
+/**
+ * M-3716 (the user, 11-25): what one agent may read about the requests IT sent that were held — never anyone else's,
+ * and never the people or message text (its own context already has those). `delivery` reads the outbox row of an
+ * approved request, so "approved" becomes "delivered" or "not confirmed" as the target's copy settles.
+ */
+export function ownContactRequestsView(tickets: ContactTicket[], host: {
+  label(name: string): string; delivery(ticket: ContactTicket): string | undefined;
+}) {
+  const by = (p?: ContactPerson) => !p ? undefined : p.platform === "host" ? "host operator" : person(p);
+  const requests = tickets.map(t => {
+    const delivery = t.state === "approved" ? host.delivery(t) : undefined;
+    const state = delivery === "delivered" ? "delivered"
+      : ["failed", "uncertain", "cancelled", "reconciliation_pending"].includes(delivery ?? "") ? "not-confirmed"
+      : t.state === "approved" ? (t.grantId ? "delivered-by-rule" : "approved-queued") : t.state;
+    const next = state === "pending" ? "Waiting for an admin. Do not send it again; you get a notice when it is decided."
+      : state === "delivered" || state === "approved-queued" || state === "delivered-by-rule" ? "The target has it or will get it. Wait for its answer; do not send it again."
+      : state === "not-confirmed" ? "Approved, but delivery is not confirmed. Check delivery_status with its delivery_id before sending anything again."
+      : "Not forwarded. Send again only if it is still needed (a new request needs approval again).";
+    return {
+      short_id: shortContactTicketId(t.id), ticket_id: t.id, to: host.label(t.target), verb: t.verb, state,
+      asked_at: t.createdAt, ...(t.decidedAt ? { decided_at: t.decidedAt } : {}), ...(t.decidedBy && !t.grantId ? { decided_by: by(t.decidedBy) } : {}),
+      ...(state === "pending" ? { expires_at: t.expiresAt } : {}), ...(t.deliveryId ? { delivery_id: t.deliveryId } : {}), next,
+    };
+  });
+  return { requests, ...(requests.length ? {} : { note: "None of your messages to other agents were held." }) };
+}
