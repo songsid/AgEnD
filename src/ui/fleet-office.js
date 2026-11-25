@@ -288,6 +288,8 @@ export function nearestPerson(list, x, y, r) {
 }
 /** How often the picture can change when nothing is in the air (the poses loop at 4 fps; a bubble types faster). */
 const FPS = 12;
+/** At most this many frames a second while anyone walks or anything moves. */
+const AIR_FPS = 30;
 const STYLES = BUILT_IN_SKINS;
 /** Paused and stopped: left out when "Hide paused and stopped" is on. */
 const ASLEEP = new Set(["paused", "stopped"]);
@@ -489,7 +491,8 @@ function paintLayers(p, env, ls, tagsOff = false) {
     for (const r of L.rooms) skin.drawRoom(g, r, env);
     for (const d of all) skin.drawDeskBack(g, d, looks.get(d.key), env);
   });
-  const front = zones ? null : layer((g) => {
+  // Zones: the pack's foreground, painted once at the layer's scale (it was drawn from the full picture every frame).
+  const front = zones ? (skin.pack && skin.pack.foreground && skin.drawForeground ? layer((g) => skin.drawForeground(g, L, env)) : null) : layer((g) => {
     for (const d of all) { const lk = looks.get(d.key); skin.drawDeskFront(g, d, tagsOff && lk && !lk.match ? { ...lk, notag: true } : lk, env); }
   });
   return { ls, tagsOff, back, front };
@@ -544,6 +547,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       });
       if (changed && typeof p.onSnacksChanged === "function") p.onSnacksChanged();
     }
+    // Off screen (the canvas in logical units, with room for the tallest sprite and its bubble): not drawn.
+    const cw = ctx.canvas && ctx.canvas.width, chh = ctx.canvas && ctx.canvas.height, M = 320;
+    const offView = cw ? (at) => at.x < -ox / a - M || at.x > (cw - ox) / a + M || at.y < -oy / a - M / 4 || at.y > (chh - oy) / a + M : () => false;
     const people = p.desks.map((d) => {
       const at = p.walkers.at(d.node.name, t) || { ...d.seat, walking: false };
       if (at.walking) walking = true;
@@ -628,6 +634,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       if (g) { ctx.save(); ctx.globalAlpha = GHOST_ALPHA; sk.drawCharacter(ctx, { x: g.x - 44, y: g.y - 53, w: 88, h: 53, seat: g }, g.look, 0, env); ctx.restore(); continue; }
       if (heldName && q.look.name === heldName) { heldPerson = q; continue; }  // M-3445 (#4267): drawn lifted on top below
       if (live.hidden.has(q.look.name)) continue;                          // #2698: drawn as the item (never while walking)
+      if (offView(q.at)) continue;
       const box = { ...q.d, x: q.at.x - 44, y: q.at.y - 53, w: 88, h: 53, seat: { x: q.at.x, y: q.at.y } };
       // An agent's own pose (office_set, #2578) while its act lasts and nothing calls it; walking is walking; M-3432: eating when fed.
       const posed = actPosed(p, q.look);
@@ -660,7 +667,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     }
     for (const it of up) sk.drawProp(ctx, it, ms, env);
     for (const it of post) if (it.t > 0) sk.drawProp(ctx, it, ms, env);
-    if (sk.drawForeground) sk.drawForeground(ctx, p.L, env);
+    if (p.layers.front) blit(p.layers.front);
     // Who found no spot in an area: a count in its corner (never over its name).
     for (const [ar, n] of p.L.crowd || []) if (p.L.areas[ar] && sk.drawCrowd) sk.drawCrowd(ctx, p.L.areas[ar], n, env);
     // M-3539: an area's name a figure stands on is written again over the people (休息區 under a crowd's heads).
@@ -1297,7 +1304,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const size = { w: width, h: stageH > 0 ? stageH : SIZE0.h };
   // The canvas bitmap's px per CSS px: the device's, unless the bitmap would be too big to paint (backingScale). Zoom
   // snaps to whole numbers of these (fleet-office-view.js), so a pixel-level view maps a logical unit onto whole pixels.
-  const ratio = backingScale(size.w, size.h, dpr);
+  // At most 2 px per CSS px: a 3x phone screen would paint 2.25x the pixels every frame for little visible gain.
+  const ratio = backingScale(size.w, size.h, Math.min(2, dpr));
 
   // #2554: All offices — chosen, and at least two offices stored (else the whole fleet, as an office gone is).
   const overview = choice === ALL_ID && overviewOk(stored);
@@ -1981,18 +1989,19 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   }, [dlgOn, dlgVisible, dlgSay, width, phone, ratio]);
 
   // The loop: drawing only when the frame (FPS) changed or something is in the air; stopped while the tab is hidden,
-  // gone with the view. Office review: while something walks or flies, one requestAnimationFrame per display frame (the
+  // gone with the view. Office review: while something walks or flies, a frame every display frame up to AIR_FPS (the
   // motion is smooth); when nothing moves, the poses change at most FPS times a second, so the loop sleeps (a timer)
   // until the next frame's start instead of waking at the display's rate only to find nothing to draw.
   useEffect(() => {
     if (still || typeof requestAnimationFrame !== "function") return undefined;
-    let raf = 0, timer = 0, last = -1, lastFps = FPS, air = true, gone = false;
+    let raf = 0, timer = 0, last = -1, lastFps = FPS, air = true, gone = false, drawnAt = -Infinity;
     const tick = () => {
       raf = 0;
       if (gone || globalThis.document?.hidden || !scene.current) return;
       const fps = scene.current.fps || FPS;
       const ms = now(), frame = Math.floor((ms / 1000) * fps);         // the clock the trips started on
-      if (scene.current.dirty || frame !== last || fps !== lastFps || air) { scene.current.dirty = false; last = frame; lastFps = fps; air = draw(ms); }
+      const due = air && ms - drawnAt >= 1000 / AIR_FPS - 4;            // a 60/120 Hz screen: every 2nd/4th frame
+      if (scene.current.dirty || frame !== last || fps !== lastFps || due) { scene.current.dirty = false; last = frame; lastFps = fps; drawnAt = ms; air = draw(ms); }
       if (air) { raf = requestAnimationFrame(tick); return; }
       const wait = Math.max(1, Math.ceil(((frame + 1) * 1000) / fps - ms));   // until the next frame starts
       if (fps > FPS && wait <= 16) { raf = requestAnimationFrame(tick); return; }

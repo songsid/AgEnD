@@ -382,13 +382,19 @@ const TAG_FONT = "600 10px system-ui, sans-serif";
 const COMPACT = { font: "500 9px system-ui, sans-serif", textW: 48, pad: 6, top: 2, h: 11 };
 const NORMAL = { font: TAG_FONT, textW: TAG_TEXT_W, pad: 10, top: 3, h: 14 };
 /** The box a name tag under feet at (x, y) takes (what drawTag draws; bubbles keep clear of it, #2513). */
+const tagSizes = new Map();
 export function tagBox(ctx, x, y, label, compact = false, fit = null) {
-  const k = compact ? COMPACT : NORMAL;
-  ctx.save();
-  ctx.font = k.font;
-  const t = fitText(ctx, label, k.textW, fit), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + k.pad);
-  ctx.restore();
-  return { x: Math.round(x - w / 2), y: y + k.top, w, h: k.h, text: t };
+  const k = compact ? COMPACT : NORMAL, key = `${compact ? 1 : 0}${label}`, keep = !!ctx.measureText && !fit;   // a fit of its own: measured each time
+  let m = keep ? tagSizes.get(key) : null;
+  if (!m) {
+    ctx.save();
+    ctx.font = k.font;
+    const t = fitText(ctx, label, k.textW, fit);
+    m = { t, w: Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + k.pad) };
+    ctx.restore();
+    if (keep) { if (tagSizes.size > 500) tagSizes.clear(); tagSizes.set(key, m); }
+  }
+  return { x: Math.round(x - m.w / 2), y: y + k.top, w: m.w, h: k.h, text: m.t };
 }
 /** #2860: what a tag covers with its level badge: on a full tag's top-left corner (clear of the first letter); left of a compact one. */
 export function tagFootprint(ctx, box, badge, compact = false) {

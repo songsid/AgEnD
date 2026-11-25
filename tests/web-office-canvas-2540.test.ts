@@ -601,18 +601,18 @@ describe("the Office canvas on the page", () => {
       expect(last[0]).toBeCloseTo(V.stepK(0.75, 1, 1), 9);
     } finally { (globalThis as any).matchMedia = real; }
   });
-  it("a phone (390 CSS px wide at DPR 3): the canvas is the stage at the device's ratio, the scene opens whole (the exact fit: no level fits), the controls are there", async () => {
+  it("a phone (390 CSS px wide at DPR 3): the canvas is the stage at 2 px per CSS px (capped), the scene opens whole (the exact fit: no level fits), the controls are there", async () => {
     const realDpr = (globalThis as any).devicePixelRatio;
     Object.defineProperty(proto, "clientWidth", { configurable: true, get() { return this.className.includes("oo-stage") ? 390 : 0; } });
     (globalThis as any).devicePixelRatio = 3;
     try {
       studio(); await office();
       const cv = p.root.querySelector(".oo-canvas");
-      expect([cv.style.width, cv.style.height, cv.width, cv.height]).toEqual(["390px", "600px", 1170, 1800]);
+      expect([cv.style.width, cv.style.height, cv.width, cv.height]).toEqual(["390px", "600px", 780, 1200]);
       expect(shown().k).toBeCloseTo(390 / 1280, 9);                        // the whole width in view
       expect(p.root.querySelectorAll(".oo-zoom button")).toHaveLength(5);
       fire(cv, "keydown", { key: "+" }); await settle(2);
-      expect(shown().k * 3).toBeCloseTo(1, 9);                             // + goes onto 1 device px a unit
+      expect(shown().k).toBeCloseTo((390 / 1280) * 1.25, 9);              // under 1 bitmap px a unit: + is x1.25
     } finally { delete proto.clientWidth; (globalThis as any).devicePixelRatio = realDpr; }
   });
   it("the stylesheet: the Office fills the panel (no cap, no auto margins, no frame), the stage pans on touch, the overview leaves a phone", () => {
@@ -677,14 +677,16 @@ describe("the Office canvas on the page", () => {
       const c = p.root.querySelector(".oo-canvas")._ctx.calls, frame = c.slice(c.map(([k]: any) => k).lastIndexOf("clearRect"));
       const img = (id: string) => (call: any) => call[0] === "drawImage" && String(call[1][0]?.u).endsWith(`/img/${id}.png`);
       const at = (id: string) => frame.map((call: any, i: number) => (img(id)(call) ? i : -1)).filter((i: number) => i >= 0);
-      const fox = at("b".repeat(32)), [rug, pillar] = at("9".repeat(32)), [fg] = at("e".repeat(32));
+      // The foreground is painted once into a layer canvas; the frame draws that canvas.
+      const fgIn = (call: any) => call[0] === "drawImage" && (call[1][0]?._ctx?.calls || []).some(img("e".repeat(32)));
+      const fox = at("b".repeat(32)), [rug, pillar] = at("9".repeat(32)), [fg] = frame.map((call: any, i: number) => (fgIn(call) ? i : -1)).filter((i: number) => i >= 0);
       const foot = (i: number) => frame[i][1][6] + 44 * 2;                // its box's top + ay·scale: where its feet are
       expect(fox.map(foot).sort((a: number, b: number) => a - b)).toEqual([208, 240, 572]);
       expect(rug).toBeLessThan(Math.min(...fox));                          // a number under 1000: under everyone
       expect(fox.filter((i: number) => i < pillar).map(foot)).toEqual([208, 240]);
       expect(fox.filter((i: number) => i > pillar).map(foot)).toEqual([572]);
       expect(fg).toBeGreaterThan(Math.max(...fox, pillar));
-      expect(frame[fg][1].slice(1)).toEqual([0, 0, 1280, 720]);
+      expect(frame[fg][1][0]._ctx.calls.find(img("e".repeat(32)))[1].slice(1)).toEqual([0, 0, 1280, 720]);
       const words = frame.map((call: any, i: number) => (call[0] === "fillText" ? i : -1)).filter((i: number) => i >= 0);
       expect(words.length).toBeGreaterThan(0);                            // the name tags (and any bubble): all after it
       expect(Math.min(...words)).toBeGreaterThan(fg);
