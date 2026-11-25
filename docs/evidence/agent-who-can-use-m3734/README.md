@@ -15,12 +15,12 @@
 - **Hub:**
   - It shows whether the agent is shared, waiting, lapsed, refused or paused, or that no Hub is connected.
   - When the agent is shared, **Choose who may ask on the Hub** opens the Hub's own page (`?agent=<exposure>&grant=1`, as Settings → Hub does) in a new tab.
-  - It names the button and says that the page opens only on the company network, not from outside it (for example, at home).
+  - It names the button and says that the page opens only on the internal network, not from outside it (for example, at home).
   - The Fleet never reads or writes who may ask.
 
 Fleet admins can always use every agent. A bot's Discord or Telegram `allowed_users` is unchanged.
 
-**Captures.** From the real web app (`scripts/manual/smoke-fixture`), headless Chromium, at 42805ae1c (`src` clean). The script is `scripts/manual/agent-who-can-use-m3734/capture.mts`. The guests and people are made up and on Discord:
+**Captures.** From the real web app (`scripts/manual/smoke-fixture`), headless Chromium, at 915b4c845 (`src` clean). The script is `scripts/manual/agent-who-can-use-m3734/capture.mts`. The guests and people are made up and on Discord:
 - Alice: Chat, alpha.
 - Bob: beta only, so not listed.
 - Carol: Trusted, alpha and beta.
@@ -42,7 +42,7 @@ The cases are desk light en, desk dark zh-TW, phone light zh-TW and phone dark e
 What the checks cover:
 - the rows and levels, and Carol's "level applies to all 2 agents" note;
 - the scope showing the agent's display name (desk);
-- the Hub button by name, on screen, with its address and target, and the note that it doesn't open outside the company network;
+- the Hub button by name, on screen, with its address and target, and the note that it doesn't open outside the internal network;
 - every control in the section at least 44 px tall and on screen;
 - no sideways scroll;
 - no console error and no failed read.
