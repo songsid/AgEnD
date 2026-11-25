@@ -204,9 +204,22 @@ export async function workspaceFileDiff(ws: WorkspaceRoot, rel: unknown): Promis
 
 // ── the tree ──
 
-export interface WorkspaceEntry { name: string; type: "dir" | "file" | "symlink" | "other"; size: number | null; hidden: boolean }
-/** One directory's entries (directories first, then names), gitignored ones left out in a repository. */
-export async function workspaceList(ws: WorkspaceRoot, rel: unknown): Promise<{ path: string; entries: WorkspaceEntry[]; cut: boolean }> {
+/**
+ * M-3765: AgEnD's own files in an agent's folder that are always listed, even when gitignored: the agent's long-form memory
+ * (soul.md, at the folder's top). Read as any other file (size limits; never a secret by name).
+ */
+export const ALWAYS_LISTED = Object.freeze(["soul.md"]);
+/**
+ * `ignored` on an entry: git ignores it (listed only because it is always listed, or because `showIgnored` asked for
+ * everything). Never set outside a repository.
+ */
+export interface WorkspaceEntry { name: string; type: "dir" | "file" | "symlink" | "other"; size: number | null; hidden: boolean; ignored?: true }
+/**
+ * One directory's entries (directories first, then names). In a repository gitignored ones are left out, except AgEnD's
+ * own always-listed files at the top (M-3765); `showIgnored` lists them all, each marked `ignored`. Secret-looking names
+ * stay hidden (listed, never read) and AgEnD's state directory stays out either way.
+ */
+export async function workspaceList(ws: WorkspaceRoot, rel: unknown, opts: { showIgnored?: boolean } = {}): Promise<{ path: string; entries: WorkspaceEntry[]; cut: boolean }> {
   const place = await placeOf(ws, rel ?? "", true);
   const st = await lstat(place.abs).catch(() => null);
   if (!st) throw new WorkspaceError("not_found");
@@ -231,14 +244,15 @@ export async function workspaceList(ws: WorkspaceRoot, rel: unknown): Promise<{ 
   let cut = false;
   for (const name of names) {
     const childRel = place.rel ? `${place.rel}/${name}` : name;
-    if (ignored.has(childRel)) continue;
+    const isIgnored = ignored.has(childRel);
+    if (isIgnored && !opts.showIgnored && !(place.rel === "" && ALWAYS_LISTED.includes(name))) continue;
     const abs = join(place.abs, name);
     if (ws.state && under(abs, ws.state)) continue;
     if (entries.length >= WORKSPACE_LIMITS.dirEntries) { cut = true; break; }
     const s = await lstat(abs).catch(() => null);
     if (!s) continue;
     const type = s.isSymbolicLink() ? "symlink" : s.isDirectory() ? "dir" : s.isFile() ? "file" : "other";
-    entries.push({ name, type, size: type === "file" ? s.size : null, hidden: isHiddenPath(childRel) });
+    entries.push({ name, type, size: type === "file" ? s.size : null, hidden: isHiddenPath(childRel), ...(isIgnored ? { ignored: true as const } : {}) });
   }
   entries.sort((a, b) => (a.type === "dir") === (b.type === "dir") ? (a.name < b.name ? -1 : a.name > b.name ? 1 : 0) : a.type === "dir" ? -1 : 1);
   return { path: place.rel, entries, cut };
