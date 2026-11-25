@@ -1,0 +1,617 @@
+{
+  "sourceHead": "ace2f170e8d6ff5dee290fcd76d44a6ed48cc917",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the scoped card in Needs you",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the standard item: the title names both Agents",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: one line of reason, naming who and where",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no raised card (an .n-item, not .card)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: Authorize this browser, inline",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: Continue states its D1 scope",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the guest's request too, worded as one",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no count-only verify line under the host",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: the choice marked, nothing decided",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: the choice reads as a selection (✓), not a focus ring",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: says to authorize to finish",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: read again once verified",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: verification decided nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: the choice still marked, press it to finish",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: focus not on the choice",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: Enter decides nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: one click continues it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: admitted once",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the page lists the waiting ones (not the continued one)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: a legacy request keeps its one-request words",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the legacy reason",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: no Clear retained origin anywhere",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 6: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 6: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: the scoped card in Needs you",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: the standard item: the title names both Agents",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: one line of reason, naming who and where",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: no raised card (an .n-item, not .card)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: Authorize this browser, inline",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: Continue states its D1 scope",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: the guest's request too, worded as one",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: no count-only verify line under the host",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 2: the choice marked, nothing decided",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 2: the choice reads as a selection (✓), not a focus ring",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 2: says to authorize to finish",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 3: read again once verified",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 3: verification decided nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 3: the choice still marked, press it to finish",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 3: focus not on the choice",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 3: Enter decides nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4: one click continues it",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4: admitted once",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the page lists the waiting ones (not the continued one)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: a legacy request keeps its one-request words",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the legacy reason",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: no Clear retained origin anywhere",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 6: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 6: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: the scoped card in Needs you",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: the standard item: the title names both Agents",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: one line of reason, naming who and where",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: no raised card (an .n-item, not .card)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: Authorize this browser, inline",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: Continue states its D1 scope",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: the guest's request too, worded as one",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: no count-only verify line under the host",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: the choice marked, nothing decided",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: the choice reads as a selection (✓), not a focus ring",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: says to authorize to finish",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 3: read again once verified",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 3: verification decided nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 3: the choice still marked, press it to finish",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 3: focus not on the choice",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 3: Enter decides nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4: one click continues it",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4: admitted once",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the page lists the waiting ones (not the continued one)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: a legacy request keeps its one-request words",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the legacy reason",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: no Clear retained origin anywhere",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 6: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 6: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the scoped card in Needs you",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the standard item: the title names both Agents",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: one line of reason, naming who and where",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no raised card (an .n-item, not .card)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: Authorize this browser, inline",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: Continue states its D1 scope",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the guest's request too, worded as one",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no count-only verify line under the host",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the choice marked, nothing decided",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the choice reads as a selection (✓), not a focus ring",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: says to authorize to finish",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: read again once verified",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: verification decided nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the choice still marked, press it to finish",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: focus not on the choice",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: Enter decides nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: one click continues it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: admitted once",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the page lists the waiting ones (not the continued one)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: a legacy request keeps its one-request words",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the legacy reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: no Clear retained origin anywhere",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 6: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 6: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "s228-desk-light-en-1-needs-unverified.png",
+      "sha256": "b7b2fb5e2c629697a360b20abc2a027ca48dda8fa470e6315425d4d7ea12a32e"
+    },
+    {
+      "path": "s228-desk-light-en-2-chosen.png",
+      "sha256": "9011ea48bcb57787926e342673d2c2562a466f77ad0efda6b1aede1ddce0bbf8"
+    },
+    {
+      "path": "s228-desk-light-en-3-verified.png",
+      "sha256": "70d6b94484245cf85302ac2a9aeaa8169825eaa84f5fa7b5dc8b5f8f90fe99c6"
+    },
+    {
+      "path": "s228-desk-light-en-4-continued.png",
+      "sha256": "76d2d907bbf3c3157bb65a5baa670caf1f1654d42d40d4514cb2dd84ead5c129"
+    },
+    {
+      "path": "s228-desk-light-en-5-authorizations.png",
+      "sha256": "d80ad7f076fbf7e420eedb629fb2b44e855bd90be63c77dd9e125153e6f54990"
+    },
+    {
+      "path": "s228-desk-light-en-5b-details.png",
+      "sha256": "50a50132ca248e386e1911db1bcca13877468e7fb0bf860152958a10fe07cf92"
+    },
+    {
+      "path": "s228-desk-light-en-6-always-allow.png",
+      "sha256": "a5db10e446f36b57caa646b557b234a54dac6b585f943543271ee73734f42952"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-1-needs-unverified.png",
+      "sha256": "d4e4f873026cac22bde115a4dbac9448d6b13e55b2fb56359ad23815c2a687ca"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-2-chosen.png",
+      "sha256": "e6c2673092bd35b99dcd38e00c06df6897a9bf35a27438a7a80e0298485f8052"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-3-verified.png",
+      "sha256": "66d894b668bc3eaeea7724976adf16325768825e3cbcfcc42c9c40d5accef6cb"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-4-continued.png",
+      "sha256": "0b751165818612b2fd05bebd308b9bdc4c27ce18ecc1158619edc835461de76f"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-5-authorizations.png",
+      "sha256": "b3c1a3708c14d409b882147ac4d9c0cddbf86ed101f58599febe6f906bd7dd68"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-5b-details.png",
+      "sha256": "d3321f5ad1df8fc6e858e7e599a2eb20c962170f0b00ef688f43c6d92dfddc93"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-6-always-allow.png",
+      "sha256": "a5dc0c96fa91341681c837c6ee289b7ee089b99ed7a58e5816092f99fb686b66"
+    },
+    {
+      "path": "s228-phone-light-en-1-needs-unverified.png",
+      "sha256": "05c2eebaccdf8a2dfcd9a5d3128dbb16a32636880e84bcae6a0c6c8ea1ffd0af"
+    },
+    {
+      "path": "s228-phone-light-en-2-chosen.png",
+      "sha256": "098c60ae8f4020adca6bdc8068ddd3c7fe088ded54e7e398d5f3845e63b3bca0"
+    },
+    {
+      "path": "s228-phone-light-en-3-verified.png",
+      "sha256": "d10b660a388ff137b9bda1eee59be0bc844a18608bb3b4628c3f56d919e40d50"
+    },
+    {
+      "path": "s228-phone-light-en-4-continued.png",
+      "sha256": "c7ebffe90c612bd3719591ae461eb1f2eb035008d2b8d47a9ea3d0c8d448cb07"
+    },
+    {
+      "path": "s228-phone-light-en-5-authorizations.png",
+      "sha256": "f74c2f0a5c5e8e5498d1258cbb88648e5e3df9eda53ebaf5d6ae4785883084b0"
+    },
+    {
+      "path": "s228-phone-light-en-5b-details.png",
+      "sha256": "11b53e32f2f064a461e07d69ffed417e31f7633197181401cd5cfd96dcbc4f8f"
+    },
+    {
+      "path": "s228-phone-light-en-6-always-allow.png",
+      "sha256": "44a21df79cd8e3edcf930c40b22ae5fd054a18d9af9f603c671542e32f34d7cf"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-1-needs-unverified.png",
+      "sha256": "a1814f62598a2e2f102d1254671abb4bf4ce35253ec7febb568cf420d18f6665"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-2-chosen.png",
+      "sha256": "c74bf83da984b6b07bd3c1b0735f6e794bd3e22870ca49c4896657e7fa43f50a"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-3-verified.png",
+      "sha256": "d13ed216decd8713467728ec8526aa1e0c0b2ba492d1a5f0924a3a1cb33aaab4"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-4-continued.png",
+      "sha256": "67abdb4ad378b1ddeb6c6137b02d31624ccd53d6626a008c74911ad74e6f191a"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-5-authorizations.png",
+      "sha256": "3af1b446f334cec033e65c3863b0ebbd4d745ae14b44a8241933faed8e56f760"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-5b-details.png",
+      "sha256": "3860f1b442ae5574e92609bbff901076bb34a37701e31e387b734ee0cba96bb4"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-6-always-allow.png",
+      "sha256": "e39d425db5105ce79cc37a832fe65c0c3d9e6d403fe1afffc8db01244ca973c4"
+    }
+  ],
+  "summary": "124/124"
+}
