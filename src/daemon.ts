@@ -67,6 +67,8 @@ import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
+import type { RequestContextLocalTurns, RequestContextRuntimeOwner, RequestContextTurnSnapshot } from "./request-context-turns.js";
+import { requestContextDigest } from "./request-context-store.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, InputBox, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog, SteerComposerMode } from "./backend/types.js";
 import { shellQuote, KiroCompatibilityError, UnsupportedCliError, ResumeBlockedError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
@@ -2652,9 +2654,50 @@ export class Daemon extends EventEmitter {
       ? { state: "restart-required", backend, reason: "not-running" } : status);
   }
 
+  /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
+  private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string } };
+  private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger };
+  setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }): void {
+    if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle) throw Error("Request context must be bound before local daemon startup");
+    this.requestContextLifecycle = { turns, identity };
+  }
+  private requestContextOwner(): RequestContextRuntimeOwner | null {
+    const lifecycle = this.requestContextLifecycle;
+    return lifecycle ? { ...lifecycle.identity(), instance: this.name, daemonBootId: this.bootId,
+      spawnGeneration: this.spawnGeneration, launchFenceEpoch: this.launchFenceEpoch, deliveryEpoch: this.deliveryEpoch } : null;
+  }
+  requestContextTurnSnapshot(): RequestContextTurnSnapshot | null {
+    const owner = this.requestContextOwner();
+    return owner ? this.requestContextLifecycle!.turns.current(owner) : null;
+  }
+  requestContextTurnCurrent(snapshot: RequestContextTurnSnapshot): boolean {
+    const owner = this.requestContextOwner();
+    return !!owner && this.requestContextLifecycle!.turns.isCurrent(snapshot, owner);
+  }
+  private bindRequestContextWrite(inputId: string | null, text: string, queued: boolean,
+    recovery?: { inputId: string; parent: RequestContextTurnSnapshot; current: () => boolean }): void {
+    const owner = this.requestContextOwner(); if (!owner) return;
+    // Native/composer queued input must bind at actual consumption, not at enqueue (slice D).
+    if (queued) throw Error("request-context queued input consumption is not covered yet");
+    if (recovery && !recovery.current()) throw Error("request-context recovery job is no longer current");
+    const snapshot = recovery ? this.requestContextLifecycle!.turns.beforeRecoveryWrite(recovery.inputId, requestContextDigest(text), owner, recovery.parent)
+      : this.requestContextLifecycle!.turns.beforeWrite(inputId, requestContextDigest(text), owner);
+    if (this.requestContextWrite?.snapshot.token !== snapshot.token) {
+      this.requestContextWrite = { snapshot, text, at: Date.now(), ledger: new TranscriptTurnLedger() };
+    }
+  }
+  private settleRequestContextFromTranscript(): void {
+    const write = this.requestContextWrite, owner = this.requestContextOwner();
+    if (!write || !owner || !this.requestContextLifecycle!.turns.isCurrent(write.snapshot, owner)) return;
+    const verdict = write.ledger.verdict(write.text, write.at);
+    if (verdict === "ended" || verdict === "aborted" || verdict === "error") {
+      this.requestContextLifecycle!.turns.ended(write.snapshot, owner); this.requestContextWrite = undefined;
+    }
+  }
+
   /** Internal lifecycle injection, before start. Native paths and provider files stay on their runner. */
   setNativePaneLifecycle(native: NativePaneLifecycle): void {
-    if (this.tmux || this.ipcServer || this.nativePaneLifecycle) throw Error("Native pane adapter must be bound before daemon startup");
+    if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle) throw Error("Native pane adapter must be bound before daemon startup");
     this.nativePaneLifecycle = native; this.backend = native.backend; this.paneTransport = native.host; this.controlClient = native.observation;
   }
 
@@ -2781,6 +2824,7 @@ export class Daemon extends EventEmitter {
     if (this.deliveryWritesStopping) return;
     this.deliveryWritesStopping = true;
     this.deliveryEpoch++;
+    this.requestContextLifecycle?.turns.fence();
   }
 
   /** Bounded drain: timeout remains safe because Enter has a write-ahead fence. */
@@ -6255,6 +6299,7 @@ export class Daemon extends EventEmitter {
   }
 
   private workingTurnDelivery: { generation: number; deliveryId: string | null } | null = null;
+  private workingTurnRequestContext: { generation: number; snapshot: RequestContextTurnSnapshot } | null = null;
   private workingBackgroundObservation: boolean | null = null;
 
   /** Pure metadata read: never discovers sessions, captures a pane or reads backend files. */
@@ -6966,6 +7011,8 @@ export class Daemon extends EventEmitter {
     }, this.pendingWork.lastInboundTimestamp());
     const armed = this.turnReplyGuard.snapshot()!;
     this.workingTurnDelivery = { generation: armed.generation, deliveryId: meta.delivery_id || null };
+    const requestContext = this.requestContextTurnSnapshot();
+    this.workingTurnRequestContext = requestContext ? { generation: armed.generation, snapshot: requestContext } : null;
     this.publishWorkingState("turn_started");
     // #1209: persist the in-flight turn with a seam checkpoint. A marker
     // that survives a restart is an interrupted turn by construction —
@@ -7518,6 +7565,10 @@ export class Daemon extends EventEmitter {
     const touch = () => { this.transcriptActivityAt = performance.now(); };
     monitor.on("turns", (turns: TranscriptTurnEvent[]) => {
       this.transcriptTurns.observe(turns, performance.now()); touch();
+      if (this.transcriptMonitor === monitor && owner === launchIdentity(this.interactionOwner())) {
+        this.requestContextWrite?.ledger.observe(turns, performance.now());
+        this.settleRequestContextFromTranscript();
+      }
     });
     // #3160: the files this turn reads, edits and searches, for the Files & changes panel's Follow (a few string checks;
     // nothing is read from disk until someone asks). Claude's turn boundary is its next prompt.
@@ -7627,6 +7678,7 @@ export class Daemon extends EventEmitter {
 
   private queueReplyRecoveryPrompt(turn: TurnReplySnapshot): void {
     const deliveryEpoch = this.deliveryEpoch;
+    const parent = this.workingTurnRequestContext?.generation === turn.generation ? this.workingTurnRequestContext.snapshot : null;
     this.pasteQueueDepth++;
     this.pasteLock = this.pasteLock.then(async () => {
       try {
@@ -7643,6 +7695,8 @@ export class Daemon extends EventEmitter {
         }
         const delivered = await this.deliverMessage(REPLY_RECOVERY_PROMPT, undefined, {
           deliveryEpoch,
+          ...(parent ? { requestContextRecovery: { inputId: `reply-recovery:${turn.generation}:${deliveryEpoch}`, parent,
+            current: () => !!this.currentReplyRecovery(turn.generation, deliveryEpoch) } } : {}),
         });
         if (!this.currentReplyRecovery(turn.generation, deliveryEpoch)) return;
         if (!delivered) {
@@ -9148,6 +9202,9 @@ export class Daemon extends EventEmitter {
       hubQuestion?: string;
       /** M-3660: false when the share opted out of the contact limit (the fleet's meta hub_contact_limit=off). */
       hubContactLimit?: boolean;
+      /** Server-owned registered recovery/input key only; never derived from the text or correlation. */
+      requestContextInputId?: string;
+      requestContextRecovery?: { inputId: string; parent: RequestContextTurnSnapshot; current: () => boolean };
       /** Board 003648ac: just before each paste of this message (after every wait and fence), synchronously. */
       beforePaneWrite?: () => void;
       /**
@@ -9378,7 +9435,14 @@ export class Daemon extends EventEmitter {
           writeCurrent,
           opts?.humanVerificationId,
           // M-3660: written into an idle pane, so whatever Hub answer turn ran is over; a Hub question begins its own.
-          () => { if (!handingOffToNativeQueue) this.hubAnswerTurnBegins(opts?.hubQuestion, opts?.hubContactLimit !== false); opts?.beforePaneWrite?.(); },
+          (wireText) => {
+            const receiptId = opts?.humanMeta?.verification_id ?? opts?.humanVerificationId;
+            const inputId = opts?.requestContextInputId ?? (receiptId ? `human:${receiptId}` : opts?.durableAttempt
+              ? `delivery:${opts.durableAttempt.deliveryId}:${opts.durableAttempt.attemptNo}` : null);
+            this.bindRequestContextWrite(inputId, wireText, handingOffToNativeQueue, opts?.requestContextRecovery);
+            if (!handingOffToNativeQueue) this.hubAnswerTurnBegins(opts?.hubQuestion, opts?.hubContactLimit !== false);
+            opts?.beforePaneWrite?.();
+          },
           opts?.lookBeforePaneWrite,
           opts?.humanMeta,
         );
@@ -11335,7 +11399,7 @@ export class Daemon extends EventEmitter {
     stillCurrent?: () => boolean,
     humanVerificationId?: string,
     // Board 003648ac: called synchronously right before each paste — after the last await and fence of that attempt.
-    beforePaste?: () => void,
+    beforePaste?: (wireText: string) => void,
     // Board 907c7899: awaited each attempt after its last capture, begin and fence; the fence is asked again after it.
     lookBeforePaste?: () => Promise<void>,
     humanMeta?: Record<string, string>,
@@ -11541,7 +11605,7 @@ export class Daemon extends EventEmitter {
         if (mode === "held") return this.failDelivery(verdict, status, "paste", "pane-in-tmux-mode");
       }
       const pasteGeneration = this.spawnGeneration;
-      beforePaste?.();
+      beforePaste?.(formatted);
       const pasted = await this.sendDeliveryPaste(formatted, nativeOwner);
       if (!pasted && this.nativePaneLifecycle) {
         // The native write attempt is retained as uncertain, including exhausted positive refusals. Never route an

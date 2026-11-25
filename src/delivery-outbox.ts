@@ -10,6 +10,7 @@ import { t } from "./locale.js";
 import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
 import { ContactAuthStore } from "./contact-auth-store.js";
 import { RequestContextStore, requestContextDigest, requestContextJson } from "./request-context-store.js";
+import { RequestContextRecoveryStore } from "./request-context-recovery.js";
 import { RequestOperationBindingV1Schema, type RequestContextV1, type RequestOperationBindingV1 } from "./request-context-protocol.js";
 import { registerRequestContextDispatcher, assertRequestContextCompatibility, activateRequestContextBarrier, type RequestContextCompatibilityOptions, type RequestContextDispatchVersion } from "./request-context-compatibility.js";
 import { validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
@@ -1191,6 +1192,13 @@ export class DeliveryOutbox extends EventEmitter {
     })();
     if (admitted.inserted) this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
     return admitted;
+  }
+
+  /** Internal dormant local-turn persistence; the record alone grants no turn or authority. */
+  get requestContextRecovery(): RequestContextRecoveryStore {
+    return new RequestContextRecoveryStore(this.db, () => {
+      if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") throw Error("request-context dispatcher is not ready");
+    });
   }
 
   requestContextForDelivery(deliveryId: string) { return new RequestContextStore(this.db).forDelivery(deliveryId); }

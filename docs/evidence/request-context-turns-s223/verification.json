@@ -1,0 +1,79 @@
+{
+  "baseline": "c2b0e389556824169b299f1b122eea6306173685",
+  "featureEnabled": false,
+  "productionLifecycleInstallerCalls": 0,
+  "focused": {
+    "files": 3,
+    "tests": 39
+  },
+  "neighbors": {
+    "files": 6,
+    "tests": 109,
+    "beforeFinalStaleCompletionAndLocalNativeExclusionRefinements": true
+  },
+  "manifestAndLocalCoverageControls": {
+    "passed": 2,
+    "unselectedSkipped": 93
+  },
+  "sourceBuildAndTypes": 0,
+  "testTypes": 0,
+  "mutations": [
+    {
+      "mutation": "final-write-binding",
+      "result": "semantic red",
+      "restored": true
+    },
+    {
+      "mutation": "prepared-owner",
+      "result": "semantic red",
+      "restored": true
+    },
+    {
+      "mutation": "expected-sender",
+      "result": "semantic red",
+      "restored": true
+    },
+    {
+      "mutation": "unproved-new-root",
+      "result": "semantic red",
+      "restored": true
+    },
+    {
+      "mutation": "recovery-job-parent",
+      "result": "semantic red",
+      "restored": true
+    },
+    {
+      "mutation": "owned-ledger",
+      "result": "semantic red",
+      "restored": true
+    },
+    {
+      "mutation": "stale-end-new-binding",
+      "result": "semantic red",
+      "restored": true
+    },
+    {
+      "mutation": "native-local-exclusion",
+      "result": "semantic red",
+      "restored": true
+    }
+  ],
+  "sourceSha256": {
+    "src/daemon.ts": "24d725f6563d16f62ff23d3f34588c82ceae274bcdf7a38fb2e15b299f92c814",
+    "src/delivery-outbox.ts": "5c2172db232f5984e34018f64e3fd6f5586e18b15937df511e982fcce3495e7d",
+    "src/request-context-turns.ts": "f80fe8b47a67b37b81f21e6cca9d28a5de2a6df20bc40e18c452ccf61fc57a4b",
+    "src/request-context-recovery.ts": "2fc939dfb689d87058fc6b63f30215cea23095c953e2502a7f13fcd70b16e235",
+    "tests/request-context-turns-s223.test.ts": "ddc9b1162db277d72f473d99f3f28bffd3310147a7041ff5160f8d5b27568bd1",
+    "tests/request-context-daemon-s223.test.ts": "f6a2ff5a70c06a2b0aeb2affac1d1eaa8c0d11458d6b74d3b9a667f5fd165c77",
+    "tests/request-context-recovery-s223.test.ts": "092e7dac86cccde359adcf78391a185d110048a73f282b7a2633c626910d06ad"
+  },
+  "limits": [
+    "The real deliverMessage path runs with synthetic probes and a stubbed low-level writer; this is not real CLI consumption proof.",
+    "No generalized completion claim: automatic retirement requires a matched current transcript end; idle/window/answer publication are not proofs.",
+    "Native/composer queued input is refused until the following consumption/remote-await capability slice.",
+    "Prepared input resolver must authenticate original admitted input, current owner/attempt and expected actor; no production publisher is installed here.",
+    "Historical recovery scope does not restore an active turn, lease, approval or original person.",
+    "No Fleet/CLI/account/provider/model/desktop campaign, live state edit or UI change."
+  ]
+}
