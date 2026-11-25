@@ -8,7 +8,7 @@ It also fixes the interfaces that 2.2 (the quiescence barrier, GrokCore) and 2.5
 
 **Scope.** Phase 2 runs only on a machine in class **self** (§4 of the design), and only when both the running version and the target speak this transaction (from- and to-version ≥ V_tx). Anywhere else, Phase 1's updater runs unchanged.
 
-**Revision 2** answers Prism's design review (6065369545); **revisions 3 and 4** answer its scoped passes (6065419816, 6065453267). The changes are mapped in §9.
+**Revision 2** answers Prism's design review (6065369545); **revisions 3 to 5** answer its scoped passes (6065419816, 6065453267, 6065478655). The changes are mapped in §9.
 
 ---
 
@@ -247,6 +247,13 @@ Neither CLI-owned files nor files in a CLI's profile are included, rev 3. `crede
   2. **Take over:** the claim's holder writes its record `{ pid, role: "fleet", nonce }` to a tmp file and renames it over `fleet.lock`.
   3. **Acknowledge:** the updater or runner sees the record, journals the generation's pid, and marks the nonce consumed.
 - **A claim left by a claimant that died:** proven by `holderState`. If `fleet.lock` still holds the update record, the nonce is void and never reused. The updater or runner journals that and plans a new generation with a new nonce. An unknown claimant is never voided: the attempt waits, then goes to manual-recovery.
+- **A claimant that died after its rename but before the pid's acknowledgement (rev 5).** `fleet.lock` then holds `{ pid, role: "fleet", nonce }` for a process proven gone.
+  1. The updater or runner journals the generation as started and dead, recording the pid from that record. The nonce is consumed and never reused.
+  2. It re-takes the fence: it replaces that record with its own update record (`handoff: null`) by the fleet lock's own owned stale replacement. That replacement takes only a record whose holder is proven gone, and does it under its reclaim marker.
+  3. It then goes on as the stage says. For a trial generation, that means rolling back.
+
+  An unknown holder is never replaced; the attempt waits, then goes to manual-recovery.
+- **The fence doesn't depend on `fleet.lock` alone across that gap.** Every fleet start reads the journal first (§7) and refuses while an attempt is open, unless it holds that attempt's planned nonce. So a start that would otherwise find the dead claimant's lock stale and take it is refused before it gets there.
 - **The nonce** reaches a service start through the journal: the pre-start step (§6.2) passes it on as `AGEND_UPDATE_HANDOFF`. A spawned fleet gets it in its environment. It is single-use: the claim file consumes it, and the journal marks it consumed when the pid lands.
 - **The handoff route stays in place until the takeover is acknowledged, rev 4.** That route is the pre-start step and its `EnvironmentFile`, or launchd's wrapper. It is removed only after step 3, for every generation, the rollback included (§6.2).
 
@@ -283,6 +290,7 @@ The test seeds committed WAL frames that aren't checkpointed yet (they must be i
   - `cache/`, `cache-codex-rollouts.json`, `usage-last-good.json`, `search.db*` (caches and a rebuildable index);
   - logs (`*.log`, `instances/*/output.log`, `profiles/`);
   - runtime (`tmux/`, `operator/`, `*.sock`, `fleet.pid`, `fleet.lock`, the update and service locks, `tunnel.lease`, `web.token`, `view.token`);
+  - **`.state-lease.sqlite` and its `-journal` sidecar** (rev 5). Its locks are on that inode, so it is never copied, moved aside, restored or pruned. A restore that renamed it would hand the next writer a fresh, unlocked file while the updater still held a lock on the old one;
   - `update-in-progress.json`.
 - **Why the snapshot exists:** the Hub databases are included. An older build refuses a newer Hub schema.
 
@@ -380,7 +388,9 @@ Each unit is one of three kinds, fixed by the header: **both** (in the current u
 - the attempt `current` names;
 - any `manual-recovery` attempt;
 - an artifact referenced in `retained.json` before its expiry;
-- `marks.json`.
+- a recovery kit that a loaded launchd job references (§6.2), whatever its age;
+- `marks.json`;
+- `.state-lease.sqlite` and its sidecar.
 
 **Later updates:**
 - A later update's `prunePreimages` skips the `attempt-*` preimages.
@@ -435,7 +445,14 @@ The original definition's bytes are `unit.preimage`. The pre-start step runs **i
 6. **After the takeover is acknowledged** (rev 4):
    - **systemd:** the runner removes the drop-in and runs `daemon-reload` while the unit is active, with no job queued. A reload doesn't restart a running unit.
    - **launchd:** the loaded job keeps the wrapper until the next load. Reloading a running job would restart it, so the runner writes the unwrapped plist to disk, and the next load (the next `agend restart`, a reboot, or an update) uses it.
-   - **The wrapper itself** is harmless outside an attempt: with no open attempt it only execs the original arguments. P3 treats a job running such a wrapper for a terminal attempt as the expected program.
+   - **The wrapper itself** is harmless outside an attempt: with no open attempt it only execs the original arguments.
+   - **The kit stays as long as a loaded job references it (rev 5).** Retention never removes a kit while the loaded launchd job's `ProgramArguments` (read with `launchctl print`) names it, even past the 7 days. Pruning reads the loaded arguments first. An unreadable answer counts as "referenced", so the kit is kept.
+   - **P3 accepts the wrapper only when it is exactly this:**
+     - arguments `[<kit>/node, <kit>/recover.cjs, --home, <home>, --then, …]`, where the `…` is byte-for-byte `unit.preimage`'s `ProgramArguments`;
+     - `<kit>` is a recovery directory of this home whose `kit.json` names a **terminal** attempt;
+     - the two files' sha256 match `kit.json`.
+
+     Anything else (another path, other arguments, a changed kit, an open or unknown attempt) is `service-unknown`. The expected tuple's `execStart` (§3.2) is the wrapped form until the next load, then the unwrapped one.
 
 **The operator command**, `<home>/.update-journal/recovery/<id>/node …/recover.cjs --home <home> --run`, is the same runner, run from a shell outside the service. It works with the package missing or broken.
 
@@ -514,6 +531,13 @@ A retry recognises each effect by the path's presence and its hash against the p
 | 3. The CLI fence as a lease held for the writer's whole lifetime (SQLite SHARED vs EXCLUSIVE on `.state-lease.sqlite`); the updater publishes `current`, then drains; the check runs after the lease | §4.2 |
 | 4. The handoff route kept until the rollback generation's takeover is acknowledged; systemd removes the drop-in afterwards; launchd keeps a harmless wrapper until the next load | §6.2, §4.3 |
 | 2.2's interface (GrokCore): reference vs copy inbox files, one sequence with deferred jobs, `.acked` siblings, the cancel marker, the prefix written under `opened` | §2.6 |
+
+### Revision 5 (Prism 6065478655)
+| Review point | Where |
+|---|---|
+| `.state-lease.sqlite` and its sidecar excluded from snapshot, restore and prune (its locked inode is kept) | §5.1 |
+| A claimant dead after its rename and before the acknowledgement: the generation is journaled dead, the fence re-taken by owned stale replacement, the journal-first start refusal covers the gap | §4.3 |
+| The kit kept while a loaded launchd job references it; P3's exact check of the wrapper (arguments, kit path and hashes, terminal attempt) | §6.2 |
 
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
