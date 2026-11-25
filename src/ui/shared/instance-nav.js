@@ -510,28 +510,21 @@ export function agentTurnAge(it, now = Date.now()) {
   const at = it && typeof it.last_agent_turn === "string" ? Date.parse(it.last_agent_turn) : NaN;
   return Number.isFinite(at) ? Math.max(0, (now - at) / 60000) : null;
 }
-/** A short "ago": "now", "2m", "3h", "4d" (zh-TW: 剛剛、2 分、3 小時、4 天). */
-export function whenShort(mins) {
-  if (mins < 1) return tn("whenNow");
-  if (mins < 60) return tn("whenMin", { n: Math.floor(mins) });
-  if (mins < 1440) return tn("whenHour", { n: Math.floor(mins / 60) });
-  return tn("whenDay", { n: Math.floor(mins / 1440) });
-}
 /**
- * The row's times: its last reply to a person and the last turn another agent started, each labelled ("Person 33d ·
- * Agent 2m", 「人 33 天 · Agent 2 分」); one alone when it has only that one (a reply alone reads as before: "33 d ago");
- * null for none. The title says which is which, with both full times. `one` (the one-line sidebar, where the name and
- * the time share a line): only the newer of the two, labelled — both stay in the title.
+ * The row's time (M-3707, the user 11-25: one time again, not M-3674's 人/Agent pair): the most recent response, to a
+ * person (last_reply) or to another agent (last_agent_turn), unlabelled, as a reply's time always read ("2 min ago");
+ * null for neither. `person`: the time shown is the reply to a person. The title says which kind each was, the newer
+ * first, each with its full time. Only a reply to a person highlights the row or moves it in "Recent" (replyAge, below):
+ * a turn another agent started updates the time silently.
  */
-export function activityText(it, replyMins, agentMins, one = false) {
+export function activityText(it, replyMins, agentMins) {
   if (replyMins == null && agentMins == null) return null;
   const at = (k) => new Date(Date.parse(it[k])).toLocaleString();
-  const title = [replyMins != null ? tn("whenPersonTitle", { time: at("last_reply") }) : null, agentMins != null ? tn("whenAgentTitle", { time: at("last_agent_turn") }) : null]
-    .filter(Boolean).join("\n");
-  if (agentMins == null) return { text: replyText(replyMins), title };
-  const a = tn("whenAgent", { t: whenShort(agentMins) });
-  if (one && replyMins != null) return { text: replyMins <= agentMins ? tn("whenPerson", { t: whenShort(replyMins) }) : a, title };
-  return { text: replyMins == null ? a : tn("whenBoth", { p: tn("whenPerson", { t: whenShort(replyMins) }), a }), title };
+  const agentNewer = agentMins != null && (replyMins == null || agentMins < replyMins);
+  const lines = [replyMins != null ? tn("whenPersonTitle", { time: at("last_reply") }) : null, agentMins != null ? tn("whenAgentTitle", { time: at("last_agent_turn") }) : null]
+    .filter(Boolean);
+  if (agentNewer) lines.reverse();
+  return { text: replyText(agentNewer ? agentMins : replyMins), title: lines.join("\n"), person: !agentNewer };
 }
 /** How strong the highlight is: 1 just after a reply, down to 0 at REPLY_FRESH_MIN minutes. */
 export function replyFade(mins) { return mins == null || mins >= REPLY_FRESH_MIN ? 0 : 1 - mins / REPLY_FRESH_MIN; }
@@ -821,8 +814,9 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     // #2179 (B5, the user's pick): the % (and the ★ beside the row) on the name's line; the time of the last reply at the
     // end of the second line, highlighted for REPLY_FRESH_MIN minutes, fading by itself (a reply under a minute pulses once).
     const mins = ageOf(name), fade = replyFade(mins);
-    // M-3674: beside it, the last turn another agent started (a busy agent no longer reads "33 天前").
-    const amins = viewOnly ? null : agentTurnAge(byName.get(name), now), act = activityText(byName.get(name) || {}, mins, amins, compact);
+    // M-3674/M-3707: the time is the newer of that reply and the last turn another agent started (a busy agent no longer
+    // reads "33 天前"); the highlight and "Recent" stay the reply's.
+    const amins = viewOnly ? null : agentTurnAge(byName.get(name), now), act = activityText(byName.get(name) || {}, mins, amins);
     const two = !!secondary || !!act;
     const menuItems = [
       canStar ? { key: "favorite", label: t(`agentRow.${starred ? "remove" : "add"}`), icon: "star", disabled: full,
@@ -855,7 +849,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       <span class="inst-text"><span class="inst-line"><span class="inst-name" title=${label}>${label}</span>
           ${!compact ? html`<span class="v-meta">${it.runtime === "windows" ? "Windows" : it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span>` : null}</span>
         ${two ? html`<span class="inst-line inst-line2">${!compact ? html`<span class="inst-alt" title=${secondary || undefined}>${secondary || ""}</span>` : null}
-          ${act ? html`<span class=${`inst-when${fade > 0 ? " fresh" : ""}`} title=${act.title}>${act.text}</span>` : null}</span>` : null}
+          ${act ? html`<span class=${`inst-when${fade > 0 && act.person ? " fresh" : ""}`} title=${act.title}>${act.text}</span>` : null}</span>` : null}
         ${!compact && it.machine_id ? html`<span class=${`inst-machine${it.machine_status !== "online" ? " offline" : ""}`} title=${tn("tooltipMachine",{value:machineName(it.machine_id,it.machine_name)})}><span class="inst-machine-name">${machineName(it.machine_id,it.machine_name)}</span>${it.machine_status !== "online" ? html`<span class="inst-machine-status">${tn(it.machine_status === "revoked" ? "machineRevoked" : "machineOffline")}</span>` : null}</span>` : null}
         ${!compact && facet === "needs" ? html`<span class="inst-sub"><span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span></span>` : null}
         <span class="sr-only">${tn("tooltipBackend", { value: backendLabel(it.backend) })}</span></span>

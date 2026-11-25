@@ -4,8 +4,8 @@
  * broadcast — read "33 天前". Beside it now: the last turn another agent started (the delivery outbox).
  * - DeliveryOutbox.lastAgentTurn: the newest delivered message from another instance, at the turn that took it up,
  *   else when it was delivered; never a queued or failed one, never one to itself, never a person's;
- * - the sidebar's row: 「人 33 天 · Agent 2 分」 / "Person 33d · Agent 2m", the title saying which is which; a reply
- *   alone as before; in the one-line (compact) sidebar the name keeps room and the times ellipsize.
+ * - the sidebar's row (M-3707, the user: one time again): the newer of the two, unlabelled ("2 min ago"), the title
+ *   saying which kind it was; in the one-line (compact) sidebar the name keeps room and the time ellipsizes.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -92,7 +92,7 @@ describe("the compact sidebar keeps the name (app.css)", () => {
   });
 });
 
-describe("the sidebar row's times (instance-nav activityText)", () => {
+describe("the sidebar row's time (instance-nav activityText; M-3707: one time again)", () => {
   let p: AppPage, N: any, i18n: any;
   beforeAll(async () => {
     p = page({ url: "http://127.0.0.1:19280/ui" });
@@ -101,28 +101,23 @@ describe("the sidebar row's times (instance-nav activityText)", () => {
   afterAll(async () => { i18n.setLang("en", { store: false }); await p.unmount(); p.restore(); });
   const now = Date.parse("2026-11-24T12:00:00.000Z");
   const it33 = { last_reply: "2026-10-22T12:00:00.000Z", last_agent_turn: "2026-11-24T11:58:00.000Z" };
-  it("both: the person's and the agent's, labelled (zh-TW 「人 33 天 · Agent 2 分」, short for a sidebar row)", () => {
+  it("both: the newer one, unlabelled, as a reply's time reads; the title names each kind, the newer first", () => {
     i18n.setLang("zh-TW", { store: false });
     const a = N.activityText(it33, N.replyAge(it33, now), N.agentTurnAge(it33, now));
-    expect(a.text).toBe("人 33 天 · Agent 2 分");
-    expect(a.title).toContain("最後回覆人的時間");
-    expect(a.title).toContain("由其他 Agent 發起");
+    expect([a.text, a.person]).toEqual(["2 分鐘前", false]);
+    expect(a.title.split("\n").map((l: string) => l.split("：")[0])).toEqual(["最後一次由其他 Agent 發起的回合（send_to_instance、任務、回報、廣播）", "最後回覆人的時間"]);
     i18n.setLang("en", { store: false });
-    expect(N.activityText(it33, N.replyAge(it33, now), N.agentTurnAge(it33, now)).text).toBe("Person 33d · Agent 2m");
-  });
-  it("the one-line sidebar: only the newer of the two, labelled; both stay in the title", () => {
-    i18n.setLang("en", { store: false });
-    const a = N.activityText(it33, N.replyAge(it33, now), N.agentTurnAge(it33, now), true);
-    expect(a.text).toBe("Agent 2m");
-    expect(a.title.split("\n")).toHaveLength(2);
+    expect(N.activityText(it33, N.replyAge(it33, now), N.agentTurnAge(it33, now)).text).toBe("2 min ago");
     const fresh = { last_reply: "2026-11-24T11:59:00.000Z", last_agent_turn: "2026-11-23T12:00:00.000Z" };
-    expect(N.activityText(fresh, N.replyAge(fresh, now), N.agentTurnAge(fresh, now), true).text).toBe("Person 1m");
+    const b = N.activityText(fresh, N.replyAge(fresh, now), N.agentTurnAge(fresh, now));
+    expect([b.text, b.person, b.title.split("\n")[0].startsWith("Last reply to a person")]).toEqual(["1 min ago", true, true]);
+    expect(b.text).not.toMatch(/Person|Agent|人/);
   });
-  it("one alone: a reply as before; an agent turn labelled; neither: nothing", () => {
+  it("one alone: a reply as before; an agent turn the same way (no label); neither: nothing", () => {
     i18n.setLang("en", { store: false });
     const reply = { last_reply: "2026-11-24T11:30:00.000Z" }, agent = { last_agent_turn: "2026-11-24T09:00:00.000Z" };
-    expect(N.activityText(reply, N.replyAge(reply, now), N.agentTurnAge(reply, now)).text).toBe("30 min ago");
-    expect(N.activityText(agent, N.replyAge(agent, now), N.agentTurnAge(agent, now))).toMatchObject({ text: "Agent 3h" });
+    expect(N.activityText(reply, N.replyAge(reply, now), N.agentTurnAge(reply, now))).toMatchObject({ text: "30 min ago", person: true });
+    expect(N.activityText(agent, N.replyAge(agent, now), N.agentTurnAge(agent, now))).toMatchObject({ text: "3 h ago", person: false });
     expect(N.activityText({}, null, null)).toBeNull();
   });
 });
