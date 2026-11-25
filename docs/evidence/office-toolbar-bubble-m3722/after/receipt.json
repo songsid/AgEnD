@@ -1,9 +1,21 @@
 {
-  "sourceHead": "84cec8e9a71060879c3cd876ddbbd942bfd457cf",
+  "sourceHead": "0abe468e0bc329c7323a49a4a5a3b41a87bc981c",
   "dirty": [],
   "checks": [
     {
       "name": "phone-light-en-tasks: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-tasks: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-tasks: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-tasks: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
       "ok": true
     },
     {
@@ -31,6 +43,18 @@
       "ok": true
     },
     {
+      "name": "phone-light-en-org: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-org: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-org: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "ok": true
+    },
+    {
       "name": "phone-light-en-org: every tab inside the screen",
       "ok": true
     },
@@ -51,6 +75,18 @@
       "ok": true
     },
     {
+      "name": "phone-light-en-host-health: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-host-health: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-host-health: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "ok": true
+    },
+    {
       "name": "phone-light-en-host-health: every tab inside the screen",
       "ok": true
     },
@@ -68,6 +104,18 @@
     },
     {
       "name": "phone-light-zh-TW-tasks: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-tasks: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-tasks: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-tasks: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
       "ok": true
     },
     {
@@ -95,6 +143,18 @@
       "ok": true
     },
     {
+      "name": "phone-light-zh-TW-org: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-org: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-org: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "ok": true
+    },
+    {
       "name": "phone-light-zh-TW-org: every tab inside the screen",
       "ok": true
     },
@@ -115,6 +175,18 @@
       "ok": true
     },
     {
+      "name": "phone-light-zh-TW-host-health: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-host-health: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-host-health: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "ok": true
+    },
+    {
       "name": "phone-light-zh-TW-host-health: every tab inside the screen",
       "ok": true
     },
@@ -132,6 +204,18 @@
     },
     {
       "name": "phone-dark-en-tasks: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-tasks: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-tasks: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-tasks: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
       "ok": true
     },
     {
@@ -159,6 +243,18 @@
       "ok": true
     },
     {
+      "name": "phone-dark-en-org: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-org: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-org: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "ok": true
+    },
+    {
       "name": "phone-dark-en-org: every tab inside the screen",
       "ok": true
     },
@@ -179,6 +275,18 @@
       "ok": true
     },
     {
+      "name": "phone-dark-en-host-health: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-host-health: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-host-health: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "ok": true
+    },
+    {
       "name": "phone-dark-en-host-health: every tab inside the screen",
       "ok": true
     },
@@ -196,6 +304,18 @@
     },
     {
       "name": "phone-dark-zh-TW-tasks: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-tasks: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-tasks: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-tasks: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
       "ok": true
     },
     {
@@ -223,6 +343,18 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW-org: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-org: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-org: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW-org: every tab inside the screen",
       "ok": true
     },
@@ -243,6 +375,18 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW-host-health: each tab its own icon",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-host-health: each tab its own accessible name",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-host-health: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW-host-health: every tab inside the screen",
       "ok": true
     },
@@ -256,6 +400,126 @@
     },
     {
       "name": "phone-dark-zh-TW-host-health: the header names the page",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375-org: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375-org: every tab inside the screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375-org: each tab a 44 × 44 target",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375-org: no two tabs overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-375-org: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360-org: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360-org: every tab inside the screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360-org: each tab a 44 × 44 target",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360-org: no two tabs overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-360-org: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-320-org: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-320-org: every tab inside the screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-320-org: each tab a 44 × 44 target",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-320-org: no two tabs overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-320-org: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375-org: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375-org: every tab inside the screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375-org: each tab a 44 × 44 target",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375-org: no two tabs overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-375-org: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360-org: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360-org: every tab inside the screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360-org: each tab a 44 × 44 target",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360-org: no two tabs overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-360-org: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320-org: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320-org: every tab inside the screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320-org: each tab a 44 × 44 target",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320-org: no two tabs overlap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-320-org: no sideways scroll",
       "ok": true
     },
     {
@@ -318,107 +582,131 @@
   "pictures": [
     {
       "path": "m3722-phone-light-en-tasks.png",
-      "sha256": "f8558e75966fecb6c9f9ccb64fe341b13f25737c00c2ec314cce9cbe1f170035"
+      "sha256": "9837f61d77086660b270ac4165979c9a0813311c79fbf62bfb0989f30a44d8e6"
     },
     {
       "path": "m3722-phone-light-en-org.png",
-      "sha256": "57962b3862e8f14accaf608a87eaed52357f3261a4edb15bbe5ade7c54fc492e"
+      "sha256": "ceaf28f1999732aa60db9f6b8a7a6f0b73f4ec400876d2cfcba02f9ae6cf666d"
     },
     {
       "path": "m3722-phone-light-en-host-health.png",
-      "sha256": "5bf22f1b1f22916d9fad65e76f484d0744af57201f21463cc9f5c35bdd229dc3"
+      "sha256": "6d80d981fe1c31827cf60ee889e4553106e3936f181812cc4c4d1480c4fa38e8"
     },
     {
       "path": "m3722-phone-light-zh-TW-tasks.png",
-      "sha256": "0bcf75e5b99705744b613d5d449b30bb1b28e8d303dcb4aae4d43a945a5a2cc3"
+      "sha256": "cd39c3d5905f786a1a05cf809c3bf8d2d3a5fcaf679736dc6ca799a7519cc277"
     },
     {
       "path": "m3722-phone-light-zh-TW-org.png",
-      "sha256": "3f35447322c26c9978129bce05cc631d1a1c94b718ab3508e1b361b70e34c476"
+      "sha256": "293a1ac0b07043aada9ec4cdfab4fb3f7f2d3579e973fabdb90bdfa6f8bbf8e7"
     },
     {
       "path": "m3722-phone-light-zh-TW-host-health.png",
-      "sha256": "efa6ec66ec3f21da10f4f8bbb487b1e6d67d22ef3c6a1e7cc84c62faee843855"
+      "sha256": "93088dce019ce1c90d602f0e0b431ec4b194e3f54e317775543359e33bd27c0a"
     },
     {
       "path": "m3722-phone-dark-en-tasks.png",
-      "sha256": "3c5897e17c023e1d223f5a6e1093fa8c464613b163e392be0e7fc4c1a0754114"
+      "sha256": "17509fd1074bb17e17405d36804d28ae2805f5182d3294befbfdf216f73ccda9"
     },
     {
       "path": "m3722-phone-dark-en-org.png",
-      "sha256": "714bcdbe36794be37f1537c8514ed4dc52c2ab4bee9a5f0da1bdf1c4ba02daf1"
+      "sha256": "c80d4b1b6c5b4e4cf8cf60c73a460b0e0c544bdcd0c62932b1a6b57d2a1bec2e"
     },
     {
       "path": "m3722-phone-dark-en-host-health.png",
-      "sha256": "6d40e2a8ab813cb79bee5a16ba3ecbd1f84ac21efaacc9b3bd1f884ae7c1029b"
+      "sha256": "de7e8008f3a0bfc24ceafc6b50ddf412d34fbbff4c0f9a262f34af43309735f8"
     },
     {
       "path": "m3722-phone-dark-zh-TW-tasks.png",
-      "sha256": "d9b397823ce380720c62a06949d21a2832d232e7d5c9418199d8ffea52d6787b"
+      "sha256": "bc2bac4fbbe47817e48d83f48883d56be96f15dce043940c31dc49c8fdbf3461"
     },
     {
       "path": "m3722-phone-dark-zh-TW-org.png",
-      "sha256": "401cfc0894f0815bee8d7747c13eddc17d6311a3055c0cd3cf51537c9391e2be"
+      "sha256": "ac4325ce98e8ff1056a069005307206856aa3e317e11799263228f34feff562d"
     },
     {
       "path": "m3722-phone-dark-zh-TW-host-health.png",
-      "sha256": "bd97d0fbca3115611a3e2fdc42563634e71aaa021028163e3092a2d282d19fd4"
+      "sha256": "3bff9fa9f40028f6e0e4da271430517cc8d3616cc1d266ce1194ef1e3a164ae3"
+    },
+    {
+      "path": "m3722-phone-light-en-375-org.png",
+      "sha256": "831f22c9205e8b842d76b5af3b0f380800f4564d3c28b5f160a8cb92794a9085"
+    },
+    {
+      "path": "m3722-phone-light-en-360-org.png",
+      "sha256": "fe125123d957f3de0dd619aed9164aa322930fe09a389efdd324a79cb504e188"
+    },
+    {
+      "path": "m3722-phone-light-en-320-org.png",
+      "sha256": "0daa82695a7736ec76f61f3fba7c4d63ae291d49f9c8ade468772d04fd79da9e"
+    },
+    {
+      "path": "m3722-phone-dark-zh-TW-375-org.png",
+      "sha256": "4bd7ae95686ac4e56feab469115abc8653ca595b2d60a768d88ff5e9af2c0e32"
+    },
+    {
+      "path": "m3722-phone-dark-zh-TW-360-org.png",
+      "sha256": "b6e0d8e445dfb06bb14e9a1a4e8dfa4ce400ac51f5646f797d12a08ca9398c3e"
+    },
+    {
+      "path": "m3722-phone-dark-zh-TW-320-org.png",
+      "sha256": "8587ae6f5651e482ad9038d101894f2347648ee958f6934df3f3e71e67e16726"
     },
     {
       "path": "m3722-desk-light-en-office-studio.png",
-      "sha256": "784eb34d1d61202b6971d08c8f3bdee5610b6b8e86ee216e890cedde0cb54d7e"
+      "sha256": "61819c8c4b06c73f15f6e468e351e2ca9e3691245a31341acea42ddcdb4418e2"
     },
     {
       "path": "m3722-desk-light-en-office-cozy.png",
-      "sha256": "b05e798f1c5d89ead169686e1505d9cfad1334a9faac367ccb73a47a7c59bf18"
+      "sha256": "474072f8a22cc9638ea275fc9602de9331265c9ae42bea9e0959c50c7efac6e3"
     },
     {
       "path": "m3722-desk-light-en-office-guild.png",
-      "sha256": "b8bcd85b328d66f91bbc00bd4cc549f76ecd2cd8df126e1e2d7c17aeaac601f5"
+      "sha256": "b96e3fe5f006506ac440041b017189e269c0452bfe5ee7e435ccf546bf69809c"
     },
     {
       "path": "m3722-desk-light-en-office-school.png",
-      "sha256": "fe57ec9f2d71455e12779c8c2e4d3e92975578460298f60be6f6e9080f03dd6b"
+      "sha256": "f5624efda8a63137ec13178b9071bcb86e9a60eba38ca0380d65082e72e36893"
     },
     {
       "path": "m3722-desk-dark-zh-TW-office-studio.png",
-      "sha256": "52611eec3cfd71c9138849f1c49c2b5b82c8b02df5e1ca1e050e9b4499fef518"
+      "sha256": "8fc9dfadb3b7583218a830e44e950c6104d1c24b9f16cd21449bbc46e2ba8bcd"
     },
     {
       "path": "m3722-desk-dark-zh-TW-office-cozy.png",
-      "sha256": "9e59acd32ab81ec86fd413d1777c0f4189d4c57778bb73906c4f1ee8cdff6fca"
+      "sha256": "097e2dc7f5e55b9c7c0afcbb9a474307d43bbcedf92292be9eb3c101c3198b80"
     },
     {
       "path": "m3722-desk-dark-zh-TW-office-guild.png",
-      "sha256": "362b300bb2e704b32834e7bbd733fe9b7a7ff6a82c9a221f5e654f6f5bca4e78"
+      "sha256": "f8df0ac51eaf04e7815efc7bcdaa9e3839fdd8420109c459e094efa58b391087"
     },
     {
       "path": "m3722-desk-dark-zh-TW-office-school.png",
-      "sha256": "e40bbf2846a96698b6ec9e8e818c2e5fea135cb1089c1a10bcfe39e97f7d650e"
+      "sha256": "b649d73369ce7ee1d2e15674adb2a372447c34e11726227c2270e5146b36c411"
     },
     {
       "path": "m3722-desk-light-en-tasks.png",
-      "sha256": "62950fafaa89d6be19b1f9615e9139be6249d01ad95b21c0b8744849c3745bf5"
+      "sha256": "e7e263be0631efadc0a6c88b2326ea75e1e4f73ca9b70fd33e748a56581e7c38"
     },
     {
       "path": "m3722-desk-light-en-org.png",
-      "sha256": "986623a0b9b5c67cb61a4eb4e3612bbe234ecd41f160aec51c08176f55e28d3f"
+      "sha256": "6a4ed930ce722680f8f85e88529adf9968d8ce6e8ab0a370c7a35cc2aadb75df"
     },
     {
       "path": "m3722-desk-light-en-host-health.png",
-      "sha256": "9067da56d5edf2b41c9f6b5e248f00715d6f502f49c65ebf50e64c9b96f7495e"
+      "sha256": "3da4c44f3b2a2f15ca5ad567700c92dad82562ed6ff1d7c23d5c7a9e7edb36fc"
     },
     {
       "path": "m3722-desk-dark-zh-TW-tasks.png",
-      "sha256": "50b1e750e4826dd37616cd4a9fc790381e29c16843d7ef1c570f5adba0de769c"
+      "sha256": "9bff8611e53e9b592e43a08bfa94a0aa298d42e5cdecd792f7f6ff4f745b8842"
     },
     {
       "path": "m3722-desk-dark-zh-TW-org.png",
-      "sha256": "5651449dafb71c2a12c2b81055296e7b5a5a137e6372d80a0d6923ffaa037f99"
+      "sha256": "1f4e0c811a9fd84efdc69f1d6f605afd4f330402f7c52e0cc349f293b1c67605"
     },
     {
       "path": "m3722-desk-dark-zh-TW-host-health.png",
-      "sha256": "3c220e4223e3f62f11f07ebac83829d75d171ef44ef9bbf867cbcdec39436384"
+      "sha256": "dc628150e223b3c6826812c4fa4653ba8423ea5099af26dfc5a54630f5af6ada"
     }
   ],
   "phone-phone-light-en-tasks": {
@@ -485,6 +773,20 @@
     "title": "Tasks",
     "titleShown": true
   },
+  "look-phone-light-en-tasks": {
+    "names": [
+      "Tasks",
+      "Schedules",
+      "Teams",
+      "Org chart",
+      "Cache",
+      "Usage",
+      "Authorizations",
+      "Host health"
+    ],
+    "contrast": 5.93,
+    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
+  },
   "phone-phone-light-en-org": {
     "W": 390,
     "scroll": 390,
@@ -548,6 +850,20 @@
     ],
     "title": "Org chart",
     "titleShown": true
+  },
+  "look-phone-light-en-org": {
+    "names": [
+      "Tasks",
+      "Schedules",
+      "Teams",
+      "Org chart",
+      "Cache",
+      "Usage",
+      "Authorizations",
+      "Host health"
+    ],
+    "contrast": 5.93,
+    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
   },
   "phone-phone-light-en-host-health": {
     "W": 390,
@@ -613,6 +929,20 @@
     "title": "Host health",
     "titleShown": true
   },
+  "look-phone-light-en-host-health": {
+    "names": [
+      "Tasks",
+      "Schedules",
+      "Teams",
+      "Org chart",
+      "Cache",
+      "Usage",
+      "Authorizations",
+      "Host health"
+    ],
+    "contrast": 5.93,
+    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
+  },
   "phone-phone-light-zh-TW-tasks": {
     "W": 390,
     "scroll": 390,
@@ -676,6 +1006,20 @@
     ],
     "title": "任務",
     "titleShown": true
+  },
+  "look-phone-light-zh-TW-tasks": {
+    "names": [
+      "任務",
+      "排程",
+      "團隊",
+      "組織圖",
+      "快取",
+      "用量",
+      "授權",
+      "主機狀態"
+    ],
+    "contrast": 5.93,
+    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
   },
   "phone-phone-light-zh-TW-org": {
     "W": 390,
@@ -741,6 +1085,20 @@
     "title": "組織圖",
     "titleShown": true
   },
+  "look-phone-light-zh-TW-org": {
+    "names": [
+      "任務",
+      "排程",
+      "團隊",
+      "組織圖",
+      "快取",
+      "用量",
+      "授權",
+      "主機狀態"
+    ],
+    "contrast": 5.93,
+    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
+  },
   "phone-phone-light-zh-TW-host-health": {
     "W": 390,
     "scroll": 390,
@@ -804,6 +1162,20 @@
     ],
     "title": "主機狀態",
     "titleShown": true
+  },
+  "look-phone-light-zh-TW-host-health": {
+    "names": [
+      "任務",
+      "排程",
+      "團隊",
+      "組織圖",
+      "快取",
+      "用量",
+      "授權",
+      "主機狀態"
+    ],
+    "contrast": 5.93,
+    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
   },
   "phone-phone-dark-en-tasks": {
     "W": 390,
@@ -869,6 +1241,20 @@
     "title": "Tasks",
     "titleShown": true
   },
+  "look-phone-dark-en-tasks": {
+    "names": [
+      "Tasks",
+      "Schedules",
+      "Teams",
+      "Org chart",
+      "Cache",
+      "Usage",
+      "Authorizations",
+      "Host health"
+    ],
+    "contrast": 7.7,
+    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
+  },
   "phone-phone-dark-en-org": {
     "W": 390,
     "scroll": 390,
@@ -932,6 +1318,20 @@
     ],
     "title": "Org chart",
     "titleShown": true
+  },
+  "look-phone-dark-en-org": {
+    "names": [
+      "Tasks",
+      "Schedules",
+      "Teams",
+      "Org chart",
+      "Cache",
+      "Usage",
+      "Authorizations",
+      "Host health"
+    ],
+    "contrast": 7.7,
+    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
   },
   "phone-phone-dark-en-host-health": {
     "W": 390,
@@ -997,6 +1397,20 @@
     "title": "Host health",
     "titleShown": true
   },
+  "look-phone-dark-en-host-health": {
+    "names": [
+      "Tasks",
+      "Schedules",
+      "Teams",
+      "Org chart",
+      "Cache",
+      "Usage",
+      "Authorizations",
+      "Host health"
+    ],
+    "contrast": 7.7,
+    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
+  },
   "phone-phone-dark-zh-TW-tasks": {
     "W": 390,
     "scroll": 390,
@@ -1060,6 +1474,20 @@
     ],
     "title": "任務",
     "titleShown": true
+  },
+  "look-phone-dark-zh-TW-tasks": {
+    "names": [
+      "任務",
+      "排程",
+      "團隊",
+      "組織圖",
+      "快取",
+      "用量",
+      "授權",
+      "主機狀態"
+    ],
+    "contrast": 7.7,
+    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
   },
   "phone-phone-dark-zh-TW-org": {
     "W": 390,
@@ -1125,6 +1553,20 @@
     "title": "組織圖",
     "titleShown": true
   },
+  "look-phone-dark-zh-TW-org": {
+    "names": [
+      "任務",
+      "排程",
+      "團隊",
+      "組織圖",
+      "快取",
+      "用量",
+      "授權",
+      "主機狀態"
+    ],
+    "contrast": 7.7,
+    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
+  },
   "phone-phone-dark-zh-TW-host-health": {
     "W": 390,
     "scroll": 390,
@@ -1189,5 +1631,487 @@
     "title": "主機狀態",
     "titleShown": true
   },
-  "summary": "78/78"
+  "look-phone-dark-zh-TW-host-health": {
+    "names": [
+      "任務",
+      "排程",
+      "團隊",
+      "組織圖",
+      "快取",
+      "用量",
+      "授權",
+      "主機狀態"
+    ],
+    "contrast": 7.7,
+    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
+  },
+  "narrow-phone-light-en-375-org": {
+    "W": 375,
+    "scroll": 375,
+    "tabs": [
+      {
+        "l": 0,
+        "r": 46.875,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "Tasks"
+      },
+      {
+        "l": 46.875,
+        "r": 93.75,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "Schedules"
+      },
+      {
+        "l": 93.75,
+        "r": 140.625,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "Teams"
+      },
+      {
+        "l": 140.625,
+        "r": 187.5,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "Org chart"
+      },
+      {
+        "l": 187.5,
+        "r": 234.375,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "Cache"
+      },
+      {
+        "l": 234.375,
+        "r": 281.25,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "Usage"
+      },
+      {
+        "l": 281.25,
+        "r": 328.125,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "Authorizations"
+      },
+      {
+        "l": 328.125,
+        "r": 375,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "Host health"
+      }
+    ]
+  },
+  "narrow-phone-light-en-360-org": {
+    "W": 360,
+    "scroll": 360,
+    "tabs": [
+      {
+        "l": 0,
+        "r": 45,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "Tasks"
+      },
+      {
+        "l": 45,
+        "r": 90,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "Schedules"
+      },
+      {
+        "l": 90,
+        "r": 135,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "Teams"
+      },
+      {
+        "l": 135,
+        "r": 180,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "Org chart"
+      },
+      {
+        "l": 180,
+        "r": 225,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "Cache"
+      },
+      {
+        "l": 225,
+        "r": 270,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "Usage"
+      },
+      {
+        "l": 270,
+        "r": 315,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "Authorizations"
+      },
+      {
+        "l": 315,
+        "r": 360,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "Host health"
+      }
+    ]
+  },
+  "narrow-phone-light-en-320-org": {
+    "W": 320,
+    "scroll": 320,
+    "tabs": [
+      {
+        "l": 0,
+        "r": 80,
+        "t": 56,
+        "b": 100,
+        "w": 80,
+        "h": 44,
+        "name": "Tasks"
+      },
+      {
+        "l": 80,
+        "r": 160,
+        "t": 56,
+        "b": 100,
+        "w": 80,
+        "h": 44,
+        "name": "Schedules"
+      },
+      {
+        "l": 160,
+        "r": 240,
+        "t": 56,
+        "b": 100,
+        "w": 80,
+        "h": 44,
+        "name": "Teams"
+      },
+      {
+        "l": 240,
+        "r": 320,
+        "t": 56,
+        "b": 100,
+        "w": 80,
+        "h": 44,
+        "name": "Org chart"
+      },
+      {
+        "l": 0,
+        "r": 80,
+        "t": 100,
+        "b": 144,
+        "w": 80,
+        "h": 44,
+        "name": "Cache"
+      },
+      {
+        "l": 80,
+        "r": 160,
+        "t": 100,
+        "b": 144,
+        "w": 80,
+        "h": 44,
+        "name": "Usage"
+      },
+      {
+        "l": 160,
+        "r": 240,
+        "t": 100,
+        "b": 144,
+        "w": 80,
+        "h": 44,
+        "name": "Authorizations"
+      },
+      {
+        "l": 240,
+        "r": 320,
+        "t": 100,
+        "b": 144,
+        "w": 80,
+        "h": 44,
+        "name": "Host health"
+      }
+    ]
+  },
+  "narrow-phone-dark-zh-TW-375-org": {
+    "W": 375,
+    "scroll": 375,
+    "tabs": [
+      {
+        "l": 0,
+        "r": 46.875,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "任務"
+      },
+      {
+        "l": 46.875,
+        "r": 93.75,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "排程"
+      },
+      {
+        "l": 93.75,
+        "r": 140.625,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "團隊"
+      },
+      {
+        "l": 140.625,
+        "r": 187.5,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "組織圖"
+      },
+      {
+        "l": 187.5,
+        "r": 234.375,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "快取"
+      },
+      {
+        "l": 234.375,
+        "r": 281.25,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "用量"
+      },
+      {
+        "l": 281.25,
+        "r": 328.125,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "授權"
+      },
+      {
+        "l": 328.125,
+        "r": 375,
+        "t": 56,
+        "b": 100,
+        "w": 46.875,
+        "h": 44,
+        "name": "主機狀態"
+      }
+    ]
+  },
+  "narrow-phone-dark-zh-TW-360-org": {
+    "W": 360,
+    "scroll": 360,
+    "tabs": [
+      {
+        "l": 0,
+        "r": 45,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "任務"
+      },
+      {
+        "l": 45,
+        "r": 90,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "排程"
+      },
+      {
+        "l": 90,
+        "r": 135,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "團隊"
+      },
+      {
+        "l": 135,
+        "r": 180,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "組織圖"
+      },
+      {
+        "l": 180,
+        "r": 225,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "快取"
+      },
+      {
+        "l": 225,
+        "r": 270,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "用量"
+      },
+      {
+        "l": 270,
+        "r": 315,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "授權"
+      },
+      {
+        "l": 315,
+        "r": 360,
+        "t": 56,
+        "b": 100,
+        "w": 45,
+        "h": 44,
+        "name": "主機狀態"
+      }
+    ]
+  },
+  "narrow-phone-dark-zh-TW-320-org": {
+    "W": 320,
+    "scroll": 320,
+    "tabs": [
+      {
+        "l": 0,
+        "r": 80,
+        "t": 56,
+        "b": 100,
+        "w": 80,
+        "h": 44,
+        "name": "任務"
+      },
+      {
+        "l": 80,
+        "r": 160,
+        "t": 56,
+        "b": 100,
+        "w": 80,
+        "h": 44,
+        "name": "排程"
+      },
+      {
+        "l": 160,
+        "r": 240,
+        "t": 56,
+        "b": 100,
+        "w": 80,
+        "h": 44,
+        "name": "團隊"
+      },
+      {
+        "l": 240,
+        "r": 320,
+        "t": 56,
+        "b": 100,
+        "w": 80,
+        "h": 44,
+        "name": "組織圖"
+      },
+      {
+        "l": 0,
+        "r": 80,
+        "t": 100,
+        "b": 144,
+        "w": 80,
+        "h": 44,
+        "name": "快取"
+      },
+      {
+        "l": 80,
+        "r": 160,
+        "t": 100,
+        "b": 144,
+        "w": 80,
+        "h": 44,
+        "name": "用量"
+      },
+      {
+        "l": 160,
+        "r": 240,
+        "t": 100,
+        "b": 144,
+        "w": 80,
+        "h": 44,
+        "name": "授權"
+      },
+      {
+        "l": 240,
+        "r": 320,
+        "t": 100,
+        "b": 144,
+        "w": 80,
+        "h": 44,
+        "name": "主機狀態"
+      }
+    ]
+  },
+  "summary": "144/144"
 }
