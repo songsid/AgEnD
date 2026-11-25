@@ -265,6 +265,38 @@ describe("M-2738 Prism #3505 review: ownership, the asking session, idempotency,
     } finally { await f.stop(); }
   });
 
+  it("answer now keeps the session fence: revoking before the launch launches nothing", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      const open = held();
+      const body = JSON.stringify({ action: "now", confirm: "update-agend" });
+      expect((await raw(f.port, "POST", "/ui/update/answer", admin.write("k-ans-rev1"), body)).status).toBe(200);
+      expect(f.fm.webSessions.revokeById(admin.id).removed).toBe(true);
+      open();
+      await vi.waitFor(() => expect(readUpdateProgress(f.dir)!.progress.stage).toBe("failed"));
+      await settle();
+      expect(spawned).toEqual([]);
+    } finally { await f.stop(); }
+  });
+
+  it("when-idle claims the machine and writes its marker before the installer is resolved", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      vi.spyOn(f.fm, "hubUpdateIdle").mockReturnValue(true);
+      const open = held();
+      const admin = f.session("admin");
+      expect((await raw(f.port, "POST", "/ui/update/answer", admin.write("k-idle-0001"), JSON.stringify({ action: "when-idle" }))).status).toBe(200);
+      await vi.waitFor(() => expect(readUpdateProgress(f.dir)?.progress.stage).toBe("preparing"));
+      expect(readUpdateProgress(f.dir)!.progress.target.messageId).toMatch(/^idle-update:/);
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-idle-0002"), START)).status).toBe(409);
+      open();
+      await vi.waitFor(() => expect(spawned).toHaveLength(1));
+    } finally { await f.stop(); }
+  });
+
   it("P2-3: revoking the asking session before the launch means nothing is launched (the progress says why)", async () => {
     const f = await fleet();
     try {

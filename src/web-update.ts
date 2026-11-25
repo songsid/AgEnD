@@ -131,6 +131,6 @@ export interface WebUpdateHost {
   updateLog(): { text: string | null; error: string | null };
   /** The one update card. Null when nothing is offered (including a pin). */
   card?(): import("./update-card.js").UpdateCardView | null;
-  /** POST /ui/update/answer. `by` is a display label, never an id. */
-  answerUpdate?(key: string, by: string, body: import("./update-card.js").UpdateAnswerBody): Promise<import("./update-card.js").UpdateAnswerResult>;
+  /** POST /ui/update/answer. `by` is a display label, never an id. `stillAllowed` is the asking session, checked again at an immediate launch. */
+  answerUpdate?(key: string, by: string, body: import("./update-card.js").UpdateAnswerBody, stillAllowed: () => boolean): Promise<import("./update-card.js").UpdateAnswerResult>;
 }

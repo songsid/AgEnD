@@ -9,7 +9,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Status, type Client } from "discord.js";
+import { ApplicationCommandOptionType, Status, type Client } from "discord.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { FleetManager } from "../src/fleet-manager.js";
 
@@ -73,6 +73,22 @@ describe("/web and /dashboard are registered with revoke; /dashboard is marked d
         expect(cmd.options![0]!.description.length).toBeGreaterThan(0);
         expect(cmd.options![0]!.description.length).toBeLessThanOrEqual(100);
       }
+    } finally { setLocale("en"); }
+  });
+});
+
+describe("/update registers a now option so the slash command can update immediately", () => {
+  it("the option is an optional boolean", async () => {
+    const { setLocale } = await import("../src/locale.js");
+    setLocale("en");
+    try {
+      let sent: Array<{ name: string; options?: Array<{ name: string; description: string; required?: boolean; type?: number }> }> = [];
+      await register(async (commands: typeof sent) => { sent = commands; return new Map(); });
+      const update = sent.find(c => c.name === "update");
+      expect(update?.options).toEqual([expect.objectContaining({
+        name: "now", description: "Update immediately, without waiting", required: false, type: ApplicationCommandOptionType.Boolean,
+      })]);
+      expect(update!.options![0]!.description.length).toBeLessThanOrEqual(100);
     } finally { setLocale("en"); }
   });
 });

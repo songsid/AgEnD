@@ -381,7 +381,7 @@ import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
-import { UpdateOfferCard, updateOfferReply, type UpdateCardView } from "./update-card.js";
+import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateOfferReply, type UpdateCardView } from "./update-card.js";
 import { inUpdatePause, resolveUpdates } from "./update-settings.js";
 import { resolveInstalledAgend, npmForRunningInstall } from "./update-dispatch.js";
 import { HUB_UPDATE_NOTICE_FILE, HUB_UPDATE_REMIND_MS, hubNoticeDue, hubNoticeKey, readHubNoticeState, writeHubNoticeState } from "./hub-update-notice.js";
@@ -2168,14 +2168,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubUpdates: import("./hub/member/updates.js").HubMemberUpdates | null = null;
   private hubUpdateOwned: { id: string; claim: { startedAt: number } } | null = null;
   private hubUpdateBootProgress: ReturnType<typeof readUpdateProgress> = null;
+  /** This process's local idle launch. Its own claim must not look like some other update holding the machine. */
+  private localIdleOwned: { startedAt: number } | null = null;
+  private localIdleBootProgress: ReturnType<typeof readUpdateProgress> = null;
   private pendingHubFleetUpdates = new Map<string, string>();
   hubFleetUpdates(): import("./hub/member/updates.js").HubMemberUpdates | null { return this.hubUpdates; }
-  private hubUpdateIdle(): boolean {
+  /** `ownClaim` is this caller's launch, so that launch does not look busy to itself. The Hub queue passes its claim; the local card passes its own. */
+  private hubUpdateIdle(ownClaim: { startedAt: number } | null = this.hubUpdateOwned?.claim ?? null): boolean {
     const updates = resolveUpdates(this.fleetConfig?.updates);
     // Pause and pin hold the row. Update now forces idle on the Hub queue itself; allowed() must not cancel it.
     if (updates.pin || inUpdatePause(updates.pause, new Date())) return false;
     if (!this.startupComplete || this.shuttingDown || this.reconcileInFlight || this.topicCleanupInFlight
-      || this.deliveryPumpRunning || (this.webUpdateOwned && this.webUpdateOwned !== this.hubUpdateOwned?.claim)) return false;
+      || this.deliveryPumpRunning || (this.webUpdateOwned && this.webUpdateOwned !== ownClaim)) return false;
     for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
       if (this.restartsInFlight.has(name) || this.stopsInFlight.has(name) || this.handOffsInFlight.has(name)
         || this.ipcConnectInFlight.has(name) || this.ipcReconnectInFlight.has(name) || this.hasPendingIdleGatedDelivery(name)
@@ -2195,34 +2199,68 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { await access(found.root, constants.W_OK); await access(found.prefix, constants.W_OK); return true; } catch { return false; }
   }
   private async launchHubUpdate(row: import("./update-idle.js").IdleUpdate, control: import("./update-idle.js").IdleUpdateLaunch): Promise<boolean> {
-    if (this.shuttingDown || this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !control.current()) return false;
-    const claim = { startedAt: Date.now() }, owned = { id: row.id, claim };
-    this.hubUpdateOwned = owned; this.webUpdateOwned = claim;
-    const release = () => { if (this.hubUpdateOwned === owned) this.hubUpdateOwned = null; if (this.webUpdateOwned === claim) this.webUpdateOwned = null; };
-    if (!persistUpdateProgress(this.dataDir, { ...webUpdateTarget(claim.startedAt), messageId: `hub-fleet-update:${row.id}` }, claim.startedAt)
-      || !setUpdateProgressStage(this.dataDir, "preparing", { version: row.version })) { release(); return false; }
+    return this.launchClaimedUpdate({
+      id: row.id, version: row.version, origin: `Hub-requested update ${row.id}`, messageId: `hub-fleet-update:${row.id}`, control, hub: true,
+      onExit: () => {
+        const outcome = this.hubUpdateOutcome(row);
+        if (outcome) this.hubUpdates?.complete(row.id, outcome.state, outcome.currentVersion, "interrupted");
+      },
+    });
+  }
+  /**
+   * One idle installer, Hub or local. Claims the machine and writes a marker before any await, then settles the row
+   * when the child is gone and the marker is no longer in progress.
+   */
+  private async launchClaimedUpdate(input: {
+    id: string; version: string; origin: string; messageId: string;
+    control: import("./update-idle.js").IdleUpdateLaunch; hub: boolean; onExit: () => void;
+  }): Promise<boolean> {
+    if (this.shuttingDown || this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !input.control.current()) return false;
+    const claim = { startedAt: Date.now() };
+    const hubOwned = input.hub ? { id: input.id, claim } : null;
+    if (hubOwned) this.hubUpdateOwned = hubOwned;
+    else this.localIdleOwned = claim;
+    this.webUpdateOwned = claim;
+    const owns = () => input.hub ? this.hubUpdateOwned === hubOwned : this.localIdleOwned === claim;
+    const release = () => {
+      if (hubOwned && this.hubUpdateOwned === hubOwned) this.hubUpdateOwned = null;
+      if (!input.hub && this.localIdleOwned === claim) this.localIdleOwned = null;
+      if (this.webUpdateOwned === claim) this.webUpdateOwned = null;
+    };
+    if (!persistUpdateProgress(this.dataDir, { ...webUpdateTarget(claim.startedAt), messageId: input.messageId }, claim.startedAt)
+      || !setUpdateProgressStage(this.dataDir, "preparing", { version: input.version })) { release(); return false; }
     try {
-      const child = await this.launchInstalledUpdate(`Hub-requested update ${row.id}`,
-        () => !this.shuttingDown && this.hubUpdateOwned === owned && control.current() && control.claim(), row.version);
+      const child = await this.launchInstalledUpdate(input.origin,
+        () => !this.shuttingDown && owns() && input.control.current() && input.control.claim(), input.version);
       if (!child) { release(); return false; }
       let endedOnce = false;
       const ended = () => {
         if (endedOnce) return; endedOnce = true;
         const settle = () => {
-          if (this.shuttingDown || this.hubUpdateOwned !== owned) return;
+          if (this.shuttingDown || !owns()) return;
           // systemd-run may exit before its independent updater. Keep the claim while its bounded marker is active.
           const marker = readUpdateProgress(this.dataDir)?.progress;
-          if (marker?.target.messageId === `hub-fleet-update:${row.id}` && isUpdateInProgress(this.dataDir)) {
+          if (marker?.target.messageId === input.messageId && isUpdateInProgress(this.dataDir)) {
             const timer = setTimeout(settle, 5000); timer.unref(); return;
           }
           release();
-          const outcome = this.hubUpdateOutcome(row);
-          if (outcome) this.hubUpdates?.complete(row.id, outcome.state, outcome.currentVersion, "interrupted");
+          input.onExit();
         };
         settle();
       };
       child.once("exit", ended); child.once("error", ended); return true;
     } catch { release(); return false; }
+  }
+  private claimedIdleOutcome(id: string, version: string): { state: "done" | "rolled-back" | "failed" } {
+    let current: string | null = null;
+    try { current = this.runningAgendVersion(); } catch { current = null; }
+    const messageId = idleUpdateMessageId(id);
+    const matches = (marker: ReturnType<typeof readUpdateProgress>) => !!marker
+      && marker.progress.target.messageId === messageId
+      && (marker.progress.version === undefined || marker.progress.version === version);
+    const saved = readUpdateProgress(this.dataDir);
+    const marker = matches(saved) ? saved : matches(this.localIdleBootProgress) ? this.localIdleBootProgress : null;
+    return { state: idleClaimOutcome(version, current, marker) };
   }
   private hubUpdateOutcome(row: import("./update-idle.js").IdleUpdate): { state: "done" | "rolled-back" | "failed"; currentVersion: string } | null {
     if (!this.startupComplete || this.hubUpdateOwned?.id === row.id) return null;
@@ -12524,6 +12562,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const bootUpdateMarker = updateMarkerIdentity(this.dataDir);
     const savedUpdateProgress = readUpdateProgress(this.dataDir);
     this.hubUpdateBootProgress = savedUpdateProgress;
+    this.localIdleBootProgress = savedUpdateProgress;
     const pendingUpdateProgress = savedUpdateProgress
       && savedUpdateProgress.progress.stage !== "failed"
       && savedUpdateProgress.progress.stage !== "complete"
@@ -31599,21 +31638,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       now: () => Date.now(),
       settings: () => this.fleetConfig?.updates,
       busyNames: () => this.updateBusyNames(),
-      agentsIdle: () => this.hubUpdateIdle(),
+      // The local claim only. The Hub queue keeps the default, so this launch still looks busy to it.
+      agentsIdle: () => this.hubUpdateIdle(this.localIdleOwned),
       externalBusy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !!this.hubUpdates?.idlePending(),
-      launchNow: by => this.startWebUpdate(by, () => !this.shuttingDown),
-      launchHubNow: async id => {
+      launchNow: (by, stillAllowed) => this.startWebUpdate(by, () => !this.shuttingDown && stillAllowed()),
+      launchHubNow: async (id, stillAllowed) => {
         const owner = this.hubUpdates;
         if (!owner) return { ok: false, status: 409, error: "request_not_found" };
-        const current = () => !this.shuttingDown && this.hubUpdates === owner;
+        const current = () => !this.shuttingDown && this.hubUpdates === owner && stillAllowed();
         return await owner.updateNow(id, current) ? { ok: true } : { ok: false, status: 409, error: "update_not_started" };
       },
       cancelHub: id => { this.hubUpdates?.cancelWaiting(id); },
-      launchIdle: async (version, control) => {
-        const child = await this.launchInstalledUpdate(`idle update ${version}`,
-          () => !this.shuttingDown && control.current() && control.claim(), version);
-        return !!child;
-      },
+      launchIdle: (version, control, id) => this.launchClaimedUpdate({
+        id, version, origin: `idle update ${version}`, messageId: idleUpdateMessageId(id), control, hub: false,
+        onExit: () => { this.updateCard?.settleLocal(id, this.claimedIdleOutcome(id, version).state); },
+      }),
+      currentVersion: () => { try { return this.runningAgendVersion(); } catch { return null; } },
+      bootMarker: () => this.localIdleBootProgress,
     });
     return this.updateCard;
   }
@@ -31741,7 +31782,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       startHubRequestedUpdate: (key, person, stillAllowed, id) => this.startHubRequestedUpdateOnce(key, person, stillAllowed, id),
       updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
       card: () => this.refreshUpdateCard(),
-      answerUpdate: (key, by, body) => this.ensureUpdateCard().answer(key, by, body),
+      answerUpdate: (key, by, body, stillAllowed) => this.ensureUpdateCard().answer(key, by, body, stillAllowed),
     };
   }
 

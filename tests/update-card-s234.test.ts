@@ -9,7 +9,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { validateFleetConfig } from "../src/config-validator.js";
-import { NOT_NOW_MS, UpdateOfferCard, updateAnswerLabel, updateOfferReply, type UpdateAnswerBody, type UpdateCardDeps, type UpdateOfferInput } from "../src/update-card.js";
+import { idleUpdateMessageId, NOT_NOW_MS, UpdateOfferCard, updateAnswerLabel, updateOfferReply, type UpdateAnswerBody, type UpdateCardDeps, type UpdateOfferInput } from "../src/update-card.js";
+import { beginUpdateProgress, setUpdateProgressStage } from "../src/update-marker.js";
 import { IDLE_UPDATE_MIGRATION, IDLE_UPDATE_WAIT_MS, IdleUpdateQueue, type IdleUpdate, type IdleUpdateLaunch } from "../src/update-idle.js";
 import { updatesFromRaw, updatesProblems, type UpdatesSettings } from "../src/update-settings.js";
 
@@ -47,7 +48,7 @@ function harness(over: Partial<UpdateCardDeps> = {}) {
   const deps: UpdateCardDeps = {
     dataDir: dir, now: () => now, settings: () => settings, busyNames: () => names,
     agentsIdle: () => agentsIdle, externalBusy: () => externalBusy,
-    launchNow, launchHubNow, cancelHub, launchIdle, ...over,
+    launchNow, launchHubNow, cancelHub, launchIdle, currentVersion: () => null, ...over,
   };
   let card = new UpdateOfferCard(deps);
   cards.push(card);
@@ -305,6 +306,57 @@ describe("S-234 one update offer", () => {
     expect(() => queue.request({ id: randomUUID(), version: "2.4.0-beta.1", waitMs: 0 })).toThrow(/invalid/);
     expect(() => queue.request({ id: randomUUID(), version: "latest", waitMs: twoHours })).toThrow(/invalid/);
     expect(() => queue.request({ id: "not-a-uuid", version: "2.4.0", waitMs: twoHours })).toThrow(/invalid/);
+  });
+
+  it("an idle launch reopened with no marker settles, and a later when-idle is accepted", async () => {
+    const h = harness();
+    h.offer("2.4.0-beta.1");
+    expect((await answer(h, "wait", { action: "when-idle" })).ok).toBe(true);
+    await vi.waitFor(() => expect(h.launched).toEqual(["2.4.0-beta.1"]));
+    expect(h.card.view()?.state).toBe("updating");
+    h.reopen();
+    expect(h.card.view()?.state).toBe("failed");
+    const db = new Database(join(h.dir, "update-idle.sqlite"), { readonly: true, fileMustExist: true });
+    idleDbs.push(db);
+    expect((db.prepare("SELECT state FROM fleet_idle_updates").get() as { state: string }).state).toBe("failed");
+    h.offer("2.4.0-beta.2");
+    expect(h.card.view()).toMatchObject({ version: "2.4.0-beta.2", state: "offered" });
+    expect((await answer(h, "again", { action: "when-idle" })).ok).toBe(true);
+  });
+
+  it("reopening onto the installed version is done, and a restart-stage marker is rolled back", async () => {
+    const done = harness({ currentVersion: () => "2.4.0-beta.1" });
+    done.offer("2.4.0-beta.1");
+    expect((await answer(done, "wait", { action: "when-idle" })).ok).toBe(true);
+    await vi.waitFor(() => expect(done.launched).toEqual(["2.4.0-beta.1"]));
+    done.reopen();
+    expect(done.card.view()?.state).toBe("done");
+
+    const rolled = harness();
+    rolled.offer("2.4.0-beta.1");
+    expect((await answer(rolled, "wait", { action: "when-idle" })).ok).toBe(true);
+    await vi.waitFor(() => expect(rolled.launched).toEqual(["2.4.0-beta.1"]));
+    const db = new Database(join(rolled.dir, "update-idle.sqlite"), { readonly: true, fileMustExist: true });
+    idleDbs.push(db);
+    const id = (db.prepare("SELECT id FROM fleet_idle_updates").get() as { id: string }).id;
+    beginUpdateProgress(rolled.dir, { adapterId: "web-update", chatId: "web", messageId: idleUpdateMessageId(id) });
+    setUpdateProgressStage(rolled.dir, "starting", { version: "2.4.0-beta.1" });
+    rolled.reopen();
+    expect(rolled.card.view()).toMatchObject({ state: "failed", failed: { rolledBack: true } });
+  });
+
+  it("one idempotency key shares one answer, including a launch still in flight", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    const launchNow = vi.fn(async () => { await gate; return { ok: true as const }; });
+    const h = harness({ launchNow });
+    h.offer();
+    const body = { action: "now" as const, confirm: CONFIRM };
+    const first = answer(h, "once", body);
+    const second = answer(h, "once", { action: "not-now" });
+    release();
+    expect(await first).toEqual(await second);
+    expect(launchNow).toHaveBeenCalledTimes(1);
   });
 
   it("the card's idle wait uses updates.maxIdleWait hours", async () => {

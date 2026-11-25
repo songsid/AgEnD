@@ -918,6 +918,8 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
     const now = who();
     if ("status" in now) { json(res, now.status, { error: now.error }); return; }
     if (!now.admin) { json(res, 403, { error: "update_needs_an_admin_session" }); return; }
+    // Prism #3505 P2-3: the session that asked, still current and still an admin's, right up to an immediate launch.
+    const stillAllowed = (): boolean => { const v = who(); return !("status" in v) && v.admin && v.person === now.person; };
     if (path === "/ui/update/check") {
       const r = await host.checkUpdateNow();
       if (!r.ok) { json(res, r.status, { error: r.error }); return; }
@@ -929,7 +931,7 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
       const header = req.headers["idempotency-key"];
       const key = typeof header === "string" ? header : "";
       if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
-      const answered = await host.answerUpdate(key, updateAnswerLabel(now.label), body);
+      const answered = await host.answerUpdate(key, updateAnswerLabel(now.label), body, stillAllowed);
       json(res, answered.status, answered.ok ? { card: answered.card } : answered.body);
       return;
     }
@@ -938,8 +940,6 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
     if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
     // A literal, not a boolean: a stray `true` in a replayed body never means "update AgEnD".
     if (body.confirm !== "update-agend") { json(res, 400, { error: 'confirm must be the literal "update-agend"' }); return; }
-    // Prism #3505 P2-3: the session that asked, still current and still an admin's, right up to the updater's launch.
-    const stillAllowed = (): boolean => { const v = who(); return !("status" in v) && v.admin && v.person === now.person; };
     // M-3140: `recommended` — the Hub's advice this page showed ({ version, revision }); the server re-reads its own.
     const rec = body.recommended as { version?: unknown; revision?: unknown } | undefined;
     if (rec !== undefined && (typeof rec !== "object" || rec === null || typeof rec.version !== "string" || rec.version.length > 128

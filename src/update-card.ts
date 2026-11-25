@@ -12,6 +12,7 @@ import Database from "better-sqlite3";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { IdleUpdateQueue, IDLE_UPDATE_MIGRATION, type IdleUpdate, type IdleUpdateLaunch } from "./update-idle.js";
 import { installedChannel } from "./update-check.js";
+import { readUpdateProgress } from "./update-marker.js";
 import { inUpdatePause, resolveUpdates, type ResolvedUpdates, type UpdatesSettings } from "./update-settings.js";
 
 export const NOT_NOW_MS = 7 * 24 * 60 * 60_000;
@@ -20,6 +21,25 @@ export const PICK_WITHIN_MS = NOT_NOW_MS;
 const IDLE_POLL_MS = 5_000;
 const CARD_FILE = "update-card.json";
 const QUEUE_FILE = "update-idle.sqlite";
+
+/** Progress-marker name for one local idle launch. The Hub uses its own prefix. */
+export function idleUpdateMessageId(id: string): string {
+  return `idle-update:${id}`;
+}
+
+type IdleMarker = NonNullable<ReturnType<typeof readUpdateProgress>>;
+
+/**
+ * What a leftover `updating` row became. `marker` is already this row's marker, or null.
+ * The running version means the install landed. A marker that reached the restart means it was rolled back.
+ */
+export function idleClaimOutcome(version: string, current: string | null, marker: IdleMarker | null): "done" | "rolled-back" | "failed" {
+  if (current && current.replace(/^v/, "") === version.replace(/^v/, "")) return "done";
+  const stage = marker?.progress.stage;
+  const reachedRestart = stage === "installed" || stage === "stopping" || stage === "starting" || stage === "complete"
+    || (stage === "failed" && (marker?.progress.failedStage === "starting" || marker?.progress.failedStage === "stopping"));
+  return reachedRestart ? "rolled-back" : "failed";
+}
 
 export type UpdateCardState = "offered" | "not-now" | "scheduled" | "waiting-idle" | "updating" | "done" | "failed" | "cant";
 export type UpdateCardAction = "when-idle" | "now" | "pick-time" | "not-now" | "cancel";
@@ -87,14 +107,18 @@ export interface UpdateCardDeps {
   agentsIdle(): boolean;
   /** A Hub row or another update already owns the machine. */
   externalBusy(): boolean;
-  /** Today's immediate install. */
-  launchNow(by: string): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
+  /** Today's immediate install. `stillAllowed` is the asking session, checked again at the launch. */
+  launchNow(by: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   /** Hub "update now": force the waiting Hub row. Absent when this fleet has no Hub queue. */
-  launchHubNow?(id: string): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
+  launchHubNow?(id: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   /** Cancel one waiting Hub row. The local queue is cancelled here. */
   cancelHub?(id: string): void;
-  /** Idle launch, the same installer as launchNow, claimed by the queue. */
-  launchIdle(version: string, control: IdleUpdateLaunch): Promise<boolean>;
+  /** Idle launch, the same installer as launchNow, claimed by the queue. `id` names the row and its marker. */
+  launchIdle(version: string, control: IdleUpdateLaunch, id: string): Promise<boolean>;
+  /** The version this process is running. Null when it cannot be read. */
+  currentVersion(): string | null;
+  /** The marker this boot adopted, kept after startup clears the file. */
+  bootMarker?(): ReturnType<typeof readUpdateProgress>;
   /** Slice 1.2. Absent, or null, allows the action. */
   preflight?(action: UpdateCardAction): { preflight: unknown } | null;
 }
@@ -140,7 +164,7 @@ export class UpdateOfferCard {
   /** Cancel/retarget notifies the queue; ignore that echo so it cannot overwrite the card mid-update. */
   private quiet = 0;
   private timer?: ReturnType<typeof setTimeout>;
-  private readonly answers = new Map<string, UpdateAnswerResult>();
+  private readonly answers = new Map<string, Promise<UpdateAnswerResult>>();
 
   constructor(private readonly deps: UpdateCardDeps) {
     mkdirSync(deps.dataDir, { recursive: true });
@@ -155,10 +179,11 @@ export class UpdateOfferCard {
       // Pause and pin must not cancel the row. allowed() false is permission-revoked.
       allowed: () => true,
       idle: () => this.idle(),
-      launch: (row, control) => this.deps.launchIdle(row.version, control),
+      launch: (row, control) => this.deps.launchIdle(row.version, control, row.id),
       changed: row => this.mirrorLocal(row),
     });
     this.stored = this.read();
+    this.reconcileIdleClaim();
   }
 
   close(): void {
@@ -296,16 +321,25 @@ export class UpdateOfferCard {
     this.arm();
   }
 
-  async answer(key: string, by: string, body: UpdateAnswerBody): Promise<UpdateAnswerResult> {
+  async answer(key: string, by: string, body: UpdateAnswerBody, stillAllowed: () => boolean = () => true): Promise<UpdateAnswerResult> {
     const known = this.answers.get(key);
     if (known) return known;
-    const result = await this.apply(updateAnswerLabel(by), body);
+    const result = this.apply(updateAnswerLabel(by), body, stillAllowed);
     this.answers.set(key, result);
     while (this.answers.size > 32) this.answers.delete(this.answers.keys().next().value!);
     return result;
   }
 
-  private async apply(by: string, body: UpdateAnswerBody): Promise<UpdateAnswerResult> {
+  /** The queue row for one idle launch finished. The card follows the row. */
+  settleLocal(id: string, state: "done" | "rolled-back" | "failed"): void {
+    if (this.stopped) return;
+    this.queue.settle(id, state, "interrupted");
+    if (this.stored?.state === "updating" && this.stored.owner !== "hub" && (this.stored.queueId === id || this.stored.queueId === undefined)) {
+      this.settleRunning(state === "done" ? { state: "done" } : { state: "failed", cause: "other", rolledBack: state === "rolled-back" });
+    }
+  }
+
+  private async apply(by: string, body: UpdateAnswerBody, stillAllowed: () => boolean): Promise<UpdateAnswerResult> {
     const action = body.action;
     if (action !== "when-idle" && action !== "now" && action !== "pick-time" && action !== "not-now" && action !== "cancel") {
       return { ok: false, status: 400, body: { error: 'action must be "when-idle", "now", "pick-time", "not-now", or "cancel"' } };
@@ -325,7 +359,7 @@ export class UpdateOfferCard {
     if (action === "not-now") return this.notNow(card, by);
     if (action === "pick-time") return this.pickTime(card, by, body.at);
     if (action === "when-idle") return this.whenIdle(card, by);
-    return this.now(card, by);
+    return this.now(card, by, stillAllowed);
   }
 
   private cancel(card: StoredCard, by: string): UpdateAnswerResult {
@@ -384,17 +418,17 @@ export class UpdateOfferCard {
     return this.ok();
   }
 
-  private async now(card: StoredCard, by: string): Promise<UpdateAnswerResult> {
+  private async now(card: StoredCard, by: string, stillAllowed: () => boolean): Promise<UpdateAnswerResult> {
     if (this.deps.externalBusy() && card.owner !== "hub") return { ok: false, status: 409, body: { key: "update_running" } };
     if (card.owner === "hub" && card.queueId && this.deps.launchHubNow) {
-      const hub = await this.deps.launchHubNow(card.queueId);
+      const hub = await this.deps.launchHubNow(card.queueId, stillAllowed);
       if (!hub.ok) return this.launchError(hub.status, hub.error);
       this.remember("now", by);
       return this.ok();
     }
     const localWait = card.owner !== "hub" && !!card.queueId;
     this.stopWait(card);
-    const launched = await this.deps.launchNow(by);
+    const launched = await this.deps.launchNow(by, stillAllowed);
     if (!launched.ok) {
       // stopWait is quiet, so a cancelled local row would otherwise leave the card waiting with nothing behind it.
       if (localWait && this.stored && (this.stored.state === "waiting-idle" || this.stored.state === "scheduled")) {
@@ -491,6 +525,32 @@ export class UpdateOfferCard {
       delete this.stored.waitingSince;
     } else return;
     this.save();
+  }
+
+  /** A previous process left an `updating` row. This process did not launch it, so settle it before anyone reads the card. */
+  private reconcileIdleClaim(): void {
+    const row = this.queue.pending();
+    if (row?.state !== "updating") return;
+    let current: string | null = null;
+    try { current = this.deps.currentVersion() ?? null; } catch { current = null; }
+    const state = idleClaimOutcome(row.version, current, this.idleMarker(row.id, row.version));
+    this.settleLocal(row.id, state);
+  }
+
+  private idleMarker(id: string, version: string): IdleMarker | null {
+    const messageId = idleUpdateMessageId(id);
+    const matches = (marker: IdleMarker | null): marker is IdleMarker => !!marker
+      && marker.progress.target.messageId === messageId
+      && (marker.progress.version === undefined || marker.progress.version === version);
+    try {
+      const live = readUpdateProgress(this.deps.dataDir);
+      if (matches(live)) return live;
+    } catch { /* a missing marker is not this launch */ }
+    try {
+      const boot = this.deps.bootMarker?.() ?? null;
+      if (matches(boot)) return boot;
+    } catch { /* the boot snapshot is optional */ }
+    return null;
   }
 
   private idle(): boolean {
