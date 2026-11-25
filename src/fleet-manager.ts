@@ -1515,22 +1515,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private readonly requestContextFleetCalls=new RequestContextReferenceMap<string,{call:RequestContextLocalCall;instance:string;bootId:string;ipc:InstanceClient;responseKey:string}>(row=>row.call.admission.coverage==="covered"?row.call.admission.lease.snapshot.context.ref.rootContextId:null,row=>`fleet-call:${row.call.id}`);
   setRequestContextDrainRegistration(registration:RequestContextRegistrationGate):void {
     if(this.instanceIpcClients.size)throw Error("Request context drain must bind before IPC starts");
-    this.requestContextFleetCalls.installRegistration(registration);
+    const calls=this.requestContextFleetCalls;if(!calls)throw Error("Request context drain registry unavailable");
+    calls.installRegistration(registration);
   }
-  get requestContextFleetDrainRevision():string{return this.requestContextFleetCalls.revision;}
-  requestContextFleetDrainView(rootId:string){return this.requestContextFleetCalls.view(rootId);}
-  private finishRequestContextIpcCall(message:object):void {const call=this.requestContextCallOf(message);if(call)for(const [id,row]of this.requestContextFleetCalls)if(row.call===call)this.requestContextFleetCalls.delete(id);}
+  get requestContextFleetDrainRevision():string{return this.requestContextFleetCalls?.revision??"unavailable";}
+  requestContextFleetDrainView(rootId:string){return this.requestContextFleetCalls?.view(rootId)??{registration:null,revision:"unavailable",references:[],unknown:true};}
+  private finishRequestContextIpcCall(message:object):void {const call=this.requestContextCallOf(message),calls=this.requestContextFleetCalls;if(call&&calls)for(const [id,row]of calls)if(row.call===call)calls.delete(id);}
   private purgeRequestContextIpcCalls(name:string,ipc:InstanceClient):void {
-    for(const [id,row]of this.requestContextFleetCalls)if(row.instance===name&&row.ipc===ipc)this.requestContextFleetCalls.delete(id);
+    const calls=this.requestContextFleetCalls;if(!calls)return;
+    for(const [id,row]of calls)if(row.instance===name&&row.ipc===ipc)calls.delete(id);
   }
   private observeRequestContextResponses(name:string,ipc:InstanceClient):void {
-    if(!this.requestContextFleetCalls.registrationGate)return;
+    const calls=this.requestContextFleetCalls;if(!calls?.registrationGate)return;
     const send=ipc.send.bind(ipc);
     ipc.send=(message:unknown):boolean=>{
       try{return send(message);}finally{
         if(message&&typeof message==="object"){
           const row=message as Record<string,unknown>,key=String(row.fleetRequestId??row.requestId??"");
-          if(String(row.type??"").endsWith("_response")&&key)for(const [id,call]of this.requestContextFleetCalls)if(call.instance===name&&call.ipc===ipc&&call.responseKey===key)this.requestContextFleetCalls.delete(id);
+          if(String(row.type??"").endsWith("_response")&&key)for(const [id,call]of calls)if(call.instance===name&&call.ipc===ipc&&call.responseKey===key)calls.delete(id);
         }
       }
     };
@@ -1548,11 +1550,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const scoped = Object.freeze({ id: captured.id, admission: captured.admission,
       current: () => captured.current() && this.instanceIpcClients.get(name) === ipc && this.getDaemonBootId(name) === originalBoot
         && !!tool && this.checkToolPermission("ipc-outbound", name, tool === "hub_room_status" ? "hub_room_list" : tool).allowed });
-    if(this.requestContextFleetCalls.registrationGate){
+    const calls=this.requestContextFleetCalls;
+    if(calls?.registrationGate){
       const responseKey=String(message.fleetRequestId??message.requestId??"");
       const key=JSON.stringify([name,originalBoot,responseKey]);
-      if(!responseKey||this.requestContextFleetCalls.has(key))return false;
-      try{this.requestContextFleetCalls.set(key,{call:scoped,instance:name,bootId:originalBoot,ipc,responseKey});}catch{return false;}
+      if(!responseKey||calls.has(key))return false;
+      try{calls.set(key,{call:scoped,instance:name,bootId:originalBoot,ipc,responseKey});}catch{return false;}
     }
     this.requestContextIpcCalls.set(message, scoped); return true;
   }
@@ -29641,7 +29644,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await Promise.all([...this.instanceIpcClients.values()].map(ipc =>
       Promise.resolve(ipc.close()).catch(() => { /* best effort */ })));
     this.instanceIpcClients.clear();
-    this.requestContextFleetCalls.clear();
+    this.requestContextFleetCalls?.clear();
     this.ipcStoppingInstances.clear();
 
     for (const [, w] of this.worlds) {
@@ -31521,7 +31524,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await ipc.close();
     }
     this.instanceIpcClients.clear();
-    this.requestContextFleetCalls.clear();
+    this.requestContextFleetCalls?.clear();
 
     await this.stopInstancesInBatches(instanceNames, name => this.stopInstance(name));
 
