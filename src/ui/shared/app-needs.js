@@ -11,7 +11,12 @@ import { modelSwitchText } from "./model-observation.js";
 // The toggle asks Notification.requestPermission() on that click only. Not offered on a phone (the constructor is
 // missing or throws there; Discord's notification is the one to rely on) or on a plain-HTTP LAN address.
 import { appStore, createStore } from "./app-store.js";
-import { t } from "./app-i18n.js";
+import { register, t } from "./app-i18n.js";
+// M-3749: a tab that retains an older app-i18n.js still words the missing-MCP item (registered by its consumer, too).
+register("app", {
+  en: { needs_reason_mcp_missing: "MCP servers missing after an AI account switch", needs_mcp_missing_detail: "{0} ({1} → {2})", needs_mcp_missing_sep: ", " },
+  "zh-TW": { needs_reason_mcp_missing: "切換 AI 帳號後缺少 MCP 伺服器", needs_mcp_missing_detail: "{0}（{1} → {2}）", needs_mcp_missing_sep: "、" },
+});
 
 const STORE_KEY = "agend_needs_notify";
 const TERMINAL_WAIT_MS = 5000;
