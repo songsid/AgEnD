@@ -165,11 +165,13 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   const [granted, setGranted] = useState(false);
   // A read of this card that failed (after verifying, or after a decision whose answer was unknown): its state here may be
   // stale, so it says so, its decision buttons stay off, and Read again only reads (#4497 review R2). Never a POST.
+  // Kept in a ref as well: an already-open rule editor holds an older onSave, and its Save must see it too (R3).
   const [readFailed, setReadFailed] = useState(false);
+  const unread = useRef(false);
   const readCard = async () => {
     const r = await getCard(tk.id);
-    if (r.ok) { setReadFailed(false); onChange?.(r.data); return true; }
-    setReadFailed(true);
+    if (r.ok) { unread.current = false; setReadFailed(false); onChange?.(r.data); return true; }
+    unread.current = true; setReadFailed(true); setGrantOpen(false);           // the rule editor closes until a read succeeds
     return false;
   };
   const auth = useWebAuthorization();
@@ -206,24 +208,29 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
     if (say) toast(say, false);
     await readCard();
   };
+  // The one way a decision is sent: never while a send is out, or while this card's state is unknown (a failed read).
+  const sending = useRef(false);
   const decide = async (decision, grant) => {
-    if (busy) return false;
+    if (busy || sending.current || unread.current) return false;
+    // Held until the whole decision is over — its POST and any read after it — so no other Save can slip in between.
+    sending.current = true;
     setBusy(true);
-    const r = await decideCard(card, decision, grant);
-    setBusy(false);
-    if (r.ok) { if (grant) { setGranted(true); toast(ca("grantSaved"), true); } onChange?.(r.data); return true; }
-    if (r.code === "upgrade-required") { toast(r.message || tr("upgrade"), false, { detail: true }); await reread(null); return false; }
-    if (r.status === 409 || RC_REREAD.has(r.code)) { await reread(tr("decidedElsewhere")); return false; }
-    if (r.code === "verification-required") { resetWebAuthorization(); await reread(null); return false; }
-    // A definite refusal (the server said no before deciding) is said; anything else — no answer, an answer that can't be
-    // read, a server error — may have committed: read the same card and show what it is now. Never sent again.
-    if (r.status === 400 || r.status === 401 || r.status === 403 || r.status === 404) {
-      toast(r.code === "forbidden" ? tr("forbidden") : r.code === "sign-in-required" ? tr("signIn") : r.code === "not-found" ? tr("forbidden")
-        : r.code === "invalid-grant" || r.code === "invalid-grant-origin" ? tr("grantInvalid") : tr("failed", r.code), false);
+    try {
+      const r = await decideCard(card, decision, grant);
+      if (r.ok) { if (grant) { setGranted(true); toast(ca("grantSaved"), true); } onChange?.(r.data); return true; }
+      if (r.code === "upgrade-required") { toast(r.message || tr("upgrade"), false, { detail: true }); await reread(null); return false; }
+      if (r.status === 409 || RC_REREAD.has(r.code)) { await reread(tr("decidedElsewhere")); return false; }
+      if (r.code === "verification-required") { resetWebAuthorization(); await reread(null); return false; }
+      // A definite refusal (the server said no before deciding) is said; anything else — no answer, an answer that can't be
+      // read, a server error — may have committed: read the same card and show what it is now. Never sent again.
+      if (r.status === 400 || r.status === 401 || r.status === 403 || r.status === 404) {
+        toast(r.code === "forbidden" ? tr("forbidden") : r.code === "sign-in-required" ? tr("signIn") : r.code === "not-found" ? tr("forbidden")
+          : r.code === "invalid-grant" || r.code === "invalid-grant-origin" ? tr("grantInvalid") : tr("failed", r.code), false);
+        return false;
+      }
+      await reread(tr("uncertain"));
       return false;
-    }
-    await reread(tr("uncertain"));
-    return false;
+    } finally { sending.current = false; setBusy(false); }
   };
   // A click decides (Always allow opens its rule first). Before verification the buttons are off: nothing to press.
   const press = (which) => {

@@ -18,6 +18,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
+// The rule editor as it is, the onSave of its first render recorded: an editor opened before a send holds that one
+// (#4497 review R3's probe), from a render where nothing was busy yet.
+const editor = vi.hoisted(() => ({ onSave: null as null | ((c: unknown) => unknown) }));
+vi.mock("/ui/js/contact-grant-editor.js", async (importOriginal) => {
+  const real = await importOriginal<any>();
+  const { h: hh } = await import("/assets/app-html.js") as any;
+  return { ...real, ContactGrantEditor: (props: any) => { editor.onSave ??= props.onSave; return hh(real.ContactGrantEditor, props); } };
+});
+
 import type { RequestContactCardV1 } from "../src/request-contact-types.js";
 type CardV1 = RequestContactCardV1;
 
@@ -290,12 +299,49 @@ describe("J: #4497 review — a decision whose answer is unknown, and the grant 
     expect(pg.root.querySelector(".rc-read-failed")).toBeNull();
     expect(decisions(calls).length).toBe(1);
   }, 15_000);
+  it("R3: Always allow's Save, answer lost, read fails: the rule editor closes, a stale Save sends nothing — one POST; Read again recovers", async () => {
+    let getOk = false;
+    const calls: Array<{ method: string; url: string; body: any }> = [];
+    g.fetch = async (url: string, init: any = {}) => {
+      const method = (init.method || "GET").toUpperCase(); calls.push({ method, url, body: init.body ? JSON.parse(init.body) : undefined });
+      if (url === "/ui/authorization") return { ok: true, status: 200, json: async () => VERIFIED };
+      if (method === "POST") throw new TypeError("network");
+      if (method === "GET" && url === `${BASE}/${ID}`) return getOk ? { ok: true, status: 200, json: async () => card({ actions: { canDecide: false, canGrant: false, requiresVerification: false } }, { state: "approved" }) }
+        : { ok: false, status: 503, json: async () => ({ error: "unavailable" }) };
+      return { ok: false, status: 404, json: async () => ({}) };
+    };
+    let shown = card();
+    const { useState } = await import("/assets/app-html.js") as any;
+    function Page() { const [c, setC] = useState(shown); return h(cardMod.RequestContactCard, { card: c, onChange: (n: CardV1) => { shown = n; setC(n); } }); }
+    const pg = await mountWith(Page, {});
+    editor.onSave = null;
+    choice(pg.root, "always").click(); await settle(6);
+    const save = ([...pg.document.querySelectorAll("dialog.contact-grant-dialog button")] as any[]).find((b) => b.className.includes("btn-primary"));
+    save.click(); await settle(12);
+    expect(decisions(calls).length).toBe(1);
+    expect(pg.root.querySelector(".rc-read-failed")).toBeTruthy();
+    expect(pg.document.querySelector("dialog.contact-grant-dialog"), "the editor closes until a read succeeds").toBeNull();
+    save.click(); await settle(8);                                                                 // the editor's old Save, held
+    expect(editor.onSave, "the open editor's onSave was recorded").toBeTypeOf("function");
+    await (editor.onSave as any)({ personKeys: ['["discord","1001"]'], expiresAt: "2099-01-01T00:00:00.000Z", remainingUses: null }); await settle(8);   // its old onSave
+    expect(choice(pg.root, "always").disabled).toBe(true);
+    choice(pg.root, "always").click(); await settle(6);
+    expect(pg.document.querySelector("dialog.contact-grant-dialog")).toBeNull();
+    expect(decisions(calls).length, "no second POST").toBe(1);
+    getOk = true;
+    (pg.root.querySelector(".rc-read-again") as any).click(); await settle(8);
+    expect(shown.ticket.state).toBe("approved");
+    expect(decisions(calls).length).toBe(1);
+  }, 15_000);
   it("a definite refusal (403 forbidden) is said, not read again", async () => {
     const calls = api({ "GET /ui/authorization": () => ({ body: VERIFIED }), [`POST ${BASE}/${ID}/decision`]: () => ({ status: 403, body: { error: "forbidden" } }) });
     const pg = await mountWith(cardMod.RequestContactCard, { card: card() });
     choice(pg.root, "continue").click(); await settle(8);
     expect(calls.filter((c) => c.method === "GET" && c.url === `${BASE}/${ID}`).length).toBe(0);
     expect(toasts(pg.root)).toContain("You can't decide this request.");
+    // The decision is over: the next click may send again (nothing is left held).
+    choice(pg.root, "decline").click(); await settle(8);
+    expect(decisions(calls).map((c) => c.body.decision)).toEqual(["approve-once", "decline"]);
   });
   it("an older cached grant editor (no keyOf) still selects the server's keys: the candidates carry the userId their key names", async () => {
     const c = card({ grantCandidates: [{ key: '["discord","1001"]', label: "Alex", platform: "discord" }, { key: '["telegram","2002"]', label: "Robin", platform: "telegram" }] });
