@@ -19,10 +19,12 @@ try{
   const {page,ctx,csp}=await fx.page(c,{host:true,path:"/ui/needs"});const errors:string[]=[];page.on("pageerror",(e:Error)=>errors.push(e.message));
   const reason=page.locator(`[data-ticket="${tk.id}"] .contact-reason`).first();await reason.waitFor();
   if(process.env.STAGE!=="before")await reason.getByText(c.lang==="en"?"Clear retained origin":"清除保留的來源",{exact:false}).waitFor();
+  await reason.scrollIntoViewIfNeeded();
   await page.screenshot({path:join(out,`${c.device}-${c.theme}-${c.lang}-needs.png`)});
-  await page.goto(`${fx.base}/ui/details/demo-source?cat=permissions`);
+  await page.goto(`${fx.base}/ui/fleet/agent/demo-source?cat=permissions`);
   const clear=page.getByRole("button",{name:c.lang==="en"?"Clear retained origin":"清除保留的來源",exact:true});await clear.waitFor();
   if(c.device==="phone"){const box=await clear.boundingBox();if(!box||box.height<44)throw Error("Small recovery tap target");}
+  await clear.scrollIntoViewIfNeeded();
   await page.screenshot({path:join(out,`${c.device}-${c.theme}-${c.lang}-permissions.png`)});
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
   if(overflow||errors.length||csp.length)throw Error(JSON.stringify({overflow,errors,csp}));
