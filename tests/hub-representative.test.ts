@@ -19,6 +19,8 @@ import { signAsker, sha256, issuerKeyId, operationDigest, messageContentDigest }
 import { HubMemberFiles } from "../src/hub/member/attachments.js";
 import { HUB_ATTACHMENT_CHUNK } from "../src/hub/protocol.js";
 import { HubRepresentativeExecution, HUB_REPORT_TARGET, agentPolicyDigest, isAgentTuple, migrateHubRepresentative, type HubRepresentativeDelivery } from "../src/hub/representative.js";
+import { listHandback, newAttemptId, openAttempt } from "../src/update-journal.js";
+import { QuiescenceBarrier, type BarrierSnapshot } from "../src/update-quiescence.js";
 import type { HubAttachmentRef, HubAuthorizationRequest, HubQuestion } from "../src/hub/types.js";
 import type { HubMemberProfile } from "../src/hub/profile.js";
 import type { HubLocalExposure } from "../src/hub/execution/service.js";
@@ -40,7 +42,7 @@ async function until(check: () => boolean, label: string): Promise<void> {
 }
 
 /** files/features/hubFiles: attachments-v1 (D) — the member's files service, the link's features, the Hub's stored files by id. */
-function fixture(opts: { beforeDelivery?: (input:HubRepresentativeDelivery)=>Promise<void>; askerName?: (messageId: string) => string | undefined; legacy?: boolean; handOff?: boolean; buttons?: boolean; files?: HubMemberFiles; features?: string[]; hubFiles?: Map<string, Buffer>; claimedSha?: Map<string, string> } = {}) {
+function fixture(opts: { beforeDelivery?: (input:HubRepresentativeDelivery)=>Promise<void>; askerName?: (messageId: string) => string | undefined; legacy?: boolean; handOff?: boolean; buttons?: boolean; files?: HubMemberFiles; features?: string[]; hubFiles?: Map<string, Buffer>; claimedSha?: Map<string, string>; updateHeld?: () => boolean } = {}) {
   const db = new Database(":memory:");
   dbs.push(db);
   migrateHubMemberJournal(db);
@@ -98,6 +100,7 @@ function fixture(opts: { beforeDelivery?: (input:HubRepresentativeDelivery)=>Pro
     link: () => online,
     ...(opts.files ? { files: opts.files } : {}),
     ...(opts.askerName ? { askerName: opts.askerName } : {}),directRooms:new HubDirectRooms(db),
+    ...(opts.updateHeld ? { updateHeld: opts.updateHeld } : {}),
     deliver: async (input) => {
       deliveries.push(input);
       await opts.beforeDelivery?.(input);
@@ -772,6 +775,77 @@ describe("M-3660: a question's contact window follows whether it is still being 
   });
 });
 
+describe("S-244 an armed barrier does not hand a Hub question off", () => {
+  it("leaves the row queued, with no begin, no intent, and no copy", async () => {
+    let held = true;
+    const f = fixture({ updateHeld: () => held });
+    const intent = vi.spyOn(f.journal, "markInputIntent");
+    f.publish();
+    const text = "a question that must stay encrypted";
+    const q = f.question(text);
+    await f.admission.admit(q);
+    await tick();
+    await tick();
+    expect(f.deliveries).toEqual([]);
+    expect(f.authorize.mock.calls.filter(([request]) => request.phase === "begin")).toEqual([]);
+    expect(intent).not.toHaveBeenCalled();
+    expect(f.state(q.identity.messageId)?.state).toBe("queued");
+
+    const home = mkdtempSync(join(tmpdir(), "s244-hub-"));
+    try {
+      const opened = openAttempt(home, {
+        id: newAttemptId(new Date("2026-11-26T18:00:00Z"), "a244a244"),
+        kind: "update",
+        updater: { pid: 244, start: { processStart: "Thu Nov 26 18:00:00 2026" } },
+        from: { name: "@songsid/agend", version: "2.3.5-alpha", integrity: "sha512-old" },
+        to: { name: "@songsid/agend", version: "2.3.6-alpha", integrity: "sha512-new" },
+      });
+      if (!opened.ok) throw new Error(opened.reason);
+      const barrier = new QuiescenceBarrier(home);
+      barrier.bind(opened.attempt);
+      const snap: BarrierSnapshot = {
+        pin: false, inPause: false, startupComplete: true, shuttingDown: false, reconcileInFlight: false,
+        anotherClaim: false, scheduleInRun: false, outboxInFlight: false,
+        agents: [{ process: "running", execution: "idle" }], pending: [],
+      };
+      expect(barrier.secondCheck(snap)).toBe("held");
+      expect(barrier.commitTurn({ type: "fleet_inbound", content: text, meta: { from_display: "Hub" } })).toBe(false);
+      expect(listHandback(home, opened.attempt.id).some(entry => entry.kind === "inbox")).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+
+    held = false;
+    f.rep.pump();
+    await until(() => f.state(q.identity.messageId)?.state === "delivered", "delivered after the fence drops");
+    expect(f.authorize.mock.calls.filter(([request]) => request.phase === "begin")).toHaveLength(1);
+    expect(intent).toHaveBeenCalledTimes(1);
+  });
+
+  it("a flag that rises while authorize is pending leaves the row queued, with no intent", async () => {
+    let held = false;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const f = fixture({ updateHeld: () => held });
+    const intent = vi.spyOn(f.journal, "markInputIntent");
+    const real = f.authorize.getMockImplementation()!;
+    f.authorize.mockImplementation(async request => {
+      if (request.phase === "begin") { held = true; await gate; }
+      return real(request);
+    });
+    f.publish();
+    const q = f.question("a question that must stay encrypted");
+    await f.admission.admit(q);
+    await until(() => f.authorize.mock.calls.some(([request]) => request.phase === "begin"), "begin in flight");
+    expect(f.state(q.identity.messageId)?.state).toBe("dispatching");
+    expect(intent).not.toHaveBeenCalled();
+    release();
+    await until(() => f.state(q.identity.messageId)?.state === "queued", "queued again");
+    expect(intent).not.toHaveBeenCalled();
+    expect(f.state(q.identity.messageId)).toEqual({ state: "queued", reason: null });
+    expect(f.authorize.mock.calls.filter(([request]) => request.phase === "begin")).toHaveLength(1);
+  });
+});
 
 describe("S-231 accepted Hub snapshot",()=>{
  const owner={instance:"rep",incarnation:"runtime-v1",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0};
