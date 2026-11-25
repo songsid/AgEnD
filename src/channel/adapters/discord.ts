@@ -1348,7 +1348,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               choices: [{ name: "full", value: "full" }],
             }],
           },
-          { name: "update", description: slashLock("update") + t("slash.update") },
+          {
+            name: "update", description: slashLock("update") + t("slash.update"),
+            options: [{
+              name: "now", description: t("slash.option.update_now"),
+              type: ApplicationCommandOptionType.Boolean, required: false,
+            }],
+          },
           { name: "profile", description: slashLock("profile") + t("slash.profile"),
             options: [{ name: "seconds", description: t("slash.option.profile_seconds"),
               type: ApplicationCommandOptionType.Integer, required: false, minValue: 1, maxValue: CPU_PROFILE_MAX_SECONDS }] },

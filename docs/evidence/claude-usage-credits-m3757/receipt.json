@@ -1,0 +1,848 @@
+{
+  "sourceHead": "8c8cbdcded4c2cf8836a3b3bcc7e680b9685fc11",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-en-light: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the title fits on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: one .n-detail sentence carries the bill",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the bill sentence wraps only at spaces and punctuation",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: every control is shown and none overlaps another",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no custom compact-card classes are left",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the toggle shows Claude's own words",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the credits choice asks to be confirmed first, naming the agent in plain words",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: chat — every control is shown and none overlaps the next",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: cancelling the confirmation leaves the prompt (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the title fits on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: one .n-detail sentence carries the bill",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the bill sentence wraps only at spaces and punctuation",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: every control is shown and none overlaps another",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no custom compact-card classes are left",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the toggle shows Claude's own words",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the credits choice asks to be confirmed first, naming the agent in plain words",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: chat — every control is shown and none overlaps the next",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: cancelling the confirmation leaves the prompt (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the title fits on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: one .n-detail sentence carries the bill",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the bill sentence wraps only at spaces and punctuation",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: every control is shown and none overlaps another",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: no custom compact-card classes are left",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the toggle shows Claude's own words",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the credits choice asks to be confirmed first, naming the agent in plain words",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: chat — every control is shown and none overlaps the next",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: cancelling the confirmation leaves the prompt (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the title fits on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: one .n-detail sentence carries the bill",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the bill sentence wraps only at spaces and punctuation",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: every control is shown, a 44 px tap target, and none overlaps another",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no custom compact-card classes are left",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the toggle shows Claude's own words",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the credits choice asks to be confirmed first, naming the agent in plain words",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: chat — every control is shown, a 44 px tap target, and none overlaps the next",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: cancelling the confirmation leaves the prompt (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the title fits on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: one .n-detail sentence carries the bill",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the bill sentence wraps only at spaces and punctuation",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: every control is shown, a 44 px tap target, and none overlaps another",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no custom compact-card classes are left",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the toggle shows Claude's own words",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the credits choice asks to be confirmed first, naming the agent in plain words",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: chat — every control is shown, a 44 px tap target, and none overlaps the next",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: cancelling the confirmation leaves the prompt (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the title is in the UI language, without the agent name the group header already shows",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the title fits on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: one .n-detail sentence carries the bill",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the bill sentence wraps only at spaces and punctuation",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: every control is shown, a 44 px tap target, and none overlaps another",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: Claude's own words are folded by default",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: no emoji, no Claude body or labels on the card",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: no Esc / Skip choice is offered",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: no custom compact-card classes are left",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the toggle shows Claude's own words",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the credits choice asks to be confirmed first, naming the agent in plain words",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: no key went to the pane before the confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the confirmation's text leaves no lone last word",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the confirmation's two buttons are one width",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: cancelled, still no answer sent",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the ✕ closes the confirmation like Cancel — no answer sent, the card stays",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the chat names the agent in its title",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: chat — every control is shown, a 44 px tap target, and none overlaps the next",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: cancelling the confirmation leaves the prompt (nothing answered)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "claude-usage-credits-m3757/desk-en-light-1-needs-card.png",
+      "sha256": "63b5f277d1993d715554082502aad146367359741d444037c4a27a6eac53471f"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-en-light-3-claude-text.png",
+      "sha256": "2be6be58d68b10d82e18fac51acfec5868b760898470c2bcbe340fef91eacae2"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-en-light-2-confirm-credits.png",
+      "sha256": "0fe92ea37a8479bfd092888be1cf73d71ce9a913041e04b01f1376c9f8cd2bfa"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-en-light-4-chat.png",
+      "sha256": "eff1e8844e1bd2a244b5535dd36459aed36592b07f2ad3983acbf7d0a8eb6b7a"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-dark-1-needs-card.png",
+      "sha256": "635cb8eb26efda3f9d6fa72d9f750c8107c4ad7d477409d8638105c430591e74"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-dark-3-claude-text.png",
+      "sha256": "7178ff600285d780147cf9a3561fd01ade427caab99935f1b53a975ebab54801"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-dark-2-confirm-credits.png",
+      "sha256": "0f5ac0cd54fb76b3e48b8e6b38ffe12e8c462d4e7cea74c946a31fb2d3b0aa31"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-dark-4-chat.png",
+      "sha256": "870f95a2fb22a0e3ee8b92586bc29558f42160b23123d102f3e04bf7180f4e89"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-light-1-needs-card.png",
+      "sha256": "d65085ab581ce610db2627f823c3c97cfa6fb316c35b04a7b5881b93a73a15ec"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-light-3-claude-text.png",
+      "sha256": "efe108fc74fa13b6f608da3bb7037ce1f6b72740d4f087f1d1e75fe5f41ec1a7"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-light-2-confirm-credits.png",
+      "sha256": "b0724b8d4b8c7034ec71b9ca5ddbcdfb42d4c0feda7c0b4caf7f03a8872097d5"
+    },
+    {
+      "path": "claude-usage-credits-m3757/desk-zh-TW-light-4-chat.png",
+      "sha256": "5ae90eb1e912aa81a74bd98fbac1095b907d73bb280b4da1acff94422bfd687f"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-en-light-1-needs-card.png",
+      "sha256": "e2f1108981697f6c7a59381e2a60b39466a803d18481248c89e2e504991173fc"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-en-light-3-claude-text.png",
+      "sha256": "dedb766d35de7053fbb34677e2d2453a23143d1c48fe1d75400d67a4ef49dcf4"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-en-light-2-confirm-credits.png",
+      "sha256": "229290add6be09f82c25bcd5ec6bbd4b748da0e2f97a0fb858fcf3c5b7562187"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-en-light-4-chat.png",
+      "sha256": "4a9bd116ab3ac48b04eee2216d7c4d8b0d66a55a2a0cf8014d0cda4f1e603d1c"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-dark-1-needs-card.png",
+      "sha256": "2892707883d2178cf02c9f660fcbd2caeffc0c5dabbcd340b1880a3e34567395"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-dark-3-claude-text.png",
+      "sha256": "7535f410f84862b6cc3655f7153003d5e611610c48787b5961ea377d593d42e3"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-dark-2-confirm-credits.png",
+      "sha256": "ca017f036e3575ae0d703b5d8cfca070c85932938e58da5f55a02b9bdf1aaed2"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-dark-4-chat.png",
+      "sha256": "a5fc21a22574374a5b786d25d2363af5f8b95a22dcf5d1536d4ee48412d9b8da"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-light-1-needs-card.png",
+      "sha256": "d6f8727eb8c3abd8fd0d12cff29fbc9e822771ffe9a6337c657d71826055ce41"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-light-3-claude-text.png",
+      "sha256": "0b0745aa9e209a7a33fc4c8a014e3556a020f8dde8d99c23fe1e05c1d857ae58"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-light-2-confirm-credits.png",
+      "sha256": "c5faf4fbe04c0750456cb719460572bf839f22ab4030ebd077590aa1944dd65a"
+    },
+    {
+      "path": "claude-usage-credits-m3757/phone-zh-TW-light-4-chat.png",
+      "sha256": "b522447ac46d77e6198379b94c1bf47faaf5f8eed6336219a279fabde311a2fa"
+    }
+  ]
+}

@@ -43,7 +43,7 @@ async function slash(): Promise<void> {
   const fm = new FleetManager(scratch());
   try {
     Object.assign(fm, { fleetAdminGate: () => "ok" });
-    await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", respond: vi.fn().mockResolvedValue(undefined) }, "discord-main");
+    await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", options: { now: true }, respond: vi.fn().mockResolvedValue(undefined) }, "discord-main");
   } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
 }
 async function general(): Promise<void> {
@@ -53,7 +53,7 @@ async function general(): Promise<void> {
     adapter, adapters: new Map([["telegram-main", adapter]]), fleetConfig: { channel: { access: { allowed_users: ["admin"] } } },
     hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin", isFleetStopping: () => false, dataDir: scratch(),
   } as any);
-  expect(await commands.handleGeneralCommand({ text: "/update", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any)).toBe(true);
+  expect(await commands.handleGeneralCommand({ text: "/update now", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any)).toBe(true);
 }
 
 describe("#3440 F2: each /update caller carries the proved npm's directory into the launch", () => {

@@ -1,0 +1,201 @@
+{
+  "sourceHead": "592178b52f06eed58acda1663d35f8c0f8066102",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en offer: the update line shows",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Settings → Version and update",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en running: the update line shows",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en failed: the update line shows",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en complete: the update line shows",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en hub: the update line shows",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Notices shows the update Notice",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en read-only: no offer line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW offer: the update line shows",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: Settings → Version and update",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW running: the update line shows",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW failed: the update line shows",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW complete: the update line shows",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW hub: the update line shows",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: Notices shows the update Notice",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW read-only: no offer line",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3762-desk-light-en-1-offer.png",
+      "sha256": "f35da65d6a3428a4ade73345b563ed5f939d12fae583649eacd0e8f68d2b9e0d"
+    },
+    {
+      "path": "m3762-desk-light-en-2-confirm.png",
+      "sha256": "86aae6a0d4dccc5f3c6f6a5501b7db6b42dbda9a1c9f468036fe1d9a3592c298"
+    },
+    {
+      "path": "m3762-desk-light-en-3-settings.png",
+      "sha256": "8cfa568a937584878bdd93238a10991d4a1e5ce988bb024aac186acdb1f1bc4c"
+    },
+    {
+      "path": "m3762-desk-light-en-4-running.png",
+      "sha256": "092df0edbfa3dbf879d4199f89ac147b2b4b7f139e75f7912f0f7dc7ee97b823"
+    },
+    {
+      "path": "m3762-desk-light-en-5-failed.png",
+      "sha256": "2f0cbb8ce8d7961a06a4a30258f06b548c91cfdada708eb8f345ffa5f9fcc3a1"
+    },
+    {
+      "path": "m3762-desk-light-en-6-complete.png",
+      "sha256": "792f5547641637ddca130e4857bb368ba6025d928bc498541c089573840f8e8f"
+    },
+    {
+      "path": "m3762-desk-light-en-7-hub.png",
+      "sha256": "9f626cb1c2244eec34e57169d598b7ad5789da68e76b6a26b0d55968c182275f"
+    },
+    {
+      "path": "m3762-desk-light-en-9-notice.png",
+      "sha256": "9875c7ae85e9a7d5bf3451df878385a7e7dae608123a2fc9ddf0051651182244"
+    },
+    {
+      "path": "m3762-desk-light-en-8-readonly.png",
+      "sha256": "76eb2b5e5cd7f7850a6691c999088537b6dfefa5b4f1c73ea55c37387a4b8211"
+    },
+    {
+      "path": "m3762-phone-dark-zh-TW-1-offer.png",
+      "sha256": "d9cb5dcc9623921675ea23d5dbf0e745c9029e3e3ab51d65c762b30edb37438c"
+    },
+    {
+      "path": "m3762-phone-dark-zh-TW-2-confirm.png",
+      "sha256": "5bbfc1b06a2fc07ee5714690f7c1bd312cdb7acc4736d781609fdc8f800e16fa"
+    },
+    {
+      "path": "m3762-phone-dark-zh-TW-3-settings.png",
+      "sha256": "45f43ab1e48003aea1ce68ed30f6cbd920b2df5732b8dceaa6b9aee04da80c51"
+    },
+    {
+      "path": "m3762-phone-dark-zh-TW-4-running.png",
+      "sha256": "f80c33effb998f71011eb6253ea059f340d3f0011d36d0acc49330a69cfd1a8f"
+    },
+    {
+      "path": "m3762-phone-dark-zh-TW-5-failed.png",
+      "sha256": "c02ad9a5972bcb5ee4fb55c2f53f4e38e525ec450421770eafd49b9ef4f15fb0"
+    },
+    {
+      "path": "m3762-phone-dark-zh-TW-6-complete.png",
+      "sha256": "6a7805eb09cfa7797f480b0b8c6ce9ca986e2f815416f7ae1eb7f0045fd7829b"
+    },
+    {
+      "path": "m3762-phone-dark-zh-TW-7-hub.png",
+      "sha256": "e4b7b28829a7ee21a83d707cdab2a9337d8483f69bbcf72141041bd83b8e2944"
+    },
+    {
+      "path": "m3762-phone-dark-zh-TW-9-notice.png",
+      "sha256": "a115611231fc90a00df4568fc813676c93e0ff0db499df22413844f22c2ec96a"
+    },
+    {
+      "path": "m3762-phone-dark-zh-TW-8-readonly.png",
+      "sha256": "7882627c9685b7bd91c725b9abc619a7ad9d618169378f85630fb33c6e9950c4"
+    }
+  ],
+  "seen": {
+    "webOnlyNoticeRecorded": true,
+    "webOnlyNotice": "AgEnD v2.4.0-beta.25 is available (current: v2.4.0-beta.24). Update it from the web: Update now on the banner, or Settings → Advanced → Version and update.",
+    "desk-light-en-offer": [
+      "AgEnD v2.4.0-beta.25 is available (current v2.4.0-beta.24) Preview · only admins see this Update now Later"
+    ],
+    "desk-light-en-confirm": "Update AgEnD? This installs v2.4.0-beta.25 (the same preview line), then restarts AgEnD. Every Agent stops briefly and comes back on its own. Cancel Update and restart",
+    "desk-light-en-settings": "Version and update Current version v2.4.0-beta.24 Update line Preview Latest v2.4.0-beta.25 is available Last checked Nov 25, 2026, 10:29 PM Update now Check for updates",
+    "desk-light-en-running": [
+      "Downloading and installing v2.4.0-beta.25… Step 2 of 4 · 18 s elapsed AgEnD restarts when it is done; Agents stop briefly. Closing this page does not affect the update."
+    ],
+    "desk-light-en-failed": [
+      "Update failed: the update source could not be reached. AgEnD is still v2.4.0-beta.24; nothing was changed. Try again See the full log"
+    ],
+    "desk-light-en-complete": [
+      "AgEnD is up to date (v2.4.0-beta.25)."
+    ],
+    "desk-light-en-hub": [
+      "Example Hub recommends AgEnD v2.4.0-beta.25 (current v2.4.0-beta.24) Some Hub features need it. Only admins see this. Update now Later"
+    ],
+    "desk-light-en-readonly": [],
+    "phone-dark-zh-TW-offer": [
+      "AgEnD v2.4.0-beta.25 已推出（目前 v2.4.0-beta.24） 預覽版 · 只有管理員看得到 立即更新 稍後"
+    ],
+    "phone-dark-zh-TW-confirm": "更新 AgEnD？ 會安裝 v2.4.0-beta.25（同為預覽版），然後重新啟動 AgEnD。所有 Agent 會短暫停下，之後自動回來。 取消 更新並重新啟動",
+    "phone-dark-zh-TW-settings": "版本與更新 目前版本 v2.4.0-beta.24 更新管道 預覽版 最新 v2.4.0-beta.25 已推出 上次檢查 2026年11月25日 22:29 立即更新 檢查更新",
+    "phone-dark-zh-TW-running": [
+      "正在下載及安裝 v2.4.0-beta.25… 第 2／4 步 · 已經過 36 秒 完成後 AgEnD 會重新啟動，Agent 會短暫停下。 關掉這頁不影響更新。"
+    ],
+    "phone-dark-zh-TW-failed": [
+      "更新失敗：連不上更新來源。 AgEnD 仍是 v2.4.0-beta.24，沒有任何變更。 再試一次 看完整紀錄"
+    ],
+    "phone-dark-zh-TW-complete": [
+      "AgEnD 已是最新版（v2.4.0-beta.25）。"
+    ],
+    "phone-dark-zh-TW-hub": [
+      "Example Hub 建議更新到 AgEnD v2.4.0-beta.25（目前 v2.4.0-beta.24） 部分 Hub 功能需要這個版本。只有管理員看得到。 立即更新 稍後"
+    ],
+    "phone-dark-zh-TW-readonly": []
+  },
+  "summary": "20/20"
+}

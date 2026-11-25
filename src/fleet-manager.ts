@@ -382,10 +382,12 @@ import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
+import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateOfferReply, type UpdateCardView } from "./update-card.js";
+import { inUpdatePause, resolveUpdates } from "./update-settings.js";
 import { resolveInstalledAgend, npmForRunningInstall } from "./update-dispatch.js";
 import { HUB_UPDATE_NOTICE_FILE, HUB_UPDATE_REMIND_MS, hubNoticeDue, hubNoticeKey, readHubNoticeState, writeHubNoticeState } from "./hub-update-notice.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
-import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdatePin, type WebUpdateProgress } from "./web-update.js";
+import { failureCause, isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdatePin, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
 import { CLAUDE_NPM_PACKAGE, claudeInstallKind, displayHostPath, type ClaudeInstall } from "./claude-install-kind.js";
@@ -966,7 +968,7 @@ interface NonceButtonEntry {
    * Set when the prompt is also offered in the web dashboard (web track C4): what the page shows. The same
    * nonce, the same single claim and the same expiry as the platform's buttons — whoever clicks first wins.
    */
-  web?: { text: string; actions: Array<{ id: string; label: string; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
+  web?: { text: string; actions: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>; view?: import("./backend/types.js").RemoteCardView; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
   /** When the prompt was offered (epoch ms): its age in "Needs you" (#1386). */
   createdAt?: number;
   /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
@@ -2179,11 +2181,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubUpdates: import("./hub/member/updates.js").HubMemberUpdates | null = null;
   private hubUpdateOwned: { id: string; claim: { startedAt: number } } | null = null;
   private hubUpdateBootProgress: ReturnType<typeof readUpdateProgress> = null;
+  /** This process's local idle launch. Its own claim must not look like some other update holding the machine. */
+  private localIdleOwned: { startedAt: number } | null = null;
+  private localIdleBootProgress: ReturnType<typeof readUpdateProgress> = null;
   private pendingHubFleetUpdates = new Map<string, string>();
   hubFleetUpdates(): import("./hub/member/updates.js").HubMemberUpdates | null { return this.hubUpdates; }
-  private hubUpdateIdle(): boolean {
+  /** `ownClaim` is this caller's launch, so that launch does not look busy to itself. The Hub queue passes its claim; the local card passes its own. */
+  private hubUpdateIdle(ownClaim: { startedAt: number } | null = this.hubUpdateOwned?.claim ?? null): boolean {
+    const updates = resolveUpdates(this.fleetConfig?.updates);
+    // Pause and pin hold the row. Update now forces idle on the Hub queue itself; allowed() must not cancel it.
+    if (updates.pin || inUpdatePause(updates.pause, new Date())) return false;
     if (!this.startupComplete || this.shuttingDown || this.reconcileInFlight || this.topicCleanupInFlight
-      || this.deliveryPumpRunning || (this.webUpdateOwned && this.webUpdateOwned !== this.hubUpdateOwned?.claim)) return false;
+      || this.deliveryPumpRunning || (this.webUpdateOwned && this.webUpdateOwned !== ownClaim)) return false;
     for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
       if (this.restartsInFlight.has(name) || this.stopsInFlight.has(name) || this.handOffsInFlight.has(name)
         || this.ipcConnectInFlight.has(name) || this.ipcReconnectInFlight.has(name) || this.hasPendingIdleGatedDelivery(name)
@@ -2203,34 +2212,68 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { await access(found.root, constants.W_OK); await access(found.prefix, constants.W_OK); return true; } catch { return false; }
   }
   private async launchHubUpdate(row: import("./update-idle.js").IdleUpdate, control: import("./update-idle.js").IdleUpdateLaunch): Promise<boolean> {
-    if (this.shuttingDown || this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !control.current()) return false;
-    const claim = { startedAt: Date.now() }, owned = { id: row.id, claim };
-    this.hubUpdateOwned = owned; this.webUpdateOwned = claim;
-    const release = () => { if (this.hubUpdateOwned === owned) this.hubUpdateOwned = null; if (this.webUpdateOwned === claim) this.webUpdateOwned = null; };
-    if (!persistUpdateProgress(this.dataDir, { ...webUpdateTarget(claim.startedAt), messageId: `hub-fleet-update:${row.id}` }, claim.startedAt)
-      || !setUpdateProgressStage(this.dataDir, "preparing", { version: row.version })) { release(); return false; }
+    return this.launchClaimedUpdate({
+      id: row.id, version: row.version, origin: `Hub-requested update ${row.id}`, messageId: `hub-fleet-update:${row.id}`, control, hub: true,
+      onExit: () => {
+        const outcome = this.hubUpdateOutcome(row);
+        if (outcome) this.hubUpdates?.complete(row.id, outcome.state, outcome.currentVersion, "interrupted");
+      },
+    });
+  }
+  /**
+   * One idle installer, Hub or local. Claims the machine and writes a marker before any await, then settles the row
+   * when the child is gone and the marker is no longer in progress.
+   */
+  private async launchClaimedUpdate(input: {
+    id: string; version: string; origin: string; messageId: string;
+    control: import("./update-idle.js").IdleUpdateLaunch; hub: boolean; onExit: () => void;
+  }): Promise<boolean> {
+    if (this.shuttingDown || this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !input.control.current()) return false;
+    const claim = { startedAt: Date.now() };
+    const hubOwned = input.hub ? { id: input.id, claim } : null;
+    if (hubOwned) this.hubUpdateOwned = hubOwned;
+    else this.localIdleOwned = claim;
+    this.webUpdateOwned = claim;
+    const owns = () => input.hub ? this.hubUpdateOwned === hubOwned : this.localIdleOwned === claim;
+    const release = () => {
+      if (hubOwned && this.hubUpdateOwned === hubOwned) this.hubUpdateOwned = null;
+      if (!input.hub && this.localIdleOwned === claim) this.localIdleOwned = null;
+      if (this.webUpdateOwned === claim) this.webUpdateOwned = null;
+    };
+    if (!persistUpdateProgress(this.dataDir, { ...webUpdateTarget(claim.startedAt), messageId: input.messageId }, claim.startedAt)
+      || !setUpdateProgressStage(this.dataDir, "preparing", { version: input.version })) { release(); return false; }
     try {
-      const child = await this.launchInstalledUpdate(`Hub-requested update ${row.id}`,
-        () => !this.shuttingDown && this.hubUpdateOwned === owned && control.current() && control.claim(), row.version);
+      const child = await this.launchInstalledUpdate(input.origin,
+        () => !this.shuttingDown && owns() && input.control.current() && input.control.claim(), input.version);
       if (!child) { release(); return false; }
       let endedOnce = false;
       const ended = () => {
         if (endedOnce) return; endedOnce = true;
         const settle = () => {
-          if (this.shuttingDown || this.hubUpdateOwned !== owned) return;
+          if (this.shuttingDown || !owns()) return;
           // systemd-run may exit before its independent updater. Keep the claim while its bounded marker is active.
           const marker = readUpdateProgress(this.dataDir)?.progress;
-          if (marker?.target.messageId === `hub-fleet-update:${row.id}` && isUpdateInProgress(this.dataDir)) {
+          if (marker?.target.messageId === input.messageId && isUpdateInProgress(this.dataDir)) {
             const timer = setTimeout(settle, 5000); timer.unref(); return;
           }
           release();
-          const outcome = this.hubUpdateOutcome(row);
-          if (outcome) this.hubUpdates?.complete(row.id, outcome.state, outcome.currentVersion, "interrupted");
+          input.onExit();
         };
         settle();
       };
       child.once("exit", ended); child.once("error", ended); return true;
     } catch { release(); return false; }
+  }
+  private claimedIdleOutcome(id: string, version: string): { state: "done" | "rolled-back" | "failed" } {
+    let current: string | null = null;
+    try { current = this.runningAgendVersion(); } catch { current = null; }
+    const messageId = idleUpdateMessageId(id);
+    const matches = (marker: ReturnType<typeof readUpdateProgress>) => !!marker
+      && marker.progress.target.messageId === messageId
+      && (marker.progress.version === undefined || marker.progress.version === version);
+    const saved = readUpdateProgress(this.dataDir);
+    const marker = matches(saved) ? saved : matches(this.localIdleBootProgress) ? this.localIdleBootProgress : null;
+    return { state: idleClaimOutcome(version, current, marker) };
   }
   private hubUpdateOutcome(row: import("./update-idle.js").IdleUpdate): { state: "done" | "rolled-back" | "failed"; currentVersion: string } | null {
     if (!this.startupComplete || this.hubUpdateOwned?.id === row.id) return null;
@@ -2773,8 +2816,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }, caller.agent, receiptId),
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: (read, retry, close) => this.attachHubExecutionAttention(read, retry, close),
-          updates: { idle: () => this.hubUpdateIdle(), busy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir),
+          updates: { idle: () => this.hubUpdateIdle(), busy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !!this.updateCard?.blocksAdmission(),
             canInstall: () => this.hubUpdateCanInstall(), launch: (row, control) => this.launchHubUpdate(row, control),
+            onQueue: row => { this.ensureUpdateCard().observeHub(row); },
             active: id => this.hubUpdateOwned?.id === id, outcome: row => this.hubUpdateOutcome(row), notify: n => this.recordHubUpdateNotice(n) },
           attachUpdates: updates => { this.hubUpdates = updates; },
           attachRecommendations: read => { this.hubRecommendationRead = read; },
@@ -3758,6 +3802,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
   /** M-2738: the last update check's answer, for the web (null until the first check settles). */
   private updateCheckState: { offer: UpdateOffer | null; checkedAt: number; failed: boolean } | null = null;
+  /** S-234: the one durable update offer. Opened on the first check or answer. */
+  private updateCard?: UpdateOfferCard;
   /** M-2738: a web "check now" in flight, and when the last one ran (one a minute at most). */
   private updateCheckNow: { running: Promise<void> | null; lastAt: number } = { running: null, lastAt: 0 };
   /** M-2738: a web start's Idempotency-Key → its answer (a retried request never starts a second update). */
@@ -7593,12 +7639,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await data.respond(gate === "disabled" ? t("update.disabled", this.adminListKey(adapterId)) : t("not_authorized"));
       return;
     }
+    // Bare slash /update is the card. `/update now` (options.now) keeps today's immediate path.
+    if (data.options?.now !== true) {
+      await data.respond(this.describeUpdateOffer());
+      return;
+    }
+    const refused = this.refuseImmediateUpdate();
+    if (refused) { await data.respond(refused); return; }
     const messageId = await data.respond(t("update.progress.preparing", 0));
     const adapter = this.adapters.get(adapterId) ?? this.adapter;
     if (messageId && adapter) {
       const chatId = String(this.getChannelConfig(adapterId)?.group_id ?? data.channelId);
       this.beginUpdateProgress(adapter, chatId, data.channelId, messageId);
     }
+    this.beginUpdateRun();
     // Plain `agend update`: the CLI picks the channel from the version it is about to replace (a beta install
     // stays on beta). Deciding here, from the package.json next to THIS code, read a source checkout's 1.22.0 as
     // "not a beta" and sent a beta install to @latest. #1450 C5: the INSTALLED agend, verified, by absolute path.
@@ -12521,6 +12575,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const bootUpdateMarker = updateMarkerIdentity(this.dataDir);
     const savedUpdateProgress = readUpdateProgress(this.dataDir);
     this.hubUpdateBootProgress = savedUpdateProgress;
+    this.localIdleBootProgress = savedUpdateProgress;
     const pendingUpdateProgress = savedUpdateProgress
       && savedUpdateProgress.progress.stage !== "failed"
       && savedUpdateProgress.progress.stage !== "complete"
@@ -19724,7 +19779,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     chatId: string;
     threadId?: string;
     message: string;
-    choices: Array<{ action: string; label: string; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+    choices: Array<{ action: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+    /** M-3757: the dashboard's compact form of the card. */
+    view?: import("./backend/types.js").RemoteCardView;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
     extra?: Pick<NonceButtonEntry, "contactChange" | "contactTicketId" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
@@ -19801,7 +19858,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         entry.web = {
           text: web.text,
           ...(links ? { links } : {}),
-          actions: [...opts.choices.map(c => ({ id: c.action, label: c.label, ...(c.confirmation ? { confirmation: c.confirmation } : {}) })), ...(opts.webInput ? [{ id: opts.webInput.action, label: opts.webInput.label, input: true as const }] : [])],
+          ...(opts.view ? { view: opts.view } : {}),
+          actions: [...opts.choices.map(c => ({ id: c.action, label: c.label, ...(c.hint ? { hint: c.hint } : {}), ...(c.role ? { role: c.role } : {}), ...(c.confirmation ? { confirmation: c.confirmation } : {}) })), ...(opts.webInput ? [{ id: opts.webInput.action, label: opts.webInput.label, input: true as const }] : [])],
           expiresAt: Date.now() + (opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS),
         };
         this.emitSseEvent("prompt", { instance: entry.instanceName, nonce, ...entry.web });
@@ -20361,6 +20419,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         createdAt: e.createdAt ?? Date.now(), adapterId: e.adapterId, chatId: e.chatId,
         ...(e.threadId !== undefined ? { threadId: e.threadId } : {}), ...(e.messageId ? { messageId: e.messageId } : {}),
         ...(e.assistFor ? { assistFor: e.assistFor } : {}),
+        ...(e.web.view ? { view: e.web.view } : {}),
       });
     }
     return out;
@@ -20571,7 +20630,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The prompts open on the dashboard right now (a page that loads after one was posted asks for them). */
-  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] }> {
+  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>; view?: import("./backend/types.js").RemoteCardView; expiresAt: number; links?: import("./topic-link.js").TextLink[] }> {
     const open: ReturnType<FleetManager["listWebPrompts"]> = [];
     for (const [nonce, e] of this.pendingNonceButtons) {
       if (e.web) open.push({ instance: e.instanceName, nonce, ...e.web });
@@ -22550,10 +22609,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...card, title: redactSecrets(card.title), question: redactSecrets(card.question),
       options: card.options.map(o => ({ ...o, title: redactSecrets(o.title), description: o.description === null ? null : redactSecrets(o.description) })),
     } : card;
-    const prompt = remoteCardPrompt(instanceName, shown);
+    const prompt = remoteCardPrompt(instanceName, shown, this.shownInstanceName(instanceName));
     const nonce = await this.postNonceButtonPrompt({
       prefix: REMOTE_CARD_CALLBACK_PREFIX, alertType: "interactive_prompt", instanceName, ...place,
-      message: prompt.message, choices: prompt.choices, webInput: prompt.webInput,
+      message: prompt.message, choices: prompt.choices, webInput: prompt.webInput, ...(prompt.view ? { view: prompt.view } : {}),
       expiredText: t("card.expired", instanceName), timeoutMs: REMOTE_CARD_TIMEOUT_MS,
       extra: { remoteCard: { identity: card.identity, kind: card.kind, options: shown.kind === "question" ? shown.options.map(o => ({ n: o.n, title: o.title })) : [],
         requiresAdmin, ownerAdapterId: this.getInstanceAdapterId(instanceName), humanOnly: card.kind === "question" && card.humanOnly === true } },
@@ -29333,6 +29392,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    try { this.updateCard?.close(); } catch { /* stopping */ }
     this.hostMonitor?.stop();
     this.stopQuotaObserver?.(); this.stopQuotaObserver = null;
     const quotaNoticesStopped = this.quotaNotices?.stop();
@@ -31599,10 +31659,108 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { target, fromChannel };
   }
 
-  /** M-2738: record a look's answer for the web — the same offer the notice below would make. */
+  private ensureUpdateCard(): UpdateOfferCard {
+    if (this.updateCard) return this.updateCard;
+    this.updateCard = new UpdateOfferCard({
+      dataDir: this.dataDir,
+      now: () => Date.now(),
+      settings: () => this.fleetConfig?.updates,
+      busyNames: () => this.updateBusyNames(),
+      // The local claim only. The Hub queue keeps the default, so this launch still looks busy to it.
+      agentsIdle: () => this.hubUpdateIdle(this.localIdleOwned),
+      externalBusy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !!this.hubUpdates?.idlePending(),
+      launchNow: (by, stillAllowed) => this.startWebUpdate(by, () => !this.shuttingDown && stillAllowed()),
+      launchHubNow: async (id, stillAllowed) => {
+        const owner = this.hubUpdates;
+        if (!owner) return { ok: false, status: 409, error: "request_not_found" };
+        const current = () => !this.shuttingDown && this.hubUpdates === owner && stillAllowed();
+        return await owner.updateNow(id, current) ? { ok: true } : { ok: false, status: 409, error: "update_not_started" };
+      },
+      cancelHub: id => { this.hubUpdates?.cancelWaiting(id); },
+      launchIdle: (version, control, id) => this.launchClaimedUpdate({
+        id, version, origin: `idle update ${version}`, messageId: idleUpdateMessageId(id), control, hub: false,
+        onExit: () => { this.updateCard?.settleLocal(id, this.claimedIdleOutcome(id, version).state); },
+      }),
+      currentVersion: () => { try { return this.runningAgendVersion(); } catch { return null; } },
+      bootMarker: () => this.localIdleBootProgress,
+    });
+    return this.updateCard;
+  }
+
+  /** Display names of agents still working. Pause is not an agent. */
+  private updateBusyNames(): string[] {
+    const out: string[] = [];
+    for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
+      try {
+        if (this.restartsInFlight.has(name) || this.stopsInFlight.has(name) || this.handOffsInFlight.has(name)
+          || this.ipcConnectInFlight.has(name) || this.ipcReconnectInFlight.has(name) || this.hasPendingIdleGatedDelivery(name)
+          || this.webChannelEchoTails.has(name)) { out.push(this.shownInstanceName(name)); continue; }
+        const process = this.getInstanceStatus(name);
+        if (process === "stopped" || process === "crashed") continue;
+        if (process === "paused" && ["stopped", "crashed"].includes(this.daemons.get(name)?.getProcessStatus?.() ?? "unknown")) continue;
+        if (process !== "running" || this.getInstanceExecutionState(name) !== "idle" || this.getInstanceInteraction(name)?.phase === "waiting") {
+          out.push(this.shownInstanceName(name));
+        }
+      } catch { /* one agent that cannot be read is not named */ }
+    }
+    return out;
+  }
+
+  private refreshUpdateCard(): UpdateCardView | null {
+    try {
+      const card = this.ensureUpdateCard();
+      const marker = readUpdateProgress(this.dataDir);
+      if (marker) {
+        const progress = marker.progress;
+        card.noteMarker({
+          startedAt: marker.startedAt,
+          stage: progress.stage,
+          operation: progress.operation,
+          ...(progress.version ? { version: progress.version } : {}),
+          ...(progress.stage === "failed" ? { cause: failureCause(progress.error) } : {}),
+        });
+      }
+      card.tick();
+      return card.view();
+    } catch (err) {
+      this.logger.warn({ err }, "Update card could not be read");
+      return null;
+    }
+  }
+
+  /** The card, for a test or a chat reply. Null when nothing is offered, including a pin. */
+  updateOfferView(): UpdateCardView | null {
+    try { return this.ensureUpdateCard().view(); } catch { return null; }
+  }
+
+  describeUpdateOffer(): string {
+    let current: string | null = null;
+    try { current = this.runningAgendVersion(); } catch { /* unknown */ }
+    const pinned = !!resolveUpdates(this.fleetConfig?.updates).pin;
+    const reply = updateOfferReply(this.updateOfferView(), current, pinned);
+    return t(reply.key, ...reply.args);
+  }
+
+  refuseImmediateUpdate(): string | null {
+    return resolveUpdates(this.fleetConfig?.updates).pin ? t("update.offer.pinned") : null;
+  }
+
+  beginUpdateRun(): void {
+    try { this.ensureUpdateCard().beginRun(this.updateCheckState?.offer?.version ?? ""); }
+    catch (err) { this.logger.warn({ err }, "Update card could not record the run"); }
+  }
+
+  /** M-2738: record a look's answer for the web — the same offer the card keeps. */
   private recordUpdateCheck(currentVersion: string, found: { target: string; fromChannel: boolean } | null): void {
     const offer = found ? updateOffer(currentVersion, found.target, found.fromChannel, !!found.target && this.semverGt(found.target, currentVersion)) : null;
     this.updateCheckState = { offer, checkedAt: Date.now(), failed: found === null };
+    try {
+      const card = this.ensureUpdateCard();
+      if (offer) {
+        const channel = offer.channel === "latest" ? "stable" : offer.channel;
+        card.noteOffer({ version: offer.version, channel, installable: offer.installable });
+      } else if (found) card.clearQuietOffer();
+    } catch (err) { this.logger.warn({ err }, "Update offer could not be recorded"); }
   }
 
   private async checkForUpdates(): Promise<void> {
@@ -31614,6 +31772,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
+        // The daily "Run: /update" post stays until the General chat card replaces it.
         // #2910 D2 (#2925 review): a web-only fleet first — even with a General instance it has no chat for /update.
         const generalId = this.webOnlyPromptPlace() ? null : this.findGeneralInstance();
         if (generalId) {
@@ -31650,6 +31809,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       startWebUpdate: (key, person, stillAllowed, pin) => this.startWebUpdateOnce(key, person, stillAllowed, pin),
       startHubRequestedUpdate: (key, person, stillAllowed, id) => this.startHubRequestedUpdateOnce(key, person, stillAllowed, id),
       updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
+      card: () => this.refreshUpdateCard(),
+      answerUpdate: (key, by, body, stillAllowed) => this.ensureUpdateCard().answer(key, by, body, stillAllowed),
     };
   }
 
@@ -31675,6 +31836,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * targets no chat message (WEB_UPDATE_ADAPTER); the page reads the stages the updater writes into it.
    */
   private async startWebUpdate(person: string, stillAllowed: () => boolean, pin?: WebUpdatePin, hubRequestId?: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    if (resolveUpdates(this.fleetConfig?.updates).pin) return { ok: false, status: 409, error: "pinned" };
     if (this.shuttingDown) return { ok: false, status: 409, error: "stopping" };
     // Synchronous from here to the claim: a second start cannot slip in between on the event loop.
     if (this.webUpdateOwned || isUpdateInProgress(this.dataDir)) return { ok: false, status: 409, error: "update_running" };
@@ -31706,6 +31868,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.error("Web update refused: its progress marker could not be written");
       return { ok: false, status: 503, error: "progress_not_recorded" };
     }
+    try { this.ensureUpdateCard().beginRun(offer.version); } catch (err) { this.logger.warn({ err }, "Update card could not record the run"); }
     const origin = `web update by ${person}`;
     // Prism #3505 P2-3: the asking session must still be current and an admin's when the updater is launched.
     void this.launchInstalledUpdate(origin, () => !this.shuttingDown && stillAllowed() && (!pin || this.hubRecommendationFor(pin) !== null)

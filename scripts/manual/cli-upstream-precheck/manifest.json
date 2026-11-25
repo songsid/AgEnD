@@ -9,7 +9,7 @@
      "kind": "template",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 154,
+     "line": 155,
      "symbol": "claudeKeychainService"
     },
     {
@@ -17,7 +17,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 280,
+     "line": 281,
      "symbol": "CLAUDE_RESUME_PROMPT_DEFAULT"
     },
     {
@@ -25,7 +25,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 287,
+     "line": 288,
      "symbol": "CLAUDE_RESUME_PROMPT_MENU"
     },
     {
@@ -33,7 +33,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 287,
+     "line": 288,
      "symbol": "CLAUDE_RESUME_PROMPT_MENU"
     },
     {
@@ -41,7 +41,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 291,
+     "line": 292,
      "symbol": "RESUME_NEVER_ASK_ROW"
     },
     {
@@ -49,7 +49,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 292,
+     "line": 293,
      "symbol": "RESUME_DIALOG_FOOTER"
     },
     {
@@ -57,7 +57,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 292,
+     "line": 293,
      "symbol": "RESUME_DIALOG_FOOTER"
     },
     {
@@ -65,7 +65,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 292,
+     "line": 293,
      "symbol": "RESUME_DIALOG_FOOTER"
     },
     {
@@ -73,7 +73,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 292,
+     "line": 293,
      "symbol": "RESUME_DIALOG_FOOTER"
     },
     {
@@ -81,7 +81,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 359,
+     "line": 360,
      "symbol": "COLD_RESUME_TITLE"
     },
     {
@@ -89,7 +89,7 @@
      "kind": "string",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 365,
+     "line": 366,
      "symbol": "COLD_RESUME_ESC_PARTS"
     },
     {
@@ -97,7 +97,7 @@
      "kind": "string",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 365,
+     "line": 366,
      "symbol": "COLD_RESUME_ESC_PARTS"
     },
     {
@@ -105,7 +105,7 @@
      "kind": "string",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 366,
+     "line": 367,
      "symbol": "COLD_RESUME_FOOTER_PARTS"
     },
     {
@@ -113,7 +113,7 @@
      "kind": "string",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 366,
+     "line": 367,
      "symbol": "COLD_RESUME_FOOTER_PARTS"
     },
     {
@@ -121,7 +121,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 373,
+     "line": 374,
      "symbol": "COLD_RESUME_BODY"
     },
     {
@@ -129,7 +129,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 373,
+     "line": 374,
      "symbol": "COLD_RESUME_BODY"
     },
     {
@@ -137,7 +137,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 373,
+     "line": 374,
      "symbol": "COLD_RESUME_BODY"
     },
     {
@@ -145,7 +145,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 373,
+     "line": 374,
      "symbol": "COLD_RESUME_BODY"
     },
     {
@@ -153,7 +153,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 373,
+     "line": 374,
      "symbol": "COLD_RESUME_BODY"
     },
     {
@@ -161,7 +161,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 409,
+     "line": 410,
      "symbol": "COLD_RESUME_OPTION_ROW"
     },
     {
@@ -169,7 +169,7 @@
      "kind": "string",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 410,
+     "line": 411,
      "symbol": "COLD_RESUME_LOOKUP_DESCRIPTION"
     },
     {
@@ -177,7 +177,7 @@
      "kind": "string",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 411,
+     "line": 412,
      "symbol": "COLD_RESUME_SUMMARY_DESCRIPTION",
      "retiredAfter": "2.1.330"
     },
@@ -186,7 +186,7 @@
      "kind": "string",
      "surface": "input-box",
      "file": "src/backend/claude-code.ts",
-     "line": 494,
+     "line": 495,
      "symbol": "CLAUDE_QUEUED_PLACEHOLDER"
     },
     {
@@ -194,7 +194,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/claude-code.ts",
-     "line": 499,
+     "line": 500,
      "symbol": "CLAUDE_QUEUE_MARKER_ROW"
     },
     {
@@ -202,7 +202,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/claude-code.ts",
-     "line": 504,
+     "line": 505,
      "symbol": "CLAUDE_COLLAPSED_PASTE"
     },
     {
@@ -210,7 +210,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 538,
+     "line": 539,
      "symbol": "SWITCH_TITLE"
     },
     {
@@ -218,7 +218,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 538,
+     "line": 539,
      "symbol": "SWITCH_TITLE"
     },
     {
@@ -226,7 +226,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 539,
+     "line": 540,
      "symbol": "SWITCH_YES"
     },
     {
@@ -234,7 +234,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 540,
+     "line": 541,
      "symbol": "SWITCH_NO"
     },
     {
@@ -242,7 +242,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 566,
+     "line": 567,
      "symbol": "claudeSwitchTargetMatches.norm"
     },
     {
@@ -250,7 +250,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 634,
+     "line": 635,
      "symbol": "CLAUDE_CONFIRM_FOOTER"
     },
     {
@@ -258,7 +258,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/claude-code.ts",
-     "line": 681,
+     "line": 682,
      "symbol": "TRUST_TITLE"
     },
     {
@@ -266,7 +266,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/claude-code.ts",
-     "line": 681,
+     "line": 682,
      "symbol": "TRUST_TITLE"
     },
     {
@@ -274,7 +274,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/claude-code.ts",
-     "line": 684,
+     "line": 685,
      "symbol": "TRUST_DECLINE_ROW"
     },
     {
@@ -282,7 +282,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/claude-code.ts",
-     "line": 684,
+     "line": 685,
      "symbol": "TRUST_DECLINE_ROW"
     },
     {
@@ -290,7 +290,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/claude-code.ts",
-     "line": 685,
+     "line": 686,
      "symbol": "TRUST_ACCEPT_ROW"
     },
     {
@@ -298,7 +298,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/claude-code.ts",
-     "line": 689,
+     "line": 690,
      "symbol": "BYPASS_TITLE"
     },
     {
@@ -306,7 +306,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 691,
+     "line": 692,
      "symbol": "BYPASS_ACCEPT_ROW"
     },
     {
@@ -314,7 +314,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 736,
+     "line": 737,
      "symbol": "THEME_TITLE"
     },
     {
@@ -322,7 +322,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 739,
+     "line": 740,
      "symbol": "THEME_BELOW_ROW"
     },
     {
@@ -330,7 +330,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 739,
+     "line": 740,
      "symbol": "THEME_BELOW_ROW"
     },
     {
@@ -338,7 +338,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 739,
+     "line": 740,
      "symbol": "THEME_BELOW_ROW"
     },
     {
@@ -346,7 +346,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 739,
+     "line": 740,
      "symbol": "THEME_BELOW_ROW"
     },
     {
@@ -354,7 +354,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 753,
+     "line": 754,
      "symbol": "claudeSecurityNotesActive"
     },
     {
@@ -362,7 +362,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 754,
+     "line": 755,
      "symbol": "claudeSecurityNotesActive"
     },
     {
@@ -370,7 +370,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 762,
+     "line": 763,
      "symbol": "claudeTerminalSetupActive"
     },
     {
@@ -378,7 +378,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 764,
+     "line": 765,
      "symbol": "claudeTerminalSetupActive"
     },
     {
@@ -386,7 +386,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 765,
+     "line": 766,
      "symbol": "claudeTerminalSetupActive"
     },
     {
@@ -394,7 +394,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 786,
+     "line": 787,
      "symbol": "claudeLoginScreenActive"
     },
     {
@@ -402,7 +402,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 787,
+     "line": 788,
      "symbol": "claudeLoginScreenActive"
     },
     {
@@ -410,7 +410,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 795,
+     "line": 796,
      "symbol": "claudeLoginScreenActive"
     },
     {
@@ -418,7 +418,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 801,
+     "line": 802,
      "symbol": "claudeLoginScreenActive"
     },
     {
@@ -426,7 +426,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 801,
+     "line": 802,
      "symbol": "claudeLoginScreenActive"
     },
     {
@@ -434,7 +434,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 801,
+     "line": 802,
      "symbol": "claudeLoginScreenActive"
     },
     {
@@ -442,7 +442,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 802,
+     "line": 803,
      "symbol": "claudeLoginScreenActive"
     },
     {
@@ -450,7 +450,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 808,
+     "line": 809,
      "symbol": "claudeLoginScreenActive.NO_ROW"
     },
     {
@@ -458,7 +458,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 808,
+     "line": 809,
      "symbol": "claudeLoginScreenActive.NO_ROW"
     },
     {
@@ -466,7 +466,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 811,
+     "line": 812,
      "symbol": "claudeLoginScreenActive"
     },
     {
@@ -474,7 +474,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/claude-code.ts",
-     "line": 816,
+     "line": 817,
      "symbol": "claudeLoginScreenActive"
     },
     {
@@ -482,7 +482,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 834,
+     "line": 835,
      "symbol": "CLAUDE_RETRY_WAIT"
     },
     {
@@ -490,7 +490,7 @@
      "kind": "template",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 839,
+     "line": 840,
      "symbol": "CLAUDE_RETRY_WHEN"
     },
     {
@@ -498,7 +498,7 @@
      "kind": "string",
      "surface": "idle-busy",
      "file": "src/backend/claude-code.ts",
-     "line": 870,
+     "line": 871,
      "symbol": "CLAUDE_LIVE_TAIL"
     },
     {
@@ -506,7 +506,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 884,
+     "line": 885,
      "symbol": "CLAUDE_DANGEROUS_COMMAND_PROMPT"
     },
     {
@@ -514,7 +514,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 886,
+     "line": 887,
      "symbol": "DANGER_FOOTER"
     },
     {
@@ -522,7 +522,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 943,
+     "line": 944,
      "symbol": "claudeBashPermissionActive"
     },
     {
@@ -530,7 +530,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 945,
+     "line": 946,
      "symbol": "claudeBashPermissionActive"
     },
     {
@@ -538,7 +538,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 956,
+     "line": 957,
      "symbol": "claudeBashPermissionActive"
     },
     {
@@ -546,7 +546,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 957,
+     "line": 958,
      "symbol": "claudeBashPermissionActive"
     },
     {
@@ -554,7 +554,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 957,
+     "line": 958,
      "symbol": "claudeBashPermissionActive"
     },
     {
@@ -562,7 +562,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 958,
+     "line": 959,
      "symbol": "claudeBashPermissionActive"
     },
     {
@@ -570,7 +570,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/backend/claude-code.ts",
-     "line": 977,
+     "line": 978,
      "symbol": "CLAUDE_BACKGROUND_WORK_EXIT"
     },
     {
@@ -578,7 +578,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/backend/claude-code.ts",
-     "line": 985,
+     "line": 986,
      "symbol": "claudeBackgroundWorkExitActive"
     },
     {
@@ -586,7 +586,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/backend/claude-code.ts",
-     "line": 986,
+     "line": 987,
      "symbol": "claudeBackgroundWorkExitActive"
     },
     {
@@ -594,7 +594,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 995,
+     "line": 996,
      "symbol": "CLAUDE_AUTO_DENY_COUNTDOWN"
     },
     {
@@ -602,7 +602,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 995,
+     "line": 996,
      "symbol": "CLAUDE_AUTO_DENY_COUNTDOWN"
     },
     {
@@ -610,7 +610,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 995,
+     "line": 996,
      "symbol": "CLAUDE_AUTO_DENY_COUNTDOWN"
     },
     {
@@ -618,7 +618,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 995,
+     "line": 996,
      "symbol": "CLAUDE_AUTO_DENY_COUNTDOWN"
     },
     {
@@ -626,7 +626,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 995,
+     "line": 996,
      "symbol": "CLAUDE_AUTO_DENY_COUNTDOWN"
     },
     {
@@ -634,7 +634,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
-     "line": 995,
+     "line": 996,
      "symbol": "CLAUDE_AUTO_DENY_COUNTDOWN"
     },
     {
@@ -642,7 +642,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 1032,
+     "line": 1033,
      "symbol": "FILE_SEND_ONLY_QUESTION"
     },
     {
@@ -650,7 +650,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 1032,
+     "line": 1033,
      "symbol": "FILE_SEND_ONLY_QUESTION"
     },
     {
@@ -658,7 +658,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 1043,
+     "line": 1044,
      "symbol": "FILE_SEND_MARK"
     },
     {
@@ -666,7 +666,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 1043,
+     "line": 1044,
      "symbol": "FILE_SEND_MARK"
     },
     {
@@ -674,7 +674,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 1043,
+     "line": 1044,
      "symbol": "FILE_SEND_MARK"
     },
     {
@@ -682,7 +682,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 1043,
+     "line": 1044,
      "symbol": "FILE_SEND_MARK"
     },
     {
@@ -690,7 +690,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 1043,
+     "line": 1044,
      "symbol": "FILE_SEND_MARK"
     },
     {
@@ -698,7 +698,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 1043,
+     "line": 1044,
      "symbol": "FILE_SEND_MARK"
     },
     {
@@ -706,7 +706,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/claude-code.ts",
-     "line": 1043,
+     "line": 1044,
      "symbol": "FILE_SEND_MARK"
     },
     {
@@ -714,7 +714,7 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 1119,
+     "line": 1120,
      "symbol": "claudeSelectionCard"
     },
     {
@@ -722,7 +722,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1295,
+     "line": 1296,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.type"
     },
     {
@@ -730,7 +730,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1297,
+     "line": 1298,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -738,7 +738,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1297,
+     "line": 1298,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.type"
     },
     {
@@ -746,7 +746,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1303,
+     "line": 1304,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -754,7 +754,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1307,
+     "line": 1308,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -762,7 +762,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1307,
+     "line": 1308,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -770,7 +770,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1307,
+     "line": 1308,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -778,7 +778,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1307,
+     "line": 1308,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.type"
     },
     {
@@ -786,7 +786,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1308,
+     "line": 1309,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -794,7 +794,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1317,
+     "line": 1318,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -802,7 +802,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1317,
+     "line": 1318,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -810,7 +810,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1317,
+     "line": 1318,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -818,7 +818,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1317,
+     "line": 1318,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -826,7 +826,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1317,
+     "line": 1318,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -834,7 +834,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1318,
+     "line": 1319,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.type"
     },
     {
@@ -842,7 +842,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1322,
+     "line": 1323,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -850,7 +850,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1326,
+     "line": 1327,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -858,7 +858,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1351,
+     "line": 1352,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.type"
     },
     {
@@ -866,7 +866,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1367,
+     "line": 1368,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -874,7 +874,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1367,
+     "line": 1368,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -882,7 +882,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1367,
+     "line": 1368,
      "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -890,7 +890,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 1388,
+     "line": 1389,
      "symbol": "ClaudePaneDetectors.getStartupDialogs.pattern"
     },
     {
@@ -898,7 +898,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 1388,
+     "line": 1389,
      "symbol": "ClaudePaneDetectors.getStartupDialogs.pattern"
     },
     {
@@ -906,7 +906,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 1426,
+     "line": 1427,
      "symbol": "ClaudePaneDetectors.getStartupDialogs.pattern"
     },
     {
@@ -914,15 +914,31 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 1498,
+     "line": 1499,
      "symbol": "ClaudePaneDetectors.getRuntimeDialogs.interactionKind"
+    },
+    {
+     "text": "You've reached your Fable limit",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-code.ts",
+     "line": 1579,
+     "symbol": "ClaudePaneDetectors.getRuntimeDialogs.pattern"
+    },
+    {
+     "text": "usage credits",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-code.ts",
+     "line": 1579,
+     "symbol": "ClaudePaneDetectors.getRuntimeDialogs.pattern"
     },
     {
      "text": "ANTHROPIC_API_KEY / apiKeyHelper",
      "kind": "string",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1600,
+     "line": 1617,
      "symbol": "ClaudeCodeBackend.getErrorPatterns"
     },
     {
@@ -930,7 +946,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 1843,
+     "line": 1860,
      "symbol": "ClaudeCodeBackend.resumeMissingPattern"
     },
     {
@@ -938,7 +954,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 1843,
+     "line": 1860,
      "symbol": "ClaudeCodeBackend.resumeMissingPattern"
     },
     {
@@ -946,7 +962,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 1843,
+     "line": 1860,
      "symbol": "ClaudeCodeBackend.resumeMissingPattern"
     },
     {
@@ -998,6 +1014,70 @@
      "symbol": "CLAUDE_CREDIT_BALANCE_LOW"
     },
     {
+     "text": "Switch to",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-usage-credits.ts",
+     "line": 26,
+     "symbol": "TITLE"
+    },
+    {
+     "text": "now runs on usage credits",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-usage-credits.ts",
+     "line": 26,
+     "symbol": "TITLE"
+    },
+    {
+     "text": "now uses usage credits",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-usage-credits.ts",
+     "line": 26,
+     "symbol": "TITLE"
+    },
+    {
+     "text": "No, keep my current model",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-usage-credits.ts",
+     "line": 28,
+     "symbol": "FIRST"
+    },
+    {
+     "text": "Not now",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-usage-credits.ts",
+     "line": 28,
+     "symbol": "FIRST"
+    },
+    {
+     "text": "and continue",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-usage-credits.ts",
+     "line": 28,
+     "symbol": "FIRST"
+    },
+    {
+     "text": "Fable limit",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-usage-credits.ts",
+     "line": 82,
+     "symbol": "claudeUsageCreditsPrompt"
+    },
+    {
+     "text": "Learn more",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-usage-credits.ts",
+     "line": 93,
+     "symbol": "claudeUsageCreditsPrompt.card.question"
+    },
+    {
      "text": "API Error",
      "kind": "regex",
      "surface": "error",
@@ -1026,7 +1106,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/daemon.ts",
-     "line": 1265,
+     "line": 1266,
      "symbol": "detectMalformedClaudeToolCall.closingTags"
     },
     {
@@ -2334,7 +2414,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2342,7 +2422,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2350,7 +2430,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2358,7 +2438,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/daemon.ts",
-     "line": 5901,
+     "line": 5951,
      "symbol": "Daemon.isCodexResumeScreen"
     },
     {
@@ -2490,7 +2570,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2498,7 +2578,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2506,7 +2586,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2514,7 +2594,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14777,
+     "line": 14849,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2522,7 +2602,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2530,7 +2610,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2538,7 +2618,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2546,7 +2626,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2554,7 +2634,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2562,7 +2642,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14778,
+     "line": 14850,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2570,7 +2650,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14779,
+     "line": 14851,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2578,7 +2658,7 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14881,
+     "line": 14953,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2586,7 +2666,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 15012,
+     "line": 15084,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2594,7 +2674,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 15012,
+     "line": 15084,
      "symbol": "Daemon.dismissDialogsUntilReady"
     }
    ]
@@ -4156,7 +4236,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4164,7 +4244,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4172,7 +4252,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4528,7 +4608,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4536,7 +4616,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4544,7 +4624,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4900,7 +4980,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4908,7 +4988,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4916,7 +4996,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 893,
+     "line": 894,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
