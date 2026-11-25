@@ -7,6 +7,7 @@
  * Every zoned style, en and zh-TW, each calling state, drawn as the page draws it (drawPart).
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { page, type AppPage } from "./helpers/app-harness.js";
 
 let p: AppPage;
@@ -50,6 +51,13 @@ describe("placeBubbles: a name keeps a call's box off it, not its tail", () => {
     const [b] = Z.placeBubbles([{ key: "c", calling: true, shown: 5, box: B(100, 87), flipBox: B(40, 87), tail }], 22, [], [B(0, 0, 400, 200)]);
     expect([b.dy, b.flip ?? false]).toEqual([0, false]);
   });
+  it("`air`: a box that would sit within 3 px of a name moves on, as if it touched it", () => {
+    const near = B(161, 70, 40, 18);                                     // 1 px right of the usual box (x 100..160), its row
+    expect(Z.placeBubbles([{ key: "c", calling: true, shown: 5, box: B(100, 70), tail: { x: 110, y: 95 } }], 22, [], [near])[0].dy).toBe(0);
+    expect(Z.placeBubbles([{ key: "c", calling: true, shown: 5, box: B(100, 70), tail: { x: 110, y: 95 } }], 22, [], [near], Z.NAME_AIR)[0].dy).toBe(-22);
+    expect(Z.NAME_AIR).toBe(3);
+    expect(readFileSync("src/ui/fleet-office.js", "utf8")).toMatch(/placeBubbles\(thinBubbles\([^;]*titleBoxes, 3\)/);   // the page passes it (as a number: no new import)
+  });
   it("chatter is placed as before: no flip, and a name over every row leaves it out", () => {
     expect(Z.placeBubbles([{ key: "idle", calling: false, shown: 5, box: B(100, 87), flipBox: B(40, 87), tail }], 22, [], [B(0, 0, 400, 200)])).toEqual([]);
   });
@@ -85,7 +93,8 @@ describe("one agent calling, every zoned style: its bubble clears every area's n
       const s = drawn(style, lang, state);
       expect(s.bubbles.length, "the call is drawn (M-3648)").toBe(1);
       const [b] = s.bubbles;
-      expect(s.titles.filter((t: any) => touch(b.box, t)), "its box covers no area name").toEqual([]);
+      const air = (t: any) => ({ x: t.x - 3, y: t.y - 3, w: t.w + 6, h: t.h + 6 });       // and keeps a little air off it
+      expect(s.titles.filter((t: any) => touch(b.box, air(t))), "its box covers no area name").toEqual([]);
       const tailRect = { x: b.tail.x - 1, y: b.box.y + b.box.h, w: 9, h: Math.max(0, b.tail.y - (b.box.y + b.box.h)) };
       const at = s.order.indexOf(b);
       for (const t of s.titles.filter((t: any) => touch(tailRect, t))) {

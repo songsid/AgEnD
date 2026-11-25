@@ -32,6 +32,17 @@ const fx = await bootFixture({ port: 0, host: true, classic: false, roster: [
 ] });
 try {
   const fm = fx.fm;
+  // A scratch task board with a few made-up cards (Tasks shows a board, not "couldn't be read").
+  const { Scheduler, DEFAULT_SCHEDULER_CONFIG } = await import(REPO + "/src/scheduler/index.ts");
+  fm.scheduler?.db.close();
+  fm.scheduler = new Scheduler(join(fm.dataDir, "m3722-example.db"), () => {}, DEFAULT_SCHEDULER_CONFIG, () => true);
+  fm.attachTaskBoard?.(fm.scheduler.db);
+  const board = fm.scheduler.db.board, person = { kind: "person", name: "Example owner" } as const;
+  const project = board.createProject(person, { name: "Example project" });
+  for (const [title, who, to] of [["Draft the release notes · 起草發行說明", "lead", "claimed"], ["Check the phone layout · 檢查手機版面", "worker", "open"], ["Review the help desk · 檢查求救區", "worker", "done"]] as const) {
+    const card = board.createCards(person, { cards: [{ title, assignee: who, project: project.id }] }).cards[0];
+    if (to !== "open") board.moveCard(person, card.code, to, to === "done" ? { result: "Done." } : {});
+  }
   fm.scheduleDeliveryOutboxPump = () => {};
   fm.ensureDeliveryOutbox();
   fm.deliveryOutbox.contactAuthorizations.hold({ operationId: "fake-op", source: "lead", target: "worker", sourceGeneration: fm.contactGeneration("lead"),
@@ -54,6 +65,7 @@ try {
       check(`${tag}: every tab inside the screen`, m.tabs.length >= 8 && m.tabs.every((t: any) => t.l >= 0 && t.r <= m.W + 0.5), m.tabs.map((t: any) => [t.name, Math.round(t.l), Math.round(t.r)]));
       check(`${tag}: each tab a 44px touch target`, m.tabs.every((t: any) => t.w >= 44 && t.h >= 44), m.tabs.map((t: any) => [t.name, Math.round(t.w), Math.round(t.h)]));
       check(`${tag}: no sideways scroll`, m.scroll <= m.W, m.scroll);
+      if (key === "tasks") check(`${tag}: the board shows its cards`, /Draft the release notes/.test(await page.locator(".p-fleet").innerText()), "no cards");
       check(`${tag}: the header names the page`, m.titleShown && m.title.trim() === (c.lang === "zh-TW" ? name.zh : name.en), m.title);
       await shot(page, `${tag}`);
     } finally { await ctx.close(); }
@@ -83,6 +95,7 @@ try {
     } finally { await ctx.close(); }
   }
 } finally {
+  try { fx.fm.scheduler?.db.close(); } catch { /* closed */ }
   clearInterval(fx.fm.replyObligationTimer);
   fx.fm.deliveryOutbox?.close();
   await fx.close();

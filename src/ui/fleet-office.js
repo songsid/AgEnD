@@ -803,7 +803,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   // A crowded area speaks less (thinBubbles: calls, then work, a few at most); no bubble covers a name tag. `defer`
   // (All offices): drawn after every tile, unclipped, so a bubble at a tile's edge is whole.
   // M-3648: an area's name blocks chatter; a call may cover it (placeBubbles' `soft`): a name never keeps a call out.
-  const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags, titleBoxes);
+  // M-3722: and 3 px of air off a name, not just its plate (a call beside 求救區 touched its corner). A number here, not an
+  // import: a page still holding the older fleet-office-zones.js keeps linking (it just ignores it).
+  const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags, titleBoxes, 3);
   // M-3533 R2c: and after placing (which lifts a bubble clear of another), a room character's bubble still stays in its area.
   const inArea = (sp, text, dy, flip) => {
     const ar = sk.ownCharacters && p.zones && sp.area != null ? p.L.areas && p.L.areas[sp.area] : null;

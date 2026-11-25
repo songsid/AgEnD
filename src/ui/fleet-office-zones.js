@@ -610,7 +610,10 @@ export function bubbleAt(name, state, ms, lines) {
  * another bubble (no two bubbles overlap) — so a name alone never keeps a call out (on Cozy a stuck agent stands right
  * under "Help desk", and its "Hmm, stuck?" went missing in beta.20).
  */
-export function placeBubbles(items, lift = 22, blocked = [], soft = []) {
+/** M-3722: the space (logical px) a bubble's box keeps off an area's name (placeBubbles' `air`). */
+export const NAME_AIR = 3;
+export function placeBubbles(items, lift = 22, blocked = [], soft = [], air = 0) {
+  if (air) soft = soft.map((b) => ({ x: b.x - air, y: b.y - air, w: b.w + 2 * air, h: b.h + 2 * air }));
   const rank = (it) => (it.rank ?? (it.calling ? 0 : 2));
   const order = [...items].sort((a, b) => (rank(a) - rank(b)) || (b.shown - a.shown) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   const taken = [...blocked], out = [];
