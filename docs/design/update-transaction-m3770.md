@@ -8,7 +8,7 @@ It also fixes the interfaces that 2.2 (the quiescence barrier, GrokCore) and 2.5
 
 **Scope.** Phase 2 runs only on a machine in class **self** (§4 of the design), and only when both the running version and the target speak this transaction (from- and to-version ≥ V_tx). Anywhere else, Phase 1's updater runs unchanged.
 
-**Revision 2** answers Prism's design review (6065369545); **revisions 3 to 5** answer its scoped passes (6065419816, 6065453267, 6065478655). The changes are mapped in §9.
+**Revision 2** answers Prism's design review (6065369545); **revisions 3 to 6** answer its scoped passes (6065419816, 6065453267, 6065478655, 6065501514). The changes are mapped in §9.
 
 ---
 
@@ -121,14 +121,24 @@ The fleet never writes a stage. It writes only these files, each atomically (tmp
   - `{ kind: "reference", deliveryId, createdSeq }`, for a durable outbox row: a reference only, no payload. Hand-back has the pump claim that delivery id; the file is never admitted as a new message. Copying the row and leaving it queued would deliver it twice.
   - `{ kind: "copy", body }`, for adapter, web or Hub ingress that never became a durable row. Under the fence, `admitDurableDelivery` inserts the outbox row and writes a reference instead, whenever it can.
 - **`deferred/<seq>.json`**: `{ seq, scheduleId, runId }`, one file per job.
-- **Acknowledgement:** after each claim, the single admission of a copy, or the single run of a job, the fleet writes a sibling `<file>.acked`. A crash resumes hand-back at the first entry in sequence order without its `.acked`.
+- **Acknowledgement:** after each item's hand-back has taken effect, the fleet writes a sibling `<file>.acked`. A crash resumes hand-back at the first entry in sequence order without its `.acked`, and **every resumed item is reconciled with durable state before anything is done again** (rev 6):
+  - **A reference:** hand-back is the pump claiming that delivery id. On replay the row is looked up: still `queued`/`retry_wait` means it is claimed; `delivering`, `delivered` or terminal means it is already handed back. Then `.acked`. Claiming twice is impossible, because the outbox's own claim is a conditional update.
+  - **A copy:** admission is one outbox insert whose `source_key` is `update-handback:<attemptId>:<seq>`. The outbox's `source_key` is `UNIQUE`, so a replay's insert conflicts, and the existing row is used. The copy is then treated exactly as a reference to that row: never a second message, whether the crash came before the insert, after it, or after the claim.
+  - **A deferred job:**
+    1. Before triggering the job, the fleet writes `deferred/<seq>.started` (`{ runId, at }`, atomic). Then it runs the job, then `.acked`.
+    2. On replay, an entry with `.started` and no `.acked` was **interrupted**. It isn't run again. It is recorded in `schedule_runs` (`status: "interrupted-by-update"`, `detail` naming the runId), and the schedule's next due time is computed as usual.
+    3. That is the honest guarantee: **a deferred job runs at most once across a crash.** That is the scheduler's own guarantee for a run a crash interrupts outside an update. An entry with neither `.started` nor `.acked` is run.
 - **When the fleet writes:**
   1. The updater publishes `opened`, with `current` naming the attempt, before the fleet writes anything.
   2. On the barrier's successful second check, in that same turn, the fleet writes the **prefix**: every `queued` or `retry_wait` outbox row not in flight, in `created_seq` order, as references.
   3. Then the updater advances to `barrier`.
 
   A crash still in `opened` with those files present hands them back (§7).
-- **`cancel`:** the card's Cancel, or the wait passing `updates.maxIdleWait`, can't write `abandoned`. The fleet writes `attempts/<id>/cancel` (`{ reason, at, by }`). The updater, or the recovery runner, treats it as the start of `abandoning`.
+- **`cancel`:** the card's Cancel, or the wait passing `updates.maxIdleWait`, can't write `abandoned`. The fleet writes `attempts/<id>/cancel` (`{ reason, at, by }`).
+  - **The updater or runner consumes it by the current stage** (rev 6), under the home lock, and only there:
+    - **`opened`, `barrier`, or `stopping` with no snapshot published:** the cancel is honoured. It journals `abandoning` (with the cancel's reason), then renames `cancel` to `cancel.consumed`.
+    - **Any later stage** (`snapshotted` onwards, `committing`, a terminal stage): the cancel is too late and never changes the course. It renames `cancel` to `cancel.ignored-<stage>` and journals that, and the card says "too late to cancel: the update is past the point of no return". A cancel never enters `abandoning` after the snapshot, and never causes a rollback in `committing`.
+  - **The fleet** writes `cancel` only while the card shows a cancellable state (waiting, the barrier). A marker that races the stage boundary is judged by the stage the updater finds when it consumes it, never by the time it was written.
 - **The fleet runs hand-back only when the attempt's substep is `hand-back`** (§2.3), then acknowledges it.
 - **Task-board claims are not journal files.** The fence refuses the claim write.
 
@@ -532,6 +542,13 @@ A retry recognises each effect by the path's presence and its hash against the p
 | 4. The handoff route kept until the rollback generation's takeover is acknowledged; systemd removes the drop-in afterwards; launchd keeps a harmless wrapper until the next load | §6.2, §4.3 |
 | 2.2's interface (GrokCore): reference vs copy inbox files, one sequence with deferred jobs, `.acked` siblings, the cancel marker, the prefix written under `opened` | §2.6 |
 
+### Revision 6 (Prism 6065501514)
+| Review point | Where |
+|---|---|
+| A copy admitted, then a crash before `.acked`: the replay reuses the same outbox row (`source_key` `update-handback:<attempt>:<seq>`, UNIQUE), never a second message | §2.6 |
+| Deferred jobs: `.started` before the run; on replay an interrupted job isn't re-run (at most once), recorded as `interrupted-by-update`; references reconciled with the row's state | §2.6 |
+| `cancel` consumed by the current stage: honoured only through `stopping` without a snapshot, otherwise `cancel.ignored-<stage>`; never abandoning after the snapshot, never a rollback in `committing` | §2.6 |
+
 ### Revision 5 (Prism 6065478655)
 | Review point | Where |
 |---|---|
@@ -554,6 +571,7 @@ A retry recognises each effect by the path's presence and its hash against the p
 2.1's tests:
 - on a real temp home: publication order with a crash injected between each write; every row of §2.5 and §7; illegal transitions refused;
 - liveness: live, gone and unknown;
+- the fleet's files: a crash between a copy's insert and its `.acked` (one row); between a reference's claim and its `.acked`; between a job's `.started` and its run (not re-run, recorded); a cancel written at each stage boundary (honoured through `stopping` without a snapshot, ignored after);
 - the service lock and its token between real processes;
 - the kit built and run alone, with the package directory removed.
 
