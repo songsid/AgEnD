@@ -1,5 +1,5 @@
 {
-  "count": 18,
+  "count": 24,
   "all_semantic_red": true,
   "all_restored": true,
   "cases": [
@@ -152,6 +152,68 @@
       "failedTests": 1,
       "exitCode": 1,
       "restored": true
+    },
+    {
+      "name": "dialog-versus-cancel",
+      "file": "src/runtime-pane-host.ts",
+      "old": "request.action === \"key\" && request.cancelTurn === true",
+      "new": "request.action === \"key\" && [\"Escape\", \"C-c\"].includes(request.key)",
+      "test": "tests/runtime-pane-host-2950.test.ts",
+      "pattern": "dialog Escape preserves",
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "late-ack",
+      "file": "src/runtime-pane-mcp.ts",
+      "old": "if (body.method === \"response-written\") {\n        // An ACK",
+      "new": "if (false) {\n        // An ACK",
+      "test": "tests/request-context-pane-s224.test.ts",
+      "pattern": "late stdout ACK",
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "relay-ack-cleanup",
+      "file": "src/runtime-pane-mcp-relay.ts",
+      "old": "if (completedCallKey) this.callStamps.delete(completedCallKey);",
+      "new": "// mutant: retain acknowledged stamp",
+      "test": "tests/request-context-pane-s224.test.ts",
+      "pattern": "captures A before",
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "proof-launch-retirement",
+      "file": "src/native-pane-manager.ts",
+      "old": "this.options.requestContexts?.retire({hostBootId:snapshot.hostBootId,paneId:snapshot.paneId,launchId:snapshot.launchId,agentId:snapshot.agentId,instance:snapshot.instance});",
+      "new": "// mutant: no retirement",
+      "test": "tests/request-context-pane-s224.test.ts",
+      "pattern": "positive launch exit",
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "exec-recovered-end",
+      "file": "src/fleet-windows-runtime.ts",
+      "old": "if (recovered?.finishedAt && recovered.outcomeConfirmed === true)",
+      "new": "if (false && recovered?.finishedAt && recovered.outcomeConfirmed === true)",
+      "test": "tests/fleet-windows-runtime.test.ts",
+      "pattern": "retires an unconfirmed exec",
+      "exitCode": 1,
+      "restored": true
+    },
+    {
+      "name": "late-local-result-wording",
+      "file": "src/daemon.ts",
+      "old": "error = `Tool outcome is unconfirmed. ${operationId ? `Inspect operation ${operationId}` : \"Inspect the tool operation status\"}; do not repeat it.`;",
+      "new": "error = \"Originating request context is no longer current\";",
+      "test": "tests/request-context-daemon-s224.test.ts",
+      "pattern": "retired call reports",
+      "exitCode": 1,
+      "restored": true
     }
-  ]
+  ],
+  "initialSourceRevision": "ab28f32ec5b29369435efb2d71fc0cfc5367713b",
+  "reviewSourceRevision": "54bbb2c14541a0a3d9d7e48e2cce810aaef92504"
 }
