@@ -135,7 +135,7 @@ describe("the compact card (M-3757 redesign): one-line title, options by what th
   });
 
   it.each([
-    ["en", "Lumen: Fable 5.2 now costs extra. Switch model?", "Fable 5.2 now costs extra. Switch model?", ["Switch to Opus 5.5 (uses your plan)", "Keep Fable 5.2 (billed to credits)"], "Keep Lumen on Fable 5.2?", "Continue on credits", "Show Claude's text"],
+    ["en", "Lumen: Fable 5.2 now costs extra. Switch model?", "Fable 5.2 costs extra. Switch model?", ["Switch to Opus 5.5 (uses your plan)", "Keep Fable 5.2 (billed to credits)"], "Keep Lumen on Fable 5.2?", "Continue on credits", "Show Claude's text"],
     ["zh-TW", "Lumen：Fable 5.2 要另外收費，要換模型嗎？", "Fable 5.2 要另外收費，要換模型嗎？", ["換成 Opus 5.5（用方案額度）", "繼續用 Fable 5.2（另外扣點數）"], "讓 Lumen 繼續用 Fable 5.2？", "繼續（用點數）", "看 Claude 原文"],
   ] as const)("%s: the page names the card and its choices in the UI's language", async (lang, title, short, labels, confirmTitle, confirmLabel, raw) => {
     const i18n = await import("/assets/app-i18n.js");

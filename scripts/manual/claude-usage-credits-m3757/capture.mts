@@ -46,7 +46,7 @@ try {
       const zh = lang === "zh-TW";
       const W = zh
         ? { title: "Fable 5.2 要另外收費，要換模型嗎？", sw: "換成 Opus 5.5（用方案額度）", cr: "繼續用 Fable 5.2（另外扣點數）", raw: "看 Claude 原文", open: "開啟聊天" }
-        : { title: "Fable 5.2 now costs extra. Switch model?", sw: "Switch to Opus 5.5 (uses your plan)", cr: "Keep Fable 5.2 (billed to credits)", raw: "Show Claude's text", open: "Open chat" };
+        : { title: "Fable 5.2 costs extra. Switch model?", sw: "Switch to Opus 5.5 (uses your plan)", cr: "Keep Fable 5.2 (billed to credits)", raw: "Show Claude's text", open: "Open chat" };
       const card = page.locator("article.n-compact").first();
       await card.waitFor({ state: "visible", timeout: 20_000 });
       const titleEl = card.locator(".n-title strong");

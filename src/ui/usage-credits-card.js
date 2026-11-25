@@ -7,7 +7,7 @@ import { register, t } from "/assets/app-i18n.js";
 register("ucard", {
   en: {
     title: "{0}: {1} now costs extra. Switch model?", titleStay: "{0}: {1} now costs extra.", titlePicker: "{0}: switching to {1} costs extra.",
-    titleShort: "{0} now costs extra. Switch model?", titleStayShort: "{0} now costs extra.", titlePickerShort: "Switching to {0} costs extra.",
+    titleShort: "{0} costs extra. Switch model?", titleStayShort: "{0} costs extra.", titlePickerShort: "Switching to {0} costs extra.",
     switch: "Switch to {0} (uses your plan)", credits: "Keep {0} (billed to credits)", creditsPicker: "Use {0} (billed to credits)",
     notNow: "Not now (nothing is sent)", keep: "Keep the current model (uses your plan)", admin: "Ask my admin for credits", upgrade: "Upgrade plan",
     showRaw: "Show Claude's text",
