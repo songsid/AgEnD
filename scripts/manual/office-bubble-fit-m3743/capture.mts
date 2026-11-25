@@ -107,7 +107,7 @@ try {
       await shot(page, `${tag}-0-fit`);
       // Zoomed in about the speaker (the wheel zooms about the pointer), so it can be dragged to any edge of the canvas.
       const t0 = tipOf(m0);
-      if (t0) { await page.mouse.move(t0.x, t0.y); for (let i = 0; i < (phone ? 10 : 6); i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(120); } }
+      if (t0) { await page.mouse.move(t0.x, t0.y); for (let i = 0; i < (phone ? 10 : 14); i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(120); } }
       await page.waitForTimeout(600);
       receipt.measured[`${tag}-zoom`] = await page.evaluate(`document.querySelector(".oo-zoom-pct")?.textContent || ""`);
       for (const where of ["right", "left"] as const) {
@@ -134,7 +134,8 @@ try {
             maxWidth: cs.maxWidth, h: Math.round(s.getBoundingClientRect().height), row: Math.round(s.closest(".oo-pick").getBoundingClientRect().width) };
         })()`) as any;
         receipt.measured[`${tag}-talk-select`] = sel;
-        check(`${tag}: the Talk select shows "${sel.text}" whole (text ${sel.textW} px ≤ room ${sel.room} px)`, sel.text === (zh ? "彈出視窗" : "Pop-up window") && sel.textW <= sel.room, sel);
+        // The room for its text: its box less its padding and the native ▼ (about 20 px: 24 kept).
+        check(`${tag}: the Talk select shows "${sel.text}" whole (text ${sel.textW} px ≤ room ${sel.room - 24} px)`, sel.text === (zh ? "彈出視窗" : "Pop-up window") && sel.textW <= sel.room - 24, sel);
         check(`${tag}: the Talk select is a 44 px box`, sel.h >= 44, sel);
         await shot(page, `${tag}-3-sheet`);
       }
