@@ -13,6 +13,9 @@ const smoke = "claude-usage-credits-m3757", OUT = process.env.OUT!, REPO = proce
 const git = (...a: string[]) => execFileSync("git", ["-C", REPO, "-c", "gc.auto=0", ...a], { encoding: "utf8" }).trim();
 const receipt: any = { sourceHead: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain", "--", "src").split("\n").filter(Boolean), checks: [], pictures: [] };
 const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!ok, ...(ok ? {} : { detail }) }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : ` ${JSON.stringify(detail)}`}`); };
+// A control's box: shown, and (phone) at least the 44 px tap target; controls in order never overlap.
+const boxOf = (els: Element[]) => els.map(e => { const r = e.getBoundingClientRect(); return { w: Math.round(r.width), x: Math.round(r.left), y: Math.round(r.top), h: Math.round(r.height), b: Math.round(r.bottom) }; });
+const tapOk = (bs: Array<{ w: number; h: number; y: number; b: number }>, min: number) => bs.length > 0 && bs.every(b => b.w > 0 && b.h >= min) && bs.every((b, i) => i === 0 || b.y >= bs[i - 1]!.b);
 const { claudeUsageCreditsPrompt } = await import(REPO + "/src/backend/claude-usage-credits.ts");
 const { setLocale, t } = await import(REPO + "/src/locale.ts");
 const LIVE = readFileSync(join(REPO, "tests/fixtures/claude-2.1.332-usage-credits-consent-dialog.pane.txt"), "utf8");
@@ -56,8 +59,11 @@ try {
       const buttons = card.locator(".n-stack > .btn");
       const labels = (await buttons.allInnerTexts()).map(x => x.trim());
       check(`${tag}: two stacked buttons, named by what they do`, JSON.stringify(labels) === JSON.stringify([W.sw, W.cr]), labels);
-      const boxes = await buttons.evaluateAll((els: Element[]) => els.map(e => { const r = e.getBoundingClientRect(); return { w: Math.round(r.width), x: Math.round(r.left), h: Math.round(r.height) }; }));
-      check(`${tag}: the buttons are one width, stacked, one line each`, boxes.length === 2 && boxes[0].w === boxes[1].w && boxes[0].x === boxes[1].x && boxes.every(b => b.h < 48), boxes);
+      const boxes = await buttons.evaluateAll(boxOf);
+      const minTap = device === "phone" ? 44 : 24;
+      check(`${tag}: the buttons are one width, stacked, one line each`, boxes.length === 2 && boxes[0].w === boxes[1].w && boxes[0].x === boxes[1].x && boxes.every(b => b.h >= minTap && b.h < 64), boxes);
+      const controls = await card.locator(".n-stack > .btn, details.n-raw > summary, a.n-link").evaluateAll(boxOf);
+      check(`${tag}: every control is shown${device === "phone" ? ", a 44 px tap target," : ""} and none overlaps the next`, controls.length === 4 && tapOk(controls, device === "phone" ? 44 : 12), controls);
       check(`${tag}: the switch is the primary button`, await buttons.first().evaluate((e: Element) => e.classList.contains("btn-primary")), null);
       const raw = card.locator("details.n-raw");
       check(`${tag}: Claude's own words are folded by default`, !(await raw.evaluate((e: any) => e.open)) && !(await card.locator(".n-raw-text").isVisible()), null);
@@ -91,9 +97,17 @@ try {
       await dialog.locator(".dlg-x").click();
       await dialog.waitFor({ state: "hidden", timeout: 5_000 });
       check(`${tag}: the ✕ closes the confirmation like Cancel — no answer sent, the card stays`, answers === 0 && (await card.isVisible()), answers);
+      // The chat's compact prompt: the same choices, the same tap targets.
+      await page.goto(page.url().replace(/\/ui\/needs.*$/, "/ui/chat/lumen"));
+      const chat = page.locator(".prompt-compact").first();
+      await chat.waitFor({ state: "visible", timeout: 20_000 });
+      check(`${tag}: the chat names the agent in its title`, (await chat.locator(".txt strong").innerText()).trim() === (zh ? "Lumen：Fable 5.2 要另外收費，要換模型嗎？" : "Lumen: Fable 5.2 now costs extra. Switch model?"), await chat.locator(".txt strong").innerText());
+      const chatControls = await chat.locator(".acts-stack > .btn, details.n-raw > summary").evaluateAll(boxOf);
+      check(`${tag}: chat — every control is shown${device === "phone" ? ", a 44 px tap target," : ""} and none overlaps the next`, chatControls.length === 3 && tapOk(chatControls, device === "phone" ? 44 : 12), chatControls);
+      const pathChat = shotPath(smoke, tag, "4-chat"); await page.screenshot({ path: pathChat }); receipt.pictures.push(pathChat);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       check(`${tag}: no horizontal overflow`, !overflow, overflow);
-      check(`${tag}: cancelling the confirmation leaves the card (nothing answered)`, await card.isVisible(), null);
+      check(`${tag}: cancelling the confirmation leaves the prompt (nothing answered)`, answers === 0 && await chat.isVisible(), answers);
       check(`${tag}: no page errors`, errors.length === 0, errors);
     } finally { await ctx.close(); }
   }
