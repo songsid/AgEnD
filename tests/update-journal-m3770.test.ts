@@ -370,3 +370,29 @@ describe("M-3770 2.1a review R2: tmp aliases and retry durability", () => {
     expect(retry.trace).toEqual([`(fsync ${h.split("/").pop()})`, `fsync-dir:${h.split("/").pop()}`, "mkdir:attempts", "(fsync .update-journal)", "fsync-dir:.update-journal"]);
   });
 });
+
+// Prism #4494 R3: a mark whose rename landed but whose directory wasn't synced is synced again before the terminal record.
+describe("M-3770 2.1a review R3: a landed mark is durable before the terminal record", () => {
+  it("crash after rename:marks.json; the retried finish syncs the journal directory before it writes the terminal record", () => {
+    const h = home();
+    const a = walk(h, opened(h), ["barrier", "stopping", "snapshotted", "installing", "rolling-back"]);
+    expect(() => finish(h, a, { kind: "rolled-back" }, crashAfter("rename:marks.json"))).toThrow(/crash/);
+    const trace: string[] = [];
+    const io: JournalIo = { ...defaultJournalIo, fsyncDir: d => { trace.push(`(fsync ${d.split("/").pop()})`); defaultJournalIo.fsyncDir(d); }, step: n => { trace.push(n); } };
+    finish(h, a, { kind: "rolled-back" }, io);
+    const synced = trace.indexOf("(fsync .update-journal)"), terminal = trace.findIndex(t => t.startsWith("write:attempt.json.tmp-"));
+    expect(synced).toBeGreaterThanOrEqual(0);
+    expect(synced).toBeLessThan(terminal);
+    expect(readCurrent(h)).toEqual({ state: "none" });
+    const marks = readMarks(h);
+    expect(marks.ok && marks.marks).toHaveLength(1);
+  });
+
+  it("a mark already there for this attempt but for another artifact is refused, never accepted as this one", () => {
+    const h = home();
+    const a = walk(h, opened(h), ["barrier", "stopping", "snapshotted", "installing", "rolling-back"]);
+    appendMark(h, { version: "9.9.9", integrity: null, attemptId: ID1 });
+    expect(() => finish(h, a, { kind: "rolled-back" })).toThrow(/another mark/);
+    expect(readCurrent(h)).toMatchObject({ state: "open", attempt: { stage: "rolling-back" } });
+  });
+});

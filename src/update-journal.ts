@@ -347,7 +347,14 @@ export function readMarks(home: string, io: JournalIo = defaultJournalIo): Marks
 export function appendMark(home: string, mark: Mark, io: JournalIo = defaultJournalIo): void {
   const read = readMarks(home, io);
   if (!read.ok) throw new Error(`marks.json can't be read, so no mark is written over it: ${read.reason}`);
-  if (read.marks.some(m => m.attemptId === mark.attemptId)) return;           // a retry after the mark landed
+  const landed = read.marks.find(m => m.attemptId === mark.attemptId);
+  if (landed) {
+    // A retry after the mark's rename landed (Prism #4494 R3): it must be this mark, and durable before the caller
+    // publishes anything that depends on it (a terminal record), so the directory is synced again.
+    if (landed.version !== mark.version || landed.integrity !== mark.integrity) throw new Error(`marks.json holds another mark for attempt ${mark.attemptId}`);
+    io.fsyncDir(journalDir(home)); io.step(`fsync-dir:${basename(journalDir(home))}`);
+    return;
+  }
   mkdirDurable(io, home, journalDir(home));
   writeAtomic(io, marksPath(home), JSON.stringify([...read.marks, { ...mark, at: mark.at ?? io.now().toISOString() }], null, 2) + "\n");
   io.step("mark-written");
