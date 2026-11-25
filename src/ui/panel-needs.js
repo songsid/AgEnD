@@ -22,6 +22,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
+import { usageCreditsActions, usageCreditsTitle, showRawLabel } from "./usage-credits-card.js";
 
 register("app", {
   en: { needs_reason_stale_auth: "Codex needs a restart", needs_stale_auth_detail: "Codex cannot refresh this agent’s current sign-in. Restart the agent; sign in again only if Codex asks." },
@@ -175,6 +176,9 @@ function NeedsItem({ item, nowMs, owner }) {
   const p = item.type === "prompt" && item.nonce && owner ? owner.state.prompts[item.nonce] : null;
   const fallback = item.nonce ? c.prompts[item.nonce] : undefined;
   const promptBusy = p ? p.busy || p.resolved : !!fallback;
+  // M-3757: Claude's usage-credits prompt, compact: a one-line title, its options named by what they do, its own words folded.
+  const ucView = item.type === "prompt" && item.view && item.view.kind === "usage-credits" ? item.view : null;
+  const shownActions = ucView ? usageCreditsActions(ucView, item.actions) : item.actions;
   const answer = async (action) => {
     const store = chatOwner();
     if (store) { store.answerByNonce(item, action); return; }
@@ -208,6 +212,19 @@ function NeedsItem({ item, nowMs, owner }) {
     setClaim("acks", item.id, res && res.ok ? "done" : null);
     toast((body && (body.message || body.error)) || t("app.failed"), !!(res && res.ok));
   };
+  const answering = p ? p.busy : fallback === "busy";
+  if (ucView) return html`<article data-trust="permission" class="n-item n-compact">
+    <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
+    <div class="n-body">
+      <div class="n-title"><strong>${usageCreditsTitle(ucView)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
+      <div class="n-stack">
+        ${shownActions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class=${`btn btn-sm${a.primary ? " btn-primary" : ""}`}
+            disabled=${promptBusy} onClick=${() => answer(a.id)}>${answering ? tn("answering") : a.label}</button>`)}
+      </div>
+      <details class="n-raw"><summary>${showRawLabel()}</summary><pre class="n-raw-text">${ucView.raw}</pre></details>
+      ${item.instance ? html`<a class="n-link" href=${chatPath(item.instance)}>${tn("open")}</a>` : null}
+    </div>
+  </article>`;
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">

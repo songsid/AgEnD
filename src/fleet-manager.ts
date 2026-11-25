@@ -835,7 +835,7 @@ interface NonceButtonEntry {
    * Set when the prompt is also offered in the web dashboard (web track C4): what the page shows. The same
    * nonce, the same single claim and the same expiry as the platform's buttons — whoever clicks first wins.
    */
-  web?: { text: string; actions: Array<{ id: string; label: string; hint?: string; input?: true }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
+  web?: { text: string; actions: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; input?: true }>; view?: import("./backend/types.js").RemoteCardView; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
   /** When the prompt was offered (epoch ms): its age in "Needs you" (#1386). */
   createdAt?: number;
   /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
@@ -15441,7 +15441,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     chatId: string;
     threadId?: string;
     message: string;
-    choices: Array<{ action: string; label: string; hint?: string }>;
+    choices: Array<{ action: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole }>;
+    /** M-3757: the dashboard's compact form of the card. */
+    view?: import("./backend/types.js").RemoteCardView;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
     extra?: Pick<NonceButtonEntry, "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
@@ -15518,7 +15520,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         entry.web = {
           text: web.text,
           ...(links ? { links } : {}),
-          actions: [...opts.choices.map(c => ({ id: c.action, label: c.label, ...(c.hint ? { hint: c.hint } : {}) })), ...(opts.webInput ? [{ id: opts.webInput.action, label: opts.webInput.label, input: true as const }] : [])],
+          ...(opts.view ? { view: opts.view } : {}),
+          actions: [...opts.choices.map(c => ({ id: c.action, label: c.label, ...(c.hint ? { hint: c.hint } : {}), ...(c.role ? { role: c.role } : {}) })), ...(opts.webInput ? [{ id: opts.webInput.action, label: opts.webInput.label, input: true as const }] : [])],
           expiresAt: Date.now() + (opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS),
         };
         this.emitSseEvent("prompt", { instance: entry.instanceName, nonce, ...entry.web });
@@ -16005,6 +16008,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         createdAt: e.createdAt ?? Date.now(), adapterId: e.adapterId, chatId: e.chatId,
         ...(e.threadId !== undefined ? { threadId: e.threadId } : {}), ...(e.messageId ? { messageId: e.messageId } : {}),
         ...(e.assistFor ? { assistFor: e.assistFor } : {}),
+        ...(e.web.view ? { view: e.web.view } : {}),
       });
     }
     return out;
@@ -16199,7 +16203,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The prompts open on the dashboard right now (a page that loads after one was posted asks for them). */
-  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string; hint?: string }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] }> {
+  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole }>; view?: import("./backend/types.js").RemoteCardView; expiresAt: number; links?: import("./topic-link.js").TextLink[] }> {
     const open: ReturnType<FleetManager["listWebPrompts"]> = [];
     for (const [nonce, e] of this.pendingNonceButtons) {
       if (e.web) open.push({ instance: e.instanceName, nonce, ...e.web });
@@ -17572,10 +17576,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...card, title: redactSecrets(card.title), question: redactSecrets(card.question),
       options: card.options.map(o => ({ ...o, title: redactSecrets(o.title), description: o.description === null ? null : redactSecrets(o.description) })),
     } : card;
-    const prompt = remoteCardPrompt(instanceName, shown);
+    const prompt = remoteCardPrompt(instanceName, shown, this.shownInstanceName(instanceName));
     const nonce = await this.postNonceButtonPrompt({
       prefix: REMOTE_CARD_CALLBACK_PREFIX, alertType: "interactive_prompt", instanceName, ...place,
-      message: prompt.message, choices: prompt.choices, webInput: prompt.webInput,
+      message: prompt.message, choices: prompt.choices, webInput: prompt.webInput, ...(prompt.view ? { view: prompt.view } : {}),
       expiredText: t("card.expired", instanceName), timeoutMs: REMOTE_CARD_TIMEOUT_MS,
       extra: { remoteCard: { identity: card.identity, kind: card.kind, options: shown.kind === "question" ? shown.options.map(o => ({ n: o.n, title: o.title })) : [],
         requiresAdmin, ownerAdapterId: this.getInstanceAdapterId(instanceName), humanOnly: card.kind === "question" && card.humanOnly === true } },

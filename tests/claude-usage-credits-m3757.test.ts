@@ -89,6 +89,51 @@ describe("the renderer's other shapes (2.1.332's own words)", () => {
   });
 });
 
+describe("the compact card (M-3757 redesign): one-line title, options by what they do, Claude's words folded", () => {
+  it("the card carries the models and each option's role, read from Claude's words", async () => {
+    const card = claudeUsageCreditsPrompt(LIVE)!.card;
+    expect(card.usageCreditsPrompt).toEqual({ model: "Fable 5.2", target: "Opus 5.5", picker: false });
+    expect(card.options.map(o => o.role)).toEqual(["switch", "credits"]);
+    const { remoteCardPrompt } = await import("../src/remote-card-prompt.js");
+    const view = remoteCardPrompt("x", card, "Lumen").view!;
+    expect(view).toMatchObject({ kind: "usage-credits", agent: "Lumen", model: "Fable 5.2", target: "Opus 5.5", picker: false });
+    expect(view.raw).toBe("Fable 5.2 now uses usage credits\nFable 5.2 runs on usage credits, purchased separately from your plan.\nSwitch to Opus 5.5 and continue\nContinue with Fable 5.2");
+    expect(view.raw).not.toMatch(/❓/);
+    expect(remoteCardPrompt("x", card, "Lumen").choices.map(c => c.role)).toEqual(["switch", "credits"]);
+  });
+
+  it.each([
+    ["Not now", "Request usage credits from your admin", ["not-now", "admin"], null],
+    ["Switch to Opus 5.5 and continue", "Continue with usage credits", ["switch", "credits"], "Opus 5.5"],
+  ] as const)("roles come from the words, not the position (%s / %s)", (a, b, roles, target) => {
+    const card = claudeUsageCreditsPrompt(shape("Fable 5.2 now uses usage credits", [a, b]))!.card;
+    expect(card.options.map(o => o.role)).toEqual(roles);
+    expect(card.usageCreditsPrompt!.target).toBe(target);
+  });
+
+  it.each([
+    ["en", "Lumen: Fable 5.2 now costs extra. Switch model?", ["Switch to Opus 5.5 (uses your plan)", "Keep Fable 5.2 (billed to credits)"], "Keep Lumen on Fable 5.2?", "Continue on credits", "Show Claude's text"],
+    ["zh-TW", "Lumen：Fable 5.2 要另外收費，要換模型嗎？", ["換成 Opus 5.5（用方案額度）", "繼續用 Fable 5.2（另外扣點數）"], "讓 Lumen 繼續用 Fable 5.2？", "繼續（用點數）", "看 Claude 原文"],
+  ] as const)("%s: the page names the card and its choices in the UI's language", async (lang, title, labels, confirmTitle, confirmLabel, raw) => {
+    const i18n = await import("/assets/app-i18n.js");
+    const ui = await import("/ui/js/usage-credits-card.js");
+    i18n.setLang(lang);
+    try {
+      const { remoteCardPrompt } = await import("../src/remote-card-prompt.js");
+      const prompt = remoteCardPrompt("x", claudeUsageCreditsPrompt(LIVE)!.card, "Lumen");
+      const actions = prompt.choices.map(c => ({ id: c.action, label: c.label, role: c.role }));
+      expect(ui.usageCreditsTitle(prompt.view)).toBe(title);
+      const shown = ui.usageCreditsActions(prompt.view, actions);
+      expect(shown.map((a: any) => a.label)).toEqual(labels);
+      expect(shown.map((a: any) => a.id)).toEqual(["opt-1", "opt-2"]);                 // the server's ids, unchanged
+      expect(shown.map((a: any) => a.primary)).toEqual([true, false]);
+      expect(shown[0].confirmation).toBeUndefined();
+      expect(shown[1].confirmation).toMatchObject({ title: confirmTitle, confirmLabel });
+      expect(ui.showRawLabel()).toBe(raw);
+    } finally { i18n.setLang("en"); }
+  });
+});
+
 describe("only the live prompt is one", () => {
   it("a transcript or a composer quoting its words is not a dialog", () => {
     const quoted = `${LIVE.replace("  Enter to confirm · Esc to cancel", "")}\n● The prompt said: Enter to confirm · Esc to cancel\n────\n❯ \n────\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n`;
