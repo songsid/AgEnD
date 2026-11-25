@@ -1,5 +1,5 @@
 {
-  "sourceHead": "1dad12d86288080793314f021dcf6c798db4d220",
+  "sourceHead": "8c8cbdcded4c2cf8836a3b3bcc7e680b9685fc11",
   "dirty": [],
   "checks": [
     {
@@ -11,19 +11,39 @@
       "ok": true
     },
     {
-      "name": "desk-en-light: two stacked buttons, named by what they do",
+      "name": "desk-en-light: one .n-detail sentence carries the bill",
       "ok": true
     },
     {
-      "name": "desk-en-light: the buttons are one width, stacked, one line each",
+      "name": "desk-en-light: the bill sentence leaves no stub last line",
       "ok": true
     },
     {
-      "name": "desk-en-light: every control is shown and none overlaps the next",
+      "name": "desk-en-light: the bill sentence wraps only at spaces and punctuation",
       "ok": true
     },
     {
-      "name": "desk-en-light: the switch is the primary button",
+      "name": "desk-en-light: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: every control is shown and none overlaps another",
       "ok": true
     },
     {
@@ -35,11 +55,11 @@
       "ok": true
     },
     {
-      "name": "desk-en-light: \"open chat\" is a small link, not a button",
+      "name": "desk-en-light: no Esc / Skip choice is offered",
       "ok": true
     },
     {
-      "name": "desk-en-light: no Esc / Skip choice is offered",
+      "name": "desk-en-light: no custom compact-card classes are left",
       "ok": true
     },
     {
@@ -75,6 +95,22 @@
       "ok": true
     },
     {
+      "name": "desk-en-light: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
       "name": "desk-en-light: chat — every control is shown and none overlaps the next",
       "ok": true
     },
@@ -99,19 +135,39 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: two stacked buttons, named by what they do",
+      "name": "desk-zh-TW-dark: one .n-detail sentence carries the bill",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: the buttons are one width, stacked, one line each",
+      "name": "desk-zh-TW-dark: the bill sentence leaves no stub last line",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: every control is shown and none overlaps the next",
+      "name": "desk-zh-TW-dark: the bill sentence wraps only at spaces and punctuation",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: the switch is the primary button",
+      "name": "desk-zh-TW-dark: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: every control is shown and none overlaps another",
       "ok": true
     },
     {
@@ -123,11 +179,11 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: \"open chat\" is a small link, not a button",
+      "name": "desk-zh-TW-dark: no Esc / Skip choice is offered",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: no Esc / Skip choice is offered",
+      "name": "desk-zh-TW-dark: no custom compact-card classes are left",
       "ok": true
     },
     {
@@ -163,6 +219,22 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-dark: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
       "name": "desk-zh-TW-dark: chat — every control is shown and none overlaps the next",
       "ok": true
     },
@@ -187,19 +259,39 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-light: two stacked buttons, named by what they do",
+      "name": "desk-zh-TW-light: one .n-detail sentence carries the bill",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-light: the buttons are one width, stacked, one line each",
+      "name": "desk-zh-TW-light: the bill sentence leaves no stub last line",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-light: every control is shown and none overlaps the next",
+      "name": "desk-zh-TW-light: the bill sentence wraps only at spaces and punctuation",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-light: the switch is the primary button",
+      "name": "desk-zh-TW-light: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: every control is shown and none overlaps another",
       "ok": true
     },
     {
@@ -211,11 +303,11 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-light: \"open chat\" is a small link, not a button",
+      "name": "desk-zh-TW-light: no Esc / Skip choice is offered",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-light: no Esc / Skip choice is offered",
+      "name": "desk-zh-TW-light: no custom compact-card classes are left",
       "ok": true
     },
     {
@@ -251,6 +343,22 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-light: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
       "name": "desk-zh-TW-light: chat — every control is shown and none overlaps the next",
       "ok": true
     },
@@ -275,19 +383,39 @@
       "ok": true
     },
     {
-      "name": "phone-en-light: two stacked buttons, named by what they do",
+      "name": "phone-en-light: one .n-detail sentence carries the bill",
       "ok": true
     },
     {
-      "name": "phone-en-light: the buttons are one width, stacked, one line each",
+      "name": "phone-en-light: the bill sentence leaves no stub last line",
       "ok": true
     },
     {
-      "name": "phone-en-light: every control is shown, a 44 px tap target, and none overlaps the next",
+      "name": "phone-en-light: the bill sentence wraps only at spaces and punctuation",
       "ok": true
     },
     {
-      "name": "phone-en-light: the switch is the primary button",
+      "name": "phone-en-light: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: every control is shown, a 44 px tap target, and none overlaps another",
       "ok": true
     },
     {
@@ -299,11 +427,11 @@
       "ok": true
     },
     {
-      "name": "phone-en-light: \"open chat\" is a small link, not a button",
+      "name": "phone-en-light: no Esc / Skip choice is offered",
       "ok": true
     },
     {
-      "name": "phone-en-light: no Esc / Skip choice is offered",
+      "name": "phone-en-light: no custom compact-card classes are left",
       "ok": true
     },
     {
@@ -339,6 +467,22 @@
       "ok": true
     },
     {
+      "name": "phone-en-light: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
       "name": "phone-en-light: chat — every control is shown, a 44 px tap target, and none overlaps the next",
       "ok": true
     },
@@ -363,19 +507,39 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: two stacked buttons, named by what they do",
+      "name": "phone-zh-TW-dark: one .n-detail sentence carries the bill",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: the buttons are one width, stacked, one line each",
+      "name": "phone-zh-TW-dark: the bill sentence leaves no stub last line",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: every control is shown, a 44 px tap target, and none overlaps the next",
+      "name": "phone-zh-TW-dark: the bill sentence wraps only at spaces and punctuation",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: the switch is the primary button",
+      "name": "phone-zh-TW-dark: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: every control is shown, a 44 px tap target, and none overlaps another",
       "ok": true
     },
     {
@@ -387,11 +551,11 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: \"open chat\" is a small link, not a button",
+      "name": "phone-zh-TW-dark: no Esc / Skip choice is offered",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: no Esc / Skip choice is offered",
+      "name": "phone-zh-TW-dark: no custom compact-card classes are left",
       "ok": true
     },
     {
@@ -427,6 +591,22 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-dark: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-dark: chat — every control is shown, a 44 px tap target, and none overlaps the next",
       "ok": true
     },
@@ -451,19 +631,39 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-light: two stacked buttons, named by what they do",
+      "name": "phone-zh-TW-light: one .n-detail sentence carries the bill",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-light: the buttons are one width, stacked, one line each",
+      "name": "phone-zh-TW-light: the bill sentence leaves no stub last line",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-light: every control is shown, a 44 px tap target, and none overlaps the next",
+      "name": "phone-zh-TW-light: the bill sentence wraps only at spaces and punctuation",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-light: the switch is the primary button",
+      "name": "phone-zh-TW-light: standard order — title, detail, Claude's text folded right under it, then .n-actions",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the fold sits tight under the detail",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the choices are named by what they do, then Open chat",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: primary switch, secondary keep, ghost Open chat (.btn.btn-sm)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the buttons are content width, not full-width bars",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: every control is shown, a 44 px tap target, and none overlaps another",
       "ok": true
     },
     {
@@ -475,11 +675,11 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-light: \"open chat\" is a small link, not a button",
+      "name": "phone-zh-TW-light: no Esc / Skip choice is offered",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-light: no Esc / Skip choice is offered",
+      "name": "phone-zh-TW-light: no custom compact-card classes are left",
       "ok": true
     },
     {
@@ -515,6 +715,22 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-light: the chat carries the same bill sentence",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the chat's title leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the chat's bill sentence leaves no stub last line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light: the chat's choices are the same short buttons",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-light: chat — every control is shown, a 44 px tap target, and none overlaps the next",
       "ok": true
     },
@@ -534,99 +750,99 @@
   "pictures": [
     {
       "path": "claude-usage-credits-m3757/desk-en-light-1-needs-card.png",
-      "sha256": "cdb7363d91cd621a3c319fabf643c7e79e5485e22871850ca3f93fbdc32813bc"
+      "sha256": "63b5f277d1993d715554082502aad146367359741d444037c4a27a6eac53471f"
     },
     {
       "path": "claude-usage-credits-m3757/desk-en-light-3-claude-text.png",
-      "sha256": "2a840b534d9ac957257f9834b9c490a5d4e2e245d0c03ccffddbdcd3734d7830"
+      "sha256": "2be6be58d68b10d82e18fac51acfec5868b760898470c2bcbe340fef91eacae2"
     },
     {
       "path": "claude-usage-credits-m3757/desk-en-light-2-confirm-credits.png",
-      "sha256": "80b1adce36fe3706cfdbd861dc712f35753026628cb8911f86852069da9123e3"
+      "sha256": "0fe92ea37a8479bfd092888be1cf73d71ce9a913041e04b01f1376c9f8cd2bfa"
     },
     {
       "path": "claude-usage-credits-m3757/desk-en-light-4-chat.png",
-      "sha256": "3bcf244c747a794067a19fdedd242ad5f5dd119133d11ce9a30d3e96a3fdcc95"
+      "sha256": "eff1e8844e1bd2a244b5535dd36459aed36592b07f2ad3983acbf7d0a8eb6b7a"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-1-needs-card.png",
-      "sha256": "8fd8a8368f891e5fe5c7ecd93b48d28eb189e626f91f8f7e2d54aed376dc7c59"
+      "sha256": "635cb8eb26efda3f9d6fa72d9f750c8107c4ad7d477409d8638105c430591e74"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-3-claude-text.png",
-      "sha256": "9b60a2ce359d513b8ca21ebe90a5d2757dc22ceb10c79a2b075a8d3ca2fa97e9"
+      "sha256": "7178ff600285d780147cf9a3561fd01ade427caab99935f1b53a975ebab54801"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-2-confirm-credits.png",
-      "sha256": "cd076b7da7ab15f58494f17944d13b5a452ae1e11c4a29cb188aef46d88b534d"
+      "sha256": "0f5ac0cd54fb76b3e48b8e6b38ffe12e8c462d4e7cea74c946a31fb2d3b0aa31"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-dark-4-chat.png",
-      "sha256": "fffba5fab697e04ddf049cd32da0c839cea631417061e47efb5bddfc2d6c6f4c"
+      "sha256": "870f95a2fb22a0e3ee8b92586bc29558f42160b23123d102f3e04bf7180f4e89"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-1-needs-card.png",
-      "sha256": "6b32d085daaf2f2ad77d767a04de02aa3ecb10acb2b262854d2db70b1cb41cd9"
+      "sha256": "d65085ab581ce610db2627f823c3c97cfa6fb316c35b04a7b5881b93a73a15ec"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-3-claude-text.png",
-      "sha256": "1a33529801a0b4509a69f366504534877f4ee3d9809781a0d3c7c4a94292586c"
+      "sha256": "efe108fc74fa13b6f608da3bb7037ce1f6b72740d4f087f1d1e75fe5f41ec1a7"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-2-confirm-credits.png",
-      "sha256": "ebee912330d4bab324ec80454bd34ca0939dd921ae5b9adb25ba74d111282c40"
+      "sha256": "b0724b8d4b8c7034ec71b9ca5ddbcdfb42d4c0feda7c0b4caf7f03a8872097d5"
     },
     {
       "path": "claude-usage-credits-m3757/desk-zh-TW-light-4-chat.png",
-      "sha256": "31c4a4eaafa4f2ece0542e431ff861e4ef0d700743243e098057056ff2456677"
+      "sha256": "5ae90eb1e912aa81a74bd98fbac1095b907d73bb280b4da1acff94422bfd687f"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-1-needs-card.png",
-      "sha256": "a222bc52086b8770430841a74bbf75af1e4d7c5681efbbf074004844098487ce"
+      "sha256": "e2f1108981697f6c7a59381e2a60b39466a803d18481248c89e2e504991173fc"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-3-claude-text.png",
-      "sha256": "2ff38e2cb2d82df92ae6518143eb608dbb5d6afd4cd20433f0ab5c7f43611592"
+      "sha256": "dedb766d35de7053fbb34677e2d2453a23143d1c48fe1d75400d67a4ef49dcf4"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-2-confirm-credits.png",
-      "sha256": "88547319f16d1174c87a60b53ef2ca408dfdd1af386def972657bdfb4aec5475"
+      "sha256": "229290add6be09f82c25bcd5ec6bbd4b748da0e2f97a0fb858fcf3c5b7562187"
     },
     {
       "path": "claude-usage-credits-m3757/phone-en-light-4-chat.png",
-      "sha256": "b02db06ae60500e5da4517375a81c8658e468a290eb5e9450acc330867243531"
+      "sha256": "4a9bd116ab3ac48b04eee2216d7c4d8b0d66a55a2a0cf8014d0cda4f1e603d1c"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-1-needs-card.png",
-      "sha256": "e5c7cd0282487c1a42293a24875c317d4a7d4473edd2e5b9b1601f29d4c9aa5d"
+      "sha256": "2892707883d2178cf02c9f660fcbd2caeffc0c5dabbcd340b1880a3e34567395"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-3-claude-text.png",
-      "sha256": "66f85271ca8487c90d883f8ef2b10b0d67bf0670e849857a06ed2c6149c83a7c"
+      "sha256": "7535f410f84862b6cc3655f7153003d5e611610c48787b5961ea377d593d42e3"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-2-confirm-credits.png",
-      "sha256": "c8accdd688c1963fbf390bf65d2bf89ae8feac250f80eff19a673718eb4e4b7c"
+      "sha256": "ca017f036e3575ae0d703b5d8cfca070c85932938e58da5f55a02b9bdf1aaed2"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-dark-4-chat.png",
-      "sha256": "3f04b362f39431ed7c26586c97c4ba698d753d246c614660b5a522b11e4180ad"
+      "sha256": "a5fc21a22574374a5b786d25d2363af5f8b95a22dcf5d1536d4ee48412d9b8da"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-light-1-needs-card.png",
-      "sha256": "5d6b83f0261bd712a71eeda02d85c481098777f86ca25d9ff22bd27771457c6e"
+      "sha256": "d6f8727eb8c3abd8fd0d12cff29fbc9e822771ffe9a6337c657d71826055ce41"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-light-3-claude-text.png",
-      "sha256": "5e43eb0832e3ff25847d079b5fa4a6141e998cf9887a098d55a6d45da3b7251b"
+      "sha256": "0b0745aa9e209a7a33fc4c8a014e3556a020f8dde8d99c23fe1e05c1d857ae58"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-light-2-confirm-credits.png",
-      "sha256": "e408f88c35ab8e3e347714efe3c9b5a0aad03f56d70dd018943b2aa0cdbefb3b"
+      "sha256": "c5faf4fbe04c0750456cb719460572bf839f22ab4030ebd077590aa1944dd65a"
     },
     {
       "path": "claude-usage-credits-m3757/phone-zh-TW-light-4-chat.png",
-      "sha256": "cf797b5b749d0c1a21fb4beff6ca1574827ab2903ed45f803523b1b6715406a7"
+      "sha256": "b522447ac46d77e6198379b94c1bf47faaf5f8eed6336219a279fabde311a2fa"
     }
   ]
 }
