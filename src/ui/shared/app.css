@@ -4569,7 +4569,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-color-summary { display: grid; grid-template-columns: 112px minmax(0, 1fr) 16px; gap: 16px; align-items: center; min-height: 38px; cursor: pointer; list-style: none; }
 .p-settings .s-color-summary::-webkit-details-marker { display: none; }
 .p-settings .s-color-summary > .s-ap-title { margin: 0; }
-.p-settings .s-color-summary > svg { color: var(--text-3); transition: transform .15s; }
+.p-settings .s-color-summary > svg { color: var(--text-3); }
 .p-settings .s-colors[open] > .s-color-summary > svg { transform: rotate(90deg); }
 .p-settings .s-color-summary-places { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .p-settings .s-color-summary-places > span { padding: 4px 8px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.5; }
@@ -5078,6 +5078,43 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* A category's panel takes no box of its own: its cards are stacked by .s-section-layout's gap, like Settings' cards. */
 .ap-panel { display: contents; }
 .ap-panel[hidden] { display: none; }
+/* M-3734: an agent page's Who can use (agent-who-can-use.js): Web guests and Hub, each a card of the section's column. */
+.ap-who { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.ap-who .ap-who-admins { margin: 0; }
+.ap-who-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; }
+.ap-who-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0; border-top: 1px solid var(--border); min-width: 0; }
+.ap-who-row:first-child { border-top: 0; }
+.ap-who-av { flex: none; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--text-2); font-weight: 600; }
+.ap-who-id { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.ap-who-id .note { white-space: normal; }
+.ap-who-state { margin-top: 2px; }
+.ap-who-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+.ap-who-actions .btn, .ap-who-derived .btn, .ap-who-hub .btn, .ap-who-guests > .field-row .btn { min-height: var(--tap); }
+.ap-who-add { margin-top: 16px; }
+.ap-who-add > summary { min-height: var(--tap); display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; list-style: none; }
+.ap-who-add > summary::-webkit-details-marker { display: none; }
+.ap-who-add > summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); }
+.ap-who-add[open] > summary::before { transform: rotate(45deg); }
+.ap-who-derived { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 8px 0; }
+.ap-who-derived > .note { margin: 0; }
+.ap-who-derived .btn { margin-top: 4px; }
+.ap-who-go { white-space: nowrap; }
+.ap-who-guests > .field-row { margin: 4px 0 8px; }
+.ap-who-actions .ap-who-remove { margin-left: 16px; }
+.ap-who-confirm-note { margin-top: 4px; }
+.ap-who-add .input { width: 100%; max-width: 420px; min-height: var(--tap); margin: 8px 0; }
+.ap-who-off { padding: 2px 0 2px 10px; border-left: 3px solid var(--warn); color: var(--text); }
+.ap-who-hub-state { margin: 8px 0; font-weight: 600; }
+.ap-who-hub[data-hub-state="shared"] .ap-who-hub-state { color: var(--ok); }
+.ap-who .err { color: var(--danger); }
+.ap-who .field-row { flex-wrap: wrap; }
+.ap-who .field-row .btn { white-space: normal; text-align: center; max-width: 100%; }
+@media (max-width: 599px) {
+  .ap-who .field-row { flex-direction: column; align-items: stretch; }
+  .ap-who-actions { margin-left: calc(32px + 12px); width: 100%; }
+  .ap-who-actions .ap-who-remove { margin-left: auto; }
+}
 .p-details .d-actions .field-row { flex-wrap: wrap; }
 /* The sidebar's ⚙: one step to an agent's settings — on hover or focus on a desktop and on the open row, always on a touch screen. */
 .inst-gear { flex: none; width: 28px; height: 28px; padding: 0; color: var(--text-3); display: inline-grid; place-items: center; }

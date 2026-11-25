@@ -34,6 +34,7 @@ import { InstanceBoardWork } from "./fleet-task-work.js";
 import { Icon } from "/assets/ui-icons.js";
 import { AgentCategoryNav, AgentPageHead, AgentSettingsPanels, agentKind, categoryFromSearch, useAgentSettings } from "./agent-details-settings.js";
 import { ContactPermissionsPanel } from "./contact-permissions.js";
+import { WhoCanUsePanel } from "./agent-who-can-use.js";
 import "./agent-page-strings.js";
 import { pt } from "./agent-page-strings.js";
 import { timeText } from "/assets/clock-text.js";
@@ -215,11 +216,12 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
     <${PanelHeader} title=${name} sub=${sub} pageControls=${{ navKey }} pageActions=${items} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} />${phone ? html`<${AgentSheetButton} name=${name} inst=${inst} current="details" items=${items} navKey=${navKey} />` : null}</${PanelHeader}>
     <${AgentCategoryNav} name=${name} kind=${kind} cat=${shownCat} dirty=${dirty}>${!cat ? html`<div class="only-narrow"><div class="s-row agent-settings-index-return"><h2>${pt("title")}</h2>${backLink()}</div></div>` : null}</${AgentCategoryNav}>
     <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}>
-      <div class="s-row agent-settings-heading"><a class="s-back" href=${detailsPath(name)}><${Icon} name="back" size=${16} /><span>${t("app.details")}</span></a><${AgentPageHead} name=${name} kind=${kind} cat=${shownCat} inst=${null} />${backLink()}</div>
+      <div class="s-row agent-settings-heading"><a class="s-back" href=${detailsPath(name)}><${Icon} name="back" size=${16} /><span>${t("app.details")}</span></a><${AgentPageHead} name=${name} kind=${kind} cat=${shownCat} inst=${inst} />${backLink()}</div>
       ${OpCard && sess.op ? html`<${OpCard} op=${sess.op} schema=${sess.data && sess.data.schema} />` : null}
       <div class="s-section-layout" data-agent-category=${shownCat}>
         <div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-overview` : "ap-panel-overview"} hidden=${shownCat !== "overview"}>${overview}</div>
         ${opened ? html`<${AgentSettingsPanels} name=${name} kind=${kind} cat=${shownCat} sess=${sess} onDirty=${onDirty} />` : null}
+        ${shownCat === "access" ? html`<div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-access` : "ap-panel-access"}><${WhoCanUsePanel} key=${name} name=${name} display=${inst && inst.display_name} /></div>` : null}
         ${shownCat === "permissions" ? html`<div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-permissions` : "ap-panel-permissions"}><${ContactPermissionsPanel} key=${name} name=${name} /></div>` : null}
       </div></div></div>
     ${sess.staged.size && Pending ? html`<${Pending} staged=${sess.staged} busy=${!!sess.op && ["writing", "posting", "watching"].includes(sess.op.phase)} onApply=${sess.apply} onDiscard=${sess.discard} section="agents" />` : null}

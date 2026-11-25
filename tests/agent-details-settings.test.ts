@@ -49,9 +49,9 @@ async function form(inst: Record<string, unknown>, defaults: Record<string, unkn
 describe("the categories", () => {
   it("a fleet agent has Overview + five; a Windows native agent has no channel category; a ClassicBot room has Runtime and Channels only", () => {
     // M-3339: every kind ends with Permissions (contact-permissions.js).
-    expect(G.categoriesOf("fleet")).toEqual(["overview", "basic", "runtime", "work", "channel", "adv", "permissions"]);
-    expect(G.categoriesOf("native")).toEqual(["overview", "basic", "runtime", "work", "adv", "permissions"]);
-    expect(G.categoriesOf("classic")).toEqual(["overview", "runtime", "channel", "permissions"]);
+    expect(G.categoriesOf("fleet")).toEqual(["overview", "basic", "runtime", "work", "channel", "adv", "access", "permissions"]);
+    expect(G.categoriesOf("native")).toEqual(["overview", "basic", "runtime", "work", "adv", "access", "permissions"]);
+    expect(G.categoriesOf("classic")).toEqual(["overview", "runtime", "channel", "access", "permissions"]);
   });
   it("which kind a page is: the room's read says classic, a Windows runtime is native, anything else is a fleet agent", () => {
     expect(G.agentKind({ kind: "classic" }, { runtime: "wsl" })).toBe("classic");

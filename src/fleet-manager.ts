@@ -4281,6 +4281,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       generalLocation: input => this.previewGeneralLocation(input),
       hubMembership: raw => hubMembershipSettings(raw),
       hubPageSharing: raw => hubPageSharingSettings(raw),
+      guestDerivedScopes: () => this.guestDerivedScopes(),
       hostMonitoringAvailable: () => this.hostMonitoringAvailable(),
       hubPilotTrust: raw => hubPilotTrustSettings(raw, RUNNING_AGEND_VERSION),
       // S3c (S-55): a Hub exposure publish's confirmation summary, while a member composition is attached.
@@ -11630,6 +11631,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       .sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
     return { enabled: cfg?.enabled === true, chat: cfg?.chat !== false, explicit: cfg?.grants !== undefined, instances: Object.keys(this.fleetConfig?.instances ?? {}).sort(), rooms, connections, guests,
       audit: this.guestAudit() };
+  }
+
+  /**
+   * M-3734: each guest's agents now, as guestOverview lists them (#1920's derived access while no grants are saved) — the
+   * scopes "Start from today's guests" on an agent's page is checked against, as it is admitted and as it applies.
+   */
+  guestDerivedScopes(): Record<string, string[]> {
+    const out: Record<string, string[]> = Object.create(null);
+    for (const g of this.guestOverview().guests) if (g.scope.length) out[`${g.adapterId}:${g.userId}`] = [...g.scope];
+    return out;
   }
 
   /** #2667: the ClassicBot rooms' instance names now — what a settings save's validation knows besides fleet.yaml's instances. */
