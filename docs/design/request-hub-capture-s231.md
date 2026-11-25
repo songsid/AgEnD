@@ -123,3 +123,9 @@ This is provenance and application enforcement, not a shell sandbox.
 
 This is a dormant assembly contract, not a claim that L's production input port or
 H's relay/return path exists. Neither is installed by G. All evidence is synthetic.
+
+Audience precision: direct inputs use hub audience; group inputs use room audience
+with the exact signed room ref. The Hub actor still binds its issuer namespace.
+The peer warning for a group names the Hub room and its participants, rather
+than suggesting that only its immediate asker will see a reply. H includes both
+warnings in its user-look evidence. No current renderer changes here.

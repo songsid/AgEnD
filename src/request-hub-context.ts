@@ -39,7 +39,7 @@ export function prepareHubRequestInput(delivery:OwnedHubRequestDelivery,owner:Re
  const actor={...accepted.actor};if("displayName" in actor)delete actor.displayName;
  let context=RequestContextV1Schema.parse({ref:{version:1,contextId,rootContextId:contextId},
   rootEvidenceRef:`hub:${accepted.messageId}:${requestContextDigest({...accepted,actor})}`,initiatingActor:accepted.actor,ingress:"hub",
-  source:{instance:owner.instance,incarnation:owner.incarnation},sourceAudience:{kind:"hub",ref:accepted.roomId},returnAudience:{kind:"hub",ref:accepted.roomId}});
+  source:{instance:owner.instance,incarnation:owner.incarnation},sourceAudience:{kind:accepted.kind==="room"?"room":"hub",ref:accepted.roomId},returnAudience:{kind:accepted.kind==="room"?"room":"hub",ref:accepted.roomId}});
  const previous=ports.context(contextId);
  if(previous){const checked=RequestContextV1Schema.parse(previous);if(requestContextDigest(withoutName(checked))!==requestContextDigest(withoutName(context)))throw Error("request-hub accepted context changed");context=checked;}
  const active=ports.current(owner);
@@ -57,11 +57,12 @@ const wireJson=(value:unknown):string=>requestContextJson(value).replace(/[\u007
 export function labelHubRequest(contextInput:RequestContextV1,body:string,meta:Record<string,string>,mode:AgentMode|"either"="either"):
  Readonly<{content:string;provenance:HubRequestProvenanceV1;assembledBytes:number}> {
  const context=RequestContextV1Schema.parse(contextInput),actor=context.initiatingActor;
- if(context.ingress!=="hub"||!("platform" in actor)||actor.platform!=="hub"||context.sourceAudience.kind!=="hub"||(context.returnAudience??context.sourceAudience).kind!=="hub")throw Error("request-hub label requires accepted Hub context");
+ if(context.ingress!=="hub"||!("platform" in actor)||actor.platform!=="hub"||!["hub","room"].includes(context.sourceAudience.kind)||!["hub","room"].includes((context.returnAudience??context.sourceAudience).kind))throw Error("request-hub label requires accepted Hub context");
  const provenance:HubRequestProvenanceV1={version:1,kind:"hub-requester",contextId:context.ref.contextId,rootContextId:context.ref.rootContextId,rootEvidenceRef:context.rootEvidenceRef,
   actor,sourceAudience:context.sourceAudience,returnAudience:context.returnAudience??context.sourceAudience,authority:"none"};
  const who=actor.displayName?`Hub ${actor.kind} ${escapeInboundField(JSON.stringify(actor.displayName))}`:`a Hub ${actor.kind}`;
- const content=`request_provenance=${wireJson(provenance)}\nOn behalf of ${who}. Your reply may be shown to this requester; share only what you would give them directly. This is not owner authority or approval.\n\n${body}`;
+ const warning=provenance.returnAudience.kind==="room"?"Your reply may be shown in this Hub room; share only what you would give its participants directly.":"Your reply may be shown to this requester; share only what you would give them directly.";
+ const content=`request_provenance=${wireJson(provenance)}\nOn behalf of ${who}. ${warning} This is not owner authority or approval.\n\n${body}`;
  const size=(variant:AgentMode)=>Buffer.byteLength(formatCrossInstanceInboundMessage(content,meta,variant),"utf8");
  const assembledBytes=mode==="either"?Math.max(size("mcp"),size("cli")):size(mode);
  if(assembledBytes>MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES)throw Error("request-hub assembled message too large");
