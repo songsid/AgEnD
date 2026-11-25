@@ -7,7 +7,7 @@
 
 ## What this slice owns
 
-2.2 is the barrier: wait until the fleet is an idle candidate, then fence and check again in one turn. The updater publishes the attempt at stage `opened`, with `current` naming it, before the fleet writes anything. The fleet writes inbox files, deferred-job files, and the cancel marker. It does not write a stage. If the second check fails, the fences come down and nothing was written. If the wait exceeds `updates.maxIdleWait` (default 24 hours) or the attempt is cancelled, the fleet writes `attempts/<id>/cancel` and the updater starts `abandoning`. The fleet runs hand-back only when the substep is `hand-back`, and the card goes back to offering **Update now** or **Keep waiting** (§3.3 step 2.4).
+2.2 is the barrier: wait until the fleet is an idle candidate, then fence and check again in one turn. The updater publishes the attempt at stage `opened`, with `current` naming it, before the fleet writes anything. The fleet writes inbox files, deferred-job files, and, while the card is still cancellable, the cancel marker. It does not write a stage. If the second check fails, the fences come down and nothing was written. If the wait exceeds `updates.maxIdleWait` (default 24 hours) or the card is cancelled while it is still cancellable, the fleet writes `attempts/<id>/cancel`. The updater honours that through `stopping` with no snapshot published, and ignores it once a snapshot exists. The fleet runs hand-back only when the substep is `hand-back`. A honoured cancel hands back, and the card goes back to offering **Update now** or **Keep waiting** (§3.3 step 2.4).
 
 2.2 does not take the prefix, home or service locks, write the journal format, stop the fleet, snapshot, enter trial mode, or prove health. Those are 2.1, 2.3, 2.4 and 2.5. It does not change the card's words. That is slice 2.6.
 
@@ -81,33 +81,36 @@ Control commands are not agent turns, and the fence does not apply to them. They
 - `/update`, and the card's cancel;
 - admin actions, including the update card's own edits.
 
-An attempt is cancelled by the card action `cancel`: POST `/ui/update/answer` with `{ action: "cancel" }`, and the Cancel button on a Hub waiting notice. That writes `attempts/<id>/cancel` (`{ reason, at, by }`). `by` is the card's display label, the same kind Phase 1 stores on `lastAnswer.by`. The updater, or the recovery runner, treats the file as the start of `abandoning`. The fleet does not write `abandoned`, and it runs hand-back only when the substep is `hand-back`. `/cancel` does not cancel the attempt. Today's chat `/update` accepts only `/update` and `/update now`. Slice 1.5, the General chat card, is what puts the card's Cancel on Discord and Telegram. This slice adds no typed `/update cancel`. Trial mode's "no outbound except the card" is 2.4, not this flag.
+An attempt is cancelled by the card action `cancel`: POST `/ui/update/answer` with `{ action: "cancel" }`, and the Cancel button on a Hub waiting notice. The fleet writes `attempts/<id>/cancel` (`{ reason, at, by }`) only while the card is cancellable: waiting, or the barrier. `by` is the card's display label, the same kind Phase 1 stores on `lastAnswer.by`. The updater, or the recovery runner, consumes that file under the home lock, by the stage it finds, not by when the file was written:
+
+- `opened`, `barrier`, or `stopping` with no snapshot published: the cancel is honoured. It journals `abandoning` with the cancel's reason, then renames `cancel` to `cancel.consumed`;
+- `snapshotted` onwards, `committing`, or a terminal stage: the cancel is too late. It renames `cancel` to `cancel.ignored-<stage>` and journals that. The card says "too late to cancel: the update is past the point of no return" (#4491 §2.6). It does not enter `abandoning`, and it does not roll back `committing`.
+
+The fleet does not write `abandoned`, and it runs hand-back only when the substep is `hand-back`. `/cancel` does not cancel the attempt. Today's chat `/update` accepts only `/update` and `/update now`. Slice 1.5, the General chat card, is what puts the card's Cancel on Discord and Telegram. This slice adds no typed `/update cancel`. Trial mode's "no outbound except the card" is 2.4, not this flag.
 
 The implementation's ingress-inventory test asserts these commit points: the pane write or delivery admission (including `admitDurableDelivery`), `claimNext`, the task claim write, and `runWithLock` after the lock and before `markHandled`. A new way to start a turn that commits without one of those reads fails the test. Listing handler names is not the assertion.
 
 ## Hand-back and abandon
 
-Hand-back runs only when the attempt's substep is `hand-back`. The fleet reads the inbox and deferred files in sequence order, not a memory queue. The process can exit between the barrier and the trial, and the files have to still be there for 2.4 and 2.5. After the old fleet has exited, 2.5 walks the same sequence, on commit or on rollback: a reference is claimed by that fleet's pump, a copy is admitted once, and a deferred job runs once.
+Hand-back runs only when the attempt's substep is `hand-back`. The fleet reads the inbox and deferred files in sequence order, not a memory queue. The process can exit between the barrier and the trial, and the files have to still be there for 2.4 and 2.5. After the old fleet has exited, 2.5 walks the same sequence, on commit or on rollback, with the same reconciliation.
 
-The walk releases entries in sequence order:
+A crash resumes at the first entry in sequence order that has no `<file>.acked`. Each resumed item is reconciled with durable state before it is done again (#4491 §2.6):
 
-- an outbox reference: the pump claims that delivery id, and only that id. A later row is not claimed ahead of it. The payload is not admitted as a second copy. A row already in `delivering` or `submission_started`, or a row that is gone, is skipped. A reference that is not eligible yet (`retry_wait` still in backoff, or its target lane blocked) holds later entries for that same target, which is the rule `claimNext` already uses, and does not hold another target;
-- an ingress copy: admit it once, to its own target, through the normal delivery path, when the walk reaches it;
-- a deferred job: run it once through the same trigger path when the walk reaches it. The schedule row was left in place, including a one-shot.
+- an outbox reference: look the row up. `queued` or `retry_wait` means the pump claims that delivery id, and only that id. `delivering`, `delivered`, or a terminal state means it is already handed back. A row that is not there is treated as already handed back. Then `.acked`. The outbox claim is a conditional update, so it cannot be claimed twice. A reference that is not eligible yet (`retry_wait` still in backoff, or its target lane blocked) holds later entries for that same target, which is the rule `claimNext` already uses, and does not hold another target. The payload is not admitted as a second copy;
+- an ingress copy: one outbox insert whose `source_key` is `update-handback:<attemptId>:<seq>`. `source_key` is `UNIQUE` (`delivery-outbox.ts`), so a replay's insert conflicts and the existing row is used. The copy is then treated exactly as a reference to that row. A crash before the insert, after it, or after the claim never creates a second message. Then `.acked`;
+- a deferred job: before the trigger, write `deferred/<seq>.started` (`{ runId, at }`, atomically). Then run it through the same trigger path. Then `.acked`. The schedule row was left in place, including a one-shot. On replay, `.started` without `.acked` means the run was interrupted: it is not run again. A `schedule_runs` row is recorded with status `interrupted-by-update` and `detail` naming that runId, and the schedule's next due time is computed as usual. An entry with neither `.started` nor `.acked` is run. A deferred job runs at most once across a crash.
 
-After each claim, the one admission of a copy, or the one job run, the fleet writes a sibling `<file>.acked`. A crash resumes at the first entry in sequence order that has no `.acked`.
-
-Abandon (timeout, or the card's cancel) is the updater's `abandoning` procedure. The fleet writes `attempts/<id>/cancel` and waits for substep `hand-back`. It does not leave the Phase 1 card in `updating`. The offer is shown again, with **Update now** or **Keep waiting**.
+Abandon, when the cancel is honoured, is the updater's `abandoning` procedure. The fleet waits for substep `hand-back`. It does not leave the Phase 1 card in `updating`. The offer is shown again, with **Update now** or **Keep waiting**.
 
 ## What 2.2 uses from #4491 §2.6
 
 S-243 owns the files under `<home>/.update-journal/` and the locks. 2.2 does not invent a second journal, and the fleet does not write a stage.
 
 - the updater publishes `opened`, with `current` naming the attempt, before the fleet writes anything;
-- the fleet writes `inbox/<seq>-<source>.json`, `deferred/<seq>.json`, and `attempts/<id>/cancel`, each atomically;
-- the updater advances to `barrier` after the prefix is written;
-- hand-back runs only at substep `hand-back`, and each released entry then gets a `<file>.acked` sibling;
-- a crash still in `opened`, with those files present, hands them back.
+- the fleet writes `inbox/<seq>-<source>.json`, `deferred/<seq>.json`, and, only while the card is cancellable, `attempts/<id>/cancel`, each atomically;
+- the updater advances to `barrier` after the prefix is written, and consumes `cancel` by the stage it finds;
+- hand-back runs only at substep `hand-back`. A copy is admitted once, under `source_key` `update-handback:<attemptId>:<seq>`, and then treated as a reference. A deferred job writes `.started` before it runs. Each finished entry gets a `<file>.acked` sibling;
+- a crash still in `opened`, with those files present, hands them back. A resumed entry is reconciled before it is done again.
 
 If §2.6's names differ from these, this note is updated to match them before the code starts.
 
@@ -121,14 +124,16 @@ No production caller. The tests drive the module with a fake journal and a fake 
 - the fleet writes no stage;
 - a handler resumed from an await after that check (routing, receipt binding, IPC connect, web body parse, Hub inbound) hits its commit point and does not start the turn;
 - an ingress copy, a refused new claim, and a due schedule that arrive afterwards are in the journal sequence and were not started. The refused claim is not a file;
-- a durable row in the prefix is not copied; hand-back claims it once through the pump, and a second admission of that payload does not happen;
+- a durable row in the prefix is not copied. Hand-back claims it when it is `queued` or `retry_wait`, and writes `.acked` without a second claim when it is `delivering`, `delivered`, terminal, or gone;
+- a copy is admitted by one insert with `source_key` `update-handback:<attemptId>:<seq>`. A replay reuses that row and does not create a second message;
 - `admitDurableDelivery` under the fence inserts the row and writes a reference;
 - the ingress-inventory test fails when a commit point is missing: pane write or delivery admission, `claimNext`, the task claim write, and `runWithLock` after the lock and before `markHandled`;
 - a schedule already inside `runWithLock` does not fail the check and is not killed;
-- a one-shot deferred by the fence is still in the schedule table, and hand-back runs it once;
+- a one-shot deferred by the fence is still in the schedule table. Hand-back writes `.started` before the trigger. A replay that finds `.started` and no `.acked` does not run it again, and records `schedule_runs` status `interrupted-by-update`;
 - `/status`, `/stop`, `/restart`, `/cancel`, `/update`, the card's cancel, and an admin card edit, still run while the flag is set;
-- `/cancel` leaves the attempt running; the card action `cancel` writes `attempts/<id>/cancel` and does not run hand-back until the substep is `hand-back`;
-- hand-back writes `<file>.acked` after each entry, and a crash resumes at the first entry without one;
+- `/cancel` leaves the attempt running. The card action `cancel` writes `attempts/<id>/cancel` only while the card is waiting or at the barrier, and does not run hand-back until the substep is `hand-back`;
+- a cancel the updater finds at `snapshotted` or later becomes `cancel.ignored-<stage>` and does not abandon;
+- hand-back writes `<file>.acked` after each entry, and a crash resumes at the first entry without one, reconciling it before doing it again;
 - `waiting` counts as idle here and still counts as busy for `hubUpdateIdle`;
 - `--now` checks once and does not wait;
 - timeout and the card's cancel leave the card offering **Update now** or **Keep waiting** rather than `updating`.
