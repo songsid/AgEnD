@@ -25,9 +25,21 @@ describe("Hub-question contact limit", () => {
     ["report_result", { target_instance: "peer", summary: "ask" }],
   ])("refuses %s before any outbound admission and explains why", async (tool, args) => {
     const ctx = context(); const response = await call(tool, ctx, args);
-    expect(response).toHaveBeenCalledWith(null, expect.stringContaining("while it answers a Hub question"));
+    expect(response).toHaveBeenCalledWith(null, expect.stringContaining("this turn is answering a Hub question"));
     expect(ctx.hubContactRestricted).toHaveBeenCalledWith("worker");
     expect(ctx.deliverToInstance).not.toHaveBeenCalled();
+  });
+  it("M-3660: names the Hub question it is for and says when it lifts, so the agent knows it is not stuck", async () => {
+    for (const [tool, args] of [["send_to_instance", { instance_name: "peer", message: "ask" }], ["broadcast", { message: "ask" }]] as const) {
+      const ctx = context(); ctx.hubContactQuestion = vi.fn(() => "hub-19a46113-ebfc-4e89-b0c4-f26b2f877d32");
+      const text = (await call(tool, ctx, args)).mock.calls[0]![1] as string;
+      expect(text).toContain("Hub question hub-19a46113-ebfc-4e89-b0c4-f26b2f877d32");
+      expect(text).toContain("not stuck: it lifts when this answer turn ends.");
+      expect(text).toContain("correlation_id hub-19a46113-ebfc-4e89-b0c4-f26b2f877d32");
+      expect(ctx.hubContactQuestion).toHaveBeenCalledWith("worker");
+      ctx.hubContactQuestion = vi.fn(() => { throw new Error("unreadable"); });   // unknown: the general reason, never a crash
+      expect((await call(tool, ctx, args)).mock.calls[0]![1]).toContain("this turn is answering a Hub question");
+    }
   });
   it("keeps the reserved Hub answer route available", async () => {
     const ctx = context(); ctx.hubReport = vi.fn(async () => ({ ok: true }));
@@ -64,6 +76,8 @@ describe("durable independent Hub-question windows", () => {
       const file = join(dir, "windows.json"), windows = new HubContactWindows(file, () => now);
       windows.begin("worker", "hub-one"); now = HUB_CONTACT_WINDOW_MS - 1; windows.begin("worker", "hub-one");
       now++; expect(windows.restricted("worker")).toBe(false);
+      windows.begin("worker", "hub-two"); expect(windows.restrictingQuestion("worker")).toBe("hub-two");   // M-3660: the refusal names it
+      expect(windows.restrictingQuestion("worker", (_a, cid) => cid === "hub-two")).toBeNull(); expect(windows.restrictingQuestion("peer")).toBeNull();
       writeFileSync(file, "bad"); const broken = new HubContactWindows(file, () => now);
       expect(broken.restricted("worker")).toBe(true); expect(() => broken.begin("worker", "hub-two")).toThrow();
     } finally { rmSync(dir, { recursive: true, force: true }); }

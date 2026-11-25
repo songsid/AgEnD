@@ -62,6 +62,7 @@ export class SettingsBaselines {
     hubPilotTrust?(raw: unknown): { enabled: boolean };
     hubExposure?: SettingsEffectContext["hubExposure"];
     hubPairing?: SettingsEffectContext["hubPairing"];
+    guestDerivedScopes?: SettingsEffectContext["guestDerivedScopes"];
   }) {}
   snapshot(): unknown {
     const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env"),hostMonitoringSettingsPath(this.options.dataDir),hostAlertSettingsPath(this.options.dataDir)];
@@ -87,7 +88,7 @@ export class SettingsBaselines {
     }
     // Classify the raw switch from the same bounded file snapshot as the confirmation fingerprint, not cached runtime config.
     const membership = this.options.hubMembership, pilotTrust = this.options.hubPilotTrust, pageSharing = this.options.hubPageSharing;
-    return { hostAlertSettings:()=>parseHostAlertSettingsBytes(bytes[4]), hostMonitoringDrive:()=>parseHostMonitoringDrive(bytes[3]), hostMonitoringAvailable: this.options.hostMonitoringAvailable, config: structuredClone(this.options.config()), classic, proof: this.options.proof, generalLocation: this.options.generalLocation, hubBrowserCertificate: this.options.hubBrowserCertificate, hubMembership: membership ? () => membership(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPilotTrust: pilotTrust ? () => pilotTrust(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPageSharing: pageSharing ? () => pageSharing(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubExposure: this.options.hubExposure, hubPairing: this.options.hubPairing,
+    return { hostAlertSettings:()=>parseHostAlertSettingsBytes(bytes[4]), hostMonitoringDrive:()=>parseHostMonitoringDrive(bytes[3]), hostMonitoringAvailable: this.options.hostMonitoringAvailable, config: structuredClone(this.options.config()), classic, proof: this.options.proof, generalLocation: this.options.generalLocation, hubBrowserCertificate: this.options.hubBrowserCertificate, hubMembership: membership ? () => membership(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPilotTrust: pilotTrust ? () => pilotTrust(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPageSharing: pageSharing ? () => pageSharing(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubExposure: this.options.hubExposure, hubPairing: this.options.hubPairing, guestDerivedScopes: this.options.guestDerivedScopes,
       fingerprint: settingsFingerprint([before, ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]) };
   }
 }

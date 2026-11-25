@@ -1,0 +1,11 @@
+--- a/src/hub/member/room-asker-store.ts
++++ b/src/hub/member/room-asker-store.ts
+@@ -70,7 +70,7 @@
+     // The adapter proved there is NO legacy row. Only a prepared orphan can receive the retry's new cid digest.
+     // Keep its original verified proof/admittedAt/deadline; this is not a new admission or an input replay.
+     const a=saved.destination,b=accepted.destination;
+-    if(!mode.legacyAbsent||existing.phase!=='prepared'||a.agent!==b.agent||a.exposureId!==b.exposureId||a.incarnation!==b.incarnation)throw new HubProtocolError('conflict');
++    if(true||existing.phase!=='prepared'||a.agent!==b.agent||a.exposureId!==b.exposureId||a.incarnation!==b.incarnation)throw new HubProtocolError('conflict');
+     this.db.transaction(()=>{const row=this.row(candidate.messageId);if(!row||row.phase!=='prepared'||row.value!==existing.value)throw new HubProtocolError('conflict');this.write(candidate.messageId,'prepared',{...saved,journalDigest:validated(hash,accepted.journalDigest)});}).immediate();
+    }return;}
+   if(mode.replay)throw new HubProtocolError("denied");

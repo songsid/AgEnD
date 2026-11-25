@@ -1,4 +1,4 @@
-import { ProposeContactChangeArgs } from "./contact-change-proposals.js";
+import { ProposeContactChangeArgs, ContactStateArgs, contactProposalRefusal } from "./contact-change-proposals.js";
 import { compactDeliveryStatus, compactSendAck } from "./tool-receipt-output.js";
 import { ContactHeldError } from "./contact-auth-service.js";
 import { KNOWN_BACKENDS, validateFleetConfig, type ValidationResult } from "./config-validator.js";
@@ -16,6 +16,7 @@ import type { EventLog } from "./event-log.js";
 import { deliveryContentDigest, deliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import type { z } from "zod";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import { resolveToolSet, toolSetGrantRefusal } from "./tool-permissions.js";
 import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES, DEFAULT_LIST_INSTANCES_OUTPUT_BUDGET, MAX_INSTANCE_LOG_LINES, getEffectiveInstanceDefaults } from "./config.js";
 import { t } from "./locale.js";
 import type { InteractionSnapshot } from "./backend/types.js";
@@ -78,11 +79,24 @@ import {
 import type { CrossInstanceRecord } from "./search/search-docs.js";
 import { HUB_REPORT_TARGET, HUB_ANSWER_UNKNOWN, parseHubReportExtras, type HubReportExtras, type HubReportOutcome } from "./hub-report-target.js";
 
+/** M-3660: why and until when — naming the Hub question whose answer turn holds the restriction, when it is known. */
+function hubContactRefusal(ctx: OutboundContext, agent: string): string {
+  let question: string | null = null;
+  try { question = ctx.hubContactQuestion?.(agent) ?? null; } catch { question = null; }
+  return question ? t("hub.contactRefusedFor", question) : t("hub.contactRefused");
+}
+
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
   requestContactChange?(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }>;
+  /** M-3693: contact_state's read-only view (see contact-state-view.ts). */
+  contactState?(agent?: string): unknown;
+  /** M-3716: the calling agent's own held requests (delivery_status { held_requests: true }). */
+  ownContactRequests?(agent: string): unknown;
   readonly dataDir: string;
   hubContactRestricted?(agent: string): boolean;
+  /** M-3660: the Hub question whose answer turn holds the restriction (its correlation id), for the refusal's text. */
+  hubContactQuestion?(agent: string): string | null;
   classicContactRestricted?(instance: string): boolean;
   prepareContactFiles?(instance: string, paths: readonly string[]): Promise<import("./contact-auth-files.js").ContactFileLease | undefined>;
   restrictedClassicRouting?(instance: string): { adapterId: string; chatId: string; threadId?: string } | undefined;
@@ -112,6 +126,8 @@ export interface OutboundContext {
     getModel?(channelId: string, adapterId?: string, fleetDefault?: string): string | undefined;
   } | null;
   lastActivityMs(name: string): number;
+  /** M-3674: the last turn another agent started for `name` (a message from another instance it took up), ISO or null. */
+  lastAgentTurnOf?(name: string): string | null;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean, kind?: "fleet-topic" | "classic", resumePaused?: boolean): Promise<void>;
   /** #2942: a Windows create an agent asked for — held as a pending settings change for a fleet admin's General card. */
   requestWindowsCreate?(requester: string, rawArgs: Record<string, unknown>): Promise<{ id: string; state: string }>;
@@ -479,7 +495,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     } finally { try { await lease?.dispose(); } catch { /* confirmed Hub delivery must not become a retryable cleanup error */ } }
   }
   // Only a claimed Hub answer above is exempt, never an ordinary instance merely named agend-hub.
-  if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, t("hub.contactRefused")); return; }
+  if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, hubContactRefusal(ctx, meta.instanceName)); return; }
   // Files or buttons only ever travel with a live Hub answer: never dropped silently onto an ordinary message.
   if (meta.hubExtras && Object.keys(meta.hubExtras).length) {
     respond(null, `report_result files/buttons/poll need a live Hub question: target_instance "${HUB_REPORT_TARGET}" with the correlation_id it gave you.`);
@@ -813,6 +829,7 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
     kind: "fleet-topic" | "classic";
     tags: string[];
     last_activity: string | null;
+    last_agent_turn?: string | null;
   };
 
   let allInstances: FullInstance[] = Object.entries(ctx.fleetConfig?.instances ?? {})
@@ -835,6 +852,8 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
         kind: "fleet-topic" as const,
         tags: config.tags ?? [],
         last_activity: ctx.lastActivityMs(name) ? new Date(ctx.lastActivityMs(name)).toISOString() : null,
+        // M-3674: beside last_activity (a person's message to it, or its own call), the last turn another agent started.
+        last_agent_turn: ctx.lastAgentTurnOf?.(name) ?? null,
       };
     });
 
@@ -989,6 +1008,7 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
       model: model?.model ?? config.model ?? "default",
       model_source: model?.source ?? (config.model ? "instance" : "unresolved"),
       last_activity: ctx.lastActivityMs(targetName) ? new Date(ctx.lastActivityMs(targetName)).toISOString() : null,
+      last_agent_turn: ctx.lastAgentTurnOf?.(targetName) ?? null,   // M-3674
       worktree_source: config.worktree_source ?? null,
     });
     return;
@@ -1241,14 +1261,27 @@ const kiroEngineStatusHandler: Handler = (ctx, rawArgs, respond) => {
 
 /** General proposes; only the system platform callback can confirm. */
 const proposeContactChange: Handler = async (ctx, raw, respond, meta) => {
-  const parsed = validateArgs(ProposeContactChangeArgs, raw, "propose_contact_change");
-  if (!parsed.ok) { respond(null, parsed.error); return; }
+  // Prism #4436 P3: field errors get the same localized sentence and next step as every other refusal.
+  const parsed = ProposeContactChangeArgs.safeParse(raw);
+  if (!parsed.success) { respond(null, contactProposalRefusal(parsed.error)); return; }
   if (!meta?.instanceName || ctx.fleetConfig?.instances[meta.instanceName]?.general_topic !== true || !meta.callerCurrent?.()) {
     respond(null, "Only a current configured General may propose a contact change"); return;
   }
   if (!ctx.requestContactChange) { respond(null, "Contact proposals are unavailable; use the web Permissions or Authorizations page"); return; }
   try { respond(await ctx.requestContactChange(meta.instanceName, parsed.data.change, meta.callerCurrent)); }
-  catch (error) { respond(null, `Contact proposal not applied: ${(error as Error).message}`); }
+  catch (error) { respond(null, contactProposalRefusal(error)); }
+};
+
+/** M-3693: General reads what contact permissions hold (read-only). */
+const contactState: Handler = async (ctx, raw, respond, meta) => {
+  const parsed = validateArgs(ContactStateArgs, raw, "contact_state");
+  if (!parsed.ok) { respond(null, parsed.error); return; }
+  if (!meta?.instanceName || ctx.fleetConfig?.instances[meta.instanceName]?.general_topic !== true) {
+    respond(null, "Only this fleet's configured General may read contact permissions"); return;
+  }
+  if (!ctx.contactState) { respond(null, "Contact permissions are unavailable here; the admin can see them in the web dashboard's Permissions / Authorizations pages"); return; }
+  try { respond(ctx.contactState(parsed.data.agent)); }
+  catch (error) { respond(null, `Could not read contact permissions (${(error as Error).message}); the admin can see them in the web dashboard's Permissions / Authorizations pages`); }
 };
 
 /** #2598 B2: a fleet admin confirms the kiro classic → TUI move. */
@@ -1473,8 +1506,9 @@ function introducedErrors(before: ValidationResult, after: ValidationResult): Va
 }
 
 const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
-  // Check raw fields before Zod strips them. Decision 36525f1b exempts only
-  // the authenticated General identity for tool_set, never skipPermissions.
+  // Check raw fields before Zod strips them. skipPermissions stays refused for
+  // everyone. Changing an existing agent's tool_set stays General-only (#814).
+  // create_instance and deploy_template keep the creator cap.
   if ((rawArgs as any)?.config?.skipPermissions !== undefined) {
     respond(null, "skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
@@ -1986,11 +2020,23 @@ function windowsRequestAnswer(view: { id: string; state: string }): Record<strin
       : `This identical request was already ${view.state}. Asking the same thing again gets the same answer: change something (the name, the folder or the model) to ask again, or try again in about ten minutes.` };
 }
 
+/** Caller profile vs the profile this write would leave behind. General is uncapped. */
+function toolSetGrantError(ctx: OutboundContext, caller: string, explicit: unknown, defaultsToolSet: unknown): string | null {
+  const instances = ctx.fleetConfig?.instances;
+  const creatorConfig = caller && instances && Object.hasOwn(instances, caller) ? instances[caller] : undefined;
+  return toolSetGrantRefusal({
+    caller,
+    creator: caller ? resolveToolSet(creatorConfig, caller) : undefined,
+    explicit,
+    defaultsToolSet,
+    isGeneral: !!caller && isGeneralInstance(ctx.fleetConfig, caller),
+  });
+}
+
 const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
-  // Decision 36525f1b: only General may supply tool_set. Raw skipPermissions
-  // stays refused for everyone before passthrough can reach the lifecycle.
-  if ((rawArgs as any)?.skipPermissions !== undefined ||
-      ((rawArgs as any)?.tool_set !== undefined && !isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? ""))) {
+  // skipPermissions stays refused for everyone, before passthrough can reach the
+  // lifecycle. tool_set may be set up to the caller's own profile.
+  if ((rawArgs as any)?.skipPermissions !== undefined) {
     respond(null, "tool_set and skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }
@@ -2002,6 +2048,9 @@ const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     catch (err) { respond(null, err instanceof Error ? err.message : WINDOWS_CREATE_REFUSED); }
     return;
   }
+  const createCaller = meta?.instanceName ?? "";
+  const createGrant = toolSetGrantError(ctx, createCaller, (rawArgs as any)?.tool_set, ctx.fleetConfig?.defaults?.tool_set);
+  if (createGrant) { respond(null, createGrant); return; }
   // M-2239 P1-1: sandbox is the Windows runtime's alone; without that runtime it is refused as before.
   if ((rawArgs as any)?.sandbox !== undefined) { respond(null, WINDOWS_CREATE_REFUSED); return; }
   const v = validateArgs(CreateInstanceArgs, rawArgs, "create_instance");
@@ -2051,7 +2100,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(BroadcastArgs, rawArgs, "broadcast");
   if (!v.ok) { respond(null, v.error); return; }
   const { message, targets, team: teamName, tags: filterTags, task_summary, request_kind, requires_reply } = v.data;
-  if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, t("hub.contactRefused")); return; }
+  if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, hubContactRefusal(ctx, meta.instanceName)); return; }
   if (rejectOversizedCrossInstanceMessage(ctx, message, respond)) return;
 
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
@@ -2372,6 +2421,10 @@ const deployTemplate: Handler = async (ctx, rawArgs, respond, meta) => {
         if (instanceDef.lightweight == null && profile.lightweight != null) instanceDef.lightweight = profile.lightweight;
       }
 
+      const deployCaller = meta?.instanceName ?? "";
+      const deployGrant = toolSetGrantError(ctx, deployCaller, instanceDef.tool_set, ctx.fleetConfig.defaults?.tool_set);
+      if (deployGrant) throw new Error(`role "${role}": ${deployGrant}`);
+
       const topicName = `${deploymentName}-${role}`;
       const deploymentTags = [
         `deployment:${deploymentName}`,
@@ -2575,6 +2628,12 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
     respond(null, t("delivery.not_found"));
     return;
   }
+  if (v.data.held_requests) {
+    // M-3716: only the authenticated caller's own requests; no argument names another agent.
+    try { respond(ctx.ownContactRequests?.(meta.instanceName) ?? { requests: [], note: "Contact requests are unavailable here." }); }
+    catch (err) { ctx.logger.warn({ err, caller: meta.instanceName }, "Held request status failed"); respond(null, t("delivery.unavailable")); }
+    return;
+  }
   const selector: DeliveryStatusSelector = deliveryStatusSelector(v.data);
   try {
     // `meta.instanceName` is populated from the owning daemon socket / HTTP
@@ -2654,6 +2713,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["close_poll", closePoll],
   ["kiro_engine_status", kiroEngineStatusHandler],
   ["propose_contact_change", proposeContactChange],
+  ["contact_state", contactState],
   ["migrate_kiro_instance", migrateKiroInstance],
   ["reconcile_kiro_instance", reconcileKiroInstance],
   ["get_usage", getUsage],

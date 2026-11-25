@@ -1,0 +1,73 @@
+{
+  "provenance": "Actual FleetManager nonce posting/callback; synthetic adapter, people and contact store; no platform connection. Nonces omitted.",
+  "approve": {
+    "posted": {
+      "message": "Example lead wants to contact Example worker. The message is held until an administrator decides.\n> Please run the release checklist.\n#R12345678 · send_to_instance · expires in 30 min\nApprove once lets this one message through. Fleet › Authorizations on the dashboard has the same request, with more choices.",
+      "buttons": [
+        "Approve once",
+        "Decline"
+      ]
+    },
+    "cardAfter": "Approved once by Demo admin. The message was sent.",
+    "state": "approved",
+    "extra": {
+      "handled": true
+    }
+  },
+  "classicRoomApprove": {
+    "posted": {
+      "message": "classic: agend-limit wants to contact Example worker. The message is held until an administrator decides.\n> Please run the release checklist.\n#R12345678 · send_to_instance · expires in 30 min\nApprove once lets this one message through. Fleet › Authorizations on the dashboard has the same request, with more choices.",
+      "buttons": [
+        "Approve once",
+        "Decline"
+      ]
+    },
+    "cardAfter": "Approved once by Demo admin. The message was sent.",
+    "state": "approved",
+    "extra": {
+      "handled": true
+    }
+  },
+  "decline": {
+    "posted": {
+      "message": "Example lead wants to contact Example worker. The message is held until an administrator decides.\n> Please run the release checklist.\n#R12345678 · send_to_instance · expires in 30 min\nApprove once lets this one message through. Fleet › Authorizations on the dashboard has the same request, with more choices.",
+      "buttons": [
+        "Approve once",
+        "Decline"
+      ]
+    },
+    "cardAfter": "Declined by Demo admin. The agent is told.",
+    "state": "declined",
+    "extra": {
+      "handled": true
+    }
+  },
+  "notAllowed": {
+    "posted": {
+      "message": "Example lead wants to contact Example worker. The message is held until an administrator decides.\n> Please run the release checklist.\n#R12345678 · send_to_instance · expires in 30 min\nApprove once lets this one message through. Fleet › Authorizations on the dashboard has the same request, with more choices.",
+      "buttons": [
+        "Approve once",
+        "Decline"
+      ]
+    },
+    "cardAfter": "(still waiting)",
+    "state": "pending",
+    "extra": {
+      "clickerTold": [
+        "⛔ Only a Fleet admin can use this button."
+      ]
+    }
+  },
+  "decidedOnTheDashboard": {
+    "posted": {
+      "message": "Example lead wants to contact Example worker. The message is held until an administrator decides.\n> Please run the release checklist.\n#R12345678 · send_to_instance · expires in 30 min\nApprove once lets this one message through. Fleet › Authorizations on the dashboard has the same request, with more choices.",
+      "buttons": [
+        "Approve once",
+        "Decline"
+      ]
+    },
+    "cardAfter": "Declined elsewhere (the dashboard or another card).",
+    "state": "declined"
+  },
+  "expiredText": "This card expired. The request may still wait in Fleet › Authorizations until its own expiry."
+}

@@ -1,0 +1,11 @@
+--- a/src/hub/member/room-asker-store.ts
++++ b/src/hub/member/room-asker-store.ts
+@@ -80,7 +80,7 @@
+    const old=this.row(proof.messageId);
+    if(old){const saved=this.read(old);this.authenticate(saved,accepted.ask);if(!this.matches(saved,accepted)||!same(saved.proof.subject,proof.subject)||saved.proof.retainedUntil!==proof.retainedUntil)throw new HubProtocolError('conflict');return;}
+    // Expiry removes identity, never the distinction from legacy input. GC needs an authenticated terminal/absent legacy read.
+-   for(const row of this.rows())if(this.read(row).proof.retainedUntil<=admittedAt&&mode.canCollect?.(row.message_id)===true)this.db.prepare('DELETE FROM room_asker_companion WHERE message_id=?').run(row.message_id);
++   for(const row of this.rows())if(this.read(row).proof.retainedUntil<=admittedAt)this.db.prepare('DELETE FROM room_asker_companion WHERE message_id=?').run(row.message_id);
+    if((this.db.prepare('SELECT count(*) AS n FROM room_asker_companion').get()as{n:number}).n>=this.limit())throw new HubProtocolError('backpressure');
+    this.write(proof.messageId,'prepared',{v:1,proof,destination,journalDigest:validated(hash,accepted.journalDigest),admittedAt});
+   }).immediate();

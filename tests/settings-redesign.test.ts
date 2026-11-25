@@ -415,7 +415,7 @@ describe("Settings P0 redesign shell", () => {
     expect(confirmed.at(-1)).toMatch(/^確定移除機器人「/);
     w = world({ fleet: null as any });
     await mountSettings("general");
-    expect(p.root.textContent).toContain("載入設定失敗 — 請重新開啟 Settings 連結。");
+    expect(p.root.textContent).toContain("載入設定失敗 — 請重新開啟設定連結。");
     expect(writes()).toEqual([]);
   });
 

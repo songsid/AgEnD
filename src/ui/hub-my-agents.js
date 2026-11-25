@@ -7,8 +7,9 @@ import { ms } from "./hub-my-agents-strings.js";
 import { rowAvailability, rowKey, shareRows, reconcileSharing } from "./hub-my-agents-model.js";
 import { HubGrantPicker } from "./hub-grant-picker.js";
 import { assetUrl } from "/assets/asset-url.js";
+import { clockFormat } from "/assets/clock-text.js";
 const tone = name => { let h = 0; for (const c of name) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % 6; };
-const shortSeen = at => Number.isFinite(at) ? new Intl.DateTimeFormat(lang() === "zh-TW" ? "zh-TW" : "en-GB", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(at) : "—";
+const shortSeen = at => Number.isFinite(at) ? clockFormat({ month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }, lang() === "zh-TW" ? "zh-TW" : "en-GB").format(at) : "—";
 const Avatar = ({ name }) => html`<span class=${`hub-av sm t${tone(name)}`} aria-hidden="true">${[...name][0] || "?"}</span>`;
 const mc = (key, n) => ms(n === 1 ? `${key}One` : key, n);
 const STORE = "agend.hub.owner-sharing";
@@ -140,7 +141,7 @@ export function HubMyAgents({ client, scope, shared = [], policy = false, person
                   : html`<small class="note">${ms(row.current.state !== "published" ? "paused" : "shared")} · ${summary(row.current)}</small>`) : null}
               ${row.shared && row.current && fleet.picturesTooLarge?.[row.current.id]?.length
                 // M-3533 R2b (Lumen): a picture its Fleet shows but the Hub cannot take says so here, to its owner alone.
-                ? fleet.picturesTooLarge[row.current.id].map(slot => html`<small class="note hub-agent-picture-large" data-picture-large=${slot}>${ms(slot === "disc" ? "pictureDiscLarge" : "picturePortraitLarge")}</small>`) : null}
+                ? fleet.picturesTooLarge[row.current.id].map(slot => html`<small class="note hub-agent-picture-large" data-picture-large=${slot}>${ms(slot === "disc" ? "pictureDiscLarge" : slot === "character" ? "pictureCharacterLarge" : "picturePortraitLarge")}</small>`) : null}
               ${row.shared && row.exposure?.lapsed === true && row.instance ? html`<small class="note hub-agent-lapsed" role="status">${ms("lapsed")}</small>
                 <button type="button" class="btn btn-sm hub-agent-share-again" data-share-again=${row.instance} disabled=${busy || !!waiting.length} onClick=${() => shareAgain(row, fleet)}>${ms("shareAgain")}</button>` : null}
               ${status ? html`<small class=${status.state === "refused" ? "err" : "note"} role="status">${status.state === "uncertain" ? ms("uncertain") : status.state === "refused" ? status.code === "stale-list" ? ms("changed") : ms("refused", ms(({ "not-allowed": "denied", "switched-off": "off", "limit": "limit", "not-shareable": "unavailable" })[status.code] || "unavailable")) : ms(status.instance ? "sharing" : "stopping")}</small>` : null}</span>

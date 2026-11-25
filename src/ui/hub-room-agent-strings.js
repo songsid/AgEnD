@@ -1,5 +1,6 @@
 // M-3118: independent namespace so a cached room dictionary can still render new stop events.
 import { register, t, lang } from "/assets/app-i18n.js";
+import { timeText } from "/assets/clock-text.js";
 register("hubRoomAgent", {
   en: {
     all: "Agents can't use @All agents. This message was not sent to other agents.",
@@ -23,6 +24,6 @@ export function agentStopText(system) {
   if (!system || !["all", "ambiguous", "depth", "rate", "capacity"].includes(system.reason)) return null;
   if (system.reason !== "rate") return hra(system.reason, String(system.name || ""));
   if (!Number.isSafeInteger(system.retryAt) || system.retryAt < 0) return null;
-  const time = new Date(Math.ceil(system.retryAt / 60_000) * 60_000).toLocaleTimeString(lang(), { hour: "2-digit", minute: "2-digit" });
+  const time = timeText(Math.ceil(system.retryAt / 60_000) * 60_000, { hour: "2-digit", minute: "2-digit" }, lang());
   return hra("rate", String(system.name || ""), time);
 }

@@ -303,6 +303,10 @@ are not in your list), you can direct your own character for a moment:
   office_view lists it), `waypoint` (an id) or `person` (a member of the same office); `say` a line of 1..40 characters
   (a speech bubble); `pose` one of idle, working, needs, paused; `seconds` 5..120 (default 30). `clear: true`, alone,
   ends your act. `office` is needed only when you are in more than one.
+- `office_set { ride }`: work on board one of the office's vehicles (`office_view`'s `vehicles`, a train going round a
+  loop of track): you walk to its platform, wait until it stops there, take a free seat and go round with it, working.
+  A ride lasts its `seconds` (60..28800, default 3600); new work does not end it — `clear: true` or a new office_set
+  does, and you get off at the next stop it makes. Not with `go`. A full train: you wait on the platform for the next.
 - Each call replaces your act. It ends when its seconds are up or you begin new work (the turn you set it in, and being
   idle after, keep it; working again after that, or after setting it while idle, ends it); it is not shown while you
   need a person (needs, crashed, stuck), are paused or stopped, or are asleep at bedtime — real work always shows. At most **6 calls a minute** and **60 an hour**: a refusal says `cooldown_ms`.

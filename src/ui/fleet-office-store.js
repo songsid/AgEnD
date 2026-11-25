@@ -26,6 +26,19 @@ const CHOICE_KEY = "agend_org_office", FILTER_KEY = "agend_org_office_filter", S
 const PLAY_KEY = "agend_org_office_play";
 /** M-3293: the agents told about their pats and feeds, from this device (a list of names; default: none). */
 const TELL_KEY = "agend_org_office_tell";
+const MINI_OFF_KEY = "agend_org_office_hide_minimap", NAMES_OFF_KEY = "agend_org_office_hide_names", RENAME_KEY = "agend_org_office_names";
+/** A name this browser gives a person: at most this long; at most RENAME_MAX of them kept. */
+export const RENAME_LEN = 24, RENAME_MAX = 200;
+/** The names this browser gives people ({ instance: name }), kept only when each is a short one-line string. */
+export function renamesOk(v) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out = {};
+  for (const [k, n] of Object.entries(v).slice(0, RENAME_MAX)) {
+    const s = typeof n === "string" ? n.replace(/[\u0000-\u001f\u007f]/g, "").trim() : "";
+    if (k && k.length <= 200 && s && s.length <= RENAME_LEN) out[k] = s;
+  }
+  return out;
+}
 const TELL_MAX = 200;
 /** #2554: "0" when All offices leaves the lobby tile out (default: shown). */
 const LOBBY_KEY = "agend_org_office_lobby";
@@ -100,10 +113,11 @@ export function actsOk(list, now) {
   const str = (v) => typeof v === "string" && v.length > 0 && v.length <= 200, num = (v) => typeof v === "number" && Number.isFinite(v);
   return (Array.isArray(list) ? list : []).filter((a) => a && typeof a === "object" && str(a.instance) && str(a.office) && num(a.until)
     && (a.x === undefined || num(a.x)) && (a.y === undefined || num(a.y)) && (a.person === undefined || str(a.person))
-    && (a.say === undefined || (typeof a.say === "string" && a.say.length <= 40)) && (a.pose === undefined || ["idle", "working", "needs", "paused"].includes(a.pose)))
+    && (a.say === undefined || (typeof a.say === "string" && a.say.length <= 40)) && (a.pose === undefined || ["idle", "working", "needs", "paused"].includes(a.pose))
+    && (a.ride === undefined || str(a.ride)))
     .map((a) => ({ instance: a.instance, office: a.office, until: a.until - skew, ...(num(a.since) ? { since: a.since } : {}), ...(str(a.state) ? { state: a.state } : {}),
       ...(num(a.x) && num(a.y) ? { x: a.x, y: a.y } : {}),
-      ...(a.person ? { person: a.person } : {}), ...(a.say ? { say: a.say } : {}), ...(a.pose ? { pose: a.pose } : {}) }));
+      ...(a.person ? { person: a.person } : {}), ...(a.say ? { say: a.say } : {}), ...(a.pose ? { pose: a.pose } : {}), ...(a.ride ? { ride: a.ride } : {}) }));
 }
 export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {}) {
   const st = () => { try { return storage || globalThis.localStorage || null; } catch { return null; } };
@@ -243,6 +257,23 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
     /** Whether paused and stopped people are left out of the Office here (default: shown). */
     hideAsleep: () => read(ASLEEP_KEY) === "1",
     saveHideAsleep: (v) => write(ASLEEP_KEY, v ? "1" : "0"),
+    /** Whether the name tags (and their level badges) are left out of the scene here (default: shown). */
+    namesOff: () => read(NAMES_OFF_KEY) === "1",
+    saveNamesOff: (v) => write(NAMES_OFF_KEY, v ? "1" : "0"),
+    /** Whether the minimap is left out here (default: shown). */
+    miniOff: () => read(MINI_OFF_KEY) === "1",
+    saveMiniOff: (v) => write(MINI_OFF_KEY, v ? "1" : "0"),
+    /** The names this browser gives people ({ instance: name }); only this browser sees them. */
+    renames: () => { try { return renamesOk(JSON.parse(read(RENAME_KEY) || "{}")); } catch { return {}; } },
+    /** Give `instance` a name here ("" gives back its own); the names as they are now. */
+    saveRename: (instance, name) => {
+      let all = {};
+      try { all = renamesOk(JSON.parse(read(RENAME_KEY) || "{}")); } catch { /* none */ }
+      delete all[instance];
+      const next = renamesOk(name ? { ...all, [instance]: name } : all);
+      write(RENAME_KEY, JSON.stringify(next));
+      return next;
+    },
     /** #2568: whether the idle go to bed at night (00:00–06:00 on this device's clock) here (default: off). */
     nightOn: () => read(NIGHT_KEY) === "1",
     saveNightOn: (v) => write(NIGHT_KEY, v ? "1" : "0"),

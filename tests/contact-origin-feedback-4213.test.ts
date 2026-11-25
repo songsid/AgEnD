@@ -133,3 +133,14 @@ it("saving restricted on an already restricted known room should not seed unknow
   r.fm.writeContactPermissions("room", { revision: 2, mode: "restricted" }, admin);
   expect(r.store.origin("room")?.kind).toBe("unknown");
 });
+
+it("M-3679 receipt retains the observing bot, while one person's contact origin is independent of it",()=>{
+ const r=rig(),alias={...admin,adapterId:"fake-other"};
+ r.store.inheritOrigin("worker",origin(admin));
+ r.human("worker",admin,"native-main");
+ const payload=r.human("worker",alias,"native-persona") as {meta:{human_receipt_id:string}};
+ const proof=r.outbox.getHumanReceipt(payload.meta.human_receipt_id)!;
+ expect(JSON.parse(proof.origin_json)).toMatchObject({platform:"discord",adapter_id:"fake-other",user_id:admin.userId});
+ expect(r.store.origin("worker")).toMatchObject({kind:"human",people:[expect.objectContaining({userId:admin.userId})]});
+ expect(r.service().needsApplication("worker")).toBe(false);
+});

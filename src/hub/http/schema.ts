@@ -6,7 +6,7 @@ import { HUB_SESSION_LIMITS_MIGRATION } from "../session-limits.js";
 import { HUB_ROOM_AGENT_REQUESTS_MIGRATION } from "../room-agent-requests.js";
 import { HUB_AGENT_INTRO_TOOL_MIGRATION } from "../agent-intro-tool.js";
 import { HUB_AGENT_INTROS_MIGRATION } from "../agent-intro.js";
-import { HUB_AGENT_PICTURES_MIGRATION } from "../agent-pictures.js";
+import { HUB_AGENT_CHARACTERS_MIGRATION, HUB_AGENT_PICTURES_MIGRATION } from "../agent-pictures.js";
 import { HUB_SHARING_WITHDRAWAL_MIGRATION } from "../sharing-withdrawal.js";
 import { HUB_SHARING_REQUESTS_MIGRATION } from "../sharing-requests.js";
 import { HUB_SHARING_RETENTION_MIGRATION } from "../sharing-retention.js";
@@ -160,4 +160,5 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_SESSION_LIMITS_MIGRATION,
   HUB_AGENT_PICTURES_MIGRATION,
   HUB_DIRECT_POSTS_MIGRATION,
+  HUB_AGENT_CHARACTERS_MIGRATION,
 ]);

@@ -1,7 +1,8 @@
 /**
  * #2122 §10 step 4: Muse's usage, measured — `model_completed` usage in its session.jsonl (real counts, per model call),
  * attributed by the session's `workspace_root` (a subagent's by its parent session), with reasoning; cache writes "not
- * reported" (always 0 so far) and Meta's models not priced. Records in the shape muse 1.4.x wrote on the host.
+ * reported" (always 0 so far). Spark 1.3 is at Meta's Standard list price; a contributor-mode id stays not priced.
+ * Records in the shape muse 1.4.x wrote on the host.
  */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -79,7 +80,7 @@ describe("in the usage report", () => {
   const report = (data: Awaited<ReturnType<CacheService["usageData"]>>) => buildUsageReport({ now: NOW, zone: "UTC", range: { kind: "7d" }, group: "instance", messages: [],
     scanning: data.scanning, instances: data.instances.map(d => ({ name: d.inst.name, backend: d.inst.backend, team: null, status: d.status, with: d.with, ledger: d.ledger, days: d.days })) });
 
-  it("its sessions and their subagents' are measured; another workspace's are not; not priced, cache writes not reported", async () => {
+  it("its sessions and their subagents' are measured; another workspace's are not; Spark 1.3 is priced, the contributor id is not, cache writes not reported", async () => {
     const s = setup();
     s.session("2026-10-17", "a", [meta(s.cwd), call(T(9))], { id: "sub", lines: [call(T(10), {}, "muse-spark-1.3-contributor")] });
     s.session("2026-10-17", "b", [meta(s.other), call(T(9))]);
@@ -87,7 +88,7 @@ describe("in the usage report", () => {
     await svc.pass();
     const r = report(await svc.usageData());
     expect(r.rows[0]).toMatchObject({ key: "dev-muse", backends: ["muse"], requests: 2, input: 22_340, cacheRead: 80_000, output: 242, reasoning: 204, reasoningReported: true,
-      amount: null, priced: "none", models: ["muse-spark-1.3", "muse-spark-1.3-contributor"] });
+      amount: 0.02091025, priced: "partial", unpriced: ["muse-spark-1.3-contributor"], models: ["muse-spark-1.3", "muse-spark-1.3-contributor"] });
     expect(r.rows[0]!.flags).toEqual(expect.arrayContaining(["cache_write_not_reported", "not_priced"]));
     expect((await svc.report("7d")).instances[0]).toMatchObject({ status: "unsupported" });
     await svc.kick();                                                     // read whole: covered, the stray entries no failure

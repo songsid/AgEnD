@@ -19,8 +19,9 @@ import { labelOf } from "/assets/instance-nav.js";
 import { ContactGrantEditor } from "./contact-grant-editor.js";
 import { REASONS } from "./contact-authorizations.js";
 import { groupWouldDisable } from "./contact-tool-groups.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
-const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""; };
+const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? dateTimeText(d, { dateStyle: "medium", timeStyle: "short" }, []) : ""; };
 /** A3's guard reason codes (ContactGuardStatus.reason), each said in words (contact-auth-strings.js guardReason_<code>). */
 const GUARD_REASONS = new Set(["legacy-mode", "unsupported-backend", "unsupported-platform", "unsupported-version", "cli-mode", "load-not-verified", "stale-policy",
   "stale-launch", "not-running", "invalid-policy", "missing-bound-mcp", "missing-selected-mcp", "guard-files-changed", "invalid-load-receipt", "guard-unavailable", "binary-changed"]);
@@ -105,7 +106,8 @@ export function ContactPermissionsPanel({ name }) {
   const p = perm.data;
   useEffect(() => { setEditing(null); }, [name, p?.revision]);
   if (!p && perm.loading !== false && !perm.error) return html`<${Skeleton} lines=${5} label=${ca("loading")} />`;
-  if (!p) return perm.error === "forbidden" ? html`<p class="note contact-forbidden">${ca("forbidden")}</p>`
+  if (!p) return perm.error === "verification-required" ? html`<p class="note contact-verify">${ca("verifyFirst")}</p>`
+    : perm.error === "forbidden" ? html`<p class="note contact-forbidden">${ca("forbidden")}</p>`
     : html`<${ErrorState} message=${ca(perm.error === "unavailable" ? "unavailable" : "loadFailed")} onRetry=${() => void perm.read()} />`;
   // Who may change what (the server says; Sentinel's seam): the source room's admins its mode and tools (canSetMode); the
   // target's approvers its approvers and allowed contacts (canManage).
@@ -119,7 +121,7 @@ export function ContactPermissionsPanel({ name }) {
     setBusy(false);
     if (r.ok) { perm.setData(r.data); toast(ca("saved"), true); return true; }
     if (r.code === "conflict") { await perm.read(); toast(ca("stale"), false); return false; }
-    toast(ca(r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : r.code === "invalid-approver" ? "invalidApprover" : "saveFailed"), false);
+    toast(ca(r.code === "verification-required" ? "verifyFirst" : r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : r.code === "invalid-approver" ? "invalidApprover" : "saveFailed"), false);
     return false;
   };
   const switchMode = async (mode) => {
@@ -140,7 +142,7 @@ export function ContactPermissionsPanel({ name }) {
     setBusy(false);
     if (r.ok) { perm.setData(r.data); toast(ca("originCleared"), true); return; }
     if (r.code === "conflict") { await perm.read(); toast(ca("stale"), false); return; }
-    toast(ca(r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "saveFailed"), false);
+    toast(ca(r.code === "verification-required" ? "verifyFirst" : r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "saveFailed"), false);
   };
   const tools = p.roomTools || { publicRead: false, allowedMcpTools: [], wouldDisable: [] };
   const setTools = (next) => write({ roomTools: { publicRead: next.publicRead, allowedMcpTools: next.allowedMcpTools } });

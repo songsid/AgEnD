@@ -1,0 +1,267 @@
+{
+ "label": "after",
+ "cases": {
+  "desk-light-en-compact": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 96,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 96,
+     "nameCut": false,
+     "text": "Agent 2m",
+     "title": "Last reply to a person: 10/22/2026, 4:06:04 PM\nLast turn another agent started (send_to_instance, a task, a report, a broadcast): 11/24/2026, 4:04:04 PM",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 96,
+     "nameCut": false,
+     "text": "5 min ago",
+     "title": "Last reply to a person: 11/24/2026, 4:01:04 PM",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 96,
+     "nameCut": false,
+     "text": "Agent 3h",
+     "title": "Last turn another agent started (send_to_instance, a task, a report, a broadcast): 11/24/2026, 1:06:04 PM",
+     "inRow": true,
+     "timeWhole": true
+    }
+   ]
+  },
+  "desk-dark-zh-TW-compact": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 96,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 96,
+     "nameCut": false,
+     "text": "Agent 2 分",
+     "title": "最後回覆人的時間：2026/10/22 下午4:06:04\n最後一次由其他 Agent 發起的回合（send_to_instance、任務、回報、廣播）：2026/11/24 下午4:04:04",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 96,
+     "nameCut": false,
+     "text": "5 分鐘前",
+     "title": "最後回覆人的時間：2026/11/24 下午4:01:04",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 93,
+     "nameCut": false,
+     "text": "Agent 3 小時",
+     "title": "最後一次由其他 Agent 發起的回合（send_to_instance、任務、回報、廣播）：2026/11/24 下午1:06:04",
+     "inRow": true,
+     "timeWhole": true
+    }
+   ]
+  },
+  "desk-light-en-detailed": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 142,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": "Person 33d · Agent 2m",
+     "title": "Last reply to a person: 10/22/2026, 4:06:04 PM\nLast turn another agent started (send_to_instance, a task, a report, a broadcast): 11/24/2026, 4:04:04 PM",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": "5 min ago",
+     "title": "Last reply to a person: 11/24/2026, 4:01:04 PM",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": "Agent 3h",
+     "title": "Last turn another agent started (send_to_instance, a task, a report, a broadcast): 11/24/2026, 1:06:04 PM",
+     "inRow": true,
+     "timeWhole": true
+    }
+   ]
+  },
+  "desk-dark-zh-TW-detailed": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 142,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": "人 33 天 · Agent 2 分",
+     "title": "最後回覆人的時間：2026/10/22 下午4:06:04\n最後一次由其他 Agent 發起的回合（send_to_instance、任務、回報、廣播）：2026/11/24 下午4:04:04",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": "5 分鐘前",
+     "title": "最後回覆人的時間：2026/11/24 下午4:01:04",
+     "inRow": true,
+     "timeWhole": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 142,
+     "nameCut": false,
+     "text": "Agent 3 小時",
+     "title": "最後一次由其他 Agent 發起的回合（send_to_instance、任務、回報、廣播）：2026/11/24 下午1:06:04",
+     "inRow": true,
+     "timeWhole": true
+    }
+   ]
+  },
+  "phone-dark-zh-TW-detailed": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 284,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false,
+     "visible": true
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": "人 33 天 · Agent 2 分",
+     "title": "最後回覆人的時間：2026/10/22 下午4:19:20\n最後一次由其他 Agent 發起的回合（send_to_instance、任務、回報、廣播）：2026/11/24 下午4:17:20",
+     "inRow": true,
+     "timeWhole": true,
+     "visible": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": "5 分鐘前",
+     "title": "最後回覆人的時間：2026/11/24 下午4:14:20",
+     "inRow": true,
+     "timeWhole": true,
+     "visible": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": "Agent 3 小時",
+     "title": "最後一次由其他 Agent 發起的回合（send_to_instance、任務、回報、廣播）：2026/11/24 下午1:19:20",
+     "inRow": true,
+     "timeWhole": true,
+     "visible": true
+    }
+   ]
+  },
+  "phone-light-en-detailed": {
+   "errors": [],
+   "csp": [],
+   "rows": [
+    {
+     "name": "general",
+     "nameW": 284,
+     "nameCut": false,
+     "text": null,
+     "title": null,
+     "inRow": false,
+     "timeWhole": false,
+     "visible": true
+    },
+    {
+     "name": "busy-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": "Person 33d · Agent 2m",
+     "title": "Last reply to a person: 10/22/2026, 4:19:20 PM\nLast turn another agent started (send_to_instance, a task, a report, a broadcast): 11/24/2026, 4:17:20 PM",
+     "inRow": true,
+     "timeWhole": true,
+     "visible": true
+    },
+    {
+     "name": "chat-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": "5 min ago",
+     "title": "Last reply to a person: 11/24/2026, 4:14:20 PM",
+     "inRow": true,
+     "timeWhole": true,
+     "visible": true
+    },
+    {
+     "name": "relay-agent",
+     "nameW": 284,
+     "nameCut": false,
+     "text": "Agent 3h",
+     "title": "Last turn another agent started (send_to_instance, a task, a report, a broadcast): 11/24/2026, 1:19:20 PM",
+     "inRow": true,
+     "timeWhole": true,
+     "visible": true
+    }
+   ]
+  }
+ },
+ "source": "06180583",
+ "source_phone": "e041461b"
+}

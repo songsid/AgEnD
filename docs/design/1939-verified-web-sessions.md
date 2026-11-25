@@ -484,7 +484,7 @@ only on an admin code with an account (owner or recipient), never on a host code
 | `/web` menu (Discord or Telegram General) → this computer or the public link | the DM, else (Discord) the click's ephemeral answer, else withdrawn; never the menu message | yes |
 | Telegram `/web` when the bot can't DM yet | no code: the menu offers **Open private chat** (`t.me/<bot>?start=web`); `/start web` in that DM opens the menu there, and the code goes there | yes |
 | A returning device's **Send me a code** | the DM only, else withdrawn | yes |
-| A guest's `/web` | private, but a guest code never qualifies (§3: not an admin) | — |
+| A guest's `/web` (and a guest's returning device) | private; since M-3651 it verifies the guest's identity only (`web-guest`, §0.5), never an admin's authority | yes (§0.5) |
 | `agend web --code` on a chat fleet | the host's shell; no account | no (as before) |
 | A TOTP or device sign-in | no code sent to an account | no (as before) |
 
@@ -528,6 +528,48 @@ private-code sign-in, this notice with Not me, and `/web revoke`.
   a returning device and the quick link;
 - not-verified paths: an unmarked code, `agend web --code`, the switch off, and "only this computer" from the LAN;
 - the code store's mark and the notice's Not me and end.
+
+### 0.5 A guest's private code is verified identity, never authority (2026-11-24, M-3651, the user; the leader's D1)
+
+A guest's `/web` code goes privately to the guest's own Discord or Telegram account, exactly as §0.4's admin code does.
+So the guest's browser is that account, verified. It carries **who it is, never more**:
+- **A separate kind.** Its receipts say `authority.kind: web-guest`, with the same `actor`, `session` and
+  `authority_epoch` as `web-verified` (`evaluateGuestIdentity`). The kind is never `web-verified`.
+  - Every gate that grants on web authority asks for `web-verified` or an admin, so a guest passes none of them: Hub
+    room-post receipts, contacts, Settings self-confirm, Revoke web authority, agent proposals and device approval,
+    and a Confirm card.
+  - An older reader doesn't know the kind and reads it as none (`isHumanAuthority`).
+- **Agents.** The header stays `@web:g`. The web-chat rule (`WEB_RECEIPT_RULE`) adds one line: a guest's receipt may say
+  `web-guest` with its actor, which is who they are, verified, and never a go-ahead.
+- **Why not `web-verified` for the guest's own account.** The agents' rule counts a `@web:v` web-verified receipt as a
+  go-ahead with no admin check. In an allowlist fleet topic, a guest's own Discord message is never even delivered, so
+  that would give the guest more than its own message.
+- **The checks.** The same §3 checks as an admin's, minus the admin ones:
+  - the switch, the public link and its options, and **Only this computer**;
+  - the token epoch and the namespace (its own adapter);
+  - an authorization under the current epoch that has not run out.
+- **At sign-in only.** `GuestLoginCodes.issue({ private: true })` is set at both callers (a guest's `/web`, and a
+  returning device's code). Both deliver by DM or ephemeral answer, else withdraw the code.
+  - `authorizeSignedInSession` records the authorization, and the DM gets "signed in as a guest … verified as you until
+    …" with **Not me**.
+  - A guest never gets a Confirm card: once it runs out, it sends `/web` again.
+  - `/auth/session` gives a guest its `verifiedUntil`, and the session menu reads **Guest · Verified until …**.
+- **Ends as an admin's.** Revoke web authority (the epoch), the switch, **Only this computer**, the link options and
+  the guest's own `/web revoke`.
+- **Unchanged.**
+  - The contact origin in restricted rooms still counts only `web-verified`.
+  - A guest's routes, grants and Chat/Trusted level.
+  - Settings → Devices shows a guest as **Guest**.
+- **Known and pre-existing (not changed).** In open-mode topics and ClassicBot rooms, a non-admin's own Discord or
+  Telegram message is a `platform` receipt, and the rule text counts any platform receipt as a go-ahead. In a ClassicBot
+  room the room's own person approves things there. Who may give a go-ahead there is a separate policy question.
+
+**Tests.** `tests/web-guest-verified-m3651.test.ts`:
+- the verdict and every refusal, the stored kind, the §10 downgrades and the header;
+- the real `/auth/login` and `/auth/session`, the notice with Not me, and both revocations;
+- the gates a verified guest still fails: a Hub room post (even were its account an admin), contacts, the revoker and a
+  Confirm card;
+- the rule line in the skills.
 
 ## 1. Summary
 

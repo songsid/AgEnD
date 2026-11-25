@@ -9,6 +9,7 @@ import { t, register } from "/assets/app-i18n.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { money, tokens } from "./fleet-cache.js";
+import { timeText } from "/assets/clock-text.js";
 
 register("fusage", {
   en: {
@@ -50,23 +51,23 @@ register("fusage", {
   },
   "zh-TW": {
     range: "期間", today: "今天", r7d: "7 天", month: "本月", all: "全部", custom: "自訂", from: "從", to: "到", apply: "套用",
-    group: "分組", g_instance: "Agent", g_backend: "Backend", g_model: "模型", g_profile: "憑證 profile", g_team: "Team（依目前設定）",
+    group: "分組", g_instance: "Agent", g_backend: "Backend", g_model: "模型", g_profile: "憑證設定檔", g_team: "Team（依目前設定）",
     csv: "下載 CSV", basis: "依牌價換算的 API 等值（{0}）——不是實際花費。", basisMore: "訂閱方案不按 token 計費。",
     amount: "API 等值", input: "輸入", output: "輸出", reasoning: "推理", read: "快取讀取", write: "快取寫入", total: "token 總計", requests: "請求數", messages: "訊息數",
-    notPriced: "未定價", partial: "部分", noTeam: "（不屬於任何 team）", unknown: "未知",
+    notPriced: "未定價", partial: "部分", noTeam: "（不屬於任何團隊）", unknown: "未知",
     t_not_priced: "未定價：{0}", t_partial: "這一列有部分模型沒有價格", t_write_unreported: "Codex／Muse 不回報快取寫入",
     t_cost_reported: "金額為 CLI 自行回報", t_estimated: "依文字長度估算（Kiro 不記錄 token 數）", t_reasoning_none: "這個 CLI 不回報",
-    sourceNote: "部分時段在 AgEnD 記錄 backend 與 profile 之前就已讀取。", profileUnrecorded: "未記錄 profile",
+    sourceNote: "部分時段在 AgEnD 記錄後端與設定檔之前就已讀取。", profileUnrecorded: "未記錄設定檔",
     l_partial: "◐ 部分定價", l_cost_reported: "† 金額由 CLI 回報", l_estimated: "≈ 估算值",
     speed: "速度", speedUnit: "{0} token/秒", speedCoverage: "{1} 個請求中有 {0} 個可計時", speedSpread: "p10–p90：{0}–{1} token/秒",
-    speedNone: "transcript 沒有計時資訊", speedByModel: "各模型速度",
+    speedNone: "對話紀錄沒有計時資訊", speedByModel: "各模型速度",
     speedBasis: "輸出 token ÷ 模型本身的回應時間（不含工具執行時間）；方法參考 tokdash。",
    
     f_includes_estimates: "含估算值（Kiro）", estimatedPart: "其中估算：{0}",
     scanning: "掃描中——總數可能還會增加。", updated: "更新於 {0} · 每 10 分鐘讀取一次", since: "自 {0} 起收集", notYet: "尚未收集",
     refresh: "重新整理",
-    notMeasured: "未量測", nm_credit_billed: "Kiro 以 credit 計費，不記錄 token", nm_unsupported: "AgEnD 目前還讀不到這個 CLI 的用量", nm_no_data: "尚未讀到任何資料",
-    shared: "與 {0} 共用工作目錄，無法分辨各自的 transcript",
+    notMeasured: "未量測", nm_credit_billed: "Kiro 以點數計費，不記錄 token", nm_unsupported: "AgEnD 目前還讀不到這個 CLI 的用量", nm_no_data: "尚未讀到任何資料",
+    shared: "與 {0} 共用工作目錄，無法分辨各自的對話紀錄",
     empty: "還沒有任何紀錄", emptyHint: "用量從 Claude Code、Codex、Grok、Muse、OpenCode 與 Antigravity 讀取，Kiro 則為估算，自 fleet 啟動起計。",
     blocked: "公開連結上不提供", blockedHint: "只有在設定 → 網頁儀表板裡開啟「透過公開連結提供用量報告」時，公開連結才會提供用量；這個設定要在執行 AgEnD 的那台電腦上、直接開啟的儀表板裡變更。",
     openSettings: "在那台電腦上開啟設定 → 網頁儀表板",
@@ -439,7 +440,7 @@ export function UsageReport({ report, choice, setChoice, refresh, fetchedAt }) {
     <p class="us-basis" role="note" title=${tu("basisMore")}>${tu("basis", report.pricesChecked)}</p>
     ${noDaily ? html`<p class="us-partial" role="status">${tu("noDaily")}</p>` : report.dailyTruncated ? html`<p class="us-partial" role="status">${tu("partialDays", report.dailyFrom)}</p>` : null}
     ${zones ? html`<p class="us-partial" role="status">${tu("zoneChanged", zones.join(", "), report.zone)}</p>` : null}
-    <p class="note us-fresh">${tu("updated", new Date(fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))} · ${Number.isFinite(since) ? tu("since", new Date(since).toLocaleDateString()) : tu("notYet")} · ${tu("zoneNote", report.zone)}${group === "team" ? ` ${tu("teamsNote")}` : ""}
+    <p class="note us-fresh">${tu("updated", timeText(fetchedAt, { hour: "2-digit", minute: "2-digit" }, []))} · ${Number.isFinite(since) ? tu("since", new Date(since).toLocaleDateString()) : tu("notYet")} · ${tu("zoneNote", report.zone)}${group === "team" ? ` ${tu("teamsNote")}` : ""}
       ${report.scanning.active && (!report.scanning.caughtUp || report.scanning.pendingBytes > 0) ? html` <span class="us-scan" role="status">${tu("scanning")} <button type="button" class="btn btn-sm" onClick=${refresh}>${tu("refresh")}</button></span>` : null}</p>
     ${empty ? html`<${Empty} icon="chart" title=${tu("empty")} hint=${tu("emptyHint")} />` : html`
       <dl class="us-totals card">

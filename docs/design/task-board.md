@@ -171,8 +171,20 @@ kept out of sight) and is built each time.
 (the timeline and the comment box) and `fleet-task-create.js` (the quick create); `fleet-task-view.js` (the toolbar and
 the list), `fleet-task-menu.js` (a card's menu, stepping), `fleet-task-common.js` (words, requests, moves, marks). Home: what waits for the person (confirm, send back, answer),
 then the projects (with % done) and No project. A board read carries live cards and the last 14 days' finished ones
-(`?done=all`: every done main task, for the Done column's "All"), each project's numbers over all its cards, and is a
-handful of statements whatever its size (`views()`, `projectStats()`). A project: its main tasks by status (or as a list), the toolbar's search and filters, drag to move or reorder,
+(`?done=all`: every done main task, for the Done column's "All") and each project's numbers over all its cards. **M-3668 (the user, 11-24):** with `defaults.task_board.archive_after_days`
+(default 3; 0 = never) a main task done or cancelled that many days ago is archived — a view rule on `done_at`, nothing
+changes in the database: the board read carries finished main tasks only until then (`archiveAfterDays` says how long),
+the projects' numbers leave archived ones out and count them (`archived`, and `doneWeek`: done in the last 7 days),
+`GET /ui/tasks/archive?project=&before=&assignee=` pages a project's archived main tasks newest first, and search and a
+card's page say `archived`. Moving one to To do reopens it (its status, not its age, decides). The Done column shows its
+newest 20 at a time (fleet-task-archive.js). #4428 review: an archived main task's sub tasks leave the board with it; the
+Archive leaves out what the public link hides before it pages (`leaveOut`), so its cursor, total and assignees never tell
+of such a card; and a page's same-revision read (`?rev=`) is answered `unchanged` only with the `epoch` it read
+(`boardEpoch()`: how many finished cards have passed the archive line, this week's and the recent window's), since time
+moves a card across them with no write. Over the public link the epoch and the projects' numbers leave out the hidden
+instances' cards (and a hidden main task's sub tasks), as the board read does. Settings → Shared agent settings →
+Advanced has the archive age. Either way a board read is a handful of statements whatever its size
+(`views()`, `projectStats()`). A project: its main tasks by status (or as a list), the toolbar's search and filters, drag to move or reorder,
 a main task's sub tasks inside its tile. A card: every field edits in place with the version it started from; a 409
 shows the newer card with the draft still open, and saving again overwrites. `?card=M-3` opens a card. Bars are SVG rects (the CSP allows no style attribute); a bar fills with done work only — the percentage beside it (#2299: a project whose only card was blocked drew a full red bar at 0 %) — and the chips name what is blocked or waiting.
 
@@ -394,6 +406,59 @@ person; `mine` lists "sent back to you" with the reason; `get` shows the comment
 few, a send-back marked "(sent back)"; and every claim, done or update returns the board's notes (the new comments
 first). The tool's description, the `agend-agent` instructions and the default workflow template say so. Board moves
 are in the activity log like the tool's claims and completions.
+
+## Files on a card, and Markdown
+
+The person reads the card — its result, its timeline, its files — not the agent's chat and not a path on the agent's machine. An
+agent once finished a step with "design document: `/data/workspaces/planner/survivor-design.md`" and the person could open nothing.
+
+**Files.** An agent puts what it made ON the card, under the comment of the write that brings it: `attach: [paths]` on `update` and
+`move`, the `attach` action, `agend-agent task attach M-3 FILE…` / `--attach FILE`. The write is one: status, result, comment and
+files, all or nothing (a failure after the files moved puts them back to staging).
+- *The agent's side reads.* `src/task-attach-client.ts`, in the CLI and in the instance's daemon: each file by `readAgentFile` (inside
+  the agent's working directory, no symlink, not under AgEnD state, within 10 MiB), then staged on the fleet in parts (`action: "upload"`,
+  an internal action; parts of 360 KiB, each answered before the next — the fleet IPC's line is 1 MiB, the agent endpoint's body
+  512 KiB). The write then carries the staged ids as `uploads` in place of the paths: the fleet never opens a path an agent names, and a
+  raw `attach` that reaches it is refused with what to use. A write the fleet REFUSES (a card at its limit, a stale `version`) gives the
+  staged files back (`release`, internal too), so a write tried again and again never fills the instance's room of 20 staged files; what a
+  client that died never gave back leaves after 30 minutes.
+- *The fleet keeps.* `src/scheduler/task-files.ts`: `<AGEND_HOME>/task-files/<card uuid>/<id>` (0600 in a 0700 folder; the name on disk
+  is the id), staged files in `task-files/pending/` for 30 minutes, held for their writer only. Limits (`src/task-file-limits.ts`):
+  10 MiB a file, 20 files and 50 MiB a card, 10 files a write. The type is read from the bytes (`sniffUpload`, the chat's own): a picture,
+  text, or any other file as an opaque document; markup (HTML, SVG) is never typed as a page.
+- *The board knows.* Table `task_attachments(id, task_id, entry_id, name, mime, kind, size, sha256, author, author_kind, at)`, a file
+  hanging under its comment (`entry_id`); a write with files and no words leaves the line `📎 name, name`. `CardView.attachmentCount`,
+  `CardDetail.attachments`, a "files on the card" line in the card text an agent reads. A comment's wake is the comment's: a file wakes
+  nobody a comment would not. Retention prunes a card's rows and folder with it; the prune also sweeps a folder or staged file nobody holds.
+- *The page serves.* `GET /ui/tasks/files/<id>`: read with the card (any session that may read it); over the public link a hidden
+  instance's card, its main task's sub task and a file a hidden instance wrote are "no such file", as an unknown id. Always a
+  download — an image as an image, text as `text/plain`, everything else `application/octet-stream` with `attachment`, `nosniff`, the
+  sandboxing CSP and no caching; never HTML from the dashboard's origin. The file is opened with `O_NOFOLLOW` (a symlink put where it
+  was is not followed) and must be a regular file of the size the table holds. Windows has no `O_NOFOLLOW` (Node leaves the constant
+  undefined, so the flag is 0 there): the `isFile` check on the opened descriptor and the size check stand alone — which is enough, as
+  nothing an agent can write is under `task-files/` (reserved in `agent-file-read.ts`; the fleet alone writes it). What the page shows of a file it reads on a click, as the chat
+  does: a picture; Markdown through the chat's renderer; text, CSV, JSON, code as plain text; an `.html` file in the chat's sandboxed
+  preview frame (the device must allow previews; not over the public link, except to an admin session there).
+
+**Markdown.** A card's goal, scope, context, state, result and blocked reason are READ as the chat reads a message (`fleet-task-md.js`:
+the chat's renderer, which escapes first; code blocks decorated as the chat's). Reading only: the stored text is the same, the edit box
+is plain text, a click on the words opens it. A progress `log` line stays one plain line. The limits are the same on purpose (an agent
+reads the whole card): a long content goes in a comment (4000 characters) or a file.
+
+**Reporting.** Written in the default workflow (Progress Tracking), the CLI reference, the `task-board` skill and, once, to an agent
+already running (`agent-whats-new`): a short Markdown `result`, the content as a comment written for the person (what it is, how to open it),
+and the finished file with `attach` — **not the working files**: usually one, at most three, never source, modules, config, logs or drafts; a
+web prototype is ONE `.html` with its CSS and JS inline (the source stays in the workspace or branch, linked in the comment); short text goes in
+the comment, a file is for what is too long or must be a file; the same file is not attached twice unless it changed. Never only a path.
+An agent once attached all six source files of a game with "run `python3 -m http.server`" as the explanation: a pile of parts. The answer to a
+write that attaches more than 3 files, or an `.html` beside `.js` / `.css`, carries one reminder line (`attachHint`); the write goes through.
+Not told by guessing: the fleet does not turn a path in an agent's text into a file (that would let one sentence of text point the fleet
+at any path). The answer to a write whose result, comment, state, log, goal, reason or scope names a path on the agent's machine (and
+brought no file) carries one note saying the person cannot open it and how to attach (`pathHint`).
+
+**Other releases.** All additive: the table is new, `tasks` and `task_entries` are unchanged, and a comment's event data is the same
+unless it brought files. A release without this ignores the table and the folder, shows a file's comment as the line `📎 name`, and its
+prune deletes a card without its rows and files; the next prune here sweeps them (like `task_watchers`).
 
 ## Product direction: acting on the web
 

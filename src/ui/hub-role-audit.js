@@ -1,6 +1,7 @@
 import {html,useEffect,useRef,useState} from "/assets/app-html.js";
 import {hr} from "./hub-roles-strings.js";
 import {auditActor,auditAction,auditCsv,auditResult,auditSentence,valueLines,roleAuditActions} from "./hub-role-view.js";
+import { dateTimeText } from "/assets/clock-text.js";
 export function RoleAudit({client}){
  const enhanced=client.roleAuditFiltersV1===true;
  const [page,setPage]=useState(null),[error,setError]=useState(null),[busy,setBusy]=useState(false),[exporting,setExporting]=useState(false),[filters,setFilters]=useState({}),[draft,setDraft]=useState({from:"",to:"",person:"",action:""}),[people,setPeople]=useState([]),[actions,setActions]=useState(()=>[...roleAuditActions]);
@@ -32,7 +33,7 @@ export function RoleAudit({client}){
    <label class="field"><span>${hr("filterAction")}</span><select value=${draft.action} disabled=${busy||exporting} onChange=${e=>setDraft({...draft,action:e.target.value})}><option value="">${hr("all")}</option>${actions.map(action=>html`<option key=${action} value=${action}>${auditAction(action)}</option>`)}</select></label><button type="submit" class="btn" disabled=${busy||exporting}>${hr("filter")}</button></form>`:null}
   ${error?html`<p class="err" role="alert">${error}</p><button type="button" class="btn" disabled=${busy||exporting} onClick=${()=>load(null,filters)}>${hr("retry")}</button>`:null}${!page&&!error?html`<p role="status">${hr("loading")}</p>`:null}
   <div class="hub-team-table-wrap"><table class="hub-team-table hub-role-audit"><thead><tr><th>${hr("when")}</th><th>${hr("who")}</th><th>${hr("action")}</th><th>${hr("result")}</th></tr></thead><tbody>
-   ${page?.rows?.map(row=>html`<tr key=${row.id}><td class="hub-role-audit-when"><time datetime=${new Date(row.at).toISOString()}>${new Date(row.at).toLocaleString()}</time></td><td class="hub-role-audit-who">${auditActor(row)}</td><td class="hub-role-audit-action">
+   ${page?.rows?.map(row=>html`<tr key=${row.id}><td class="hub-role-audit-when"><time datetime=${new Date(row.at).toISOString()}>${dateTimeText(row.at)}</time></td><td class="hub-role-audit-who">${auditActor(row)}</td><td class="hub-role-audit-action">
     ${row.details?html`<details><summary>${auditSentence(row)}</summary><div class="grid2 hub-role-audit-values">${["before","after"].map(side=>html`<div key=${side}><strong>${hr(side)}</strong><ul>${valueLines(row.details[side]).map((line,i)=>html`<li key=${i}>${line}</li>`)}</ul></div>`)}</div></details>`:auditSentence(row)}</td>
     <td class="hub-role-audit-result"><span class=${`tag ${row.result==="denied"?"warn":["completed","allowed"].includes(row.result)?"ok":"danger"}`}>${auditResult(row.result)}</span></td></tr>`)}</tbody></table></div>
   ${page&&!page.rows.length?html`<p class="note">${hr("empty")}</p>`:null}${page?.nextCursor?html`<div class="hub-role-actions"><button type="button" class="btn" disabled=${busy||exporting} onClick=${()=>load(page.nextCursor)}>${hr("more")}</button></div>`:null}</section>`;

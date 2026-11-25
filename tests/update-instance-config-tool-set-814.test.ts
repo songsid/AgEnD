@@ -1,8 +1,8 @@
 /**
- * #814 decision (2026-10-09): update_instance_config must REFUSE any patch
- * that includes tool_set for a non-General caller (General is exempt since decision 36525f1b). This is a privilege boundary (#804/#814): only an
- * administrator via Settings or fleet.yaml may change the tool-permission
- * profile.
+ * #814 decision (2026-10-09): update_instance_config tool_set stays General-only.
+ * An unidentified caller and any identified non-General caller, including a
+ * coordinator, get the same refusal. The message names Settings or fleet.yaml
+ * and the privilege boundary (#804/#814).
  *
  * Tests:
  * - call with tool_set is refused, fleet.yaml unchanged
@@ -23,14 +23,14 @@ function context(instance: Record<string, unknown> = {}) {
   } as any;
 }
 
-async function update(ctx: any, config: Record<string, unknown>) {
+async function update(ctx: any, config: Record<string, unknown>, instanceName?: string) {
   let result: unknown;
   let error: string | null | undefined;
   await outboundHandlers.get("update_instance_config")!(
     ctx,
     { name: "worker", config },
     (value, message) => { result = value; error = message; },
-    {} as any,
+    { instanceName } as any,
   );
   return { result, error };
 }
@@ -55,9 +55,18 @@ describe("update_instance_config — tool_set (#814 privilege boundary)", () => 
   it("refuses with the canonical error message (#804/#814 cited)", async () => {
     const ctx = context({});
     const { error } = await update(ctx, { tool_set: "coordinator" });
-    expect(error).toContain("Settings or fleet.yaml");
-    expect(error).toContain("#804");
-    expect(error).toContain("#814");
+    expect(error).toBe("tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
+  });
+
+  it("refuses an identified coordinator with that same message and writes nothing", async () => {
+    const instance: Record<string, unknown> = { tool_set: "worker" };
+    const ctx = context(instance);
+    ctx.fleetConfig.instances.coord = { tool_set: "coordinator" };
+    const { result, error } = await update(ctx, { tool_set: "minimal" }, "coord");
+    expect(result).toBeNull();
+    expect(error).toBe("tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
+    expect(instance.tool_set).toBe("worker");
+    expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
   });
 
   it("a call without tool_set still updates other fields (no regression)", async () => {

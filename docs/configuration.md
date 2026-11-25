@@ -245,7 +245,7 @@ Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp 
 
 `tool_set` enforces policy for the resolved instance identity, not isolation between shell-capable agents on the same uid. A sibling can read another instance’s `agent.token` or use its IPC socket; see [the shared-account threat model](SECURITY.md#tool-profiles-and-the-shared-host-account).
 
-General may set another agent’s `tool_set` directly through `update_instance_config({ name, config: { tool_set: "worker" } })` or supply `tool_set` to `create_instance`, without a confirmation card. Other callers, including coordinators and non-General `full` instances, retain the #804/#814 refusal. Both tools refuse `skipPermissions` for everyone. Valid writable profiles are `full`, `standard`, `worker`, `coordinator` and `minimal`; `general` is assigned by role, never written. General’s default profile includes `get_instance_logs`, `get_fleet_config`, `validate_config` and `list_deployments`, but excludes `checkout_repo` and `release_repo`. Sensitive Settings confirmations are unchanged. General cannot change its own `tool_set` through either tool, including a create operation that resolves to the existing General; a person may still change it in Settings or fleet.yaml. This direct exception covers portable/local agents only. Native Windows keeps its separate admin request for creation and for display name, description or model changes; set its `tool_set` in Settings on the host.
+Any identified creator may set a new agent's `tool_set` through `create_instance` or `deploy_template`, without a confirmation card. Changing an existing agent's `tool_set` through `update_instance_config` stays General-only, including `update_instance_config({ name, config: { tool_set: "worker" } })`. The order, highest privilege first, is `full`, `general`, `coordinator`, `worker`, `standard`, `minimal`. A creator may set a profile at or below its own resolved profile. `full` and `general` are never grantable by a non-General creator; a creator already on one of those is capped at `coordinator`. General may still set any writable profile; `general` is assigned by role, never written. Above the cap is refused, and the refusal names the cap. Omitting `tool_set` still means `worker`, unless fleet defaults would copy a higher profile onto the new instance. These tools refuse `skipPermissions` for everyone. General’s default profile includes `get_instance_logs`, `get_fleet_config`, `validate_config` and `list_deployments`, but excludes `checkout_repo` and `release_repo`. Sensitive Settings confirmations are unchanged. Nobody can change their own `tool_set` through a tool, including a create operation that resolves to the existing agent; a person may still change it in Settings or fleet.yaml. This direct path covers portable/local agents only. Native Windows keeps its separate admin request for creation and for display name, description or model changes; set its `tool_set` in Settings on the host.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -678,10 +678,20 @@ file history into the new profile, then dates the copy as the newest so the rela
   or the cache has expired.
 - The reply says `conversation_carried_over: true`.
 - Settings and the login stay per profile; other transcripts in either profile are left as they are. Project auto-memory is shared as described above (an existing non-empty profile memory folder is preserved).
+- The agent's own MCP servers go along too (M-3749): those added with `claude mcp add` at user scope, and at local
+  scope for the instance's folder, are merged into the new profile's `.claude.json`. A server the new profile already
+  has under that name is kept as it is, never overwritten. This happens whether or not the conversation is carried.
+  First the switch records which servers the agent has at that moment (added during its session included), so a later
+  launch can tell what did not come along.
 
 When the copy can't be made, the switch starts fresh with the same handover as Kiro, and the reply gives the reason in
 `carry_failed`. That happens when there is no session yet, when the new profile already holds a different version of
 that conversation, when there isn't enough free space, or when the copy fails.
+
+If an agent starts on another profile without some MCP servers it had at its previous launch (a switch made while it
+was stopped, or a merge that could not be written), it is told which ones, with the `claude mcp add -s local` command to
+add one back, and Needs you lists **MCP servers missing after an AI account switch** until they are back or someone
+acknowledges it there. A server removed while the agent stays on the same profile is its own choice and is not reported.
 
 ### Seeing both quotas
 

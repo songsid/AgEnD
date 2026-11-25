@@ -11,6 +11,7 @@ import { useCanCreate } from "/assets/app-shell.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 /** Pins per agent (web-pin-store.ts PINS_MAX): the host says pins_full past it. */
 export const PINS_MAX = 50;
@@ -67,7 +68,7 @@ export function usePins(name) {
   return all[name] || { offered: false, pins: [] };
 }
 
-const when = (ts) => { const d = new Date(ts); return Number.isFinite(d.getTime()) ? d.toLocaleString(lang(), { dateStyle: "medium", timeStyle: "short" }) : ""; };
+const when = (ts) => { const d = new Date(ts); return Number.isFinite(d.getTime()) ? dateTimeText(d, { dateStyle: "medium", timeStyle: "short" }, lang()) : ""; };
 const snippet = (s, n = 40) => { const one = String(s || "").replace(/\s+/g, " ").trim(); return one.length > n ? `${one.slice(0, n - 1)}…` : one; };
 
 /** The header's 📌 with the count: only when this agent has a pin. `onOpen` opens the list (the chat panel's). */

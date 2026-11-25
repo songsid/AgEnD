@@ -16,6 +16,7 @@ import { editsOf, keepDraft, syncStage } from "./settings-draft.js";
 import { resetWebAuthorization } from "/assets/web-authorize.js";
 import "./settings-strings.js";
 import { layoutText } from "./settings-layout.js";
+import { dateTimeText } from "/assets/clock-text.js";
 import "./settings-revoke-strings.js";   // the revoke card's own words: a file of its own (PR #3553 review: a retained settings-access-strings.js would lack them)
 import "./settings-access-strings.js";   // revAuthorityBriefWeb / revAuthorityEnabledWeb / revAuthorityRule: an older settings-layout.js from a tab that visited Fleet first lacks them (#3061)
 
@@ -80,7 +81,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   const hoursError = f.hours !== null && (!Number.isFinite(f.hours) || f.hours < overview.hours.min || f.hours > overview.hours.max) ? "vaHoursRange" : "";
   const stuckOff = f.enabled && original.enabled && !overview.state.enabled;
   const warnHosts = !f.loopbackOnly && overview.lanHosts.length > 0;
-  const when = (ms) => new Date(ms).toLocaleString();
+  const when = (ms) => dateTimeText(ms);
   const canRevoke = !!(overview.you && overview.you.canRevoke);        // AGEND-138: only the verified owner (the server decides)
 
   const fc = (cls, key) => `${cls}${!sameValue(f[key], original[key]) ? " s-dirty" : ""}`;

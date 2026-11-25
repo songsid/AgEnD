@@ -54,7 +54,7 @@ import { HubPolicyService } from "../policy.js";
 import { HubRoomsService } from "../rooms.js";
 import { HubRoomAdmin } from "../rooms/admin.js";
 import { HubGroupRooms, HubRoomRefusal } from "../rooms/service.js";
-import { HUB_ROOM_OFFICE_FEATURE, type RoomOfficeLook } from "../rooms/office.js";
+import { HUB_ROOM_OFFICE_FEATURE, type RoomCharacter, type RoomOfficeLook } from "../rooms/office.js";
 import { SHARE_MODULES } from "../../office-share-page.js";
 import { HubDirectPosts, HUB_DIRECT_POST_CAPABILITY } from "../direct-posts.js";
 import { directMessages, directRoomView, directUnread, markDirectRead } from "../rooms/direct-view.js";
@@ -134,7 +134,10 @@ export interface HubHttp {
   readonly agentCatalogV1?: true;
   /** M-3533 R2b: this Hub takes shared agents' pictures (agent-pictures-v1); the room page draws them. */
   readonly agentPicturesV1?: true;
+  /** M-3533 R2c: the agents' own characters ride the pictures report (agent-characters-v1). */
+  readonly agentCharactersV1?: true;
   readonly exposureRequestsV1?: true;
+  readonly roomAskerIdentityV1?: true;
   /** #3298 S-89: what this Hub offers its pages ("group-policy-v1" only with deps.groupHttp). Presentation only. */
   readonly features: readonly string[];
   readonly directorySessions: HubDirectoryBrowserSessions;
@@ -245,7 +248,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     const report = agentCatalogs.reportOf(fleetId), pictures = agentPictures.looksOf(fleetId);
     if (!report && !pictures.size) return null;
     const out = new Map<string, RoomOfficeLook>(report ? report.catalog.agents.filter((a) => a.exposure && a.avatar).map((a) => [a.exposure!.id, { color: a.avatar!.color, emoji: a.avatar!.emoji }]) : []);
-    for (const [id, p] of pictures) if (p.disc || p.portrait) out.set(id, { ...(out.get(id) ?? { color: null, emoji: null }), ...(p.disc ? { disc: p.disc } : {}), ...(p.portrait ? { portrait: p.portrait } : {}) });
+    for (const [id, p] of pictures) if (p.disc || p.portrait || p.character) out.set(id, { ...(out.get(id) ?? { color: null, emoji: null }), ...(p.disc ? { disc: p.disc } : {}),
+      ...(p.portrait ? { portrait: p.portrait } : {}), ...(p.character ? { character: p.character as RoomCharacter } : {}) });
     return out;
   };
   groupRooms.pictureFile = (sha256) => agentPictures.file(sha256);
@@ -996,10 +1000,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     // `/inline` (a plain path, as the shared thread's renderer takes it) is the same as `?inline=1`: images only.
     // M-3533 R2b: a room agent's disc or portrait, for the room's members. `?v=` is the hash the room showed: kept while it matches.
-    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/agents\/([^/]+)\/picture\/(disc|portrait)$/))) {
+    // M-3533 R2c: and one pose of its own character (its strip's PNG), the same way.
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/agents\/([^/]+)\/(?:picture\/(disc|portrait)|character\/([A-Za-z]{1,16}))$/))) {
       if (method !== "GET") throw new HttpError(405, "method");
-      const roomId = uuid(r[1]), exposureId = uuid(r[2]), slot = r[3] as "disc" | "portrait"; signedIn();
-      const file = await guard(() => groupRooms.picture(ctx, roomId, exposureId, slot));
+      const roomId = uuid(r[1]), exposureId = uuid(r[2]); signedIn();
+      const file = await guard(() => r![3] ? groupRooms.picture(ctx, roomId, exposureId, r![3] as "disc" | "portrait") : groupRooms.characterStrip(ctx, roomId, exposureId, r![4]!));
       res.writeHead(200, { "Content-Type": file.mime, "Content-Length": String(file.bytes.length), "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; sandbox", "Cache-Control": query.get("v") === file.sha256 ? "private, max-age=86400" : "private, no-cache",
         ETag: `"${file.sha256}"`, "Referrer-Policy": "no-referrer", "Cross-Origin-Resource-Policy": "same-origin" });
@@ -1270,6 +1275,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       case "pairing.notice-ack":
         if (!deps.pairingNotices) throw new HubProtocolError("incompatible");
         deps.pairingNotices.acknowledgeFleet(link, frame.payload.id); return;
+      case "question.close": { const payload = rooms.closeQuestion(frame.payload, link); directChanged(payload.messageId, false); return { ...reply, type: "question.close-result", payload }; }
       case "receipt": { const payload = rooms.receipt(frame.payload, link); directChanged(payload.messageId, false); return { ...reply, type: "receipt", payload }; }
       case "answer": { const payload = await rooms.answer(frame.payload, link); directChanged(payload.messageId, true); return { ...reply, type: "receipt", payload }; }
       case "authorize.request": {
@@ -1332,7 +1338,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => { fleetVersions.connected(link); agentCatalogs.connected(link); }, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, agentIntroV1: true, agentCatalogV1: true, agentPicturesV1: true, exposureRequestsV1: true, features: Object.freeze(["agent-intro-defaults-v1", "agent-sharing-v1", "agent-intros-v1", "admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-purpose-v1", "room-ask-v1", "room-post-v1", HUB_DIRECT_POST_CAPABILITY, HUB_ROOM_CONTEXT_CAPABILITY, HUB_ROOM_BRIEF_CAPABILITY, HUB_ROOM_MEMBERS_CAPABILITY, HUB_ROOM_ANSWER_STATUS_CAPABILITY, "person-prefs-v1", ...(roomAgentRequests ? ["room-owner-requests-v1"] : []), ...(roomDiscovery ? ["room-agent-discovery-v1"] : []), ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive,...(deps.issuer.signRoomAsker?{roomAskerIdentityV1:true as const}:{}), memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => { fleetVersions.connected(link); agentCatalogs.connected(link); }, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, agentIntroV1: true, agentCatalogV1: true, agentPicturesV1: true,agentCharactersV1: true, exposureRequestsV1: true, features: Object.freeze(["agent-intro-defaults-v1", "agent-sharing-v1", "agent-intros-v1", "admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-purpose-v1", "room-ask-v1", "room-post-v1", HUB_DIRECT_POST_CAPABILITY, HUB_ROOM_CONTEXT_CAPABILITY, HUB_ROOM_BRIEF_CAPABILITY, HUB_ROOM_MEMBERS_CAPABILITY, HUB_ROOM_ANSWER_STATUS_CAPABILITY, "person-prefs-v1", ...(roomAgentRequests ? ["room-owner-requests-v1"] : []), ...(roomDiscovery ? ["room-agent-discovery-v1"] : []), ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
     async close() { closed = true; sharingRequests.close(); agentCatalogs.close(); agentPictures.close(); personal?.owner.close(); await personal?.turns.close(); fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await mcp.close(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };

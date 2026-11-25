@@ -18,10 +18,10 @@ register("taskstats", {
     note: "It counts the cards the board shows: with its filter, and finished cards as the Done column has them (the last 7 days, or all).",
   },
   "zh-TW": {
-    button: "統計", buttonTip: "統計這個專案的卡：依負責人、狀態、優先度或大小",
+    button: "統計", buttonTip: "統計這個專案的卡：依負責人、狀態、優先級或大小",
     title: "統計：{0}", count: "計算", countAll: "所有卡", countMain: "只算主任務",
     rows: "每一列", split: "細分", splitNone: "不細分",
-    "field.assignee": "負責人", "field.status": "狀態", "field.priority": "優先度", "field.size": "大小",
+    "field.assignee": "負責人", "field.status": "狀態", "field.priority": "優先級", "field.size": "大小",
     total: "合計", cards: "{0} 張卡", empty: "這裡沒有可以統計的卡", chart: "{0}，依{1}",
     note: "統計的是看板上顯示的卡：套用看板的篩選；已完成的卡照完成欄顯示的算（近 7 天或全部）。",
   },

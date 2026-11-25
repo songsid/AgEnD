@@ -561,7 +561,7 @@ describe("a revocation that could not be saved is reported as a failure, never a
     expect(sent[0]).not.toMatch(/restart AgEnD/);
     expect(sent[0]).not.toBe(t("dashboard.revoked", 1));
     setLocale("zh-TW");
-    expect(t("dashboard.revoked_not_durable", 1)).toMatch(/重新啟動可能會讓那些 session 回來/);
+    expect(t("dashboard.revoked_not_durable", 1)).toMatch(/重新啟動可能會讓那些工作階段回來/);
     expect(t("dashboard.revoked_not_durable", 1)).not.toMatch(/請重新啟動 AgEnD/);
     setLocale("en");
     await stop(h.fm);

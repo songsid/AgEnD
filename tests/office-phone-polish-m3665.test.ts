@@ -76,6 +76,14 @@ describe("zoomed out past TAG_READ_K: the names as chips, not 3 px tags", () => 
     expect(rule(".oo[data-tags-off] .oo-desks > li[data-call]")).toContain("order: -1");
     expect(rule(".oo[data-tags-off] .oo-desks > li[data-call] .oo-desk")).toContain("border-color: var(--warn)");
   });
+  it("#4466 Hide names: the zoomed-out row keeps only the callers, and none at all when nobody calls", () => {
+    expect(rule(".oo[data-tags-off][data-names-off] .oo-desks > li:not([data-call])")).toContain("display: none");
+    expect(rule(".oo[data-tags-off][data-names-off] .oo-desks:not(:has(> li[data-call]))")).toContain("display: none");
+    const src = readFileSync(join(process.cwd(), "src", "ui", "fleet-office.js"), "utf8");
+    expect(src).toContain('data-names-off=${namesOff ? "" : undefined}');   // on the element data-tags-off is toggled on (ooRef)
+    // One office: too far out to read hides every tag; otherwise Hide names keeps the callers' (as the All-offices tiles).
+    expect(src).toContain('v.k < TAG_READ_K || (s.namesOff ? "names" : false)');
+  });
 });
 
 describe("the zone chips under the stage wrap, never cut", () => {

@@ -61,6 +61,11 @@ const CASES: Record<string, { v: string; width: number; flags: Record<string, un
   "331-summary-newfocus-80": { v: "331", width: 80, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
   // With the flag, 2.1.331 compacts a cold --continue on its own, with no dialog, unless idleCompaction is off.
   "331-summary-noidle": { v: "331", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true }, userSettings: { idleCompaction: false } },
+  // 2.1.332 audit (M-3753): the same cases on 2.1.332.
+  "332-lookup": { v: "332", width: 160, flags: { tengu_amber_tally: TIER } },
+  "332-nolookup": { v: "332", width: 160, flags: { tengu_amber_tally: { ...TIER, newConversationPointer: false } } },
+  "332-summary-lookup": { v: "332", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
+  "332-summary-noidle": { v: "332", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true }, userSettings: { idleCompaction: false } },
 };
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
 

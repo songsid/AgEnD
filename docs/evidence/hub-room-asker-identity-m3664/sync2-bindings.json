@@ -1,0 +1,61 @@
+{
+  "ours": "a71de4546b2cd1d978ebefb5cddaa0bc093a247c",
+  "incoming": "2698b1302b3439ecd31612b7e18c883dff644b0f",
+  "resolutions": [
+    {
+      "path": "src/hub/compose/member.ts",
+      "oursDigest": "455ff4a76d43521a0663b6bfca9073b5f04fd96ca6da6dffc38952cbb4725947",
+      "incomingDigest": "a265299e32bff2a56f44e1f58a74ec02fe0f90579c7bd17878f64f8f623a7e9d",
+      "mergedDigest": "d569df2b99087214a39e1864a42ba1a6f54ed8fcea8c4adbb7950f2c9cea4c02"
+    },
+    {
+      "path": "src/locale.ts",
+      "oursDigest": "0ed5c4d3bd799805404b34b8cacd9a7381945331f912f152f9a17f7a337a7be2",
+      "incomingDigest": "ff045a210cccb295ef534c22a763041064bf0debe322ce5c63cb1845ad2457f1",
+      "mergedDigest": "da12bcfbe77652a18c0201a86866943ac4db1de9897264079a957a75b6c368e3"
+    }
+  ],
+  "incomingOnlyByteEqual": [
+    "changes/4420.md",
+    "changes/4420.zh-TW.md",
+    "changes/4426.md",
+    "changes/4426.zh-TW.md",
+    "docs/design/2122-usage-analysis.md",
+    "docs/design/hub-agent-contact-limits.md",
+    "docs/features.md",
+    "docs/features.zh-TW.md",
+    "docs/web-dashboard.md",
+    "docs/web-dashboard.zh-TW.md",
+    "src/cache-prices.ts",
+    "src/daemon.ts",
+    "src/fleet-manager.ts",
+    "src/general-knowledge/skills/hub/SKILL.md",
+    "src/hub-contact-windows.ts",
+    "src/outbound-handlers.ts",
+    "tests/cache-analysis-1468.test.ts",
+    "tests/classic-contact-dispatch-3339.test.ts",
+    "tests/hub-contact-limit-3160.test.ts",
+    "tests/hub-contact-window-settles-m3660.test.ts",
+    "tests/hub-member-upgrade-3878.test.ts",
+    "tests/hub-question-own-turn-m3660.test.ts",
+    "tests/hub-representative-fleet.test.ts",
+    "tests/hub-representative.test.ts",
+    "tests/hub-room-ask-track-c.test.ts",
+    "tests/usage-muse-2122.test.ts"
+  ],
+  "ownOnlyProductionByteEqual": [
+    "src/hub/client.ts",
+    "src/hub/compose/server.ts",
+    "src/hub/http/compose.ts",
+    "src/hub/http/deps.ts",
+    "src/hub/member/room-asker-store.ts",
+    "src/hub/protocol.ts",
+    "src/hub/room-asker-identity-model.ts",
+    "src/hub/room-asker-identity.ts",
+    "src/hub/rooms/agents.ts",
+    "src/hub/rooms/asker-identity.ts",
+    "src/hub/server.ts",
+    "src/hub/types.ts",
+    "src/needs-you.ts"
+  ]
+}

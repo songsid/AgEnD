@@ -1,0 +1,106 @@
+{
+  "sourceHead": "57e64c643f3fcf33f2c327715d3f6d8479ca07f7",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: Authorizations lists the held request with its decision buttons",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no \"couldn't load\"",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Needs you lists it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the Permissions tab shows the retained origin and Clear",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors or CSP reports",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Authorizations says to verify in Sign-in status",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the Permissions tab says the same",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: Authorizations lists the held request with its decision buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no \"couldn't load\"",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: Needs you lists it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the Permissions tab shows the retained origin and Clear",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors or CSP reports",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: Authorizations says to verify in Sign-in status",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the Permissions tab says the same",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3680-desk-light-en-1-authorizations.png",
+      "sha256": "46eee1730348cc23304893c29b89a71aca2b16ad6eee21ec5c4cb1d1d40e889e"
+    },
+    {
+      "path": "m3680-desk-light-en-2-needs-you.png",
+      "sha256": "f760244e14e1052bdde6938ed139e9e2a1095b04b2638ccd757d0ae8908bf539"
+    },
+    {
+      "path": "m3680-desk-light-en-3-permissions.png",
+      "sha256": "e28915805502e771d707b6c263bb59739bbc78aac57cb4eb6441ca0f31829928"
+    },
+    {
+      "path": "m3680-desk-light-en-4-verify-authorizations.png",
+      "sha256": "37647619d0eba4e6644d950868fb00a72dfd4f677447d03a50ab8563ce020fc5"
+    },
+    {
+      "path": "m3680-desk-light-en-5-verify-permissions.png",
+      "sha256": "be58cbcca6edeeffe17dbbe62ca14996a8876e0cc9c05d8108842bd8903fbb0a"
+    },
+    {
+      "path": "m3680-phone-dark-zh-TW-1-authorizations.png",
+      "sha256": "cf7a915d6a2cfde17cd804c0f2bf9a66bb5a55fcad20fb05c3bbd2dbe1b4a65e"
+    },
+    {
+      "path": "m3680-phone-dark-zh-TW-2-needs-you.png",
+      "sha256": "b4f348e1c4d4ad40a1efadbcee0ffe6f605f9c7c46536fa6b0d4ce4765668839"
+    },
+    {
+      "path": "m3680-phone-dark-zh-TW-3-permissions.png",
+      "sha256": "bf81afcc83dfb11ab4bb146b733f39fc14f4417a9ffd5d1f3723dbaa5bf3b51f"
+    },
+    {
+      "path": "m3680-phone-dark-zh-TW-4-verify-authorizations.png",
+      "sha256": "8fe03e6552eb07fbe0d4c191d0d1d0bc23606e9de81281d0dfe464033aeffd3c"
+    },
+    {
+      "path": "m3680-phone-dark-zh-TW-5-verify-permissions.png",
+      "sha256": "25c75aa4b122331ad73e1b10c5fa1ce592a360693ea86d30357150dd42e2a77f"
+    }
+  ],
+  "ticket": "Rf1c0f387",
+  "summary": "14/14"
+}

@@ -22,6 +22,7 @@ import "./view-strings.js";
 import { themesShown, themesStore } from "./app-themes.js";
 import { machineName } from "./machine-name.js";
 import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "./identity-color.js";
+import { dateTimeText } from "./clock-text.js";
 
 // Keep new copy beside its caller: a retained view-strings.js still links and renders the menu.
 register("agentRow", {
@@ -501,6 +502,31 @@ export function replyText(mins) {
   if (mins < 2880) return tn("replyYesterday");
   return tn("replyDays", { n: Math.floor(mins / 1440) });
 }
+/**
+ * M-3674: minutes since another agent last started a turn for the instance (a message it took up from another
+ * instance: the status frame's last_agent_turn), or null. Its last reply to a person (replyAge) counts only turns a
+ * person started, so an agent kept busy by others looked idle ("33 天").
+ */
+export function agentTurnAge(it, now = Date.now()) {
+  const at = it && typeof it.last_agent_turn === "string" ? Date.parse(it.last_agent_turn) : NaN;
+  return Number.isFinite(at) ? Math.max(0, (now - at) / 60000) : null;
+}
+/**
+ * The row's time (M-3707, the user 11-25: one time again, not M-3674's 人/Agent pair): the most recent response, to a
+ * person (last_reply) or to another agent (last_agent_turn), unlabelled, as a reply's time always read ("2 min ago");
+ * null for neither. `person`: the time shown is the reply to a person. The title says which kind each was, the newer
+ * first, each with its full time. Only a reply to a person highlights the row or moves it in "Recent" (replyAge, below):
+ * a turn another agent started updates the time silently.
+ */
+export function activityText(it, replyMins, agentMins) {
+  if (replyMins == null && agentMins == null) return null;
+  const at = (k) => dateTimeText(Date.parse(it[k]));
+  const agentNewer = agentMins != null && (replyMins == null || agentMins < replyMins);
+  const lines = [replyMins != null ? tn("whenPersonTitle", { time: at("last_reply") }) : null, agentMins != null ? tn("whenAgentTitle", { time: at("last_agent_turn") }) : null]
+    .filter(Boolean);
+  if (agentNewer) lines.reverse();
+  return { text: replyText(agentNewer ? agentMins : replyMins), title: lines.join("\n"), person: !agentNewer };
+}
 /** How strong the highlight is: 1 just after a reply, down to 0 at REPLY_FRESH_MIN minutes. */
 export function replyFade(mins) { return mins == null || mins >= REPLY_FRESH_MIN ? 0 : 1 - mins / REPLY_FRESH_MIN; }
 /** The highlight's strength on the row, through the CSSOM (style-src has no 'unsafe-inline'). */
@@ -789,7 +815,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     // #2179 (B5, the user's pick): the % (and the ★ beside the row) on the name's line; the time of the last reply at the
     // end of the second line, highlighted for REPLY_FRESH_MIN minutes, fading by itself (a reply under a minute pulses once).
     const mins = ageOf(name), fade = replyFade(mins);
-    const two = !!secondary || mins != null;
+    // M-3674/M-3707: the time is the newer of that reply and the last turn another agent started (a busy agent no longer
+    // reads "33 天前"); the highlight and "Recent" stay the reply's.
+    const amins = viewOnly ? null : agentTurnAge(byName.get(name), now), act = activityText(byName.get(name) || {}, mins, amins);
+    const two = !!secondary || !!act;
     const menuItems = [
       canStar ? { key: "favorite", label: t(`agentRow.${starred ? "remove" : "add"}`), icon: "star", disabled: full,
         iconClass: starred ? "menu-starred" : undefined,
@@ -821,7 +850,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       <span class="inst-text"><span class="inst-line"><span class="inst-name" title=${label}>${label}</span>
           ${!compact ? html`<span class="v-meta">${it.runtime === "windows" ? "Windows" : it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span>` : null}</span>
         ${two ? html`<span class="inst-line inst-line2">${!compact ? html`<span class="inst-alt" title=${secondary || undefined}>${secondary || ""}</span>` : null}
-          ${mins != null ? html`<span class=${`inst-when${fade > 0 ? " fresh" : ""}`} title=${tn("replyTitle", { time: new Date(Date.parse(it.last_reply)).toLocaleString() })}>${replyText(mins)}</span>` : null}</span>` : null}
+          ${act ? html`<span class=${`inst-when${fade > 0 && act.person ? " fresh" : ""}`} title=${act.title}>${act.text}</span>` : null}</span>` : null}
         ${!compact && it.machine_id ? html`<span class=${`inst-machine${it.machine_status !== "online" ? " offline" : ""}`} title=${tn("tooltipMachine",{value:machineName(it.machine_id,it.machine_name)})}><span class="inst-machine-name">${machineName(it.machine_id,it.machine_name)}</span>${it.machine_status !== "online" ? html`<span class="inst-machine-status">${tn(it.machine_status === "revoked" ? "machineRevoked" : "machineOffline")}</span>` : null}</span>` : null}
         ${!compact && facet === "needs" ? html`<span class="inst-sub"><span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span></span>` : null}
         <span class="sr-only">${tn("tooltipBackend", { value: backendLabel(it.backend) })}</span></span>

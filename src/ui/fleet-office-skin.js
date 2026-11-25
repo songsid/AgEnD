@@ -38,7 +38,7 @@
 // @property {(look, at) => {x, y, w, h}} [charBox]   zones: the box drawCharacter covers with the feet at `at`
 //   ({ x, y, walking, heading }): what hover and click hit (fleet-office-zones.js personAt)
 // @property {(ctx, prop, ms, env) => void} drawProp      a traffic item in the air: { kind, hue, x, y, t }
-// @property {(ctx, x, y, text, env, lift?) => void} drawBubble  a speech bubble whose tail points at (x, y), its box `lift` px higher
+// @property {(ctx, x, y, text, env, lift?, flip?) => void} drawBubble  a speech bubble whose tail points at (x, y), its box `lift` px higher (`flip`: on the tail's left)
 // @property {(env) => string} matte   #2540: the colour around the scene (the Office fills the panel; the scene is 16:9)
 // @property {object|null} [backdrop]  a pack's loaded background picture (the page samples its edges for the matte)
 // The desks layout's back and front layers change only when the fleet (or the zoom) does: the renderer keeps them as
@@ -48,6 +48,7 @@
 import { t } from "/assets/app-i18n.js";
 import { frameAt, nameHash } from "./fleet-office-model.js";
 import { CHAR_DEPTH, LOGICAL, canvasOf, checkSkinPack, own, packPortraitImages, packSceneImages, poseStrip, stripBox, stripCell, stripFrameAt, stripImages, walkStrip } from "./fleet-office-pack.js";
+import { facing } from "./fleet-office-vehicles.js";
 import { tierColours } from "./fleet-office-levels.js";
 import { assetUrl } from "/assets/asset-url.js";
 
@@ -343,19 +344,23 @@ const BUBBLE_FONT = "600 11px system-ui, sans-serif";
  * The box a speech bubble with its tail at (x, y) takes for `text` (its tail excluded): what drawBubble draws, and what
  * the Office places so no two overlap (#2431: two neighbours' bubbles covered each other on a phone).
  */
-export function bubbleBox(ctx, x, y, text, lift = 0) {
+export function bubbleBox(ctx, x, y, text, lift = 0, flip = false) {
   ctx.save();
   ctx.font = BUBBLE_FONT;
   const t = fitText(ctx, text, 150), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + 14), h = 19;
   ctx.restore();
-  const bx = Math.round(x - 10), by = Math.round(y - h - 6 - lift);
+  // M-3722: `flip` puts the box on the tail's left (its tail still under it), for a call whose usual place covers a name.
+  const bx = Math.round(flip ? x - w + 14 : x - 10), by = Math.round(y - h - 6 - lift);
   return { x: bx, y: by, w, h, text: t };
 }
 
-/** A speech bubble, its tail at (x, y): short words on light paper in either theme; `lift` raises the box (its tail longer). */
-function drawBubble(ctx, x, y, text, env, lift = 0) {
+/**
+ * A speech bubble, its tail at (x, y): short words on light paper in either theme; `lift` raises the box (its tail
+ * longer); `flip` (M-3722) draws the box on the tail's left.
+ */
+function drawBubble(ctx, x, y, text, env, lift = 0, flip = false) {
   if (!text) return;
-  const { x: bx, y: by, w, h, text: t } = bubbleBox(ctx, x, y, text, lift);
+  const { x: bx, y: by, w, h, text: t } = bubbleBox(ctx, x, y, text, lift, flip);
   ctx.save();
   ctx.font = BUBBLE_FONT;
   ctx.fillStyle = "#fffdf6"; ctx.strokeStyle = env.mode === "light" ? "rgba(0, 0, 0, 0.35)" : "rgba(0, 0, 0, 0.6)"; ctx.lineWidth = 1;
@@ -377,13 +382,19 @@ const TAG_FONT = "600 10px system-ui, sans-serif";
 const COMPACT = { font: "500 9px system-ui, sans-serif", textW: 48, pad: 6, top: 2, h: 11 };
 const NORMAL = { font: TAG_FONT, textW: TAG_TEXT_W, pad: 10, top: 3, h: 14 };
 /** The box a name tag under feet at (x, y) takes (what drawTag draws; bubbles keep clear of it, #2513). */
+const tagSizes = new Map();
 export function tagBox(ctx, x, y, label, compact = false, fit = null) {
-  const k = compact ? COMPACT : NORMAL;
-  ctx.save();
-  ctx.font = k.font;
-  const t = fitText(ctx, label, k.textW, fit), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + k.pad);
-  ctx.restore();
-  return { x: Math.round(x - w / 2), y: y + k.top, w, h: k.h, text: t };
+  const k = compact ? COMPACT : NORMAL, key = `${compact ? 1 : 0}${label}`, keep = !!ctx.measureText && !fit;   // a fit of its own: measured each time
+  let m = keep ? tagSizes.get(key) : null;
+  if (!m) {
+    ctx.save();
+    ctx.font = k.font;
+    const t = fitText(ctx, label, k.textW, fit);
+    m = { t, w: Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + k.pad) };
+    ctx.restore();
+    if (keep) { if (tagSizes.size > 500) tagSizes.clear(); tagSizes.set(key, m); }
+  }
+  return { x: Math.round(x - m.w / 2), y: y + k.top, w: m.w, h: k.h, text: m.t };
 }
 /** #2860: what a tag covers with its level badge: on a full tag's top-left corner (clear of the first letter); left of a compact one. */
 export function tagFootprint(ctx, box, badge, compact = false) {
@@ -655,6 +666,19 @@ export function styleSeats(id) {
 // ── Skin packs ──
 
 /**
+ * A whole-scene picture (`im`, drawn `w` logical units wide): unsmoothed at 1 device px per picture px or more (pixel
+ * art), smoothed (high) when shrunk below that — nearest-neighbour there drops most of its thin lines and keeps others
+ * in uneven clusters (a big pack's fit on a phone). Read from the canvas's transform (none: unsmoothed, as before).
+ */
+export function sceneSmoothing(ctx, im, w) {
+  const t = typeof ctx.getTransform === "function" ? ctx.getTransform() : null;
+  const shrunk = !!t && !!im.width && Math.hypot(t.a, t.b) * w < im.width;
+  ctx.imageSmoothingEnabled = shrunk;
+  if (shrunk) ctx.imageSmoothingQuality = "high";
+  return shrunk;
+}
+
+/**
  * An OfficeSkin from a checked pack (fleet-office-pack.js checkSkinPack) and its loaded pictures (`images`: src → a
  * drawable image). What it lacks, or a picture not loaded, is drawn by the built-in skins.
  */
@@ -745,12 +769,26 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     drawBackground(ctx, L, env) {
       const im = img(pack.background);
       if (!im) { drawBackground(ctx, L, env); return; }
-      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
+      ctx.save(); sceneSmoothing(ctx, im, canvasOf(pack).w); ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
     },
     drawForeground(ctx, L, env) {
       const im = img(pack.foreground);
       if (!im) return;
-      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
+      ctx.save(); sceneSmoothing(ctx, im, canvasOf(pack).w); ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
+    },
+    /** A pack's vehicle where it is (`at`, fleet-office-vehicles.js vehicleAt): its picture for the way it faces
+     * (`sprites` by heading; else `sprite`, mirrored going left), playing while it moves, its first frame at a stop. */
+    drawVehicle(ctx, v, at, ms, env) {
+      const dir = facing(at.heading), by = v.sprites || {};
+      const st = by[dir] || (dir === "left" && by.right) || v.sprite || by.right || by.left || by.down || by.up;
+      if (!st) return;
+      const mirror = !by[dir] && dir === "left";
+      strip(ctx, st, at.stop === null ? clipMs(env, `v:${v.id}`, st, ms) : 0, at.x, at.y, at.stop === null ? null : 0, mirror);
+    },
+    /** Its front edge (`fronts` for the way it faces; going left, `right`'s mirrored), over the riders. */
+    drawVehicleFront(ctx, v, at, ms, env) {
+      const dir = facing(at.heading), by = v.fronts || {}, st = by[dir] || (dir === "left" && by.right) || null;
+      if (st) strip(ctx, st, 0, at.x, at.y, 0, !by[dir] && dir === "left");
     },
     drawFurniture(ctx, f, active, ms, env) {
       if (f.shape) { drawFurniture(ctx, f, active, ms, env); return; }
@@ -982,6 +1020,22 @@ export function loadBuiltInSkin(id, { image = defaultImage } = {}) {
     return sk;
   }, () => { p.job = null; return null; });
   return p.job;
+}
+/**
+ * M-3533 R2c: a style with some people drawn in their own characters (a Hub room office: each agent's set from its owner's
+ * pack, hub-character-plan.ts). `sets`: name → { pose: strip } (strips as a checked pack's, each a single sheet);
+ * `images`: src → a loaded picture. Only the drawing of people changes — the style's scene, desks, tags and words are its
+ * own. Someone without a set, or whose set is not wholly loaded, is the style's figure. Set ids are made here, so a name
+ * (even "default") never becomes everyone's fallback.
+ */
+export function withCharacters(base, sets, images) {
+  const names = sets ? Object.keys(sets) : [];
+  if (!names.length) return base;
+  const characters = Object.create(null), byInstance = Object.create(null);
+  names.forEach((name, i) => { characters[`set${i}`] = sets[name]; byInstance[name] = `set${i}`; });
+  const sk = spriteSkin({ id: base.id, characters, byInstance, props: {}, room: {}, desk: {} }, images, base);
+  // `ownCharacters`: the scene keeps their speech bubbles inside their area (a taller character's would rise above it).
+  return { ...base, drawCharacter: sk.drawCharacter, charBox: sk.charBox, ownCharacters: true };
 }
 /** #2631: the cozy's picture (loadBuiltInSkin for "cozy"). */
 export const loadCozySkin = (opts = {}) => loadBuiltInSkin("cozy", opts);

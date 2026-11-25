@@ -1,0 +1,61 @@
+{
+  "task": "M-3673",
+  "base": "3ed153b1541f020aa027781f905a615b2d3e63df",
+  "integrationBase": "c0cb46de3ea9f58d506dab7fdf9e66f38304a9ad",
+  "sourceBindings": {
+    "src/cache-ledger.ts": {
+      "sha256": "d0c82be17d2cee276aad1aaeb5d1bd34c0237195e24f29a115e6c63394bf60a2",
+      "gitBlob": "91acf07108e0cd257296e72fbe9dab4da4e27e95"
+    },
+    "src/cache-service.ts": {
+      "sha256": "50bd6617620ff3a1303be1f4b91a7b9f849c6b10036ffeb4510c88ccc71d3cee",
+      "gitBlob": "1fbfb41d51b143b8cca874dcdf0dee70dbb2b612"
+    },
+    "tests/cache-codex-replay-m3673.test.ts": {
+      "sha256": "681c8a3346cef5629393bb9187a4ee0d7ecabc4c3cb59aa2ee3ef50333a726eb",
+      "gitBlob": "43c9c5df77f4b24c8c2d7a5f54f4deb6aae1a85f"
+    }
+  },
+  "validation": {
+    "failFirst": {
+      "scope": "Original two-case service fixture before implementation; current file adds further controls",
+      "outcome": "one copied-history assertion failed; distinct-request control passed"
+    },
+    "affected": {
+      "command": "npx vitest run tests/cache-codex-replay-m3673.test.ts tests/cache-analysis-1468.test.ts tests/usage-speed-3066.test.ts tests/usage-report-2122.test.ts tests/usage-reasoning-2122.test.ts tests/usage-snapshot-2122.test.ts",
+      "files": 6,
+      "passed": 138
+    },
+    "sourceTypes": {
+      "command": "npx tsc --noEmit",
+      "errors": 0
+    },
+    "testTypes": {
+      "command": "npx tsc --noEmit -p tsconfig.test.json",
+      "errors": 0
+    },
+    "changelog": "805 fragments valid; includes both new list-item fragments",
+    "public": "clean",
+    "reviewDelta": {
+      "base": "8c57de13b523801d4cbc57297950809db2807e57",
+      "before": "Both new archived-parent and permanently-absent-parent assertions fail",
+      "after": "17 current replay controls pass, including archived recent/old ancestors, terminal orphan recovery, non-Codex incomplete-store and unrelated historical metadata controls",
+      "scope": "Six affected suites:136 passed; source and test types:0 errors"
+    },
+    "archiveMoveDelta": {
+      "base": "ba66431ed23911f0230cd7308c141acf568d5f2e",
+      "before": "legacy archive move assertion fails: two rows become four",
+      "after": "same-inode and same-session move transfers cursor and event paths; move/restart/append pass",
+      "scope": "Six affected suites138 passed, then19 control cases rechecked after making cursor identity backfill durable; source/test types0"
+    }
+  },
+  "limits": [
+    "Synthetic public fixtures only; private transcript/account identifiers and local usage totals excluded",
+    "Recent retained Codex contributions repaired; existing durable daily/lifetime archives remain unchanged",
+    "Unavailable listings or cyclic ancestry leave repair incomplete; complete listings with absent parents use flagged best-available child accounting",
+    "Mixed-reader historical untagged gaps retained without adding rebuilt historical gaps again",
+    "Legacy events without a stable turn ID retain per-file cumulative suppression",
+    "No provider calls, live fleet restart or cron execution/submission",
+    "Orphan fallback may count inherited events again and cannot recover their original dates until the parent becomes available; unrelated historical metadata is not stat/read each pass"
+  ]
+}

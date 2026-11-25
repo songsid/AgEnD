@@ -1,0 +1,78 @@
+{
+  "stage": "after",
+  "sourceHead": "65cee97eb2dd6ec71d80607c3314d19590887d19",
+  "results": [
+    {
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "recoveryText": "Demo source's retained history has an unknown origin, so this contact needs approval. Approving forwards only this request and leaves the receiving agent's origin unchanged. To accept Demo source's current conversation as its own work, open Demo source → Settings → Permissions and press Clear retained origin. It never resets on its own."
+    },
+    {
+      "device": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "recoveryText": "Demo source 保留的歷史來源不明，因此這次聯絡需要核准。核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要接受 Demo source 目前的對話作為它自己的工作，請到 Demo source 的「設定」→「權限」，按「清除保留的來源」。來源不會自動重設。"
+    },
+    {
+      "device": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "recoveryText": "Demo source's retained history has an unknown origin, so this contact needs approval. Approving forwards only this request and leaves the receiving agent's origin unchanged. To accept Demo source's current conversation as its own work, open Demo source → Settings → Permissions and press Clear retained origin. It never resets on its own."
+    },
+    {
+      "device": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "recoveryText": "Demo source 保留的歷史來源不明，因此這次聯絡需要核准。核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要接受 Demo source 目前的對話作為它自己的工作，請到 Demo source 的「設定」→「權限」，按「清除保留的來源」。來源不會自動重設。"
+    },
+    {
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "recoveryText": "Demo source's retained history has an unknown origin, so this contact needs approval. Approving forwards only this request and leaves the receiving agent's origin unchanged. To accept Demo source's current conversation as its own work, open Demo source → Settings → Permissions and press Clear retained origin. It never resets on its own."
+    },
+    {
+      "device": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "recoveryText": "Demo source 保留的歷史來源不明，因此這次聯絡需要核准。核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要接受 Demo source 目前的對話作為它自己的工作，請到 Demo source 的「設定」→「權限」，按「清除保留的來源」。來源不會自動重設。"
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "recoveryText": "Demo source's retained history has an unknown origin, so this contact needs approval. Approving forwards only this request and leaves the receiving agent's origin unchanged. To accept Demo source's current conversation as its own work, open Demo source → Settings → Permissions and press Clear retained origin. It never resets on its own."
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "csp": [],
+      "recoveryText": "Demo source 保留的歷史來源不明，因此這次聯絡需要核准。核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要接受 Demo source 目前的對話作為它自己的工作，請到 Demo source 的「設定」→「權限」，按「清除保留的來源」。來源不會自動重設。"
+    }
+  ]
+}

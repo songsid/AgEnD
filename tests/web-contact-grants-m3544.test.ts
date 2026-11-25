@@ -4,7 +4,7 @@ import { fire } from "./helpers/mini-dom.js";
 const people = [{ platform: "discord", adapterId: "demo", userId: "fake-alice", label: "Alice" }, { platform: "discord", adapterId: "demo", userId: "fake-bob", label: "Bob" }];
 const pages: AppPage[] = [];
 afterEach(async () => { for (const p of pages.splice(0)) { await p.unmount(); p.restore(); } delete (globalThis as any).fetch; });
-const key = (p: any) => JSON.stringify([p.platform, p.adapterId, p.userId]);
+const key = (p: any) => JSON.stringify([p.platform, p.userId]);
 const button = (root: any, text: string) => root.querySelectorAll("button").find((b: any) => b.textContent.trim() === text);
 it("known multi-person origins start unchecked; presets and one explicit selection become one scoped grant request", async () => {
   const p = page(); pages.push(p);

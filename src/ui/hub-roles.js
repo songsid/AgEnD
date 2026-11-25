@@ -5,6 +5,7 @@ import {hr,linkRoleCss} from "./hub-roles-strings.js";
 import {RoleWizard,AssignPanel,PermissionSections,Review} from "./hub-role-forms.js";
 import {RoleAudit} from "./hub-role-audit.js";
 import {personKey,personName,roleName,roleDescription,assignedSubjects,assignmentCount,subjectId,scopeName,roleError} from "./hub-role-view.js";
+import { dateTimeText } from "/assets/clock-text.js";
 const copy=value=>structuredClone(value);
 function Tabs({items,value,onChange,disabled=false,label}){
  return html`<div class="hub-role-tabs" role="tablist" aria-label=${label}>${items.map(item=>html`<button key=${item.key} type="button" role="tab" tabindex=${item.key===value?0:-1} onKeyDown=${e=>{const at=items.findIndex(row=>row.key===value),keys={ArrowRight:(at+1)%items.length,ArrowLeft:(at+items.length-1)%items.length,Home:0,End:items.length-1};if(Object.hasOwn(keys,e.key)){e.preventDefault();const next=keys[e.key];onChange(items[next].key);(e.currentTarget||e.target).parentNode.querySelectorAll('[role="tab"]')[next]?.focus();}}} aria-selected=${item.key===value} class=${item.key===value?"is-active":""} disabled=${disabled} onClick=${()=>onChange(item.key)}>${item.label}</button>`)}</div>`;
@@ -27,7 +28,7 @@ function PersonRoles({view,subject,busy,onBack,onEdit,onRemove}){
  const row=assignedSubjects(view).find(row=>row.id===subjectId(subject)),own=subject.kind==="person"&&personKey(subject.person)===personKey(view.actor),canAssign=view.management.includes("roles.assign");
  return html`<section class="card hub-role-person"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${onBack}>‹ ${hr("people")}</button><h2>${row?.name||hr("unknownPerson")}${own?html` <span class="tag">${hr("you")}</span>`:null}</h2>${own?html`<p class="s-info">${hr("selfHelp")}</p>`:null}
   <ul class="hub-rows">${row?.fixed?html`<li class="s-row hub-row"><span class="hub-row-text"><strong>${hr("admin")}</strong><small class="note">${hr("firstAdminHelp")}</small></span></li>`:null}
-   ${row?.assignments.map(a=>html`<li class="s-row hub-row" key=${a.id}><span class="hub-row-text"><strong>${roleName(view.policy.roles.find(r=>r.id===a.roleId),view)}</strong><small class="note">${scopeName(a.scope)} · ${a.expiresAt?new Date(a.expiresAt).toLocaleString():hr("noEnd")}</small></span>
+   ${row?.assignments.map(a=>html`<li class="s-row hub-row" key=${a.id}><span class="hub-row-text"><strong>${roleName(view.policy.roles.find(r=>r.id===a.roleId),view)}</strong><small class="note">${scopeName(a.scope)} · ${a.expiresAt?dateTimeText(a.expiresAt):hr("noEnd")}</small></span>
     ${canAssign?html`<div class="s-actions"><button type="button" class="btn btn-sm" disabled=${busy||own} onClick=${()=>onEdit(a)}>${hr("edit")}</button><button type="button" class="btn btn-sm danger" disabled=${busy||own} onClick=${()=>onRemove(a)}>${hr("remove")}</button></div>`:null}</li>`)}</ul></section>`;
 }
 function RolePage({view,role,busy,canEdit,canAssign,onBack,onAssign,onEdit,onDelete,onPerson}){

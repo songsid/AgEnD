@@ -9,6 +9,9 @@ import { dirname } from "node:path";
 import { t } from "./locale.js";
 import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
 import { ContactAuthStore } from "./contact-auth-store.js";
+import { RequestContextStore, requestContextDigest, requestContextJson } from "./request-context-store.js";
+import { RequestOperationBindingV1Schema, type RequestContextV1, type RequestOperationBindingV1 } from "./request-context-protocol.js";
+import { registerRequestContextDispatcher, assertRequestContextCompatibility, activateRequestContextBarrier, type RequestContextCompatibilityOptions, type RequestContextDispatchVersion } from "./request-context-compatibility.js";
 import { validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import { WorkingStateJournal, type WorkingStateSnapshot, type WorkingStateReference } from "./working-state-journal.js";
 import { initializeHumanReceipts, createHumanReceipt, getHumanReceipt, bindHumanReceipt, settleHumanReceipt, queryHumanReceipt, maxWebAuthorityEpoch, deliveredMessageHours, pruneMessageHours,
@@ -632,6 +635,23 @@ export class DeliveryOutbox extends EventEmitter {
     return this.workingStateJournal.get(instance);
   }
 
+  /**
+   * M-3674: when `instance` last took up a message another instance sent it — send_to_instance's family (task, report,
+   * query, update), a steer or a broadcast: the newest delivered one, at the turn that took it up (consumed_at), else
+   * when it was delivered (finished_at); ISO, or null (none kept). The agent-started side of an agent's activity, beside
+   * its last reply to a person (web chat history). The latest of those times over all its kept rows, not the newest
+   * row's (Prism #4430: an older message can be taken up after any number of newer ones were delivered). Read from
+   * idx_delivery_agent_turn, which holds only these rows ordered by that time per target: the walk starts at this
+   * agent's newest entry and stops at the first, so a status frame neither scans nor sorts its history.
+   */
+  lastAgentTurn(instance: string): string | null {
+    // Ordered by the indexed expression: the index is walked from its newest end and the first row is the answer.
+    const row = this.db.prepare(`SELECT COALESCE(consumed_at, finished_at) AS at FROM deliveries
+      WHERE target_instance=? AND state='delivered' AND kind IN ('fleet_inbound','steer','broadcast') AND source_instance<>target_instance
+      ORDER BY COALESCE(consumed_at, finished_at) DESC LIMIT 1`).get(instance) as { at: string | null } | undefined;
+    return row && typeof row.at === "string" && row.at ? row.at : null;
+  }
+
   /** Bounded metadata query, distinct from the existing unbounded reminder API. */
   workingObligations(instance: string): { references: WorkingStateReference[]; total: number } {
     const total = this.db.prepare(`SELECT COALESCE(SUM((owner_instance=?) + (requester_instance=?)),0) AS n
@@ -695,16 +715,28 @@ export class DeliveryOutbox extends EventEmitter {
     try { this.emit("working_references", [...new Set(instances)]); } catch { /* observation only */ }
   }
 
-  constructor(dbPath: string, managerBootId: string = randomUUID()) {
+  private readonly requestContextDispatchVersion: RequestContextDispatchVersion;
+
+  constructor(dbPath: string, managerBootId: string = randomUUID(), compatibility: RequestContextCompatibilityOptions = {}) {
     super();
     this.managerBootId = managerBootId;
+    this.requestContextDispatchVersion = compatibility.requestContextDispatchVersion ?? 0;
     mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
     this.db = new Database(dbPath);
-    try { this.initialize(dbPath); }
+    try {
+      registerRequestContextDispatcher(this.db, this.requestContextDispatchVersion);
+      assertRequestContextCompatibility(this.db, this.requestContextDispatchVersion);
+      this.initialize(dbPath);
+    }
     catch (error) {
       try { this.db.close(); } catch { /* retain the initialization error */ }
       throw error;
     }
+  }
+
+  /** Future slice L cutover port; all existing production constructors remain capability 0. */
+  activateRequestContextBarrier(): void {
+    activateRequestContextBarrier(this.db, this.requestContextDispatchVersion);
   }
 
   private initialize(dbPath: string): void {
@@ -860,6 +892,11 @@ export class DeliveryOutbox extends EventEmitter {
     this.ensureColumn("deliveries", "content_sha256", "TEXT");
     // #1201: the CLI's transcript showed the delivery consumed (when, and as its own turn or mid-turn).
     this.ensureColumn("deliveries", "consumed_at", "TEXT");
+    // M-3674: an agent's latest agent-started turn — its delivered messages from another instance, by the time they were
+    // taken up (else delivered). A partial expression index, so lastAgentTurn reads the newest entry first whatever the
+    // rows' admission order (Prism #4430: a late-consumed old message can be the newest activity).
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_delivery_agent_turn ON deliveries (target_instance, (COALESCE(consumed_at, finished_at)))
+      WHERE state='delivered' AND kind IN ('fleet_inbound','steer','broadcast') AND source_instance<>target_instance`);
     this.ensureColumn("deliveries", "consumed_via", "TEXT");
     this.ensureColumn("delivery_attempts", "pasted_content_sha256", "TEXT");
     this.ensureColumn("delivery_attempts", "pasted_bytes_sha256", "TEXT");
@@ -1121,8 +1158,51 @@ export class DeliveryOutbox extends EventEmitter {
     this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
+  /** Internal future-dispatch port only; no production ingress calls this before slice L. */
+  admitWithRequestContext(input: NewOutboxDelivery, context: RequestContextV1, bindingInput: RequestOperationBindingV1): { delivery: OutboxDelivery; inserted: boolean } {
+    if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") {
+      throw Error("request-context dispatcher is not ready");
+    }
+    const admitted = this.db.transaction(() => {
+      const store = new RequestContextStore(this.db), binding = RequestOperationBindingV1Schema.parse(bindingInput);
+      const stored = store.recordContext(context);
+      if (binding.operationId !== input.operationId || binding.source.instance !== input.sourceInstance
+        || binding.target.instance !== input.targetInstance || binding.contextId !== stored.ref.contextId
+        || binding.rootContextId !== stored.ref.rootContextId || binding.source.instance !== stored.source.instance
+        || binding.source.incarnation !== stored.source.incarnation || binding.payloadSha256 !== requestContextDigest(input.payload)) {
+        throw Error("request-context operation binding conflict");
+      }
+      const admissionSha256 = requestContextDigest({ ...input, targetSession: input.targetSession ?? null,
+        correlationId: input.correlationId ?? null, forwards: input.forwards ?? [], requestedKind: input.requestedKind ?? input.kind });
+      const prior = store.operation(input.sourceInstance, input.operationId);
+      if (prior) {
+        if (prior.sourceKey !== input.sourceKey || prior.admissionSha256 !== admissionSha256
+          || requestContextJson(prior.binding) !== requestContextJson(binding)) throw Error("request-context operation conflict");
+        const delivery = this.get(prior.deliveryId);
+        if (!delivery || requestContextDigest(delivery.payload) !== binding.payloadSha256) throw Error("request-context delivery unavailable");
+        return { delivery, inserted: false };
+      }
+      if (this.db.prepare("SELECT 1 FROM deliveries WHERE source_key=? OR (source_instance=? AND operation_id=?) LIMIT 1")
+        .get(input.sourceKey, input.sourceInstance, input.operationId)) throw Error("request-context cannot adopt legacy operation");
+      const admitted = this.admitInternal(input, true);
+      if (requestContextDigest(admitted.delivery.payload) !== binding.payloadSha256) throw Error("request-context admitted payload changed");
+      store.recordOperation({ binding, sourceKey: input.sourceKey, deliveryId: admitted.delivery.deliveryId, admissionSha256 });
+      return admitted;
+    })();
+    if (admitted.inserted) this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
+    return admitted;
+  }
+
+  requestContextForDelivery(deliveryId: string) { return new RequestContextStore(this.db).forDelivery(deliveryId); }
+  requestContext(id: string): RequestContextV1 | null { return new RequestContextStore(this.db).context(id); }
+  requestContextOperation(source: string, operationId: string) { return new RequestContextStore(this.db).operation(source, operationId); }
+
   /** Commit admission before returning success. Duplicate source keys return their original row. */
   admit(input: NewOutboxDelivery): { delivery: OutboxDelivery; inserted: boolean } {
+    return this.admitInternal(input, false);
+  }
+
+  private admitInternal(input: NewOutboxDelivery, scoped: boolean): { delivery: OutboxDelivery; inserted: boolean } {
     const now = new Date().toISOString();
     const deliveryId = randomUUID();
     const insert = this.db.prepare(`
@@ -1139,6 +1219,7 @@ export class DeliveryOutbox extends EventEmitter {
     `);
     const select = this.db.prepare("SELECT * FROM deliveries WHERE source_key = ?");
     const transaction = this.db.transaction(() => {
+      if (!scoped) new RequestContextStore(this.db).assertLegacyAdmission(input.sourceInstance, input.operationId, input.sourceKey);
       const previous = select.get(input.sourceKey) as OutboxRow | undefined;
       const forwards = input.forwards ?? [];
       if (forwards.length > 16 || new Set(forwards).size !== forwards.length
@@ -1241,7 +1322,7 @@ export class DeliveryOutbox extends EventEmitter {
       return { delivery: mapRow(row), inserted: result.changes === 1 };
     });
     const admitted = transaction();
-    if (admitted.inserted) this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
+    if (admitted.inserted && !scoped) this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
     return admitted;
   }
 

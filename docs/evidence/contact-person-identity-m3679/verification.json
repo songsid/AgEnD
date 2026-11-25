@@ -1,0 +1,120 @@
+{
+  "base": "c0cb46de3ea9f58d506dab7fdf9e66f38304a9ad",
+  "testedSource": "7984d8fbca8453d5fd06ae58eff7cabd5ce403fd",
+  "baseRegressionCases": 6,
+  "baseFailed": 6,
+  "finalSuites": 16,
+  "finalTests": 344,
+  "sourceTypecheck": 0,
+  "testTypecheck": 0,
+  "mutations": [
+    {
+      "name": "adapter-key",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 7
+    },
+    {
+      "name": "legacy-read",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 2
+    },
+    {
+      "name": "admin-adapter",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 3
+    },
+    {
+      "name": "platform-role",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 1
+    },
+    {
+      "name": "unknown",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 2
+    },
+    {
+      "name": "old-ticket",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 1
+    },
+    {
+      "name": "pending-grant",
+      "caught": true,
+      "failedTests": 1
+    }
+  ],
+  "testFiles": [
+    "contact-person-identity-m3679",
+    "contact-origin-feedback-4213",
+    "inbound-owner-gate",
+    "contact-standing-grants-m3544",
+    "contact-change-proposals-m3544",
+    "classic-contact-auth-3339",
+    "classic-contact-approvers-3339",
+    "classic-outbound-address-1626",
+    "web-contact-auth-m3339",
+    "web-contact-grants-m3544",
+    "hub-contact-limit-3160",
+    "hub-representative-fleet",
+    "contact-origin-clear-3366",
+    "web-contact-origin-clear-3366",
+    "delivery-forwards-1756",
+    "fleet-windows-runtime"
+  ],
+  "integration": {
+    "incoming": "2698b1302b3439ecd31612b7e18c883dff644b0f",
+    "mergedHead": "46ae269565e03a580569c0714f312bf900763f02",
+    "ownedPaths": 18,
+    "orderedAddedRemovedLinesIdentical": true,
+    "suites": 6,
+    "tests": 90,
+    "sourceTypecheck": 0
+  },
+  "reviewCorrection": {
+    "beforeHead": "c3efeb08ad2ef364dc1d1944a9edb94496b62f1d",
+    "centralGateAndNotificationFailuresBefore": 5,
+    "conflictingRetryAssertionFailedBefore": true,
+    "suites": 29,
+    "tests": 451,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0,
+    "testFiles": [
+      "tests/classic-contact-api-3339.test.ts",
+      "tests/classic-contact-approvers-3339.test.ts",
+      "tests/classic-contact-auth-3339.test.ts",
+      "tests/classic-contact-dispatch-3339.test.ts",
+      "tests/classic-contact-files-3339.test.ts",
+      "tests/classic-outbound-address-1626.test.ts",
+      "tests/classic-start-contact-notice-3339.test.ts",
+      "tests/contact-change-proposals-m3544.test.ts",
+      "tests/contact-origin-clear-3366.test.ts",
+      "tests/contact-origin-feedback-4213.test.ts",
+      "tests/contact-outcome-notices-3372.test.ts",
+      "tests/contact-person-identity-m3679.test.ts",
+      "tests/contact-standing-grants-m3544.test.ts",
+      "tests/contact-suggestion-later-m3410.test.ts",
+      "tests/contact-tool-groups-m3387.test.ts",
+      "tests/delivery-forwards-1756.test.ts",
+      "tests/fleet-windows-runtime.test.ts",
+      "tests/hub-contact-limit-3160.test.ts",
+      "tests/hub-contact-window-settles-m3660.test.ts",
+      "tests/hub-representative-fleet.test.ts",
+      "tests/inbound-owner-gate.test.ts",
+      "tests/needs-you-contact-suggestions-m3381.test.ts",
+      "tests/task-board-contact-4367.test.ts",
+      "tests/web-contact-auth-m3339.test.ts",
+      "tests/web-contact-card-copy-m3385.test.ts",
+      "tests/web-contact-grants-m3544.test.ts",
+      "tests/web-contact-later-m3410.test.ts",
+      "tests/web-contact-origin-clear-3366.test.ts",
+      "tests/web-needs-contact-suggestions-m3381.test.ts"
+    ]
+  }
+}

@@ -1,6 +1,7 @@
 /** Recipient-only history, fetched on this page only. No stream, polling, implicit ACK or global notice feed. */
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { dn } from "./hub-directory-notice-strings.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 export const DIRECTORY_NOTICE_FEATURE = "directory-security-notices-v1";
 export function directoryNoticesOffered(session, client) {
@@ -56,7 +57,7 @@ export function DirectoryNotices({ client, host = false }) {
     ${loaded && !errorKey && !rows.length ? html`<p class="muted">${dn("empty")}</p>` : null}
     ${rows.map(row => html`<article class="directory-notice" key=${row.id} data-directory-notice=${row.id}>
       <h3>${dn(row.kind === "directory-compensation" ? "restored" : "changed")}</h3>
-      <p class="muted">${dn(row.actor?.kind === "host-owner" ? "host" : "admin")} · <time datetime=${new Date(row.at).toISOString()}>${new Date(row.at).toLocaleString()}</time></p>
+      <p class="muted">${dn(row.actor?.kind === "host-owner" ? "host" : "admin")} · <time datetime=${new Date(row.at).toISOString()}>${dateTimeText(row.at)}</time></p>
       <p>${(row.changes || []).map(key => dn(key)).join(" · ")}</p>
       ${row.acknowledged ? html`<span class="muted">${dn("acknowledged")}</span>` : html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => acknowledge(row.id)}>${dn(acking === row.id ? "acknowledging" : "acknowledge")}</button>`}
     </article>`)}

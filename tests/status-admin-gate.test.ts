@@ -60,7 +60,7 @@ describe("/status admin gate", () => {
     const reply = sendText.mock.calls[0][1] as string;
     expect(reply).toContain(lang === "en" ? "Fleet Status" : "Fleet 狀態");
     expect(reply).toContain(lang === "en" ? "| Instance | Backend | Model | Ctx | Effort | State |"
-      : "| instance | Backend | Model | Context | 推理強度 | 執行狀態 |");
+      : "| Agent | 後端 | 模型 | 上下文 | 推理強度 | 執行狀態 |");
     expect(reply).not.toContain("| IPC |");
     expect(reply).not.toMatch(/\| Cost \||\| 花費 \|/);
   });

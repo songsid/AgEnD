@@ -195,6 +195,6 @@ describe("host-only browser Hub setup",()=>{
   });
   it.each(["en","zh-TW"])("owns all copy in %s and shows errors in plain words",async language=>{
     fetcher(()=>({error:"network"}));const p=await mount({language});expect(p.root.textContent).not.toContain("hubSetup.");expect(p.root.textContent).not.toContain("ECONN");
-    expect(p.root.textContent).toContain(language==="en"?"port is in use":"連接埠已被占用");
+    expect(p.root.textContent).toContain(language==="en"?"port is in use":"連接埠已被佔用");
   });
 });

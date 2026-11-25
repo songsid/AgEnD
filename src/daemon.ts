@@ -1,6 +1,7 @@
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { managedClaudeBinding } from "./claude-credential-launch.js";
 import { HUB_REPORT_TARGET } from "./hub-report-target.js";
+import { atomicWriteFileSync } from "./atomic-write.js";
 import { RoomConversationGeneration, roomContextInputMarker } from "./hub-room-conversation.js";
 import { checkpointGrokDelivery, type GrokDeliveryProof } from "./grok-delivery-proof.js";
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
@@ -56,6 +57,7 @@ import { legacyTmuxSocket, tmuxSocket } from "./tmux-binary.js";
 import { migrateLegacyWindow, tagWindowId } from "./tmux-legacy.js";
 import { scopedFleetConfigEnvironment } from "./web-experimental.js";
 import { readAgentFile } from "./agent-file-read.js";
+import { sendTaskWrite } from "./task-attach-client.js";
 import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, writePreview } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, isSearchProgram, summarizeProgress } from "./tool-progress.js";
@@ -124,7 +126,8 @@ import {
 import type { TurnFingerprint } from "./backend/session-signals.js";
 import { codexLiveRowMatches } from "./backend/codex.js";
 import { codexPackageProblemMessage } from "./backend/codex-package.js";
-import { claudeConfigDirFor, claudeProfileConfigDir, claudeProjectKey, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
+import { claudeConfigDirFor, claudeJsonPath, claudeProfileConfigDir, claudeProjectKey, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
+import { checkClaudeMcpAtLaunch, dismissClaudeMcpMissing, type McpMissing } from "./backend/claude-mcp-carry.js";
 import { MuseBackend } from "./backend/muse.js";
 import { BACKEND_LABELS, InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt.js";
@@ -1453,6 +1456,28 @@ const FLEET_RESPONSE_TYPES = new Set([
   "fleet_display_name_response", "fleet_description_response", "fleet_persona_emoji_response", "fleet_web_theme_response",
 ]);
 
+/** M-3660: the Hub question a pane is answering as its own turn. `restored`: taken up again after a daemon restart. */
+interface HubAnswerTurn { correlationId: string; contactLimit: boolean; sawWorking: boolean; restored: boolean }
+/** null: no record (no turn). "unknown": a record that cannot be read or makes no sense — a turn may be running. */
+function readHubAnswerTurn(file: string): HubAnswerTurn | null | "unknown" {
+  let text: string;
+  try { text = readFileSync(file, "utf8"); }
+  catch (err) { return (err as NodeJS.ErrnoException).code === "ENOENT" ? null : "unknown"; }
+  try {
+    const r = JSON.parse(text) as { correlationId?: unknown; contactLimit?: unknown };
+    if (!r || typeof r.correlationId !== "string" || !/^hub-[A-Za-z0-9-]+$/.test(r.correlationId)) return "unknown";
+    return { correlationId: r.correlationId, contactLimit: r.contactLimit !== false, sawWorking: true, restored: true };
+  } catch { return "unknown"; }
+}
+/**
+ * M-3660: a question from the Hub (a representative or room ask) that the agent answers with report_result to agend-hub.
+ * It trusts the meta: only the fleet writes fleet_inbound, and from_instance "agend-hub" is its reserved sender — an
+ * agent's send_to_instance is stamped with the agent's own name.
+ */
+export function isHubQuestionMeta(meta: Record<string, string>): boolean {
+  return meta.from_instance === HUB_REPORT_TARGET && meta.request_kind === "query" && /^hub-[A-Za-z0-9-]+$/.test(meta.correlation_id ?? "");
+}
+
 export class Daemon extends EventEmitter {
   /** #1314: fleet-directory fallbacks already reported to the topic (once per daemon, per field and path). */
   private readonly promptFileFallbackNoticed = new Set<string>();
@@ -2273,6 +2298,41 @@ export class Daemon extends EventEmitter {
   private transcriptEventSeq = 0;
   private usageLimitErrorSeq = 0;
   static readonly MODEL_USAGE_LIMIT = CLAUDE_MODEL_USAGE_LIMIT;
+
+  /** M-3749: the MCP servers missing since a profile switch — Needs you lists them until they are back or dismissed. */
+  private mcpMissingState: McpMissing | null = null;
+  mcpMissing(): McpMissing | null {
+    return this.mcpMissingState ? { ...this.mcpMissingState, names: [...this.mcpMissingState.names] } : null;
+  }
+
+  /** M-3749: a person dismissed the missing-MCP list (Needs you → Acknowledge). false: nothing was outstanding. */
+  dismissMcpMissing(): boolean {
+    dismissClaudeMcpMissing(this.instanceDir);
+    if (!this.mcpMissingState) return false;
+    this.mcpMissingState = null;
+    this.emit("mcp_missing", { name: this.name, missing: null });
+    return true;
+  }
+
+  /**
+   * M-3749: at each Claude launch, the user/local-scope MCP servers it had before a credential-profile switch and does not
+   * have now (outstanding until back or dismissed). Never fails a launch; names only, never an entry.
+   */
+  private checkClaudeMcpServers(backendConfig: CliBackendConfig): void {
+    const before = this.mcpMissingState;
+    this.mcpMissingState = null;
+    if ((this.config.backend ?? "claude-code") === "claude-code") {
+      try {
+        const profileDir = claudeProfileConfigDir(backendConfig.backendOptions);
+        this.mcpMissingState = checkClaudeMcpAtLaunch({ instanceDir: this.instanceDir, configDir: claudeConfigDirFor(profileDir),
+          jsonPath: claudeJsonPath(profileDir), workingDirectory: this.config.working_directory });
+      } catch (err) {
+        this.logger.debug({ err }, "MCP server check at launch skipped");
+      }
+    }
+    if (this.mcpMissingState) this.logger.warn({ missing: this.mcpMissingState.names }, "MCP servers from the previous credential profile are not in this one");
+    if (before || this.mcpMissingState) this.emit("mcp_missing", { name: this.name, missing: this.mcpMissing() });
+  }
 
   /** #2822: the usage-limit hold, while it lasts — Needs you lists it. */
   usageHold(): { model: string; since: number } | null {
@@ -3451,6 +3511,7 @@ export class Daemon extends EventEmitter {
         }
         // Batch response for prune path
         this.ipcServer?.send(socket, { type: "query_sessions_response", sessions });
+        this.ipcServer?.send(socket, this.hubAnswerTurnStateMessage());   // M-3660: a fresh connection learns the current turn
       } else this.handleFleetMessage(msg, reply => { this.ipcServer?.send(socket, reply); });
     });
 
@@ -3535,6 +3596,7 @@ export class Daemon extends EventEmitter {
     }
     if (nativeDisposition) this.isNewSession = nativeDisposition === "fresh";
     this.resetRoomConversation(nativeDisposition === "reattached");
+    this.settleHubAnswerTurnAtLaunch(nativeDisposition === "reattached");
 
     // #1209: conditional continuation for the turn interrupted by the last
     // restart, if the gates allow. Detached; the gate
@@ -6328,6 +6390,7 @@ export class Daemon extends EventEmitter {
     if (msg.type === "hub_room_tools_changed") { this.ipcServer?.broadcast({type:"hub_room_tools_changed"}); return true; }
     if (msg.type === "query_sessions") {
       send({ type: "query_sessions_response", sessions: [] });
+      send(this.hubAnswerTurnStateMessage());   // M-3660
     } else if (msg.type === "fleet_inbound") {
       const meta = msg.meta as Record<string, string>;
       const targetSession = msg.targetSession as string | undefined;
@@ -7281,6 +7344,79 @@ export class Daemon extends EventEmitter {
   private readonly hubRoomTurnBoot=randomUUID();
   private hubRoomTurnSequence=0;
   private turnEndTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * M-3660: the Hub question this pane is answering as a turn of its own — from just before its write until the idle edge
+   * after that turn's work (or the next write into the idle pane). The fleet keeps the agent's contact window for exactly
+   * this turn: hub_question_input opens it, hub_question_turn_ended closes it.
+   */
+  // It is kept on disk too (hub-answer-turn.json): a daemon restarted mid-turn takes it up again, so deliveries keep
+  // waiting behind it and its end is still announced; the fleet is told the current state again on every (re)connect.
+  private hubAnswerTurnState: HubAnswerTurn | null | undefined;
+  /** Prism #4420 P2-2: the turn record exists but cannot be read — a turn may be running; fail closed until an idle edge. */
+  private hubAnswerTurnUnknown = false;
+  private get hubAnswerTurn(): HubAnswerTurn | null {
+    if (this.hubAnswerTurnState === undefined) {
+      const file = this.hubAnswerTurnFile(), read = file ? readHubAnswerTurn(file) : null;
+      this.hubAnswerTurnUnknown = read === "unknown";
+      this.hubAnswerTurnState = read === "unknown" ? null : read;
+    }
+    return this.hubAnswerTurnState;
+  }
+  /** M-3660: a turn is running, or may be (an unreadable record): nothing is handed into it. */
+  private hubAnswerTurnMayRun(): boolean { return this.hubAnswerTurn !== null || this.hubAnswerTurnUnknown; }
+  /** The unknown is resolved (an idle edge, a write into the idle pane): no turn runs; the fleet is told "none". */
+  private resolveUnknownHubAnswerTurn(): void {
+    if (!this.hubAnswerTurnUnknown) return;
+    this.hubAnswerTurnUnknown = false;
+    const file = this.hubAnswerTurnFile();
+    try { if (file) rmSync(file, { force: true }); } catch (err) { this.logger.warn({ err }, "Unreadable Hub answer turn record could not be removed"); }
+    this.broadcastFleetMessage({ type: "hub_question_turn_state", correlationId: null });
+  }
+  private hubAnswerTurnFile(): string | null { return typeof this.instanceDir === "string" ? join(this.instanceDir, "hub-answer-turn.json") : null; }
+  /** A turn's end is always kept in memory; a record that cannot be removed is read as a restored turn later (fail closed). */
+  private setHubAnswerTurn(turn: HubAnswerTurn | null): void {
+    this.hubAnswerTurnState = turn;
+    const file = this.hubAnswerTurnFile();
+    if (!file) return;
+    try {
+      if (turn) atomicWriteFileSync(file, JSON.stringify({ correlationId: turn.correlationId, contactLimit: turn.contactLimit }), { mode: 0o600 });
+      else rmSync(file, { force: true });
+    } catch (err) {
+      // Prism #4420 P2-2: a turn that cannot be recorded is not begun — its question is not written (the caller throws).
+      if (turn) { this.hubAnswerTurnState = null; throw err; }
+      this.logger.warn({ err }, "Hub answer turn end could not be saved; a restart reads it as a turn that ends at its first idle edge");
+    }
+  }
+  private hubAnswerTurnBegins(correlationId: string | undefined, contactLimit = true): void {
+    if (correlationId !== undefined && this.hubAnswerTurn?.correlationId === correlationId) return; // a retried write
+    this.resolveUnknownHubAnswerTurn();   // written into the idle pane: whatever might have run is over
+    this.endHubAnswerTurn();
+    if (correlationId === undefined) return;
+    // Throws when the turn cannot be recorded: the question is then not written, and its delivery fails (reported).
+    this.setHubAnswerTurn({ correlationId, contactLimit, sawWorking: false, restored: false });
+    this.broadcastFleetMessage({ type: "hub_question_input", correlationId, contactLimit });
+  }
+  private endHubAnswerTurn(): void {
+    const turn = this.hubAnswerTurn;
+    if (!turn) return;
+    this.setHubAnswerTurn(null);
+    this.broadcastFleetMessage({ type: "hub_question_turn_ended", correlationId: turn.correlationId });
+  }
+  /**
+   * Lumen #4420 R2-A: a turn taken up from the record outlives nothing but the pane it ran in. A launch that starts a new
+   * CLI (every launch but a native reattach) ends it, and an unreadable record resolves to "none", at once.
+   */
+  private settleHubAnswerTurnAtLaunch(reattached: boolean): void {
+    if (reattached) return;
+    if (this.hubAnswerTurn?.restored) this.endHubAnswerTurn();
+    this.resolveUnknownHubAnswerTurn();
+  }
+  /** M-3660: the current Hub answer turn, told to a fleet connection when it (re)connects (a signal may have been lost). */
+  private hubAnswerTurnStateMessage(): Record<string, unknown> {
+    const turn = this.hubAnswerTurn;
+    if (!turn && this.hubAnswerTurnUnknown) return { type: "hub_question_turn_state", correlationId: null, unknown: true };
+    return { type: "hub_question_turn_state", correlationId: turn?.correlationId ?? null, ...(turn ? { contactLimit: turn.contactLimit } : {}) };
+  }
 
   /** M-3239: Claude's and Codex's transcripts tell each tool call and answer; their pane's spinner alone is not a turn. */
   private turnEvidence(): boolean {
@@ -7303,9 +7439,11 @@ export class Daemon extends EventEmitter {
   private noteTurnEdge(state: string): void {
     if (state !== "idle") {
       if (this.turnEndTimer) { clearTimeout(this.turnEndTimer); this.turnEndTimer = null; }
-      if (state === "working") {this.turnWatch.begin(Date.now());this.hubRoomTurnActivityStart??=this.hubRoomTranscriptActivity;}
+      if (state === "working") {this.turnWatch.begin(Date.now());this.hubRoomTurnActivityStart??=this.hubRoomTranscriptActivity;{const hubTurn=this.hubAnswerTurn;if(hubTurn)hubTurn.sawWorking=true;}}
       return;
     }
+    // Lumen #4420 R2-A: a turn taken up from the record ends on the first idle state, at once (no settle wait, no work proof).
+    if (this.hubAnswerTurn?.restored) this.endHubAnswerTurn();
     if (this.turnEndTimer) return;
     const roomGeneration=this.roomConversationState?this.roomConversationGeneration():null,roomInputEpoch=this.hubRoomInputEpoch;
     this.turnEndTimer = setTimeout(() => {
@@ -7315,6 +7453,12 @@ export class Daemon extends EventEmitter {
       const bin=this.backend?.binaryName,needsTranscript=bin==="claude"||bin==="codex";
       const realWork=!needsTranscript||this.hubRoomTurnActivityStart!==null&&this.hubRoomTranscriptActivity>this.hubRoomTurnActivityStart;
       this.hubRoomTurnActivityStart=null;
+      // M-3660: the Hub answer turn ends only on real work (a compaction spinner is not its end: realWork needs a fresh
+      // working edge AND transcript activity since it, so a flicker leaves the turn running until real work then idle) —
+      // or, taken up again after a daemon restart, on the first idle edge.
+      const hubTurn = this.hubAnswerTurn;
+      if (hubTurn?.sawWorking && (realWork || hubTurn.restored)) this.endHubAnswerTurn();
+      else if (!hubTurn) this.resolveUnknownHubAnswerTurn();   // an unreadable record: the pane is idle now, nothing runs
       if(turn&&realWork&&roomGeneration&&roomGeneration===this.roomConversationGeneration()&&roomInputEpoch===this.hubRoomInputEpoch)
         this.broadcastFleetMessage({type:"hub_room_turn_ended",generation:roomGeneration,turn:`${this.hubRoomTurnBoot}:${++this.hubRoomTurnSequence}`});
       if (!turn || turn.messaged || !turn.text.trim() || !this.turnEvidence()) return;
@@ -8909,6 +9053,7 @@ export class Daemon extends EventEmitter {
           sent = await this.deliverMessage(pasted, status, {
             deliveryEpoch,
             submissionId: meta.message_id,
+            ...(isHubQuestionMeta(meta) ? { hubQuestion: meta.correlation_id, hubContactLimit: meta.hub_contact_limit !== "off" } : {}),
             ...(meta.hub_room_context_generation ? { roomContextGeneration: meta.hub_room_context_generation } : {}),
             ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}),
             verdict,
@@ -8999,6 +9144,10 @@ export class Daemon extends EventEmitter {
       preserveExactBytes?: boolean;
       /** Called under the pane write lock the moment this delivery's write has begun (#1690: our switch's hold). */
       onPaneWritten?: () => void;
+      /** M-3660: this delivery is a Hub question (its correlation id): it is written only into an idle pane, as a turn of its own. */
+      hubQuestion?: string;
+      /** M-3660: false when the share opted out of the contact limit (the fleet's meta hub_contact_limit=off). */
+      hubContactLimit?: boolean;
       /** Board 003648ac: just before each paste of this message (after every wait and fence), synchronously. */
       beforePaneWrite?: () => void;
       /**
@@ -9051,7 +9200,10 @@ export class Daemon extends EventEmitter {
     // normal Enter input has steering/interrupt semantics in several other CLIs.
     let readiness: "ready" | "busy" | "dialog" | "transient" | "unknown" = "ready";
     const gateWindowId = windowId;
-    const handOffEligible = !!(supportsQueuedInput || opts?.steer || composerQueue);
+    // M-3660: a Hub question is never handed into a running turn (Claude would merge it into that turn's work), and while
+    // a Hub answer turn runs, nothing else is handed into it: each waits for the idle pane and becomes a turn of its own.
+    const exclusiveTurn = opts?.hubQuestion !== undefined || this.hubAnswerTurnMayRun();
+    const handOffEligible = !exclusiveTurn && !!(supportsQueuedInput || opts?.steer || composerQueue);
     const handOffAdmissible = async (): Promise<boolean> => (await this.probeBlockingDialog()).state === "clear"
       && await this.hasPositiveDeliveryInput(true)
       && ((!opts?.steer && !composerQueue) || (this.launchTakesSteer() && await this.steerComposerAdmits(false, opts?.steer === true)));
@@ -9225,7 +9377,8 @@ export class Daemon extends EventEmitter {
           opts?.steer === true,
           writeCurrent,
           opts?.humanVerificationId,
-          opts?.beforePaneWrite,
+          // M-3660: written into an idle pane, so whatever Hub answer turn ran is over; a Hub question begins its own.
+          () => { if (!handingOffToNativeQueue) this.hubAnswerTurnBegins(opts?.hubQuestion, opts?.hubContactLimit !== false); opts?.beforePaneWrite?.(); },
           opts?.lookBeforePaneWrite,
           opts?.humanMeta,
         );
@@ -12824,21 +12977,30 @@ export class Daemon extends EventEmitter {
     }
 
     if (tool === TASK_TOOL) {
-      const fleetReqId = `task_${++this.fleetRequestSeq}_${requestId}`;
-      const timeout = setTimeout(() => {
-        this.pendingIpcRequests.delete(fleetReqId);
-        respond(null, `Task operation timed out after ${daemonBudgetMs(tool) / 1000}s`);
-      }, daemonBudgetMs(tool));
-      this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
-        clearTimeout(timeout);
-        respond(respMsg.result, respMsg.error as string | undefined);
+      // One call to the fleet's task tool; resolves with its answer or an error string (never rejects).
+      const askTask = (payload: Record<string, unknown>) => new Promise<{ result?: unknown; error?: string }>((resolve) => {
+        const fleetReqId = `task_${++this.fleetRequestSeq}_${requestId}`;
+        const timeout = setTimeout(() => {
+          this.pendingIpcRequests.delete(fleetReqId);
+          resolve({ error: `Task operation timed out after ${daemonBudgetMs(tool) / 1000}s` });
+        }, daemonBudgetMs(tool));
+        this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
+          clearTimeout(timeout);
+          resolve({ result: respMsg.result, error: respMsg.error as string | undefined });
+        });
+        this.broadcastFleetMessage({
+          type: "fleet_task",
+          payload,
+          meta: { instance_name: this.name },
+          fleetRequestId: fleetReqId,
+        });
       });
-      this.broadcastFleetMessage({
-        type: "fleet_task",
-        payload: args,
-        meta: { instance_name: this.name },
-        fleetRequestId: fleetReqId,
-      });
+      // files named in `attach` are read HERE, on the agent's side (its working directory, no symlink, size-capped),
+      // and staged on the fleet in parts; the write itself then carries their ids. The fleet never opens a workspace path.
+      void (async () => {
+        const sent = await sendTaskWrite(args, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name }, askTask);
+        if (sent.staging) respond(null, sent.error); else respond(sent.answer.result, sent.answer.error);
+      })().catch((err: unknown) => respond(null, `task failed: ${err instanceof Error ? err.message : "error"}`));
       return;
     }
 
@@ -14403,6 +14565,7 @@ export class Daemon extends EventEmitter {
     if (freshInboundInstructions) this.installCompactInboundInstructions();
     else { this.compactInboundInstructions = false; this.inboundCompatibilityPending = true; this.resetInboundPresentation(); }
     this.backend!.preTrust?.(this.config.working_directory, backendConfig);
+    this.checkClaudeMcpServers(backendConfig);
 
     // Resolve working directory (e.g. symlink for hidden paths)
     const resolvedCwd = this.backend!.resolveWorkingDirectory?.(this.config.working_directory, this.name) ?? this.config.working_directory;

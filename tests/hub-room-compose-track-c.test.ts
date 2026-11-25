@@ -1,3 +1,6 @@
+import {createPrivateKey} from "node:crypto";
+import {signRoomAsker,roomAskIdentityDigest} from "../src/hub/room-asker-identity.js";
+import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY} from "../src/hub/room-asker-identity-model.js";
 /** Owned TLS/WSS + SQLite factory integration. Delivery and state are inert Fleet-host callbacks. */
 import { afterEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -22,8 +25,8 @@ import { hubRig } from "./helpers/hub-rig.js";
 const capabilities = [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY];
 const rigs: Awaited<ReturnType<typeof hubRig>>[] = [], services: HubMountedService[] = [];
 afterEach(async () => { for (const s of services.splice(0)) { s.fence(); await s.close(); } for (const r of rigs.splice(0)) await r.close(); });
-async function harness(withState = true, withPost = false, withNotify = true) {
-  const r = await hubRig({ serverCapabilities: capabilities }); rigs.push(r); const profile = await r.pair();
+async function harness(withState = true, withPost = false, withNotify = true, withIdentity = false) {
+  const r = await hubRig({ serverCapabilities: withIdentity?[...capabilities,"fleet-update-v1",HUB_ROOM_ASKER_IDENTITY_CAPABILITY]:capabilities }); rigs.push(r); const profile = await r.pair();
   let epoch = 0;
   const postRoom = randomUUID(), postMessage = randomUUID();
   let rooms: AgentRoomPort | null = null;
@@ -54,8 +57,11 @@ async function harness(withState = true, withPost = false, withNotify = true) {
     attachReports: (handler: typeof reports, failure: typeof failed) => { reports = handler; failed = failure; },
     ...(withState ? { readState } : {}),
   };
+  let askerPort:Pick<HubRoomAskAdapter,"verifiedAsker">|null=null;
   const create = createHubMemberFactory({ home: r.memberHome, components: MEMBER_COMPONENTS, boundHub: () => profile.hub.hubId,
     agents: () => [{ name: "general", display: "General" }], representative,
+    attachRoomAskers:port=>{askerPort=port;},
+    ...(withIdentity?{fleetInfo:{version:"2.3.5",runsAsService:true},versionRegistry:async()=>"found" as const,updates:{idle:()=>false,canInstall:async()=>false,launch:async()=>false,notify:()=>true}}:{}),
     ...(withPost ? {attachAgentRooms:(value:AgentRoomPort|null)=>{rooms=value;},...(withNotify?{roomNotify:async(input:import("../src/hub/member/room-post-answers.js").RoomPostNotification)=>{
       if(!input.stillCurrent()||!await input.beforeInput())return false;notifications.push(input);return true;}}:{})} : {}),
     attachExposures: value => { api = value; }, attachAttention: () => {}, pokeAttention: () => {}, report: () => {},
@@ -69,7 +75,7 @@ async function harness(withState = true, withPost = false, withNotify = true) {
     asker: { name: "Alex" }, text: "What changed?", context: [] });
   const row = (id: string) => { const db = new Database(join(r.memberHome, memberSet(profile.hub.hubId).database), { readonly: true });
     try { return db.prepare("SELECT state FROM hub_room_asks WHERE message_id=?").get(id); } finally { db.close(); } };
-  return { r, profile, inputs, notifications, seen, postRoom, postMessage, readState, start, publish, ask, send, row, representative, logs, epoch: () => epoch, api: () => api!, rooms:()=>rooms,
+  return { r, profile, askerPort:()=>askerPort,inputs, notifications, seen, postRoom, postMessage, readState, start, publish, ask, send, row, representative, logs, epoch: () => epoch, api: () => api!, rooms:()=>rooms,
     replace: () => { token = "replacement-agent-token"; },
     report: (text: string) => reports!({ caller: "general", correlationId: inputs.at(-1)!.correlationId, text, callerCurrent: () => true }),
     failed: () => failed!(inputs.at(-1)!.correlationId, "general") };
@@ -259,4 +265,16 @@ it("M-3313: a room ask (its context too) and a room post's answer are shown to t
   await h.send("room.post-answer", { id: randomUUID(), idempotencyKey: operationId, postId: h.postMessage, roomId: h.postRoom, exposureId: exposure.exposureId!,
     message: { id: randomUUID(), author: { name: "Alex" }, text: "reply ZZZZZZZZZZZZZZZZZZZ3", at: Date.now() } });
   await vi.waitFor(() => expect(h.seen.some(t => t.includes("ZZZZZZZZZZZZZZZZZZZ3"))).toBe(true));
+});
+
+it("composes the pinned verifier and destination-bound getter on the actual TLS member path",async()=>{
+ const h=await harness(true,false,true,true),service=await h.start(),e=h.publish();
+ const ask=h.ask(e.exposureId!),now=Date.now(),proof=signRoomAsker({v:1,issuer:h.profile.hub.hubId,issuerKeyId:h.profile.issuerKeyId,destinationFleetId:h.profile.fleetId,messageId:ask.messageId,roomId:ask.roomId,exposureId:ask.exposureId,exposureRevision:e.revision,linkEpoch:h.epoch(),subject:{kind:"agent",id:`exposure/${randomUUID()}`,displayName:"Actual source agent"},contentDigest:roomAskIdentityDigest(ask),issuedAt:now,expiresAt:now+120000,retainedUntil:now+3600000,nonce:"a".repeat(64)},createPrivateKey(readFileSync(join(h.r.root,"hub/keys/issuer-key.pem"))));
+ await h.send("room.ask",{...ask,askerIdentity:proof});await vi.waitFor(()=>expect(h.inputs).toHaveLength(1));const input=h.inputs[0]!;
+ expect(input.verifiedHubAsker).toEqual({hubId:h.profile.hub.hubId,...proof.subject});expect(h.askerPort()!.verifiedAsker(ask.messageId,input.roomAskerDestination!)).toEqual(input.verifiedHubAsker);
+ await h.report("Answer from the fixture");expect(h.askerPort()!.verifiedAsker(ask.messageId,input.roomAskerDestination!)).toEqual(input.verifiedHubAsker);
+ service.fence();await service.close();expect(h.askerPort()).toBeNull();
+ // Reopen with no room identity consumer. The selected-set opener/migrations and strict journal reader are unchanged.
+ const legacy=createHubMemberFactory({home:h.r.memberHome,boundHub:()=>h.profile.hub.hubId,components:MEMBER_COMPONENTS,agents:()=>[],representative:{deliver:async()=>false,agentToken:()=>null,attachReports:()=>{}},attachExposures:()=>{},attachAttention:()=>{},pokeAttention:()=>{},report:()=>{},log:()=>{}});
+ const reopened=await legacy({},()=>true);services.push(reopened);await reopened.start();
 });

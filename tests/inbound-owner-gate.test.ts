@@ -24,7 +24,7 @@ describe("inbound messages are settled by the owning adapter", () => {
 
   function setup(opts: { primary: any; persona: any; boundTo?: string }) {
     const fm = new FleetManager(tmpDir);
-    const mk = (id: string) => ({ id, type: "discord", react: vi.fn().mockResolvedValue(undefined),
+    const mk = (id: string) => ({ id, type: "discord", react: vi.fn().mockResolvedValue(undefined), editMessage: vi.fn().mockResolvedValue(undefined),
       sendText: vi.fn().mockResolvedValue({ messageId: "m", chatId: "guild" }) } as any);
     const cfg = (id: string, access: any) => ({ id, type: "discord", mode: "topic", group_id: "guild", access });
     const primaryCfg = cfg("discord", opts.primary);
@@ -125,4 +125,23 @@ describe("inbound messages are settled by the owning adapter", () => {
     await feed(fm, ["discord", "grok-persona"]);
     expect(deliver, "the owner's policy governs, so nothing is delivered").not.toHaveBeenCalled();
   });
+  it.each(["reply", "edit_message", "react"])("M-3679 sibling-bot ingress keeps %s on the topic's configured bot",async tool=>{
+    const {fm,deliver}=setup({primary:OPEN,persona:OPEN,boundTo:"discord"});
+    const [ownerId, observerId] = fm.fleetConfig!.channels!.map(channel => channel.id!);
+    await feed(fm,[observerId!,ownerId!]);
+    expect(deliver).toHaveBeenCalledTimes(1);
+    const payload=deliver.mock.calls[0]![1] as any;
+    expect(payload.meta.adapter_id).toBe("discord");
+    const primary:any=fm.worlds.get("discord")!.adapter,persona:any=fm.worlds.get(observerId!)!.adapter;
+    const send=vi.fn(()=>true);fm.instanceIpcClients.set("worker",{send} as never);
+    vi.spyOn(fm as any,"touchActivity").mockImplementation(()=>{});
+    vi.spyOn(fm as any,"setTopicIcon").mockImplementation(()=>{});
+    vi.spyOn(fm as any,"afterReplyRouted").mockImplementation(()=>{});
+    await (fm as any).handleOutboundFromInstance("worker",{tool,fleetRequestId:"demo-outbound",adapterId:payload.meta.adapter_id,
+      args:{chat_id:payload.meta.chat_id,thread_id:payload.meta.thread_id,message_id:"demo-message",emoji:"👍",text:"Demo reply"}});
+    await vi.waitFor(()=>expect(send).toHaveBeenCalled());
+    const method=tool==="reply"?"sendText":tool==="react"?"react":"editMessage";
+    expect(primary[method]).toHaveBeenCalled();expect(persona[method]).not.toHaveBeenCalled();
+  });
+
 });

@@ -24,7 +24,7 @@ async function client() {
   });
   owned.push({ root, server });
   await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
-  for (const name of ["agent-cli", "cli-flags", "agent-token-header", "agent-file-read", "instance-names", "web-asset-parts", "bundled-skills", "web-experimental"]) {
+  for (const name of ["agent-cli", "cli-flags", "agent-token-header", "agent-file-read", "instance-names", "web-asset-parts", "bundled-skills", "web-experimental", "task-attach-client", "task-file-limits"]) {
     writeFileSync(join(root, name + ".js"), ts.transpileModule(readFileSync(join(import.meta.dirname, "../src/" + name + ".ts"), "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText);
   }
   symlinkSync(join(process.cwd(), "node_modules"), join(root, "node_modules"), "dir");

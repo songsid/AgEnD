@@ -4,18 +4,21 @@
  * regional uplift: AgEnD's CLIs run on subscriptions, so these are list-price equivalents, not a bill).
  *
  * Claude (platform.claude.com/docs/en/about-claude/pricing): a 5-minute cache write is 1.25x base input, a 1-hour
- * write 2x; a cache hit is 0.1x, except 0.05x on Opus/Sonnet 5.5 and 0.025x on Fable/Mythos 5.1. Haiku 5.5 is priced
- * by prompt length (over 100,000 tokens: the higher row), counting cache reads and writes.
+ * write 2x; a cache hit is 0.1x, except 0.05x on Opus/Sonnet 5.5 and 0.025x on Fable/Mythos 5.1 and 5.2. Haiku 5.5 is
+ * priced by prompt length (over 100,000 tokens: the higher row), counting cache reads and writes.
  * OpenAI (developers.openai.com/api/docs/pricing, …/guides/prompt-caching): on GPT-5.6 and later a cache write is
- * 1.25x uncached input and the cache lives 30 minutes after its last write or reuse; prompts over 272K input tokens
- * pay the long-context row.
+ * 1.25x uncached input (this table stores that 30-minute rate; the published 12-hour write is 2.5x and is not stored)
+ * and the cache lives 30 minutes after its last write or reuse; prompts over 272K input tokens pay the long-context row.
+ * Muse (dev.meta.ai/docs/pricing-rate-limits), Standard mode: Meta publishes no cache-write surcharge, so a write is
+ * priced as input. Spark has no long-context premium. Contributor-mode ids are a different price and stay unpriced.
  */
 
-export const PRICES_CHECKED = "2026-10-09";
+export const PRICES_CHECKED = "2026-11-24";
 export const PRICE_SOURCES = [
   "https://platform.claude.com/docs/en/about-claude/pricing",
   "https://developers.openai.com/api/docs/pricing",
   "https://developers.openai.com/api/docs/guides/prompt-caching",
+  "https://dev.meta.ai/docs/pricing-rate-limits",
 ] as const;
 
 /** USD per million tokens. `write` is the one cache-write rate an OpenAI model has; Claude has `write5m`/`write1h`. */
@@ -40,6 +43,8 @@ const openai = (input: number, read: number, write: number, output: number): Rat
   ({ input, read, write5m: write, write1h: write, write, output });
 
 const TABLE: Record<string, Row> = {
+  "claude-fable-5-2": { rates: [claude(8, 0.20, 40)] },
+  "claude-mythos-5-2": { rates: [claude(8, 0.20, 40)] },
   "claude-fable-5-1": { rates: [claude(10, 0.25, 50)] },
   "claude-mythos-5-1": { rates: [claude(10, 0.25, 50)] },
   "claude-fable-5": { rates: [claude(10, 1, 50)] },
@@ -60,12 +65,14 @@ const TABLE: Record<string, Row> = {
   "claude-haiku-5-5": { rates: [claude(0.10, 0.01, 0.50), claude(0.50, 0.05, 2.50)], longOver: 100_000 },
   "claude-haiku-4-5": { rates: [claude(1, 0.10, 5)] },
   "gpt-6.1-sol": { rates: [openai(2, 0.10, 2.50, 10), openai(4, 0.20, 5, 15)], longOver: 272_000 },
+  "gpt-6.1-terra": { rates: [openai(1, 0.05, 1.25, 5), openai(2, 0.10, 2.50, 7.50)], longOver: 272_000 },
   "gpt-6-sol": { rates: [openai(2, 0.20, 2.50, 10), openai(4, 0.40, 5, 15)], longOver: 272_000 },
   "gpt-6-astra": { rates: [openai(10, 1, 12.50, 50), openai(20, 2, 25, 75)], longOver: 272_000 },
   "gpt-6-luna": { rates: [openai(0.10, 0.01, 0.125, 0.50), openai(0.20, 0.02, 0.25, 0.75)], longOver: 272_000 },
   "gpt-5.6-sol": { rates: [openai(4, 0.40, 5, 20), openai(8, 0.80, 10, 30)], longOver: 272_000 },
   "gpt-5.6-terra": { rates: [openai(2, 0.20, 2.50, 12), openai(4, 0.40, 5, 18)], longOver: 272_000 },
   "gpt-5.6-luna": { rates: [openai(0.20, 0.02, 0.25, 1.20), openai(0.40, 0.04, 0.50, 1.80)], longOver: 272_000 },
+  "muse-spark-1.3": { rates: [openai(1.25, 0.15, 1.25, 4.25)] },
 };
 
 /**

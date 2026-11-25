@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { splitFlags } from "./cli-flags.js";
 import { agentTokenHeader } from "./agent-token-header.js";
 import { readAgentFile } from "./agent-file-read.js";
+import { sendTaskWrite, wantsAttach } from "./task-attach-client.js";
 import { listBundledSkills, readBundledSkill } from "./bundled-skills.js";
 import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, THEME_ASSET_SLOTS, writePreview } from "./web-asset-parts.js";
 
@@ -101,7 +102,8 @@ const TASK_TEXT_FLAGS: Readonly<Record<string, string>> = {
   "--name": "name", "--filter-assignee": "filter_assignee", "--cursor": "cursor",
 };
 /** Repeatable: every occurrence is one more entry (`--acceptance` one checklist item each; `--depends-on` also takes a comma list). */
-const TASK_LIST_FLAGS: Readonly<Record<string, string>> = { "--acceptance": "acceptance", "--depends-on": "depends_on" };
+// `--attach FILE`: a file on your side to put on the card with the comment of this write; read here, never by the fleet.
+const TASK_LIST_FLAGS: Readonly<Record<string, string>> = { "--acceptance": "acceptance", "--depends-on": "depends_on", "--attach": "attach" };
 const TASK_INT_FLAGS: Readonly<Record<string, string>> = { "--version": "version", "--limit": "limit" };
 /** Repeatable whole numbers, comma lists too (`--check 1,3 --check 4`). */
 const TASK_INTS_FLAGS: Readonly<Record<string, string>> = { "--check": "check", "--uncheck": "uncheck" };
@@ -179,6 +181,8 @@ function taskArgs(words: string[]): Record<string, unknown> {
       break;
     }
     case "comment": args = { action: "update", id: rest[1] ?? "", comment: rest[2] }; break;
+    // attach ID FILE [FILE…] [--comment TXT]: files from your working directory, on the card under a comment.
+    case "attach": args = { action, id: rest[1] ?? "", attach: rest.slice(2) }; break;
     case "create_project": args = { action, name: rest[1], description: rest[2] }; break;
     // move-project PROJECT ID [ID…]: PROJECT is a project's id (what `projects` lists) or `none`.
     case "move_project": args = { action, project: rest[1], ids: rest.slice(2) }; break;
@@ -517,7 +521,23 @@ async function main(): Promise<void> {
   }
 
   try {
-    const result = await post(op, args);
+    // files named by `attach` are read here and staged on the fleet first; the write then carries their ids.
+    let result: string;
+    if (op === "task" && wantsAttach(args)) {
+      // The files are staged, the write sent with their ids, and the ones a refused write did not use given back (sendTaskWrite).
+      let written = "";
+      const sent = await sendTaskWrite(args, { workspace: process.cwd(), stateDir: DATA_DIR, instance: INSTANCE }, async (call) => {
+        const last = await post("task", call);
+        if (call.action !== "upload" && call.action !== "release") written = last;      // the write's own answer, as it always was printed
+        try {
+          const parsed = JSON.parse(last) as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && typeof (parsed as { error?: unknown }).error === "string") return { error: (parsed as { error: string }).error };
+          return { result: parsed };
+        } catch { return { error: last.slice(0, 200) }; }
+      });
+      if (sent.staging) die(sent.error);
+      result = written;
+    } else result = await post(op, args);
     // The task board answers in text (a card, your work): printed as text, not as one quoted JSON line.
     if (op === "task") {
       try {

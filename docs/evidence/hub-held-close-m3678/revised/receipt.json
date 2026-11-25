@@ -1,0 +1,71 @@
+{
+  "stage": "after",
+  "captureOnly": "held-confirm",
+  "sourceHead": "9f01404a318acce7f8102bd2257cddfe5783e74d",
+  "results": [
+    {
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "closes": 1
+    },
+    {
+      "device": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "closes": 2
+    },
+    {
+      "device": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "closes": 3
+    },
+    {
+      "device": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "closes": 4
+    },
+    {
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "closes": 5
+    },
+    {
+      "device": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "closes": 6
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "closes": 7
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "closes": 8
+    }
+  ]
+}

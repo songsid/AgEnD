@@ -168,8 +168,9 @@ describe("office_view", () => {
       waypoints: [{ id: "hall", x: 650, y: 610 }, { id: "nook", x: 300, y: 500 }],
       npcs: [{ id: "rack", label: "Rack", x: 1000, y: 150 }, { id: "plant", label: null, x: 50, y: 50 }],
       door: { x: 600, y: 710 },
+      vehicles: [],
     });
-    expect(officeSpots(lab!, null)).toEqual({ seats: [], waypoints: [], npcs: [], door: null });
+    expect(officeSpots(lab!, null)).toEqual({ seats: [], waypoints: [], npcs: [], door: null, vehicles: [] });
   });
 
   it("the offices it is in, its act and cooldown; one office by id; not one of its own refused", () => {
@@ -179,7 +180,7 @@ describe("office_view", () => {
       offices: [
         { id: "ops", name: "Ops", skin: "snug", walks: true, members: [{ name: "alpha", display_name: "Alpha Fox", state: "working" }, { name: "beta", state: "idle" }, { name: "gamma", state: "needs" }],
           spots: officeSpots(offices()[0]!, PACK) },
-        { id: "lab", name: "Lab", skin: "pixel", walks: false, members: [{ name: "beta", state: "idle" }], spots: { seats: [], waypoints: [], npcs: [], door: null } },
+        { id: "lab", name: "Lab", skin: "pixel", walks: false, members: [{ name: "beta", state: "idle" }], spots: { seats: [], waypoints: [], npcs: [], door: null, vehicles: [] } },
       ],
       act: null, cooldown_ms: 0,
     });
@@ -216,7 +217,7 @@ describe("office_set", () => {
     ["say blank", { say: "   " }, "say"],
     ["say with a control character", { say: "a\nb" }, "say"],
     ["seconds under 5", { say: "hi", seconds: 4 }, "invalid"],
-    ["seconds over 120", { say: "hi", seconds: 121 }, "invalid"],
+    ["seconds over 120", { say: "hi", seconds: 121 }, "seconds"],               // the schema allows a ride's 28800; an act's own check refuses
     ["nothing to do", {}, "nothing"],
     ["only seconds", { seconds: 30 }, "nothing"],
     ["two go targets", { go: { seat: "desks:0", waypoint: "hall" } }, "go"],
@@ -243,7 +244,7 @@ describe("office_set", () => {
     const list = (() => { const r = checkOffices([{ id: "den", name: "Den", skin: "flat", members: ["alpha"] }], id => (id === "flat" ? DESKS : null)); if (!r.ok) throw new Error(r.detail); return r.offices; })();
     const b = new OfficeActs({ offices: () => list, pack: id => (id === "flat" ? DESKS : null), chart: () => CHART,
       people: () => ({ stateOf: () => "idle", displayName: () => undefined }), changed: () => {} }, { limiter: new OfficeActLimiter(() => 0) });
-    expect(b.view("alpha", {})).toMatchObject({ offices: [{ id: "den", walks: false, spots: { seats: [], waypoints: [], npcs: [], door: null } }] });
+    expect(b.view("alpha", {})).toMatchObject({ offices: [{ id: "den", walks: false, spots: { seats: [], waypoints: [], npcs: [], door: null, vehicles: [] } }] });
     expect(b.set("alpha", { go: { seat: "desks:0" } })).toMatchObject({ error: "go" });
     expect(b.set("alpha", { say: "Here" })).toMatchObject({ act: { office: "den", say: "Here" } });
   });

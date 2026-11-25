@@ -173,14 +173,14 @@ describe("RestartProgress", () => {
     expect(editMessage).toHaveBeenLastCalledWith(
       "fleet",
       "update-zh",
-      "🚀 啟動 Fleet... (3s)",
+      "🚀 啟動 Fleet...（3s）",
       undefined,
     );
     await progress.finish({ running: 1, total: 1, version: "2.1.4", pausedNames: [] });
     expect(editMessage).toHaveBeenLastCalledWith(
       "fleet",
       "update-zh",
-      "✅ 更新完成 — v2.1.4 · 1/1 個 Agent 已就緒 (3s)",
+      "✅ 更新完成 — v2.1.4 · 1/1 個 Agent 已就緒（3s）",
       undefined,
     );
   });

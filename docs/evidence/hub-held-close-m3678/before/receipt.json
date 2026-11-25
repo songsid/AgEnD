@@ -1,0 +1,70 @@
+{
+  "stage": "before",
+  "sourceHead": "3ed153b1541f020aa027781f905a615b2d3e63df",
+  "results": [
+    {
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "closes": 0
+    },
+    {
+      "device": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "closes": 0
+    },
+    {
+      "device": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "closes": 0
+    },
+    {
+      "device": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "closes": 0
+    },
+    {
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "closes": 0
+    },
+    {
+      "device": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "closes": 0
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "overflow": false,
+      "errors": [],
+      "closes": 0
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "overflow": false,
+      "errors": [],
+      "closes": 0
+    }
+  ]
+}

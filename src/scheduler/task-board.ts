@@ -15,6 +15,7 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { parseMentions } from "./task-board-mentions.js";
+import { TASK_FILE_LIMITS, TaskFileError, type StagedFile, type TaskFileStore } from "./task-files.js";
 
 export const CARD_STATUSES = ["open", "claimed", "blocked", "review", "done", "cancelled"] as const;
 export type CardStatus = (typeof CARD_STATUSES)[number];
@@ -55,6 +56,18 @@ export const CARD_LIMITS = {
 
 /** How far back finished sub tasks and cancelled main tasks stay on the board. */
 const BOARD_DAYS = 14;
+/**
+ * M-3668 (the user, 11-24): a finished main task — done or cancelled — leaves the dashboard's board this many days after it
+ * finished (defaults.task_board.archive_after_days; 0 = never). A view rule only: nothing in the database changes, search
+ * and its number still find it, and moving it to To do reopens it (its status, not its age, makes it archived).
+ */
+export const ARCHIVE_AFTER_DAYS = 3;
+/** The archive age as fleet.yaml gives it: a whole number of days, 0–3650; anything else is the default. */
+export function archiveAfterDays(v: unknown): number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 3650 ? v : ARCHIVE_AFTER_DAYS;
+}
+/** M-3668: how many finished main tasks a project's Done column counts as "this week". */
+const WEEK_MS = 7 * 86_400_000;
 const BATCH_MAX = 30;
 
 /**
@@ -217,6 +230,13 @@ export interface ProjectStats {
   waiting: number;
   blocked: number;
   lastActivity: string | null;
+  /**
+   * M-3668: finished main tasks archived (left out of the numbers above), main tasks done in the last 7 days, and how many
+   * of those are archived already (the Done column shows the rest: "45 done this week · 8 archived").
+   */
+  archived: number;
+  doneWeek: number;
+  archivedWeek: number;
 }
 
 /** A card as the dashboard draws it: references by card number. */
@@ -257,6 +277,8 @@ export interface CardView {
   progress: Progress | null;
   unmetDeps: string[];
   commentCount: number;
+  /** Files on the card (its attachments). */
+  attachmentCount: number;
   /** Comments by others its assignee has not acted on yet. */
   newCommentCount: number;
   lastComment: { author: string; authorKind: Actor["kind"]; at: string } | null;
@@ -270,6 +292,24 @@ export interface Entry {
   author: string;
   authorKind: Actor["kind"];
   text: string;
+  at: string;
+}
+
+/**
+ * A file on a card: linked to the comment its writer left with it (`entryId`), kept under the card in
+ * `task-files/` (task-files.ts) and served only as a download (GET /ui/tasks/files/<id>). `kind` is what the bytes are
+ * (a picture, or anything else); `name` is a label — never a path.
+ */
+export interface Attachment {
+  id: string;
+  cardId: string;
+  entryId: number | null;
+  name: string;
+  mime: string;
+  kind: "photo" | "document";
+  size: number;
+  author: string;
+  authorKind: Actor["kind"];
   at: string;
 }
 
@@ -374,6 +414,8 @@ export interface CardDetail {
   comments: Entry[];
   logs: Entry[];
   history: CardEvent[];
+  /** The files on this card, oldest first; each hangs under the comment `entryId` names. */
+  attachments: Attachment[];
   /** The instances that watch this card (its own list: a sub task's main task's watchers follow it too). */
   watchers: string[];
   /** A sub task's: the watchers of its main task, which follow it too (read-only here; empty for any other card). */
@@ -433,6 +475,8 @@ export interface CardPatch {
   projectId?: number | null;
   log?: string;
   comment?: string;
+  /** Files the writer staged (TaskFileStore): linked to the comment this write leaves — a line naming them when it has no words. */
+  attach?: string[];
 }
 
 export interface MoveOptions {
@@ -440,6 +484,8 @@ export interface MoveOptions {
   result?: string;
   comment?: string;
   version?: number;
+  /** As CardPatch.attach: the files that go with the move's comment. */
+  attach?: string[];
 }
 
 export interface MutationResult {
@@ -700,8 +746,16 @@ export class TaskBoard {
   /** The notes of the last write, until a caller of the `task` tool's old actions takes them (takeNotes). */
   private lastNotes: string[] = [];
   private codes = new Map<string, string>();
+  /** Where files on cards live (task-files.ts); none: this process cannot take attachments (a bare board in a test, the CLI). */
+  private fileStore: TaskFileStore | null = null;
+  /** What undoes this write's file moves, when the write fails after them. */
+  private undo: Array<() => void> = [];
 
   constructor(private readonly db: Database.Database, private readonly now: () => Date = () => new Date()) {}
+
+  /** The store for files on cards (the fleet's scheduler sets it); null takes attachments away. */
+  setFiles(store: TaskFileStore | null): void { this.fileStore = store; }
+  files(): TaskFileStore | null { return this.fileStore; }
 
   /** Called with what each committed write changed. Returns an unsubscribe function. */
   onChange(listener: (change: BoardChange) => void): () => void {
@@ -783,6 +837,20 @@ export class TaskBoard {
         at          TEXT NOT NULL,
         PRIMARY KEY (task_id, instance)
       );
+      CREATE TABLE IF NOT EXISTS task_attachments (
+        id          TEXT PRIMARY KEY,
+        task_id     TEXT NOT NULL,
+        entry_id    INTEGER,
+        name        TEXT NOT NULL,
+        mime        TEXT NOT NULL,
+        kind        TEXT NOT NULL,
+        size        INTEGER NOT NULL,
+        sha256      TEXT NOT NULL,
+        author      TEXT NOT NULL,
+        author_kind TEXT NOT NULL,
+        at          TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_attachments_task ON task_attachments(task_id, at);
     `);
     // #2352: a project's lead instance, added in place (null: its waiting cards' buttons stay in General).
     const projectCols = new Set((this.db.prepare("PRAGMA table_info(task_projects)").all() as Array<{ name: string }>).map((c) => c.name));
@@ -971,8 +1039,20 @@ export class TaskBoard {
    * tasks — or every done main task with `allDone` (the Done column's "All"). Older finished work stays in the
    * database and in the projects' numbers (projectStats), not in every board read.
    */
-  boardCards(days = BOARD_DAYS, allDone = false): Card[] {
+  boardCards(days = BOARD_DAYS, allDone = false, archiveDays = 0): Card[] {
     const since = new Date(this.now().getTime() - days * 86_400_000).toISOString();
+    if (archiveDays > 0) {
+      // M-3668: finished main tasks until they are archived (`allDone` no longer reads past it: the Archive list does).
+      // #4428 review: an archived main task's sub tasks go with it (isArchived), even one done more recently.
+      const kept = new Date(this.now().getTime() - archiveDays * 86_400_000).toISOString();
+      return (this.db.prepare(
+        `SELECT * FROM tasks WHERE
+           (kind = 'main' AND (status NOT IN ('done', 'cancelled') OR COALESCE(done_at, updated_at) >= ?))
+           OR (kind = 'sub' AND status != 'cancelled' AND (status != 'done' OR COALESCE(done_at, updated_at) >= ?)
+               AND NOT EXISTS (SELECT 1 FROM tasks m WHERE m.id = tasks.parent_id AND m.status IN ('done', 'cancelled') AND COALESCE(m.done_at, m.updated_at) < ?))
+         ORDER BY sort`,
+      ).all(kept, since, kept) as Row[]).map(toCard);
+    }
     const rows = this.db.prepare(
       `SELECT * FROM tasks WHERE
          (kind = 'main' AND (status NOT IN ('done', 'cancelled') OR (status = 'done' AND (? OR COALESCE(done_at, updated_at) >= ?)) OR (status = 'cancelled' AND updated_at >= ?)))
@@ -983,16 +1063,60 @@ export class TaskBoard {
   }
 
   /**
+   * #4428 review: ` AND …` leaving out the cards that name one of `names` (assigned to, created by or handed out by one:
+   * the public link's hiding, web-api boardHiding), with its values; empty when none.
+   */
+  private unseen(names: readonly string[] = []): { sql: string; args: string[] } {
+    const out = [...new Set(names)];
+    if (!out.length) return { sql: "", args: [] };
+    const marks = out.map(() => "?").join(", ");
+    return { sql: ` AND (assignee IS NULL OR assignee NOT IN (${marks})) AND created_by NOT IN (${marks}) AND (dispatcher IS NULL OR dispatcher NOT IN (${marks}))`,
+      args: [...out, ...out, ...out] };
+  }
+
+  /**
+   * #4428 review: what time alone changes in a board read and its numbers — how many finished cards have passed each
+   * of its lines (archived, out of this week's count, out of the recent window) — with the archive age. A card passes a
+   * line without a write (the revision stays), so a page's "same revision" read is answered `unchanged` only when this
+   * matches too. One counting pass, no rows. `leaveOut`: as projectStats (the public link's hidden instances' cards never
+   * move it).
+   */
+  boardEpoch(archiveDays = 0, days = BOARD_DAYS, leaveOut: readonly string[] = []): string {
+    const nowMs = this.now().getTime();
+    const at = (ms: number) => new Date(nowMs - ms).toISOString();
+    const kept = archiveDays > 0 ? at(archiveDays * 86_400_000) : "", week = at(WEEK_MS), since = at(days * 86_400_000), hide = this.unseen(leaveOut);
+    const r = this.db.prepare(
+      `SELECT
+         COALESCE(SUM(kind = 'main' AND status IN ('done', 'cancelled') AND COALESCE(done_at, updated_at) < ?), 0) AS archived,
+         COALESCE(SUM(kind = 'main' AND status = 'done' AND COALESCE(done_at, updated_at) < ?), 0) AS week,
+         COALESCE(SUM(status IN ('done', 'cancelled') AND (CASE WHEN kind = 'main' AND status = 'cancelled' THEN updated_at ELSE COALESCE(done_at, updated_at) END) < ?), 0) AS old
+       FROM tasks WHERE 1${hide.sql}`,
+    ).get(kept, week, since, ...hide.args) as { archived: number; week: number; old: number };
+    return `${archiveDays}:${r.archived}:${r.week}:${r.old}`;
+  }
+
+  /**
    * Each project's numbers (by id; "none" for No project) over all its cards, finished ones included: main tasks,
    * work units (a main task's sub tasks, or one unit for a main task without them; a done main task counts all its
    * units done), cards waiting for the person and blocked, and the last change. One pass over the table. #2080: waiting
    * counts only the cards in review the person confirms (waitsForPerson, `gone` as for Needs you), never an agent's.
+   * #4428 review: `leaveOut` names (the public link's hidden instances) — their cards, and a hidden main task's sub tasks,
+   * count nowhere, as the board read leaves them out.
    */
-  projectStats(gone?: GoneDispatcher): Record<string, ProjectStats> {
-    const rows = this.db.prepare("SELECT id, kind, status, project_id, parent_id, updated_at, needs_review, dispatcher, dispatcher_kind FROM tasks").all() as Row[];
+  projectStats(gone?: GoneDispatcher, archiveDays = 0, leaveOut: readonly string[] = []): Record<string, ProjectStats> {
+    const all = this.db.prepare("SELECT id, kind, status, project_id, parent_id, updated_at, done_at, needs_review, dispatcher, dispatcher_kind, assignee, created_by FROM tasks").all() as Row[];
+    const unseenNames = new Set(leaveOut);
+    const names = (r: Row) => [r.assignee, r.created_by, r.dispatcher].some((n) => typeof n === "string" && unseenNames.has(n));
+    const hiddenMains = unseenNames.size ? new Set(all.filter((r) => r.kind === "main" && names(r)).map((r) => r.id as string)) : new Set<string>();
+    const rows = unseenNames.size ? all.filter((r) => !names(r) && !(r.kind === "sub" && hiddenMains.has(r.parent_id as string))) : all;
+    const nowMs = this.now().getTime(), kept = archiveDays > 0 ? new Date(nowMs - archiveDays * 86_400_000).toISOString() : null;
+    const week = new Date(nowMs - WEEK_MS).toISOString();
+    const finished = (r: Row) => ((r.done_at as string | null) ?? (r.updated_at as string));
+    // M-3668: an archived main task (and its sub tasks) is left out of every number but `archived`.
+    const archivedMains = new Set(kept ? rows.filter((r) => r.kind === "main" && (r.status === "done" || r.status === "cancelled") && finished(r) < kept).map((r) => r.id as string) : []);
     const subs = new Map<string, Progress>();
     for (const r of rows) {
-      if (r.kind !== "sub" || !r.parent_id || r.status === "cancelled") continue;
+      if (r.kind !== "sub" || !r.parent_id || r.status === "cancelled" || archivedMains.has(r.parent_id as string)) continue;
       const p = subs.get(r.parent_id as string) ?? { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 };
       p.total++;
       p[r.status as Exclude<CardStatus, "cancelled">]++;
@@ -1001,9 +1125,12 @@ export class TaskBoard {
     const out: Record<string, ProjectStats> = {};
     for (const r of rows) {
       const key = r.project_id === null || r.project_id === undefined ? "none" : String(r.project_id);
-      const st = out[key] ??= { mains: 0, units: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 }, percent: 0, waiting: 0, blocked: 0, lastActivity: null };
+      const st = out[key] ??= { mains: 0, units: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 }, percent: 0, waiting: 0, blocked: 0, lastActivity: null, archived: 0, doneWeek: 0, archivedWeek: 0 };
       if (!st.lastActivity || (r.updated_at as string) > st.lastActivity) st.lastActivity = r.updated_at as string;
       const status = r.status as CardStatus;
+      if (r.kind === "main" && status === "done" && finished(r) >= week) { st.doneWeek++; if (archivedMains.has(r.id as string)) st.archivedWeek++; }
+      if (archivedMains.has(r.id as string)) { st.archived++; continue; }
+      if (r.kind === "sub" && archivedMains.has(r.parent_id as string)) continue;
       if (status === "cancelled") continue;
       if (status === "review" && waitsForPerson({ status, needsReview: Number(r.needs_review) === 1,
         dispatcher: r.dispatcher ? { kind: r.dispatcher_kind === "person" ? "person" : "instance", name: r.dispatcher as string } : null }, gone)) st.waiting++;
@@ -1017,6 +1144,40 @@ export class TaskBoard {
     }
     for (const st of Object.values(out)) st.percent = st.units.total ? Math.round((st.units.done / st.units.total) * 100) : 0;
     return out;
+  }
+
+  /** M-3668: whether the dashboard has archived this card (a sub task goes with its main task). */
+  isArchived(card: Card, archiveDays: number): boolean {
+    if (archiveDays <= 0) return false;
+    const main = card.kind === "sub" && card.parent ? this.byUuid(card.parent) : card;
+    if (!main || main.kind !== "main" || (main.status !== "done" && main.status !== "cancelled")) return false;
+    return (main.doneAt ?? main.updatedAt) < new Date(this.now().getTime() - archiveDays * 86_400_000).toISOString();
+  }
+
+  /**
+   * M-3668: a project's archived main tasks (`project` null: No project), the most recently finished first, a page at a
+   * time (`before`: the last one's cursor), and who they were assigned to (the list's filter, `assignee`).
+   * `leaveOut`: names whose cards the reader may not see (assigned to, created by or handed out by one) — left out
+   * before the page, its cursor, the total and the assignees are worked out, so none of them tells of such a card.
+   */
+  archiveList(project: number | null, archiveDays: number, opts: { before?: string | null; limit?: number; assignee?: string | null; leaveOut?: readonly string[] } = {}):
+    { cards: Card[]; next: string | null; total: number; assignees: string[] } {
+    if (archiveDays <= 0) return { cards: [], next: null, total: 0, assignees: [] };
+    const kept = new Date(this.now().getTime() - archiveDays * 86_400_000).toISOString();
+    const hide = this.unseen(opts.leaveOut);
+    const where = `kind = 'main' AND status IN ('done', 'cancelled') AND COALESCE(done_at, updated_at) < ? AND ${project === null ? "project_id IS NULL" : "project_id = ?"}${hide.sql}`;
+    const base: unknown[] = [kept, ...(project === null ? [] : [project]), ...hide.args];
+    const assignees = (this.db.prepare(`SELECT DISTINCT assignee FROM tasks WHERE ${where} AND assignee IS NOT NULL ORDER BY assignee`).all(...base) as { assignee: string }[]).map((r) => r.assignee);
+    const who = opts.assignee ? " AND assignee = ?" : "", whoArgs = opts.assignee ? [opts.assignee] : [];
+    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE ${where}${who}`).get(...base, ...whoArgs) as { n: number }).n;
+    const cursor = typeof opts.before === "string" ? /^(.+)\|([^|]+)$/.exec(opts.before) : null;
+    const after = cursor ? " AND (COALESCE(done_at, updated_at) < ? OR (COALESCE(done_at, updated_at) = ? AND id < ?))" : "";
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+    const rows = this.db.prepare(`SELECT * FROM tasks WHERE ${where}${who}${after} ORDER BY COALESCE(done_at, updated_at) DESC, id DESC LIMIT ?`)
+      .all(...base, ...whoArgs, ...(cursor ? [cursor[1], cursor[1], cursor[2]] : []), limit + 1) as Row[];
+    const cards = rows.slice(0, limit).map(toCard);
+    const last = cards[cards.length - 1];
+    return { cards, next: rows.length > limit && last ? `${last.doneAt ?? last.updatedAt}|${last.uuid}` : null, total, assignees };
   }
 
   view(card: Card, scope: ReadScope = {}, gone?: GoneDispatcher): CardView {
@@ -1055,6 +1216,8 @@ export class TaskBoard {
       `SELECT e.task_id AS task_id, n.n AS n, e.author AS author, e.author_kind AS author_kind, e.at AS at FROM task_entries e
        JOIN (SELECT task_id, COUNT(*) AS n, MAX(id) AS last FROM task_entries WHERE kind IN ('comment', 'reject', 'approve')${by.sql} GROUP BY task_id) n ON e.id = n.last`,
     ).all(...by.args) as Array<{ task_id: string; n: number; author: string; author_kind: Actor["kind"]; at: string }>).map((r) => [r.task_id, r]));
+    const files = new Map((this.db.prepare(`SELECT task_id, COUNT(*) AS n FROM task_attachments WHERE 1 = 1${by.sql} GROUP BY task_id`)
+      .all(...by.args) as Array<{ task_id: string; n: number }>).map((r) => [r.task_id, r.n]));
     const unseen = new Map((this.db.prepare(
       `SELECT t.id AS id, COUNT(e.id) AS n FROM tasks t JOIN task_entries e
          ON e.task_id = t.id AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.author IS NOT t.assignee${eBy.sql}
@@ -1104,6 +1267,7 @@ export class TaskBoard {
         progress: card.kind === "main" ? progress.get(card.uuid) ?? { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 } : null,
         unmetDeps: unmet(card.deps, card.parent),
         commentCount: c?.n ?? 0,
+        attachmentCount: files.get(card.uuid) ?? 0,
         newCommentCount: unseen.get(card.uuid) ?? 0,
         lastComment: c ? { author: c.author, authorKind: c.author_kind, at: c.at } : null,
       };
@@ -1120,6 +1284,7 @@ export class TaskBoard {
       comments: this.entries(card.uuid, ["comment", "reject", "approve"], 200),
       logs: this.entries(card.uuid, ["log"], 200),
       history: this.events(card.uuid, 200).filter((e) => e.type !== "reordered"),
+      attachments: this.attachments(card.uuid, scope),
       watchers: this.watchersOf(card.uuid),
       inheritedWatchers: card.parent ? this.watchersOf(card.parent) : [],
       leader: this.leaderOf(card),
@@ -1661,13 +1826,8 @@ export class TaskBoard {
           touched = true;
         }
       }
-      if (patch.comment !== undefined) {
-        const text = checkText("the comment", patch.comment, CARD_LIMITS.comment);
-        if (text) {
-          this.entry(card, "comment", actor, text);
-          this.commented(actor, card, text);
-          touched = true;
-        }
+      if (patch.comment !== undefined || patch.attach?.length) {
+        if (this.writeComment(card, actor, patch.comment ?? "", patch.attach)) touched = true;
       }
 
       if (!touched) return { card, notes: ["no change"], said: [] };
@@ -1709,10 +1869,8 @@ export class TaskBoard {
         this.checkAnswer(card, comment);
         const busy = this.busyWith(card, card.assignee);
         if (busy.length) {
-          const text = checkText("the comment", comment!, CARD_LIMITS.comment);
-          this.entry(card, "comment", actor, text);
           // #2801 review: the one comment that is news — the answer its assignee waits for (`kept`).
-          this.commented(actor, card, text, true);
+          this.writeComment(card, actor, comment!, options.attach, true);
           card.version++;
           card.updatedAt = this.nowIso();
           this.save(card);
@@ -1724,7 +1882,7 @@ export class TaskBoard {
       if (derived) this.checkDerivedMove(card, actor, to, reason, { comment });
       else this.checkManualMove(card, actor, to, reason, { comment });
 
-      this.applyMove(card, actor, this.ownReview(card, actor, to, reason), reason, comment);
+      this.applyMove(card, actor, this.ownReview(card, actor, to, reason), reason, comment, options.attach);
       return { card, from, ...this.spoken() };
     });
   }
@@ -2218,7 +2376,7 @@ export class TaskBoard {
   // ── Derived state ───────────────────────────────────────
 
   /** Status bookkeeping shared by every move, then what the move sets off. */
-  private applyMove(card: Card, actor: Actor, to: CardStatus, reason: string, comment?: string): void {
+  private applyMove(card: Card, actor: Actor, to: CardStatus, reason: string, comment?: string, attach?: string[]): void {
     const from = card.status;
     const now = this.nowIso();
     card.status = to;
@@ -2226,11 +2384,7 @@ export class TaskBoard {
     if (to === "review") card.submittedAt = now;
     card.doneAt = to === "done" ? now : null;
     card.blockedReason = to === "blocked" ? reason : "";
-    if (comment?.trim()) {
-      const text = checkText("the comment", comment, CARD_LIMITS.comment);
-      this.entry(card, "comment", actor, text);
-      this.commented(actor, card, text);
-    }
+    if (comment?.trim() || attach?.length) this.writeComment(card, actor, comment ?? "", attach);
     card.version++;
     card.updatedAt = now;
     this.surfaceComments(card, actor);
@@ -2670,6 +2824,7 @@ export class TaskBoard {
     this.pending = [];
     this.projectsChanged = false;
     this.notes = [];
+    this.undo = [];
     try {
       let wakes: Wake[] = [];
       const result = this.db.transaction(() => {
@@ -2685,6 +2840,9 @@ export class TaskBoard {
         }
         return r;
       }).immediate();
+      // Committed: the rows are there for good, so what undoes the file moves is forgotten — a failure from here on (a listener's
+      // work, reading the revision) must not move files back from under rows that stay.
+      this.undo = [];
       this.lastNotes = this.notes.map((n) => n.text);
       const touched = this.pending;
       const projects = this.projectsChanged;
@@ -2696,9 +2854,14 @@ export class TaskBoard {
         }
       }
       return result;
+    } catch (err) {
+      // The write failed BEFORE it committed, after it moved files under a card: the rows are rolled back, so the files go back to staging.
+      for (const back of this.undo.reverse()) { try { back(); } catch { /* the sweep removes it */ } }
+      throw err;
     } finally {
       this.pending = [];
       this.projectsChanged = false;
+      this.undo = [];
     }
   }
 
@@ -2788,6 +2951,78 @@ export class TaskBoard {
   }
 
   /**
+   * A comment written, with the files that came with it: its entry, the files linked to it, and the
+   * "commented" event. A write that brings files and no words leaves a line naming them (`📎 name, name`), which an
+   * older release shows as the comment it is. False when there is nothing to write (no words, no files).
+   */
+  private writeComment(card: Card, actor: Actor, raw: string, attach: readonly string[] | undefined, kept = false): boolean {
+    const files = attach?.length ? this.stagedFiles(card, actor, attach) : [];
+    const words = checkText("the comment", raw, CARD_LIMITS.comment);
+    const text = words || (files.length ? checkText("the comment", `📎 ${files.map((f) => f.name).join(", ")}`, CARD_LIMITS.comment) : "");
+    if (!text) return false;
+    const entryId = this.entry(card, "comment", actor, text);
+    this.linkFiles(card, actor, entryId, files);
+    this.commented(actor, card, text, kept, files.length);
+    return true;
+  }
+
+  /** The files `actor` staged, checked against this card's limits (nothing is moved yet). */
+  private stagedFiles(card: Card, actor: Actor, ids: readonly string[]): StagedFile[] {
+    const store = this.fileStore;
+    if (!store) throw new TaskBoardError("invalid", "attachments are not available here (the fleet's scheduler holds the card files)");
+    let files: StagedFile[];
+    try { files = store.adopt(actor.name, ids); } catch (err) {
+      if (err instanceof TaskFileError) throw new TaskBoardError("invalid", err.message);
+      throw err;
+    }
+    const held = this.db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes FROM task_attachments WHERE task_id = ?").get(card.uuid) as { n: number; bytes: number };
+    const bytes = files.reduce((n, f) => n + f.size, 0);
+    if (held.n + files.length > TASK_FILE_LIMITS.files) {
+      throw new TaskBoardError("too_long", `${card.code} holds ${held.n} files; at most ${TASK_FILE_LIMITS.files} on a card`);
+    }
+    if (held.bytes + bytes > TASK_FILE_LIMITS.cardBytes) {
+      throw new TaskBoardError("too_long", `the files on ${card.code} would be ${Math.ceil((held.bytes + bytes) / (1024 * 1024))} MiB; at most ${Math.floor(TASK_FILE_LIMITS.cardBytes / (1024 * 1024))} MiB on a card`);
+    }
+    return files;
+  }
+
+  /** The staged files, now the card's: a row each, hung under `entryId`, and the file moved under the card. */
+  private linkFiles(card: Card, actor: Actor, entryId: number, files: readonly StagedFile[]): void {
+    if (!files.length) return;
+    const store = this.fileStore!;
+    const insert = this.db.prepare("INSERT INTO task_attachments (id, task_id, entry_id, name, mime, kind, size, sha256, author, author_kind, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    for (const f of files) {
+      insert.run(f.id, card.uuid, entryId, f.name, f.mime, f.kind, f.size, f.sha256, actor.name, actor.kind, this.nowIso());
+      try { this.undo.push(store.commit(card.uuid, f)); } catch (err) {
+        if (err instanceof TaskFileError) throw new TaskBoardError("invalid", err.message);
+        throw new TaskBoardError("invalid", `the file ${f.name} could not be stored on ${card.code}`);
+      }
+    }
+  }
+
+  /** The files on a card, oldest first; a scope leaves out the ones its left-out authors wrote. */
+  attachments(uuid: string, scope: ReadScope = {}): Attachment[] {
+    const by = this.notBy(scope, "author");
+    const rows = this.db.prepare(`SELECT * FROM task_attachments WHERE task_id = ?${by.sql} ORDER BY at, rowid`).all(uuid, ...by.args) as Row[];
+    return rows.map((r) => this.toAttachment(r));
+  }
+
+  /** One file by its id, with the card it is on; undefined when there is none. */
+  attachment(id: string): { file: Attachment; card: Card } | undefined {
+    const r = this.db.prepare("SELECT * FROM task_attachments WHERE id = ?").get(id) as Row | undefined;
+    const card = r ? this.byUuid(r.task_id as string) : undefined;
+    return r && card ? { file: this.toAttachment(r), card } : undefined;
+  }
+
+  private toAttachment(r: Row): Attachment {
+    return {
+      id: r.id as string, cardId: this.codeOf(r.task_id as string), entryId: r.entry_id === null ? null : Number(r.entry_id), name: r.name as string,
+      mime: r.mime as string, kind: r.kind === "photo" ? "photo" : "document", size: Number(r.size), author: r.author as string,
+      authorKind: r.author_kind as Actor["kind"], at: r.at as string,
+    };
+  }
+
+  /**
    * Any write by the assignee counts as having seen the comments so far, so the unseen ones go in its reply first;
    * otherwise a comment posted mid-task would be acknowledged without being read.
    */
@@ -2805,17 +3040,18 @@ export class TaskBoard {
     card.seenEntryId = (this.db.prepare("SELECT COALESCE(MAX(id), 0) AS m FROM task_entries WHERE task_id = ?").get(card.uuid) as { m: number }).m;
   }
 
-  private entry(card: Card, kind: EntryKind, actor: Actor, text: string): void {
-    this.db.prepare("INSERT INTO task_entries (task_id, kind, author, author_kind, text, at) VALUES (?, ?, ?, ?, ?, ?)")
+  private entry(card: Card, kind: EntryKind, actor: Actor, text: string): number {
+    const r = this.db.prepare("INSERT INTO task_entries (task_id, kind, author, author_kind, text, at) VALUES (?, ?, ?, ?, ?, ?)")
       .run(card.uuid, kind, actor.name, actor.kind, text, this.nowIso());
+    return Number(r.lastInsertRowid);
   }
 
   /**
    * A comment written (its entry is already on the card): the "commented" event, and whom the comment concerns, which
    * settleWakes reads when the write ends. `kept` is a dispatcher's answer a busy assignee finds on the card (#2303).
    */
-  private commented(actor: Actor, card: Card, text: string, kept = false): void {
-    this.event(actor, card, "commented", kept ? { text, kept: true } : { text });
+  private commented(actor: Actor, card: Card, text: string, kept = false, files = 0): void {
+    this.event(actor, card, "commented", { text, ...(kept ? { kept: true } : {}), ...(files ? { files } : {}) });
     this.pending[this.pending.length - 1]!.audience = this.routeComment(actor, card, text, kept);
   }
 

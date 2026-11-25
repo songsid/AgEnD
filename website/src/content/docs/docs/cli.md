@@ -170,6 +170,12 @@ agend web --code     # only print the code, no browser
 
 `agend view` opens the read-only View panel.
 
+Connect a local personal app to your fleet over stdio MCP (chat and reads only):
+
+```bash
+agend connect
+```
+
 Revoke every dashboard link and browser session at once:
 
 ```bash
@@ -240,7 +246,7 @@ agend schedule history <id>
 
 ## Settings confirmation
 
-Sensitive config changes (from the web dashboard or Settings) become pending proposals. AgEnD first tries to prompt a fleet admin through the General instance (Confirm/Reject buttons in chat). If no matching General instance is available — for example when the change spans platforms or no General is reachable — it falls back to host CLI confirmation:
+Sensitive config changes (from the web dashboard or Settings) become pending proposals. A signed-in fleet admin's own **Apply** confirms directly from any device — unless that admin enabled **Ask for my authenticator code to confirm changes from other devices**, in which case their own code is asked. If no suitable admin session is reachable — for example when the change spans platforms — it falls back to host CLI confirmation:
 
 ```bash
 agend settings confirm <id>        # inspect the diff, then confirm

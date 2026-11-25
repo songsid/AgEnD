@@ -320,8 +320,12 @@ export class GuestLoginCodes {
 
   private key(r: { adapterId: string; userId: string }): string { return `${r.adapterId}\u0000${r.userId}`; }
 
-  /** A code for this account, replacing its own outstanding one; null when MAX_GUEST_LOGIN_CODES others are outstanding. */
-  issue(opts: { epoch: string; recipient: LoginCodeRecipient; audiences?: readonly string[] }): IssuedLoginCode | null {
+  /**
+   * A code for this account, replacing its own outstanding one; null when MAX_GUEST_LOGIN_CODES others are outstanding.
+   * M-3651 `private`: the caller delivers it to that account privately (a DM, or a slash command's ephemeral answer) and
+   * withdraws it otherwise — the session it makes starts verified as that account (web-guest, identity only).
+   */
+  issue(opts: { epoch: string; recipient: LoginCodeRecipient; audiences?: readonly string[]; private?: true }): IssuedLoginCode | null {
     this.prune();
     const k = this.key(opts.recipient);
     if (!this.outstanding.has(k) && this.outstanding.size >= MAX_GUEST_LOGIN_CODES) return null;
@@ -329,7 +333,8 @@ export class GuestLoginCodes {
     const expiresAt = this.now() + LOGIN_CODE_TTL_MS;
     const issuanceId = randomBytes(16).toString("hex");
     const audiences = opts.audiences?.length ? [...opts.audiences] : ["local"];
-    this.outstanding.set(k, { code, expiresAt, tier: "guest", epoch: opts.epoch, failures: 0, issuanceId, audience: audiences[0]!, audiences, recipient: opts.recipient });
+    this.outstanding.set(k, { code, expiresAt, tier: "guest", epoch: opts.epoch, failures: 0, issuanceId, audience: audiences[0]!, audiences, recipient: opts.recipient,
+      ...(opts.private === true ? { private: true as const } : {}) });
     this.onEvent("issued");
     return { display: formatOneTimeCode(code), expiresAt, tier: "guest", issuanceId };
   }
@@ -370,7 +375,7 @@ export class GuestLoginCodes {
     if (!hit) return null;
     this.outstanding.delete(hit[0]);
     this.onEvent("spent");
-    return { kind: "ok", tier: "guest", recipient: hit[1].recipient! };
+    return { kind: "ok", tier: "guest", recipient: hit[1].recipient!, ...(hit[1].private ? { private: true as const } : {}) };
   }
 
   /**

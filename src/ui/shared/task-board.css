@@ -492,6 +492,8 @@ button.tb-row-progress:hover { background: var(--surface-2); }
   .tb-progress { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); font-size: var(--fs-sm); min-width: 0; }
   .tb-progress > .tb-bar { width: auto; flex: 1 1 64px; min-width: 64px; }
   .tb-stats > .tb-sort-link { grid-column: 1 / -1; margin-top: 0; }
+  /* M-3668: "Archived · N" on its own row under the name (in the name's row it squeezed the name letter by letter). */
+  .tb-stats > .tb-archived-link { grid-column: 1 / -1; justify-self: start; }
   /* Home's head: the title with Agent and New project in its row; the search under it, across the width. */
   .tb-home > .tb-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3) var(--s-2); }
   .tb-home > .tb-head > .s-page-title { flex: 1 1 auto; min-width: min-content; }
@@ -586,4 +588,66 @@ button.tb-owner-btn:hover { border-color: var(--border); background: var(--surfa
 }
 @media (prefers-reduced-motion: reduce) {
   .tr-mark.s-working .tr-dot, .tr-state.s-working .tr-dot { animation: none; }
+}
+
+/* M-3668: the Done column's "Show 20 more" under its newest cards; this week's count beside its title; the Archive's filter. */
+.tb-done-more { display: block; margin: var(--s-2) auto; }
+/* #4428 capture check: under the Done column's head, not in it (a narrow head squeezed its title to 「完 / 成」). */
+.tb-done-week-line { margin: 0 0 var(--s-2); font-size: var(--fs-xs); }
+.tb-nowrap { white-space: nowrap; }
+.tb-archive .tb-row-time { width: 11em; }
+.tb-archive-who { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); font-size: var(--fs-sm); color: var(--text-2); }
+
+/* Markdown in a card's fields and in a file's preview: the timeline's own rules (`.tl-body.md …`, above) — the element carries
+   `.tl-body` and `.md` too — with the timeline's indent (the avatar's width) taken off, and the field's own box and size. */
+.tc-md.tl-body { padding: var(--s-2); }
+.tf-md.tl-body { padding: var(--s-2) var(--s-3); }
+.tc-md.tl-body { cursor: text; }
+/* The Edit button: on the desk it sits at the field's top right, shown on hover or focus, with room reserved for it so it never covers text;
+   on a touch screen it is always there and a 44px box; on a phone it is a row of its own under the text (nothing to cover). */
+.tc-md-wrap { position: relative; min-width: 0; }
+.tc-md-edit { position: absolute; top: 2px; right: 2px; opacity: 0; }
+.tc-md-wrap:hover .tc-md-edit, .tc-md-edit:focus-visible { opacity: 1; }
+.tp .tc-md-wrap .tc-text { padding-right: calc(var(--s-8) + var(--s-4)); }
+@media (pointer: coarse) { .tc-md-edit { opacity: 1; min-width: var(--tap); min-height: var(--tap); } }
+/* The Edit button is a quiet ghost button, easy to miss on the dark theme: its enabled state takes the accent token (the colour of links and
+   selected text, defined for every theme) in its text and border. Colour only: the size and the 44px touch box are the rules above. */
+.tc-md-edit.btn-ghost { color: var(--accent); border-color: var(--accent); }
+
+/* Files on a card (fleet-task-files.js): under the comment they came with, and together in the card's Files field. One row each — the
+   name (the download), the size, who and when, the Download button — then what the page can show of it: the picture, the text, the preview. */
+.tf-list { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; margin: 0; padding: 0; list-style: none; }
+.tl-files { margin: var(--s-2) 0 0 36px; }
+.tf-row { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg); }
+.tf-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); min-width: 0; }
+.tf-icon { display: inline-flex; flex: none; color: var(--text-3); }
+.tf-name { min-width: 0; overflow-wrap: anywhere; color: var(--text); font-weight: var(--fw-semibold); text-decoration: none; }
+.tf-name:hover { text-decoration: underline; }
+.tf-meta { font-size: var(--fs-xs); color: var(--text-3); }
+.tf-grow { flex: 1 1 auto; }
+.tf-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.tf-img { display: block; width: fit-content; max-width: 100%; }
+.tf-img img { display: block; max-width: min(100%, 420px); max-height: 280px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); object-fit: contain; }
+.tf-pre { margin: 0; padding: var(--s-2) var(--s-3); max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.5; white-space: pre; }
+.tf-body { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); }
+.tf-body > .tf-pre { border: 0; }
+.tf-body > .tf-more { align-self: flex-start; margin: 0 var(--s-3) var(--s-2); }
+.tf-note { margin-top: 0; }
+.tf-count { margin-left: var(--s-1); font-weight: var(--fw-regular); color: var(--text-3); }
+.tf-html, .tf-text { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.tf-holder { margin-top: 0; }
+/* While a preview runs, its bar — "Stop preview" and the mark that this is a preview — stays at the top of the scrolling page for as long as the
+   preview's box is on screen, so a person using the embedded page never has to scroll back up to stop it or to remember what it is. (The page's
+   header sits above the scrolling area, so `top: 0` is directly under it.) The bar is opaque and above the frame; it keeps the 44px boxes below. */
+.tf-actions.tf-live { position: sticky; top: 0; z-index: 3; align-items: center; padding: var(--s-1) 0; background: var(--bg); border-bottom: 1px solid var(--border); }
+.tf-live-mark { display: inline-flex; align-items: center; padding: 2px var(--s-2); border-radius: var(--r-full); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
+/* A running preview has a place of its own: a frame that fills a box of fixed height (a page that lays itself out by the window's height — a
+   canvas game — has no height of its own to report, and the automatic height left it a strip of 40px). A page taller than the box scrolls. */
+.tf-holder:not(:empty) { display: flex; flex-direction: column; height: min(75vh, 640px); min-height: 260px; }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .tl-files { margin-left: 0; }
+  .tf-dl, .tf-actions .btn, .tf-more { min-height: var(--tap); }
+  .tc-md-wrap { display: flex; flex-direction: column; }
+  .tp .tc-md-wrap .tc-text { padding-right: var(--s-2); }
+  .tc-md-edit { position: static; opacity: 1; align-self: flex-start; min-width: var(--tap); min-height: var(--tap); }
 }

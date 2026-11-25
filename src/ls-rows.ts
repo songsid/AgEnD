@@ -64,6 +64,8 @@ export interface LsRow {
   context: number | null;
   memMb: number | null;
   lastActivity: string | null;
+  /** M-3674: since the last turn another agent started (a message from another instance it took up), or absent. */
+  lastAgentTurn?: string | null;
   classic: boolean;
   idle: boolean | undefined;
   state: "idle" | "working" | "stuck" | "paused" | null | undefined;

@@ -8,6 +8,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t, lang } from "/assets/app-i18n.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
+import { timeText } from "/assets/clock-text.js";
 
 register("hubOverview", {
   en: {
@@ -43,7 +44,7 @@ register("hubOverview", {
     qPerDay: "每天的提問數", qRange_today: "今天", qRange_7d: "7 天", qHint: "每問一個 Agent 算一次。", qToday: "今天",
     aTime: "回答時間", aMed: "一般（中位數）", aSlow: "最慢的十分之一", aWait: "正在等回答", aWaitOld: "目前等最久",
     notEnough: "回答數還不夠", none: "—",
-    fTitle: "沒有得到回答", fRate: "占全部提問的 {0}%", fOff: "Agent 的 Fleet 沒有連接", fTime: "逾時沒有回答",
+    fTitle: "沒有得到回答", fRate: "佔全部提問的 {0}%", fOff: "Agent 的 Fleet 沒有連接", fTime: "逾時沒有回答",
     fPerm: "權限先到期", fBusy: "Agent 停止或拒絕", fUnknown: "其他或原因不明",
     topTitle: "最常被問的 Agent", topAgent: "Agent", topAsk: "提問數", topMed: "一般回答時間", topFail: "沒有回答",
     topNone: "這段期間還沒有人問過 Agent。", topShared: "總共分享了 {0} 個 Agent。",
@@ -110,7 +111,7 @@ export function HubAdminOverview({ client, onOpen = () => {}, onGone = () => {} 
       <div class="hub-ov-range" role="group" aria-label=${ho("rangeLabel")}>
         ${["today", "7d"].map((r) => html`<button key=${r} type="button" class=${`hub-ov-range-item${range === r ? " is-current" : ""}`} aria-pressed=${range === r ? "true" : "false"} onClick=${() => pick(r)}>${ho(r === "today" ? "today" : "week")}</button>`)}
       </div>
-      ${at ? html`<span class="note hub-ov-updated">${ho("updated", new Date(at).toLocaleTimeString(lang() === "zh-TW" ? "zh-TW" : "en", { hour: "2-digit", minute: "2-digit" }))}</span>` : null}
+      ${at ? html`<span class="note hub-ov-updated">${ho("updated", timeText(at, { hour: "2-digit", minute: "2-digit" }, lang() === "zh-TW" ? "zh-TW" : "en"))}</span>` : null}
     </div>
     <p class="note hub-ov-privacy">${ho("privacy")}</p>`;
   if (!data) return html`<div class="hub-ov">${head}${error ? html`<${ErrorState} onRetry=${() => load(range)} />` : html`<${Skeleton} variant="rows" lines=${6} />`}</div>`;

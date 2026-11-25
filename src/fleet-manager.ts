@@ -1,4 +1,6 @@
-import { prepareContactChange, type PreparedContactChange } from "./contact-change-proposals.js";
+type HubHeldCloseOutcome = import("./hub/question-close-model.js").HubHeldCloseOutcome;
+import { prepareContactChange, shortContactTicketId, type PreparedContactChange } from "./contact-change-proposals.js";
+import { contactStateView, ownContactRequestsView } from "./contact-state-view.js";
 import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
 import { SharedDefaultAdoption } from "./shared-default-adoption.js";
 import { scopedDefaultModel } from "./model-defaults.js";
@@ -23,8 +25,8 @@ import {withHubRoomReplyWarning} from "./hub-room-reply-warning.js";
 import { ContactAuthService } from "./contact-auth-service.js";
 import { stageContactFiles, type ContactFileLease } from "./contact-auth-files.js";
 import { ContactOriginClearSchema, ContactPermissionsSchema, sameContactPerson } from "./contact-auth-policy.js";
-import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus, type ContactOrigin, type ContactOriginClear, type ContactPerson, type ContactPermissions, type ContactPermissionsWrite, type ContactRoomTools, type ContactTicketDecision } from "./contact-auth-types.js";
-import type { ContactRequest } from "./contact-auth-store.js";
+import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus, type ContactOrigin, type ContactOriginClear, type ContactPerson, type ContactPermissions, type ContactPermissionsWrite, type ContactRoomTools, type ContactTicket, type ContactTicketDecision } from "./contact-auth-types.js";
+import { contactPersonKey, normalizeContactPersonKey, type ContactRequest } from "./contact-auth-store.js";
 import { hubSharingNoticeText, type HubSharingNotice, type HubSharingController } from "./hub-sharing-notice.js";
 import { hubPageSharingSettings } from "./hub-page-sharing-settings.js";
 import { replyPreviews } from "./reply-preview-spec.js";
@@ -52,7 +54,7 @@ import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notic
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
-import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
+import { humanOwnerObjectId, webHumanOrigin, isWebSessionIdentity, type WebSessionIdentity, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
 import { hubPilotTrustSettings } from "./hub-pilot-trust-settings.js";
 import { hubMembershipSettings } from "./hub-membership-settings.js";
@@ -334,7 +336,8 @@ import { ThemeStore } from "./web-theme-store.js";
 import { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import { WebPinStore } from "./web-pin-store.js";
 import { OfficeSkinStore } from "./web-office-skins.js";
-import { OfficeActs } from "./web-office-acts.js";
+import { OfficeActs, officeMembers } from "./web-office-acts.js";
+import { characterPlan, ownCharacter } from "./hub-character-plan.js";
 import { OFFICE_PACK_TOOLS, OfficePackTools, type PackChangeView } from "./web-office-pack-tools.js";
 import { WebAppearance } from "./web-appearance.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
@@ -466,7 +469,7 @@ import { DeviceLoginRequests } from "./web-device-login.js";
 import { findSigninKnownEntry, addSigninKnownDevice } from "./web-signin-device.js";
 import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_SIGNIN_OVER_PUBLIC_LINK, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess, type SignInVerdict } from "./web-remote-access.js";
 import { evaluateSettingsRole, type SettingsRole } from "./authority/settings-role.js";
-import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { authorityNow, classifyWebPeer, evaluateGuestIdentity, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, namedLinkLastTurnedOff, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
@@ -541,6 +544,7 @@ type ReconcileObserver = (
 import { kiroHome } from "./backend/kiro-kas-store.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, claudeStoreEnded, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLaunch, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
+import { carryClaudeMcpServers, claudeJsonFor, dismissClaudeMcpMissing, recordClaudeMcpBeforeSwitch } from "./backend/claude-mcp-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, accountUsage, buildAccountsView, profilesOnDisk, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import { accountFolderExists, addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
@@ -900,6 +904,8 @@ export interface ModelCatalog {
  */
 interface NonceButtonEntry {
   contactChange?: { plan: PreparedContactChange; current(): boolean };
+  /** M-3680: the held contact request a General card decides (CONTACT_TICKET_PREFIX). */
+  contactTicketId?: string;
   /**
    * #1490 row 27: the lifecycle of `instanceName` the prompt was offered for (lifecyclePin), taken when it is posted.
    * A Restart acts only while it still holds: a stop, restart or same-name replacement since makes the button stale.
@@ -1031,6 +1037,12 @@ interface PendingClassicStart {
   messageId?: string;
   timer: ReturnType<typeof setTimeout>;
   complete: (text: string, messageId?: string) => Promise<void>;
+  /** backend: the backend menu is up. mode: Restricted or Free is still required. */
+  phase?: "backend" | "mode";
+  /** Chosen backend, kept until the mode click creates the room. */
+  backend?: string;
+  /** Posts the mode menu. Absent means the menu cannot be shown, so nothing is created. */
+  showMenu?: (text: string, choices: Choice[]) => Promise<string | undefined>;
 }
 
 export interface DeliveryOptions {
@@ -1071,6 +1083,7 @@ export interface DeliveryOptions {
 
 const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
 const CLASSIC_BACKEND_CALLBACK_PREFIX = "classic-backend:";
+const CLASSIC_MODE_CALLBACK_PREFIX = "classic-mode:";
 const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
 const EFFORT_SELECT_CALLBACK_PREFIX = "effort-select:";
 const BACKEND_SELECT_CALLBACK_PREFIX = "backend-select:";
@@ -1110,6 +1123,13 @@ const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
 /** M-3140: Update now on a Hub-recommended-version notice in General ("hub-update:" + 32 hex + ":update" = 50 bytes). */
 const HUB_UPDATE_CALLBACK_PREFIX = "hub-update:";
 const HUB_SHARING_CALLBACK_PREFIX = "hub-share:";
+/** M-3680: a held contact request's card in General ("contact-ticket:" + 32 hex + ":approve" = 55 bytes, under Telegram's 64). */
+const CONTACT_TICKET_PREFIX = "contact-ticket:";
+/** How many requests' cards are remembered (one card per request; a decided one is forgotten at once). */
+const HELD_CARDS_KEPT = 512;
+/** A held request's card, retired after it was decided elsewhere (the dashboard, Needs you, another card) or closed. */
+const heldCardOutcome = (state: string): string => t(state === "approved" ? "contactHeld.approvedElsewhere"
+  : state === "declined" ? "contactHeld.declinedElsewhere" : state === "expired" ? "contactHeld.expired" : "contactHeld.closed");
 const HUB_FLEET_UPDATE_CALLBACK_PREFIX = "hub-fleet-update:";
 const KIRO_RECONCILE_CALLBACK_PREFIX = "kiro-reconcile:";
 /** #2692: a fleet admin's Approve / Reject on an agent's pending skin-pack change, in General. */
@@ -2714,6 +2734,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               scratchDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "hub-files") : null },
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
             attachPrivateQuestions: read => { this.hubPrivateQuestions = read; },
+            attachQuestionSettled: read => { this.hubQuestionSettled = read; },
             attachReacts: handler => { this.hubReacts = handler; },
           },
           attachAgentIntro: port => { this.hubAgentIntro=port; },
@@ -2738,7 +2759,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               : this.getInstanceAdapterId(agent) === actor.adapter_id && this.isFleetAdmin(actor.user_id, actor.adapter_id),
           }, caller.agent, receiptId),
           attachExposures: api => this.attachHubMemberExposures(api),
-          attachAttention: (read, retry) => this.attachHubExecutionAttention(read, retry),
+          attachAttention: (read, retry, close) => this.attachHubExecutionAttention(read, retry, close),
           updates: { idle: () => this.hubUpdateIdle(), busy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir),
             canInstall: () => this.hubUpdateCanInstall(), launch: (row, control) => this.launchHubUpdate(row, control),
             active: id => this.hubUpdateOwned?.id === id, outcome: row => this.hubUpdateOutcome(row), notify: n => this.recordHubUpdateNotice(n) },
@@ -2878,7 +2899,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const person = humanCards(this.dataDir).get(name)?.portrait ?? null, own = theme.card?.portrait ?? null;
       if (person || own) portrait = { key: person ? `card:${person}` : `agent-card:${own}`, load: () => cardPicture({ dataDir: this.dataDir, themeStore: this.themeStore }, name, "portrait") };
     } catch { /* unreadable: no pictures */ }
-    return { disc, portrait };
+    let character: import("./hub/member/agent-pictures.js").MemberCharacterSource | null = null;
+    try { character = this.hubCharacterSource(name); } catch { /* unreadable offices or packs: no character */ }
+    return { disc, portrait, character };
+  }
+
+  /**
+   * M-3533 R2c: the agent's own character (hub-character-plan.ts ownCharacter): the set its owner gave it by name in
+   * the first of these offices (their own order) holding it, else in the "All" office's pack. The key is that pack's version
+   * and the set's name: a changed pack, set or office changes it; the pictures are read and cut only then.
+   */
+  private hubCharacterSource(name: string): import("./hub/member/agent-pictures.js").MemberCharacterSource | null {
+    const list = this.officeStore.list();
+    if (!list.readable) return null;
+    let chart: { names: string[]; teams: Array<{ name: string; members: string[] }> } | null = null;
+    const holds = (office: { members: readonly string[] }, agent: string) => {
+      if (!office.members.length) return true;
+      if (office.members.includes(agent)) return true;
+      if (!office.members.some(m => m.startsWith("team:"))) return false;
+      chart ??= (() => { const c = this.orgChart(); return { names: Object.keys(c.instances), teams: c.teams }; })();
+      return officeMembers({ members: [...office.members] }, chart).includes(agent);
+    };
+    const hit = ownCharacter({ offices: list.offices, autoSkin: list.autoSkin ?? null, holds, pack: id => this.officeSkins.pack(id) }, name);
+    if (!hit) return null;
+    const sha = this.officeSkins.list().packs.find(p => p.id === hit.packId)?.sha;
+    if (!sha) return null;
+    return { key: `${hit.packId}@${sha}:${hit.set}`, load: () => {
+      const pack = this.officeSkins.pack(hit.packId), files = this.officeSkins.get(hit.packId)?.files;
+      const plan = pack && files ? characterPlan(pack.characters[hit.set]) : null;
+      if (!plan) return null;
+      const pictures = new Map<string, Uint8Array>();
+      for (const src of plan.sources) { const id = files![src], bytes = id ? this.officeSkins.picture(hit.packId, id) : null; if (!bytes) return null; pictures.set(src, bytes); }
+      return { plan, pictures };
+    } };
   }
 
   /** The actual launch target, including Classic's own effective backend/folder; never aliases a room to a Fleet topic. */
@@ -3085,7 +3138,59 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private contactWindows(): HubContactWindows {
     return this.hubContactWindows ??= new HubContactWindows(join(this.dataDir, "hub-contact-windows.json"));
   }
-  hubContactRestricted(agent: string): boolean { return this.contactWindows().restricted(agent); }
+  /**
+   * M-3660: each agent's running Hub answer turn as its daemon tells it (re-told on every connect): a correlation id, or
+   * null for "confirmed none". An agent missing here is unknown (this fleet has not heard from its daemon since it
+   * started): nothing settled lifts its windows then — they hold until the daemon says (Prism #4420 P2-1).
+   */
+  private readonly hubAnswerTurns = new Map<string, string | null>();
+  /**
+   * M-3660: the agent's daemon is about to write a Hub question into its idle pane: the answer turn's window opens (none for
+   * a share that opted out). A window that cannot be saved still holds in memory: fail closed.
+   */
+  private hubQuestionInput(agent: string, correlationId: string, contactLimit = true): void {
+    this.hubAnswerTurns.set(agent, correlationId);
+    if (!contactLimit) return;
+    try { this.contactWindows().begin(agent, correlationId); }
+    catch (err) { this.logger.warn({ err, agent }, "Hub contact window could not be saved; it holds until this fleet restarts or it expires"); }
+  }
+  /** M-3660: that answer turn is over (its idle edge, or the next turn's write): the window closes, whatever came of it. */
+  private hubQuestionTurnEnded(agent: string, correlationId: string): void {
+    if (this.hubAnswerTurns.get(agent) === correlationId) this.hubAnswerTurns.set(agent, null);
+    try { this.contactWindows().answered(agent, correlationId); }
+    catch (err) { this.logger.warn({ err, agent }, "Hub contact window could not be closed; it will expire"); }
+  }
+  /**
+   * M-3660: what the daemon says on (re)connect — the turn it is answering now, or none. A lost hub_question_input or
+   * hub_question_turn_ended (a stale connection, a fleet or daemon restart) is made good here: with no turn running every
+   * window of the agent ends; with one, that one holds and the rest end.
+   */
+  private hubQuestionTurnState(agent: string, correlationId: string | null, contactLimit = true): void {
+    try { this.contactWindows().closeAgent(agent, correlationId ?? undefined); }
+    catch (err) { this.logger.warn({ err, agent }, "Hub contact windows could not be reconciled; they will expire"); }
+    if (correlationId) this.hubQuestionInput(agent, correlationId, contactLimit);
+    else this.hubAnswerTurns.set(agent, null);
+  }
+  /** M-3660: a daemon's Hub turn signal (from its current connection). "unknown" (an unreadable turn record) changes nothing. */
+  private hubTurnSignal(agent: string, msg: Record<string, unknown>): void {
+    const cid = typeof msg.correlationId === "string" && /^hub-[A-Za-z0-9-]+$/.test(msg.correlationId) ? msg.correlationId : null;
+    if (msg.type === "hub_question_turn_state") { if (msg.unknown !== true && (cid || msg.correlationId === null)) this.hubQuestionTurnState(agent, cid, msg.contactLimit !== false); }
+    else if (cid && msg.type === "hub_question_input") this.hubQuestionInput(agent, cid, msg.contactLimit !== false);
+    else if (cid && msg.type === "hub_question_turn_ended") this.hubQuestionTurnEnded(agent, cid);
+  }
+  /** M-3660: the agent's daemon has told this fleet its current turn, and it is not this question (unknown is never "none"). */
+  private hubAnswerTurnKnownNone(agent: string, correlationId: string): boolean {
+    return this.hubAnswerTurns.has(agent) && this.hubAnswerTurns.get(agent) !== correlationId;
+  }
+  /** M-3660: a settled question lifts its window only outside its own running answer turn; inside it, the turn's end does. */
+  private hubSettledOutsideTurn(): ((agent: string, correlationId: string) => boolean) | undefined {
+    const settled = this.hubQuestionSettled;
+    return settled ? (agent, correlationId) => this.hubAnswerTurnKnownNone(agent, correlationId) && settled(agent, correlationId) : undefined;
+  }
+  /** M-3660: the member side's "this question is no longer being answered" reader (null: no member service attached). */
+  private hubQuestionSettled: ((agent: string, correlationId: string) => boolean) | null = null;
+  hubContactRestricted(agent: string): boolean { return this.contactWindows().restricted(agent, this.hubSettledOutsideTurn()); }
+  hubContactQuestion(agent: string): string | null { return this.contactWindows().restrictingQuestion(agent, this.hubSettledOutsideTurn()); }
   /**
    * M-3313 (#4145 for the Hub): what a Hub question or room notification hands the agent, with this fleet's sign-in
    * access token hidden (exact match, as a chat's). The live one is taken back and replaced, and the sign-in's chat told.
@@ -3138,6 +3243,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       task_summary: "A question from the Hub",
     };
     if (input.roomContextGeneration) ipcMeta.hub_room_context_generation = input.roomContextGeneration;
+    // M-3660: the share's opt-out travels with the question; its daemon's hub_question_input then opens no window.
+    if (input.contactLimit === false) ipcMeta.hub_contact_limit = "off";
     const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: this.screenHubText(input.text), meta: ipcMeta },
       { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: async () => {
         const classic=this.isClassicInstance(input.agent);
@@ -3147,8 +3254,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if(!ipcMeta.hub_room_context_generation&&/^hub-room-[a-f0-9-]{36}$/.test(input.correlationId)){const generation=this.daemons.get(input.agent)?.roomConversationGeneration();if(generation)ipcMeta.hub_room_context_generation=generation;}
         if (!(await input.beforeInput())) return false;
         if(classic){if(!await idle())return false;this.classicPrivacy().begin(input.agent,input.correlationId);}
-        // Before any possible IPC exposure. An uncertain write retains the window, never replays the question.
-        if (input.contactLimit !== false) this.contactWindows().begin(input.agent, input.correlationId);
+        // M-3660: the window covers only the turn that answers the question. The agent's daemon (Classic rooms' too)
+        // writes it only into an idle pane, as a turn of its own, and says so just before the write (hub_question_input),
+        // so a question waiting behind another turn — or never written — opens nothing.
         return input.stillCurrent();
       } });
     return result !== false;
@@ -3256,7 +3364,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const result = this.hubReports?.(input) ?? null;
     if (!result) return null;
     return result.then(outcome => {
-      if (outcome.ok) {
+      // M-3660: an accepted answer inside its own running answer turn does not lift it: the turn's end does.
+      if (outcome.ok && this.hubAnswerTurnKnownNone(input.caller, input.correlationId)) {
         try { this.contactWindows().answered(input.caller, input.correlationId); }
         catch (err) { this.logger.warn({ err }, "Hub contact window could not be closed; it will expire"); }
       }
@@ -3533,6 +3642,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private signInKeepAlive: SignInKeepAlive | null = null;
   private hubExecutionAttention: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null = null;
   /** M-3632: the member's "Try again" for a held Hub question (null while no member runs). */
+  private hubHeldClose: ((id: string) => Promise<HubHeldCloseOutcome>) | null = null;
   private hubHeldRetry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null;
   private missedOfflineStore: MissedOfflineStore | null = null;
   private configHistory: ConfigHistory | null = null;
@@ -4172,6 +4282,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       generalLocation: input => this.previewGeneralLocation(input),
       hubMembership: raw => hubMembershipSettings(raw),
       hubPageSharing: raw => hubPageSharingSettings(raw),
+      guestDerivedScopes: () => this.guestDerivedScopes(),
       hostMonitoringAvailable: () => this.hostMonitoringAvailable(),
       hubPilotTrust: raw => hubPilotTrustSettings(raw, RUNNING_AGEND_VERSION),
       // S3c (S-55): a Hub exposure publish's confirmation summary, while a member composition is attached.
@@ -4519,7 +4630,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * alpha.2 (M-2300; #2973's agent requests, junsion's §6): on a fleet with no chat connection there is no General to
+   * alpha.2 (M-2300; #2973's agent requests, a colleague's §6): on a fleet with no chat connection there is no General to
    * post an agent's Windows request in — it waited for `agend settings confirm` on the host. Its owner (decision
    * 28c2d3a3: the `agend web --code` session on this computer, web-verified) now sees and decides it from the web's
    * Needs you. The authority is asked from the request each time, and again at execution by the store (`current`):
@@ -5500,6 +5611,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const badge = row?.payload.contactTicket as { id?: string } | undefined;
         const ticket = badge?.id ? outbox.contactAuthorizations.get(badge.id) : undefined;
         if (ticket && ticket.deliveryId === row?.deliveryId) {
+          // M-3716: the approval notice waits for this delivery to settle.
+          queueMicrotask(() => this.sweepContactAuthorizationOutcomes());
           const state = event.state === "delivered" ? "delivered" : ["failed", "uncertain", "cancelled", "reconciliation_pending"].includes(event.state ?? "") ? "unknown" : "approved";
           for (const instance of new Set([ticket.source, ticket.target])) {
             this.webChatHistory?.updateContactTicket(instance, ticket.id, state);
@@ -5684,12 +5797,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return incarnation;
   }
 
+  /** Eligible connections share a platform; the current Fleet-admin gate still decides each user's role. */
+  private contactAdminAdapterIds(adapter: ChannelAdapter): string[] {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    return [...new Set([adapter.id, ...channels.filter(ch => ch.type === adapter.type).map(ch => ch.id ?? ch.type)])];
+  }
+  /** Contact permissions identify a person by platform/user; sibling bot connections do not create new people. */
+  private contactDefaultApprovers(name: string): ContactPerson[] {
+    const adapter = this.contactAdapter(name);
+    if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return [];
+    const people = this.contactAdminAdapterIds(adapter).flatMap(id => (this.adminListOf(id) ?? []).map(userId => ({
+      platform: adapter.type as "discord" | "telegram", adapterId: id, userId, label: userId })));
+    return [...new Map(people.map(person => [contactPersonKey(person), person])).values()];
+  }
   contactAdminOf(name: string, actor: ContactPerson): boolean {
     if (actor.platform === "host" && actor.adapterId === "host" && actor.userId === "operator") return true;
     const adapter = this.contactAdapter(name);
-    if (!adapter || actor.adapterId !== adapter.id || actor.platform !== adapter.type) return false;
-    return this.isFleetAdmin(actor.userId, adapter.id)
-      || (!!this.contactRoom(name) && this.classicChannels?.isAdmin(actor.userId) === true);
+    if (!adapter || actor.platform !== adapter.type) return false;
+    if (this.contactAdminAdapterIds(adapter).some(id => this.isFleetAdmin(actor.userId, id))) return true;
+    return !!this.contactRoom(name) && this.classicChannels?.isAdmin(actor.userId) === true;
   }
 
   private contactService(): ContactAuthService {
@@ -5698,11 +5824,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       restricted: name => this.contactRoom(name)?.restrictedMode === true,
       legacyClassic: name => !!this.contactRoom(name) && this.contactRoom(name)?.restrictedMode !== true,
       adminOf: (name, actor) => this.contactAdminOf(name, actor),
-      defaultApprovers: name => {
-        const adapter = this.contactAdapter(name);
-        if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return [];
-        return (this.adminListOf(adapter.id) ?? []).map(userId => ({ platform: adapter.type as "discord" | "telegram", adapterId: adapter.id, userId, label: userId }));
-      },
+      defaultApprovers: name => this.contactDefaultApprovers(name),
       generation: name => this.contactGeneration(name),
       hubRestricted: name => this.hubContactRestricted(name),
       delivered: ticket => !!ticket.deliveryId && this.deliveryOutbox!.get(ticket.deliveryId)?.state === "delivered",
@@ -5730,6 +5852,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             sender: ticket.source, text: ticket.message, ts: new Date().toISOString(), contactTicket: { id: ticket.id, state: "approved" } });
         }
         this.emitSseEvent("contact-auth", { instance, ...(ticketId ? { ticketId } : {}), revision });
+        // M-3680: a card never stands in the way of the hold (or a decision) that called this.
+        if (ticket) { try { this.syncHeldTicketCard(ticket); } catch (err) { this.logger?.warn?.({ err: (err as Error)?.message, ticket: ticket.id }, "Held contact request card failed"); } }
         this.needsYou?.poke();
         this.emitSseEvent("needs", { items: this.needsYouItems() });
       },
@@ -5842,6 +5966,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** General can propose only. The platform callback supplies the human actor. */
+  /** M-3693: what contact permissions hold now, for General (read-only; no write, no identity computed here). */
+  contactState(agent?: string) {
+    const store = this.contactService().host.store;
+    const names = [...new Set([...Object.keys(this.fleetConfig?.instances ?? {}), ...(this.classicChannels?.getAll?.() ?? []).map(room => room.instanceName)])];
+    return contactStateView({
+      store, names: () => names, now: () => Date.now(), generation: n => this.contactGeneration(n),
+      label: n => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || n,
+      roomMode: n => { const room = this.contactRoom(n); return room ? room.restrictedMode ? "restricted" : "legacy" : undefined; },
+    }, agent ? { agent } : {});
+  }
+  /** M-3716: the caller's OWN held requests (delivery_status { held_requests: true }); the caller is the authenticated agent. */
+  ownContactRequests(agent: string) {
+    const outbox = this.deliveryOutbox;
+    if (!outbox?.isOpen) return { requests: [], note: "Contact requests are unavailable right now." };
+    return ownContactRequestsView(outbox.contactAuthorizations.requestsBy(agent), {
+      label: n => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || n,
+      delivery: ticket => ticket.deliveryId ? outbox.get(ticket.deliveryId)?.state : undefined,
+    });
+  }
   async requestContactChange(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }> {
     if (!callerCurrent() || this.fleetConfig?.instances[requester]?.general_topic !== true) throw Error("general-only");
     if (this.hubContactRestricted(requester)) throw Error("hub-contact-restricted");
@@ -5901,6 +6044,97 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
+  /**
+   * M-3680 (the user, 11-25): a fleet agent's send held for approval reaches an administrator in General on the target's
+   * Discord or Telegram, as a card with Approve once / Decline — until then a held request had no chat path (the live
+   * Needs you message lists it without buttons). One card per request. Whoever clicks must be one who may decide it
+   * (ContactAuthService.view(...).canDecide, read at the click); the decision is theirs, never the bot's. A request decided
+   * anywhere else (the web, another card) retires its card. #4448 (R21079937): a ClassicBot room's request to a fleet agent
+   * gets the same card, in the General of the target's connection; a room's request to anything else gets none.
+   */
+  /** Requests whose card was posted or tried: forgotten when the request is decided, and at most HELD_CARDS_KEPT. */
+  private heldTicketCards?: Set<string>;
+  private syncHeldTicketCard(ticket: ContactTicket): void {
+    const posted = (this.heldTicketCards ??= new Set<string>());
+    if (ticket.state !== "pending") {
+      posted.delete(ticket.id);
+      for (const [nonce, entry] of [...(this.pendingNonceButtons ?? [])]) {
+        if (entry.prefix !== CONTACT_TICKET_PREFIX || entry.contactTicketId !== ticket.id) continue;
+        this.pendingNonceButtons.delete(nonce);
+        if (entry.timer) clearTimeout(entry.timer);
+        // #4438 review: a card still being posted has no message yet; postHeldTicketCard retires it once it has one.
+        if (entry.messageId) void this.retireNonceButtons(entry, entry.messageId, heldCardOutcome(ticket.state));
+      }
+      return;
+    }
+    // A fleet agent's send, or (R21079937, 11-25: a room's request was in no list and had no card) a ClassicBot room's send
+    // to a fleet agent — the card goes to the General of the TARGET's connection either way (postHeldTicketCard).
+    const room = !this.fleetConfig?.instances[ticket.source] && !!this.contactRoom(ticket.source);
+    if (posted.has(ticket.id) || (!this.fleetConfig?.instances[ticket.source] && !room) || (room && !this.fleetConfig?.instances[ticket.target])) return;
+    posted.add(ticket.id);
+    for (const old of posted) { if (posted.size <= HELD_CARDS_KEPT) break; posted.delete(old); }
+    void this.postHeldTicketCard(ticket).catch((err: unknown) => this.logger?.warn?.({ err: (err as Error)?.message, ticket: ticket.id },
+      "Could not post a held contact request to General"));
+  }
+  private async postHeldTicketCard(ticket: ContactTicket): Promise<void> {
+    const adapter = this.contactAdapter(ticket.target);
+    if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return;
+    const routes = Object.keys(this.fleetConfig?.instances ?? {}).flatMap(n => {
+      const route = this.settingsGeneralRoute(n, adapter.type as "discord" | "telegram", new Set());
+      return route && route.adapterId === adapter.id && route.adapter === adapter ? [{ name: n, ...route }] : [];
+    });
+    if (routes.length !== 1) { this.logger.info({ ticket: ticket.id, routes: routes.length }, "No single General for a held contact request's card"); return; }
+    // A ClassicBot room by its own name (its display name, else its channel's), as Fleet lists it.
+    const route = routes[0]!, label = (n: string) => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || this.contactRoom(n)?.name || n;
+    const shortId = /^R[a-f0-9]{8}-/.test(ticket.id) ? ticket.id.slice(0, 9) : ticket.id;
+    const left = Date.parse(ticket.expiresAt) - Date.now();
+    const text = ticket.message.length > 300 ? `${ticket.message.slice(0, 299)}…` : ticket.message;
+    const posting = this.postNonceButtonPromptOrThrow({ prefix: CONTACT_TICKET_PREFIX, alertType: "clear_confirm", instanceName: route.name,
+      adapter: route.adapter, adapterId: route.adapterId, chatId: route.chatId, threadId: route.topic,
+      message: [t("contactHeld.title", label(ticket.source), label(ticket.target)), `> ${text.replace(/\n+/g, " ")}`,
+        t("contactHeld.meta", shortId, ticket.verb, left < 2 * 3_600_000 ? t("contactHeld.minutes", Math.max(1, Math.round(left / 60_000))) : t("contactHeld.hours", Math.round(left / 3_600_000))),
+        t("contactHeld.hint")].join("\n"),
+      choices: [{ action: "approve", label: t("contactHeld.approve") }, { action: "decline", label: t("contactHeld.decline") }],
+      expiredText: t("contactHeld.expired"), timeoutMs: Math.max(60_000, Math.min(left, 24 * 3_600_000)),
+      extra: { contactTicketId: ticket.id } });
+    // The entry is armed before the platform answers (postNonceButtonPromptOrThrow sets it synchronously).
+    const entry = [...this.pendingNonceButtons.values()].find(e => e.prefix === CONTACT_TICKET_PREFIX && e.contactTicketId === ticket.id);
+    const nonce = await posting;
+    // #4438 review: decided elsewhere, or expired, while the card was being posted — it had no message to retire then; it
+    // has one now. A card still armed for a request still waiting stays.
+    if (!entry?.messageId) return;
+    const fresh = this.contactService().host.store.get(ticket.id), armed = this.pendingNonceButtons.get(nonce) === entry;
+    if (armed && fresh?.state === "pending") return;
+    if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
+    await this.retireNonceButtons(entry, entry.messageId, !fresh || fresh.state === "pending" ? t("contactHeld.expired") : heldCardOutcome(fresh.state));
+  }
+  private async handleContactTicketCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    if (!data.callbackData.startsWith(CONTACT_TICKET_PREFIX)) return false;
+    const person = data.userId && adapter && this.adapters.get(adapterId) === adapter && adapter.id === adapterId
+      && (adapter.type === "discord" || adapter.type === "telegram") && data.userId !== adapter.getBotUserId?.()
+      ? { platform: adapter.type as "discord" | "telegram", adapterId, userId: data.userId, label: data.username || data.userId } : null;
+    const service = this.contactService();
+    const mayDecide = (entry: NonceButtonEntry): boolean => {
+      const ticket = person && entry.contactTicketId ? service.host.store.get(entry.contactTicketId) : undefined;
+      try { return !!ticket && !!person && service.view(ticket, person).canDecide; } catch { return false; }
+    };
+    const claimed = this.consumeNonceCallback(CONTACT_TICKET_PREFIX, /^contact-ticket:([0-9a-f]{32}):(approve|decline)$/, data, adapterId, adapter, undefined,
+      (_user, entry) => !!entry.messageId && !this.webPromptClicks.has(data) && mayDecide(entry));
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const ticket = entry.contactTicketId ? service.host.store.get(entry.contactTicketId) : undefined;
+    let text = t("contactHeld.closed");
+    if (ticket?.state === "pending" && person) {
+      try {
+        const decided = this.decideContactAuthorization(ticket.id, { revision: ticket.revision, decision: action === "approve" ? "approve-once" : "decline" }, person);
+        text = t(decided.state === "approved" ? "contactHeld.approved" : "contactHeld.declined", person.label);
+      } catch { text = t("contactHeld.failed"); }
+    }
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, text);
+    return true;
+  }
+
   contactAuthorization(id: string, actor: ContactPerson) {
     const service = this.contactService(), ticket = service.host.store.get(id);
     if (!ticket) throw Error("not-found");
@@ -5912,7 +6146,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try {
         const view = service.view(ticket, actor);
         if (filter.status && view.state !== filter.status) return [];
-        if (filter.person && !view.origin.people.some(person => JSON.stringify([person.platform, person.adapterId, person.userId]) === filter.person)) return [];
+        if (filter.person && !view.origin.people.some(person => contactPersonKey(person) === normalizeContactPersonKey(filter.person ?? ""))) return [];
         return [view];
       } catch { return []; }
     }) };
@@ -5925,13 +6159,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const outbox = this.deliveryOutbox;
     if (!outbox?.isOpen || this.shuttingDown) return;
     try {
-      outbox.contactAuthorizations.notifyOutcomes(ticket => {
-        outbox.admitSystemNotice(ticket.source, `contact-outcome:${ticket.id}`,
-          t(ticket.state === "declined" ? "contact.noticeDeclined" : "contact.noticeExpired", ticket.id, ticket.target));
-      });
+      outbox.contactAuthorizations.notifyOutcomes((ticket, outcome) => {
+        if (outcome === "declined" || outcome === "expired") {
+          outbox.admitSystemNotice(ticket.source, `contact-outcome:${ticket.id}`,
+            t(outcome === "declined" ? "contact.noticeDeclined" : "contact.noticeExpired", ticket.id, ticket.target));
+          return;
+        }
+        // M-3716 (the user, 11-25): the requester learns who approved it, when, and whether the target has it.
+        const by = ticket.decidedBy, when = ticket.decidedAt ? `${ticket.decidedAt.slice(0, 16).replace("T", " ")} UTC` : "";
+        const who = !by ? "?" : by.platform === "host" ? t("contactProposal.host")
+          : `${by.label}${getLocale() === "zh-TW" ? "（" : " ("}${by.platform === "discord" ? "Discord" : "Telegram"}${getLocale() === "zh-TW" ? "）" : ")"}`;
+        outbox.admitSystemNotice(ticket.source, `contact-approval:${ticket.id}`,
+          t(`contact.noticeApproved_${outcome}`, shortContactTicketId(ticket.id), ticket.target, who, when));
+      }, ticket => ticket.deliveryId ? outbox.get(ticket.deliveryId)?.state : undefined);
     } catch (err) {
       this.logger.error({ err }, "Contact outcome notice sweep failed; durable state will retry");
     }
+  }
+  /**
+   * M-3710: how many contact requests wait, and since when — no ids, people or text. Needs you tells an admin session with
+   * no verified person behind it (contactActor null) that they exist, so a request is never silently missing there.
+   */
+  contactPendingCount(): { count: number; since: number } {
+    const pending = this.contactService().host.store.pending();
+    return { count: pending.length, since: pending.reduce((at, ticket) => Math.min(at, Date.parse(ticket.createdAt) || at), Date.now()) };
   }
   contactNeeds(actor: ContactPerson): WebNeedsItem[] {
     const service = this.contactService();
@@ -6064,7 +6315,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const human = (item: DeliveryStatusItem): DeliveryStatusItem => {
       if (!item.authority || !state) return item;
       const authority = this.receiptAuthorityNow(item.authority, state);
-      return { ...item, authority, ...(authority.downgraded ? { source_instance: "human:web:unknown" } : {}) };
+      return { ...item, authority, ...(authority.downgraded && !isWebSessionIdentity(item.origin?.web_identity) ? { source_instance: "human:web:unknown" } : {}) };
     };
     // #1641: a sender that sees only `queued` cannot tell "next in line" from "the target is stuck": say which.
     return {
@@ -6964,6 +7215,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   // ── ArchiverContext bridge ────────────────────────────────────────────
+  /** M-3674: the last turn another agent started for `name` (the delivery outbox), ISO or null; never throws. */
+  lastAgentTurnOf(name: string): string | null {
+    try { return this.deliveryOutbox?.lastAgentTurn(name) ?? null; } catch { return null; }
+  }
+
   lastActivityMs(name: string): number {
     return this.lastActivity.get(name) ?? 0;
   }
@@ -8667,10 +8923,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.contactRoom(instanceName)?.restrictedMode === true && !contactStore) throw Error("Contact origin storage unavailable");
     if (contactStore && (this.contactRoom(instanceName)?.restrictedMode === true || contactStore.origin(instanceName))) {
       const authority = origin.authority;
-      const actor = origin.platform === "web" ? (authority?.kind === "web-verified" ? authority.actor : null)
+      const identity = origin.platform === "web" && isWebSessionIdentity(origin.web_identity) ? origin.web_identity : undefined;
+      const actor = origin.platform === "web" ? identity ?? (authority?.kind === "web-verified" ? authority.actor : null)
         : { adapter_id: origin.adapter_id, user_id: origin.user_id };
       const adapter = actor?.adapter_id ? this.adapters.get(actor.adapter_id) : undefined;
-      const platform = origin.platform === "web" ? adapter?.type : origin.platform;
+      const platform = origin.platform === "web" ? identity?.platform ?? adapter?.type : origin.platform;
       const person: ContactPerson | undefined = actor?.adapter_id && actor.user_id
         && (platform === "discord" || platform === "telegram" || (actor.adapter_id === "host" && actor.user_id === "operator"))
         ? { platform: actor.adapter_id === "host" ? "host" : platform as "discord" | "telegram",
@@ -8858,6 +9115,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Fleet admin is an explicit config allowlist entry, not merely an open/paired user. See adminGate. */
   isFleetAdmin(userId: string, adapterId?: string): boolean {
+    return this.adminGate(userId, adapterId) === "ok";
+  }
+
+  /**
+   * Free mode at /start is the fleet-admin allowlist of the adapter that owns the room (adminGate).
+   * A ClassicBot admin (`classicBot.yaml` admin_users) is not enough. A stub with no fleet and no worlds
+   * is not an admin: the menu offers Restricted only.
+   */
+  private canChooseFreeMode(userId: string, adapterId?: string): boolean {
+    if (!this.fleetConfig && !this.worlds) return false;
     return this.adminGate(userId, adapterId) === "ok";
   }
 
@@ -10638,6 +10905,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (credentialSwitchStartsFresh(sw.backend)) this.writeFreshStartMarker(name);
       return null;
     }
+    // M-3749: the agent's own MCP servers (user scope, and local scope for its folder) go along too, merged — whatever
+    // becomes of the conversation. A failure is logged; the next launch's check tells the agent what it lacks.
+    if (sw.backend === "claude-code") {
+      const profileDir = (profile: string | null) => profile ? credentialProfileHome(this.dataDir, sw.backend, profile) : null;
+      try {
+        // What it has in the profile it leaves now (added this session too), so the next launch can say what is missing.
+        recordClaudeMcpBeforeSwitch({ instanceDir: this.getInstanceDir(name), configDir: claudeConfigDirFor(profileDir(sw.from)),
+          jsonPath: claudeJsonFor(profileDir(sw.from)), workingDirectory: sw.workingDirectory ?? "" });
+        const mcp = carryClaudeMcpServers({ fromProfileDir: profileDir(sw.from), toProfileDir: profileDir(sw.to), workingDirectory: sw.workingDirectory ?? "" });
+        const where = { name, from: sw.from ?? "default", to: sw.to ?? "default" };
+        if (!mcp.carried) this.logger.warn({ ...where, reason: mcp.reason }, "MCP servers not carried to the new credential profile");
+        else if (mcp.user.length || mcp.local.length || mcp.keptTarget.length) this.logger.info({ ...where, user: mcp.user, local: mcp.local, keptTarget: mcp.keptTarget }, "MCP servers carried to the new credential profile");
+      } catch (err) {
+        this.logger.warn({ name, err: (err as Error).message }, "MCP servers not carried to the new credential profile");
+      }
+    }
     let sessionId: string | null = null;
     try { sessionId = readFileSync(join(this.getInstanceDir(name), "session-id"), "utf-8"); } catch { /* none: nothing to carry */ }
     const dir = (profile: string | null) => claudeConfigDirFor(profile ? credentialProfileHome(this.dataDir, sw.backend, profile) : null);
@@ -11367,6 +11650,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       audit: this.guestAudit() };
   }
 
+  /**
+   * M-3734: each guest's agents now, as guestOverview lists them (#1920's derived access while no grants are saved) — the
+   * scopes "Start from today's guests" on an agent's page is checked against, as it is admitted and as it applies.
+   */
+  guestDerivedScopes(): Record<string, string[]> {
+    const out: Record<string, string[]> = Object.create(null);
+    for (const g of this.guestOverview().guests) if (g.scope.length) out[`${g.adapterId}:${g.userId}`] = [...g.scope];
+    return out;
+  }
+
   /** #2667: the ClassicBot rooms' instance names now — what a settings save's validation knows besides fleet.yaml's instances. */
   classicRoomNames(): string[] {
     return (this.classicChannels?.getAll() ?? []).map((r) => r.instanceName);
@@ -11582,7 +11875,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // guest there) — most guests are not on the host's network. Its closing withdraws that audience (revokeAudience).
     const open = this.publicWebLink?.openSignin() ?? null;
     // One code per account (a new one replaces only its own); at the cap, refused — never another guest's evicted.
-    const login = codes.issue({ epoch: tokenEpoch(token), audiences: ["local", ...(open ? [open.exposureId] : [])],
+    // M-3651: private — the account's DM, else this slash command's ephemeral answer, else withdrawn (below): verified at sign-in.
+    const login = codes.issue({ epoch: tokenEpoch(token), audiences: ["local", ...(open ? [open.exposureId] : [])], private: true,
       recipient: { adapterId: owner.adapterId, userId: owner.userId, ...(ask.username ? { username: ask.username } : {}) } });
     if (!login) { await say(t("web.guest_busy")); report({ kind: "busy" }); return; }
     this.guestCodeAskedAt.delete(key); this.guestCodeAskedAt.set(key, performance.now());
@@ -11723,7 +12017,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const current = (): boolean => !this.shuttingDown && this.webToken === token && this.adapters.get(account.adapterId) === adapter
       && this.guestRevokes === revokes && (this.guestAccountRevokes.get(key) ?? 0) === accountRevokes && this.guestSignInAllowed(account)
       && (!viaLink || linkOpen()) && this.returningDevices!.current(device, tokenEpoch(token));
-    const issued = codes.issue({ epoch: tokenEpoch(token), recipient: account, audiences: [viaLink ? input.exposureId! : "local"] });
+    const issued = codes.issue({ epoch: tokenEpoch(token), recipient: account, audiences: [viaLink ? input.exposureId! : "local"], private: true });   // M-3651: by DM only (withdrawn otherwise)
     if (!issued) return { kind: "limited", retryAfterMs: 60_000 };            // the guests' cap: never someone's evicted
     this.guestCodeInFlight.add(key);
     this.guestCodeAskedAt.delete(key); this.guestCodeAskedAt.set(key, performance.now());
@@ -13824,6 +14118,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.cacheInstanceProgress(name, (msg.progress as string) || null);
         } else if(msg.type==="hub_room_turn_ended"){
           if(this.instanceIpcClients.get(name)===ipc&&typeof msg.generation==="string"&&typeof msg.turn==="string")void this.hubRoomOwed?.turnEnded(name,msg.generation,msg.turn).catch(err=>this.logger.warn({err},"Hub room completion notice held"));
+        } else if (msg.type === "hub_question_input" || msg.type === "hub_question_turn_ended" || msg.type === "hub_question_turn_state") {
+          // M-3660: only the instance's current daemon speaks for its pane's turns.
+          if (this.instanceIpcClients.get(name) === ipc) this.hubTurnSignal(name, msg);
         } else if (msg.type === "hub_room_input") {
           if (this.instanceIpcClients.get(name) === ipc && typeof msg.correlationId === "string" && typeof msg.generation === "string")
             this.hubRoomInput?.(msg.correlationId,name,msg.generation);
@@ -14748,11 +15045,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (blocker) { await msgAdapter?.sendText(chatId, blocker); return; }
           const channelName = msg.username || chatId;
           if (requestedBackend) {
-            // Advisory before the new-room policy is persisted, including direct /start BACKEND.
-            await msgAdapter?.sendText(chatId, this.getClassicStartWarning(requestedBackend));
-            // handleClassicStart binds the instance to this adapter authoritatively.
-            const reply = await this.handleClassicStart(chatId, channelName, msg.userId, undefined, msg.adapterId, requestedBackend);
-            await msgAdapter?.sendText(chatId, reply);
+            // The backend is only half of /start. The room waits for Restricted or Free.
+            await this.beginClassicModeSelection({
+              command: "start",
+              channelId: chatId,
+              channelName,
+              userId: msg.userId,
+              respond: async (reply: string) => (await msgAdapter?.sendText(chatId, reply))?.messageId,
+            }, msgAdapter ?? undefined, requestedBackend, msg.adapterId);
           } else if (msgAdapter) {
             await this.beginClassicBackendSelection({
               command: "start",
@@ -19399,7 +19699,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "contactChange" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
+    extra?: Pick<NonceButtonEntry, "contactChange" | "contactTicketId" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
     timeoutMs?: number;
     /** #2675: an action the dashboard offers beyond the platform's buttons (a typed answer, which the platform takes as a reply). */
     webInput?: { action: string; label: string } | null;
@@ -19661,6 +19961,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
     if (await this.handleContactChangeCallback(data, adapterId, adapter)) return true;
+    if (await this.handleContactTicketCallback(data, adapterId, adapter)) return true;
     if (await this.handleSettingsChangeCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroMigrateCallback(data, adapterId, adapter)) return true;
     if (await this.handleHubSharingCallback(data, adapterId, adapter)) return true;
@@ -19678,6 +19979,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return true;
     if (await this.handleRemoteCardClick(data, adapterId, adapter)) return true;
     if (await this.handleClassicBackendSelection(data)) return true;
+    if (await this.handleClassicModeSelection(data)) return true;
     if (await this.handleModelSelection(data, adapterId)) return true;
     if (await this.handleEffortSelection(data, adapterId)) return true;
     if (await this.handleBackendSelection(data, adapterId)) return true;
@@ -19714,19 +20016,59 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.needsYou?.poke();
   }
 
+  /** M-3749: the credential profile a Claude config dir belongs to, for people and agents: its name, or "default". */
+  private claudeProfileLabel(configDir: string): string {
+    const dir = resolvePath(configDir);
+    return dirname(dir) === resolvePath(dirname(credentialProfileHome(this.dataDir, "claude-code", "x"))) ? basename(dir) : "default";
+  }
+
+  /**
+   * M-3749: a launch found MCP servers the agent had under its previous profile and does not have now. Told to the agent
+   * once per set (the outbox key), held until it is delivered; Needs you lists it from the daemon (instancesForNeeds).
+   */
+  onMcpMissing(name: string, missing: import("./backend/claude-mcp-carry.js").McpMissing | null): void {
+    if (!missing?.names.length) return;
+    try {
+      this.ensureDeliveryOutbox();
+      const outbox = this.deliveryOutbox;
+      if (!outbox) return;
+      const digest = createHash("sha256").update(`${missing.fromConfigDir}\u0000${missing.toConfigDir}\u0000${missing.names.join(",")}`).digest("hex").slice(0, 16);
+      const text = t("inst.mcp_missing", this.claudeProfileLabel(missing.fromConfigDir), this.claudeProfileLabel(missing.toConfigDir), missing.names.join(t("needs.mcp_missing_sep")));
+      outbox.admitSystemNotice(name, `mcp-missing:${name}:${digest}`, text, new Date(missing.since));
+    } catch (err) {
+      this.logger.warn({ err, name }, "Could not queue the MCP-missing notice");
+    }
+  }
+
+  /** M-3749: a person dismissed an agent's missing-MCP item (web or chat Acknowledge). false: nothing was outstanding. */
+  acknowledgeMcpMissing(name: string): boolean {
+    const daemon = this.daemons.get(name);
+    if (daemon?.dismissMcpMissing) return daemon.dismissMcpMissing();
+    dismissClaudeMcpMissing(this.getInstanceDir(name));
+    return false;
+  }
+
   /** The list for the web: every world's items, and those of instances with no world (#1386 §5.0). */
   needsYouItems(): WebNeedsItem[] {
     return this.needsYou?.webItems() ?? [];
   }
 
-  /** Enabled member composition supplies only a local attention reader, never an approval/execution callback. */
-  attachHubExecutionAttention(read: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null, retry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null): void {
-    this.hubExecutionAttention = read; this.hubHeldRetry = read ? retry : null; this.needsYou?.poke();
+  /** Enabled member composition supplies held-work readers and explicit owner retry/close operations. */
+  attachHubExecutionAttention(read: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null, retry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null, close: ((id: string) => Promise<HubHeldCloseOutcome>) | undefined = undefined): void {
+    this.hubExecutionAttention = read; this.hubHeldRetry = read ? retry : null; this.hubHeldClose = read ? close ?? null : null; this.needsYou?.poke();
   }
   /**
    * M-3632: Needs you → "Try again" on held Hub work (`hub:hold:<row>`). The question goes back through the member's whole
    * hand-off, including the Hub's begin lease; nothing is delivered without it.
    */
+  async closeHubHeld(itemId: string, actor: ContactPerson): Promise<{ status: number; code: string }> {
+    const item = this.hubExecutionAttention?.().find(i => `hub:${i.id}` === itemId && i.kind === "hold");
+    if (!item || !this.hubHeldClose) return { status: 404, code: "not-found" };
+    if (!this.contactAdminOf(item.agent, actor)) return { status: 403, code: "forbidden" };
+    const code = await this.hubHeldClose(item.id);
+    this.needsYou?.poke();
+    return { status: code === "closed" || code === "answered" ? 200 : code === "not-found" ? 404 : 503, code };
+  }
   retryHubHeld(itemId: string): { status: 200 | 404 | 409; code: "queued" | "not-found" | "not-retryable" } {
     const id = itemId.startsWith("hub:") ? itemId.slice(4) : itemId;
     if (!this.hubHeldRetry || !id.startsWith("hold:")) return { status: 404, code: "not-found" };
@@ -19972,6 +20314,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
         modelSwitch: this.modelObservationForInstance(name)?.active ?? null,
         usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
+        mcpMissing: (() => { const m = this.daemons.get(name)?.mcpMissing?.(); return m ? { names: m.names, from: this.claudeProfileLabel(m.fromConfigDir), to: this.claudeProfileLabel(m.toConfigDir), since: m.since } : null; })(),
         nativeDeliveryHold: this.daemons.get(name)?.nativeDeliveryHold?.() ?? null,
         generalLocation: this.generalLocationAttention(name),
         paneRecovery: (()=>{const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config)||!config.native_agent_id)return null;
@@ -20054,6 +20397,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         id: m.id, instance: m.instance, owner: m.adapterId, username: m.username, place: m.place, preview: m.preview, since: m.since,
       })),
       acknowledgeMissed: (id, by) => this.missedOfflineStore?.acknowledge(id, by) ?? false,
+      acknowledgeMcpMissing: instance => this.acknowledgeMcpMissing(instance),
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
       signInKeepAlive: () => this.keepAliveAttention(),
@@ -20225,7 +20569,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1266: a click on a reply's button in the web chat (the /ui gate is passed: a session, or the public link). On a
    * poll (#1823) it is `voter`'s vote: the page's session.
    */
-  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
+  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority; identity?: WebSessionIdentity }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
     const buttons = this.replyButtons();
     return buttons ? buttons.clickWeb(instance, id, index, voter) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
   }
@@ -20665,9 +21009,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1939 S1: the design's §3 for one web request (authority/web-authority.ts), with this fleet's admins, policy and
    * token; `instance` once the body has named it. Observe only: receipts record it, no agent acts on it yet.
    */
+  /** A signed-in account is recognizable before verification; this supplies no action authority. */
+  webSessionIdentity(session: SessionRecord): WebSessionIdentity | undefined {
+    const owner = session.owner;
+    if (owner) {
+      const adapter = this.adapters.get(owner.adapterId) ?? this.worlds?.get(owner.adapterId)?.adapter;
+      const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+      const platform = adapter?.type ?? channels.find(channel => (channel.id ?? channel.type) === owner.adapterId)?.type;
+      if (platform !== "discord" && platform !== "telegram") return;
+      return Object.freeze({ platform, adapter_id: owner.adapterId, user_id: owner.userId, session_handle: session.handle });
+    }
+    if (session.tier === "admin" && (session.host === true || session.remote === "totp") && this.isWebOnlyFleet()) {
+      return Object.freeze({ platform: "host", adapter_id: "host", user_id: "operator", session_handle: session.handle });
+    }
+    return;
+  }
+
   webAuthority(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string; authorization?: SessionAuthorization | null }): WebAuthorityResult {
     const state = this.webAuthorityState();
-    return evaluateWebAuthority({
+    // M-3651: a guest's session is asked only whether it is its account, verified (`web-guest`, identity only).
+    return (input.session?.tier === "guest" ? evaluateGuestIdentity : evaluateWebAuthority)({
       session: input.session, gateway: input.gateway, peer: input.peer,
       tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       ...(input.instance !== undefined ? { target: { adapterId: this.getInstanceAdapterId(input.instance) } } : {}),
@@ -20704,6 +21065,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (check.refusal) return { ok: false, refusal: check.refusal };
     const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
     store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
+    const authorized = store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer);
+    // M-3710: Needs you is projected per session — this one now sees the contact requests it may decide, not just their count.
+    try { this.emitSseEvent("needs", { items: this.needsYouItems() }); } catch (err) { this.logger.warn({ err: (err as Error)?.message }, "Needs you refresh after a web authorization failed"); }
+    return { ok: true, ...authorized };
+  }
+
+  /** M-3651 (auth-api's /auth/session): until when this guest session is verified as its account now; null when it is not. */
+  guestVerifiedUntil(req: IncomingMessage, session: SessionRecord): number | null {
+    if (session.tier !== "guest") return null;
+    const v = this.webSessionAuthorization({ session, gateway: !!gatewayRequestContext(req), peer: webPeerOf(req) });
+    return v.state === "verified" ? v.until : null;
+  }
+
+  /**
+   * M-3651: a guest session that signed in with a code AgEnD delivered privately to its own account — recorded as that
+   * account's authorization of it, judged by evaluateGuestIdentity (the switch, the links, "Only this computer", the token):
+   * its messages then carry `web-guest`, who it is and never more. Only at sign-in: a guest is never sent a Confirm card.
+   */
+  private authorizeGuestSession(session: SessionRecord, peer: WebPeer, gateway: boolean): { ok: true; authorization: SessionAuthorization; durable: boolean } | { ok: false; refusal: WebAuthorityRefusal } {
+    const store = this.sessionAuthorizationStore();
+    const state = this.webAuthorityState(), now = Date.now(), policy = webAuthorityPolicy(this.fleetConfig?.web);
+    if (!store || !session.owner || session.tier !== "guest") return { ok: false, refusal: !store ? "disabled" : "no_account" };
+    const check = evaluateGuestIdentity({
+      session, gateway, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null, isAdmin: () => false,
+      authorization: { handle: session.handle, owner: session.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch },
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
+    });
+    if (check.refusal) return { ok: false, refusal: check.refusal };
+    const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
+    store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
     return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer) };
   }
 
@@ -20715,11 +21106,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * at once, with Not me (noteAuthorized). Re-verifying once that authorization has run out still takes the card.
    */
   authorizeSignedInSession(session: SessionRecord, peer: WebPeer, gateway: boolean): void {
-    if (session.tier !== "admin" || !session.owner || session.host) return;
-    const r = this.authorizeWebSession(session, peer, gateway);
+    if ((session.tier !== "admin" && session.tier !== "guest") || !session.owner || session.host) return;
+    // M-3651: a guest's private code verifies who it is (web-guest), never an admin's authority.
+    const r = session.tier === "guest" ? this.authorizeGuestSession(session, peer, gateway) : this.authorizeWebSession(session, peer, gateway);
     if (!r.ok) { this.logger.info({ handle: session.handle, refusal: r.refusal }, "Web session signed in with a private code, not verified"); return; }
     this.logger.info({ handle: session.handle, durable: r.durable }, "Web session verified at sign-in (a private code)");
-    void this.sessionAuthorizationRequests().noteAuthorized({ handle: session.handle, owner: session.owner, label: session.label, peer, until: Math.min(r.authorization.until, session.absoluteExpiry) })
+    void this.sessionAuthorizationRequests().noteAuthorized({ handle: session.handle, owner: session.owner, label: session.label, peer, until: Math.min(r.authorization.until, session.absoluteExpiry),
+      ...(session.tier === "guest" ? { guest: true } : {}) })
       .catch(err => this.logger.warn({ err: (err as Error)?.message }, "Web sign-in notice failed"));
   }
 
@@ -21294,7 +21687,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.authorizationRequests) return this.authorizationRequests;
     const adapterOf = (adapterId: string): ChannelAdapter | undefined => this.adapters.get(adapterId) ?? this.worlds.get(adapterId)?.adapter;
     // The host's clock, with its zone: the person may read the DM on a phone in another one.
-    const when = (ms: number) => new Date(ms).toLocaleString(undefined, { timeZoneName: "short" });
+    // M-3730: zh-TW is a 24-hour clock (2026/11/25 00:19:00 [GMT+8]), never 上午12:19; English is unchanged.
+    const when = (ms: number) => getLocale() === "zh-TW"
+      ? new Date(ms).toLocaleString("zh-TW", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZoneName: "short" })
+      : new Date(ms).toLocaleString(undefined, { timeZoneName: "short" });
     const quickHost = (): string => { try { const u = this.publicWebLink?.openSignin()?.url; return u ? new URL(u).host : "?"; } catch { return "?"; } };
     const where = (peer: WebPeer) => peer === "named_link"
       ? t("web_auth.peer_named_link", String(this.fleetConfig?.web?.public_link?.hostname ?? "?"))   // §0.2: the internet
@@ -21339,7 +21735,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       text: {
         ask: (c) => t("web_auth.card_ask", c.label, where(c.peer), when(c.askedAt), when(c.until)),
         confirmed: (c) => t("web_auth.card_confirmed", c.label, where(c.peer), when(c.until)),
-        signedIn: (c) => t("web_auth.signed_in", c.label, where(c.peer), when(c.until)),
+        signedIn: (c) => t(c.guest ? "web_auth.signed_in_guest" : "web_auth.signed_in", c.label, where(c.peer), when(c.until)),
         signedInHint: () => t("web_auth.signed_in_hint"),
         denied: (c) => t("web_auth.card_denied", c.label),
         expired: (c) => t("web_auth.card_expired", c.label),
@@ -21463,14 +21859,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #2855: the platform an instance's channel is on, for the command table's cell (a web-only fleet: Discord's). */
   private commandPlatform(instance: string): Platform { return this.getAdapterForInstance(instance)?.type === "telegram" ? "telegram" : "discord"; }
 
-  webCommand(input: { instance: string; command: string; args?: string; confirm?: string; action?: import("./web-commands.js").WebModelAction }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; guest?: boolean }): Promise<WebCommandResult> {
+  webCommand(input: { instance: string; command: string; args?: string; confirm?: string; action?: import("./web-commands.js").WebModelAction }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; identity?: WebSessionIdentity; guest?: boolean }): Promise<WebCommandResult> {
     const webMeta = (instance: string) => {
       const topicId = this.fleetConfig?.instances[instance]?.topic_id;
       return {
         // #1827: a /steer or /btw reaches the agent as the web person who wrote it.
         chatId: this.getGroupIdForInstance(instance) || "", messageId: newWebMessageId(),
         username: opts.person?.name ?? WEB_NAME_FALLBACK, userId: opts.person?.userId ?? WEB_NAME_FALLBACK,
-        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true, opts.authority),
+        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true, opts.authority, opts.identity),
         ...(opts.guest ? { webGuest: true } : {}),       // #2855: a guest's /steer or /btw reaches the agent as a guest's
       };
     };
@@ -28450,12 +28846,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return t("classic.backend_not_installed", backend, installation.binary, installation.install);
   }
 
-  /** Coverage is not proven before launch; disclose the fallback without blocking an unsupported CLI. */
-  private getClassicStartWarning(backend: string | undefined): string {
-    return [t("classic.restricted_start_notice"), this.getMissingBackendWarning(backend)].filter(Boolean).join("\n\n");
+  /** Discord buttons when the interaction can draw them; otherwise the adapter's own chooser. Never the backend select. */
+  private classicModePoster(data: ClassicStartSlashData, adapter?: ChannelAdapter): PendingClassicStart["showMenu"] {
+    if (data.respondButtons) return (text, choices) => data.respondButtons!(text, choices);
+    if (adapter?.promptUser) return (text, choices) => adapter.promptUser(data.channelId, text, choices);
+    return undefined;
   }
 
-  /** Handle Discord's required static slash choice, warning before a likely startup failure. */
+  /** Where the finished start (and a hold notice) lands: the Discord interaction, or the Telegram menu message. */
+  private classicStartComplete(data: ClassicStartSlashData, adapter?: ChannelAdapter): PendingClassicStart["complete"] {
+    if (data.retireButtons) return async (text) => { await data.retireButtons!(text); };
+    return async (text, messageId) => {
+      if (messageId && adapter?.editMessageRemoveButtons) {
+        try {
+          await adapter.editMessageRemoveButtons(data.channelId, messageId, text);
+          return;
+        } catch { /* fall back to a new message */ }
+      }
+      await data.respond(text);
+    };
+  }
+
+  /** Handle Discord's required static slash choice. The room waits for the mode menu. */
   private async handleClassicStartSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     return withSpawnHoldReply(text => data.respond(text), () => this.handleClassicStartSlashCore(data, adapterId));
   }
@@ -28474,22 +28886,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const blocker = this.validateClassicStart(data.channelId, data.userId, data.guildId, adapterId);
     if (blocker) { await data.respond(blocker); return; }
-    const warning = this.getClassicStartWarning(requestedBackend);
-    // Keep the deferred ephemeral response useful even if daemon startup later
-    // fails because the executable is absent. This is advisory, not a gate.
-    if (warning) await data.respond(warning);
-    const reply = await this.handleClassicStart(
-      data.channelId,
-      data.channelName,
-      data.userId,
-      data.guildId,
-      adapterId,
-      requestedBackend,
-    );
-    await data.respond(warning ? `${warning}\n\n${reply}` : reply);
+    // A missing binary is advisory and stays on the mode menu. The room is not created yet.
+    await this.beginClassicModeSelection(data, undefined, requestedBackend, adapterId);
   }
 
-  /** Present platform-native backend choices, then start on selection or timeout. */
+  /** Present platform-native backend choices. A choice opens the mode menu; a timeout or a failed menu creates nothing. */
   private async beginClassicBackendSelection(data: ClassicStartSlashData, adapter: ChannelAdapter): Promise<void> {
     const adapterId = adapter.id;
     const blocker = this.validateClassicStart(data.channelId, data.userId, data.guildId, adapterId);
@@ -28503,17 +28904,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       id: `${CLASSIC_BACKEND_CALLBACK_PREFIX}${nonce}:${choice.id}`,
       label: `${this.isBackendInstalled(choice.id) ? "✅" : "❌"} ${choice.label}`,
     }));
-    const complete = data.respondChoices
-      ? async (text: string) => { await data.respond(text); }
-      : async (text: string, messageId?: string) => {
-          if (messageId && adapter.editMessageRemoveButtons) {
-            try {
-              await adapter.editMessageRemoveButtons(data.channelId, messageId, text);
-              return;
-            } catch { /* fall back to a new message */ }
-          }
-          await data.respond(text);
-        };
+    const complete = this.classicStartComplete(data, adapter);
 
     const timer = setTimeout(() => {
       // Timeout: cancel the selection — do NOT fall back to default.
@@ -28526,38 +28917,50 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     timer.unref?.();
     const pending: PendingClassicStart = {
       channelId: data.channelId,
-      channelName: data.channelName,
+      channelName: data.channelName || data.channelId,
       userId: data.userId,
       guildId: data.guildId,
       adapterId,
       timer,
       complete,
+      phase: "backend",
+      showMenu: this.classicModePoster(data, adapter),
     };
     this.pendingClassicStarts.set(nonce, pending);
 
     try {
+      const prompt = t("classic.choose_backend");
       pending.messageId = data.respondChoices
-        ? await data.respondChoices(`${t("classic.choose_backend")}\n\n${t("classic.restricted_start_notice")}`, choices)
-        : await adapter.promptUser(data.channelId, `${t("classic.choose_backend")}\n\n${t("classic.restricted_start_notice")}`, choices);
+        ? await data.respondChoices(prompt, choices)
+        : await adapter.promptUser(data.channelId, prompt, choices);
     } catch (err) {
-      // A menu transport failure should not make /start unusable: consume the
-      // pending request and immediately use the configured default.
-      this.logger.warn({ err, channelId: data.channelId, adapterId }, "Classic backend menu failed; using default");
-      await this.finishClassicBackendSelection(nonce);
+      // No silent default backend and no silent Restricted room.
+      this.logger.warn({ err, channelId: data.channelId, adapterId }, "Classic backend menu failed; nothing created");
+      await this.cancelClassicPending(nonce, t("classic.backend_menu_failed"));
     }
   }
 
-  /** Consume a selection callback. Returns true for all ClassicBot callback IDs, including stale ones. */
+  /** Drop a pending /start without creating a room. */
+  private async cancelClassicPending(nonce: string, text: string): Promise<void> {
+    const pending = this.pendingClassicStarts.get(nonce);
+    if (!pending) return;
+    this.pendingClassicStarts.delete(nonce);
+    clearTimeout(pending.timer);
+    await pending.complete(text, pending.messageId);
+  }
+
+  /** Consume a backend click. Returns true for every classic-backend id, including a stale one. */
   private async handleClassicBackendSelection(data: AdapterCallbackData): Promise<boolean> {
     if (!data.callbackData.startsWith(CLASSIC_BACKEND_CALLBACK_PREFIX)) return false;
     const match = data.callbackData.match(/^classic-backend:([0-9a-f]+):(.+)$/);
     if (!match) return true;
     const pending = this.pendingClassicStarts.get(match[1]);
-    if (!pending) return true;
+    if (!pending || pending.phase === "mode") return true;
 
     // Telegram keyboards are visible to everyone in a group. Only the user who
-    // issued /start may consume the pending selection.
-    if (data.userId && data.userId !== pending.userId) return true;
+    // issued /start may consume the pending selection. No user id fails closed:
+    // choosing the backend is part of creating the room.
+    if (!data.userId || data.userId !== pending.userId) return true;
     const callbackChannelId = data.threadId ?? data.chatId;
     if (callbackChannelId !== pending.channelId && data.chatId !== pending.channelId) return true;
 
@@ -28565,30 +28968,136 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
-  /** Atomically claim one pending request so timeout/click races create at most one instance. */
+  /** The backend is chosen. Retire that menu and ask for the mode. Nothing is registered here. */
   private async finishClassicBackendSelection(nonce: string, backend?: string): Promise<void> {
     const pending = this.pendingClassicStarts.get(nonce);
-    if (!pending) return;
+    if (!pending || pending.phase === "mode") return;
     this.pendingClassicStarts.delete(nonce);
     clearTimeout(pending.timer);
-    const selectedBackend = isSelectableClassicBackend(backend) ? backend : undefined;
-    const effectiveBackend = selectedBackend
-      ?? this.classicChannels?.getDefaults().backend
-      ?? this.fleetConfig?.defaults?.backend
-      ?? "claude-code";
-    const warning = this.getClassicStartWarning(effectiveBackend);
-    // Show the warning before starting so it survives a missing-binary startup
-    // failure. The selected backend is still attempted as requested.
-    if (warning) await pending.complete(warning, pending.messageId);
-    const reply = await withSpawnHoldReply(text => pending.complete(text, pending.messageId), () => this.handleClassicStart(
-      pending.channelId,
-      pending.channelName,
-      pending.userId,
-      pending.guildId,
-      pending.adapterId,
-      selectedBackend,
-    ));
-    await pending.complete(warning ? `${warning}\n\n${reply}` : reply, pending.messageId);
+    if (!isSelectableClassicBackend(backend)) {
+      await pending.complete(t("classic.backend_required"), pending.messageId);
+      return;
+    }
+    // The grant can be revoked while the backend menu is up. Do not offer a mode, or create a room, after that.
+    const blocker = this.validateClassicStart(pending.channelId, pending.userId, pending.guildId, pending.adapterId);
+    if (blocker) {
+      await pending.complete(blocker, pending.messageId);
+      return;
+    }
+    await pending.complete(t("classic.backend_chosen", backend), pending.messageId);
+    await this.openClassicModeMenu(pending, backend);
+  }
+
+  /** After a backend is known (slash, `/start BACKEND`, or a backend click). The room waits for a mode click. */
+  private async beginClassicModeSelection(data: ClassicStartSlashData, adapter: ChannelAdapter | undefined, backend: string, adapterId?: string): Promise<void> {
+    const ownerId = adapterId ?? adapter?.id;
+    const blocker = this.validateClassicStart(data.channelId, data.userId, data.guildId, ownerId);
+    if (blocker) { await data.respond(blocker); return; }
+    await this.openClassicModeMenu({
+      channelId: data.channelId,
+      channelName: data.channelName || data.channelId,
+      userId: data.userId,
+      guildId: data.guildId,
+      adapterId: ownerId,
+      complete: this.classicStartComplete(data, adapter),
+      showMenu: this.classicModePoster(data, adapter),
+    }, backend);
+  }
+
+  /** For a fleet admin, Free is first and labeled recommended. Restricted stays a button.
+   *  Anyone else sees only Restricted. Either way the room waits for a tap. */
+  private async openClassicModeMenu(origin: {
+    channelId: string;
+    channelName: string;
+    userId: string;
+    guildId?: string;
+    adapterId?: string;
+    complete: PendingClassicStart["complete"];
+    showMenu?: PendingClassicStart["showMenu"];
+  }, backend: string): Promise<void> {
+    const free = this.canChooseFreeMode(origin.userId, origin.adapterId);
+    const missing = this.getMissingBackendWarning(backend);
+    const prompt = [missing, t(free ? "classic.choose_mode" : "classic.choose_mode_fixed")].filter(Boolean).join("\n\n");
+    if (!origin.showMenu) {
+      await origin.complete(t("classic.mode_menu_failed"));
+      return;
+    }
+    const nonce = randomBytes(6).toString("hex");
+    const restrictedChoice: Choice = {
+      id: `${CLASSIC_MODE_CALLBACK_PREFIX}${nonce}:restricted`,
+      label: t("classic.mode_restricted"),
+    };
+    const choices: Choice[] = free
+      ? [{ id: `${CLASSIC_MODE_CALLBACK_PREFIX}${nonce}:free`, label: t("classic.mode_free_recommended") }, restrictedChoice]
+      : [restrictedChoice];
+    const timer = setTimeout(() => {
+      const pending = this.pendingClassicStarts.get(nonce);
+      if (!pending) return;
+      this.pendingClassicStarts.delete(nonce);
+      pending.complete(t("classic.mode_selection_expired"), pending.messageId).catch(() => {});
+    }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
+    timer.unref?.();
+    const pending: PendingClassicStart = {
+      channelId: origin.channelId,
+      channelName: origin.channelName || origin.channelId,
+      userId: origin.userId,
+      guildId: origin.guildId,
+      adapterId: origin.adapterId,
+      timer,
+      complete: origin.complete,
+      phase: "mode",
+      backend,
+      showMenu: origin.showMenu,
+    };
+    this.pendingClassicStarts.set(nonce, pending);
+    try {
+      pending.messageId = await origin.showMenu(prompt, choices);
+    } catch (err) {
+      this.logger.warn({ err, channelId: origin.channelId, adapterId: origin.adapterId }, "Classic mode menu failed; nothing created");
+      await this.cancelClassicPending(nonce, t("classic.mode_menu_failed"));
+    }
+  }
+
+  /** Consume a mode click. A Free click from anyone else is ignored and the menu stays up. */
+  private async handleClassicModeSelection(data: AdapterCallbackData): Promise<boolean> {
+    if (!data.callbackData.startsWith(CLASSIC_MODE_CALLBACK_PREFIX)) return false;
+    const match = data.callbackData.match(/^classic-mode:([0-9a-f]+):(restricted|free)$/);
+    if (!match) return true;
+    const pending = this.pendingClassicStarts.get(match[1]);
+    if (!pending || pending.phase !== "mode") return true;
+    // Same identity rule as the backend click. A missing user id must not settle
+    // Restricted or Free, including Free opened by a fleet admin.
+    if (!data.userId || data.userId !== pending.userId) return true;
+    const callbackChannelId = data.threadId ?? data.chatId;
+    if (callbackChannelId !== pending.channelId && data.chatId !== pending.channelId) return true;
+    if (match[2] === "free" && !this.canChooseFreeMode(pending.userId, pending.adapterId)) {
+      data.ack?.(t("classic.mode_free_admin_only"));
+      return true;
+    }
+    await this.finishClassicModeSelection(match[1], match[2] === "restricted");
+    return true;
+  }
+
+  /** Claim the mode choice and create the room. A second click or the timeout finds nothing. */
+  private async finishClassicModeSelection(nonce: string, restricted: boolean): Promise<void> {
+    const pending = this.pendingClassicStarts.get(nonce);
+    if (!pending || pending.phase !== "mode" || !pending.backend) return;
+    this.pendingClassicStarts.delete(nonce);
+    clearTimeout(pending.timer);
+    const missing = this.getMissingBackendWarning(pending.backend);
+    const reply = await withSpawnHoldReply(
+      text => pending.complete(text, pending.messageId),
+      () => this.handleClassicStart(
+        pending.channelId,
+        pending.channelName,
+        pending.userId,
+        pending.guildId,
+        pending.adapterId,
+        pending.backend,
+        restricted,
+      ),
+    );
+    await pending.complete(missing ? `${missing}\n\n${reply}` : reply, pending.messageId);
   }
 
   /** Start a classic channel instance with lightweight config */
@@ -28653,7 +29162,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Handle /start slash command — register classic channel */
-  async handleClassicStart(channelId: string, channelName: string, userId: string, guildId?: string, adapterId?: string, backend?: string): Promise<string> {
+  async handleClassicStart(channelId: string, channelName: string, userId: string, guildId?: string, adapterId?: string, backend?: string, restricted = true): Promise<string> {
     const blocker = this.validateClassicStart(channelId, userId, guildId, adapterId);
     if (blocker) return blocker;
     const classicChannels = this.classicChannels;
@@ -28662,7 +29171,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const instanceName = classicChannels.deriveInstanceName(channelName || channelId, channelId, adapterId);
     clearPausedMarker(this.getInstanceDir(instanceName));
     const selectedBackend = isSelectableClassicBackend(backend) ? backend : undefined;
-    classicChannels.register(channelId, adapterId, instanceName, channelName || channelId, userId, selectedBackend);
+    classicChannels.register(channelId, adapterId, instanceName, channelName || channelId, userId, selectedBackend, restricted);
     // Bind this classic instance to the bot that started it (authoritative), so
     // replies/cancel go out through that bot even though every same-guild bot
     // also sees the channel's messages.
@@ -31656,6 +32165,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               // User activity is persisted by the daemon, so both the board and
               // auto-pause retain an accurate age across fleet restarts.
               lastActivity,
+              // M-3674: the last turn another agent started (lastActivity is a person's side).
+              lastAgentTurn: inst.classic ? null : this.lastAgentTurnOf(inst.name),
               currentTask,
               idle: this.getInstanceIdle(inst.name),
               ...this.instancePresentation(inst.name),
@@ -32075,7 +32586,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           model:nativeConfig.model || "default",model_source:nativeConfig.model ? "instance" : "cli-default",
           status:agent && runtime ? runtime.status(name) : "crashed",state:agent && runtime ? runtime.execution(name) : null,execution_state:agent && runtime ? runtime.execution(name) : null,
           interaction:null,interaction_summary:null,context_pct:null,cost:null,
-          last_reply:this.webChatHistory.lastAgentReply(name) ?? undefined,
+          last_reply:this.webChatHistory.lastAgentReply(name) ?? undefined,last_agent_turn:this.lastAgentTurnOf(name) ?? undefined,
           avatar:avatarFor({name,displayName:display_name}),
           capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:nativeProviderMcpSupported(backend),channels:false,terminal:false,attachments:false,usage:false,send_while_busy:false},
           ...(!agent ? {runtime_error:"Windows profile is missing or invalid; restore its saved conversation before using this instance"}
@@ -32145,6 +32656,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #3008 G2: a web-only fleet's General (the agent its owner ticked) — the sidebar pins it first.
         ...(this.isWebOnlyFleet() && this.fleetConfig?.instances[name]?.general_topic === true ? { general: true } : {}),
         last_reply: this.webChatHistory.lastAgentReply(name) ?? undefined,   // #2179: its last reply to a person (ISO)
+        // M-3674: its last turn another agent started (a message from another instance it took up), beside last_reply.
+        last_agent_turn: this.lastAgentTurnOf(name) ?? undefined,
         // #2855: its last reply that reached the channel — the only reply time a guest's sidebar gets (guestStatus).
         last_reply_channel: this.webChatHistory.lastAgentReply(name, { channel: true }) ?? undefined,
         // #2855: the web commands a guest may run here — the table's "anyone" cells for this channel (guestWebCommands);

@@ -19,7 +19,7 @@ export interface RoomMessage {
   answerTo?: string;
   /** The immediate question's person-member id (same identity as room.me.id), never an agent owner's id. */
   askedBy?: string;
-  reasonCode?: "finished-without-answer" | "owner-stopped-sharing" | "share-needs-reshare";
+  reasonCode?: "owner-declined" | "finished-without-answer" | "owner-stopped-sharing" | "share-needs-reshare";
   stage?: "queued" | "working" | "answered" | "not-answered";
   /** M-3596, a 1:1 room's open question (its answer row, no text yet): when the agent got it; else how many came first. */
   startedAt?: number; ahead?: number;

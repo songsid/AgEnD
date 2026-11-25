@@ -302,7 +302,7 @@ templates:
 
 `tool_set` 對已辨識的 instance 身分執行政策防護，不會隔離同 uid、具有 shell 能力的 agent。另一個 agent 能讀它的 `agent.token` 或使用其 IPC socket；見[共用帳號威脅模型](SECURITY.zh-TW.md#工具組與共用主機帳號)。
 
-General 可透過 `update_instance_config({ name, config: { tool_set: "worker" } })` 直接修改其他 agent 的 `tool_set`，也可在 `create_instance` 指定，不需確認卡片。其他呼叫者（包含 coordinator 與非 General 的 `full` instance）仍受 #804/#814 拒絕；這兩個工具對所有人都拒絕 `skipPermissions`，General 也一樣。可寫入的工具組是 `full`、`standard`、`worker`、`coordinator`、`minimal`；`general` 由角色指派，不能手設。General 的預設工具組包含 `get_instance_logs`、`get_fleet_config`、`validate_config`、`list_deployments`，不包含 `checkout_repo`、`release_repo`。敏感設定原有的確認流程不變。General 不得透過這兩個工具修改自己的 `tool_set`，建立操作最後指向現有 General 時也一樣；人員仍可在設定頁或 fleet.yaml 修改。這項直接設定的例外僅適用於 portable／本機 agent。原生 Windows 的建立，以及顯示名稱、說明或模型修改，仍需原有的管理員核准；其 `tool_set` 請由人員在主機上的設定頁修改。
+任何已辨識的建立者都可以透過 `create_instance` 或 `deploy_template` 設定新 agent 的 `tool_set`，不需確認卡片。既有 agent 的 `tool_set` 經 `update_instance_config` 仍只有 General 能改，包括 `update_instance_config({ name, config: { tool_set: "worker" } })`。順序由高到低是 `full`、`general`、`coordinator`、`worker`、`standard`、`minimal`。建立者只能設到自己目前的 profile 或更低。不是 General 的建立者不能給 `full` 或 `general`；自己已經是這兩者的，上限是 `coordinator`。General 仍可設定任何可寫入的工具組；`general` 由角色指派，不能手設。超過上限會被拒絕，並寫明上限。省略 `tool_set` 仍是 `worker`，除非 fleet 預設會把更高的 profile 複製到新 instance 上。這些工具對所有人都拒絕 `skipPermissions`，General 也一樣。General 的預設工具組包含 `get_instance_logs`、`get_fleet_config`、`validate_config`、`list_deployments`，不包含 `checkout_repo`、`release_repo`。敏感設定原有的確認流程不變。任何 agent 都不得透過工具修改自己的 `tool_set`，建立操作最後指向自己時也一樣；人員仍可在設定頁或 fleet.yaml 修改。這項直接設定僅適用於 portable／本機 agent。原生 Windows 的建立，以及顯示名稱、說明或模型修改，仍需原有的管理員核准；其 `tool_set` 請由人員在主機上的設定頁修改。
 
 | 欄位 | 型別 | 預設 | 說明 |
 |------|------|------|------|
@@ -665,9 +665,17 @@ session 的對話紀錄（`projects/<目錄>/<session>.jsonl`）、它的資料�
   通常會沿用原本的快取。快取範圍、模型或 profile 設定不同，或快取已過期時，下一次回覆可能要重建快取（這一輪會比較慢，並以完整價格計費）。
 - 回覆會帶 `conversation_carried_over: true`。
 - 設定與登入仍各屬各的 profile，兩邊其他對話紀錄維持原狀。專案自動記憶依上文共用；profile 已有非空記憶目錄時會保留。
+- Agent 自己的 MCP 伺服器也會一起帶過去（M-3749）：用 `claude mcp add` 加在 user scope、以及加在這個 instance 資料夾
+  local scope 的伺服器，會合併進新 profile 的 `.claude.json`。新 profile 已有同名的伺服器時保留它原本的設定，不會覆蓋。
+  不論對話有沒有帶過去都會這樣做。切換前會先記下 Agent 當下有哪些伺服器（包括這次工作中才加的），
+  之後啟動時才能看出哪些沒帶過來。
 
 無法複製時，切換會開新對話，交接方式與 Kiro 相同，回覆的 `carry_failed` 會說明原因。可能的原因有：還沒有 session、
 新 profile 已有這段對話的另一個版本、空間不足，或複製失敗。
+
+Agent 換到另一個 profile 啟動時，若少了上次啟動時有的 MCP 伺服器（例如在停止狀態下切換，或合併寫不進去），
+AgEnD 會告訴它少了哪些，並附上加回來的 `claude mcp add -s local` 指令；「需要你」會列出
+**切換 AI 帳號後缺少 MCP 伺服器**，直到伺服器加回來或有人在那裡按確認。沒換 profile 時自己移除的伺服器不算，不會提醒。
 
 ### 各自的額度
 

@@ -8,6 +8,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { toast } from "/assets/ui-toast.js";
+import { clockFormat } from "/assets/clock-text.js";
 register("claudeCredentials", {
  en: {
   title: "Connect Claude Code", profile: "Account", default: "Default connection",
@@ -54,7 +55,7 @@ export function credentialRequestState(metadata){
  return ["needs-replacement","unknown"].includes(metadata.state)?metadata.state:"saved-unverified";
 }
 export function credentialStatusText(metadata){const state=credentialRequestState(metadata);return credentialText(state==="verified"?"verified":state==="needs-replacement"?"needsReplacement":state==="unknown"?"requestUnknown":"notChecked");}
-export function credentialVerificationTime(metadata){return credentialRequestState(metadata)==="verified"?credentialText("verifiedAt",new Intl.DateTimeFormat(lang()==="zh-TW"?"zh-TW":"en",{year:"numeric",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(new Date(metadata.verifiedAt))):null;}
+export function credentialVerificationTime(metadata){return credentialRequestState(metadata)==="verified"?credentialText("verifiedAt",clockFormat({year:"numeric",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}, lang()==="zh-TW"?"zh-TW":"en").format(new Date(metadata.verifiedAt))):null;}
 export function credentialRequestHint(metadata){const state=credentialRequestState(metadata);return state==="needs-replacement"?credentialText("authHint"):state==="unknown"?credentialText("requestUnknownHint"):null;}
 
 const e=key=>t("claudeCredentialErrors."+key);

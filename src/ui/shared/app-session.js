@@ -9,6 +9,7 @@ import { t, lang } from "./app-i18n.js";
 import { AuthorizeChip, useWebAuthorization } from "./web-authorize.js";
 import { roleName } from "./device-roles.js";             // its own file: a retained older web-authorize.js has no roleName (PR #3553 review)
 import { appStore } from "./app-store.js";
+import { timeText, unitText } from "./clock-text.js";
 
 async function getJson(url) {
   try {
@@ -16,8 +17,8 @@ async function getJson(url) {
     return r.ok ? await r.json() : null;
   } catch { return null; }
 }
-const clock = (ms) => new Date(ms).toLocaleTimeString(lang() === "zh-TW" ? "zh-TW" : undefined, { hour: "2-digit", minute: "2-digit" });
-const span = (ms) => { const m = Math.max(1, Math.round(ms / 60000)); return m >= 90 ? `${Math.round(m / 60)} h` : `${m} min`; };
+const clock = (ms) => timeText(ms, { hour: "2-digit", minute: "2-digit" }, lang() === "zh-TW" ? "zh-TW" : undefined);
+const span = (ms) => { const m = Math.max(1, Math.round(ms / 60000)); return m >= 90 ? unitText(Math.round(m / 60), "h") : unitText(m, "min"); };
 
 export function SessionMenu() {
   const [me, setMe] = useState(undefined);         // undefined: not read yet; null: signed out
@@ -58,7 +59,7 @@ export function SessionMenu() {
       ${!me ? html`<h3>${t("app.signedOut")}</h3><a class="btn" href=${`/signin?next=${encodeURIComponent(location.pathname)}`}>${t("app.signIn")}</a>` : html`
         <h3>${t("app.signedIn")} · ${me.label}</h3>
         <p class="sub">${t("app.expires", clock(me.expiresAt), span(me.idleMs))}</p>
-        ${me.tier === "guest" || me.tier === "read" || (me.tier === "admin" && auth.st) ? html`<p class="role" data-role=${me.tier === "admin" ? (auth.st.state === "verified" ? "owner" : "admin") : me.tier}><span class="sub">${t("webauth.role")}</span> <strong>${roleName(me.tier, !!auth.st && auth.st.state === "verified")}</strong></p>` : null}
+        ${me.tier === "guest" || me.tier === "read" || (me.tier === "admin" && auth.st) ? html`<p class="role" data-role=${me.tier === "admin" ? (auth.st.state === "verified" ? "owner" : "admin") : me.tier}><span class="sub">${t("webauth.role")}</span> <strong>${me.tier === "guest" ? roleName("guest", typeof me.verifiedUntil === "number", typeof me.verifiedUntil === "number" ? clock(me.verifiedUntil).replace(/ /g, "\u00a0") : undefined) : roleName(me.tier, !!auth.st && auth.st.state === "verified")}</strong></p>` : null}
         <${AuthorizeChip} />
         <div class="row">
           <button type="button" class="btn" onClick=${() => act("POST", "/auth/logout", () => { location.href = "/signin"; })}><${Icon} name="user" size=${16} />${t("app.signOut")}</button>

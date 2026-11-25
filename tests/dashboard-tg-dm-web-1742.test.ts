@@ -267,8 +267,9 @@ describe("a bare /start soon after a failed /web is /start web — once, for tha
     await h.dm("/start");
     const afterWeb = h.classic.mock.calls.length;
     await failed(h);
+    const mode = vi.spyOn(h.s, "beginClassicModeSelection").mockResolvedValue(undefined);
     await h.dm("/start claude");
-    expect([afterWeb, h.classicStart.mock.calls.map((c: any[]) => c[5])]).toEqual([1, ["claude"]]);
+    expect([afterWeb, mode.mock.calls.map((c: any[]) => c[2]), h.classicStart.mock.calls]).toEqual([1, ["claude"], []]);
   });
 });
 

@@ -86,8 +86,8 @@ describe("/status table (#1052)", () => {
       { s: { status: "stopped", exec: null }, c: { status: "crashed", exec: null } },
     );
     const text = await commands.getStatusText();
-    expect(text.split("\n").find(l => l.startsWith("| instance")) ?? "")
-      .toBe("| instance | Backend | Model | Context | 推理強度 | 執行狀態 |");
+    expect(text.split("\n").find(l => l.startsWith("| Agent")) ?? "")
+      .toBe("| Agent | 後端 | 模型 | 上下文 | 推理強度 | 執行狀態 |");
     expect(text).toContain("✗ 已停止");
     expect(text).toContain("🔴 已當機");
   });
@@ -102,7 +102,7 @@ describe("/status table (#1052)", () => {
     const cells = (line: string) => line.split("|").slice(1, -1).map(value => value.trim());
     expect(cells(table[0])).toEqual(lang === "en"
       ? ["Instance", "Backend", "Model", "Ctx", "Effort", "State"]
-      : ["instance", "Backend", "Model", "Context", "推理強度", "執行狀態"]);
+      : ["Agent", "後端", "模型", "上下文", "推理強度", "執行狀態"]);
     expect(cells(table[1])).toHaveLength(6);
     expect(cells(table[2])).toHaveLength(6);
     expect(cells(table[2]).slice(0, 5)).toEqual(["worker", "codex", "example-model", "-", "-"]);

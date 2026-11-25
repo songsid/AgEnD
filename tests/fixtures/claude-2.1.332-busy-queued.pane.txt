@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.332
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /tmp/agend-audit/w/p332
+
+
+❯ hello from the audit
+
+● mock reply 2
+
+✻ Crunched for 0s · done 9:07 PM
+
+❯ SLOW turn please
+
+●
+
+❯ queued while busy MARKQ
+  ⎿  Queued · ctrl+x ctrl+s to send now
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+✢ Osmosing… (5s · ↓ 14 tokens)
+  ⎿  Tip: Start small, ask Claude for a plan, and check its edits
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt

@@ -62,6 +62,7 @@ function fixture(opts: { askerName?: (messageId: string) => string | undefined; 
     features: new Set(opts.features ?? (opts.buttons ? ["buttons-v1"] : [])),
     exchange: vi.fn(async (frame: any) => {
       frames.push(frame);
+      if (frame.type === "question.close") return { v: 1, type: "question.close-result", requestId: frame.requestId, linkEpoch: 1, payload: { messageId: frame.payload.messageId, outcome: "closed" } };
       if (frame.type === "attachment.get") {
         const bytes = opts.hubFiles?.get(frame.payload.id); if (!bytes) throw new Error("not-found");
         return { v: 1, type: "attachment.chunk", requestId: frame.requestId, linkEpoch: 1, payload: { id: frame.payload.id, offset: frame.payload.offset, total: bytes.length, sha256: opts.claimedSha?.get(frame.payload.id) ?? sha256(bytes), data: bytes.subarray(frame.payload.offset, frame.payload.offset + HUB_ATTACHMENT_CHUNK).toString("base64") } };
@@ -667,4 +668,102 @@ it("M-3639: negotiated direct prompt and used-answer refusal keep the signed roo
  const recovered=new HubDirectRooms(f.db);expect(recovered.room(q.identity.messageId)).toBe(q.identity.roomId);expect(recovered.has(q.identity.roomId,f.local.exposure.id,"replacement-token")).toBe(false);
  expect(await f.rep.report({correlationId:d.correlationId,caller:"rep",text:"More"})).toMatchObject({ok:false,message:expect.stringContaining(`hub_room_post(room=${q.identity.roomId})`)});
  f.link.features.delete("direct-posts-v1");expect(await f.rep.report({correlationId:d.correlationId,caller:"rep",text:"Legacy"})).toEqual({ok:false,message:HUB_ANSWER_USED});
+});
+
+describe("M-3678 owner closes held questions", () => {
+  it.each(["wrong-message", "old-binding", "old-link"])("%s cannot clear a held card after the remote exchange", async failure => {
+    const f=fixture({features:["question-close-v1"]});f.publish();const q=f.question();await f.admission.admit(q);
+    await until(()=>f.state(q.identity.messageId)?.state==="delivered","delivered");f.rep.fence(q.identity.messageId,"uncertain");
+    const item=f.rep.attentionItems()[0]!;
+    f.link.exchange.mockImplementationOnce(async frame=>{
+      if(failure==="old-binding")f.stop();
+      if(failure==="old-link")f.offline();
+      return {v:1,type:"question.close-result",requestId:frame.requestId,linkEpoch:1,payload:{messageId:failure==="wrong-message"?randomUUID():q.identity.messageId,outcome:"closed"}};
+    });
+    expect(await f.rep.closeHeld(item.id)).toBe("unavailable");expect(f.rep.attentionItems()).toHaveLength(1);
+    expect(f.state(q.identity.messageId)?.state).toBe("held");
+  });
+  it("concurrent close clicks share one exchange and cannot race Try again",async()=>{
+    const f=fixture({features:["question-close-v1"]});f.publish();const q=f.question();await f.admission.admit(q);
+    await until(()=>f.state(q.identity.messageId)?.state==="delivered","delivered");f.rep.fence(q.identity.messageId,"uncertain");
+    const item=f.rep.attentionItems()[0]!;let release!:()=>void;
+    const pending=new Promise<void>(resolve=>{release=resolve;});
+    const exchange=f.link.exchange.mockImplementationOnce(async frame=>{await pending;return {v:1,type:"question.close-result",requestId:frame.requestId,linkEpoch:1,payload:{messageId:q.identity.messageId,outcome:"closed"}};});
+    const calls=exchange.mock.calls.length,first=f.rep.closeHeld(item.id),second=f.rep.closeHeld(item.id);
+    expect(first).toBe(second);expect(exchange.mock.calls.length).toBe(calls+1);expect(f.rep.retryHeld(item.id)).toBe("not-retryable");
+    release();expect(await first).toBe("closed");expect(f.rep.attentionItems()).toEqual([]);
+  });
+  it.each(["uncertain", "unavailable", "stale"])("%s offers close and settles without another hand-off", async reason => {
+    const f = fixture({ features: ["question-close-v1"] }); f.publish();
+    const q = f.question(); await f.admission.admit(q);
+    await until(() => f.state(q.identity.messageId)?.state === "delivered", "delivered");
+    f.rep.fence(q.identity.messageId, reason);
+    const item = f.rep.attentionItems()[0]!;
+    expect(item.close).toBe(true);
+    const count = f.deliveries.length;
+    expect(await f.rep.closeHeld(item.id)).toBe("closed");
+    expect(f.deliveries).toHaveLength(count);
+    expect(f.rep.attentionItems()).toEqual([]);
+    expect(f.state(q.identity.messageId)?.state).toBe("released");
+    expect(f.audit).toContain("representative.closed:closed");
+  });
+  it("keeps an offline or unsupported hold and does not send anything", async () => {
+    const f=fixture();f.publish();const q=f.question();await f.admission.admit(q);
+    await until(()=>f.state(q.identity.messageId)?.state==="delivered","delivered");f.rep.fence(q.identity.messageId,"uncertain");
+    const item=f.rep.attentionItems()[0]!;
+    expect(await f.rep.closeHeld(item.id)).toBe("unsupported");
+    f.offline();expect(await f.rep.closeHeld(item.id)).toBe("unavailable");
+    expect(f.rep.attentionItems()).toHaveLength(1);
+    expect(f.frames.filter(frame=>frame.type==="question.close")).toEqual([]);
+  });
+  it("missing ACK retains the card; the next close retries only the idempotent close, never the question",async()=>{
+    const f=fixture({features:["question-close-v1"]});f.publish();const q=f.question();await f.admission.admit(q);
+    await until(()=>f.state(q.identity.messageId)?.state==="delivered","delivered");f.rep.fence(q.identity.messageId,"uncertain");
+    const item=f.rep.attentionItems()[0]!,original=f.link.exchange.getMockImplementation()!;
+    f.link.exchange.mockImplementationOnce(async()=>{throw Error("lost ACK");});
+    expect(await f.rep.closeHeld(item.id)).toBe("unavailable");expect(f.rep.attentionItems()).toHaveLength(1);
+    f.link.exchange.mockImplementation(original);const count=f.deliveries.length;
+    expect(await f.rep.closeHeld(item.id)).toBe("closed");expect(f.deliveries).toHaveLength(count);
+  });
+  it("audit failure refuses before remote close; an unknown id cannot act",async()=>{
+    const f=fixture({features:["question-close-v1"]});f.publish();const q=f.question();await f.admission.admit(q);
+    await until(()=>f.state(q.identity.messageId)?.state==="delivered","delivered");f.rep.fence(q.identity.messageId,"uncertain");
+    f.failAuditOf("representative.close-requested");expect(await f.rep.closeHeld(f.rep.attentionItems()[0]!.id)).toBe("unavailable");
+    expect(f.frames.filter(frame=>frame.type==="question.close")).toEqual([]);expect(f.rep.attentionItems()).toHaveLength(1);
+    expect(await f.rep.closeHeld("hold:"+randomUUID())).toBe("not-found");
+  });
+});
+
+describe("M-3660: a question's contact window follows whether it is still being answered", () => {
+  it("open while the agent answers (a fixable report keeps it open); settled once held or released; null for anything not its own", async () => {
+    const f = fixture();
+    f.publish();
+    const q = f.question();
+    await f.admission.admit(q);
+    await until(() => f.handed.length === 1, "handed");
+    const cid = f.deliveries[0]!.correlationId;
+    expect(f.rep.questionSettled(cid, "rep")).toBe(false);
+    expect(await f.rep.report({ correlationId: cid, caller: "rep", text: "" })!).toMatchObject({ ok: false }); // empty: fix and report again
+    expect(f.rep.questionSettled(cid, "rep")).toBe(false);
+    expect(f.rep.questionSettled(cid, "someone-else")).toBeNull();
+    expect(f.rep.questionSettled(`hub-${randomUUID()}`, "rep")).toBeNull();
+    expect(f.rep.questionSettled("cid-123", "rep")).toBeNull();
+    expect(await f.rep.report({ correlationId: cid, caller: "rep", text: "Done." })!).toMatchObject({ ok: true });
+    expect(f.state(q.identity.messageId)!.state).toBe("released");
+    expect(f.rep.questionSettled(cid, "rep")).toBe(true);
+  });
+
+  it("the live case: a report refused as 'no longer open' holds the question, and the question is settled", async () => {
+    const f = fixture();
+    f.publish();
+    const q = f.question();
+    await f.admission.admit(q);
+    await until(() => f.handed.length === 1, "handed");
+    const cid = f.deliveries[0]!.correlationId;
+    f.withdraw();
+    const outcome = await f.rep.report({ correlationId: cid, caller: "rep", text: "secret" })!;
+    expect(outcome).toMatchObject({ ok: false, message: expect.stringContaining("no longer open") });
+    expect(f.state(q.identity.messageId)).toEqual({ state: "held", reason: "uncertain" });
+    expect(f.rep.questionSettled(cid, "rep")).toBe(true);
+  });
 });

@@ -1,0 +1,20 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts (19 tests | 1 failed | 18 skipped) 133ms
+     × expiry and unrelated admission never erase the partial-commit input barrier 126ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-asker-adapter-m3664.test.ts > M3664 real room journal/delivery seam > expiry and unrelated admission never erase the partial-commit input barrier
+AssertionError: expected [Function] to throw an error
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts:24:774
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 skipped (19)
+   Start at  23:57:06
+   Duration  1.34s (transform 641ms, setup 156ms, import 819ms, tests 133ms, environment 0ms)

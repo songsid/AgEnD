@@ -106,6 +106,8 @@ export interface AuthApiContext {
    * verified (§3 judged there; a refusal leaves it unverified), and the account is told with Not me.
    */
   authorizeSignedInSession?(record: SessionRecord, peer: WebPeer, gateway: boolean): void;
+  /** M-3651: a guest session verified as its account (web-guest) now — until when; null when it is not. */
+  guestVerifiedUntil?(req: IncomingMessage, record: SessionRecord): number | null;
   /** #2910 D5: no Discord or Telegram connection at all — the sign-in page leads with `agend web --code`. */
   isWebOnlyFleet?(): boolean;
   /** S-117 story 1: web-only, or no chat connected yet — the sign-in page never says "send /web" then. */
@@ -190,7 +192,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // Preact + htm (shared/vendor/vendor.json, byte-checked). Static code with no data, like signin.js; the panels that
   // need a session stay behind the gate under /ui/js/ and are reached only by a dynamic import.
   ...Object.fromEntries([
-    "app.js", "app-html.js", "app-i18n.js", "app-route.js", "app-nav.js", "app-ctx.js", "app-stream.js", "app-store.js",
+    "app.js", "app-html.js", "app-i18n.js", "clock-text.js", "app-route.js", "app-nav.js", "app-ctx.js", "app-stream.js", "app-store.js",
     "model-observation.js", "app-shell.js", "app-session.js", "web-authorize.js", "device-roles.js", "app-needs.js", "app-swipe.js", "text-undo.js", "composer-focus.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
     // #3822: the in-place "this tab is older than AgEnD — reload" prompt the Outlet and lazy panels show (static, no data).
     "stale-tab.js",
@@ -697,7 +699,8 @@ export function handleAuthRequest(
       // M-3277: a code AgEnD delivered privately to this account (a DM, or Discord's ephemeral reply): no Confirm card —
       // the session starts verified. Its peer as a Confirm would judge it: the link itself over the gateway (its own
       // provenance: the named tunnel or the quick link), else what the TCP peer and Host say.
-      if (result.private && record.tier === "admin" && record.owner) {
+      // M-3651: a guest's private code likewise — verified as its account (web-guest: who it is, never an admin's authority).
+      if (result.private && (record.tier === "admin" || record.tier === "guest") && record.owner) {
         const peer: WebPeer = gateway ? (gateway.named === true ? "named_link" : "quick_link") : classifyWebPeer(req);
         // Read again (activated over a link); one already gone (revoked meanwhile) is not verified, nor told about.
         const live = sessions.authenticate(sessionId, tokenEpoch(token), { touch: false, surface: gateway?.surface, exposureId: gateway?.exposureId });
@@ -829,6 +832,8 @@ export function handleAuthRequest(
         expiresAt: session.absoluteExpiry,
         idleExpiresAt: session.idleExpiry,
         idleMs: sessions.idleWindowMs(session.surface, session.tier),
+        // M-3651: the session menu's "Guest · Verified until …" (a guest never reads /ui/authorization).
+        ...(session.tier === "guest" ? { verifiedUntil: ctx.guestVerifiedUntil?.(req, session) ?? null } : {}),
       }, upgrade ? { "Set-Cookie": upgrade } : {});
       return true;
     }

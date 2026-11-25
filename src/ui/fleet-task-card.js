@@ -19,6 +19,7 @@ import { ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, errorTe
 import { StepButtons, movesFor } from "./fleet-task-menu.js";
 import { Checklist, EditableText, InlineTitle, PropChip, QuickAdd } from "./fleet-task-edit.js";
 import { Composer, Timeline } from "./fleet-task-activity.js";
+import { FilesField } from "./fleet-task-files.js";
 import { AgentRun } from "./fleet-task-run.js";
 import { LeaderRow, WatchersRow } from "./fleet-task-follow.js";
 
@@ -62,9 +63,9 @@ register("taskcard", {
     loading: "載入中…", missing: "找不到 {0}", version: "v{0}", copyLink: "複製這張卡的連結", linkCopied: "已複製連結",
     conflict: "{0} 在你編輯時被改過了。已載入最新內容，你的修改還在，再存一次就會覆蓋。",
     followsSubs: "有子任務，狀態會跟著子任務自動變化",
-    reopen: "重新打開", cancelCard: "取消這張卡", confirmMain: "確認主任務", moreActions: "更多動作",
+    reopen: "重新開啟", cancelCard: "取消這張卡", confirmMain: "確認主任務", moreActions: "更多動作",
     assignee: "負責人", nobody: "沒人負責", unassign: "沒人負責", other: "其他…", otherTitle: "指派給其他 Agent", otherLabel: "Agent 名稱",
-    status: "狀態", project: "專案", priority: "優先度", size: "大小", review: "待我確認", reviewBox: "做完要停在待確認，等我確認", reviewShort: "完成前停在待確認",
+    status: "狀態", project: "專案", priority: "優先級", size: "大小", review: "待我確認", reviewBox: "做完要停在待確認，等我確認", reviewShort: "完成前停在待確認",
     reviewOn: "做完會停在待確認，等你確認", reviewOff: "做完直接完成，不等你確認",
     parent: "主任務", deps: "相依卡片", none: "沒有", edit: "編輯", depsTitle: "{0} 的相依", depsLabel: "要先完成的卡號，用逗號或空白分開（留空＝沒有相依）",
     depWaiting: "還沒完成", depDone: "已完成", opened: "{0} 開的 · {1} · 最後更新 {2}",
@@ -84,7 +85,7 @@ register("taskcard", {
     logTip: "agent 或成員記下的一行工作紀錄，不是留言",
     evCreated: "開卡", evMoved: "{0}→{1}", evAuto: "（自動）", evAssigned: "負責人 {0}→{1}", evUpdated: "修改{0}", evCommented: "留言", evLogged: "紀錄：{0}", evWatchers: "修改關注者：{0}",
     fTitle: "標題", fGoal: "目標", fScope: "範圍", fContext: "背景", fState: "目前狀態", fResult: "產出", fBlockedReason: "卡住原因", fSize: "大小",
-    fPriority: "優先度", fNeedsReview: "需要確認", fDependsOn: "相依", fAcceptance: "驗收條件", fProjectId: "專案",
+    fPriority: "優先級", fNeedsReview: "需要確認", fDependsOn: "相依", fAcceptance: "驗收條件", fProjectId: "專案",
     position: "位置", moveUp: "往上移", moveDown: "往下移", properties: "屬性", crumbs: "這張卡的位置", backBoard: "回到看板", backList: "回到清單",
     dispatcher: "派工", dispatcherHint: "卡住要決定的事會先通知派工者", dispatcherMe: "我", dispatcherNone: "（沒有）",
     dispatcherPerson: "{0}（人）", fDispatcher: "派工者",
@@ -374,7 +375,7 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
     ${bar({ parent, actions: html`${copyBtn}${blockBtn}${more}` })}
     <div class="tp-grid">
       <div class="tp-head">
-        <div class="tp-idrow"><span class="tb-code tp-code">${card.id}</span><${StatusPill} status=${card.status} card=${card} />
+        <div class="tp-idrow"><span class="tb-code tp-code">${card.id}</span><${StatusPill} status=${card.status} card=${card} />${detail.archived ? html`<span class="tb-tag" title=${t("tasksArchive.tagTip", detail.archiveAfterDays ?? "")}>${t("tasksArchive.tag")}</span>` : null}
           ${derived && !finished ? html`<span class="tp-derived">${t("taskcard.followsSubs")}</span>` : null}</div>
         <div class="tc-head" ref=${head} tabindex="-1" role="heading" aria-level="2">
           ${can ? html`<${InlineTitle} value=${card.title} version=${card.version} limit=${LIMIT.title} onSave=${(title, base) => save({ title }, base)} />` : html`<h2 class="tc-title">${card.title}</h2>`}
@@ -395,6 +396,7 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
         ${spec.shown.length ? html`<div class="tp-spec">${spec.shown}</div>` : null}
         ${spec.adders.length ? html`<div class="tp-adders">${spec.adders}</div>` : null}
         <${AgentRun} card=${card} detail=${detail} doing=${doing} derived=${derived} shown=${handoff.shown} adders=${handoff.adders} />
+        <${FilesField} files=${(detail && detail.attachments) || []} />
         ${subs}
       </div>
 

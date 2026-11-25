@@ -2,6 +2,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { hroom } from "./hub-room-strings.js";
 import { ha } from "./hub-assistant-admin-strings.js";
+import { dateTimeText } from "/assets/clock-text.js";
 
 const fields = value => ({ enabled: value.enabled === true, backend: value.backend, account: value.account ?? null, cap: Number(value.cap), idleMinutes: Number(value.idleMinutes) });
 const validLimits = value => Number.isInteger(Number(value?.cap)) && Number(value.cap) >= 1 && Number(value.cap) <= 16 && Number.isInteger(Number(value?.idleMinutes)) && Number(value.idleMinutes) >= 1 && Number(value.idleMinutes) <= 240;
@@ -75,7 +76,7 @@ export function HubAssistantAdmin({ client }) {
     </form>
   </section>
   <section class="card" aria-label=${hroom("runningNow")}><div class="hub-card-head"><h3>${hroom("runningNow")}</h3><button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${() => load(false)}>${ha("refresh")}</button></div>
-    ${running.length ? html`<div class="hub-rows">${running.map(row => html`<div class="s-row hub-row" key=${row.roomId}><span class="hub-row-text"><strong title=${row.roomName}>${row.roomName}</strong><small class="note">${hroom("lastUsed")} · ${new Date(row.lastUsed).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short", hour12: false })}</small></span>
+    ${running.length ? html`<div class="hub-rows">${running.map(row => html`<div class="s-row hub-row" key=${row.roomId}><span class="hub-row-text"><strong title=${row.roomName}>${row.roomName}</strong><small class="note">${hroom("lastUsed")} · ${dateTimeText(row.lastUsed, { dateStyle: "short", timeStyle: "short", hour12: false })}</small></span>
       <span class=${`tag ${row.state === "failed" ? "warn" : ""}`}>${stateWord(row.state)}</span><button type="button" class="btn btn-sm" disabled=${busy || row.state === "stopping"} onClick=${() => stop(row.roomId)}>${hroom("stop")}</button></div>`)}</div>` : html`<p class="note">${ha("noneRunning")}</p>`}
   </section>
   <section class="card" aria-label=${hroom("usage")}><h3>${hroom("usage")}</h3><p class="note">${hroom("usageLead")}</p>

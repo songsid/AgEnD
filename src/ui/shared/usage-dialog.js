@@ -13,6 +13,7 @@ import { Icon } from "./ui-icons.js";
 import { InfoTip } from "./info-tip.js";
 import "./view-strings.js";
 import { CompactMeter, level, resetClock, resetText, tn, usageClock, usageDuration, usageText, windowTag } from "./usage-meter.js";
+import { dateTimeText } from "./clock-text.js";
 // What this file exported before the meter moved out of it (#3321), for what imports it from here.
 export { usageClock, windowTag, soonestReset } from "./usage-meter.js";
 
@@ -391,7 +392,7 @@ export function UsageBody({ owner }) {
       ${compact ? compactGroups(providers).map((g) => html`<${CompactGroup} key=${g.base} group=${g} mode=${modes[g.base] || "expanded"} onCycle=${(m) => setGroupMode(g.base, m)}
           line=${({ p, i }) => (expanded.has(key(p)) ? card(p, i) : html`<${CompactRow} key=${key(p)} p=${p} one=${(modes[g.base] || "expanded") === "compact" && g.items.length > 1} onExpand=${() => toggleOne(key(p))} />`)} />`)
         : providers.map((p, i) => card(p, i))}
-      <div class="u-foot"><span class="note" title=${new Date(data.fetchedAt).toLocaleString()}>${failed ? html`${updatedAgo(data.fetchedAt)} · <span class="u-refresh-failed" role="status">${tn("usageRefreshFailed")}</span>` : data.refreshing ? html`<span class="u-refreshing">${tn("usageRefreshing")}</span>` : updatedAgo(data.fetchedAt)}</span>
+      <div class="u-foot"><span class="note" title=${dateTimeText(data.fetchedAt)}>${failed ? html`${updatedAgo(data.fetchedAt)} · <span class="u-refresh-failed" role="status">${tn("usageRefreshFailed")}</span>` : data.refreshing ? html`<span class="u-refreshing">${tn("usageRefreshing")}</span>` : updatedAgo(data.fetchedAt)}</span>
         ${byAgent() ? html`<a class="btn btn-ghost btn-sm u-by-agent" href="/ui/fleet/usage" title=${tn("usageByAgentTitle")}>${tn("usageByAgent")}</a>` : null}
         <button type="button" class="btn btn-sm" onClick=${() => load(true)}>${tn("usageRefresh")}</button></div>`;
   }

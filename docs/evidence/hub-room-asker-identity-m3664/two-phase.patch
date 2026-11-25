@@ -1,0 +1,11 @@
+--- a/src/hub/member/room-asker-store.ts
++++ b/src/hub/member/room-asker-store.ts
+@@ -84,7 +84,7 @@
+  }
+  /** No new input may pass a prepared/mismatched row, even if it is retried without the optional wire proof. */
+  permitsInput(messageId:string,accepted:RoomAskerAccepted):boolean{
+-  try{const row=this.row(messageId);if(!row)return true;const saved=this.read(row);this.authenticate(saved,accepted.ask);return row.phase==='committed'&&saved.proof.retainedUntil>this.now()&&this.matches(saved,accepted);}catch{return false;}
++  try{const row=this.row(messageId);if(!row)return true;const saved=this.read(row);this.authenticate(saved,accepted.ask);return saved.proof.retainedUntil>this.now()&&this.matches(saved,accepted);}catch{return false;}
+  }
+  get(messageId:string,accepted:RoomAskerAccepted):VerifiedHubAsker|null{
+   try{const row=this.row(messageId);if(!row||row.phase!=='committed')return null;const saved=this.read(row);if(saved.proof.retainedUntil<=this.now()||!this.matches(saved,accepted))return null;this.authenticate(saved,accepted.ask);return roomAskerSnapshot(saved.proof);}catch{return null;}

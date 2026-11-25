@@ -1,0 +1,72 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts (12 tests | 3 failed | 9 skipped) 303ms
+     × never lets a caller stamp another agent 131ms
+     × never lets a caller stamp another exposureId 80ms
+     × never lets a caller stamp another incarnation 90ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-asker-adapter-m3664.test.ts > M3664 real room journal/delivery seam > never lets a caller stamp another agent
+AssertionError: expected { …(4) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "displayName": "Poll results",
+  "hubId": "3b39031e-cc3b-4656-800c-11604a8ff664",
+  "id": "room/61457dad-6cf1-4697-ae68-f58b046436e5/poll",
+  "kind": "assistant",
+}
+
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts:15:297
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-room-asker-adapter-m3664.test.ts > M3664 real room journal/delivery seam > never lets a caller stamp another exposureId
+AssertionError: expected { …(4) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "displayName": "Poll results",
+  "hubId": "5b341ee8-8853-4133-9908-e1c13c6a2be3",
+  "id": "room/bc43dfe3-4463-4611-a8da-12aa9aa163a2/poll",
+  "kind": "assistant",
+}
+
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts:15:297
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-room-asker-adapter-m3664.test.ts > M3664 real room journal/delivery seam > never lets a caller stamp another incarnation
+AssertionError: expected { …(4) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "displayName": "Poll results",
+  "hubId": "3aee8f10-47eb-4204-a285-86d220ae3286",
+  "id": "room/02e98e85-f899-4a23-85ba-1176cba7e657/poll",
+  "kind": "assistant",
+}
+
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts:15:297
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 9 skipped (12)
+   Start at  23:37:32
+   Duration  1.59s (transform 850ms, setup 129ms, import 988ms, tests 303ms, environment 0ms)

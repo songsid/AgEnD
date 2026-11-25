@@ -653,6 +653,11 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
       if (isObj(config.defaults.task_board) && config.defaults.task_board.progress_wakes !== undefined && typeof config.defaults.task_board.progress_wakes !== "boolean") {
         err("defaults.task_board.progress_wakes", "must be true or false");
       }
+      // M-3668: the dashboard's archive age.
+      if (isObj(config.defaults.task_board) && config.defaults.task_board.archive_after_days !== undefined) {
+        const days = config.defaults.task_board.archive_after_days;
+        if (typeof days !== "number" || !Number.isInteger(days) || days < 0 || days > 3650) err("defaults.task_board.archive_after_days", "must be a whole number of days (0-3650; 0 = never archive)");
+      }
       if (isObj(config.defaults.task_board) && config.defaults.task_board.leader !== undefined) {
         const leader = config.defaults.task_board.leader;
         if (typeof leader !== "string" || !leader.trim()) err("defaults.task_board.leader", "must be the name of an instance");

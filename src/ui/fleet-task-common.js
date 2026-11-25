@@ -127,11 +127,11 @@ register("tasks", {
     goal: "目標", goalHint: "為什麼做、做完是什麼樣子", scope: "範圍", scopeHint: "做：…／不做：…",
     definitionHint: "一行一項：能客觀判斷是否達成的條件", acceptanceHint: "一行一項",
     context: "背景", contextHint: "檔案路徑、相關卡號、已經做的決定（只放指引）",
-    assignee: "負責人", assigneeHint: "交給哪個 Agent", project: "專案", size: "大小", priority: "優先度",
+    assignee: "負責人", assigneeHint: "交給哪個 Agent", project: "專案", size: "大小", priority: "優先級",
     boardOffNote: "{0} 的任務板是關閉的：不能指派卡片給它，留言和 @ 也叫不醒它，它也收不到 [Task board] 通知。",
     boardOffCommentNote: "{0} 的任務板是關閉的，這則留言不會叫醒它。",
     boardOffWhere: "要打開：{0}（所有 Agent），或這個 Agent 自己的設定 → 進階 → 網頁儀表板權限。", boardOffWhereLink: "設定 → Agent 共用設定",
-    boardOff: "{0}（看板已關閉）", boardOffHint: "關閉任務看板的 Agent 不能被派卡：它沒有 task 工具，讀不到卡片。",
+    boardOff: "{0}（看板已關閉）", boardOffHint: "關閉任務看板的 Agent 不能被派卡：它沒有任務工具，讀不到卡片。",
     reviewBox: "做完要停在待確認，等我確認", created: "已開 {0}", titleRequired: "標題必填",
     search: "搜尋卡片", searchHint: "搜尋標題、各欄位、驗收條件和留言", searchEmpty: "沒有符合的卡片", inField: "在{0}",
     fieldgoal: "目標", fieldscope: "範圍", fieldcontext: "背景", fieldstate: "目前狀態", fieldresult: "產出", fieldblockedReason: "卡住原因",
@@ -161,7 +161,7 @@ register("tasks", {
     "err.dep_own_main": "子任務不能相依自己的主任務 {0}", "err.dep_own_sub": "主任務不能相依自己的子任務 {0}",
     "err.dep_cycle": "相依會形成循環，大家會互相等待：{0}", "err.conflict": "{0} 已經被改過（最後由 {1} 修改）",
     "err.signed_in_only": "看板只接受已登入網頁的修改", "err.unavailable": "看板目前無法使用", "err.not_over_public_link": "公開連結只能看看板，不能修改",
-    "err.assignee_board_off": "{0} 關閉了任務看板，讀不到也動不了卡片。請先替 {0} 開啟（Settings → 該 agent → Dashboard access），或改在聊天中交辦",
+    "err.assignee_board_off": "{0} 關閉了任務看板，讀不到也動不了卡片。請先替 {0} 開啟（設定 → 該 Agent → 網頁儀表板權限），或改在聊天中交辦",
     "err.watcher_unknown": "「{0}」不是 fleet 裡的 Agent", "err.watcher_board_off": "{0} 關閉了任務看板，讀不到也動不了卡片，通知送過去它也沒辦法處理",
     "err.watchers_max": "{0} 最多只能有 {1} 個關注者", "err.watch_not_board": "{0} 不是任務板上的卡片，只有任務板上的卡片可以關注",
     "note.review_waiting": "{0}「{1}」的子任務都完成了，等你確認",
@@ -175,7 +175,7 @@ register("tasks", {
     workOutside: "不在 fleet 裡", workFailed: "讀不到工作清單：{0}", workJoin: "、",
     detailsBoard: "任務看板",
     // 快速建立（fleet-task-create.js）
-    quickHint: "只要標題就能建立，其他欄位建立後在卡片上補。", moreOptions: "更多選項", createMore: "專案、負責人與優先度",
+    quickHint: "只要標題就能建立，其他欄位建立後在卡片上補。", moreOptions: "更多選項", createMore: "專案、負責人與優先級",
   },
 });
 

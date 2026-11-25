@@ -1,0 +1,32 @@
+[
+  {
+    "name": "@songsid/agend",
+    "version": "2.4.0-beta.22",
+    "filename": "songsid-agend-2.4.0-beta.22.tgz",
+    "integrity": "sha512-ieSJsOaPqDJbrB3J65lrHr1XHp/UoO+KPc2mhdJUTjkG4yHr86mcf3al0C3nssTPRXRANtZWMjMBzIFMacnYpA==",
+    "shasum": "d426bf0d86f29508d1f84ad20b2eb61bcb82490e",
+    "size": 12453511,
+    "unpackedSize": 46155425,
+    "archiveSha256": "b4051d886b8a1791244f2940e369cef3620e89dc87e6fa07a5df028e10bc703b"
+  },
+  {
+    "name": "@songsid/agend",
+    "version": "2.4.0-beta.23",
+    "filename": "songsid-agend-2.4.0-beta.23.tgz",
+    "integrity": "sha512-BOWMxy+wNGMViEgE3fzQwEoqbOwhxymYFLL9FpoMOiBNTbdeFkC16USfzlt3XBbFCQkJlMMg+unOsqG3e3uhzg==",
+    "shasum": "cec55f29174db2610a4c2cb67356f426e1e9fa76",
+    "size": 12497238,
+    "unpackedSize": 46329119,
+    "archiveSha256": "cc6194332d1d2b9fbc95a1893ee8e27b04a1a90f8a54e80ffb4aaa7fd03543e7"
+  },
+  {
+    "name": "@songsid/agend",
+    "version": "2.3.3",
+    "filename": "songsid-agend-2.3.3.tgz",
+    "integrity": "sha512-dVHzxLEPz9xJkP8bnsobhD97O8T8jkXz4QYQy5cH4a9AzbSGT0QgZFS7yk/mLAo/XHbxAcv0QPlQ94zYlMFtJw==",
+    "shasum": "8352c82e42d6f55b72464adfe7ffcb8663fad06e",
+    "size": 5516529,
+    "unpackedSize": 21561036,
+    "archiveSha256": "19e21fd5ac876cb06decc829cb0515efa17027aff16f78962aacf6e0fb1b64dc"
+  }
+]

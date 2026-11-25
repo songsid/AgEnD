@@ -52,7 +52,7 @@ register("agentExport", {
     kind_bearer: "授權標頭的值", kind_assignment: "被指定了值的 key、token 或密碼", kind_url_password: "網址裡的密碼",
     o_fileRef: "這個 Agent 的 Agent 指示使用 file: 引用（指向這台電腦上的檔案），所以沒有放進檔案。要導出請把文字直接寫進欄位。",
     o_tooLong: "這個 Agent 的 Agent 指示超過範本可放的 24,000 字元，所以沒有放進檔案（載入時也會被拒絕）。",
-    notExported: "不會導出的項目", notExportedBody: "帳號與登入名稱、API key、頻道與討論串 ID、工作目錄、機器 ID、權限類（dashboard、skipPermissions）、任務前指令、Status emojis、用量提醒，以及顯示名稱。",
+    notExported: "不會導出的項目", notExportedBody: "帳號與登入名稱、API key、頻道與討論串 ID、工作目錄、機器 ID、權限類（儀表板、skipPermissions）、任務前指令、狀態表情符號、用量提醒，以及顯示名稱。",
     copy: "複製", download: "下載", copied: "已把檔案複製到剪貼簿。", copyFailed: "無法複製；請在預覽中選取文字手動複製。",
     exportFailed: "無法產生檔案。", close: "關閉", building: "產生中…",
     loadTitle: "載入範本", loadLead: "選一個範本檔案，或貼上內容。這一步還不會改任何東西：先看會填入什麼，再填入表單，最後照常按「儲存」。",

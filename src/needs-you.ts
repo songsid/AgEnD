@@ -61,6 +61,7 @@ export interface NeedsYouItem {
   hubProposal?: { action: string; arguments: string; argumentsDigest: string; consequences: string };
   /** M-3632: held Hub work the owner may send back through the Hub's checks (Needs you → "Try again"). */
   hubRetry?: true;
+  hubClose?: true;
   /** Display only. reason=dialog remains readable in an old panel; repair is in Settings. */
   runtimeUpdate?: true;
   /**
@@ -68,6 +69,8 @@ export interface NeedsYouItem {
    * which every panel already renders with its Sign in button; the chat line adds the detail.
    */
   keepAlive?: true;
+  /** M-3749: the missing MCP servers and the profiles, for each surface to word in its own language (detail is the fallback). */
+  mcpMissing?: { names: string[]; from: string; to: string };
 }
 
 export type NeedsYouReason =
@@ -76,7 +79,7 @@ export type NeedsYouReason =
   | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
   | "general_windows_offline" | "general_location_hold"
-  | "model_switch" | "auth_paused" | "stale_auth" | "crashed" | "usage_limit" | "native_pane_hold" | "backend_missing"  // instance
+  | "model_switch" | "auth_paused" | "stale_auth" | "crashed" | "usage_limit" | "native_pane_hold" | "backend_missing" | "mcp_missing"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "missed_offline"                                                // missed while the fleet was down
   | "task_review" | "task_blocked" | "task_stalled" | "backend_signin" | "config_invalid" | "config_fallback"
@@ -99,9 +102,12 @@ export interface TmuxHoldInput { instance: string | null; key: string; detail: s
 export interface HubShareLapseInput { agent: string; key: string; since: number }
 export interface HubExecutionAttentionInput {
   id: string; kind: "proposal" | "hold"; agent: string; messageId: string; exposureId: string; since: number;
+  /** Bounded server-owned diagnostic for an authenticated room-proof clock hold. */
+  detail?: string;
   proposal?: NonNullable<NeedsYouItem["hubProposal"]>;
   /** M-3632: a held question the owner may send back through the Hub's checks ("Try again"). */
   retry?: true;
+  close?: true;
 }
 
 /** A fleet prompt offered on the dashboard (hang / exit-restart / interactive-assist), as the fleet holds it. */
@@ -144,6 +150,8 @@ export interface InstanceInput {
   kiroCompatibility?: { message: string; since: number } | null;
   /** M-3302 (#4146): held because its backend's CLI is not installed — the binary, and the command that installs it. */
   backendMissing?: { backend: string; binary: string; since: number; fix: string } | null;
+  /** M-3749: MCP servers it had under its previous credential profile (`from`) and does not have now (`to`) — names only. */
+  mcpMissing?: { names: string[]; from: string; to: string; since: number } | null;
 }
 
 export interface DeliveryInput {
@@ -300,6 +308,11 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
       items.push({ id: `backend-missing:${inst.name}:${m.since}`, type: "instance", instance: inst.name, reason: "backend_missing",
         detail: m.fix ? `${m.binary} — ${m.fix}` : m.binary, since: m.since });
     }
+    if (inst.mcpMissing?.names.length) {
+      const m = inst.mcpMissing;
+      items.push({ id: `mcp-missing:${inst.name}:${m.since}`, type: "instance", instance: inst.name, reason: "mcp_missing",
+        detail: oneLine(`${m.names.join(", ")} (${m.from} → ${m.to})`), since: m.since, mcpMissing: { names: [...m.names], from: m.from, to: m.to } });
+    }
     if (inst.crashedAt != null && !inst.generalLocation && !inst.kiroCompatibility) {
       items.push({ id: `crashed:${inst.name}:${inst.crashedAt}`, type: "instance", instance: inst.name, reason: "crashed", detail: "", since: inst.crashedAt });
     }
@@ -361,8 +374,9 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
   // Hub proposals remain display-only in the member owner's local inbox.
   for (const attention of inputs.hubExecution ?? []) items.push({
     id: `hub:${attention.id}`, type: "hub", instance: attention.agent,
-    reason: attention.kind === "proposal" ? "hub_proposal" : "hub_execution_hold", detail: "", since: attention.since,
+    reason: attention.kind === "proposal" ? "hub_proposal" : "hub_execution_hold", detail: oneLine(attention.detail??"",320), since: attention.since,
     ...(attention.proposal ? { hubProposal: attention.proposal } : {}),
+    ...(attention.kind === "hold" && attention.close ? { hubClose: true as const } : {}),
     ...(attention.kind === "hold" && attention.retry ? { hubRetry: true as const } : {}),
   });
 
@@ -437,7 +451,7 @@ export function renderSignature(items: readonly NeedsYouItem[], nowMs: number): 
     i.card ? i.card.version : null,
     i.lane ?? null,
     i.hubProposal ?? null,
-    i.hubRetry ?? false,
+    i.hubRetry ?? false, i.hubClose ?? false,
     i.runtimeUpdate ?? false,
     i.hostAlert ?? null,
   ]));

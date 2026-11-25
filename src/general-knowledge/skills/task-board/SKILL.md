@@ -25,6 +25,7 @@ roles: [general, worker]
 - **move** — to a status; blocked/cancelled need a `reason`, finishing needs a `result`.
 - **projects** (each with its id), **create_project** (name, description; changing or archiving a project is a person's),
   **move_project** (`ids` + `project`: several main tasks, each moved or refused on its own).
+- **attach** — files on the card (`id`, `attach: [paths]`, optional `comment`); see "Reporting on the card".
 - **watch** / **unwatch** (`id`, `watcher`) — follow a card yourself, or name another instance on a card you may edit
   (see Following below).
 
@@ -44,6 +45,22 @@ are any. A field an action does not take is refused by name, and nothing is chan
 - Opening a card for someone else makes you its dispatcher (or name one: `dispatcher`). A blocked card you handed out comes
   to you: ask the person, then move it back to `claimed` with the decision as the comment.
 - A `[Task board]` notice is news on your cards: act on them with this tool.
+
+## Reporting on the card
+
+The person reads the card — its result, its timeline, its files — not your chat, and not your machine. When you finish a step
+or have something they can use, put it ON the card, in the same write as the move:
+
+- `result` — a short Markdown summary (at most 1000 characters): what was done, how it was checked.
+- `comment` — the content itself, in Markdown, written for the person: what this is and how to open it ("download `survivor.html`
+  and open it in a browser"), not a command that only runs on your machine. Short text goes here (up to 4000 characters), not in a file.
+- `attach: ["./survivor.html"]` — the finished thing, on `update`, `move` or `attach` (CLI: `--attach FILE`). Attach what the person
+  will open, not your working files: usually one file, at most three; never source, modules, config, logs or drafts. A web prototype
+  is ONE `.html` with its CSS and JS inline; keep the source in your workspace or branch and link the PR or repo in the comment. Do
+  not attach a file again unless it changed, and then say what changed. Read from your working directory (no symlinks), 10 MiB each.
+- Never give only a path on your machine (`/data/workspaces/...`): the person cannot open it. If your words name one, the
+  answer says so and how to attach the file.
+- Goal, scope, context, state, result and comments are drawn as Markdown; the progress `log` stays one plain line.
 
 ## Comments and mentions
 

@@ -881,7 +881,9 @@ describe("5. revisions, refusals and notes the page can say in its language", ()
     const db = scratchDb();
     const first = await viaLink(db, "GET", "/ui/tasks/board", undefined, { local: true });
     expect(first.body.rev).toBe(0);
-    expect((await viaLink(db, "GET", "/ui/tasks/board?rev=0", undefined, { local: true })).body).toEqual({ rev: 0, unchanged: true });
+    // #4428 review: with the epoch it read (where time had left the board's lines); without one, the board again.
+    expect((await viaLink(db, "GET", `/ui/tasks/board?rev=0&epoch=${encodeURIComponent(first.body.epoch)}`, undefined, { local: true })).body).toEqual({ rev: 0, epoch: first.body.epoch, unchanged: true });
+    expect((await viaLink(db, "GET", "/ui/tasks/board?rev=0", undefined, { local: true })).body.unchanged).toBeUndefined();
     db.board.createCards(ANN, { cards: [{ title: "New" }] });
     const after = await viaLink(db, "GET", "/ui/tasks/board?rev=0", undefined, { local: true });
     expect([after.body.rev, after.body.cards.map((c: any) => c.id)]).toEqual([1, ["M-1"]]);
