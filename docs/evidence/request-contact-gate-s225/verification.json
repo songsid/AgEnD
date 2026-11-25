@@ -112,7 +112,7 @@
       "src/delivery-outbox.test.ts",
       "--maxWorkers=2"
     ],
-    "sourceRevision": "53fb12d0cca606b1737ccc85403f3e346b55baf"
+    "sourceRevision": "53fb12d0cbca606b1737ccc85403f3e346b55baf"
   },
   "typecheck": {
     "command": [
