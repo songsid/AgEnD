@@ -263,7 +263,7 @@ export function FilterMenu({ cards, filters, onChange }) {
 }
 
 /** Display: the list's grouping, order and sub-task rows; which finished cards show (the board / list switch is the toolbar's). */
-export function DisplayMenu({ display, onChange }) {
+export function DisplayMenu({ display, onChange, archiving = false }) {
   const d = display;
   const list = d.view === "list";
   const radio = (k, v, label) => ({ key: `${k}-${v}`, label, checked: d[k] === v, onSelect: () => onChange({ ...d, [k]: v }) });
@@ -274,7 +274,9 @@ export function DisplayMenu({ display, onChange }) {
     ...(list ? ORDERS.map((o) => ({ key: `order-${o}`, label: t(`taskview.order.${o}`), checked: d.order === o, onSelect: () => onChange({ ...d, order: o, dir: "asc" }) })) : []),
     list && { key: "subs", checkbox: true, checked: d.subs, label: t("taskview.subsRows"), onSelect: () => onChange({ ...d, subs: !d.subs }) },
     { key: "h-done", heading: true, label: t("taskview.finished") },
-    radio("done", "recent", t("tasks.recent")), radio("done", "all", t("tasks.all")), radio("done", "hide", t("taskview.doneHide")),
+    // M-3668: with archiving on, finished cards show (their newest, the rest in the Archive) or hide — "All" is the Archive.
+    ...(archiving ? [{ key: "done-show", label: t("tasksArchive.doneShow"), checked: d.done !== "hide", onSelect: () => onChange({ ...d, done: "recent" }) }, radio("done", "hide", t("taskview.doneHide"))]
+      : [radio("done", "recent", t("tasks.recent")), radio("done", "all", t("tasks.all")), radio("done", "hide", t("taskview.doneHide"))]),
   ];
   // Pressed while it shows something other than the defaults (beyond board or list, which is plain to see).
   const changed = ["group", "order", "dir", "done", "subs"].some((k) => d[k] !== DEFAULT_DISPLAY[k]);
@@ -333,7 +335,7 @@ export function SearchField({ value, onChange, closed = false, inputRef = null, 
  * the 🔍 (under the row); a search that holds words keeps its field open, and the 🔍 is marked. The 🔍 is not drawn on a desk,
  * where the field is always there (the page's CSS decides: the same markup serves both).
  */
-export function TaskToolbar({ cards, display, onDisplay, filters, onFilters, query, onQuery, scroller = null }) {
+export function TaskToolbar({ cards, display, onDisplay, filters, onFilters, query, onQuery, scroller = null, archiving = false }) {
   const [asked, setAsked] = useState(false);
   const field = useRef(null);
   const focusNext = useRef(false);
@@ -354,7 +356,7 @@ export function TaskToolbar({ cards, display, onDisplay, filters, onFilters, que
     <${SearchField} value=${query} onChange=${onQuery} closed=${!open} inputRef=${field} onEmptyEscape=${() => setAsked(false)} />
     <div class="tb-view-actions">
       <${FilterMenu} cards=${cards} filters=${filters} onChange=${onFilters} />
-      <${DisplayMenu} display=${display} onChange=${onDisplay} />
+      <${DisplayMenu} display=${display} onChange=${onDisplay} archiving=${archiving} />
       <button type="button" class=${`btn btn-sm tb-search-toggle${hasWords ? " active" : ""}`} aria-expanded=${open ? "true" : "false"} aria-controls="tb-find-input"
         aria-label=${t("taskview.searchLabel")} title=${t("taskview.searchLabel")} onClick=${toggle}><${Icon} name="search" size=${16} /></button>
     </div>

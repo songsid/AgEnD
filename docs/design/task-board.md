@@ -171,8 +171,20 @@ kept out of sight) and is built each time.
 (the timeline and the comment box) and `fleet-task-create.js` (the quick create); `fleet-task-view.js` (the toolbar and
 the list), `fleet-task-menu.js` (a card's menu, stepping), `fleet-task-common.js` (words, requests, moves, marks). Home: what waits for the person (confirm, send back, answer),
 then the projects (with % done) and No project. A board read carries live cards and the last 14 days' finished ones
-(`?done=all`: every done main task, for the Done column's "All"), each project's numbers over all its cards, and is a
-handful of statements whatever its size (`views()`, `projectStats()`). A project: its main tasks by status (or as a list), the toolbar's search and filters, drag to move or reorder,
+(`?done=all`: every done main task, for the Done column's "All") and each project's numbers over all its cards. **M-3668 (the user, 11-24):** with `defaults.task_board.archive_after_days`
+(default 3; 0 = never) a main task done or cancelled that many days ago is archived — a view rule on `done_at`, nothing
+changes in the database: the board read carries finished main tasks only until then (`archiveAfterDays` says how long),
+the projects' numbers leave archived ones out and count them (`archived`, and `doneWeek`: done in the last 7 days),
+`GET /ui/tasks/archive?project=&before=&assignee=` pages a project's archived main tasks newest first, and search and a
+card's page say `archived`. Moving one to To do reopens it (its status, not its age, decides). The Done column shows its
+newest 20 at a time (fleet-task-archive.js). #4428 review: an archived main task's sub tasks leave the board with it; the
+Archive leaves out what the public link hides before it pages (`leaveOut`), so its cursor, total and assignees never tell
+of such a card; and a page's same-revision read (`?rev=`) is answered `unchanged` only with the `epoch` it read
+(`boardEpoch()`: how many finished cards have passed the archive line, this week's and the recent window's), since time
+moves a card across them with no write. Over the public link the epoch and the projects' numbers leave out the hidden
+instances' cards (and a hidden main task's sub tasks), as the board read does. Settings → Shared agent settings →
+Advanced has the archive age. Either way a board read is a handful of statements whatever its size
+(`views()`, `projectStats()`). A project: its main tasks by status (or as a list), the toolbar's search and filters, drag to move or reorder,
 a main task's sub tasks inside its tile. A card: every field edits in place with the version it started from; a 409
 shows the newer card with the draft still open, and saving again overwrites. `?card=M-3` opens a card. Bars are SVG rects (the CSP allows no style attribute); a bar fills with done work only — the percentage beside it (#2299: a project whose only card was blocked drew a full red bar at 0 %) — and the chips name what is blocked or waiting.
 

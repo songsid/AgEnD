@@ -1626,6 +1626,8 @@ img.amb-p { object-fit: contain; }
   /* M-3281: the archived chat files' limit (Settings → Web dashboard): its field is a phone tap target too (its Save keeps the
      section's one .btn height, as the app icon's button beside it). */
   .p-settings .s-archive-files .field input { min-height: var(--tap); }
+  /* M-3668 (ui-gate, #4428): the task board's archive-after-days field is a phone tap target too. */
+  .p-settings #g-archive .s-hang-row input { min-height: var(--tap); }
   /* AGEND-122: Owner verification's own buttons, dialog fields and switches are phone tap targets (style guide rule 7); the Devices
      card's primary action beside it matches (one primary button height on the page). */
   .p-settings .s-outside :is(.save-row .btn, .field input, label.check), .p-settings .s-devices .save-row .btn, .p-settings .s-web-authority .save-row .btn { min-height: var(--tap); }

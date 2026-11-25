@@ -29,6 +29,7 @@ import { RunMark, inProgressBy, runOf, useRunContext } from "./fleet-task-run.js
 import { OwnerChip, otherWorkers, quietInfo } from "./fleet-task-owner.js";
 import { InsightsDialog } from "./fleet-task-stats.js";
 import { ToSort, sortCount } from "./fleet-task-sort.js";
+import { ArchiveDialog, ArchivedLink, ArchivedTag, DONE_PAGE, newestDone, weekLabel } from "./fleet-task-archive.js";
 
 const PROJECT_KEY = "agend_tasks_project";
 const QUERY_KEY = "agend_tasks_query";
@@ -80,7 +81,7 @@ export function TaskBoardTab({ lease }) {
   const seq = useRef(0);
   const setAt = (v) => { setAtRaw(v); setQuery(""); writeStored(PROJECT_KEY, v === null ? null : String(v)); };
   const reload = (ifMoved = false) => setVersion((v) => ({ n: v.n + 1, ifMoved }));
-  const shown = useRef({ rev: null, allDone: false });
+  const shown = useRef({ rev: null, epoch: null, allDone: false });
 
   useEffect(() => {
     const mine = ++seq.current;
@@ -89,13 +90,17 @@ export function TaskBoardTab({ lease }) {
         const q = new URLSearchParams();
         if (allDone) q.set("done", "all");
         // The same board at the same revision is not sent again.
-        if (version.ifMoved && shown.current.rev !== null && shown.current.allDone === allDone) q.set("rev", String(shown.current.rev));
+        if (version.ifMoved && shown.current.rev !== null && shown.current.allDone === allDone) {
+          q.set("rev", String(shown.current.rev));
+          // #4428 review: and where time had left the board's lines (a card archived since is a new board).
+          if (shown.current.epoch !== null) q.set("epoch", shown.current.epoch);
+        }
         const qs = q.toString();
         const r = await lease.fetch(`/ui/tasks/board${qs ? `?${qs}` : ""}`, { method: "GET", headers: { "Content-Type": "application/json" } });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
         if (!lease.current() || mine !== seq.current || d.unchanged) return;
-        shown.current = { rev: typeof d.rev === "number" ? d.rev : null, allDone };
+        shown.current = { rev: typeof d.rev === "number" ? d.rev : null, epoch: typeof d.epoch === "string" ? d.epoch : null, allDone };
         setState({ data: d });
       } catch { if (lease.current() && mine === seq.current) setState((s) => (s && s.data ? s : { error: true })); }
     })();
@@ -200,9 +205,12 @@ export function TaskBoardTab({ lease }) {
   // The server's numbers cover every card (finished ones are not all on the board); computed here only without them.
   const stats = (key) => (state.data.stats && state.data.stats[String(key)]) || projectStats(key, cards);
   const project = at === null ? null : at === NO_PROJECT ? NO_PROJECT : projects.find((p) => p.id === at) || null;
+  // M-3668: how many days after it finished a main task leaves the board (0: never; an older server says nothing).
+  const archiveDays = typeof state.data.archiveAfterDays === "number" ? state.data.archiveAfterDays : 0;
   const body = project === null
-    ? html`<${Home} cards=${cards} projects=${projects} stats=${stats} writable=${writable} onOpenProject=${setAt} onOpen=${openCard} onDialog=${setDialog} onInstances=${showInstances} reload=${reload} />`
+    ? html`<${Home} cards=${cards} projects=${projects} stats=${stats} writable=${writable} onOpenProject=${setAt} onOpen=${openCard} onDialog=${setDialog} onInstances=${showInstances} reload=${reload} archiveDays=${archiveDays} />`
     : html`<${ProjectBoard} project=${project} cards=${cards} stats=${stats} flashed=${flashed} display=${display} filters=${filters} query=${query} writable=${writable}
+        archiveDays=${archiveDays} onArchive=${() => setDialog({ kind: "archive", project })}
         onDisplay=${setDisplay} onFilters=${setFilters} onQuery=${setQuery} onBack=${() => setAt(null)} onMore=${openMenuFor} onOwner=${openOwnerMenu}
         notSorted=${sortCount(cards, projects)} onOpenNoProject=${() => setAt(NO_PROJECT)}
         onOpen=${openCard} onCreate=${() => setDialog({ kind: "main", project: project === NO_PROJECT ? null : project.id })} onInstances=${showInstances} reload=${reload} />`;
@@ -302,6 +310,10 @@ export function TaskBoardTab({ lease }) {
     ${dialog && dialog.kind === "main" ? html`<${CreateMainDialog} projects=${projects} project=${dialog.project} boardOff=${boardOff} onClose=${() => setDialog(null)}
       onCreated=${(id) => { if (!lease.current()) return; setDialog(null); reload(); openCard(id); }} />` : null}
     ${dialog && dialog.kind === "instances" ? html`<${InstancesDrawer} tick=${tick} onClose=${() => setDialog(null)} onOpen=${(id) => { setDialog(null); openCard(id); }} />` : null}
+    ${dialog && dialog.kind === "archive" ? html`<${ArchiveDialog} project=${dialog.project === NO_PROJECT ? "none" : dialog.project.id}
+      name=${dialog.project === NO_PROJECT ? t("tasks.noProject") : dialog.project.name} days=${archiveDays} onClose=${() => setDialog(null)}
+      onOpen=${(c) => { setDialog(null); openCard(c.id); }}
+      fetchJson=${async (url) => { const r = await lease.fetch(url, { method: "GET" }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }} />` : null}
     ${dialog && dialog.kind === "project" ? html`<${ProjectDialog} project=${dialog.project} leads=${leads} onClose=${() => setDialog(null)}
       onSaved=${(p) => { if (!lease.current()) return; setDialog(null); reload(); if (!dialog.project) setAt(p.id); }} />` : null}
     <${AskHost} />
@@ -316,7 +328,7 @@ function InstancesButton({ onClick }) {
   return html`<button type="button" class="btn" title=${t("tasks.instancesTip")} onClick=${onClick}><${Icon} name="team" size=${16} /><span class="tb-btn-label">${t("tasks.instances")}</span></button>`;
 }
 
-function Home({ cards, projects, stats, writable, onOpenProject, onOpen, onDialog, onInstances, reload }) {
+function Home({ cards, projects, stats, writable, onOpenProject, onOpen, onDialog, onInstances, reload, archiveDays = 0 }) {
   const [showArchived, setShowArchived] = useState(false);
   const active = projects.filter((p) => !p.archived);
   const archived = projects.filter((p) => p.archived);
@@ -327,7 +339,7 @@ function Home({ cards, projects, stats, writable, onOpenProject, onOpen, onDialo
   return html`<div class="tb-home">
     <div class="list-head tb-head s-page-head"><div class="s-page-title"><h2>${t("tasks.projects")}</h2></div>
       <div class="tb-head-actions">
-        <${SearchBox} onOpen=${onOpen} />
+        <${SearchBox} onOpen=${onOpen} archiveDays=${archiveDays} />
         <${InstancesButton} onClick=${onInstances} />
         ${writable ? html`<button type="button" class="btn btn-primary" onClick=${() => onDialog({ kind: "project", project: null })}><${Icon} name="plus" size=${16} />${t("tasks.newProject")}</button>` : null}</div>
     </div>
@@ -362,6 +374,7 @@ function ProjectTile({ project, stats, sorting = 0, onOpen, onDialog, reload }) 
         ${sorting ? html`<span class="tb-flag st-review tb-sort-flag">${t("tasksort.tileBadge", sorting)}</span>` : null}
         ${stats.waiting ? html`<span class="tb-flag st-review">${t("tasks.waiting", stats.waiting)}</span>` : null}
         ${stats.blocked ? html`<span class="tb-flag st-blocked">${t("tasks.blockedN", stats.blocked)}</span>` : null}
+        ${stats.archived ? html`<span class="muted tb-project-archived">${t("tasksArchive.tile", stats.archived)}</span>` : null}
         ${stats.lastActivity ? html`<span class="muted">${t("tasks.lastActivity", relTime(stats.lastActivity))}</span>` : null}
         ${project && project.leadInstance ? html`<span class="muted tb-project-lead-chip">${t("tasks.projectLeadChip", project.leadInstance)}</span>` : null}
       </span>
@@ -414,7 +427,7 @@ function Waiting({ cards, writable, onOpen, reload }) {
   </section>`;
 }
 
-function SearchBox({ onOpen }) {
+function SearchBox({ onOpen, archiveDays = 0 }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState(null);
   const [active, setActive] = useState(0);
@@ -443,7 +456,7 @@ function SearchBox({ onOpen }) {
     ${results ? html`<ul class="tb-search-results" role="listbox">
       ${results.length ? results.map((r, i) => html`<li key=${r.card.id} role="option" aria-selected=${i === active ? "true" : "false"} class=${i === active ? "active" : ""}>
         <button type="button" onClick=${() => pick(r.card.id)}>
-          <span class="tb-code">${r.card.id}</span><span class="tb-search-title">${r.card.title}</span><${StatusPill} status=${r.card.status} card=${r.card} />
+          <span class="tb-code">${r.card.id}</span><span class="tb-search-title">${r.card.title}</span><${StatusPill} status=${r.card.status} card=${r.card} />${r.archived ? html`<${ArchivedTag} days=${archiveDays} />` : null}
           <span class="tb-search-where muted">${[r.project, r.parentTitle].filter(Boolean).join(" › ")}${r.match ? ` · ${t("tasks.inField", t(`tasks.field${r.match.field}`))}: ${r.match.text}` : ""}</span>
         </button></li>`) : html`<li class="muted tb-search-none">${t("tasks.searchEmpty")}</li>`}
     </ul>` : null}
@@ -452,8 +465,10 @@ function SearchBox({ onOpen }) {
 
 // ── A project's board ─────────────────────────────────────
 
-function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filters, query, writable, notSorted = 0, onOpenNoProject, onDisplay, onFilters, onQuery, onBack, onOpen, onMore, onOwner, onCreate, onInstances, reload }) {
+function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filters, query, writable, notSorted = 0, onOpenNoProject, onDisplay, onFilters, onQuery, onBack, onOpen, onMore, onOwner, onCreate, onInstances, reload, archiveDays = 0, onArchive = null }) {
   const [expanded, setExpanded] = useState({});
+  // M-3668: the Done column (and the list's done rows) shows its newest DONE_PAGE, DONE_PAGE more at a time.
+  const [doneLimit, setDoneLimit] = useState(DONE_PAGE);
   // A phone shows one status at a time: the one picked here, else the first that has cards (the person's own first).
   const [phoneStatus, setPhoneStatus] = useState(null);
   const [drag, setDrag] = useState(null);
@@ -478,7 +493,12 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
   const live = cards.filter((c) => c.kind === "main" && projectKey(c) === key && c.status !== "cancelled");
   // What the filters offer: this project's main tasks and their sub tasks.
   const own = live.flatMap((c) => [c, ...(subsOf.get(c.id) || [])]);
-  const mains = live.filter((c) => doneShown(c, display.done, now) && mainMatches(c, subsOf.get(c.id), filters, query));
+  const matched = live.filter((c) => doneShown(c, display.done, now) && mainMatches(c, subsOf.get(c.id), filters, query));
+  const doneAll = newestDone(matched.filter((c) => c.status === "done"));
+  const doneCut = new Set(doneAll.slice(doneLimit).map((c) => c.id));
+  // What the page draws: every unfinished main task, the newest finished ones; `matched` still counts them all.
+  const mains = matched.filter((c) => !doneCut.has(c.id));
+  const moreDone = doneCut.size ? html`<button type="button" class="btn btn-sm tb-done-more" onClick=${() => setDoneLimit((n) => n + DONE_PAGE)}>${t("tasksArchive.showMore", Math.min(DONE_PAGE, doneCut.size))}</button>` : null;
   const searching = filters.length > 0 || query.trim() !== "";
   // Finished cards hidden: no Done column (a card is still confirmed or finished from its dialog).
   const columns = display.done === "hide" ? COLUMNS.filter((s) => s !== "done") : COLUMNS;
@@ -490,12 +510,12 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
   // Insights counts what the page shows. A list with sub-task rows shows exactly its rows (each matched by the filter, a
   // finished one as Done shows it); the board, or a list without them, shows a main task with all its sub tasks.
   const insightCards = () => (display.view === "list" && display.subs
-    ? listRows(mains, subsOf, display, filters, now, query)
-    : mains.flatMap((c) => [c, ...(subsOf.get(c.id) || [])]));
+    ? listRows(matched, subsOf, display, filters, now, query)
+    : matched.flatMap((c) => [c, ...(subsOf.get(c.id) || [])]));
   const listBody = () => {
     const rows = listRows(mains, subsOf, display, filters, now, query);
     return rows.length === 0 ? empty() : html`<${ListView} rows=${rows} display=${display} subsOf=${subsOf} byId=${byId} flashed=${flashed} now=${now} runs=${runs}
-      expanded=${expanded} onToggleSubs=${toggleSubs} onOpen=${onOpen} onMore=${onMore} onOwner=${onOwner} cards=${cards} lead=${lead} writable=${writable} onDisplay=${onDisplay} scope=${String(key)} />`;
+      expanded=${expanded} onToggleSubs=${toggleSubs} onOpen=${onOpen} onMore=${onMore} onOwner=${onOwner} cards=${cards} lead=${lead} writable=${writable} onDisplay=${onDisplay} scope=${String(key)} />${moreDone}`;
   };
 
   const dropping = useRef(false);
@@ -620,6 +640,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
             ${stats.blocked ? html`<span class="tb-flag st-blocked">${t("tasks.blockedN", stats.blocked)}</span>` : null}
           </div>
           ${project !== NO_PROJECT && notSorted ? html`<button type="button" class="tb-flag st-review tb-sort-link" title=${t("tasksort.headerLinkTip")} onClick=${onOpenNoProject}><${Icon} name="inbox" size=${16} /><span class="tb-sort-link-short">${t("tasksort.headerLink", notSorted)}</span><span class="tb-sort-link-long">${t("tasksort.title", notSorted)}</span><span class="tb-sort-link-go">${t("tasksort.go")}</span> →</button>` : null}
+          <${ArchivedLink} count=${stats.archived} days=${archiveDays} onOpen=${onArchive} />
           <button type="button" class="btn btn-ghost btn-sm tb-insights" title=${t("taskstats.buttonTip")} onClick=${() => setInsights(true)}><${Icon} name="chart" size=${16} />${t("taskstats.button")}</button>
         </div>
       </div>
@@ -628,23 +649,24 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
         ${archived || !writable ? null : html`<button type="button" class="btn btn-primary" onClick=${onCreate}><${Icon} name="plus" size=${16} />${t("tasks.newMain")}</button>`}
       </div>
     </div>
-    <${TaskToolbar} cards=${own} display=${display} onDisplay=${onDisplay} filters=${filters} onFilters=${onFilters} query=${query} onQuery=${onQuery}
+    <${TaskToolbar} cards=${own} display=${display} onDisplay=${onDisplay} filters=${filters} onFilters=${onFilters} query=${query} onQuery=${onQuery} archiving=${archiveDays > 0}
       scroller=${display.view === "list" ? null : { reach, by: scrollColumns }} />
     ${display.view === "list" ? listBody() : mains.length === 0 && !drag ? empty()
     : html`${html`<div class="tb-seg tb-status-seg" role="group" aria-label=${t("taskview.statusTabs")} ref=${pillRow}>${columns.map((status) => {
-        const count = mains.filter((c) => c.status === status).length;
+        const count = (status === "done" ? doneAll : mains.filter((c) => c.status === status)).length;
         return html`<button key=${status} type="button" aria-pressed=${current === status ? "true" : "false"} class=${`tb-seg-btn${current === status ? " active" : ""}${count === 0 ? " is-empty" : ""}`}
           onClick=${() => setPhoneStatus(status)}><span class=${`tb-dot st-${status}`} aria-hidden="true"></span>${t(`tasks.${status}`)} <span class="tb-count">${count}</span></button>`;
       })}</div>`}
       <div class="tb-scroll" ref=${scrollEl}><div class="tb-columns">
       ${columns.map((status) => {
-        const list = mains.filter((c) => c.status === status);
+        const list = status === "done" ? doneAll.slice(0, doneLimit) : mains.filter((c) => c.status === status);
         const line = spot && spot.status === status ? spot.index : -1;
         return html`<section key=${status} class=${`tb-col st-${status}${status === current ? " is-current" : ""}${drag ? " can-drop" : ""}${line >= 0 ? " over" : ""}`} aria-label=${t(`tasks.${status}`)}
           onDragOver=${(e) => over(e, status)} onDrop=${(e) => dropOn(e, status, list)}>
           <h3 class="tb-col-head"><span class="tb-dot"></span>${t(`tasks.${status}`)}
-            ${status === "done" ? html`<button type="button" class="tb-link" title=${t("tasks.toggleDone")} onClick=${() => onDisplay({ ...display, done: display.done === "all" ? "recent" : "all" })}>${display.done === "all" ? t("tasks.all") : t("tasks.recent")}</button>` : null}
-            <span class="tb-count">${list.length}</span></h3>
+            ${status === "done" && archiveDays === 0 ? html`<button type="button" class="tb-link" title=${t("tasks.toggleDone")} onClick=${() => onDisplay({ ...display, done: display.done === "all" ? "recent" : "all" })}>${display.done === "all" ? t("tasks.all") : t("tasks.recent")}</button>` : null}
+            <span class="tb-count">${status === "done" ? doneAll.length : list.length}</span></h3>
+          ${status === "done" && archiveDays > 0 ? html`<p class="muted tb-done-week tb-done-week-line" title=${t("tasksArchive.weekTip")}>${weekLabel(stats)}</p>` : null}
           ${cellItems(list, drag ? drag.id : null, line, (card, dragging) => {
             const lit = Math.max(flashed.get(card.id) || 0, ...(subsOf.get(card.id) || []).map((s) => flashed.get(s.id) || 0));
             return html`<${Tile} key=${card.id} card=${card} dragging=${dragging} flash=${now - lit < 4000} subs=${subsOf.get(card.id)} runs=${runs} writable=${writable} cards=${cards} lead=${lead}
@@ -652,6 +674,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
               onOpen=${onOpen} onMore=${onMore} onOwner=${onOwner} onKeyMove=${(e) => keyMove(card, e)}
               onDragStart=${(e) => { e.dataTransfer.setData("text/plain", card.id); e.dataTransfer.effectAllowed = "move"; setDrag(card); }} onDragEnd=${end} />`;
           })}
+          ${status === "done" ? moreDone : null}
         </section>`;
       })}
     </div></div>`}

@@ -492,6 +492,8 @@ button.tb-row-progress:hover { background: var(--surface-2); }
   .tb-progress { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); font-size: var(--fs-sm); min-width: 0; }
   .tb-progress > .tb-bar { width: auto; flex: 1 1 64px; min-width: 64px; }
   .tb-stats > .tb-sort-link { grid-column: 1 / -1; margin-top: 0; }
+  /* M-3668: "Archived · N" on its own row under the name (in the name's row it squeezed the name letter by letter). */
+  .tb-stats > .tb-archived-link { grid-column: 1 / -1; justify-self: start; }
   /* Home's head: the title with Agent and New project in its row; the search under it, across the width. */
   .tb-home > .tb-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3) var(--s-2); }
   .tb-home > .tb-head > .s-page-title { flex: 1 1 auto; min-width: min-content; }
@@ -587,6 +589,14 @@ button.tb-owner-btn:hover { border-color: var(--border); background: var(--surfa
 @media (prefers-reduced-motion: reduce) {
   .tr-mark.s-working .tr-dot, .tr-state.s-working .tr-dot { animation: none; }
 }
+
+/* M-3668: the Done column's "Show 20 more" under its newest cards; this week's count beside its title; the Archive's filter. */
+.tb-done-more { display: block; margin: var(--s-2) auto; }
+/* #4428 capture check: under the Done column's head, not in it (a narrow head squeezed its title to 「完 / 成」). */
+.tb-done-week-line { margin: 0 0 var(--s-2); font-size: var(--fs-xs); }
+.tb-nowrap { white-space: nowrap; }
+.tb-archive .tb-row-time { width: 11em; }
+.tb-archive-who { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); font-size: var(--fs-sm); color: var(--text-2); }
 
 /* Markdown in a card's fields and in a file's preview: the timeline's own rules (`.tl-body.md …`, above) — the element carries
    `.tl-body` and `.md` too — with the timeline's indent (the avatar's width) taken off, and the field's own box and size. */
