@@ -83,7 +83,7 @@ old decision semantics. J and K must use this field, not infer scope from names.
 ## 3. Web transport (new namespace; old API unchanged while OFF)
 
 - GET /ui/api/request-contact-authorizations?agent=…&status=…&cursor=…
-  returns RequestContactCardPageV1. Default pending; bounded 32/page, max64.
+  returns RequestContactCardPageV1. Default pending; bounded 32/page.
   Filter after target-role scoping; cursor binds the identity/filter AND target-role revision snapshot. A role-revision change invalidates the cursor.
   No person identity selector is accepted from the client in this first version.
 - GET /ui/api/request-contact-authorizations/R<uuid> returns one card.
@@ -110,8 +110,12 @@ Errors are `{error:<stable-code>}`: 400 invalid-request/invalid-grant,
 401 sign-in-required, 403 forbidden or verification-required,
 404 not-found (also for a ticket outside the person's readable scope),
 409 conflict/policy-conflict/operation-conflict/expired/already-decided/
-stale-generation, 503 unavailable. Dormant/uninstalled host returns404 without
+stale-generation/upgrade-required (unsupported legacy input remains held, with
+a safe localized explanation), 503 unavailable. Dormant/uninstalled host returns404 without
 an inventory. Denials must not return hidden ticket text, counts or person ids.
+The existing outer web gate may answer401 for a failed cookie/CSRF admission
+before this handler runs; preserve that gate, never dispatch, and use the shell's
+existing session/CSRF recovery rather than interpreting it as an OFF capability.
 No automatic retry of a decision after any failure or unknown network outcome;
 read the same ticket to inspect the result.
 
@@ -239,3 +243,56 @@ These questions do not authorize a broader grant schema or a live activation.
   is representable. Do not add an I-only guest-ingress exclusion or change E's
   automatic grants. Hub/unknown/non-human or account actors with no mapped native
   person remain unsupported. Legacy multi-person candidates keep explicit keys.
+
+
+## 9. J integration clarifications
+
+Only collection GET404 means the host is uninstalled. A detail404, 401/403 or503
+must not fall back to the less-scoped legacy API. Collection200 opts into the
+same-card interface; each card's approvalScope still determines the actual
+release scope. L installs the host at cutover; defining the factory is not an
+activation. Clear retained origin becomes history-only in that new UI mode.
+
+Under an installed host, Needs you uses the existing contact_request metadata
+with contactTicket{id,source,target}, including recognized unverified eligible
+managers; it does not emit the old global contact_verify_needed count. J may
+fetch the scoped collection directly and page there. OFF keeps the old projection.
+
+Reason is a stable code localized by J: earlier-non-admin/unknown-origin for
+legacy, restricted-room-request/guest-request/hub-request/unproved-recovery for
+scoped, with request as generic fallback. Use sourceLabel and requester for the
+working-on-someone's-request sentence; there is no inferred current steer author.
+Audience has kind plus an opaque ref, no display label. Use original room/web/Hub
+conversation wording, never the UUID as a name. A decision200 is the bare card;
+no grant ids are returned, so link to target Permissions without one.
+
+Factory/ports: FleetManager.makeRequestContactCards() is the shared store owner
+for native K; makeRequestContactApi() supplies the HTTP/session adapter. Neither
+is installed by I. Actual native posting/receipt validation remains K's boundary;
+it must use its server-fixed destination, card text, posted message/bot/nonce and
+actual interaction user before invoking the shared writer.
+
+List status accepts pending (default), approved, delivered, declined, expired,
+unknown, and all. All omits only the state predicate, never the PersonKey, target
+management, generation or cursor checks. Omitted status still means pending.
+
+## 10. Implementation and rollout limits
+
+The concrete HTTP adapter and SQLite card owner now exist behind an optional,
+uninstalled WebApiContext host. FleetManager exposes explicit assembly factories;
+no production constructor installs them. OFF retains the legacy cards and global
+verification count. The installed host replaces that count with scoped item ids
+and uses the same card over localhost, named links and quick links.
+
+Read-only snapshots do not persist logical ticket expiry or reset stale policies.
+Decisions compare the full operation image and policy revision inside the actual
+legacy or scoped writer transaction. A post-admission role/incarnation check in
+the outer transaction rolls back the decision and delivery together. The existing
+native callback bot/message/nonce boundary is K's implementation, not proof from
+I's internal proposal callback tests. J supplies rendering and verification UI.
+
+All checks here use synthetic SQLite, sessions and requests. There is no renderer
+or instruction change, activation, live migration, account call or native post.
+Before L, rollback is a normal code revert with the host left uninstalled; no
+new production state exists. After L, the parent barrier/drain/downgrade procedure
+applies; do not remove A's compatibility barrier from an activated database.

@@ -126,8 +126,8 @@ it("a fenced hold may still be declined, while approval cannot create work or co
  const gate=f.box.requestContactGate({current:()=>true,canDecide:()=>true,canManage:()=>true,adminOf:()=>false,person:()=>null});let id="";
  try{gate.admit(delivery,c,binding);}catch(e){if(!(e instanceof ContactHeldError))throw e;id=e.result.authorization_id;}
  const ticket=f.box.contactAuthorizations.get(id)!,admin={platform:"host" as const,adapterId:"host",userId:"operator",label:"Demo admin"};f.drain().fence(c.ref.rootContextId);
- expect(()=>gate.decide(id,{revision:ticket.revision,decision:"approve-once"},admin,0)).toThrow(/draining/);expect(f.box.contactAuthorizations.get(id)?.state).toBe("pending");expect(f.box.listPending()).toEqual([]);
- expect(gate.sweep().approved).toEqual([]);expect(gate.decide(id,{revision:ticket.revision,decision:"decline"},admin,0).state).toBe("declined");
+ expect(()=>gate.decide(id,{revision:ticket.revision,decision:"approve-once"},admin,0,gate.snapshot(id).imageSha256)).toThrow(/draining/);expect(f.box.contactAuthorizations.get(id)?.state).toBe("pending");expect(f.box.listPending()).toEqual([]);
+ expect(gate.sweep().approved).toEqual([]);expect(gate.decide(id,{revision:ticket.revision,decision:"decline"},admin,0,gate.snapshot(id).imageSha256).state).toBe("declined");
 });
 it("R1 a fresh coordinator resumes the durable Fleet's fence with a new epoch",()=>{
  const f=rig(),i=f.admit();f.terminal(i.result.delivery.deliveryId);const first=f.drain();participants(first);const root=i.c.ref.rootContextId,epoch=first.fence(root),old=first.prove(root,epoch);
