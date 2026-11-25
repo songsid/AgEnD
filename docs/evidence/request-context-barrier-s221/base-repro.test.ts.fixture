@@ -1,0 +1,26 @@
+import { afterEach, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import Database from "better-sqlite3";
+import { DeliveryOutbox } from "../src/delivery-outbox.js";
+const roots: string[] = [];
+afterEach(() => { for (const p of roots.splice(0)) rmSync(p, { recursive: true, force: true }); });
+function file() { const root = mkdtempSync(join(tmpdir(), "request-context-")); roots.push(root); return join(root, "outbox.db"); }
+function marker(path: string, version = 1) {
+  const old = new DeliveryOutbox(path); old.close();
+  const db = new Database(path);
+  db.exec("CREATE TABLE request_context_compatibility(singleton INTEGER PRIMARY KEY, required_dispatch_version INTEGER NOT NULL)");
+  db.prepare("INSERT INTO request_context_compatibility VALUES (1,?)").run(version); db.close();
+}
+it("bridge code with enforcement off refuses an active request-context database before legacy initialization", () => {
+  const path = file(); marker(path); let opened: DeliveryOutbox | undefined;
+  try { expect(() => { opened = new DeliveryOutbox(path); }).toThrow(/request-context dispatch v1/i); }
+  finally { opened?.close(); }
+});
+it("the default-off bridge still opens and recovers an ordinary legacy outbox", () => {
+  const path = file(), outbox = new DeliveryOutbox(path);
+  expect(outbox.recoverForBoot("new-boot")).toEqual({ queued: 0, reconciliationPending: 0 }); outbox.close();
+  const db = new Database(path, { readonly: true });
+  expect(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name LIKE 'request_context_%'").get()).toEqual({ n: 0 }); db.close();
+});

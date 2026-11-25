@@ -9,6 +9,7 @@ import { dirname } from "node:path";
 import { t } from "./locale.js";
 import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
 import { ContactAuthStore } from "./contact-auth-store.js";
+import { registerRequestContextDispatcher, assertRequestContextCompatibility, activateRequestContextBarrier, type RequestContextCompatibilityOptions, type RequestContextDispatchVersion } from "./request-context-compatibility.js";
 import { validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import { WorkingStateJournal, type WorkingStateSnapshot, type WorkingStateReference } from "./working-state-journal.js";
 import { initializeHumanReceipts, createHumanReceipt, getHumanReceipt, bindHumanReceipt, settleHumanReceipt, queryHumanReceipt, maxWebAuthorityEpoch, deliveredMessageHours, pruneMessageHours,
@@ -712,16 +713,28 @@ export class DeliveryOutbox extends EventEmitter {
     try { this.emit("working_references", [...new Set(instances)]); } catch { /* observation only */ }
   }
 
-  constructor(dbPath: string, managerBootId: string = randomUUID()) {
+  private readonly requestContextDispatchVersion: RequestContextDispatchVersion;
+
+  constructor(dbPath: string, managerBootId: string = randomUUID(), compatibility: RequestContextCompatibilityOptions = {}) {
     super();
     this.managerBootId = managerBootId;
+    this.requestContextDispatchVersion = compatibility.requestContextDispatchVersion ?? 0;
     mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
     this.db = new Database(dbPath);
-    try { this.initialize(dbPath); }
+    try {
+      registerRequestContextDispatcher(this.db, this.requestContextDispatchVersion);
+      assertRequestContextCompatibility(this.db, this.requestContextDispatchVersion);
+      this.initialize(dbPath);
+    }
     catch (error) {
       try { this.db.close(); } catch { /* retain the initialization error */ }
       throw error;
     }
+  }
+
+  /** Future slice L cutover port; all existing production constructors remain capability 0. */
+  activateRequestContextBarrier(): void {
+    activateRequestContextBarrier(this.db, this.requestContextDispatchVersion);
   }
 
   private initialize(dbPath: string): void {
