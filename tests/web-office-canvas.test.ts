@@ -88,6 +88,23 @@ describe("a pack's canvas", () => {
     spriteSkin(pack, new Map()).drawBackground(ctx, zonesLayout(pack, []), { mode: "dark", pal: { border: "#000", text: "#fff" }, labels: { areas: {} } });
     expect(rects[0]).toEqual([0, 0, 2560, 1440]);
   });
+  it("#4458 [D]: the background and foreground shrunk below 1 px a picture px are smoothed (high); at 1x and over, not", () => {
+    const pack = (PK.checkSkinPack({ ...BIG(), foreground: "office_bg.png" }) as any).pack;
+    const im = { width: 2048, height: 1152 };                                       // 0.8 px a unit on the 2560 canvas
+    const seen = (scale: number) => {
+      const got: any[] = [], ctx: any = { imageSmoothingEnabled: true, imageSmoothingQuality: "low", save() {}, restore() {},
+        getTransform: () => ({ a: scale, b: 0 }), drawImage() { got.push([this.imageSmoothingEnabled, this.imageSmoothingQuality]); } };
+      const sk = spriteSkin(pack, new Map([["office_bg.png", im]]));
+      sk.drawBackground(ctx, zonesLayout(pack, []), {}); sk.drawForeground(ctx, zonesLayout(pack, []), {});
+      return got;
+    };
+    expect(seen(0.1)).toEqual([[true, "high"], [true, "high"]]);                   // a phone's fit: shrunk
+    expect(seen(0.8)).toEqual([[false, "low"], [false, "low"]]);                   // exactly 1 px a picture px
+    expect(seen(2)).toEqual([[false, "low"], [false, "low"]]);                     // zoomed in: pixel art
+    const none: any = { imageSmoothingEnabled: true, save() {}, restore() {}, drawImage() { this.at = this.imageSmoothingEnabled; } };
+    spriteSkin(pack, new Map([["office_bg.png", im]])).drawBackground(none, zonesLayout(pack, []), {});
+    expect(none.at).toBe(false);                                                    // no transform to read: as before
+  });
   it("people walk the whole big canvas: an idle person in an area past 1280 strolls there, never clamped to 1280×720", () => {
     const pack = (PK.checkSkinPack({ ...BIG(), stateZones: { ...MANIFEST().stateZones, idle: "east", default: "east" },
       waypoints: [...MANIFEST().waypoints, { id: "e1", x: 2150, y: 1180 }, { id: "e2", x: 2300, y: 1000 }],

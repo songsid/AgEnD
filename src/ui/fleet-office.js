@@ -72,6 +72,7 @@ import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
 import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, pixelSkin, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint, withCharacters } from "./fleet-office-skin.js";
+import { createRiders, facing, seatAt, vehicleAt } from "./fleet-office-vehicles.js";
 import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, routeStaysInArea, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
@@ -287,6 +288,8 @@ export function nearestPerson(list, x, y, r) {
 }
 /** How often the picture can change when nothing is in the air (the poses loop at 4 fps; a bubble types faster). */
 const FPS = 12;
+/** At most this many frames a second while anyone walks or anything moves. */
+const AIR_FPS = 30;
 const STYLES = BUILT_IN_SKINS;
 /** Paused and stopped: left out when "Hide paused and stopped" is on. */
 const ASLEEP = new Set(["paused", "stopped"]);
@@ -458,6 +461,12 @@ export function actLive(a, state, at = Date.now(), seen = null) {
   if (state !== "working") { seen.add(k); return true; }
   return !seen.has(k) && (!a.state || a.state === "working");
 }
+/**
+ * Whether an agent's ride (office_set `ride`) holds now: set and not past its end, the person neither asleep nor calling
+ * (#4415: nothing keeps a caller from the Help desk; the ride resumes when the call is over). Working or a new turn do
+ * not end it (it is where they choose to be); clearing it, a new office_set or its end do.
+ */
+export const rideLive = (a, state, at = Date.now()) => !!a && !!a.ride && at < a.until && !ASLEEP.has(state) && !CALLING.has(state);
 /** How far beside the person an agent going to them stands. */
 const ACT_BESIDE = 48;
 /** Where an agent's act sends it at `t`: its point, beside the person it goes to (where they are now), or null. */
@@ -499,7 +508,8 @@ function paintLayers(p, env, ls, tagsOff = false) {
     for (const r of L.rooms) skin.drawRoom(g, r, env);
     for (const d of all) skin.drawDeskBack(g, d, looks.get(d.key), env);
   });
-  const front = zones ? null : layer((g) => {
+  // Zones: the pack's foreground, painted once at the layer's scale (it was drawn from the full picture every frame).
+  const front = zones ? (skin.pack && skin.pack.foreground && skin.drawForeground ? layer((g) => skin.drawForeground(g, L, env)) : null) : layer((g) => {
     for (const d of all) { const lk = looks.get(d.key); skin.drawDeskFront(g, d, !tagsOff || !lk || lk.match ? lk : tagsOff === "names" && CALLING.has(lk.state) ? { ...lk, badge: null } : { ...lk, notag: true }, env); }
   });
   return { ls, tagsOff, back, front };
@@ -526,17 +536,21 @@ export function officeBubbleAt(hits, x, y, minSize = 0) {
 export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false, defer = null, bubbleHits = null) {
   const sk = p.skin;
   const ls = layerScale(a, p.L.width, p.L.height);
-  if (!p.layers || p.layers.ls !== ls || p.layers.tagsOff !== tagsOff) p.layers = paintLayers(p, env, ls, tagsOff);
+  // Zones zoomed in past the layers' budget (a big pack): the layer would be coarser than the screen and the picture,
+  // so the background and foreground are drawn from their pictures instead (only the part on screen is rasterised).
+  const direct = !!p.zones && ls < a - 1e-6;
+  if (!direct && (!p.layers || p.layers.ls !== ls || p.layers.tagsOff !== tagsOff)) p.layers = paintLayers(p, env, ls, tagsOff);
   const T = () => ctx.setTransform(a, 0, 0, a, ox, oy);
   const blit = (c) => { if (!c) return; ctx.setTransform(a / ls, 0, 0, a / ls, ox, oy); ctx.drawImage(c, 0, 0); T(); };
-  blit(p.layers.back);
+  if (direct) { T(); ctx.fillStyle = env.pal.bg; ctx.fillRect(0, 0, p.L.width, p.L.height); sk.drawBackground(ctx, p.L, env); }
+  else blit(p.layers.back);
   T();
   const speakers = [], tags = [], titleBoxes = [];             // M-3539: the area names bubbles keep off too
   const titleDraws = [];                                         // M-3722: and redrawn over a bubble's tail that crosses one
   const up = still ? [] : p.flights.frame(ms, p.L);
   // Mail from another office (#2564): flying in at the door, or on the floor until its person picks it up.
   const post = still || !p.mail || !p.zones ? [] : p.mail.frame(ms > 0 ? ms : now(), p.L, p.walkers);
-  let walking = false;
+  let walking = false, carsOn = false;
   if (p.zones) {
     // Furniture under the people; the people (nearest last) with the furniture whose depth is "y" among them, by base
     // y (a tie: the item first, the person in front); furniture over them; things in the air; the pack's foreground
@@ -554,6 +568,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       });
       if (changed && typeof p.onSnacksChanged === "function") p.onSnacksChanged();
     }
+    // Off screen (the canvas in logical units, with room for the tallest sprite and its bubble): not drawn.
+    const cw = ctx.canvas && ctx.canvas.width, chh = ctx.canvas && ctx.canvas.height, M = 320;
+    const offView = cw ? (at) => at.x < -ox / a - M || at.x > (cw - ox) / a + M || at.y < -oy / a - M / 4 || at.y > (chh - oy) / a + M : () => false;
     const people = p.desks.map((d) => {
       const at = p.walkers.at(d.node.name, t) || { ...d.seat, walking: false };
       if (at.walking) walking = true;
@@ -562,7 +579,11 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const furniture = strollFurniture(p.night ? nightFurniture(sk.pack.furniture) : sk.pack.furniture, (k) => p.walkers.at(k, t));
     if (furniture.some((f) => f.walking)) walking = true;
     const placedSnacks = p.snacks ? p.snacks.placedList() : [];
+    const wall = Date.now(), cars = (sk.pack.vehicles || []).map((v) => ({ v, at: vehicleAt(v, wall) }));
+    carsOn = cars.length > 0;
     const band = [...furniture.filter((f) => f.depth === "y").map((f) => ({ y: f.y, k: 0, f })),
+      ...cars.map((c) => ({ y: c.at.y, k: 0.8, car: c })),
+      ...cars.map((c) => ({ y: Math.max(c.at.y, ...people.filter((q) => q.at.riding && p.riding && (p.riding(q.look.name) || {}).vehicle === c.v.id).map((q) => q.at.y)), k: 1.5, front: c })),
       ...placedSnacks.map((sn) => ({ y: sn.y, k: 0.5, sn })),
       ...people.map((q) => ({ y: q.at.y, k: 1, p: q })),
       ...(p.ghosts ? ghostsOf(sk.pack, people).map((g) => ({ y: g.y, k: 1, g })) : []),
@@ -617,7 +638,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     for (const f of furniture) if (f.depth !== "y" && f.depth < CHAR_DEPTH) sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env);
     for (const it of post) if (it.t === 0) sk.drawProp(ctx, it, ms, env);        // a letter on the floor: under the people
     let heldPerson = null;
-    for (const { f, p: q, g, n, sn } of band) {
+    for (const { f, p: q, g, n, sn, car, front } of band) {
+      if (car) { if (sk.drawVehicle) sk.drawVehicle(ctx, car.v, car.at, ms, env); continue; }
+      if (front) { if (sk.drawVehicleFront) sk.drawVehicleFront(ctx, front.v, front.at, ms, env); continue; }
       if (f) { sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env); continue; }
       if (sn) {
         const sdef = p.snacksById && p.snacksById.get(sn.snackId);
@@ -634,6 +657,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       if (g) { ctx.save(); ctx.globalAlpha = GHOST_ALPHA; sk.drawCharacter(ctx, { x: g.x - 44, y: g.y - 53, w: 88, h: 53, seat: g }, g.look, 0, env); ctx.restore(); continue; }
       if (heldName && q.look.name === heldName) { heldPerson = q; continue; }  // M-3445 (#4267): drawn lifted on top below
       if (live.hidden.has(q.look.name)) continue;                          // #2698: drawn as the item (never while walking)
+      if (offView(q.at)) continue;
       const box = { ...q.d, x: q.at.x - 44, y: q.at.y - 53, w: 88, h: 53, seat: { x: q.at.x, y: q.at.y } };
       // An agent's own pose (office_set, #2578) while its act lasts and nothing calls it; walking is walking; M-3432: eating when fed.
       const posed = actPosed(p, q.look);
@@ -663,7 +687,8 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     }
     for (const it of up) sk.drawProp(ctx, it, ms, env);
     for (const it of post) if (it.t > 0) sk.drawProp(ctx, it, ms, env);
-    if (sk.drawForeground) sk.drawForeground(ctx, p.L, env);
+    if (direct) { if (sk.pack && sk.pack.foreground && sk.drawForeground) sk.drawForeground(ctx, p.L, env); }
+    else if (p.layers.front) blit(p.layers.front);
     // Who found no spot in an area: a count in its corner (never over its name).
     for (const [ar, n] of p.L.crowd || []) if (p.L.areas[ar] && sk.drawCrowd) sk.drawCrowd(ctx, p.L.areas[ar], n, env);
     // M-3539: an area's name a figure stands on is written again over the people (休息區 under a crowd's heads).
@@ -868,7 +893,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     if (bubbleHits) bubbleHits.push({ name: sp.look.name, reply: true, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
   } };
   if (defer) defer.push(say); else say();
-  return replies.length > 0 || walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting || (!!p.snacks && p.snacks.active(t0)) || !!(p.snackDrop && p.snackDrop.current) || !!(p.hold && p.hold.held());
+  return replies.length > 0 || carsOn || walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting || (!!p.snacks && p.snacks.active(t0)) || !!(p.snackDrop && p.snackDrop.current) || !!(p.hold && p.hold.held());
 }
 /**
  * #2661: an NPC's name tag (a furniture item's label) — with the title a pack pins on it (`levels.fixed` by its id),
@@ -1093,6 +1118,7 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
   fsRef.current = fs;
   const flights = useMemo(() => createFlights(), []);
   const walkers = useMemo(() => createWalkers(), []);
+  const riders = useMemo(() => createRiders(), []);
   const seatsRef = useRef(new Map());                                 // the zones layout's last seats: kept where they can be
   const seatPrefsRef = useRef({}), seatKeyRef = useRef(""), seatDropRef = useRef(null);
   const placedRef = useRef(null);                                    // M-3539: the office and style the walkers were last placed for
@@ -1307,7 +1333,8 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
   const size = { w: width, h: stageH > 0 ? stageH : SIZE0.h };
   // The canvas bitmap's px per CSS px: the device's, unless the bitmap would be too big to paint (backingScale). Zoom
   // snaps to whole numbers of these (fleet-office-view.js), so a pixel-level view maps a logical unit onto whole pixels.
-  const ratio = backingScale(size.w, size.h, dpr);
+  // At most 2 px per CSS px: a 3x phone screen would paint 2.25x the pixels every frame for little visible gain.
+  const ratio = backingScale(size.w, size.h, Math.min(2, dpr));
 
   // #2554: All offices — chosen, and at least two offices stored (else the whole fleet, as an office gone is).
   const overview = choice === ALL_ID && overviewOk(stored);
@@ -1492,15 +1519,31 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
       // An act's walk; not someone in bed for the night (#2568: bedtime wins, as for mail).
       for (const d of desksOf(L)) { const a = actsHere.get(d.node.name), at = !d.night && actLive(a, d.node.state, Date.now(), actSeen.current) ? actTarget(a, L, walkers, t) : null; if (at) to.set(d.node.name, at); }
       for (const [name, at] of mail.targets(L, t)) to.set(name, at);
-      for (const [name, at] of snacks.targets(t)) to.set(name, at);
-      const held = hold.held();                                     // M-3293: carried: where the pointer is, no walk
-      if (held) to.set(held.name, held.at);
-      cardStay(to, cardDesk.current, held, walkers, t);             // their card is open: no walk, unless calling
       // M-3539: a new office or style (a room's office reads its style after it opens) puts everyone at their place at
       // once: walking there from the old one's seats drew the asleep standing in the help desk for seconds.
       const placed = `${officeKey}\n${skin.id}`, fresh = placedRef.current !== placed;
       placedRef.current = placed;
+      // A pack's vehicles: who wants to ride walks to the platform, boards when it stops there, gets off at a stop; a
+      // caller gets off at once. Riders are set down where they are when their vehicle goes (fresh: the sync does).
+      const vehicles = skin.pack.vehicles || [];
+      let boarding = [];
+      if (fresh) riders.clear();
+      if (vehicles.length) {
+        const byId = new Map(vehicles.map((v) => [v.id, v])), wall = Date.now(), here = desksOf(L);
+        const wants = new Map(here.map((d) => { const a = actsHere.get(d.node.name); return [d.node.name, !d.night && rideLive(a, d.node.state, wall) ? a.ride : null]; }));
+        const r = riders.step({ wants, vehicles: byId, wall, posOf: (n) => walkers.at(n, t), homeOf: (n) => (here.find((d) => d.node.name === n) || {}).seat || null,
+          sinceOf: (n) => { const a = actsHere.get(n); return a && a.ride && typeof a.since === "number" ? a.since : null; },
+          urgent: (n) => { const d = here.find((x) => x.node.name === n); return !!d && CALLING.has(d.node.state); } });
+        for (const [name, at] of r.targets) to.set(name, at);
+        boarding = r.board.map((b) => { const v = byId.get(b.vehicle); return [b.name, () => seatAt(v, vehicleAt(v, Date.now()), b.seat)]; });
+        for (const a of r.alight) walkers.place(a.name, a.at);
+      } else for (const n of riders.clear()) { const p = walkers.at(n, t); if (p) walkers.place(n, p); }
+      for (const [name, at] of snacks.targets(t)) to.set(name, at);
+      const held = hold.held();                                     // M-3293: carried: where the pointer is, no walk
+      if (held) to.set(held.name, held.at);
+      cardStay(to, cardDesk.current, held, walkers, t);             // their card is open: no walk, unless calling
       walkers.sync(to, t, L, still, fresh);
+      for (const [name, seat] of boarding) walkers.ride(name, seat);
       // Reduced motion has no loop: drawn again here, or an act's walk (set after the scene was drawn) never shows.
       if (still) { if (scene.current && !globalThis.document?.hidden) draw(0); } else loop.current?.wake();
     };
@@ -1509,7 +1552,7 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
     if (still) return undefined;
     const h = setInterval(go, WANDER.TICK);
     return () => clearInterval(h);
-  }, [L, wander, mail, skin, night, actsHere, visitMemo, ownArea]);
+  }, [L, wander, mail, skin, night, actsHere, visitMemo, ownArea, riders]);
   // …and in each tile on a zones style; the traffic within a tile is its own, between tiles the overview's.
   useEffect(() => {
     for (const tl of tiles) if (tl.zones) tl.walkers.sync(new Map(desksOf(tl.L).map((d) => [d.node.name, d.seat])), now(), tl.L, still);
@@ -1837,7 +1880,7 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
       const parts = tiles.map((tl, i) => ({ ...partOf(tl.L, tileLooks[i], tl.skin, tl.zones, tl.walkers, tl.flights), night, key: tl.key, prefix: tl.prefix, tile: arranged.tiles[i], ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(tl.skin) }));
       scene.current = { ...base, overview: true, parts, lay: arranged };
     } else {
-      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin), reacts: reacts.current,
+      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin), reacts: reacts.current, riding: riders.riding,
         hold: play ? hold : null, seatDrop: seatDropRef,
         snacks: play ? snacks : null, snacksById, ownArea, snackDrop: snackDropRef, onSnackClaim, onSnacksChanged: () => walkNow.current?.() } };
     }
@@ -1982,18 +2025,19 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
   }, [dlgOn, dlgVisible, dlgSay, width, phone, ratio]);
 
   // The loop: drawing only when the frame (FPS) changed or something is in the air; stopped while the tab is hidden,
-  // gone with the view. Office review: while something walks or flies, one requestAnimationFrame per display frame (the
+  // gone with the view. Office review: while something walks or flies, a frame every display frame up to AIR_FPS (the
   // motion is smooth); when nothing moves, the poses change at most FPS times a second, so the loop sleeps (a timer)
   // until the next frame's start instead of waking at the display's rate only to find nothing to draw.
   useEffect(() => {
     if (still || typeof requestAnimationFrame !== "function") return undefined;
-    let raf = 0, timer = 0, last = -1, lastFps = FPS, air = true, gone = false;
+    let raf = 0, timer = 0, last = -1, lastFps = FPS, air = true, gone = false, drawnAt = -Infinity;
     const tick = () => {
       raf = 0;
       if (gone || globalThis.document?.hidden || !scene.current) return;
       const fps = scene.current.fps || FPS;
       const ms = now(), frame = Math.floor((ms / 1000) * fps);         // the clock the trips started on
-      if (scene.current.dirty || frame !== last || fps !== lastFps || air) { scene.current.dirty = false; last = frame; lastFps = fps; air = draw(ms); }
+      const due = air && ms - drawnAt >= 1000 / AIR_FPS - 4;            // a 60/120 Hz screen: every 2nd/4th frame
+      if (scene.current.dirty || frame !== last || fps !== lastFps || due) { scene.current.dirty = false; last = frame; lastFps = fps; drawnAt = ms; air = draw(ms); }
       if (air) { raf = requestAnimationFrame(tick); return; }
       const wait = Math.max(1, Math.ceil(((frame + 1) * 1000) / fps - ms));   // until the next frame starts
       if (fps > FPS && wait <= 16) { raf = requestAnimationFrame(tick); return; }

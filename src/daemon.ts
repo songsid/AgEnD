@@ -57,6 +57,7 @@ import { legacyTmuxSocket, tmuxSocket } from "./tmux-binary.js";
 import { migrateLegacyWindow, tagWindowId } from "./tmux-legacy.js";
 import { scopedFleetConfigEnvironment } from "./web-experimental.js";
 import { readAgentFile } from "./agent-file-read.js";
+import { sendTaskWrite } from "./task-attach-client.js";
 import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, writePreview } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, isSearchProgram, summarizeProgress } from "./tool-progress.js";
@@ -12940,21 +12941,30 @@ export class Daemon extends EventEmitter {
     }
 
     if (tool === TASK_TOOL) {
-      const fleetReqId = `task_${++this.fleetRequestSeq}_${requestId}`;
-      const timeout = setTimeout(() => {
-        this.pendingIpcRequests.delete(fleetReqId);
-        respond(null, `Task operation timed out after ${daemonBudgetMs(tool) / 1000}s`);
-      }, daemonBudgetMs(tool));
-      this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
-        clearTimeout(timeout);
-        respond(respMsg.result, respMsg.error as string | undefined);
+      // One call to the fleet's task tool; resolves with its answer or an error string (never rejects).
+      const askTask = (payload: Record<string, unknown>) => new Promise<{ result?: unknown; error?: string }>((resolve) => {
+        const fleetReqId = `task_${++this.fleetRequestSeq}_${requestId}`;
+        const timeout = setTimeout(() => {
+          this.pendingIpcRequests.delete(fleetReqId);
+          resolve({ error: `Task operation timed out after ${daemonBudgetMs(tool) / 1000}s` });
+        }, daemonBudgetMs(tool));
+        this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
+          clearTimeout(timeout);
+          resolve({ result: respMsg.result, error: respMsg.error as string | undefined });
+        });
+        this.broadcastFleetMessage({
+          type: "fleet_task",
+          payload,
+          meta: { instance_name: this.name },
+          fleetRequestId: fleetReqId,
+        });
       });
-      this.broadcastFleetMessage({
-        type: "fleet_task",
-        payload: args,
-        meta: { instance_name: this.name },
-        fleetRequestId: fleetReqId,
-      });
+      // files named in `attach` are read HERE, on the agent's side (its working directory, no symlink, size-capped),
+      // and staged on the fleet in parts; the write itself then carries their ids. The fleet never opens a workspace path.
+      void (async () => {
+        const sent = await sendTaskWrite(args, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name }, askTask);
+        if (sent.staging) respond(null, sent.error); else respond(sent.answer.result, sent.answer.error);
+      })().catch((err: unknown) => respond(null, `task failed: ${err instanceof Error ? err.message : "error"}`));
       return;
     }
 

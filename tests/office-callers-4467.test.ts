@@ -46,6 +46,15 @@ describe("cardStay: a carded person stays put, a caller does not", () => {
     w.sync(to, 1000, L2);
     expect(w.at("alpha", 1000 + 600000)).toMatchObject({ x: seat.x, y: seat.y, walking: false });
   });
+  it("a rider (#4458) with the card open stays on board: the sync passes riders by, so the vehicle still carries them", () => {
+    const w = Z.createWalkers(), L = layout("idle");
+    w.ride("alpha", (now: number) => ({ x: now / 10, y: 50 }));          // a seat that moves with the clock
+    const to = new Map();
+    F.cardStay(to, { name: "alpha", state: "idle", walks: true }, null, w, 1000);
+    expect(to.get("alpha")).toEqual({ x: 100, y: 50 });                 // the stop asks for where they are now…
+    w.sync(to, 1000, L);
+    expect(w.at("alpha", 3000)).toMatchObject({ x: 300, y: 50, riding: true });   // …and the vehicle moves them on
+  });
   it("no card, a card that does not walk (the overview), or one carried: the targets are untouched", () => {
     const { w, to } = setUp("idle"), was = new Map(to);
     F.cardStay(to, null, null, w, 1000);

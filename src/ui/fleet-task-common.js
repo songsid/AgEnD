@@ -127,7 +127,7 @@ register("tasks", {
     goal: "目標", goalHint: "為什麼做、做完是什麼樣子", scope: "範圍", scopeHint: "做：…／不做：…",
     definitionHint: "一行一項：能客觀判斷是否達成的條件", acceptanceHint: "一行一項",
     context: "背景", contextHint: "檔案路徑、相關卡號、已經做的決定（只放指引）",
-    assignee: "負責人", assigneeHint: "交給哪個 Agent", project: "專案", size: "大小", priority: "優先度",
+    assignee: "負責人", assigneeHint: "交給哪個 Agent", project: "專案", size: "大小", priority: "優先級",
     boardOffNote: "{0} 的任務板是關閉的：不能指派卡片給它，留言和 @ 也叫不醒它，它也收不到 [Task board] 通知。",
     boardOffCommentNote: "{0} 的任務板是關閉的，這則留言不會叫醒它。",
     boardOffWhere: "要打開：{0}（所有 Agent），或這個 Agent 自己的設定 → 進階 → 網頁儀表板權限。", boardOffWhereLink: "設定 → Agent 共用設定",
@@ -175,7 +175,7 @@ register("tasks", {
     workOutside: "不在 fleet 裡", workFailed: "讀不到工作清單：{0}", workJoin: "、",
     detailsBoard: "任務看板",
     // 快速建立（fleet-task-create.js）
-    quickHint: "只要標題就能建立，其他欄位建立後在卡片上補。", moreOptions: "更多選項", createMore: "專案、負責人與優先度",
+    quickHint: "只要標題就能建立，其他欄位建立後在卡片上補。", moreOptions: "更多選項", createMore: "專案、負責人與優先級",
   },
 });
 

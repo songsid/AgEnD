@@ -81,8 +81,8 @@ const dirs: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 describe("SKIN_LIMITS: a pack for a whole fleet (#2632)", () => {
-  it("the limits: 220 files and 42 MiB a pack; 4 MiB a file, 4096 px a side, 16 Mpx a picture, 64 Mpx a pack (unchanged: #4383 keeps the proven cap)", () => {
-    expect(SKIN_LIMITS).toMatchObject({ files: 220, packBytes: 42 * MiB, fileBytes: 4 * MiB, side: 4096, pixels: 16 * MiB, packPixels: 64 * MiB });
+  it("the limits: 220 files and 42 MiB a pack; 4 MiB a file, 5120 px a side, 16 Mpx a picture, 64 Mpx a pack (unchanged: #4383 keeps the proven cap)", () => {
+    expect(SKIN_LIMITS).toMatchObject({ files: 220, packBytes: 42 * MiB, fileBytes: 4 * MiB, side: 5120, pixels: 16 * MiB, packPixels: 64 * MiB });
   });
   it("files: 220 pass; 221 are skin_too_many_files", () => {
     const r = checkSkinUpload(manyFiles(SKIN_LIMITS.files), "me", 1);

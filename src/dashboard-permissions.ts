@@ -234,6 +234,15 @@ export function withTaskCardRef(cli: string): string {
   return cli.replaceAll(TASK_CARD_REF_SLOT, TASK_CARD_REF_HINT);
 }
 
+/**
+ * how an agent reports on a card. The person reads the CARD (its result, its timeline, its files), not the agent's chat
+ * or a path on its machine — an agent once finished with "design document: /data/workspaces/planner/design.md" and the person
+ * could open nothing. Written once, told once to an agent already running (agent-whats-new.ts); the rule itself is in the
+ * built-in workflow's Progress Tracking, the `task-board` skill and the CLI reference's `attach` line. Not in the tool's
+ * description, whose size is pinned (tests/task-card-ref-hint.test.ts).
+ */
+export const TASK_REPORT_HINT = "Report ON the card, not only in chat: a short Markdown `result` (what was done, how it was checked), the content as a comment (what it is, how to open it), and the finished file (`attach`: the one thing to open, not the source). A path on your machine is not delivery: the person cannot open it.";
+
 /** (b) What an agent is told when the person switches the task board on for it (its tool list follows at once). */
 export const TASK_BOARD_ON_NOTICE = "[Task board] The person switched the task board on for you: the `task` tool is in your tool list now. "
   + "Start with `task mine` (your work on the board); open a main task for multi-step work you are asked for, split it into sub tasks, "

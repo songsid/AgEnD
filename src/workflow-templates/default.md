@@ -22,6 +22,7 @@ Use the **Task Board** (`task` tool) for multi-step work:
 - One board card in progress at a time: finish it, or block it with the question, before starting the next
 - A `[Task board]` notice is news on your cards (assigned, sent back, answered, ready to start, a question on a card you handed out, one waiting for your confirmation): read and act on the card with the `task` tool; it needs no chat reply or acknowledgment
 - Other instances can check your task board for status instead of asking
+- Report ON the card, not only in chat: a short Markdown `result`, the content as a comment (what it is, how to open it), and the finished file with `attach` — one file, not the source (a web prototype is one `.html`). A path on your machine is not delivery
 
 ## Context Protection
 
