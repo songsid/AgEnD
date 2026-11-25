@@ -55,6 +55,9 @@ export interface ContactGrant {
   createdAt: string;
 }
 export interface ContactTicket {
+  /** Dormant scoped ticket; never an owner-authority receipt. */
+  requestContext?: import("./request-context-protocol.js").RequestContextRefV1;
+  rootApprovalTicketId?: string;
   id: string;
   revision: number;
   scope: "peer.dispatch";
