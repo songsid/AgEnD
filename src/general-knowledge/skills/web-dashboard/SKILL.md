@@ -390,6 +390,9 @@ values reloaded after Save. Password fields keep the browser's behaviour.
 
 `/ui/fleet/<tab>`: **Tasks**, **Schedules**, **Teams**, **Org chart**, **Cache**, plus a **Docs** link
 (`/ui/fleet/config` leads to Settings → Shared agent settings: each of its settings lives in Settings, #2347).
+On a phone (#4453) Fleet's header is two rows: ☰ and the page's name, then every Fleet tab (Tasks, Schedules, Teams,
+Org chart, Cache, Usage, Authorizations, Host health) as an icon across the width — tap one; its name is the icon's
+label for a screen reader. On a very narrow phone (under 352 px) the icons are two rows of four. Nothing scrolls off.
 The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet tab open the Fleet tab this device used last
 (`agend_last_fleet_tab`; the Org chart the first time). The sidebar has no separate Fleet (Details) or View row.
 - **Tasks** — the task board: Home lists **projects** (with % done) and what waits for the person (**Confirm** /

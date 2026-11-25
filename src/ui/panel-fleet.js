@@ -24,6 +24,7 @@ import { ContactAuthorizations } from "./contact-authorizations.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
+import { TabIcon } from "./fleet-tab-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
@@ -105,7 +106,8 @@ const DOCS_SITE = "https://songsid.github.io/AgEnD";
 export function docsUrl(language = lang()) {
   return `${DOCS_SITE}${language === "zh-TW" ? "/zh-tw" : ""}/docs/web-guide/`;
 }
-const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", usage: "chart", authorizations: "key", "host-health": "chart" };
+// M-3722: one icon each (a phone's tabs are icons only): Cache, Usage and Host health no longer share "chart" (fleet-tab-icons.js).
+const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "database", usage: "gauge", authorizations: "key", "host-health": "pulse" };
 const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"];
 
 async function api(method, path, body, lease) {
@@ -232,7 +234,7 @@ export function FleetPanel({ route, navKey }) {
     else if (a.left < n.left) nav.scrollLeft -= n.left - a.left;
   }, [phone, tab, admin, wide]);
   const tabs = (cls) => html`<nav data-trust="panel-navigation" class=${cls} aria-label=${t("fleet.title")}>${visibleTabs.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
-    aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>`;
+    aria-current=${k === tab ? "page" : undefined}><${TabIcon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>`;
   return html`<div ref=${root} data-effect-panel="fleet" class="panel p-fleet">
     ${/* M-2542: the tabs share the title row (PanelHeader's nav slot, as the instance tabs do) when everything fits
          there (useTabsInHeader), saving a line; otherwise — a phone, a narrow window, a long host memory warning — they
@@ -240,8 +242,10 @@ export function FleetPanel({ route, navKey }) {
          and chosen here rather than by CSS: a previous release's app.css, cached in an open tab, has no rule for the
          header slot — this way either stylesheet lays both out (smoke-2542 SKEW). */ ""}
     ${/* M-3166 (Argon 5, the user's OK of round 2): a phone's Fleet is two rows — its tabs in the header's row (☰, then the
-         tabs; the title, search, docs and text size give way: app.css), then the page's own tools. */ ""}
-    <${PanelHeader} title=${t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : phone ? tabs("seg fleet-phone-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
+         tabs; the title, search, docs and text size give way: app.css), then the page's own tools.
+         M-3722: eight tabs no longer fit beside ☰ at 390 px (Authorizations, Host health). On a phone the header is ☰ and
+         this page's name, then every tab as an icon, each a whole touch target (app.css): nothing scrolls off. */ ""}
+    <${PanelHeader} title=${phone && !wide ? t(`fleet.${tab}`) : t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : phone ? tabs("seg fleet-phone-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
     ${wide || phone ? null : tabs("seg fleet-tabs-row")}
     <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "tasks" || tab === "org" || tab === "cache" || tab === "usage" || tab === "authorizations" || tab === "host-health" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;

@@ -516,6 +516,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   blit(p.layers.back);
   T();
   const speakers = [], tags = [], titleBoxes = [];             // M-3539: the area names bubbles keep off too
+  const titleDraws = [];                                         // M-3722: and redrawn over a bubble's tail that crosses one
   const up = still ? [] : p.flights.frame(ms, p.L);
   // Mail from another office (#2564): flying in at the door, or on the floor until its person picks it up.
   const post = still || !p.mail || !p.zones ? [] : p.mail.frame(ms > 0 ? ms : now(), p.L, p.walkers);
@@ -665,7 +666,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const crowded = (q) => over.has(q.d.area) && !pinned(q);
     const tagged = (q) => pinned(q) || !(tagsOff || over.has(q.d.area));
     const keep = [...titles.map((x) => x.box), ...(env.keepClear || [])];
-    titleBoxes.push(...titles.map((x) => x.box));
+    titleBoxes.push(...titles.map((x) => x.box)); titleDraws.push(...titles);
     const taken = [];
     const touches = (b) => taken.some((o) => overlaps(b, o)) || keep.some((o) => overlaps(b, o));
     // Under an open card (`p.cover`, bitmap px; #4379 review): no tag, its level badge included, rather than a piece of one
@@ -797,27 +798,33 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const ar = b && sk.ownCharacters && p.zones && sp.area != null ? p.L.areas && p.L.areas[sp.area] : null;
     if (ar && ar.rect) { const bx = bubbleBox(ctx, sp.x, sp.y, b.text), min = ar.rect.y + BUBBLE_IN_AREA; if (bx.y < min) sp = { ...sp, y: sp.y + (min - bx.y) }; }
     if (b) bubbles.push({ key: sp.look.name, area: sp.area, state: sp.look.state, calling: CALLING.has(sp.look.state), rank: own ? 0 : scText ? 1 : bubbleRank(sp.look.state), shown: b.shown, ...(raSays ? { keep: true } : {}),
-      box: bubbleBox(ctx, sp.x, sp.y, b.text), tail: { x: sp.x, y: sp.y }, sp, b });
+      box: bubbleBox(ctx, sp.x, sp.y, b.text), ...(CALLING.has(sp.look.state) ? { flipBox: bubbleBox(ctx, sp.x, sp.y, b.text, 0, true) } : {}), tail: { x: sp.x, y: sp.y }, sp, b });
   }
   // A crowded area speaks less (thinBubbles: calls, then work, a few at most); no bubble covers a name tag. `defer`
   // (All offices): drawn after every tile, unclipped, so a bubble at a tile's edge is whole.
   // M-3648: an area's name blocks chatter; a call may cover it (placeBubbles' `soft`): a name never keeps a call out.
-  const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags, titleBoxes);
+  // M-3722: and 3 px of air off a name, not just its plate (a call beside 求救區 touched its corner). A number here, not an
+  // import: a page still holding the older fleet-office-zones.js keeps linking (it just ignores it).
+  const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags, titleBoxes, 3);
   // M-3533 R2c: and after placing (which lifts a bubble clear of another), a room character's bubble still stays in its area.
-  const inArea = (sp, text, dy) => {
+  const inArea = (sp, text, dy, flip) => {
     const ar = sk.ownCharacters && p.zones && sp.area != null ? p.L.areas && p.L.areas[sp.area] : null;
     if (!ar || !ar.rect || !dy) return dy;
-    const over = ar.rect.y + BUBBLE_IN_AREA - bubbleBox(ctx, sp.x, sp.y, text, -dy).y;
+    const over = ar.rect.y + BUBBLE_IN_AREA - bubbleBox(ctx, sp.x, sp.y, text, -dy, flip).y;
     return over > 0 ? Math.max(0, dy - over) : dy;
   };
-  const say = () => { T(); for (const { sp, b, dy: lifted } of placed) {
-    const text = [...b.text].slice(0, b.shown).join(""), dy = inArea(sp, b.text, lifted);
-    sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy);
+  const say = () => { T(); const tails = []; for (const { sp, b, dy: lifted, flip = false } of placed) {
+    const text = [...b.text].slice(0, b.shown).join(""), dy = inArea(sp, b.text, lifted, flip);
+    sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy, flip);
+    if (text) { const box = bubbleBox(ctx, sp.x, sp.y, text, -dy, flip); tails.push({ x: sp.x - 1, y: box.y + box.h, w: 9, h: Math.max(0, sp.y - (box.y + box.h)) }); }
     if (bubbleHits && text) {
-      const box = bubbleBox(ctx, sp.x, sp.y, text, -dy);
+      const box = bubbleBox(ctx, sp.x, sp.y, text, -dy, flip);
       bubbleHits.push({ name: sp.look.name, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
     }
   }
+  // M-3722: a bubble keeps its box off an area's name (placeBubbles); a tail that still crosses one has the name written
+  // again over it (as over a figure standing on it, M-3539), so the name always reads whole.
+  if (sk.drawAreaTitle) for (const { ar, box } of titleDraws) if (tails.some((t) => overlaps(t, box))) sk.drawAreaTitle(ctx, ar, env);
   const bl = sk.pack && sk.pack.dialogBox ? sk.pack.dialogBox.bubble : null;
   const im = bl && bl.frame && typeof sk.picture === "function" ? sk.picture(bl.frame, () => {}) : null;
   for (const { sp, said } of replies) {
