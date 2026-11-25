@@ -64,16 +64,15 @@ describe("M-3770 1.4: the card on the banner", () => {
     let info = ADMIN();
     answer = r => (r.url === "/ui/update" ? { body: info } : r.url === "/ui/update/answer" ? { body: { card: CARD({ state: "waiting-idle", waitingFor: ["Example helper", "writer"], waitingSince: Date.now() }) } } : undefined);
     await mountShell();
-    expect(text()).toContain("AgEnD v2.4.1 is ready (you have v2.4.0).");
-    expect(text()).toContain("Your agents finish what they're doing first, then AgEnD restarts for a few minutes and they carry on.");
-    expect(text()).toContain("If the new version doesn't start, AgEnD tries to put v2.4.0 back; if it can't, it tells you how to recover.");
+    expect(text()).toContain("AgEnD 2.4.1 is ready.");
+    expect(text()).toContain("Your work continues; if it won't start, AgEnD rolls back to 2.4.0.");
     expect(["Update when idle", "Pick a time", "Not now"].every((b) => !!button(b))).toBe(true);
     expect(button("Later")).toBeUndefined();                                  // the per-browser Later is gone with the card
     await press("Update when idle");
     await vi.waitFor(() => expect(answers().length).toBe(1));
     expect([answers()[0]!.body, typeof answers()[0]!.key]).toEqual([{ action: "when-idle" }, "string"]);
     await settle(6);
-    expect(text()).toContain("Updating to v2.4.1 as soon as your agents are idle.");
+    expect(text()).toContain("Updating to 2.4.1 as soon as your agents are idle.");
     expect(text()).toContain("Waiting for: Example helper, writer");
     expect(["Update now", "Pick a time", "Cancel"].every((b) => !!button(b))).toBe(true);
     void info;
@@ -81,13 +80,14 @@ describe("M-3770 1.4: the card on the banner", () => {
   it("the second sentence only where it is true: not a service → no way back; no pre-flight yet → none", async () => {
     answer = r => (r.url === "/ui/update" ? { body: ADMIN({ preflight: { ...SELF, class: "admin-only", checks: [{ id: "P3", ok: false, code: "not-service" }] } }) } : undefined);
     await mountShell();
-    expect(text()).toContain("There's no automatic way back on this setup");
-    expect(text()).not.toContain("tries to put");
+    expect(text()).toContain("This setup can't restart AgEnD on its own");
+    expect(text()).not.toContain("rolls back");
     await p.unmount(); upd.updateStore.set({ info: null });
     answer = r => (r.url === "/ui/update" ? { body: ADMIN({ preflight: null }) } : undefined);
     await mountShell();
-    expect(text()).not.toContain("tries to put");
-    expect(text()).not.toContain("no automatic way back");
+    expect(text()).toContain("Your work continues.");
+    expect(text()).not.toContain("rolls back");
+    expect(text()).not.toContain("can't restart");
     expect(!!button("Update when idle")).toBe(true);                         // no pre-flight yet: as today, the admin may press
   });
   it("pressHere false (P4 no-write): no update button, the words to do it by hand; Not now stays", async () => {
@@ -96,7 +96,9 @@ describe("M-3770 1.4: the card on the banner", () => {
     await mountShell();
     expect(button("Update when idle")).toBeUndefined();
     expect(button("Pick a time")).toBeUndefined();
-    expect(text()).toContain("Updating needs write access to /usr/local/lib/node_modules. Run sudo agend update in a terminal on that computer");
+    expect(text()).toContain("AgEnD can't update itself on this machine; update it by hand.");
+    expect(p.root.querySelector(".update-line details.uc-how summary")?.textContent).toBe("How to update");
+    expect(p.root.querySelector(".update-line details.uc-how")?.textContent).toContain("Run sudo agend update in a terminal on that computer");
     expect(!!button("Not now")).toBe(true);
   });
   it("a pin (card null) hides the offer — the old per-browser line never comes back on a card server", async () => {
@@ -114,12 +116,12 @@ describe("M-3770 1.4: the card on the banner", () => {
     let card: any = CARD();
     answer = r => (r.url === "/ui/update" ? { body: ADMIN({ card }) }
       : r.url === "/ui/update/answer" && r.body.action === "not-now" ? { body: { card: (card = CARD({ state: "not-now", notNowUntil: Date.now() + 7 * 864e5 })) } }
-      : r.url === "/ui/update/answer" ? { status: 412, body: { key: "preflight", preflight: { class: "stop", checkedAt: 2, pressHere: false, checks: [{ id: "P6", ok: false, code: "low-disk", detail: { need: "900 MB", have: "210 MB", path: "/home" } }] } } }
+      : r.url === "/ui/update/answer" ? { status: 412, body: { key: "preflight", preflight: { class: "admin-only", checkedAt: 2, pressHere: false, checks: [{ id: "P4", ok: false, code: "no-write", detail: { path: "/opt/npm" } }] } } }
       : undefined);
     await mountShell();
     await press("Update when idle");
-    await vi.waitFor(() => expect(p.document.body.textContent).toContain("Updating needs about 900 MB free on /home; there's 210 MB."));
-    expect(upd.updateStore.get().info.preflight.class).toBe("stop");
+    await vi.waitFor(() => expect(p.document.body.textContent).toContain("Updating needs write access to /opt/npm."));
+    expect(upd.updateStore.get().info.preflight.class).toBe("admin-only");
     expect(button("Update when idle")).toBeUndefined();                       // pressHere false now
     await press("Not now");
     await vi.waitFor(() => expect(answers().some((a) => a.body.action === "not-now")).toBe(true));
@@ -146,10 +148,30 @@ describe("M-3770 1.4: the card on the banner", () => {
     await vi.waitFor(() => expect(answers().length).toBe(1));
     expect(answers()[0]!.body).toEqual({ action: "pick-time", at: uc.nextAt(22) });
     await settle(6);
-    expect(text()).toContain("Updating to v2.4.1 at");
+    expect(text()).toContain("Updating to 2.4.1 at");
+    expect(text()).toContain("when your agents are idle.");
     await press("Cancel");
     await vi.waitFor(() => expect(answers().length).toBe(2));
     expect(answers()[1]!.body).toEqual({ action: "cancel" });
+  });
+});
+
+describe("M-3770 1.4: the leader's copy pass", () => {
+  it("waiting names at most two agents, then +N", async () => {
+    answer = r => (r.url === "/ui/update" ? { body: ADMIN({ card: CARD({ state: "waiting-idle", waitingFor: ["A", "B", "C", "D", "E"] }) }) } : undefined);
+    await mountShell();
+    expect(text()).toContain("Waiting for: A, B +3");
+    expect(text()).not.toContain("C, D");
+  });
+  it("can't update here (class stop): no banner line; Needs you holds the one line", async () => {
+    answer = r => (r.url === "/ui/update" ? { body: ADMIN({ preflight: { class: "stop", checkedAt: 1, pressHere: false, checks: [{ id: "P9", ok: false, code: "container" }] } }) } : undefined);
+    await mountShell();
+    expect(line()).toBeNull();
+  });
+  it("Tomorrow morning is always tomorrow's 08:00, never a morning that has begun", () => {
+    const night = new Date(2026, 10, 26, 1, 0, 0);
+    const d = new Date(uc.tomorrowAt(8, night));
+    expect([d.getDate(), d.getHours()]).toEqual([27, 8]);
   });
 });
 
@@ -164,8 +186,8 @@ describe("M-3770 1.4: Settings → Version and update", () => {
     const card = () => p.root.querySelector(".s-update")?.textContent ?? "";
     expect(card()).toContain("You chose Not now. The card comes back on");
     expect(card()).toContain("Updates on this machine");
-    expect(card()).toContain("Updates here need you: AgEnD can't bring itself back on its own.");
-    expect(card()).toContain("Lingering is off for example");
+    expect(card()).toContain("Updates here need you:");
+    expect(card()).toContain("AgEnD stops when example signs out (lingering is off), so it can't restart itself.");
     expect(card()).toContain("Don't update during");
     expect(p.root.querySelectorAll(".uc-pause-row").length).toBe(1);
     expect(button("Update when idle")).toBeDefined();                         // not-now: the admin can still answer here
@@ -212,6 +234,8 @@ describe("M-3770 1.4: the words", () => {
     expect(await mount(ADMIN())).toBe("");
     expect(await mount(ADMIN({ card: CARD({ state: "not-now" }) }))).toBe("");
     expect(await mount(ADMIN({ card: CARD({ state: "failed", failed: { cause: "network", rolledBack: true } }) }))).toContain("Update failed: the update source could not be reached.");
-    expect(await mount(ADMIN({ preflight: { class: "stop", checkedAt: 1, pressHere: false, checks: [{ id: "P9", ok: false, code: "container" }] } }))).toContain("AgEnD runs in a container; update the image.");
+    const one = await mount(ADMIN({ preflight: { class: "stop", checkedAt: 1, pressHere: false, checks: [{ id: "P9", ok: false, code: "container" }] } }));
+    expect(one).toContain("AgEnD runs in a container; update the image.");
+    expect(one).not.toContain("can't update itself on this machine");                // one line, not a title plus the reason
   });
 });

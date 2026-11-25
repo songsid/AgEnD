@@ -12,21 +12,22 @@ import { toast } from "./ui-toast.js";
 
 register("updatecard", {
   en: {
-    ready: "AgEnD v{0} is ready (you have v{1}).",
-    continues: "Your agents finish what they're doing first, then AgEnD restarts for a few minutes and they carry on.",
-    backPhase1: "If the new version doesn't start, AgEnD tries to put v{0} back; if it can't, it tells you how to recover.",
-    noWayBack: "There's no automatic way back on this setup: if the new version doesn't start, start AgEnD again (Settings shows how).",
+    ready: "AgEnD {0} is ready.",
+    continues: "Your work continues.",
+    backPhase1: "Your work continues; if it won't start, AgEnD rolls back to {0}.",
+    noWayBack: "Your work continues. This setup can't restart AgEnD on its own, so check on it after the update.",
+    howTo: "How to update", pressOnlyLine: "AgEnD can't update itself on this machine; update it by hand.", more: "+{0}",
     whenIdle: "Update when idle", pickTime: "Pick a time", notNow: "Not now", updateNow: "Update now", cancel: "Cancel",
-    waiting: "Updating to v{0} as soon as your agents are idle.", waitingFor: "Waiting for: {0}", waitingSince: "Waiting since {0}",
-    scheduled: "Updating to v{0} at {1}, once your agents are idle then.", notNowUntil: "You chose Not now. The card comes back on {0}.",
-    starting: "Starting the update to v{0}…", cantTitle: "AgEnD can't update itself on this machine.", pressOnly: "Update this machine yourself:",
+    waiting: "Updating to {0} as soon as your agents are idle.", waitingFor: "Waiting for: {0}", waitingSince: "Waiting since {0}",
+    scheduled: "Updating to {0} at {1}, when your agents are idle.", notNowUntil: "You chose Not now. The card comes back on {0}.",
+    starting: "Starting the update to {0}…", cantTitle: "AgEnD can't update itself on this machine.",
     nowTitle: "Update now?", nowBody: "{0} agents are working. They stop for a few minutes while AgEnD restarts, then pick up where they were.",
     nowBodyIdle: "AgEnD restarts for a few minutes; your agents pick up where they were.", nowGo: "Update now",
-    pickTitle: "When should AgEnD update?", pickTonight: "Tonight", pickMorning: "Tomorrow morning", pickThisMorning: "This morning", pickOther: "Another time",
+    pickTitle: "When should AgEnD update?", pickTonight: "Tonight", pickMorning: "Tomorrow morning", pickOther: "Another time",
     pickHint: "It still waits until your agents are idle at that time. Within the next 7 days.", pickGo: "Schedule", pickBad: "Pick a time in the next 7 days.",
     changed: "The update changed while you were looking. Here it is again.", running: "An update is already running.",
     failedAnswer: "That didn't work: {0}",
-    machine: "Updates on this machine", self: "AgEnD can update itself here.", adminOnly: "Updates here need you: AgEnD can't bring itself back on its own.",
+    machine: "Updates on this machine", self: "AgEnD can update itself here.", adminOnly: "Updates here need you:",
     stop: "AgEnD can't update here until this is fixed.", notChecked: "not checked yet", checking: "Not checked yet: it's checked when AgEnD starts and once a day.",
     pauseTitle: "Don't update during", pauseHint: "Days and hours when AgEnD never updates (a waiting update waits for the window to end).",
     pauseAdd: "Add a time", pauseRemove: "Remove", from: "From", to: "To", save: "Save", saved: "Saved.", saveFailed: "Couldn't save: {0}",
@@ -41,7 +42,7 @@ register("updatecard", {
     c_unknown_owner: "AgEnD can't prove which install runs this fleet. Restart it as a service and check again.",
     c_other_install: "Another AgEnD install lives under this user. Updating one could affect the other.",
     c_not_service: "AgEnD isn't running as a service, so it can't bring itself back after an update.",
-    c_linger_off: "Lingering is off for {user}, so the service stops when they sign out.",
+    c_linger_off: "AgEnD stops when {user} signs out (lingering is off), so it can't restart itself.",
     c_system_unit_not_root: "AgEnD runs as a system service; updating it needs root.",
     c_unit_reload_pending: "The service definition changed and hasn't been reloaded. Run systemctl --user daemon-reload.",
     c_no_write: "Updating needs write access to {path}. Run sudo agend update in a terminal on that computer, or reinstall with the one-line installer.",
@@ -57,21 +58,22 @@ register("updatecard", {
     c_other: "A check didn't pass ({0}).",
   },
   "zh-TW": {
-    ready: "AgEnD v{0} 已可更新（目前 v{1}）。",
-    continues: "Agent 會先把手上的事做完，接著 AgEnD 重新啟動幾分鐘，之後繼續工作。",
-    backPhase1: "新版沒有正常啟動的話，AgEnD 會嘗試回到 v{0}；回不去時會告訴你怎麼處理。",
-    noWayBack: "這台機器的設定無法自動退回：新版沒有正常啟動的話，請再啟動一次 AgEnD（設定裡有說明）。",
-    whenIdle: "閒下來時更新", pickTime: "選個時間", notNow: "先不要", updateNow: "立即更新", cancel: "取消",
-    waiting: "Agent 一閒下來就更新到 v{0}。", waitingFor: "正在等：{0}", waitingSince: "從 {0} 開始等",
-    scheduled: "{1} 更新到 v{0}（屆時 Agent 閒下來才開始）。", notNowUntil: "你選了「先不要」，{0} 會再提醒。",
-    starting: "正在開始更新到 v{0}…", cantTitle: "AgEnD 無法在這台機器上自行更新。", pressOnly: "請自行更新這台機器：",
+    ready: "AgEnD {0} 可以更新了。",
+    continues: "工作不會中斷。",
+    backPhase1: "工作不會中斷；新版起不來會自動退回 {0}。",
+    noWayBack: "工作不會中斷。這台機器無法自行重新啟動 AgEnD，更新後請確認一下。",
+    howTo: "如何更新", pressOnlyLine: "這台機器上 AgEnD 無法自行更新，請手動更新。", more: "+{0}",
+    whenIdle: "閒置時更新", pickTime: "選個時間", notNow: "先不要", updateNow: "立即更新", cancel: "取消",
+    waiting: "Agent 一閒置就更新到 {0}。", waitingFor: "正在等：{0}", waitingSince: "從 {0} 開始等",
+    scheduled: "{1} 更新到 {0}（等 Agent 閒置時）。", notNowUntil: "你選了「先不要」，{0} 會再提醒。",
+    starting: "正在開始更新到 {0}…", cantTitle: "AgEnD 無法在這台機器上自行更新。",
     nowTitle: "立即更新？", nowBody: "有 {0} 個 Agent 正在工作。AgEnD 重新啟動時會停下幾分鐘，之後從原處繼續。",
     nowBodyIdle: "AgEnD 會重新啟動幾分鐘，Agent 之後從原處繼續。", nowGo: "立即更新",
-    pickTitle: "要在什麼時候更新？", pickTonight: "今晚", pickMorning: "明天早上", pickThisMorning: "今天早上", pickOther: "其他時間",
-    pickHint: "到了那個時間，仍會等 Agent 閒下來才開始。可選未來 7 天內。", pickGo: "排定", pickBad: "請選未來 7 天內的時間。",
+    pickTitle: "要在什麼時候更新？", pickTonight: "今晚", pickMorning: "明天早上", pickOther: "其他時間",
+    pickHint: "到了那個時間，仍會等 Agent 閒置才開始。可選未來 7 天內。", pickGo: "排定", pickBad: "請選未來 7 天內的時間。",
     changed: "這個更新剛剛有變動，以下是最新狀態。", running: "已經有一個更新在進行中。",
     failedAnswer: "沒有成功：{0}",
-    machine: "這台機器的更新", self: "AgEnD 可以在這裡自行更新。", adminOnly: "這裡需要你來更新：AgEnD 無法自行退回。",
+    machine: "這台機器的更新", self: "AgEnD 可以在這裡自行更新。", adminOnly: "這裡的更新需要你來進行：",
     stop: "這個問題解決前，AgEnD 無法在這裡更新。", notChecked: "尚未檢查", checking: "尚未檢查：AgEnD 啟動時和每天會檢查一次。",
     pauseTitle: "這些時段不更新", pauseHint: "AgEnD 絕不會在這些日子和時段更新（等待中的更新會等時段結束）。",
     pauseAdd: "新增時段", pauseRemove: "移除", from: "從", to: "到", save: "儲存", saved: "已儲存。", saveFailed: "無法儲存：{0}",
@@ -86,7 +88,7 @@ register("updatecard", {
     c_unknown_owner: "AgEnD 無法確認是哪一份安裝在執行這個 Fleet。請以服務方式重新啟動後再檢查。",
     c_other_install: "這個使用者底下還有另一份 AgEnD。更新其中一份可能影響另一份。",
     c_not_service: "AgEnD 不是以服務方式執行，更新後無法自己回來。",
-    c_linger_off: "{user} 登出時，AgEnD 的服務會跟著停止（systemd 的 lingering 未開啟）。",
+    c_linger_off: "{user} 登出時 AgEnD 會停止（lingering 未開啟），所以無法自行重新啟動。",
     c_system_unit_not_root: "AgEnD 以系統服務執行，更新需要 root。",
     c_unit_reload_pending: "服務定義已變更但尚未重新載入。請執行 systemctl --user daemon-reload。",
     c_no_write: "更新需要 {path} 的寫入權限。請在那台電腦的終端機執行 sudo agend update，或用單行安裝指令重新安裝。",
@@ -129,8 +131,13 @@ export function pressHere(info) { return !info || !info.preflight || info.prefli
 /** The card's second sentence (§3.1, Phase 1): only what is true on this machine; none before pre-flight has run. */
 export function backSentence(info) {
   const pf = info && info.preflight;
-  if (!pf || !Array.isArray(pf.checks) || !pf.checks.some((c) => c && c.id === "P3")) return null;
+  if (!pf || !Array.isArray(pf.checks) || !pf.checks.some((c) => c && c.id === "P3")) return tc("continues");
   return serviceInstall(pf) ? tc("backPhase1", info.current) : tc("noWayBack");
+}
+/** The busy agents, capped (the leader's copy pass): "A, B +3". */
+export function namesShown(names, max = 2) {
+  const list = Array.isArray(names) ? names.filter(Boolean) : [];
+  return list.length <= max ? list.join(", ") : `${list.slice(0, max).join(", ")} ${tc("more", list.length - max)}`;
 }
 
 const fmtTime = (ms) => { try { return new Date(ms).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return String(ms); } };
@@ -174,6 +181,8 @@ export function nextAt(hour, now = new Date()) {
   if (d.getTime() - now.getTime() < 30 * 60_000) d.setDate(d.getDate() + 1);
   return d.getTime();
 }
+/** hh:00 tomorrow (never a morning that has already begun or passed). */
+export function tomorrowAt(hour, now = new Date()) { const d = new Date(now); d.setDate(d.getDate() + 1); d.setHours(hour, 0, 0, 0); return d.getTime(); }
 const WEEK = 7 * 24 * 60 * 60_000;
 /** Pick a time: tonight, tomorrow morning, or another time in the next 7 days. Resolves to ms epoch or null. */
 let pickResolve = null;
@@ -186,7 +195,7 @@ export function PickTimeHost() {
   useEffect(() => { const f = () => { setChoice("tonight"); setOther(""); setOpen(true); }; pickSignal.add(f); return () => pickSignal.delete(f); }, []);
   if (!open) return null;
   const close = (v) => { setOpen(false); const r = pickResolve; pickResolve = null; if (r) r(v); };
-  const at = () => choice === "tonight" ? nextAt(22) : choice === "morning" ? nextAt(8) : (other ? new Date(other).getTime() : NaN);
+  const at = () => choice === "tonight" ? nextAt(22) : choice === "morning" ? tomorrowAt(8) : (other ? new Date(other).getTime() : NaN);
   const go = () => { const v = at(); if (!Number.isFinite(v) || v <= Date.now() || v > Date.now() + WEEK) { toast(tc("pickBad"), false); return; } close(v); };
   const radio = (id, label) => html`<label class="check uc-pick-row"><input type="radio" name="uc-pick" checked=${choice === id} onChange=${() => setChoice(id)} /><span>${label}</span></label>`;
   const min = new Date(Date.now() + 5 * 60_000), max = new Date(Date.now() + WEEK);
@@ -195,9 +204,9 @@ export function PickTimeHost() {
     actions=${html`<button type="button" class="btn" onClick=${() => close(null)}>${tc("cancel")}</button><button type="button" class="btn btn-primary" onClick=${go}>${tc("pickGo")}</button>`}>
     <div class="uc-pick">
       ${radio("tonight", `${tc("pickTonight")} · ${fmtTime(nextAt(22))}`)}
-      ${radio("morning", `${new Date(nextAt(8)).toDateString() === new Date().toDateString() ? tc("pickThisMorning") : tc("pickMorning")} · ${fmtTime(nextAt(8))}`)}
+      ${radio("morning", `${tc("pickMorning")} · ${fmtTime(tomorrowAt(8))}`)}
       ${radio("other", tc("pickOther"))}
-      ${choice === "other" ? html`<input type="datetime-local" class="input uc-pick-other" min=${local(min)} max=${local(max)} value=${other} onInput=${(e) => setOther(e.currentTarget.value)} />` : null}
+      ${choice === "other" ? html`<div class="uc-pick-frame"><input type="datetime-local" class="input uc-pick-other" min=${local(min)} max=${local(max)} value=${other} onInput=${(e) => setOther(e.currentTarget.value)} /></div>` : null}
       <p class="muted uc-pick-hint">${tc("pickHint")}</p>
     </div>
   </${Dialog}>`;
@@ -216,29 +225,30 @@ export function cardLine(info, { Line, busy, deps }) {
   const c = info && info.card;
   if (!c || !info.admin) return null;
   const press = pressHere(info), fails = failedChecks(info.preflight);
+  // "Can't update here" (class stop): one line, in one place — Needs you (the leader's copy pass), not the banner too.
+  if (info.preflight && info.preflight.class === "stop" && (c.state === "offered" || c.state === "cant")) return null;
   const btn = (label, onClick, primary = false) => html`<button type="button" class=${`btn btn-sm${primary ? " btn-primary" : ""}`} disabled=${busy} onClick=${onClick}>${label}</button>`;
   const whenIdle = () => { void answerCard({ action: "when-idle" }, deps); };
   const later = () => { void answerCard({ action: "not-now" }, deps); };
   const cancel = () => { void answerCard({ action: "cancel" }, deps); };
   const now = () => { void updateNow(info, deps); };
   const pick = () => { void pickTime(deps); };
-  const blocked = !press ? [tc(info.preflight && info.preflight.class === "stop" ? "stop" : "pressOnly"), ...fails.slice(0, 2).map((f) => checkSentence(f, c.version))] : null;
+  const how = fails.length ? html`<details class="uc-how"><summary>${tc("howTo")}</summary>${fails.map((f) => html`<p>${checkSentence(f, c.version)}</p>`)}</details>` : null;
   if (c.state === "offered") {
-    const sub = [c.notes || null, tc("continues"), backSentence(info)];
-    return html`<${Line} title=${tc("ready", c.version, info.current)} sub=${blocked ? [c.notes || null, ...blocked] : sub}>
+    const sub = press ? [backSentence(info)] : [tc("pressOnlyLine"), how];
+    return html`<${Line} title=${tc("ready", c.version)} sub=${sub}>
       ${press ? html`${btn(tc("whenIdle"), whenIdle, true)}${btn(tc("pickTime"), pick)}` : null}${btn(tc("notNow"), later)}</${Line}>`;
   }
   if (c.state === "waiting-idle") {
-    const names = Array.isArray(c.waitingFor) && c.waitingFor.length ? tc("waitingFor", c.waitingFor.join(", ")) : null;
-    return html`<${Line} spinner title=${tc("waiting", c.version)} sub=${[names, blocked ? blocked[1] : null]}>
+    const names = Array.isArray(c.waitingFor) && c.waitingFor.length ? tc("waitingFor", namesShown(c.waitingFor)) : null;
+    return html`<${Line} spinner title=${tc("waiting", c.version)} sub=${[names]}>
       ${press ? html`${btn(tc("updateNow"), now, true)}${btn(tc("pickTime"), pick)}` : null}${btn(tc("cancel"), cancel)}</${Line}>`;
   }
   if (c.state === "scheduled") {
-    return html`<${Line} icon="clock" title=${tc("scheduled", c.version, fmtTime(c.scheduledAt))} sub=${[tc("continues")]}>
+    return html`<${Line} icon="clock" title=${tc("scheduled", c.version, fmtTime(c.scheduledAt))}>
       ${press ? btn(tc("updateNow"), now) : null}${btn(tc("cancel"), cancel)}</${Line}>`;
   }
   if (c.state === "updating" && !(info.progress && info.progress.stage)) return html`<${Line} spinner title=${tc("starting", c.version)} />`;
-  if (c.state === "cant") return html`<${Line} tone="bad" icon="alert" title=${tc("cantTitle")} sub=${fails.slice(0, 2).map((f) => checkSentence(f, c.version))} />`;
   return null;
 }
 
@@ -256,7 +266,7 @@ function CardStatus({ info }) {
   if (!c) return null;
   const line = c.state === "not-now" && c.notNowUntil ? tc("notNowUntil", fmtTime(c.notNowUntil))
     : c.state === "scheduled" && c.scheduledAt ? tc("scheduled", c.version, fmtTime(c.scheduledAt))
-    : c.state === "waiting-idle" ? [tc("waiting", c.version), Array.isArray(c.waitingFor) && c.waitingFor.length ? tc("waitingFor", c.waitingFor.join(", ")) : ""].filter(Boolean).join(" ")
+    : c.state === "waiting-idle" ? [tc("waiting", c.version), Array.isArray(c.waitingFor) && c.waitingFor.length ? tc("waitingFor", namesShown(c.waitingFor)) : ""].filter(Boolean).join(" ")
     : null;
   return line ? html`<p class="uc-status" role="status">${line}</p>` : null;
 }
@@ -344,8 +354,11 @@ export function UpdateNeedsItem({ info, settingsHref }) {
   if (c.state === "failed") return html`<section class="n-group uc-needs"><div class="n-item"><strong>${t("update.failed_" + ((c.failed && c.failed.cause) || "other"))}</strong>
     <p class="muted">${c.failed && c.failed.rolledBack ? t("update.unchanged", info.current) : t("update.afterInstall")}</p>
     <a class="btn btn-sm" href=${settingsHref}>${t("app.settings")}</a></div></section>`;
-  if ((c.state === "cant" || (info.preflight && info.preflight.class === "stop")) && c.state !== "not-now") return html`<section class="n-group uc-needs"><div class="n-item"><strong>${tc("cantTitle")}</strong>
-    ${fails.slice(0, 3).map((f) => html`<p class="muted">${checkSentence(f, c.version)}</p>`)}
-    <a class="btn btn-sm" href=${settingsHref}>${t("app.settings")}</a></div></section>`;
+  // Can't update here: the reason itself is the one line (the leader's copy pass), with the way to Settings.
+  if ((c.state === "cant" || (info.preflight && info.preflight.class === "stop")) && c.state !== "not-now") {
+    const first = fails[0];
+    return html`<section class="n-group uc-needs"><div class="n-item"><strong>${first ? checkSentence(first, c.version) : tc("cantTitle")}</strong>
+      <a class="btn btn-sm" href=${settingsHref}>${t("app.settings")}</a></div></section>`;
+  }
   return null;
 }
