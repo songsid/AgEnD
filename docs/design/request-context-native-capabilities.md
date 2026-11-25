@@ -16,9 +16,9 @@ context. Provenance carries no go-ahead or human-receipt authority.
 
 | Path | Existing owner | Required binding |
 | --- | --- | --- |
-| Local daemon MCP | daemon/socket or native pane lease | Frozen C snapshot at admitted tool entry; original currentness callback through every awaited operation |
-| Windows exec | Per-turn NativeMcpRegistry grant: instance/requestId, policy, expiry, stillCurrent | Capture context when that run's grant is issued, not when a later HTTP body finishes |
-| Persistent Windows pane | hostBootId/paneId/launchId/agentId/instance plus helper/call ids | Additional originating owned-turn proof; launch identity alone cannot choose a context |
+| Local daemon MCP | daemon/socket or native pane lease | Capture at the first owned IPC hop on the CLI host, synchronously on arrival, before handleToolCall |
+| Windows exec | Per-turn NativeMcpRegistry grant: instance/requestId, policy, expiry, stillCurrent | Resolve the admitted input at claim, apply C's eligibility rules, then freeze it into that run's grant |
+| Persistent Windows pane | hostBootId/paneId/launchId/agentId/instance plus helper/call ids | Stamp at the first owned relay hop on the CLI host before body/relay waits; Fleet checks the original snapshot |
 
 Source ports: `Daemon.handlePaneToolCall` / `handleToolCall`,
 `NativeMcpRegistry` issuance and `dispatcherContext`,
@@ -29,7 +29,9 @@ Existing policy/sandbox/dashboard/tool checks stay in each currentness predicate
 ## Immutable call contract
 
 The server owns a v1 call binding: stable call key, operation id, exact tool/args
-digest, C turn token, context/root references and full runtime owner. Runtime
+digest, C turn token, context/root references and full runtime owner. The raw C
+token remains Fleet-side; an opaque proof derived from token and exact launch
+owner crosses the link. Runtime
 links additionally bind machine, connection generation and pane/run owner.
 Models supply none of these through tool arguments. The call binding is not
 placed in the human authority field or sent as a human receipt.
@@ -47,27 +49,68 @@ Sibling or new-turn callers cannot receive authority from an earlier result.
 
 ## Originating pane proof and replay
 
-Persistent pane MCP currently has no per-request context in its strict wire
-schema or replay ledger. Capturing the Fleet's current turn only when a delayed
-HTTP/remote request arrives is unsafe. D must not implement that shortcut.
+The uniform rule is: capture at the first AgEnD-owned hop on the CLI host,
+synchronously on arrival. This closes later body-read, relay and coordinator
+delay. It does not prove the interval before that first hop.
 
-A covered producer must carry a server-issued, opaque owned-turn/call proof from
-its originating request admission, before relay waits. Its issuance must be tied
-to actual owned input/turn evidence, not launch identity, a pane screenshot, text,
-correlation, or an Agent-selected id. The runtime/helper must preserve the captured
-proof across the trip. If the current producer cannot supply that proof, that
-scoped path remains not-covered and is refused; it is not assigned an owner root.
+Mint the Fleet-side snapshot/proof in C's final beforeWrite/bindRequestContextWrite
+under the pane-write lock. An HMAC over the token and exact launch owner is an
+appropriate opaque proof; never send the raw token. Carry it on the C-bound input
+write frame. The pane host installs it before writing input bytes. A steer joining
+the same turn gets the same token, so reinstalling is idempotent. C still refuses
+queued input until positive consumption is supported.
+
+On a remote pane, PaneMcpRelay.handle resolves the launch from the existing auth
+header and freezes its installed proof immediately after pending increments,
+before the asynchronous body read. Carry that stamp on the pane-host/coordinator
+MCP frame. Do not reread a newer proof after body or link waits. PaneMcpBody, the
+helper connection file and old helpers need not change. On a local daemon,
+capture in the IPC message handler before handleToolCall. At Fleet, require C's
+isCurrent on the original snapshot/owner; unstamped scoped calls are refused.
+
+Windows exec has no C input binding today. At fleet-windows-runtime.claim, resolve
+the delivery's admitted input through ports.input(inputId), applying C's same
+independent/expected-return/steer rules. Defer an independent input while another
+context is active. Freeze the selected snapshot in the per-run grant session;
+the activeId/requestId predicate and nativeAgentAdmissionContext closure retain
+it across waits. Do not add a mutable context getter. The per-run bearer itself
+identifies the run, unlike a persistent launch-wide helper.
 
 The existing helper/call-id replay identity must pin the original context and
-operation. Replaying the same call under a different turn conflicts even when
-arguments are identical. A restart/reconnect cannot recreate an active capability
+operation. Compare the new arrival's context/proof beside the existing argument
+digest check, BEFORE returning previous inFlight/results. A same-key different
+proof conflicts instead of receiving A's cached result. A restart/reconnect cannot recreate an active capability
 from historical context. An old committed result stays bound to its original
 operation; there is no automatic replay of pending/uncertain effects.
 
-Any new proof record must be committed with the native call ledger (an additive
-column/companion under its transaction), not inserted into older strict journal
-JSON. The compatibility/drain contract must cover the retained reference. Do not
-claim atomic capture if the two records are in separate independent commits.
+The persistent pane ledger is the coordinator-side per-launch launchId.mcp.json
+file owned by PaneMcpAuthorityLease. Keep version 1 and put an optional context
+reference on its prepared Call row in the SAME atomic save before run. The new
+reader validates it strictly. A missing field remains legacy and cannot acquire
+a context. The old reader preserves unknown fields and never re-dispatches a
+previous row; test that downgrade rather than bumping the ledger version.
+
+Store only contextId/rootContextId/proof digest, never full RequestContextV1 or
+actor/user ids: this ledger must retain no plaintext user input. C retain commits
+the context before calls can be stamped, so no cross-store atomic transaction is
+needed. The drain contract retains referenced contexts until the live launch
+ledger is retired. Exec session.calls is in-memory per grant; restart drops the
+session and nothing replays.
+
+## Residual requiring a leader decision
+
+The CLI-to-first-hop interval is not proven or bounded by this design. For
+example, A is transcript-aborted while a tool line is still in helper stdio or
+HTTP connect; B's proof installs before that line reaches the relay, which would
+stamp it B. The same local-hop limitation must be stated for local daemon IPC.
+Exec's per-run bearer has no corresponding lookup ambiguity.
+
+Two choices remain explicit: accept this documented residual for persistent
+paths; or keep abort followed by a new independent input on the same launch
+not-covered until helper calls carry originating per-turn identity. The latter
+requires a fresh launch before installing a replacement proof. No acceptance is
+assumed. The affected publication remains disabled pending the leader's decision;
+the per-run and immutable-call work can proceed independently.
 
 ## Queued input and capability negotiation
 
@@ -76,12 +119,17 @@ outside-independent input waits until its owned turn can be proved. A permitted
 steer consumed into an existing turn retains that turn's context. Bind from the
 positive owned-consumption event before enabling its tools; never switch context
 on a queue timer or arrival of a tool call. Ambiguous/missing evidence stays closed.
-The generalized backend-completion gap noted in C remains an explicit cutover
-gate; idle/window settlement and answer publication are not substituted for it.
+The end-proof dependency is also a cutover gate: C retires only a matched current
+transcript ended/aborted/error verdict with an owned end anchor. An unanchored
+turn otherwise holds the next independent input indefinitely. Provide positive
+end coverage or keep that path unavailable; idle/window settlement and answer
+publication are not substitutes.
 
 Recognize a bounded v1 runtime capability separately from readiness. Advertise or
 require it only through the internal rollout port; OFF emits no new capability.
-Both runtime and Fleet must negotiate before any scoped remote path is enabled.
+Both runtime and Fleet must negotiate the new C-bound input-write field and the
+pane-host MCP stamp field before emission. Both frame schemas are strict: old
+peers must refuse, not silently drop a field. Neither field is emitted while OFF.
 Unknown/missing versions refuse the affected operation with a concrete coverage
 reason. Old frames keep their legacy behavior only while the new flow is OFF.
 No new CLI launch refusal or sandbox claim is implied by this protocol fence.
@@ -102,19 +150,23 @@ transport owner, then prove zero A side effects under B; positive A completes
 once. Check task and delivery commit guards, response-written fences, role/config
 revocation, reconnect, call-id/context conflicts, lost ACK and no replay. Include
 old-peer negative plus OFF positive, queued-before-consumed refusal, permitted
-mid-turn steer retaining A, and ambiguous consumption refusal. Mutants must turn
+mid-turn steer retaining A, and ambiguous consumption refusal. Also force a relay
+body wait across B's installation (the request retains A), unstamped ON refusal,
+same-key/different-proof conflict before cached return, v1-ledger downgrade load
+with no dispatch, and an exec claim deferred behind active independent work. Mutants must turn
 these controls red. No live Fleet, real account/provider/model, or Windows host
 operation is authorized by this note. Fable reviews design and implementation.
 
-## Rollback and review questions
+## Rollback and review disposition
 
 Before cutover, revert the dormant integration without migration. After activation,
 keep A's barrier and drain/cancel dependent work before downgrade; do not discard
 call provenance to make an old peer work. Existing committed effects remain
 recorded, and unknown outcomes are never retried automatically.
 
-The design review must settle two concrete details before protocol implementation:
-(a) which originating pane event can mint the owned-call proof, since the current
-wire owner is launch-scoped; (b) which existing native ledger transaction owns the
-context reference so retry/crash capture is atomic. A late central context lookup
-or independent best-effort metadata write is not an acceptable fallback.
+Fable's source review at the stated baseline resolves mint/stamp and ledger
+placement as above. Its exec-input source, replay ordering, end-proof dependency,
+two-sided strict negotiation and five additional synthetic controls are adopted.
+The remaining policy decision is the pre-first-hop residual, not permission to
+implement a late central lookup. Implementation review follows on this same PR;
+no repeated design, native, browser or provider campaign is requested.
