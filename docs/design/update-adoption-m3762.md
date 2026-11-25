@@ -337,7 +337,8 @@ Both are signed and published on the docs site, mirrored as GitHub release asset
   "knownBad": [ { "id": "BAD-2026-07", "versions": ">=2.4.0-beta.21 <2.4.0-beta.23", "kind": "lockup", "summary": "…", "fixedIn": "2.4.0-beta.23", "dueAt": "…" } ],
   "hubMinMember": null,
   "cliCompat": {                            // §5.4: maintained by the daily upstream patrol, between releases
-    "claude-code": { "highImpact": [ { "version": "2.1.335", "since": "2026-11-26T03:00:00Z", "reason": "New permission prompt layout: agents may stall on it" } ] } } }
+    "claude-code": { "highImpact": [ { "version": "2.1.335", "since": "2026-11-26T03:00:00Z", "reason": "New permission prompt layout: agents may stall on it" } ],
+                     "resolved": [ { "version": "2.1.322", "reason": "…", "since": "…", "resolvedBy": "2.4.0-beta.18", "resolvedAt": "…" } ] } } }
 // releases/<channel>/<version>.json (+ .sig)
 { "package": "@songsid/agend", "version": "2.4.0-beta.25", "channel": "beta",
   "integrity": "sha512-…",                 // npm's dist.integrity for that exact tarball
@@ -447,20 +448,42 @@ Settings shows, **before any of this happens**, that "the publisher can mark a v
 The user's input, extending C and D7. The agents' CLIs (Claude Code, Codex, Kiro…) update themselves. AgEnD reads each CLI's screens, and a release it hasn't audited can stall an agent. So the signed index carries a **CLI compatibility section**, published from our GitHub on the same signing path (§5.1).
 
 **What it holds**
-- **Audited versions, per AgEnD version, per CLI**, e.g. "AgEnD 2.4.0 is adapted to claude-code ≤ 2.1.333". This is each release manifest's `auditedCli`, which the release workflow takes from that build's `src/cli-audited.ts`. It isn't edited by hand.
+- **Audited versions, per AgEnD version, per CLI**: the **exact** releases listed, e.g. AgEnD 2.4.0 has audited claude-code 2.1.316, 2.1.318, 2.1.319, 2.1.325 … 2.1.333. This is each release manifest's `auditedCli`, which the release workflow takes from that build's `src/cli-audited.ts`. It isn't edited by hand.
+  - **Covered** always means the exact version string (with its build, e.g. Muse's `-R9361.1`) is in that set. A gap between two audited versions, or another build of the same x.y.z, is **not** covered.
+  - "Newer than this build has checked" means newer than the highest audited version (§5.2, T3).
 - **Known high-impact** (`cliCompat.<cli>.highImpact`): CLI versions with a confirmed breaking change that no shipped AgEnD handles yet. Each entry has a version, the time it was raised, and a one-line reason.
   - The daily upstream patrol finds these: its precheck comes out **MAJOR (hard > 0)** while the full audit isn't merged.
   - The leader marks it: "claude-code 2.1.335: major changes, not yet supported".
 
 **How the patrol publishes a flag** (a script and a signed index update, not a release)
 1. The leader runs the **`cli-compat` workflow** (`workflow_dispatch` on our GitHub) with `cli`, `version`, `reason`, and `add` or `clear`. Its script, `scripts/release/cli-compat.mjs`:
-   - edits only `cliCompat` in the channel's index;
-   - bumps `generation` and refreshes `issuedAt` and `expiresAt`;
+   - edits only `cliCompat` in the channel's index, keeping every other field as it is;
+   - takes a strictly newer `generation` and refreshes `issuedAt` and `expiresAt`;
    - signs with the operational key that the publish workflow already holds (§5.1);
-   - publishes to the docs site and the release assets.
+   - publishes through the **one index writer** below.
 2. Nothing is built or published to npm.
-3. **Clearing happens automatically** when the audit lands and an AgEnD that audits that version ships: the release workflow removes every `highImpact` entry the new release's `auditedCli` covers. An entry can also be cleared by hand (`clear`), for example if the change turns out harmless.
-4. Every change is public and attributable: it lands as a commit on the site's `releases/` path, with the reason.
+3. **Resolving keeps the history.** When the audit lands and an AgEnD that audits that exact version ships, the release workflow **moves** the entry from `highImpact` to `resolved`: `{ version, reason, since, resolvedBy: "2.4.1", resolvedAt }`. It isn't deleted.
+   - An entry can also be resolved by hand (`clear`, `resolvedBy: null`, "not a break after all"). That is the only case that ends every fleet's warning.
+   - Resolved entries are kept for 180 days, or as long as any release that doesn't cover them is still in `releases`.
+4. **The fleet judges against its own build**, not against the list's current state.
+   - A CLI version that is in `highImpact` **or** `resolved` (with a `resolvedBy`), and is **not** in the running build's `auditedCli`, still gets the confirmed notice.
+   - If the release that resolves it is an eligible target here (§5.2's target rule), the notice offers **Update when idle**.
+   - If it isn't eligible (it needs a newer Node, another platform…), the notice says so and offers the way back: "AgEnD 2.5.0 supports Claude Code 2.1.335, but needs Node 22.14 (this machine has 20.11): go back to Claude Code 2.1.333, or update Node."
+   - So an older fleet that can't take the fix is never silenced by the fix shipping. That is the case of a break only one release past its own audit, below the T3b distance.
+5. Every change is public and attributable: it lands as a commit on the site's `releases/` path, with the reason.
+
+**One index writer, serialized** (the release workflow and the `cli-compat` workflow both write the channel index):
+- **One source of truth.** The authoritative index is the commit on the site repository's default branch (`releases/<channel>/index.json` + `.sig`). The release-asset copy is derived from that commit afterwards, never written on its own. Clients may fetch either mirror; both serve the same bytes for a generation, and a client refuses a generation whose digest differs from one it has seen (§5.1).
+- **Compare-and-swap.**
+  - Both workflows share one GitHub Actions `concurrency` group per channel (`release-index-<channel>`, never cancelled in progress). Each:
+    1. reads the current index at the branch's head commit;
+    2. checks its signature and epoch;
+    3. applies only its own change (the release: `latest`, `releases`, `floor`, `knownBad`, and resolving `cliCompat`; the flag workflow: `cliCompat` alone);
+    4. sets `generation` = current + 1;
+    5. signs;
+    6. pushes **with the head it read as the expected parent**.
+  - If the branch moved (another writer won), the push is refused, and the writer re-reads, re-applies its change to the new index and tries again. A stale copy is never published.
+  - So two writers can never publish different content under one generation, and a new client can never receive an older floor than the one already published.
 
 **What a fleet does with it** (the daily check, §1.1, and on the first start after an update)
 
@@ -489,7 +512,9 @@ zh-TW:
 - The CLI's row in **Accounts** (and the Runtime page for a paired PC) shows a small badge: "can get stuck with this AgEnD" for a confirmed break, "newer than this AgEnD has checked" otherwise. It links to the item or the card.
 - **General** is told with one fleet-context line while a confirmed item is open, so an agent asked "why is Claude stuck?" can point to it.
 
-**Under *Ask me*** these are notices only. A supporting AgEnD is offered on the card as usual; it schedules itself only under *Automatically when idle* (D7). A high-impact flag is **never** a required update (T1/T2), so it can never force an install. Its worst case, even from a stolen key, is a misleading notice.
+**Under *Ask me*** these are notices only. A supporting AgEnD is offered on the card as usual; it schedules itself only under *Automatically when idle* (D7).
+- **Flags never add scheduling authority.** A flag is never a required update (T1/T2). Any automatic update it leads to still needs §5.2's ledger-based target rule **and** the admin's *Automatically when idle* policy.
+- **The trust boundary is the key's, not the field's.** A deliberately false flag on its own produces only a misleading notice. But the operational key that signs flags signs **the whole index**, including the floor and `knownBad`. So a compromise of that key is §5.1's whole-key boundary (forced updates to published releases, rate-limited, recovered by a new trust epoch), not "a notice".
 
 **Offline and fail-safe**
 - **Index verified within its validity:** as above.
@@ -607,3 +632,6 @@ A rehearsal (like S-233's) proves phases 2–4 on real installs: a forced trial 
 | Offline fallback | §5.4: cached and labelled "as of"; with no index, only the local rule from this build's ledger |
 | Who raises a flag | D10 |
 | Lumen's review of §5.4 | Needs you only for a confirmed break, closable (Got it); "Go back to 2.1.333" as the item's action; the plain effect and the agents' names; "AgEnD's publisher flagged…"; zh wording for the confirmed case |
+| Prism R4-1: two index writers | §5.4: one index writer: the site repo commit is the source of truth; a shared concurrency group; compare-and-swap on the parent commit; rebase on conflict; generation strictly +1 |
+| Prism R4-2: resolving without silencing older fleets; exact coverage | §5.4: `resolved` history with `resolvedBy`, judged against the running build's exact `auditedCli`; an ineligible fix gets the way back; "covered" = the exact version/build |
+| Prism R4-3: the shared-key boundary | §5.4: a false flag alone is a notice, but the key signs the whole index, so it's §5.1's boundary; flags never add scheduling authority |
