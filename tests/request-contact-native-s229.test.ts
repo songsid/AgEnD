@@ -104,12 +104,12 @@ it.each(["en", "zh-TW"] as const)("%s: a request-scoped hold posts the same card
     "Let Example lead contact Example worker?",
     "> Please run the release checklist.",
     expect.stringMatching(new RegExp(`^Asked by Demo person · #${short} · expires in (29|30) min$`)),
-    "Continue this request and its later Agent contacts. This does not approve what Agents do or authorize unrelated requests.",
+    "Continue = this request and its follow-up contacts only.",
   ] : [
     "讓 Example lead 聯絡 Example worker？",
     "> Please run the release checklist.",
     expect.stringMatching(new RegExp(`^Demo person 提出 · #${short} · (29|30) 分鐘後到期$`)),
-    "繼續這筆請求及它後續的 Agent 聯絡；這不代表核准 Agent 的操作，也不會授權其他請求。",
+    "繼續＝只放行這筆請求和它後續的聯絡。",
   ]);
   expect(alert.choices.map((c: any) => c.label)).toEqual(locale === "en" ? ["Continue", "Decline"] : ["繼續", "拒絕"]);
   expect(alert.choices.every((c: any) => Buffer.byteLength(c.id) <= 64)).toBe(true);
@@ -124,8 +124,8 @@ it.each(["en", "zh-TW"] as const)("%s: a legacy ticket on the same card says App
   const r = rig(), ticket = r.legacy();
   r.fm.syncHeldTicketCard(ticket); await settle();
   const lines = posted(r).message.split("\n");
-  expect([lines[0], lines.at(-1)]).toEqual(locale === "en" ? ["Let Example lead contact Example worker?", "Approve once lets this one message through."]
-    : ["讓 Example lead 聯絡 Example worker？", "「核准這一次」只放行這一則訊息。"]);
+  expect([lines[0], lines.at(-1)]).toEqual(locale === "en" ? ["Let Example lead contact Example worker?", "Approve once = this one request only."]
+    : ["讓 Example lead 聯絡 Example worker？", "核准這一次＝只轉交這一筆請求。"]);
   expect(posted(r).choices.map((c: any) => c.label)).toEqual(locale === "en" ? ["Approve once", "Decline"] : ["核准這一次", "拒絕"]);
   record("held-legacy", r);
   await click(r, entries(r)[0], "approve");

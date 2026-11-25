@@ -4,7 +4,7 @@
     "held-request": {
       "card": {
         "type": "clear_confirm",
-        "text": "Let Example lead contact Example worker?\n> Please run the release checklist.\nAsked by Demo person · #R1a2b3c4d · expires in 30 min\nContinue this request and its later Agent contacts. This does not approve what Agents do or authorize unrelated requests.",
+        "text": "Let Example lead contact Example worker?\n> Please run the release checklist.\nAsked by Demo person · #R1a2b3c4d · expires in 30 min\nContinue = this request and its follow-up contacts only.",
         "buttons": [
           {
             "label": "Continue",
@@ -21,7 +21,7 @@
     "held-legacy": {
       "card": {
         "type": "clear_confirm",
-        "text": "Let Example lead contact Example worker?\n> Please run the release checklist.\nAsked by Demo person · #R1a2b3c4d · expires in 30 min\nApprove once lets this one message through.",
+        "text": "Let Example lead contact Example worker?\n> Please run the release checklist.\nAsked by Demo person · #R1a2b3c4d · expires in 30 min\nApprove once = this one request only.",
         "buttons": [
           {
             "label": "Approve once",
@@ -37,7 +37,7 @@
     "general-proposal": {
       "card": {
         "type": "clear_confirm",
-        "text": "General suggests: Decline\nLet Example lead contact Example worker?\n> Please run the release checklist.\nAsked by Demo person · #R1a2b3c4d · expires in 30 min\nContinue this request and its later Agent contacts. This does not approve what Agents do or authorize unrelated requests.",
+        "text": "General suggests: Decline\nLet Example lead contact Example worker?\n> Please run the release checklist.\nAsked by Demo person · #R1a2b3c4d · expires in 30 min\nContinue = this request and its follow-up contacts only.",
         "buttons": [
           {
             "label": "Decline",

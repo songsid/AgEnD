@@ -6,7 +6,7 @@ Regenerate: `S229_EVIDENCE=1 npx vitest run tests/request-contact-native-s229.te
 
 | Case | Card | Buttons |
 |---|---|---|
-| `held-request` | A request-scoped hold: question, quote, who asked · #id · expiry, the §6 scope sentence | Continue / Decline |
+| `held-request` | A request-scoped hold: question, quote, who asked · #id · expiry, the web card's short scope line (#4497) | Continue / Decline |
 | `held-legacy` | A legacy ticket on the same card | Approve once / Decline |
 | `general-proposal` | General's proposal: its one suggestion, then the same card | the suggested choice / Not now |
 

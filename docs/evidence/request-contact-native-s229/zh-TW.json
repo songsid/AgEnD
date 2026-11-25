@@ -4,7 +4,7 @@
     "held-request": {
       "card": {
         "type": "clear_confirm",
-        "text": "讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\nDemo person 提出 · #R1a2b3c4d · 30 分鐘後到期\n繼續這筆請求及它後續的 Agent 聯絡；這不代表核准 Agent 的操作，也不會授權其他請求。",
+        "text": "讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\nDemo person 提出 · #R1a2b3c4d · 30 分鐘後到期\n繼續＝只放行這筆請求和它後續的聯絡。",
         "buttons": [
           {
             "label": "繼續",
@@ -21,7 +21,7 @@
     "held-legacy": {
       "card": {
         "type": "clear_confirm",
-        "text": "讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\nDemo person 提出 · #R1a2b3c4d · 30 分鐘後到期\n「核准這一次」只放行這一則訊息。",
+        "text": "讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\nDemo person 提出 · #R1a2b3c4d · 30 分鐘後到期\n核准這一次＝只轉交這一筆請求。",
         "buttons": [
           {
             "label": "核准這一次",
@@ -37,7 +37,7 @@
     "general-proposal": {
       "card": {
         "type": "clear_confirm",
-        "text": "General 建議：拒絕\n讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\nDemo person 提出 · #R1a2b3c4d · 30 分鐘後到期\n繼續這筆請求及它後續的 Agent 聯絡；這不代表核准 Agent 的操作，也不會授權其他請求。",
+        "text": "General 建議：拒絕\n讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\nDemo person 提出 · #R1a2b3c4d · 30 分鐘後到期\n繼續＝只放行這筆請求和它後續的聯絡。",
         "buttons": [
           {
             "label": "拒絕",
