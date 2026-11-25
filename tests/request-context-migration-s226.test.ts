@@ -74,3 +74,12 @@ it("a same-connection write inside a host lookup makes the whole snapshot incomp
  const original=f.host.canManage;f.host.canManage=(...args)=>{if(!written){written=true;f.db.prepare("DELETE FROM contact_auth_tickets").run();}return original(...args);};
  expect(f.shadow.inspect().complete).toBe(false);
 });
+it("R1 a complete bounded scan includes more than 64 retained tickets and every unresolved blocker",()=>{
+ const f=rig();for(let n=0;n<70;n++){const ticket=f.hold();if(n<69)f.db.prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.state','declined') WHERE id=?").run(ticket.id);}
+ const before=f.bytes(),report=f.shadow.inspect();expect(report.complete).toBe(true);expect(report.tickets).toHaveLength(70);expect(report.blockers).toHaveLength(1);expect(f.bytes()).toBe(before);
+ expect(()=>f.shadow.inspect({limit:10001})).toThrow(/invalid/);
+});
+it("R1 the single-transaction raw-byte bound reports incomplete instead of loading an unbounded plan",()=>{
+ const f=rig();for(let n=0;n<70;n++){const ticket=f.hold();f.db.prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.state','declined'),request_json=json_set(request_json,'$.message',?) WHERE id=?").run("x".repeat(250000),ticket.id);}
+ const report=f.shadow.inspect();expect(report.complete).toBe(false);expect(report.truncated).toBe(true);expect(report.tickets.length).toBeLessThan(70);expect(report.nextCursor?.tickets).toBeTruthy();
+});

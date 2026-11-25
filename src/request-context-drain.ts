@@ -39,6 +39,18 @@ export class RequestContextDrain {
       const epoch=randomUUID();this.db.prepare("INSERT INTO request_context_drain_v1 VALUES (?,?,?)").run(rootId,epoch,owner);return epoch;
     })();
   }
+  /** owner() is the durable Fleet identity while its exclusive coordinator lease is current.
+   * A fresh process must explicitly rotate the retained epoch; a retired tombstone cannot resume. */
+  resume(rootId:string,previousEpoch:string):string {
+    ROOT.parse(rootId);ROOT.parse(previousEpoch);this.ready();
+    return this.db.transaction(()=>{
+      const context=new RequestContextStore(this.db).context(rootId),owner=this.owner();
+      if(!owner||!context||context.ref.rootContextId!==rootId||context.ref.parentContextId)throw Error("request-context drain root unavailable");
+      const epoch=randomUUID();
+      if(this.db.prepare("UPDATE request_context_drain_v1 SET epoch=? WHERE root_id=? AND epoch=? AND owner=?").run(epoch,rootId,previousEpoch,owner).changes!==1)throw Error("request-context drain owner or epoch changed");
+      return epoch;
+    })();
+  }
   release(rootId:string,epoch:string):void {
     this.ready();this.db.transaction(()=>{
       const context=new RequestContextStore(this.db).context(rootId);

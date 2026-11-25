@@ -2,7 +2,7 @@
 import { createServer, request } from "node:http";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, expect, it, vi } from "vitest";
@@ -166,4 +166,21 @@ it("S-226 written and detached ledger rows retain their root until a matching po
 it("S-226 new pane call preparation checks the drain fence before invoking or persisting a row",async()=>{
  const registration={assertRegistration:vi.fn()},f=rig(registration);registration.assertRegistration.mockImplementation(()=>{throw Error("root draining");});
  await expect(f.lease.handle(f.authority.machineId,f.body,()=>true,f.stamp)).rejects.toThrow(/draining/);expect(f.invoke).not.toHaveBeenCalled();expect(f.lease.drainView(f.a.context.ref.rootContextId).references).toEqual([]);
+});
+
+it.each(["interrupted-launch","unbound-input"]as const)("R1 a %s ledger row does not poison unrelated roots, but malformed metadata does",async reason=>{
+ const f=rig({assertRegistration:vi.fn()});await f.lease.handle(f.authority.machineId,f.body,()=>true,{version:1,coverage:"not-covered",reason});
+ expect(f.lease.drainView(randomUUID())).toMatchObject({unknown:false,references:[]});
+ const row=Object.values((f.lease as any).ledger.calls)[0]as any;row.requestContext={coverage:"malformed"};expect(f.lease.drainView(randomUUID()).unknown).toBe(true);
+});
+it("R1 an offline unbound launch reads only its owned ledger, with no endpoint or writer",async()=>{
+ const f=rig({assertRegistration:vi.fn()}),root=f.a.context.ref.rootContextId;await f.lease.handle(f.authority.machineId,f.body,()=>true,f.stamp);
+ const directory=join(f.root,"native-panes",f.owner.agentId);mkdirSync(directory,{recursive:true,mode:0o700});
+ const ledger=join(directory,`${f.owner.launchId}.mcp.json`),manifest=join(directory,"active.json"),bytes=readFileSync(f.file,"utf8");writeFileSync(ledger,bytes,{mode:0o600});
+ writeFileSync(manifest,JSON.stringify({version:1,machineId:f.authority.machineId,configuration:"a".repeat(64),launch:{agentId:f.owner.agentId,paneId:f.owner.paneId,launchId:f.owner.launchId,instance:f.owner.instance,cli:"codex",cwd:"C:\\Scratch",sandbox:"read-only",columns:80,rows:24}}),{mode:0o600});
+ const store={requestContextDrainRevision:"1",requestContextPaneLaunches:()=>[{agentId:f.owner.agentId,launchId:f.owner.launchId,instance:f.owner.instance,machineId:f.authority.machineId}]},endpoint=vi.fn(),manager=new NativePaneManager({home:f.root,store,endpoint,registration:f.authority.registration}as any);
+ expect(manager.drainView(root)).toMatchObject({unknown:false,references:[expect.stringContaining(f.owner.launchId)]});expect(manager.drainView(randomUUID())).toMatchObject({unknown:false,references:[]});expect(endpoint).not.toHaveBeenCalled();expect(readFileSync(ledger,"utf8")).toBe(bytes);
+ const revision=manager.drainRevision;const changed=JSON.parse(bytes);Object.values(changed.calls).forEach((row:any)=>{row.requestContext={coverage:"not-covered",reason:"interrupted-launch",stampSha256:"c".repeat(64)};});writeFileSync(ledger,JSON.stringify(changed),{mode:0o600});
+ expect(manager.drainView(root)).toMatchObject({unknown:false,references:[]});expect(manager.drainRevision).not.toBe(revision);
+ writeFileSync(ledger,"broken",{mode:0o600});expect(manager.drainView(root).unknown).toBe(true);unlinkSync(ledger);expect(manager.drainView(root).unknown).toBe(true);expect(endpoint).not.toHaveBeenCalled();
 });

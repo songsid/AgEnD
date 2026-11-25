@@ -46,6 +46,22 @@ export interface PaneMcpAuthority {
   /** Stable authenticated connection generation, distinct from one RPC's short-lived current() fence. */
   transportEpoch?(): string | null;
 }
+/** Read only the exact registered launch file; missing/corrupt state is never an empty ledger. */
+function readPaneMcpLedger(file:string,machineId:string,acceptOwner:(owner:PaneMcpOwner)=>boolean):{ledger:Ledger;sha256:string} {
+  const stat=lstatSync(file);
+  if(!stat.isFile()||stat.isSymbolicLink()||stat.size>16*1024*1024||process.getuid&&(stat.uid!==process.getuid()||stat.mode&0o077))throw Error("Unsafe pane tool ledger");
+  const text=readFileSync(file,"utf8"),raw=JSON.parse(text) as Ledger;
+  if(raw?.version!==1||raw.machineId!==machineId||!acceptOwner(validatePaneMcpOwner(raw.owner))
+    ||!raw.calls||typeof raw.calls!=="object"||Array.isArray(raw.calls)||Object.keys(raw.calls).length>65_536
+    ||Object.entries(raw.calls).some(([key,row])=>!/^[a-f0-9]{64}$/.test(key)||!row||!/^[a-f0-9]{64}$/.test(row.digest)
+      ||!/^[a-f0-9]{64}$/.test(row.responseId)||!/^[a-f0-9-]{36}$/i.test(row.operationId)||!["prepared","done","written"].includes(row.state)
+      ||row.requestContext!==undefined&&!validCallContext(row.requestContext)))throw Error("Pane tool ledger scope differs");
+  return {ledger:raw,sha256:createHash("sha256").update(text).digest("hex")};
+}
+export function readRetainedPaneMcpRoots(file:string,machineId:string,expected:Omit<PaneMcpOwner,"hostBootId">):{sha256:string;roots:Array<{rootId:string;operationId:string}>} {
+  const {ledger,sha256}=readPaneMcpLedger(file,machineId,owner=>owner.agentId===expected.agentId&&owner.paneId===expected.paneId&&owner.instance===expected.instance&&owner.launchId===expected.launchId);
+  return {sha256,roots:Object.values(ledger.calls).flatMap(row=>row.requestContext?.coverage==="covered"?[{rootId:row.requestContext.rootContextId!,operationId:row.operationId}]:[])};
+}
 const errorResult = (text: string): Record<string, unknown> => ({ content: [{ type: "text", text }], isError: true });
 /** One ledger per exact pane launch; no plaintext arguments, result, provider credential or user input is persisted. */
 export class PaneMcpAuthorityLease {
@@ -61,25 +77,16 @@ export class PaneMcpAuthorityLease {
     validatePaneMcpOwner(authority.owner);
     this.toolCeiling = new Set(authority.toolCeiling);
     this.ledger = { version: 1, machineId: authority.machineId, owner: { ...authority.owner }, calls: {} };
-    try {
-      const stat = lstatSync(file);
-      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024 * 1024 || process.getuid && (stat.uid !== process.getuid() || stat.mode & 0o077)) throw Error("Unsafe pane tool ledger");
-      const raw = JSON.parse(readFileSync(file, "utf8")) as Ledger;
-      if (raw?.version !== 1 || raw.machineId !== authority.machineId || !samePaneMcpOwner(validatePaneMcpOwner(raw.owner), authority.owner)
-        || !raw.calls || typeof raw.calls !== "object" || Array.isArray(raw.calls) || Object.keys(raw.calls).length > 65_536
-        || Object.entries(raw.calls).some(([key, row]) => !/^[a-f0-9]{64}$/.test(key) || !row || !/^[a-f0-9]{64}$/.test(row.digest)
-          || !/^[a-f0-9]{64}$/.test(row.responseId) || !/^[a-f0-9-]{36}$/i.test(row.operationId) || !["prepared", "done", "written"].includes(row.state)
-          || row.requestContext !== undefined && !validCallContext(row.requestContext))) throw Error("Pane tool ledger scope differs");
-      this.ledger = raw;
-    } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    try { this.ledger=readPaneMcpLedger(file,authority.machineId,owner=>samePaneMcpOwner(owner,authority.owner)).ledger; }
+    catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;}
   }
   close(): void { this.closed = true; this.results.clear(); this.presence = undefined; this.drainSerial++; }
   get drainRevision():string{return String(this.drainSerial);}
   drainView(rootId:string):RequestContextDrainView {
     const references:string[]=[];let unknown=false;
     if(!this.retired)for(const row of Object.values(this.ledger.calls)){
-      if(row.requestContext?.coverage!=="covered")unknown=true;
-      else if(row.requestContext.rootContextId===rootId)references.push(`pane-ledger:${this.authority.owner.launchId}:${row.operationId}`);
+      if(row.requestContext!==undefined&&!validCallContext(row.requestContext))unknown=true;
+      else if(row.requestContext?.coverage==="covered"&&row.requestContext.rootContextId===rootId)references.push(`pane-ledger:${this.authority.owner.launchId}:${row.operationId}`);
     }
     return {registration:this.authority.registration??null,revision:this.drainRevision,references,unknown};
   }

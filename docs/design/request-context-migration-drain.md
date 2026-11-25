@@ -22,13 +22,13 @@ and enabling anything. I follows this slice and owns the same-card server route.
    later admin message, idle pane, timeout or answer publication as completion.
 
 A missing/unknown participant blocks retirement, not new unrelated requests.
-The certificate is process/owner/fence-bound and cannot survive a restart or be
+The certificate is process/Fleet/fence-bound and cannot survive a restart or be
 used as a human receipt. A metadata row or timestamp alone is not a certificate.
 
 ## 2. Legacy shadow
 
-Read stored ticket/policy JSON directly on the outbox connection, in one synchronous read transaction with a hard bound of 64 rows per table
-(default 32), capped JSON bytes and a stable digest. Only an untruncated initial
+Read stored ticket/policy JSON directly on the outbox connection, in one synchronous read transaction with a hard bound of 10,000 rows per table
+(default 10,000), a 16 MiB raw-byte budget per table, capped JSON bytes and a stable digest. Only an untruncated initial
 page can be complete; subsequent pages are informational and never combine into
 a migration plan. Check `total_changes()` before and after callbacks to detect
 same-connection writes (including legacy hold/prune); `data_version` alone cannot
@@ -69,8 +69,9 @@ arguments, a boolean “idle”, correlation ids and the old origin union supply
 references or proof.
 
 F exposes synchronous inspection ports on the existing C/D registries rather than
-refreshing a call from the latest context. A stale or disconnected daemon is not
-an empty registry. A live launch's written MCP row still retains its context
+refreshing a call from the latest context. An unreadable registry is not empty. An explicitly uncovered call has no
+request-root reference; it is never a fleet-wide unknown. Malformed metadata
+still refuses proof. A live launch's written MCP row still retains its context
 until a matching positive launch exit, as D's contract states. A detached
 lease is not retired. Thus a root used by a persistent launch may remain retained
 until relaunch. Fleet proof leases and ledger rows cover late remote calls; remote
@@ -80,7 +81,7 @@ an arbitrary state directory is permitted; only registered owned launch files.
 
 Expected-return/Hub/derivative readers not yet installed by their owning slices
 must report unavailable. They cannot be replaced by a default empty list. A/L
-storage capability and an exact current manager/runtime owner remain mandatory.
+storage capability and an exact current manager/runtime lease remain mandatory.
 Before enabling L, the adapters and their completeness controls must be exercised
 through actual paths; F's scratch certificate is not a native-coverage claim.
 
@@ -148,9 +149,9 @@ inventory. Missing, malformed, oversized or changing data is incomplete.
 - Native grants and actual in-flight calls retain their captured roots, even if
   a grant closes while a call is completing. Exec captured runs plus raw unresolved
   WindowsAgent active ids block; an unknown raw run is never an empty inventory.
-- Fleet pane proofs and owned launch ledgers persist until positive exit. Unknown
-  launch inventory after restart blocks until the manager reconciles it; no scan
-  of arbitrary state files or remote relay is used.
+- Fleet pane proofs and owned launch ledgers persist until positive exit. An offline/unbound launch reads only its registered local manifest and ledger
+  without reattachment. Missing or malformed files block; no scan of arbitrary
+  state files or remote relay is used.
 - Fence checks are synchronous at C apply (independent, steer, expected return,
   recovery and queued steer), daemon first-hop begin, pane proof mint, native grant
   and new native call, exec claim, E admission/continued/sweep/reevaluate inside its
@@ -186,7 +187,7 @@ No barrier deactivation, live backup, DB restore or downgrade is performed here.
 - Known C/D registry objects supply the references; no latest-root refresh. Empty
   only counts after a positive owned end/ledger retirement, never idle/timeout.
 - New same-root work cannot register under a fence; unrelated work still can.
-  Owner/boot change, participant replacement or fence release invalidates a proof.
+  Lease loss, participant replacement, epoch rotation or fence release invalidates a proof.
 - Retirement through E rolls back on a changed proof and cannot remove referenced
   context or notices. Default/uninstalled production adapters refuse proof.
 
@@ -210,3 +211,34 @@ source hashes only. Production stays OFF through this slice.
   migration. After L, §5's barrier-preserving drain order remains mandatory; an
   unknown participant blocks GC and must never become an agent-wide permission
   lock or guessed zero-reference assertion.
+
+
+## 8. Implementation-review R1 corrections
+
+1. Explicitly uncovered (including legacy) call/grant/ledger rows carry no root
+   reference. Only malformed, unreadable or unavailable inventory is unknown.
+   This avoids turning one cancelled launch into a fleet-wide GC lock.
+2. Fence `owner()` means the durable Fleet identity while the exclusive
+   coordinator lease is current (null otherwise), NOT a boot/process id. The
+   proof object stays process-local. After a coordinator restart, `resume(root,
+   previousEpoch)` verifies the same Fleet and retained root and rotates the epoch
+   transactionally. Old proofs/epochs are invalid, a different Fleet cannot adopt,
+   and a retired tombstone cannot resume or reopen. L must keep this identity
+   stable across boots and perform this explicit recovery before continuing a
+   pending retirement; no unverified claim that another process died is needed.
+3. Fleet IPC rows use `(instance, daemon boot, response key)` and retain their
+   exact IPC owner. Empty keys refuse capture. Replacement/disconnect purges only
+   that connection; a late old response cannot delete a fresh boot's row. Global
+   shutdown/restart clears the retired transport inventory.
+4. The shadow defaults to 10,000 rows/table in one synchronous transaction, with
+   streaming raw reads and a separate 16 MiB/table byte bound. More than 64 ordinary
+   rows can be complete; exceeding either bound is explicitly incomplete. A
+   truncated page never becomes an applicable plan by itself or by concatenation.
+5. An offline/unbound pane reads only its registered `active.json` and exact
+   launch `.mcp.json` file. Check private directory/file ownership, scope, bounded
+   bytes and strict row shape. This performs no mkdir, write, helper attachment,
+   endpoint call or recursive search. Known other-root/legacy/uncovered rows do
+   not block unrelated roots; missing or malformed files remain unknown. Changes
+   in this retained-file inventory advance the owner revision and invalidate proof.
+6. The unsupported legacy lane returns localized held/upgrade wording, retaining
+   the stable machine error code separately. Pending state remains unchanged.

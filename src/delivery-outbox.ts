@@ -1163,6 +1163,7 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   /** Scratch/cutover assembly only; a certificate is process-bound and never persisted as authority. */
+  /** Stable Fleet identity while its exclusive coordinator lease is current; never a boot id. */
   requestContextDrain(owner: () => string | null): RequestContextDrain {
     const ready = (): void => { if(this.requestContextDispatchVersion!==1||assertRequestContextCompatibility(this.db,1)!=="active")throw Error("request-context dispatcher is not ready"); };
     ready();return new RequestContextDrain(this.db,ready,owner);

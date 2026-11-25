@@ -123,3 +123,24 @@ it("S-226 Fleet refuses a newly fenced captured call without dropping an already
  const gate={assertRegistration:vi.fn()},f=rig(true,gate),snapshot=f.bind("a"),frame=f.call();gate.assertRegistration.mockImplementation(()=>{throw Error("root draining");});
  expect(f.fm.captureRequestContextIpcCall("worker",frame,f.ipc)).toBe(false);expect(f.fm.requestContextFleetDrainView(snapshot.context.ref.rootContextId).references).toEqual([]);f.clearTimers();
 });
+it("R1 an uncovered local and Fleet call references no retained root",()=>{
+ const gate={assertRegistration:vi.fn()},f=rig(true,gate),root=randomUUID(),frame=f.call();expect(f.daemon.requestContextCallDrainView(root)).toMatchObject({unknown:false,references:[]});
+ expect(f.fm.captureRequestContextIpcCall("worker",frame,f.ipc)).toBe(true);expect(f.fm.requestContextFleetDrainView(root)).toMatchObject({unknown:false,references:[]});f.clearTimers();
+});
+it("R1 reconnect purges the old IPC inventory and a new daemon boot can reuse its response sequence",()=>{
+ const gate={assertRegistration:vi.fn()},f=rig(true,gate),a=f.bind("a"),first=f.call();expect(f.fm.captureRequestContextIpcCall("worker",first,f.ipc)).toBe(true);
+ const oldIpc=f.ipc,newIpc={send:vi.fn(()=>true)};f.fm.instanceIpcClients.set("worker",newIpc);f.fm.purgeRequestContextIpcCalls("worker",oldIpc);expect(f.fm.requestContextFleetDrainView(a.context.ref.rootContextId).references).toEqual([]);
+ f.clearTimers();f.turns.fence();f.daemon.bootId="second-boot";f.daemon.fleetRequestSeq=0;const b=f.bind("b"),second=f.call();expect(second.fleetRequestId).toBe(first.fleetRequestId);
+ expect(f.fm.captureRequestContextIpcCall("worker",second,newIpc)).toBe(true);(f.ipc.send as any)({type:"fleet_outbound_response",fleetRequestId:first.fleetRequestId});expect(f.fm.requestContextFleetDrainView(b.context.ref.rootContextId).references).toHaveLength(1);
+ f.fm.observeRequestContextResponses("worker",newIpc);(newIpc.send as any)({type:"fleet_outbound_response",fleetRequestId:second.fleetRequestId});expect(f.fm.requestContextFleetDrainView(b.context.ref.rootContextId).references).toEqual([]);f.clearTimers();
+});
+it("R1 an empty response key is refused rather than inserted as an unknown Fleet reference",()=>{
+ const f=rig(true,{assertRegistration:vi.fn()}),a=f.bind("a"),frame=f.call();expect(f.fm.captureRequestContextIpcCall("worker",{...frame,fleetRequestId:""},f.ipc)).toBe(false);expect(f.fm.requestContextFleetDrainView(a.context.ref.rootContextId)).toMatchObject({unknown:false,references:[]});f.clearTimers();
+});
+it("R1 actual IPC replacement and disconnect retire only that connection's call inventory",async()=>{
+ const f=rig(true,{assertRegistration:vi.fn()}),a=f.bind("a"),frame=f.call();expect(f.fm.captureRequestContextIpcCall("worker",frame,f.ipc)).toBe(true);
+ Object.assign(f.ipc,{removeAllListeners:vi.fn(),close:vi.fn(async()=>{})});vi.spyOn(f.daemon,"usesNativePane").mockReturnValue(true);f.daemon.nativePaneLifecycle={};
+ await f.fm.connectIpcToInstanceInternal("worker");const current=f.fm.instanceIpcClients.get("worker");expect(current).toBeDefined();expect(current).not.toBe(f.ipc);expect(f.fm.requestContextFleetDrainView(a.context.ref.rootContextId).references).toEqual([]);
+ f.clearTimers();f.turns.fence();f.daemon.bootId="restarted-boot";f.daemon.fleetRequestSeq=0;const b=f.bind("b"),next=f.call();expect(f.fm.captureRequestContextIpcCall("worker",next,current)).toBe(true);
+ vi.spyOn(f.fm,"ipcReconnect").mockResolvedValue(undefined);current.emit("disconnect");expect(f.fm.requestContextFleetDrainView(b.context.ref.rootContextId).references).toEqual([]);expect(f.fm.instanceIpcClients.has("worker")).toBe(false);await current.close();f.clearTimers();
+});

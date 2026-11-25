@@ -11,7 +11,8 @@ export function assertRequestContextRootOpen(db:Database.Database,rootId:string)
 /** Revisions cover inserts, replacements and deletions, even when a root returns to an empty state. */
 export class RequestContextReferenceMap<K,V> extends Map<K,V> {
   private serial=0; private registration:RequestContextRegistrationGate|null=null;
-  constructor(private readonly root:(value:V)=>string|null,private readonly reference:(value:V,key:K)=>string){super();}
+  /** null = explicitly no captured context; undefined/throw = malformed or unavailable. */
+  constructor(private readonly root:(value:V)=>string|null|undefined,private readonly reference:(value:V,key:K)=>string){super();}
   installRegistration(registration:RequestContextRegistrationGate|undefined):void {
     if(!registration)return;
     if(this.registration||this.size)throw Error("request-context drain registration must precede work");
@@ -27,7 +28,7 @@ export class RequestContextReferenceMap<K,V> extends Map<K,V> {
   override clear():void {super.clear();this.serial++;}
   view(rootId:string):RequestContextDrainView {
     const references:string[]=[];let unknown=false;
-    for(const [key,value]of this){const root=this.root(value);if(root===null)unknown=true;else if(root===rootId)references.push(this.reference(value,key));}
+    for(const [key,value]of this){let root:string|null|undefined;try{root=this.root(value);}catch{root=undefined;}if(root===undefined)unknown=true;else if(root===rootId)references.push(this.reference(value,key));}
     return {registration:this.registration,revision:this.revision,references,unknown};
   }
 }

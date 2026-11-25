@@ -3,10 +3,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, expect, it, vi } from "vitest";
+import { getLocale, setLocale, tForLocale } from "../src/locale.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
+const originalLocale=getLocale();
 const cleanup:Array<()=>void>=[];
-afterEach(()=>{for(const fn of cleanup.splice(0).reverse())fn();});
+afterEach(()=>{setLocale(originalLocale);for(const fn of cleanup.splice(0).reverse())fn();});
 function rig(){
  const home=mkdtempSync(join(tmpdir(),"s226-legacy-"));cleanup.push(()=>rmSync(home,{recursive:true,force:true}));
  const box=new DeliveryOutbox(join(home,"outbox.db"));cleanup.push(()=>box.close());
@@ -18,8 +20,14 @@ function rig(){
 }
 it.each(["daemon","exec"])("a legacy decision cannot publish an unmapped delivery into a C-bound %s target",lane=>{
  const f=rig();if(lane==="daemon")f.fm.daemons.set("target",{requestContextCallsRequired:()=>true});else f.fm.fleetWindowsRuntime={requestContextCallsRequired:()=>true};
- expect(()=>f.decide()).toThrow(/legacy-decision-upgrade-required/);expect(f.box.listPending()).toEqual([]);expect(f.box.contactAuthorizations.get(f.ticket.id)).toMatchObject({state:"pending",revision:f.ticket.revision});expect(f.fm.scheduleDeliveryOutboxPump).not.toHaveBeenCalled();
+ expect(()=>f.decide()).toThrow(/stays held|繼續保留/);expect(f.box.listPending()).toEqual([]);expect(f.box.contactAuthorizations.get(f.ticket.id)).toMatchObject({state:"pending",revision:f.ticket.revision});expect(f.fm.scheduleDeliveryOutboxPump).not.toHaveBeenCalled();
 });
 it("an unbound legacy target retains the existing exact one-time admission lane",()=>{
  const f=rig(),decided=f.decide();expect(decided.deliveryId).toBeTruthy();expect(f.box.listPending()).toHaveLength(1);expect(f.box.requestContextForDelivery(decided.deliveryId!)).toBeNull();
+});
+
+it.each(["en","zh-TW"]as const)("R1 unsupported legacy input is a localized held reason (%s), with stable machine code",locale=>{
+ setLocale(locale);const f=rig();f.fm.daemons.set("target",{requestContextCallsRequired:()=>true});
+ try{f.decide();throw Error("expected refusal");}catch(e){expect(e).toMatchObject({message:tForLocale(locale,"contact.legacyUpgrade"),code:"request-context-legacy-decision-upgrade-required"});}
+ expect(f.box.contactAuthorizations.get(f.ticket.id)?.state).toBe("pending");
 });

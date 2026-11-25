@@ -129,3 +129,11 @@ it("a fenced hold may still be declined, while approval cannot create work or co
  expect(()=>gate.decide(id,{revision:ticket.revision,decision:"approve-once"},admin,0)).toThrow(/draining/);expect(f.box.contactAuthorizations.get(id)?.state).toBe("pending");expect(f.box.listPending()).toEqual([]);
  expect(gate.sweep().approved).toEqual([]);expect(gate.decide(id,{revision:ticket.revision,decision:"decline"},admin,0).state).toBe("declined");
 });
+it("R1 a fresh coordinator resumes the durable Fleet's fence with a new epoch",()=>{
+ const f=rig(),i=f.admit();f.terminal(i.result.delivery.deliveryId);const first=f.drain();participants(first);const root=i.c.ref.rootContextId,epoch=first.fence(root),old=first.prove(root,epoch);
+ const restarted=f.drain();participants(restarted);const next=restarted.resume(root,epoch);expect(next).not.toBe(epoch);expect(old.current()).toBe(false);expect(restarted.prove(root,next).current()).toBe(true);
+ expect(()=>first.release(root,epoch)).toThrow(/owner changed/);f.owner("another-fleet");expect(()=>restarted.resume(root,next)).toThrow(/owner or epoch/);f.owner("coordinator-a");restarted.release(root,next);expect(()=>restarted.registration().assertRegistration(root)).not.toThrow();
+});
+it("R1 no-context rows are no reference; malformed inventory stays unknown",()=>{
+ const rows=new RequestContextReferenceMap<string,string|null|undefined>(v=>v,(_,id)=>id),root=randomUUID();rows.set("unbound",null);expect(rows.view(root)).toMatchObject({unknown:false,references:[]});rows.set("unreadable",undefined);expect(rows.view(root).unknown).toBe(true);
+});

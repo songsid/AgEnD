@@ -29,6 +29,15 @@ const verbs=new Set(["send_to_instance","delegate_task","request_information","b
 export class RequestContextMigrationShadow {
   constructor(private readonly db:Database.Database,private readonly host:RequestMigrationHost){}
   private has(table:string):boolean{return !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);}
+  private page<T>(sql:string,after:string,limit:number):{rows:T[];more:boolean} {
+    const rows:T[]=[];let bytes=0,more=false;
+    for(const row of this.db.prepare(sql).iterate(after,limit+1)){
+      const size=Buffer.byteLength(JSON.stringify(row));
+      if(rows.length>=limit||bytes+size>16*1024*1024){more=true;break;}
+      rows.push(row as T);bytes+=size;
+    }
+    return {rows,more};
+  }
   private grant(raw:unknown,target:string,policyGeneration:unknown,now:number):string {
     if(!record(raw)||!text(raw.id)||!text(raw.source)||raw.target!==target||!person(raw.person)||!person(raw.createdBy)
       ||!Array.isArray(raw.verbs)||!raw.verbs.length||raw.verbs.some((v:unknown)=>typeof v!=="string"||!verbs.has(v))
@@ -43,8 +52,8 @@ export class RequestContextMigrationShadow {
     }catch{return "unavailable";}
   }
   inspect(options:RequestMigrationOptions={}):RequestMigrationSnapshot {
-    const limit=options.limit??32,cursor=options.cursor??{},now=options.now??Date.now();
-    if(!Number.isInteger(limit)||limit<1||limit>64||!Number.isFinite(now)||Object.keys(cursor).some(k=>!["tickets","policies","origins"].includes(k))
+    const limit=options.limit??10000,cursor=options.cursor??{},now=options.now??Date.now();
+    if(!Number.isInteger(limit)||limit<1||limit>10000||!Number.isFinite(now)||Object.keys(cursor).some(k=>!["tickets","policies","origins"].includes(k))
       ||Object.values(cursor).some(v=>v!==null&&!text(v)))throw Error("invalid migration shadow page");
     return this.db.transaction(()=>{
       const writes=(this.db.prepare("SELECT total_changes() AS n").get() as {n:number}).n;
@@ -53,11 +62,11 @@ export class RequestContextMigrationShadow {
       if(cursor.tickets!==null&&this.has("contact_auth_tickets")){
         const scoped=this.has("request_context_contacts_v1");
         // Oversized/corrupt rows are explicitly incomplete without loading an unbounded body.
-        const rows=this.db.prepare(`SELECT t.id,CASE WHEN length(CAST(t.request_json AS BLOB))+length(CAST(t.ticket_json AS BLOB))<=262144 THEN t.request_json END AS request_json,
+        const page=this.page<{id:string;request_json:string|null;ticket_json:string|null;operation_key:string;request_hash:string;created_at:number}>(`SELECT t.id,CASE WHEN length(CAST(t.request_json AS BLOB))+length(CAST(t.ticket_json AS BLOB))<=262144 THEN t.request_json END AS request_json,
           CASE WHEN length(CAST(t.request_json AS BLOB))+length(CAST(t.ticket_json AS BLOB))<=262144 THEN t.ticket_json END AS ticket_json,
           t.operation_key,t.request_hash,t.created_at FROM contact_auth_tickets t ${scoped?"LEFT JOIN request_context_contacts_v1 c ON c.ticket_id=t.id":""}
-          WHERE t.id>? ${scoped?"AND c.ticket_id IS NULL":""} ORDER BY t.id LIMIT ?`).all(cursor.tickets??"",limit+1) as Array<{id:string;request_json:string|null;ticket_json:string|null;operation_key:string;request_hash:string;created_at:number}>;
-        if(rows.length>limit){truncated=true;next.tickets=rows[limit-1]!.id;}
+          WHERE t.id>? ${scoped?"AND c.ticket_id IS NULL":""} ORDER BY t.id LIMIT ?`,cursor.tickets??"",limit),rows=page.rows;
+        if(page.more){truncated=true;next.tickets=rows.at(-1)?.id??cursor.tickets??"";}
         for(const row of rows.slice(0,limit)){
           const digest=row.request_json===null||row.ticket_json===null?null:requestContextDigest(row);
           const entry:RequestMigrationEntry={id:row.id,sha256:digest,disposition:"malformed"};
@@ -81,8 +90,8 @@ export class RequestContextMigrationShadow {
         }
       }
       if(cursor.policies!==null&&this.has("contact_auth_policies")){
-        const rows=this.db.prepare("SELECT instance,revision,CASE WHEN length(CAST(policy_json AS BLOB))<=262144 THEN policy_json END AS policy_json FROM contact_auth_policies WHERE instance>? ORDER BY instance LIMIT ?").all(cursor.policies??"",limit+1) as Array<{instance:string;revision:number;policy_json:string|null}>;
-        if(rows.length>limit){truncated=true;next.policies=rows[limit-1]!.instance;}
+        const page=this.page<{instance:string;revision:number;policy_json:string|null}>("SELECT instance,revision,CASE WHEN length(CAST(policy_json AS BLOB))<=262144 THEN policy_json END AS policy_json FROM contact_auth_policies WHERE instance>? ORDER BY instance LIMIT ?",cursor.policies??"",limit),rows=page.rows;
+        if(page.more){truncated=true;next.policies=rows.at(-1)?.instance??cursor.policies??"";}
         for(const row of rows.slice(0,limit)){
           const entry:RequestMigrationEntry={id:row.instance,sha256:row.policy_json===null?null:requestContextDigest(row),disposition:"preserve-policy"};
           try{
@@ -95,8 +104,8 @@ export class RequestContextMigrationShadow {
         }
       }
       if(cursor.origins!==null&&this.has("contact_auth_origins")){
-        const rows=this.db.prepare("SELECT instance,CASE WHEN length(CAST(origin_json AS BLOB))<=32768 THEN origin_json END AS origin_json FROM contact_auth_origins WHERE instance>? ORDER BY instance LIMIT ?").all(cursor.origins??"",limit+1) as Array<{instance:string;origin_json:string|null}>;
-        if(rows.length>limit){truncated=true;next.origins=rows[limit-1]!.instance;}
+        const page=this.page<{instance:string;origin_json:string|null}>("SELECT instance,CASE WHEN length(CAST(origin_json AS BLOB))<=32768 THEN origin_json END AS origin_json FROM contact_auth_origins WHERE instance>? ORDER BY instance LIMIT ?",cursor.origins??"",limit),rows=page.rows;
+        if(page.more){truncated=true;next.origins=rows.at(-1)?.instance??cursor.origins??"";}
         for(const row of rows.slice(0,limit)){if(row.origin_json===null)complete=false;origins.push({id:row.instance,sha256:row.origin_json===null?null:hash(row.origin_json),disposition:"history-only"});}
       }
       if(owner!==this.host.owner()||policyEpoch!==this.host.policyEpoch()||(this.db.prepare("SELECT total_changes() AS n").get() as {n:number}).n!==writes)complete=false;

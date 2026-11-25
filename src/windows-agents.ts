@@ -45,7 +45,7 @@ const shortText = (value: unknown, limit: number): value is string => typeof val
 export class WindowsAgents {
   private drainSerial=0;
   get requestContextDrainRevision():string{return String(this.drainSerial);}
-  requestContextPaneLaunches(){return this.data.agents.filter(agent=>agent.paneLaunchId).map(agent=>({agentId:agent.id,launchId:agent.paneLaunchId!}));}
+  requestContextPaneLaunches(){return this.data.agents.filter(agent=>agent.paneLaunchId).map(agent=>({agentId:agent.id,launchId:agent.paneLaunchId!,instance:agent.fleet_instance,machineId:agent.machineId??"local"}));}
   requestContextActiveExecutions(){return this.data.agents.filter(agent=>agent.activeId&&!agent.paneLaunchId).map(agent=>({agentId:agent.id,requestId:agent.activeId!}));}
   private data: AgentData = { version: 1, agents: [], requests: {} };
   private file: string;
