@@ -63,15 +63,17 @@ try {
       });
       receipt[`phone-${tag}`] = m;
       // #4453 capture check: icons only, so each tab its own icon and its own accessible name; the tab you are on 3:1 or more.
-      const look = await page.evaluate(() => {
-        const rgb = (s: string) => (s.match(/[\d.]+/g) || []).slice(0, 4).map(Number);
-        const lum = ([r, g, b]: number[]) => { const f = (v: number) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
-        const bgOf = (el: Element | null): number[] => { for (let e = el; e; e = e.parentElement) { const c = rgb(getComputedStyle(e).backgroundColor); if (c.length >= 3 && (c[3] ?? 1) > 0) return c; } return [255, 255, 255]; };
-        const tabs = [...document.querySelectorAll(".fleet-phone-tabs .seg-item")] as HTMLElement[], on = document.querySelector(".fleet-phone-tabs .seg-item.active") as HTMLElement;
-        const fg = rgb(getComputedStyle(on).color), head = bgOf(document.querySelector(".p-fleet > .panel-head")), L1 = lum(fg), L2 = lum(head);
-        return { icons: tabs.map((t) => t.querySelector("svg")?.innerHTML ?? ""), names: tabs.map((t) => (t.textContent || "").trim()),
+      // A string, not a function: tsx would wrap named helpers in __name(), which the page does not have.
+      const look = await page.evaluate(`(() => {
+        const rgb = (s) => (s.match(/[\\d.]+/g) || []).slice(0, 4).map(Number);
+        const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+        const lum = (c) => 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+        const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const c = rgb(getComputedStyle(e).backgroundColor); if (c.length >= 3 && (c[3] === undefined || c[3] > 0)) return c; } return [255, 255, 255]; };
+        const tabs = [...document.querySelectorAll(".fleet-phone-tabs .seg-item")], on = document.querySelector(".fleet-phone-tabs .seg-item.active");
+        const L1 = lum(rgb(getComputedStyle(on).color)), L2 = lum(bgOf(document.querySelector(".p-fleet > .panel-head")));
+        return { icons: tabs.map((t) => (t.querySelector("svg") || {}).innerHTML || ""), names: tabs.map((t) => (t.textContent || "").trim()),
           contrast: (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05), underline: getComputedStyle(on).boxShadow };
-      });
+      })()`) as any;
       receipt[`look-${tag}`] = { names: look.names, contrast: Math.round(look.contrast * 100) / 100, underline: look.underline };
       check(`${tag}: each tab its own icon`, look.icons.every((x: string) => x) && new Set(look.icons).size === look.icons.length, look.names);
       check(`${tag}: each tab its own accessible name`, look.names.every((x: string) => x) && new Set(look.names).size === look.names.length, look.names);
