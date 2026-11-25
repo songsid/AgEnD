@@ -21,14 +21,16 @@ try{
   if(process.env.STAGE!=="before")await reason.getByText(c.lang==="en"?"Clear retained origin":"清除保留的來源",{exact:false}).waitFor();
   await reason.scrollIntoViewIfNeeded();
   await page.screenshot({path:join(out,`${c.device}-${c.theme}-${c.lang}-needs.png`)});
+  const needsCsp=await csp();
   await page.goto(`${fx.base}/ui/fleet/agent/demo-source?cat=permissions`);
   const clear=page.getByRole("button",{name:c.lang==="en"?"Clear retained origin":"清除保留的來源",exact:true});await clear.waitFor();
   if(c.device==="phone"){const box=await clear.boundingBox();if(!box||box.height<44)throw Error("Small recovery tap target");}
   await clear.scrollIntoViewIfNeeded();
   await page.screenshot({path:join(out,`${c.device}-${c.theme}-${c.lang}-permissions.png`)});
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
-  if(overflow||errors.length||csp.length)throw Error(JSON.stringify({overflow,errors,csp}));
-  results.push({...c,overflow,errors,csp,clearEnabled:await clear.isEnabled()});await ctx.close();
+  const cspErrors=[...needsCsp,...await csp()];
+  if(overflow||errors.length||cspErrors.length)throw Error(JSON.stringify({overflow,errors,csp:cspErrors}));
+  results.push({...c,overflow,errors,csp:cspErrors,clearEnabled:await clear.isEnabled()});await ctx.close();
  }
  writeFileSync(join(out,"receipt.json"),JSON.stringify({stage:process.env.STAGE??"after",sourceHead:execFileSync("git",["rev-parse","HEAD"],{cwd:process.env.REPO,encoding:"utf8"}).trim(),results},null,2));
 }finally{await fm.needsYou.stop();await fx.close();db.close();}
