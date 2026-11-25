@@ -2178,6 +2178,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private updateChatCardAgain = false;
   /** #4485 review 2: each posted card's delivery address and the version it shows, by nonce (independent of the pending map). */
   private updateChatCardSent = new Map<string, { version: string; chatId: string; threadId?: string; messageId: string }>();
+  /** #4485 r2: the version each card's buttons answer for, bound when its delivery starts (before the platform answers). */
+  private updateChatCardVersion = new Map<string, string>();
   /** #4485 review 2: an answer that came while its card was still being posted (the post records it when it returns). */
   private updateChatCardAnswered = new Map<string, string>();
   private updateChatCardTimer: ReturnType<typeof setInterval> | null = null;
@@ -2259,6 +2261,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // #4485 review 2: the provider's own delivery address, kept per nonce as it is sent — a click may consume the
           // pending entry before this post returns, so the entry is never the place to read it from.
           deliver: async choices => {
+            // #4485 r2: the buttons' version is bound before anything is sent — a click can come before the platform answers.
+            const nonceOf = (choices[0]?.id ?? "").slice(UPDATE_CARD_CALLBACK_PREFIX.length, UPDATE_CARD_CALLBACK_PREFIX.length + 32);
+            this.updateChatCardVersion.set(nonceOf, version);
             const shown = this.renderPlaces(place.adapterId, this.updateChatCardText(view, current), place.threadId ? { threadId: place.threadId } : undefined);
             const sent = await place.adapter.notifyAlert(place.chatId, { type: "tip", instanceName: place.general, message: shown.text, choices }, shown.opts);
             const id = choices[0]?.id ?? "";
@@ -2318,10 +2323,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const nonce = data.callbackData.slice(UPDATE_CARD_CALLBACK_PREFIX.length, UPDATE_CARD_CALLBACK_PREFIX.length + 32);
     const sent = this.updateChatCardSent.get(nonce);
     const messageId = entry.messageId ?? sent?.messageId ?? data.messageId;
-    // #4485 review 2: a press answers the offer its message showed — never a newer one that came since.
+    // #4485 review 2: a press answers the offer its message showed — never a newer one that came since. The version is
+    // bound when the card's delivery starts; a press with no binding at all answers nothing (fail closed).
     const before = this.updateOfferView();
-    if (sent && (!before || before.version !== sent.version)) {
-      await this.retireNonceButtons(entry, messageId, before ? t("update.chatcard.replaced", before.version) : t("update.chatcard.expired"));
+    const shownVersion = this.updateChatCardVersion.get(nonce);
+    if (!shownVersion || !before || before.version !== shownVersion) {
+      await this.retireNonceButtons(entry, messageId, shownVersion && before && before.version !== shownVersion ? t("update.chatcard.replaced", before.version) : t("update.chatcard.expired"));
       return true;
     }
     const tonight = (() => { const d = new Date(); d.setHours(22, 0, 0, 0); if (d.getTime() - Date.now() < 30 * 60_000) d.setDate(d.getDate() + 1); return d.getTime(); })();

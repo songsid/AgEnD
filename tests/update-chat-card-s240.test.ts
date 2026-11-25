@@ -243,6 +243,36 @@ describe("M-3770 1.5: the update card in General's chat", () => {
       expect(g.retired.at(-1)).toMatch(/replaced this one \(2\.3\.5-beta\.5\)/);
     } finally { await f.stop(); }
   });
+  it("#4485 r2: a newer offer and an early click on the older card, both before its post returns: no answer; the current card after", async () => {
+    setLocale("en");
+    const f = await fleet();
+    try {
+      const g = await general(f);
+      let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+      g.adapter.notifyAlert.mockImplementationOnce(async (_c: string, alert: any) => { g.alerts.push(alert); await gate; return { chatId: "-100", threadId: "7", messageId: "mA" }; });
+      offer(f, "2.3.5-beta.3"); await vi.waitFor(() => expect(g.alerts).toHaveLength(1));
+      offer(f, "2.3.5-beta.4");                                            // B arrives while A's post is pending
+      const aId = g.alerts[0].choices.find((c: any) => c.id.endsWith(":when-idle")).id as string;
+      await f.fm.handleUpdateCardCallback({ callbackData: aId, userId: "1", username: "Example owner", chatId: "-100", threadId: "7", messageId: "mA", ack: vi.fn() }, "tg", g.adapter);
+      expect(f.fm.updateOfferView()).toMatchObject({ version: "2.3.5-beta.4", state: "offered" });   // B was not answered by A's button
+      expect(g.retired.at(-1)).toMatch(/replaced this one \(2\.3\.5-beta\.4\)/);
+      release();
+      await vi.waitFor(() => expect(g.alerts.some((a: any) => JSON.stringify(a).includes("2.3.5-beta.4"))).toBe(true));
+      expect(f.fm.updateOfferView()).toMatchObject({ version: "2.3.5-beta.4", state: "offered" });
+    } finally { await f.stop(); }
+  });
+  it("a press on a card with no version binding answers nothing (fail closed)", async () => {
+    setLocale("en");
+    const f = await fleet();
+    try {
+      const g = await general(f);
+      offer(f); await vi.waitFor(() => expect(f.fm.readUpdateChatCard()?.nonce).toBeTruthy());
+      f.fm.updateChatCardVersion.clear();
+      expect(await press(f, g, "when-idle").run).toBe(true);
+      expect(f.fm.updateOfferView().state).toBe("offered");
+      expect(g.retired.at(-1)).toMatch(/expired/);
+    } finally { await f.stop(); }
+  });
   it("a change while an edit is in flight is not lost: the sync runs again when the edit is done", async () => {
     setLocale("en");
     const f = await fleet();
