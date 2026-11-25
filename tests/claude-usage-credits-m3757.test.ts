@@ -39,14 +39,25 @@ describe("the live 2.1.332 prompt", () => {
     expect(hits[0]!.requestIdentity!(LIVE)).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("its Needs-you card offers the dialog's own choices, cursor on the switch, Esc not offered", () => {
+  it("its Needs-you card offers the dialog's own choices, cursor on the switch, Esc not offered", async () => {
     const card = claudeUsageCreditsPrompt(LIVE)!.card;
-    expect(card).toMatchObject({ kind: "question", title: "Claude Code", page: "options", cursor: 0, freeText: false, noSkip: true, humanOnly: true });
+    expect(card).toMatchObject({ kind: "question", title: "Claude Code", page: "options", cursor: 0, freeText: false, noSkip: true, webOnly: true, humanOnly: true });
     expect(card.question).toBe("Fable 5.2 now uses usage credits\nFable 5.2 runs on usage credits, purchased separately from your plan.");
     expect(card.options.map(o => o.title)).toEqual(["Switch to Opus 5.5 and continue", "Continue with Fable 5.2"]);
     // Switching changes nothing that costs money; continuing on Fable may spend credits: confirmed first.
     expect(card.options[0]!.confirmation).toBeUndefined();
     expect(card.options[1]!.confirmation).toMatchObject({ confirmLabel: "Continue with Fable 5.2" });
+    // Neutral words: the choice may bill usage credits; nothing promises which model the agent keeps (a picker's
+    // "Yes, buy usage credits" moves it to the picked model).
+    const { setLocale, t } = await import("../src/locale.js");
+    for (const lang of ["en", "zh-TW"] as const) {
+      setLocale(lang);
+      const message = t("claude.usage_credits.confirm_message", "Continue with Fable 5.2");
+      expect(message).toContain("Continue with Fable 5.2");
+      expect(message).toMatch(lang === "en" ? /may bill this agent's turns to usage credits/ : /可能讓這個 Agent 之後的回合從用量點數扣款/);
+      expect(message).not.toMatch(/keeps its|current model|維持目前的模型/);
+    }
+    setLocale("en");
     expect(acting(LIVE)[0]!.remoteCard!(LIVE)).toEqual(card);
   });
 

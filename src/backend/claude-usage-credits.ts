@@ -67,7 +67,8 @@ export function claudeUsageCreditsPrompt(pane: string): ClaudeUsageCreditsPrompt
   const card: RemoteQuestionCard = {
     kind: "question", identity, title: "Claude Code", question: [title, ...body.filter(row => !/^Learn more:/.test(row))].join("\n"),
     page: "options", options: cardOptions, freeText: false, cursor, typed: null, rowWidth: Math.max(...rows.map(row => row.length)),
-    noSkip: true, humanOnly: true,
+    // A CLI-owned dialog about the account's model and spending: a fleet admin answers it (webOnly), a person, never a script.
+    noSkip: true, webOnly: true, humanOnly: true,
   };
   return { title, options, cursor, card };
 }
