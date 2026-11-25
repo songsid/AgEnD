@@ -1,5 +1,5 @@
 {
-  "sourceHead": "0abe468e0bc329c7323a49a4a5a3b41a87bc981c",
+  "sourceHead": "4fac07d049410fa1727a2278f4eca41cfe55282b",
   "dirty": [],
   "checks": [
     {
@@ -15,7 +15,7 @@
       "ok": true
     },
     {
-      "name": "phone-light-en-tasks: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-light-en-tasks: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -51,7 +51,7 @@
       "ok": true
     },
     {
-      "name": "phone-light-en-org: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-light-en-org: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -83,7 +83,7 @@
       "ok": true
     },
     {
-      "name": "phone-light-en-host-health: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-light-en-host-health: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -115,7 +115,7 @@
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-tasks: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-light-zh-TW-tasks: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -151,7 +151,7 @@
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-org: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-light-zh-TW-org: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -183,7 +183,7 @@
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-host-health: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-light-zh-TW-host-health: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -215,7 +215,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-en-tasks: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-dark-en-tasks: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -251,7 +251,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-en-org: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-dark-en-org: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -283,7 +283,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-en-host-health: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-dark-en-host-health: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -315,7 +315,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-tasks: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-dark-zh-TW-tasks: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -351,7 +351,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-org: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-dark-zh-TW-org: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -383,7 +383,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-host-health: the tab you are on stands out (accent ≥ 3:1 against the header, with its line)",
+      "name": "phone-dark-zh-TW-host-health: the tab you are on stands out flat (accent icon ≥ 3:1, a tinted pill, no line, shadow or border)",
       "ok": true
     },
     {
@@ -582,83 +582,83 @@
   "pictures": [
     {
       "path": "m3722-phone-light-en-tasks.png",
-      "sha256": "9837f61d77086660b270ac4165979c9a0813311c79fbf62bfb0989f30a44d8e6"
+      "sha256": "852e3bcaab23c98efd11571e74e52e4d8936beb6f77c47dad5e577a13b21fa71"
     },
     {
       "path": "m3722-phone-light-en-org.png",
-      "sha256": "ceaf28f1999732aa60db9f6b8a7a6f0b73f4ec400876d2cfcba02f9ae6cf666d"
+      "sha256": "990de087124cc07d1dbad5c31cd545af5523b1b8a90dc625998be1551de6fd62"
     },
     {
       "path": "m3722-phone-light-en-host-health.png",
-      "sha256": "6d80d981fe1c31827cf60ee889e4553106e3936f181812cc4c4d1480c4fa38e8"
+      "sha256": "d7097b4d197ee191bf1d9898802ddd4e4aa4c4725b9b56c41134cc744a7bc3de"
     },
     {
       "path": "m3722-phone-light-zh-TW-tasks.png",
-      "sha256": "cd39c3d5905f786a1a05cf809c3bf8d2d3a5fcaf679736dc6ca799a7519cc277"
+      "sha256": "02c2c4ce2d8653344d081626532505e1df97a994e5e61006778f3e215467face"
     },
     {
       "path": "m3722-phone-light-zh-TW-org.png",
-      "sha256": "293a1ac0b07043aada9ec4cdfab4fb3f7f2d3579e973fabdb90bdfa6f8bbf8e7"
+      "sha256": "bd7a81308486fc1677e59d7b7353e301e547809b97a9ef6575a8bc01c09393c8"
     },
     {
       "path": "m3722-phone-light-zh-TW-host-health.png",
-      "sha256": "93088dce019ce1c90d602f0e0b431ec4b194e3f54e317775543359e33bd27c0a"
+      "sha256": "e3442aa294c28ec20eb864b79afc9b86550ffdc3b32260743215c7d0820e9ef7"
     },
     {
       "path": "m3722-phone-dark-en-tasks.png",
-      "sha256": "17509fd1074bb17e17405d36804d28ae2805f5182d3294befbfdf216f73ccda9"
+      "sha256": "384c2e4b6cb4ccf14ad5f676adf0987862a5bea6bde9eead045917ef8149528e"
     },
     {
       "path": "m3722-phone-dark-en-org.png",
-      "sha256": "c80d4b1b6c5b4e4cf8cf60c73a460b0e0c544bdcd0c62932b1a6b57d2a1bec2e"
+      "sha256": "15521e9617a96427135b24202cf629c62a52f6e252b46caec0da7ab52b93686a"
     },
     {
       "path": "m3722-phone-dark-en-host-health.png",
-      "sha256": "de7e8008f3a0bfc24ceafc6b50ddf412d34fbbff4c0f9a262f34af43309735f8"
+      "sha256": "615d1164e2e1d03ea94c2931c69f25f5d1b65698f00ad7c0c07b296d23c64796"
     },
     {
       "path": "m3722-phone-dark-zh-TW-tasks.png",
-      "sha256": "bc2bac4fbbe47817e48d83f48883d56be96f15dce043940c31dc49c8fdbf3461"
+      "sha256": "fdba8abb0a1fd1380730a18f743266af111d61d87fb5dd27b3dcb28e07408501"
     },
     {
       "path": "m3722-phone-dark-zh-TW-org.png",
-      "sha256": "ac4325ce98e8ff1056a069005307206856aa3e317e11799263228f34feff562d"
+      "sha256": "5039c8c08ed1862a3dc474c92e9b619987539c2ed392c4d186cb8519ce879f74"
     },
     {
       "path": "m3722-phone-dark-zh-TW-host-health.png",
-      "sha256": "3bff9fa9f40028f6e0e4da271430517cc8d3616cc1d266ce1194ef1e3a164ae3"
+      "sha256": "fd7f4d768bc36154f561d16058edd92a4d1d0385f1c9ec633cccab36b46135a7"
     },
     {
       "path": "m3722-phone-light-en-375-org.png",
-      "sha256": "831f22c9205e8b842d76b5af3b0f380800f4564d3c28b5f160a8cb92794a9085"
+      "sha256": "25e7cc01b2c4ef9c2b0b78607ec9e14b3b0e57ff2dc11327fc2ffd4a76cbdb82"
     },
     {
       "path": "m3722-phone-light-en-360-org.png",
-      "sha256": "fe125123d957f3de0dd619aed9164aa322930fe09a389efdd324a79cb504e188"
+      "sha256": "50886ef08f5fb55ac34214d62ea305d585ff5a4cd7cd590258bf3a025b2c3031"
     },
     {
       "path": "m3722-phone-light-en-320-org.png",
-      "sha256": "0daa82695a7736ec76f61f3fba7c4d63ae291d49f9c8ade468772d04fd79da9e"
+      "sha256": "78c2384a7b0f572ccd961e844bb3892643cf5f2f2483f9fbb9692fd822bd81a2"
     },
     {
       "path": "m3722-phone-dark-zh-TW-375-org.png",
-      "sha256": "4bd7ae95686ac4e56feab469115abc8653ca595b2d60a768d88ff5e9af2c0e32"
+      "sha256": "a7722ce1ae83a33caecf6e501600becfdf553438f68a9a592cab9dfbf34789e0"
     },
     {
       "path": "m3722-phone-dark-zh-TW-360-org.png",
-      "sha256": "b6e0d8e445dfb06bb14e9a1a4e8dfa4ce400ac51f5646f797d12a08ca9398c3e"
+      "sha256": "fdadb0c36ba23fe7c9e6991dec2bec73ecb66b87ce1393663247d50610be6ee1"
     },
     {
       "path": "m3722-phone-dark-zh-TW-320-org.png",
-      "sha256": "8587ae6f5651e482ad9038d101894f2347648ee958f6934df3f3e71e67e16726"
+      "sha256": "c02ffb96799ffbbf425d5fccd85a587fbd76d6a1a03e2e95d9f8362f87c7d85f"
     },
     {
       "path": "m3722-desk-light-en-office-studio.png",
-      "sha256": "61819c8c4b06c73f15f6e468e351e2ca9e3691245a31341acea42ddcdb4418e2"
+      "sha256": "0c251121a0915bb3e182aaeb634fffffac7ae752c59948315d680c0b18315d25"
     },
     {
       "path": "m3722-desk-light-en-office-cozy.png",
-      "sha256": "474072f8a22cc9638ea275fc9602de9331265c9ae42bea9e0959c50c7efac6e3"
+      "sha256": "3b22a280a0e3150c383a67937a944b9beeda759b38f3450483c2ab5b2f4eaa71"
     },
     {
       "path": "m3722-desk-light-en-office-guild.png",
@@ -666,19 +666,19 @@
     },
     {
       "path": "m3722-desk-light-en-office-school.png",
-      "sha256": "f5624efda8a63137ec13178b9071bcb86e9a60eba38ca0380d65082e72e36893"
+      "sha256": "e8de7585c11fe2eb808df6d64ee87e87271d0015990d14678a8ca56bb4d983c1"
     },
     {
       "path": "m3722-desk-dark-zh-TW-office-studio.png",
-      "sha256": "8fc9dfadb3b7583218a830e44e950c6104d1c24b9f16cd21449bbc46e2ba8bcd"
+      "sha256": "7c66d60d0a6657b2aec5cef830e556bc9e546ae1b8d95fb4c3b4d06a4cf244b8"
     },
     {
       "path": "m3722-desk-dark-zh-TW-office-cozy.png",
-      "sha256": "097e2dc7f5e55b9c7c0afcbb9a474307d43bbcedf92292be9eb3c101c3198b80"
+      "sha256": "e150cf7c4c6ad0c8e0c0c90638ec9fdad38234517fdb30bfe6596c4e936b1bf7"
     },
     {
       "path": "m3722-desk-dark-zh-TW-office-guild.png",
-      "sha256": "f8df0ac51eaf04e7815efc7bcdaa9e3839fdd8420109c459e094efa58b391087"
+      "sha256": "7d142214d3323d7b3f598e82c3d71d02ac35745f211ad705e440d8db84fcfe2b"
     },
     {
       "path": "m3722-desk-dark-zh-TW-office-school.png",
@@ -686,7 +686,7 @@
     },
     {
       "path": "m3722-desk-light-en-tasks.png",
-      "sha256": "e7e263be0631efadc0a6c88b2326ea75e1e4f73ca9b70fd33e748a56581e7c38"
+      "sha256": "5a36ced825520fb3d2350f2ce9aab97ce3a77e024abc80c8e69487eea9d425ea"
     },
     {
       "path": "m3722-desk-light-en-org.png",
@@ -785,7 +785,9 @@
       "Host health"
     ],
     "contrast": 5.93,
-    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.86549 0.913804 0.96651)"
   },
   "phone-phone-light-en-org": {
     "W": 390,
@@ -863,7 +865,9 @@
       "Host health"
     ],
     "contrast": 5.93,
-    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.86549 0.913804 0.96651)"
   },
   "phone-phone-light-en-host-health": {
     "W": 390,
@@ -941,7 +945,9 @@
       "Host health"
     ],
     "contrast": 5.93,
-    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.86549 0.913804 0.96651)"
   },
   "phone-phone-light-zh-TW-tasks": {
     "W": 390,
@@ -1019,7 +1025,9 @@
       "主機狀態"
     ],
     "contrast": 5.93,
-    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.86549 0.913804 0.96651)"
   },
   "phone-phone-light-zh-TW-org": {
     "W": 390,
@@ -1097,7 +1105,9 @@
       "主機狀態"
     ],
     "contrast": 5.93,
-    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.86549 0.913804 0.96651)"
   },
   "phone-phone-light-zh-TW-host-health": {
     "W": 390,
@@ -1175,7 +1185,9 @@
       "主機狀態"
     ],
     "contrast": 5.93,
-    "underline": "rgb(10, 98, 194) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.86549 0.913804 0.96651)"
   },
   "phone-phone-dark-en-tasks": {
     "W": 390,
@@ -1253,7 +1265,9 @@
       "Host health"
     ],
     "contrast": 7.7,
-    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.178275 0.211765 0.251294)"
   },
   "phone-phone-dark-en-org": {
     "W": 390,
@@ -1331,7 +1345,9 @@
       "Host health"
     ],
     "contrast": 7.7,
-    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.178275 0.211765 0.251294)"
   },
   "phone-phone-dark-en-host-health": {
     "W": 390,
@@ -1409,7 +1425,9 @@
       "Host health"
     ],
     "contrast": 7.7,
-    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.178275 0.211765 0.251294)"
   },
   "phone-phone-dark-zh-TW-tasks": {
     "W": 390,
@@ -1487,7 +1505,9 @@
       "主機狀態"
     ],
     "contrast": 7.7,
-    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.178275 0.211765 0.251294)"
   },
   "phone-phone-dark-zh-TW-org": {
     "W": 390,
@@ -1565,7 +1585,9 @@
       "主機狀態"
     ],
     "contrast": 7.7,
-    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.178275 0.211765 0.251294)"
   },
   "phone-phone-dark-zh-TW-host-health": {
     "W": 390,
@@ -1643,7 +1665,9 @@
       "主機狀態"
     ],
     "contrast": 7.7,
-    "underline": "rgb(122, 183, 255) 0px -3px 0px 0px inset"
+    "underline": "none",
+    "border": "0px none rgba(0, 0, 0, 0)",
+    "tint": "color(srgb 0.178275 0.211765 0.251294)"
   },
   "narrow-phone-light-en-375-org": {
     "W": 375,
