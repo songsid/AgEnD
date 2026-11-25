@@ -146,7 +146,13 @@ account.
   DMs are closed, or Telegram's `/start web` DM) makes the browser **Verified** at once, with no card. The same DM gets
   "*browser* signed in with the code sent to you, and is verified until …" with **Not me**, which signs that browser
   out. With no DM, General gets one line with no details: `/web revoke` if it wasn't you.
-- **Codes that don't verify:** a guest code, or `agend web --code` on a fleet with a chat connection.
+- **A guest's private /web code (M-3651)** makes the guest's browser verified as that account, for identity only. The
+  same DM gets "*browser* signed in as a guest … verified as you until …" with **Not me**, and the session menu says
+  **Guest · Verified until …**. Agents still see `@web:g`; the receipt says `authority.kind: web-guest` naming the
+  account, which is who it is and never a go-ahead or an admin's authority. A guest never gets a card: once it runs out,
+  send `/web` again. The switch, **Only this computer**, the link options and **Revoke web authority** end it as they
+  end an admin's.
+- **Codes that don't verify:** `agend web --code` on a fleet with a chat connection.
 - **Otherwise** (and to re-verify once the authorization runs out) the one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
 session menu says **Not verified · Authorize this browser**. Pressing it
 sends a card to that account's DM, saying which browser (device, on this computer or the network, when, until when), with

@@ -271,7 +271,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .pop .devices .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .pop .row { display: flex; gap: var(--s-2); flex-wrap: wrap; }
 .pop .err { color: var(--danger); }
-.pop .role { margin: 0; display: flex; gap: var(--s-2); align-items: baseline; flex-wrap: wrap; }
+.pop .role { margin: 0; display: flex; gap: var(--s-2); align-items: baseline; }
+/* M-3651: a long role ("Guest · Verified until 09:16 AM") wraps beside its label, never under a lone "Role". */
+.pop .role strong { flex: 1; min-width: 0; }
 .pop .webauth-rebind-form { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-1); }
 .pop .webauth-rebind-form .note, .pop .webauth-rebind-form .err { margin: 0; }
 .pop .webauth-rebind-field { flex: 1; min-width: 0; }   /* the shared .field input (token-sized), not a one-off box */
