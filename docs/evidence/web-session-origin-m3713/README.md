@@ -52,7 +52,7 @@ real account, provider, model or CLI was used.
 
 The eight `recovery-needs/` PNGs supersede the earlier after-stage Needs you
 frames; the twenty-four other original frames are retained unchanged.
-The new receipt binds capture source `0f2cb91aa60a617d322c7f909d236addb060ad8f`.
+The new receipt binds capture source `65cee97eb2dd6ec71d80607c3314d19590887d19`.
 The hint now names the sending Agent by its display name and its full Settings →
 Permissions path, separately from Open in Authorizations. No confirmation is
 pressed. The source-administrator recovery action itself remains unchanged.
@@ -79,3 +79,9 @@ show the complete sender-named recovery path without horizontal clipping or
 missing glyphs. The English lower Decline/card edge remains below the viewport;
 the Chinese card and Authorizations link fit. Existing disabled contact labels
 remain ellipsized. Only synthetic Demo identities and public example text appear.
+
+The final first sentence also names the sender (both unknown-origin and earlier
+non-admin reasons), rather than saying “this Agent” under the receiver's heading.
+Only TicketCard's reason label changes; its recovery hint, Permissions, CSS, and
+identity/authority runtime are unchanged. The two affected UI/Needs suites pass
+52 tests. All eight Needs frames are refreshed at the source recorded above.

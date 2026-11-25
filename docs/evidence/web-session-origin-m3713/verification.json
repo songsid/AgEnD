@@ -118,7 +118,7 @@
     "horizontalOverflow": false,
     "recoveryNeeds": {
       "count": 8,
-      "source": "0f2cb91aa60a617d322c7f909d236addb060ad8f",
+      "source": "65cee97eb2dd6ec71d80607c3314d19590887d19",
       "supersedes": "after/*-needs.png",
       "permissionsUnchanged": true
     }
@@ -137,6 +137,11 @@
     "testTypecheck": 0,
     "identityEdgeCases": "Host-only chat-fleet and approved account-less device remain unidentified; neither borrows an administrator account.",
     "recoveryFlow": "real poll + authorize + scoped read; mounted EN/zh count/Authorize to unknown-origin recovery card",
-    "phase2": "M-3718 request-scoped provenance, no scope expansion here"
+    "phase2": "M-3718 request-scoped provenance, no scope expansion here",
+    "senderReasonFollowup": {
+      "tests": 52,
+      "files": 2,
+      "change": "TicketCard first sentence names sender; other copy, CSS, Permissions and identity gates unchanged"
+    }
   }
 }
