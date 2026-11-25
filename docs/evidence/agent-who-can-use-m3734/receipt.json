@@ -1,5 +1,5 @@
 {
-  "sourceHead": "776ff1e02289d3ce3161bcfdefba9e461de9bb61",
+  "sourceHead": "42805ae1c65e5bbf588cc3a79fdee8678b41bb06",
   "dirty": [],
   "checks": [
     {
@@ -15,7 +15,15 @@
       "ok": true
     },
     {
-      "name": "desk-light-en: says the Hub page only opens where the Hub is reachable (company network)",
+      "name": "desk-light-en: says the Hub page only opens on the company network, not from outside (e.g. at home)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Carol's row says her level covers both her agents",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the scope says the agent's display name",
       "ok": true
     },
     {
@@ -24,6 +32,10 @@
     },
     {
       "name": "desk-light-en: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the Hub button is named, on screen",
       "ok": true
     },
     {
@@ -79,7 +91,15 @@
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW: says the Hub page only opens where the Hub is reachable (company network)",
+      "name": "desk-dark-zh-TW: says the Hub page only opens on the company network, not from outside (e.g. at home)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: Carol's row says her level covers both her agents",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the scope says the agent's display name",
       "ok": true
     },
     {
@@ -88,6 +108,10 @@
     },
     {
       "name": "desk-dark-zh-TW: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the Hub button is named, on screen",
       "ok": true
     },
     {
@@ -147,7 +171,11 @@
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW: says the Hub page only opens where the Hub is reachable (company network)",
+      "name": "phone-light-zh-TW: says the Hub page only opens on the company network, not from outside (e.g. at home)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: Carol's row says her level covers both her agents",
       "ok": true
     },
     {
@@ -156,6 +184,10 @@
     },
     {
       "name": "phone-light-zh-TW: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: the Hub button is named, on screen",
       "ok": true
     },
     {
@@ -215,7 +247,11 @@
       "ok": true
     },
     {
-      "name": "phone-dark-en: says the Hub page only opens where the Hub is reachable (company network)",
+      "name": "phone-dark-en: says the Hub page only opens on the company network, not from outside (e.g. at home)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: Carol's row says her level covers both her agents",
       "ok": true
     },
     {
@@ -224,6 +260,10 @@
     },
     {
       "name": "phone-dark-en: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: the Hub button is named, on screen",
       "ok": true
     },
     {
@@ -270,35 +310,43 @@
   "pictures": [
     {
       "path": "m3734-desk-light-en-1-who.png",
-      "sha256": "593646633ca3af6554217e28bf891fbc1264ea0c0d9b9b9ff097342fe76c30ed"
+      "sha256": "b2940e1fafc98c9c422e1063e4dbb509b325843c6b86212940976115456b266f"
+    },
+    {
+      "path": "m3734-desk-light-en-5-hub.png",
+      "sha256": "88ac0c998e0dc272ebfa3409483cb62e42b3d1ec61ccfb367a9543bc7d8233c8"
     },
     {
       "path": "m3734-desk-light-en-2-add.png",
-      "sha256": "7ad41027512e0b4ad74fb66e8d4ad0c6497c5b179def8eafbfdddc2326ecc479"
+      "sha256": "a8ea85cba9b63d62c2b3255662ecab01922ec132571f04320e9473edaa94f0ed"
     },
     {
       "path": "m3734-desk-light-en-3-remove.png",
-      "sha256": "3d5ef9b5d4f0a6a090326b45e3c3e892ef2472bfc258baf355caf28cfd3f64d9"
+      "sha256": "29477eaf683dbf4730dd8e94132a51303cb9edcb8b1641651754079d5beb7866"
     },
     {
       "path": "m3734-desk-light-en-4-nohub.png",
-      "sha256": "8f1ee561eb10be362e0561be97ebf9d0f7c2c0a51bc6a039ccdc49968486b1b0"
+      "sha256": "af811cd8495a54b2be6a725bc3f991e1722cd99ef9db1f22034cd014d1008b37"
     },
     {
       "path": "m3734-desk-dark-zh-TW-1-who.png",
-      "sha256": "5cdbb3bd81fb2d6ea3a110b1a5609a23d8de28ced735b4763b6db228b6a39cb5"
+      "sha256": "ea0b4b37c8817911b8ad04271656e73f10eadadd72c460c82c3e98d9d7d0a771"
+    },
+    {
+      "path": "m3734-desk-dark-zh-TW-5-hub.png",
+      "sha256": "bd6172935b31b0a8cd33592701c682201f2748713b99b5ac2a1ada7c5eac7538"
     },
     {
       "path": "m3734-desk-dark-zh-TW-2-add.png",
-      "sha256": "1eb6508e75e11d2ce32e03d566a54f12ab15c1a1d85559930191b720afee85e6"
+      "sha256": "4b7060b0c73a2fca513fa705cf5a8de057c89153867efa300a0737e764b999ad"
     },
     {
       "path": "m3734-desk-dark-zh-TW-3-remove.png",
-      "sha256": "0a51fb6a2fc8ad69158a147d8d0c98b8e3601df924e58f19e434c1f198d44907"
+      "sha256": "74169c989bd210340e7d0798036aede14477c47307b24997633eab8f3233ab78"
     },
     {
       "path": "m3734-desk-dark-zh-TW-4-nohub.png",
-      "sha256": "07891495f09de3c8762e4f70d5fa0e7d924a942e79badfd5ed3aeac1955e252f"
+      "sha256": "420ddcd7277de09098b60395a8fe08c7b9e4cca8bcbfd8c7412698adb6b7e671"
     },
     {
       "path": "m3734-phone-light-zh-TW-0-index.png",
@@ -306,19 +354,23 @@
     },
     {
       "path": "m3734-phone-light-zh-TW-1-who.png",
-      "sha256": "86eee2b61c3173cb306bf01e25dd3a69d566dcbcf70fcbe33ff92495adb2d581"
+      "sha256": "ba5e79eee80f5a062d853bd2393b5c7a22bef20cb1e90027611e27e50a841e4e"
+    },
+    {
+      "path": "m3734-phone-light-zh-TW-5-hub.png",
+      "sha256": "c1a050fadcce45ccaa7d490f3030c26723a941e0cd86546e88488eff74de8354"
     },
     {
       "path": "m3734-phone-light-zh-TW-2-add.png",
-      "sha256": "11402600c3b9578d4ced1c9c1908e7aafada0663ab3d3b123a2aa816787bcafb"
+      "sha256": "8c90df5325cddf2c2a854891d2c257b53f8d1d91064f5785a521c8b7cb5bf8c0"
     },
     {
       "path": "m3734-phone-light-zh-TW-3-remove.png",
-      "sha256": "a800c975818453548d54107d9a0a3c05e1997d62afd89f97a42efd6492ec38fe"
+      "sha256": "5b2ce9b216feb5e18885a622d16b090ca2790142108a5eabf7f161af0a4263b2"
     },
     {
       "path": "m3734-phone-light-zh-TW-4-nohub.png",
-      "sha256": "7e4c4a8d7617f922cba972f423c49940899001b2a24c7192ec3e2da581f940ad"
+      "sha256": "05f838b68be2531b34f555afc0bc6582075af832234c35182184a8a18be78a43"
     },
     {
       "path": "m3734-phone-dark-en-0-index.png",
@@ -326,19 +378,23 @@
     },
     {
       "path": "m3734-phone-dark-en-1-who.png",
-      "sha256": "d2fd9cddcc06478a47ea1bfcd882aee102883b505b0a5259430f7d84c18b5c16"
+      "sha256": "50d6843dd9a07cf49ffbb6920bd330f6149344ef53ea9aa6992be73d665885c7"
+    },
+    {
+      "path": "m3734-phone-dark-en-5-hub.png",
+      "sha256": "4dcd0a1bdbcf5a6b167ae0dd846431525908a3f4d358927d7c772fd8f51610f8"
     },
     {
       "path": "m3734-phone-dark-en-2-add.png",
-      "sha256": "3851c80818732cc5c17ccf0b55e9a582e0d1719197dafda74b4af76f10ff1c8e"
+      "sha256": "d9f7be8bb6cba8b68bf5d0fa781fae6f79138c606dafa487a7a0faa27524fa21"
     },
     {
       "path": "m3734-phone-dark-en-3-remove.png",
-      "sha256": "db4f92ea33e8218cc414161f77741d087d64b53d6ade6a4d04fd0f0d6222c5cf"
+      "sha256": "5e0c6bd0da57001a4b4eae44482e50c593c1cbbe1ae02518c70f1d5f041bb05b"
     },
     {
       "path": "m3734-phone-dark-en-4-nohub.png",
-      "sha256": "638075ce5902fccffb282671ac4a64022cf97f326a4d2f81a75ba01ed7e29b2c"
+      "sha256": "9c65001a5a7d08f13a9b54e06490dce84f9629504fa36fedd161f77fdd2b9bf0"
     }
   ],
   "measured": {
@@ -352,20 +408,20 @@
           "pressed": [
             "chat"
           ],
-          "text": "A\nAlice Discord\nNot signed in\nChat\nTrusted\nRemove"
+          "text": "A\nAlice Discord\nNot signed in\nLevel\nChat\nTrusted\nRemove"
         },
         {
           "name": "Carol",
           "pressed": [
             "trusted"
           ],
-          "text": "C\nCarol Discord\nNot signed in · Also uses: beta\nChat\nTrusted\nRemove"
+          "text": "C\nCarol Discord\nNot signed in · Can also use: beta\nLevel\nChat\nTrusted\nRemove\n\nCarol's level (Chat or Trusted) applies to all 2 agents they can use, not only this one."
         }
       ],
       "hub": "shared",
       "href": "https://hub.example.test/ui/hub/exposures?agent=aaaaaaaa-1111-4222-8333-444444444444&grant=1",
       "target": "_blank",
-      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both. Open Settings → Guests\n\nA\nAlice Discord\nNot signed in\nChat\nTrusted\nRemove\nC\nCarol Discord\nNot signed in · Also uses: beta\nChat\nTrusted\nRemove\n\nTrusted adds watching these agents' screens (read-only) and searching their chats. The screen shows everything the agent's terminal does: other people's messages to it, commands and their output, which can include secrets. Chat and search stay limited to what this person may see.\n\nAdd a person\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nShared on the Hub.\n\nThat page is on the Hub's own address, so it only opens where the Hub can be reached — for now, on the company network. It doesn't open from outside.\n\nChoose who may ask on the Hub\n↗\nOpen Settings → Hub",
+      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both.\n\nOpen Settings → Guests\nA\nAlice Discord\nNot signed in\nLevel\nChat\nTrusted\nRemove\nC\nCarol Discord\nNot signed in · Can also use: beta\nLevel\nChat\nTrusted\nRemove\n\nCarol's level (Chat or Trusted) applies to all 2 agents they can use, not only this one.\n\nTrusted can also watch these agents' screens (read-only) and search their chats. The screen shows everything the agent's terminal does: other people's messages to it, commands and their output, which can include secrets. Chat and search stay limited to what this person may see.\n\nAdd a person\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nShared on the Hub.\n\n“Choose who may ask on the Hub” opens the Hub's own page. That page opens only on the company network: outside it (for example, at home) it won't open.\n\nChoose who may ask on the Hub\n↗\nOpen Settings → Hub",
       "nav": [
         "overview",
         "basic",
@@ -385,7 +441,7 @@
       "hub": "none",
       "href": null,
       "target": null,
-      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both. Open Settings → Guests\n\nGuests still get the agents they talk to in chat. To choose who can use each agent, start from today's guests: each one keeps exactly the agents they can use now.\n\nStart from today's guests\n\nNo guest can use this agent.\n\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nThis Fleet isn't connected to a Hub.\n\nOpen Settings → Hub",
+      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both.\n\nOpen Settings → Guests\n\nRight now guests can use the agents they've talked to in chat. Nothing is chosen per agent yet, so this list can't be changed.\n\n“Start from today's guests” saves that access as each guest's own choices: everyone keeps exactly the agents they can use now, nothing more. After that, a guest can use this agent only if you add them here or in Settings → Guests. Saving it needs a fleet admin's confirmation, like adding someone.\n\nStart from today's guests\n\nNo guest can use this agent.\n\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nThis Fleet isn't connected to a Hub.\n\nOpen Settings → Hub",
       "nav": [
         "overview",
         "basic",
@@ -407,20 +463,20 @@
           "pressed": [
             "chat"
           ],
-          "text": "A\nAlice Discord\n未登入\n聊天\n信任\n移除"
+          "text": "A\nAlice Discord\n未登入\n等級\n聊天\n信任\n移除"
         },
         {
           "name": "Carol",
           "pressed": [
             "trusted"
           ],
-          "text": "C\nCarol Discord\n未登入 · 也能用：beta\n聊天\n信任\n移除"
+          "text": "C\nCarol Discord\n未登入 · 也可以用：beta\n等級\n聊天\n信任\n移除\n\nCarol 的等級（聊天或信任）套用到他們能用的全部 2 個 Agent，不只這一個。"
         }
       ],
       "hub": "shared",
       "href": "https://hub.example.test/ui/hub/exposures?agent=aaaaaaaa-1111-4222-8333-444444444444&grant=1",
       "target": "_blank",
-      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和 bot 對話是 bot 本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。 開啟「設定 → 訪客」\n\nA\nAlice Discord\n未登入\n聊天\n信任\n移除\nC\nCarol Discord\n未登入 · 也能用：beta\n聊天\n信任\n移除\n\n信任多了：觀看這些 agent 的畫面（唯讀），以及搜尋它們的聊天。畫面會顯示 agent 終端上的一切：別人傳給它的訊息、指令和它們的輸出，其中可能有機密。聊天和搜尋仍只限這個人看得到的內容。\n\n新增人員\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n已在 Hub 上分享。\n\n那個頁面在 Hub 自己的網址上，只有連得到 Hub 的地方才打得開——目前是公司網路內。從外部打不開。\n\n到 Hub 選擇誰可以問\n↗\n開啟「設定 → Hub」",
+      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和機器人對話是機器人本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。\n\n開啟「設定 → 訪客」\nA\nAlice Discord\n未登入\n等級\n聊天\n信任\n移除\nC\nCarol Discord\n未登入 · 也可以用：beta\n等級\n聊天\n信任\n移除\n\nCarol 的等級（聊天或信任）套用到他們能用的全部 2 個 Agent，不只這一個。\n\n信任另外可以：觀看這些 Agent 的畫面（唯讀），以及搜尋它們的聊天。畫面會顯示 Agent 終端上的一切：別人傳給它的訊息、指令和它們的輸出，其中可能有機密。聊天和搜尋仍只限這個人看得到的內容。\n\n新增人員\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n已在 Hub 上分享。\n\n「到 Hub 選擇誰可以問」會開啟 Hub 自己的頁面。這個頁面只在公司網路內打得開，在公司網路以外（例如在家）打不開。\n\n到 Hub 選擇誰可以問\n↗\n開啟「設定 → Hub」",
       "nav": [
         "overview",
         "basic",
@@ -440,7 +496,7 @@
       "hub": "none",
       "href": null,
       "target": null,
-      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和 bot 對話是 bot 本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。 開啟「設定 → 訪客」\n\n訪客目前仍會拿到他們在聊天中互動過的 Agent。若要逐一選擇誰能用哪個 Agent，請從現有訪客開始：每個人都保留他們現在能用的 Agent。\n\n從現有訪客開始\n\n目前沒有訪客可以使用這個 Agent。\n\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n這個 Fleet 沒有連接 Hub。\n\n開啟「設定 → Hub」",
+      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和機器人對話是機器人本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。\n\n開啟「設定 → 訪客」\n\n目前訪客可以使用他們在聊天中互動過的 Agent。還沒有逐一選擇，所以這份名單無法修改。\n\n按「從現有訪客開始」會把這些存取存成每位訪客自己的授權：每個人都只保留他們現在能用的 Agent，不會多。之後，訪客只有在你從這裡或「設定 → 訪客」加入後，才能使用這個 Agent。儲存前需要 Fleet 管理員確認，和新增人員一樣。\n\n從現有訪客開始\n\n目前沒有訪客可以使用這個 Agent。\n\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n這個 Fleet 沒有連接 Hub。\n\n開啟「設定 → Hub」",
       "nav": [
         "overview",
         "basic",
@@ -462,20 +518,20 @@
           "pressed": [
             "chat"
           ],
-          "text": "A\nAlice Discord\n未登入\n聊天\n信任\n移除"
+          "text": "A\nAlice Discord\n未登入\n等級\n聊天\n信任\n移除"
         },
         {
           "name": "Carol",
           "pressed": [
             "trusted"
           ],
-          "text": "C\nCarol Discord\n未登入 · 也能用：beta\n聊天\n信任\n移除"
+          "text": "C\nCarol Discord\n未登入 · 也可以用：beta\n等級\n聊天\n信任\n移除\n\nCarol 的等級（聊天或信任）套用到他們能用的全部 2 個 Agent，不只這一個。"
         }
       ],
       "hub": "shared",
       "href": "https://hub.example.test/ui/hub/exposures?agent=aaaaaaaa-1111-4222-8333-444444444444&grant=1",
       "target": "_blank",
-      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和 bot 對話是 bot 本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。 開啟「設定 → 訪客」\n\nA\nAlice Discord\n未登入\n聊天\n信任\n移除\nC\nCarol Discord\n未登入 · 也能用：beta\n聊天\n信任\n移除\n\n信任多了：觀看這些 agent 的畫面（唯讀），以及搜尋它們的聊天。畫面會顯示 agent 終端上的一切：別人傳給它的訊息、指令和它們的輸出，其中可能有機密。聊天和搜尋仍只限這個人看得到的內容。\n\n新增人員\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n已在 Hub 上分享。\n\n那個頁面在 Hub 自己的網址上，只有連得到 Hub 的地方才打得開——目前是公司網路內。從外部打不開。\n\n到 Hub 選擇誰可以問\n↗\n開啟「設定 → Hub」",
+      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和機器人對話是機器人本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。\n\n開啟「設定 → 訪客」\nA\nAlice Discord\n未登入\n等級\n聊天\n信任\n移除\nC\nCarol Discord\n未登入 · 也可以用：beta\n等級\n聊天\n信任\n移除\n\nCarol 的等級（聊天或信任）套用到他們能用的全部 2 個 Agent，不只這一個。\n\n信任另外可以：觀看這些 Agent 的畫面（唯讀），以及搜尋它們的聊天。畫面會顯示 Agent 終端上的一切：別人傳給它的訊息、指令和它們的輸出，其中可能有機密。聊天和搜尋仍只限這個人看得到的內容。\n\n新增人員\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n已在 Hub 上分享。\n\n「到 Hub 選擇誰可以問」會開啟 Hub 自己的頁面。這個頁面只在公司網路內打得開，在公司網路以外（例如在家）打不開。\n\n到 Hub 選擇誰可以問\n↗\n開啟「設定 → Hub」",
       "nav": [
         "overview",
         "basic",
@@ -495,7 +551,7 @@
       "hub": "none",
       "href": null,
       "target": null,
-      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和 bot 對話是 bot 本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。 開啟「設定 → 訪客」\n\n訪客目前仍會拿到他們在聊天中互動過的 Agent。若要逐一選擇誰能用哪個 Agent，請從現有訪客開始：每個人都保留他們現在能用的 Agent。\n\n從現有訪客開始\n\n目前沒有訪客可以使用這個 Agent。\n\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n這個 Fleet 沒有連接 Hub。\n\n開啟「設定 → Hub」",
+      "text": "Fleet 管理員一律可以使用每個 Agent。誰能在 Discord 或 Telegram 和機器人對話是機器人本身的設定（允許的使用者），這裡不會改動。\n\n網頁訪客\n\n你允許以訪客身分登入這個儀表板的人。和「設定 → 訪客」是同一份清單：在任一處修改，兩邊都會看到。\n\n開啟「設定 → 訪客」\n\n目前訪客可以使用他們在聊天中互動過的 Agent。還沒有逐一選擇，所以這份名單無法修改。\n\n按「從現有訪客開始」會把這些存取存成每位訪客自己的授權：每個人都只保留他們現在能用的 Agent，不會多。之後，訪客只有在你從這裡或「設定 → 訪客」加入後，才能使用這個 Agent。儲存前需要 Fleet 管理員確認，和新增人員一樣。\n\n從現有訪客開始\n\n目前沒有訪客可以使用這個 Agent。\n\nHub\n\n誰可以在 Hub 上問這個 Agent（人或 AD 群組，各自有你選的到期日）是在 Hub 上設定的。\n\n這個 Fleet 沒有連接 Hub。\n\n開啟「設定 → Hub」",
       "nav": [
         "overview",
         "basic",
@@ -517,20 +573,20 @@
           "pressed": [
             "chat"
           ],
-          "text": "A\nAlice Discord\nNot signed in\nChat\nTrusted\nRemove"
+          "text": "A\nAlice Discord\nNot signed in\nLevel\nChat\nTrusted\nRemove"
         },
         {
           "name": "Carol",
           "pressed": [
             "trusted"
           ],
-          "text": "C\nCarol Discord\nNot signed in · Also uses: beta\nChat\nTrusted\nRemove"
+          "text": "C\nCarol Discord\nNot signed in · Can also use: beta\nLevel\nChat\nTrusted\nRemove\n\nCarol's level (Chat or Trusted) applies to all 2 agents they can use, not only this one."
         }
       ],
       "hub": "shared",
       "href": "https://hub.example.test/ui/hub/exposures?agent=aaaaaaaa-1111-4222-8333-444444444444&grant=1",
       "target": "_blank",
-      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both. Open Settings → Guests\n\nA\nAlice Discord\nNot signed in\nChat\nTrusted\nRemove\nC\nCarol Discord\nNot signed in · Also uses: beta\nChat\nTrusted\nRemove\n\nTrusted adds watching these agents' screens (read-only) and searching their chats. The screen shows everything the agent's terminal does: other people's messages to it, commands and their output, which can include secrets. Chat and search stay limited to what this person may see.\n\nAdd a person\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nShared on the Hub.\n\nThat page is on the Hub's own address, so it only opens where the Hub can be reached — for now, on the company network. It doesn't open from outside.\n\nChoose who may ask on the Hub\n↗\nOpen Settings → Hub",
+      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both.\n\nOpen Settings → Guests\nA\nAlice Discord\nNot signed in\nLevel\nChat\nTrusted\nRemove\nC\nCarol Discord\nNot signed in · Can also use: beta\nLevel\nChat\nTrusted\nRemove\n\nCarol's level (Chat or Trusted) applies to all 2 agents they can use, not only this one.\n\nTrusted can also watch these agents' screens (read-only) and search their chats. The screen shows everything the agent's terminal does: other people's messages to it, commands and their output, which can include secrets. Chat and search stay limited to what this person may see.\n\nAdd a person\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nShared on the Hub.\n\n“Choose who may ask on the Hub” opens the Hub's own page. That page opens only on the company network: outside it (for example, at home) it won't open.\n\nChoose who may ask on the Hub\n↗\nOpen Settings → Hub",
       "nav": [
         "overview",
         "basic",
@@ -550,7 +606,7 @@
       "hub": "none",
       "href": null,
       "target": null,
-      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both. Open Settings → Guests\n\nGuests still get the agents they talk to in chat. To choose who can use each agent, start from today's guests: each one keeps exactly the agents they can use now.\n\nStart from today's guests\n\nNo guest can use this agent.\n\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nThis Fleet isn't connected to a Hub.\n\nOpen Settings → Hub",
+      "text": "Fleet admins can always use every agent. Who can talk to the bot in Discord or Telegram is the bot's own setting (its allowed users) and isn't changed here.\n\nWeb guests\n\nPeople you let sign in to this dashboard as guests. It's the same list as Settings → Guests: a change made in either place shows in both.\n\nOpen Settings → Guests\n\nRight now guests can use the agents they've talked to in chat. Nothing is chosen per agent yet, so this list can't be changed.\n\n“Start from today's guests” saves that access as each guest's own choices: everyone keeps exactly the agents they can use now, nothing more. After that, a guest can use this agent only if you add them here or in Settings → Guests. Saving it needs a fleet admin's confirmation, like adding someone.\n\nStart from today's guests\n\nNo guest can use this agent.\n\nHub\n\nWho may ask this agent on the Hub (people or AD groups, each until a date you choose) is set on the Hub itself.\n\nThis Fleet isn't connected to a Hub.\n\nOpen Settings → Hub",
       "nav": [
         "overview",
         "basic",
@@ -563,5 +619,5 @@
       ]
     }
   },
-  "summary": "66/66"
+  "summary": "76/76"
 }
