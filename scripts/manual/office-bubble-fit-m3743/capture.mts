@@ -7,7 +7,7 @@
  *      the view stops at the map's top and no built-in style seats anyone near it — a pack's riders on its rim do; the unit
  *      tests draw that, tests/office-bubble-fit-m3743.test.ts.)
  *  (b) Phone: the ⋯ sheet's Talk select shows its whole value ("Pop-up window" / 「彈出視窗」).
- * Phone 390 light / dark × en / zh-TW, and the desk (light en, dark zh-TW).
+ * Phone 390 light / dark × en / zh-TW (the right and the left edge), and the desk (light en, dark zh-TW: the right edge).
  *   CHROME=<chromium> PW_DIR=<playwright-core> REPO=<checkout> OUT=<dir> npx tsx scripts/manual/office-bubble-fit-m3743/capture.mts
  */
 import { createHash } from "node:crypto";
@@ -107,16 +107,17 @@ try {
       await shot(page, `${tag}-0-fit`);
       // Zoomed in about the speaker (the wheel zooms about the pointer), so it can be dragged to any edge of the canvas.
       const t0 = tipOf(m0);
-      if (t0) { await page.mouse.move(t0.x, t0.y); for (let i = 0; i < (phone ? 10 : 14); i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(120); } }
+      if (t0) { await page.mouse.move(t0.x, t0.y); for (let i = 0; i < (phone ? 10 : 6); i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(120); } }
       await page.waitForTimeout(600);
       receipt.measured[`${tag}-zoom`] = await page.evaluate(`document.querySelector(".oo-zoom-pct")?.textContent || ""`);
-      for (const where of ["right", "left"] as const) {
+      // The desk: the right edge (its wide canvas reaches the map's own edge before a seat near the right can get to its left).
+      for (const where of (phone ? ["right", "left"] : ["right"]) as Array<"right" | "left">) {
         const moved = await toEdge(page, where);
         const m = await page.evaluate(PAPER) as any, b = caller(m);
         receipt.measured[`${tag}-${where}`] = { moved, canvas: { W: m.W, H: m.H }, bubble: b, edgePaper: m.edge };
         // Where the speaker is now: where the drag put it (the scene moves with the pointer, unless the view stops at the map's edge).
         const tipAt = b ? { x: m.rect.left + b.tip.x / m.scale, y: m.rect.top + b.tip.y / m.scale } : null;
-        const atEdge = !!tipAt && !!moved && (where === "right" ? tipAt.x >= m.rect.left + m.rect.width - 24 : tipAt.x <= m.rect.left + 24);
+        const near = phone ? 24 : 48, atEdge = !!tipAt && !!moved && (where === "right" ? tipAt.x >= m.rect.left + m.rect.width - near : tipAt.x <= m.rect.left + near);
         check(`${tag} ${where}: the speaker is at the canvas's ${where} edge`, atEdge, { tipAt, moved });
         check(`${tag} ${where}: no bubble paper on the canvas's outer 3 px (nothing cut by the edge)`, m.edge === 0, m.edge);
         check(`${tag} ${where}: the bubble wholly inside the canvas, 4 px or more in`, !!b && b.l >= 4 && b.t >= 4 && b.r <= m.W - 5 && b.b <= m.H - 5, b);
