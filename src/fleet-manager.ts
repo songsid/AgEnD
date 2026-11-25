@@ -6034,7 +6034,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Discord or Telegram, as a card with Approve once / Decline — until then a held request had no chat path (the live
    * Needs you message lists it without buttons). One card per request. Whoever clicks must be one who may decide it
    * (ContactAuthService.view(...).canDecide, read at the click); the decision is theirs, never the bot's. A request decided
-   * anywhere else (the web, another card) retires its card. ClassicBot rooms keep their own flow.
+   * anywhere else (the web, another card) retires its card. #4448 (R21079937): a ClassicBot room's request to a fleet agent
+   * gets the same card, in the General of the target's connection; a room's request to anything else gets none.
    */
   /** Requests whose card was posted or tried: forgotten when the request is decided, and at most HELD_CARDS_KEPT. */
   private heldTicketCards?: Set<string>;

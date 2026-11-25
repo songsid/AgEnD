@@ -1,16 +1,24 @@
 /**
  * M-3709 (the user, 11-25: "verify the whole flow automatically"): the contact-approval journey end to end, as one suite —
  * a send held for approval → who may decide it → where the request shows (this computer, the fixed link, the card in
- * General) → approve (delivered exactly once), decline or expire (never delivered, the requester told).
+ * General) → approve (admitted for delivery exactly once), decline or expire (never admitted, the requester told).
  *
  * Real: FleetManager (constructed, never started: no CLI, tmux, adapters connecting or vendor calls), its fleet tool
  * handlers (outboundHandlers → admitDurableDelivery → the contact service), the contact store and delivery outbox
- * (SQLite in a scratch home), the web handler (handleWebRequest with verified admin sessions, on localhost and bound as
- * the fixed link's gateway requests), web authority (authorizeWebSession), the General card (postNonceButtonPromptOrThrow)
- * and its click (dispatchAdapterCallback), the Hub contact windows.
- * Fake: the two Discord bots (in-memory adapters that record what they post), the ClassicBot room's registry entry,
- * daemon boot ids, and the delivery pump (admitted deliveries are read from the outbox, not sent).
+ * (SQLite in a scratch home), the ClassicBot registry (ClassicChannelManager on a scratch classicBot.yaml), the web
+ * handler (handleWebRequest with admin sessions), web authority (authorizeWebSession, contactActor), the General card
+ * (postNonceButtonPromptOrThrow) and its click (dispatchAdapterCallback), the Hub contact windows.
+ * Fake: the two Discord bots (in-memory adapters that record what they post).
  *
+ * What this suite does NOT prove (#4448 review), each by its own tests elsewhere:
+ *  - Receipt by the target: the delivery pump is off, so "delivered" here means admitted to the durable outbox exactly
+ *    once (outbox.listPending), not handed to the agent's session or read by it.
+ *  - Live agents: every agent reads as running (getInstanceStatus) and has a fixed daemon boot id (getDaemonBootId).
+ *  - How an origin is learned: each source's origin is seeded in the contact store (inheritOrigin), not recorded from
+ *    real inbound room messages (classic-contact-dispatch-3339 covers that ingress).
+ *  - The DM Confirm itself: a browser is verified by calling authorizeWebSession, as the Confirm's handler does.
+ *  - The fixed link's listener and tunnel: its requests are the handler's own, bound with the gateway's request context
+ *    (bindGatewayRequest, named link) — the gateway's routing is contact-auth-public-link-m3680's.
  * People (Discord): "boss" is a Fleet admin only on the SECOND bot (b) — the user's real case; "admin-a" on the first bot
  * (a), which hosts General and the agents; "member-one" and "member-two" are room members, admins nowhere.
  *
@@ -75,7 +83,7 @@ function world() {
   any.classicChannels.register("room-1", "b", ROOM, "agend-limit", "fake-creator", "claude-code", true);
   writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
   any.getDaemonBootId = (n: string) => `${n}-boot`;
-  any.getInstanceStatus = () => "running";       // never started: every agent reads as running, as the smoke fixture does
+  any.getInstanceStatus = () => "running";       // never started: every agent reads as running (a stated limit, above)
   any.scheduleDeliveryOutboxPump = () => {};
   any.publishTraffic = () => {};
   any.ensureDeliveryOutbox();
@@ -158,7 +166,7 @@ describe("1. scenarios: a send is held (or not), and who may decide it", () => {
     expect(result).toMatchObject({ held: true });
     expect([w.mayDecide(result.authorization_id, MEMBER_ONE), w.mayDecide(result.authorization_id, BOSS_B)]).toEqual([false, true]);
   });
-  it("#4435: the same admin seen through both bots is ONE person — a human origin of an admin, not held: delivered at once", async () => {
+  it("#4435: the same admin seen through both bots is ONE person — a human origin of an admin, not held: admitted for delivery at once", async () => {
     const w = world();
     w.setOrigin(ROOM, { kind: "mixed", people: [BOSS_A, BOSS_B], receiptIds: ["r1", "r2"], chain: [ROOM] });
     const result = await w.call(ROOM, "send_to_instance", { instance_name: "m365", message: "Go ahead." });
@@ -207,7 +215,7 @@ describe("2. where the request shows, and each way to decide it", () => {
       expect(cards.map((c) => [c.bot, c.chatId, c.threadId, c.choices])).toEqual([["a", "-1001", "1", ["Approve once", "Decline"]]]);
       expect(cards[0]!.message).toContain(id.slice(0, 9));
     });
-    it("approved from the General card by the admin via the second bot: delivered exactly once; a second decision anywhere changes nothing", async () => {
+    it("approved from the General card by the admin via the second bot: admitted for delivery exactly once; a second decision anywhere changes nothing", async () => {
       const { w, id } = await held(kind);
       const card = w.cards()[0]!;
       expect((await w.click(card, "approve", BOSS_A)).handled).toBe(true);
@@ -225,7 +233,7 @@ describe("2. where the request shows, and each way to decide it", () => {
       expect(w.fm.contactAuthorization(id, BOSS_B).state).toBe("pending");
       expect([w.retired, w.deliveriesTo("m365")]).toEqual([[], []]);
     });
-    it.each([["this computer", false], ["the fixed link", true]] as const)("approved on the dashboard (%s): delivered once; the General card says it was approved elsewhere", async (_where, link) => {
+    it.each([["this computer", false], ["the fixed link", true]] as const)("approved on the dashboard (%s): admitted for delivery once; the General card says it was approved elsewhere", async (_where, link) => {
       const { w, id } = await held(kind);
       const b = w.browser(BOSS_B, { link });
       const ticket = (await b.request("GET", `/ui/api/contact-authorizations/${id}`)).body;
@@ -235,14 +243,14 @@ describe("2. where the request shows, and each way to decide it", () => {
       expect(w.deliveriesTo("m365")).toHaveLength(1);
       expect(w.retired.map((r) => r.text)).toEqual(["Approved elsewhere (the dashboard or another card)."]);
     });
-    it("declined from the card: never delivered; the requester is told", async () => {
+    it("declined from the card: never admitted for delivery; the requester is told", async () => {
       const { w, id, source } = await held(kind);
       await w.click(w.cards()[0]!, "decline", BOSS_A);
       expect(w.fm.contactAuthorization(id, BOSS_B).state).toBe("declined");
       expect(w.deliveriesTo("m365")).toEqual([]);
       expect(w.noticesTo(source)).toEqual([expect.stringContaining(id)]);
     });
-    it("left to expire (30 minutes): never delivered; the requester is told; it leaves every list", async () => {
+    it("left to expire (30 minutes): never admitted for delivery; the requester is told; it leaves every list", async () => {
       const { w, id, source } = await held(kind);
       // 31 minutes pass (the store keeps the real clock it was built with: the row is aged instead).
       w.outbox.db.prepare("UPDATE contact_auth_tickets SET created_at=created_at-?, ticket_json=json_set(ticket_json,'$.expiresAt',?) WHERE id=?")
