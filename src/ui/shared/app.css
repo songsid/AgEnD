@@ -2281,7 +2281,7 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .uc-pick-row { font-size: var(--fs-sm); }
 .uc-needs .n-item { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
 @media (max-width: 899px), (pointer: coarse) {
-  .uc-settings :is(.btn, .input, .uc-day, .uc-pick-row), .uc-needs .btn { min-height: var(--tap); }
+  .uc-settings :is(.btn, .input, .uc-day, .uc-pick-row), .uc-needs .btn, .update-line .update-actions .btn { min-height: var(--tap); }
   .uc-day, .uc-pick-row { display: inline-flex; align-items: center; }
 }
 .s-update dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px var(--s-4); margin: 0 0 var(--s-3); font-size: var(--fs-sm); }
