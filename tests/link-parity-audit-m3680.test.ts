@@ -16,6 +16,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
+import { FleetManager } from "../src/fleet-manager.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { handleWebRequest } from "../src/web-api.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
@@ -86,7 +87,7 @@ describe("1. every route the dashboard calls is on the public link's list, or na
     const H = "0123456789abcdef0123456789abcdef";
     for (const [m, p] of [["GET", "/api/ai-usage"], ["POST", "/api/card/dev/portrait"], ["POST", "/api/hub/member/pairing/connect"], ["POST", "/api/settings/instances/dev/pause"],
       ["POST", "/api/settings/connections/main/secret/verify"], ["POST", "/api/settings/connections/main/binding/apply"], ["POST", "/ui/devices/lookup"], ["POST", "/ui/themes/dev/reset"],
-      ["GET", "/ui/js/fleet-route-worker.js"], ["PUT", "/ui/offices"], ["PUT", "/ui/office-style"], ["POST", "/ui/schedules"], ["POST", "/ui/teams"], ["POST", "/ui/needs/hub-retry"],
+      ["GET", "/ui/js/fleet-route-worker.js"], ["PUT", "/ui/offices"], ["PUT", "/ui/office-style"], ["POST", "/ui/schedules"], ["POST", "/ui/teams"], ["POST", "/ui/needs/hub-retry"], ["POST", "/ui/needs/hub-close"],
       ["GET", "/ui/api/contact-authorizations"], ["POST", `/api/settings/hub/sharing-notices/${H}${H}/undo`]] as const) {
       expect([m, p, isPublicWebRoute(m, p)]).toEqual([m, p, true]);
     }
@@ -99,23 +100,45 @@ describe("1. every route the dashboard calls is on the public link's list, or na
 
 describe("2. Needs you's Try again on held Hub work over the link", () => {
   const TOKEN = "e".repeat(48);
-  function call(opts: { local?: boolean; tier?: "admin" | "read" }, retry: (id: string) => unknown) {
+  function call(opts: { local?: boolean; tier?: "admin" | "read" | "guest"; close?: boolean; verified?: boolean; csrf?: boolean }, retry: (id: string) => unknown) {
     const sessions = new WebSessionStore(), exposureId = "a".repeat(32), pub = "https://sample.trycloudflare.com", local = "http://127.0.0.1:19280";
-    const s = sessions.create({ tier: opts.tier ?? "admin", surface: opts.local ? "local" : "gateway", exposureId: opts.local ? undefined : exposureId, label: "t", tokenEpoch: tokenEpoch(TOKEN) } as never);
+    const s = sessions.create({ tier: opts.tier ?? "admin", surface: opts.local ? "local" : "gateway", exposureId: opts.local ? undefined : exposureId, label: "t", tokenEpoch: tokenEpoch(TOKEN), ...(opts.close ? { owner: { adapterId: "demo-bot", userId: "demo-admin" } } : {}) } as never);
     const origin = opts.local ? local : pub;
+    const path = opts.close ? "/ui/needs/hub-close" : "/ui/needs/hub-retry";
+    if (opts.close) expect(isPublicWebRoute("POST", path)).toBe(true);
     const headers: Record<string, string> = { host: new URL(origin).host, cookie: `${opts.local ? "" : "__Host-"}agend_session=${s.sessionId}`, origin, "sec-fetch-site": "same-origin",
-      "x-agend-csrf": csrfTokenFor(s.sessionId), "content-type": "application/json" };
+      ...(opts.csrf === false ? {} : { "x-agend-csrf": csrfTokenFor(s.sessionId) }), "content-type": "application/json" };
     return new Promise<{ status: number; body: any }>((resolve) => {
-      const req = Object.assign(new EventEmitter(), { method: "POST", url: "/ui/needs/hub-retry", headers, destroy: vi.fn() });
+      const req = Object.assign(new EventEmitter(), { method: "POST", url: path, headers, destroy: vi.fn() });
       if (!opts.local) bindGatewayRequest(req as never, { surface: "gateway", exposureId, expectedOrigin: pub, isCurrent: () => true });
       let status = 0;
       const res = Object.assign(new EventEmitter(), { headersSent: false, destroyed: false, setHeader() {}, writeHead: (c: number) => { status = c; },
         end: (t = "") => resolve({ status, body: t ? JSON.parse(String(t)) : null }) });
-      handleWebRequest(req as never, res as never, new URL("/ui/needs/hub-retry", origin), { webToken: TOKEN, webSessions: sessions, fleetConfig: { defaults: {}, instances: {} },
-        logger: { debug() {}, info() {}, warn() {}, error() {} }, getUiStatus: () => ({ instances: [] }), listWebPrompts: () => [], needsYouItems: () => [], retryHubHeld: retry } as never);
+      handleWebRequest(req as never, res as never, new URL(path, origin), { webToken: TOKEN, webSessions: sessions, fleetConfig: { defaults: {}, instances: {} },
+        logger: { debug() {}, info() {}, warn() {}, error() {} }, getUiStatus: () => ({ instances: [] }), listWebPrompts: () => [], needsYouItems: () => [], retryHubHeld: retry, closeHubHeld: retry,
+        contactActor: (request: unknown, address: URL) => FleetManager.prototype.contactActor.call({ webToken: TOKEN, webSessions: sessions,
+          adapters: new Map([["demo-bot", { type: "discord" }]]), webAuthority: () => ({ authority: opts.verified === false
+            ? { kind: "none", actor: null, authority_epoch: 0 }
+            : { kind: "web-verified", actor: { adapter_id: "demo-bot", user_id: "demo-admin" }, authority_epoch: 0 } }) } as never, request as never, address) } as never);
       req.emit("data", Buffer.from(JSON.stringify({ id: "hub:hold:1" }))); req.emit("end");
     });
   }
+  it("M-3678: a verified admin closes over the link and locally, with the same actor check", async () => {
+    const close = vi.fn(() => ({ status: 200, code: "closed" }));
+    for (const local of [false, true]) {
+      expect(await call({ close: true, local }, close)).toEqual({ status: 200, body: { ok: true, code: "closed" } });
+    }
+    expect(close).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledWith("hub:hold:1", { platform: "discord", adapterId: "demo-bot", userId: "demo-admin", label: "demo-admin" });
+  });
+  it("M-3678: read-only, unverified and missing-CSRF link sessions cannot close", async () => {
+    const close = vi.fn(() => ({ status: 200, code: "closed" }));
+    expect((await call({ close: true, tier: "read" }, close)).status).toBe(403);
+    expect([401, 403]).toContain((await call({ close: true, tier: "guest" }, close)).status);
+    expect(await call({ close: true, verified: false }, close)).toEqual({ status: 403, body: { error: "verification-required", code: "verification-required" } });
+    expect((await call({ close: true, csrf: false }, close)).status).toBe(401);
+    expect(close).not.toHaveBeenCalled();
+  });
   it("an admin over the link retries it; a read-only session there is refused before anything runs; the local page as before", async () => {
     const retry = vi.fn(() => ({ status: 200, code: "queued" }));
     expect((await call({}, retry))).toEqual({ status: 200, body: { ok: true, code: "queued" } });
