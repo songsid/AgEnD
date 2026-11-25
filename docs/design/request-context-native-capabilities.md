@@ -97,7 +97,7 @@ needed. The drain contract retains referenced contexts until the live launch
 ledger is retired. Exec session.calls is in-memory per grant; restart drops the
 session and nothing replays.
 
-## Residual requiring a leader decision
+## Interrupted-launch fallback (decision)
 
 The CLI-to-first-hop interval is not proven or bounded by this design. For
 example, A is transcript-aborted while a tool line is still in helper stdio or
@@ -105,12 +105,30 @@ HTTP connect; B's proof installs before that line reaches the relay, which would
 stamp it B. The same local-hop limitation must be stated for local daemon IPC.
 Exec's per-run bearer has no corresponding lookup ambiguity.
 
-Two choices remain explicit: accept this documented residual for persistent
-paths; or keep abort followed by a new independent input on the same launch
-not-covered until helper calls carry originating per-turn identity. The latter
-requires a fresh launch before installing a replacement proof. No acceptance is
-assumed. The affected publication remains disabled pending the leader's decision;
-the per-run and immutable-call work can proceed independently.
+The leader chose not to accept that residual. An interrupted/aborted turn followed
+by a new independent input on the same persistent launch is not covered until a
+fresh launch or originating per-turn helper identity supplies the missing proof.
+Persistent covered-publication remains OFF. The per-run exec path is independent.
+
+Not-covered is request-scoped, not an agent lock: an affected contact falls back
+to one held operation/card with approve-once/decline, using the agreed Phase 1
+experience. Retain its operation identity across retries so there is one decision,
+not a card per transport attempt. Do not write an unknown lifetime origin, stop
+the agent, or prevent unrelated new work/status/read operations. Approval releases
+the exact shown request; it does not erase the coverage gap, replay another held
+operation or infer that unrelated calls share its D1 release. Proven descendants
+of that approved request retain the normal D1 rule.
+
+The server reason is interrupted-launch, carried as provenance/coverage data,
+not human authority and not an invented owner identity. Required card copy names
+the sending agent:
+
+- EN: "{source} was interrupted; this contact needs one approval."
+- zh-TW: "{source} 曾中斷執行；這次聯絡需要核准一次。"
+
+The central gate/card slices must consume this reason on the same held card;
+there is no separate approval workflow. A separate follow-up will add originating
+per-turn helper identity and remove this fallback when positively covered.
 
 ## Queued input and capability negotiation
 
@@ -167,6 +185,6 @@ recorded, and unknown outcomes are never retried automatically.
 Fable's source review at the stated baseline resolves mint/stamp and ledger
 placement as above. Its exec-input source, replay ordering, end-proof dependency,
 two-sided strict negotiation and five additional synthetic controls are adopted.
-The remaining policy decision is the pre-first-hop residual, not permission to
-implement a late central lookup. Implementation review follows on this same PR;
+The leader selected the interrupted-launch per-operation fallback above, not
+acceptance of the pre-first-hop residual or a late central lookup. Implementation review follows on this same PR;
 no repeated design, native, browser or provider campaign is requested.
