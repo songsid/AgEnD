@@ -361,6 +361,8 @@ export interface RemoteCardOption {
    * since only it knows whose card this is). `picker`: Claude's /model picker variant, where the choice moves the agent to `model`.
    */
   usageCredits?: { model: string; picker: boolean };
+  /** M-3757: what the option does, read from its label: the compact card names it in the UI's language. */
+  role?: RemoteCardRole;
   /** Sub-options page only: whether its box is ticked. */
   checked?: boolean;
 }
@@ -370,6 +372,15 @@ export interface RemoteCardOption {
  * person can answer it from the chat. `identity` is what is being asked — the title, the question and the rows' titles —
  * never the cursor, a tick or a typed answer, so moving through the card does not make it another card.
  */
+/** M-3757: an option of Claude's usage-credits prompt, by what it does. */
+export type RemoteCardRole = "switch" | "credits" | "not-now" | "keep" | "admin" | "upgrade";
+/** M-3757: a card the dashboard shows in its compact form (a one-line title and the options by role, the CLI's words folded). */
+export interface RemoteCardView {
+  kind: "usage-credits"; agent: string; model: string; target: string | null; picker: boolean;
+  /** The CLI's own words (its question and option labels), shown only when asked for. */
+  raw: string;
+}
+
 export interface RemoteQuestionCard {
   kind: "question";
   identity: string;
@@ -396,6 +407,8 @@ export interface RemoteQuestionCard {
   webOnly?: true;
   /** Safety decisions require a signed-in human; script-token prompt clicks cannot answer them. */
   humanOnly?: true;
+  /** M-3757: the usage-credits prompt's models, for the compact card (the agent is named where the card is posted). */
+  usageCreditsPrompt?: { model: string; target: string | null; picker: boolean };
 }
 
 /**

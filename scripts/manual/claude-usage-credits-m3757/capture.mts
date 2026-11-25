@@ -33,7 +33,7 @@ fm.getInstanceInteraction = (name: string, ...rest: unknown[]) => (name === "lum
 fm.daemons.set("lumen", { answerRemoteCard: async () => { answers++; return { outcome: "answered" }; } });
 fm.startNeedsYou();
 try {
-  for (const [device, lang, theme] of [["desk", "en", "light"], ["desk", "zh-TW", "dark"], ["desk", "zh-TW", "light"], ["phone", "en", "light"], ["phone", "zh-TW", "dark"]] as const) {
+  for (const [device, lang, theme] of [["desk", "en", "light"], ["desk", "zh-TW", "dark"], ["desk", "zh-TW", "light"], ["phone", "en", "light"], ["phone", "zh-TW", "dark"], ["phone", "zh-TW", "light"]] as const) {
     const c = { device, lang, theme } as const, tag = `${device}-${lang}-${theme}`;
     setLocale(lang === "zh-TW" ? "zh-TW" : "en");                   // the card's subtitles and confirmation are the fleet's language
     presentation.interaction_summary = t("interactive.kind.dialog");
@@ -43,16 +43,31 @@ try {
     const errors: string[] = [];
     page.on("pageerror", (e: any) => errors.push(String(e)));
     try {
-      const item = page.getByText("Switch to Opus 5.5 and continue").first();
-      await item.waitFor({ state: "visible", timeout: 20_000 });
-      const body = await page.locator("body").innerText();
-      check(`${tag}: Needs you shows the prompt and both of its choices`, body.includes("Fable 5.2 now uses usage credits") && body.includes("Continue with Fable 5.2"), body.slice(0, 400));
-      check(`${tag}: no Esc / Skip choice is offered`, !/\bSkip\b|略過/.test(body.split("Fable 5.2 now uses usage credits")[1] ?? ""), null);
-      const hints = lang === "en" ? ["Uses your plan", "Billed to usage credits, separate from your plan"] : ["用方案內的額度", "另外從用量點數扣款（不在方案內）"];
-      const shownHints = await page.locator(".n-actions .btn-hint").allInnerTexts();
-      check(`${tag}: a subtitle under each choice, in the UI language`, JSON.stringify(shownHints.map(h => h.trim())) === JSON.stringify(hints), shownHints);
+      const zh = lang === "zh-TW";
+      const W = zh
+        ? { title: "Lumen：Fable 5.2 要另外收費，要換模型嗎？", sw: "換成 Opus 5.5（用方案額度）", cr: "繼續用 Fable 5.2（另外扣點數）", raw: "看 Claude 原文", open: "開啟聊天" }
+        : { title: "Lumen: Fable 5.2 now costs extra. Switch model?", sw: "Switch to Opus 5.5 (uses your plan)", cr: "Keep Fable 5.2 (billed to credits)", raw: "Show Claude's text", open: "Open chat" };
+      const card = page.locator("article.n-compact").first();
+      await card.waitFor({ state: "visible", timeout: 20_000 });
+      check(`${tag}: one-line title in the UI language`, (await card.locator(".n-title strong").innerText()).trim() === W.title, await card.locator(".n-title strong").innerText());
+      const buttons = card.locator(".n-stack > .btn");
+      const labels = (await buttons.allInnerTexts()).map(x => x.trim());
+      check(`${tag}: two stacked buttons, named by what they do`, JSON.stringify(labels) === JSON.stringify([W.sw, W.cr]), labels);
+      const boxes = await buttons.evaluateAll((els: Element[]) => els.map(e => { const r = e.getBoundingClientRect(); return { w: Math.round(r.width), x: Math.round(r.left), h: Math.round(r.height) }; }));
+      check(`${tag}: the buttons are one width, stacked, one line each`, boxes.length === 2 && boxes[0].w === boxes[1].w && boxes[0].x === boxes[1].x && boxes.every(b => b.h < 48), boxes);
+      check(`${tag}: the switch is the primary button`, await buttons.first().evaluate((e: Element) => e.classList.contains("btn-primary")), null);
+      const raw = card.locator("details.n-raw");
+      check(`${tag}: Claude's own words are folded by default`, !(await raw.evaluate((e: any) => e.open)) && !(await card.locator(".n-raw-text").isVisible()), null);
+      const cardText = await card.innerText();
+      check(`${tag}: no emoji, no Claude body or labels on the card`, !/❓|now uses usage credits|Continue with Fable/.test(cardText) && cardText.includes(W.raw), cardText);
+      check(`${tag}: "open chat" is a small link, not a button`, (await card.locator("a.n-link").innerText()).trim() === W.open && (await card.locator("a.btn").count()) === 0, null);
+      check(`${tag}: no Esc / Skip choice is offered`, !/\bSkip\b|略過/.test(cardText), cardText);
       let path = shotPath(smoke, tag, "1-needs-card"); await page.screenshot({ path }); receipt.pictures.push(path);
-      await page.getByRole("button", { name: /^2\. Continue with Fable 5\.2/ }).first().click();
+      await raw.locator("summary").click();
+      check(`${tag}: the toggle shows Claude's own words`, (await card.locator(".n-raw-text").innerText()).includes("Fable 5.2 now uses usage credits"), null);
+      let pathRaw = shotPath(smoke, tag, "3-claude-text"); await page.screenshot({ path: pathRaw }); receipt.pictures.push(pathRaw);
+      await raw.locator("summary").click();
+      await card.getByRole("button", { name: W.cr, exact: true }).click();
       const dialog = page.getByRole("dialog");
       await dialog.waitFor({ state: "visible", timeout: 10_000 });
       const words = await dialog.innerText();
@@ -66,14 +81,14 @@ try {
       await page.waitForTimeout(300);
       check(`${tag}: cancelled, still no answer sent`, answers === 0, answers);
       // The dialog's ✕ is the same as Cancel: no answer, the card stays.
-      await page.getByRole("button", { name: "2. Continue with Fable 5.2", exact: false }).first().click();
+      await card.getByRole("button", { name: W.cr, exact: true }).click();
       await dialog.waitFor({ state: "visible", timeout: 10_000 });
       await dialog.locator(".dlg-x").click();
       await dialog.waitFor({ state: "hidden", timeout: 5_000 });
-      check(`${tag}: the ✕ closes the confirmation like Cancel — no answer sent, the card stays`, answers === 0 && (await page.getByText("Continue with Fable 5.2").count()) > 0, answers);
+      check(`${tag}: the ✕ closes the confirmation like Cancel — no answer sent, the card stays`, answers === 0 && (await card.isVisible()), answers);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       check(`${tag}: no horizontal overflow`, !overflow, overflow);
-      check(`${tag}: cancelling the confirmation leaves the card (nothing answered)`, (await page.getByText("Continue with Fable 5.2").count()) > 0, null);
+      check(`${tag}: cancelling the confirmation leaves the card (nothing answered)`, await card.isVisible(), null);
       check(`${tag}: no page errors`, errors.length === 0, errors);
     } finally { await ctx.close(); }
   }

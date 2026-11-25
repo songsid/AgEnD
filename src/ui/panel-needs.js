@@ -27,6 +27,7 @@ import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
+import { usageCreditsActions, usageCreditsTitle, showRawLabel } from "./usage-credits-card.js";
 import { decideProposal, installProposals } from "./agent-proposals.js";
 import { GeneralLocation } from "./general-location.js";
 import { runtimeUpdateText } from "./runtime-update-status.js";
@@ -254,13 +255,16 @@ function NeedsItem({ item, nowMs, owner }) {
   const p = item.type === "prompt" && item.nonce && owner ? owner.state.prompts[item.nonce] : null;
   const fallback = item.nonce ? c.prompts[item.nonce] : undefined;
   const promptBusy = p ? p.busy || p.resolved : !!fallback;
+  // M-3757: Claude's usage-credits prompt, compact: a one-line title, its options named by what they do, its own words folded.
+  const ucView = item.type === "prompt" && item.view && item.view.kind === "usage-credits" ? item.view : null;
+  const shownActions = ucView ? usageCreditsActions(ucView, item.actions) : item.actions;
   const answer = async (action) => {
     const store = chatOwner();
     if (store) { store.answerByNonce(item, action); return; }
     // Only before Chat has booted: the page's own claim on this nonce, taken now (synchronously), kept until the
     // server's list drops the prompt (or the answer fails).
     if (claims.get().prompts[item.nonce]) return;
-    const confirmation = item.actions?.find(a => a.id === action)?.confirmation;
+    const confirmation = shownActions?.find(a => a.id === action)?.confirmation;
     setClaim("prompts", item.nonce, confirmation ? "confirming" : "busy");
     if (confirmation && !await confirmDialog({ ...confirmation, danger: true })) {
       setClaim("prompts", item.nonce, null);
@@ -328,6 +332,19 @@ function NeedsItem({ item, nowMs, owner }) {
     setClaim("acks", hubKey, ok ? "done" : null);
     toast(ok ? tn("hubRetryDone") : res && res.status === 404 ? tn("hubRetryGone") : res && res.status === 409 ? tn("hubRetryNot") : t("app.failed"), ok);
   };
+  const answering = (p ? p.busy && !p.confirming : fallback === "busy");
+  if (ucView) return html`<article data-trust="permission" class="n-item n-compact">
+    <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
+    <div class="n-body">
+      <div class="n-title"><strong>${usageCreditsTitle(ucView)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
+      <div class="n-stack">
+        ${shownActions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class=${`btn btn-sm${a.primary ? " btn-primary" : ""}`}
+            disabled=${promptBusy} onClick=${() => answer(a.id)}>${answering ? tn("answering") : a.label}</button>`)}
+      </div>
+      <details class="n-raw"><summary>${showRawLabel()}</summary><pre class="n-raw-text">${ucView.raw}</pre></details>
+      ${item.instance ? html`<a class="n-link" href=${chatPath(item.instance)}>${tn("open")}</a>` : null}
+    </div>
+  </article>`;
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">

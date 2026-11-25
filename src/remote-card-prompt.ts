@@ -19,7 +19,9 @@ const clip = (text: string, max = LABEL_MAX) => (text.length > max ? `${text.sli
 export interface RemoteCardPrompt {
   message: string;
   /** The platform's buttons: `action` is the id after `<prefix><nonce>:`. */
-  choices: Array<{ action: string; label: string; hint?: string; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  choices: Array<{ action: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  /** M-3757: the dashboard's compact form of this card, when it has one. */
+  view?: import("./backend/types.js").RemoteCardView;
   /** The dashboard's extra action: the typed answer, which the platform takes as a reply to the message instead. */
   webInput: { action: string; label: string } | null;
 }
@@ -62,7 +64,7 @@ export function remoteCardPrompt(instance: string, card: RemoteCard, agent = ins
   const buttons = card.options.length <= REMOTE_CARD_MAX_OPTIONS
     ? card.options.map(o => {
       const confirmation = o.usageCredits ? usageCreditsConfirmation(agent, o.usageCredits) : o.confirmation;
-      return { action: `opt-${o.n}`, label: clip(`${o.n}. ${o.title}${o.recommended ? " ★" : ""}`), ...(o.hint ? { hint: o.hint } : {}), ...(confirmation ? { confirmation } : {}) };
+      return { action: `opt-${o.n}`, label: clip(`${o.n}. ${o.title}${o.recommended ? " ★" : ""}`), ...(o.hint ? { hint: o.hint } : {}), ...(o.role ? { role: o.role } : {}), ...(confirmation ? { confirmation } : {}) };
     }) : [];
   return {
     message: [t("card.question_intro", instance), card.question, ...listed,
@@ -70,6 +72,7 @@ export function remoteCardPrompt(instance: string, card: RemoteCard, agent = ins
     // #2910 D4: a dialog whose Esc is not a skip offers only its own options.
     choices: [...buttons, ...(card.noSkip ? [] : [{ action: "skip", label: t("card.skip") }])],
     webInput: card.freeText ? { action: "text", label: t("card.answer_in_words") } : null,
+    ...(card.usageCreditsPrompt ? { view: { kind: "usage-credits" as const, agent, ...card.usageCreditsPrompt, raw: [card.question, ...card.options.map(o => o.title)].join("\n") } } : {}),
   };
 }
 

@@ -18,7 +18,7 @@
  * "Request usage credits from your admin", …) and perhaps "Upgrade to Max or Ultra"; the footer last.
  */
 import { createHash } from "node:crypto";
-import type { RemoteCardOption, RemoteQuestionCard } from "./types.js";
+import type { RemoteCardOption, RemoteCardRole, RemoteQuestionCard } from "./types.js";
 import { t } from "../locale.js";
 
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
@@ -33,6 +33,16 @@ const SPENDS = /^(?!Request )(?:.*usage credits|Continue with |Yes, (?:re-enable
 const REQUEST = /^Request (?:usage credits|more) from your admin/;
 /** The model the prompt is about, from its title. */
 const MODEL = /^(?:(\S.*) now (?:uses|runs on) usage credits|Switch to (\S.*)\?|You've reached your (Fable) limit)$/;
+/** What an option does, read from its own words (never from its position). */
+function roleOf(label: string): RemoteCardRole | undefined {
+  if (/^Switch to \S.* and continue$/.test(label)) return "switch";
+  if (label === "No, keep my current model") return "keep";
+  if (label === "Not now") return "not-now";
+  if (REQUEST.test(label)) return "admin";
+  if (/^Upgrade to /.test(label)) return "upgrade";
+  if (SPENDS.test(label)) return "credits";
+  return undefined;
+}
 /** The subtitle under an option's button: what it means for the plan, in the fleet's language. */
 function hintOf(label: string): string | undefined {
   if (/^Switch to \S.* and continue$|^No, keep my current model$/.test(label)) return t("claude.usage_credits.hint_plan");
@@ -74,14 +84,16 @@ export function claudeUsageCreditsPrompt(pane: string): ClaudeUsageCreditsPrompt
   const m = MODEL.exec(title)!, model = m[1] ?? m[2] ?? m[3]!, picker = m[2] !== undefined;
   const cardOptions: RemoteCardOption[] = options.map((label, n) => {
     const hint = hintOf(label);
-    return { n: n + 1, title: label, recommended: false, description: null, row: n, ...(hint ? { hint } : {}),
+    const role = roleOf(label);
+    return { n: n + 1, title: label, recommended: false, description: null, row: n, ...(hint ? { hint } : {}), ...(role ? { role } : {}),
       ...(SPENDS.test(label) ? { usageCredits: { model, picker } } : {}) };
   });
+  const target = /^Switch to (\S.*) and continue$/.exec(options.find(o => /^Switch to \S.* and continue$/.test(o)) ?? "")?.[1] ?? null;
   const card: RemoteQuestionCard = {
     kind: "question", identity, title: "Claude Code", question: [title, ...body.filter(row => !/^Learn more:/.test(row))].join("\n"),
     page: "options", options: cardOptions, freeText: false, cursor, typed: null, rowWidth: Math.max(...rows.map(row => row.length)),
     // A CLI-owned dialog about the account's model and spending: a fleet admin answers it (webOnly), a person, never a script.
-    noSkip: true, webOnly: true, humanOnly: true,
+    noSkip: true, webOnly: true, humanOnly: true, usageCreditsPrompt: { model, target, picker },
   };
   return { title, options, cursor, card };
 }
