@@ -1786,6 +1786,9 @@ export class TopicCommands {
 
     // The CLI picks the channel from the installed version it replaces; see UPDATE_COMMAND. #1450 C5: the INSTALLED
     // agend, verified by identity, by absolute path — or a refusal, never whatever `agend` is first on PATH.
+    // M-3770 (#4480 §4): the machine's pre-flight, proven again now, before the installed agend is resolved or run.
+    const preflightRefusal = await this.ctx.updatePreflightGate?.("press");
+    if (preflightRefusal) { this.ctx.failUpdateProgress?.(preflightRefusal); return; }
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
       this.ctx.failUpdateProgress?.(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);

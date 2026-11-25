@@ -6,6 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Nothing in this file may start a real update or a real doctor: the handlers under test spawn them.
 const spawned = vi.hoisted(() => [] as unknown[][]);
+// M-3770: an update launch proves the machine's pre-flight first (#4480 §4); here the machine is one that may update
+// itself, and no probe (npm, systemctl) runs.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }], Date.now())) };
+});
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return { ...real, spawn: vi.fn((...args: unknown[]) => { spawned.push(args); return { once() {}, unref() {}, on() {} }; }) };
@@ -355,7 +361,7 @@ describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admin
     expect(r.fm.fleetConfig!.defaults.cross_instance_visibility).toBe("summary");
     const update = await slash(r, "discord", { command: "update", userId: "admin", options: { now: true } });
     expect(update).toEqual([t("update.progress.preparing", 0)]);
-    expect(spawned).toHaveLength(1);                         // the stubbed spawn: nothing real ran
+    await vi.waitFor(() => expect(spawned).toHaveLength(1)); // the stubbed spawn: nothing real ran (M-3770: after the pre-flight)
     // #1120: the update the fleet launches names who asked, so the CLI it starts is a recorded, authorised call
     expect((spawned[0]![2] as any).env.AGEND_RESTART_ORIGIN).toBe("slash /update by discord:admin");
   });

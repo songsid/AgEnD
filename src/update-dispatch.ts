@@ -102,8 +102,8 @@ export function colocatedNpm(packageDir: string | null | undefined, platform: No
  * unknowable. A location that cannot be read (EACCES, the package being replaced) is NOT a checkout: guessing from
  * PATH then could update another install (#3443 review), so it refuses. No package directory at all: PATH's npm, as before.
  */
-type RunningInstall = { kind: "global"; root: string } | { kind: "checkout" } | { kind: "unreadable"; reason: string };
-async function runningInstall(deps: DispatchDeps): Promise<RunningInstall> {
+export type RunningInstall = { kind: "global"; root: string } | { kind: "checkout" } | { kind: "unreadable"; reason: string };
+export async function runningInstall(deps: DispatchDeps): Promise<RunningInstall> {
   if (!deps.packageDir) return { kind: "checkout" };
   let real: string;
   try { real = await deps.realpath(deps.packageDir); }
