@@ -893,7 +893,7 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
   if (!routes[path]) { json(res, 404, { error: "not found" }); return true; }
   if (routes[path] !== method) { res.setHeader("Allow", routes[path]!); json(res, 405, { error: "method not allowed" }); return true; }
   res.setHeader("Cache-Control", "no-store");
-  const who = (): { admin: boolean; person: string } | { status: number; error: string } => {
+  const who = (): { admin: boolean; person: string; label: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
     if (verdict.via !== "session" || !verdict.session || verdict.session.tier === "guest") return { status: 403, error: "update_needs_a_signed_in_person" };
