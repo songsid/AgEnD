@@ -1,3 +1,4 @@
+import { assertRequestContextRootOpen } from "./request-context-fence.js";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { RequestContextStore } from "./request-context-store.js";
@@ -29,6 +30,7 @@ export class RequestContextRecoveryStore {
         const context = new RequestContextStore(this.db).context(pointer.contextId);
         if (pointer.instance !== instance || !context || context.source.instance !== instance || context.source.incarnation !== pointer.incarnation
           || context.ingress === "owner") throw Error("request-context recovery pointer mismatch");
+        assertRequestContextRootOpen(this.db,context.ref.rootContextId);
       }
       this.db.exec("CREATE TABLE IF NOT EXISTS request_context_recovery_v1(instance TEXT PRIMARY KEY,pointer_json TEXT NOT NULL)");
       if (pointer) this.db.prepare("INSERT INTO request_context_recovery_v1 VALUES (?,?) ON CONFLICT(instance) DO UPDATE SET pointer_json=excluded.pointer_json")

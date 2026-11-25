@@ -1,3 +1,5 @@
+import { RequestContextDrain } from "./request-context-drain.js";
+import { RequestContextMigrationShadow, type RequestMigrationHost } from "./request-context-migration.js";
 import { RequestContactGate, type RequestContactGateHost } from "./request-contact-gate.js";
 import { WorkingRecoveryStore, WORKING_RECOVERY_KIND, type RecoveryEpisode } from "./working-recovery.js";
 import { initializeSeenPeople, isSeenPerson, listSeenPeople, noteSeenPerson, pruneSeenPeople, SEEN_PEOPLE_KEEP_DAYS, type SeenPerson } from "./guest-seen-people.js";
@@ -1158,6 +1160,18 @@ export class DeliveryOutbox extends EventEmitter {
     const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (columns.some(item => item.name === column)) return;
     this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+
+  /** Scratch/cutover assembly only; a certificate is process-bound and never persisted as authority. */
+  /** Stable Fleet identity while its exclusive coordinator lease is current; never a boot id. */
+  requestContextDrain(owner: () => string | null): RequestContextDrain {
+    const ready = (): void => { if(this.requestContextDispatchVersion!==1||assertRequestContextCompatibility(this.db,1)!=="active")throw Error("request-context dispatcher is not ready"); };
+    ready();return new RequestContextDrain(this.db,ready,owner);
+  }
+
+  /** Read-only shadow is safe before activation; never initializes contact/context artifacts. */
+  requestContextMigrationShadow(host: RequestMigrationHost): RequestContextMigrationShadow {
+    return new RequestContextMigrationShadow(this.db, host);
   }
 
   /** Dormant central gate; no production caller until the controlled cutover. */

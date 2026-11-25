@@ -1,0 +1,595 @@
+{
+  "version": 1,
+  "sourceCommit": "6586faf9b9b76fa70660a876b643f3060a1de83a",
+  "baseCommit": "80e9ffcd12801a60dbbc9fbb3e9f3a658e880efa",
+  "productionFlow": "OFF; no production owner assembly, input port or retirement action installed",
+  "scope": "Synthetic SQLite and in-process C/D/E owners; no live fleet, vendor, account, native CLI or remote-host execution.",
+  "validation": [
+    {
+      "phase": "broader affected run",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/fleet-windows-runtime.test.ts",
+        "tests/native-mcp.test.ts",
+        "tests/request-context-migration-s226.test.ts",
+        "tests/windows-agents.test.ts",
+        "tests/classic-contact-dispatch-3339.test.ts",
+        "tests/contact-person-identity-m3679.test.ts",
+        "tests/hub-contact-window-settles-m3660.test.ts",
+        "tests/web-contact-card-copy-m3385.test.ts",
+        "tests/web-contact-origin-clear-3366.test.ts",
+        "tests/web-needs-contact-suggestions-m3381.test.ts",
+        "tests/request-context-drain-s226.test.ts",
+        "tests/request-context-daemon-s223.test.ts",
+        "tests/classic-start-contact-notice-3339.test.ts",
+        "tests/request-context-recovery-s223.test.ts",
+        "tests/web-contact-later-m3410.test.ts",
+        "tests/classic-contact-api-3339.test.ts",
+        "tests/request-context-pane-s224.test.ts",
+        "tests/contact-outcome-notices-3372.test.ts",
+        "tests/runtime-pane-mcp-relay-2950.test.ts",
+        "tests/contact-origin-feedback-4213.test.ts",
+        "tests/task-board-contact-4367.test.ts",
+        "tests/native-pane-manager-2950.test.ts",
+        "tests/contact-origin-clear-3366.test.ts",
+        "tests/web-contact-grants-m3544.test.ts",
+        "tests/contact-auth-public-link-m3680.test.ts",
+        "tests/web-session-contact-origin-m3713.test.ts",
+        "tests/contact-change-proposals-m3544.test.ts",
+        "tests/classic-contact-auth-3339.test.ts",
+        "tests/request-context-store-s222.test.ts",
+        "tests/contact-held-card-m3680.test.ts",
+        "tests/needs-you-contact-suggestions-m3381.test.ts",
+        "tests/contact-approval-journey-m3709.test.ts",
+        "tests/contact-standing-grants-m3544.test.ts",
+        "tests/request-context-barrier-s221.test.ts",
+        "tests/request-context-legacy-guard-s226.test.ts",
+        "tests/request-context-call-s224.test.ts",
+        "tests/contact-held-outcome-m3716.test.ts",
+        "tests/request-context-commit-s224.test.ts",
+        "tests/request-context-daemon-s224.test.ts",
+        "tests/web-contact-auth-m3339.test.ts",
+        "tests/request-contact-gate-s225.test.ts",
+        "tests/contact-tool-groups-m3387.test.ts",
+        "tests/classic-contact-files-3339.test.ts",
+        "tests/native-mcp-policy-generation.test.ts",
+        "tests/runtime-pane-mcp-authority-2950.test.ts",
+        "tests/hub-contact-limit-3160.test.ts",
+        "tests/classic-contact-approvers-3339.test.ts",
+        "tests/request-context-turns-s223.test.ts",
+        "tests/contact-suggestion-later-m3410.test.ts",
+        "tests/request-context-protocol-s221.test.ts",
+        "tests/native-mcp-ui.test.ts",
+        "--maxWorkers=2"
+      ],
+      "files": 51,
+      "passed": 708,
+      "skipped": 1,
+      "failed": 0,
+      "headNote": "Before replacing the native pending-call cleanup .finally with explicit success/failure handlers to avoid an unhandled rejected cleanup promise."
+    },
+    {
+      "phase": "final restored affected run",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-context-drain-s226.test.ts",
+        "tests/request-context-migration-s226.test.ts",
+        "tests/request-context-legacy-guard-s226.test.ts",
+        "tests/request-context-daemon-s224.test.ts",
+        "tests/request-context-pane-s224.test.ts",
+        "tests/fleet-windows-runtime.test.ts",
+        "tests/native-mcp.test.ts",
+        "tests/native-mcp-policy-generation.test.ts",
+        "--maxWorkers=2"
+      ],
+      "files": 8,
+      "passed": 142,
+      "failed": 0
+    },
+    {
+      "phase": "typecheck",
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exitCode": 0
+    },
+    {
+      "phase": "build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exitCode": 0
+    },
+    {
+      "phase": "changelog",
+      "command": [
+        "node",
+        "scripts/changelog-assemble.mjs",
+        "--check"
+      ],
+      "fragments": 849,
+      "exitCode": 0
+    }
+  ],
+  "guardReversals": [
+    {
+      "name": "missing-family",
+      "file": "src/request-context-drain.ts",
+      "tests": [
+        "tests/request-context-drain-s226.test.ts"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "revision-aba",
+      "file": "src/request-context-drain.ts",
+      "tests": [
+        "tests/request-context-drain-s226.test.ts"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "store-fence",
+      "file": "src/request-context-store.ts",
+      "tests": [
+        "tests/request-context-drain-s226.test.ts"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "turn-registration",
+      "file": "src/request-context-turns.ts",
+      "tests": [
+        "tests/request-context-drain-s226.test.ts"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "legacy-input-guard",
+      "file": "src/fleet-manager.ts",
+      "tests": [
+        "tests/request-context-legacy-guard-s226.test.ts"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "pane-detach-retirement",
+      "file": "src/runtime-pane-mcp.ts",
+      "tests": [
+        "tests/request-context-pane-s224.test.ts"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "pane-proof-retirement",
+      "file": "src/request-context-pane.ts",
+      "tests": [
+        "tests/request-context-drain-s226.test.ts"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "pending-native-call",
+      "file": "src/native-mcp.ts",
+      "tests": [
+        "tests/request-context-drain-s226.test.ts"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "recovery-fence",
+      "file": "src/request-context-recovery.ts",
+      "tests": [
+        "tests/request-context-drain-s226.test.ts"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "same-connection-snapshot",
+      "file": "src/request-context-migration.ts",
+      "tests": [
+        "tests/request-context-migration-s226.test.ts"
+      ],
+      "exitCode": 1,
+      "killed": true
+    }
+  ],
+  "sourceAndTestDigests": [
+    {
+      "path": "src/daemon.ts",
+      "sha256": "8becb907f487cf6397ab0c80c51f38ab4d30c56cf2d168dc7a01ff68c5dcfc4e"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "d419521cc40c79a66e330c3f44eb34c750816183b93c096ab2be6b2252ade86a"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "abb7b77849edd91a975302ab3e8dc98bf3cd5a1a836fbb9b1d7e8e48dda190da"
+    },
+    {
+      "path": "src/fleet-windows-runtime.ts",
+      "sha256": "c056c06cd95adbd271f03de8e181aa397592d25cdaf08123228eb9fed9e4eeb1"
+    },
+    {
+      "path": "src/locale.ts",
+      "sha256": "5042a7b487a8886972ebc2fb609a3f32c1ea804dfbf67ada6be0125cc03505de"
+    },
+    {
+      "path": "src/native-mcp.ts",
+      "sha256": "88a0124f1a3c14c4c23424c2b301e1a5dfe618aacbeaa42f5202e770a1d8a802"
+    },
+    {
+      "path": "src/native-pane-manager.ts",
+      "sha256": "371de607d1abd77bac6d190f3a2683cb36bd6158db9e4df675b71e1eb08c5e78"
+    },
+    {
+      "path": "src/request-contact-gate.ts",
+      "sha256": "430294ec05c95312b41e4160bc23953b12d9cb77b7acbe0dc0c5119cbd141a4e"
+    },
+    {
+      "path": "src/request-context-drain.ts",
+      "sha256": "083bd5497dbb8be3506ae94a6d0b27abc539548f5776171324a50a91747cdec4"
+    },
+    {
+      "path": "src/request-context-fence.ts",
+      "sha256": "2ab9ad42c0260f2e895c7e91247db2d6da931604a48769d08b175e41ebdaabb0"
+    },
+    {
+      "path": "src/request-context-migration.ts",
+      "sha256": "29f64017dea60497ce7103383906d53d4cd167f2b968fb60c7e231d14cc3a684"
+    },
+    {
+      "path": "src/request-context-pane.ts",
+      "sha256": "cd3094f748e141cbdb56ddc0a494805e06ddf531b4f6ed18d04adea4796f141d"
+    },
+    {
+      "path": "src/request-context-recovery.ts",
+      "sha256": "b5362da0b811d54aa34c8bf96655bda53b5de9bef118a55d91b73476905f2a09"
+    },
+    {
+      "path": "src/request-context-store.ts",
+      "sha256": "a061b6227d39c08c37e8fdb474d5ae07b0ce202766232f44a6343229456f421a"
+    },
+    {
+      "path": "src/request-context-turns.ts",
+      "sha256": "744d909213ba0b70c78a8f3b0c10968a9172f8c1a999e7be64a95ee668139d53"
+    },
+    {
+      "path": "src/runtime-pane-mcp.ts",
+      "sha256": "78eec7237494b05d4de39afc46b70b86a0abc376889cb40735ea569ccfbb50a1"
+    },
+    {
+      "path": "src/windows-agents.ts",
+      "sha256": "660dc3d5284bfb4325ae74f8d750c7d6ef57c8f228a6960a98ed9b653ace25d0"
+    },
+    {
+      "path": "tests/fleet-windows-runtime.test.ts",
+      "sha256": "b6b0a6685cca944b3d47a8598d8010f99e85e0610e25ccc1ea588f861cd66563"
+    },
+    {
+      "path": "tests/native-mcp.test.ts",
+      "sha256": "2f54853f0d32b794f3849d2d8d5797b1c15f484562502d9463b05acc8ef4244e"
+    },
+    {
+      "path": "tests/request-context-daemon-s224.test.ts",
+      "sha256": "774aaf8149bae496a896b7a9bb366c1a9cac2165649c59751408366227f64f1b"
+    },
+    {
+      "path": "tests/request-context-drain-s226.test.ts",
+      "sha256": "f7e24a99cad5b743ac3e861665231b2a4352d02035ae15a48e273d16942bfff7"
+    },
+    {
+      "path": "tests/request-context-legacy-guard-s226.test.ts",
+      "sha256": "e298dc1fc63f0ce916bdca78105bdacbed19f62d80adfefe8fd30632a771ea80"
+    },
+    {
+      "path": "tests/request-context-migration-s226.test.ts",
+      "sha256": "32d7d030f78fcbb22e3c5afbe25ab9e36fc4136766a9f5ce125a400f9785f0bf"
+    },
+    {
+      "path": "tests/request-context-pane-s224.test.ts",
+      "sha256": "562fb79fef973ff976eea0d9191082b4b0a8ccccb2001ac84021653f48f8425a"
+    }
+  ],
+  "limits": [
+    "Shadow completion requires an initial untruncated transaction (10000 rows and 16 MiB raw bytes per table); further pages never become a plan.",
+    "Unresolved legacy tickets block cutover unless a future per-ticket unendorsed input-proof lane is explicitly implemented.",
+    "A last recovery pointer or persistent-launch ledger may retain a root indefinitely; this is GC, not permission.",
+    "All eight participant families plus owned registration gates are required; later expected/Hub/derivative adapters remain unavailable, never default empty.",
+    "No UI/CSS change, live migration, activation, process cancellation, downgrade, restore, paid/model call or authority grant.",
+    "Durable Fleet fence identity and exclusive coordinator-lease ownership must be wired by L; no boot-id owner or automatic claim of dead-peer ownership is used."
+  ],
+  "initialSourceCommit": "2112f28ffca9871b4b81cb58ac7db7d4cf2abac2",
+  "guardReversalSourceCommit": "2112f28ffca9871b4b81cb58ac7db7d4cf2abac2",
+  "reviewCorrection": {
+    "reviewedHead": "5470f9c64ad6228fe356f16c23ab6e2bcdc998a4",
+    "sourceCommit": "a80c1ce491ba23f0e6ec1264343cbd63e636474d",
+    "findings": [
+      {
+        "id": 1,
+        "resolution": "Explicit null is no captured root, undefined/throw is unavailable; uncovered legacy/cancelled call/grant/ledger rows have no reference. Malformed ledger metadata remains unknown."
+      },
+      {
+        "id": 2,
+        "resolution": "Fence owner is the durable Fleet identity while its exclusive coordinator lease is current, never a boot id. A fresh coordinator explicitly resumes a retained fence by rotating its epoch; foreign identity and retired root refuse."
+      },
+      {
+        "id": 3,
+        "resolution": "IPC index key is instance/daemon boot/response key, with exact IPC ownership. Empty keys refuse; actual replacement/disconnect and global shutdown purge retired transport entries. Old responses cannot remove new rows."
+      },
+      {
+        "id": 4,
+        "resolution": "Single-transaction streaming scan defaults to 10000 rows/table, with 16 MiB raw bytes/table. Either limit exceeded is incomplete; 70 retained rows can be complete."
+      },
+      {
+        "id": 5,
+        "resolution": "Unbound/offline launches read only the exact owned private manifest and launch ledger, without writes, endpoint calls or reattachment. Strict scope/shape/file checks; missing or malformed stays unknown. Observed changes advance revision."
+      },
+      {
+        "id": 6,
+        "resolution": "Localized EN/zh held-upgrade reason with separate stable machine code; pending decision rolls back unchanged."
+      }
+    ],
+    "baseRegression": {
+      "base": "5470f9c64ad6228fe356f16c23ab6e2bcdc998a4",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-context-drain-s226.test.ts",
+        "tests/request-context-migration-s226.test.ts",
+        "tests/request-context-legacy-guard-s226.test.ts",
+        "tests/request-context-pane-s224.test.ts",
+        "tests/request-context-daemon-s224.test.ts",
+        "tests/native-mcp.test.ts",
+        "-t",
+        "R1",
+        "--maxWorkers=2"
+      ],
+      "exitCode": 1,
+      "expectedRed": true,
+      "failed": 13,
+      "passed": 1,
+      "skipped": 96,
+      "files": 6,
+      "note": "New R1 regressions, using reviewed production source and current tests; all source bytes restored afterwards."
+    },
+    "validation": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/fleet-windows-runtime.test.ts",
+        "tests/native-mcp.test.ts",
+        "tests/request-context-migration-s226.test.ts",
+        "tests/windows-agents.test.ts",
+        "tests/classic-contact-dispatch-3339.test.ts",
+        "tests/contact-person-identity-m3679.test.ts",
+        "tests/hub-contact-window-settles-m3660.test.ts",
+        "tests/web-contact-card-copy-m3385.test.ts",
+        "tests/web-contact-origin-clear-3366.test.ts",
+        "tests/web-needs-contact-suggestions-m3381.test.ts",
+        "tests/request-context-drain-s226.test.ts",
+        "tests/request-context-daemon-s223.test.ts",
+        "tests/classic-start-contact-notice-3339.test.ts",
+        "tests/request-context-recovery-s223.test.ts",
+        "tests/web-contact-later-m3410.test.ts",
+        "tests/classic-contact-api-3339.test.ts",
+        "tests/request-context-pane-s224.test.ts",
+        "tests/contact-outcome-notices-3372.test.ts",
+        "tests/runtime-pane-mcp-relay-2950.test.ts",
+        "tests/contact-origin-feedback-4213.test.ts",
+        "tests/task-board-contact-4367.test.ts",
+        "tests/native-pane-manager-2950.test.ts",
+        "tests/contact-origin-clear-3366.test.ts",
+        "tests/web-contact-grants-m3544.test.ts",
+        "tests/contact-auth-public-link-m3680.test.ts",
+        "tests/web-session-contact-origin-m3713.test.ts",
+        "tests/contact-change-proposals-m3544.test.ts",
+        "tests/classic-contact-auth-3339.test.ts",
+        "tests/request-context-store-s222.test.ts",
+        "tests/contact-held-card-m3680.test.ts",
+        "tests/needs-you-contact-suggestions-m3381.test.ts",
+        "tests/contact-approval-journey-m3709.test.ts",
+        "tests/contact-standing-grants-m3544.test.ts",
+        "tests/request-context-barrier-s221.test.ts",
+        "tests/request-context-legacy-guard-s226.test.ts",
+        "tests/request-context-call-s224.test.ts",
+        "tests/contact-held-outcome-m3716.test.ts",
+        "tests/request-context-commit-s224.test.ts",
+        "tests/request-context-daemon-s224.test.ts",
+        "tests/web-contact-auth-m3339.test.ts",
+        "tests/request-contact-gate-s225.test.ts",
+        "tests/contact-tool-groups-m3387.test.ts",
+        "tests/classic-contact-files-3339.test.ts",
+        "tests/native-mcp-policy-generation.test.ts",
+        "tests/runtime-pane-mcp-authority-2950.test.ts",
+        "tests/hub-contact-limit-3160.test.ts",
+        "tests/classic-contact-approvers-3339.test.ts",
+        "tests/request-context-turns-s223.test.ts",
+        "tests/contact-suggestion-later-m3410.test.ts",
+        "tests/request-context-protocol-s221.test.ts",
+        "tests/native-mcp-ui.test.ts",
+        "tests/dashboard-i18n.test.ts",
+        "--maxWorkers=2"
+      ],
+      "passed": 734,
+      "skipped": 1,
+      "failed": 0,
+      "files": 52,
+      "testTypecheckExitCode": 0,
+      "buildExitCode": 0,
+      "whitespaceExitCode": 0
+    }
+  },
+  "ciRepair": {
+    "reviewedHead": "5691843a4d1039dd381759d10f888fcd6c9732f5",
+    "sourceCommit": "6586faf9b9b76fa70660a876b643f3060a1de83a",
+    "reportedFailure": "nonce-button-shutdown.test.ts / doStopAll retires prompts while adapters are connected",
+    "cause": "Object.create(FleetManager.prototype) bypasses class field initialization; unconditional new drain-index clear throws before shutdown finishes.",
+    "change": "Optional access in both shutdown paths and every new index helper. Missing drain inventory reports unavailable/unknown; drain registration refuses a missing registry instead of inventing an empty inventory. Constructed-manager behavior remains intact.",
+    "runtimePathsChanged": [
+      "src/fleet-manager.ts"
+    ],
+    "prototypeFixtureFiles": [
+      "tests/hub-held-close-authority-m3678.test.ts",
+      "tests/web-commands-1269.test.ts",
+      "tests/runtime-durable-recovery.test.ts",
+      "tests/claude-mcp-carry-m3749.test.ts",
+      "tests/hub-quota-fleet.test.ts",
+      "tests/web-icons-1557.test.ts",
+      "tests/update-welcome-quiet-1854.test.ts",
+      "tests/fleet-windows-runtime.test.ts",
+      "tests/atomic-write-fsync-1490.test.ts",
+      "tests/kiro3-needs-you.test.ts",
+      "tests/web-mentions-1682.test.ts",
+      "tests/runtime-install.test.ts",
+      "tests/update-terminal-fallback.test.ts",
+      "tests/classic-contact-dispatch-3339.test.ts",
+      "tests/claude-credential-change-m3419.test.ts",
+      "tests/fleet-model-proto-1490.test.ts",
+      "tests/web-authority-s2a-1939.test.ts",
+      "tests/hub-classic-share-m3285.test.ts",
+      "tests/contact-person-identity-m3679.test.ts",
+      "tests/grok-input-box-3199.test.ts",
+      "tests/prompt-dedupe-m3528.test.ts",
+      "tests/login-profile-1699.test.ts",
+      "tests/public-preview-1723.test.ts",
+      "tests/exec-helper-stop-wait-2364.test.ts",
+      "tests/web-favorites-1664.test.ts",
+      "tests/classic-start-contact-notice-3339.test.ts",
+      "tests/update-cleanup-fence-1737.test.ts",
+      "tests/quota-notice-integration-3299.test.ts",
+      "tests/nonce-button-shutdown.test.ts",
+      "tests/auth-per-profile-1699.test.ts",
+      "tests/kiro-migration-verified-2598.test.ts",
+      "tests/context-lost-749.test.ts",
+      "tests/contact-outcome-notices-3372.test.ts",
+      "tests/signin-keepalive-after-signin-3292.test.ts",
+      "tests/settings-summary-effects-3416.test.ts",
+      "tests/web-compact-status-003648ac.test.ts",
+      "tests/web-authority-1939.test.ts",
+      "tests/public-link-sessions-survive-m3399.test.ts",
+      "tests/contact-origin-feedback-4213.test.ts",
+      "tests/host-monitoring-footprint-integration-m3454.test.ts",
+      "tests/task-board-contact-4367.test.ts",
+      "tests/web-session-contact-origin-m3713.test.ts",
+      "tests/contact-origin-clear-3366.test.ts",
+      "tests/muse-background-work-1716-1717.test.ts",
+      "tests/contact-suggestion-later-m3410.test.ts",
+      "tests/contact-change-proposals-m3544.test.ts",
+      "tests/kiro-reconcile-workflow.test.ts",
+      "tests/codex-false-stuck-1641.test.ts",
+      "tests/contact-held-card-m3680.test.ts",
+      "tests/web-claude-credentials-m3419.test.ts",
+      "tests/web-emoji-fetch-log.test.ts",
+      "tests/needs-you-contact-suggestions-m3381.test.ts",
+      "tests/contact-standing-grants-m3544.test.ts",
+      "tests/request-context-legacy-guard-s226.test.ts",
+      "tests/kiro-migrate-2598.test.ts",
+      "tests/web-receipt-rule-1939.test.ts",
+      "tests/human-receipts-1756.test.ts",
+      "tests/claude-credential-observation-m3419.test.ts",
+      "tests/silent-schedule-reply-guard-1843.test.ts",
+      "tests/contact-held-outcome-m3716.test.ts",
+      "tests/claude-credential-profile-1699.test.ts",
+      "tests/local-pane-relay-2950.test.ts"
+    ],
+    "validation": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-held-close-authority-m3678.test.ts",
+        "tests/web-commands-1269.test.ts",
+        "tests/runtime-durable-recovery.test.ts",
+        "tests/claude-mcp-carry-m3749.test.ts",
+        "tests/hub-quota-fleet.test.ts",
+        "tests/web-icons-1557.test.ts",
+        "tests/update-welcome-quiet-1854.test.ts",
+        "tests/fleet-windows-runtime.test.ts",
+        "tests/atomic-write-fsync-1490.test.ts",
+        "tests/kiro3-needs-you.test.ts",
+        "tests/web-mentions-1682.test.ts",
+        "tests/runtime-install.test.ts",
+        "tests/update-terminal-fallback.test.ts",
+        "tests/classic-contact-dispatch-3339.test.ts",
+        "tests/claude-credential-change-m3419.test.ts",
+        "tests/fleet-model-proto-1490.test.ts",
+        "tests/web-authority-s2a-1939.test.ts",
+        "tests/hub-classic-share-m3285.test.ts",
+        "tests/contact-person-identity-m3679.test.ts",
+        "tests/grok-input-box-3199.test.ts",
+        "tests/prompt-dedupe-m3528.test.ts",
+        "tests/login-profile-1699.test.ts",
+        "tests/public-preview-1723.test.ts",
+        "tests/exec-helper-stop-wait-2364.test.ts",
+        "tests/web-favorites-1664.test.ts",
+        "tests/classic-start-contact-notice-3339.test.ts",
+        "tests/update-cleanup-fence-1737.test.ts",
+        "tests/quota-notice-integration-3299.test.ts",
+        "tests/nonce-button-shutdown.test.ts",
+        "tests/auth-per-profile-1699.test.ts",
+        "tests/kiro-migration-verified-2598.test.ts",
+        "tests/context-lost-749.test.ts",
+        "tests/contact-outcome-notices-3372.test.ts",
+        "tests/signin-keepalive-after-signin-3292.test.ts",
+        "tests/settings-summary-effects-3416.test.ts",
+        "tests/web-compact-status-003648ac.test.ts",
+        "tests/web-authority-1939.test.ts",
+        "tests/public-link-sessions-survive-m3399.test.ts",
+        "tests/contact-origin-feedback-4213.test.ts",
+        "tests/host-monitoring-footprint-integration-m3454.test.ts",
+        "tests/task-board-contact-4367.test.ts",
+        "tests/web-session-contact-origin-m3713.test.ts",
+        "tests/contact-origin-clear-3366.test.ts",
+        "tests/muse-background-work-1716-1717.test.ts",
+        "tests/contact-suggestion-later-m3410.test.ts",
+        "tests/contact-change-proposals-m3544.test.ts",
+        "tests/kiro-reconcile-workflow.test.ts",
+        "tests/codex-false-stuck-1641.test.ts",
+        "tests/contact-held-card-m3680.test.ts",
+        "tests/web-claude-credentials-m3419.test.ts",
+        "tests/web-emoji-fetch-log.test.ts",
+        "tests/needs-you-contact-suggestions-m3381.test.ts",
+        "tests/contact-standing-grants-m3544.test.ts",
+        "tests/request-context-legacy-guard-s226.test.ts",
+        "tests/kiro-migrate-2598.test.ts",
+        "tests/web-receipt-rule-1939.test.ts",
+        "tests/human-receipts-1756.test.ts",
+        "tests/claude-credential-observation-m3419.test.ts",
+        "tests/silent-schedule-reply-guard-1843.test.ts",
+        "tests/contact-held-outcome-m3716.test.ts",
+        "tests/claude-credential-profile-1699.test.ts",
+        "tests/local-pane-relay-2950.test.ts",
+        "tests/request-context-daemon-s224.test.ts",
+        "tests/request-context-drain-s226.test.ts",
+        "--maxWorkers=2"
+      ],
+      "prototypeFiles": 62,
+      "additionalRequestContextFiles": 2,
+      "files": 64,
+      "passed": 1308,
+      "skipped": 1,
+      "failed": 0,
+      "testTypecheckExitCode": 0,
+      "buildExitCode": 0,
+      "whitespaceExitCode": 0
+    },
+    "unchanged": "Other runtime, request policy, UI, locale and captures are unchanged from the R1 source cleared by the reviewer. No production activation or live action."
+  }
+}

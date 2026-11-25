@@ -1,3 +1,4 @@
+import { assertRequestContextRootOpen } from "./request-context-fence.js";
 import type Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import { RequestContextV1Schema, RequestOperationBindingV1Schema, type RequestContextV1, type RequestOperationBindingV1 } from "./request-context-protocol.js";
@@ -57,6 +58,7 @@ export class RequestContextStore {
   /** Called inside the outbox's admission transaction. Contexts are append-only; retries must match exactly. */
   recordContext(input: RequestContextV1): RequestContextV1 {
     const context = RequestContextV1Schema.parse(input);
+    assertRequestContextRootOpen(this.db,context.ref.rootContextId);
     if (Buffer.byteLength(requestContextJson(context)) > 16 * 1024) throw Error("request-context too large");
     this.initialize();
     const previous = this.context(context.ref.contextId);

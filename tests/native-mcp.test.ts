@@ -223,3 +223,6 @@ describe("native MCP dispatch, stable calls and result tracking",()=>{
     expect(f.lease.reportedCorrelations()).toEqual([]);
   });
 });
+it("S-226 R1 an unscoped legacy grant and its calls have no root reference",async()=>{
+ const f=fixture(),root="00000000-0000-4000-8000-000000000099";expect(f.manager.drainView(root)).toMatchObject({unknown:false,references:[]});await invoke(f,call("legacy-read")).done();expect(f.manager.drainView(root)).toMatchObject({unknown:false,references:[]});
+});

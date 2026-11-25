@@ -1,3 +1,4 @@
+import type { RequestContextRegistrationGate, RequestContextDrainView } from "./request-context-fence.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { RequestContextActorV1Schema, RequestContextV1Schema, type RequestContextActorV1, type RequestContextV1 } from "./request-context-protocol.js";
@@ -35,6 +36,7 @@ export interface RequestContextRecoveryPointer {
   instance: string; incarnation: string; workGeneration: string; contextId: string;
 }
 export interface RequestContextTurnPorts {
+  registration?: RequestContextRegistrationGate;
   /** Only server-owned admitted input/attempt or recovery-job keys; never a body, reply pointer or correlation string. */
   input(inputId: string): PreparedRequestContextInput | null;
   context(contextId: string): RequestContextV1 | null;
@@ -65,10 +67,14 @@ function validOwner(owner: RequestContextRuntimeOwner): void {
 /** Per-owned-turn binding only. No clock, pending-child lock, human authority or persistent active-turn restoration. */
 export class RequestContextLocalTurns {
   private active: RequestContextTurnSnapshot | null = null;
+  private drainSerial=0;
+  get registrationGate():RequestContextRegistrationGate|null{return this.ports.registration??null;}
+  get drainRevision():string{return String(this.drainSerial);}
+  drainView(rootId:string):RequestContextDrainView{return {registration:this.registrationGate,revision:this.drainRevision,references:this.active?.context.ref.rootContextId===rootId?[`turn:${this.active.context.ref.contextId}`]:[],unknown:!this.registrationGate};}
   constructor(private readonly ports: RequestContextTurnPorts) {}
   current(owner: RequestContextRuntimeOwner): RequestContextTurnSnapshot | null {
     validOwner(owner);
-    if (this.active && !same(this.active.owner, owner)) this.active = null;
+    if (this.active && !same(this.active.owner, owner)) { this.active = null;this.drainSerial++; }
     return this.active;
   }
   isCurrent(snapshot: RequestContextTurnSnapshot, owner: RequestContextRuntimeOwner): boolean {
@@ -164,12 +170,14 @@ export class RequestContextLocalTurns {
       if (active) throw new RequestContextInputDeferred();
     }
     if (!context || context.source.instance !== owner.instance || context.source.incarnation !== owner.incarnation) throw Error("request-context input destination changed");
+    this.ports.registration?.assertRegistration(context.ref.rootContextId);
     this.ports.retain(context);
     if (outside(context)) this.ports.saveRecovery({ instance: owner.instance, incarnation: owner.incarnation,
       workGeneration: owner.workGeneration, contextId: context.ref.contextId });
     else if (proof.kind === "independent") this.ports.saveRecovery(null);
     // A join does not create a second active turn or change the token used by in-flight calls.
     if (active) return active;
+    this.drainSerial++;
     this.active = freeze({ token: randomUUID(), inputId: input.inputId, wireSha256, owner: structuredClone(owner), context: structuredClone(context),
       ...(diagnostic ? { unprovedRecoveryFrom: diagnostic } : {}) });
     return this.active;
@@ -177,8 +185,8 @@ export class RequestContextLocalTurns {
   /** Only an exact owned end/cancel proof retires this binding; idle/age/answer publication are not proofs. */
   ended(snapshot: RequestContextTurnSnapshot, owner: RequestContextRuntimeOwner): boolean {
     if (!this.isCurrent(snapshot, owner)) return false;
-    this.active = null; return true;
+    this.active = null; this.drainSerial++; return true;
   }
   /** Stop/fresh-runtime fences retire active memory, never reinterpret old work as an owner root. */
-  fence(): void { this.active = null; }
+  fence(): void { this.active = null; this.drainSerial++; }
 }

@@ -1,3 +1,4 @@
+import { RequestContextReferenceMap } from "./request-context-fence.js";
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { managedClaudeBinding } from "./claude-credential-launch.js";
 import { HUB_REPORT_TARGET } from "./hub-report-target.js";
@@ -2657,7 +2658,7 @@ export class Daemon extends EventEmitter {
   /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
   private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string } };
   private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean };
-  private readonly requestContextCalls = new Map<string, RequestContextLocalCall>();
+  private readonly requestContextCalls = new RequestContextReferenceMap<string, RequestContextLocalCall>(call=>call.admission.coverage==="covered"?call.admission.lease.snapshot.context.ref.rootContextId:null,call=>`local-call:${call.id}`);
   private requestContextInterruptedLaunch: string | undefined;
   private requestContextLaunch(): string { return JSON.stringify([this.bootId, this.spawnGeneration, this.nativePaneLifecycle?.snapshot?.()?.launchId ?? null]); }
   /** First local owned hop only. No lookup at a later Fleet receipt may retag this call. */
@@ -2681,6 +2682,11 @@ export class Daemon extends EventEmitter {
     return call?.current() ? call : null;
   }
   requestContextCallsRequired(): boolean { return this.requestContextLifecycle !== undefined; }
+  get requestContextCallDrainRevision():string{return this.requestContextCalls.revision;}
+  requestContextCallDrainView(rootId:string){return this.requestContextCalls.view(rootId);}
+  requestContextTurnDrainView(rootId:string){return this.requestContextLifecycle?.turns.drainView(rootId)??null;}
+  get requestContextTurnDrainRevision():string{return this.requestContextLifecycle?.turns.drainRevision??"unavailable";}
+
   private handleOwnedToolCall(message: Record<string, unknown>, socket: import("node:net").Socket): void {
     let call: RequestContextLocalCall | undefined;
     try { call = this.beginRequestContextCall(socket); this.handleToolCall(message, socket, undefined, call); }
@@ -2691,6 +2697,7 @@ export class Daemon extends EventEmitter {
   }
   setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }): void {
     if (this.tmux || this.ipcServer || this.requestContextLifecycle || this.nativePaneLifecycle && !this.nativePaneLifecycle.requestContextAvailable?.()) throw Error("Request context must be bound before a supported daemon startup");
+    this.requestContextCalls.installRegistration(turns.registrationGate??undefined);
     this.requestContextLifecycle = { turns, identity };
   }
   private requestContextOwner(): RequestContextRuntimeOwner | null {

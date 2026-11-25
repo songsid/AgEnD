@@ -1,3 +1,4 @@
+import { assertRequestContextRootOpen } from "./request-context-fence.js";
 /** Dormant request-scoped contact policy. Only the outbox owns its transaction/admission ports. */
 import { t } from "./locale.js";
 import type Database from "better-sqlite3";
@@ -74,6 +75,7 @@ export class RequestContactGate {
     return person;
   }
   private requireCurrent(image: Image): void {
+    assertRequestContextRootOpen(this.db,image.context.ref.rootContextId);
     if (!this.host.current(image.context, image.binding, image.delivery)) throw Error("request-context contact is no longer current");
   }
   private admitImage(image: Image): {delivery:OutboxDelivery;inserted:boolean} {
@@ -116,6 +118,7 @@ export class RequestContactGate {
       } };
   }
   private continued(saved: Saved, release: ContactTicket): ContactTicket {
+    this.requireCurrent(saved.image);
     const ticket = this.tickets.get(saved.ticketId)!;
     if (ticket.state !== "pending") return ticket;
     return this.tickets.decide(ticket.id, { revision: ticket.revision, decision: "approve-once" }, release.decidedBy!, this.authority(release.id));

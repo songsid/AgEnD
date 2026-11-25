@@ -1,3 +1,4 @@
+import { RequestContextReferenceMap, type RequestContextRegistrationGate } from "./request-context-fence.js";
 /** Fleet-only proof registry. Raw C tokens and contexts never cross the pane transport. */
 import { createHash, createHmac } from "node:crypto";
 import { captureRequestContextCall, type RequestContextCallLease } from "./request-context-call.js";
@@ -8,8 +9,10 @@ export interface RequestContextCallReference {
   contextId: string; rootContextId: string; proofSha256: string;
 }
 export class RequestContextPaneProofs {
-  private readonly proofs = new Map<string, { owner: PaneMcpOwner; lease: RequestContextCallLease }>();
-  constructor(private readonly secret: string) { if (secret.length < 32) throw Error("Originating-call proof key unavailable"); }
+  private readonly proofs = new RequestContextReferenceMap<string, { owner: PaneMcpOwner; lease: RequestContextCallLease }>(row=>row.lease.snapshot.context.ref.rootContextId,row=>`pane-proof:${row.owner.launchId}:${row.lease.snapshot.context.ref.contextId}`);
+  constructor(private readonly secret: string,registration?:RequestContextRegistrationGate) { if (secret.length < 32) throw Error("Originating-call proof key unavailable");this.proofs.installRegistration(registration); }
+  get drainRevision():string{return this.proofs.revision;}
+  drainView(rootId:string){return this.proofs.view(rootId);}
   /** Mint under C's final write lock; retain() has already committed the immutable context. */
   mint(owner: PaneMcpOwner, snapshot: RequestContextTurnSnapshot, current: (captured: RequestContextTurnSnapshot) => boolean): RequestContextCallStamp {
     validatePaneMcpOwner(owner);
