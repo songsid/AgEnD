@@ -25,7 +25,9 @@ type Opts = {
   clock?: { t: number }; pingGate?: Promise<void>;
   /** Host (P2/P6/P8): files by path, directory listings, other processes, free bytes, lock holders, an update marker. */
   texts?: Record<string, string>; dirs?: Record<string, string[]>; reals?: Record<string, string>;
-  procs?: Array<{ pid: number; argv: string[]; env: Record<string, string> | null; uid?: number }>;
+  procs?: Array<{ pid: number; argv: string[] | null; env: Record<string, string> | null; uid?: number }>;
+  /** /proc can't be listed; `missing`: paths whose realpath fails (no such file). */
+  pidsUnlisted?: boolean; missing?: string[];
   free?: number | null; duKb?: number | null; locks?: Record<string, { state: "live" | "stale" | "unknown"; pid: number }>; inProgress?: boolean;
   /** This process's fleet.lock pid (default: this process, 4321). */
   fleetLockPid?: number | null;
@@ -42,6 +44,7 @@ function rig(o: Opts = {}) {
     if (p === `${PKG}/dist/cli.js` || p === AGEND) return BIN_TARGET;
     if (p === o.pathAgend) return o.pathAgendReal ?? BIN_TARGET;
     if (o.reals && p in o.reals) return o.reals[p]!;
+    if (o.missing?.includes(p)) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
     return p;
   };
   const executable = new Set([`${PREFIX}/bin/npm`, ...(o.pathAgend ? [o.pathAgend] : [])]);
@@ -85,6 +88,7 @@ function rig(o: Opts = {}) {
       if (cmd === "npm" && args[0] === "config") return o.registry === false ? { status: 1, stdout: "", stderr: "" } : { status: 0, stdout: "; \"user\" config from /home/u/.npmrc\n", stderr: "" };
       if (cmd === "npm" && args[0] === "ping") { pingEnv.push(env); if (o.pingGate) await o.pingGate; return { ...(o.ping ?? { status: 0, stderr: "" }), stdout: "" }; }
       if (cmd === "npm" && args[0] === "view") return o.view === null ? { status: 1, stdout: "", stderr: "E404" } : { status: 0, stdout: o.view ?? JSON.stringify({ version: "2.5.0", engines: { node: ">=22.14.0" }, optionalDependencies: {} }), stderr: "" };
+      if (cmd === "ps") return { status: 0, stdout: "", stderr: "" };                      // macOS: no other fleet
       if (cmd === "du") return o.duKb === null ? { status: 1, stdout: "", stderr: "" } : { status: 0, stdout: `${o.duKb ?? 200_000}\t${args[1]}\n`, stderr: "" };
       if (cmd === "sh") return o.node === null ? { status: 127, stdout: "", stderr: "" } : { status: 0, stdout: `${o.node ?? "22.14.0"} /usr/bin/node\n`, stderr: "" };
       return { status: 1, stdout: "", stderr: "" };
@@ -93,7 +97,7 @@ function rig(o: Opts = {}) {
     now: () => o.clock?.t ?? 1_700_000_000_000,
     pid: 4321, home: "/home/u/.agend", homeDir: "/home/u",
     listDir: async p => o.dirs?.[p] ?? [],
-    listPids: async () => (o.procs ?? []).map(x => x.pid),
+    listPids: async () => (o.pidsUnlisted ? null : (o.procs ?? []).map(x => x.pid)),
     procArgv: async pid => o.procs?.find(x => x.pid === pid)?.argv ?? null,
     procEnv: async pid => o.procs?.find(x => x.pid === pid)?.env ?? null,
     procUid: async pid => { const x = o.procs?.find(q => q.pid === pid); return x ? (x.uid ?? 1000) : null; },
@@ -506,5 +510,61 @@ describe("M-3770 1.3: the words for P2, P6 and P8", () => {
         expect(t(`update.preflight.code.${code}`, "x", "y", "z")).not.toContain("update.preflight");
       }
     } finally { setLocale("en"); }
+  });
+});
+
+// Prism #4489: missing identity evidence never becomes permission to update.
+describe("M-3770 1.3 review: scans, home identity and unreadable locks", () => {
+  it("(1) a failed process scan is unknown-owner, not 'no other fleet'; a successful empty scan passes", async () => {
+    const linux = await runUpdatePreflight({ localOnly: true }, rig({ pidsUnlisted: true }).d);
+    expect(byId(linux, "P2")).toEqual({ id: "P2", ok: false, code: "unknown-owner", detail: { path: "/proc" } });
+    expect(linux.class).toBe("stop");
+    const macEnv = { PATH: `${PREFIX}/bin`, XPC_SERVICE_NAME: "com.agend.fleet" };
+    const macRig = rig({ platform: "darwin", env: macEnv });
+    const run = macRig.d.run;
+    macRig.d.run = async (cmd, args, ms, env) => (cmd === "ps" ? { status: 1, stdout: "", stderr: "ps: operation not permitted" } : run(cmd, args, ms, env));
+    expect(byId(await runUpdatePreflight({ localOnly: true }, macRig.d), "P2")).toEqual({ id: "P2", ok: false, code: "unknown-owner", detail: { path: "ps" } });
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ procs: [] }).d), "P2")).toEqual({ id: "P2", ok: true });
+  });
+
+  it("(1) a live process of this user whose command can't be read is unknown-owner; one that's gone, or another user's, is not", async () => {
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ procs: [{ pid: 90, argv: null, env: null, uid: 1000 }] }).d), "P2"))
+      .toEqual({ id: "P2", ok: false, code: "unknown-owner", detail: { path: "/proc" } });
+    const gone = rig({ procs: [{ pid: 91, argv: null, env: null }] });
+    gone.d.procUid = async () => null;                                                       // no owner: the process is gone
+    expect(byId(await runUpdatePreflight({ localOnly: true }, gone.d), "P2")).toEqual({ id: "P2", ok: true });
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ procs: [{ pid: 92, argv: null, env: null, uid: 0 }] }).d), "P2")).toEqual({ id: "P2", ok: true });
+  });
+
+  it("(2) another install's fleet on an alias of this home is shared-home; a genuinely separate home is other-install; an unresolvable one is unknown", async () => {
+    const fleet = (home: string) => [{ pid: 93, argv: fleetArgv(OTHER), env: { AGEND_HOME: home, HOME: "/home/u" } }];
+    const alias = await runUpdatePreflight({ localOnly: true }, rig({ texts: OTHER_PKG, procs: fleet("/home/u/agend-link"), reals: { "/home/u/agend-link": "/home/u/.agend" } }).d);
+    expect(byId(alias, "P2")).toEqual({ id: "P2", ok: false, code: "shared-home", detail: { path: OTHER, home: "/home/u/agend-link" } });
+    expect(alias.class).toBe("stop");
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ texts: OTHER_PKG, procs: fleet("/srv/agend-b") }).d), "P2")).toMatchObject({ code: "other-install", detail: { home: "/srv/agend-b" } });
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ texts: OTHER_PKG, procs: fleet("/srv/gone"), missing: ["/srv/gone"] }).d), "P2"))
+      .toEqual({ id: "P2", ok: false, code: "unknown-owner", detail: { path: "/srv/gone" } });
+  });
+
+  it("(2) a service's home follows the same identity rule: an alias of this home is shared-home; unresolvable is unknown", async () => {
+    const unitDir = "/home/u/.config/systemd/user";
+    const unit = (body: string, extra: Partial<Opts> = {}) => rig({ texts: { ...OTHER_PKG, [`${unitDir}/x.service`]: `[Service]\n${body}\n` }, dirs: { [unitDir]: ["x.service"] },
+      reals: { "/opt/other/bin/agend": `${OTHER}/launcher/agend`, "/data/agend-alias": "/home/u/.agend" }, ...extra }).d;
+    expect(byId(await runUpdatePreflight({ localOnly: true }, unit("Environment=AGEND_HOME=/data/agend-alias\nExecStart=/opt/other/bin/agend fleet start")), "P2"))
+      .toEqual({ id: "P2", ok: false, code: "shared-home", detail: { path: OTHER, home: "/data/agend-alias" } });
+    expect(byId(await runUpdatePreflight({ localOnly: true }, unit("Environment=AGEND_HOME=/data/never\nExecStart=/opt/other/bin/agend fleet start", { missing: ["/data/never"] })), "P2"))
+      .toEqual({ id: "P2", ok: false, code: "unknown-owner", detail: { path: OTHER, home: "/data/never" } });
+  });
+
+  it("(3) an unreadable or malformed home or prefix lock blocks as update-running; free, stale and this process's own still pass", async () => {
+    const home = "/home/u/.agend/.update.lock", prefix = `${PREFIX}/.agend-install.lock`;
+    for (const path of [home, prefix]) {
+      const r = rig();
+      r.d.lockHolder = p => (p === path ? { state: "unreadable" } : { state: "free" });
+      expect(byId(await runUpdatePreflight({ localOnly: true }, r.d), "P8")).toEqual({ id: "P8", ok: false, code: "update-running", detail: { path } });
+    }
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig().d), "P8")).toEqual({ id: "P8", ok: true });
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ locks: { [home]: { state: "stale", pid: 5 } } }).d), "P8")).toEqual({ id: "P8", ok: true });
+    expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ locks: { [home]: { state: "live", pid: 4321 } } }).d), "P8")).toEqual({ id: "P8", ok: true });
   });
 });

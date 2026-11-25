@@ -174,7 +174,7 @@ export const defaultReadinessDeps = (): ReadinessDeps => ({
   home: process.env.AGEND_HOME || join(homedir(), ".agend"),
   homeDir: homedir(),
   listDir: async path => { try { return await readdir(path); } catch { return []; } },
-  listPids: async () => { if (process.platform !== "linux") return []; try { return (await readdir("/proc")).filter(n => /^\d+$/.test(n)).map(Number); } catch { return []; } },
+  listPids: async () => { try { return (await readdir("/proc")).filter(n => /^\d+$/.test(n)).map(Number); } catch { return null; } },
   procArgv: async pid => { try { return (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0").filter(Boolean); } catch { return null; } },
   procEnv: async pid => {
     try {

@@ -28,8 +28,8 @@ export interface HostDeps {
   readText(path: string): Promise<string | null>;
   listDir(path: string): Promise<string[]>;
   run(command: string, args: string[], timeoutMs: number): Promise<{ status: number | null; stdout: string; stderr: string; timedOut?: boolean }>;
-  /** Linux: the pids in /proc; elsewhere []. */
-  listPids(): Promise<number[]>;
+  /** Linux: the pids in /proc; null when /proc can't be listed (an incomplete scan, never "no other fleet"). */
+  listPids(): Promise<number[] | null>;
   /** Linux: a process's argv, environment and owner (null: gone or unreadable). */
   procArgv(pid: number): Promise<string[] | null>;
   procEnv(pid: number): Promise<Record<string, string> | null>;
@@ -43,6 +43,11 @@ export interface HostDeps {
 }
 
 const same = (a: string, b: string) => resolve(a) === resolve(b);
+
+/** A home's identity: its real path (a symlinked alias is the same home), or null when it can't be resolved. */
+async function canonicalHome(d: HostDeps, home: string): Promise<string | null> {
+  try { return await d.realpath(home); } catch { return null; }
+}
 const FLEET_START = /\b(?:agend|(?:cli|daemon-entry)\.(?:js|ts))\b.*\bfleet\s+start\b/;
 
 /** The AgEnD package directory a path leads to (a bin link, `dist/cli.js`, a launcher), by its package.json; or null. */
@@ -67,32 +72,47 @@ async function packageOf(d: HostDeps, path: string): Promise<{ dir: string; vers
 
 interface Other { package: string; home: string | null; version?: string | null; via: "fleet" | "service" | "install" }
 
-/** Live fleets of this user other than this process: their package and home (Linux /proc; macOS `ps`, no home). */
-async function liveFleets(d: HostDeps): Promise<Array<{ pid: number; package: string | null; home: string | null }>> {
-  const out: Array<{ pid: number; package: string | null; home: string | null }> = [];
+/**
+ * Live fleets of this user other than this process: their package and home (Linux /proc; macOS `ps`, no home).
+ * `complete: false` when the scan itself failed, or a live process of this user can't be read: then nothing proves
+ * that no other fleet shares this install or home (Prism #4489 1).
+ */
+async function liveFleets(d: HostDeps): Promise<{ complete: boolean; fleets: Array<{ pid: number; package: string | null; home: string | null }> }> {
+  const fleets: Array<{ pid: number; package: string | null; home: string | null }> = [];
   if (d.platform === "linux") {
-    for (const pid of await d.listPids()) {
+    const pids = await d.listPids();
+    if (pids === null) return { complete: false, fleets };
+    for (const pid of pids) {
       if (pid === d.pid) continue;
       const argv = await d.procArgv(pid);
-      if (!argv || !FLEET_START.test(argv.join(" "))) continue;
+      if (!argv) {
+        // Gone (no owner either), another user's, or this user's and unreadable: only the last one leaves a doubt.
+        const uid = await d.procUid(pid);
+        if (uid === d.uid) return { complete: false, fleets };
+        continue;
+      }
+      if (!FLEET_START.test(argv.join(" "))) continue;
       if (await d.procUid(pid) !== d.uid) continue;                       // another user's fleet is another user's state
       const entry = argv.find(a => /(?:^|\/)(?:cli\.js|agend)$/.test(a) && a.startsWith("/")) ?? null;
       const pkg = entry ? await packageOf(d, entry) : null;
       const env = await d.procEnv(pid);
       const home = env ? (env.AGEND_HOME || (env.HOME ? join(env.HOME, ".agend") : null)) : null;
-      out.push({ pid, package: pkg?.dir ?? null, home });
+      fleets.push({ pid, package: pkg?.dir ?? null, home });
     }
-  } else if (d.platform === "darwin") {
+    return { complete: true, fleets };
+  }
+  if (d.platform === "darwin") {
     const ps = await d.run("ps", ["-axww", "-o", "pid=,uid=,command="], 5000);
-    if (ps.status !== 0) return out;
+    if (ps.status !== 0) return { complete: false, fleets };
     for (const line of ps.stdout.split("\n")) {
       const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
       if (!m || Number(m[1]) === d.pid || Number(m[2]) !== d.uid || !FLEET_START.test(m[3]!)) continue;
       const entry = m[3]!.split(/\s+/).find(a => /(?:^|\/)(?:cli\.js|agend)$/.test(a) && a.startsWith("/")) ?? null;
-      out.push({ pid: Number(m[1]), package: entry ? (await packageOf(d, entry))?.dir ?? null : null, home: null });   // macOS: no other process's environment
+      fleets.push({ pid: Number(m[1]), package: entry ? (await packageOf(d, entry))?.dir ?? null : null, home: null });   // macOS: no other process's environment
     }
+    return { complete: true, fleets };
   }
-  return out;
+  return { complete: false, fleets };
 }
 
 /** AgEnD services defined for this user: what each runs, for which home (null: unknown). */
@@ -158,19 +178,30 @@ export async function checkSharing(d: HostDeps, home: string, ownPackage: string
   const lockText = await d.readText(join(home, "fleet.lock"));
   let lockPid: number | null = null;
   try { const r = lockText ? JSON.parse(lockText) as { pid?: unknown } : null; lockPid = typeof r?.pid === "number" ? r.pid : null; } catch { lockPid = null; }
-  if (lockPid !== d.pid || ownPackage === null) return { id: "P2", ok: false, code: "unknown-owner", detail: { path: join(home, "fleet.lock") } };
+  const ownHome = await canonicalHome(d, home);
+  if (lockPid !== d.pid || ownPackage === null || ownHome === null) return { id: "P2", ok: false, code: "unknown-owner", detail: { path: join(home, "fleet.lock") } };
   const others: Other[] = [];
-  for (const f of await liveFleets(d)) {
+  const scan = await liveFleets(d);
+  if (!scan.complete) return { id: "P2", ok: false, code: "unknown-owner", detail: { path: d.platform === "darwin" ? "ps" : "/proc" } };
+  for (const f of scan.fleets) {
     if (f.package === null || f.home === null) return { id: "P2", ok: false, code: "unknown-owner", detail: { path: `pid ${f.pid}` } };
-    if (same(f.home, home)) return { id: "P2", ok: false, code: "shared-home", detail: { path: f.package, home: f.home } };
+    const fHome = await canonicalHome(d, f.home);                             // Prism #4489 2: an alias of this home is this home
+    if (fHome === null) return { id: "P2", ok: false, code: "unknown-owner", detail: { path: f.home } };
+    if (fHome === ownHome) return { id: "P2", ok: false, code: "shared-home", detail: { path: f.package, home: f.home } };
     if (same(f.package, ownPackage)) return { id: "P2", ok: false, code: "shared-home", detail: { path: f.package, home: f.home } };
     others.push({ package: f.package, home: f.home, via: "fleet" });
   }
   for (const s of await services(d)) {
     if (s.package === null) continue;
     const mine = same(s.package, ownPackage);
-    if (s.home !== null && same(s.home, home) && !mine) return { id: "P2", ok: false, code: "shared-home", detail: { path: s.package, home: s.home } };
-    if (mine && s.home !== null && !same(s.home, home)) return { id: "P2", ok: false, code: "shared-home", detail: { path: s.package, home: s.home } };
+    // A service's home is judged the same way; one that can't be resolved (never created, unreadable) stays unknown.
+    const sHome = s.home === null ? null : await canonicalHome(d, s.home);
+    if (sHome === null) {
+      if (s.home !== null && same(s.home, home)) return { id: "P2", ok: false, code: mine ? "unknown-owner" : "shared-home", detail: { path: s.package, home: s.home } };
+      return { id: "P2", ok: false, code: "unknown-owner", detail: { path: s.package, ...(s.home ? { home: s.home } : {}) } };
+    }
+    if (sHome === ownHome && !mine) return { id: "P2", ok: false, code: "shared-home", detail: { path: s.package, home: s.home! } };
+    if (mine && sHome !== ownHome) return { id: "P2", ok: false, code: "shared-home", detail: { path: s.package, home: s.home! } };
     if (!mine) others.push({ package: s.package, home: s.home, via: "service" });
   }
   for (const candidate of await globalRoots(d)) {
@@ -211,6 +242,9 @@ export async function checkQuiet(d: HostDeps, home: string, install: { prefix: s
   if (await d.exists(marker)) return { id: "P8", ok: false, code: "rehearsal", detail: { path: marker } };
   for (const path of [join(home, ".update.lock"), ...(install ? [join(install.prefix, ".agend-install.lock")] : [])]) {
     const holder = d.lockHolder(path);
+    // A lock that exists but can't be read or parsed (also between its creation and its record being written) is
+    // another updater as far as anyone can tell (Prism #4489 3). Only a fleet start's admission fails open on it.
+    if (holder.state === "unreadable") return { id: "P8", ok: false, code: "update-running", detail: { path } };
     if ((holder.state === "live" || holder.state === "unknown") && holder.record.pid !== d.pid) return { id: "P8", ok: false, code: "update-running", detail: { path } };
   }
   if (!localOnly && d.updateInProgress(home)) return { id: "P8", ok: false, code: "update-running", detail: { path: join(home, "update-in-progress.json") } };
