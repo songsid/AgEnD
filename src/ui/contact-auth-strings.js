@@ -9,7 +9,9 @@ register("contactAuth", {
   en: {
     tab: "Permissions", lead: "Who may ask this agent to forward requests to other agents, and what this room may use.",
     loading: "Loading permissions…", loadFailed: "Couldn't load permissions.", retry: "Try again",
-    forbidden: "Only this agent's managers can see its permissions.", unavailable: "Permissions are unavailable right now. Try again in a moment.",
+    forbidden: "Only this agent's managers can see its permissions.",
+    verifyFirst: "Permissions and contact requests need a verified administrator. Verify your identity in Sign-in status (Authorize this browser), then try again.",
+    unavailable: "Permissions are unavailable right now. Try again in a moment.",
     stale: "Someone changed these permissions just now. They have been reloaded — check them and try again.",
     saved: "Saved.", saveFailed: "Couldn't save.", readOnly: "You can see these permissions but not change them.",
     // Mode (a ClassicBot room)
@@ -136,7 +138,9 @@ register("contactAuth", {
   "zh-TW": {
     tab: "權限", lead: "誰可以請這個 Agent 把請求轉交給其他 Agent，以及這個房間可以使用什麼。",
     loading: "正在載入權限…", loadFailed: "無法載入權限。", retry: "重試",
-    forbidden: "只有這個 Agent 的管理員可以查看權限。", unavailable: "目前無法取得權限，請稍後再試。",
+    forbidden: "只有這個 Agent 的管理員可以查看權限。",
+    verifyFirst: "權限和聯絡申請需要已驗證的管理員。請先在「登入狀態」按「授權這個瀏覽器」驗證身分，再試一次。",
+    unavailable: "目前無法取得權限，請稍後再試。",
     stale: "剛才有人修改了這些權限，已重新載入，請確認後再試一次。",
     saved: "已儲存。", saveFailed: "無法儲存。", readOnly: "你可以查看這些權限，但無法修改。",
     modeTitle: "房間模式", modeRestricted: "受限模式", modeLegacy: "自由模式",

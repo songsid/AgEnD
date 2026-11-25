@@ -21,7 +21,9 @@ export function handleContactAuthorizationApi(req: IncomingMessage, res: ServerR
   const ticket = /^\/ui\/api\/contact-authorizations(?:\/(R[a-f0-9-]{36})(\/decision)?)?$/.exec(url.pathname);
   if (!permissions && !ticket) return false;
   const method = req.method ?? "GET", actor = host.contactActor(req, url);
-  if (!actor) { answer(res, 403, { error: "forbidden" }); return true; }
+  // M-3680: no verified administrator behind this session (e.g. a browser not yet authorized over a link): say so, so the
+  // page can point to Sign-in status rather than read as "not this agent's manager".
+  if (!actor) { answer(res, 403, { error: "verification-required" }); return true; }
   void (async () => {
     try {
       const name = permissions ? decodeURIComponent(permissions[1]!) : "";
