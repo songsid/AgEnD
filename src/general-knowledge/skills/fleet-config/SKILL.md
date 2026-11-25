@@ -35,13 +35,13 @@ templates:        # Reusable fleet deployment templates
 
 Use `get_fleet_config({ scope: "instance", name })` or `scope: "defaults"` to inspect the current configuration, and `list_deployments` to inspect deployed groups. These read-only tools and `validate_config` are in General’s default profile.
 
-As General, set another agent’s profile directly, without asking for a confirmation card:
+Set another agent’s profile directly, without a confirmation card. Any creator may set a profile at or below its own resolved profile. The order, highest privilege first, is `full`, `general`, `coordinator`, `worker`, `standard`, `minimal`. A non-General creator cannot grant `full` or `general` (those creators are capped at `coordinator`). General may set any writable profile. Above the cap is refused, and the refusal names the cap. `deploy_template` uses the same cap. The new agent starts on that profile; do not reload.
 
 ```js
 update_instance_config({ name: "worker", config: { tool_set: "worker" } })
 create_instance({ topic_name: "new-worker", tool_set: "worker" })
 ```
-Writable values: `full`, `standard`, `worker`, `coordinator`, `minimal`. `general` is assigned by role and cannot be written. Other callers (including coordinators and non-General `full` agents) remain refused under #804/#814. Both tools refuse `skipPermissions` for everyone, including General; do not pass it. Sensitive Settings changes (tokens, access and admin membership) still use their existing confirmation. An explicitly narrowed General remains narrowed. General cannot change its own `tool_set` through either tool, including a create operation that resolves to the existing General; a person may still change it in Settings or fleet.yaml. This direct exception covers portable/local agents only. Native Windows keeps its separate admin request for creation and for display name, description or model changes; set its `tool_set` in Settings on the host.
+Writable values: `full`, `standard`, `worker`, `coordinator`, `minimal`. `general` is assigned by role and cannot be written. Both tools refuse `skipPermissions` for everyone, including General; do not pass it. Sensitive Settings changes (tokens, access and admin membership) still use their existing confirmation. An explicitly narrowed General remains narrowed. Nobody can change their own `tool_set` through either tool, including a create operation that resolves to the existing agent; a person may still change it in Settings or fleet.yaml. This direct path covers portable/local agents only. Native Windows keeps its separate admin request for creation and for display name, description or model changes; set its `tool_set` in Settings on the host.
 
 ## kiro-cli UI mode (kiro_ui)
 

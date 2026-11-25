@@ -16,6 +16,7 @@ import type { EventLog } from "./event-log.js";
 import { deliveryContentDigest, deliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import type { z } from "zod";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import { resolveToolSet, toolSetGrantRefusal } from "./tool-permissions.js";
 import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES, DEFAULT_LIST_INSTANCES_OUTPUT_BUDGET, MAX_INSTANCE_LOG_LINES, getEffectiveInstanceDefaults } from "./config.js";
 import { t } from "./locale.js";
 import type { InteractionSnapshot } from "./backend/types.js";
@@ -1505,14 +1506,11 @@ function introducedErrors(before: ValidationResult, after: ValidationResult): Va
 }
 
 const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
-  // Check raw fields before Zod strips them. Decision 36525f1b exempts only
-  // the authenticated General identity for tool_set, never skipPermissions.
+  // Check raw fields before Zod strips them. skipPermissions stays refused for
+  // everyone. tool_set is capped at the caller's own profile (never full/general
+  // for a non-General creator). General keeps today's rights.
   if ((rawArgs as any)?.config?.skipPermissions !== undefined) {
     respond(null, "skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
-    return;
-  }
-  if ((rawArgs as any)?.config?.tool_set !== undefined && !isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? "")) {
-    respond(null, "tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }
   const target = (rawArgs as any)?.name, caller = meta?.instanceName ?? "";
@@ -1520,8 +1518,12 @@ const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
   const selfTarget = target === caller || (instances && typeof target === "string" &&
     Object.hasOwn(instances, target) && Object.hasOwn(instances, caller) && instances[target] === instances[caller]);
   if ((rawArgs as any)?.config?.tool_set !== undefined && selfTarget) {
-    respond(null, "General cannot change its own tool_set through a tool; use Settings or fleet.yaml (privilege boundary, #804/#814)");
+    respond(null, "An agent cannot change its own tool_set through a tool; use Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
+  }
+  if ((rawArgs as any)?.config?.tool_set !== undefined) {
+    const grantError = toolSetGrantError(ctx, caller, (rawArgs as any).config.tool_set, undefined);
+    if (grantError) { respond(null, grantError); return; }
   }
   if ((rawArgs as any)?.config?.tool_set !== undefined && typeof target === "string" &&
       instances && Object.hasOwn(instances, target) && isWindowsInstance(instances[target])) {
@@ -2018,11 +2020,23 @@ function windowsRequestAnswer(view: { id: string; state: string }): Record<strin
       : `This identical request was already ${view.state}. Asking the same thing again gets the same answer: change something (the name, the folder or the model) to ask again, or try again in about ten minutes.` };
 }
 
+/** Caller profile vs the profile this write would leave behind. General is uncapped. */
+function toolSetGrantError(ctx: OutboundContext, caller: string, explicit: unknown, defaultsToolSet: unknown): string | null {
+  const instances = ctx.fleetConfig?.instances;
+  const creatorConfig = caller && instances && Object.hasOwn(instances, caller) ? instances[caller] : undefined;
+  return toolSetGrantRefusal({
+    caller,
+    creator: caller ? resolveToolSet(creatorConfig, caller) : undefined,
+    explicit,
+    defaultsToolSet,
+    isGeneral: !!caller && isGeneralInstance(ctx.fleetConfig, caller),
+  });
+}
+
 const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
-  // Decision 36525f1b: only General may supply tool_set. Raw skipPermissions
-  // stays refused for everyone before passthrough can reach the lifecycle.
-  if ((rawArgs as any)?.skipPermissions !== undefined ||
-      ((rawArgs as any)?.tool_set !== undefined && !isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? ""))) {
+  // skipPermissions stays refused for everyone, before passthrough can reach the
+  // lifecycle. tool_set may be set up to the caller's own profile.
+  if ((rawArgs as any)?.skipPermissions !== undefined) {
     respond(null, "tool_set and skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }
@@ -2034,6 +2048,9 @@ const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     catch (err) { respond(null, err instanceof Error ? err.message : WINDOWS_CREATE_REFUSED); }
     return;
   }
+  const createCaller = meta?.instanceName ?? "";
+  const createGrant = toolSetGrantError(ctx, createCaller, (rawArgs as any)?.tool_set, ctx.fleetConfig?.defaults?.tool_set);
+  if (createGrant) { respond(null, createGrant); return; }
   // M-2239 P1-1: sandbox is the Windows runtime's alone; without that runtime it is refused as before.
   if ((rawArgs as any)?.sandbox !== undefined) { respond(null, WINDOWS_CREATE_REFUSED); return; }
   const v = validateArgs(CreateInstanceArgs, rawArgs, "create_instance");
@@ -2403,6 +2420,10 @@ const deployTemplate: Handler = async (ctx, rawArgs, respond, meta) => {
         if (!instanceDef.tool_set && profile.tool_set) instanceDef.tool_set = profile.tool_set;
         if (instanceDef.lightweight == null && profile.lightweight != null) instanceDef.lightweight = profile.lightweight;
       }
+
+      const deployCaller = meta?.instanceName ?? "";
+      const deployGrant = toolSetGrantError(ctx, deployCaller, instanceDef.tool_set, ctx.fleetConfig.defaults?.tool_set);
+      if (deployGrant) throw new Error(`role "${role}": ${deployGrant}`);
 
       const topicName = `${deploymentName}-${role}`;
       const deploymentTags = [

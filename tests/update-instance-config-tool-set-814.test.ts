@@ -1,8 +1,8 @@
 /**
- * #814 decision (2026-10-09): update_instance_config must REFUSE any patch
- * that includes tool_set for a non-General caller (General is exempt since decision 36525f1b). This is a privilege boundary (#804/#814): only an
- * administrator via Settings or fleet.yaml may change the tool-permission
- * profile.
+ * #814 decision (2026-10-09), still the unidentified-caller path after M-3733:
+ * update_instance_config with no instanceName must REFUSE any tool_set.
+ * An identified creator is capped at its own profile (tool-set-grant-m3733).
+ * The refusal still names Settings or fleet.yaml and the privilege boundary (#804/#814).
  *
  * Tests:
  * - call with tool_set is refused, fleet.yaml unchanged

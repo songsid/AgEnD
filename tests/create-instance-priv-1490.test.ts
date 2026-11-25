@@ -1,8 +1,9 @@
 /**
  * #1490 P3 (#13 and #48):
  *
- * #13: create_instance must REFUSE tool_set for non-General callers and skipPermissions for all callers — same
- *      privilege boundary as update_instance_config (#804/#814).
+ * #13: create_instance caps tool_set at the caller's own profile (M-3733). A worker may set worker,
+ *      standard or minimal. full and coordinator stay refused. skipPermissions stays refused for every
+ *      caller — same privilege boundary as update_instance_config (#804/#814).
  *
  * #48: update_instance_config must roll back the in-memory patch when
  *      saveFleetConfig throws, so memory and disk do not diverge.
@@ -58,11 +59,10 @@ async function callUpdate(ctx: any, config: Record<string, unknown>) {
 
 // ── #13: create_instance privilege boundary ──────────────────────────────────
 //
-// Reverse mutation: removing the tool_set/skipPermissions guard from
-// createInstance makes these tests fail because the handler proceeds to
-// lifecycle.handleCreate and the error is not returned.
+// Reverse mutation: removing the cap lets tool_set full reach lifecycle.handleCreate.
+// Inverting toolSetAboveCap (`<` to `<=`) refuses an equal profile, so "worker may set worker" goes red.
 
-describe("create_instance: tool_set and skipPermissions refused (#1490 P3 #13)", () => {
+describe("create_instance: tool_set cap and skipPermissions (#1490 P3 #13, M-3733)", () => {
   it("refuses tool_set (string value)", async () => {
     const ctx = createCtx();
     const { result, error } = await callCreate(ctx, {
@@ -84,14 +84,15 @@ describe("create_instance: tool_set and skipPermissions refused (#1490 P3 #13)",
     expect(ctx.lifecycle.handleCreate).not.toHaveBeenCalled();
   });
 
-  it("refuses tool_set: 'worker'", async () => {
+  it.each(["worker", "standard", "minimal"])("a worker may set tool_set %s", async (tool_set) => {
     const ctx = createCtx();
-    const { result, error } = await callCreate(ctx, {
+    const { error } = await callCreate(ctx, {
       directory: "/tmp/proj",
-      tool_set: "worker",
+      topic_name: "child",
+      tool_set,
     });
-    expect(error).toMatch(/privilege boundary/);
-    expect(ctx.lifecycle.handleCreate).not.toHaveBeenCalled();
+    expect(error).toBeUndefined();
+    expect(ctx.lifecycle.handleCreate).toHaveBeenCalledOnce();
   });
 
   it("refuses skipPermissions: false", async () => {
@@ -114,10 +115,11 @@ describe("create_instance: tool_set and skipPermissions refused (#1490 P3 #13)",
     expect(ctx.lifecycle.handleCreate).not.toHaveBeenCalled();
   });
 
-  it("error message matches the #814 format (Settings/fleet.yaml)", async () => {
+  it("names the caller's cap when tool_set is above it", async () => {
     const ctx = createCtx();
     const { error } = await callCreate(ctx, { tool_set: "full" });
-    expect(error).toMatch(/Settings or fleet\.yaml/);
+    expect(error).toMatch(/highest profile this agent can set is worker/);
+    expect(error).toMatch(/privilege boundary, #804\/#814/);
   });
 
   it("create_instance without tool_set/skipPermissions proceeds normally (no regression)", async () => {

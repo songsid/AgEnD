@@ -31,7 +31,7 @@ AgEnD 只偵測並顯示切換；絕不會因此去改模型或政策。在重�
 
 ## General
 
-使用者的定義（fleet decision 9e3bea6c，「General is the AgEnD administrator」，使用者 2026-11-04）：從 beta.8 起，`general` 工具組拿到完整的 ORCHESTRATION——instance 的新增、刪除、取代、啟動、停止、暫停、喚醒、重啟；template；team；`update_fleet_defaults`；`update_instance_config`；kiro 遷移與對帳工具；`update_decision`；網頁設定——不另加確認。原有的敏感設定（token、存取權與管理員名單）仍由 fleet admin 確認。依使用者 2026-11-09 的決議 36525f1b，General 另有 `get_instance_logs`、`get_fleet_config`、`validate_config`、`list_deployments`，並可經 `update_instance_config` 或 `create_instance` 直接設定其他 agent 的 `tool_set`，不需確認。其他呼叫者（含 coordinator）仍受 #804/#814 拒絕；這兩個工具對所有人都拒絕 `skipPermissions`。它取代 2026-09-21 的「dispatcher」說法，隨 beta.8 落地（agy 的 PR）。General 是艦隊的管理 instance——新艦隊的第一個 agent——擁有 General topic。`general_topic: true` 或名字就叫 `general` 的 instance，跑的是 `general` 工具組。
+使用者的定義（fleet decision 9e3bea6c，「General is the AgEnD administrator」，使用者 2026-11-04）：從 beta.8 起，`general` 工具組拿到完整的 ORCHESTRATION——instance 的新增、刪除、取代、啟動、停止、暫停、喚醒、重啟；template；team；`update_fleet_defaults`；`update_instance_config`；kiro 遷移與對帳工具；`update_decision`；網頁設定——不另加確認。原有的敏感設定（token、存取權與管理員名單）仍由 fleet admin 確認。依使用者 2026-11-09 的決議 36525f1b，General 另有 `get_instance_logs`、`get_fleet_config`、`validate_config`、`list_deployments`，並可經 `update_instance_config` 或 `create_instance` 直接設定其他 agent 的 `tool_set`，不需確認。其他建立者也可以用同樣的方式，以及 `deploy_template`，設定 `tool_set`，上限是自己目前的 profile。順序只定義一次（`toolSetRank`）：`full`、`general`、`coordinator`、`worker`、`standard`、`minimal`，權限由高到低。不是 General 的建立者不能給 `full` 或 `general`；自己已經是這兩者的，上限是 `coordinator`。超過上限會被拒絕，並寫明上限。省略 `tool_set` 仍是 `worker`，除非 fleet 預設會把更高的 profile 複製到新 instance 上：上限看的是那個實際 profile。這兩個工具對所有人都拒絕 `skipPermissions`。它取代 2026-09-21 的「dispatcher」說法，隨 beta.8 落地（agy 的 PR）。General 是艦隊的管理 instance——新艦隊的第一個 agent——擁有 General topic。`general_topic: true` 或名字就叫 `general` 的 instance，跑的是 `general` 工具組。
 
 - 能做什麼：使用 coordinator 除了儲存庫租約以外的工具（含唯讀除錯工具），並直接將其他 agent 的 `tool_set` 設為可寫入的工具組：`full`、`standard`、`worker`、`coordinator` 或 `minimal`。
 - 不能做什麼：預設 General 工具組不含 `checkout_repo`、`release_repo`；不能指定由角色決定的 `general` 工具組，也不能經這兩個設定工具傳入 `skipPermissions`。General 不得透過工具修改自己的 `tool_set`（建立操作最後指向自己時也一樣）；人員仍可在設定頁或 fleet.yaml 修改。若管理員明確縮限 General 的工具組，縮限仍生效。這項直接設定的例外僅適用於 portable／本機 agent。原生 Windows 的建立，以及顯示名稱、說明或模型修改，仍需原有的管理員核准；其 `tool_set` 請由人員在主機上的設定頁修改。
@@ -42,8 +42,8 @@ AgEnD 只偵測並顯示切換；絕不會因此去改模型或政策。在重�
 
 `TOOL_PROFILES.coordinator = WORKER + ORCHESTRATION`：全部 worker 能力，加上所有「經營艦隊而非做事」的動詞——給經營艦隊其中一部分的 agent 用的。
 
-- 能做什麼：新增／刪除／取代／啟動／停止／暫停／喚醒／重啟 instance、管理 team 與 template、改 fleet 預設值與 instance 設定、跑 kiro 遷移與對帳、改別人的決議與網頁設定（`src/tool-permissions.ts:80-93`）。
-- 不能做什麼：不能超出這張表——沒列的就是拒絕，並說明這個 instance 拿的是哪個 profile。
+- 能做什麼：新增／刪除／取代／啟動／停止／暫停／喚醒／重啟 instance、管理 team 與 template、改 fleet 預設值與 instance 設定、跑 kiro 遷移與對帳、改別人的決議與網頁設定（`src/tool-permissions.ts:80-93`）。建立、更新或展開時，可把別的 agent 的 `tool_set` 設成 `coordinator` 或更低（`worker`、`standard`、`minimal`），不用確認卡。新 agent 一起動就是那個 profile。
+- 不能做什麼：不能超出這張表——沒列的就是拒絕，並說明這個 instance 拿的是哪個 profile。不能給 `full` 或 `general`，不能給高於自己目前 profile 的等級，也不能改自己的 `tool_set`。
 - 程式碼：`src/tool-permissions.ts:100-107`。
 - 相關決議與議題：`docs/design/coordinator-tool-perms.zh-TW.md`（僅有正體中文版）。
 
@@ -261,7 +261,7 @@ agent 也可以有一份「擁有者與日常操作」（設定 → 該 agent �
 
 只列程式碼跟決議真的對不上的地方。這裡不粉飾。
 
-1. **General 的唯讀除錯工具與直接設定 `tool_set`（慣例，程式碼裡沒有）。** General 章節列出的額外能力來自使用者決議 36525f1b（2026-11-09），tool-permissions 上沒有對應的 enforcement。依慣例記下即可；實現方式如有出入，以程式碼為準。
+先前把 General 直接設定 `tool_set` 記成「只有慣例、程式沒有強制」的那一條已經關閉。`toolSetRank` 定義順序，`create_instance`、`update_instance_config` 與 `deploy_template` 執行上限。General 仍可設定任何可寫入的 profile，但不能指定由角色決定的 `general`。
 
 [English](concepts.md)
 

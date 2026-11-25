@@ -228,6 +228,78 @@ export function resolveToolSetFromEnv(value: string | undefined): ToolSetName {
 }
 
 /**
+ * One privilege order for every grant. Highest first.
+ * `full` and `general` sit above anything a non-General creator may write.
+ */
+export const TOOL_SET_RANK: readonly ToolSetName[] = [
+  "full", "general", "coordinator", "worker", "standard", "minimal",
+];
+
+export function toolSetRank(name: ToolSetName): number {
+  const rank = TOOL_SET_RANK.indexOf(name);
+  if (rank < 0) throw new Error(`unknown tool set ${name}`);
+  return rank;
+}
+
+/** Highest profile a non-General creator may write. `full` and `general` collapse to `coordinator`. */
+export function toolSetGrantCap(creator: ToolSetName): ToolSetName {
+  return toolSetRank(creator) <= toolSetRank("general") ? "coordinator" : creator;
+}
+
+/** True when `requested` is strictly more privileged than `cap`. The cap itself is allowed. */
+export function toolSetAboveCap(requested: ToolSetName, cap: ToolSetName): boolean {
+  return toolSetRank(requested) < toolSetRank(cap);
+}
+
+/**
+ * Profile a new instance runs under. An explicit recognized name wins. An
+ * omitted argument copies a recognized `defaults.tool_set`. Otherwise the
+ * unset default is `worker` (the same answer `resolveToolSet` gives).
+ */
+export function effectiveGrantedToolSet(explicit: unknown, defaultsToolSet: unknown): ToolSetName {
+  if (isToolSetName(explicit)) return explicit;
+  if (explicit === undefined && isToolSetName(defaultsToolSet)) return defaultsToolSet;
+  return "worker";
+}
+
+export function toolSetCapRefusal(caller: string, requested: ToolSetName, cap: ToolSetName): string {
+  return `tool_set "${requested}" is above ${caller}'s cap. The highest profile this agent can set is ${cap} (privilege boundary, #804/#814).`;
+}
+
+export const TOOL_SET_UNIDENTIFIED_REFUSAL =
+  "tool_set can only be changed by an identified agent up to that agent's own profile, or by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)";
+
+/**
+ * Grant check for a non-General creator. General keeps today's rights and gets
+ * null. A missing caller may create the plain `worker` default only: an
+ * explicit profile, or a fleet default above `worker`, is refused. An explicit
+ * name that is not a profile is refused and the cap is named, so a typo cannot
+ * fall through to a higher resolved profile.
+ */
+export function toolSetGrantRefusal(input: {
+  caller: string;
+  creator: ToolSetName | undefined;
+  explicit: unknown;
+  defaultsToolSet: unknown;
+  isGeneral: boolean;
+}): string | null {
+  if (input.isGeneral) return null;
+  const explicitSet = input.explicit !== undefined;
+  if (!input.caller) {
+    const requested = effectiveGrantedToolSet(explicitSet ? input.explicit : undefined, input.defaultsToolSet);
+    if (explicitSet || requested !== "worker") return TOOL_SET_UNIDENTIFIED_REFUSAL;
+    return null;
+  }
+  const cap = toolSetGrantCap(input.creator ?? "worker");
+  if (explicitSet && !isToolSetName(input.explicit)) {
+    return `tool_set "${String(input.explicit)}" is not a profile this agent can set. The highest profile this agent can set is ${cap} (privilege boundary, #804/#814).`;
+  }
+  const requested = effectiveGrantedToolSet(explicitSet ? input.explicit : undefined, input.defaultsToolSet);
+  if (toolSetAboveCap(requested, cap)) return toolSetCapRefusal(input.caller, requested, cap);
+  return null;
+}
+
+/**
  * The IPC message types that reach a handler of their own.
  *
  * `fleet_outbound` carries its tool name in the body; everything below is a

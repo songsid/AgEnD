@@ -52,8 +52,15 @@ confirmations stay: sensitive config (tokens and access) is confirmed by a
 fleet admin. Decision 36525f1b (user 2026-11-09) adds `get_instance_logs`,
 `get_fleet_config`, `validate_config` and `list_deployments`, and lets General
 set another agent’s `tool_set` directly through `update_instance_config` or
-`create_instance`, without confirmation. Non-General callers, coordinators
-included, retain the #804/#814 refusal; `skipPermissions` is refused for everyone.
+`create_instance`, without confirmation. Any other creator may set `tool_set`
+the same way, and on `deploy_template`, up to its own resolved profile. The
+order is defined once (`toolSetRank`): `full`, `general`, `coordinator`,
+`worker`, `standard`, `minimal`, highest privilege first. A non-General creator
+cannot grant `full` or `general`; a creator already on one of those is capped
+at `coordinator`. Above the cap is refused, and the refusal names the cap.
+Omitting `tool_set` still means `worker`, unless fleet defaults would copy a
+higher profile onto the new instance: that effective profile is what the cap
+sees. `skipPermissions` is refused for everyone.
 It supersedes the 2026-09-21 "dispatcher" rationale and lands in beta.8 (agy's
 PR). General is the fleet's admin instance — the first agent on a new fleet —
 and owns the General topic. An instance runs under the `general` tool set when
@@ -73,9 +80,12 @@ runs part of the fleet.
 - Can: create/delete/replace/start/stop/pause/wake/restart instances, manage
   teams and templates, edit fleet defaults and instance config, run kiro
   migration/reconciliation, change others' decisions and web settings
-  (`src/tool-permissions.ts:80-93`).
+  (`src/tool-permissions.ts:80-93`). Set another agent's `tool_set` to
+  `coordinator` or lower (`worker`, `standard`, `minimal`) on create, update,
+  or deploy, with no confirmation card. The new agent starts on that profile.
 - Can't: exceed the table — anything not listed is refused, with the reason
-  naming what the instance runs under.
+  naming what the instance runs under. Grant `full` or `general`, grant a
+  profile above its own resolved profile, or change its own `tool_set`.
 - Code: `src/tool-permissions.ts:100-107`.
 - Refs: `docs/design/coordinator-tool-perms.zh-TW.md` (zh-TW only).
 
@@ -527,11 +537,10 @@ right after the agent's Role, with a fixed preface.
 
 Real code-vs-decision gaps only. Nothing here is papered over.
 
-1. **General's read-only debug tools and direct `tool_set` assignment
-   (convention, not enforced in code).** The extra abilities listed in the
-   General section come from user decision 36525f1b (2026-11-09); there is no
-   corresponding enforcement in tool-permissions. Recorded as convention;
-   where implementation differs, code wins.
+The previous entry (General's `tool_set` assignment recorded as convention
+only) is closed. `toolSetRank` defines the order, and `create_instance`,
+`update_instance_config` and `deploy_template` enforce the cap. General still
+sets any writable profile except the role-derived `general` profile.
 
 [繁體中文](concepts.zh-TW.md)
 
