@@ -1,0 +1,36 @@
+{
+  "fleet-desk-light-en": {
+    "serviceWorker": [
+      "http://127.0.0.1:24961/"
+    ],
+    "installRow": "Install as an app Opens in its own window, from your Start menu, Dock or home screen. Install",
+    "overflow": false
+  },
+  "fleet-phone-dark-zh-TW": {
+    "serviceWorker": [
+      "http://127.0.0.1:24961/"
+    ],
+    "installRow": "安裝成應用程式 在自己的視窗開啟，可從開始選單、Dock 或主畫面啟動。 安裝",
+    "overflow": false
+  },
+  "fleet-installability": {
+    "installabilityErrors": [],
+    "manifest": "<fixture>/manifest.webmanifest?v=default"
+  },
+  "fleet-signout-with-worker": {
+    "logout": 200,
+    "sessionsAfter": 401
+  },
+  "hub-desk-light-en-observed": "untrusted",
+  "hub-desk-light-en-observed-registrations": 0,
+  "hub-desk-light-en-shown": {
+    "simulated": false,
+    "dialog": "Install as an app Can't be installed here: your browser doesn't trust this address's certificate. Ask your administrator for a trusted certificate, then open this page again. OK"
+  },
+  "hub-phone-dark-zh-TW-observed": "untrusted",
+  "hub-phone-dark-zh-TW-observed-registrations": 0,
+  "hub-phone-dark-zh-TW-shown": {
+    "simulated": false,
+    "dialog": "安裝成應用程式 這裡無法安裝：你的瀏覽器不信任這個網址的憑證。請管理員改用受信任的憑證後，再重新開啟這個頁面。 知道了"
+  }
+}
