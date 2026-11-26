@@ -3,7 +3,7 @@
 // (agend-auth.js). The server resolves who is asking; nothing here sends an identity as authority.
 // Every result is { ok: true, data } or { ok: false, status, code } — code: on 409 the server's own reason ("conflict":
 // someone changed it first, read it again; "expired"; "already-decided"), "forbidden" (403), "unavailable" (503), "missing"
-// (404), "invalid-approver" (400: an approver who isn't eligible — a Fleet admin or the verified host operator, for now) or
+// (404), "updating" (503 while AgEnD checks a new version), "invalid-approver" (400: an approver who isn't eligible — a Fleet admin or the verified host operator, for now) or
 // "failed" (anything else, a network error included).
 
 const CONFLICTS = new Set(["conflict", "expired", "already-decided"]);
@@ -16,6 +16,10 @@ async function call(method, url, body) {
   } catch { return { ok: false, status: 0, code: "failed" }; }
   if (!r.ok) {
     let code = codeOf(r.status);
+    if (r.status === 503) {
+      // M-3770: the fleet is checking a new version; nothing was recorded — try again in a moment.
+      try { const b = await r.json(); if (b && b.error === "updating") code = "updating"; } catch { /* no body: unavailable */ }
+    }
     if (r.status === 409 || r.status === 400 || r.status === 403) {
       try { const b = await r.json(); const c = b && (b.code || b.error); if (CONFLICTS.has(c) || c === "invalid-approver" || c === "verification-required") code = c;
         else if (c === "Write rejected — missing or wrong CSRF token (reload the page)") code = "csrf";

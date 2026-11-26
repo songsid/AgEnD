@@ -630,6 +630,8 @@ export class DeliveryOutbox extends EventEmitter {
   /** S-244: while the barrier flag is up, claimNext journals references and claims nothing. Unset: today's claim. */
   private quiescence: QuiescenceGate | null = null;
   setQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
+  /** M-3770 part 3: true while an update's trial holds — every admission is refused (retry after the commit). */
+  admissionsRefused(): boolean { return this.quiescence?.refusesAdmission?.() === true; }
 
   /** Observational extension: its failure never participates in delivery admission. */
   observeWorkingState(instance: string, snapshot: Omit<WorkingStateSnapshot, "managerBootId">) {
@@ -1286,7 +1288,7 @@ export class DeliveryOutbox extends EventEmitter {
 
   private admitInternal(input: NewOutboxDelivery, scoped: boolean): { delivery: OutboxDelivery; inserted: boolean } {
     // M-3770 part 3 (Fable (a)): the update's trial admits nothing durable; the source retries after the commit.
-    if (this.quiescence?.refusesAdmission?.()) throw updateTrialRefusal();
+    if (this.admissionsRefused()) throw updateTrialRefusal();
     const now = new Date().toISOString();
     const deliveryId = randomUUID();
     const insert = this.db.prepare(`

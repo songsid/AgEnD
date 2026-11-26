@@ -158,6 +158,14 @@ An old fleet that an abandon never stopped walks its hand-back from the same pas
   - Nothing of the Hub starts (`applyHubSwitches` returns in a trial). The Hub keeps its deliveries and retries after the commit.
   - Agents can't send (none run), and occurrences and board claims are already held.
   - The commit opens these sources in `leaveTrial` (part 4). It also lifts the hold before `deliverInbox` admits the held copies.
+- **The internal callers that admit** (Fable, part 3 follow-up):
+  - A contact approval pressed in the trial: the decision and its delivery are one SQLite transaction (`ContactAuthStore.decide` calls `admit` inside it). The refusal rolls both back: the ticket stays `pending` at its revision, and nothing is queued.
+    - The web answers 503 `updating` with `Retry-After`, both the classic and the request-context card APIs. The page says "AgEnD is updating. Nothing was recorded; try again in a moment."
+    - The native Discord/Telegram card shows the same text (`contactHeld.updating`).
+    - A decline admits nothing, so it is recorded. A rollback would return the ticket to pending, and it shows up again.
+  - The outcome-notice sweep doesn't run in the trial: its state is durable, so the notices go after the commit.
+  - A paired Windows runtime's finished result isn't reconciled in the trial (`reconcileRemoteDelivery` returns before it completes the row or remembers the task), so a rollback can't undo half of it. The runtime keeps the completion, and `leaveTrial` must run one reconcile pass (part 4).
+  - An in-process native execution can't start in the trial, because outbox claims are held. Before the stop, the old fleet's idle snapshot counts an active durable target as busy (`outboxInFlight`).
 - **A trial whose hold couldn't be armed** (its attempt closed first) starts no adapters, so it takes no inbound at all (Fable (b)). It logs once at error level and is never proven.
 - **2.3's window ids are left alone** in a trial too (Fable (c)); `leaveTrial` moves them with the tmux reconcile.
 - The hold comes down by the same rules as the old fleet's: the attempt ending, or (part 4) the commit.

@@ -52,7 +52,7 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
       if (again.ok) onChange?.(again.data);
       return false;
     }
-    toast(ca(r.code === "verification-required" ? "verifyFirst" : r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "decideFailed"), false);
+    toast(ca(r.code === "verification-required" ? "verifyFirst" : r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : r.code === "updating" ? "updating" : "decideFailed"), false);
   };
   const people = tk.origin?.people || [];
   const grantable = ["human", "mixed"].includes(tk.origin?.kind) && people.length > 0 && people.length <= 16;

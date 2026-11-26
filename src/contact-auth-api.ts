@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ContactPerson, ContactOriginClear, ContactPermissions, ContactPermissionsWrite, ContactTicket, ContactTicketDecision, ContactTicketPage } from "./contact-auth-types.js";
 import { ContactDecisionSchema, ContactOriginClearSchema, ContactPermissionsSchema } from "./contact-auth-policy.js";
 import { readBoundedWebBody } from "./web-body.js";
+import { UPDATE_TRIAL_REFUSAL, UPDATE_TRIAL_RETRY_SECONDS } from "./update-quiescence.js";
 export interface ContactApiHost {
   contactActor(req: IncomingMessage, url: URL): ContactPerson | null;
   clearContactOrigin(name: string, input: ContactOriginClear, actor: ContactPerson): ContactPermissions;
@@ -62,6 +63,14 @@ export function handleContactAuthorizationApi(req: IncomingMessage, res: ServerR
         answer(res, 200, host.decideContactAuthorization(ticket[1], parsed.data, current));
       }
     } catch (error) {
+      // M-3770 part 3 (Fable): an update's trial refused the approval's delivery; the decision rolled back with it.
+      if ((error as { code?: unknown } | null)?.code === UPDATE_TRIAL_REFUSAL) {
+        if (!res.destroyed && !res.writableEnded) {
+          res.writeHead(503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "Retry-After": String(UPDATE_TRIAL_RETRY_SECONDS) });
+          res.end(JSON.stringify({ error: "updating" }));
+        }
+        return;
+      }
       const code = error instanceof Error ? error.message : "unavailable";
       const status = code === "forbidden" ? 403 : code === "not-found" ? 404
         : ["conflict", "already-decided", "expired", "stale-generation", "operation-conflict"].includes(code) ? 409

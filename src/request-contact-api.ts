@@ -58,6 +58,8 @@ export function handleRequestContactApi(req:IncomingMessage,res:ServerResponse,u
    const viewer=current();if(!host.canRead(result,viewer))throw Error("not-found");answer(res,200,result);
   }catch(error){
    if(error&&typeof error==="object"&&"code" in error&&error.code==="request-context-legacy-decision-upgrade-required"){answer(res,409,{error:"upgrade-required",message:t("contact.legacyUpgrade")});return;}
+   // M-3770 part 3: an update's trial refused the approval's delivery; nothing was recorded — the card stays, try again.
+   if(error&&typeof error==="object"&&"code" in error&&error.code==="update-trial"){if(!res.destroyed&&!res.writableEnded)res.setHeader("Retry-After","10");answer(res,503,{error:"updating",message:t("contactHeld.updating")});return;}
    const code=error instanceof Error?error.message:"unavailable";
    const status=["forbidden","verification-required","csrf","cross-site"].includes(code)?403:code==="not-found"?404
     :["conflict","policy-conflict","operation-conflict","expired","already-decided","stale-generation"].includes(code)?409

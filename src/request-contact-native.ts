@@ -89,7 +89,9 @@ export function nativeContactOutcome(card: RequestContactCardV1 | null, mine: { 
 }
 
 /** I's stable decision codes, sorted by what a native card does next. */
-export function nativeDecisionFailure(error: unknown): "outcome" | "changed" | "failed" {
+export function nativeDecisionFailure(error: unknown): "outcome" | "changed" | "updating" | "failed" {
+  // M-3770: an update's trial refused the delivery; the decision rolled back with it — the card stays, try again.
+  if ((error as { code?: unknown } | null)?.code === "update-trial") return "updating";
   const code = error instanceof Error ? error.message : "";
   if (code === "already-decided" || code === "expired") return "outcome";
   if (code === "conflict" || code === "policy-conflict" || code === "operation-conflict") return "changed";

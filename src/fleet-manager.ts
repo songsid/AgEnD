@@ -6947,6 +6947,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } catch (error) {
         const failure = nativeDecisionFailure(error), card = read();
         if (failure === "changed" && card?.ticket.state === "pending") { text = t(proposal ? "contactProposal.expired" : "contactCard.changed"); repost = !proposal; }
+        else if (failure === "updating" && card?.ticket.state === "pending") text = t("contactHeld.updating");
         else if (failure === "failed" && card?.ticket.state === "pending") text = t("contactHeld.failed");
         else text = nativeContactOutcome(card, { decided: false });
         this.logger.info({ ticket: id, code: (error as Error)?.message }, "A native contact card's decision did not apply");
@@ -6981,7 +6982,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Status only: no human receipt, approval capability or original correlation is attached. */
   private sweepContactAuthorizationOutcomes(): void {
     const outbox = this.deliveryOutbox;
-    if (!outbox?.isOpen || this.shuttingDown) return;
+    // M-3770 part 3: an update's trial admits no notice; the sweep resumes after the commit (its state is durable).
+    if (!outbox?.isOpen || this.shuttingDown || outbox.admissionsRefused()) return;
     try {
       outbox.contactAuthorizations.notifyOutcomes((ticket, outcome) => {
         if (outcome === "declined" || outcome === "expired") {
@@ -7709,6 +7711,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the prompt again, and reconstruct a missing peer report using the same durable operation ID. */
   private reconcileRemoteDelivery(machineId:string,task:NativeExecutionResult):void {
     const outbox=this.deliveryOutbox;
+    // M-3770 part 3 (Fable): an update's trial changes nothing here — not even the row's completion, which a rollback
+    // would undo — and remembers nothing, so the same completion is reconciled after the commit (leaveTrial runs a pass).
+    if(outbox?.admissionsRefused())return;
     if(!outbox?.isOpen || !task.finishedAt || task.outcomeConfirmed!==true || !["completed","failed","cancelled"].includes(task.status))return;
     const key=`${task.id}:${task.finishedAt}:${task.status}`;
     if(this.reconciledRemoteResults.has(key))return;
