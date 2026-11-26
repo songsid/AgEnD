@@ -162,4 +162,13 @@ describe("M-3770 2.5: the fleet's hand-back ports", () => {
     expect(fm.updateHandbackTimer ?? null).toBeNull();
     expect(readCurrent(dir).state).toBe("open");
   });
+
+  it("the fleet start runs the first walk before any ingress opens: the web chat, the agents and the shared adapter all come after (Fable #4541 F1)", () => {
+    // Source-order pin of design 3b: moving the call below any of these would let a held copy land behind newer messages.
+    const src = (FleetManager.prototype as unknown as Record<string, { toString(): string }>)["startAllWithinDeadline"]!.toString();
+    const at = (needle: string) => { const i = src.indexOf(needle); expect(i, needle).toBeGreaterThan(-1); return i; };
+    const walk = at("await this.startUpdateHandback()");
+    expect(src.split("this.startUpdateHandback(").length - 1).toBe(1);                              // one call, this one
+    for (const ingress of ["this.startHealthServer(", "this.startInstance(", "this.startSharedAdapter("]) expect(walk, ingress).toBeLessThan(at(ingress));
+  });
 });
