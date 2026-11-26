@@ -228,7 +228,7 @@ describe("#2490 the words", () => {
     const record = rec([ago(20), ago(10), ago(0)]);
     const text = chatNoticeText(home, record, { version: "2.2.6", at: ago(9000), pid: 1, history: ["2.2.6"] }, NOW, null);
     expect(text.split("\n")[0]).toBe("⚠ AgEnD v2.3.1 is installed, but the fleet fails to start (3 start attempts in the last 10 minutes, none completed).");
-    expect(text).toContain("npm install -g @songsid/agend@2.2.6 && agend restart");
+    expect(text).toContain("npm install -g --allow-scripts=@songsid/agend @songsid/agend@2.2.6 && agend restart");
     expect(text).toContain(join(home, "fleet.log"));
     setLocale("zh-TW");
     expect(chatNoticeText(home, record, null, NOW, null)).toContain("fleet 無法啟動");

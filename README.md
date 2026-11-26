@@ -135,7 +135,7 @@ For a fresh beta install on Windows, run `$env:AGEND_VERSION = 'beta'` in the sa
 Or install manually:
 
 ```bash
-npm install -g @songsid/agend    # 1. Install
+npm install -g --allow-scripts=@songsid/agend @songsid/agend    # 1. Install
 agend quickstart                # 2. Setup — web only by default (a bot is optional): backend, first agent, done
 agend start                     # 3. Launch your fleet 🎉 (skip if quickstart installed it as a service)
 ```
