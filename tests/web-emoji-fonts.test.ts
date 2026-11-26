@@ -47,6 +47,31 @@ describe("emoji are drawn by an emoji font, never a box", () => {
       expect(ok, `${file}: ${s}`).toBe(true);
     }
   });
+  // M-3796 (the user's grey 🆕 on Win11 Edge, confirmed on Edge 158 with CSS.getPlatformFontsForNode): Noto Sans TC, earlier
+  // in --font-ui, drew 🆕 🆗 🆓 🈶 in black and white; the font named Menlo on that machine drew ☕ ⚡ ♈ in --font-mono.
+  describe("M-3796: emoji take the colour font even where a text font has its own glyph", () => {
+    const tokens = read("src/ui/shared/tokens.css");
+    const face = /@font-face \{\s*font-family: "AgEnD Emoji";([^}]*)\}/.exec(tokens)?.[1] ?? "";
+    const ranges = (/unicode-range:\s*([^;]+);/.exec(face)?.[1] ?? "").split(",").map((r) => r.trim()).filter(Boolean)
+      .map((r) => { const m = /^U\+([0-9A-F]+)(?:-([0-9A-F]+))?$/i.exec(r)!; expect(m, r).toBeTruthy(); return [parseInt(m[1]!, 16), parseInt(m[2] ?? m[1]!, 16)] as const; });
+    const covers = (ch: string) => ranges.some(([lo, hi]) => ch.codePointAt(0)! >= lo && ch.codePointAt(0)! <= hi);
+
+    it("a face of the platforms' colour emoji fonts, installed ones only (local(): nothing is downloaded)", () => {
+      const src = /src:\s*([^;]+);/.exec(face)![1]!;
+      for (const f of ["Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"]) expect(src).toContain(`local("${f}")`);
+      expect(src).not.toMatch(/url\(/);
+    });
+    it("covers emoji: 🆕 🆗 🆓 🈶, the faces, ☕ ⚡ ♈ ✅ ⭐ ❌, and the joiners that build a sequence", () => {
+      for (const ch of ["🆕", "🆗", "🆓", "🈶", "👍", "🎉", "🔴", "🇹", "🏽", "☕", "⚡", "♈", "✅", "⭐", "❌", "⭕", "✨", "⌛", "\u200d", "\ufe0f", "\u20e3"]) expect(covers(ch), ch).toBe(true);
+    });
+    it("leaves text to the text fonts: digits, # and *, ©, ®, ™, ★, ♥, ☺, ✔, ❤, arrows, CJK, Latin, and the text-style selector", () => {
+      for (const ch of ["0", "9", "#", "*", "©", "®", "™", "★", "♥", "☺", "✔", "❤", "→", "↩", "中", "の", "한", "a", "\ufe0e", "\u3030", "\u3297"]) expect(covers(ch), ch).toBe(false);
+    });
+    it("is the first family of every stack: --font-ui, --font-mono and the system theme font", () => {
+      for (const t of ["--font-ui", "--font-mono"]) expect(new RegExp(`${t}:\\s*"AgEnD Emoji", `).test(tokens), t).toBe(true);
+      expect(/\.th-font-system[^{]*\{\s*font-family:\s*"AgEnD Emoji", system-ui/.test(read("src/ui/shared/app.css"))).toBe(true);
+    });
+  });
   it("the session-ended banner's inline font too", () => {
     const auth = read("src/ui/shared/agend-auth.js");
     const font = /font:14px ([^;]+);/.exec(auth)![1]!;
