@@ -1634,7 +1634,7 @@ program
       // M-3806: for a UUID in the path, `npm config get prefix` refuses (npm 10–12): read `npm prefix -g`, which npm
       // 11/12 print with `***`; that is asked the way npm tells a child, from the filesystem root (Fable #4526 F2).
       // No answer at all: as before, assume no sudo.
-      const quiet: ExecSyncOptionsWithStringEncoding = { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] };
+      const quiet = { encoding: "utf-8" as const, stdio: ["ignore", "pipe", "ignore"] as Array<"ignore" | "pipe"> };
       const said = (command: string, cwd?: string) => { try { return execSync(command, cwd ? { ...quiet, cwd } : quiet); } catch { return ""; } };
       let configured = said("npm config get prefix");
       if (!npmGlobalPrefix.lastLine(configured) || npmGlobalPrefix.masked(configured)) configured = said("npm prefix -g");
