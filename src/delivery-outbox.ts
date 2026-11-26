@@ -766,7 +766,7 @@ export class DeliveryOutbox extends EventEmitter {
   stageRequestContextConnection(fence: { current(): boolean }): { current(): boolean; restore(): void } {
     if (!fence.current() || this.requestContextConnectionStage || readRequestContextInstallation(this.db) !== null)
       throw Error("Request-context connection preparation unavailable");
-    const previous = { dispatch: this.requestContextDispatchVersion, relay: this.requestContextRelayVersion, recovery: this.requestContextRecoveryFence };
+    const previous = { dispatch: this.requestContextDispatchVersion, relay: this.requestContextRelayVersion, recovery: this.requestContextRecoveryFence, returns: this.requestContextReturnsOwner };
     const token = {}, owned = () => this.requestContextConnectionStage === token;
     this.requestContextConnectionStage = token;
     this.requestContextDispatchVersion = 1; this.requestContextRelayVersion = 1;
@@ -780,7 +780,7 @@ export class DeliveryOutbox extends EventEmitter {
           throw Error("Activated or superseded connection cannot revert");
         registerRequestContextDispatcher(this.db, previous.dispatch); registerRequestContextReturnDispatcher(this.db, previous.relay);
         this.requestContextDispatchVersion = previous.dispatch; this.requestContextRelayVersion = previous.relay;
-        this.requestContextRecoveryFence = previous.recovery; this.requestContextConnectionStage = undefined;
+        this.requestContextRecoveryFence = previous.recovery; this.requestContextReturnsOwner = previous.returns; this.requestContextConnectionStage = undefined;
       },
     });
   }

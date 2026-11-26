@@ -150,3 +150,25 @@ it("mode-aware policy consumers never treat capable Off or Draining as Active", 
   }
   mode = null; expect(requestContextInstalledMode(policy)).toBeNull(); expect(requestContextPolicyInstalled(policy)).toBe(false);
 });
+it("owner companion initialization shares the activation COMMIT and rolls back Go back and work on failure", () => {
+ const r=rig(),work={instance:"worker",incarnation:"inc",generation:"00000000-0000-4000-8000-000000000001"};
+ expect(()=>r.store.activate(r.record,r.owner,r.lease,()=>true,0,()=>{r.box.requestContextWork.retain(work);throw Error("owner initialization failed");})).toThrow(/initialization failed/);
+ expect(r.store.read()).toBeNull();expect(r.box.requestContextWork.read("worker")).toBeNull();
+ const db=new Database(r.path,{readonly:true});try{expect(requestContextGoBackAllowed(db,r.record.invalidates[0]!,0)).toBe(true);}finally{db.close();}
+ expect(r.store.activate(r.record,r.owner,r.lease,()=>true,0,()=>{r.box.requestContextWork.retain(work);})).toMatchObject({mode:"active"});
+ expect(r.box.requestContextWork.read("worker")).toEqual(work);
+});
+it("an asynchronous initialization is refused before the activation COMMIT", () => {
+ const r=rig();expect(()=>r.store.activate(r.record,r.owner,r.lease,()=>true,0,()=>Promise.resolve())).toThrow(/synchronous/);expect(r.store.read()).toBeNull();
+});
+it("a failed first-On initializer cannot leave a cached returns owner bound to rolled-back tables", () => {
+ const home=mkdtempSync(join(tmpdir(),"install-cache-"));cleanup.push(()=>rmSync(home,{recursive:true,force:true}));
+ const path=join(home,"outbox.db"),box=new DeliveryOutbox(path);cleanup.push(()=>box.close());
+ const store=box.requestContextInstallation(),owner={owner:"fleet",current:()=>true},lease={current:()=>true,release(){}};
+ const record={epoch:"epoch",owner:"fleet",activatedAt:1,invalidates:[],offeredLatestDeadline:null};
+ const first=box.stageRequestContextConnection({current:()=>true});let prior:unknown;
+ expect(()=>store.activate(record,owner,lease,()=>true,0,()=>{prior=box.requestContextReturns;throw Error("failed initializer");})).toThrow(/failed initializer/);
+ first.restore();box.stageRequestContextConnection({current:()=>true});let next:unknown;
+ store.activate(record,owner,lease,()=>true,0,()=>{next=box.requestContextReturns;});expect(next).not.toBe(prior);
+ const db=new Database(path,{readonly:true});try{expect(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name='request_context_returns_v1'").get()).toEqual({n:1});}finally{db.close();}
+});

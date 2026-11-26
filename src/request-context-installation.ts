@@ -44,7 +44,7 @@ export class RequestContextInstallationStore {
   }
   /** Floor, history (including Go back), active epoch and desired mode have one outer COMMIT. */
   activate(record: RequestContextActivationRecord, owner: RequestContextInstallationOwner,
-    update: RequestContextActivationLease, readyAndSameOffer: () => boolean, expectedRevision: number): RequestContextInstallationState {
+    update: RequestContextActivationLease, readyAndSameOffer: () => boolean, expectedRevision: number, initialize?: () => unknown): RequestContextInstallationState {
     return this.db.transaction(() => {
       this.requireOwner(owner);
       const previous = this.read();
@@ -60,6 +60,9 @@ export class RequestContextInstallationStore {
         BEGIN SELECT RAISE(ABORT,'Installation state cannot be removed'); END`);
       const state = State.parse({ revision: expectedRevision + 1, epoch: record.epoch, owner: owner.owner, mode: "active" });
       this.write(state);
+      // Staged runtime owners already exist behind the fence. Their durable companion tables/work identities
+      // join this outer transaction; neither a partial schema nor Go back invalidation may survive failure.
+      if (initialize && initialize() !== undefined) throw Error("Activation initialization must be synchronous");
       this.requireOwner(owner);
       if (!update.current() || !readyAndSameOffer()) throw Error("Activation preparation changed");
       return this.read()!;
