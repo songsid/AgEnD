@@ -77,10 +77,15 @@ it.each(["en", "zh-TW"] as const)("a non-manager is told who can clear it (%s); 
     named.eligibleApprovers = [admin, { platform: "discord", adapterId: "discord", userId: "fake-1", label: "Admin One" }, { platform: "discord", adapterId: "discord", userId: "fake-2", label: "" }];
     const who = (await rig(named)).pg.root.querySelector(".contact-origin-who")?.textContent?.trim();
     expect(who).toBe(locale === "en" ? "Only this agent's managing admins (Admin One, fake-2) or the verified host operator can clear it."
-      : "只有管理這個 Agent 的管理員（Admin One, fake-2）或已驗證的主機操作者能清除。");
+      : "只有管理這個 Agent 的管理員（Admin One、fake-2）或已驗證的主機操作者能清除。");
     const hostOnly = fixture("unknown"); hostOnly.originState!.canClear = false; hostOnly.canManage = false;
     expect((await rig(hostOnly)).pg.root.querySelector(".contact-origin-who")?.textContent?.trim())
       .toBe(locale === "en" ? "Only the verified host operator can clear it." : "只有已驗證的主機操作者能清除。");
+    const one = fixture("mixed"); one.originState!.receiptCount = 1;
+    const counts = [...(await rig(one)).pg.root.querySelectorAll(".contact-origin .note")].map((n: any) => n.textContent.trim());
+    expect(counts).toContain(locale === "en" ? "1 retained receipt" : "保留 1 筆來源紀錄");
+    const three = [...(await rig(fixture("mixed"))).pg.root.querySelectorAll(".contact-origin .note")].map((n: any) => n.textContent.trim());
+    expect(three).toContain(locale === "en" ? "3 retained receipts" : "保留 3 筆來源紀錄");
     const empty = fixture("none"); empty.canManage = false;
     expect((await rig(empty)).pg.root.querySelector(".contact-origin-who")).toBeNull();
   } finally { setLang("en", { store: false }); }

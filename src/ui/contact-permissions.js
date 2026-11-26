@@ -41,7 +41,7 @@ const personLabel = (p) => (p && (p.label || p.userId)) || "";
 const isOperator = (x) => x?.platform === "host" && x.adapterId === "host" && x.userId === "operator";
 const clearWho = (people) => {
   const names = (people || []).filter((x) => !isOperator(x)).map(personLabel).filter(Boolean);
-  return names.length ? ca("originClearWho", names.join(", ")) : ca("originClearWhoHost");
+  return names.length ? ca("originClearWho", names.join(ca("originNameSep"))) : ca("originClearWhoHost");
 };
 
 /** Keep `name`'s permissions read: once, on its contact-auth frame (a newer revision), and when the page is shown again. */
@@ -245,7 +245,7 @@ export function ContactPermissionsPanel({ name }) {
       ${p.originState.people.length ? html`<ul class="contact-list contact-origin-people">${p.originState.people.map((person) => html`<li key=${`${person.platform}:${person.adapterId}:${person.userId}`}>
         <strong>${personLabel(person)}</strong> <span class="muted">${person.platform} · ${person.adapterId} · ${person.userId}</span></li>`)}</ul>` : html`<p class="note">${ca("originPeopleNone")}</p>`}
       <p class="contact-origin-chain">${ca("originChain")}: ${p.originState.chain.length ? p.originState.chain.join(" → ") : ca("originChainNone")}</p>
-      <p class="note">${ca("originReceipts", p.originState.receiptCount)}</p>
+      <p class="note">${ca(p.originState.receiptCount === 1 ? "originReceipt" : "originReceipts", p.originState.receiptCount)}</p>
       ${p.originState.lastCleared ? html`<p class="contact-origin-last">${ca("originLastCleared", personLabel(p.originState.lastCleared.actor), when(p.originState.lastCleared.at))}</p>` : null}
       ${p.originState.canClear ? html`<button type="button" class="btn btn-sm btn-danger contact-origin-clear" disabled=${busy} onClick=${() => void clearRetainedOrigin()}>${ca("originClear")}</button>` : null}
       ${!p.originState.canClear && p.originState.kind !== "none" ? html`<p class="note contact-origin-who">${clearWho(p.eligibleApprovers)}</p>` : null}

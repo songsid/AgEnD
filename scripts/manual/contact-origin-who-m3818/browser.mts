@@ -43,10 +43,12 @@ try {
       assert.equal(button, viewer ? 0 : 1); assert.equal(note, viewer ? 1 : 0);
       const text = viewer ? await page.locator(".contact-origin-who").innerText() : null;
       if (viewer) assert.equal(text, c.lang === "en" ? "Only this agent's managing admins (Admin One, Admin Two) or the verified host operator can clear it."
-        : "只有管理這個 Agent 的管理員（Admin One, Admin Two）或已驗證的主機操作者能清除。");
+        : "只有管理這個 Agent 的管理員（Admin One、Admin Two）或已驗證的主機操作者能清除。");
+      const receipts = await page.locator(".contact-origin .note", { hasText: c.lang === "en" ? "retained receipt" : "筆來源紀錄" }).innerText();
+      assert.equal(receipts, c.lang === "en" ? "1 retained receipt" : "保留 1 筆來源紀錄");
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       assert.equal(overflow, false); assert.deepEqual(await csp(), []); assert.deepEqual(errors, []);
-      result[`${caseName(c)}-${who}`] = { clearButton: button, whoNote: text, overflow, pageErrors: errors, csp: await csp() };
+      result[`${caseName(c)}-${who}`] = { clearButton: button, whoNote: text, receipts, overflow, pageErrors: errors, csp: await csp() };
     } finally { await ctx.close(); }
   }
   writeFileSync(join(out, "result.json"), JSON.stringify(result, null, 2) + "\n");

@@ -28,3 +28,9 @@ manager or an empty origin; reverting the render fails 2 cases) and `tests/conta
 
 Overlap: #4497 (M-3736 J) gates the Clear button on the same-card host being off. Whichever lands second should show
 this note only where the button would be offered (`clearOffered && !canClear`).
+
+Capture-check fixes (leader, before the user look):
+- zh-TW joins the names with 、 inside the full-width brackets: （Admin One、Admin Two）. EN keeps ", ". The separator is
+  the `originNameSep` string.
+- The count line says "1 retained receipt" in the singular. This was pre-existing M-3366 copy on the same card; EN only,
+  because zh-TW has no plural. The script asserts both lines.
