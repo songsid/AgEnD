@@ -338,7 +338,7 @@ import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, web
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore, isSafeInstanceDirName } from "./web-chat-store.js";
 import { WebChatArchive } from "./web-chat-archive.js";
-import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
+import { SEEN_USERS_FILE, SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
 import { agendVersion } from "./agent-whats-new.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
@@ -4186,7 +4186,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** #1770: an instance's web-files byte cap (a field, so a test can make it small). */
   private webReplyMaxBytes = REPLY_FILES_MAX_BYTES;
-  /** #1682: the people seen on inbound messages (id → name), for the web chat's mention pills; bounded, in memory. */
+  /** #1682: the people seen on inbound messages (id → name), for the web chat's mention pills; bounded; on disk since M-3827. */
   readonly seenUsers = new SeenUsers();
   private webPrefsStore?: WebPrefsStore;
   /** #1665: the web preferences kept on the host (<home>/web-prefs.json), read on first use. */
@@ -13124,6 +13124,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       setUpdateProgressStage(this.dataDir, "starting", { version: pendingUpdateProgress.progress.version });
     }
     this.initializeWebAuthTokens();
+    // M-3827: the people seen before this start keep their names in the web chat's mentions (before any adapter connects).
+    this.seenUsers?.persistTo({ path: join(this.dataDir, SEEN_USERS_FILE), onWarn: message => this.logger.warn(message) });
     // Must run before the first General/CLI spawn: pressure can hold startup.
     // Logs remain available even before the adapters and health listener exist.
     this.memoryPressure.start();
@@ -30179,6 +30181,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // write that failed and is still owed — is paid now, so a restart neither shortens the idle window
     // nor revives a session that was revoked while the disk was refusing writes.
     this.webSessions?.flush();
+    this.seenUsers?.flush();                         // M-3827: the names seen since the last write
 
     this.eventLog?.close();
     this.replyButtonsCtl?.stop();

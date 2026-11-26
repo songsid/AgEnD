@@ -162,6 +162,7 @@ export const WRITER_INVENTORY: readonly Writer[] = [
   home("web-owner-css", "post-commit", "web theme"),
   home("web-pins.json", "post-commit", "web pins"),
   home("web-sessions.json", "post-commit", "web sessions"),
+  home("web-seen-users.json", "post-commit", "web chat mention names (M-3827)"),
   home("web-themes", "post-commit", "web themes"),
   home("web-themes.json", "post-commit", "web themes"),
   home("needs-you-message.json", "post-commit", "Needs-you hub"),
