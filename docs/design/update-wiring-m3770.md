@@ -120,3 +120,20 @@ This note covers how the live `agend update` and the fleet use it. Design: `docs
 5. **Gate (b) holds for the whole attempt:** selection refuses while request-context is On; the barrier arm refuses `held` while On; and **S-230's On action refuses while `readCurrent` isn't `none`**, because a Settings write takes no service lock (Sentinel to add).
 6. **The proof doesn't require adapters connected** (a Discord or Telegram outage mustn't roll back a healthy version). Adapter connection is informational. The proof is the outbox, the scheduler, the web listener and the fleet's own health, with nonce and pid matched.
 7. **The rig** (part 7) uses a scratch tmux socket under a short `TMUX_TMPDIR`, an `env -i` scratch HOME and never the host's `AGEND_HOME`, and it includes a launchd-shaped case as S-260's baseline. **Its fleets are stand-in processes** that take `fleet.lock` over by the handoff nonce exactly as `claimFleetSingleton` does, not `agend fleet start`: a scratch-HOME fleet start has killed live tmux windows on this host before (a standing rule: never start a test fleet). The gap the stand-ins leave (a real fleet's trial start, the commit hands and the hand-back over the real socket, end to end) is closed **once, before the flip**: a real-process run inside a disposable container (`--network none`, its own tmux and HOME, nothing mounted from the host's `AGEND_HOME` or `/tmp/tmux-*`), isolated by construction. It's a heavy run, so it needs the leader's go-ahead, and it's a precondition on the flip card (S-261), not part 7.
+
+## 11. The control channel is a file mailbox (part 2; Fable, 11-27)
+§10.2's Unix socket became a **file mailbox**, `control/`, in the same 0700 attempt directory. The reasons: the driver (`runUpdate`, the recovery runner) is synchronous, and a socket path is capped near 108 bytes. The scope and the authentication are unchanged: a same-uid writer inside the 0700 directory. A request outlives its writer, so every request is bound by four rules, and the fleet enforces them before acting:
+1. **Its attempt and stage.** `barrier.arm` is valid only in `opened` (later: `trial.prove` in trial/proving, `commit.*` in committing). The fleet re-reads the journal per request and refuses, with an answer, when they no longer match. A closed attempt's mailbox isn't even read.
+2. **A live sender.** The request carries the driver's pid and service-lock token. It runs only while the lock's live holder is that token and pid, and is the attempt's updater or recorded runner (`serviceLockSenderLive`). Anything else is answered `stale` and never runs.
+3. **The addressed fleet.** The request names its target generation by nonce, and another fleet ignores it. Each answer carries the responder's `{ nonce, pid }`, which the driver checks.
+4. **Exactly once.** The answer is published under an O_EXCL name, and an existing one is the answer. A timed-out wait never means success: the driver reconciles from the journal and asks again with a new seq.
+
+Bodies are capped at 4 KiB, and unknown ops are refused. The fleet polls every 250 ms, and only while an attempt is open. Requests and answers stay with the attempt for `--resolve`. Agents can't read them: the journal is outside every agent's own state directory, and dot-named parts are sensitive.
+
+**The old fleet's side** (part 2): `barrier.arm` builds §2.2's idle snapshot from the state `hubUpdateIdle` reads. It attaches the barrier to every gate (pane writes, the outbox, the scheduler, the task board) and fences and checks again with no await:
+- held: the barrier stays up until the attempt ends, when the next pass takes it down;
+- busy or refused: it comes down at once;
+- a repeat request for the same attempt is idempotent;
+- while request-context is On, it never holds (gate (b); the hook answers off until #4519 brings request-context to this line).
+
+An old fleet that an abandon never stopped walks its hand-back from the same pass, at most every 10 s.

@@ -56,6 +56,16 @@ export function admitServiceCommand(home: string, command: string, deps: Install
 }
 
 /**
+ * M-3770 wiring (design update-wiring-m3770.md, Fable's mailbox rule 2): is this request's sender — its pid and the
+ * service-lock token it carries — the live holder of the service lock, AND the open attempt's updater or its recorded
+ * recovery runner? A request a crashed or replaced updater left behind is never executed.
+ */
+export function serviceLockSenderLive(home: string, sender: { pid: number; token: string }, deps: Pick<InstallLockDeps, "processStart" | "exists" | "startTicks" | "bootId">): boolean {
+  const holder = lockHolderAt(serviceLockPath(home), deps);
+  return holder.state === "live" && holder.record.pid === sender.pid && !!sender.token && sender.token === holder.record.token && tokenBound(home, holder.record);
+}
+
+/**
  * The live holder is the open attempt's updater: `attempt:<id>`, `current` open on that id, and the same process — pid,
  * lstart, and the start ticks and boot id whenever either side recorded them (both or neither; Prism #4499 R2).
  */

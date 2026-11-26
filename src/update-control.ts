@@ -1,0 +1,161 @@
+/**
+ * M-3770 slice 2.5, wiring part 2 (design update-wiring-m3770.md §4, §10.2; Fable's mailbox rules): the control mailbox
+ * between the update's driver (the updater, or the recovery runner) and a fleet — the old one (barrier arm) and, in
+ * later parts, the trial (its proof) and the new one (commit steps).
+ *
+ * It is files in the attempt's own 0700 directory, `control/`: the directory is the scope and its mode the authentication
+ * (a same-uid writer, the trust a Unix socket would have had), the driver stays synchronous, and there is no path-length
+ * limit. A request outlives its writer, so every request is bound:
+ *   1. to its attempt and the stage its op is valid in — the fleet re-reads the journal before acting and refuses (with
+ *      an answer) when they no longer match;
+ *   2. to a live sender — its pid and service-lock token, still the lock's live holder and the attempt's own updater or
+ *      recorded runner; otherwise the answer is `stale` and nothing runs;
+ *   3. to its target fleet generation, by nonce — another fleet ignores it, and each answer carries the responder's
+ *      `{ nonce, pid }`, which the driver checks;
+ *   4. answered exactly once — the response is published under an O_EXCL name (an existing one is the answer); a timed-out
+ *      wait never means success: the driver reconciles from the journal and asks again with a new seq.
+ * Bodies are bounded; unknown ops are refused. Requests and responses stay with the attempt (for `--resolve`).
+ */
+import { closeSync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, unlinkSync, writeSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { join } from "node:path";
+import { attemptDir, defaultJournalIo, readCurrent, type AttemptRecord, type JournalIo, type Stage } from "./update-journal.js";
+
+export const CONTROL_DIR = "control";
+export const MAX_CONTROL_BYTES = 4096;
+export const controlDir = (home: string, attemptId: string) => join(attemptDir(home, attemptId), CONTROL_DIR);
+
+/** Each op and the stages it is valid in (Fable rule 1). Later parts add trial.prove and the commit steps. */
+export const CONTROL_OPS: Readonly<Record<string, readonly Stage[]>> = {
+  "status": ["opened", "barrier", "stopping", "snapshotted", "installing", "trial", "proving", "committing", "abandoning", "rolling-back"],
+  "barrier.arm": ["opened"],
+};
+
+export interface ControlRequest {
+  seq: number;
+  op: string;
+  attemptId: string;
+  stage: Stage;
+  /** The fleet generation it is addressed to, by its handoff nonce (fleet.lock's). */
+  to: { nonce: string };
+  /** The driver: its pid and its service-lock token. */
+  from: { pid: number; token: string };
+  args?: Record<string, unknown>;
+}
+export type ControlResult = { status: "ok"; value: unknown } | { status: "refused" | "stale"; why: string };
+export interface ControlResponse { seq: number; op: string; attemptId: string; by: { nonce: string; pid: number }; result: ControlResult }
+
+const pad = (n: number) => String(n).padStart(8, "0");
+const requestName = (seq: number, op: string) => `${pad(seq)}-${op}.req.json`;
+const responseName = (seq: number) => `${pad(seq)}.res.json`;
+const fsyncDir = (dir: string) => { const fd = openSync(dir, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } };
+
+/** Publish `data` at `path` only if nothing is there: tmp, fsync, link (never replacing), tmp removed, directory fsynced. */
+function publishOnce(path: string, data: string): "published" | "exists" {
+  const tmp = `${path}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`;
+  const fd = openSync(tmp, "wx", 0o600);
+  try { writeSync(fd, data); fsyncSync(fd); } finally { closeSync(fd); }
+  try { linkSync(tmp, path); }
+  catch (err) { if ((err as NodeJS.ErrnoException).code === "EEXIST") return "exists"; throw err; }
+  finally { try { unlinkSync(tmp); } catch { /* gone */ } }
+  fsyncDir(join(path, ".."));
+  return "published";
+}
+
+const isRequest = (v: unknown): v is ControlRequest => {
+  const r = v as Partial<ControlRequest> | null;
+  return !!r && Number.isSafeInteger(r.seq) && (r.seq as number) > 0 && typeof r.op === "string" && typeof r.attemptId === "string"
+    && typeof r.stage === "string" && !!r.to && typeof r.to.nonce === "string" && !!r.from && Number.isSafeInteger(r.from.pid) && typeof r.from.token === "string";
+};
+
+// ── The driver's side (synchronous) ────────────────────────────────────────────────────────────────────────────────
+
+export interface AskDeps { timeoutMs: number; pollMs?: number; sleep(ms: number): void; now(): number }
+export type AskResult = { ok: true; response: ControlResponse } | { ok: false; reason: string };
+
+/**
+ * Write the request and wait (bounded, synchronously) for its answer. The answer must match the request's seq, op,
+ * attempt and addressed nonce. A timeout is not success: the caller reconciles from the journal and asks again with a
+ * new seq.
+ */
+export function askFleet(home: string, req: ControlRequest, d: AskDeps): AskResult {
+  const dir = controlDir(home, req.attemptId);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const body = JSON.stringify(req);
+  if (Buffer.byteLength(body) > MAX_CONTROL_BYTES) return { ok: false, reason: "the request is too large" };
+  if (publishOnce(join(dir, requestName(req.seq, req.op)), body + "\n") === "exists") return { ok: false, reason: `request ${req.seq} was already sent` };
+  const until = d.now() + d.timeoutMs;
+  for (;;) {
+    let text: string | null = null;
+    try { text = readFileSync(join(dir, responseName(req.seq)), "utf8"); } catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
+    if (text !== null) {
+      let res: ControlResponse;
+      try { res = JSON.parse(text) as ControlResponse; } catch { return { ok: false, reason: `the answer to request ${req.seq} isn't readable` }; }
+      if (res.seq !== req.seq || res.op !== req.op || res.attemptId !== req.attemptId || res.by?.nonce !== req.to.nonce) {
+        return { ok: false, reason: `the answer to request ${req.seq} isn't from the fleet it was sent to` };
+      }
+      return { ok: true, response: res };
+    }
+    if (d.now() >= until) return { ok: false, reason: `the fleet didn't answer request ${req.seq} (${req.op}) in time` };
+    d.sleep(d.pollMs ?? 250);
+  }
+}
+
+// ── The fleet's side ───────────────────────────────────────────────────────────────────────────────────────────────
+
+export interface ServeDeps {
+  /** This fleet: its fleet.lock nonce and pid. */
+  self: { nonce: string; pid: number };
+  /** Rule 2: the sender is still the lock's live holder and the attempt's own updater or runner. */
+  senderLive(sender: { pid: number; token: string }): boolean;
+  handlers: Readonly<Record<string, (req: ControlRequest, attempt: AttemptRecord) => ControlResult>>;
+  io?: JournalIo;
+}
+
+/**
+ * One pass over the open attempt's mailbox: every request addressed to this fleet and not yet answered is checked
+ * against the journal (read again for each), its sender and its op, then answered exactly once. Reads nothing while no
+ * attempt is open, and nothing in the attempt's directory but `control/`. Returns how many it answered.
+ */
+export function serveControl(home: string, d: ServeDeps): number {
+  const io = d.io ?? defaultJournalIo;
+  const read = readCurrent(home, io);
+  if (read.state !== "open") return 0;
+  const dir = controlDir(home, read.attempt.id);
+  let names: string[];
+  try { names = readdirSync(dir); } catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0; throw err; }
+  const answered = new Set(names.filter(n => n.endsWith(".res.json")).map(n => n.slice(0, 8)));
+  let count = 0;
+  for (const name of names.filter(n => /^\d{8}-[a-z.]+\.req\.json$/i.test(n)).sort()) {
+    if (answered.has(name.slice(0, 8))) continue;
+    const path = join(dir, name);
+    let req: ControlRequest;
+    try {
+      if (statSync(path).size > MAX_CONTROL_BYTES) continue;                                       // never read; never answered
+      const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+      if (!isRequest(parsed)) continue;
+      req = parsed;
+    } catch { continue; }
+    if (req.to.nonce !== d.self.nonce) continue;                                                    // rule 3: not for this fleet
+    if (name !== requestName(req.seq, req.op)) continue;
+    const result = judge(home, req, d, io);
+    const res: ControlResponse = { seq: req.seq, op: req.op, attemptId: req.attemptId, by: { nonce: d.self.nonce, pid: d.self.pid }, result };
+    if (publishOnce(join(dir, responseName(req.seq)), JSON.stringify(res) + "\n") === "published") count += 1;
+  }
+  return count;
+}
+
+function judge(home: string, req: ControlRequest, d: ServeDeps, io: JournalIo): ControlResult {
+  const stages = CONTROL_OPS[req.op];
+  const handler = d.handlers[req.op];
+  if (!stages || !handler) return { status: "refused", why: `unknown op ${req.op}` };
+  // Rule 1: the journal, read again right before acting.
+  const now = readCurrent(home, io);
+  if (now.state !== "open" || now.attempt.id !== req.attemptId) return { status: "refused", why: `attempt ${req.attemptId} isn't open` };
+  if (now.attempt.stage !== req.stage || !stages.includes(now.attempt.stage)) {
+    return { status: "refused", why: `${req.op} isn't valid in ${now.attempt.stage} (the request was for ${req.stage})` };
+  }
+  if (!d.senderLive(req.from)) return { status: "stale", why: `the sender (pid ${req.from.pid}) no longer holds the update's service lock` };
+  try { return handler(req, now.attempt); }
+  catch (err) { return { status: "refused", why: `${req.op} failed: ${(err as Error).message}` }; }
+}
