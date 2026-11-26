@@ -28,7 +28,7 @@ about outbound access from the Hub VM (design note on M-3828).
 | Notice: browser tab, installable Hub (faked trust) | [tab](hub-desk-light-en-tab-keep.png) | [tab](hub-phone-dark-zh-TW-tab-keep.png) |
 | Notice: installed app (faked display-mode) | [app](hub-desk-light-en-app-keep.png) | [app](hub-phone-dark-zh-TW-app-keep.png) |
 
-The cannot-install wording is plainer after the leader's capture check: "its address doesn't have a certificate your company's computers trust" / 「它的網址還沒有公司認可的憑證」.
+The cannot-install wording is plainer after the leader's capture check: "its address doesn't have a certificate this browser trusts yet" / 「它的網址還沒有這個瀏覽器信任的憑證」. The leader's 「公司認可」 suggestion was not used: network copy never says 公司/company (the user's rule, #2906, enforced by tests/named-link-test-2906.test.ts).
 
 Review fixes (Prism #4548):
 - The action and its words live in a new module, `hub-notify-keep.js` (its own `hubkeep` strings, both locales; in HUB_UI_MODULES). A tab holding the previous hub-room-notify.js or hub-room-strings.js still links and still reads the words.
