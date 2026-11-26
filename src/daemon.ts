@@ -2668,7 +2668,7 @@ export class Daemon extends EventEmitter {
   }
 
   /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
-  private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string } };
+  private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string }; newWork?: (reason: "fresh") => void };
   private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean };
   requestContextPolicy?:RequestContextPolicyPort;
   bindRequestContextPolicy(policy:RequestContextPolicyPort):void {if(this.requestContextPolicy||!this.requestContextLifecycle)throw Error("request-context policy requires its owned turn binding");this.requestContextPolicy=policy;}
@@ -2751,10 +2751,19 @@ export class Daemon extends EventEmitter {
       } catch { return false; }
     } });
   }
-  setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }): void {
+  setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }, newWork?: (reason: "fresh") => void): void {
     if (this.tmux || this.ipcServer || this.requestContextLifecycle || this.nativePaneLifecycle && !this.nativePaneLifecycle.requestContextAvailable?.()) throw Error("Request context must be bound before a supported daemon startup");
     this.requestContextCalls.installRegistration(turns.registrationGate??undefined);
-    this.requestContextLifecycle = { turns, identity };
+    this.requestContextLifecycle = { turns, identity, newWork };
+  }
+  /** Authoritative fresh-launch boundary only; session discovery and a merely written clear command do not prove it. */
+  private requestContextNewWork(reason: "fresh"): void {
+    const lifecycle = this.requestContextLifecycle;
+    if (!lifecycle?.newWork) return;
+    const owner = this.requestContextOwner(), previous = owner ? lifecycle.turns.current(owner) : null;
+    lifecycle.newWork(reason);
+    if (owner && previous) lifecycle.turns.ended(previous, owner);
+    this.requestContextWrite = undefined;
   }
   private requestContextOwner(): RequestContextRuntimeOwner | null {
     const lifecycle = this.requestContextLifecycle;
@@ -3750,6 +3759,7 @@ export class Daemon extends EventEmitter {
 
     }
     if (nativeDisposition) this.isNewSession = nativeDisposition === "fresh";
+    if (nativeDisposition === "fresh") this.requestContextNewWork("fresh");
     this.resetRoomConversation(nativeDisposition === "reattached");
     this.settleHubAnswerTurnAtLaunch(nativeDisposition === "reattached");
 
@@ -14069,6 +14079,7 @@ export class Daemon extends EventEmitter {
     } finally {
       this.endSpawn();
     }
+    if (!resumedSuccessfully) this.requestContextNewWork("fresh");
     return resumedSuccessfully;
   }
 

@@ -1,3 +1,4 @@
+import { RequestContextWorkStore } from "./request-context-work.js";
 import { RequestContextInstallationStore, readRequestContextInstallation } from "./request-context-installation.js";
 import {assertRequestHubContactImage} from "./request-context-policy.js";
 import {RequestContextReturns,requestContextDeliveryChildId,requestContextReturnBlockers,registerRequestContextReturnDispatcher,assertRequestContextReturnsCompatibility,REQUEST_CONTEXT_RETURNS_TABLE} from "./request-context-returns.js";
@@ -1315,6 +1316,13 @@ export class DeliveryOutbox extends EventEmitter {
   /** Internal dormant local-turn persistence; the record alone grants no turn or authority. */
   get requestContextRecovery(): RequestContextRecoveryStore {
     return new RequestContextRecoveryStore(this.db, () => {
+      if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") throw Error("request-context dispatcher is not ready");
+    });
+  }
+
+  /** Per-conversation generation, accessed only by the owned lifecycle installer. */
+  get requestContextWork(): RequestContextWorkStore {
+    return new RequestContextWorkStore(this.db, () => {
       if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") throw Error("request-context dispatcher is not ready");
     });
   }
