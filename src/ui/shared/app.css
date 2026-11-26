@@ -1113,7 +1113,7 @@ html.lb-open .scroller { overflow: hidden; }
 /* M-3814: the fixed preview address's Cloudflare step, under the fixed hostname. */
 .fixed-preview { margin-top: var(--s-3); }
 /* No fixed public hostname yet: why there is no preview field — body-size, set apart (the 429 link lands here). */
-.fixed-preview-needs { margin: var(--s-2) 0; padding: 8px var(--s-3); border-left: 3px solid var(--accent); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); }
+.fixed-preview-needs { margin: var(--s-2) 0; padding: 8px var(--s-3) 8px calc(var(--s-3) + 3px); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); --lbar-color: var(--accent); }   /* the bar: .lbar (#2330) */
 :lang(zh) .fixed-preview-needs { word-break: keep-all; overflow-wrap: anywhere; }
 .fixed-preview-steps { margin: var(--s-2) 0; }
 .fixed-preview-steps summary { cursor: pointer; padding: 6px 0; }

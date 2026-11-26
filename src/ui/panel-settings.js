@@ -1595,7 +1595,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       </div>
       <p class="note">${tn("namedTunnelHint")} <a href="https://github.com/songsid/AgEnD/blob/main/docs/named-tunnel.md" target="_blank" rel="noopener noreferrer">${tn("namedTunnelSetup")}</a></p>
       ${String(f.hostname || "").trim() ? html`<${NamedLinkTest} hostname=${f.hostname} port=${f.originPort} protocol=${f.protocol} />` : null}
-      ${!named && !String(f.previewHost || "").trim() ? html`<p class="fixed-preview-needs" id="publicPreviewNeedsFixed" role="note">${tn("previewNeedsFixedHost")}</p>` : null}
+      ${!named && !String(f.previewHost || "").trim() ? html`<p class="fixed-preview-needs lbar" id="publicPreviewNeedsFixed" role="note">${tn("previewNeedsFixedHost")}</p>` : null}
       ${named || String(f.previewHost || "").trim() ? html`<${FixedPreviewAddress} field=${html`<div class=${fc("field", "previewHost")}><label for="publicWebPreviewHostname">${tn("previewHostname")}<${Impact} schema=${schema} field="web.public_link.preview_hostname" /></label><input id="publicWebPreviewHostname" type="text" value=${f.previewHost} placeholder=${previewHostPlaceholder(f.hostname)} class=${errors.previewHost ? "invalid" : ""} onInput=${(e) => set("previewHost")(e.target.value)} /><${Feedback} error=${errors.previewHost} /></div>`}
         hostname=${String(f.previewHost || "").trim()} placeholder=${previewHostPlaceholder(f.hostname)} originPort=${f.originPort} saved=${bareHost(f.previewHost) !== "" && bareHost(f.previewHost) === bareHost(web.public_link && web.public_link.preview_hostname)} port=${previewPortOf(ctx.fleet)} />` : null}
       <div class="grid2">
