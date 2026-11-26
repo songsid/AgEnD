@@ -165,7 +165,7 @@ async function walk(c: any) {
     const rows = await page.evaluate(`[...document.querySelectorAll(".fixed-preview .named-test-steps li")].map((l) => l.innerText.trim())`) as string[];
     check(`${tag} 4: every step ✓, the last says it works`, rows.length === 4 && rows.every((r) => r.startsWith("✓"))
       && rows[3].includes(W(zh, `It works: previews over the public link use ${PREVIEW}.`, `正常：透過公開連結的預覽會使用 ${PREVIEW}。`))
-      && rows.slice(0, 3).every((r) => !r.includes(" — ")),,
+      && rows.slice(0, 3).every((r) => !r.includes(" — ")),
       { rows, block: await page.evaluate(`(document.querySelector(".fixed-preview") || {}).innerText`), disabled: await page.evaluate(`document.querySelector("#previewAddressCheck").disabled`), checks, dialog: await page.evaluate(`(document.querySelector("dialog[open]") || {}).innerText || null`), url: page.url() });
     check(`${tag} 4: it asked https://${PREVIEW}/frame`, asked.at(-1) === `https://${PREVIEW}/frame`, asked);
     if (zh) for (const w of ["查得到", "使用"]) check(`${tag} 4: 「${w}」 kept whole`, await unsplit(page, w, ".fixed-preview .named-test-steps") === true, await unsplit(page, w, ".fixed-preview .named-test-steps"));
