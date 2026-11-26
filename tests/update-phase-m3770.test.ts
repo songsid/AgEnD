@@ -9,7 +9,7 @@ const all: PhaseInputs = { switchedOn: true, preflightClass: "self", runningTx: 
 describe("M-3770 2.5 wiring part 1: which update path", () => {
   it("Phase 2 only when every condition holds; each failing condition alone keeps Phase 1, and says why", () => {
     expect(selectUpdatePhase(all)).toEqual({ phase: 2, why: "both versions speak the update transaction" });
-    expect(selectUpdatePhase({ ...all, service: null }).phase).toBe(2);                              // a detached fleet
+    expect(selectUpdatePhase({ ...all, service: null })).toMatchObject({ phase: 2 });                              // a detached fleet
     const cases: [Partial<PhaseInputs>, RegExp][] = [
       [{ switchedOn: false }, /isn't switched on yet/],
       [{ preflightClass: "admin-only" }, /says admin-only, not self/],
