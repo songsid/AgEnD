@@ -256,12 +256,13 @@ function openCliSchedulerDb(): SchedulerDb {
  * M-3770 2.5: the service a Phase 2 update drives — a systemd unit (the user's, else the system's) as the transaction
  * records it, a launchd job (kind only: launchd keeps Phase 1 until S-260), or none (a detached fleet).
  */
-async function transactionServiceOf(): Promise<{ kind: "systemd" | "launchd" | null; owned: import("./install-ownership.js").OwnedService | null }> {
+async function transactionServiceOf(): Promise<{ kind: "systemd" | "launchd" | null; system: boolean; owned: import("./install-ownership.js").OwnedService | null }> {
   const { getServicePath, getSystemServicePath, detectPlatform } = await import("./service-installer.js");
-  const path = getServicePath() ?? getSystemServicePath();
-  if (!path) return { kind: null, owned: null };
-  if (detectPlatform() === "macos") return { kind: "launchd", owned: null };
-  return { kind: "systemd", owned: { kind: "systemd", unit: basename(path), fragmentPath: path } };
+  const user = getServicePath(), path = user ?? getSystemServicePath();
+  if (!path) return { kind: null, system: false, owned: null };
+  if (detectPlatform() === "macos") return { kind: "launchd", system: false, owned: null };
+  // The user unit when both exist; the Phase 2 driver then proves it is the one running the fleet (its MainPID).
+  return { kind: "systemd", system: !user, owned: { kind: "systemd", unit: basename(path), fragmentPath: path } };
 }
 
 /** M-3770 part 4: the interrupted commit `fleetStartGate` admitted this start to finish (handed to the FleetManager). */
@@ -1821,6 +1822,7 @@ program
         runningTx: phase.updateTxOf((() => { try { return JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")); } catch { return null; } })()),
         targetTx: switchedOn && targetVersion ? phase.targetUpdateTx(runQuiet, "npm", "@songsid/agend", targetVersion) : 0,
         service: service.kind,
+        systemUnit: service.system, root: (process.getuid?.() ?? 0) === 0,
         // S-230's request-context isn't on this line until #4519; its state replaces this then (gate (b)).
         requestContext: "off",
         journal: journal.state,
@@ -1844,16 +1846,21 @@ program
         const hands = realHands(DATA_DIR);
         let installPrefix = npmPrefixFound;
         try { installPrefix = realpathSync(npmPrefixFound); } catch { /* the prefix lock says so */ }
-        markUpdateInProgress(DATA_DIR);
-        setUpdateProgressStage(DATA_DIR, "downloading", { version: targetVersion });
+        markUpdateInProgress(DATA_DIR);                                                         // "preparing" until the barrier holds
         const r = runTransactionUpdate({ home: DATA_DIR, target: { name: "@songsid/agend", version: targetVersion }, prefix: installPrefix, service: service.owned, cliEntry: canonicalCliEntry() }, {
           host: realHostEnv(), liveness, self, hex8: () => randomBytes(4).toString("hex"), date: () => new Date(),
           lockDeps: { ...liveness, pid: process.pid, newToken: () => randomBytes(16).toString("hex"), now: () => new Date(), log: (message: string) => console.log(message) },
           installEnv: { run: (command, args, o) => { const x = spawnSync(command, args, { stdio: "inherit", env: o.env, cwd: o.cwd }); return { status: x.status, signal: x.signal }; } },
           proveWritersGone: () => hands.proveWritersGone({ updater: { pid: self.pid, start: self.start }, runner: null, helpers: [] }),
           waitHandedBack: done => hands.waitHandedBack(done),
+          progress: stage => { setUpdateProgressStage(DATA_DIR, stage, stage === "downloading" || stage === "installed" ? { version: targetVersion } : {}); },
           log: line => console.log(line),
         });
+        // Nothing opened (the install couldn't be proven, or a lock was refused) and every lock released: this host keeps
+        // updating the way it does today (Fable part 5 (b)), and says why.
+        if (!r.ran) {
+          console.log(`  ℹ The update transaction can't run here (${r.reason}); today's updater updates it.`);
+        } else {
         const words = phase2Words(r, targetVersion);
         for (const line of words.lines) (words.exitCode ? console.error : console.log)(line);
         // A refresh warning travels with the completion (the chat's and the web's update receipt), with its command.
@@ -1861,6 +1868,7 @@ program
           : { version: targetVersion, ...(words.notice ? { warning: words.notice, ...(words.command ? { cleanupCommand: words.command } : {}) } : {}) });
         process.exitCode = words.exitCode;
         return;
+        }
       }
     }
 

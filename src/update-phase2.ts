@@ -49,6 +49,11 @@ export interface Phase2Env {
   /** Abandon's hand-back wait (bounded) until `done()`. */
   waitHandedBack(done: () => boolean): boolean;
   takeLease?: Parameters<typeof drainHand>[2];
+  /**
+   * The update receipt's stage (Fable part 5 (d)), in today's words: stopping (the old fleet), downloading (the
+   * install), installed, starting (the trial, its proof and the commit — minutes, with the fleet's own hold notice).
+   */
+  progress?(stage: "stopping" | "downloading" | "installed" | "starting"): void;
   log(line: string): void;
   io?: JournalIo;
 }
@@ -75,14 +80,21 @@ export function runTransactionUpdate(i: Phase2Input, x: Phase2Env): Phase2Result
     const service = acquireServiceLock(i.home, id, x.lockDeps);
     if (!service.ok) return { ran: false, reason: service.reason };
     held.push(service);
+    // The running fleet (its fleet.lock record, alive) — generation `old`.
+    const rec = readFleetLockRecord(i.home);
+    const oldFleet = rec?.role === "fleet" && x.host.exists(rec.pid) ? { pid: rec.pid, nonce: rec.nonce } : null;
+    // The service this update drives must be the one running the fleet (Fable part 5 (c)): with both a user and a system
+    // unit on the host, the unit picked must be the one whose MainPID is fleet.lock's holder — never drive the other.
+    if (i.service && oldFleet) {
+      const mainPid = updaterManager(i.home, i.service, () => null, x.host).mainPid();
+      if (mainPid !== oldFleet.pid) return { ran: false, reason: `the running fleet (pid ${oldFleet.pid}) isn't ${i.service.unit}'s (its MainPID is ${mainPid ?? "unreadable"})` };
+    }
     const live = liveHand({ home: i.home, prefix: i.prefix, service: i.service }, x.host);
     const now = live();
     if (!now.ownership.ok) return { ran: false, reason: `the install can't be proven: ${now.ownership.reason}` };
     if (now.tuple.state !== "complete") return { ran: false, reason: `the installed AgEnD can't be read whole: ${now.tuple.reason}` };
     const ownership = now.ownership.value, old = now.tuple.tuple;
-    // 2. The attempt, with the running fleet (its fleet.lock record, alive) as generation `old`.
-    const rec = readFleetLockRecord(i.home);
-    const oldFleet = rec?.role === "fleet" && x.host.exists(rec.pid) ? { pid: rec.pid, nonce: rec.nonce } : null;
+    // 2. The attempt, with that fleet as generation `old`.
     const opened = openAttempt(i.home, { id, kind: "update", updater: x.self, from: { name: i.target.name, version: old.version, integrity: old.integrity },
       to: { name: i.target.name, version: i.target.version, integrity: null }, extra: openingIdentity(ownership, old, oldFleet, x.date()) }, io);
     if (!opened.ok) return { ran: false, reason: opened.reason };
@@ -94,13 +106,19 @@ export function runTransactionUpdate(i: Phase2Input, x: Phase2Env): Phase2Result
       self: x.self, liveness: x.liveness, isProcessAlive: pid => x.host.exists(pid),
       proveWritersGone: () => x.proveWritersGone(),
       plistArgs: plistProgramArguments,
-      manager: updaterManager(i.home, i.service, bin, x.host),
+      // A detached fleet starts as the transaction proved it: the live tuple's Node and entry (Fable part 5 F1).
+      manager: updaterManager(i.home, i.service, () => { const t = live().tuple; return t.state === "complete" ? [t.tuple.interpreter, t.tuple.entry] : null; }, x.host),
       waitTakeover: waitTakeover(i.home, x.host),
-      barrier: barrierHand(i.home, oldFleet, mailbox),
+      barrier: a => { const b = barrierHand(i.home, oldFleet, mailbox)(a); if (b.ok) x.progress?.("stopping"); return b; },
       drain: drainHand(i.home, l => { lease = l; }, x.takeLease),
       kit: kitSources(i.cliEntry, x.host),
-      install: () => installHand({ name: i.target.name, version: i.target.version, packagePath: ownership.packagePath, prefixToken: prefix.token },
-        { ...x.installEnv, readFile: p => x.host.readFile(p) }),
+      install: () => {
+        x.progress?.("downloading");
+        const done = installHand({ name: i.target.name, version: i.target.version, packagePath: ownership.packagePath, prefixToken: prefix.token },
+          { ...x.installEnv, readFile: p => x.host.readFile(p) });
+        if (done.ok) { x.progress?.("installed"); x.progress?.("starting"); }
+        return done;
+      },
       live,
       prove: proveHand(i.home, id, mailbox),
       commit: commitHands(i.home, id, mailbox),

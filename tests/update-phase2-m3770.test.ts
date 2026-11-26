@@ -20,7 +20,7 @@ function scratch() {
 }
 function env(s: ReturnType<typeof scratch>): Phase2Env {
   const host: HostEnv = { run: () => ({ status: 1, stdout: "" }), uid: () => 1000, sleep: () => {}, now: () => 0, realpath: p => p, readFile: () => null,
-    exists: pid => pid === process.pid, kill: () => true, spawnDetached: () => true, execPath: "/n/node" };
+    exists: pid => pid === process.pid, kill: () => true, spawnDetached: () => true, execPath: "/n/node", unlink: () => true };
   const lockDeps = { pid: process.pid, processStart: (pid: number) => (pid === process.pid ? START.processStart : null), exists: (pid: number) => pid === process.pid,
     newToken: () => "f".repeat(32), now: () => new Date(), log: () => {} };
   return { host, liveness: lockDeps, lockDeps, self: { pid: process.pid, start: START }, hex8: () => "a1b2c3d4", date: () => new Date("2026-11-27T18:00:00Z"),
@@ -76,5 +76,29 @@ describe("M-3770 2.5 wiring part 5: agend update selects its path first", () => 
     expect(block).toMatch(/targetTx: switchedOn && targetVersion \? phase\.targetUpdateTx\(/);
     expect(block).toMatch(/if \("refuse" in choice\) \{[\s\S]*?process\.exitCode = 1;\s*return;\s*\}/);
     expect(block).toMatch(/if \(choice\.phase === 2 && targetVersion && npmPrefixFound && !needsSudo\) \{[\s\S]*runTransactionUpdate\([\s\S]*?return;\s*\}/);
+  });
+});
+
+describe("M-3770 2.5 wiring part 5 (Fable (c)): the service driven is the one running the fleet", () => {
+  it("both a user and a system unit, the system one running the fleet: the user unit's MainPID isn't fleet.lock's holder — not run, nothing opened, locks released", () => {
+    const s = scratch();
+    writeFileSync(join(s.home, "fleet.lock"), JSON.stringify({ pid: process.pid, nonce: "a".repeat(32), createdAt: new Date().toISOString(), role: "fleet" }) + "\n");
+    const e = env(s);
+    const asked: string[] = [];
+    e.host = { ...e.host, run: (c, a) => { asked.push(`${c} ${a.join(" ")}`); return a.includes("MainPID") ? { status: 0, stdout: "0\n" } : { status: 1, stdout: "" }; } };
+    const unit = join(s.root, "com.agend.fleet.service"); writeFileSync(unit, "[Service]\n");
+    const r = runTransactionUpdate({ ...input(s), service: { kind: "systemd", unit: "com.agend.fleet.service", fragmentPath: unit } }, e);
+    expect(r).toEqual({ ran: false, reason: `the running fleet (pid ${process.pid}) isn't com.agend.fleet.service's (its MainPID is unreadable)` });
+    expect(asked).toEqual(["systemctl --user show -p MainPID --value com.agend.fleet.service"]);
+    expect(readCurrent(s.home).state).toBe("none");
+    expect(lockFiles(s)).toEqual(["fleet.lock"]);
+  });
+
+  it("cli.ts: a transaction that can't run here (nothing opened) falls back to today's updater, saying why", async () => {
+    const { readFileSync } = await import("node:fs");
+    const cli = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
+    const block = cli.slice(cli.indexOf("── M-3770 2.5: the update transaction (Phase 2)"), cli.indexOf("── #2264: the target release installs itself ──"));
+    expect(block).toMatch(/if \(!r\.ran\) \{\s*console\.log\(`  ℹ The update transaction can't run here \(\$\{r\.reason\}\); today's updater updates it\.`\);\s*\} else \{/);
+    expect(block).toMatch(/systemUnit: service\.system, root: \(process\.getuid\?\.\(\) \?\? 0\) === 0,/);
   });
 });

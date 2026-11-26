@@ -34,6 +34,9 @@ export interface PhaseInputs {
   targetTx: number;
   /** The fleet's service kind: null is a detached fleet. */
   service: "systemd" | "launchd" | null;
+  /** A systemd SYSTEM unit (not the user's), and whether this updater runs as root. */
+  systemUnit?: boolean;
+  root?: boolean;
   /** S-230's request-context mode; "unknown" (unreadable) refuses like On. */
   requestContext: "off" | "on" | "unknown";
   /** `readCurrent(home).state`, with the attempt when there is one. */
@@ -65,6 +68,8 @@ export function selectUpdatePhase(i: PhaseInputs): PhaseChoice {
   if (i.runningTx < MIN_UPDATE_TX) return one("the running AgEnD doesn't speak the update transaction");
   if (i.targetTx < MIN_UPDATE_TX) return one("the target AgEnD doesn't speak the update transaction");
   if (i.service === "launchd") return one("macOS service installs keep today's updater for now (S-260)");
+  // Fable part 5 (c): selection, not the readiness check — the P-checks weren't written for this route.
+  if (i.service === "systemd" && i.systemUnit && !i.root) return one("the system service needs root; today's updater handles it");
   if (i.requestContext !== "off") return one(i.requestContext === "on"
     ? "request-based contact approvals are on: a held message couldn't be replayed with its verification"
     : "whether request-based contact approvals are on can't be read");

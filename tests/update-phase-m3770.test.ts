@@ -70,3 +70,12 @@ describe("M-3770 2.5 wiring part 1: which update path", () => {
     expect(MIN_UPDATE_TX).toBe(1);
   });
 });
+
+describe("M-3770 2.5 (Fable part 5 (c)): a system unit needs root", () => {
+  it("a systemd system unit with a non-root updater: Phase 1, today's updater; as root it goes on", () => {
+    const base = { switchedOn: true, preflightClass: "self" as const, runningTx: 1, targetTx: 1, service: "systemd" as const, requestContext: "off" as const, journal: "none" as const };
+    expect(selectUpdatePhase({ ...base, systemUnit: true, root: false })).toEqual({ phase: 1, why: "the system service needs root; today's updater handles it" });
+    expect(selectUpdatePhase({ ...base, systemUnit: true, root: true })).toEqual({ phase: 2, why: "both versions speak the update transaction" });
+    expect(selectUpdatePhase({ ...base, systemUnit: false, root: false })).toEqual({ phase: 2, why: "both versions speak the update transaction" });
+  });
+});

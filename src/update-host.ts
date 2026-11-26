@@ -10,12 +10,13 @@
  * update then refuses to open, as `agend restart` refuses it). A detached fleet runs on this updater's own Node.
  */
 import { spawnSync } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, relative, isAbsolute } from "node:path";
 import { spawn } from "./child-process.js";
 import { readFleetLockRecord } from "./fleet-lock.js";
+import { FLEET_STOP_TIMEOUT_MS } from "./fleet-stop-budget.js";
 import { fsOwnershipDeps, proveOwnership, readArtifactTuple, type OwnedService, type Ownership, type OwnershipDeps, type Proven, type TupleRead } from "./install-ownership.js";
-import { parsePlist, readLoadedUnit } from "./service-activation.js";
+import { parsePlist, readLoadedUnit, systemdPeerBus, type PeerBus } from "./service-activation.js";
 import { takeExclusiveLease, type Lease } from "./state-lease.js";
 import type { KitSources } from "./update-recovery/kit.js";
 import type { RollbackDeps } from "./update-rollback.js";
@@ -38,6 +39,10 @@ export interface HostEnv {
   spawnDetached(command: string, args: string[], env: Record<string, string>): boolean;
   /** The Node this updater runs on. */
   execPath: string;
+  /** Remove `path` (true: removed or already gone). */
+  unlink(path: string): boolean;
+  /** #1804: systemd's private socket, for a host where busctl can't reach a bus (restart-guard's discovery). */
+  peerBus?: PeerBus;
 }
 
 const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -63,6 +68,8 @@ export function realHostEnv(): HostEnv {
       } catch { return false; }
     },
     execPath: process.execPath,
+    unlink: path => { try { unlinkSync(path); return true; } catch (err) { return (err as NodeJS.ErrnoException).code === "ENOENT"; } },
+    peerBus: systemdPeerBus,
   };
 }
 
@@ -74,7 +81,7 @@ const inside = (dir: string, path: string) => { const rel = relative(dir, path);
  */
 export function serviceExecStart(service: OwnedService, x: HostEnv): string[] | null {
   if (service.kind === "systemd") {
-    const loaded = readLoadedUnit((c, a) => { const r = x.run(c, a); return { status: r.status, signal: r.signal ?? null, stdout: r.stdout, stderr: r.stderr ?? "" }; }, x.uid() !== 0, service.unit);
+    const loaded = readLoadedUnit((c, a) => { const r = x.run(c, a); return { status: r.status, signal: r.signal ?? null, stdout: r.stdout, stderr: r.stderr ?? "" }; }, x.uid() !== 0, service.unit, x.peerBus);
     return loaded.ok ? [loaded.unit.tuple.program, ...loaded.unit.tuple.argv.slice(1)] : null;
   }
   const xml = x.readFile(service.fragmentPath);
@@ -112,14 +119,14 @@ export function liveHand(input: { home: string; prefix: string; service: OwnedSe
 }
 
 /** How long a fleet has to take fleet.lock over, and to stop, before the updater gives up on it. */
-export const TAKEOVER_MS = 60_000, STOP_MS = 60_000, POLL_MS = 250;
+export const TAKEOVER_MS = 60_000, STOP_MS = FLEET_STOP_TIMEOUT_MS, POLL_MS = 250;
 
 /**
  * The service manager for the attempt's service: systemd through service-manager.ts (the route's pre-start step hands
  * the nonce on); a detached fleet (no service) by this updater — its fleet.lock holder signalled and awaited, and a new
- * fleet started from the install's own launcher with the handoff in its environment.
+ * fleet started as the transaction proved it, with the handoff in its environment.
  */
-export function updaterManager(home: string, service: OwnedService | null, bin: string, x: HostEnv): RollbackDeps["manager"] {
+export function updaterManager(home: string, service: OwnedService | null, startArgv: () => string[] | null, x: HostEnv): RollbackDeps["manager"] {
   if (service) return serviceManager(service, { run: (c, a) => { const r = x.run(c, a); return { status: r.status, stdout: r.stdout }; }, uid: x.uid(), sleep: x.sleep, now: x.now });
   const fleetPid = () => { const rec = readFleetLockRecord(home); return rec?.role === "fleet" && x.exists(rec.pid) ? rec.pid : null; };
   return {
@@ -132,7 +139,22 @@ export function updaterManager(home: string, service: OwnedService | null, bin: 
       for (;;) { if (!x.exists(pid)) return true; if (x.now() >= until) return false; x.sleep(POLL_MS); }
     },
     reload: () => true,
-    start: handoff => x.spawnDetached(bin, ["fleet", "start"], { AGEND_UPDATE_HANDOFF: handoff.nonce, AGEND_FLEET_START_DIRECT: "1" }),
+    // Fable #4555-part5 F1: started as the transaction proved it — `<its Node> <its dist/cli.js> fleet start` from the
+    // live tuple, never a bin link whose shebang finds `node` on PATH (#3442). Like a detached restart, a fleet.pid that
+    // names a process proven gone is removed first, so the new fleet's singleton claim never meets a stale one; one that
+    // names a live process refuses the start.
+    start: handoff => {
+      const argv = startArgv();
+      if (!argv || argv.length < 2) return false;
+      const pidPath = join(home, "fleet.pid");
+      const published = x.readFile(pidPath);
+      if (published !== null) {
+        const pid = Number(published.trim());
+        if (Number.isSafeInteger(pid) && pid > 1 && x.exists(pid)) return false;
+        if (!x.unlink(pidPath)) return false;
+      }
+      return x.spawnDetached(argv[0]!, [...argv.slice(1), "fleet", "start"], { AGEND_UPDATE_HANDOFF: handoff.nonce, AGEND_FLEET_START_DIRECT: "1" });
+    },
   };
 }
 

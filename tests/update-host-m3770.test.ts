@@ -1,7 +1,7 @@
 // M-3770 slice 2.5, wiring part 5 (design update-wiring-m3770.md §14): the updater's host hands — the install's Node
 // proven from the service's own start command (never the package's files), a detached fleet's stop and handoff start,
 // the takeover wait, the drain and the kit's sources. Process effects are an injected HostEnv: no systemd, no fleet.
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,11 +18,13 @@ function host(o: { plist?: string; alive?: Set<number>; killOk?: boolean; diesOn
   const calls: string[] = [];
   const x: HostEnv = {
     run: () => ({ status: 1, stdout: "" }), uid: () => 501, sleep: ms => { t += ms; }, now: () => t,
-    realpath: p => (p.startsWith("/missing") ? null : p), readFile: p => (p === "/la/com.agend.fleet.plist" ? o.plist ?? null : null),
+    realpath: p => (p.startsWith("/missing") ? null : p),
+    readFile: p => { if (p === "/la/com.agend.fleet.plist") return o.plist ?? null; try { return readFileSync(p, "utf8"); } catch { return null; } },
     exists: pid => alive.has(pid),
     kill: (pid, sig) => { calls.push(`kill ${pid} ${sig}`); if (o.killOk === false) return false; if (o.diesOnTerm !== false) alive.delete(pid); return true; },
     spawnDetached: (command, args, env) => { calls.push(`${command} ${args.join(" ")} ${JSON.stringify(env)}`); return true; },
     execPath: "/usr/local/bin/node",
+    unlink: p => { calls.push(`unlink ${p}`); try { rmSync(p); return true; } catch { return false; } },
   };
   return { x, calls, alive, clock: () => t };
 }
@@ -51,22 +53,36 @@ describe("M-3770 2.5 wiring part 5: a detached fleet's manager", () => {
     if (rec) writeFileSync(join(h, "fleet.lock"), JSON.stringify({ ...rec, createdAt: new Date().toISOString(), role: "fleet" }) + "\n");
     return h;
   }
-  it("stops the fleet.lock holder (SIGTERM, waits until it is gone); starts the install's launcher with the handoff", () => {
+  const TUPLE = () => [NODE, `${PKG}/dist/cli.js`];
+  it("stops the fleet.lock holder (SIGTERM, waits until it is gone); starts as the transaction proved it — the tuple's Node and entry, never a bin link — with the handoff, the dead owner's fleet.pid removed first", () => {
     const h = host({ alive: new Set([7100]) });
-    const m = updaterManager(home({ pid: 7100, nonce: "a".repeat(32) }), null, "/p/bin/agend", h.x);
+    const dir = home({ pid: 7100, nonce: "a".repeat(32) });
+    writeFileSync(join(dir, "fleet.pid"), "7100\n");
+    const m = updaterManager(dir, null, TUPLE, h.x);
     expect(m.mainPid()).toBe(7100);
     expect(m.stop()).toBe(true);
     expect(h.calls).toEqual(["kill 7100 SIGTERM"]);
     expect(m.reload()).toBe(true);
     expect(m.start({ nonce: "b".repeat(32), gen: "trial" })).toBe(true);
-    expect(h.calls[1]).toBe(`/p/bin/agend fleet start ${JSON.stringify({ AGEND_UPDATE_HANDOFF: "b".repeat(32), AGEND_FLEET_START_DIRECT: "1" })}`);
+    expect(h.calls.slice(1)).toEqual([`unlink ${join(dir, "fleet.pid")}`,
+      `${NODE} ${PKG}/dist/cli.js fleet start ${JSON.stringify({ AGEND_UPDATE_HANDOFF: "b".repeat(32), AGEND_FLEET_START_DIRECT: "1" })}`]);
+    expect(existsSync(join(dir, "fleet.pid"))).toBe(false);
+  });
+
+  it("never starts over a live fleet.pid owner, nor without a proven tuple", () => {
+    const h = host({ alive: new Set([7300]) });
+    const dir = home();
+    writeFileSync(join(dir, "fleet.pid"), "7300\n");
+    expect(updaterManager(dir, null, TUPLE, h.x).start({ nonce: "b".repeat(32), gen: "trial" })).toBe(false);
+    expect(updaterManager(home(), null, () => null, h.x).start({ nonce: "b".repeat(32), gen: "trial" })).toBe(false);
+    expect(h.calls).toEqual([]);
   });
 
   it("a fleet that doesn't stop within the bound: false; no fleet: stopped already", () => {
     const h = host({ alive: new Set([7100]), diesOnTerm: false });
-    expect(updaterManager(home({ pid: 7100, nonce: "a".repeat(32) }), null, "/p/bin/agend", h.x).stop()).toBe(false);
-    expect(h.clock()).toBeGreaterThanOrEqual(60_000);
-    expect(updaterManager(home(), null, "/p/bin/agend", host().x).stop()).toBe(true);
+    expect(updaterManager(home({ pid: 7100, nonce: "a".repeat(32) }), null, TUPLE, h.x).stop()).toBe(false);
+    expect(h.clock()).toBeGreaterThanOrEqual(5 * 60_000);                                           // the fleet's own stop budget
+    expect(updaterManager(home(), null, TUPLE, host().x).stop()).toBe(true);
   });
 
   it("the takeover: the fleet record with that nonce, its pid; none within the bound: null", () => {
