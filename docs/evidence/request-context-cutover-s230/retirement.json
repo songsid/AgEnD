@@ -1,0 +1,110 @@
+{
+  "sourceCommit": "d6030b99f283fdf0f21dca8643c67f662706bdc4",
+  "stage": "Bounded publication, exact retirement and legacy-work observation checkpoint; production assembly remains incomplete",
+  "tests": {
+    "focused": {
+      "files": 6,
+      "passed": 88,
+      "failed": 0
+    },
+    "neighbors": {
+      "files": 7,
+      "passed": 144,
+      "failed": 0
+    },
+    "restoredAfterMutations": {
+      "files": 3,
+      "passed": 26,
+      "failed": 0
+    }
+  },
+  "typecheckTests": "pass",
+  "mutations": [
+    {
+      "mutation": "readiness-invalidates-execution",
+      "suite": "tests/request-context-installation-s230.test.ts",
+      "exit": 1,
+      "red": true
+    },
+    {
+      "mutation": "settles-before-handler",
+      "suite": "tests/request-context-pending-work-s230.test.ts",
+      "exit": 1,
+      "red": true
+    },
+    {
+      "mutation": "root-only-exit",
+      "suite": "tests/request-context-retirement-s230.test.ts",
+      "exit": 1,
+      "red": true
+    }
+  ],
+  "reviewSeams": {
+    "S1": "Separate whole-Fleet readiness for admission from original owner/ports currency for tracked execution",
+    "S2": "Expose Active/Draining/Off mode from the same publication; installed is not Active",
+    "S3": "Raw outbox readers audited read-only; actual FleetManager capable-open fence still needs assembly"
+  },
+  "physicalEvidence": [
+    "Local captured window absent, root PID and process group ESRCH, exact IPC listener closed and socket absent",
+    "Native exact captured launch exited; detach, changed owner and unknown refuse",
+    "Replacement counters advance before C/D startup; running owner setter stays closed"
+  ],
+  "legacyWork": "Actual handler promises stay counted after caller timeout or disconnect; no manual drain reset",
+  "sourceAndTests": [
+    {
+      "path": "src/request-context-installation.ts",
+      "sha256": "c2f901c4f6956b5a1e6c4349c51f2ca903d7e695dbe5f4c141342ad279b925b7"
+    },
+    {
+      "path": "src/request-context-policy.ts",
+      "sha256": "fb9e5f1a4cf15b6286bede36ff0b827663740f8b1ae7ef780fbc79f8831eb6bd"
+    },
+    {
+      "path": "src/request-context-retirement.ts",
+      "sha256": "3a323105212eabca04eac8147d3738286e1391fc2454c22035125d5fc404e81e"
+    },
+    {
+      "path": "src/request-context-pending-work.ts",
+      "sha256": "6d24a61b12fc021382dae73afb222368c0ef2c9c2f0399bcf8fdac5dd7f90bba"
+    },
+    {
+      "path": "src/channel/ipc-bridge.ts",
+      "sha256": "76c88bfcdd8b7c62c3c5cebc295c4cc46b07a6735b10cf5acd072aad1945d580"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "77d4a6ad8f2440e07fb117d760c10c290de50518d07ffc766f57f47cd22014c4"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "1661d75d013da52888ef3409795a10a3b12819e6104209e669753272d47a00e8"
+    },
+    {
+      "path": "src/instance-lifecycle.ts",
+      "sha256": "c574748faaab4168cb16407c172f1711db2713427bfcf0ff058cd4ca42ffaf33"
+    },
+    {
+      "path": "src/agent-endpoint.ts",
+      "sha256": "4995b8440a9a8c67ad6cb951b42ce493e4df5ab82f6aed3676b4704949ec98e9"
+    },
+    {
+      "path": "tests/request-context-installation-s230.test.ts",
+      "sha256": "6e74b9bfc95ad4183a6d90badc5d2cc60d632dd618610b94375935b0876dbf84"
+    },
+    {
+      "path": "tests/request-context-retirement-s230.test.ts",
+      "sha256": "84e506386564fb1016a620b5e1d7eb9aab80e12c9663c70f9f35722ce110eb5f"
+    },
+    {
+      "path": "tests/request-context-pending-work-s230.test.ts",
+      "sha256": "a0c0e3d052b2a84765034cfa32ad85d6b4a5df31ea4006a6a18bb53b55ba5386"
+    }
+  ],
+  "uiAndCaptures": "Byte-unchanged from f3de1070691831cd48fc499aeab033a4bad5b694",
+  "liveOperations": false,
+  "remaining": [
+    "Actual FleetManager installation/control host and capable startup recovery fence",
+    "Controlled relaunch/rollback with full owner/transport/ingress assembly",
+    "Full-mode and failed-install Off fixtures; no production activation performed"
+  ]
+}
