@@ -265,7 +265,7 @@ describe("#1672: the thread draws a status line muted, as plain text", () => {
     expect(list.querySelectorAll(".request-provenance")).toHaveLength(1);expect(list.querySelector(".request-provenance strong").textContent).toContain("<b>Demo person</b>");expect(list.querySelector(".request-provenance b")).toBeNull();expect(list.querySelector(".request-provenance p").textContent).toContain("person who asked");expect(list.querySelector(".request-provenance details").hasAttribute("open")).toBe(false);
     expect(list.querySelector(".st-text .request-provenance")).toBeNull();
     expect(list.querySelector(".request-provenance details .msg-tools")).not.toBeNull();expect([...list.querySelector(".request-provenance").parentElement.children].filter((e:any)=>e.classList.contains("msg-tools"))).toHaveLength(0);
-    th.render([{...status(3,"Nothing changed: Hub requests can't delegate tasks."),wrap:true,requestProvenance:{...view,refused:true}}]);expect(list.querySelector(".request-provenance strong").textContent).toContain("Relayed for");expect(list.querySelector(".request-provenance p").textContent).toContain("delegate tasks");expect(list.querySelector(".st-text")).toBeNull();
+    th.render([{...status(3,"Nothing changed: Hub requests can't assign tasks."),wrap:true,requestProvenance:{...view,refused:true}}]);expect(list.querySelector(".request-provenance strong").textContent).toContain("Relayed for");expect(list.querySelector(".request-provenance p").textContent).toContain("assign tasks");expect(list.querySelector(".st-text")).toBeNull();
 
     }finally{dom.restore();}
   });

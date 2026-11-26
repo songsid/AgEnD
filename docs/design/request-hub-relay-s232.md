@@ -136,7 +136,7 @@ Draft copy for the user look:
 | Group return warning | The reply may be shown in the original Hub room. | 回覆可能會顯示在原本的 Hub 房間。 |
 | Forwards | Not sent: Hub requests can't forward owner approvals. | 未送出：Hub 請求不能轉交擁有者核准。 |
 | Steering | Not sent: this request can't interrupt another task. | 未送出：這個請求不能插入另一項工作。 |
-| Task delegation | Nothing changed: Hub requests can't delegate tasks. | 沒有變更：Hub 的請求不能轉交任務。 |
+| Task delegation | Nothing changed: Hub requests can't assign tasks. | 沒有變更：Hub 的請求不能轉交任務。 |
 | Task cards | Nothing changed: Hub requests can't create or change task cards. | 沒有變更：Hub 的請求不能新增或修改任務卡。 |
 | Schedules | Nothing changed: Hub requests can't create or change scheduled work. | 沒有變更：Hub 的請求不能新增或修改排程的工作。 |
 | Fleet details | Not available for Hub requests: this shows the owner's own Fleet details. | Hub 的請求不能用：這會顯示擁有者自己的機群資料。 |
