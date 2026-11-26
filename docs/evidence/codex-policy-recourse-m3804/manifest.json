@@ -1,7 +1,7 @@
 [
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/README.md",
-    "sha256": "d4281d05fa129875f41e63963e88d0967f504fb12ec017f9723ccd8a50311704"
+    "sha256": "3e32e5e3e447fc3556df2c79b04fd49d5aca7d462e8bbb4a1acd5752b9e93f1b"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-dark-en.png",
@@ -144,8 +144,24 @@
     "sha256": "eec744f07ebd5b6fdd301de85f9faa516610d06b9da3114759b764d17e029aee"
   },
   {
+    "path": "docs/evidence/codex-policy-recourse-m3804/r5-checks-summary.json",
+    "sha256": "e88572b4f9c29a0777ac2ed661befb2084a63ecf8405d1cefffc74346e88fd8b"
+  },
+  {
     "path": "docs/evidence/codex-policy-recourse-m3804/task-context.patch",
     "sha256": "8a67168144280a3397c8d22870d32b6722c843f17927a566f6ecb89b4b8852b1"
+  },
+  {
+    "path": "scripts/manual/cli-upstream-precheck/build-manifest.ts",
+    "sha256": "e053155b65b196d507071cb17c28556dd1e8833392cb44531aff01578f764ed1"
+  },
+  {
+    "path": "scripts/manual/cli-upstream-precheck/manifest.json",
+    "sha256": "b04c754d3aad46875957fb266c1569d0b17b60b6a9505c7a17e7dc8cb20258c1"
+  },
+  {
+    "path": "scripts/manual/cli-upstream-precheck/sources.json",
+    "sha256": "71d9bc86ef65f637c2fd3d85abedf9366009a6b93cb06649723718a57e6b70f2"
   },
   {
     "path": "scripts/manual/codex-policy-recourse/capture.mts",
@@ -228,12 +244,20 @@
     "sha256": "b6a053e958faed2349991ab7adc2e7f94fe9d36cc3808a6189e84c3358c9e7fd"
   },
   {
+    "path": "tests/cli-upstream-precheck.test.ts",
+    "sha256": "f357d4ac1ba7531f9f7c5b239cd92a0a1e269995243992dae9b44d570bccc9f3"
+  },
+  {
     "path": "tests/codex-policy-handoff-m3804.test.ts",
     "sha256": "51762dc85f4202d6c47c0198b3a2e0b4ef09f7fb84b8e9e1e34f48bc4d0ad80f"
   },
   {
     "path": "tests/codex-policy-recourse-m3804.test.ts",
     "sha256": "ed750fcff8196615c602853c316bf3daf77c8ddb12b89fc447b20e1c02b48c7c"
+  },
+  {
+    "path": "tests/dashboard-i18n.test.ts",
+    "sha256": "4d1fe2b203cfd7c892c69f8628fc1971eaafc915ad5671f8cbe8bd478539bdba"
   },
   {
     "path": "tests/dispatcher-liveness-3647.test.ts",

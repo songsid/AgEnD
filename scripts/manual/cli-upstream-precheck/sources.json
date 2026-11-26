@@ -34,6 +34,8 @@
         "surfaces": { "FOOTER": "dialog", "TITLE": "dialog", "FIRST": "dialog", "claudeUsageCreditsPrompt": "dialog" } }
     ],
     "codex": [
+      { "file": "src/backend/codex-policy-recourse.ts", "symbols": ["CODEX_POLICY_RECOURSE_TITLE", "codexPolicyRecourseVisible"],
+        "surfaces": { "CODEX_POLICY_RECOURSE_TITLE": "dialog", "codexPolicyRecourseVisible": "dialog" } },
       { "file": "src/backend/codex-precaution.ts", "symbols": ["STOPPED", "ACK", "ROOT", "FALLBACK", "CONFIRM", "codexPrecaution"],
         "surfaces": { "STOPPED": "dialog", "ACK": "dialog", "ROOT": "dialog", "FALLBACK": "dialog", "CONFIRM": "dialog", "codexPrecaution": "dialog" } },
       { "file": "src/backend/codex-footer-hints.ts",
