@@ -20,7 +20,7 @@ checkNodeVersion();
 
 import { Command, Option } from "commander";
 import { registerBugReportCommand } from "./bug-report-cli.js";
-import { join, dirname } from "node:path";
+import { join, dirname, parse } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
 import { Cron } from "croner";
 import {
@@ -1692,8 +1692,11 @@ program
       markUpdateInProgress(DATA_DIR);
       setUpdateProgressStage(DATA_DIR, "downloading", { version: targetVersion! });
       // AGEND_UPDATE_OWNER_PID: the marker this process just wrote is the installer's to carry on (and no one else's).
+      // M-3812: from the filesystem (drive) root, never the folder `agend update` was started in. Inside a project npm
+      // exec puts its node_modules/.bin first on PATH, and the installer would run on that project's own `node`. `pkg`
+      // is a registry spec (an exact version), so it does not depend on the folder.
       const installer = spawnSync("npm", ["exec", "--yes", "--package", pkg, "--", "agend-install", "--upgrade", "--target", targetVersion!], {
-        stdio: "inherit", env: { ...withOrigin("agend-update"), AGEND_UPDATE_OWNER_PID: String(process.pid) },
+        stdio: "inherit", cwd: parse(process.cwd()).root, env: { ...withOrigin("agend-update"), AGEND_UPDATE_OWNER_PID: String(process.pid) },
       });
       if (installer.status === 0 || installer.status === 75) { process.exitCode = installer.status ?? 0; return; }
       // The installer records its own failure; one that never started (npm could not fetch it) is recorded here.
