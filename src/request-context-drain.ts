@@ -13,6 +13,8 @@ export interface RequestContextDrainParticipant {
   registration:RequestContextRegistrationGate;
   revision():string;
   inspect(rootId:string):RequestContextDrainView;
+  offRevision?():string;
+  inspectOff?(rootId:string):RequestContextDrainView;
 }
 export interface RequestContextRetirementProof { rootId:string; epoch:string; current():boolean }
 /** Owner assembly only. No production constructor or tool/API route installs this before cutover. */
@@ -82,7 +84,8 @@ export class RequestContextDrain {
     return blockers;
   }
   /** Read-only installation status. Unlike root retirement, this does not fence continuations still finishing. */
-  inspectWork(rootId:string):{blockers:string[];revisions:Map<string,string>} {
+  inspectWork(rootId:string):{blockers:string[];revisions:Map<string,string>} {return this.inspectRegistries(rootId,true);}
+  private inspectRegistries(rootId:string,off:boolean):{blockers:string[];revisions:Map<string,string>} {
     ROOT.parse(rootId);this.ready();const owner=this.owner(),blockers=this.durable(rootId),revisions=new Map<string,string>();
     const context=new RequestContextStore(this.db).context(rootId);
     if(!context||context.ref.rootContextId!==rootId||context.ref.parentContextId)blockers.push("context-unavailable");
@@ -91,7 +94,9 @@ export class RequestContextDrain {
     for(const family of REQUEST_CONTEXT_DRAIN_FAMILIES)if(![...this.participants.values()].some(row=>row.family===family))blockers.push(`missing:${family}`);
     for(const [id,row]of this.participants){
       try{
-        const before=row.value.revision(),view=row.value.inspect(rootId),after=row.value.revision();
+        if(off&&!!row.value.offRevision!==!!row.value.inspectOff)throw Error("Incomplete installation drain view");
+        const revision=()=>off&&row.value.offRevision?row.value.offRevision():row.value.revision();
+        const before=revision(),view=off&&row.value.inspectOff?row.value.inspectOff(rootId):row.value.inspect(rootId),after=revision();
         if(!before||before!==after||view.revision!==after||view.registration!==row.value.registration||view.unknown)blockers.push(`unknown:${id}`);
         else{revisions.set(id,after);blockers.push(...view.references.slice(0,65).map(ref=>`${id}:${ref}`));}
       }catch{blockers.push(`unavailable:${id}`);}
@@ -99,7 +104,7 @@ export class RequestContextDrain {
     return {blockers,revisions};
   }
   inspect(rootId:string,epoch:string):{blockers:string[];revisions:Map<string,string>} {
-    const view=this.inspectWork(rootId),owner=this.owner();
+    const view=this.inspectRegistries(rootId,false),owner=this.owner();
     if(!owner||!this.fenced(rootId,epoch,owner))view.blockers.push("drain-owner-or-fence");
     return view;
   }

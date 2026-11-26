@@ -190,10 +190,10 @@ it("an unclosed orphan manifest is unknown after its Windows reservation disappe
  for(const agent of saved.agents){delete agent.activeId;delete agent.paneLaunchId;}writeFileSync(file,JSON.stringify(saved),{mode:0o600});
  const unavailable=()=>{throw Error("Cold inspection cannot execute");},store=new WindowsAgents(f.root,{start:unavailable,get:unavailable} as any),cold=new NativePaneManager({...f.options,store});
  const before=readFileSync(join(f.root,"native-panes",f.agent.id,"active.json"));
- expect(cold.drainView(randomUUID()).unknown).toBe(true);expect(cold.requestContextPhysicallyIdle()).toBe(false);expect(NativePaneManager.requestContextOrphanActivity(f.root).unknown).toBe(true);
+ expect(cold.drainView(randomUUID()).unknown).toBe(true);expect(cold.offView(randomUUID()).unknown).toBe(true);expect(cold.requestContextPhysicallyIdle()).toBe(false);expect(NativePaneManager.requestContextOrphanActivity(f.root).unknown).toBe(true);
  expect(f.spawn).toHaveBeenCalledTimes(1);expect(readFileSync(join(f.root,"native-panes",f.agent.id,"active.json"))).toEqual(before);
 });
 it("a positively exited retained manifest is historical, not an orphan activity blocker",async()=>{
  const f=await fixture(),pane=await f.manager.prepare("native",f.config,()=>{});await pane.acquire(()=>{});await pane.release("close");
- const cold=new NativePaneManager(f.options);expect(cold.drainView(randomUUID()).unknown).toBe(false);expect(cold.requestContextPhysicallyIdle()).toBe(true);expect(NativePaneManager.requestContextOrphanActivity(f.root).unknown).toBe(false);
+ const cold=new NativePaneManager(f.options);expect(cold.drainView(randomUUID()).unknown).toBe(false);expect(cold.offView(randomUUID()).unknown).toBe(false);expect(cold.requestContextPhysicallyIdle()).toBe(true);expect(NativePaneManager.requestContextOrphanActivity(f.root).unknown).toBe(false);
 });

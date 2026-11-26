@@ -81,3 +81,14 @@ it('#4019: execution-idle with a restored draft is not permission to close the n
   expect(await f.daemon.nativePauseReady()).toBe(false);expect(f.native.release).not.toHaveBeenCalled();
  }finally{await f.daemon.stop();}
 });
+
+
+it.each(['fresh','resumed','reattached'] as const)('scoped native %s startup never certifies inherited helper bytes as a new turn',async disposition=>{
+ const f=fixture();f.native.acquire.mockResolvedValueOnce({pane:f.pane,source:f.source,disposition} as never);
+ vi.spyOn(f.daemon,'finishStartupScan').mockResolvedValue(true);
+ // This test observes only the launch boundary. No input, turn, provider or tool call is run.
+ f.daemon.requestContextLifecycle={turns:{},identity:()=>({incarnation:'fixture',workGeneration:'fixture'})};
+ await f.daemon.start();
+ expect(f.daemon.requestContextInterruptedLaunch===f.daemon.requestContextLaunch()).toBe(disposition==='reattached');
+ expect(f.forbidden).not.toHaveBeenCalled();
+});

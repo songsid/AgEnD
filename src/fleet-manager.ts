@@ -2021,6 +2021,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ||typeof graph.execInput!=="function"||graph.panes.drainView("").registration!==graph.registration)throw Error("Request-context native graph is not retired");
     this.requestContextNativeGraph=graph;this.requestContextNativeGraphLease=lease;
   }
+  /** Inert native owner construction plus the complete eight-family inventory, behind the shared fence.
+   * None of these accessors starts a provider, pane, coordinator or Fleet. Transport negotiation is separate.
+   */
+  async prepareRequestContextDrainOwners(drain:import("./request-context-drain.js").RequestContextDrain,registration:RequestContextRegistrationGate,
+    owners:ReturnType<FleetManager["installRequestContextRetainedOwners"]>,current:()=>boolean){
+    const graph=this.requestContextNativeGraph,box=this.deliveryOutbox,lease=captureProcessFleetLease(this.dataDir);
+    if(!graph||graph.registration!==registration||!graph.current()||!box||!lease?.current()||!current()||!owners.current()
+      ||this.requestContextAdmission?.available()!==false||this.requestContextFleetCalls?.registrationGate!==registration)throw Error("Drain owner preparation unavailable");
+    const runtime=this.nativeInstanceRuntime(),grants=this.nativeMcpSessions(),panes=await this.nativePanes();let alive=true;
+    const owned=()=>{try{return alive&&!this.shuttingDown&&lease.current()&&current()&&owners.current()&&this.deliveryOutbox===box
+      &&this.requestContextNativeGraph===graph&&graph.current()&&this.fleetWindowsRuntime===runtime&&this.nativeMcpStore===grants
+      &&this.paneManager===panes&&this.requestContextFleetCalls?.registrationGate===registration;}catch{return false;}};
+    if(!owned()||this.requestContextAdmission?.available()!==false)throw Error("Drain owner preparation changed");
+    const sources:ReadonlyArray<readonly[import("./request-context-drain.js").RequestContextDrainFamily,()=>string,(root:string)=>import("./request-context-fence.js").RequestContextDrainView,(()=>string)?,((root:string)=>import("./request-context-fence.js").RequestContextDrainView)?]>=[
+      ["turns",owners.revision,owners.turnView],["daemon-calls",owners.callRevision,owners.callView],
+      ["fleet-calls",()=>this.requestContextFleetDrainRevision,root=>this.requestContextFleetDrainView(root)],
+      ["native-exec",()=>runtime.drainRevision,root=>runtime.drainView(root)],
+      ["native-grants",()=>grants.drainRevision,root=>grants.drainView(root)],
+      ["pane-proofs",()=>graph.panes.drainRevision,root=>graph.panes.drainView(root),()=>graph.panes.offRevision,root=>graph.panes.offView(root)],
+      ["pane-ledgers",()=>panes.drainRevision,root=>panes.drainView(root),()=>panes.offRevision,root=>panes.offView(root)],
+      ["registered-work",owners.inputRevision,owners.inputView],
+    ];
+    const remove:Array<()=>void>=[];
+    try{for(const [family,revision,inspect,offRevision,inspectOff]of sources)remove.push(drain.register(family,"fleet",{registration,
+      revision:()=>owned()?revision():"owner-changed",inspect:root=>owned()?inspect(root):{registration,revision:"owner-changed",references:[],unknown:true},
+      ...(offRevision&&inspectOff?{offRevision:()=>owned()?offRevision():"owner-changed",inspectOff:(root:string)=>owned()?inspectOff(root):{registration,revision:"owner-changed",references:[],unknown:true}}:{})}));}
+    catch(error){for(const undo of remove.reverse())undo();throw error;}
+    return Object.freeze({current:owned,runtime,grants,panes,
+      /** The physical owners/connection have their own exact rollback; this only removes unpublished inventory. */
+      dispose:()=>{
+        if(!owned()||this.requestContextAdmission?.available()!==false||box.requestContextInstallation().read()!==null
+          ||!runtime.requestContextPhysicallyIdle()||!grants.requestContextPhysicallyIdle()||!panes.requestContextPhysicallyIdle()
+          ||this.requestContextFleetCalls.size||!this.requestContextPendingWork.empty)throw Error("Published drain owners cannot revert");
+        for(const undo of remove.slice().reverse())undo();alive=false;
+      },
+    });
+  }
   private currentRequestContextNativeGraph():RequestContextNativeGraph|null {
     const graph=this.requestContextNativeGraph;
     if(graph){if(!this.requestContextNativeGraphLease?.current()||!graph.current())throw Error("Request-context native graph owner changed");return graph;}

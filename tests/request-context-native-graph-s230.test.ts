@@ -5,6 +5,9 @@ import {join} from "node:path";
 import {afterEach,expect,it,vi} from "vitest";
 import {FleetManager} from "../src/fleet-manager.js";
 import {RequestContextPaneProofs} from "../src/request-context-pane.js";
+import {DeliveryOutbox} from "../src/delivery-outbox.js";
+import {RequestContextReferenceMap} from "../src/request-context-fence.js";
+import {randomUUID} from "node:crypto";
 import {NativeMcpSessions} from "../src/native-mcp.js";
 import {acquireFleetLock,setProcessFleetLock,releaseProcessFleetLock} from "../src/fleet-lock.js";
 const roots:string[]=[];
@@ -67,4 +70,26 @@ it("a cold journal's retained native owner blocks factory replacement even when 
  const f=rig(),id="12345678-1234-4321-abcd-123456789012";
  writeFileSync(join(f.fm.dataDir,"windows-agents.json"),JSON.stringify({version:1,requests:{},agents:[{id,name:"Fixture",cli:"codex",cwd:"C:\\Fixture",sandbox:"read-only",createdAt:1,description:"",instructions:"",turns:[],activeId:id,paneLaunchId:id,fleet_instance:"worker"}]}));
  await expect(f.fm.retireRequestContextNativeFactories(()=>true)).rejects.toThrow("unconfirmed launch");expect(f.fm.requestContextNativeRetiring).toBeFalsy();expect(f.fm.runtimeExecutor).toBeUndefined();
+});
+
+it("the fenced production assembly registers all eight owners, rejects cache loss and removes only unpublished inventory",async()=>{
+ const f=rig(),box=new DeliveryOutbox(join(f.fm.dataDir,"outbox.db"),"fixture",{requestContextDispatchVersion:1});
+ try{
+  f.fm.deliveryOutbox=box;const connection=box.stageRequestContextConnection({current:()=>true}),drain=connection.drain(()=>"fixture"),registration=drain.registration();
+  const graph={...f.graph,registration,panes:new RequestContextPaneProofs("synthetic-proof-key-".repeat(4),registration)};
+  f.fm.stageRequestContextNativeGraph(graph);
+  const refs=new RequestContextReferenceMap<string,string>(v=>v,(_v,id)=>id);refs.installRegistration(registration);
+  const view=(root:string)=>refs.view(root),revision=()=>refs.revision;
+  const native={get drainRevision(){return revision();},drainView:view,get offRevision(){return revision();},offView:view,requestContextPhysicallyIdle:()=>true};
+  f.fm.nativeInstanceRuntime=()=>f.fm.fleetWindowsRuntime=native;
+  f.fm.nativePanes=async()=>f.fm.paneManager=native;
+  f.fm.requestContextFleetCalls=refs;f.fm.requestContextPendingWork={empty:true};
+  const owners={current:()=>true,revision,turnView:view,callRevision:revision,callView:view,inputRevision:revision,inputView:view};
+  const first=await f.fm.prepareRequestContextDrainOwners(drain,registration,owners,()=>true);first.dispose();expect(first.current()).toBe(false);
+  const installed=await f.fm.prepareRequestContextDrainOwners(drain,registration,owners,()=>true);
+  const id=randomUUID();box.requestContextInstallation().activate({epoch:"fixture",owner:"fixture",activatedAt:1,invalidates:[],offeredLatestDeadline:null},{owner:"fixture",current:()=>true},{current:()=>true,release(){}},()=>true,0,()=>{box.requestContextRecovery.retain({ref:{version:1,contextId:id,rootContextId:id},rootEvidenceRef:"fixture",initiatingActor:{kind:"unknown",reason:"unidentified"},ingress:"restricted-room",source:{instance:"source",incarnation:"current"},sourceAudience:{kind:"instance",ref:id}});});
+  expect(drain.inspectWork(id).blockers).toEqual([]);
+  const panes=f.fm.paneManager;f.fm.paneManager={};expect(installed.current()).toBe(false);expect(drain.inspectWork(id).blockers.some(x=>x.startsWith("unknown:"))).toBe(true);
+  f.fm.paneManager=panes;expect(()=>installed.dispose()).toThrow(/cannot revert/);expect(installed.current()).toBe(true);
+ }finally{box.close();}
 });

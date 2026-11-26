@@ -3802,6 +3802,10 @@ export class Daemon extends EventEmitter {
         // bounded dialog/readiness scan as local startup. An already-running reattachment may be busy: do not
         // wait for that work to finish or inject a startup key into it.
         if (acquired.disposition === "reattached") {
+          // A surviving process predates this daemon's first-hop binding. Its queued helper bytes
+          // cannot prove a turn, even after a later input installs a new proof on that launch.
+          // Keep the one-contact approval fallback until a genuinely new process is launched.
+          if (this.requestContextLifecycle) this.requestContextInterruptedLaunch = this.requestContextLaunch();
           if (this.backend?.binaryName === "codex") {
             const native = this.nativePaneLifecycle, spawn = this.spawnGeneration, fence = this.launchFenceEpoch, attempt = this.launchAttempt;
             try { const pane = await acquired.pane.capturePane(); this.startupAdmission?.();

@@ -7,6 +7,8 @@ import {randomUUID} from "node:crypto";
 import {DeliveryOutbox} from "../src/delivery-outbox.js";
 import {REQUEST_CONTEXT_DRAIN_FAMILIES} from "../src/request-context-drain.js";
 import {RequestContextReferenceMap} from "../src/request-context-fence.js";
+import {RequestContextPaneProofs} from "../src/request-context-pane.js";
+import {PaneMcpAuthorityLease} from "../src/runtime-pane-mcp.js";
 import {requestContextDigest} from "../src/request-context-store.js";
 const cleanup:Array<()=>void>=[];afterEach(()=>{for(const f of cleanup.splice(0).reverse())f();});
 function rig(){
@@ -14,12 +16,12 @@ function rig(){
  const box=new DeliveryOutbox(join(home,"outbox.db"),"manager",{requestContextDispatchVersion:1});cleanup.push(()=>box.close());
  const installation=box.requestContextInstallation(),owner={owner:"fleet",current:()=>true};
  installation.activate({epoch:"first",owner:"fleet",activatedAt:1,invalidates:[],offeredLatestDeadline:null},owner,{current:()=>true,release(){}},()=>true,0);
- const drain=box.requestContextDrain(()=>"fleet"),maps=new Map<string,RequestContextReferenceMap<string,string>>();
- const register=()=>{for(const family of REQUEST_CONTEXT_DRAIN_FAMILIES){const registration=drain.registration(),map=new RequestContextReferenceMap<string,string>(root=>root,(_root,id)=>id);map.installRegistration(registration);maps.set(family,map);drain.register(family,family,{registration,revision:()=>map.revision,inspect:root=>map.view(root)});}};
+ const drain=box.requestContextDrain(()=>"fleet"),maps=new Map<string,RequestContextReferenceMap<string,string>>(),unregister=new Map<string,()=>void>();
+ const register=()=>{for(const family of REQUEST_CONTEXT_DRAIN_FAMILIES){const registration=drain.registration(),map=new RequestContextReferenceMap<string,string>(root=>root,(_root,id)=>id);map.installRegistration(registration);maps.set(family,map);unregister.set(family,drain.register(family,family,{registration,revision:()=>map.revision,inspect:root=>map.view(root)}));}};
  const context=()=>{const id=randomUUID();return {ref:{version:1 as const,contextId:id,rootContextId:id},rootEvidenceRef:"synthetic",initiatingActor:{kind:"person" as const,platform:"discord" as const,userId:"person"},ingress:"owner" as const,source:{instance:"source",incarnation:"source-current"},sourceAudience:{kind:"instance" as const,ref:id}};};
  const admit=()=>{const c=context(),id=randomUUID(),input={sourceInstance:"source",sourceDaemonBootId:"source-boot",targetInstance:"target",sourceKey:id,operationId:id,kind:"fleet_inbound",payload:{content:"synthetic"}};
   return box.admitWithRequestContext(input,c,{version:1,operationId:id,contextId:c.ref.contextId,rootContextId:c.ref.rootContextId,source:c.source,target:{instance:"target",incarnation:"target-current"},verb:"send_to_instance",payloadSha256:requestContextDigest(input.payload)}).delivery;};
- return {box,installation,owner,drain,maps,register,context,admit};
+ return {home,box,installation,owner,drain,maps,unregister,register,context,admit};
 }
 it("even an empty installation snapshot requires every known memory family",()=>{
  const r=rig();r.installation.beginOff(1,r.owner);expect(()=>r.drain.proveOff(r.installation,()=>true)).toThrow(/missing:turns/);
@@ -78,4 +80,33 @@ it("untouched queued human input is parked across Off without an ingress approva
    expect(r.box.getHumanReceipt(input.receipt.receipt_id)?.state).toBe("queued");expect(r.box.requestContextHumans.read(input.receipt.receipt_id)?.context).toEqual(input.context);
   }else expect(()=>r.drain.proveOff(r.installation,()=>true)).toThrow(/human-input/);
  }
+});
+
+it("acknowledged completed pane work permits Off while its retained proof and ledger still prevent garbage collection",async()=>{
+ const r=rig();r.register();r.unregister.get("pane-proofs")!();r.unregister.get("pane-ledgers")!();
+ const registration=r.drain.registration(),proofs=new RequestContextPaneProofs("synthetic-key-".repeat(4),registration),context=r.context();r.box.requestContextRecovery.retain(context);
+ let working=true;const owner={hostBootId:randomUUID(),paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),instance:"source"};
+ const snapshot={token:randomUUID(),inputId:"owned-input",wireSha256:"0".repeat(64),owner:{instance:"source",incarnation:"source-current",workGeneration:"work",daemonBootId:"daemon",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0},context};
+ const stamp=proofs.mint(owner,snapshot,()=>working),machineId=randomUUID();let invoked=0;
+ const lease=new PaneMcpAuthorityLease(join(r.home,"launch.mcp.json"),{registration,machineId,owner,toolCeiling:["reply"],current:()=>true,menu:()=>[{name:"reply"}],allowed:()=>true,
+  requestContexts:proofs,invoke:async()=>{invoked++;return {result:"done"};},responseWritten:()=>{}});
+ r.drain.register("pane-proofs","actual",{registration,revision:()=>proofs.drainRevision,inspect:root=>proofs.drainView(root),offRevision:()=>proofs.offRevision,inspectOff:root=>proofs.offView(root)});
+ r.drain.register("pane-ledgers","actual",{registration,revision:()=>lease.drainRevision,inspect:root=>lease.drainView(root),offRevision:()=>lease.offRevision,inspectOff:root=>lease.offView(root)});
+ const body={op:"pane-mcp" as const,method:"tools/call" as const,owner,helperId:randomUUID(),callId:"0".repeat(64),params:{name:"reply",arguments:{text:"synthetic"}}};
+ const result=await lease.handle(machineId,body,()=>true,stamp) as {responseId:string};
+ const ack={op:"pane-mcp" as const,method:"response-written" as const,owner,helperId:body.helperId,callId:body.callId,responseId:result.responseId};
+ await lease.handle(machineId,ack,()=>true,stamp);r.installation.beginOff(1,r.owner);
+ expect(()=>r.drain.proveOff(r.installation,()=>true)).toThrow(/pane-proof/);working=false;
+ const epoch=r.drain.fence(context.ref.rootContextId);expect(()=>r.drain.prove(context.ref.rootContextId,epoch)).toThrow(/pane-proof|pane-ledger/);
+ expect(r.installation.finishOff(2,r.owner,r.drain.proveOff(r.installation,()=>true)).mode).toBe("off");
+ expect(proofs.drainView(context.ref.rootContextId).references).toHaveLength(1);expect(lease.drainView(context.ref.rootContextId).references).toHaveLength(1);
+ await lease.handle(machineId,ack,()=>true,stamp);expect(invoked).toBe(1);expect(()=>proofs.resolve(owner,stamp)).toThrow(/stale|unavailable/);
+});
+
+it("an incomplete Off adapter refuses rather than silently weakening its cleanup inventory",()=>{
+ const r=rig();r.register();r.unregister.get("pane-ledgers")!();const registration=r.drain.registration(),context=r.context();
+ r.box.requestContextRecovery.retain(context);r.installation.beginOff(1,r.owner);
+ r.drain.register("pane-ledgers","partial",{registration,revision:()=>"one",inspect:()=>({registration,revision:"one",references:["retained"],unknown:false}),offRevision:()=>"one"});
+ expect(()=>r.drain.proveOff(r.installation,()=>true)).toThrow(/unavailable/);
+ const epoch=r.drain.fence(context.ref.rootContextId);expect(()=>r.drain.prove(context.ref.rootContextId,epoch)).toThrow(/retained/);
 });

@@ -14,7 +14,7 @@ import {assertRunnableNativePaneVersion,nativeCliVersionState} from "./runtime-p
 import {nativeCredentialProfile} from "./native-instance-registry.js";
 import type { RequestContextPaneProofs } from "./request-context-pane.js";
 import type { PaneMcpAuthority } from "./runtime-pane-mcp.js";
-import {PaneMcpAuthorityLease,readRetainedPaneMcpRoots} from "./runtime-pane-mcp.js";
+import {PaneMcpAuthorityLease,readRetainedPaneMcpRoots,readRetainedPaneMcpOffWork} from "./runtime-pane-mcp.js";
 import {validateRuntimePaneLaunch,validateRuntimePaneSnapshot,validateRuntimePaneSessionProof,type RuntimePaneLaunch,type RuntimePaneSnapshot} from "./runtime-pane-protocol.js";
 import {validatePaneMcpBody,type PaneMcpBody} from "./runtime-pane-mcp-protocol.js";
 import type {PaneEndpoint} from "./runtime-pane-port.js";
@@ -73,7 +73,7 @@ export class NativePaneManager {
   }catch(error){if(present||(error as NodeJS.ErrnoException).code!=="ENOENT"){unknown=true;images.push("unavailable");}}
   return {unknown,digest:createHash("sha256").update(JSON.stringify(images)).digest("hex")};
  }
- private retainedDrain(){
+ private retainedDrain(off=false){
   const panes=this.options.store.requestContextPaneLaunches?.();
   let unknown=!panes||this.preparing.size>0;const roots:Array<{rootId:string;reference:string}>=[],seen=new Set<string>();
   for(const pane of panes??[]){
@@ -85,7 +85,7 @@ export class NativePaneManager {
     for(const path of [root,directory]){const stat=lstatSync(path);if(!stat.isDirectory()||stat.isSymbolicLink()||process.getuid&&(stat.uid!==process.getuid()||stat.mode&0o077))throw Error("Unsafe retained launch directory");}
     const manifest=this.load(join(directory,"active.json")),launch=manifest?.launch;
     if(!manifest||!launch||manifest.machineId!==pane.machineId||launch.agentId!==pane.agentId||launch.launchId!==pane.launchId||launch.instance!==pane.instance)throw Error("Retained launch identity differs");
-    const ledger=readRetainedPaneMcpRoots(join(directory,`${pane.launchId}.mcp.json`),manifest.machineId,{agentId:pane.agentId,launchId:pane.launchId,paneId:launch.paneId,instance:pane.instance});
+    const ledger=(off?readRetainedPaneMcpOffWork:readRetainedPaneMcpRoots)(join(directory,`${pane.launchId}.mcp.json`),manifest.machineId,{agentId:pane.agentId,launchId:pane.launchId,paneId:launch.paneId,instance:pane.instance});
     digest=ledger.sha256;
     roots.push(...ledger.roots.map(row=>({rootId:row.rootId,reference:`pane-ledger:${pane.launchId}:${row.operationId}`})));
    }catch{unknown=true;}
@@ -97,12 +97,19 @@ export class NativePaneManager {
   return {unknown,roots};
  }
  get drainRevision():string{this.retainedDrain();return this.localDrainRevision();}
- private localDrainRevision():string{return `${this.drainSerial}:${this.options.store.requestContextDrainRevision}:${[...this.drainLeases].map(([id,lease])=>`${id}:${lease.drainRevision}`).join(";")}`;}
+ private localDrainRevision(off=false):string{return `${this.drainSerial}:${this.options.store.requestContextDrainRevision}:${[...this.drainLeases].map(([id,lease])=>`${id}:${off?lease.offRevision:lease.drainRevision}`).join(";")}`;}
  drainView(rootId:string){
   const retained=this.retainedDrain();let unknown=retained.unknown;
   const references=retained.roots.filter(row=>row.rootId===rootId).map(row=>row.reference);
   for(const lease of this.drainLeases.values()){const view=lease.drainView(rootId);references.push(...view.references);unknown ||= view.unknown||view.registration!==this.options.registration;}
   return {registration:this.options.registration??null,revision:this.localDrainRevision(),references,unknown};
+ }
+ get offRevision():string{this.retainedDrain(true);return this.localDrainRevision(true);}
+ offView(rootId:string){
+  const retained=this.retainedDrain(true);let unknown=retained.unknown;
+  const references=retained.roots.filter(row=>row.rootId===rootId).map(row=>row.reference);
+  for(const lease of this.drainLeases.values()){const view=lease.offView(rootId);references.push(...view.references);unknown ||= view.unknown||view.registration!==this.options.registration;}
+  return {registration:this.options.registration??null,revision:this.localDrainRevision(true),references,unknown};
  }
  private preparing=new Set<string>();
  constructor(private options:NativePaneManagerOptions){}

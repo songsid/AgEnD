@@ -9,7 +9,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { NativePaneManager } from "../src/native-pane-manager.js";
 import { paneMcpHttp } from "../src/windows-pane-mcp.js";
 import { PaneMcpRelay } from "../src/runtime-pane-mcp-relay.js";
-import { PaneMcpAuthorityLease, type PaneMcpAuthority } from "../src/runtime-pane-mcp.js";
+import { PaneMcpAuthorityLease, readRetainedPaneMcpRoots, readRetainedPaneMcpOffWork, type PaneMcpAuthority } from "../src/runtime-pane-mcp.js";
 import { RequestContextPaneProofs } from "../src/request-context-pane.js";
 import { validateRequestContextCallStamp } from "../src/request-context-call-protocol.js";
 import type { RequestContextTurnSnapshot } from "../src/request-context-turns.js";
@@ -33,7 +33,7 @@ function rig(registration?:import("../src/request-context-fence.js").RequestCont
   const lease = new PaneMcpAuthorityLease(file, authority);
   const body = { op: "pane-mcp" as const, method: "tools/call" as const, owner, helperId: randomUUID(), callId: "a".repeat(64), params: { name: "reply", arguments: { text: "PRIVATE_PROMPT" } } };
   const replace = () => { active = { ...a, token: randomUUID(), inputId: "input-b" }; return proofs.mint(owner, active, captured => captured.token === active.token); };
-  return { root, owner, a, stamp, proofs, invoke, written, file, authority, lease, body, replace };
+  return { root, owner, a, stamp, proofs, invoke, written, file, authority, lease, body, replace,end:()=>{active={...a,token:randomUUID()};} };
 }
 it("writes only ids/digests on the SAME prepared row before invoke; stamped replay conflicts before cached return", async () => {
   const f = rig();
@@ -183,4 +183,28 @@ it("R1 an offline unbound launch reads only its owned ledger, with no endpoint o
  const revision=manager.drainRevision;const changed=JSON.parse(bytes);Object.values(changed.calls).forEach((row:any)=>{row.requestContext={coverage:"not-covered",reason:"interrupted-launch",stampSha256:"c".repeat(64)};});writeFileSync(ledger,JSON.stringify(changed),{mode:0o600});
  expect(manager.drainView(root)).toMatchObject({unknown:false,references:[]});expect(manager.drainRevision).not.toBe(revision);
  writeFileSync(ledger,"broken",{mode:0o600});expect(manager.drainView(root).unknown).toBe(true);unlinkSync(ledger);expect(manager.drainView(root).unknown).toBe(true);expect(endpoint).not.toHaveBeenCalled();
+});
+
+it("Off ignores stale proofs and acknowledged history without weakening launch-bound GC retention",async()=>{
+ const f=rig({assertRegistration:vi.fn()}),root=f.a.context.ref.rootContextId,before=f.proofs.offRevision;
+ const result=await f.lease.handle(f.authority.machineId,f.body,()=>true,f.stamp) as {responseId:string};
+ expect(f.lease.offView(root).references).toHaveLength(1); // done is still conservative until ACK.
+ f.end();expect(f.proofs.offView(root).references).toEqual([]);expect(f.proofs.offRevision).not.toBe(before);
+ expect(f.proofs.drainView(root).references).toHaveLength(1);
+ await f.lease.handle(f.authority.machineId,{op:"pane-mcp",method:"response-written",owner:f.owner,helperId:f.body.helperId,callId:f.body.callId,responseId:result.responseId},()=>true,f.stamp);
+ expect(f.lease.offView(root).references).toEqual([]);expect(f.lease.drainView(root).references).toHaveLength(1);
+ const retained=readRetainedPaneMcpRoots(f.file,f.authority.machineId,f.owner),work=readRetainedPaneMcpOffWork(f.file,f.authority.machineId,f.owner);
+ expect(retained.roots).toHaveLength(1);expect(work.roots).toEqual([]);expect(work.sha256).toBe(retained.sha256);
+});
+it("prepared, done and genuinely in-flight pane calls remain Off blockers",async()=>{
+ const f=rig({assertRegistration:vi.fn()}),root=f.a.context.ref.rootContextId;let finish!:(value:{result:{ok:boolean}})=>void;
+ f.invoke.mockImplementation(()=>new Promise<{result:{ok:boolean}}>(resolve=>{finish=resolve;}));
+ const running=f.lease.handle(f.authority.machineId,f.body,()=>true,f.stamp);
+ await vi.waitFor(()=>expect(f.invoke).toHaveBeenCalledTimes(1));expect(f.lease.offView(root).references).toHaveLength(1);
+ expect(readRetainedPaneMcpOffWork(f.file,f.authority.machineId,f.owner).roots).toHaveLength(1);
+ const before=f.lease.offRevision;finish({result:{ok:true}});const result=await running as {responseId:string};expect(f.lease.offRevision).not.toBe(before);
+ expect(readRetainedPaneMcpOffWork(f.file,f.authority.machineId,f.owner).roots).toHaveLength(1);
+ await f.lease.handle(f.authority.machineId,{op:"pane-mcp",method:"response-written",owner:f.owner,helperId:f.body.helperId,callId:f.body.callId,responseId:result.responseId},()=>true,f.stamp);
+ const key=Object.keys((f.lease as any).ledger.calls)[0]!;(f.lease as any).inFlight.set(key,Promise.resolve());
+ expect(f.lease.offView(root).references).toHaveLength(1);(f.lease as any).inFlight.delete(key);expect(f.lease.offView(root).references).toEqual([]);
 });
