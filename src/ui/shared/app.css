@@ -2690,6 +2690,9 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   padding-bottom: calc(var(--s-3) + env(safe-area-inset-bottom, 0px)); touch-action: none; }
 /* M-3253: the sheet sits on the window's foot (M-3166 took the phone's tab bar away: the old 56 px lift left a gap), its
    close and its two actions a fingertip's 44 px. */
+/* #4504: the card's pose preview — a labelled picker and Replay, wrapping on a narrow card. */
+.oo-card-preview { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
+.oo-card-preview label { display: flex; align-items: center; gap: var(--s-1); }
 .oo-card.sheet { padding: var(--s-2) var(--s-4) max(var(--s-4), env(safe-area-inset-bottom, 0px)); }
 /* M-3633: the sheet takes at most half the window, so the office stays in view above it whatever the pack's card (a
    large avatar and every section scroll inside it); its actions stay at its foot while the rest scrolls. */

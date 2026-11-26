@@ -1213,6 +1213,14 @@ export function poseStrip(set, pose, heading = null) {
   const st = own(set, pose) || own(set, "idle");
   return st ? { strip: st, mirror: false } : null;
 }
+/** #4504: what the card's pose preview offers — every pose a character set may draw, walking by direction. */
+export const PREVIEW_POSES = ["idle", "working", "paused", "needs", "walkDown", "walkUp", "walkSide", "walkLeft", "eat", "pat", "dragged", "stand"];
+const PREVIEW_HEADINGS = { walkDown: { dx: 0, dy: 1 }, walkUp: { dx: 0, dy: -1 }, walkSide: { dx: 1, dy: 0 }, walkLeft: { dx: -1, dy: 0 } };
+/** A look showing `pose` in place (a walking direction walks on the spot); a set without that strip shows its own pose. */
+export function previewLook(look, pose) {
+  const heading = PREVIEW_HEADINGS[pose];
+  return heading ? { ...look, pose: "walk", heading } : { ...look, pose, basePose: look.pose };
+}
 /** The strip a furniture item shows while it walks (#2596: an NPC with `walk`, `walking` and `heading` set where it is
  * drawn): its walk strip by heading, as a character's (poseStrip); null when it stands (its own sprite, as before). */
 export const walkStrip = (f) => (f && f.walking && f.walk ? poseStrip(f.walk, "walk", f.heading) : null);

@@ -32,12 +32,14 @@ register("ocard", {
     today: "Today", todayN: "{0} work tokens · {1} requests", firstSeen: "First seen", day: "Day {0}", now: "Now", nowLabel: "Now: ", find: "Find in office", chat: "Chat", pat: "Pat", feed: "Feed", tell: "Tell {0} (with their next message)", tellNote: "Off: only you see it. On: a line like “[Office] <your name> patted your head ×3” rides the next message they get anyway — it never wakes them.",
     chatWindow: "Open {0}’s chat in a new window",
     close: "Close", xp: "Progress to Lv {0}", rename: "Rename (only you see it)", renameField: "Name you see",
+    previewPose: "Preview pose", previewOff: "Off", replay: "Replay",
   },
   "zh-TW": {
     card: "{0} 的名片", level: "Lv {0}", work: "{0} 工作 token", estimated: "估算", toNext: "再 {0} 到 Lv {1}", office: "辦公室", model: "模型", backend: "後端",
     today: "今天", todayN: "{0} 工作 token · {1} 次請求", firstSeen: "首次出現", day: "第 {0} 天", now: "現在", nowLabel: "現在：", find: "在辦公室找它", chat: "聊天", pat: "摸頭", feed: "餵點心", tell: "讓 {0} 知道（隨下一則訊息）", tellNote: "關閉：只有你看得到。開啟：下一則本來就會送給它的訊息會附上一行，例如「[Office] <你的名字> patted your head ×3」，不會叫醒它。",
     chatWindow: "在新視窗開啟 {0} 的聊天",
     close: "關閉", xp: "升到 Lv {0} 的進度", rename: "改名（只有你看得到）", renameField: "你看到的名字",
+    previewPose: "預覽動作", previewOff: "關閉", replay: "重播",
   },
 });
 const tc = (k, ...v) => t(`ocard.${k}`, ...v);
@@ -352,7 +354,11 @@ function CardName({ name, rename }) {
     aria-label=${tc("rename")} title=${tc("rename")} onClick=${() => setEditing(true)}>✎</button></span>`;
 }
 
-export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, rename = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null, photo = null }) {
+export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, rename = null, preview = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null, photo = null }) {
+  // #4504: a skin pack's pose preview (`preview` = { poses, pose, set, replay }): the person plays the picked pose in place.
+  const previewRow = preview ? html`<div key="preview" class="oo-card-preview"><label>${tc("previewPose")}
+      <select value=${preview.pose} onChange=${(e) => preview.set(e.target.value)}><option value="">${tc("previewOff")}</option>${preview.poses.map((p) => html`<option value=${p}>${p}</option>`)}</select></label>
+      <button type="button" class="btn btn-sm btn-ghost oo-card-replay" disabled=${!preview.pose} onClick=${preview.replay}>${tc("replay")}</button></div>` : null;
   // `action`: one, or a list (M-3565: a Hub room's "@ it" and "Chat with it one-to-one"); the first is the primary button.
   const actions = Array.isArray(action) ? action.filter(Boolean) : action ? [action] : [];
   const actionButtons = actions.map((a, i) => html`<button key=${i} type="button" class=${`btn btn-sm ${i === 0 ? "btn-primary " : ""}oo-card-action`} title=${a.title || undefined} aria-label=${a.title || undefined} onClick=${a.run}>${a.label}</button>`);
@@ -482,6 +488,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
       ${m.now ? html`<div class="oo-card-now"><span class="muted">${tc("nowLabel")}</span>${m.now}</div>` : null}
       ${tell ? html`<label class="check oo-card-tell" title=${tc("tellNote")}><input type="checkbox" checked=${tell.on} onChange=${(e) => tell.set(e.target.checked)} />
         <span>${tc("tell", m.name)}</span></label>` : null}
+      ${previewRow}
       <div class="oo-card-actions">
         ${onReact ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-pat" onClick=${() => onReact("pat")}>${tc("pat")}</button>
           <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
@@ -540,7 +547,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
         <span>${tc("tell", m.name)}</span></label>`;
     }
     if (sec === "actions") {
-      return html`<div key="actions" class="oo-card-actions">
+      return html`${previewRow}<div key="actions" class="oo-card-actions">
         ${onReact ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-pat" onClick=${() => onReact("pat")}>${tc("pat")}</button>
           <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
         ${onFind ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-find" onClick=${onFind}>${tc("find")}</button>` : null}

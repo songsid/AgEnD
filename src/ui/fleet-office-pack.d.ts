@@ -148,6 +148,8 @@ export function applyOverrides(pack: CheckedPack, ov: LayoutOverrides | null | u
 export function fitNight<T extends LayoutOverrides | null | undefined>(pack: CheckedPack, ov: T): T;
 export function fitSeatFor<T extends LayoutOverrides | null | undefined>(pack: CheckedPack, ov: T): T;
 export function overridesBetween(pack: CheckedPack, edited: CheckedPack): LayoutOverrides | null;
+export const PREVIEW_POSES: string[];
+export function previewLook<T extends { pose?: string }>(look: T, pose: string): T & { pose: string; heading?: { dx: number; dy: number }; basePose?: string };
 export function poseStrip(set: Record<string, PackStrip> | null | undefined, pose: string, heading?: { dx: number; dy: number } | null): { strip: PackStrip; mirror: boolean } | null;
 export function walkStrip(f: { walk?: Record<string, PackStrip> | null; walking?: boolean; heading?: { dx: number; dy: number } | null } | null | undefined): { strip: PackStrip; mirror: boolean } | null;
 export function stripBox(st: PackStrip, x: number, y: number, mirror?: boolean): { x: number; y: number; w: number; h: number };
