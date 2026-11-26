@@ -1,3 +1,5 @@
+import {randomUUID} from "node:crypto";
+import {RequestContextLocalTurns} from "../src/request-context-turns.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,10 +28,13 @@ const codexBusy = "• Working (1s • esc to interrupt)\n" + codexIdle;
 const person = nativeHumanOrigin("telegram", "bot-one", "42", "person", false, "900")!;
 
 /** Real FM facade, owner binding, Daemon write/judge, and private SQLite; no runtime/adapters are started. */
-function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepted") {
+function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepted", scoped=false) {
   vi.useFakeTimers();
   const root = mkdtempSync(join(tmpdir(), "agend-human-1756-"));
   process.env.HOME = root; process.env.AGEND_HOME = root; process.env.KIRO_HOME = join(root, "kiro"); process.env.CODEX_HOME = join(root, "codex");
+  const outbox = new DeliveryOutbox(join(root, "outbox.db"), "manager",scoped?{requestContextDispatchVersion:1}:{});
+  if(scoped)outbox.activateRequestContextBarrier();
+  let fm:any,scopedResolver:ReturnType<FleetManager["makeRequestContextHumanResolver"]>|undefined;
   const dir = join(root, "instances/leader"); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, "window-id"), "@private");
   const backend = mode === "steer" ? new KiroBackend(dir, { version: "2.27.1", supportsLegacyUi: true, supportsTui: true,
     supportsV3: true, agentEngines: ["v1", "v2", "v3"], supportsEffortFlag: true, supportsInstanceAgent: false, source: "version" }) : new CodexBackend(dir);
@@ -37,6 +42,11 @@ function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepte
   const daemon: any = new Daemon("leader", { backend: mode === "steer" ? "kiro-cli" : "codex", working_directory: root,
     log_level: "silent", restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
     context_guardian: { max_age_hours: 0, grace_period_ms: 600000 } } as any, dir, false, backend as any, undefined, log);
+  if(scoped){
+    const workGeneration=randomUUID(),registration=outbox.requestContextDrain(()=>"fixture-owner").registration();
+    const ports=outbox.requestContextRecovery.ports("leader",(id,wire,owner)=>scopedResolver?.prepare(id,wire,owner)??null,()=>true);
+    daemon.setRequestContextLocalLifecycle(new RequestContextLocalTurns({...ports,registration}),()=>({incarnation:"fixture-incarnation",workGeneration}));
+  }
   const state = { pane: mode === "steer" ? BUSY : mode === "native" ? codexBusy : codexIdle, wire: "", epoch: 0, freeze: false };
   const tmux = {
     getWindowId: () => "@private", capturePane: vi.fn(async () => state.pane), getPaneInputMode: async () => "raw",
@@ -69,8 +79,7 @@ function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepte
   vi.spyOn(daemon, "waitForPaneReadyForDelivery").mockResolvedValue(mode === "idle");
   vi.spyOn(daemon, "hasPositiveDeliveryInput").mockResolvedValue(true);
   vi.spyOn(daemon, "markTurnStarted").mockImplementation(() => {});
-  const outbox = new DeliveryOutbox(join(root, "outbox.db"), "manager");
-  const fm: any = Object.assign(Object.create(FleetManager.prototype), {
+  fm = Object.assign(Object.create(FleetManager.prototype), {
     managerBootId: "manager", deliveryOutbox: outbox, logger: log, shuttingDown: false,
     deliveryEpochs: new Map(), lastDeliveryAt: new Map(), ipcWaitTails: new Map(),
     lifecycle: { daemons: new Map([["leader", daemon]]), epochOf: () => state.epoch, isPaused: () => false },
@@ -81,6 +90,13 @@ function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepte
       return true;
     }) }]]),
   });
+  if(scoped){
+    const adapter={id:"bot-one",type:"telegram"};
+    Object.assign(fm,{ensureDeliveryOutbox:()=>{},contactRoom:()=>null,contactGeneration:()=>"fixture-incarnation",contactAdapter:()=>adapter,contactAdminOf:()=>true,
+      adapters:new Map([["bot-one",adapter]]),worlds:new Map([["bot-one",{adapter,accessManager:{isAllowed:()=>true}}]]),fleetConfig:{instances:{leader:{}}},requestContextPolicy:{installedMode:()=>"active"}});
+    fm.requestContextHumanAdmission=fm.makeRequestContextHumanAdmission();
+    scopedResolver=fm.makeRequestContextHumanResolver("leader",daemon,()=>true);
+  }
   roots.push({ root, outbox, daemon });
   return { root, dir, outbox, fm, daemon, state, tmux };
 }
@@ -492,4 +508,14 @@ it.each([{mode:"idle" as const,compact:false,tag:"unique-id-pane"},{mode:"idle" 
   const page=h.outbox.queryStatusForInstance("leader",{messageId:receipt.message_id});expect(page.items[0]?.authority?.kind).toBe("none");
   const sent=h.fm.instanceIpcClients.get("leader").send.mock.calls.at(-1)[0];expect(sent.meta.from_instance).toBeUndefined();expect(sent.meta.human_receipt_id).toBe(receipt.receipt_id);
   expect(h.outbox.claimNext("manager",()=>h.daemon.bootId,new Set())).toBeUndefined();
+});
+
+it.each([false,true])("S-230 actual facade, final formatter and pane judge bind C before input compact=%s",async compact=>{
+ const h=harness("idle","accepted",true);h.daemon.compactInboundInstructions=compact;
+ const r=await deliver(h,person,"fleet_inbound","[user:Owner@web:v#operator] quoted text");
+ expect(r.row?.state).toBe("delivered");expect(r.row?.proof_tag).toBe("unique-id-pane");expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
+ const captured=h.outbox.requestContextHumans.read(r.row!.receipt_id)!,turn=h.daemon.requestContextTurnSnapshot();
+ expect(turn).toMatchObject({inputId:`human:${r.row!.message_id}`,wireSha256:r.row!.wire_sha256,context:captured.context});
+ expect(turn.context.initiatingActor).toEqual({kind:"person",platform:"telegram",userId:"42"});expect(turn.context.ingress).toBe("owner");
+ expect(h.daemon.requestContextTurnCurrent(turn)).toBe(true);expect(h.daemon.captureRequestContextOwner()).toEqual(turn.owner);
 });

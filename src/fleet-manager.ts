@@ -1,3 +1,4 @@
+import {makeRequestHumanInputResolver} from "./request-context-human-resolver.js";
 import type { RequestContextV1 } from "./request-context-protocol.js";
 import { markRetainedHumanControl, retainedHumanControl } from "./retained-human-control.js";
 import type { RequestContextLaunchIdle, RequestContextLaunchRetirement } from "./request-context-retirement.js";
@@ -9621,6 +9622,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         daemon.noteHumanReceiptSettlement?.(result.receipt_id, accepted === true && result.proof !== null);
       } catch (err) { this.logger.error({ err, instanceName }, "Could not persist human delivery evidence"); }
     });
+  }
+
+  /** Pre-start owner factory; this neither installs a lifecycle nor publishes serving input. */
+  makeRequestContextHumanResolver(instance:string,daemon:Daemon,current:()=>boolean){
+    const box=this.deliveryOutbox;if(!box)throw Error("Human request input owner is unavailable");
+    return makeRequestHumanInputResolver(box,{instance,managerBootId:this.managerBootId,
+      current:()=>current()&&this.daemons.get(instance)===daemon,
+      runtimeOwner:()=>daemon.captureRequestContextOwner(),humanOwner:()=>this.humanReceiptOwner(instance,daemon),active:()=>daemon.requestContextTurnSnapshot(),
+      admitted:context=>this.requestContextNativeAdmissionCurrent(context),
+      canManage:actor=>{
+        if(actor.kind!=="person"||actor.platform==="hub")return false;
+        const adapter=actor.platform==="host"?"host":this.contactAdapter(instance)?.id;if(!adapter)return false;
+        return this.contactAdminOf(instance,{platform:actor.platform,adapterId:adapter,userId:actor.userId,label:actor.userId});
+      }});
   }
 
   /** Assigned only by the complete installer at publication; candidate launch rendering cannot install this. */

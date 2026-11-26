@@ -2804,6 +2804,10 @@ export class Daemon extends EventEmitter {
     return lifecycle ? { ...lifecycle.identity(), instance: this.name, daemonBootId: this.bootId,
       spawnGeneration: this.spawnGeneration, launchFenceEpoch: this.launchFenceEpoch, deliveryEpoch: this.deliveryEpoch } : null;
   }
+  /** Trusted installer/resolver observation only; no turn token or authority is granted. */
+  captureRequestContextOwner():Readonly<RequestContextRuntimeOwner>|null {
+    const owner=this.requestContextOwner();return owner?Object.freeze(owner):null;
+  }
   requestContextTurnSnapshot(): RequestContextTurnSnapshot | null {
     const owner = this.requestContextOwner();
     return owner ? this.requestContextLifecycle!.turns.current(owner) : null;
