@@ -80,7 +80,7 @@ async function walk(c: any) {
     if (phone) {
       check(`${tag} 1: one line: the short words and Change only`, t.trim().startsWith(W(zh, "AgEnD updates when idle", "AgEnD 閒置時更新")) && g.titleLines === 1 && !g.clipped
         && JSON.stringify(g.drawn) === JSON.stringify([change]) && g.sub === 0, { t, g });
-      check(`${tag} 1: the banner is at most 64 px (was ${offered.h} px with the answer's buttons)`, g.h <= 64, g);
+      check(`${tag} 1: the banner is one 44 px button high plus its padding: at most 66 px (was ${offered.h} px offered)`, g.h <= 66, g);
       check(`${tag} 1: Change is a 44 px button`, g.taps.every((x) => x >= 44), g.taps);
       await shot(page, `${tag}-1-waiting`);
       await click(page, change);
@@ -112,7 +112,7 @@ async function walk(c: any) {
       check(`${tag} 2: one line again (a new state starts closed): the weekday and the 24-hour time, and Change`,
         /^AgEnD (\S+ \d\d:\d\d 更新|updates \S+ \d\d:\d\d)$/.test(t.split("\n")[0]!.trim()) && g.titleLines === 1 && !g.clipped && JSON.stringify(g.drawn) === JSON.stringify([change]), { t, g });
       check(`${tag} 2: no AM/PM`, !/AM|PM|上午|下午/.test(t), t);
-      check(`${tag} 2: the banner is at most 64 px`, g.h <= 64, g);
+      check(`${tag} 2: the banner is at most 66 px`, g.h <= 66, g);
       await shot(page, `${tag}-2-scheduled`);
       await click(page, change);
       g = await geom(page); t = await lineText(page);
