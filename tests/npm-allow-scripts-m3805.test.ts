@@ -11,7 +11,7 @@
 import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { applyUpdateAllowScripts, applyUpdateNpmBounds, dropUpdateNpmBounds, parseNpmConfigLs, scriptsIgnoredStop, updateScriptsIgnored, withoutUpdateNpmBounds } from "../src/update-npm-env.js";
@@ -42,6 +42,7 @@ describe("the shared helper", () => {
     expect(allow.flagFor("/tmp/x/songsid-agend-2.4.0.tgz")).toBe("--allow-scripts=/tmp/x/songsid-agend-2.4.0.tgz");
     expect(allow.flagFor("file:/tmp/pkg")).toBe("--allow-scripts=/tmp/pkg");
     expect(allow.flagFor("./songsid-agend-2.4.0.tgz")).toBe(`--allow-scripts=${join(process.cwd(), "songsid-agend-2.4.0.tgz")}`);
+    expect(allow.flagFor("~/dl/songsid-agend-2.4.0.tgz")).toBe(`--allow-scripts=${join(homedir(), "dl", "songsid-agend-2.4.0.tgz")}`);
   });
 
   it("reads both shapes of the list: comma text and the JSON list `npm config ls` prints", () => {
@@ -132,6 +133,16 @@ describe("the launcher names the cause and the command that works on npm 12", ()
     expect(r.stderr).toContain("To repair: npm install -g --allow-scripts=@songsid/agend @songsid/agend");
   });
 
+  it("Fable N3: a dangling receipt link is not 'absent' for the sh bin either: it agrees with the JS (the changed-runtime refusal)", () => {
+    const f = skippedInstall();
+    symlinkSync(join(f.root, "no-receipt"), join(f.pkg, ".agend-runtime.json"));
+    expect(choose(f).reason).toContain("missing, incomplete or changed since it was verified");
+    const r = spawnSync(join(f.launcherDir, "agend"), ["--version"], { encoding: "utf8", timeout: 30_000, env: { ...process.env, PATH: toolsOnly(), AGEND_NODE: "" } });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("is missing, incomplete or changed since it was verified, and there is no node on PATH");
+    expect(r.stderr).not.toContain("install step did not run");
+  });
+
   it("every repair line the launcher, postinstall and preinstall print allows the scripts", () => {
     for (const file of ["launcher/runtime-select.cjs", "launcher/postinstall.cjs", "launcher/agend", "launcher/agend-agent", "scripts/preinstall-guard.cjs", "launcher/agend-install.cjs"]) {
       const text = readFileSync(join(REPO, file), "utf8").split("\n").filter(l => !/^\s*(?:\/\/|\*|#)/.test(l)).join("\n");
@@ -211,7 +222,9 @@ describe("install.sh: the installer step allows AgEnD's scripts on npm 12", () =
     const d = scratch("agend-m3805-sh-");
     symlinkSync(process.execPath, join(d, "node"));
     writeFileSync(join(d, "npm"), `#!/bin/sh
-echo "npm $* | allow=\${npm_config_allow_scripts-<unset>} | mark=\${AGEND_UPDATE_NPM_BOUNDS-<unset>}" >> '${join(d, "npm.log")}'
+echo "npm $* | allow=\${npm_config_allow_scripts-<unset>} | ALLOW=\${NPM_CONFIG_ALLOW_SCRIPTS-<unset>} | mark=\${AGEND_UPDATE_NPM_BOUNDS-<unset>}" >> '${join(d, "npm.log")}'
+# As npm answers: the person's variable (either case) wins over their .npmrc ($NPMRC_ALLOW here); unset prints nothing.
+[ "$1 $2 $3" = "config get allow-scripts" ] && { echo "\${npm_config_allow_scripts:-\${NPM_CONFIG_ALLOW_SCRIPTS:-\${NPMRC_ALLOW:-}}}"; exit 0; }
 case "$1" in
   view) ${withInstaller ? `echo '{"agend":"launcher/agend","agend-install":"launcher/agend-install.cjs"}'` : `echo '{"agend":"launcher/agend"}'`} ;;
   exec|install) exit 0 ;;
@@ -230,15 +243,26 @@ esac
     const h = host(true);
     const r = h.run();
     expect(r.status, r.stdout + r.stderr).toBe(0);
-    expect(h.log().find(l => l.startsWith("npm exec"))).toBe("npm exec --yes --package @songsid/agend@beta -- agend-install | allow=@songsid/agend | mark=allow-scripts");
+    expect(h.log().find(l => l.startsWith("npm exec"))).toBe("npm exec --yes --package @songsid/agend@beta -- agend-install | allow=@songsid/agend | ALLOW=<unset> | mark=allow-scripts");
     expect(h.log().find(l => l.startsWith("npm view"))).toContain("allow=<unset>");                // only the install step gets it
   });
 
-  it("a person's own allow list is kept and AgEnD added; it is not marked, so it is never dropped", () => {
+  it("a person's own variable is kept and AgEnD added; it is not marked, so it is never dropped", () => {
     const h = host(true);
     expect(h.run({ npm_config_allow_scripts: "canvas" }).status).toBe(0);
-    expect(h.log().find(l => l.startsWith("npm exec"))).toContain("| allow=canvas,@songsid/agend | mark=");
-    expect(h.log().find(l => l.startsWith("npm exec"))).not.toContain("mark=allow-scripts");
+    expect(h.log().find(l => l.startsWith("npm exec"))).toMatch(/\| allow=canvas,@songsid\/agend \| ALLOW=<unset> \| mark=$/);
+  });
+
+  it("Fable N1: what .npmrc allows is carried too (the variable is a superset, never a replacement), and marked as ours", () => {
+    const h = host(true);
+    expect(h.run({ NPMRC_ALLOW: "canvas,sharp" }).status).toBe(0);
+    expect(h.log().find(l => l.startsWith("npm exec"))).toMatch(/\| allow=canvas,sharp,@songsid\/agend \| ALLOW=<unset> \| mark=allow-scripts$/);
+  });
+
+  it("Fable N2: a person's uppercase variable gets the same value, so npm reads one list whichever it picks", () => {
+    const h = host(true);
+    expect(h.run({ NPM_CONFIG_ALLOW_SCRIPTS: "canvas" }).status).toBe(0);
+    expect(h.log().find(l => l.startsWith("npm exec"))).toMatch(/\| allow=canvas,@songsid\/agend \| ALLOW=canvas,@songsid\/agend \| mark=$/);
   });
 
   it("a release from before the installer: its plain npm install -g passes the flag", () => {

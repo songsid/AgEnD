@@ -18,7 +18,8 @@ var ENV = "npm_config_allow_scripts";
 function flagFor(spec) {
   var s = String(spec || "");
   if (/^file:/.test(s) || /^[.~\/]/.test(s) || /\.(?:tgz|tar\.gz|tar)$/.test(s)) {
-    return "--allow-scripts=" + require("path").resolve(s.replace(/^file:/, ""));
+    var file = s.replace(/^file:/, "").replace(/^~(?=\/|$)/, function () { return require("os").homedir(); });   // a quoted ~ the shell left
+    return "--allow-scripts=" + require("path").resolve(file);
   }
   return FLAG;
 }

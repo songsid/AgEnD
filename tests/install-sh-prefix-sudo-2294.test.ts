@@ -86,7 +86,7 @@ describe("#2294 install.sh: a missing npm prefix is not a reason to use sudo", (
     expect(step).toMatch(/NPM_PREFIX=\$\(npm config get prefix/);
     expect(readFileSync(join(REPO, "website", "public", "install.sh"), "utf8")).toBe(script);
     // Compatibility: published latest (2.2.6) and beta still go through $SUDO npm.
-    expect(script).toMatch(/\$SUDO env "npm_config_allow_scripts=\$allow_scripts" "AGEND_UPDATE_NPM_BOUNDS=\$allow_mark" npm exec --yes --package "\$AGEND_SPEC" -- agend-install/);   // M-3805
+    expect(script).toMatch(/\$SUDO env "\$\{allow_env\[@\]\}" "AGEND_UPDATE_NPM_BOUNDS=\$allow_mark" npm exec --yes --package "\$AGEND_SPEC" -- agend-install/);   // M-3805
     expect(script).toMatch(/\$SUDO npm install -g "\$AGEND_SPEC"/);
   });
 

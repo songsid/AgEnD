@@ -104,7 +104,7 @@ fi
 if command -v node >/dev/null 2>&1; then
   exec node "$launcher" "$@"
 fi
-if [ -e "$node" ] && [ ! -e "$receipt" ] && [ ! -e "$pkg/.agend-runtime.key" ]; then
+if [ -e "$node" ] && [ ! -e "$receipt" ] && [ ! -L "$receipt" ] && [ ! -e "$pkg/.agend-runtime.key" ] && [ ! -L "$pkg/.agend-runtime.key" ]; then   # absent as the JS reads it (lstat)
   refuse "its install step did not run, so its bundled Node was never verified (npm 12 skips install scripts unless they are allowed), and there is no node on PATH" "$repair"
 fi
 if [ -e "$receipt" ] || [ -e "$node" ] || [ -L "$node" ]; then
