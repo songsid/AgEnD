@@ -1,0 +1,185 @@
+{
+  "sourceHead": "e610d031564888959639a81114244287e9de29e6",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en 1: not a service: the line, How to fix, and one button, Install as a service",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: asks first: the title, what happens to every Agent, and after",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: Restart as a service and Cancel",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: nothing sent yet",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: Cancel sends nothing and runs nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: one POST, with the page's confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: says why, and that AgEnD keeps running, in full",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the line stays, and the button can be pressed again",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: says AgEnD is restarting, in full; the button says Restarting… and can't be pressed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5b: back: says so, in full; the line is ✓ and its button gone",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5b: the restarting toast is gone",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: not a service: the line, How to fix, and one button, Install as a service",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the button is 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: asks first: the title, what happens to every Agent, and after",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: Restart as a service and Cancel",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: nothing sent yet",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「短暫停止」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「自動回來」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「重新啟動」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: a bottom sheet with 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: Cancel sends nothing and runs nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: one POST, with the page's confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: says why, and that AgEnD keeps running, in full",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the line stays, and the button can be pressed again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: says AgEnD is restarting, in full; the button says Restarting… and can't be pressed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5b: back: says so, in full; the line is ✓ and its button gone",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5b: the restarting toast is gone",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "nothing was installed: no launch reached",
+      "ok": true
+    },
+    {
+      "name": "the look again after the hand-over was answered locally (no registry)",
+      "ok": true
+    },
+    {
+      "name": "the command ran only once confirmed: refused, then the hand-over, per case",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "s246-desk-light-en-1-not-service.png",
+      "sha256": "4ea5a55bccf2e98c0f5b7cc6427c2b2e7d8c51245d71e4c8851c9fd9ba3c6440"
+    },
+    {
+      "path": "s246-desk-light-en-2-confirm.png",
+      "sha256": "7dc4243a4908487edb4e9c0fb39f1b298f1797642439e4f2148c1d1683a42693"
+    },
+    {
+      "path": "s246-desk-light-en-4-refused.png",
+      "sha256": "61766b0211d29a749e101a089ff3648889f86bc67be3127569f4b4129f2fef47"
+    },
+    {
+      "path": "s246-desk-light-en-5-restarting.png",
+      "sha256": "2a4a3738905c9b26e2501f3227b970d8c18392b178d68da5b94b847c866306bb"
+    },
+    {
+      "path": "s246-desk-light-en-5b-back.png",
+      "sha256": "c57192827f2d083c27bbbb0fd25920a98fd8b6ca7cdf2bf8ecb429c8242567a8"
+    },
+    {
+      "path": "s246-phone-dark-zh-TW-1-not-service.png",
+      "sha256": "05312b1c6f848845074d3be93670ce97da72f0e6601309a8e0e1d45fa65809cd"
+    },
+    {
+      "path": "s246-phone-dark-zh-TW-2-confirm.png",
+      "sha256": "62186185a973fad2320c6f0e082c13bbd3a7172d3e87e029af6528967f16f06a"
+    },
+    {
+      "path": "s246-phone-dark-zh-TW-4-refused.png",
+      "sha256": "772430566138d026436bd3e42f47cfe669e37cbb961912fc553390a942a6cc94"
+    },
+    {
+      "path": "s246-phone-dark-zh-TW-5-restarting.png",
+      "sha256": "b6a9d21b4c01baf4d421d226d86cbe6f405f53fdb06e67e31daeaaf6d90f7c7f"
+    },
+    {
+      "path": "s246-phone-dark-zh-TW-5b-back.png",
+      "sha256": "b83963aca524b0c4331341856fdfa262cf6542e98094526b2e518183790e6c11"
+    }
+  ],
+  "summary": "34/34"
+}
