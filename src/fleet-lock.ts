@@ -246,6 +246,11 @@ export function setProcessFleetLock(handle: FleetLockHandle): void {
   processFleetLock = handle;
 }
 
+/** This process's own fleet.lock record (its nonce names its generation in an update attempt), if it holds one. */
+export function processFleetLockRecord(): Readonly<FleetLockRecord> | null {
+  return processFleetLock?.record ?? null;
+}
+
 export function releaseProcessFleetLock(): boolean {
   const handle = processFleetLock;
   const released = releaseFleetLock(handle);

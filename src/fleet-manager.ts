@@ -391,7 +391,11 @@ import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { QuiescenceBarrier, stripHumanReceipt, UPDATE_HANDBACK_COPY_KIND, UPDATE_HANDBACK_SOURCE, handbackDue, turnSource,
-  type HandbackPorts, type QuiescenceGate } from "./update-quiescence.js";
+  type BarrierAgent, type BarrierSnapshot, type HandbackPorts, type QuiescenceGate } from "./update-quiescence.js";
+import { serveControl, type ControlResult } from "./update-control.js";
+import { serviceLockSenderLive } from "./service-lock.js";
+import { processFleetLockRecord } from "./fleet-lock.js";
+import { createRequire as createRequireForUpdate } from "node:module";
 import { readCurrent as readUpdateJournal, type AttemptRecord as UpdateAttemptRecord } from "./update-journal.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateAnswerLabel, updateOfferReply, type UpdateCardView } from "./update-card.js";
@@ -1380,6 +1384,127 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.updateHandbackTimer = setTimeout(again, 10_000); this.updateHandbackTimer.unref?.();
     };
     this.updateHandbackTimer = setTimeout(again, 10_000); this.updateHandbackTimer.unref?.();
+  }
+
+  // ── M-3770 wiring part 2 (design update-wiring-m3770.md §4, §10.2): the control mailbox and the barrier ──────────
+  private updateControlTimer: NodeJS.Timeout | null = null;
+  private updateBarrier: { attemptId: string; barrier: QuiescenceBarrier } | null = null;
+  private updateHandbackWalkedAt = -Infinity;
+
+  /** While an update attempt is open, this fleet answers its mailbox every 250 ms; otherwise it reads only `current`. */
+  private startUpdateControl(): void {
+    if (this.updateControlTimer) return;
+    this.updateControlTimer = setInterval(() => this.updateControlTick(), 250);
+    this.updateControlTimer.unref?.();
+  }
+
+  /** This fleet as a generation: its fleet.lock nonce and pid (null: it holds no lock). */
+  private updateControlSelf(): { nonce: string; pid: number } | null {
+    const rec = processFleetLockRecord();
+    return rec ? { nonce: rec.nonce, pid: process.pid } : null;
+  }
+
+  /** Rule 2: the request's sender is the update's live service-lock holder (its updater or recorded runner). */
+  private updateSenderLive(sender: { pid: number; token: string }): boolean {
+    return serviceLockSenderLive(this.dataDir, sender, { ...this.updateLiveness() });
+  }
+
+  private updateLiveness(): { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null } {
+    return createRequireForUpdate(import.meta.url)("../launcher/install-admission.cjs");
+  }
+
+  /**
+   * S-230's request-context mode for the barrier (gate (b): never hold a turn while On). Request-context isn't on this
+   * line yet (#4519), so nothing can be On; #4519's wiring replaces this with its installation state (S-261's gate).
+   */
+  private updateRequestContextOn(): boolean { return false; }
+
+  private updateControlTick(): void {
+    if (this.shuttingDown) return;
+    let read: ReturnType<typeof readUpdateJournal>;
+    try { read = readUpdateJournal(this.dataDir); } catch { return; }
+    if (read.state !== "open") {
+      // The attempt ended (abandoned, a busy close, any terminal): a barrier it armed comes down.
+      if (this.updateBarrier) this.setUpdateBarrier(null);
+      return;
+    }
+    if (this.updateBarrier && this.updateBarrier.attemptId !== read.attempt.id) this.setUpdateBarrier(null);
+    const self = this.updateControlSelf();
+    if (!self) return;
+    try {
+      serveControl(this.dataDir, {
+        self,
+        senderLive: sender => this.updateSenderLive(sender),
+        handlers: {
+          "status": (_req, attempt) => ({ status: "ok", value: { pid: self.pid, nonce: self.nonce, stage: attempt.stage } }),
+          "barrier.arm": (_req, attempt) => this.armUpdateBarrier(attempt),
+        },
+      });
+    } catch (err) {
+      this.logger.warn({ err, attemptId: read.attempt.id }, "Update control mailbox pass failed; the next pass retries");
+    }
+    // An old fleet an abandon never stopped (the barrier said busy, or an early failure) takes its held work back here;
+    // a restarted one does it at its start (startUpdateHandback). Walked at most every 10 s.
+    if (handbackDue(read.attempt, self) && performance.now() - this.updateHandbackWalkedAt >= 10_000) {
+      this.updateHandbackWalkedAt = performance.now();
+      this.walkUpdateHandback(read.attempt, self);
+    }
+  }
+
+  /** The barrier on every gate the fleet has: pane writes, the outbox, the scheduler and the task board. */
+  private setUpdateBarrier(next: { attemptId: string; barrier: QuiescenceBarrier } | null): void {
+    this.updateBarrier = next;
+    const gate = next?.barrier ?? null;
+    this.attachQuiescence(gate);
+    this.deliveryOutbox?.setQuiescence(gate);
+    this.scheduler?.setQuiescence(gate);
+    this.scheduler?.db.board.setQuiescence(gate);
+  }
+
+  /**
+   * `barrier.arm` (2.2, §2.3): attach a barrier bound to the attempt, fence and check again with no await. Held: it stays
+   * up until the attempt ends. Busy or refused: it comes down at once (the updater abandons). Idempotent for the same
+   * attempt. Never held while request-context is On (gate (b)).
+   */
+  private armUpdateBarrier(attempt: UpdateAttemptRecord): ControlResult {
+    if (this.updateBarrier?.attemptId === attempt.id && this.updateBarrier.barrier.armed()) return { status: "ok", value: "held" };
+    if (this.updateRequestContextOn()) return { status: "ok", value: "refused" };
+    const barrier = new QuiescenceBarrier(this.dataDir);
+    barrier.bind(attempt);
+    this.setUpdateBarrier({ attemptId: attempt.id, barrier });
+    const result = barrier.secondCheck(this.updateBarrierSnapshot());
+    if (result !== "held") this.setUpdateBarrier(null);
+    return { status: "ok", value: result };
+  }
+
+  /** §2.2's idle snapshot, from the same state `hubUpdateIdle` reads. */
+  private updateBarrierSnapshot(): BarrierSnapshot {
+    const updates = resolveUpdates(this.fleetConfig?.updates);
+    const agents: BarrierAgent[] = Object.keys(this.fleetConfig?.instances ?? {}).map(name => {
+      const worker = this.queueWorkers.get(name);
+      return {
+        process: this.getInstanceStatus(name),
+        daemonProcess: this.daemons.get(name)?.getProcessStatus?.(),
+        execution: this.getInstanceExecutionState(name) ?? "unknown",
+        phase: this.getInstanceInteraction(name)?.phase,
+        workerBusy: worker?.busy === true, workerInFlight: !!worker?.inFlight,
+        restartInFlight: this.restartsInFlight.has(name), stopInFlight: this.stopsInFlight.has(name),
+        handOffInFlight: this.handOffsInFlight.has(name),
+        ipcConnectInFlight: this.ipcConnectInFlight.has(name) || this.ipcReconnectInFlight.has(name),
+        pendingIdleGated: this.hasPendingIdleGatedDelivery(name), webEchoTail: this.webChannelEchoTails.has(name),
+      };
+    });
+    return {
+      pin: !!updates.pin, inPause: inUpdatePause(updates.pause, new Date()),
+      startupComplete: this.startupComplete, shuttingDown: this.shuttingDown,
+      reconcileInFlight: !!this.reconcileInFlight || !!this.topicCleanupInFlight,
+      // The update that sent this request holds the home and service locks; no other can be claiming the machine.
+      anotherClaim: false,
+      scheduleInRun: this.scheduler?.scheduleInRun() ?? false,
+      outboxInFlight: this.deliveryPumpRunning || this.activeDurableTargets.size > 0,
+      agents,
+      pending: (this.deliveryOutbox?.listPending() ?? []).map(d => ({ deliveryId: d.deliveryId, createdSeq: d.createdSeq })),
+    };
   }
 
   private walkUpdateHandback(attempt: UpdateAttemptRecord, own: { nonce: string; pid: number }): void {
@@ -13564,6 +13689,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // M-3770 §2.6: a fleet an abandon restarted takes the held work back before any ingress opens (rev 15).
     await this.startUpdateHandback();
+    // M-3770 wiring part 2: the update's control mailbox (read only while an attempt is open).
+    this.startUpdateControl();
 
     // Phase 1: Start general instances first and wait for them
     // M-2457: a held fleet starts no agent (the hold's Needs-you line says why and what to do).
