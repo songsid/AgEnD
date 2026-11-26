@@ -4,7 +4,7 @@
  * recover.cjs: no snapshot, install or SQLite code, node built-ins only.
  */
 import { existsSync } from "node:fs";
-import { acquireFleetLock, readFleetLockRecord, releaseFleetLock, setFleetLockHandoff, type FleetLockHandle } from "./fleet-lock.js";
+import { createUpdateFence, readFleetLockRecord, releaseFleetLock, setFleetLockHandoff, type FleetLockHandle } from "./fleet-lock.js";
 import { identityOf } from "./install-ownership.js";
 import { ackGeneration, advance, defaultJournalIo, finish, substep, type AttemptRecord, type FleetGeneration, type JournalIo } from "./update-journal.js";
 import { removeRecoveryRoute, unitPreimagePath } from "./update-recovery/route.js";
@@ -78,10 +78,10 @@ export function abandonAttempt(home: string, attempt: AttemptRecord, d: AbandonD
         if (d.isProcessAlive(last.pid)) return fail(`the old fleet (pid ${last.pid}) runs without holding fleet.lock`);
         a = ackGeneration(home, a, last.nonce, last.pid, { dead: true }, io);
       }
-      let own: FleetLockHandle;
-      try { own = acquireFleetLock(home, { pid: d.self.pid, role: "update", attemptId: a.id, isProcessAlive: d.isProcessAlive }); }
-      catch (err) { return fail(`fleet.lock can't be taken as this attempt's fence (${(err as Error).message})`, false); }
-      const started = startGeneration(home, a, "old", own, d);
+      // createUpdateFence, not acquireFleetLock: this runs inside recover.cjs (Fable #4536 F3).
+      const created = createUpdateFence(home, { pid: d.self.pid, attemptId: a.id });
+      if (!created.ok) return fail(`fleet.lock can't be taken as this attempt's fence (${created.reason})`, false);
+      const started = startGeneration(home, a, "old", created.handle, d);
       a = started.attempt;
       if (!started.ok) return fail(`the old fleet didn't restart: ${started.reason}`, started.manual);
     }
