@@ -9591,7 +9591,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       origin: { ...origin }, inputKind: String(payload.type), managerBootId: this.managerBootId });
     const contactStore = this.deliveryOutbox.contactAuthorizations;
     if (this.contactRoom(instanceName)?.restrictedMode === true && !contactStore) throw Error("Contact origin storage unavailable");
-    if (contactStore && (this.contactRoom(instanceName)?.restrictedMode === true || contactStore.origin(instanceName))) {
+    // M-3830 (user 11-26, Fable): a person's message becomes contact origin only in a restricted ClassicBot room. Who may
+    // talk to a fleet agent in its own topic is the admin's channel access (#754); recording it only once some earlier
+    // inheritance had created a row made a cleared agent re-arm on its next topic message (a project lead, 11-26). What an
+    // agent inherits from peers, rooms, new instances and board notes still carries its origin.
+    if (contactStore && this.contactRoom(instanceName)?.restrictedMode === true) {
       const authority = origin.authority;
       const identity = origin.platform === "web" && isWebSessionIdentity(origin.web_identity) ? origin.web_identity : undefined;
       const actor = origin.platform === "web" ? identity ?? (authority?.kind === "web-verified" ? authority.actor : null)

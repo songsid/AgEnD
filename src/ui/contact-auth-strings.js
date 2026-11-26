@@ -78,6 +78,8 @@ register("contactAuth", {
     originClearWho: "Only this agent's managing admins ({0}) or the verified host operator can clear it.", originClearWhoHost: "Only the verified host operator can clear it.", originNameSep: ", ",
     originRetainedNote: "Origins stay with this agent, including work inherited from other agents. Only a managing administrator can explicitly clear them; idle, compaction and later admin messages do not.",
     originClearConfirm: "Clear this agent's retained origin? You accept its current conversation as your own work. Earlier text is not erased. New non-admin requests will require approval again. Other agents, existing tickets and grants are unchanged.",
+    // M-3830: a fleet agent's own topic is not recorded, so only work it later inherits restricts it again.
+    originClearConfirmAgent: "Clear this agent's retained origin? You accept its current conversation as your own work. Earlier text is not erased. Work it later receives from a restricted room or an agent that needs approval will need approval again. Other agents, existing tickets and grants are unchanged.",
     // History
     historyTitle: "History", historyNone: "Nothing yet.",
     "action_origin-clear": "Retained origin cleared",
@@ -205,6 +207,7 @@ register("contactAuth", {
     originClearWho: "只有管理這個 Agent 的管理員（{0}）或已驗證的主機操作者能清除。", originClearWhoHost: "只有已驗證的主機操作者能清除。", originNameSep: "、",
     originRetainedNote: "來源會跟著這個 Agent 保留，包含從其他 Agent 接手的工作。只有具管理權限的管理員能明確清除；閒置、壓縮對話或後來的管理員訊息都不會清除。",
     originClearConfirm: "清除此 Agent 保留的來源？這表示你接受目前對話作為自己的工作，先前文字不會刪除。新的非管理員請求仍會再次需要核准。其他 Agent、既有申請與授權都不變。",
+    originClearConfirmAgent: "清除此 Agent 保留的來源？這表示你接受目前對話作為自己的工作，先前文字不會刪除。之後從受限房間或需要核准的 Agent 接手的工作，仍會再次需要核准。其他 Agent、既有申請與授權都不變。",
     "action_origin-clear": "已清除保留的來源",
     historyTitle: "紀錄", historyNone: "目前沒有紀錄。",
     action_policy: "設定已變更", action_approve: "已核准", action_decline: "已拒絕", "action_grant-add": "已加入常用轉交", "action_grant-remove": "已移除常用轉交",
