@@ -249,6 +249,8 @@ export function closeUnusedAttempt(home: string, attempt: AttemptRecord, io: Jou
 
 export class QuiescenceBarrier implements QuiescenceGate {
   private flag = false;
+  /** Armed by `armTrial`: the trial fleet's hold. */
+  private trial = false;
   private seq = 0;
   private seen = new Set<string>();
   /** Deferred occurrences already on this attempt, so a re-offered run is not written twice. */
@@ -307,8 +309,23 @@ export class QuiescenceBarrier implements QuiescenceGate {
     }
   }
 
+  /**
+   * Trial mode (wiring part 3; design update-wiring-m3770.md §5, §10.4): the trial fleet holds from its start, before any
+   * ingress opens, with no second check — it runs no agents. It continues the attempt's ONE inbox sequence after the old
+   * fleet's last file, so a commit walks the old fleet's held items first, then the trial's. Only non-durable ingress is
+   * journaled (adapter and web turns, as copies; occurrences, as deferred); durable outbox rows just stay queued.
+   */
+  armTrial(attempt: AttemptRecord): void {
+    if (attempt.stage !== "trial" && attempt.stage !== "proving") throw new Error(`a trial holds in trial or proving, not ${attempt.stage}`);
+    if (this.flag) throw new Error("the fence is already up");
+    this.bind(attempt);
+    this.trial = true;
+    this.flag = true;
+  }
+
   holdOutboxClaim(deliveryId: string, createdSeq: number): boolean {
     if (!this.flag) return false;
+    if (this.trial) return true;                                     // stays queued; it is in the outbox already
     this.rememberReference(deliveryId, createdSeq);
     return true;
   }
@@ -328,7 +345,7 @@ export class QuiescenceBarrier implements QuiescenceGate {
   holdTaskClaim(): boolean { return this.flag; }
 
   noteAdmission(deliveryId: string, createdSeq: number): void {
-    if (!this.flag) return;
+    if (!this.flag || this.trial) return;
     this.rememberReference(deliveryId, createdSeq);
   }
 

@@ -392,7 +392,7 @@ import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoo
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { QuiescenceBarrier, stripHumanReceipt, UPDATE_HANDBACK_COPY_KIND, UPDATE_HANDBACK_SOURCE, handbackDue, turnSource,
   type BarrierAgent, type BarrierSnapshot, type HandbackPorts, type QuiescenceGate } from "./update-quiescence.js";
-import { serveControl, type ControlResult } from "./update-control.js";
+import { serveControl, type ControlResult, type TrialProof } from "./update-control.js";
 import { serviceLockSenderLive } from "./service-lock.js";
 import { processFleetLockRecord } from "./fleet-lock.js";
 import { createRequire as createRequireForUpdate } from "node:module";
@@ -1386,6 +1386,65 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.updateHandbackTimer = setTimeout(again, 10_000); this.updateHandbackTimer.unref?.();
   }
 
+  // ── M-3770 wiring part 3 (design update-wiring-m3770.md §5, §10.3–§10.6): trial mode and its proof ────────────────
+  /** Set at the start when this fleet is the open attempt's `trial` generation: no agents, the hold armed, its proof answered. */
+  private updateTrial: { attemptId: string; nonce: string; detail: string } | null = null;
+
+  /**
+   * Trial mode is chosen by the journal, not a flag: this start's handoff nonce names the open attempt's planned `trial`
+   * generation (not voided), and the attempt is in trial or proving. Anything else starts as it would have: the takeover
+   * already refused a revoked nonce, and an `old` generation is the hand-back's.
+   */
+  private detectUpdateTrial(nonce = process.env.AGEND_UPDATE_HANDOFF ?? ""): { attemptId: string; nonce: string; detail: string } | null {
+    if (!/^[0-9a-f]{32}$/.test(nonce)) return null;
+    let read: ReturnType<typeof readUpdateJournal>;
+    try { read = readUpdateJournal(this.dataDir); } catch { return null; }
+    if (read.state !== "open" || (read.attempt.stage !== "trial" && read.attempt.stage !== "proving")) return null;
+    const gens = (read.attempt.fleets as { gen: string; nonce: string; dead?: boolean }[] | undefined) ?? [];
+    if (!gens.some(g => g.gen === "trial" && g.nonce === nonce && !g.dead)) return null;
+    return { attemptId: read.attempt.id, nonce, detail: "Updating: checking the new version" };
+  }
+
+  /** What holds this start's agents back: a tmux server AgEnD can't prove its own, or an update's trial. */
+  private startHold(): { detail: string } | null { return this.tmuxHold ?? this.updateTrial; }
+
+  /** The trial holds from its start, before the web chat, the adapters or the pump open any ingress (§10.4). */
+  private armUpdateTrial(): void {
+    if (!this.updateTrial) return;
+    const read = readUpdateJournal(this.dataDir);
+    if (read.state !== "open" || read.attempt.id !== this.updateTrial.attemptId) {
+      // Still a trial (no agents, nothing in tmux) but without its hold: its proof fails, and the updater stops it.
+      this.logger.error({ attemptId: this.updateTrial.attemptId }, "Update trial: the attempt is no longer open; this fleet stays held and isn't proven");
+      return;
+    }
+    const barrier = new QuiescenceBarrier(this.dataDir);
+    barrier.armTrial(read.attempt);
+    this.setUpdateBarrier({ attemptId: read.attempt.id, barrier });
+    this.logger.info({ attemptId: read.attempt.id }, "Update trial: this fleet starts no agents and holds its ingress until the update commits or rolls back");
+  }
+
+  /**
+   * `trial.prove` (§5, §10.6): the outbox, the scheduler, the web listener and the fleet's own startup, from this
+   * generation — the attempt's trial nonce and its acknowledged pid. Adapters are informational: a chat outage never
+   * rolls back a healthy version.
+   */
+  private proveUpdateTrial(attempt: UpdateAttemptRecord, self: { nonce: string; pid: number }): ControlResult {
+    const gen = ((attempt.fleets as { gen: string; nonce: string; pid?: number; dead?: boolean }[] | undefined) ?? [])
+      .find(g => g.gen === "trial" && g.nonce === self.nonce && !g.dead);
+    if (!gen || this.updateTrial?.attemptId !== attempt.id || this.updateTrial.nonce !== self.nonce) return { status: "refused", why: "this fleet isn't the attempt's trial" };
+    if (gen.pid !== self.pid) return { status: "refused", why: `the trial was acknowledged as pid ${gen.pid ?? "none"}, not ${self.pid}` };
+    const problems: string[] = [];
+    if (!this.deliveryOutbox) problems.push("the delivery outbox isn't open");
+    if (daemonTopicMode(this.fleetConfig) && !this.scheduler) problems.push("the scheduler isn't running");
+    if (!this.healthServerListening) problems.push("the web listener isn't listening");
+    if (!this.startupComplete) problems.push("startup has not completed");
+    if (this.updateBarrier?.attemptId !== attempt.id || !this.updateBarrier.barrier.armed()) problems.push("the trial's hold isn't up");
+    const health = this.getFleetHealth();
+    const proof: TrialProof = { nonce: self.nonce, pid: self.pid, healthy: problems.length === 0, problems,
+      adapters: { total: health.adapters.total, connected: health.adapters.connected } };
+    return { status: "ok", value: proof };
+  }
+
   // ── M-3770 wiring part 2 (design update-wiring-m3770.md §4, §10.2): the control mailbox and the barrier ──────────
   private updateControlTimer: NodeJS.Timeout | null = null;
   private updateBarrier: { attemptId: string; barrier: QuiescenceBarrier } | null = null;
@@ -1443,6 +1502,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         handlers: {
           "status": (_req, attempt) => ({ status: "ok", value: { pid: self.pid, nonce: self.nonce, stage: attempt.stage } }),
           "barrier.arm": (_req, attempt) => this.armUpdateBarrier(attempt),
+          "trial.prove": (_req, attempt) => this.proveUpdateTrial(attempt, self),
         },
       });
     } catch (err) {
@@ -10651,7 +10711,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     kiroMigration?: symbol,
   ): Promise<void> {
     // M-2457 §6: no agent starts on a held tmux server (an old one AgEnD could not prove its own may still run it).
-    if (this.tmuxHold) throw new Error(this.tmuxHold.detail);
+    const held = this.startHold();
+    if (held) throw new Error(held.detail);
     if (isNativeExecInstance(config)) {
       execution?.assert();
       if (!windowsCliEnabled()) throw new Error("Windows runtime is disabled");
@@ -13382,7 +13443,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) { this.logger.warn({ err }, "Could not move 2.3 tmux window ids to the migration journal; each instance does it as it starts"); }
     // M-2457 §6 rule 2: a server from another pin still on the socket is ended by its own recorded
     // client, positively, before ours starts; one AgEnD cannot prove its own holds the whole fleet (nothing is killed).
-    const bundled = await (async () => {
+    // M-3770 wiring part 3: an update's trial runs no agents, so it leaves tmux alone — the server, the session and
+    // every window — until the commit leaves the trial.
+    this.updateTrial = this.detectUpdateTrial();
+    const bundled = this.updateTrial ? null : await (async () => {
       const srv = await import("./tmux-server.js");
       const binary = resolveTmux().binary;
       return { srv, socket: tmuxSocket(), current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
@@ -13392,9 +13456,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // 2.3 fleet leaves no window ids (no migration journal), so this, not the journal, is the evidence. Read before any
     // agent of this start writes its own.
     // Persisted before this start records server.json (see ownTmuxStartDecision).
-    this.ownTmuxUpgradedHome = FleetManager.ownTmuxStartDecision(getAgendHome(), bundled.previous, this.logger);
+    if (bundled) this.ownTmuxUpgradedHome = FleetManager.ownTmuxStartDecision(getAgendHome(), bundled.previous, this.logger);
     this.tmuxHold = null;
-    TmuxManager.setHold(null);
+    TmuxManager.setHold(this.updateTrial?.detail ?? null);   // a trial's sign-in windows and daemons are refused too
     if (bundled) {
       const reason = await bundled.srv.reconcileServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current,
         log: (msg, data) => this.logger.info(data ?? {}, msg) });
@@ -13405,7 +13469,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
 
-    if (!this.tmuxHold) {
+    if (!this.startHold()) {
       await TmuxManager.ensureSession(getTmuxSession());
       this.tmuxSessionEnsured = true;
       if (bundled) {
@@ -13439,7 +13503,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     );
 
     // Start tmux control mode client for idle detection
-    if (!this.controlClient && !this.tmuxHold) {
+    if (!this.controlClient && !this.startHold()) {
       this.controlClient = new TmuxControlClient(getTmuxSession(), 2000, this.logger);
       this.controlClient.start();
     }
@@ -13453,7 +13517,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // windows from deleted instances that are no longer in fleet.yaml.
     const agendNames = new Set(Object.keys(fleet.instances));
     agendNames.add("general");
-    if (!this.tmuxHold) try {
+    if (!this.startHold()) try {
       const existingWindows = await TmuxManager.listWindows(getTmuxSession());
       for (const w of existingWindows) {
         // Kill known instance windows (will be recreated)
@@ -13707,14 +13771,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await this.startUpdateHandback();
     // M-3770 wiring part 2: the update's control mailbox (read only while an attempt is open).
     this.startUpdateControl();
+    // M-3770 wiring part 3: a trial holds from here, before the web listener, the adapters or any agent.
+    this.armUpdateTrial();
 
     // Phase 1: Start general instances first and wait for them
     // M-2457: a held fleet starts no agent (the hold's Needs-you line says why and what to do).
-    const allEntries = this.tmuxHold ? [] : Object.entries(fleet.instances).filter(([,config])=>!isNativeExecInstance(config));
+    const allEntries = this.startHold() ? [] : Object.entries(fleet.instances).filter(([,config])=>!isNativeExecInstance(config));
     const generals = allEntries.filter(([_, cfg]) => cfg.general_topic);
     const others = allEntries.filter(([_, cfg]) => !cfg.general_topic);
     const startupProgress = new RestartProgress(
-      this.tmuxHold ? 0 : this.runnableStartupCount(fleet, topicMode),
+      this.startHold() ? 0 : this.runnableStartupCount(fleet, topicMode),
       pendingUpdateProgress?.startedAt ?? startupStartedAt,
       this.logger,
       { mode: pendingProgressOperation === "full-restart" ? "reload" : pendingUpdateProgress ? "update" : "restart" },
@@ -13723,7 +13789,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Auth, restored chat, Classic roster and the task DB are ready. Listening is not service readiness:
     // the dashboard observes startup, while /health and READY retain their existing completion boundary.
-    this.startupDashboard = new FleetStartup(this.tmuxHold ? [] : this.configuredStartupInstanceNames(fleet, topicMode)
+    this.startupDashboard = new FleetStartup(this.startHold() ? [] : this.configuredStartupInstanceNames(fleet, topicMode)
       .filter(name => !this.lifecycle.isPaused(name)));
     await this.startHealthServer(fleet.health_port ?? 19280);
     if (this.shuttingDown) return;

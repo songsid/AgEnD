@@ -25,10 +25,11 @@ export const CONTROL_DIR = "control";
 export const MAX_CONTROL_BYTES = 4096;
 export const controlDir = (home: string, attemptId: string) => join(attemptDir(home, attemptId), CONTROL_DIR);
 
-/** Each op and the stages it is valid in (Fable rule 1). Later parts add trial.prove and the commit steps. */
+/** Each op and the stages it is valid in (Fable rule 1). A later part adds the commit steps. */
 export const CONTROL_OPS: Readonly<Record<string, readonly Stage[]>> = {
   "status": ["opened", "barrier", "stopping", "snapshotted", "installing", "trial", "proving", "committing", "abandoning", "rolling-back"],
   "barrier.arm": ["opened"],
+  "trial.prove": ["proving"],
 };
 
 export interface ControlRequest {
@@ -97,6 +98,43 @@ export function askFleet(home: string, req: ControlRequest, d: AskDeps): AskResu
       return { ok: true, response: res };
     }
     if (d.now() >= until) return { ok: false, reason: `the fleet didn't answer request ${req.seq} (${req.op}) in time` };
+    d.sleep(d.pollMs ?? 250);
+  }
+}
+
+/** The next unused seq in the attempt's mailbox (requests are never renumbered; a retry takes a new one). */
+export function nextControlSeq(home: string, attemptId: string): number {
+  let names: string[];
+  try { names = readdirSync(controlDir(home, attemptId)); } catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return 1; throw err; }
+  return names.reduce((max, n) => (/^\d{8}[-.]/.test(n) ? Math.max(max, Number(n.slice(0, 8))) : max), 0) + 1;
+}
+
+/** `trial.prove`'s answer (§5, §10.6): the trial fleet's own health. Adapters are informational, never a failure. */
+export interface TrialProof { nonce: string; pid: number; healthy: boolean; problems: string[]; adapters: { total: number; connected: number } }
+
+export interface ProveDeps { from: { pid: number; token: string }; timeoutMs?: number; askMs?: number; pollMs?: number; sleep(ms: number): void; now(): number }
+
+/**
+ * The updater's `prove(trialPid)` (§5): ask the trial generation, by its nonce, until it answers healthy or the bound
+ * (90 s) runs out. Each ask is a new seq; a timed-out ask proves nothing. The answer must come from the generation's own
+ * nonce and pid. Unhealthy until the bound: the last problems are the reason.
+ */
+export function proveTrial(home: string, attempt: AttemptRecord, trial: { nonce: string; pid: number }, d: ProveDeps): { ok: true } | { ok: false; reason: string } {
+  const until = d.now() + (d.timeoutMs ?? 90_000);
+  let last = "the trial fleet hasn't answered";
+  for (;;) {
+    const left = until - d.now();
+    if (left <= 0) return { ok: false, reason: last };
+    const asked = askFleet(home, { seq: nextControlSeq(home, attempt.id), op: "trial.prove", attemptId: attempt.id, stage: "proving", to: { nonce: trial.nonce }, from: d.from },
+      { timeoutMs: Math.min(d.askMs ?? 10_000, left), pollMs: d.pollMs, sleep: d.sleep, now: d.now });
+    if (asked.ok) {
+      const { response } = asked;
+      if (response.by.pid !== trial.pid) return { ok: false, reason: `the trial's answer came from pid ${response.by.pid}, not ${trial.pid}` };
+      if (response.result.status !== "ok") return { ok: false, reason: `the trial refused the proof (${response.result.status}): ${response.result.why}` };
+      const proof = response.result.value as Partial<TrialProof> | null;
+      if (proof?.healthy === true && proof.nonce === trial.nonce && proof.pid === trial.pid) return { ok: true };
+      last = `the trial fleet isn't healthy: ${(Array.isArray(proof?.problems) && proof.problems.length ? proof.problems : ["no proof"]).join("; ")}`;
+    } else last = asked.reason;
     d.sleep(d.pollMs ?? 250);
   }
 }

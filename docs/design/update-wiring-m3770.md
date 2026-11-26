@@ -123,7 +123,7 @@ This note covers how the live `agend update` and the fleet use it. Design: `docs
 
 ## 11. The control channel is a file mailbox (part 2; Fable, 11-27)
 §10.2's Unix socket became a **file mailbox**, `control/`, in the same 0700 attempt directory. The reasons: the driver (`runUpdate`, the recovery runner) is synchronous, and a socket path is capped near 108 bytes. The scope and the authentication are unchanged: a same-uid writer inside the 0700 directory. A request outlives its writer, so every request is bound by four rules, and the fleet enforces them before acting:
-1. **Its attempt and stage.** `barrier.arm` is valid only in `opened` (later: `trial.prove` in trial/proving, `commit.*` in committing). The fleet re-reads the journal per request and refuses, with an answer, when they no longer match. A closed attempt's mailbox isn't even read.
+1. **Its attempt and stage.** `barrier.arm` is valid only in `opened` (`trial.prove` only in `proving`, the stage `runUpdate` writes before it asks; later `commit.*` in committing). The fleet re-reads the journal per request and refuses, with an answer, when they no longer match. A closed attempt's mailbox isn't even read.
 2. **A live sender.** The request carries the driver's pid and service-lock token. It runs only while the lock's live holder is that token and pid, and is the attempt's updater or recorded runner (`serviceLockSenderLive`). Anything else is answered `stale` and never runs.
 3. **The addressed fleet.** The request names its target generation by nonce, and another fleet ignores it. Each answer carries the responder's `{ nonce, pid }`, which the driver checks.
 4. **Exactly once.** The answer is published under an O_EXCL name, and an existing one is the answer. A timed-out wait never means success: the driver reconciles from the journal and asks again with a new seq.
@@ -137,3 +137,29 @@ Bodies are capped at 4 KiB, and unknown ops are refused. The fleet polls every 2
 - while request-context is On, it never holds (gate (b); the hook answers off until #4519 brings request-context to this line).
 
 An old fleet that an abandon never stopped walks its hand-back from the same pass, at most every 10 s.
+
+## 12. The trial fleet (part 3)
+**Chosen by the journal.** A fleet start is a trial when its handoff nonce (`AGEND_UPDATE_HANDOFF`) names the open attempt's `trial` generation, not voided (`dead`), and the attempt is in `trial` or `proving`. Every other start behaves as it did before:
+- the `old` generation goes to the hand-back;
+- an unknown or revoked nonce was already refused by the takeover (`claimHandoff`);
+- a closed attempt, or one in another stage, starts normally. So an in-process restart after the commit doesn't come back as a trial.
+
+**No agents, nothing in tmux.**
+- The trial is the start's hold (`startHold()`, beside the M-2457 `tmuxHold`). No agent starts, and `startInstance` refuses with the hold's reason ("Updating: checking the new version").
+- `TmuxManager.setHold` refuses sign-in windows and daemons.
+- The trial leaves the tmux server, the session and every window alone: no reconcile, no `server.json` record, no window cleanup. Leaving the trial (part 4's `leaveTrial`) does those steps then.
+
+**The hold** is armed at the start, right after the hand-back and the mailbox, before the web listener, the adapters or any agent. It's `QuiescenceBarrier.armTrial`: bound to the attempt, it continues the ONE inbox sequence after the old fleet's last file, with no second check.
+- Adapter and web turns for an agent are journaled as copies (`commitTurn`).
+- Occurrences are deferred, and task claims are held.
+- Durable outbox rows just stay queued (§10.4): the claim is held and no reference is journaled, for rows from before or new ones.
+- The hold comes down by the same rules as the old fleet's: the attempt ending, or (part 4) the commit.
+
+**`trial.prove`** is valid only in `proving`. The fleet answers only as the attempt's trial: its nonce, and the pid the updater acknowledged. Its answer is `{ nonce, pid, healthy, problems, adapters }`, and healthy means all of these hold:
+- the delivery outbox is open;
+- the scheduler runs (on a topic-mode or web-only fleet, the ones that have one);
+- the web listener listens;
+- startup has completed;
+- the trial's hold is up.
+
+Adapters are informational, as counts only (§10.6). The updater's side is `proveTrial`: it asks with a new seq each time until the trial answers healthy or 90 s pass. It checks the answer's nonce and pid, and fails at once on a refusal or a stale answer.
