@@ -257,7 +257,7 @@ It takes the home update lock first, as the recovery runner would, then drives t
     - the lease and the locks released in reverse.
   - The result is printed. A refresh warning travels with the completion (the update receipt's `warning` and `cleanupCommand`) and is never a failure.
 
-## 15. `--resolve` and `--recover` (part 6) — proposal
+## 15. `--resolve` and `--recover` (part 6)
 **`agend update --resolve`** (read-only) reports the journal and the exact next step:
 - **none**: nothing to resolve.
 - **closing**: it finishes the close (under the home lock), as any opener would.
@@ -276,3 +276,15 @@ It takes the home update lock first, as the recovery runner would, then drives t
 - **committing, route not yet removed**: under the home lock, `removeRecoveryRoute` and the attempt's service manager reload (with the person's rights), then the `route-removed` substep is journaled. The fleet's next resume pass finishes the commit (its own steps already ran, §13).
   - For that, the fleet's adopted resume RELEASES the home lock while it is stuck on the route (after running its own steps), and re-adopts only after its 60 s back-off. Otherwise `--recover` could never take the lock.
 - **committing, past the route**: nothing to do here; the fleet finishes it (and says so).
+
+**As built, with Fable's conditions:**
+- **Confirmation by value.** `--clear <attempt-id>` for a manual attempt, `--clear <the exact pointer path --resolve printed>` for an unknown journal. Anything else clears nothing. The value is recorded in the resolution note, with the caller's uid.
+- **The route comes off on clear.** `removeRecoveryRoute`, then the service manager's reload with the caller's rights. Without them, the command and what's left are said.
+- **What wasn't checked is said.** `--clear`'s output states that the home and the installed package weren't verified, with the attempt's directory (or the journal) for inspection.
+- **Stuck on the route.** An ADOPTED commit drives its own four steps on every pass, then lets the home lock go once they are done. A person's `--recover` takes the lock, removes the route (with the unit's rights) and journals `route-removed`. The fleet adopts again after the 60 s back-off, only while the attempt is still `committing`, and finishes it. The handoff is tested end to end.
+- **`--recover` guards.**
+  - The caller's uid must be the attempt's recorded owner's (root for a system unit).
+  - The kit is verified first.
+  - The runner runs beside the service (`systemd-run --user? --unit=agend-update-recovery-<id> --wait --pipe --collect --property=KillMode=process …`): its output is shown here and its status is ours, but it is never a child of this terminal. Its own starts go through the service manager, and it doesn't depend on the caller's environment; `--home` is explicit.
+  - A detached attempt has no service to recover beside: the runner refuses it, and `--recover` says what to do.
+- From a fleet agent's session, `--clear` and `--recover` need `--yes` (the same gate as `agend update`).

@@ -262,6 +262,31 @@ export function finishClosing(home: string, attempt: AttemptRecord, io: JournalI
   io.step("current-cleared");
 }
 
+/**
+ * §6 / part 6 (`agend update --resolve --clear`): a person has put a manual-recovery attempt right. One more history
+ * entry on its terminal record (the stage stays `manual-recovery`), then `current` is renamed into the attempt
+ * (`current.resolved`). Only under the home lock, with no live or unknown owner (the caller checks).
+ */
+export function resolveManual(home: string, attempt: AttemptRecord, note: string, io: JournalIo = defaultJournalIo): AttemptRecord {
+  if (attempt.stage !== "manual-recovery") throw new Error(`attempt ${attempt.id} is ${attempt.stage}, not manual-recovery`);
+  const next: AttemptRecord = { ...attempt, history: [...attempt.history, { stage: "manual-recovery", at: io.now().toISOString(), note }] };
+  write(home, next, io, "resolved");
+  renameDurable(io, currentPath(home), join(attemptDir(home, attempt.id), "current.resolved"));
+  io.step("current-cleared");
+  return next;
+}
+
+/**
+ * Part 6: an unknown journal (`current` names nothing readable) that a person inspected: `current` is moved aside,
+ * unparsed, to `.update-journal/current.unknown-<time>`; whatever record it named stays where it is. Under the home lock.
+ */
+export function setAsideUnknownCurrent(home: string, io: JournalIo = defaultJournalIo): string {
+  const aside = join(journalDir(home), `current.unknown-${io.now().toISOString().replace(/[-:.]/g, "")}`);
+  renameDurable(io, currentPath(home), aside);
+  io.step("current-set-aside");
+  return aside;
+}
+
 export type OpenResult = { ok: true; attempt: AttemptRecord } | { ok: false; reason: string };
 
 /**

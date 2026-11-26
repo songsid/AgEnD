@@ -265,6 +265,35 @@ async function transactionServiceOf(): Promise<{ kind: "systemd" | "launchd" | n
   return { kind: "systemd", system: !user, owned: { kind: "systemd", unit: basename(path), fragmentPath: path } };
 }
 
+/** M-3770 part 6 (design update-wiring-m3770.md §15): `agend update --resolve [--clear <value>]` and `--recover`. */
+async function resolveOrRecover(opts: { resolve?: boolean; clear?: string; recover?: boolean }): Promise<void> {
+  if ((opts.clear !== undefined && !opts.resolve) || (opts.recover && opts.resolve)) {
+    console.error("  Use `agend update --resolve`, `agend update --resolve --clear <attempt-or-path>`, or `agend update --recover`.");
+    process.exitCode = 1;
+    return;
+  }
+  const [resolve, { randomBytes }, { createRequire }, { plistProgramArguments }, { realHostEnv }, { serviceManager }] = await Promise.all([
+    import("./update-resolve.js"), import("node:crypto"), import("node:module"), import("./plist-args.js"), import("./update-host.js"), import("./update-recovery/service-manager.js")]);
+  const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null; exists(pid: number): boolean };
+  const liveness = { processStart: admission.processStart, startTicks: admission.startTicks, bootId: admission.bootId, exists: admission.exists };
+  const host = realHostEnv();
+  const uid = host.uid();
+  const d = {
+    liveness, uid, plistArgs: plistProgramArguments,
+    lockDeps: { ...liveness, pid: process.pid, newToken: () => randomBytes(16).toString("hex"), now: () => new Date(), log: (message: string) => console.log(message) },
+    reload: (service: import("./install-ownership.js").OwnedService) => serviceManager(service, { run: (c, a) => host.run(c, a), uid, sleep: host.sleep, now: host.now }).reload(),
+  };
+  const say = (said: { lines: string[]; exitCode: number }) => { for (const line of said.lines) (said.exitCode ? console.error : console.log)(line); process.exitCode = said.exitCode; };
+  if (opts.resolve) { say(opts.clear !== undefined ? resolve.resolveClear(DATA_DIR, opts.clear, d) : resolve.resolveReport(DATA_DIR, d)); return; }
+  const plan = resolve.recoverAttempt(DATA_DIR, d);
+  if (plan.kind === "said") { say(plan.said); return; }
+  // The runner beside the service (systemd-run --wait --pipe): its output here, its exit status ours; never a child
+  // fleet of this terminal.
+  const { spawnSync } = await import("node:child_process");
+  const ran = spawnSync(plan.command, plan.args, { stdio: "inherit" });
+  process.exitCode = ran.status ?? 1;
+}
+
 /** M-3770 part 4: the interrupted commit `fleetStartGate` admitted this start to finish (handed to the FleetManager). */
 let commitResumeAtStart: string | null = null;
 
@@ -1450,7 +1479,17 @@ program
   .option("--stable", "Install from the stable channel, even from a beta install (may go back a version)")
   .option("--force", "Force reinstall and restart even when already up to date")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
-  .action(async (opts: { version?: string; alpha?: boolean; beta?: boolean; stable?: boolean; force?: boolean; yes?: boolean }) => {
+  .option("--resolve", "Show an interrupted or stuck update and what to do next")
+  .option("--clear <attempt-or-path>", "With --resolve: clear a manual-recovery attempt (its id) or an unreadable journal (its path), once put right")
+  .option("--recover", "Recover an interrupted update whose updater is gone")
+  .action(async (opts: { version?: string; alpha?: boolean; beta?: boolean; stable?: boolean; force?: boolean; yes?: boolean; resolve?: boolean; clear?: string; recover?: boolean }) => {
+    // M-3770 part 6: --resolve / --recover act on the update journal only; nothing is installed.
+    if (opts.resolve || opts.recover || opts.clear !== undefined) {
+      // Clearing or recovering changes the journal and the service: from a fleet agent's session only with --yes.
+      if ((opts.recover || opts.clear !== undefined) && !gateFleetControl(DATA_DIR, "update", { yes: opts.yes })) process.exit(1);
+      await resolveOrRecover(opts);
+      return;
+    }
     if ([opts.alpha, opts.beta, opts.stable].filter(Boolean).length > 1) {
       console.error("  --alpha, --beta and --stable choose different channels; pass one.");
       process.exit(1);

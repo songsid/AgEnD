@@ -317,3 +317,37 @@ describe("M-3770 2.5 wiring part 4 (Fable F1): a live fleet whose commit driver 
   });
 });
 
+
+describe("M-3770 2.5 wiring part 6 (Fable (2)): a commit stuck on the route hands the home lock to a person's --recover", () => {
+  it("the fleet adopts, runs its own steps, can't reload → lets the home lock go; --recover takes it, removes the route, journals it; the fleet adopts again and commits", async () => {
+    const { recoverAttempt } = await import("../src/update-resolve.js");
+    const c = attemptAt("proving", { service: true });
+    const f = newFleet(c.home);
+    f.fm.updateTrial = f.fm.detectUpdateTrial(TRIAL.nonce, null);
+    f.fm.armUpdateTrial();
+    let a = advance(c.home, c.attempt, "committing");
+    a = substep(c.home, a, "retained");
+    // The updater is gone; the fleet's reload of the route's removal isn't allowed (a system unit, say).
+    f.fm.updateLiveness = () => ({ exists: (pid: number) => pid !== 4343, processStart: (pid: number) => (pid === 4343 ? null : "self"), startTicks: () => null, bootId: () => null });
+    const build = f.fm.buildUpdateResume.bind(f.fm);
+    f.fm.buildUpdateResume = async (id: string) => { await build(id); if (f.fm.updateResume) f.fm.updateResume.deps.manager.reload = () => false; };
+    const pass = async () => { f.fm.updateControlTick(); for (let k = 0; k < 4; k++) await new Promise(r => setTimeout(r, 0)); };
+    for (let i = 0; i < 12 && !(f.calls.includes("ready-line") && f.fm.updateResumeLock === null && f.fm.updateBarrier === null); i++) await pass();
+    expect(f.calls).toEqual(expect.arrayContaining(["start:general", "ready-line"]));
+    expect(f.fm.updateBarrier).toBeNull();                                                          // the hold is down
+    expect(f.fm.updateResumeLock).toBeNull();                                                       // and the home lock free
+    expect(readCurrent(c.home).state).toBe("open");
+    // A person with the unit's rights.
+    const liveness = { exists: (pid: number) => pid !== 4343, processStart: (pid: number) => (pid === 4343 ? null : pid === process.pid ? "self" : null), startTicks: () => null, bootId: () => null };
+    const reloads: string[] = [];
+    const said = recoverAttempt(c.home, { liveness, uid: 1000, plistArgs: () => null, reload: s => { reloads.push(s.unit); return true; },
+      lockDeps: { ...liveness, pid: process.pid, newToken: () => "e".repeat(32), now: () => new Date(), log: () => {} } });
+    expect(said).toMatchObject({ kind: "said", said: { exitCode: 0 } });
+    expect(reloads).toEqual(["agend.service"]);
+    // The fleet's next adoption (after its back-off) finishes the commit.
+    f.fm.updateAdoptCheckedAt = -Infinity; f.fm.updateResumeNextAt = -Infinity;
+    for (let i = 0; i < 12 && readCurrent(c.home).state === "open"; i++) await pass();
+    expect(readCurrent(c.home).state).toBe("none");
+    expect(f.fm.updateResumeLock).toBeNull();
+  });
+});

@@ -1692,27 +1692,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (r.status !== "ok") { this.logger.warn({ attemptId: attempt.id, step, why: r.why }, "Update commit: a resumed step failed; the next pass retries"); return; }
       if (r.value !== "done") return;
     }
-    if (performance.now() < this.updateResumeNextAt) return;
-    const r = resumeCommitting(this.dataDir, attempt.id, this.updateResume.deps);
-    if (r?.ok) { this.logger.info({ attemptId: attempt.id }, "Update commit: the interrupted commit finished"); this.endUpdateResume(); return; }
-    if (r && r.outcome !== "retry") { this.logger.error({ attemptId: attempt.id, outcome: r.outcome, reason: r.reason }, "Update commit: the resumed commit stopped"); this.endUpdateResume(); return; }
+    const routeIsOff = (a: UpdateAttemptRecord) => a.history.some(h => h.stage === "committing" && h.substep === "route-removed");
     // Stuck before the fleet's own steps (the route's removal: a system unit this fleet's user can't reload — Fable
-    // part 4 (b)): the hold must not wait for it. The fleet's steps run here anyway (each idempotent; the commit
-    // journals them when it gets there), the error is said once, and the commit is tried again only every minute.
+    // part 4 (b)): the hold must not wait for it. The fleet's steps run on every pass anyway (each idempotent; the
+    // commit journals them when it gets there), the error is said once, and the commit is tried again every minute.
+    if (this.updateResumeStuck && !routeIsOff(attempt)) {
+      this.driveOwnCommitSteps(attempt);
+      if (!this.updateResume || performance.now() < this.updateResumeNextAt) return;
+    }
+    const r = resumeCommitting(this.dataDir, attempt.id, this.updateResume.deps);
+    if (r?.ok) { this.logger.info({ attemptId: attempt.id }, "Update commit: the interrupted commit finished"); this.updateResumeStuck = false; this.endUpdateResume(); return; }
+    if (r && r.outcome !== "retry") { this.logger.error({ attemptId: attempt.id, outcome: r.outcome, reason: r.reason }, "Update commit: the resumed commit stopped"); this.endUpdateResume(); return; }
     const read = readUpdateJournal(this.dataDir);
     const now = read.state === "open" && read.attempt.id === attempt.id ? read.attempt : attempt;
-    if (!now.history.some(h => h.stage === "committing" && h.substep === "route-removed")) {
+    if (!routeIsOff(now)) {
       if (!this.updateResumeStuckSaid) {
         this.updateResumeStuckSaid = true;
         this.logger.error({ attemptId: attempt.id, reason: r?.reason }, "Update commit: the recovery route can't be removed from here; the fleet comes up anyway — run `agend update --resolve` to finish the update");
       }
+      this.updateResumeStuck = true;
       this.updateResumeNextAt = performance.now() + 60_000;
-      for (const [step] of FleetManager.COMMIT_SUBSTEPS) {
-        const s = this.updateCommitStep(step, now);
-        if (s.status !== "ok" || s.value !== "done") break;
-      }
+      this.driveOwnCommitSteps(now);
     }
   }
+
+  /**
+   * The fleet's own four commit steps, in order, while the commit waits on the route. Once they are done an ADOPTED
+   * commit lets the home lock go (Fable part 6 (2)), so a person's `agend update --recover` (with the unit's rights) can
+   * take the route off and journal it; it adopts again after the back-off, and only while the attempt is committing.
+   */
+  private driveOwnCommitSteps(attempt: UpdateAttemptRecord): void {
+    for (const [step] of FleetManager.COMMIT_SUBSTEPS) {
+      const s = this.updateCommitStep(step, attempt);
+      if (s.status !== "ok" || s.value !== "done") return;
+    }
+    if (this.updateResumeLock) {
+      this.endUpdateResume();
+      this.updateAdoptCheckedAt = performance.now() + 55_000;                                          // 5 s cadence + 55 s = 60 s
+      this.logger.warn({ attemptId: attempt.id }, "Update commit: waiting for the recovery route's removal; the home lock is free for `agend update --recover`");
+    }
+  }
+  private updateResumeStuck = false;
   private updateResumeNextAt = -Infinity;
   private updateResumeStuckSaid = false;
 
