@@ -90,6 +90,7 @@ export const WRITER_INVENTORY: readonly Writer[] = [
   home("fleet.yaml", "pre-commit", "config load and migrations (fleet-yaml-patch, cli)"),
   home("fleet.pid", "pre-commit", "fleet start"),
   home("fleet.lock", "pre-commit", "fleet start (fleet-lock)"),
+  home("fleet.lock.reclaim", "pre-commit", "fleet-lock's reclaim marker (the update's owned re-take of a dead holder)"),
   home("fleet.log", "pre-commit", "fleet logger"),
   home("fleet-fatal.log", "pre-commit", "fleet fatal handler"),
   home("daemon.log", "pre-commit", "daemon logger"),
