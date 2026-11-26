@@ -88,6 +88,14 @@ export function wrapPlist(xml: string, home: string, attemptId: string, original
 
 export type RouteResult = { ok: true; path: string } | { ok: false; reason: string };
 
+/** The exact wrapped plist this route writes for a preimage. */
+function wrappedFromPreimage(home: string, attemptId: string, preimage: string, plistArgs: (xml: string) => string[] | null): { ok: true; xml: string } | { ok: false; reason: string } {
+  const original = plistArgs(preimage);
+  if (!original || original.length === 0) return { ok: false, reason: "the job's original arguments can't be read" };
+  const xml = wrapPlist(preimage, home, attemptId, original);
+  return xml ? { ok: true, xml } : { ok: false, reason: "it has no single ProgramArguments array to wrap" };
+}
+
 /**
  * §6.2: install the route for an attempt (the caller holds the service lock and reloads the manager after). The unit's
  * bytes are kept as `unit.preimage` first (created once; a retry finds the same bytes).
@@ -116,22 +124,27 @@ export function writeRecoveryRoute(home: string, attempt: AttemptRecord, deps: {
     return { ok: true, path };
   }
   // launchd: wrap the ORIGINAL arguments — always read from the preimage's bytes, so a retry never wraps a wrapper.
-  const source = (kept ?? bytes).toString("utf8");
-  const original = deps.plistArgs(source);
-  if (!original || original.length === 0) return { ok: false, reason: `the job's arguments in ${service.fragmentPath} can't be read` };
-  const wrapped = wrapPlist(source, home, attempt.id, original);
-  if (!wrapped) return { ok: false, reason: `${service.fragmentPath} has no single ProgramArguments array to wrap` };
-  try { writeDurable(service.fragmentPath, wrapped, io, "keep"); }
+  const wrapped = wrappedFromPreimage(home, attempt.id, (kept ?? bytes).toString("utf8"), deps.plistArgs);
+  if (!wrapped.ok) return { ok: false, reason: `${service.fragmentPath}: ${wrapped.reason}` };
+  // A retry rewrites only what this route wrote (Fable #4517 F3): the plist on disk must be the preimage itself or
+  // exactly its wrapped form. Anything else is a definition that isn't the attempt's own — refused (§3.2: fail closed).
+  const current = bytes.toString("utf8");
+  if (kept !== null && current !== kept.toString("utf8") && current !== wrapped.xml) {
+    return { ok: false, reason: `${service.fragmentPath} changed since its preimage was kept (it is neither the preimage nor this route's wrapper)` };
+  }
+  if (current === wrapped.xml) return { ok: true, path: service.fragmentPath };
+  try { writeDurable(service.fragmentPath, wrapped.xml, io, "keep"); }
   catch (err) { return { ok: false, reason: `${service.fragmentPath} can't be written (${(err as Error).message})` }; }
   return { ok: true, path: service.fragmentPath };
 }
 
 /**
  * §6.2 step 6: take the route off after the takeover is acknowledged. systemd: the drop-in removed (its directory
- * fsynced; the caller reloads). launchd: the preimage's bytes written back to disk (the loaded job keeps the wrapper
- * until its next load — harmless outside an attempt).
+ * fsynced; the caller reloads). launchd: the preimage's bytes written back to disk — only over this route's exact
+ * wrapper (the preimage already there: done; anything else: refused) — and the loaded job keeps the wrapper until its
+ * next load, harmless outside an attempt.
  */
-export function removeRecoveryRoute(home: string, attempt: AttemptRecord, io: JournalIo = defaultJournalIo): RouteResult {
+export function removeRecoveryRoute(home: string, attempt: AttemptRecord, deps: { plistArgs(xml: string): string[] | null }, io: JournalIo = defaultJournalIo): RouteResult {
   const service = identityOf(attempt)?.ownership.service;
   if (!service) return { ok: false, reason: "the attempt records no service" };
   if (service.kind === "systemd") {
@@ -140,9 +153,15 @@ export function removeRecoveryRoute(home: string, attempt: AttemptRecord, io: Jo
     try { io.fsyncDir(dirname(path)); } catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") return { ok: false, reason: `${dirname(path)} can't be synced (${(err as Error).message})` }; }
     return { ok: true, path };
   }
-  let kept: Buffer;
+  let kept: Buffer, current: string;
   try { kept = readFileSync(unitPreimagePath(home, attempt.id)); }
   catch (err) { return { ok: false, reason: `the unit's preimage can't be read (${(err as Error).message}); the wrapper stays` }; }
+  try { current = readFileSync(service.fragmentPath, "utf8"); }
+  catch (err) { return { ok: false, reason: `${service.fragmentPath} can't be read (${(err as Error).message}); the wrapper stays` }; }
+  // Only this route's own wrapper is taken off (Fable #4517 F3); the preimage already in place is done.
+  if (current === kept.toString("utf8")) return { ok: true, path: service.fragmentPath };
+  const wrapped = wrappedFromPreimage(home, attempt.id, kept.toString("utf8"), deps.plistArgs);
+  if (!wrapped.ok || current !== wrapped.xml) return { ok: false, reason: `${service.fragmentPath} isn't this route's wrapper any more; it is left as it is` };
   try { writeDurable(service.fragmentPath, kept, io, "keep"); }
   catch (err) { return { ok: false, reason: `${service.fragmentPath} can't be written back (${(err as Error).message})` }; }
   return { ok: true, path: service.fragmentPath };

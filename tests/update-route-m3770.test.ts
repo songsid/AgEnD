@@ -65,9 +65,9 @@ describe("M-3770 §6.2: systemd's drop-in", () => {
     expect(readFileSync(r.fragment, "utf8")).toBe(UNIT);
     expect(readFileSync(unitPreimagePath(r.home, ID), "utf8")).toBe(UNIT);
     expect(writeRecoveryRoute(r.home, attempt, { plistArgs: () => null }).ok).toBe(true);                     // a retry
-    expect(removeRecoveryRoute(r.home, attempt)).toMatchObject({ ok: true });
+    expect(removeRecoveryRoute(r.home, attempt, { plistArgs: (xml: string) => parsePlist(xml)?.argv ?? null })).toMatchObject({ ok: true });
     expect(existsSync(dropInPath(service))).toBe(false);
-    expect(removeRecoveryRoute(r.home, attempt)).toMatchObject({ ok: true });                                  // already off
+    expect(removeRecoveryRoute(r.home, attempt, { plistArgs: (xml: string) => parsePlist(xml)?.argv ?? null })).toMatchObject({ ok: true });                                  // already off
   });
 
   it("refuses a unit changed since its preimage, and paths a unit file can't carry as one plain word", () => {
@@ -96,9 +96,32 @@ describe("M-3770 §6.2: launchd's wrapper", () => {
     expect(writeRecoveryRoute(r.home, attempt, { plistArgs }).ok).toBe(true);                                 // a retry: from the preimage
     expect(parsePlist(readFileSync(r.fragment, "utf8"))?.argv).toEqual(wrapped);
     expect(statSync(r.fragment).mode & 0o777).toBe(0o644);                                            // the plist keeps its mode
-    expect(removeRecoveryRoute(r.home, attempt)).toMatchObject({ ok: true });
+    expect(removeRecoveryRoute(r.home, attempt, { plistArgs: (xml: string) => parsePlist(xml)?.argv ?? null })).toMatchObject({ ok: true });
     expect(readFileSync(r.fragment, "utf8")).toBe(PLIST);
     expect(statSync(r.fragment).mode & 0o777).toBe(0o644);
+  });
+
+  it("a retry or a removal rewrites only what the route wrote: an edited plist is refused and left as it is (Fable #4517 F3)", () => {
+    const { r, attempt } = rig("launchd");
+    const plistArgs = (xml: string) => parsePlist(xml)?.argv ?? null;
+    expect(writeRecoveryRoute(r.home, attempt, { plistArgs }).ok).toBe(true);
+    const wrapped = readFileSync(r.fragment, "utf8");
+    const edited = wrapped.replace("/usr/local/bin/agend", "/opt/new/bin/agend");
+    writeFileSync(r.fragment, edited);
+    expect(writeRecoveryRoute(r.home, attempt, { plistArgs })).toMatchObject({ ok: false, reason: expect.stringMatching(/changed since its preimage/) });
+    expect(readFileSync(r.fragment, "utf8")).toBe(edited);
+    expect(removeRecoveryRoute(r.home, attempt, { plistArgs })).toMatchObject({ ok: false, reason: expect.stringMatching(/isn't this route's wrapper/) });
+    expect(readFileSync(r.fragment, "utf8")).toBe(edited);
+    // An edit of the un-wrapped preimage form is refused too; the preimage itself or the exact wrapper are accepted.
+    writeFileSync(r.fragment, PLIST.replace("RunAtLoad", "KeepAlive"));
+    expect(writeRecoveryRoute(r.home, attempt, { plistArgs }).ok).toBe(false);
+    writeFileSync(r.fragment, PLIST);
+    expect(writeRecoveryRoute(r.home, attempt, { plistArgs }).ok).toBe(true);
+    expect(readFileSync(r.fragment, "utf8")).toBe(wrapped);
+    expect(writeRecoveryRoute(r.home, attempt, { plistArgs }).ok).toBe(true);                       // already wrapped: no rewrite
+    expect(removeRecoveryRoute(r.home, attempt, { plistArgs }).ok).toBe(true);
+    expect(readFileSync(r.fragment, "utf8")).toBe(PLIST);
+    expect(removeRecoveryRoute(r.home, attempt, { plistArgs }).ok).toBe(true);                      // the preimage already there
   });
 
   describe("the wrapper run for real by /bin/sh", () => {
