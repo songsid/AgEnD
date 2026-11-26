@@ -6300,7 +6300,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   requestContextRelay?:import("./request-context-relay.js").RequestContextRelayPort;
   /** L installs this explicitly; H defines no production switch. */
   makeRequestContextPolicy():RequestContextPolicyPort{return {assert:input=>{
-    try{return assertRequestContextOperation(input);}catch(error){
+    try{
+      const permit=assertRequestContextOperation(input);
+      // Ordinary ingress is not administrator authority. Recheck the ORIGINAL actor for owner-only
+      // tools on every call, including commit-point calls; demotion alone never adds a contact hold.
+      if(permit.context?.ingress==="owner"&&toolsFor("coordinator").has(permit.tool)&&!toolsFor("worker").has(permit.tool)){
+        const actor=permit.context.initiatingActor;
+        const adapter=actor.kind==="person"&&actor.platform!=="hub"&&actor.platform!=="host"
+          ? [...this.adapters.values(),...[...this.worlds.values()].map(world=>world.adapter)].find(row=>row.type===actor.platform):undefined;
+        const channel=actor.kind==="person"&&actor.platform!=="hub"
+          ? (this.fleetConfig?.channels??(this.fleetConfig?.channel?[this.fleetConfig.channel]:[])).find(row=>row.type===actor.platform):undefined;
+        const person:ContactPerson|null=actor.kind==="person"&&actor.platform!=="hub"
+          ? {platform:actor.platform,adapterId:actor.platform==="host"?"host":adapter?.id??channel?.id??channel?.type??"",userId:actor.userId,label:actor.displayName??actor.userId}:null;
+        if(!person?.adapterId||!this.contactAdminOf(permit.context.source.instance,person))throw new RequestContextPolicyError("settings");
+      }
+      return permit;
+    }catch(error){
       if(error instanceof RequestContextPolicyError){
         const call=input.admission,view=call?.coverage==="covered"&&call.lease.snapshot.owner.instance===input.instance?requestContextDisplayView(call.lease.snapshot.context):null;
         this.emitSseEvent("message",{instance:input.instance,sender:"AgEnD",role:"status",wrap:true,text:error.message,ts:new Date().toISOString(),...(view?{requestProvenance:{...view,refused:true}}:{})});

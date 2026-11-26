@@ -1,5 +1,6 @@
 import {randomUUID} from "node:crypto";
-import {expect,it} from "vitest";
+import {expect,it,vi} from "vitest";
+import {FleetManager} from "../src/fleet-manager.js";
 import {captureRequestContextCall,type RequestContextCallAdmission} from "../src/request-context-call.js";
 import {assertRequestContextOperation,REQUEST_CONTEXT_POLICY_COPY,RequestContextPolicyError} from "../src/request-context-policy.js";
 import {requestContextDigest} from "../src/request-context-store.js";
@@ -41,4 +42,20 @@ it.each(["get_fleet_config","get_web_settings","get_instance_logs","get_usage","
 });
 it("other supported Hub reads keep their existing role-checked route",()=>{
  for(const tool of ["list_instances","get_fleet_status","hub_room_members","list_schedules"])expect(fixture().call(tool).kind).toBe("read");
+});
+
+
+it("installed owner policy rechecks current admin without holding a demoted member's ordinary contact",()=>{
+ const f=fixture("owner");let admin=true;
+ const m:any=Object.assign(Object.create(FleetManager.prototype),{adapters:new Map([["fixture",{id:"fixture",type:"discord"}]]),worlds:new Map(),fleetConfig:{instances:{}},
+  contactAdminOf:vi.fn((_name,person)=>person.platform==="discord"&&person.userId==="demo-person"&&admin),emitSseEvent:vi.fn()});
+ const policy=m.makeRequestContextPolicy(),operation=(tool:string,args:Record<string,unknown>={})=>({instance:"demo-source",tool,args,admission:f.admission});
+ expect(policy.assert(operation("update_instance_config")).kind).toBe("ordinary");
+ admin=false;
+ expect(policy.assert(operation("send_to_instance",{instance_name:"demo-target",admin:true}))).toMatchObject({kind:"ordinary",context:f.context});
+ expect(policy.assert(operation("get_fleet_status")).kind).toBe("ordinary");
+ for(const tool of ["update_instance_config","set_web_settings","restart_instance","create_instance"])
+  expect(()=>policy.assert(operation(tool,{admin:true,owner:"operator"}))).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.settings);
+ expect(m.contactAdminOf).toHaveBeenLastCalledWith("demo-source",expect.objectContaining({platform:"discord",userId:"demo-person"}));
+ expect(f.context.initiatingActor).toEqual({kind:"person",platform:"discord",userId:"demo-person"});
 });

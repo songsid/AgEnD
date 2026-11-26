@@ -246,3 +246,14 @@ it("the legacy-adoption probe uses its scoped-only expression index",()=>{
  const f=rig();f.gate();const plan=f.raw().prepare("EXPLAIN QUERY PLAN SELECT 1 FROM contact_auth_tickets WHERE json_extract(request_json,'$.source')=? AND json_extract(request_json,'$.operationId')=? LIMIT 1").all("source","operation") as Array<{detail:string}>;
  expect(plan.some(row=>row.detail.includes("request_context_contact_legacy_operation_v1"))).toBe(true);
 });
+
+it("ordinary native root contact stays normal after demotion, but current-access removal refuses its next operation",()=>{
+ const f=rig(),g=f.gate(),root=f.context("owner");f.admin(true);
+ const first=f.input(root);expect(g.admit(first.delivery,root,first.binding).inserted).toBe(true);
+ f.admin(false);const next=f.input(root);expect(g.admit(next.delivery,root,next.binding).inserted).toBe(true);
+ expect(f.box.contactAuthorizations.pending()).toHaveLength(0);
+ f.current(false);const removed=f.input(root);
+ expect(()=>g.admit(removed.delivery,root,removed.binding)).toThrow("request-context contact is no longer current");
+ expect(f.box.listPending()).toHaveLength(2);expect(f.box.contactAuthorizations.pending()).toHaveLength(0);
+ expect(root.initiatingActor).toEqual({kind:"person",platform:"discord",userId:"demo-person"});
+});
