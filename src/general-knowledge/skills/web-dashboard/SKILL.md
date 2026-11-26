@@ -511,7 +511,7 @@ desk to desk along the corridors in the Key's colours; a delegation in progress 
 desk. Hover a desk for its name, state and backend; a click or tap (or Enter in the desk list) opens the
 person's profile card (#2661: a 320 px popover beside them, following them; Esc, a press elsewhere or the same person
 again closes it; on a phone a bottom sheet; #4256: a skin pack's optional `card` key can pick a preset — `default`, `rpg`, `compact`, `dossier` — plus WCAG-checked `#rrggbb` colours, `backgroundImage`, 9-slice `frame`, and section/row layout while keeping share-link field stripping intact): level and XP, office and area, model, backend, today, first seen, the
-activity line, **Find in office** and **Chat**. A double-click opens the chat directly. Each name tag has a level badge
+activity line, **Find in office** and **Chat** (#4504: in a skin pack's office, **Preview pose** plays a picked strip on that person in place, from its first frame, with **Replay**; viewer-only, and a caller is always drawn calling). A double-click opens the chat directly. Each name tag has a level badge
 (lifetime work, docs/office.md § Levels; **Settings → Web dashboard → Office levels**, `web.office_levels`; #3679: the
 fleet's own titles for every office in **Settings → Web dashboard → Level titles for every office**, a pack's `levels`
 JSON shape, admin only, kept in `web-offices.json` — a pack's own titles still win in its offices, its pinned titles

@@ -289,6 +289,44 @@ export function setFleetLockHandoff(
   return { path: handle.path, record, serialized };
 }
 
+/**
+ * M-3770 §4.3 rev 5: a generation the attempt started took the lock over and then died before its acknowledgement.
+ * The updater (or runner) has journaled that generation as started and dead; now it re-takes its fence. Only that exact
+ * record — role fleet, the generation's nonce — and only when its holder is proven gone (no such process; a live pid,
+ * maybe reused, is never taken). The replacement is owned: an O_EXCL reclaim marker first, the record compared again,
+ * then the update record written to a fresh tmp, fsynced and renamed over the lock, the directory fsynced, the marker
+ * removed. Returns the new fence's handle, or why not.
+ */
+export function retakeDeadFleetLock(dataDir: string, fence: { pid?: number; attemptId: string; nonce: string }, probe: Pick<FleetLockProbe, "isProcessAlive"> = {}):
+  { ok: true; handle: FleetLockHandle } | { ok: false; reason: string } {
+  const lockPath = join(dataDir, "fleet.lock"), marker = `${lockPath}.reclaim`;
+  let observed: string;
+  try { observed = readFileSync(lockPath, "utf8"); } catch (err) { return { ok: false, reason: `fleet.lock can't be read (${(err as Error).message})` }; }
+  const owner = parseRecord(observed);
+  if (!owner || (owner.role ?? "fleet") !== "fleet" || owner.nonce !== fence.nonce) return { ok: false, reason: "fleet.lock doesn't hold that generation's record" };
+  if ((probe.isProcessAlive ?? processAlive)(owner.pid)) return { ok: false, reason: `fleet.lock's holder (pid ${owner.pid}) is still a live process; it is never taken` };
+  const pid = fence.pid ?? process.pid;
+  const record: FleetLockRecord = { pid, nonce: randomBytes(16).toString("hex"), createdAt: new Date().toISOString(), role: "update", attemptId: fence.attemptId, handoff: null };
+  const serialized = JSON.stringify(record) + "\n";
+  try { writeFileSync(marker, serialized, { flag: "wx", mode: 0o600 }); }
+  catch (err) {
+    return { ok: false, reason: (err as NodeJS.ErrnoException).code === "EEXIST" ? `a reclaim marker ${marker} is present (another reclaim, or one left by a crash); nothing is taken` : `the reclaim marker can't be created (${(err as Error).message})` };
+  }
+  try {
+    if (readFileSync(lockPath, "utf8") !== observed) return { ok: false, reason: "fleet.lock changed during the reclaim" };
+    const tmp = `${lockPath}.retake-${pid}-${randomBytes(4).toString("hex")}`;
+    const fd = openSync(tmp, "wx", 0o600);
+    try { writeSync(fd, serialized); fsyncSync(fd); } finally { closeSync(fd); }
+    renameSync(tmp, lockPath);
+    fsyncDir(dataDir);
+    return { ok: true, handle: { path: lockPath, record, serialized } };
+  } catch (err) {
+    return { ok: false, reason: `fleet.lock can't be re-taken (${(err as Error).message})` };
+  } finally {
+    try { unlinkSync(marker); fsyncDir(dataDir); } catch { /* removed, or the directory went */ }
+  }
+}
+
 /** The fleet lock's record as written (null: absent or unparsable). For the updater's acknowledgement of a takeover. */
 export function readFleetLockRecord(dataDir: string): FleetLockRecord | null {
   try { return parseRecord(readFileSync(join(dataDir, "fleet.lock"), "utf8")); } catch { return null; }
