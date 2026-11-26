@@ -66,9 +66,9 @@ function handleFor(host: string, path: string): TunnelHandle {
 }
 
 /** A fixed (named) link with its real preview wiring; `web` decides the preview. */
-function namedRig(web: any) {
+function namedRig(web: any, start?: () => Promise<any>) {
   const gateway = { listen: vi.fn(async () => new URL("http://127.0.0.1:9999")), setHost: vi.fn(), close: vi.fn(), readinessMarker: "m", server: {} };
-  const manager = { start: vi.fn(async (_p: unknown, ctx: any) => { ctx.onCandidateHost?.(DASH); return { ok: true as const, handle: handleFor(DASH, "/signin") }; }), stop: vi.fn(async () => ({ confirmed: true as const })) };
+  const manager = { start: vi.fn(async (_p: unknown, ctx: any) => { if (start) return start(); ctx.onCandidateHost?.(DASH); return { ok: true as const, handle: handleFor(DASH, "/signin") }; }), stop: vi.fn(async () => ({ confirmed: true as const })) };
   const previewManager = { start: vi.fn(async () => ({ ok: true as const, handle: handleFor("prev-host.trycloudflare.com", "/ready") })), stop: vi.fn(async () => ({ confirmed: true as const })) };
   const lane = new TunnelPurposeLane(manager);
   let current = web;
@@ -97,6 +97,17 @@ describe("M-3814: a fixed link with a preview address starts no quick tunnel", (
     expect(h.link.fixedPreviewHost("0".repeat(32)), "another exposure's page").toBeNull();
     await h.link.close("end");
     expect(h.link.fixedPreviewHost()).toBeNull();
+  });
+  it("not while the fixed link is still starting: no address until it is open", async () => {
+    let release!: (v: unknown) => void;
+    const h = namedRig({ public_link: { hostname: DASH, preview_hostname: PREV } }, () => new Promise(r => { release = r; }));
+    const delivered = h.link.deliver(owner, async () => true);
+    await tick(); await tick();
+    expect(h.link.status().state).toBe("starting");
+    expect(h.link.fixedPreviewHost()).toBeNull();
+    release({ ok: true, handle: handleFor(DASH, "/signin") });
+    await delivered; await tick();
+    await h.link.close("end");
   });
   it("control: named without a preview address keeps today's quick-tunnel preview (and no fixed address)", async () => {
     const h = namedRig({ public_link: { hostname: DASH } });

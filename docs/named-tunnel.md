@@ -112,6 +112,41 @@ token, then reopen. Cloudflare Access can add another layer, but an Access
 challenge in front of `/signin` prevents AgEnD's marker probe from succeeding;
 configure any such policy with that limitation in mind.
 
+## HTML previews on the fixed address
+
+Without more setup, each time the fixed link opens, AgEnD opens a temporary
+Cloudflare address (a quick tunnel) for HTML previews. Cloudflare sometimes
+limits how many of those one machine may create, and a preview then says
+"Cloudflare is limiting new temporary links from this machine". That notice
+links here: **Set up a fixed preview address**.
+
+A fixed preview address is a second route on the **same** tunnel. It must be a
+different name from the dashboard's. A preview on the dashboard's own name
+would share its origin, and so its sign-in.
+
+1. In Cloudflare, open this tunnel's **Routes** tab → **Add route →
+   Published application**. Use a name such as `preview.agend.example.com`
+   and the Service URL **`http://127.0.0.1:19281`**. That is AgEnD's preview
+   port: the web port plus one, or `web.preview_port`. It is not the origin
+   port above. Save the route. Cloudflare adds its DNS record itself.
+2. In **Settings → Access & security**, enter the name under **Preview address**
+   (shown once a fixed hostname is set) and save.
+3. With the fixed link open, press **Check preview address**. It checks that
+   the name resolves and that `https://<name>/frame` comes back from this
+   AgEnD's preview port. It starts nothing.
+
+```yaml
+web:
+  public_link:
+    hostname: agend.example.com
+    preview_hostname: preview.agend.example.com
+```
+
+With it, the fixed link's pages frame `https://<preview_hostname>/frame` and no
+temporary preview address is opened. AgEnD's preview port answers that name
+only while the fixed link is open. The dashboard on this computer keeps its
+own local preview port. `web.preview_origin`, when set, still comes first.
+
 ## Longer lifetime and reopening after a restart
 
 Only with a fixed hostname (a quick tunnel's random address changes on every
