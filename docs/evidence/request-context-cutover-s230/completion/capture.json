@@ -1,0 +1,360 @@
+{
+  "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+  "scope": "Real Settings pending and chat/refusal renderers; synthetic session/turn, no activation or provider",
+  "pictures": [
+    {
+      "name": "desk-light-en-settings-pending.png",
+      "sha256": "8be231faa3669590600769616a178c4169a20f1718f96e3b0211287f76739f19"
+    },
+    {
+      "name": "desk-light-en-destination-refusal.png",
+      "sha256": "83d66fd8dc124e22078da2dfa62c77a9459b1ace45d66dd7e0949fc0e604ebb0"
+    },
+    {
+      "name": "desk-light-en-stop-waiting-outcome.png",
+      "sha256": "0d5169580c5c139e0526899d6a59b57caf5a9a51b44af7ff3c67e7cf9d550786"
+    },
+    {
+      "name": "desk-light-zh-TW-settings-pending.png",
+      "sha256": "25cde238af45ac1bf6ac839857ec328b41e97c2ec02c636f4fe38369c754b442"
+    },
+    {
+      "name": "desk-light-zh-TW-destination-refusal.png",
+      "sha256": "1e72c2fc4a336521850e2ce2edde959b1ce39b0735419f21764564ffc7a8338c"
+    },
+    {
+      "name": "desk-light-zh-TW-stop-waiting-outcome.png",
+      "sha256": "befc1ea44f1d1ae3f43a11b3478d7c824dbcb1c18de97777f097ee12f216ce64"
+    },
+    {
+      "name": "desk-dark-en-settings-pending.png",
+      "sha256": "ed6e7ed38a82f8f4317e1ca783fbcf9fe8028a8616c1d6b890564d573999c41e"
+    },
+    {
+      "name": "desk-dark-en-destination-refusal.png",
+      "sha256": "6918ff21bb2d8209249f388cfb9689a4bf11276ca1811112e4428beac132ae99"
+    },
+    {
+      "name": "desk-dark-en-stop-waiting-outcome.png",
+      "sha256": "eea8d64e91b00946048af84b51dfd7f419310157f60376b2febf11d05096ce0e"
+    },
+    {
+      "name": "desk-dark-zh-TW-settings-pending.png",
+      "sha256": "5d0ce67de294f691e37a5f7192173f1fc4760e8434153dbb3837b3f8c88be1c7"
+    },
+    {
+      "name": "desk-dark-zh-TW-destination-refusal.png",
+      "sha256": "bfb8b20a2949510ce69a24c13aaea78530b3ca61f169d30e5e19c47db3bbac5d"
+    },
+    {
+      "name": "desk-dark-zh-TW-stop-waiting-outcome.png",
+      "sha256": "4c758a2fe3ed559312898739b810a1c1a44f18e91f321ca9a7cd05185a4fa8e2"
+    },
+    {
+      "name": "phone-light-en-settings-pending.png",
+      "sha256": "d3ebd0f93f084b87881e2a0a8a22f9d42ddfda811c041b751e93e44926552015"
+    },
+    {
+      "name": "phone-light-en-destination-refusal.png",
+      "sha256": "18e761cd489a2e83877c77e7b15814e7fc0c49748bedf16f02fbbc96ed4ec24b"
+    },
+    {
+      "name": "phone-light-en-stop-waiting-outcome.png",
+      "sha256": "5fb4734151534d22f64b286b410935e6d568a8dde2062aa721feca46e8d96690"
+    },
+    {
+      "name": "phone-light-zh-TW-settings-pending.png",
+      "sha256": "004a2ec1846f9db6731ad930804ab7e05d21c1ec3cb8840a3855edd09be1e6c8"
+    },
+    {
+      "name": "phone-light-zh-TW-destination-refusal.png",
+      "sha256": "b7f9f051d42da9156b3206d277a0a478daef1dca29af65c86a71a108e522843e"
+    },
+    {
+      "name": "phone-light-zh-TW-stop-waiting-outcome.png",
+      "sha256": "a8ba7027cc9b99b6adbff103e1b7b6ce97fe9666cfcd0a535aeda9fb98084ba1"
+    },
+    {
+      "name": "phone-dark-en-settings-pending.png",
+      "sha256": "131d489277e33cc515fbb6faaddea5cf79beb74790e0d6344643e485898e4432"
+    },
+    {
+      "name": "phone-dark-en-destination-refusal.png",
+      "sha256": "18be27bcaf5e0cbac553c6c95e2fa971b0ed189160a211e9d085d0d6ba9758ad"
+    },
+    {
+      "name": "phone-dark-en-stop-waiting-outcome.png",
+      "sha256": "d88f09982280a8368499ed9734d36e0ab593b7d7736024b0332fd4846573ec03"
+    },
+    {
+      "name": "phone-dark-zh-TW-settings-pending.png",
+      "sha256": "8325c19e13a52d9a4c3f3b5e71d468003053ff93a0a720eb838c951973cf5e86"
+    },
+    {
+      "name": "phone-dark-zh-TW-destination-refusal.png",
+      "sha256": "0c2e3bc720dd8959d544ae25361250a864a84203c78060e9f73a3368d08afc9d"
+    },
+    {
+      "name": "phone-dark-zh-TW-stop-waiting-outcome.png",
+      "sha256": "693f68601f517083606fd76c0bef9cff3d06a143d3315df5903cd5183f864f25"
+    }
+  ],
+  "checks": [
+    {
+      "name": "desk-light-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: actual destination guard refused",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-destination-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-destination-refusal: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-stop-waiting-outcome: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-stop-waiting-outcome: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: actual destination guard refused",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-destination-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-destination-refusal: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-stop-waiting-outcome: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-stop-waiting-outcome: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: actual destination guard refused",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-destination-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-destination-refusal: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-stop-waiting-outcome: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-stop-waiting-outcome: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: actual destination guard refused",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-destination-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-destination-refusal: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-stop-waiting-outcome: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-stop-waiting-outcome: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: actual destination guard refused",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-destination-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-destination-refusal: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-stop-waiting-outcome: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-stop-waiting-outcome: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: actual destination guard refused",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-destination-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-destination-refusal: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-stop-waiting-outcome: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-stop-waiting-outcome: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: actual destination guard refused",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-destination-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-destination-refusal: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-stop-waiting-outcome: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-stop-waiting-outcome: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: actual destination guard refused",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-destination-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-destination-refusal: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-stop-waiting-outcome: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-stop-waiting-outcome: CSP",
+      "ok": true
+    }
+  ]
+}

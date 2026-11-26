@@ -39,9 +39,15 @@ The update guard holds the actual Fleet ownership plus home update lock and SHAR
 
 An unchanged neighboring cross-process test, `update-locks-m3770`'s missing-home SHARED case, fails locally on this branch **and untouched prior `6daa35da`** (19/20 pass). It uses a 1500 ms child lifetime. This evidence does not claim that neighboring suite is green or replace its cross-process proof. Source was left unchanged and the update author was notified.
 
-## Remaining implementation
+## Production assembly and remaining gates
 
-Production FleetManager still supplies no cutover/control host and stays capability 0. No actual activation can occur from this checkpoint. Actual ingress/audience adapters, complete owner installation/publication, failed-install Off, concrete drain resolutions and outcomes, update Go-back consumer integration, conditional skills, once-only notice posting, full-mode/crash/rollback fixtures and prerequisite/user gates remain required. No completion or formal implementation approval is requested yet.
+[The actual assembly receipt](assembly.json) supersedes the earlier dormant checkpoints. The stable Settings host, authoritative runtime capture, C/D pre-start owners, capable startup/publication and explicit Off recovery are now wired. Private full-mode fixtures run confirmed On through actual C → policy → E/I → B → receiving C for owner, Free-room, restricted-room, guest and Hub requests, including D1 onward release, unchanged actor/scope, stale-token refusal and all five private Hub reads. No test starts a live Fleet or provider.
+
+The restored request/contact run passes **992/992 in 68 files**. Four targeted mutants are killed by assertions (verification, exact runtime snapshot, exact native run and the actual Settings module dependency closure). Typecheck and the production build pass. A broader 116-file neighboring run passed 2,968 tests with one skipped and one call-arity regression; the repair preserves the legacy argument shape, and its native-pane file plus two scoped neighbors then pass **113/113 across three files**. These scopes overlap; do not sum them.
+
+Same-process and fresh-boot failed-publication Off, construction failure before Modes assignment, in-process stop/start, positive ordinary Stop retirement, complete-root collection, scoped approval outcomes and atomic stop-waiting outcomes are covered. A timer never proves an effect ended. An unconfirmed run stays in reconciliation, and roots without positive age evidence remain retained.
+
+The PR remains draft/HOLD for Fable's implementation review, exact-head CI and the final supplemental user look. No fixture result authorizes live activation or a downgrade; after first enable, Off still requires the capable bridge and the older-binary barrier remains.
 
 ### Clock-order hardening after the B checkpoint
 
@@ -72,3 +78,15 @@ Final human write: `human-resolver.json` binds the actual facade/formatter/C/pan
 ### Controlled owner and transport components
 
 [Source and focused checks](prepared-owners.json): one candidate preparation binds the actual pre-start C/D hook and rendering policy; work retention joins the activation transaction, with a separate post-commit seal. Transport observations use actual negotiated connections/open ports, not advertisements or registry presence.85/6 focused tests plus one managed-factory case pass; types/public/leaks clean. This does not assemble or publish the complete installer. Physical retirement/reconstruction, exec/grant wiring, standard Settings confirmation, capable boot and full-mode proof remain unfinished. UI/images unchanged.
+
+### Real application module closure
+
+The final browser fixture caught an incorrect public-asset import of the private Settings confirmation module. It prevented Settings from loading despite the controller/route tests passing. The control now imports `./settings-confirm.js`. The new closure regression walks both authenticated Settings/Needs roots, follows all static imports, and requests public dependencies from the real private fixture listener; restoring the wrong asset path makes it red. The restored app-module suite passes 40/40, and the app-module, standard confirmation and actual-controller suites pass 64/64 across three files. This changes module loading only; existing approved layout, wording, CSS and PNGs are unchanged.
+
+### Final user-look supplement
+
+[The final capture receipt](completion/capture.json) binds **24 real-app originals and 64 checks** to source `e04ef2cf58327a8aae91c0b976e873f5070b3c71`: the standard Settings pending card with expanded details, the delegated reply's destination refusal, and the stop-waiting outcome. Every EN/zh-TW × desktop/phone × light/dark original was individually opened in the [read-only visual review](completion/review.json); no visual blocker was found. `v1.22.0` is the fixture badge. All previous approved PNGs remain byte-identical.
+
+The finished offline gallery embeds the exact 24 PNGs (decoded hashes and real-browser image/filter behavior verified). It is delivered on S-230 as one HTML attachment. It is a supplemental user look, not a live enable action. Ordinary non-Hub status notices retain their established timestamp/quote-rule presentation without a visible sender heading, and the phone's ordinary copy control; no stylesheet was changed to recast that existing style.
+
+S-249 remains open on the board; S-250 is done. This receipt does not lift that prerequisite, the user look, Fable's formal gate, or draft/HOLD.

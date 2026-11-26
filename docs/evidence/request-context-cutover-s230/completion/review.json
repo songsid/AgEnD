@@ -1,0 +1,41 @@
+{
+  "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+  "individuallyOpened": [
+    "desk-light-en-settings-pending.png",
+    "desk-light-en-destination-refusal.png",
+    "desk-light-en-stop-waiting-outcome.png",
+    "desk-light-zh-TW-settings-pending.png",
+    "desk-light-zh-TW-destination-refusal.png",
+    "desk-light-zh-TW-stop-waiting-outcome.png",
+    "desk-dark-en-settings-pending.png",
+    "desk-dark-en-destination-refusal.png",
+    "desk-dark-en-stop-waiting-outcome.png",
+    "desk-dark-zh-TW-settings-pending.png",
+    "desk-dark-zh-TW-destination-refusal.png",
+    "desk-dark-zh-TW-stop-waiting-outcome.png",
+    "phone-light-en-settings-pending.png",
+    "phone-light-en-destination-refusal.png",
+    "phone-light-en-stop-waiting-outcome.png",
+    "phone-light-zh-TW-settings-pending.png",
+    "phone-light-zh-TW-destination-refusal.png",
+    "phone-light-zh-TW-stop-waiting-outcome.png",
+    "phone-dark-en-settings-pending.png",
+    "phone-dark-en-destination-refusal.png",
+    "phone-dark-en-stop-waiting-outcome.png",
+    "phone-dark-zh-TW-settings-pending.png",
+    "phone-dark-zh-TW-destination-refusal.png",
+    "phone-dark-zh-TW-stop-waiting-outcome.png"
+  ],
+  "visualBlockers": [],
+  "checks": [
+    "Complete expanded warning/details and usable buttons",
+    "Both themes readable",
+    "No clipping, overflow, tofu or private values",
+    "Version badge is fixture content"
+  ],
+  "existingStyleCaveats": [
+    "Ordinary status notices omit the sender label; timestamp and grey quote rule remain. Sender attribution is asserted in the server payload/tests, not visually proven by these screenshots.",
+    "Phone ordinary status notices retain their existing standalone copy icons."
+  ],
+  "cssOrCopyChanged": false
+}
