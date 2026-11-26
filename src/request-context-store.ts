@@ -34,7 +34,8 @@ export class RequestContextStore {
     if (rows.length === 1 || (rows.length === 2) !== marker) throw Error("request-context incomplete companion schema");
     return rows.length === 2;
   }
-  private initialize(): void {
+  /** Internal schema preparation; the owning outbox/dispatcher must establish its active compatibility barrier first. */
+  initialize(): void {
     if (this.present()) return;
     this.db.exec(`CREATE TABLE ${CONTEXTS} (
       context_id TEXT PRIMARY KEY, parent_id TEXT REFERENCES ${CONTEXTS}(context_id),

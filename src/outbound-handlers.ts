@@ -1,3 +1,4 @@
+import {requireRequestContextPolicy,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { ProposeContactChangeArgs, ContactStateArgs, contactProposalRefusal } from "./contact-change-proposals.js";
 import { compactDeliveryStatus, compactSendAck } from "./tool-receipt-output.js";
 import { ContactHeldError } from "./contact-auth-service.js";
@@ -89,6 +90,10 @@ function hubContactRefusal(ctx: OutboundContext, agent: string): string {
 
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
+  requestContextPolicy?:RequestContextPolicyPort;
+  requestContextRelay?:import("./request-context-relay.js").RequestContextRelayPort;
+  requestDeliveryView?(deliveryId:string):{view:import("./request-context-view.js").RequestProvenanceView;body:string}|null;
+  readonly requestContextCallAdmission?:RequestContextCallAdmission;
   requestContactChange?(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }>;
   /** M-3693: contact_state's read-only view (see contact-state-view.ts). */
   contactState?(agent?: string): unknown;
@@ -159,7 +164,7 @@ export interface OutboundContext {
   hubPeopleSearch?(caller: import("./hub/member/room-post.js").RoomCaller, q:string): Promise<import("./hub/types.js").HubPeopleSearchResult|import("./hub/member/room-post.js").ShareLapsed>;
   hubRoomPost?(caller: import("./hub/member/room-post.js").RoomCaller, value: {room:string;text:string;operationId:string;receiptId?:string;files?:string[]}): Promise<import("./hub/member/room-post.js").RoomPostResult>;
   /** Existing one-to-one/room answer hook; null keeps ordinary routing. */
-  hubReport?(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null;
+  hubReport?(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; requestScope?:import("./request-hub-output.js").RequestHubOutputScope; extras?: HubReportExtras }): Promise<HubReportOutcome> | null;
   /** Persist a cross-instance action before its MCP call is acknowledged. */
   admitDurableDelivery?(input: {
     operationId: string;
@@ -498,7 +503,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     } finally { try { await lease?.dispose(); } catch { /* confirmed Hub delivery must not become a retryable cleanup error */ } }
   }
   // Only a claimed Hub answer above is exempt, never an ordinary instance merely named agend-hub.
-  if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, hubContactRefusal(ctx, meta.instanceName)); return; }
+  if (ctx.hubContactRestricted?.(meta.instanceName) && !ctx.requestContextRelay) { respond(null, hubContactRefusal(ctx, meta.instanceName)); return; }
   // Files or buttons only ever travel with a live Hub answer: never dropped silently onto an ordinary message.
   if (meta.hubExtras && Object.keys(meta.hubExtras).length) {
     respond(null, `report_result files/buttons/poll need a live Hub question: target_instance "${HUB_REPORT_TARGET}" with the correlation_id it gave you.`);
@@ -693,9 +698,10 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const instances = ctx.fleetConfig?.instances ?? {};
   // #1990: each topic's line links the other side's topic (the target's names the sender, the sender's the target).
   // The agent's own text names no place: a marker in it is dropped.
+  const requestView=durableReceipt&&ctx.requestDeliveryView?.(durableReceipt.deliveryId);
   const notice = {
     label: `${displayLabel(senderLabel)} → ${displayLabel(targetName)}`,
-    message: noPlaceMarkers(message ?? ""), requestKind,
+    message: noPlaceMarkers(requestView?.body ?? message ?? ""), requestKind,
     taskSummary: ipcMeta.task_summary === undefined ? undefined : noPlaceMarkers(ipcMeta.task_summary),
   };
   const senderPlace = placeRef({ kind: "instance", name: meta.instanceName }, displayLabel(senderLabel));
@@ -747,6 +753,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
       instance, sender: displayLabel(senderLabel), role: "status", text: out.text, ts: new Date().toISOString(),
       ...(out.textLinks.length ? { links: out.textLinks } : {}),
       ...(posted ? { channel: true } : {}),
+      ...(requestView?{requestProvenance:requestView.view}:{}),
     });
   };
   if (targetShown) webNotice(targetInstanceName, targetText!, targetPosted);
@@ -1605,6 +1612,7 @@ export type InstanceConfigPatch = Omit<z.infer<typeof UpdateInstanceConfigArgs>[
  * the backend (fresh, #1217), a credential profile or backend_options changed. Answers through `respond` like the tool.
  */
 export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, patch: InstanceConfigPatch, respond: Respond): void {
+  if(ctx.requestContextPolicy){const admission=ctx.requestContextCallAdmission;try{requireRequestContextPolicy(ctx,admission?.coverage==="covered"?admission.lease.snapshot.owner.instance:"","update_instance_config",{name,config:patch},admission);}catch(error){respond(null,(error as Error).message);return;}}
   const instances = ctx.fleetConfig?.instances;
   const inst = instances && Object.hasOwn(instances, name) ? instances[name] : undefined;
   if (isWindowsInstance(inst)) { respond(null, WINDOWS_CONFIG_REFUSED); return; }
@@ -2740,3 +2748,9 @@ export const outboundHandlers = new Map<string, Handler>([
   ["teardown_deployment", teardownDeployment],
   ["list_deployments", listDeployments],
 ]);
+
+// Canonical map ownership survives composite/wrapper arguments and applies to direct handler consumers too.
+for(const [tool,handler]of outboundHandlers){outboundHandlers.set(tool,(ctx,args,respond,meta)=>{
+ try{requireRequestContextPolicy(ctx,meta.instanceName,tool,args,meta.requestContextAdmission);}catch(error){respond(null,(error as Error).message);return;}
+ return handler(ctx,args,respond,meta);
+});}

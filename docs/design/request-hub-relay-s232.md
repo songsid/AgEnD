@@ -159,3 +159,37 @@ or live activation; implementation follows source review of these boundaries.
 Before L rollback is a normal revert with factories uninstalled. After cutover,
 keep A's compatibility barrier and follow the approved drain/downgrade order.
 This is not a sandbox: labels/rules do not confine shell, keys or shared history.
+
+## 6. Fable design-review resolution and implementation ports
+
+| Review point | Implemented boundary / control |
+|---|---|
+| Relay is not an independent root or expected return | `DeliveryOutbox.prepareRequestContextDeliveryInput` reads B's validated operation; C's `admitted-delivery` proof binds its sender/incarnation and unchanged provenance. A deterministic UUIDv8 child is derived from delivery plus receiving incarnation. Every active turn, including a same-root sibling, defers. |
+| Expected return is not a correlation reminder | `request_context_returns_v1` is owned by the outbox connection. Only `request_information` and explicit `send_to_instance.requires_reply` register, in B's actual transaction. The partial open-selector unique index refuses ambiguity at admission. A response must descend from the receiving child and match both incarnations; its once-only CAS and B admission commit together. |
+| D1 / delayed decisions / grants | E's admission callback reaches the same B hook. A held-only row registers nothing. H's static image/forwards/steer/cap validation runs at B admission even after a root Continue; a former call need not remain live for a later verified decision. |
+| Retirement / no timeout closure | F reports open expected returns. Proven failed/cancelled requests need no reply; E deletes return rows before B operations and contexts. The only additional close API requires a server-owned work/generation proof. There is no time-based close. |
+| Four real dispatch sinks | One canonical classifier is called by the daemon, Fleet outbound and typed IPC, exec MCP, and the HTTP dispatcher. Composite calls expand first. HTTP instance credentials never acquire the latest pane context. |
+| Actual mutation owners | TaskBoard, scheduler, config save/patch and theme owners receive the captured admission; native proxies recheck the original lease at delayed commits. Hub work cannot create persistent work, forward receipts, steer, delegate, broadcast or change owner settings. Existing role and go-ahead checks remain independent. |
+| Exact Hub output resource | Server-private output scopes reach the actual representative, room answer/reaction and room-post adapters. They recompute G's root key from the owning Hub/message/agent, check current destination and constrain room posts to the original audience. Rechecks occur after file preparation and before every chunk. |
+| Display source / cap | Only a B-validated delivery projection supplies the inert UI field. Header-looking body text never creates it. G's peer assembled-byte cap includes the complete label; accepted Hub input keeps G's larger input contract. |
+
+The dormant assembly ports are `makeRequestContextRelay`, `makeRequestContextPolicy`,
+`prepareRequestContextDeliveryInput` and the existing C/D call leases. There is no
+production installation here. L must install the policy, scoped relay, input
+resolver and I/J/K card surfaces together; a partial policy/relay installation
+refuses legacy admission rather than silently using lifetime origins.
+
+An uncovered/interrupted contact uses one deterministic unendorsed unknown root
+for that operation and E's ordinary held card. The ticket's reason is
+`interrupted-launch` (or `unproved-recovery`); this identifies uncertainty, not a
+Hub person, owner or authority. Continue never restores launch coverage. The
+card/UI consumers must render the interruption as one contact needing approval;
+a new operation still gets its own decision. No origin reset or lifetime lock is
+introduced. The shared launch's per-turn helper-identity follow-up remains
+separate. An unidentified output cannot claim another Hub question.
+
+The UI uses a plain label, one visible audience/approval sentence and an existing
+`n-raw` disclosure for secondary IDs. Only the message body folds. The phone
+control follows the shared phone query and 44 px tap token. Wire and outbox bytes
+are preserved; `delivery_status` projects provenance separately from the human
+receipt authority field. Captured refusal text is the actual classifier result.

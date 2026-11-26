@@ -1,3 +1,4 @@
+import {requestProvenanceView,type RequestProvenanceView} from "./request-context-view.js";
 import { replyPreviews, type ReplyPreviewSpec } from "./reply-preview-spec.js";
 /**
  * What the web chat has said, kept so that a reload — or a dropped SSE stream — does not leave the chat empty.
@@ -120,6 +121,7 @@ function retryInfo(raw: unknown): WebChatRetry | null {
 
 export interface WebChatMessage {
   contactTicket?: ContactBadge;
+  requestProvenance?:RequestProvenanceView;
   /** Files shown with the message (absent when none); a restored one that cannot be served again is `gone` (#1565). */
   attachments?: Array<WebChatAttachment | WebChatGoneAttachment>;
   /** #1266: an agent reply's buttons (agent messages only). */
@@ -318,6 +320,7 @@ export interface WebChatHistoryOptions {
 /** #1565: a message as it is kept on disk — what was said, never the interactive state; files with their paths. */
 export interface StoredWebChatMessage {
   contactTicket?: ContactBadge;
+  requestProvenance?:RequestProvenanceView;
   previews?: ReplyPreviewSpec[];
   retry?: { info: WebChatRetry; messageId: string; delivery: WebDeliveryState };
   /** Import/reference identities only: never accepted by delivery status lookup. */
@@ -462,6 +465,7 @@ export class WebChatHistory {
     const retired = this.retiredNativeIds.get(m);
     if (retired?.length) row.retiredNativeIds = [...retired];
     if (m.contactTicket) row.contactTicket = { ...m.contactTicket };
+    if(m.requestProvenance)row.requestProvenance={...m.requestProvenance};
     if (m.retry?.failedAt && m.messageId && m.delivery) row.retry = { info: { ...m.retry }, messageId: m.messageId, delivery: m.delivery };
     const posts = this.posts.get(m);
     if (posts?.length) row.posts = posts.map(p => ({ ...p }));
@@ -569,7 +573,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; contactTicket?: unknown; attachments?: WebChatAttachment[]; messageId?: string; anchor?: string; role?: string; retryOwner?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; contactTicket?: unknown; requestProvenance?:unknown; attachments?: WebChatAttachment[]; messageId?: string; anchor?: string; role?: string; retryOwner?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
     return this.recordEntry(msg);
   }
 
@@ -608,6 +612,7 @@ export class WebChatHistory {
     const previews = entry.role === "agent" ? replyPreviews(msg.previews) : null;
     const badge = contactBadge(msg.contactTicket);
     if (badge) entry.contactTicket = badge;
+    const provenance=entry.role==="status"?requestProvenanceView(msg.requestProvenance):undefined;if(provenance)entry.requestProvenance=provenance;
     if (previews?.length) entry.previews = previews;
     const click = entry.role === "user" ? webChatClick(msg.click) : undefined;
     if (click) entry.click = click;
@@ -1148,6 +1153,7 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   }
   const badge = contactBadge(r.contactTicket);
   if (badge) message.contactTicket = badge;
+  const provenance=role==="status"?requestProvenanceView(r.requestProvenance):undefined;if(provenance)message.requestProvenance=provenance;
   const previews = role === "agent" ? replyPreviews(r.previews) : null;
   if (previews?.length) message.previews = previews;
   if (!message.retry && nativeHistoryMessageId(r.messageId,role)) message.messageId=r.messageId;

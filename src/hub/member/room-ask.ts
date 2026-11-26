@@ -1,3 +1,4 @@
+import {requestHubQuestionMatches} from "../../request-hub-output.js";
 import {freezeHubRequestSnapshot,type HubRequestSnapshotV1} from "../../request-hub-context.js";
 import {tForLocale} from "../../locale.js";
 import {HubRoomAskerClockError} from "../room-asker-identity.js";
@@ -58,6 +59,7 @@ export interface RoomAskLink {
   contextInput?(value: HubRoomContextInput): Promise<HubRoomContextInputResult>;
 }
 export interface RoomAskOptions {
+  hubId?:string;
   db: Database.Database;
   /** Optional separately encrypted provenance; never changes the strict legacy row. */
   askerStore?: HubRoomAskerStore;
@@ -449,15 +451,16 @@ export class HubRoomAskAdapter {
       finally{this.owedFlights.delete(row.message_id);}
     }
   }
-  private send(saved: Saved, source: RoomAskLink): Promise<void> {
+  private send(saved: Saved, source: RoomAskLink, outputCurrent:()=>boolean=()=>true): Promise<void> {
     const id = saved.ask.messageId, existing = this.sending.get(id);
     if (existing?.link === source) return existing.work;
     const work = Promise.resolve().then(async () => {
-      if (!this.usable(source) || !this.current(saved, false) || this.row(id)?.state !== "answered") return;
+      if (!outputCurrent() || !this.usable(source) || !this.current(saved, false) || this.row(id)?.state !== "answered") return;
       try {
         // M-3125: an answer's files are staged before its frame on every send (staging expires); the bytes must still be the
         // frozen refs' bytes, or the answer stays unsent rather than naming other content.
-        if (saved.answer!.attachments) await this.stageFiles(saved, source);
+        if (saved.answer!.attachments) await this.stageFiles(saved, source, outputCurrent);
+        if(!outputCurrent() || !this.current(saved,false) || !this.usable(source))return;
         await source.sendAnswer(structuredClone(saved.answer!));
       } catch { /* The frozen row remains retryable until an exact ACK. */ }
     });
@@ -470,12 +473,14 @@ export class HubRoomAskAdapter {
    * the question (one per agent; "" is not a reaction here — the Fleet's react always names one). null: not a room question
    * of this agent's (the ordinary react takes it). Sent once, not retried: a reaction is a gesture, not an answer.
    */
-  react(input: { correlationId: string; caller: string; emoji: string; callerCurrent?: () => boolean }): Promise<HubReportOutcome> | null {
+  react(input: { correlationId: string; caller: string; emoji: string; callerCurrent?: () => boolean; requestScope?:import("../../request-hub-output.js").RequestHubOutputScope }): Promise<HubReportOutcome> | null {
     if (this.closed || !input.correlationId.startsWith("hub-room-")) return null;
     const row = this.options.db.prepare("SELECT * FROM hub_room_asks WHERE cid=?").get(input.correlationId) as Row | undefined;
     if (!row) return null;
     const saved = this.read(row);
     if (saved.local.agent !== input.caller) return null;
+    const scopeCurrent=()=>requestHubQuestionMatches(input.requestScope,this.options.hubId,saved.ask.messageId,saved.local.agent);
+    if(!scopeCurrent())return Promise.resolve({ok:false,message:"Not sent: this reply must stay in its original Hub conversation."});
     const no = (message: string) => Promise.resolve<HubReportOutcome>({ ok: false, message });
     if (!this.current(saved) || input.callerCurrent?.() === false) return no("Not sent: this room question is no longer current.");
     const emoji = String(input.emoji || "");
@@ -485,19 +490,21 @@ export class HubRoomAskAdapter {
     return link!.sendReact({ messageId: saved.ask.messageId, roomId: saved.ask.roomId, exposureId: saved.ask.exposureId, emoji })
       .then(() => ({ ok: true, message: "Reacted in the Hub room." }), () => ({ ok: false, message: "Not sent: the Hub link dropped. Try again." }));
   }
-  private async stageFiles(saved: Saved, source: RoomAskLink): Promise<void> {
+  private async stageFiles(saved: Saved, source: RoomAskLink, outputCurrent:()=>boolean=()=>true): Promise<void> {
     const store = this.options.files, put = source.putFile, refs = saved.answer!.attachments!;
     if (!store || !put || !saved.answerFiles || !roomFilesNegotiated(source.features)) throw new HubProtocolError("incompatible");
     const prepared = await store.prepare(saved.local.agent, saved.answerFiles);
     if (prepared.length !== refs.length || prepared.some((p, i) => p.ref.sha256 !== refs[i]!.sha256 || p.ref.size !== refs[i]!.size || p.ref.name !== refs[i]!.name)) throw new HubProtocolError("conflict");
-    for (const [i, file] of prepared.entries()) await store.send({ ref: refs[i]!, bytes: file.bytes }, chunk => put(chunk));
+    for (const [i, file] of prepared.entries()) await store.send({ ref: refs[i]!, bytes: file.bytes }, chunk => {if(!outputCurrent() || !this.current(saved,false) || !this.usable(source))throw new HubProtocolError("stale");return put(chunk);});
   }
-  report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null {
+  report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean; requestScope?:import("../../request-hub-output.js").RequestHubOutputScope; extras?: HubReportExtras }): Promise<HubReportOutcome> | null {
     if (this.closed || !input.correlationId.startsWith("hub-room-")) return null;
     const row = this.options.db.prepare("SELECT * FROM hub_room_asks WHERE cid=?").get(input.correlationId) as Row | undefined;
     if (!row) return null;
     const saved = this.read(row);
     if (saved.local.agent !== input.caller) return null;
+    const scopeCurrent=()=>requestHubQuestionMatches(input.requestScope,this.options.hubId,saved.ask.messageId,saved.local.agent);
+    if(!scopeCurrent())return Promise.resolve({ok:false,message:"Not sent: this reply must stay in its original Hub conversation."});
     const no = (message: string) => Promise.resolve<HubReportOutcome>({ ok: false, message });
     if (!this.current(saved) || input.callerCurrent?.() === false) return no("Not sent: this room question is no longer current.");
     // M-3127: the reply's buttons or poll ride along when this Hub takes them (room-answer-buttons-v1); M-3125: its files
@@ -513,13 +520,13 @@ export class HubRoomAskAdapter {
     if (saved.answer) {
       if (saved.answer.text !== input.text || wantsButtons !== !!saved.answer.buttons || JSON.stringify(saved.answerFiles ?? []) !== JSON.stringify(files))
         return no("Not sent: this question already has a different saved answer.");
-      return this.finish(row, saved);
+      return this.finish(row, saved,()=>scopeCurrent() && input.callerCurrent?.()!==false);
     }
     if (!["input", "delivered", "held"].includes(row.state)) return no("Not sent: the question has not reached the agent.");
     const prepared = files.length ? this.options.files!.prepare(saved.local.agent, files) : Promise.resolve([]);
     return prepared.then(list => {
       const latest = this.row(row.message_id);
-      if (!latest || this.closed || !this.current(saved)) return { ok: false, message: "Not sent: this room question is no longer current." };
+      if (!latest || this.closed || !this.current(saved) || !scopeCurrent() || input.callerCurrent?.() === false) return { ok: false, message: "Not sent: this room question is no longer current." };
       const now = this.read(latest);
       if (now.answer) return { ok: false, message: "Not sent: this question already has a saved answer." };
       now.answer = { messageId: now.ask.messageId, roomId: now.ask.roomId, exposureId: now.ask.exposureId, answerId: randomUUID(), text: input.text,
@@ -527,12 +534,12 @@ export class HubRoomAskAdapter {
         ...(list.length ? { attachments: list.map(p => p.ref) } : {}) };
       if (files.length) now.answerFiles = files;
       this.save(latest.message_id, "answered", now);
-      return this.finish(this.row(latest.message_id)!, now);
+      return this.finish(this.row(latest.message_id)!, now,()=>scopeCurrent() && input.callerCurrent?.()!==false);
     }, e => ({ ok: false, message: e instanceof HubFileRefusal ? `Not sent: ${e.message}` : "Not sent: a file could not be read." }));
   }
-  private finish(row: Row, saved: Saved): Promise<HubReportOutcome> {
+  private finish(row: Row, saved: Saved, outputCurrent:()=>boolean=()=>true): Promise<HubReportOutcome> {
     const link = this.link;
-    const sent = row.state !== "acked" && this.usable(link) ? this.send(saved, link) : Promise.resolve();
+    const sent = row.state !== "acked" && this.usable(link) ? this.send(saved, link, outputCurrent) : Promise.resolve();
     return sent.then(() => ({ ok: true, message: !this.closed && this.row(row.message_id)?.state === "acked"
       ? "Delivered to the Hub room." : "Saved for the Hub room; waiting for acknowledgement." }));
   }
