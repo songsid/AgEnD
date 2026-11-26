@@ -159,6 +159,8 @@ export interface SettingsApiContext extends AppShellContext {
   retryAdapterNow?(id: string): { queued: boolean; already_running?: boolean };
   /** #2906: the fixed address's Test connection (closed step codes only; never the token). */
   testNamedLink?(input: { hostname: unknown; port: unknown; protocol: unknown; token?: unknown; current?: () => boolean }): Promise<import("./tunnel/named-link-test.js").NamedTestResult | { busy: true }>;
+  /** M-3814: the fixed preview address's check (closed step codes; starts nothing). */
+  testPreviewRoute?(input?: { hostname?: unknown }): Promise<import("./tunnel/named-link-test.js").PreviewRouteResult | { busy: true }>;
   /** #1920 phase 3: Settings → Web sign-ins → Guests. */
   guestOverview?(): unknown;
   /** M-3734: each guest's derived agents now (Start from today's guests is checked against them). */
@@ -882,6 +884,27 @@ export function handleSettingsRequest(
       const result = await ctx.testNamedLink!({ hostname: body.hostname, port: body.origin_port, protocol: body.protocol, token: body.token, current });
       if ("busy" in result) return json(res, 409, { error: "test_running" }, true);
       json(res, 200, { steps: result.steps, hostname: result.hostname, port: result.port, ...(result.cleanup ? { cleanup: result.cleanup } : {}) }, true);
+    }).catch(() => { if (!res.headersSent) json(res, 400, { error: "bad request" }, true); });
+    return true;
+  }
+
+  // M-3814: Settings → Access → the fixed preview address's Check, on the saved address (what the preview listener
+  // answers to). An admin session only, like Test connection (over the public link too, M-3278). Starts nothing.
+  if (method === "POST" && path === "/api/settings/public-link/preview-test") {
+    const caller = guestSettingsCaller(req, url, ctx);
+    if (!caller) { json(res, 403, { error: "An admin sign-in is required" }, true); return true; }
+    if (!ctx.testPreviewRoute) { json(res, 501, { error: "test unavailable" }, true); return true; }
+    readBody(req, 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (guestSettingsCaller(req, url, ctx) !== caller) return json(res, 401, { error: "no longer authorized" }, true);
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
+      catch { return json(res, 400, { error: "invalid JSON" }, true); }
+      if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "invalid body" }, true);
+      // The address the page shows: Check answers "save first" when it is not the saved one (the page's copy may be stale).
+      const result = await ctx.testPreviewRoute!(body.hostname !== undefined ? { hostname: body.hostname } : {});
+      if ("busy" in result) return json(res, 409, { error: "test_running" }, true);
+      json(res, 200, result, true);
     }).catch(() => { if (!res.headersSent) json(res, 400, { error: "bad request" }, true); });
     return true;
   }

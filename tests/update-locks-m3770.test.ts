@@ -266,33 +266,39 @@ describe("M-3770 2.1b: the state lease (§4.2 step 3)", () => {
       const D = require(${JSON.stringify(require.resolve("better-sqlite3"))});
       const db = new D(${JSON.stringify(join(h, ".state-lease.sqlite"))}); db.pragma("journal_mode = DELETE");
       db.exec("BEGIN DEFERRED"); db.prepare("SELECT count(*) FROM sqlite_master").get();
-      process.stdout.write("held\\n"); setTimeout(() => process.exit(0), 1500);`], { stdio: ["ignore", "pipe", "inherit"] });
-    await new Promise<void>(r => child.stdout!.once("data", () => r()));
+      process.stdout.write("held\\n"); process.stdin.resume(); process.stdin.on("end", () => process.exit(0));`], { stdio: ["pipe", "pipe", "inherit"] });
+    await new Promise<void>((resolve, reject) => { child.stdout!.once("data", () => resolve()); child.once("exit", c => reject(new Error(`child exited ${c}`))); });
     expect(takeExclusiveLease(h, 200).ok).toBe(false);
-    await new Promise<void>(r => child.once("exit", () => r()));
+    const exited = new Promise<void>(r => child.once("exit", () => r()));
+    child.stdin!.end();                                                                              // the child exits: the kernel drops its lock
+    await exited;
     const ex = takeExclusiveLease(h, 2000);
     expect(ex.ok).toBe(true);
     if (ex.ok) ex.lease.release();
-  });
+  }, 30_000);
 });
 
 describe("M-3770 2.1b: a missing home is leased, not skipped (Prism #4499)", () => {
   it("between processes: a writer that found no home creates it and holds SHARED; the updater that then creates its journal can't drain past it", async () => {
     const root = home(), h = join(root, "fresh-home");
+    // The child holds SHARED until the parent closes its stdin — no timer, so a slow start (tsx under load) can't let it
+    // exit before the parent's check (Sentinel's report: a 1500 ms lifetime raced on a busy host).
     const child = spawn(process.execPath, ["--import", "tsx", "-e", `
       import { takeSharedLease } from ${JSON.stringify(join(process.cwd(), "src", "state-lease.ts"))};
       const r = takeSharedLease(${JSON.stringify(h)}, "schedule");
       if (!r.ok) { console.error(r.reason); process.exit(2); }
-      process.stdout.write("held\\n"); setTimeout(() => process.exit(0), 1500);`], { stdio: ["ignore", "pipe", "inherit"] });
+      process.stdout.write("held\\n"); process.stdin.resume(); process.stdin.on("end", () => process.exit(0));`], { stdio: ["pipe", "pipe", "inherit"] });
     await new Promise<void>((resolve, reject) => { child.stdout!.once("data", () => resolve()); child.once("exit", c => reject(new Error(`child exited ${c}`))); });
     expect(statSync(h).mode & 0o777).toBe(0o700);
     open(h);                                                                                         // the update begins: journal published
     expect(takeExclusiveLease(h, 200)).toMatchObject({ ok: false, reason: expect.stringMatching(/still runs/) });
-    await new Promise<void>(r => child.once("exit", () => r()));
+    const exited = new Promise<void>(r => child.once("exit", () => r()));
+    child.stdin!.end();
+    await exited;
     const ex = takeExclusiveLease(h, 2000);
     expect(ex.ok).toBe(true);
     if (ex.ok) ex.lease.release();
-  });
+  }, 30_000);
 });
 
 describe("M-3770 2.1b: the CLI's state writers and service commands go through the locks (a static gate)", () => {

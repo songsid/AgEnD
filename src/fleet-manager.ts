@@ -104,7 +104,7 @@ import { handleWebIconRequest, useAppIconStore } from "./web-icons.js";
 import { AppIconStore } from "./web-app-icon.js";
 import { trackWebServer, type WebServerDrain } from "./web-server-drain.js";
 import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
-import { PublicWebLink, publicLinkNamedHostname, publicLinkSettings } from "./public-web-link.js";
+import { PublicWebLink, publicLinkNamedHostname, publicLinkPreviewHostname, publicLinkSettings } from "./public-web-link.js";
 import { PublicLinkAutoOpen } from "./public-link-auto-open.js";
 import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from "./public-link-owner.js";
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
@@ -112,7 +112,7 @@ import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
 import { installExitMarker, unattendedInstallCommand, loginShell } from "./unattended-install.js";
 import { InstallStream } from "./install-stream.js";
-import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
+import { namedTestLane, runNamedLinkTest, runPreviewRouteTest, type NamedTestResult, type PreviewRouteResult } from "./tunnel/named-link-test.js";
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
 import { OfficeTalk } from "./office-talk.js";
@@ -357,7 +357,7 @@ import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, web
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore, isSafeInstanceDirName } from "./web-chat-store.js";
 import { WebChatArchive } from "./web-chat-archive.js";
-import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
+import { SEEN_USERS_FILE, SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
 import { agendVersion } from "./agent-whats-new.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
@@ -409,7 +409,9 @@ import { WebSettingsTools } from "./web-settings-tools.js";
 import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest, guestSeesMessage, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
-import { turnSource, type QuiescenceGate } from "./update-quiescence.js";
+import { QuiescenceBarrier, stripHumanReceipt, UPDATE_HANDBACK_COPY_KIND, UPDATE_HANDBACK_SOURCE, handbackDue, turnSource,
+  type HandbackPorts, type QuiescenceGate } from "./update-quiescence.js";
+import { readCurrent as readUpdateJournal, type AttemptRecord as UpdateAttemptRecord } from "./update-journal.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateAnswerLabel, updateOfferReply, type UpdateCardView } from "./update-card.js";
 import { preflightAllows } from "./update-readiness.js";
@@ -1523,6 +1525,84 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** S-244: the quiescence barrier. Unset, every pane write and admission proceeds as today. */
   private quiescence: QuiescenceGate | null = null;
   attachQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
+  private updateHandbackTimer: NodeJS.Timeout | null = null;
+
+  /**
+   * M-3770 §2.3/§2.6 (rev 15): this fleet was restarted by an abandon as the attempt's `old` generation (its handoff
+   * nonce): it takes the held inbox and deferred jobs back. The first walk runs during the start, before the web chat,
+   * the adapters and the agents open any ingress, so a held copy keeps its place ahead of anything newer (Fable #4536
+   * design 3b): it waits, bounded, for the abandon driver to journal `restart-old`. Later walks every 10 s pick up
+   * stragglers until `hand-back` is journaled or the attempt closes.
+   */
+  private async startUpdateHandback(nonce = process.env.AGEND_UPDATE_HANDOFF ?? "", waitMs = 15_000, sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))): Promise<void> {
+    if (!/^[0-9a-f]{32}$/.test(nonce)) return;
+    const own = { nonce, pid: process.pid };
+    const mine = (a: UpdateAttemptRecord) => a.stage === "abandoning"
+      && (a.fleets as { gen: string; nonce: string }[] | undefined)?.some(g => g.gen === "old" && g.nonce === nonce) === true;
+    const until = performance.now() + waitMs;
+    for (;;) {
+      const read = readUpdateJournal(this.dataDir);
+      if (read.state !== "open" || !mine(read.attempt)) return;
+      if (handbackDue(read.attempt, own)) { this.walkUpdateHandback(read.attempt, own); break; }
+      if (performance.now() >= until || this.shuttingDown) {
+        this.logger.warn({ attemptId: read.attempt.id }, "Update hand-back: restart-old isn't journaled yet; the held work is taken back by the next walk");
+        break;
+      }
+      await sleep(250);
+    }
+    const again = () => {
+      this.updateHandbackTimer = null;
+      if (this.shuttingDown) return;
+      const read = readUpdateJournal(this.dataDir);
+      if (read.state !== "open" || !mine(read.attempt)) return;
+      if (handbackDue(read.attempt, own)) this.walkUpdateHandback(read.attempt, own);
+      this.updateHandbackTimer = setTimeout(again, 10_000); this.updateHandbackTimer.unref?.();
+    };
+    this.updateHandbackTimer = setTimeout(again, 10_000); this.updateHandbackTimer.unref?.();
+  }
+
+  private walkUpdateHandback(attempt: UpdateAttemptRecord, own: { nonce: string; pid: number }): void {
+    try {
+      const r = new QuiescenceBarrier(this.dataDir).runHandback(attempt, this.updateHandbackPorts(), own);
+      if (r.walked) this.logger.info({ attemptId: attempt.id, acked: r.acked }, "Update hand-back walked");
+    } catch (err) {
+      this.logger.warn({ err, attemptId: attempt.id }, "Update hand-back walk failed; the next walk retries");
+    }
+  }
+
+  /** §2.6 ports, rev 15 (Fable #4536 design): the pump owns a handed-back row again; copies go in as their own kind. */
+  private updateHandbackPorts(): HandbackPorts {
+    const outbox = this.deliveryOutbox;
+    if (!outbox) throw new Error("the delivery outbox isn't open");
+    return {
+      log: (fields, message) => this.logger.warn(fields, `Update hand-back: ${message}`),
+      lookup: id => { const row = outbox.get(id); return row ? { state: row.state, target: row.targetInstance } : null; },
+      // Queued and retry_wait rows (inside a backoff too) are the restarted pump's again: it delivers them per target in
+      // order. Nothing is claimed here, so the pump's lane bookkeeping stays whole.
+      claim: id => {
+        const row = outbox.get(id);
+        if (!row) return "missing";
+        if (row.state !== "queued" && row.state !== "retry_wait") return "settled";
+        this.scheduleDeliveryOutboxPump();
+        return "claimed";
+      },
+      admitCopy: (sourceKey, body, target) => {
+        if (!this.fleetConfig?.instances[target]) return null;
+        const payload = { ...(body as Record<string, unknown>) };
+        const meta = payload.meta && typeof payload.meta === "object" ? payload.meta as Record<string, unknown> : undefined;
+        if (meta) {
+          const stripped = stripHumanReceipt(meta);
+          payload.meta = stripped.meta;
+          if (stripped.receiptId) outbox.markHumanReceiptUncertain(stripped.receiptId, target);
+        }
+        const admitted = outbox.admit({ operationId: sourceKey, sourceKey, sourceInstance: UPDATE_HANDBACK_SOURCE, sourceDaemonBootId: this.managerBootId,
+          targetInstance: target, kind: UPDATE_HANDBACK_COPY_KIND, payload });
+        return { deliveryId: admitted.delivery.deliveryId };
+      },
+      runDeferred: job => { this.scheduler?.runDeferredOccurrence(job.scheduleId, job.runId, name => !!this.fleetConfig?.instances[name]); },
+      recordInterrupted: job => { this.scheduler?.recordInterruptedOccurrence(job.scheduleId, job.runId); },
+    };
+  }
 
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
@@ -4456,7 +4536,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** #1770: an instance's web-files byte cap (a field, so a test can make it small). */
   private webReplyMaxBytes = REPLY_FILES_MAX_BYTES;
-  /** #1682: the people seen on inbound messages (id → name), for the web chat's mention pills; bounded, in memory. */
+  /** #1682: the people seen on inbound messages (id → name), for the web chat's mention pills; bounded; on disk since M-3827. */
   readonly seenUsers = new SeenUsers();
   private webPrefsStore?: WebPrefsStore;
   /** #1665: the web preferences kept on the host (<home>/web-prefs.json), read on first use. */
@@ -6836,7 +6916,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.pendingNonceButtons.delete(nonce);
         if (entry.timer) clearTimeout(entry.timer);
         // #4438 review: a card still being posted has no message yet; postHeldTicketCard retires it once it has one.
-        if (entry.messageId) void this.retireNonceButtons(entry, entry.messageId, heldCardOutcome(ticket.state, !!ticket.requestContext));
+        if (entry.messageId) void this.removeDecidedContactCard(entry, entry.messageId, heldCardOutcome(ticket.state, !!ticket.requestContext));
       }
       return;
     }
@@ -6915,13 +6995,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
       if (!entry.messageId) return;   // never an edit without a message
       closed = true;
-      void this.retireNonceButtons(entry, entry.messageId, fresh && fresh.state !== "pending" ? heldCardOutcome(fresh.state, !!fresh.requestContext) : t("contactProposal.expired"));
+      if (fresh && fresh.state !== "pending") void this.removeDecidedContactCard(entry, entry.messageId, heldCardOutcome(fresh.state, !!fresh.requestContext));
+      else void this.retireNonceButtons(entry, entry.messageId, t("contactProposal.expired"));
     };
     void posted.then(retire, () => {});
     try { const nonce = await withinBudget(posted, performance.now() + 5000);
       if (!current() || this.contactService().host.store.get(ticket.id)?.state !== "pending") { retire(nonce); throw Error("conflict"); }
       return { status: "awaiting_platform_admin_confirmation" };
     } catch (error) { retired = true; throw error; }
+  }
+  /**
+   * M-3820 (the user, 11-26: General filled with cards edited to "approved elsewhere"): a contact card whose request was
+   * decided or expired somewhere else — the web, another card, a General proposal — is deleted; the card a person pressed
+   * keeps its outcome, and the decision stays in the agent's Permissions history. One try: a delete the platform refuses
+   * (no permission, a Telegram message over 48 h old, a gateway not ready) falls back to the edit it had before.
+   */
+  private async removeDecidedContactCard(entry: NonceButtonEntry, messageId: string, text: string): Promise<void> {
+    if (!entry.retire && entry.adapter.deleteMessage) {
+      try {
+        await entry.adapter.deleteMessage(entry.chatId, messageId, entry.threadId);
+        this.webPromptGone(entry, text);
+        return;
+      } catch (err) {
+        this.logger.info({ err: (err as Error)?.message, instanceName: entry.instanceName }, "Could not delete a contact card decided elsewhere; editing it instead");
+      }
+    }
+    await this.retireNonceButtons(entry, messageId, text);
   }
   private async postHeldTicketCard(ticket: ContactTicket): Promise<void> {
     const found = this.contactCardRoute(ticket.target);
@@ -6949,7 +7048,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fresh = this.contactService().host.store.get(ticket.id), armed = this.pendingNonceButtons.get(nonce) === entry;
     if (armed && fresh?.state === "pending") return;
     if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
-    await this.retireNonceButtons(entry, entry.messageId, !fresh || fresh.state === "pending" ? t("contactHeld.expired") : heldCardOutcome(fresh.state, !!fresh.requestContext));
+    if (!fresh || fresh.state === "pending") await this.retireNonceButtons(entry, entry.messageId, t("contactHeld.expired"));
+    else await this.removeDecidedContactCard(entry, entry.messageId, heldCardOutcome(fresh.state, !!fresh.requestContext));
   }
   private async handleContactTicketCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
     if (!data.callbackData.startsWith(CONTACT_TICKET_PREFIX)) return false;
@@ -7665,6 +7765,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await daemon.deliverWorkingRecovery(payload.content, claimed, () => this.daemons.get(target) === daemon && this.recoveryDeliveryEligible(claimed, true));
         } finally { release(); }
         sent = true;
+      } else if (claimed.kind === UPDATE_HANDBACK_COPY_KIND) {
+        // M-3770 §2.6 (rev 15, Fable #4536 design 3a): a turn the update barrier held, delivered as journaled. A person's
+        // turn stays a person's — no from_instance is stamped — and only the fence's delivery id and attempt are added.
+        if (payload.type === "raw_paste") {
+          if (typeof payload.content !== "string") throw new Error("Durable hand-back copy has an invalid payload");
+          sent = await this.deliverToInstance(target, { ...payload, delivery_id: claimed.deliveryId, delivery_attempt: String(claimed.attemptNo) },
+            { waitForIdle: false, noInlineWake: this.deliveryWorkerMode(target) !== "off" });
+        } else {
+          payload.meta = { ...rawMeta, delivery_id: claimed.deliveryId, delivery_attempt: String(claimed.attemptNo) };
+          sent = await this.deliverToInstance(target, payload, { waitForIdle: true, noInlineWake: this.deliveryWorkerMode(target) !== "off" });
+        }
       } else if (claimed.kind === "raw_paste") {
         if (payload.type !== "raw_paste" || typeof payload.content !== "string") {
           throw new Error("Durable raw_paste row has an invalid payload");
@@ -9441,8 +9552,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * not sent. There is no await between this and `ipc.send`. Unarmed, or not an agent turn: false, and the send proceeds.
    * A Hub or room payload is not a copy: `refuseHubPane` refuses it before this, and the producer leaves the row queued.
    */
-  private holdPaneSend(payload: Record<string, unknown>): boolean {
-    return this.quiescence?.commitTurn(payload) === true;
+  private holdPaneSend(instanceName: string, payload: Record<string, unknown>): boolean {
+    return this.quiescence?.commitTurn(payload, instanceName) === true;
   }
 
   /** The fence is up and this payload belongs to a durable Hub or room row. Do not send it and do not copy it. */
@@ -9487,7 +9598,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (this.requestContextAdmission?.available() === false) return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold, beforeInput);
         const wire = this.bindHumanReceiptPayload(instanceName, payload);
         if (this.refuseHubPane(wire)) return false;
-        if (this.holdPaneSend(wire)) return true;
+        if (this.holdPaneSend(instanceName, wire)) return true;
         if (ipc.send(wire)) return true;
       }
     }
@@ -9526,7 +9637,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.refuseHubPane(payload)) return false;
     if (this.quiescence?.armed()) {
       const early = this.bindHumanReceiptPayload(instanceName, payload);
-      if (this.holdPaneSend(early)) return true;
+      if (this.holdPaneSend(instanceName, early)) return true;
     }
     const begin = this.requestContextAdmission
       ? await runWithRequestContextAdmission(this.requestContextAdmission, () => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent), beforeInput)
@@ -9541,7 +9652,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!ipc?.connected || (privateToken && this.classicPrivacy().read(instanceName)?.token !== privateToken)) return false;
       const wire = this.bindHumanReceiptPayload(instanceName, payload);
       if (this.refuseHubPane(wire)) return false;
-      if (this.holdPaneSend(wire)) return true;
+      if (this.holdPaneSend(instanceName, wire)) return true;
       const sent = ipc.send(wire);
       if (sent && privateToken) {
         try {
@@ -9587,7 +9698,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ipc?.connected) {
         const wire = this.bindHumanReceiptPayload(instanceName, payload);
         if (this.refuseHubPane(wire)) return false;
-        if (this.holdPaneSend(wire)) return true;
+        if (this.holdPaneSend(instanceName, wire)) return true;
         if (ipc.send(wire)) return true;
       }
       // #2484: while the instance waits for (or runs) its own start retry, the grace runs from now — so the message is
@@ -10052,7 +10163,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Installed work uses its admitted request only; lifetime history is no longer a permission input or shadow.
     const contactStore = installed?undefined:this.deliveryOutbox.contactAuthorizations;
     if (!installed && this.contactRoom(instanceName)?.restrictedMode === true && !contactStore) throw Error("Contact origin storage unavailable");
-    if (contactStore && (this.contactRoom(instanceName)?.restrictedMode === true || contactStore.origin(instanceName))) {
+    // M-3830 (user 11-26, Fable): a person's message becomes contact origin only in a restricted ClassicBot room. Who may
+    // talk to a fleet agent in its own topic is the admin's channel access (#754); recording it only once some earlier
+    // inheritance had created a row made a cleared agent re-arm on its next topic message (a project lead, 11-26). What an
+    // agent inherits from peers, rooms, new instances and board notes still carries its origin.
+    if (contactStore && this.contactRoom(instanceName)?.restrictedMode === true) {
       const authority = origin.authority;
       const identity = origin.platform === "web" && isWebSessionIdentity(origin.web_identity) ? origin.web_identity : undefined;
       const actor = origin.platform === "web" ? identity ?? (authority?.kind === "web-verified" ? authority.actor : null)
@@ -10182,7 +10297,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const wire = this.bindHumanReceiptPayload(instanceName, admitted);
       if (this.refuseHubPane(wire)) return false;
-      if (this.holdPaneSend(wire)) { sent = true; return true; }
+      if (this.holdPaneSend(instanceName, wire)) { sent = true; return true; }
       sent = ipc.send(wire);
       return sent;
     }
@@ -12228,6 +12343,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return result;
     } finally { this.namedLinkTestRunning = false; }
   }
+  private previewRouteTestRunning = false;
+  /**
+   * M-3814: Settings → Access → the fixed preview address's Check — the saved `web.public_link.preview_hostname`,
+   * through the open fixed link's tunnel, to this preview listener (its boot id is the proof). One at a time; starts
+   * nothing. An admin session only, over the public link too (M-3278; settings-api.ts).
+   */
+  async testPreviewRoute(input: { hostname?: unknown } = {}): Promise<PreviewRouteResult | { busy: true }> {
+    if (this.previewRouteTestRunning) return { busy: true };
+    this.previewRouteTestRunning = true;
+    try {
+      const listener = this.previewListening ? this.previewListener : null;
+      const hostname = publicLinkPreviewHostname(this.fleetConfig?.web);
+      const result = await runPreviewRouteTest({ hostname, linkOpen: !!hostname && this.publicWebLink?.fixedPreviewHost?.() === hostname,
+        bootId: listener?.bootId ?? null, port: listener?.settings.port ?? null, ...(input.hostname !== undefined ? { shown: input.hostname } : {}) });
+      this.logger.info({ steps: result.steps.map(s => `${s.step}:${s.code}`) }, "Fixed preview address check");
+      return result;
+    } finally { this.previewRouteTestRunning = false; }
+  }
   private getTunnelLane(): TunnelPurposeLane {
     return this.tunnelPurposeLane ??= new TunnelPurposeLane(new ManagedTunnel({ dataDir: this.dataDir,
       log: () => this.logger.warn("Managed tunnel cleanup requires attention") }));
@@ -13694,6 +13827,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       setUpdateProgressStage(this.dataDir, "starting", { version: pendingUpdateProgress.progress.version });
     }
     this.initializeWebAuthTokens();
+    // M-3827: the people seen before this start keep their names in the web chat's mentions (before any adapter connects).
+    this.seenUsers?.persistTo({ path: join(this.dataDir, SEEN_USERS_FILE), onWarn: message => this.logger.warn(message) });
     // Must run before the first General/CLI spawn: pressure can hold startup.
     // Logs remain available even before the adapters and health listener exist.
     this.memoryPressure.start();
@@ -14034,6 +14169,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // rows can never crowd an instance's own out (#3421 review). Nothing unbounded goes into process.env.
       this.snapshotActiveDecisions();
     }
+
+    // M-3770 §2.6: a fleet an abandon restarted takes the held work back before any ingress opens (rev 15).
+    await this.startUpdateHandback();
 
     // Phase 1: Start general instances first and wait for them
     // M-2457: a held fleet starts no agent (the hold's Needs-you line says why and what to do).
@@ -30764,6 +30902,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // write that failed and is still owed — is paid now, so a restart neither shortens the idle window
     // nor revives a session that was revoked while the disk was refusing writes.
     this.webSessions?.flush();
+    this.seenUsers?.flush();                         // M-3827: the names seen since the last write
 
     this.eventLog?.close();
     this.replyButtonsCtl?.stop();
@@ -33851,7 +33990,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const listener = createPreviewListener({ settings, healthPort: boundPort, config: this.fleetConfig,
       // #1723: with a web.preview_origin, the open public link's dashboard frames this listener's preview too.
-      extraOrigins: () => { const o = settings.origin ? this.publicWebLink?.openDashboardOrigin() : null; return o ? [o] : []; },
+      extraOrigins: () => {
+        const o = settings.origin || this.publicWebLink?.fixedPreviewHost?.() ? this.publicWebLink?.openDashboardOrigin() : null;
+        return o ? [o] : [];
+      },
+      // M-3814: the fixed link's preview address (a second route on its named tunnel to this port), only while it is open.
+      extraHosts: () => { const h = this.publicWebLink?.fixedPreviewHost?.(); return h ? [h] : []; },
       // #2911 (7): CDN libraries in previews, as fleet.yaml says now (a change applies to the next preview started).
       cdn: () => this.fleetConfig?.web?.preview_cdn === true });
     this.previewListener = listener;
@@ -33929,6 +34073,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!listener) { const why = this.previewNotListening(); return off(why.code, why.reason, why.detail ? { detail: why.detail } : {}); }
       if (!configured.startsWith("https:")) return off("needHttps", "Previews need an https web.preview_origin when the dashboard is reached over https.");
       return { dashboardOrigin, previewOrigin: configured, reason: null, code: null, boot: listener.bootId, frameSrc: `${configured}/frame` };
+    }
+    // M-3814: a fixed link with a fixed preview address frames this listener through its own named tunnel — never a
+    // quick tunnel (no 429 from Cloudflare's limit on new temporary links).
+    const fixedHost = this.publicWebLink?.fixedPreviewHost?.(exposureId) ?? null;
+    if (fixedHost) {
+      const listener = this.previewListening ? this.previewListener : null;
+      if (!listener) { const why = this.previewNotListening(); return off(why.code, why.reason, why.detail ? { detail: why.detail } : {}); }
+      const origin = `https://${fixedHost}`;
+      return { dashboardOrigin, previewOrigin: origin, reason: null, code: null, boot: listener.bootId, frameSrc: `${origin}/frame` };
     }
     const status = this.publicWebLink?.previewStatus(exposureId) ?? null;
     if (!status) return off("publicLink", "Previews are not offered on this public link.");

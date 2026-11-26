@@ -73,6 +73,7 @@ import { DevicesCard } from "./settings-devices.js";
 import { AccessOverview, accessOverviewLabel } from "./settings-access-overview.js";
 import { HubSection, hubSectionText } from "./settings-hub-section.js";
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
+import { FixedPreviewAddress, bareHost, previewHostPlaceholder, previewPortOf } from "./settings-preview-address.js";
 import { SignInList } from "./backend-signin.js";
 import { AccountsView, defaultsBackendOptions } from "./accounts-view.js";   // #3212: SignInList stays exported for a page that still imports it
 import { ProviderMark } from "./provider-marks.js";
@@ -164,6 +165,10 @@ export function SettingsPanel({ route, navKey }) {
   const stagedRef = useRef(staged);
   stagedRef.current = staged;
   const [dialog, setDialog] = useState(null);         // { kind, ...props, key: navKey }
+  // M-3814: a section's open tab for this navigation, kept across the reload that remounts it after a save (its key
+  // moves with loadedAt): saving on Access → Sharing no longer drops back to Overview a moment later.
+  const tabMemory = useRef({ navKey: null, tabs: {} });
+  if (tabMemory.current.navKey !== navKey) tabMemory.current = { navKey, tabs: {} };
   const [search, setSearch] = useState("");
   // #2347: each section's draft while it is edited (settings-draft.js), and the epoch that remounts the sections when
   // the drafts go: a Save that went through whole, or Discard. A Save that failed keeps them (what did not land is staged
@@ -400,7 +405,7 @@ export function SettingsPanel({ route, navKey }) {
   // #2347: sections read `staged` (each change as staged, its extra fields kept: Guests carries its whole draft) and
   // `drafts` to come back to their edits; `draftEpoch` moves on Discard and after a Save to start them from what is saved.
   const ctx = data && !data.error ? makeCtx(data, setData, stage, unstage, reload, reloadLive, () => mount.current(),
-    { drafts: drafts.current, draftEpoch, staged, savingDrafts: () => submitted.current,
+    { drafts: drafts.current, draftEpoch, staged, savingDrafts: () => submitted.current, tabMemory: tabMemory.current,
       savingStaged: () => (submitted.current || operationActive() ? submittedStaged.current : null) }) : null;
   // #1519 P7: "Connect a chat app" on the first-run card elsewhere came here for the wizard: it opens once the data is in.
   // #2347: it writes a connection and an agent at once — not while a fleet.yaml edit waits to be saved.
@@ -1333,7 +1338,9 @@ export function uploadMbInEffect(web) {
 }
 function WebSection({ ctx, staged, part = "all" }) {
   const { schema } = ctx;
-  const [accessTab, setAccessTab] = useSettingsTabs("access", "overview");
+  const memory = ctx.tabMemory || null;
+  const [accessTab, setAccessTab] = useSettingsTabs("access", (memory && memory.tabs.access) || "overview");
+  useEffect(() => { if (memory) memory.tabs.access = accessTab; }, [accessTab, memory]);
   const web = ctx.fleet.web || {}, local = (web.session && web.session.local) || {}, term = ctx.fleet.web_terminal || {};
   const plSession = (web.session && web.session.public_link) || {};   // #3708
   // M-3278 (decision 7933bf90): over the public link an admin edits these as anywhere (Guests and Web authority included);
@@ -1348,7 +1355,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     levels: web.office_levels !== false,                                        // #2661: on by default
     cdn: web.preview_cdn === true,                                              // #2911 (7): off by default
     loginQr: web.login_qr === true,                                             // #3061 (P2b): off by default
-    pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2", hostname: (web.public_link && web.public_link.hostname) ?? "", tunnel_token_env: (web.public_link && web.public_link.tunnel_token_env) ?? "", origin_port: (web.public_link && web.public_link.origin_port) ?? 19282, auto_open: (web.public_link && web.public_link.auto_open) ?? false },
+    pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2", hostname: (web.public_link && web.public_link.hostname) ?? "", tunnel_token_env: (web.public_link && web.public_link.tunnel_token_env) ?? "", origin_port: (web.public_link && web.public_link.origin_port) ?? 19282, auto_open: (web.public_link && web.public_link.auto_open) ?? false, preview_hostname: (web.public_link && web.public_link.preview_hostname) ?? "" },
     session: { absolute_hours: local.absolute_hours ?? null, idle_hours: local.idle_hours ?? null },
     plSession: { absolute_hours: plSession.absolute_hours ?? null, idle_minutes: plSession.idle_minutes ?? null },
     terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
@@ -1356,7 +1363,7 @@ function WebSection({ ctx, staged, part = "all" }) {
   const text = (v) => (v === null || v === undefined ? "" : String(v));
   /** #2347: a field's row class: `s-dirty` while it differs from what is saved (the draft may come from before). */
   const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, thinking: original.thinking, usagePub: original.usagePub, levels: original.levels, cdn: original.cdn, loginQr: original.loginQr, pub: original.pub.allow_public,
-    ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
+    ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port), previewHost: original.pub.preview_hostname,
     abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours),
     plAbs: text(original.plSession.absolute_hours), plIdle: text(original.plSession.idle_minutes), termOn: original.terminal.enabled !== false,
     termTtl: text(original.terminal.ttl_minutes), autoOpen: original.pub.auto_open }), []);
@@ -1372,7 +1379,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       echo: pick(pending, "echo_to_channel", original.echo), log: pick(pending, "log_tab", original.log), thinking: pick(pending, "log_thinking", original.thinking), usagePub: pick(pending, "usage_report_on_public_link", original.usagePub),
       levels: pick(pending, "office_levels", original.levels), cdn: pick(pending, "preview_cdn", original.cdn), loginQr: pick(pending, "login_qr", original.loginQr),
       pub: pick(pub, "allow_public", original.pub.allow_public), ttl: String(pick(pub, "ttl_minutes", original.pub.ttl_minutes)), protocol: pick(pub, "protocol", original.pub.protocol),
-      hostname: pick(pub, "hostname", original.pub.hostname), originPort: String(pick(pub, "origin_port", original.pub.origin_port)), autoOpen: pick(pub, "auto_open", original.pub.auto_open),
+      hostname: pick(pub, "hostname", original.pub.hostname), originPort: String(pick(pub, "origin_port", original.pub.origin_port)), previewHost: pick(pub, "preview_hostname", original.pub.preview_hostname), autoOpen: pick(pub, "auto_open", original.pub.auto_open),
       abs: text(pick(session, "absolute_hours", original.session.absolute_hours)), idle: text(pick(session, "idle_hours", original.session.idle_hours)),
       plAbs: text(pick(plPending, "absolute_hours", original.plSession.absolute_hours)), plIdle: text(pick(plPending, "idle_minutes", original.plSession.idle_minutes)),
       termOn: pick(terminal, "enabled", original.terminal.enabled) !== false, termTtl: text(pick(terminal, "ttl_minutes", original.terminal.ttl_minutes)),
@@ -1397,6 +1404,10 @@ function WebSection({ ctx, staged, part = "all" }) {
   const plAbsNow = Math.min(plAbsQuick, abs), plIdleNow = Math.min(plIdleQuick, plAbsNow * 60, idle * 60);
   const errors = {
     hostname: f.hostname && !/^(?:https:\/\/)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+\/?$/.test(f.hostname) ? "namedHostnameInvalid" : "",
+    // M-3814: the fixed preview address — a separate name on the same tunnel, only beside a fixed hostname.
+    previewHost: !String(f.previewHost || "").trim() ? ""
+      : !/^(?:https:\/\/)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+\/?$/.test(String(f.previewHost).trim()) ? "namedHostnameInvalid"
+      : !named ? "previewHostNeedsHostname" : bareHost(f.previewHost) === bareHost(f.hostname) ? "previewHostSame" : "",
     originPort: !Number.isInteger(Number(f.originPort)) || Number(f.originPort) < 1024 || Number(f.originPort) > 65535 ? "namedPortInvalid" : "",
     // #named-link-ttl: a fixed hostname (named tunnel) allows up to 7 days, or 0 = no expiry; a quick tunnel 1–480.
     ttl: String(f.ttl).trim() === "" || !Number.isInteger(Number(f.ttl)) || Number(f.ttl) < (named ? 0 : 1) || Number(f.ttl) > (named ? 10080 : 480)
@@ -1413,7 +1424,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     // #2347: invalid text keeps the draft unsaved and Save waiting ("Fix 1 field to save"); no older valid draft is sent.
     if (overPublicLink) return;
     if (!ready) {
-      const at = { hostname: "#publicWebHostname", originPort: "#publicWebOriginPort", ttl: "#publicWebTtl", abs: "#webSessionAbsolute", idle: "#webSessionIdle",
+      const at = { hostname: "#publicWebHostname", previewHost: "#publicWebPreviewHostname", originPort: "#publicWebOriginPort", ttl: "#publicWebTtl", abs: "#webSessionAbsolute", idle: "#webSessionIdle",
         plAbs: "#webPublicSessionAbsolute", plIdle: "#webPublicSessionIdle",
         termTtl: "#webTerminalTtl" }[Object.keys(errors).find((k) => errors[k])];
       syncStage(ctx, "web", { label: tn("webSettingsLabel"), invalid: tn(Object.values(errors).find(Boolean)), section: "access", target: at });
@@ -1423,7 +1434,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     // reference adopts the standard env key; mounting or editing an unrelated field never rewrites credentials.
     const tokenEnv = f.hostname === original.pub.hostname ? original.pub.tunnel_token_env
       : f.hostname ? original.pub.tunnel_token_env || "AGEND_CLOUDFLARE_TUNNEL_TOKEN" : "";
-    const publicPatch = changedFields({ allow_public: f.pub, ttl_minutes: Number(f.ttl), protocol: f.protocol, hostname: f.hostname, tunnel_token_env: tokenEnv, origin_port: Number(f.originPort), auto_open: f.autoOpen }, original.pub);
+    const publicPatch = changedFields({ allow_public: f.pub, ttl_minutes: Number(f.ttl), protocol: f.protocol, hostname: f.hostname, tunnel_token_env: tokenEnv, origin_port: Number(f.originPort), auto_open: f.autoOpen, preview_hostname: String(f.previewHost || "").trim() }, original.pub);
     const sessionPatch = changedFields({ absolute_hours: value(f.abs), idle_hours: value(f.idle) }, original.session);
     const plSessionPatch = changedFields({ absolute_hours: value(f.plAbs), idle_minutes: value(f.plIdle) }, original.plSession);
     // The checkbox shows the default (on) for an unset key: only a real toggle is written; on again = back to the default.
@@ -1579,12 +1590,15 @@ function WebSection({ ctx, staged, part = "all" }) {
           ${lock(html`<section class="card s-public-entry"><h3>${layoutText("revPublicEntry")}</h3>
       <label class=${fc("check", "pub")}><input id="publicWebLink" type="checkbox" checked=${f.pub} onChange=${(e) => set("pub")(e.target.checked)} /><span>${tn("publicLink")}</span><${Impact} schema=${schema} field="web.public_link.allow_public" /></label>
       <p class="note">${tn("publicLinkHint")}</p>
-      <div class="grid2">
+      <div class="grid2" id="publicFixedAddress">
         <div class=${fc("field", "hostname")}><label for="publicWebHostname">${tn("namedHostname")}</label><input id="publicWebHostname" type="text" value=${f.hostname} placeholder="agend.example.com" class=${errors.hostname ? "invalid" : ""} onInput=${(e) => set("hostname")(e.target.value)} /><${Feedback} error=${errors.hostname} /></div>
         <div class=${fc("field", "originPort")}><label for="publicWebOriginPort">${tn("namedOriginPort")}</label><input id="publicWebOriginPort" type="number" min="1024" max="65535" value=${f.originPort} class=${errors.originPort ? "invalid" : ""} onInput=${(e) => set("originPort")(e.target.value)} /><${Feedback} error=${errors.originPort} /></div>
       </div>
       <p class="note">${tn("namedTunnelHint")} <a href="https://github.com/songsid/AgEnD/blob/main/docs/named-tunnel.md" target="_blank" rel="noopener noreferrer">${tn("namedTunnelSetup")}</a></p>
       ${String(f.hostname || "").trim() ? html`<${NamedLinkTest} hostname=${f.hostname} port=${f.originPort} protocol=${f.protocol} />` : null}
+      ${!named && !String(f.previewHost || "").trim() ? html`<p class="fixed-preview-needs lbar" id="publicPreviewNeedsFixed" role="note">${tn("previewNeedsFixedHost")}</p>` : null}
+      ${named || String(f.previewHost || "").trim() ? html`<${FixedPreviewAddress} field=${html`<div class=${fc("field", "previewHost")}><label for="publicWebPreviewHostname">${tn("previewHostname")}<${Impact} schema=${schema} field="web.public_link.preview_hostname" /></label><input id="publicWebPreviewHostname" type="text" value=${f.previewHost} placeholder=${previewHostPlaceholder(f.hostname)} class=${errors.previewHost ? "invalid" : ""} onInput=${(e) => set("previewHost")(e.target.value)} /><${Feedback} error=${errors.previewHost} /></div>`}
+        hostname=${String(f.previewHost || "").trim()} placeholder=${previewHostPlaceholder(f.hostname)} originPort=${f.originPort} saved=${bareHost(f.previewHost) !== "" && bareHost(f.previewHost) === bareHost(web.public_link && web.public_link.preview_hostname)} port=${previewPortOf(ctx.fleet)} />` : null}
       <div class="grid2">
         <div class=${fc("field", "ttl")}><label for="publicWebTtl">${tn(named ? "publicTtlNamed" : "publicTtl")}</label><input id="publicWebTtl" type="number" min=${named ? "0" : "1"} max=${named ? "10080" : "480"} step="1" class=${errors.ttl ? "invalid" : ""} value=${f.ttl} onInput=${(e) => set("ttl")(e.target.value)} /><${Feedback} error=${errors.ttl} /></div>
         <div class=${fc("field", "protocol")}><label for="publicWebProtocol">${tn("publicProtocol")}</label><${Select} id="publicWebProtocol" value=${f.protocol} onChange=${set("protocol")} options=${["http2", "quic", "auto"]} /></div>

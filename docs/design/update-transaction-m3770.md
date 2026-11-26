@@ -80,7 +80,8 @@ opened ─► barrier ─► stopping ─► snapshotted ─► installing ─�
 
   Only then is it `abandoned`. A crash anywhere in it resumes at the substep recorded.
 - `abandoning` is allowed from `stopping` only while no snapshot is published and nothing is installed. Then the state is the old fleet's own, unchanged. Once `snapshotted` is published, every failure goes to `rolling-back` instead (open point 3, §8).
-- `committing` holds 2.5's commit substeps (leave trial, start agents, deliver the inbox, run deferred jobs). A crash there resumes them. It never rolls back after agents have started.
+- `committing` holds 2.5's commit substeps, in order (rev 13): `retained` (§5.6), `route-removed` (+ reload), then the fleet's own `left-trial`, `agents-started`, `inbox-delivered`, `deferred-run`. A crash there resumes them. It never rolls back after agents have started.
+- **The forward order in `stopping` (rev 13):** the kit and the route first, while the old fleet still runs; then the old fleet stopped and fenced (§4.2); then the drain. So every later start, abandon's restart of the old generation included, goes through the pre-start step (§6.2).
 - **A busy second check closes the attempt it opened** (agreed with 2.2, #4493). The barrier publishes `opened` before it fences, then checks again (§2.6). If that second check finds the fleet busy:
   1. the fleet clears its fence flag and writes nothing, no prefix included;
   2. the updater runs `abandoning`: `restart-old` finds the old fleet running (it was never stopped), and `hand-back` has no files;
@@ -275,7 +276,12 @@ Neither CLI-owned files nor files in a CLI's profile are included, rev 3. `crede
 
 ### 4.4 The writers-gone proof, and who is exempt
 - **The proof looks for** any process of this uid that has `AGEND_HOME` equal to this home, its cwd under the home, or a file of the scope open or mapped (Linux `/proc/*/{environ,cwd,fd,maps}`; macOS `lsof -Fn +D`).
-- **An incomplete scan** (a failed listing, or a process of this uid that can't be read) is never proof of absence.
+- **An incomplete scan** (a failed listing, or a process of this uid that can't be read) is never proof of absence. A process that exits during the scan is gone, not unreadable.
+- **Sealed processes (rev 10):** a process of this uid that the kernel made non-dumpable can't be inspected without root, because its `/proc/<pid>/{cwd,fd,maps,environ}` belong to root. It is identified positively: its `status` reads this uid while its `fd` directory is root's. It is reported as **uninspectable**, not a gap. Every systemd user session has one (`(sd-pam)`), so without this the proof could never pass.
+  - **Privileged processes (rev 11):** a dumpable process of this uid holding a **permitted capability this reader lacks** is refused by the kernel's subset rule (`ptrace_may_access`), although its `/proc` files stay this user's. A unit with `AmbientCapabilities` is one example; a CI runner's helper is another. It is identified from its world-readable `status` (`CapPrm` against this process's own) and reported as uninspectable too.
+  - **Why this is safe:** AgEnD's own processes and the CLIs it launches are neither non-dumpable nor privileged. AgEnD lowers `coredump_filter`, never clears the dumpable flag, and grants no capabilities.
+  - **Reporting:** each uninspectable process is listed with its `Name` and why ("non-dumpable" or "privileged"). An unreadable process names its `Name` in the incomplete reason.
+  - **Transient unreadability (mid-exec, mid-exit) is retried:** up to 5 re-reads, 20 ms apart, re-identified by its start each time. Any other process that stays unreadable still makes the scan incomplete.
 - **The exempt set** is exactly these, each recorded with its start time:
   - the updater (`attempt.updater`);
   - the recovery runner (`attempt.runner`, §6.2);
@@ -303,6 +309,7 @@ The test seeds committed WAL frames that aren't checkpointed yet (they must be i
   - `workspaces/` (the agents' working directories);
   - `credential-profiles/` (whole, rev 3: the CLIs' homes, including the profiles' `.claude.json`);
   - `cx/`;
+  - `instances/*/muse-xdg/` (rev 9): muse's isolated XDG home, with links into the user's `~/.config`; CLI user state, like `cx/`;
   - `cache/`, `cache-codex-rollouts.json`, `usage-last-good.json`, `search.db*` (caches and a rebuildable index);
   - logs (`*.log`, `instances/*/output.log`, `profiles/`);
   - runtime (`tmux/`, `operator/`, `*.sock`, `fleet.pid`, `fleet.lock`, the update and service locks, `tunnel.lease`, `web.token`, `view.token`);
@@ -319,9 +326,14 @@ Paths outside the home are listed too. Today these are:
 - a profile's own `.claude.json` (`credential-profiles/claude-code/*/.claude.json`, at agent launch);
 - the CLIs' own files, which AgEnD never writes.
 
-The test fails when a path literal written by the code (a scan of `join(dataDir, …)`, `homedir()`, `CLAUDE_CONFIG_DIR`) isn't classified.
+The test fails when a path literal written by the code isn't classified. It scans `join` over any member chain ending in `dataDir`, `DATA_DIR`, `agendHome` or `stateDir`, plus `getAgendHome()`, `homedir()` and `CLAUDE_CONFIG_DIR`, with a double-, single- or backtick-quoted literal (rev 8). A name reached only through a helper that takes the home as a parameter is listed by hand.
 
-**Eligibility.** A release is eligible for the transaction's automatic rollback only when **no pre-commit writer touches an excluded or outside path**. Ordinary post-commit writes to excluded state (logs, caches, agent and CLI activity, a `.claude.json` at agent launch) don't count:
+**Eligibility (rev 8).** A release is eligible for the transaction's automatic rollback only when no pre-commit writer touches:
+- **excluded user state** (`workspaces/`, `credential-profiles/`, `cx/`);
+- **a path outside the home** that the transaction doesn't restore itself (the unit and package preimages, §6.3);
+- **an excluded cache that an older build would refuse rather than rebuild.** An excluded cache written before commit must be one that an older build rebuilds or ignores: `search.db` rebuilds on another schema; `cache-codex-rollouts.json` and `usage-last-good.json` skip what they don't recognise. The inventory marks each such writer.
+
+Pre-commit writes to runtime files (pids, locks, sockets, tokens, tmux) and logs don't count: they mean nothing after a restore. Ordinary post-commit writes to excluded state (logs, caches, agent and CLI activity, a `.claude.json` at agent launch) don't count either:
 - agents aren't started before commit (trial mode, 2.4);
 - a rollback after commit is Go back, which names what it can't restore.
 
@@ -329,7 +341,12 @@ Today's inventory has no pre-commit writer outside the scope. A release that add
 
 ### 5.2 Confinement (before anything is opened)
 - The scope is walked from `realpath(home)` with `lstat`, never following a link.
-- **Symlinks:** a symlink is recorded as a link, with its target text; it is not opened and its target is not copied. A symlinked **directory** is a link and is not entered.
+- **Symlinks:** a symlink is recorded as a link, with its target text; it is not opened and its target is not copied. A symlinked **directory** is never entered.
+  - **Recorded:**
+    - a link that resolves **inside** the home, whatever it points to. AgEnD makes such links: `instances/<name>/codex-home` → `cx/<hash>`, and `cli-env/codex-home`. Their targets are snapshotted already or excluded on purpose;
+    - a dangling link;
+    - a link to a plain file.
+  - **Refused (rev 9):** a link that resolves **outside** the home to a **directory** or a **SQLite database** (its first 16 bytes peeked, never opened as one). A rollback would restore the link while the newer state behind it stays: the exact failure the snapshot exists to prevent.
 - **Every included regular file**, a database first, must have a path whose components below the home are all real directories (`lstat`, no link), and whose `realpath` is inside `realpath(home)`.
 - **Databases** are opened only after that check. Their `dev`/`ino` is compared before and after the open, and a difference abandons the attempt.
 - Files that are neither regular files, directories nor symlinks are refused, and the attempt is abandoned.
@@ -340,7 +357,7 @@ Today's inventory has no pre-commit writer outside the scope. A release that add
 - **The manifest**, `snapshot.json`, lists every entry: `{ rel, type: "file" | "dir" | "link", mode, size?, sha256?, target? }`, plus each database's `user_version` and schema hash.
 - **The order:** the manifest is written last and fsynced, then the attempt directory, then stage `snapshotted` is published.
 - **Verification:** the snapshot tree is walked again and compared with the manifest as an exact set: no extra entry, no missing one, the same types, sha256 and link targets. A mismatch, before `snapshotted` is published, is abandoning.
-- **Immutability:** `snapshot/` is never written after `snapshotted`. A restore copies from it and never renames out of it.
+- **Immutability:** `snapshot/` is never written after `snapshotted`. A restore copies from it and never renames out of it. Taking a snapshot where `snapshot/` or `snapshot.json` already exists is refused before anything is done, and a failed snapshot removes only what that call created (rev 9).
 
 ### 5.4 Space
 P6 adds the scope's size, measured before the barrier opens.
@@ -393,6 +410,8 @@ Each unit is one of three kinds, fixed by the header: **both** (in the current u
 
 ### 5.6 Commit
 - At commit (2.5), the attempt's artifacts are recorded in `retained.json` for **Go back**: the snapshot, the package preimage, the unit preimage and the recovery kit. They are kept for 7 days.
+  - `<home>/.update-journal/retained.json` is `{ schema: 1, entries: [...] }`, written whole (tmp, fsync, rename, directory fsync). Each entry holds `attemptId`, `from`, `version`, `committedAt`, `expiresAt` (commit + 7 days), `snapshotDir`, `preimage { dir, manifestSha256 }`, `unitPreimage` (null with no service) and `kit`.
+  - It is written as committing's first substep. A retry keeps the first record for that attempt. An unreadable or malformed file is reported, never read as empty (rev 13).
 - `current` is cleared as in §2.4.
 
 ### 5.7 Go back, and retention
@@ -430,8 +449,23 @@ The kit is kept as long as anything can still need it: through `rolled-back`/`ma
 
 ### 6.2 How it is reached: a pre-start check that hands off, never runs the transaction itself
 **The pre-start step (rev 3).** Before the install, under the service lock, the service definition gains a pre-start step:
-- **systemd:** a drop-in `<unit>.d/agend-update-recovery.conf` with `ExecStartPre=<kit>/node <kit>/recover.cjs --home <home> --pre-start`;
-- **launchd:** a wrapper in `ProgramArguments`.
+- **systemd:** a drop-in `<fragment dir>/<unit>.d/agend-update-recovery.conf` (the unit file itself is untouched):
+  ```
+  [Service]
+  ExecStartPre=<kit>/node <kit>/recover.cjs --home <home> --attempt <id> --pre-start
+  EnvironmentFile=-<home>/.update-journal/attempts/<id>/handoff.env
+  ```
+  It is written only when the home, the kit and `handoff.env` are each one plain word in a unit file: no whitespace, quotes, `%` specifiers or `$` expansions. Otherwise the route is refused and the attempt abandons.
+- **launchd:** `ProgramArguments` wrapped (rev 7: Node can't `exec`, and launchd's MainPID must be the fleet, so the wrapper is `/bin/sh`):
+  `["/bin/sh", "-c", WRAPPER_SCRIPT, "agend-update-recovery", <kit>/node, <kit>/recover.cjs, <home>, <id>, …original]`.
+  `WRAPPER_SCRIPT` (in `src/update-recovery/route.ts`, matched byte-for-byte):
+  - it runs the pre-start step, and a refusal stops the start with its exit code;
+  - it reads `handoff.env` without sourcing it, and exports only an exact `AGEND_UPDATE_HANDOFF=<32 hex>` line;
+  - then it `exec`s the original arguments.
+
+  The original arguments are always taken from `unit.preimage`, never from the plist on disk.
+- **`--attempt <id>`** names the attempt the route was written for. `handoff.env` is that attempt's: the pre-start writes it only for a handoff on that attempt, and otherwise removes it and fsyncs its directory, whatever the journal reads.
+- **A retry, or the route's removal,** rewrites only what the route wrote: the definition on disk must be the preimage itself or exactly this route's form. Anything else (systemd: a unit changed since its preimage; launchd: a plist that is neither the preimage nor its exact wrapper) is refused (§3.2: fail closed).
 
 The original definition's bytes are `unit.preimage`. The pre-start step runs **inside the service's start**, so it never stops, starts or reloads that service, and never restores anything. It only decides, from the journal:
 | Journal | Pre-start does |
@@ -439,12 +473,12 @@ The original definition's bytes are `unit.preimage`. The pre-start step runs **i
 | none | exit 0: a normal start (launchd: exec the original arguments) |
 | open; updater or runner live; a planned generation with an unconsumed handoff nonce (§4.3) | pass `AGEND_UPDATE_HANDOFF=<nonce>` on (systemd: written to `attempts/<id>/handoff.env`, read by the unit's `EnvironmentFile=-` in the same drop-in); exit 0 |
 | open; updater or runner live; no planned generation | exit non-zero: "AgEnD is updating (attempt, stage); this start is refused". The updater owns the service until the end |
-| open; updater and runner gone | start the **independent runner**, then exit non-zero (the start is refused) |
+| open; updater and runner gone | start the **independent runner**, then exit non-zero (the start is refused). **Except `committing` (rev 13):** exit 0, a normal start; the new version's own fleet start finishes the commit (§7) |
 | open; updater or runner liveness unknown, or unknown or manual | exit non-zero with the paths and the operator command |
 
 **The independent runner** runs outside the service's cgroup and job:
-- **systemd:** `systemd-run --user --unit=agend-update-recovery-<id> --collect --property=KillMode=process <kit>/node <kit>/recover.cjs --home <home> --run`. That is a transient service of its own, not a child of the unit.
-- **launchd:** a separate job, `launchctl submit -l com.agend.update-recovery.<id> -- <kit>/node … --run`.
+- **systemd:** `systemd-run [--user] --unit=agend-update-recovery-<id> --collect --property=KillMode=process <kit>/node <kit>/recover.cjs --home <home> --attempt <id> --run`, with `--user` unless root. That is a transient service of its own, not a child of the unit.
+- **launchd:** a separate job, `launchctl submit -l com.agend.update-recovery.<id> -- <kit>/node <kit>/recover.cjs --home <home> --attempt <id> --run`.
 
 **The bootstrap handshake:**
 1. The pre-start step starts the runner and waits up to 10 s for `attempts/<id>/runner.json` (the runner's `{ pid, start }`, written after it holds the three locks).
@@ -460,17 +494,18 @@ The original definition's bytes are `unit.preimage`. The pre-start step runs **i
 5. It runs `systemctl --user reset-failed` and `start`, or `launchctl kickstart`. The pre-start check delivers the nonce, and the old version's fleet claims it and takes `fleet.lock` over (§4.3).
 6. **After the takeover is acknowledged** (rev 4):
    - **systemd:** the runner removes the drop-in and runs `daemon-reload` while the unit is active, with no job queued. A reload doesn't restart a running unit.
-   - **launchd:** the loaded job keeps the wrapper until the next load. Reloading a running job would restart it, so the runner writes the unwrapped plist to disk, and the next load (the next `agend restart`, a reboot, or an update) uses it.
+   - **launchd:** the loaded job keeps the wrapper until the next load. Reloading a running job would restart it, so the runner writes the preimage's bytes back to disk, and the next load (the next `agend restart`, a reboot, or an update) uses it. It writes them only over this route's exact wrapper: if the preimage is already there, it is done; if the plist is anything else, it refuses and leaves the plist as it is.
    - **The wrapper itself** is harmless outside an attempt: with no open attempt it only execs the original arguments.
    - **The kit stays as long as a loaded job references it (rev 5).** Retention never removes a kit while the loaded launchd job's `ProgramArguments` (read with `launchctl print`) names it, even past the 7 days. Pruning reads the loaded arguments first. An unreadable answer counts as "referenced", so the kit is kept.
-   - **P3 accepts the wrapper only when it is exactly this:**
-     - arguments `[<kit>/node, <kit>/recover.cjs, --home, <home>, --then, …]`, where the `…` is byte-for-byte `unit.preimage`'s `ProgramArguments`;
-     - `<kit>` is a recovery directory of this home whose `kit.json` names a **terminal** attempt;
-     - the two files' sha256 match `kit.json`.
+   - **P3 accepts the wrapper only when it is exactly this** (`unwrapRecoveryRoute`):
+     - arguments `["/bin/sh", "-c", WRAPPER_SCRIPT, "agend-update-recovery", <kit>/node, <kit>/recover.cjs, <home>, <id>, …]`, with the script byte-for-byte and `<home>` this home;
+     - `<kit>` is this home's recovery directory for `<id>`, and the two files' sha256 match its `kit.json`;
+     - **the attempt `<id>` is terminal by its own record** (committed, rolled-back or abandoned; not manual-recovery). It is never inferred from `current`, and no attempt may be in flight now;
+     - the tail `…` is byte-for-byte the `ProgramArguments` of that attempt's `unit.preimage`. A missing or unreadable preimage or record is unproven.
 
      Anything else (another path, other arguments, a changed kit, an open or unknown attempt) is `service-unknown`. The expected tuple's `execStart` (§3.2) is the wrapped form until the next load, then the unwrapped one.
 
-**The operator command**, `<home>/.update-journal/recovery/<id>/node …/recover.cjs --home <home> --run`, is the same runner, run from a shell outside the service. It works with the package missing or broken.
+**The operator command**, `<home>/.update-journal/recovery/<id>/node <home>/.update-journal/recovery/<id>/recover.cjs --home <home> --attempt <id> --run` (each word shell-quoted as printed), is the same runner, run from a shell outside the service. It works with the package missing or broken.
 
 **The live updater's own starts** (trial, abandon's restart) go through the same pre-start check, carrying their planned generation's nonce.
 
@@ -487,7 +522,10 @@ The original definition's bytes are `unit.preimage`. The pre-start step runs **i
 
 A retry recognises each effect by the path's presence and its hash against the preimage's manifest.
 
-**Unit restore:** write `unit.preimage`'s bytes to `<fragment>.restore-tmp`, fsync, rename, remove the drop-in, then `daemon-reload`, under the service lock. A retry compares the fragment's bytes.
+**Unit restore:** write `unit.preimage`'s bytes to `<fragment>.restore-tmp`, fsync, rename, remove the drop-in, then `daemon-reload`, under the service lock. A retry writes the same bytes again.
+- **Unless the runner keeps the route** (§6.2 step 3, before the takeover). Then the route is *ensured*: systemd's drop-in must be exactly this attempt's, written again if absent and refused (manual) if changed; launchd gets its wrapper around the original arguments.
+- **Bin links (rev 12):** the package preimage records what stood at each bin path: nothing, npm's link with its target, or a plain file with its hash. A link is restored, and a bin that was absent is removed if the new version added one. A plain file is never removed or replaced, and is manual if it changed.
+- **Pruning:** the legacy `prunePreimages` skips `attempt-*` (§5.7).
 
 **The order** is state (§5.5), then package, then unit, then start the old version, recorded as generation `rollback`. Nothing starts a fleet on mixed state: the fences (§4.2) hold until that start's handoff (§4.3).
 
@@ -505,7 +543,7 @@ A retry recognises each effect by the path's presence and its hash against the p
 | open, updater **unknown** | refuse; only an operator's `--takeover` |
 | open, updater **gone**, stage `opened`, `barrier`, `stopping` (no snapshot), `abandoning` | resume abandoning at its substep: restart old, hand back, abandoned |
 | open, gone, `snapshotted`, `installing`, `trial`, `proving`, `rolling-back` | resume rolling-back (§5.5, §6.3) at its logged step, then rolled-back, then start the old version |
-| open, gone, `committing` | resume committing's substeps (2.5); never roll back after agents started |
+| open, gone, `committing` | resume committing's substeps (2.5) in the new version's own fleet start: the pre-start step lets it through, `fleetStartGate` admits it (`resumeCommitting`), and it runs `commitAttempt`. Never roll back after agents started (rev 13) |
 | any step that finds ownership unknown or a tuple unexpected (§3) | manual-recovery |
 
 ---
@@ -561,6 +599,99 @@ A retry recognises each effect by the path's presence and its hash against the p
 | `.state-lease.sqlite` and its sidecar excluded from snapshot, restore and prune (its locked inode is kept) | §5.1 |
 | A claimant dead after its rename and before the acknowledgement: the generation is journaled dead, the fence re-taken by owned stale replacement, the journal-first start refusal covers the gap | §4.3 |
 | The kit kept while a loaded launchd job references it; P3's exact check of the wrapper (arguments, kit path and hashes, terminal attempt) | §6.2 |
+
+### Revision 7 (2.1c as shipped: #4511, #4515, #4517; Prism and Fable reviews)
+| Change | Where |
+|---|---|
+| The pre-start and the runner take `--attempt <id>`, the route's attempt. `handoff.env` is that attempt's file, removed durably on every decision other than a handoff | §6.2 |
+| launchd's wrapper is `/bin/sh` running the pre-start, then `exec`ing the original (Node can't `exec`; MainPID must be the fleet). `handoff.env` is read, never sourced | §6.2 |
+| The drop-in's exact text; paths limited to one plain word in a unit file | §6.2 |
+| P3's unwrap: the tail is the preimage's exact `ProgramArguments`, and the attempt is terminal by its own record, not by `current` | §6.2 |
+| A retry or removal of the route rewrites only the route's own bytes (the preimage, or its exact wrapped form); anything else is refused | §6.2 |
+
+
+### Revision 8 (2.3 part 1, Fable #4520)
+| Change | Where |
+|---|---|
+| Eligibility counts excluded user state, unrestored outside paths, and a pre-commit cache an older build wouldn't rebuild. Pre-commit runtime and log writes don't count | §5.1 |
+| The inventory gate's roots (any member chain ending in `dataDir`, `DATA_DIR`, `agendHome` or `stateDir`, plus `getAgendHome()`) and its literals (`"…"`, `'…'`, `` `…` ``); helper-reached names listed by hand | §5.1 |
+| `host-monitoring.sqlite` is a pre-commit SQLite database: §5.3's checkpoint applies to it | §5.1, §4.5 |
+| 2.4 must pin with a test that trial mode never reaches `startInstance`: post-commit user-state eligibility rests on it | §5.1, 2.4 |
+
+### Revision 9 (2.3 part 2, Fable #4523)
+| Change | Where |
+|---|---|
+| A link that resolves outside the home to a directory or a SQLite database refuses the snapshot. Links inside the home (`codex-home` → `cx/`), dangling links and links to plain files are recorded. `instances/*/muse-xdg/` is excluded as CLI user state | §5.1, §5.2 |
+| A snapshot already present is never touched: a second take refuses up front; a failure removes only what that call made | §5.3 |
+
+### Revision 10 (2.3 part 3)
+| Change | Where |
+|---|---|
+| A sealed (non-dumpable) process of this uid is reported as uninspectable instead of making the writers-gone proof incomplete; any other unreadable process still does | §4.4 |
+| A helper is exempt only when its own start and every intermediate ancestor (each a recorded helper with its start) are proven up to the updater or the runner | §4.4 |
+
+### Revision 11 (2.3 part 3, Fable #4524 CI)
+| Change | Where |
+|---|---|
+| A same-uid process holding capabilities the reader lacks (the kernel's subset rule refuses the read) is uninspectable, identified by `status` `CapPrm` | §4.4 |
+| An unreadable process is re-read (5 × 20 ms, re-identified by its start) before the scan is incomplete; uninspectable processes are listed with their name and why | §4.4 |
+
+### Revision 12 (2.3 part 5, Fable #4528)
+| Change | Where |
+|---|---|
+| The runner's kept route is ensured (the drop-in rewritten if absent, refused if changed); the general rule removes it | §6.3, §6.2 |
+| A bin path's prior state is recorded as absent, a link or a file; a file is never removed | §6.3 |
+| The legacy `prunePreimages` skips `attempt-*` preimages | §5.7, §6.3 |
+
+### Revision 13 (2.5 part 3, the forward driver)
+| Change | Where |
+|---|---|
+| The forward order inside `stopping`: the kit built and the route written (and the manager reloaded) **first**, while the old fleet still runs; then the old fleet stopped and fenced; then the drain. Every later start, abandon's restart of the old generation included, goes through the pre-start step, so it receives its nonce. A kit or route that can't be made abandons before anything is stopped | §2.3, §6.2 |
+| `stopping` with no `fleet.lock` holder: a recorded old fleet must be proven gone (then journaled dead) before the fence is taken afresh; a live one without the lock abandons | §4.2, §4.3 |
+| A trial that doesn't take `fleet.lock` over in time: the service is stopped (a start still on its way), then the rollback | §4.3 |
+| One plan at a time: starting a generation first recognises or voids **any** planned, unconfirmed generation, not only its own (a trial that never took over is voided by its rollback) | §3.3, §4.3 |
+| The fence acknowledges a planned generation whose takeover landed unacknowledged before it stops it as that generation | §4.3 |
+| Abandon's substeps: `restart-old` (nothing when the old fleet still runs; the old generation started from the fence when it was stopped; the fence released when no fleet ran), `hand-back`, `route-removed` (only a route that was written), then `abandoned` | §2.3 |
+| A committing attempt whose updater is gone is the new version's to finish: the pre-start step exits 0 for it, `fleetStartGate` admits the start with `resumeCommitting`, and that start runs `commitAttempt`. The old kit's runner refuses it and says to start the fleet (Fable #4533 F1) | §6.2, §7 |
+| launchd `start`: a job still loaded keeps the arguments it was loaded with, so an idle loaded job is booted out and bootstrapped from the plist on disk before the kickstart; a running one is refused (the caller stops it first). systemd needs nothing: the drop-in applies to every later start (Fable #4533 F2) | §6.2 |
+| Committing's substeps, in this order: `retained` (§5.6), `route-removed` (+ reload), then the fleet's own: `left-trial`, `agents-started`, `inbox-delivered`, `deferred-run`; then `committed`. The route comes off before the fleet leaves trial, so a crash after that point is resumed by the new version's own fleet start (§7), never refused by the old kit | §2.3, §5.6, §7 |
+| `retained.json` (`.update-journal/`): one entry per committed attempt, the first record kept on a retry, with its snapshot directory, package preimage, unit preimage and kit, and `expiresAt` = commit + 7 days | §5.6, §5.7 |
+| An identity check that fails after the install is `manual-recovery`, journaled by the live updater; a failed rollback is `manual-recovery` when it needs a person, and otherwise leaves the attempt open for the runner | §3.2, §7 |
+
+### Revision 14 (2.5 part 4, the runner resumes an abandon)
+| Change | Where |
+|---|---|
+| `recover.cjs --run` resumes `abandoning` (and `stopping`, which the route makes reachable) through the same abandon procedure as the updater: the refused start settled first, the dead updater's fence adopted, the old generation started from it, the hand-back awaited, the route off, `abandoned`. No service manager or no recorded service refuses with nothing changed | §2.3, §6.2 |
+| The runner's hand-back is the journal's: every inbox item and deferred job of the attempt acknowledged by the restarted old fleet (`.acked`), awaited up to 60 s. Unacknowledged, or a list that can't be read, is retryable: the next run finds `restart-old` done and doesn't start the old fleet again | §2.3, §2.6 |
+| Abandon's `restart-old` with a **dead** fleet's record on `fleet.lock` (the old fleet crashed before the updater stopped it): journaled dead and re-taken (`ensureFence`, §4.3 rev 5), then the old generation started. Only a live holder is taken as the running old fleet | §2.3, §4.3 |
+| **The old fleet must run until the hand-back is acknowledged** (Fable #4536 F1): on every pass before `hand-back`, even with `restart-old` recorded, a live fleet holder that is a consumed, not-dead `old` generation is required. Otherwise that generation is journaled dead and its record re-taken (`ensureFence`), and a **new** `old` generation is started from the fence with a fresh nonce. Only then is the hand-back awaited, so a crash or a reboot before the acks never leaves the Fleet down | §2.3, §4.3 |
+| No `fleet.lock` holder while an `old` generation is recorded (a clean exit of the restarted old fleet unlinks its lock: a host shutdown or a `systemctl stop` while the hand-back waits, Fable #4536 F2): that generation proven gone and journaled dead, the fence taken afresh, a new `old` generation started. A live old fleet without the lock stays manual | §2.3, §4.3 |
+| The runner takes a fence on an absent `fleet.lock` with `createUpdateFence` (O_EXCL, fsynced, `acquireFleetLock`'s update record), never `acquireFleetLock`: that one checks the home through a lazy `createRequire(import.meta.url)`, which throws in `recover.cjs`. The bundle-closure test runs the fence from the built bundle and fails if anything bundled reaches `ensureAgendHome` (Fable #4536 F3) | §6.1, §4.3 |
+| **Ordering gate on the `agend update` wiring** (Fable #4536): an open `abandoning` attempt refuses every ordinary start and every new `agend update` until it ends, and it ends only when the old fleet acknowledges the hand-back. So nothing that can create held items (the barrier's holding of inbound and deferred jobs, 2.2) is wired into a live `agend update` before the **fleet-side hand-back ports and their acknowledgements** exist in the fleet start. The S-252 wiring part lands after them, or with them | §2.3, §2.6 |
+| The abandon procedure lives in its own module, bundled into `recover.cjs` (node built-ins only; the bundle-closure test covers it and `recover.ts`) | §6.1 |
+
+### Revision 15 (2.5, the fleet's side of the hand-back; Fable's design review)
+| Change | Where |
+|---|---|
+| **When the fleet walks:** on durable facts, never the latest substep. The attempt is `abandoning`, its history has `restart-old` and lacks `hand-back`, and this fleet (its handoff nonce and pid) is the consumed, not-dead `old` generation (`handbackDue`). A re-restart's new fleet walks; a dead or replaced one never does | §2.3, §2.6 |
+| **The first walk runs during the fleet start**, after the outbox and the scheduler and before the web chat, the adapters and the agents open any ingress, so a held copy keeps its place ahead of anything newer. It waits up to 15 s for `restart-old`. A walk every 10 s picks up stragglers until `hand-back` is journaled or the attempt closes | §2.6 |
+| **A copy records its target** (`{ kind: "copy", body, target }`). At hand-back a target that no longer exists is logged and acknowledged, with no row admitted | §2.6 |
+| **A reference is the pump's again:** a queued or retry_wait row (inside its backoff too) is reported claimed and the pump kicked, and nothing is claimed outside it. The restarted fleet runs unarmed, and its pump delivers per target in order | §2.6 |
+| **A copy is admitted as its own outbox kind** (`update_handback_copy`, source `update-handback`, idempotent by its hand-back source key). Its dispatch delivers the journaled turn as it was, adding only the fence's delivery id and attempt; it never stamps a `from_instance`, so a person's turn stays a person's. A failed or uncertain copy queues no outcome notice (no sending agent), and the person sees it in Needs you | §2.6 |
+| **A held human turn is replayed without its receipt** (fail-closed): every `human_*` meta key (by prefix) plus `verification_id` and `web_verified` is stripped, so the agent sees a plain, unverifiable `[user:…]` with no hid and no web:v, and the old receipt is marked uncertain. The old fleet's receipt can't be re-bound after the restart (manager boot and owner). **Precondition for the `agend update` wiring** on a Fleet with request-context On (S-230's reply-sink rule needs a human root): re-issue a receipt with the origin evidence journaled, or admit the replayed copy through request-context admission | §2.6 |
+| **Deferred jobs:** run with their own run id under the schedule's lock, unless the schedule is deleted, disabled, running, or its target instance is gone (skipped, logged in its run log). A job whose run had started is recorded as interrupted, never run twice | §2.6 |
+| `createUpdateFence` removes its own partial lock when the write or fsync fails after the O_EXCL create | §4.3 |
+
+### Revision 16 (2.5, Go back; Fable's design review, Sentinel's S-230 read contract)
+| Change | Where |
+|---|---|
+| **Go back is an update in reverse through the same transaction:** a new attempt `kind: "go-back"`, `goBackOf` the committed attempt, driven by `runUpdate`. The current fleet is stopped and fenced and the **current** home snapshotted, so a failed Go back rolls back to now with the existing driver. `installing` restores the committed attempt's home snapshot, package preimage and unit preimage, with no npm and no network. Then trial (the old version), proving and committing. A go-back is not itself go-back-able: its commit marks the entry it returned to `used`, instead of recording one | §5.7 |
+| **Only to a version that speaks this transaction:** every attempt is stamped at open with `txProtocol` (`UPDATE_TX_PROTOCOL`) by the code that opens it, the old install's updater, and `retained.json` copies it. Go back is offered only when the entry's protocol is ≥ `MIN_GO_BACK_PROTOCOL`. The record's `kind: "go-back"`, `goBackOf` and extras have been accepted by `parseRecord` since 2.1a | §5.7, §2.2 |
+| **The offer** (`readGoBackOffer(home, now)`, read-only; S-230's On confirmation binds its exact set): **one step back only** (#4480's "Go back to vX"; Fable #4547 F2). The candidate is the newest unused entry whose `version` is the installed one (read from the owned package); every other entry is listed as unavailable with why. It is offered when unexpired, at a sufficient protocol, with artifacts present and verifying: `{ eligible: [{ attemptId, committedAt, expiresAt }], latestDeadline }` (at most one). A Go back makes the entry before it the next step back; an update past it offers nothing. launchd installs aren't offered yet (S-260) | §5.7 |
+| **Only a definitive refusal is cached** (Fable #4547 F1): the guard's own false (On was activated after the commit). A guard that throws or a snapshot copy that fails refuses that Go back only; the next offer read evaluates again. `retained.json` never permits a restore on its own | §5.7 |
+| **S-230's guard, twice** (`requestContextGoBackAllowed(liveDb, attemptId, committedAt, snapshotDb)`, injected until #4519 lands): under the locks and the EXCLUSIVE lease before the attempt opens (a refusal opens nothing and is cached), and again at snapshotted → installing against the fresh snapshot (a refusal rolls back to now). A false answer, a thrown error or an unverifiable copy refuses. The snapshot's outbox DB, with its manifest-listed sidecars, is copied to a fresh 0700 directory under `.update-journal`, checked against the manifest's sha256, and removed after; the snapshot tree is never opened | §5.7 |
+| **The committed attempt's artifacts are only read:** `restoreHome(home, workDir, deps, { snapshotFrom })` verifies every committed snapshot file first, and writes its restore log and `replaced/` only in the go-back's `go-back/` work directory, apart from the go-back's own rollback restore. `restorePackage(…, { work })` stages under `.agend-goback-<id>` and sets the replaced package aside in the go-back's own preimage directory. `restoreUnit(…, { preimageOf })` writes the committed unit bytes with the go-back's route kept (systemd only). Scope entries added since the committed snapshot are set aside, never left behind | §5.5, §6.3 |
+| **What Go back sets aside** (`goBackChanges`): the top-level home entries whose scope content differs from the committed snapshot. It is computed when the confirmation opens; size is checked first, and only same-size files are hashed, cached by (path, size, mtime). The confirmation words them and says plainly that AgEnD's data returns to the update's date. That meaning was user-approved in #4480: Go back "names what is lost" | §5.7 |
 
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:

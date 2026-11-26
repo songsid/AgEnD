@@ -299,6 +299,8 @@ const AIR_FPS = 30;
 const STYLES = BUILT_IN_SKINS;
 /** Paused and stopped: left out when "Hide paused and stopped" is on. */
 const ASLEEP = new Set(["paused", "stopped"]);
+/** A seat's standFacing (#4503) as a walk heading. */
+const STAND_FACING = { up: { dx: 0, dy: -1 }, down: { dx: 0, dy: 1 }, left: { dx: -1, dy: 0 }, right: { dx: 1, dy: 0 } };
 const BUBBLE_STATES = ["working", "idle", "paused", "stopped", "needs", "crashed", "stuck"];
 /** The page's own bubble lines, by state, in its language (short, never message content). */
 export const bubbleDefaults = () => Object.fromEntries(BUBBLE_STATES.map((s) => [s, to(`b_${s}`).split("|")]));
@@ -498,6 +500,13 @@ export function actLive(a, state, at = Date.now(), seen = null) {
  * (#4415: nothing keeps a caller from the Help desk; the ride resumes when the call is over). Working or a new turn do
  * not end it (it is where they choose to be); clearing it, a new office_set or its end do.
  */
+/**
+ * #4503: the vehicle whose seat names `name` as its `worker`, while they are working (any other state, a call above
+ * all, is null: they go where that state sends them, the Help desk for a call, as anyone does); else null. Here, not in
+ * fleet-office-vehicles.js: a tab opened before an upgrade may keep that module, and a named import it lacks would stop
+ * this one linking (#4505 review). The riders' `waitingFor` is optional for the same reason (`p.waitingFor ?`).
+ */
+export const workVehicleOf = (vehicles, name, state) => (state === "working" ? (vehicles.find((v) => v.seats.some((s) => s.worker === name)) || {}).id ?? null : null);
 /**
  * #4504: what the card's pose preview offers — every pose a character set may draw, walking by direction. Here, not in
  * fleet-office-pack.js: a tab opened before an upgrade may keep that module, and a named import it lacks would stop this
@@ -715,14 +724,21 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       // A pat shows the set's `pat` strip for one full pass of it (pat.until), each pat from frame 0; a set without one keeps its pose.
       const canPat = !q.at.walking && !canEat && ms > 0 && !!p.reacts && !CALLING.has(q.look.state) && !ASLEEP.has(q.look.state) && !q.look.night;
       const patted = canPat ? patLook(posed, p.reacts.get(q.look.name), t) : null;
+      // #4503: working but not typing — at a standing desk (its seat's standFacing), or waiting for their train (facing
+      // where it stops) — they stand: their walk strip's first frame, that way.
+      const track = !q.at.walking && !q.at.riding && posed.pose === "working" && p.waitingFor ? p.waitingFor(q.look.name) : null;
+      const stand = q.at.walking || q.at.riding || posed.pose !== "working" ? null
+        : track ? (track.x !== q.at.x || track.y !== q.at.y ? { dx: track.x - q.at.x, dy: track.y - q.at.y } : null)
+        : q.d.seat && q.d.seat.standFacing && q.at.x === q.d.seat.x && q.at.y === q.d.seat.y ? STAND_FACING[q.d.seat.standFacing] : null;
       const look0 = q.at.walking ? { ...q.look, pose: "walk", heading: q.at.heading }
         : canEat ? { ...posed, pose: "eat", basePose: posed.pose }
-        : patted || posed;
+        : patted || (stand ? { ...posed, pose: "walk", heading: stand } : posed);
       // #4504: the card's pose preview (this viewer's own): the picked pose in place, from its first frame (`clip`:
       // Replay starts it again). Never over a call: a caller shows that they call, preview or not.
       const pv = p.preview && p.preview.current;
-      const look = pv && pv.name === q.look.name && !q.at.walking && !CALLING.has(q.look.state) ? { ...previewLook(posed, pv.pose), clip: `#${pv.t0}` } : look0;
-      drawPerson(ctx, sk, box, look, ms, env, q.at.x + 20, q.at.y - 34, readScale);
+      const previewing = pv && pv.name === q.look.name && !q.at.walking && !CALLING.has(q.look.state);
+      const look = previewing ? { ...previewLook(posed, pv.pose), clip: `#${pv.t0}` } : look0;
+      drawPerson(ctx, sk, box, look, !previewing && stand && look.pose === "walk" ? 0 : ms, env, q.at.x + 20, q.at.y - 34, readScale);
       if (canEat && eating.snackId && p.snacksById && sk.drawSnack) {
         const sdef = p.snacksById.get(eating.snackId);
         if (sdef && sdef.eat) sk.drawSnack(ctx, sdef.eat, Math.max(0, t - eating.t0), q.at.x, q.at.y, env);
@@ -1631,7 +1647,11 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
       if (fresh) riders.clear();
       if (vehicles.length) {
         const byId = new Map(vehicles.map((v) => [v.id, v])), wall = Date.now(), here = desksOf(L);
-        const wants = new Map(here.map((d) => { const a = actsHere.get(d.node.name); return [d.node.name, !d.night && rideLive(a, d.node.state, wall) ? a.ride : null]; }));
+        // An act's ride first; else (no other act going) a worker's seat on a vehicle while working (#4503).
+        const wants = new Map(here.map((d) => {
+          const { name, state } = d.node, a = actsHere.get(name);
+          return [name, d.night ? null : rideLive(a, state, wall) ? a.ride : actLive(a, state, wall, actSeen.current) ? null : workVehicleOf(vehicles, name, state)];
+        }));
         const r = riders.step({ wants, vehicles: byId, wall, posOf: (n) => walkers.at(n, t), homeOf: (n) => (here.find((d) => d.node.name === n) || {}).seat || null,
           sinceOf: (n) => { const a = actsHere.get(n); return a && a.ride && typeof a.since === "number" ? a.since : null; },
           urgent: (n) => { const d = here.find((x) => x.node.name === n); return !!d && CALLING.has(d.node.state); } });
@@ -1986,7 +2006,7 @@ export function Office({ view: given, traffic, q = "", lease, onOpen, assetUrl, 
       const parts = tiles.map((tl, i) => ({ ...partOf(tl.L, tileLooks[i], tl.skin, tl.zones, tl.walkers, tl.flights), night, key: tl.key, prefix: tl.prefix, tile: arranged.tiles[i], ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(tl.skin) }));
       scene.current = { ...base, overview: true, parts, lay: arranged };
     } else {
-      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin), reacts: reacts.current, preview, riding: riders.riding,
+      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin), reacts: reacts.current, preview, riding: riders.riding, waitingFor: riders.waitingFor,
         hold: play ? hold : null, seatDrop: seatDropRef,
         snacks: play ? snacks : null, snacksById, ownArea, snackDrop: snackDropRef, onSnackClaim, onSnacksChanged: () => walkNow.current?.() } };
     }

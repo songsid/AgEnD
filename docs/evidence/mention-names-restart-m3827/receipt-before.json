@@ -1,0 +1,38 @@
+{
+  "sourceHead": "48b5d8e7915b4c5bdc7c8bb37c0d0a8cb02ce807",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "the people seen are on disk only with M-3827",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the pills read @user @user",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the pills read @user @user",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3827-before-desk-light-en.png",
+      "sha256": "3cf7acc29827b7e5a2bcb46c9962a2d8b2bc640e5584eb7c1c204a3a476b7bbb"
+    },
+    {
+      "path": "m3827-before-phone-dark-zh-TW.png",
+      "sha256": "91a24459e6412aef8dfbaff3e728e473ead722c382e50e3cb2a9e3334c159b0c"
+    }
+  ],
+  "tree": "before",
+  "summary": "5/5"
+}

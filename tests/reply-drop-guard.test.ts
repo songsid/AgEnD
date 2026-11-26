@@ -173,12 +173,16 @@ describe("TurnReplyGuard", () => {
 
   it("carries a pre-arm adapter-confirmed reply onto the forthcoming arm (#2544)", () => {
     const guard = new TurnReplyGuard();
+    // arm() carries pendingTool only when at >= ingressAt. Take the ingress
+    // before the tool stamps `at`. Date.now() - 1 after that stamp is already
+    // later once the clock moves on by 2ms, and the arm correctly starts clean.
+    const ingress = Date.now();
     const attempt = guard.beginToolAttempt(true);
     expect(guard.snapshot()).toBeNull();
     guard.settleToolAttempt(attempt, true);
     expect(guard.snapshot()).toBeNull();
 
-    guard.arm({ chatId: "c", threadId: "t" }, Date.now() - 1);
+    guard.arm({ chatId: "c", threadId: "t" }, ingress);
     expect(guard.snapshot()).toMatchObject({
       replyAttempted: true,
       replyDelivered: true,
@@ -189,8 +193,9 @@ describe("TurnReplyGuard", () => {
 
   it("applies a pre-arm token that settles after the arm (#2544)", () => {
     const guard = new TurnReplyGuard();
+    const ingress = Date.now();
     const attempt = guard.beginToolAttempt(true);
-    guard.arm({ chatId: "c" }, Date.now() - 1);
+    guard.arm({ chatId: "c" }, ingress);
     expect(guard.snapshot()).toMatchObject({ replyAttempted: true, completionDelivered: false });
     guard.settleToolAttempt(attempt, true);
     expect(guard.snapshot()).toMatchObject({ replyDelivered: true, completionDelivered: true });

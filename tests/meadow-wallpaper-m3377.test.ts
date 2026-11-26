@@ -54,6 +54,6 @@ describe("M3377 original static Meadow wallpaper", () => {
   });
   it("keeps every token outside Meadow byte-identical to the dev base", () => {
     const rest = css.replace(/((?::root\[data-palette="meadow"\]|\.theme-swatch\[data-palette="meadow"\])[^{}]*\{)[^{}]*(\})/g, (_all, start, end) => start + end);
-    expect(createHash("sha256").update(rest).digest("hex")).toBe("9239afe8e9d2cb40a5e63c9b3f723c377cddb6fb75ca89465d6e38109355da1c");
+    expect(createHash("sha256").update(rest).digest("hex")).toBe("d14eaffe253982a8344c38a85adebedb83080180af2ab734d67a50550826b7fa");
   });
 });

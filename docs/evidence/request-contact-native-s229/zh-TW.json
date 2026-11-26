@@ -50,6 +50,22 @@
         ]
       },
       "afterNotNow": "先不處理，申請仍在等待。"
+    },
+    "interrupted-launch": {
+      "card": {
+        "type": "clear_confirm",
+        "text": "讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\n#R1a2b3c4d · 30 分鐘後到期\n這個 Agent 曾中斷；這次聯絡需要核准一次。\n繼續＝只放行這筆請求和它後續的聯絡。",
+        "buttons": [
+          {
+            "label": "繼續",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:approve"
+          },
+          {
+            "label": "拒絕",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:decline"
+          }
+        ]
+      }
     }
   }
 }

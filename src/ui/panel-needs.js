@@ -23,6 +23,7 @@ import { fleetPath, chatPath } from "/assets/app-route.js";
 import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
+import { InstallAppSection } from "/assets/app-install.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
@@ -504,5 +505,6 @@ function NotifyToggle() {
           <${Icon} name="bell" size=${14} />${on ? tn("turnOff") : tn("turnOn")}</button></div>` : null}
       </div>
     </article>
+    <${InstallAppSection} />
   </section>`;
 }

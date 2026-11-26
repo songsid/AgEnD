@@ -2,7 +2,11 @@
 // wall clock alone, so every page shows it in the same place: it runs round its path at its speed and waits at each
 // stop. People ride by their own choice (an agent's office_set `ride`): they walk to the platform, wait for the train
 // to stop there, board, and ride in a seat (working there, moving with it); they get off only when it stops at a
-// platform, then walk on. Pure — fleet-office.js draws the vehicles and moves the riders (the walkers' `ride`).
+// platform, then walk on. A pack may give an agent a seat as its workplace (#4503: a seat's `worker`): it rides there
+// while working, and waits for the train at its seat's `queue` point. Pure — fleet-office.js draws the vehicles and
+// moves the riders (the walkers' `ride`).
+
+import { WALK, WANDER } from "./fleet-office-zones.js";
 
 const LEGS = new WeakMap();
 /** A vehicle's timetable: each leg (a path segment, then its stop's wait), in ms, and the whole lap. */
@@ -68,7 +72,7 @@ export const lapMs = (v) => legsOf(v).lap;
  *   `homeOf(name)`: their seat (to pick the nearest platform); `sinceOf(name)`: when their ride began (wall clock), so
  *   a page opened long after shows them on board, not walking to a train they took long ago; `urgent(name)`: they
  *   must get off now (a call: #4415, nothing keeps a caller from the Help desk), where their seat is, between stops too.
- * Returns { targets: name → where to walk now (the platform), board: [{ name, vehicle, seat }], alight: [{ name, at }] };
+ * Returns { targets: name → where to walk now (the platform, or their queue point), board: [{ name, vehicle, seat }], alight: [{ name, at }] };
  * `riding(name)` → { vehicle, seat } while on board; `clear()` forgets everyone and returns who was on board.
  */
 export function createRiders() {
@@ -96,27 +100,38 @@ export function createRiders() {
           continue;                                                                // off only at a stop
         }
         if (!v || !v.seats.length || !v.stops.length) { if (r) by.delete(name); continue; }
+        // #4503: a seat with a `worker` is theirs alone; they take no other, and everyone else takes only the others.
+        const own = v.seats.findIndex((s) => s.worker === name);
+        const freeSeat = () => { const taken = used(vid); return own >= 0 ? (taken.has(own) ? -1 : own) : v.seats.findIndex((s, i) => !s.worker && !taken.has(i)); };
         // A page opened long after the ride began (more than a lap and the walk ago, `since`): they are on board already.
         const since = sinceOf ? sinceOf(name) : null;
         if (!r && since !== null && wall - since > lapMs(v) + RIDE.SETTLE_MS) {
-          const taken = used(vid), seat = v.seats.findIndex((_, i) => !taken.has(i));
+          const seat = freeSeat();
           if (seat >= 0) { by.set(name, { phase: "riding", vehicle: vid, seat }); board.push({ name, vehicle: vid, seat }); continue; }
         }
         if (!r || r.vehicle !== vid) {
           const home = homeOf(name) || posOf(name) || v.stops[0].platform;
           let best = 0;
           v.stops.forEach((s, i) => { if (Math.hypot(s.platform.x - home.x, s.platform.y - home.y) < Math.hypot(v.stops[best].platform.x - home.x, v.stops[best].platform.y - home.y)) best = i; });
-          r = { phase: "going", vehicle: vid, stop: best };
+          r = { phase: "going", vehicle: vid, stop: best, track: v.path[v.stops[best].at] };
           by.set(name, r);
         }
-        const platform = v.stops[r.stop].platform, here = posOf(name);
-        targets.set(name, platform);
-        if (r.phase === "going" && here && !here.walking && near(here, platform)) r.phase = "waiting";
-        if (r.phase !== "waiting") continue;
-        const at = vehicleAt(v, wall);
-        if (at.stop !== r.stop || at.left < RIDE.BOARD_MS) continue;               // the train is not in (or is leaving)
-        const taken = used(vid), seat = v.seats.findIndex((_, i) => !taken.has(i));
+        // A worker waits at their seat's queue point (#4503), and steps onto the platform ("stepping") once the train is in.
+        const stop = v.stops[r.stop], platform = stop.platform, wait = (stop.queue && stop.queue[own]) || platform, here = posOf(name);
+        const at = vehicleAt(v, wall), open = at.stop === r.stop && at.left >= RIDE.BOARD_MS;
+        if (r.phase === "stepping" && !open) r.phase = "going";                    // it left before they got there: back in line
+        targets.set(name, r.phase === "stepping" ? platform : wait);
+        if (r.phase === "going" && here && !here.walking && near(here, wait)) r.phase = "waiting";
+        if (r.phase !== "waiting" && r.phase !== "stepping") continue;
+        if (!open) continue;                                                       // the train is not in (or is leaving)
+        const seat = freeSeat();
         if (seat < 0) continue;                                                    // full: wait for the next one
+        if (!near(here, platform)) {
+          // Off the platform: step on only with the time to get there (the walk, then up to a tick till it is seen), else wait.
+          if (r.phase === "waiting" && at.left < Math.hypot(wait.x - platform.x, wait.y - platform.y) / WALK.SPEED + WANDER.TICK + RIDE.BOARD_MS) continue;
+          r.phase = "stepping"; targets.set(name, platform);
+          continue;
+        }
         r.phase = "riding"; r.seat = seat;
         targets.delete(name);
         board.push({ name, vehicle: vid, seat });
@@ -124,6 +139,8 @@ export function createRiders() {
       return { targets, board, alight };
     },
     riding(name) { const r = by.get(name); return r && r.phase === "riding" ? { vehicle: r.vehicle, seat: r.seat } : null; },
+    /** #4503: where the train they wait for (or walk to) stops, or null. */
+    waitingFor(name) { const r = by.get(name); return r && r.phase !== "riding" ? r.track : null; },
     phase(name) { const r = by.get(name); return r ? r.phase : null; },
     clear() { const on = [...by].filter(([, r]) => r.phase === "riding").map(([n]) => n); by.clear(); return on; },
   };

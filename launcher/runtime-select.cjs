@@ -6,6 +6,7 @@ var fs = require("fs");
 var path = require("path");
 var childProcess = require("child_process");
 var platform = require("./runtime-platform.cjs");
+var allowScripts = require("./npm-allow-scripts.cjs");
 
 var RECEIPT = ".agend-runtime.json";
 var KEY = ".agend-runtime.key";
@@ -173,9 +174,9 @@ function selectRuntime(launcherDir, deps) {
   var host = d.host || platform.hostPlatform();
   var probe = d.probe || probeNode;
   var pkg = packageDir(launcherDir);
-  if (!pkg) return { ok: false, reason: "this launcher is not inside an @songsid/agend package", recovery: "npm install -g @songsid/agend" };
+  if (!pkg) return { ok: false, reason: "this launcher is not inside an @songsid/agend package", recovery: allowScripts.installCommand("@songsid/agend") };
   var engines = (pkg.manifest.engines && pkg.manifest.engines.node) || ">=22.14.0";
-  var recovery = "npm install -g @songsid/agend@" + pkg.manifest.version;
+  var recovery = allowScripts.installCommand("@songsid/agend@" + pkg.manifest.version);   // M-3805: also on npm 12
 
   // 1. An explicit override: absolute, executable, and passes the probe — or a clear failure, never a fallback.
   if (env.AGEND_NODE) {
@@ -200,6 +201,11 @@ function selectRuntime(launcherDir, deps) {
     //    an install where the runtime was skipped altogether — PHYSICALLY nothing there, no directory (not even a
     //    dangling link) and no receipt file (--ignore-scripts or --omit=optional) — which may use a qualifying system
     //    Node, with a warning.
+    // M-3805: the runtime package is there but neither the receipt nor the key is: AgEnD's install step never ran
+    //    (npm 12 skips install scripts it was not told to allow; or --ignore-scripts). Name that, not "changed".
+    if (candidate.exists && candidate.manifest && receipt.state === "absent" && absent(path.join(pkg.dir, KEY))) {
+      return { ok: false, reason: "AgEnD's install step did not run, so its bundled Node (" + pin.name + "@" + pin.version + ") was never verified. npm 12 skips a package's install scripts unless they are allowed (--ignore-scripts skips them on any npm)", recovery: recovery };
+    }
     if (candidate.exists || receipt.state !== "absent" || !absent(path.join(pkg.dir, KEY))) {
       return { ok: false, reason: "the bundled Node (" + pin.name + "@" + pin.version + ") is missing, incomplete or changed since it was verified", recovery: recovery };
     }

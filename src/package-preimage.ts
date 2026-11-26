@@ -91,6 +91,9 @@ export function prunePreimages(prefix: string, keep: PackagePreimage | null): vo
   try { entries = readdirSync(base); } catch { return; }
   for (const name of entries) {
     if (keep && join(base, name) === keep.dir) continue;
+    // M-3770 §5.7: the update transaction's own preimages (`attempt-<id>`) belong to its Go back window and its own
+    // retention, never to this prune (Fable #4528 F1).
+    if (name.startsWith("attempt-")) continue;
     rmSync(join(base, name), { recursive: true, force: true });
   }
 }
