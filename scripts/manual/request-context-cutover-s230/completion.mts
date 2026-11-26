@@ -39,6 +39,9 @@ try{
    check(`${tag}: actual destination guard refused`,refused);await page.getByText(c.lang==="en"?"Not sent: reply through the agent that asked.":"未送出：請透過提出請求的 Agent 回覆。",{exact:true}).last().waitFor();await shot("destination-refusal");
    fx.fm.emitSseEvent("message",{instance:"worker",sender:"AgEnD",role:"status",wrap:true,text:c.lang==="zh-TW"?"擁有者已結束這次等候；不再等候這則回覆。":"The owner stopped waiting for this reply.",ts:new Date().toISOString()});
    await page.getByText(c.lang==="zh-TW"?"擁有者已結束這次等候；不再等候這則回覆。":"The owner stopped waiting for this reply.",{exact:true}).last().waitFor();await shot("stop-waiting-outcome");
+  }catch(error){
+    await page.screenshot({path:join(out,`${tag}-failure.png`)});
+    writeFileSync(join(out,`${tag}-failure.json`),JSON.stringify(await page.evaluate(async()=>({url:location.pathname,body:document.body.innerText.slice(0,5000),control:await fetch("/api/settings/request-context").then(async response=>({status:response.status,body:await response.text()})),resources:performance.getEntriesByType("resource").map(row=>row.name).filter(name=>name.includes("settings"))})),null,2));throw error;
   }finally{await ctx.close();fx.fm.webChatHistory.forget("worker");}
  }
  writeFileSync(join(out,"capture.json"),JSON.stringify(receipt,null,2)+"\n");console.log(JSON.stringify({sourceHead:receipt.sourceHead,pictures:receipt.pictures.length,checks:receipt.checks.length}));
