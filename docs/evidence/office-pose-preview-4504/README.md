@@ -2,12 +2,14 @@
 
 These are captures of the real Office UI, taken in headless Chromium with the smoke fixture. The pack is synthetic and self-drawn, and the agents are fixture agents Alpha to Echo, in one office, HQ. No real names.
 
-- **At:** `10bc372a` (the feature commit; the commit that adds this folder changes nothing else under `src/`).
+- **At:** `ecdb7237` (the review fixes: 44 px on the phone sheet, named poses). The commit that refreshes this folder changes nothing else under `src/`.
 - **Script:** `capture.mts`. Copy it to `scripts/manual/smoke/` and run it with `REPO=<checkout> PW_DIR=<checkout> OUT=<dir> DEV=desk|phone` (and `PW_DPR=3` for the phone), using the same Playwright image the ui-gate smokes use.
 - Desk: 1366×900 at DPR 1. Phone: 390×844 at DPR 3. Every case was captured (desk and phone × light and dark × EN and zh-TW); four are kept here, covering each of the six: `desk-light-en`, `desk-dark-zh-TW`, `phone-light-zh-TW`, `phone-dark-en`.
 - Before each capture the picker is scrolled to the middle of the card, so it is in view (on a phone the sheet scrolls).
 
-No run had page errors or CSP violations. In every case the picker's label read "Preview pose" / "預覽動作", its options were Off / 關閉 then the twelve poses, and Replay was enabled once a pose was picked.
+No run had page errors or CSP violations. In every case the picker's label read "Preview pose" / "預覽動作", its options were Off / 關閉 then the twelve poses, each named with its strip key ("Idle (idle)", 「閒置（idle）」 …), and Replay was enabled once a pose was picked.
+
+Measured in the page (CSS px, `report-<device>.json` of the run): on the phone sheet the select and Replay are **44** tall, like the actions row (44), and the select's font is 16 px; on a desk they are 20 and 30, as the desk card's other controls (30).
 
 ## The pack
 

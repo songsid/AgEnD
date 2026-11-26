@@ -1,0 +1,117 @@
+{
+  "dev": "desk",
+  "cases": {
+    "desk-light-en": {
+      "options": [
+        "Off",
+        "Idle (idle)",
+        "Working (working)",
+        "Paused (paused)",
+        "Needs a person (needs)",
+        "Walk down (walkDown)",
+        "Walk up (walkUp)",
+        "Walk sideways (walkSide)",
+        "Walk left (walkLeft)",
+        "Eat (eat)",
+        "Patted (pat)",
+        "Dragged (dragged)",
+        "Card pose (stand)"
+      ],
+      "label": "Preview pose",
+      "sizes": {
+        "select": 20,
+        "replay": 30,
+        "action": 30,
+        "selectFont": "13px"
+      },
+      "replayEnabled": true,
+      "crashedState": "Crashed · Novice",
+      "errors": [],
+      "csp": []
+    },
+    "desk-light-zh-TW": {
+      "options": [
+        "關閉",
+        "閒置（idle）",
+        "工作（working）",
+        "暫停（paused）",
+        "呼叫人（needs）",
+        "向下走（walkDown）",
+        "向上走（walkUp）",
+        "側著走（walkSide）",
+        "向左走（walkLeft）",
+        "吃點心（eat）",
+        "被摸頭（pat）",
+        "被拖著（dragged）",
+        "名片站姿（stand）"
+      ],
+      "label": "預覽動作",
+      "sizes": {
+        "select": 20,
+        "replay": 30,
+        "action": 30,
+        "selectFont": "13px"
+      },
+      "replayEnabled": true,
+      "crashedState": "已當掉 · 新手",
+      "errors": [],
+      "csp": []
+    },
+    "desk-dark-en": {
+      "options": [
+        "Off",
+        "Idle (idle)",
+        "Working (working)",
+        "Paused (paused)",
+        "Needs a person (needs)",
+        "Walk down (walkDown)",
+        "Walk up (walkUp)",
+        "Walk sideways (walkSide)",
+        "Walk left (walkLeft)",
+        "Eat (eat)",
+        "Patted (pat)",
+        "Dragged (dragged)",
+        "Card pose (stand)"
+      ],
+      "label": "Preview pose",
+      "sizes": {
+        "select": 20,
+        "replay": 30,
+        "action": 30,
+        "selectFont": "13px"
+      },
+      "replayEnabled": true,
+      "crashedState": "Crashed · Novice",
+      "errors": [],
+      "csp": []
+    },
+    "desk-dark-zh-TW": {
+      "options": [
+        "關閉",
+        "閒置（idle）",
+        "工作（working）",
+        "暫停（paused）",
+        "呼叫人（needs）",
+        "向下走（walkDown）",
+        "向上走（walkUp）",
+        "側著走（walkSide）",
+        "向左走（walkLeft）",
+        "吃點心（eat）",
+        "被摸頭（pat）",
+        "被拖著（dragged）",
+        "名片站姿（stand）"
+      ],
+      "label": "預覽動作",
+      "sizes": {
+        "select": 20,
+        "replay": 30,
+        "action": 30,
+        "selectFont": "13px"
+      },
+      "replayEnabled": true,
+      "crashedState": "已當掉 · 新手",
+      "errors": [],
+      "csp": []
+    }
+  }
+}

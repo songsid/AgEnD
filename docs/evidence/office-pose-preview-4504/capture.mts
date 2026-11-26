@@ -80,6 +80,10 @@ try {
     const sel = page.locator(".oo-card-preview select");
     r.options = await sel.locator("option").allInnerTexts();
     r.label = (await page.locator(".oo-card-preview label").innerText()).split("\n")[0].trim();
+    // #4508 review: the picker's and Replay's height (CSS px) and the select's font size, beside an action button's.
+    r.sizes = await page.evaluate(`(() => { const h = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().height) : null; };
+      const sel = document.querySelector(".oo-card-preview select");
+      return { select: h(".oo-card-preview select"), replay: h(".oo-card-replay"), action: h(".oo-card-actions .btn"), selectFont: sel ? getComputedStyle(sel).fontSize : null }; })()`);
     await sleep(600); await shot("1-card-picker-off");
     await sel.selectOption("walkUp"); await sleep(1200); await shot("2-walkUp");
     await sel.selectOption("pat"); await sleep(1200); await shot("3-pat");
