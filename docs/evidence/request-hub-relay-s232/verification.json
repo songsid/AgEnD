@@ -1,13 +1,13 @@
 {
-  "sourceHead": "0d19a08df1cb80205e8f1a00792c5ef7e82f9431",
+  "sourceHead": "6db323345037516eb435bf934b549918d7962178",
   "productionInstallation": "OFF; all H assembly ports remain uninstalled until L",
   "tests": [
     {
-      "command": "npx vitest run <49 affected files> tests/request-contact-native-s229.test.ts --maxWorkers=2",
-      "files": 50,
-      "passed": 1041,
+      "command": "npx vitest run <49 affected files> tests/request-contact-native-s229.test.ts tests/cross-instance-notice-ids.test.ts tests/cross-instance-visibility-1302.test.ts --maxWorkers=2",
+      "files": 52,
+      "passed": 1106,
       "failed": 0,
-      "source": "0d19a08df1cb80205e8f1a00792c5ef7e82f9431"
+      "source": "6db323345037516eb435bf934b549918d7962178"
     },
     {
       "command": "npm run typecheck",
@@ -16,19 +16,12 @@
     {
       "command": "npm run typecheck:tests",
       "passed": true
-    },
-    {
-      "command": "npx vitest run tests/update-quiescence-s244.test.ts --maxWorkers=2",
-      "files": 1,
-      "passed": 22,
-      "failed": 0,
-      "source": "0d19a08df1cb80205e8f1a00792c5ef7e82f9431"
     }
   ],
   "captureChecks": {
-    "passed": 88,
+    "passed": 128,
     "failed": 0,
-    "pictures": 48
+    "pictures": 56
   },
   "mutations": [
     {
@@ -409,11 +402,15 @@
   "sourceAndTestSha256": [
     {
       "path": "scripts/manual/request-hub-relay-s232/capture.mts",
-      "sha256": "5a6a9040a882e1ebf3e433dc59625f6c03c1c779dcb1ccae31bb474f1c85e962"
+      "sha256": "1f3b9f9ab277c2b1b47e764f333ac99da038307c81c21f3b7914ac29c5a0cb90"
     },
     {
       "path": "src/agent-endpoint.ts",
       "sha256": "41f28f79050289352ff9fb0b412882cd26e186b99311f8b24f151148abec8b0b"
+    },
+    {
+      "path": "src/cross-instance-notice.ts",
+      "sha256": "f6504c00a228a130e8e1a9bdb0e35977729510f10b2dce36c3900b6f56afa2c9"
     },
     {
       "path": "src/daemon.ts",
@@ -425,15 +422,7 @@
     },
     {
       "path": "src/fleet-manager.ts",
-      "sha256": "9e0091ba2384f91c498fa0f4afaa256e03dde90500c47f6b84d2fe8c27d8e0c5"
-    },
-    {
-      "path": "src/general-knowledge/skills/cross-instance-messaging/SKILL.md",
-      "sha256": "dbd4fecdcff3ed011dc47bf08a08f8bf3850f3506649b82757c2e12e47210b7d"
-    },
-    {
-      "path": "src/general-knowledge/skills/worker-collaboration/SKILL.md",
-      "sha256": "3d726c4569db6fcbd7fe9b3a43327bee243b93983b120d53b0369825b91cb654"
+      "sha256": "d14676f6672e9e38aacb14a92252e794285c807a3e62047dbd72c95f04ac151a"
     },
     {
       "path": "src/hub/compose/member.ts",
@@ -453,7 +442,7 @@
     },
     {
       "path": "src/instructions.ts",
-      "sha256": "02ed208874893c941d027d1f11153422fba2a2040d73f7368be70ed830cab67e"
+      "sha256": "26521ed87e494381da8030a1e51ac725ec3f6c0517296463039373e0448f633d"
     },
     {
       "path": "src/native-agent-admission.ts",
@@ -465,7 +454,7 @@
     },
     {
       "path": "src/outbound-handlers.ts",
-      "sha256": "7d65594a304094034e1bd42b14fda1a9383fa54f8337a9e0957711072f4c84ea"
+      "sha256": "d84eb18219012143a047508891f76061b0e18740aad910b59450a56c713bc4b2"
     },
     {
       "path": "src/request-contact-card.ts",
@@ -481,7 +470,7 @@
     },
     {
       "path": "src/request-context-policy.ts",
-      "sha256": "2b67f6aac5a6126d649e981b3c4cbba3d70567dcfcd5920edcefd374d0e8e72c"
+      "sha256": "e3323f2ce20ab585324c5d0f3d1e0597df6b0b598578cdd744abcb45f71085b0"
     },
     {
       "path": "src/request-context-relay.ts",
@@ -501,7 +490,7 @@
     },
     {
       "path": "src/request-context-view.ts",
-      "sha256": "6ada35914a5a8ad18ca778b1d00a98beb16ff88378f805dec464c7c743bb82ac"
+      "sha256": "8a73bef14adb3949c54b47a3007590575e5c03e08dac35a9476c7da63dbd1c61"
     },
     {
       "path": "src/request-hub-context.ts",
@@ -513,23 +502,27 @@
     },
     {
       "path": "src/ui/shared/app.css",
-      "sha256": "97d273c7d096aa56f77d7e1425df1400913f3877319bfb91abbbb3fa55602ca0"
+      "sha256": "00d06a6b104bd788ce2338142a16002bf8517b86ff63df7a13c52ca1dd9c5ea6"
     },
     {
       "path": "src/ui/shared/chat-strings.js",
-      "sha256": "1c8588f42329366a093c9a12a7707f4139f53f63797864744e63707aa9a552e5"
+      "sha256": "bf8b00377e207593ea112c7d3d7a5decc6c9ffb1ca76c38a60b24367a1d97ece"
     },
     {
       "path": "src/ui/shared/chat-thread.js",
-      "sha256": "bb0872fd3d1eea344b16c05564f16f71cc05e2b013ec46a123481d92f426690b"
+      "sha256": "43107e8f55f7561271d605c8609b51d7da4ba4f8dc64e9370a68863d113718aa"
     },
     {
       "path": "src/web-chat-history.ts",
       "sha256": "4fcf331a5c59552875289e29c6484da085542a4ffcf35a744477cc26ce9859eb"
     },
     {
-      "path": "tests/fixtures/instructions-matrix.json",
-      "sha256": "596f4932d83d30f5065eca26c87ca428f3ff834e9c896dc0a7cd94b74ed3d6a5"
+      "path": "tests/agent-instructions.test.ts",
+      "sha256": "46a1acde61a99505deef9c055ecc8de936df011e95081fdb4e0172de79551729"
+    },
+    {
+      "path": "tests/cross-instance-notice-ids.test.ts",
+      "sha256": "2c8025effbbc4d4690ef4b7ce00c152819c35226473e5a401cc30d313dc04f1d"
     },
     {
       "path": "tests/hub-representative.test.ts",
@@ -545,19 +538,19 @@
     },
     {
       "path": "tests/native-mcp.test.ts",
-      "sha256": "ee2cdd9dabdde2bde28cf174ebe8d7b8872df87dc156b615e35923640f2cebf6"
+      "sha256": "3fcb523a4310ea55e1647c2736b0a1f53b9eeed0be37f8a8a3b39cbff45bc5d7"
     },
     {
       "path": "tests/request-context-daemon-s224.test.ts",
-      "sha256": "ba96d5279ece5f77327a76f7901014f16dde91b08c2544e1186703e8efaabb0c"
+      "sha256": "c69cb6a625897bf462bf52f0a5fda7096017842b543c578f7a7edff559e22b8e"
     },
     {
       "path": "tests/request-context-mutations-s232.test.ts",
-      "sha256": "e85952346e422cf0daae83e07cbbb61cbbad1de93f24061090d2522d40a379ef"
+      "sha256": "62551b19223941a0b4082a3325d6328753d876c941b2b1e7abb3a4ba5c5b5d6b"
     },
     {
       "path": "tests/request-context-policy-s232.test.ts",
-      "sha256": "70c431e701fbc506c2bb4148edf9c4dbb70c49844c7c87e7f94a5986ae992d1c"
+      "sha256": "396915bcfa607b465119bc1a661403cd001c9611813552d16c06d3cbb220e336"
     },
     {
       "path": "tests/request-context-relay-s232.test.ts",
@@ -569,17 +562,19 @@
     },
     {
       "path": "tests/web-chat-persist-1565.test.ts",
-      "sha256": "337a40c1a96a16b0f856143ed72b69343e9c22d6ab6028fc94bc8f0facc83d1c"
+      "sha256": "40c84ae49f51df0b61d1f03eddda5ea7736b13858f1ed5e39d5d071fd1aba359"
     },
     {
       "path": "tests/web-cross-instance-1672.test.ts",
-      "sha256": "e2ae7334e588cb0302d54dcfea291396edacca1c7ca015f13cc693ac565c8588"
+      "sha256": "4e69efd5ceb23bf81ac45ff463dd654894cce97076e02013bb03362735abf187"
     }
   ],
   "limits": [
     "Synthetic owners and scratch HTTP/UI only; no CLI, account, provider, model or live Fleet calls.",
     "Physical input/transport installation, full cutover and published-version downgrade proof remain L responsibilities.",
-    "S-249 must word interrupted-launch in J before L. Native card reason wording must also be checked before cutover.",
-    "Labels and application tool guards do not sandbox shell processes or erase model conversation history."
-  ]
+    "Labels and application tool guards do not sandbox shell processes or erase model conversation history.",
+    "S-249 supplies web interruption wording before L; native same-card reason presentation must also be checked."
+  ],
+  "previousSourceHead": "0d19a08df1cb80205e8f1a00792c5ef7e82f9431",
+  "mutationsCarry": "The initial 8 semantic reversals and redundant native-entry control are retained as baseline evidence. R1 adds the two explicit controls in r1.json."
 }

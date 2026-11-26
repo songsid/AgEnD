@@ -1,5 +1,5 @@
 {
-  "sourceHead": "0d19a08df1cb80205e8f1a00792c5ef7e82f9431",
+  "sourceHead": "6db323345037516eb435bf934b549918d7962178",
   "dirtySource": "",
   "checks": [
     {
@@ -35,7 +35,27 @@
       "ok": true
     },
     {
+      "name": "desk-light-en: Fleet read refused",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-fleet-refusal: no overflow",
+      "ok": true
+    },
+    {
       "name": "desk-light-en-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: refusal has requester header",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: disclosure arrow restored",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: copy only inside details",
       "ok": true
     },
     {
@@ -79,7 +99,27 @@
       "ok": true
     },
     {
+      "name": "desk-light-zh-TW: Fleet read refused",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-fleet-refusal: no overflow",
+      "ok": true
+    },
+    {
       "name": "desk-light-zh-TW-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: refusal has requester header",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: disclosure arrow restored",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: copy only inside details",
       "ok": true
     },
     {
@@ -123,7 +163,27 @@
       "ok": true
     },
     {
+      "name": "desk-dark-en: Fleet read refused",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-fleet-refusal: no overflow",
+      "ok": true
+    },
+    {
       "name": "desk-dark-en-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: refusal has requester header",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: disclosure arrow restored",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: copy only inside details",
       "ok": true
     },
     {
@@ -167,7 +227,27 @@
       "ok": true
     },
     {
+      "name": "desk-dark-zh-TW: Fleet read refused",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-fleet-refusal: no overflow",
+      "ok": true
+    },
+    {
       "name": "desk-dark-zh-TW-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: refusal has requester header",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: disclosure arrow restored",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: copy only inside details",
       "ok": true
     },
     {
@@ -211,7 +291,27 @@
       "ok": true
     },
     {
+      "name": "phone-light-en: Fleet read refused",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-fleet-refusal: no overflow",
+      "ok": true
+    },
+    {
       "name": "phone-light-en-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: refusal has requester header",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: disclosure arrow restored",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: copy only inside details",
       "ok": true
     },
     {
@@ -255,7 +355,27 @@
       "ok": true
     },
     {
+      "name": "phone-light-zh-TW: Fleet read refused",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-fleet-refusal: no overflow",
+      "ok": true
+    },
+    {
       "name": "phone-light-zh-TW-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: refusal has requester header",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: disclosure arrow restored",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: copy only inside details",
       "ok": true
     },
     {
@@ -299,7 +419,27 @@
       "ok": true
     },
     {
+      "name": "phone-dark-en: Fleet read refused",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-fleet-refusal: no overflow",
+      "ok": true
+    },
+    {
       "name": "phone-dark-en-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: refusal has requester header",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: disclosure arrow restored",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: copy only inside details",
       "ok": true
     },
     {
@@ -343,7 +483,27 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW: Fleet read refused",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-fleet-refusal: no overflow",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: refusal has requester header",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: disclosure arrow restored",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: copy only inside details",
       "ok": true
     },
     {
@@ -358,195 +518,227 @@
   "pictures": [
     {
       "name": "desk-light-en-before.png",
-      "sha256": "f86b8af2deedf3e106aab58e74fd67b605f733a9deb722103ce7af2f4039c30b"
+      "sha256": "b1ff89120588671014b4b23563752c814d08e528e53083c5948196cbd85a5fa7"
     },
     {
       "name": "desk-light-en-relay.png",
-      "sha256": "f92104295e9b5fb8edf5c7bca70c0dcbea3e6bd3342f3bb4f4b44321dd9ddb03"
+      "sha256": "8009112ef3f7802b4136a5799f81ef2f40b96fb9ac8c26588d5f27da6073c797"
     },
     {
       "name": "desk-light-en-late-return.png",
-      "sha256": "db1b2141a26b60d4d539e2c24e2261a95bc593ebfb7fe547bab6c9b498285b05"
+      "sha256": "32b3e31af9ba22d61bfc1d48df3fe9f61e41b8983cc59961508ea0743f974654"
     },
     {
       "name": "desk-light-en-room.png",
-      "sha256": "bcba6d31f02002083e3644fb96d657e02bf58089ca15d830d497fa3c2833d377"
+      "sha256": "1ae9a809bcf1189f3ad8ecd67d9a71ecc3bd0df1baa7abd1878b26969cd47bff"
     },
     {
       "name": "desk-light-en-refusal.png",
-      "sha256": "c76419cbc92ca95c445e69386edd3bb9b045228e569e1f758a1cb3df1c362d29"
+      "sha256": "e1d921cbc9d6c88e8d9c15bf4ba1c0edc64488ddafca995ba4617fbad5af0136"
+    },
+    {
+      "name": "desk-light-en-fleet-refusal.png",
+      "sha256": "a12e47f4688ff263a0add7d9b804dbf83f3ccab681fe536a6af9eabb7c5a1522"
     },
     {
       "name": "desk-light-en-details.png",
-      "sha256": "480ce4ed7226becb2df5316b970ffe835d35a4aef00721674bd7593db193c7ea"
+      "sha256": "65b1b9bd6ae1ff046b239b235c015e987d8c59af619a8b95f841cee6397f0f16"
     },
     {
       "name": "desk-light-zh-TW-before.png",
-      "sha256": "02e53945478ea20a8f773b0f3b3c124a2cf587164f5f9f28443e8c58386028c2"
+      "sha256": "1d5caeecda9e014012688055d1c28c7ab59d738b1275c84aed130c41cc0eeb31"
     },
     {
       "name": "desk-light-zh-TW-relay.png",
-      "sha256": "2c78f365326a3475510127b5b8e498dcfc17bd2e17418c8cfa099c0197efa20f"
+      "sha256": "b0adc900773f2ab46012fd0a64ba8db038b04bcba514521011b1ec4b1013d75d"
     },
     {
       "name": "desk-light-zh-TW-late-return.png",
-      "sha256": "f69fead42953fc293e29f61f6ff812bb951f1a223bd7b93aa1b34ee76dca7884"
+      "sha256": "085d08488f40917a333999fd6baee497a6d2348fd4fd0fd9f333114ed6e1a883"
     },
     {
       "name": "desk-light-zh-TW-room.png",
-      "sha256": "378aad2a60aec8cfc0ff71bb6827277366a1f4fffa6ae16099fc3f32265f95f4"
+      "sha256": "048652b0c91e1e65196635b3f433cfa48084e02362e9c7deb39d54ea2fd7fbe8"
     },
     {
       "name": "desk-light-zh-TW-refusal.png",
-      "sha256": "ca4da68ea0570c8a7778572428c71d3ac662a1821d205c587443b04570032ed3"
+      "sha256": "dadbd07276b99d3b0b1dce0064c211cd7b1a0363726148f506e546757bea764c"
+    },
+    {
+      "name": "desk-light-zh-TW-fleet-refusal.png",
+      "sha256": "1721e6e8d478c8d1b9a8d1f63039ce8667dc2712e3b0f9cc9a7bc68aaf406000"
     },
     {
       "name": "desk-light-zh-TW-details.png",
-      "sha256": "a4d900e90ec00f91f562518e2406a6e1a29ffd6ae9941a5346c946515450bab9"
+      "sha256": "7c16a9eeb6c3d5591ef128ad9560a5e7304e885fa5d62e35dbbeb020305f22ec"
     },
     {
       "name": "desk-dark-en-before.png",
-      "sha256": "cabf468d951bff58dfa283e603dd69d0770ee93c26bea4191ce2daff6bf3a66e"
+      "sha256": "ec39f43a5ef10d17cdc6694c52f275ca877416a1721cf9197092ba4284770428"
     },
     {
       "name": "desk-dark-en-relay.png",
-      "sha256": "02194c7998cea613f0f7241061336a98a508fb95442fe15540815238148175ce"
+      "sha256": "a945d24b554cce020a464b4399d4d10dffbdb286a99c81f8aea053cc3313025e"
     },
     {
       "name": "desk-dark-en-late-return.png",
-      "sha256": "6764e01d9988923fc1f5a9deda7e9791fdb19e739a6a9d5ce19df8de61aa5d7d"
+      "sha256": "51dd2dc56a5efcb75665fe334b8467c1d97d8ca2adae9df3b5d94b954d314610"
     },
     {
       "name": "desk-dark-en-room.png",
-      "sha256": "87bc0ceeabf8d93eccdade69fe37a9efdab6b9e555366743d19b9f0b0bf6f488"
+      "sha256": "cc6317185bd780b68902f4c4c83882afaf57b3307154b66e1b38ede8c15361a4"
     },
     {
       "name": "desk-dark-en-refusal.png",
-      "sha256": "7705086069d722c5cb6d54653ff769a153aced88666eaa1dbadf9d0b1ce5e832"
+      "sha256": "21898073db66751dcece9e4e4b8817d3070c886c81d062066fc08dc24a770dc1"
+    },
+    {
+      "name": "desk-dark-en-fleet-refusal.png",
+      "sha256": "2b23c703bb743a9df0a104b76fa08652f189635be5ad1500aab91defccecb7e7"
     },
     {
       "name": "desk-dark-en-details.png",
-      "sha256": "8d9edb292d4ed6474fba39ad07ee8c59d5456c3d8e0ad891a3d9b618bff1c97b"
+      "sha256": "7875a3d91f0887ac88cbe8d1ad2e628a71826a3151235c9dd9dc754cc2f507c6"
     },
     {
       "name": "desk-dark-zh-TW-before.png",
-      "sha256": "adff267aa147869e892856762263f87f885b0c8366fee7017a62da43ac293b98"
+      "sha256": "f76a982efe2f39cac333f3b7fcfd772abfd34bdfb025be679f9476a8b2a70166"
     },
     {
       "name": "desk-dark-zh-TW-relay.png",
-      "sha256": "46c29140856109bae83b87047713315fdec2fd7194627146e4c71c48a6ab50c9"
+      "sha256": "5deb128ad2b9571b3c4c4ed983d9a642d84c4210273a0b76ea9c0be3def6fa46"
     },
     {
       "name": "desk-dark-zh-TW-late-return.png",
-      "sha256": "7030f5f0c8d9dfab1bf27109212ba445ad31d125cd3553fb2e49be212788c976"
+      "sha256": "a5fb7012608354d928ce56960916cbfd3c4e0028f391fa7c87c6a16e8608e1ef"
     },
     {
       "name": "desk-dark-zh-TW-room.png",
-      "sha256": "3a5a4a4c874d0d86ea01754a2a60e41fcd8ca1c32e1b898d3315923a5393a119"
+      "sha256": "814db9c7d322504750410b49f08bd6563ec0f1a43edf4ab2a44a2d6a1352edeb"
     },
     {
       "name": "desk-dark-zh-TW-refusal.png",
-      "sha256": "790f0fa0f4e42e0a2c56a7a482e3e21dd65aa47c345cdff6aac0064a766ebcfb"
+      "sha256": "0bb6e6198433f93e7c0162f49b4dcc3868d10805ce340c644590c1be67fec51a"
+    },
+    {
+      "name": "desk-dark-zh-TW-fleet-refusal.png",
+      "sha256": "6c2a4edfa9fd25a3c20951540ef3adfdeb4ee45a07c08a6ce0d49bc04ce897bc"
     },
     {
       "name": "desk-dark-zh-TW-details.png",
-      "sha256": "afa4db7f5d32257a6ef473ac5a5689af671e6d6c707ffeabe95ac5ef4b5a55b5"
+      "sha256": "0e69cd0e6b403a94c122750332bc5859dcbeb2a7c3c6450712f70e92cc3bc3ea"
     },
     {
       "name": "phone-light-en-before.png",
-      "sha256": "89f22fcb00e8f1f3caf2411400a6b68dfc5e2356a7b92fd6ac9c4d2c11cd4c8e"
+      "sha256": "4156f6489abecb70d8a5e88d2681e367f18df5a742b86b28f014e0cb721f0ee7"
     },
     {
       "name": "phone-light-en-relay.png",
-      "sha256": "8237817065b491c053df9ba07644fba6efe29a770e685e78b725dfbe7859f8e6"
+      "sha256": "2a3d1c29a5fdbd3130f839186787a796d40d7a7a3c62ff7fc6bd4647816439fd"
     },
     {
       "name": "phone-light-en-late-return.png",
-      "sha256": "6a04c8e79c9201629269b43c205adba7cc63748a9a29c37f4c2ec429743c0a3a"
+      "sha256": "78b7cb184f3b337b05692d92307abcd2d6bb672ca2b7398aa31e417e49d62ae2"
     },
     {
       "name": "phone-light-en-room.png",
-      "sha256": "264ce000d65c6333a300b7002b14cbc49bff60a31639bfb5acdc3dd98899aec0"
+      "sha256": "cfc66322794f7cfc005c1a5f418fe1b34ce6f571ab2e5b65de7199f0a0eaefe9"
     },
     {
       "name": "phone-light-en-refusal.png",
-      "sha256": "32a207c39c295fe47072ee040064c705f373fceaaac2539ef472a64fea8f2066"
+      "sha256": "ad58415521fbd5c552a3feefad28ee268758aaad16ef9d385f859699fcd955a5"
+    },
+    {
+      "name": "phone-light-en-fleet-refusal.png",
+      "sha256": "a559e125de1b9bd6cde0a8678318ba87282858f59f650bd58c44f2a06c1b5d7b"
     },
     {
       "name": "phone-light-en-details.png",
-      "sha256": "383ee2b7b9c1b23cb9d476752f2bfabe171616d28869baa076a04074765bd091"
+      "sha256": "42811c3774aecd47614c37d7fdf70a19d75f424d0a56e94c239140965ff48b26"
     },
     {
       "name": "phone-light-zh-TW-before.png",
-      "sha256": "3038499b82ae75094228c3e5cf3a5517a7ba04c997c46f9332581d0dd3270645"
+      "sha256": "ee63f376d3e35f332a002ff34a75f10378de5d9c945bb2d660a923f32e4c86ac"
     },
     {
       "name": "phone-light-zh-TW-relay.png",
-      "sha256": "55375b02ed67d8f552e08c02e6ff57bf7d880dcc605047db7416dd2ebf74f1d7"
+      "sha256": "a39b6f3faab191a67c39d2f1417cd37ba3fb9bce122c6364179e0ee2e1d9d0c7"
     },
     {
       "name": "phone-light-zh-TW-late-return.png",
-      "sha256": "f988088a3cc8eb5f23ebb7d38726ec7c9a3abcd7d02966922248baeded434649"
+      "sha256": "97b29da2ba75f14f2d44abaee2b838f3aab2221bfaf0e2ba73a6afcc4a64313c"
     },
     {
       "name": "phone-light-zh-TW-room.png",
-      "sha256": "b129812744b23125589b49d6a2df10f309e8fb329a8875cddcbebe739728656c"
+      "sha256": "96de928c2d231bf5bbd3d148ec8077c0cc11b42e4ae1d20a2f8412f67d87958a"
     },
     {
       "name": "phone-light-zh-TW-refusal.png",
-      "sha256": "4f5aa0f2bdd963af524c4b3bd432231b18328c8d0bc710d1070aaafcc04e0a06"
+      "sha256": "4bdbe8118747ffa3756aa75a094ff31d00ca3f21e6661019cbedc9443193795b"
+    },
+    {
+      "name": "phone-light-zh-TW-fleet-refusal.png",
+      "sha256": "d90b68bda30f99d84a325d357fbc1ba0001e16ca2592592fc49d72f5dbf17ae4"
     },
     {
       "name": "phone-light-zh-TW-details.png",
-      "sha256": "ca9f36710377f094f3e82fd31d73860e5b91756842f4bfc3eef3c44ef69ec828"
+      "sha256": "8c291344ac14e576106e6d3ad108ba3bd6987d588929060700b8bf94e9620cfa"
     },
     {
       "name": "phone-dark-en-before.png",
-      "sha256": "ae9a30607606caa39ef1ff21bb0d17566fb69657c908e40c9335d957c1a3fb58"
+      "sha256": "66d86a621d97c1fe7d3a6be10e03f64b734ec0a2907ef60a87b298735e18f4d2"
     },
     {
       "name": "phone-dark-en-relay.png",
-      "sha256": "8e753275b93e050955cd68c23c4bad8d680395775b632571ad06b96de0b1cba9"
+      "sha256": "0c6a8f72a8f50a503e5557140216ce3402a9454c3fe24c38bb042f6447872e8f"
     },
     {
       "name": "phone-dark-en-late-return.png",
-      "sha256": "dca992c1935f63cb88c57720eb294b55013938c1d50974515b4590e5d8fcd907"
+      "sha256": "8103432be6757205cca0d7e78e92ce0837b1d4529025252e9c39ce425aa7b4f8"
     },
     {
       "name": "phone-dark-en-room.png",
-      "sha256": "ee5b939b1f30907d950b2699f00b982449a9ea0aceefd727dce65a4137b25f2f"
+      "sha256": "5397876c358c7b5b7f46123c49bda2944d2d7642fc0274ad6295fea1b0400b03"
     },
     {
       "name": "phone-dark-en-refusal.png",
-      "sha256": "61374e1f36451f78550be28b9611aa58247d16ad5a7e87a9ec90daaeb5ef8260"
+      "sha256": "36c7bfa3691fd54085c6fcd62e13541983a5eb193e5b35a0e6965d2ecf3a1914"
+    },
+    {
+      "name": "phone-dark-en-fleet-refusal.png",
+      "sha256": "8331bd054b5c5916c8fa1e5a5dd765cec74d6a51f45ac798a905873f4c702be9"
     },
     {
       "name": "phone-dark-en-details.png",
-      "sha256": "6443dfcedbfc6a648d18acf84b13e19ecd799d2746602b1677c00dab885b28e8"
+      "sha256": "057c73a26d8ed3194d600a38f0d9ffc9dbb83ec834b1d02eac519e91cf8f208a"
     },
     {
       "name": "phone-dark-zh-TW-before.png",
-      "sha256": "a19fcdf4a0c0a74bce440a4dd001a052a2c8f0298cbda4845519af021236ea56"
+      "sha256": "ffb44c8757e43075879f7954a4f52719395930ee11d35d2df5e86664a202ce3e"
     },
     {
       "name": "phone-dark-zh-TW-relay.png",
-      "sha256": "abbf09b05affcf2d79b400970c274e02362c4b075b2f1376c67db7cad7de02eb"
+      "sha256": "9450269f83c2306a96efff77a9f2528aaf1f8dfefde5e04957fa2fd963211be6"
     },
     {
       "name": "phone-dark-zh-TW-late-return.png",
-      "sha256": "22a12e1939dfff915b9c8dbcac3fa97692214286d3c734c0e3590e609475cfeb"
+      "sha256": "a3d3d7ae8abbfd8d2862bc5fecc7fbb2a0b6d30969f024658f63fa2bf4fa08be"
     },
     {
       "name": "phone-dark-zh-TW-room.png",
-      "sha256": "cd3164c674937704d2ae8b0dd51ddc0759d3190aec765842c6ac032118b1fba4"
+      "sha256": "5cd7151b2d456e3b746a9d0268db37f574a8ff8f0f0061a9f24339424490d1c9"
     },
     {
       "name": "phone-dark-zh-TW-refusal.png",
-      "sha256": "d8b56cf9dd77d7f1ae9363297083ff7f0189d54f2dedf9ca38c453e2fd89d5f2"
+      "sha256": "f4e5293e294941b11e11a1ba4439940efce8101864e9f5a7451b0f9875ff430a"
+    },
+    {
+      "name": "phone-dark-zh-TW-fleet-refusal.png",
+      "sha256": "4d8dec543cd1f91dd5bd620028e205a0a91dd262fad34a15487c79e13afc8b4d"
     },
     {
       "name": "phone-dark-zh-TW-details.png",
-      "sha256": "a36c58526cd787334653c21018f0b0c90ad55eb580a157ebb3e9ad9ef4c7504a"
+      "sha256": "4b49bd04eacd4a9ab71cd4b7dc8cb869ba07ca9a2aef28dd44785713ab25ddf9"
     }
   ]
 }
