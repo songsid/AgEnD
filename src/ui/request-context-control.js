@@ -3,7 +3,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { lang, register, t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
-import { confirmedWrite } from "/assets/settings-confirm.js";
+import { confirmedWrite } from "./settings-confirm.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { detailsPath, settingsPath } from "/assets/app-route.js";
 import { AuthorizeChip } from "/assets/web-authorize.js";
