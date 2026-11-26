@@ -21,7 +21,8 @@ import type { Socket } from "node:net";
 import { normalizeOrigin, previewFrameResponse } from "./web-preview.js";
 import { failureOf, type PublicLinkFailure } from "./public-link-progress.js";
 import { newTunnelSid, type ManagedTunnel } from "./tunnel/manager.js";
-import { logDetail } from "./public-web-link.js";
+import { logDetail, publicLinkPreviewHostname } from "./public-web-link.js";
+import type { WebConfig } from "./types.js";
 import type { TunnelProvider, TunnelStopResult } from "./tunnel/types.js";
 
 const QUICK_TUNNEL_HOST = /^[a-z0-9-]+\.trycloudflare\.com$/;
@@ -45,10 +46,12 @@ export const PUBLIC_PREVIEW_TUNNEL_DIR = "preview-tunnel";
 
 /**
  * Whether a public link gets a preview tunnel of its own: previews on (`web.preview`), on for the public link
- * (`web.preview_on_public_link`, default true), and no `web.preview_origin` — a configured one is used instead.
+ * (`web.preview_on_public_link`, default true), no `web.preview_origin`, and (M-3814) no fixed preview address
+ * (`web.public_link.preview_hostname` with a fixed hostname) — a configured one is used instead.
  */
-export function publicPreviewWanted(web: { preview?: unknown; preview_on_public_link?: unknown; preview_origin?: unknown } | null | undefined): boolean {
+export function publicPreviewWanted(web: Pick<WebConfig, "preview" | "preview_on_public_link" | "preview_origin" | "public_link"> | null | undefined): boolean {
   if (web?.preview === false || web?.preview_on_public_link === false) return false;
+  if (publicLinkPreviewHostname(web ?? undefined) !== null) return false;
   return !(typeof web?.preview_origin === "string" && normalizeOrigin(web.preview_origin));
 }
 

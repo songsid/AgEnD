@@ -23,6 +23,11 @@ import { identityOf } from "../install-ownership.js";
 import { finishClosing, readCurrent, readRunnerRecord, recoveryPlan, updaterState, writeRunnerRecord, type AttemptRecord, type JournalIo,
   type JournalRead, type LivenessDeps } from "../update-journal.js";
 import { kitDir, operatorCommand } from "./pre-start.js";
+import { rollBack } from "../update-rollback.js";
+import { plistProgramArguments } from "../plist-args.js";
+import type { OwnedService } from "../install-ownership.js";
+import type { Exempt } from "../update-writers.js";
+import type { ServiceManager } from "./service-manager.js";
 
 /** The service lock's file (service-lock.ts's SERVICE_LOCK_FILE; that module isn't bundled — it loads the home checks). */
 export const SERVICE_LOCK_FILE = ".service.lock";
@@ -34,6 +39,17 @@ export interface RunnerDeps {
   io: JournalIo;
   err(line: string): void;
   out(line: string): void;
+  /** What resuming a rollback needs (S-252): the service manager, the takeover wait, the writers' proof. */
+  hands?: RecoveryHands;
+}
+
+export interface RecoveryHands {
+  /** The manager for the attempt's recorded service. */
+  manager(service: OwnedService): ServiceManager;
+  /** Wait for fleet.lock to hold a `fleet` record with this nonce: its pid, or null on timeout. */
+  waitTakeover(nonce: string): number | null;
+  /** §4.4 with the attempt's exempt set (its updater, this runner). */
+  proveWritersGone(exempt: Exempt): { ok: true } | { ok: false; reason: string };
 }
 
 const startOf = (pid: number, d: RunnerDeps) => {
@@ -110,8 +126,27 @@ export function runRecovery(home: string, attemptId: string, d: RunnerDeps): num
         return 0;
       case "start": return 0;
       case "refuse": return refuse(plan.reason === "manual" ? "it needs manual recovery. Run `agend update --resolve`." : `the journal reads ${plan.reason}.`);
+      case "resume-rolling-back": {
+        // §6.2 runner steps 1–6 through the rollback driver (S-252): the refused start settled first.
+        const service = identityOf(read.attempt)?.ownership.service ?? null;
+        if (!d.hands) return refuse("this kit can't drive a rollback (no service manager given).");
+        if (!service) return refuse("the attempt records no service to roll back through; start the previous version yourself, then run `agend update --resolve`.");
+        const manager = d.hands.manager(service);
+        if (!manager.waitSettled()) return refuse("the service's refused start hasn't settled; run the recovery again.");
+        const self = { pid: d.pid, start };
+        const res = rollBack(home, read.attempt, {
+          self, liveness: d.liveness, isProcessAlive: pid => (d.liveness.exists ?? (() => true))(pid),
+          proveWritersGone: () => d.hands!.proveWritersGone({ updater: read.attempt.updater, runner: self, helpers: [] }),
+          plistArgs: plistProgramArguments, manager, waitTakeover: nonce => d.hands!.waitTakeover(nonce), io: d.io,
+        });
+        if (res.ok) { d.out(`AgEnD update attempt ${attemptId} is rolled back; the previous version runs again.`); return 0; }
+        return refuse(`${res.reason}${res.manual ? " Run `agend update --resolve`." : " Run the recovery again."}`);
+      }
+      case "resume-committing":
+        // §7 (rev 13): the new version's own fleet start finishes a commit; the old kit never does.
+        return refuse(`it is committing ${read.attempt.to.version}, which only the new version's own fleet start finishes, never this recovery kit. Nothing was changed; if the fleet's start can't finish it, run \`agend update --resolve\`.`);
       default:
-        // resume-abandoning / resume-rolling-back / resume-committing: the restores are slice 2.3's.
+        // resume-abandoning: wired by a later S-252 part.
         return refuse(`it needs ${plan.kind.replace("resume-", "resuming ")} from ${read.attempt.stage}${plan.substep ? ` (${plan.substep})` : ""}, which this recovery kit can't do yet. Nothing was changed.`);
     }
   } finally {

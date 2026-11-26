@@ -59,7 +59,7 @@ const ask = async (path: string, method: string, kind: Kind, body: unknown = {},
 };
 const SETUP = `/ui/runtimes/machines/${machineId}/remote-setup`, INSTALL = `/ui/runtimes/machines/${machineId}/cli-install`;
 beforeEach(() => {
-  live = true; vi.stubEnv("AGEND_REMOTE_RUNTIME", "1"); calls = []; outcome = async () => ({ version: "0.171.0" }); switchesAnswer = { accounts: { on: false }, install: { on: true } }; current = hub();
+  live = true; vi.stubEnv("AGEND_REMOTE_RUNTIME", "1"); calls = []; outcome = async () => ({ version: "0.172.0" }); switchesAnswer = { accounts: { on: false }, install: { on: true } }; current = hub();
   machine = { id: machineId, status: "online", runtimeInfo: { capabilities: ["exec", "remote-signin", "cli-install"] } };
 });
 afterEach(() => vi.unstubAllEnvs());
@@ -82,7 +82,7 @@ describe("install a CLI from the dashboard: who may ask", () => {
   it("a local administrator reads the computer's switches from the computer, and the audit name is an opaque session handle", async () => {
     const answer = await ask(SETUP, "GET", "admin");
     expect(answer.status).toBe(200);
-    expect(answer.json).toMatchObject({ capable: true, online: true, switches: { install: { on: true } }, job: null, catalog: [{ id: "claude-code", version: "2.1.332", kind: "npm", pin: "audited" }, { id: "codex", version: "0.171.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.15", kind: "download", pin: "audited" }, { id: "opencode", version: "1.19.6", kind: "npm", pin: "audited" }] });
+    expect(answer.json).toMatchObject({ capable: true, online: true, switches: { install: { on: true } }, job: null, catalog: [{ id: "claude-code", version: "2.1.332", kind: "npm", pin: "audited" }, { id: "codex", version: "0.172.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.18", kind: "download", pin: "audited" }, { id: "opencode", version: "1.19.6", kind: "npm", pin: "audited" }] });
     expect(calls[0]).toMatchObject({ operation: "accounts.switches", payload: {} });
     const install = await ask(INSTALL, "POST", "replay", { cli: "codex" });
     expect(install.status).toBe(202);
@@ -125,7 +125,7 @@ describe("AGEND-152 / AGEND-153: one POST for Install and Update — told apart 
     expect(sent()).toEqual([["cli.install", "opencode"]]);
   });
   it("AGEND-153 Antigravity already installed: the named exception is asked for as `cli.update`, with the CLI id and the asker's handle and nothing else", async () => {
-    has("antigravity", "1.5.15");
+    has("antigravity", "1.5.18");
     expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", acceptLatestUnaudited: true })).status).toBe(202);
     expect(sent()).toEqual([["cli.update", "antigravity"]]);
     // the acknowledgement is the route's: what the Runtime is sent is still the id and the asker's handle
@@ -133,7 +133,7 @@ describe("AGEND-152 / AGEND-153: one POST for Install and Update — told apart 
   });
   // AGEND-154 (Prism P2-1 on #3552): the retained older page module labels this button "Update to 1.5.9" and sends `{ cli }`. That used to be taken as the latest exception; now it is refused.
   it("AGEND-154 fail-first: Antigravity already installed + a request WITHOUT `acceptLatestUnaudited` (what an older page module sends) is refused 409 before any job or call — it is not run as the latest exception", async () => {
-    has("antigravity", "1.5.15");
+    has("antigravity", "1.5.18");
     const refused = await ask(INSTALL, "POST", "replay", { cli: "antigravity" });
     expect([refused.status, refused.json.code]).toEqual([409, "latest_ack_required"]);
     expect(refused.json.error).toMatch(/Refresh the page/);                       // what an older page module shows (it shows `error`)
@@ -165,7 +165,7 @@ describe("AGEND-152 / AGEND-153: one POST for Install and Update — told apart 
     expect(sent()).toEqual([["cli.install", "codex"]]);
   });
   it("the body is still the CLI's id and nothing else — a `release`, `latest` or `mode` is refused before anything is sent", async () => {
-    has("antigravity", "1.5.15");
+    has("antigravity", "1.5.18");
     for (const extra of [{ release: "latest" }, { latest: true }, { mode: "update" }, { version: "9.9.9" }]) expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", ...extra })).status, JSON.stringify(extra)).toBe(400);
     expect(sent()).toEqual([]);
   });
@@ -180,8 +180,8 @@ describe("install a CLI from the dashboard: a run under way", () => {
     expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ cli: "codex", state: "installing" });
     const second = await ask(INSTALL, "POST", "replay", { cli: "claude-code" });
     expect(second.status).toBe(409); expect(calls.filter(call => call.operation === "cli.install")).toHaveLength(1);
-    finish({ version: "0.171.0" });
-    await vi.waitFor(async () => expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ state: "done", version: "0.171.0" }));
+    finish({ version: "0.172.0" });
+    await vi.waitFor(async () => expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ state: "done", version: "0.172.0" }));
     // A failure that comes later (the install ran, then a check failed) is a job that failed, not a refusal.
     outcome = () => new Promise((_done, fail) => setTimeout(() => fail(new Error("A downloaded package is not the one this AgEnD version expects, so nothing was installed")), 1700));
     expect((await ask(INSTALL, "POST", "replay", { cli: "codex" })).status).toBe(202);
@@ -218,7 +218,7 @@ describe("N5: the job is taken before anything is awaited", () => {
     await vi.waitFor(async () => expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ state: "done" }));
     outcome = async () => { throw new Error("The owner of that computer has not turned this on"); };
     expect((await ask(INSTALL, "POST", "replay", { cli: "claude-code" })).status).toBe(400);
-    expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ cli: "codex", state: "done", version: "0.171.0" });
+    expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ cli: "codex", state: "done", version: "0.172.0" });
     // and the machine is not left "installing": the next request is accepted
     outcome = async () => ({ version: "2.1.332" });
     expect((await ask(INSTALL, "POST", "replay", { cli: "claude-code" })).status).toBe(202);
@@ -259,7 +259,7 @@ describe("F2: a refusal that the Runtime sends back within a few milliseconds is
     expect(refused.status).toBe(400); expect(refused.json.error).toBe(OFF);
     expect((await ask(SETUP, "GET", "admin")).json.job).toBeNull();
     // and the computer is not left "installing": the next request is taken (and refused for its own reason)
-    outcome = async () => ({ version: "0.171.0" });
+    outcome = async () => ({ version: "0.172.0" });
     expect((await ask(INSTALL, "POST", "replay", { cli: "codex" })).status).toBe(202);
   });
   it("the earlier job is shown again after such a refusal", async () => {

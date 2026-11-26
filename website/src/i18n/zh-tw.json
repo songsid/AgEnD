@@ -163,7 +163,7 @@
     },
     "step1": {
       "label": "安裝",
-      "cmd": "npm install -g @songsid/agend"
+      "cmd": "npm install -g --allow-scripts=@songsid/agend @songsid/agend"
     },
     "step2": {
       "label": "設定",

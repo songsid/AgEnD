@@ -156,13 +156,14 @@ describe("Inter, bundled", () => {
 
   it("names the CJK fallbacks in the agreed order, before the generic system stack", () => {
     const stack = DARK["font-ui"]!.split(",").map(s => s.trim().replace(/"/g, ""));
-    expect(stack.slice(0, 9)).toEqual([
+    expect(stack[0]).toBe("AgEnD Emoji");   // M-3796: emoji only (tests/web-emoji-fonts.test.ts)
+    expect(stack.slice(1, 10)).toEqual([
       "Inter",
       "PingFang TC", "PingFang SC",
       "Noto Sans TC", "Noto Sans SC", "Noto Sans CJK TC", "Noto Sans CJK SC",
       "Microsoft JhengHei", "Microsoft YaHei",
     ]);
-    expect(stack.indexOf("system-ui")).toBeGreaterThan(8);
+    expect(stack.indexOf("system-ui")).toBeGreaterThan(9);
     // …then the generic sans-serif, and last the colour emoji fonts (the user's tofu boxes: tests/web-emoji-fonts.test.ts).
     expect(stack.slice(-2)).toEqual(["sans-serif", "var(--font-emoji)"]);
   });

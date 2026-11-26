@@ -59,7 +59,9 @@ export function preStartDecision(home: string, read: JournalRead, owner: Updater
   const a = read.attempt;
   if (a.id !== routeAttempt) return { kind: "refuse", reason: `AgEnD's update route on this service names attempt ${routeAttempt}, but attempt ${a.id} is open (${a.stage}). This start is refused; run ${operatorCommand(home, a.id)}` };
   if (owner === "unknown") return { kind: "refuse", reason: `Update attempt ${a.id} (${a.stage}): whether its updater still runs can't be told. This start is refused; if no update is running, run ${operatorCommand(home, a.id)}` };
-  if (owner === "gone") return { kind: "start-runner", attemptId: a.id, stage: a.stage };
+  // An interrupted commit is the new version's to finish (§7, rev 13; Fable #4533 F1): its own fleet start resumes it,
+  // so this start goes through — the old kit's runner never commits.
+  if (owner === "gone") return a.stage === "committing" ? { kind: "start" } : { kind: "start-runner", attemptId: a.id, stage: a.stage };
   const planned = plannedForStart(a);
   if (planned) return { kind: "handoff", attemptId: a.id, nonce: planned.nonce };
   return { kind: "refuse", reason: `AgEnD is updating (attempt ${a.id}, ${a.stage}); this start is refused. The update owns the service until it ends.` };

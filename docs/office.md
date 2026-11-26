@@ -498,6 +498,7 @@ The card is 320 px wide and shows:
 - **Now:** the same activity line as the hover tooltip.
 - **Find in office** pans and zooms to them; **Chat** opens their chat.
 - **✎** beside the name renames them for you: the name you type (up to 24 characters) shows on their tag, card and dialogue in this browser only; the instance name stays on the card. Empty gives back their own. Not on a share link.
+- **Preview pose** (a skin pack's office, not All offices): pick a pose, and the person plays it where they stand, from its first frame; a walking direction walks on the spot. **Replay** starts it again; **Off** ends it, as closing the card or opening someone else's does. A set without that strip shows its own pose. Only you see it, and a person calling for help (needs, crashed, stuck) is always drawn calling.
 
 Rows the viewer may not see are left out: no token rows where the numbers aren't served (see above), and on a share link only the name, title, state, office and level.
 

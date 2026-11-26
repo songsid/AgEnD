@@ -94,9 +94,9 @@ describe("the app's tokens and markup", () => {
   });
 
   it("the type is Inter, bundled from this origin, with the system fonts behind it — no web font from anywhere else", () => {
-    expect(dark["--font-ui"]).toMatch(/^Inter, /);
+    expect(dark["--font-ui"]).toMatch(/^"AgEnD Emoji", Inter, /);   // M-3796: the colour emoji face first, for emoji only
     expect(dark["--font-ui"]).toContain("system-ui, -apple-system");
-    expect(dark["--font-mono"]).toMatch(/^ui-monospace/);
+    expect(dark["--font-mono"]).toMatch(/^"AgEnD Emoji", ui-monospace/);
     expect(TOKENS).toContain('src: url("/assets/inter.woff2")');
     for (const css of [TOKENS, APP_CSS, APP]) expect(css).not.toMatch(/DM Sans|Outfit|IBM Plex|fonts\.googleapis|fonts\.gstatic/);
   });

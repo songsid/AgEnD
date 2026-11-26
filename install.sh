@@ -247,7 +247,29 @@ fi
 # or the prefix is under $HOME, create the missing directories. After that, pick
 # sudo from whether lib/node_modules or lib is writable. A writable prefix must
 # not override an existing unwritable lib (mkdir -p does not chmod it).
-NPM_PREFIX=$(npm config get prefix </dev/null 2>/dev/null || echo "/usr/local")
+# M-3806: for a UUID in the path, npm config get prefix refuses ("protected", npm
+# 10-12); then npm prefix -g is read, which npm 11/12 print with *** in its place.
+# A program npm starts still gets the real path (npm_config_global_prefix): ask
+# from / (inside a project npm would run its own node_modules/.bin/node) and take
+# the answer only if npm, redacting it, prints exactly what it printed. Never
+# create or judge a folder from a redacted, unconfirmed or missing answer.
+NPM_PREFIX=$(npm config get prefix </dev/null 2>/dev/null) || NPM_PREFIX=""
+case "$NPM_PREFIX" in
+  "" | *'***'*) NPM_PREFIX=$(npm prefix -g </dev/null 2>/dev/null | tail -n 1 || true) ;;
+esac
+case "$NPM_PREFIX" in
+  *'***'*)
+    npm_prefix_seen=$NPM_PREFIX
+    NPM_PREFIX=$( (cd / && npm exec -c 'node -p process.env.npm_config_global_prefix') </dev/null 2>/dev/null | tail -n 1 || true)
+    npm_prefix_redacted=$(printf '%s\n' "$NPM_PREFIX" | sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/***/g')
+    case "$NPM_PREFIX" in *'***'*) NPM_PREFIX="" ;; esac
+    [ "$npm_prefix_redacted" = "$npm_prefix_seen" ] || NPM_PREFIX=""
+    ;;
+esac
+case "$NPM_PREFIX" in
+  /*) ;;
+  *) error "npm did not say where it installs global packages. Run: npm prefix -g" ;;
+esac
 npm_prefix_existing="$NPM_PREFIX"
 while [ ! -e "$npm_prefix_existing" ]; do
   npm_prefix_parent=$(dirname "$npm_prefix_existing")
@@ -273,7 +295,7 @@ if npm list -g @suzuke/agend </dev/null >/dev/null 2>&1; then
   warn "Removing old @suzuke/agend to avoid conflicts..."
   $SUDO npm uninstall -g @suzuke/agend </dev/null 2>/dev/null || true
   # Remove leftover binary symlink (npm uninstall sometimes leaves it)
-  rm -f "$(npm prefix -g </dev/null)/bin/agend" 2>/dev/null || true
+  rm -f "$NPM_PREFIX/bin/agend" 2>/dev/null || true   # M-3806: npm prefix -g may print *** for a UUID
 elif command_exists agend; then
   AGEND_REAL=$(readlink -f "$(command -v agend)" 2>/dev/null || true)
   if [[ "$AGEND_REAL" == */AgEnD/* ]] || [[ "$AGEND_REAL" == *"@suzuke/agend"* ]] || [[ "$AGEND_REAL" == */Projects/* ]]; then
@@ -342,9 +364,33 @@ ensurePrivateHome(process.env.AGEND_HOME || path.join(require("os").homedir(), "
 AGEND_PRIVATE_HOME
 # <<< private-home bootstrap
 AGEND_SPEC="@songsid/agend@${AGEND_VERSION:-latest}"
+# M-3812: the installer is launched from / (below), so a relative file: version is made absolute here, against the
+# folder this script was started in.
+case "${AGEND_VERSION:-}" in
+  file:/* | file:~*) ;;
+  file:*) AGEND_SPEC="@songsid/agend@file:$PWD/${AGEND_VERSION#file:}" ;;
+esac
+# M-3805: npm 12 runs a package's install scripts only when allowed, and without AgEnD's postinstall the bundled Node is
+# never verified (AgEnD then refuses to start). The variable, unlike a flag, reaches the installer `npm exec` starts and
+# its `npm install -g`, whichever release that installer comes from; npm 8-11 accept it. It carries everything the person
+# already allows (`npm config get`: their variable in either case, else their .npmrc) plus AgEnD, so it is a superset.
+# Only a value that replaces nothing of the person's own variable is named in AGEND_UPDATE_NPM_BOUNDS: the fleet the
+# installer restarts drops it and reads the person's .npmrc again.
+allow_had=$(npm config get allow-scripts </dev/null 2>/dev/null || true)
+case "$allow_had" in undefined | null) allow_had="" ;; esac
+allow_scripts="${allow_had:+$allow_had,}@songsid/agend"
+allow_env=("npm_config_allow_scripts=$allow_scripts")
+if [ -n "${npm_config_allow_scripts:-}${NPM_CONFIG_ALLOW_SCRIPTS:-}" ]; then
+  allow_mark=""                                                   # the person's own variable: theirs, never dropped
+  [ -z "${NPM_CONFIG_ALLOW_SCRIPTS:-}" ] || allow_env+=("NPM_CONFIG_ALLOW_SCRIPTS=$allow_scripts")
+else
+  allow_mark="allow-scripts"
+fi
 if npm view "$AGEND_SPEC" bin --json </dev/null 2>/dev/null | grep -q '"agend-install"'; then
   installer_rc=0
-  $SUDO npm exec --yes --package "$AGEND_SPEC" -- agend-install </dev/null || installer_rc=$?
+  # M-3812: from /, never the folder this was started in. Inside a project npm exec puts its node_modules/.bin first on
+  # PATH, and the installer would run on that project's own `node` (and every npm and node it starts after it).
+  (cd / && $SUDO env "${allow_env[@]}" "AGEND_UPDATE_NPM_BOUNDS=$allow_mark" npm exec --yes --package "$AGEND_SPEC" -- agend-install </dev/null) || installer_rc=$?
   if [ "$installer_rc" -eq 75 ]; then
     # #2284: the installer could not take the install lock and said why above — most often another AgEnD install that
     # is still running (then: let it finish), sometimes something left behind that it names. Not a failed install.
@@ -358,7 +404,7 @@ if npm view "$AGEND_SPEC" bin --json </dev/null 2>/dev/null | grep -q '"agend-in
   fi
 else
   # A release from before the installer (this page can be newer than the release it installs).
-  $SUDO npm install -g "$AGEND_SPEC" </dev/null || error "Installation failed. Try: npm install -g $AGEND_SPEC"
+  $SUDO npm install -g "$AGEND_SPEC" --allow-scripts=@songsid/agend </dev/null || error "Installation failed. Try: npm install -g --allow-scripts=@songsid/agend $AGEND_SPEC"
 fi
 # <<< agend-installer step
 hash -r 2>/dev/null || true

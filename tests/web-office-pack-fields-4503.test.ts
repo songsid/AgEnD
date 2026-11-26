@@ -171,7 +171,7 @@ describe("drawn (drawPart)", () => {
   });
   afterAll(async () => { await p.unmount(); p.restore(); });
   /** Cozy with every seat of every area (the Help desk's too) facing `facing` (or plain), one agent in `state`: what drawCharacter got. */
-  function drawn(state: string, facing: string | null, waitingFor: ((n: string) => any) | null = null) {
+  function drawn(state: string, facing: string | null, waitingFor: ((n: string) => any) | null = null, preview: any = null) {
     const base = K.SKINS.get("cozy"), calls: any[] = [];
     const pack = { ...base.pack, areas: Object.fromEntries(Object.entries(base.pack.areas).map(([k, a]: [string, any]) => [k,
       { ...a, seats: a.seats.map((s: any) => (facing ? { ...s, standFacing: facing } : s)) }])) };
@@ -179,7 +179,7 @@ describe("drawn (drawPart)", () => {
     const L = Z.zonesLayout(pack, [{ name: "example-agent", state, i: { name: "example-agent" } }]);
     const looks = new Map(L.rooms.flatMap((r: any) => r.desks).filter((d: any) => d.node).map((d: any) => [d.key,
       { name: d.node.name, label: d.node.name, state: d.node.state, pose: d.node.state }]));
-    const part = { ...F.partOf(L, looks, skin, true, Z.createWalkers(), { frame: () => [], size: () => 0 }), lang: "en", waitingFor };
+    const part = { ...F.partOf(L, looks, skin, true, Z.createWalkers(), { frame: () => [], size: () => 0 }), lang: "en", waitingFor, preview: { current: preview } };
     const ctx = new Proxy({ measureText: (t: string) => ({ width: t.length * 6 }), font: "" } as any,
       { get(o, k) { if (k in o) return typeof o[k] === "function" ? o[k].bind(o) : o[k]; return () => {}; }, set(o, k, v) { o[k] = v; return true; } });
     F.drawPart(ctx, part, 1, 0, 0, 1234, false, null, { pal: { ...K.DEFAULT_PAL }, mode: "light", labels: { areas: {} } }, false, null, []);
@@ -195,6 +195,18 @@ describe("drawn (drawPart)", () => {
     const L = drawn("needs", "left");
     expect(L.look.pose).not.toBe("walk");
     expect(L.ms).toBe(1234);
+  });
+  it("a walking pose preview at a standing desk animates, and clearing it restores the still first frame", () => {
+    const pv = { name: "example-agent", pose: "walkUp", t0: 42 };
+    expect(drawn("working", "left", null, pv)).toMatchObject({ look: { pose: "walk", heading: { dx: 0, dy: -1 }, clip: "#42" }, ms: 1234 });
+    expect(drawn("working", "left")).toMatchObject({ look: { pose: "walk", heading: { dx: -1, dy: 0 } }, ms: 0 });
+    expect(drawn("needs", "left", null, pv).look.clip).toBeUndefined();
+  });
+  it("a queue worker's walking preview animates without losing the waiting direction when it ends", () => {
+    const at = drawn("working", null).seat;
+    const waiting = () => ({ x: at.x + 200, y: at.y + 10 });
+    expect(drawn("working", null, waiting, { name: "example-agent", pose: "walkUp", t0: 7 })).toMatchObject({ look: { pose: "walk", heading: { dx: 0, dy: -1 }, clip: "#7" }, ms: 1234 });
+    expect(drawn("working", null, waiting)).toMatchObject({ look: { pose: "walk", heading: { dx: 200, dy: 10 } }, ms: 0 });
   });
   it("working and waiting for their train: stands facing where it stops", () => {
     const at = drawn("working", null).seat;

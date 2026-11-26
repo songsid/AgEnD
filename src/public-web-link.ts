@@ -19,7 +19,7 @@ export const PUBLIC_LINK_MAX_MINUTES = 480;
 /** With a fixed hostname (named tunnel): up to 7 days, or `0` = no expiry (open until closed or the fleet stops). */
 export const PUBLIC_LINK_NAMED_MAX_MINUTES = 10_080;
 export const PUBLIC_LINK_NO_EXPIRY = 0;
-const PUBLIC_LINK_KEYS = ["allow_public", "ttl_minutes", "protocol", "hostname", "tunnel_token_env", "origin_port", "auto_open"];
+const PUBLIC_LINK_KEYS = ["allow_public", "ttl_minutes", "protocol", "hostname", "tunnel_token_env", "origin_port", "auto_open", "preview_hostname"];
 /** Named mode: a usable fixed hostname is configured (what the longer lifetime and auto_open hang on). */
 export function publicLinkNamedHostname(web: WebConfig | undefined): boolean {
   return publicTunnelHostname(web?.public_link?.hostname) !== null;
@@ -54,6 +54,7 @@ export function publicLinkPatchShape(value: unknown): value is NonNullable<WebCo
     && (v.auto_open === undefined || typeof v.auto_open === "boolean")
     && (v.ttl_minutes === undefined || (Number.isInteger(v.ttl_minutes) && Number(v.ttl_minutes) >= 0 && Number(v.ttl_minutes) <= PUBLIC_LINK_NAMED_MAX_MINUTES))
     && (v.hostname === undefined || v.hostname === "" || publicTunnelHostname(v.hostname) !== null)
+    && (v.preview_hostname === undefined || v.preview_hostname === "" || publicTunnelHostname(v.preview_hostname) !== null)
     && (v.tunnel_token_env === undefined || v.tunnel_token_env === "" || v.tunnel_token_env === PUBLIC_TUNNEL_TOKEN_ENV)
     && (v.origin_port === undefined || Number.isInteger(v.origin_port) && Number(v.origin_port) >= 1024 && Number(v.origin_port) <= 65535)
     && (v.protocol === undefined || (typeof v.protocol === "string" && ["http2", "quic", "auto"].includes(v.protocol)));
@@ -62,14 +63,27 @@ export function publicLinkPatchShape(value: unknown): value is NonNullable<WebCo
  * What is wrong with a whole `web.public_link` for its mode, or null. Quick tunnel (no hostname): 1..480 minutes and no
  * auto_open. Fixed hostname: 1..10080 minutes or 0 (no expiry); auto_open allowed.
  */
-export function publicLinkModeProblem(value: NonNullable<WebConfig["public_link"]>): { key: "ttl_minutes" | "auto_open"; message: string } | null {
+export function publicLinkModeProblem(value: NonNullable<WebConfig["public_link"]>): { key: "ttl_minutes" | "auto_open" | "preview_hostname"; message: string } | null {
   const named = publicTunnelHostname(value.hostname) !== null;
+  const preview = publicTunnelHostname(value.preview_hostname);
+  if (preview && !named) return { key: "preview_hostname", message: "needs web.public_link.hostname: the preview address is a second route on the same named tunnel" };
+  if (preview && preview === publicTunnelHostname(value.hostname)) return { key: "preview_hostname", message: "must be a different host name from web.public_link.hostname: a preview on the dashboard's own name could use its sign-in" };
   const ttl = value.ttl_minutes;
   if (!named && ttl !== undefined && (ttl < 1 || ttl > PUBLIC_LINK_MAX_MINUTES)) {
     return { key: "ttl_minutes", message: `must be 1..${PUBLIC_LINK_MAX_MINUTES} minutes for a quick tunnel; 0 (no expiry) or up to ${PUBLIC_LINK_NAMED_MAX_MINUTES} needs web.public_link.hostname` };
   }
   if (!named && value.auto_open === true) return { key: "auto_open", message: "needs web.public_link.hostname (a named tunnel); a quick tunnel is never opened automatically" };
   return null;
+}
+/**
+ * M-3814: the fixed preview address — `web.public_link.preview_hostname`, a second published route on the same named
+ * tunnel to the preview port — or null: no fixed hostname, none set, or the dashboard's own name. With it, a fixed
+ * link's pages frame `https://<it>/frame` and no quick tunnel is started for previews.
+ */
+export function publicLinkPreviewHostname(web: Pick<WebConfig, "public_link"> | undefined): string | null {
+  const host = publicTunnelHostname(web?.public_link?.preview_hostname);
+  const named = publicTunnelHostname(web?.public_link?.hostname);
+  return host && named && host !== named ? host : null;
 }
 /** A whole `web.public_link` (the validator's view): its shape, then its mode's ranges. */
 export function validPublicLinkPatch(value: unknown): value is NonNullable<WebConfig["public_link"]> {
@@ -219,6 +233,16 @@ export class PublicWebLink {
   openDashboardOrigin(): string | null {
     const e = this.entry;
     return e && e.phase === "open" && e.url && this.current(e) ? new URL(e.url).origin : null;
+  }
+  /**
+   * M-3814: the fixed preview address for exposure `exposureId` (or, with no id, the open one) — only while that is the
+   * open fixed link and `web.public_link.preview_hostname` is set; else null. What the preview listener answers to, and
+   * what that link's pages frame, follow it.
+   */
+  fixedPreviewHost(exposureId?: string): string | null {
+    const e = this.entry;
+    if (!e || (exposureId !== undefined && e.id !== exposureId) || e.phase !== "open" || e.configuration === "quick" || !this.current(e)) return null;
+    return publicLinkPreviewHostname(this.deps.web());
   }
   /**
    * #1723: the preview of exposure `exposureId`, as a page of it may use it — null when that exposure is not the open

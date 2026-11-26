@@ -85,7 +85,7 @@ import { handleWebIconRequest, useAppIconStore } from "./web-icons.js";
 import { AppIconStore } from "./web-app-icon.js";
 import { trackWebServer, type WebServerDrain } from "./web-server-drain.js";
 import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
-import { PublicWebLink, publicLinkNamedHostname, publicLinkSettings } from "./public-web-link.js";
+import { PublicWebLink, publicLinkNamedHostname, publicLinkPreviewHostname, publicLinkSettings } from "./public-web-link.js";
 import { PublicLinkAutoOpen } from "./public-link-auto-open.js";
 import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from "./public-link-owner.js";
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
@@ -93,7 +93,7 @@ import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
 import { installExitMarker, unattendedInstallCommand, loginShell } from "./unattended-install.js";
 import { InstallStream } from "./install-stream.js";
-import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
+import { namedTestLane, runNamedLinkTest, runPreviewRouteTest, type NamedTestResult, type PreviewRouteResult } from "./tunnel/named-link-test.js";
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
 import { OfficeTalk } from "./office-talk.js";
@@ -11619,6 +11619,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         result.cleanup ? "Named link test: the test connector's stop could not be proven; the tunnel lane stays held" : "Named link test");
       return result;
     } finally { this.namedLinkTestRunning = false; }
+  }
+  private previewRouteTestRunning = false;
+  /**
+   * M-3814: Settings → Access → the fixed preview address's Check — the saved `web.public_link.preview_hostname`,
+   * through the open fixed link's tunnel, to this preview listener (its boot id is the proof). One at a time; starts
+   * nothing. An admin session only, over the public link too (M-3278; settings-api.ts).
+   */
+  async testPreviewRoute(input: { hostname?: unknown } = {}): Promise<PreviewRouteResult | { busy: true }> {
+    if (this.previewRouteTestRunning) return { busy: true };
+    this.previewRouteTestRunning = true;
+    try {
+      const listener = this.previewListening ? this.previewListener : null;
+      const hostname = publicLinkPreviewHostname(this.fleetConfig?.web);
+      const result = await runPreviewRouteTest({ hostname, linkOpen: !!hostname && this.publicWebLink?.fixedPreviewHost?.() === hostname,
+        bootId: listener?.bootId ?? null, port: listener?.settings.port ?? null, ...(input.hostname !== undefined ? { shown: input.hostname } : {}) });
+      this.logger.info({ steps: result.steps.map(s => `${s.step}:${s.code}`) }, "Fixed preview address check");
+      return result;
+    } finally { this.previewRouteTestRunning = false; }
   }
   private getTunnelLane(): TunnelPurposeLane {
     return this.tunnelPurposeLane ??= new TunnelPurposeLane(new ManagedTunnel({ dataDir: this.dataDir,
@@ -33228,7 +33246,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const listener = createPreviewListener({ settings, healthPort: boundPort, config: this.fleetConfig,
       // #1723: with a web.preview_origin, the open public link's dashboard frames this listener's preview too.
-      extraOrigins: () => { const o = settings.origin ? this.publicWebLink?.openDashboardOrigin() : null; return o ? [o] : []; },
+      extraOrigins: () => {
+        const o = settings.origin || this.publicWebLink?.fixedPreviewHost?.() ? this.publicWebLink?.openDashboardOrigin() : null;
+        return o ? [o] : [];
+      },
+      // M-3814: the fixed link's preview address (a second route on its named tunnel to this port), only while it is open.
+      extraHosts: () => { const h = this.publicWebLink?.fixedPreviewHost?.(); return h ? [h] : []; },
       // #2911 (7): CDN libraries in previews, as fleet.yaml says now (a change applies to the next preview started).
       cdn: () => this.fleetConfig?.web?.preview_cdn === true });
     this.previewListener = listener;
@@ -33306,6 +33329,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!listener) { const why = this.previewNotListening(); return off(why.code, why.reason, why.detail ? { detail: why.detail } : {}); }
       if (!configured.startsWith("https:")) return off("needHttps", "Previews need an https web.preview_origin when the dashboard is reached over https.");
       return { dashboardOrigin, previewOrigin: configured, reason: null, code: null, boot: listener.bootId, frameSrc: `${configured}/frame` };
+    }
+    // M-3814: a fixed link with a fixed preview address frames this listener through its own named tunnel — never a
+    // quick tunnel (no 429 from Cloudflare's limit on new temporary links).
+    const fixedHost = this.publicWebLink?.fixedPreviewHost?.(exposureId) ?? null;
+    if (fixedHost) {
+      const listener = this.previewListening ? this.previewListener : null;
+      if (!listener) { const why = this.previewNotListening(); return off(why.code, why.reason, why.detail ? { detail: why.detail } : {}); }
+      const origin = `https://${fixedHost}`;
+      return { dashboardOrigin, previewOrigin: origin, reason: null, code: null, boot: listener.bootId, frameSrc: `${origin}/frame` };
     }
     const status = this.publicWebLink?.previewStatus(exposureId) ?? null;
     if (!status) return off("publicLink", "Previews are not offered on this public link.");

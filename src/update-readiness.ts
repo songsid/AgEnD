@@ -23,7 +23,7 @@ import { execFile } from "./child-process.js";
 import { defaultDispatchDeps, npmForRunningInstall, resolveInstalledAgend, runningInstall, type DispatchDeps } from "./update-dispatch.js";
 import { NODE_PROBE_SCRIPT, evaluateUpdateTarget, lookupTargetManifest, runtimePlatform, type RuntimeHost, type SystemNode } from "./update-preflight.js";
 import { isLocalLinkTarget } from "./update-install.js";
-import { applyUpdateNpmBounds, npmConfigQuery, parseNpmConfigLs, registryUnreachable, updateRegistry } from "./update-npm-env.js";
+import { applyUpdateNpmBounds, npmConfigQuery, parseNpmConfigLs, registryUnreachable, updateRegistry, updateScriptsIgnored } from "./update-npm-env.js";
 import { serviceManagerOf } from "./update-launch.js";
 import { isExactVersion } from "./update-check.js";
 import { startedByServiceManager, systemdServiceOf } from "./service-owner.js";
@@ -42,7 +42,7 @@ export type PreflightCode =
   | "no-write"                                                                              // P4
   | "linked" | "vendored"                                                                   // P5
   | "low-disk"                                                                              // P6
-  | "npm-unreachable"                                                                       // P7
+  | "npm-unreachable" | "scripts-off"                                                       // P7
   | "rehearsal" | "update-running"                                                          // P8
   | "container" | "windows-runtime"                                                         // P9
   | "node-too-old";                                                                         // P10
@@ -310,11 +310,14 @@ function npmEnv(d: ReadinessDeps, install: Install): NodeJS.ProcessEnv {
  * P7: `npm ping` against the registry AgEnD comes from, with the update's own npm bounds (a person's settings kept), so a
  * dead registry fails in seconds instead of npm's minutes of retries. A network failure, or no answer at all within the
  * bound, is npm-unreachable; a registry without ping says nothing about the network (as `agend update`'s own stop).
+ * M-3805: npm set to skip install scripts (`ignore-scripts`, any npm) is scripts-off: the new version's install step would
+ * not run and it would not start. On npm 12 `agend update` allows AgEnD's own scripts itself (applyUpdateAllowScripts).
  */
 async function checkSource(d: ReadinessDeps, install: Install): Promise<PreflightCheck | null> {
   const env = npmEnv(d, install);
   const listed = await d.run("npm", npmConfigQuery(), 15_000, env);
   const explicit = listed.status === 0 ? parseNpmConfigLs(listed.stdout) : null;
+  if (updateScriptsIgnored(env, explicit)) return { id: "P7", ok: false, code: "scripts-off" };
   const registry = updateRegistry(explicit);
   if (!registry) return null;
   applyUpdateNpmBounds(env, explicit);

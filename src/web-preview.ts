@@ -298,6 +298,11 @@ export function createPreviewListener(opts: {
    * configured (it is used instead of a preview tunnel). Asked per request; never cached past the answer.
    */
   extraOrigins?(): readonly string[];
+  /**
+   * M-3814: host names the listener answers to for now — the fixed link's preview address
+   * (`web.public_link.preview_hostname`) while that link is open. Asked per request: closed, it is refused again.
+   */
+  extraHosts?(): readonly string[];
   /** #2911 (7): `web.preview_cdn`, read per /frame response — a change applies to the next preview started. */
   cdn?(): boolean;
 }): PreviewListener {
@@ -321,7 +326,7 @@ export function createPreviewListener(opts: {
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     // Host only. The cookie a same-host port receives (cookies are not port-isolated) is never read.
     const host = typeof req.headers.host === "string" ? hostnameOf(req.headers.host) : null;
-    if (!host || !hosts.has(host)) return empty(res, 403);
+    if (!host || !(hosts.has(host) || (opts.extraHosts?.() ?? []).includes(host))) return empty(res, 403);
     if (req.method !== "GET") return empty(res, 404);
     if (req.url !== "/frame") return empty(res, 404);
     const frame = frameFor();

