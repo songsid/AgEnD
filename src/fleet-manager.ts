@@ -16023,11 +16023,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const handler = outboundHandlers.get(tool);
     if (handler && !usesChannelAddress(tool)) {
       this.eventLog?.logActivity("tool_call", senderSessionName ?? instanceName, this.summarizeToolCall(tool, args));
-      const entryBoot=sourceDaemonBootId??this.getDaemonBootId(instanceName);
-      const context = originatingCall || this.requestContextPolicy ? (await import("./native-agent-admission.js")).nativeAgentAdmissionContext(this, {
-        instance: instanceName, operation:{tool,args}, current: () => originatingCall?originatingCall.current():!!entryBoot&&this.getDaemonBootId(instanceName)===entryBoot, taskAllowed: () => this.checkToolPermission("ipc-outbound", instanceName, "task").allowed,
-        ...(originatingCall?.admission.coverage === "covered" ? { requestContext: originatingCall.admission.lease } : { notCoveredReason: originatingCall?.admission.reason??"unbound-input" }),
-      }) : this;
+      let context: import("./agent-endpoint.js").AgentEndpointContext = this;
+      if(originatingCall || this.requestContextPolicy){
+        const entryBoot=sourceDaemonBootId??this.getDaemonBootId(instanceName);
+        context=(await import("./native-agent-admission.js")).nativeAgentAdmissionContext(this, {
+          instance: instanceName, operation:{tool,args}, current: () => originatingCall?originatingCall.current():!!entryBoot&&this.getDaemonBootId(instanceName)===entryBoot, taskAllowed: () => this.checkToolPermission("ipc-outbound", instanceName, "task").allowed,
+          ...(originatingCall?.admission.coverage === "covered" ? { requestContext: originatingCall.admission.lease } : { notCoveredReason: originatingCall?.admission.reason??"unbound-input" }),
+        });
+      }
       await handler(context, args, respond, {
         instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
         ...(originatingCall ? { callerCurrent: () => originatingCall.current(), requestContextAdmission: originatingCall.admission } : {}),

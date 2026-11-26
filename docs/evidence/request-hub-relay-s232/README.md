@@ -51,3 +51,5 @@ author inspection. [R2 diagnostics and hashes](r2.json).
 | [phone-dark-zh-TW-details.png](phone-dark-zh-TW-details.png) | `f2394d9cc5ca462b6fea6af125192f4ade73de6daaea843c530afb5602154337` |
 | [phone-light-en-refusal.png](phone-light-en-refusal.png) | `ca308323634e0e1c5c45613eea7e2a710cf9c1525445a4da17d35b8accb2d979` |
 | [phone-light-zh-TW-details.png](phone-light-zh-TW-details.png) | `830fd1b4617ff127a758d1532a10d5337938a528374d308d6050bbc2d73a137b` |
+
+R3 CI repair: OFF dispatch now avoids the launch-owner lookup and admission proxy entirely. All34 suites exercising Fleet outbound/typed dispatch pass1235/1235; the additional policy/OFF regression run passes93/93, and both typechecks pass. Restoring the old unconditional lookup fails the new regression. All56 PNG blobs, UI files and capture recipe are unchanged from377990d1; no new capture is claimed. See r3.json. Exact-head CI and USER LOOK HOLD remain.
