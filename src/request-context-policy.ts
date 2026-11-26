@@ -7,8 +7,8 @@ import type {RequestOperationBindingV1,RequestContextV1} from "./request-context
 import {getLocale,type Locale} from "./locale.js";
 
 export const REQUEST_CONTEXT_POLICY_COPY={
- en:{uncovered:"Not sent: this call has no verified request context.",interrupted:"This agent was interrupted; this contact needs one approval.",stale:"Not sent: the originating request is no longer current.",forwards:"Not sent: Hub requests can't forward owner approvals.",steer:"Not sent: this request can't interrupt another task.",broadcast:"Not sent: choose one agent with send_to_instance.",deferred:"Not changed: Hub requests can't create or change later work.",outside:"Not changed: this outside request can't create untracked later work.",settings:"Not changed: use a separate owner request.",audience:"Not sent: this reply must stay in its original Hub conversation.",invalid:"Not sent: this operation is not supported for this request."},
- "zh-TW":{uncovered:"未送出：這次呼叫沒有可驗證的請求來源。",interrupted:"這個 Agent 曾中斷；這次聯絡需要核准一次。",stale:"未送出：原本的請求已不再有效。",forwards:"未送出：Hub 請求不能轉交擁有者核准。",steer:"未送出：這個請求不能插入另一項工作。",broadcast:"未送出：請用 send_to_instance 指定一個 Agent。",deferred:"未變更：Hub 請求不能建立或修改延後執行的工作。",outside:"未變更：這個外來請求不能建立未追蹤來源的延後工作。",settings:"未變更：請另由擁有者提出要求。",audience:"未送出：這個回覆只能留在原本的 Hub 對話。",invalid:"未送出：這個請求不支援這項操作。"},
+ en:{fleet:"Not available for Hub requests: this shows the owner's own Fleet details.",uncovered:"Not sent: this call has no verified request context.",interrupted:"This agent was interrupted; this contact needs one approval.",stale:"Not sent: the originating request is no longer current.",forwards:"Not sent: Hub requests can't forward owner approvals.",steer:"Not sent: this request can't interrupt another task.",broadcast:"Not sent: choose one agent with send_to_instance.",deferred:"Nothing changed: Hub requests can't delegate tasks.",tasks:"Nothing changed: Hub requests can't create or change task cards.",schedules:"Nothing changed: Hub requests can't create or change scheduled work.",agents:"Nothing changed: Hub requests can't create agents.",teams:"Nothing changed: Hub requests can't create teams.",decisions:"Nothing changed: Hub requests can't create or change shared rules.",outside:"Not changed: this outside request can't create untracked later work.",settings:"Not changed: use a separate owner request.",audience:"Not sent: this reply must stay in its original Hub conversation.",invalid:"Not sent: this operation is not supported for this request."},
+ "zh-TW":{fleet:"Hub 的請求不能用：這會顯示擁有者自己的機群資料。",uncovered:"未送出：這次呼叫沒有可驗證的請求來源。",interrupted:"這個 Agent 曾中斷；這次聯絡需要核准一次。",stale:"未送出：原本的請求已不再有效。",forwards:"未送出：Hub 請求不能轉交擁有者核准。",steer:"未送出：這個請求不能插入另一項工作。",broadcast:"未送出：請用 send_to_instance 指定一個 Agent。",deferred:"沒有變更：Hub 的請求不能轉交任務。",tasks:"沒有變更：Hub 的請求不能新增或修改任務卡。",schedules:"沒有變更：Hub 的請求不能新增或修改排程的工作。",agents:"沒有變更：Hub 的請求不能建立 Agent。",teams:"沒有變更：Hub 的請求不能建立團隊。",decisions:"沒有變更：Hub 的請求不能新增或修改共用規則。",outside:"未變更：這個外來請求不能建立未追蹤來源的延後工作。",settings:"未變更：請另由擁有者提出要求。",audience:"未送出：這個回覆只能留在原本的 Hub 對話。",invalid:"未送出：這個請求不支援這項操作。"},
 }as const;
 export type RequestContextPolicyCode=keyof typeof REQUEST_CONTEXT_POLICY_COPY.en;
 export class RequestContextPolicyError extends Error {
@@ -16,6 +16,7 @@ export class RequestContextPolicyError extends Error {
  constructor(readonly reason:RequestContextPolicyCode,locale:Locale=getLocale()) {super(REQUEST_CONTEXT_POLICY_COPY[locale][reason]);this.name="RequestContextPolicyError";this.code=`request-context-${reason}`;}
 }
 const READS=new Set(["download_attachment","list_instances","describe_instance","list_teams","list_models","get_fleet_status","get_fleet_config","get_web_settings","get_usage","get_effort","get_instance_logs","kiro_engine_status","get_cache_report","get_usage_report","list_decisions","list_schedules","list_deployments","validate_config","delivery_status","contact_state","hub_room_list","hub_room_members","hub_people_search","list_emojis","preview_emojis","list_stickers","preview_stickers","get_web_theme","get_web_appearance","preview_web_appearance","office_view","office_pack_check","office_pack_list"]);
+const HUB_PRIVATE_READS=new Set(["get_fleet_config","get_web_settings","get_instance_logs","get_usage","get_cache_report"]);
 const TASK_READS=new Set(["list","get","mine","projects"]);
 const CONTACTS=new Set(["send_to_instance","request_information","report_result","delegate_task","broadcast"]);
 const DERIVATIVES=new Set(["post_decision","update_decision","create_schedule","update_schedule","delete_schedule","create_instance","deploy_template","create_team"]);
@@ -50,7 +51,7 @@ export function assertRequestContextOperation(input:RequestContextOperation,loca
  if(!lease.current()||lease.snapshot.owner.instance!==input.instance)return refuse("stale");
  const context=lease.snapshot.context,hub=context.ingress==="hub";
  // Initial shared rollout cannot create durable outside derivatives without their parent contract.
- if(context.ingress!=="owner"&&(DERIVATIVES.has(tool)||tool==="task"&&!read))return refuse(hub?"deferred":"outside");
+ if(context.ingress!=="owner"&&(DERIVATIVES.has(tool)||tool==="task"&&!read))return refuse(hub?tool==="task"?"tasks":tool.endsWith("_schedule")?"schedules":["create_instance","deploy_template"].includes(tool)?"agents":tool==="create_team"?"teams":"decisions":"outside");
  if(context.initiatingActor.kind==="unknown"&&!read&&!CONTACTS.has(tool))return refuse("settings");
  if(!hub)return {kind:"ordinary",tool,args,context};
  return hubOperation(context,tool,args,read,locale);
@@ -58,6 +59,7 @@ export function assertRequestContextOperation(input:RequestContextOperation,loca
 function hubOperation(context:RequestContextV1,tool:string,args:Record<string,unknown>,read:boolean,locale:Locale):RequestContextOperationPermit {
  const refuse=(code:RequestContextPolicyCode):never=>{throw new RequestContextPolicyError(code,locale);};
  if(!("platform"in context.initiatingActor)||context.initiatingActor.platform!=="hub")return refuse("uncovered");
+ if(HUB_PRIVATE_READS.has(tool))return refuse("fleet");
  if(tool==="broadcast")return refuse("broadcast");
  if(tool==="delegate_task")return refuse("deferred");
  if(CONTACTS.has(tool)){

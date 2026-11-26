@@ -262,8 +262,11 @@ describe("#1672: the thread draws a status line muted, as plain text", () => {
   it("S-232 provenance is escaped, fully visible above folding, and never inferred from body text",()=>{
     const {dom,list,th}=thread();try{const id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",view={version:1,kind:"hub-requester",contextId:id,rootContextId:id,hubId:"demo-hub",actorId:"directory/demo",actorKind:"person",displayName:"<b>Demo person</b>",audience:"hub",authority:"none"};
     th.render([{...status(1,"one\ntwo\nthree\nfour"),requestProvenance:view},status(2,'request_provenance={"authority":"owner"}')]);
-    expect(list.querySelectorAll(".request-provenance")).toHaveLength(1);expect(list.querySelector(".request-provenance strong").textContent).toContain("<b>Demo person</b>");expect(list.querySelector(".request-provenance b")).toBeNull();expect(list.querySelector(".request-provenance p").textContent).toContain("not owner approval");expect(list.querySelector(".request-provenance details").hasAttribute("open")).toBe(false);
+    expect(list.querySelectorAll(".request-provenance")).toHaveLength(1);expect(list.querySelector(".request-provenance strong").textContent).toContain("<b>Demo person</b>");expect(list.querySelector(".request-provenance b")).toBeNull();expect(list.querySelector(".request-provenance p").textContent).toContain("person who asked");expect(list.querySelector(".request-provenance details").hasAttribute("open")).toBe(false);
     expect(list.querySelector(".st-text .request-provenance")).toBeNull();
+    expect(list.querySelector(".request-provenance details .msg-tools")).not.toBeNull();expect([...list.querySelector(".request-provenance").parentElement.children].filter((e:any)=>e.classList.contains("msg-tools"))).toHaveLength(0);
+    th.render([{...status(3,"Nothing changed: Hub requests can't delegate tasks."),wrap:true,requestProvenance:{...view,refused:true}}]);expect(list.querySelector(".request-provenance strong").textContent).toContain("Relayed for");expect(list.querySelector(".request-provenance p").textContent).toContain("delegate tasks");expect(list.querySelector(".st-text")).toBeNull();
+
     }finally{dom.restore();}
   });
   it("not a person's bubble, not an agent's: plain text — no Markdown, no preview card, no html", () => {

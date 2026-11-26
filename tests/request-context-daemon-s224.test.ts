@@ -149,5 +149,5 @@ it("R1 actual IPC replacement and disconnect retire only that connection's call 
 it("S-232 actual local tool entry refuses Hub task writes before the Fleet frame",()=>{
  const f=rig();f.bind("hub","hub");f.daemon.bindRequestContextPolicy({assert:assertRequestContextOperation});
  f.daemon.handleOwnedToolCall({type:"tool_call",tool:"task",args:{action:"create",title:"must not write"},requestId:98},f.socket);
- expect(f.frames).toHaveLength(0);expect(f.daemon.ipcServer.send).toHaveBeenCalledWith(f.socket,expect.objectContaining({requestId:98,error:expect.stringContaining("later work")}));expect(f.daemon.requestContextCalls.size).toBe(0);f.clearTimers();
+ expect(f.frames).toHaveLength(0);expect(f.daemon.ipcServer.send).toHaveBeenCalledWith(f.socket,expect.objectContaining({requestId:98,error:expect.stringContaining("task cards")}));expect(f.daemon.requestContextCalls.size).toBe(0);f.clearTimers();
 });

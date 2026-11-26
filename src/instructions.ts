@@ -38,6 +38,8 @@ export interface FleetInstructionsParams {
    * so its prompt keeps the full web-chat receipt checks, as a ClassicBot room's does. Default: published.
    */
   receivesSkills?: boolean;
+  /** L-owned internal switch: set only with installed request-context policy/transport. Never read from agent config. */
+  requestContextPolicyInstalled?: boolean;
 }
 
 /** The built-in status set as default.md spells it. */
@@ -238,7 +240,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
     sections.push(`## Owner and routine operations\n${OPERATIONS_PREFACE}\n\n${operations}`);
   }
   sections.push(`## What needs a go-ahead\n${GO_AHEAD_SCOPE_RULE}`);
-  sections.push(`## Hub request provenance\n${HUB_REQUEST_PROVENANCE_RULE}`);
+  if(params.requestContextPolicyInstalled === true)sections.push(`## Hub request provenance\n${HUB_REQUEST_PROVENANCE_RULE}`);
 
   // ── Message format & tool usage ──
   // M-3528 (rec 14): the local-app rule rides each local-app message itself (human-delivery-receipts.ts) and the MCP

@@ -5518,8 +5518,12 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .request-provenance strong { color: var(--text); font-size: inherit; font-weight: 600; }
 .request-provenance p { margin: var(--s-1) 0; }
 .request-provenance .n-raw { margin: var(--s-1) 0; }
+.request-provenance summary { cursor: pointer; list-style: disclosure-closed inside; }
+.request-provenance details[open] > summary { list-style-type: disclosure-open; }
+.request-provenance .msg-tools { opacity: 1; }
 .request-provenance .n-raw-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
-  .request-provenance summary { min-height: var(--tap); display: flex; align-items: center; }
+  .request-provenance summary { min-height: var(--tap); display: list-item; padding-block: var(--s-3); }
+  .request-provenance .msg-tools button { min-height: var(--tap); min-width: var(--tap); }
 }

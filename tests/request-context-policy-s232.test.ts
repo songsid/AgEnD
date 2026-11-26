@@ -12,9 +12,9 @@ function fixture(ingress:RequestContextV1["ingress"]="hub"){
  return {context,room,admission,live:(value:boolean)=>{live=value;},call:(tool:string,args:Record<string,unknown>={})=>assertRequestContextOperation({instance:"demo-source",tool,args,admission})};
 }
 it.each(["send_to_instance","request_information","report_result"])("permits covered Hub %s without replacing its actor or root",tool=>{const f=fixture();expect(f.call(tool,{target_instance:"demo-target"})).toMatchObject({kind:"relay",tool,context:f.context});});
-it.each(["create","update","move","done","attach","watch","unwatch","claim","release","upload","create_project","move_project"])("task %s refuses before any delayed work is made",action=>{const f=fixture();expect(()=>f.call("task",{action})).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.deferred);});
+it.each(["create","update","move","done","attach","watch","unwatch","claim","release","upload","create_project","move_project"])("task %s refuses before any delayed work is made",action=>{const f=fixture();expect(()=>f.call("task",{action})).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.tasks);});
 it.each(["list","get","mine","projects"])("task %s remains a role-checked read",action=>{expect(fixture().call("task",{action}).kind).toBe("read");});
-it.each(["create_schedule","update_schedule","delete_schedule","create_instance","deploy_template","create_team","post_decision","update_decision"])("%s cannot create a durable outside derivative",tool=>{expect(()=>fixture().call(tool)).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.deferred);});
+it.each(["create_schedule","update_schedule","delete_schedule","create_instance","deploy_template","create_team","post_decision","update_decision"])("%s cannot create a durable outside derivative",tool=>{expect(()=>fixture().call(tool)).toThrow(REQUEST_CONTEXT_POLICY_COPY.en[tool.endsWith("_schedule")?"schedules":["create_instance","deploy_template"].includes(tool)?"agents":tool==="create_team"?"teams":"decisions"]);});
 it.each(["set_web_settings","update_instance_config","update_fleet_defaults","restart_instance","set_display_name","reply","edit_message","hub_set_intro","set_web_widget"])("Hub %s never gains owner authority from a contact release",tool=>{expect(()=>fixture().call(tool,{rootApproved:true,authority:"owner"})).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.settings);});
 it("broadcast has its own plain refusal rather than a partial send loop",()=>{expect(()=>fixture().call("broadcast")).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.broadcast);});
 it.each([{forwards:["old-owner-receipt"]},{meta:{forwards:"old-owner-receipt"}},{receiptId:"owner-receipt"}])("forwards cannot be hidden in another message shape",args=>{expect(()=>fixture().call("send_to_instance",args)).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.forwards);});
@@ -34,4 +34,11 @@ it("all refusal codes have short EN/zh-TW copy and no operation is implied sent"
 
 it("an uncovered contact cannot forward an old owner receipt while asking for approval",()=>{
  expect(()=>assertRequestContextOperation({instance:"demo-source",tool:"send_to_instance",args:{instance_name:"other",forwards:["old-owner-receipt"]},admission:{coverage:"not-covered",reason:"interrupted-launch"}})).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.forwards);
+});
+
+it.each(["get_fleet_config","get_web_settings","get_instance_logs","get_usage","get_cache_report"])("%s cannot disclose owner Fleet state through a Hub root",tool=>{
+ expect(()=>fixture().call(tool)).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.fleet);expect(fixture("owner").call(tool).kind).toBe("ordinary");
+});
+it("other supported Hub reads keep their existing role-checked route",()=>{
+ for(const tool of ["list_instances","get_fleet_status","hub_room_members","list_schedules"])expect(fixture().call(tool).kind).toBe("read");
 });

@@ -702,6 +702,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const notice = {
     label: `${displayLabel(senderLabel)} → ${displayLabel(targetName)}`,
     message: noPlaceMarkers(requestView?.body ?? message ?? ""), requestKind,
+    ...(requestView?{requestScoped:true as const}:{}),
     taskSummary: ipcMeta.task_summary === undefined ? undefined : noPlaceMarkers(ipcMeta.task_summary),
   };
   const senderPlace = placeRef({ kind: "instance", name: meta.instanceName }, displayLabel(senderLabel));

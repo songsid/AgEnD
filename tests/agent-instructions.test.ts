@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
-import { buildFleetInstructions, buildNativeFleetInstructions } from "../src/instructions.js";
+import { buildFleetInstructions, buildNativeFleetInstructions, HUB_REQUEST_PROVENANCE_RULE } from "../src/instructions.js";
 import { settingsChangeDiff, SETTINGS_DIFF_UNITS } from "../src/settings-change.js";
 import { instanceFieldImpact } from "../src/instance-config-impact.js";
 import { validateFleetConfig } from "../src/config-validator.js";
@@ -40,6 +40,15 @@ describe("the complete expected agent instructions", () => {
       checked += 3;
     }
     expect(checked).toBe(cases.length * 3);
+  });
+  it("S-232 keeps request-provenance rules OFF until L installs the policy",()=>{
+    for(const {params}of cases){
+      for(const build of [(p:typeof params)=>buildFleetInstructions(p),(p:typeof params)=>buildNativeFleetInstructions(p,false),(p:typeof params)=>buildNativeFleetInstructions(p,true)]){
+        const baseline=build(params),off=build({...params,requestContextPolicyInstalled:false}),on=build({...params,requestContextPolicyInstalled:true});
+        expect(off).toBe(baseline);expect(off).not.toContain("## Hub request provenance");expect(on).toContain(HUB_REQUEST_PROVENANCE_RULE);expect(on.split("## Hub request provenance")).toHaveLength(2);
+      }
+    }
+    for(const name of ["cross-instance-messaging","worker-collaboration"]){const skill=readFileSync(join(process.cwd(),"src/general-knowledge/skills",name,"SKILL.md"),"utf8");expect(skill).not.toContain("## Hub request provenance");}
   });
   it("there is no second field: a builder asked for an `agentInstructions` section does not know one (nothing is injected for it)", () => {
     const text = buildFleetInstructions({ instanceName: "a", workingDirectory: "/w", customPrompt: "PERSONA", ...({ agentInstructions: "OWN" } as object) });

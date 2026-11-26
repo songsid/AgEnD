@@ -1,4 +1,4 @@
-import {requestDeliveryView} from "./request-context-view.js";
+import {requestDeliveryView,requestContextDisplayView} from "./request-context-view.js";
 import {captureRequestHubOutput} from "./request-hub-output.js";
 import {assertRequestContextOperation,requireRequestContextPolicy,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { permitWebContinuation } from "./web-continuation.js";
@@ -6031,7 +6031,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** L installs this explicitly; H defines no production switch. */
   makeRequestContextPolicy():RequestContextPolicyPort{return {assert:input=>{
     try{return assertRequestContextOperation(input);}catch(error){
-      if(error instanceof RequestContextPolicyError)this.emitSseEvent("message",{instance:input.instance,sender:"AgEnD",role:"status",wrap:true,text:error.message,ts:new Date().toISOString()});
+      if(error instanceof RequestContextPolicyError){
+        const call=input.admission,view=call?.coverage==="covered"&&call.lease.snapshot.owner.instance===input.instance?requestContextDisplayView(call.lease.snapshot.context):null;
+        this.emitSseEvent("message",{instance:input.instance,sender:"AgEnD",role:"status",wrap:true,text:error.message,ts:new Date().toISOString(),...(view?{requestProvenance:{...view,refused:true}}:{})});
+      }
       throw error;
     }
   }};}

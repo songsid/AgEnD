@@ -103,12 +103,26 @@ Hub/room audience, through its existing current sharing/grant/mute checks; never
 reuse onBehalfOf as identity. Ordinary room/channel output cannot become a label-
 stripping backchannel.
 
+### Fleet-introspection reads: Leader decision, 11-26
+
+Covered Hub roots refuse `get_fleet_config`, `get_web_settings`,
+`get_instance_logs`, `get_usage` and `get_cache_report` centrally, through the
+same operation gate as mutation refusals. Threat: the result can return to an
+outside Hub asker. Logs contain other people's chats/tool output; configuration
+and settings expose the owner's paths, accounts and access setup. These reads
+are refused, not held: a Hub question does not need this owner-side state, and
+an approval card would invite a disclosure nobody should approve. Every other
+supported read keeps its existing role check. The refusal uses the same flat
+requester label and names the owner's Fleet details. Tests cover each tool and
+a central-guard reversal.
+
 ## 4. Short visible copy and captures
 
 Reuse the existing flat chat/notice treatment: one label and one consequence,
 no new page, hero, nested card, permission button or repeated explanation.
 Machine wire remains English-canonical; UI/refusal strings are EN and zh-TW.
-Only a server projection from a validated companion may produce the trusted
+Only a server projection from a validated companion (or the original D call
+lease for a refused operation that never enters B) may produce the trusted
 notice; text resembling its JSON/header is ordinary content. Keep actual wire
 and admitted bytes intact. Raw stable ids/details are secondary, authority:none
 stays separate from real human receipt authority in delivery_status(detail).
@@ -117,12 +131,15 @@ Draft copy for the user look:
 
 | State | EN | zh-TW |
 |---|---|---|
-| Label | For Demo person · Hub | 代 Demo person 傳話 · Hub |
-| Direct return warning | Replies may be shown to them. This isn't owner approval. | 回覆可能給對方看；這不是擁有者核准。 |
-| Group return warning | Replies may be shown in the Hub room. This isn't owner approval. | 回覆可能顯示在 Hub 房間；這不是擁有者核准。 |
+| Label | Relayed for Demo person · Hub | 代 Demo person 傳話 · Hub |
+| Direct return warning | The reply may be shown to the person who asked. | 回覆可能會讓提問的人看到。 |
+| Group return warning | The reply may be shown in the original Hub room. | 回覆可能會顯示在原本的 Hub 房間。 |
 | Forwards | Not sent: Hub requests can't forward owner approvals. | 未送出：Hub 請求不能轉交擁有者核准。 |
 | Steering | Not sent: this request can't interrupt another task. | 未送出：這個請求不能插入另一項工作。 |
-| Deferred work | Not changed: Hub requests can't create or change later work. | 未變更：Hub 請求不能建立或修改延後執行的工作。 |
+| Task delegation | Nothing changed: Hub requests can't delegate tasks. | 沒有變更：Hub 的請求不能轉交任務。 |
+| Task cards | Nothing changed: Hub requests can't create or change task cards. | 沒有變更：Hub 的請求不能新增或修改任務卡。 |
+| Schedules | Nothing changed: Hub requests can't create or change scheduled work. | 沒有變更：Hub 的請求不能新增或修改排程的工作。 |
+| Fleet details | Not available for Hub requests: this shows the owner's own Fleet details. | Hub 的請求不能用：這會顯示擁有者自己的機群資料。 |
 | Settings | Not changed: use a separate owner request. | 未變更：請另由擁有者提出要求。 |
 | Broadcast | Not sent: choose one agent with send_to_instance. | 未送出：請用 send_to_instance 指定一個 Agent。 |
 | Missing proof | Not sent: this call has no verified request context. | 未送出：這次呼叫沒有可驗證的請求來源。 |
@@ -171,7 +188,7 @@ This is not a sandbox: labels/rules do not confine shell, keys or shared history
 | Four real dispatch sinks | One canonical classifier is called by the daemon, Fleet outbound and typed IPC, exec MCP, and the HTTP dispatcher. Composite calls expand first. HTTP instance credentials never acquire the latest pane context. |
 | Actual mutation owners | TaskBoard, scheduler, config save/patch and theme owners receive the captured admission; native proxies recheck the original lease at delayed commits. Hub work cannot create persistent work, forward receipts, steer, delegate, broadcast or change owner settings. Existing role and go-ahead checks remain independent. |
 | Exact Hub output resource | Server-private output scopes reach the actual representative, room answer/reaction and room-post adapters. They recompute G's root key from the owning Hub/message/agent, check current destination and constrain room posts to the original audience. Rechecks occur after file preparation and before every chunk. |
-| Display source / cap | Only a B-validated delivery projection supplies the inert UI field. Header-looking body text never creates it. G's peer assembled-byte cap includes the complete label; accepted Hub input keeps G's larger input contract. |
+| Display source / cap | Only a B-validated delivery projection or an original D call lease supplies the inert UI field. A refusal keeps that captured requester, without pretending a B operation was admitted. Header-looking body text never creates it. G's peer assembled-byte cap includes the complete label; accepted Hub input keeps G's larger input contract. |
 
 The dormant assembly ports are `makeRequestContextRelay`, `makeRequestContextPolicy`,
 `prepareRequestContextDeliveryInput` and the existing C/D call leases. There is no
@@ -193,3 +210,27 @@ The UI uses a plain label, one visible audience/approval sentence and an existin
 control follows the shared phone query and 44 px tap token. Wire and outbox bytes
 are preserved; `delivery_status` projects provenance separately from the human
 receipt authority field. Captured refusal text is the actual classifier result.
+
+## 7. Implementation review R1: OFF instructions
+
+`FleetInstructionsParams.requestContextPolicyInstalled` is an internal L-owned
+builder switch, false/absent by default. L may set it only with the installed
+policy and transport. No production caller sets it in H. The complete fleet /
+native-worker / native-General matrix is byte-identical to the pre-H instructions
+while OFF; the enabled fixture includes the rule exactly once. The two bundled
+skills keep their existing text. L must add their provenance section at activation,
+not publish dormant rules into every agent's prompt in H.
+
+Fable's separate read-audience question is resolved by the Leader's 11-26 decision
+in §3: refuse the five Fleet-introspection reads centrally. The other supported
+reads retain role checks. This policy and the Leader's requested label/refusal
+copy corrections are delivered in this same R1 head.
+
+
+The Leader's copy check removes the repeated owner-approval sentence from the
+visible audience warning; the wire metadata, optional enabled instruction rule
+and enforcement still retain authority:none. Refusals retain the same requester
+header; copy lives inside the secondary details disclosure. The native summary
+arrow is restored without losing the phone tap target. Refusal text names the
+actual operation (delegating tasks, changing task cards, scheduled work, agents,
+teams or shared rules), rather than calling all of them “later work”.
