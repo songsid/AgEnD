@@ -1,0 +1,109 @@
+import { afterEach, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import Database from "better-sqlite3";
+import { DeliveryOutbox } from "../src/delivery-outbox.js";
+import { RequestContextBoot, readRequestContextBootState } from "../src/request-context-boot.js";
+import { FleetManager } from "../src/fleet-manager.js";
+import { setProcessFleetLock, releaseProcessFleetLock } from "../src/fleet-lock.js";
+const cleanup: Array<() => void> = [];
+afterEach(() => { vi.restoreAllMocks(); for (const fn of cleanup.splice(0).reverse()) fn(); });
+function home() { const h = mkdtempSync(join(tmpdir(), "request-boot-")); cleanup.push(() => rmSync(h, { recursive: true, force: true })); return h; }
+function activated(h = home()) {
+ const path = join(h, "delivery-outbox.db"), box = new DeliveryOutbox(path, "old", { requestContextDispatchVersion: 1, requestContextRelayVersion: 1 });
+ const row = box.admit({ sourceInstance: "source", sourceDaemonBootId: "old-source", targetInstance: "target", operationId: "op", sourceKey: "key", kind: "fleet_inbound", payload: { content: "synthetic" } }).delivery;
+ box.claimNext("old", () => "target-old", new Set());
+ const state = box.requestContextInstallation().activate({ epoch: "epoch", owner: "durable-fleet", activatedAt: 100, invalidates: [], offeredLatestDeadline: null }, { owner: "durable-fleet", current: () => true }, { current: () => true, release() {} }, () => true, 0);
+ box.close(); return { h, path, state, row };
+}
+function manager(h: string): any {
+ const m: any = Object.create(FleetManager.prototype);
+ Object.assign(m, { dataDir: h, managerBootId: "new-boot", lifecycle: { daemons: new Map() }, logger: { info() {}, error() {} },
+  initializeWorkingRecovery: vi.fn(), sweepContactAuthorizationOutcomes: vi.fn(), scheduleDeliveryOutboxPump: vi.fn(),
+  createWakeCoordinator: () => ({ start() {}, kick() {} }) });
+ cleanup.push(() => { clearInterval(m.replyObligationTimer); m.deliveryOutbox?.close(); }); return m;
+}
+function lock(h: string) {
+ const record = { pid: process.pid, nonce: "fixture", createdAt: new Date().toISOString(), role: "fleet" as const };
+ const serialized = JSON.stringify(record), path = join(h, "fleet.lock"); writeFileSync(path, serialized);
+ setProcessFleetLock({ path, record, serialized }); cleanup.push(() => { releaseProcessFleetLock(); }); return path;
+}
+it("a missing DB is inspected without creation; a legacy startup installs no gate or scoped artifacts", () => {
+ const h = home(); expect(readRequestContextBootState(h)).toBeNull(); expect(existsSync(join(h, "delivery-outbox.db"))).toBe(false);
+ const m = manager(h); m.ensureDeliveryOutbox(); expect(m.requestContextBoot).toBeUndefined(); expect(m.requestContextAdmission).toBeUndefined(); expect(m.requestContextPolicy).toBeUndefined();
+ expect(m.deliveryOutbox.requestContextInstallation().read()).toBeNull();
+ const db = new Database(join(h, "delivery-outbox.db"), { readonly: true });
+ try { expect(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name LIKE 'request_context_%'").get()).toEqual({ n: 0 }); } finally { db.close(); }
+});
+it("production startup holds every input and rejects unprepared owners before activated outbox recovery", () => {
+ const r = activated(), path = lock(r.h), m = manager(r.h);
+ const recovery = vi.spyOn(DeliveryOutbox.prototype, "recoverForBoot");
+ let observed = false;
+ recovery.mockImplementation(function(this: DeliveryOutbox, ...args) {
+  expect(m.requestContextAdmission.available()).toBe(false); expect(m.requestContextBoot.recoveryCurrent()).toBe(true);
+  expect(() => m.prepareRequestContextStart("target", {})).toThrow(/preparation unavailable/);
+  expect(() => m.requestContextPolicy.assert({ instance: "target", tool: "send_to_instance", args: {} })).toThrow(/fenced/);
+  observed = true; return { queued: 0, reconciliationPending: 0 };
+ });
+ m.ensureDeliveryOutbox(); expect(observed).toBe(true); expect(m.deliveryOutbox.get(r.row.deliveryId).managerBootId).toBe("old");
+ expect(m.requestContextBoot.owner.owner).toBe("durable-fleet");
+ writeFileSync(path, "different owner"); expect(m.requestContextBoot.recoveryCurrent()).toBe(false);
+ expect(() => m.deliveryOutbox.recoverForBoot("later")).toThrow();
+});
+it("actual capable recovery under the retained fence preserves queued work without publishing input", () => {
+ const r = activated(); lock(r.h); const m = manager(r.h); m.ensureDeliveryOutbox();
+ expect(m.deliveryOutbox.get(r.row.deliveryId)).toMatchObject({ state: "queued" });
+ expect(m.requestContextAdmission.available()).toBe(false); expect(m.requestContextPolicy.installedMode()).toBeNull();
+});
+it("an activated home with no exact process Fleet lock cannot open or mutate recovery", () => {
+ const r = activated(), m = manager(r.h); expect(() => m.ensureDeliveryOutbox()).toThrow(); expect(m.deliveryOutbox).toBeUndefined();
+ const db = new Database(r.path, { readonly: true }); try {
+  expect(db.prepare("SELECT state,manager_boot_id FROM deliveries WHERE delivery_id=?").get(r.row.deliveryId)).toEqual({ state: "delivering", manager_boot_id: "old" });
+ } finally { db.close(); }
+});
+it("partial activation metadata, unreadable SQLite and redirected database paths never mean legacy", () => {
+ const h = home(), path = join(h, "delivery-outbox.db"), db = new Database(path); db.exec("CREATE TABLE request_context_activations_v1(epoch TEXT)"); db.close();
+ expect(() => readRequestContextBootState(h)).toThrow(/unavailable/);
+ rmSync(path); writeFileSync(path, "not SQLite"); expect(() => readRequestContextBootState(h)).toThrow();
+ rmSync(path); const other = activated(); symlinkSync(other.path, path); expect(() => readRequestContextBootState(h)).toThrow(/path differs/);
+});
+it("boot lease currentness is not an installation capability and cannot revive a lost process owner", () => {
+ const r = activated(); let current = true; const boot = new RequestContextBoot(r.state, { id: "boot", current: () => current });
+ expect(boot.recoveryCurrent()).toBe(true); expect(boot.publication.capture.bind(boot.publication)).toThrow();
+ current = false; expect(boot.recoveryCurrent()).toBe(false); expect(boot.publication.admission.available()).toBe(false);
+ expect(() => new RequestContextBoot(r.state, { id: "lost", current: () => false })).toThrow(/lease/);
+});
+it("first On stages capabilities on the existing connection and abort restores capability zero without artifacts", () => {
+ const h = home(), path = join(h, "delivery-outbox.db"), box = new DeliveryOutbox(path); cleanup.push(() => box.close());
+ const tickets = box.contactAuthorizations, recovery = box.workingRecovery;
+ expect(() => box.stageRequestContextConnection({ current: () => false })).toThrow();
+ const stage = box.stageRequestContextConnection({ current: () => true }); expect(stage.current()).toBe(true);
+ expect(box.contactAuthorizations).toBe(tickets); expect(box.workingRecovery).toBe(recovery);
+ expect(box.requestContextInstallation().read()).toBeNull();
+ expect(() => box.stageRequestContextConnection({ current: () => true })).toThrow();
+ stage.restore(); expect(stage.current()).toBe(false); expect(() => box.activateRequestContextBarrier()).toThrow(/v1/);
+ const db = new Database(path, { readonly: true }); try { expect(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name LIKE 'request_context_%'").get()).toEqual({ n: 0 }); } finally { db.close(); }
+ expect(box.recoverForBoot("still-legacy")).toEqual({ queued: 0, reconciliationPending: 0 });
+});
+it("a committed activation on the staged connection can never restore legacy capability", () => {
+ const h = home(), box = new DeliveryOutbox(join(h, "delivery-outbox.db")); cleanup.push(() => box.close());
+ const stage = box.stageRequestContextConnection({ current: () => true });
+ box.requestContextInstallation().activate({ epoch: "first", owner: "fleet", activatedAt: 1, invalidates: [], offeredLatestDeadline: null },
+  { owner: "fleet", current: () => true }, { current: () => true, release() {} }, () => stage.current(), 0);
+ expect(() => stage.restore()).toThrow(/cannot revert/); expect(stage.current()).toBe(true);
+ expect(() => box.requestHubContactGate({} as any)).not.toThrow();
+});
+it("rollback of an outer activation transaction leaves the same connection safely restorable", () => {
+ const h = home(), box = new DeliveryOutbox(join(h, "delivery-outbox.db")); cleanup.push(() => box.close());
+ const stage = box.stageRequestContextConnection({ current: () => true }); let calls = 0;
+ expect(() => box.requestContextInstallation().activate({ epoch: "first", owner: "fleet", activatedAt: 1, invalidates: [], offeredLatestDeadline: null },
+  { owner: "fleet", current: () => true }, { current: () => true, release() {} }, () => ++calls < 3, 0)).toThrow(/changed/);
+ expect(box.requestContextInstallation().read()).toBeNull(); stage.restore(); expect(() => box.activateRequestContextBarrier()).toThrow(/v1/);
+});
+
+it("a missing main database with retained WAL evidence cannot be recreated as a legacy home", () => {
+ const h = home(), wal = join(h, "delivery-outbox.db-wal"); writeFileSync(wal, "retained evidence");
+ expect(() => readRequestContextBootState(h)).toThrow(/journal remains/);
+ const m = manager(h); expect(() => m.ensureDeliveryOutbox()).toThrow(); expect(existsSync(join(h, "delivery-outbox.db"))).toBe(false);
+});

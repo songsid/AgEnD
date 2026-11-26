@@ -729,9 +729,10 @@ export class DeliveryOutbox extends EventEmitter {
     try { this.emit("working_references", [...new Set(instances)]); } catch { /* observation only */ }
   }
 
-  private readonly requestContextRecoveryFence?: () => boolean;
-  private readonly requestContextDispatchVersion: RequestContextDispatchVersion;
-  private readonly requestContextRelayVersion:0|1;
+  private requestContextRecoveryFence?: () => boolean;
+  private requestContextDispatchVersion: RequestContextDispatchVersion;
+  private requestContextRelayVersion:0|1;
+  private requestContextConnectionStage?: object;
   private requestContextReturnsOwner?:RequestContextReturns;
 
   constructor(dbPath: string, managerBootId: string = randomUUID(), compatibility: RequestContextCompatibilityOptions & {requestContextRelayVersion?:0|1; requestContextRecoveryFence?:()=>boolean} = {}) {
@@ -757,7 +758,33 @@ export class DeliveryOutbox extends EventEmitter {
     }
   }
 
-  /** Future slice L cutover port; all existing production constructors remain capability 0. */
+  /**
+   * First-On keeps this exact connection and its cached owners. Only connection-local capabilities change here;
+   * the floor and every companion schema still belong to the later outer activation transaction.
+   */
+  stageRequestContextConnection(fence: { current(): boolean }): { current(): boolean; restore(): void } {
+    if (!fence.current() || this.requestContextConnectionStage || readRequestContextInstallation(this.db) !== null)
+      throw Error("Request-context connection preparation unavailable");
+    const previous = { dispatch: this.requestContextDispatchVersion, relay: this.requestContextRelayVersion, recovery: this.requestContextRecoveryFence };
+    const token = {}, owned = () => this.requestContextConnectionStage === token;
+    this.requestContextConnectionStage = token;
+    this.requestContextDispatchVersion = 1; this.requestContextRelayVersion = 1;
+    this.requestContextRecoveryFence = () => fence.current();
+    registerRequestContextDispatcher(this.db, 1); registerRequestContextReturnDispatcher(this.db, 1);
+    return Object.freeze({
+      current: () => owned() && fence.current() && this.requestContextDispatchVersion === 1 && this.requestContextRelayVersion === 1,
+      restore: () => {
+        // Any durable activation is a one-way boundary, even if publication or the owner subsequently failed.
+        if (!owned() || !fence.current() || readRequestContextInstallation(this.db) !== null)
+          throw Error("Activated or superseded connection cannot revert");
+        registerRequestContextDispatcher(this.db, previous.dispatch); registerRequestContextReturnDispatcher(this.db, previous.relay);
+        this.requestContextDispatchVersion = previous.dispatch; this.requestContextRelayVersion = previous.relay;
+        this.requestContextRecoveryFence = previous.recovery; this.requestContextConnectionStage = undefined;
+      },
+    });
+  }
+
+  /** Bare barrier for fixtures; production activation commits it with installation/history in one outer transaction. */
   activateRequestContextBarrier(): void {
     activateRequestContextBarrier(this.db, this.requestContextDispatchVersion);
   }

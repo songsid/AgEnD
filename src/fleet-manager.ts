@@ -1,3 +1,4 @@
+import { RequestContextBoot, readRequestContextBootState } from "./request-context-boot.js";
 import type { RequestContextStartPreparation } from "./request-context-start.js";
 import { requestContextSkillText, requestContextSteeringText, type RequestContextKnowledgeMode } from "./request-context-knowledge.js";
 import { runWithRequestContextAdmission, type RequestContextAdmissionPort } from "./request-context-admission.js";
@@ -447,7 +448,7 @@ import { readBackgroundWorkEndedMarker } from "./background-work-ended.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
 import { TargetQueueWorker } from "./target-queue-worker.js";
 import { resolveDeliveryWorkerMode } from "./types.js";
-import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock } from "./fleet-lock.js";
+import { isFleetStartCommandLine, readProcessCommandLine, captureProcessFleetLease, releaseProcessFleetLock } from "./fleet-lock.js";
 import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { reapLeftoverTunnels } from "./tunnel/lease.js";
 import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
@@ -1346,6 +1347,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Test seam: inject a spy to verify saveFleetConfig calls fsync. Default: fsyncSync. */
   fsyncForTest: ((fd: number) => void) | undefined = undefined;
   private requestContextAdmission?: RequestContextAdmissionPort;
+  private requestContextBoot?: RequestContextBoot;
   prepareRequestContextStart?: (name: string, config: InstanceConfig) => RequestContextStartPreparation;
   configureRequestContextBeforeStart?: (name: string, daemon: Daemon, config: InstanceConfig, preparation?: RequestContextStartPreparation) => void;
   /** Shared input gate only; C/D scope binding remains a separate pre-start preparation. */
@@ -5922,7 +5924,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const dbPath = join(this.dataDir, "delivery-outbox.db");
     let outbox: DeliveryOutbox | undefined;
     try {
-      outbox = new DeliveryOutbox(dbPath, this.managerBootId);
+      const activated = readRequestContextBootState(this.dataDir);
+      if (activated && !this.requestContextBoot) {
+        const lease = captureProcessFleetLease(this.dataDir);
+        if (!lease) throw Error("Request-context Fleet lease unavailable");
+        const boot = new RequestContextBoot(activated, lease);
+        this.requestContextBoot = boot;
+        this.attachRequestContextAdmission(boot.publication.admission);
+        this.requestContextPolicy = boot.policy;
+        // Replaced only by the controlled installer: a legacy launch must never slip through startup recovery.
+        this.prepareRequestContextStart = () => boot.requirePreparedOwner();
+      }
+      outbox = new DeliveryOutbox(dbPath, this.managerBootId, this.requestContextBoot ? {
+        requestContextDispatchVersion: 1, requestContextRelayVersion: 1,
+        requestContextRecoveryFence: this.requestContextBoot.recoveryCurrent,
+      } : {});
       if (!this.deliveryOutboxRecovered) {
         const recovered = outbox.recoverForBoot(this.managerBootId);
         this.logger.info({ ...recovered }, "Recovered durable delivery outbox for this process boot");

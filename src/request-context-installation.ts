@@ -19,7 +19,7 @@ export interface RequestContextOffProof { readonly epoch: string; readonly revis
 export function readRequestContextInstallation(db: Database.Database): RequestContextInstallationState | null {
   const table = db.prepare("SELECT type FROM sqlite_master WHERE name=?").get(TABLE) as { type: string } | undefined;
   if (!table) {
-    if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='request_context_compatibility'").get()) throw Error("Installation state unavailable");
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE name IN ('request_context_compatibility','request_context_activations_v1')").get()) throw Error("Installation state unavailable");
     return null;
   }
   if (table.type !== "table" || assertRequestContextCompatibility(db, 1) !== "active") throw Error("Invalid installation state");
