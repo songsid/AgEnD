@@ -1,5 +1,5 @@
 {
-  "sourceHead": "9c9f1003f40676e394b563e9266aa569c843d207",
+  "sourceHead": "56a87bfbec0109ac3ab960040175a39a0791e786",
   "dirty": [],
   "checks": [
     {
@@ -60,6 +60,10 @@
     },
     {
       "name": "desk-light-en 2c: no fixed hostname: no preview field, one line saying the fixed public hostname comes first",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2c: that line is set apart at body size, larger than the help notes around it",
       "ok": true
     },
     {
@@ -171,6 +175,10 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW 2b: 「（傳 /web 開啟）」 kept whole",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 2b: the port line names both ports",
       "ok": true
     },
@@ -218,11 +226,11 @@
   "pictures": [
     {
       "path": "m3814-desk-light-en-1-notice.png",
-      "sha256": "0c84d1491088196b7f828612122b34ec55a7c41e608dedf90df09854d13784bb"
+      "sha256": "036aa2d26567476c281a75d2fc650c430b0d321b8d6ac17a6028ebba0c589b65"
     },
     {
       "path": "m3814-desk-light-en-2-settings-landed.png",
-      "sha256": "57726cdea15fb7c531cc28969d645ec7684804948fa2ab3e5cee4dd2b74bf20d"
+      "sha256": "dbe2357bce8200cead5039a7e7935e8793cc7333cc62743b51c767722be40ef3"
     },
     {
       "path": "m3814-desk-light-en-2b-route-step.png",
@@ -230,7 +238,7 @@
     },
     {
       "path": "m3814-desk-light-en-2c-no-fixed-hostname.png",
-      "sha256": "fe0f2ef3cba7cb38f46b5650d77ea234a10572dd1dce18f77b697edabb23bf45"
+      "sha256": "ae3870fcf6f37fa0b7556868cafe7a462153d1a25948e1daa26fa064cc77e382"
     },
     {
       "path": "m3814-desk-light-en-3-saved.png",
@@ -242,7 +250,7 @@
     },
     {
       "path": "m3814-phone-dark-zh-TW-1-notice.png",
-      "sha256": "29f2f823efdb3e0a6d5265f48ebf04b581d1942d11cb1a0d9e8202565b1d8bc3"
+      "sha256": "e7e0bf061e60b2429f69dbd877c10e24d0d85d6115db1ddc7a1e77817d2b1f4b"
     },
     {
       "path": "m3814-phone-dark-zh-TW-2-settings-landed.png",
@@ -250,13 +258,13 @@
     },
     {
       "path": "m3814-phone-dark-zh-TW-2b-route-step.png",
-      "sha256": "4e8625ab49e16d0b42fa6b4b302fd1ea217d44179add48cba6d9e8d72583bd35"
+      "sha256": "88f8d82e0c0b23aa19f3054fc5f97a94eb8bdd684efc2dcd379b1b539843e65b"
     },
     {
       "path": "m3814-phone-dark-zh-TW-4-check.png",
       "sha256": "3ad3a8d349607befe9e0ac1b56e6578c0379dad49c7b35b04dd75b374c4a3d3a"
     }
   ],
-  "passed": 53,
-  "total": 53
+  "passed": 55,
+  "total": 55
 }
