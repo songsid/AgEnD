@@ -1,0 +1,102 @@
+{
+  "sourceCommit": "02fc43ebd918d9fdf878d4bffcb169cb578555b3",
+  "scope": "SDK-owned Classic registration evidence and per-operation native/web admission checks, separate from current administrator authority.",
+  "checks": {
+    "restored": {
+      "files": 9,
+      "passed": 190,
+      "failed": 0
+    },
+    "mutants": [
+      {
+        "mutation": "native-access-ignored",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "demotion-blocks-admitted-member",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "creation-list-imposed",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "registration-rebind-ignored",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "free-mode-frozen",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "sdk-basis-dropped",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "guest-scope-revocation-ignored",
+        "exit": 1,
+        "red": true
+      }
+    ],
+    "typecheckTests": "passed",
+    "gitleaks": "37 commits; no leaks",
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "Private SDK facts retain actual Discord guild/channel, Telegram group/private chat and button actor evidence; strict stored origin is unchanged.",
+    "Registered-room is the admission path for messages inside Classic rooms. Creation allowlists are deliberately not imposed on them; no creator authority or membership API is inferred.",
+    "Registration removal/rebinding, source incarnation change, ordinary native access removal, web session loss and guest scope revocation refuse without a lifetime mutation.",
+    "A demoted member still admitted to ordinary work keeps normal contact; current privileged-operation checks remain separate.",
+    "Free-to-Restricted uses the current root-source administrator exception or hold without relabelling; pending tickets preserve their decision path and Restricted history never becomes Free.",
+    "First run exposed two prototype-rig webToken setter failures; the private fixture now shadows the readonly token getter explicitly. All nine suites pass restored.",
+    "Helper covers native/web admission only. Hub current-share/resource assembly, exact final-write registration and production installation remain unfinished. No live activation."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "src/channel/adapters/discord.ts",
+      "sha256": "f56d995ba614ba12097fa38eea0d0e13f64397e6d8676cb11ed5345e7fd5faa8"
+    },
+    {
+      "path": "src/channel/adapters/telegram.ts",
+      "sha256": "9ac9d0fd78623421fe57f100a0cac7f8844cbb0ddcb9e7d01108786142905891"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "3d031c307526f52100f601283ea02a72315e8c1b19254708864bdb8946571130"
+    },
+    {
+      "path": "src/human-delivery-receipts.ts",
+      "sha256": "e57d17dc8169e99dbcab19442a900bccb9003892af03ea3f97871b09b8555e9c"
+    },
+    {
+      "path": "src/request-contact-gate.ts",
+      "sha256": "f8d2bcab515495e16d9384b679f882f63d4dee3f49ef4dbf17845e7fbbc53423"
+    },
+    {
+      "path": "src/request-context-human.ts",
+      "sha256": "87eb9b028f70cb2a9b237fbc477c1da1ef3615785b810ab5b9108bc2318e904b"
+    },
+    {
+      "path": "tests/human-origin-ingress-1756.test.ts",
+      "sha256": "6091fc0005e5640fea7ab82a78f5624595e2331c0201e59b5f91c50d32eafd1d"
+    },
+    {
+      "path": "tests/request-contact-gate-s225.test.ts",
+      "sha256": "210a859ef3fe08d4f6d0d7cad889b78b23fbb04fc1990f66f1e8c124561f4953"
+    },
+    {
+      "path": "tests/request-context-human-s230.test.ts",
+      "sha256": "d549053eea0d99540217c8a5acf19b50c137b977547b41f1deae27471c5fa3ce"
+    },
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "a0de88d5a00dfc4ea36ac1743d10e8dc154aad1406e2b5c82b96d5faad5f3451"
+    }
+  ]
+}

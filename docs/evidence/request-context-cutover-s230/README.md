@@ -56,3 +56,5 @@ This proves only the conditional UI. Controlled physical stop/IPC retirement, pr
 Retained human controls: `human-control.json` binds the exact source and restored tests, including the real Fleet facade/pane judge, raw/begun refusal controls and mutation results. This is an assembly checkpoint, not activation or full-mode acceptance.
 
 Accepted human ingress: `human-input.json` binds the atomic companion/facade, explicit guest facts, indexed durable references, retirement and pruning controls. It records the prior-source pane-fixture diagnostic and the isolated inert-executable run separately. Final-write and complete installation remain unfinished.
+
+Current request admission: `registered-access.json` binds the SDK registration evidence, native/web current-access checks, current room-mode behavior and seven mutation controls. Creation allowlists are kept separate from registered-room message admission. This is not full-mode or activation acceptance.
