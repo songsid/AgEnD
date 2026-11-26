@@ -36,6 +36,7 @@ function fleet(opts: { execution?: string; senderLive?: boolean; requestContextO
     activeDurableTargets: new Set(), deliveryPumpRunning: false, reconcileInFlight: null, topicCleanupInFlight: false,
     getInstanceStatus: () => "running", getInstanceExecutionState: () => opts.execution ?? "idle", getInstanceInteraction: () => undefined,
     hasPendingIdleGatedDelivery: () => false, deliveryOutbox: outbox, scheduler, quiescence: null,
+    scheduleDeliveryOutboxPump: vi.fn(), managerBootId: "mgr",
     updateControlSelf: () => SELF, updateSenderLive: () => opts.senderLive ?? true, updateRequestContextOn: () => opts.requestContextOn ?? false,
     updateBarrier: null, updateHandbackWalkedAt: -Infinity,
   });
@@ -104,7 +105,7 @@ describe("M-3770 2.5 wiring part 2: the fleet answers its mailbox", () => {
     expect(f.fm.quiescence).toBeNull();
   });
 
-  it("an old fleet an abandon never stopped walks its hand-back from the pass (at most every 10 s)", () => {
+  it("an old fleet an abandon never stopped (no barrier) walks its hand-back from the pass, at most every 10 s", () => {
     const f = fleet();
     const walk = vi.fn();
     f.fm.walkUpdateHandback = walk;
@@ -114,6 +115,40 @@ describe("M-3770 2.5 wiring part 2: the fleet answers its mailbox", () => {
     f.fm.updateControlTick();
     expect(walk).toHaveBeenCalledTimes(1);
     expect(walk.mock.calls[0]![1]).toEqual(SELF);
+  });
+
+  it("with the REAL barrier through an abandon: still armed (ingress copied) until restart-old; one pass walks while armed, then the barrier comes down; nothing grows after; new ingress is delivered after the handed-back copies (Fable #4554)", () => {
+    const f = fleet();
+    expect(arm(f).ok).toBe(true);
+    let a: AttemptRecord = advance(f.home, f.attempt, "abandoning", { note: "the updater gave up" });
+    f.fm.updateControlTick();
+    expect(f.fm.updateBarrier).not.toBeNull();                                                      // not at the bare stage write
+    expect(f.fm.quiescence.commitTurn({ type: "user_message", content: "sent during the update", meta: { source: "web" } }, "worker")).toBe(true);
+    a = substep(f.home, a, "restart-old");
+    f.fm.updateControlTick();                                                                       // the walk, armed, then down
+    expect(f.fm.updateBarrier).toBeNull();
+    expect(f.fm.quiescence).toBeNull();
+    const after = listHandback(f.home, ID);
+    expect(after.every(e => e.acked)).toBe(true);
+    const copies = f.outbox.listPending().filter(d => d.kind === "update_handback_copy");
+    expect(copies.map(d => d.payload.content)).toEqual(["sent during the update"]);
+    // New ingress is delivered now, not copied, and lands after the handed-back copy for the same target.
+    const fresh = f.outbox.admit({ operationId: "n", sourceKey: "n", sourceInstance: "peer", sourceDaemonBootId: "b", targetInstance: "worker",
+      kind: "fleet_inbound", payload: { type: "fleet_inbound", content: "after the abandon", meta: {} } }).delivery;
+    expect(fresh.createdSeq).toBeGreaterThan(copies[0]!.createdSeq);
+    f.fm.updateControlTick();
+    expect(listHandback(f.home, ID)).toHaveLength(after.length);                                    // the inbox didn't grow
+  });
+
+  it("a first walk that throws still takes the barrier down (later walks retry, unarmed)", () => {
+    const f = fleet();
+    expect(arm(f).ok).toBe(true);
+    let a: AttemptRecord = advance(f.home, f.attempt, "abandoning");
+    a = substep(f.home, a, "restart-old");
+    f.fm.walkUpdateHandback = () => { throw new Error("disk full"); };
+    expect(() => f.fm.updateControlTick()).not.toThrow();
+    expect(f.fm.updateBarrier).toBeNull();
+    expect(f.fm.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ attemptId: ID }), expect.stringMatching(/first walk failed/));
   });
 });
 

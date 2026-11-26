@@ -1421,6 +1421,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private updateControlTick(): void {
     if (this.shuttingDown) return;
+    // Idle (Fable #4554 nit): no `current` pointer, no update — nothing to parse, and no barrier can stay up.
+    if (!existsSync(join(this.dataDir, ".update-journal", "current"))) {
+      if (this.updateBarrier) this.setUpdateBarrier(null);
+      return;
+    }
     let read: ReturnType<typeof readUpdateJournal>;
     try { read = readUpdateJournal(this.dataDir); } catch { return; }
     if (read.state !== "open") {
@@ -1444,8 +1449,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.warn({ err, attemptId: read.attempt.id }, "Update control mailbox pass failed; the next pass retries");
     }
     // An old fleet an abandon never stopped (the barrier said busy, or an early failure) takes its held work back here;
-    // a restarted one does it at its start (startUpdateHandback). Walked at most every 10 s.
-    if (handbackDue(read.attempt, self) && performance.now() - this.updateHandbackWalkedAt >= 10_000) {
+    // a restarted one does it at its start (startUpdateHandback).
+    if (!handbackDue(read.attempt, self)) return;
+    if (this.updateBarrier?.attemptId === read.attempt.id) {
+      // Still armed (Fable #4554): the first walk runs while the barrier is up — no ingress can interleave, and the
+      // walk's copies take their places ahead of anything newer — and the barrier comes down in this same turn,
+      // whatever the walk's outcome: one that keeps failing must never leave the fleet silent.
+      this.updateHandbackWalkedAt = performance.now();
+      try { this.walkUpdateHandback(read.attempt, self); }
+      catch (err) { this.logger.warn({ err, attemptId: read.attempt.id }, "Update hand-back's first walk failed; the barrier comes down and later walks retry"); }
+      finally { this.setUpdateBarrier(null); }
+      return;
+    }
+    if (performance.now() - this.updateHandbackWalkedAt >= 10_000) {                               // later walks, unarmed
       this.updateHandbackWalkedAt = performance.now();
       this.walkUpdateHandback(read.attempt, self);
     }
