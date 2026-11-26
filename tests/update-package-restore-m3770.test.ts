@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { attemptPreimageDir, readAttemptPreimage, restorePackage, restoreUnit, takeAttemptPreimage, type Substeps } from "../src/update-package-restore.js";
-import { dropInPath, unitPreimagePath, wrapPlist, writeRecoveryRoute } from "../src/update-recovery/route.js";
+import { dropInPath, dropInText, unitPreimagePath, wrapPlist, writeRecoveryRoute } from "../src/update-recovery/route.js";
+import { prunePreimages } from "../src/package-preimage.js";
 import { parsePlist } from "../src/service-activation.js";
 import { newAttemptId, openAttempt } from "../src/update-journal.js";
 import type { Ownership } from "../src/install-ownership.js";
@@ -119,6 +120,32 @@ describe("M-3770 §6.3: the package restore", () => {
     expect(existsSync(p.binLinks["agend-agent"]) || lstatSync(p.binLinks["agend-agent"], { throwIfNoEntry: false }) !== undefined).toBe(false);
   });
 
+  it("a plain file at a bin path (not npm's link) is never removed or replaced; changed, it's manual (Fable #4528 N1)", () => {
+    const o = rig();
+    rmSync(o.binLinks["agend-agent"]); writeFileSync(o.binLinks["agend-agent"], "#!/bin/sh\n# someone's own script");
+    const pre = takeAttemptPreimage(o, ID); if (!pre.ok) throw new Error(pre.reason);
+    expect(readAttemptPreimage(pre.dir, pre.manifestSha256)).toMatchObject({ ok: true, manifest: { bins: { "agend-agent": { kind: "file", sha256: expect.stringMatching(/^[0-9a-f]{64}$/) } } } });
+    installPackage(o, "2.4.1"); rmSync(o.binLinks["agend-agent"]); writeFileSync(o.binLinks["agend-agent"], "#!/bin/sh\n# someone's own script");
+    expect(restorePackage(o, ID, pre.manifestSha256, journal())).toEqual({ ok: true });
+    expect(readFileSync(o.binLinks["agend-agent"], "utf8")).toBe("#!/bin/sh\n# someone's own script");                // kept
+    const p = rig();
+    rmSync(p.binLinks["agend-agent"]); writeFileSync(p.binLinks["agend-agent"], "original");
+    const pre2 = takeAttemptPreimage(p, ID); if (!pre2.ok) throw new Error(pre2.reason);
+    installPackage(p, "2.4.1");                                                                          // npm replaced the file with its link
+    expect(restorePackage(p, ID, pre2.manifestSha256, journal())).toMatchObject({ ok: false, manual: true, reason: expect.stringMatching(/was a file before the install/) });
+  });
+
+  it("the legacy prune keeps the transaction's attempt-* preimages (Fable #4528 F1, design §5.7)", () => {
+    const o = rig();
+    const pre = takeAttemptPreimage(o, ID); if (!pre.ok) throw new Error(pre.reason);
+    const legacy = join(o.prefix, ".agend-rollback", "2.3.9-2026-11-20T00-00-00-000Z");
+    mkdirSync(join(legacy, "agend"), { recursive: true });
+    prunePreimages(o.prefix, null);
+    expect(existsSync(pre.dir)).toBe(true);
+    expect(readAttemptPreimage(pre.dir, pre.manifestSha256).ok).toBe(true);
+    expect(existsSync(legacy)).toBe(false);
+  });
+
   it("states a retry can't recognise are manual: both the package and replaced-package present; something else where the package goes; a tampered preimage", () => {
     const o = rig();
     const pre = takeAttemptPreimage(o, ID); if (!pre.ok) throw new Error(pre.reason);
@@ -167,6 +194,19 @@ describe("M-3770 §6.3: the unit restore", () => {
     expect(restoreUnit(k.home, k.attempt, { keepRoute: true, plistArgs, reload: () => true }, journal())).toEqual({ ok: true });
     expect(readFileSync(k.fragment, "utf8")).toBe(UNIT);
     expect(existsSync(dropInPath({ kind: "systemd", unit: "agend.service", fragmentPath: k.fragment }))).toBe(true);   // the route stays
+  });
+
+  it("systemd keepRoute ENSURES the drop-in: missing → written again exactly; changed → manual (Fable #4528 F2)", () => {
+    const r = unitRig("systemd");
+    const service = { kind: "systemd" as const, unit: "agend.service", fragmentPath: r.fragment };
+    rmSync(dropInPath(service));
+    expect(restoreUnit(r.home, r.attempt, { keepRoute: true, plistArgs, reload: () => true }, journal())).toEqual({ ok: true });
+    expect(readFileSync(dropInPath(service), "utf8")).toBe(dropInText(r.home, ID));
+    const c = unitRig("systemd");
+    const s2 = { kind: "systemd" as const, unit: "agend.service", fragmentPath: c.fragment };
+    writeFileSync(dropInPath(s2), "[Service]\nExecStartPre=/bin/true\n");
+    expect(restoreUnit(c.home, c.attempt, { keepRoute: true, plistArgs, reload: () => true }, journal())).toMatchObject({ ok: false, manual: true, reason: expect.stringMatching(/isn't this attempt's drop-in/) });
+    expect(readFileSync(dropInPath(s2), "utf8")).toBe("[Service]\nExecStartPre=/bin/true\n");        // left as it is
   });
 
   it("launchd with the route kept: the wrapper around the ORIGINAL arguments; without it: the preimage itself", () => {

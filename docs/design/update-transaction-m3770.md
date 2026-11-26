@@ -519,7 +519,10 @@ The original definition's bytes are `unit.preimage`. The pre-start step runs **i
 
 A retry recognises each effect by the path's presence and its hash against the preimage's manifest.
 
-**Unit restore:** write `unit.preimage`'s bytes to `<fragment>.restore-tmp`, fsync, rename, remove the drop-in, then `daemon-reload`, under the service lock. A retry compares the fragment's bytes.
+**Unit restore:** write `unit.preimage`'s bytes to `<fragment>.restore-tmp`, fsync, rename, remove the drop-in, then `daemon-reload`, under the service lock. A retry writes the same bytes again.
+- **Unless the runner keeps the route** (§6.2 step 3, before the takeover). Then the route is *ensured*: systemd's drop-in must be exactly this attempt's, written again if absent and refused (manual) if changed; launchd gets its wrapper around the original arguments.
+- **Bin links (rev 12):** the package preimage records what stood at each bin path: nothing, npm's link with its target, or a plain file with its hash. A link is restored, and a bin that was absent is removed if the new version added one. A plain file is never removed or replaced, and is manual if it changed.
+- **Pruning:** the legacy `prunePreimages` skips `attempt-*` (§5.7).
 
 **The order** is state (§5.5), then package, then unit, then start the old version, recorded as generation `rollback`. Nothing starts a fleet on mixed state: the fences (§4.2) hold until that start's handoff (§4.3).
 
@@ -629,6 +632,13 @@ A retry recognises each effect by the path's presence and its hash against the p
 |---|---|
 | A same-uid process holding capabilities the reader lacks (the kernel's subset rule refuses the read) is uninspectable, identified by `status` `CapPrm` | §4.4 |
 | An unreadable process is re-read (5 × 20 ms, re-identified by its start) before the scan is incomplete; uninspectable processes are listed with their name and why | §4.4 |
+
+### Revision 12 (2.3 part 5, Fable #4528)
+| Change | Where |
+|---|---|
+| The runner's kept route is ensured (the drop-in rewritten if absent, refused if changed); the general rule removes it | §6.3, §6.2 |
+| A bin path's prior state is recorded as absent, a link or a file; a file is never removed | §6.3 |
+| The legacy `prunePreimages` skips `attempt-*` preimages | §5.7, §6.3 |
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
 - `update-journal.ts`: the layout, publication order, readers, stages and marks;
