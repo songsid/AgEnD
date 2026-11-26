@@ -27,8 +27,8 @@ import {ha} from "./hub-ai-apps-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
 import { TextSizeButton, TEXT_SIZES, setTextSize, textSizeStore } from "/assets/header-tools.js";
 import { useStore } from "/assets/app-store.js";
-import { notifyStore, notifySupport, setNotify } from "/assets/app-needs.js";
-import { HubNotifyToggle } from "./hub-room-notify.js";
+import { notifyStore, notifySupport } from "/assets/app-needs.js";
+import { HubNotifyToggle, setHubNotify } from "./hub-room-notify.js";
 import { InstallAppButton, installLabel, installOffered, installStore, runInstall } from "/assets/app-install.js";
 import { createHubButtonActions } from "./hub-button-actions.js";
 import { linkRoomsU2Css } from "./hub-room-new-strings.js";
@@ -625,7 +625,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     // move into ⋯ there (hub-chat.css hides the two buttons at the same width).
     ...(narrow ? [
       { key: "textSize", label: t("app.textSize", t(`app.textSize_${textSize.size}`)), icon: "type", onSelect: () => setTextSize(TEXT_SIZES[(TEXT_SIZES.indexOf(textSize.size) + 1) % TEXT_SIZES.length]) },
-      ...(notifySupport() === "ok" ? [{ key: "notify", checkbox: true, checked: notify.state === "on", disabled: notify.asking, label: hroom("notifyTitle"), onSelect: () => { void setNotify(notify.state !== "on"); } }] : []),
+      ...(notifySupport() === "ok" ? [{ key: "notify", checkbox: true, checked: notify.state === "on", disabled: notify.asking, label: hroom("notifyTitle"), onSelect: () => { void setHubNotify(notify.state !== "on"); } }] : []),
       // S-255: Install as an app sits by the bell, so on a phone it moves into ⋯ with it.
       ...(installOffered(install.state) ? [{ key: "install", label: installLabel(), icon: "install", onSelect: () => runInstall(install.state) }] : []),
     ] : []),

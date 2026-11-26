@@ -150,7 +150,13 @@ register("hubRoom", {
     // §12 unread: unreadN is the list-row count tooltip; mentionedYou is the row's @ mark.
     unreadPrefix: "({0})", unreadN: "{0} unread", mentionMark: "@", mentionedYou: "Mentioned you",
     // §12 desktop notification (opt-in, like the Fleet's Notify me): the header toggle and one ping per kind.
-    notifyTitle: "Notify me on this device", notifyOn: "Notifications are on while a Hub tab is open.",
+    notifyTitle: "Notify me on this device", notifyOn: "Notifications are on while a Hub tab or the AgEnD app is open, even in the background.",
+    // S-257 step 1: what keeps them coming once every Hub window is closed (shown once, when they are turned on).
+    keepTitle: "Keep notifications coming",
+    keepTab: "Notifications arrive while a Hub tab is open, even in the background; closing every Hub tab stops them. To keep them coming, install the Hub as an app (the button beside the bell) and leave it running, minimized is fine. In Edge or Chrome, the app's settings also offer \"Start app when you sign in\".",
+    keepApp: "Notifications arrive while this app is open, even minimized; quitting it stops them. Leave it running. In Edge or Chrome, the app's settings offer \"Start app when you sign in\", so it is there after a restart.",
+    keepNoInstall: "Notifications arrive while a Hub tab is open, even in the background; closing every Hub tab stops them. Keep a Hub tab open. This Hub can't be installed as an app yet: its certificate isn't trusted by this browser (the button beside the bell says more).",
+    keepOk: "OK",
     notifyOff: "Get a desktop notification when someone @mentions you, an agent answers, or a new invitation arrives.",
     notifyDenied: "This browser blocked notifications. Allow them in the site settings to turn this on.",
     notifyUnavailable: "This browser cannot show notifications here.",
@@ -295,7 +301,12 @@ register("hubRoom", {
     noContent: "這裡看不到任何房間的內容。",
     joinAsManager: "加入自己成為房間管理",
     unreadPrefix: "({0})", unreadN: "{0} 則未讀", mentionMark: "@", mentionedYou: "有人 @ 你",
-    notifyTitle: "在這個裝置上通知我", notifyOn: "Hub 分頁開著時會收到通知。",
+    notifyTitle: "在這個裝置上通知我", notifyOn: "Hub 分頁或 AgEnD 應用程式開著時（在背景也可以）會收到通知。",
+    keepTitle: "持續收到通知",
+    keepTab: "Hub 分頁開著時（在背景也可以）會收到通知；關掉所有 Hub 分頁後就不會再通知。想一直收到，可以把 Hub 安裝成應用程式（鈴鐺旁的按鈕）並讓它保持開著，縮到最小也可以。在 Edge 或 Chrome 的應用程式設定中，也可以開啟「登入時啟動應用程式」。",
+    keepApp: "這個應用程式開著時（縮到最小也可以）會收到通知；把它關掉就不會再通知。請讓它保持開著。在 Edge 或 Chrome 的應用程式設定中，可以開啟「登入時啟動應用程式」，重新開機後也會自動開啟。",
+    keepNoInstall: "Hub 分頁開著時（在背景也可以）會收到通知；關掉所有 Hub 分頁後就不會再通知。請讓一個 Hub 分頁保持開著。這個 Hub 目前還不能安裝成應用程式：這個瀏覽器不信任它的憑證（鈴鐺旁的按鈕有說明）。",
+    keepOk: "知道了",
     notifyOff: "有人 @ 你、Agent 回答或有新邀請時，收到桌面通知。",
     notifyDenied: "這個瀏覽器封鎖了通知。請在網站設定中允許，才能開啟。",
     notifyUnavailable: "這個瀏覽器在這裡無法顯示通知。",

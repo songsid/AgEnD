@@ -143,6 +143,11 @@ is never kept." Fields **Account** and **Password**, button **Sign in**.
   installed**: the button explains "your browser doesn't trust this address's certificate" and asks for a trusted
   certificate. The fix is a certificate the company's computers trust (Hub setup → browser certificate, import), not
   anything the person can click. iPhone Safari: Share → Add to Home Screen. Nothing is stored for offline use.
+- **Notify me on this device** (the bell): a desktop notification for an @mention, an answer to your question, a new
+  invitation or a one-to-one message. It works only while a Hub tab or the installed app is open (in the background or
+  minimized is fine); closing every Hub window stops it, and there is no email or phone push. The first time it is turned
+  on, the Hub says how to keep notifications coming: install the Hub as an app and leave it running, and in Edge or Chrome
+  turn on the app's "Start app when you sign in".
 
 ## Connecting your own AI app
 
