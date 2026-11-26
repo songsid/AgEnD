@@ -3,7 +3,7 @@
  * fixture in WSL; inert agents, synthetic messages), drawn by Microsoft Edge on Windows — headless, no window on the
  * desktop — reached over CDP (WIN_CDP, e.g. the WSL → Windows relay on 127.0.0.1:9341). For each emoji and each text
  * line, Edge's own CSS.getPlatformFontsForNode says which installed font drew it. Cases: dark and light, the default
- * font, the system and mono agent-theme fonts, and zh-TW. Run once on the base and once on the fix to compare.
+ * font, the system and mono agent-theme fonts, and zh-TW (a Chinese page, an agent replying in Chinese). Each frame is the whole chat panel. Run once on the base and once on the fix to compare.
  *   WIN_CDP=http://127.0.0.1:9341 CHROME=<chromium> PW_DIR=<playwright-core> REPO=<checkout> OUT=<dir> npx tsx scripts/manual/emoji-colour-m3796/capture-windows.mts
  */
 import { createHash } from "node:crypto";
@@ -24,18 +24,24 @@ const TEXT = ["1 # * © ™ ★ ♥ → 中文 text", "Ready: 🆕︎ (text styl
 const REPLY = ["Here is what changed:", "", "- 🆕 The update card in General's chat", "- 🆕 Pick a time on the web", "- ✅ Pre-flight words", "",
   ...EMOJI.map((e) => `- ${e}`), "", ...TEXT.map((t) => `- ${t}`), "", "`code: 🆕 ☕ 1 #`"].join("\n");
 
+// The user's real case: a zh-TW page and an agent replying in Chinese, the 🆕 right before CJK text.
+const REPLY_ZH = ["以下是更新內容：", "", "- 🆕 General 聊天室的更新卡片", "- 🆕 在網頁上選個時間", "- ✅ 更新前檢查的說明", "",
+  ...EMOJI.map((e) => `- ${e}`), "", ...TEXT.map((t) => `- ${t}`), "", "`code: 🆕 ☕ 1 #`"].join("\n");
+const FIRST = { en: { wait: "Here is what changed:", bullet: "🆕 The update card" }, "zh-TW": { wait: "以下是更新內容：", bullet: "🆕 General 聊天室的更新卡片" } } as const;
+
 const fx = await bootFixture({ port: 0, classic: false, roster: [
   { name: "alpha", displayName: "Atlas", backend: "claude-code" },
   { name: "beta", displayName: "Beacon", backend: "claude-code" },
   { name: "gamma", displayName: "Comet", backend: "codex" },
+  { name: "delta", displayName: "Dawn", backend: "claude-code" },
 ] });
 const fm: any = fx.fm;
 fx.seedTheme("beta", { v: 1, font: "system" } as never);
 fx.seedTheme("gamma", { v: 1, font: "mono" } as never);
 const now = Date.now();
-for (const a of ["alpha", "beta", "gamma"]) {
-  fm.webChatHistory.record({ instance: a, sender: "you", role: "user", text: "What's new?", ts: new Date(now - 60_000).toISOString() });
-  fm.webChatHistory.record({ instance: a, sender: a, role: "agent", text: REPLY, ts: new Date(now - 30_000).toISOString() });
+for (const a of ["alpha", "beta", "gamma", "delta"]) {
+  fm.webChatHistory.record({ instance: a, sender: "you", role: "user", text: a === "delta" ? "有什麼新的？" : "What's new?", ts: new Date(now - 60_000).toISOString() });
+  fm.webChatHistory.record({ instance: a, sender: a, role: "agent", text: a === "delta" ? REPLY_ZH : REPLY, ts: new Date(now - 30_000).toISOString() });
 }
 const { tokenEpoch } = await import(REPO + "/src/web-session.ts");
 const code = () => { fm.initializeWebSessions(); return fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken) }).display; };
@@ -48,7 +54,7 @@ const CASES = [
   { tag: "light-default-en", theme: "light", lang: "en", agent: "alpha" },
   { tag: "dark-system-en", theme: "dark", lang: "en", agent: "beta" },
   { tag: "dark-mono-en", theme: "dark", lang: "en", agent: "gamma" },
-  { tag: "dark-default-zh-TW", theme: "dark", lang: "zh-TW", agent: "alpha" },
+  { tag: "dark-default-zh-TW", theme: "dark", lang: "zh-TW", agent: "delta" },
 ] as const;
 
 try {
@@ -62,8 +68,14 @@ try {
       await page.locator("#code").evaluate((input: HTMLInputElement, value: string) => { input.value = value; input.dispatchEvent(new Event("input", { bubbles: true })); input.form!.requestSubmit(); }, code());
       await page.waitForURL(`${fx.base}/ui`, { timeout: 30000 });
       await page.goto(`${fx.base}/ui/chat/${c.agent}`);
-      await page.getByText("Here is what changed:").waitFor({ timeout: 30000 });
+      await page.getByText(FIRST[c.lang].wait).waitFor({ timeout: 30000 });
       await page.waitForTimeout(1200);
+      // The page's language really is the case's (the leader's capture check: the zh-TW frames once showed English UI).
+      const ui = await page.evaluate(`({ lang: document.documentElement.lang, chrome: [...document.querySelectorAll(".p-chat .panel-head, .p-chat .composer, .sidebar")].map((e) => e.innerText).join(" ") })`) as { lang: string; chrome: string };
+      receipt.ui = { ...(receipt.ui || {}), [c.tag]: { lang: ui.lang, chrome: ui.chrome.replace(/\s+/g, " ").slice(0, 160) } };
+      const cjk = /[\u4e00-\u9fff]/.test(ui.chrome.replace(/中文/g, ""));
+      check(`${c.tag}: the UI is in ${c.lang} (<html lang>, and the chat's own words ${c.lang === "zh-TW" ? "are" : "aren't"} Chinese)`,
+        (c.lang === "zh-TW" ? /^zh-(TW|Hant)$/.test(ui.lang) : ui.lang === "en") && cjk === (c.lang === "zh-TW"), receipt.ui[c.tag]);
       const s = await ctx.newCDPSession(page);
       await s.send("DOM.enable"); await s.send("CSS.enable");
       const { root } = await s.send("DOM.getDocument", { depth: -1 });
@@ -89,8 +101,9 @@ try {
         const f = rows[e] ?? "";
         check(`${c.tag}: ${e} drawn by the colour emoji font (no other font draws it)`, emojiOnly(f), f);
       }
-      const first = Object.keys(rows).find((k) => k.startsWith("🆕 The update card"));
-      check(`${c.tag}: the bullet "🆕 The update card…": its 🆕 in Segoe UI Emoji`, !!first && rows[first].includes("Segoe UI Emoji(1)"), first && rows[first]);
+      const first = Object.keys(rows).find((k) => k.startsWith(FIRST[c.lang].bullet));
+      check(`${c.tag}: the bullet "${FIRST[c.lang].bullet}…": its 🆕 in Segoe UI Emoji`, !!first && rows[first].includes("Segoe UI Emoji(1)"), first && rows[first]);
+      if (first) receipt.fonts[c.tag + ":first"] = `${first} → ${rows[first]}`;
       receipt.fonts[c.tag + ":text"] = TEXT.map((t) => `${t} → ${rows[t]}`);
       check(`${c.tag}: the text line uses no emoji font`, !!rows[TEXT[0]] && !/Segoe UI Emoji/.test(rows[TEXT[0]]), rows[TEXT[0]]);
       check(`${c.tag}: 🆕︎ (text style) keeps a text glyph`, !!rows[TEXT[1]] && !/Segoe UI Emoji/.test(rows[TEXT[1]]), rows[TEXT[1]]);
@@ -99,8 +112,14 @@ try {
         for (const [i, e] of EMOJI.entries()) await page.locator(".msg .md li", { hasText: new RegExp(`^${e.replace(/[*+?^${}()|[\]\\]/g, "\\$&")}$`) }).last()
           .screenshot({ path: join(process.env.CROPS, `${c.tag}-${i}.png`) }).catch(() => {}); }
       const path = `m3796-win-edge-${c.tag}.png`;
-      await page.locator(".msg .md").last().screenshot({ path: join(OUT, path) });
-      receipt.pictures.push({ path, sha256: createHash("sha256").update(readFileSync(join(OUT, path))).digest("hex") });
+      // The whole chat panel: its header and composer show the page's language.
+      await page.locator(".p-chat").first().screenshot({ path: join(OUT, path) });
+      const sha256 = createHash("sha256").update(readFileSync(join(OUT, path))).digest("hex");
+      receipt.pictures.push({ path, sha256 });
+      if (c.lang === "zh-TW") {
+        const en = receipt.pictures.find((x: any) => x.path === `m3796-win-edge-${c.tag.replace("zh-TW", "en")}.png`);
+        check(`${c.tag}: the frame is not the en one's (sha256)`, !!en && en.sha256 !== sha256, en && en.sha256);
+      }
     } finally { await ctx.close(); }
   }
 } finally {
