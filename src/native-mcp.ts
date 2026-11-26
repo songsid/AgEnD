@@ -90,6 +90,11 @@ function refuse(req:IncomingMessage,res:ServerResponse,status:number,message:str
 }
 
 export class NativeMcpSessions {
+  private retired=false;
+  private physicalRequests=0;
+  requestContextPhysicallyIdle():boolean{return this.physicalRequests===0&&this.drainCalls.size===0;}
+  /** The caller already proved owned launches ended. A close/revoke is not a handler-drain proof. */
+  retireForRequestContext():void{if(!this.requestContextPhysicallyIdle())throw Error("Native MCP handlers remain in flight");this.retired=true;this.closeAll();}
   private readonly sessions=new RequestContextReferenceMap<string,Session>(session=>session.requestContext?.snapshot.context.ref.rootContextId??null,session=>`native-grant:${session.requestId}`);
   private readonly drainCalls=new RequestContextReferenceMap<string,Session>(session=>session.requestContext?.snapshot.context.ref.rootContextId??null,session=>`native-call:${session.requestId}`);
   constructor(private readonly ctx:AgentEndpointContext,registration?:RequestContextRegistrationGate) {this.sessions.installRegistration(registration);this.drainCalls.installRegistration(registration);}
@@ -105,6 +110,7 @@ export class NativeMcpSessions {
 
 
   grant(input:NativeMcpGrant):NativeMcpLease {
+    if(this.retired)throw Error("Native MCP factory is retired");
     this.prune();
     const config=this.ctx.fleetConfig?.instances[input.instance];
     if(this.requestContextRequired&&!input.requestContext)throw Error("Native MCP requires an admitted request context");
@@ -154,7 +160,7 @@ export class NativeMcpSessions {
   private current(session:Session):boolean {
     const config=this.ctx.fleetConfig?.instances[session.instance];
     let current=false;try{current=session.stillCurrent();}catch{/* a revoked owner is unavailable */}
-    return !session.closed && Date.now()<session.expires && windowsCliEnabled() && current
+    return !this.retired && !session.closed && Date.now()<session.expires && windowsCliEnabled() && current
       && (!session.requestContext || session.requestContext.current())
       && this.policy(session.instance)===session.policy && config?.runtime==="windows" && config.native_agent_id===session.agentId && config.backend===session.backend;
   }
@@ -208,7 +214,8 @@ export class NativeMcpSessions {
     if(!session || !this.current(session)){if(session)this.closeToken(session.token);refuse(req,res,401,"Native MCP capability is invalid or expired");return true;}
     const declared=Number(req.headers["content-length"]);
     if(Number.isFinite(declared) && declared>MAX_BYTES){refuse(req,res,413,"Native MCP request is too large");return true;}
-    void this.readRequest(req,res,session);
+    this.physicalRequests++;
+    void this.readRequest(req,res,session).finally(()=>{this.physicalRequests--;});
     return true;
   }
   private async readRequest(req:IncomingMessage,res:ServerResponse,session:Session):Promise<void> {

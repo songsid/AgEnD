@@ -64,7 +64,7 @@ import { GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
 import { placeGeneralRole } from "./general-role-block.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-tools.js";
-import { windowsAgentsFor } from "./windows-agents.js";
+import { WindowsAgents, windowsAgentsFor } from "./windows-agents.js";
 import { AgentRuntimeChanges } from "./agent-runtime-change.js";
 import { buildFleetInstructions } from "./instructions.js";
 import { SubagentService } from "./subagent-service.js";
@@ -332,7 +332,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
   return tasks;
 }
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
-import { windowsCliEnabled, closeWindowsBridge, inventoryProbed, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
+import { windowsCliEnabled, closeWindowsBridge, retireWindowsBridgeForRequestContext, windowsBridgeRequestContextIdle, inventoryProbed, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
 import { nativeCliVersionState } from "./runtime-pane-native.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
 import { RuntimeInstallService } from "./runtime-install.js";
@@ -1759,11 +1759,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private requestContextNativeGraphLease?:{current():boolean};
   private requestContextNativeFactoryOwners?:WeakMap<object,RequestContextNativeGraph>;
   private requestContextOpeningPaneManagers=0;
+  private requestContextNativeRetiring=false;
+  /** Already-drained owned launches only. The callback owns the Fleet/process, not the browser/readiness. */
+  async retireRequestContextNativeFactories(current:()=>boolean):Promise<void>{
+    const lease=captureProcessFleetLease(this.dataDir),owned=()=>!!lease?.current()&&current()&&this.requestContextAdmission?.available()===false;
+    if(!owned()||this.requestContextNativeRetiring)throw Error("Native factory retirement needs the owned admission fence");
+    const [{LocalPaneEndpoint},{localPaneScope}]=await Promise.all([import("./local-pane-endpoint.js"),import("./local-pane-launcher.js")]);
+    const scope=localPaneScope(this.dataDir),hub=this.runtimeHub,panes=this.paneManager,mcp=this.nativeMcpStore,runtime=this.fleetWindowsRuntime,executor=this.runtimeExecutor,relay=this.localPaneRelay;
+    const same=()=>this.runtimeHub===hub&&this.localPaneRelay===relay&&this.paneManager===panes&&this.nativeMcpStore===mcp&&this.fleetWindowsRuntime===runtime&&this.runtimeExecutor===executor&&!this.openingLocalPane&&!this.requestContextOpeningPaneManagers;
+    if(!owned()||!same()||runtime&&!runtime.requestContextPhysicallyIdle()||panes&&!panes.requestContextPhysicallyIdle()||mcp&&!mcp.requestContextPhysicallyIdle()||executor&&!executor.idleForRequestContext()||hub&&!hub.requestContextPhysicallyIdle()||!windowsBridgeRequestContextIdle(this)||WindowsAgents.requestContextOwnersOnDisk(this.dataDir).length!==0||!LocalPaneEndpoint.requestContextScopeIdle(scope))throw Error("Native factories still own work or an unconfirmed launch");
+    this.requestContextNativeRetiring=true;
+    try{
+      runtime?.retireForRequestContext();panes?.retireForRequestContext();mcp?.retireForRequestContext();executor?.retireForRequestContext();retireWindowsBridgeForRequestContext(this);
+      await Promise.all([hub?.retireForRequestContext(),LocalPaneEndpoint.retireScopeForRequestContext(scope)]);
+      if(!owned()||!same())throw Error("Native factory owner changed during retirement");
+      this.runtimeHub=null;this.localPaneRelay=null;this.paneManager=null;this.nativeMcpStore=null;this.fleetWindowsRuntime=null;this.runtimeExecutor=null;
+      this.requestContextNativeGraph=undefined;this.requestContextNativeGraphLease=undefined;this.requestContextNativeFactoryOwners=undefined;
+    }finally{this.requestContextNativeRetiring=false;}
+  }
   /** Only after exact old-owner retirement and transport teardown, behind the shared Fleet admission fence. */
   stageRequestContextNativeGraph(graph:RequestContextNativeGraph):void {
     const lease=captureProcessFleetLease(this.dataDir);
     if(this.requestContextNativeGraph||!lease?.current()||this.requestContextAdmission?.available()!==false||!graph.current()
-      ||this.runtimeHub||this.localPaneRelay||this.openingLocalPane||this.requestContextOpeningPaneManagers||this.paneManager||this.nativeMcpStore||this.fleetWindowsRuntime
+      ||this.runtimeHub||this.runtimeExecutor||this.localPaneRelay||this.openingLocalPane||this.requestContextOpeningPaneManagers||this.paneManager||this.nativeMcpStore||this.fleetWindowsRuntime
       ||typeof graph.execInput!=="function"||graph.panes.drainView("").registration!==graph.registration)throw Error("Request-context native graph is not retired");
     this.requestContextNativeGraph=graph;this.requestContextNativeGraphLease=lease;
   }
@@ -1784,6 +1802,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Machine credentials are separate from dashboard sessions and per-turn agent capabilities. */
   runtimeCoordinator(): RuntimeCoordinator {
+    if(this.requestContextNativeRetiring)throw Error("Native factory replacement is holding new work");
     if (!remoteRuntimeEnabled()) throw new Error("Remote runtimes are not enabled");
     if(!this.runtimeHub && this.readPendingOwnerNotices().length)this.scheduleOwnerNoticeFlush(30_000);   // a notice kept before a restart is delivered once the fleet is up
     const graph=this.requestContextNativeGraph||this.requestContextBoot?this.currentRequestContextNativeGraph():null;
@@ -1827,10 +1846,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.runtimeHub=graph?this.ownRequestContextNativeFactory(hub,graph):hub;
   }
   private runtimeWindowsExecutor(): RuntimeWindowsBridge {
+    if(this.requestContextNativeRetiring)throw Error("Native factory replacement is holding new work");
     return this.runtimeExecutor ??= new RuntimeWindowsBridge(this,()=>remoteRuntimeEnabled() && !this.shuttingDown ? this.runtimeCoordinator() : null);
   }
   /** Per-turn capabilities for native MCP, separate from browser and Linux-agent credentials. */
   nativeMcpSessions(): NativeMcpSessions {
+    if(this.requestContextNativeRetiring)throw Error("Native factory replacement is holding new work");
     const graph=this.requestContextNativeGraph||this.requestContextBoot?this.currentRequestContextNativeGraph():null;
     if(this.nativeMcpStore)return graph?this.requireRequestContextNativeFactory(this.nativeMcpStore,graph):this.nativeMcpStore;
     const sessions=new NativeMcpSessions(this as unknown as AgentEndpointContext,graph?.registration);
@@ -1841,6 +1862,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   invalidateNativeMcp(name: string): void { this.nativeMcpStore?.closeInstance(name); }
   /** The same instance registry and delivery entry point, with a native Windows execution adapter. */
   nativeInstanceRuntime(): FleetWindowsRuntime {
+    if(this.requestContextNativeRetiring)throw Error("Native factory replacement is holding new work");
     const graph=this.requestContextNativeGraph||this.requestContextBoot?this.currentRequestContextNativeGraph():null;
     if(this.fleetWindowsRuntime)return graph?this.requireRequestContextNativeFactory(this.fleetWindowsRuntime,graph):this.fleetWindowsRuntime;
     const runtime=new FleetWindowsRuntime({
@@ -2033,6 +2055,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { ...(result.version ? { native_cli_version: result.version } : {}), native_cli_verification: result.state };
   }
   private async localNativePaneEndpoint(): Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> {
+    if(this.requestContextNativeRetiring)throw Error("Native factory replacement is holding new work");
     const graph=this.requestContextNativeGraph||this.requestContextBoot?this.currentRequestContextNativeGraph():null;
     const admit = (): void => { if(graph&&this.currentRequestContextNativeGraph()!==graph)throw Error("Request-context native factory owner changed");if (this.shuttingDown || this.localPaneDrain || !localWindowsCliEnabled()) throw Error("Local Windows runtime is switched off or draining"); };
     admit(); if(this.localPaneDrain)throw Error("Local Windows runtime cleanup is pending"); if (this.localPaneRelay?.online()) return graph?this.requireRequestContextNativeFactory(this.localPaneRelay,graph):this.localPaneRelay;
@@ -2053,6 +2076,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** Persistent ownership is independent of the exec worker's per-turn capabilities. */
   private async nativePanes(): Promise<import("./native-pane-manager.js").NativePaneManager> {
+    if(this.requestContextNativeRetiring)throw Error("Native factory replacement is holding new work");
     const graph=this.requestContextNativeGraph||this.requestContextBoot?this.currentRequestContextNativeGraph():null;
     if (this.paneManager) return graph?this.requireRequestContextNativeFactory(this.paneManager,graph):this.paneManager;
     const boot=this.requestContextBoot;

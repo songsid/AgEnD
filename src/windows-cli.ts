@@ -62,6 +62,8 @@ export interface WindowsCliExecutor {
   cancel(id: string): WindowsCliTask;
   releaseUnknown(id: string): void;
   close(): void;
+  idleForRequestContext?():boolean;
+  retireForRequestContext?():void;
 }
 export interface WindowsTransport { executable: string; args: string[] }
 export type WindowsLauncher = () => Promise<WindowsTransport>;
@@ -102,6 +104,10 @@ export async function nativeWindowsTransport(): Promise<WindowsTransport> {
 }
 
 export class WindowsCliBridge {
+  private retired=false;
+  idleForRequestContext():boolean{return this.idleForUpdate();}
+  retireForRequestContext():void{if(!this.idleForUpdate())throw Error("Windows CLI workers are not physically idle");this.retired=true;this.close();}
+  private requireOpen():void{if(this.retired)throw Error("Windows CLI factory is retired");}
   private tasks = new Map<string, { input: NativeTaskInput; task: WindowsCliTask; personal: boolean; answerOnly: boolean; execInput?: Readonly<NativeExecInputClaim> }>();
   private submitted = new Set<string>();
   private child: ChildProcess | null = null;
@@ -133,6 +139,7 @@ export class WindowsCliBridge {
    * starts, as for a workspace or a task (#2937 review): authority revoked meanwhile starts nothing.
    */
   async probe(options: { force?: boolean } = {}, authorized: () => boolean = () => true): Promise<WindowsCliProbe> {
+    this.requireOpen();
     if (!options.force) return structuredClone(this.pendingProbe ? await this.pendingProbe : this.cachedProbe ?? NEVER_PROBED);
     this.pendingProbe ??= this.doProbe(authorized).then(value => {
       this.cachedProbe = structuredClone(value);
@@ -156,6 +163,7 @@ export class WindowsCliBridge {
     if (this.inventoryFile) writeInventory(this.inventoryFile, this.cachedProbe);
   }
   async prepareWorkspace(agentId: string, authorized: () => boolean = () => true): Promise<string> {
+    this.requireOpen();
     if (!validWindowsAgentId(agentId)) throw new Error("Invalid Windows agent id");
     const value = await this.workerResult({ op: "workspace", agentId }, 15_000, authorized);
     if (value.type !== "workspace" || value.agentId !== agentId || !validWindowsDirectory(value.cwd)
@@ -212,6 +220,7 @@ export class WindowsCliBridge {
     });
   }
   start(value: unknown, authorized: () => boolean = () => true, options: WindowsRunOptions = {}): WindowsCliTask {
+    this.requireOpen();
     const input = validateNativeTask(value);
     const execInput=options.execInput===undefined?undefined:validateNativeExecInputClaim(options.execInput);
     if(execInput && (execInput.requestId!==input.requestId || execInput.requestSha256!==nativeExecInputRequestDigest(input,options)
@@ -400,3 +409,12 @@ function writeInventory(file: string, value: WindowsCliProbe): void {
   try { atomicWriteFileSync(file, JSON.stringify(value), { mode: 0o600 }); } catch { /* kept in memory; detected again after a restart */ }
 }
 export function closeWindowsBridge(owner: object): void { bridges.get(owner)?.close(); }
+
+/** No constructor/start is allowed while replacing a retained local factory. */
+export function retireWindowsBridgeForRequestContext(owner:object):void {
+  const bridge=bridges.get(owner);if(!bridge)return;
+  bridge.retireForRequestContext();if(bridges.get(owner)!==bridge)throw Error("Windows CLI factory owner changed");bridges.delete(owner);
+}
+
+/** Inspect only an existing cached worker factory; never construct one to ask whether it is idle. */
+export function windowsBridgeRequestContextIdle(owner:object):boolean{return bridges.get(owner)?.idleForRequestContext()??true;}

@@ -256,3 +256,14 @@ describe("S-230 owned exec input boundary",()=>{
   expect(()=>f.manager.grant({instance:name,requestId,sandbox:"workspace-write",endpoint:f.lease.connection.endpoint,stillCurrent:()=>true,requestContext:{current:()=>true,snapshot:{owner:{instance:name}}}as any})).toThrow("owned input proof boundary");
  });
 });
+
+describe("S-230 native factory retirement",()=>{
+ it("revoking a legacy grant is not proof that its first-hop body/handler is gone",async()=>{
+  const f=fixture(),held=invoke(f,listing,{hold:true});expect(f.manager.requestContextPhysicallyIdle()).toBe(false);
+  f.manager.closeAll();expect(()=>f.manager.retireForRequestContext()).toThrow("handlers remain");
+  held.req.end(JSON.stringify(listing));expect((await held.done()).status).toBe(401);
+  await vi.waitFor(()=>expect(f.manager.requestContextPhysicallyIdle()).toBe(true));f.manager.retireForRequestContext();
+  expect(()=>f.manager.grant({instance:name,requestId,sandbox:"workspace-write",endpoint:"http://127.0.0.1:19280/agent",stillCurrent:()=>true})).toThrow("factory is retired");
+  expect((await invoke(f,listing).done()).status).toBe(401);
+ });
+});

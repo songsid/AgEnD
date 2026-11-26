@@ -234,6 +234,26 @@ export class RuntimeCoordinator {
   private readonly limits = new Map<string, { count: number; until: number }>();
   private readonly heartbeat: NodeJS.Timeout;
   private closed = false;
+  private physicalMessages=0;
+  private requestContextRetired=false;
+  private readonly transportClosed=new Promise<void>(resolve=>this.server.once("close",()=>resolve()));
+  private requestContextRetirement?:Promise<void>;
+  requestContextPhysicallyIdle():boolean {
+    return this.physicalMessages===0&&this.pending.size===0&&this.panePending.size===0&&this.accountPending.size===0&&this.paneToolPending.size===0
+      &&[...this.machineActivity.values()].every(activity=>activity.pending===0)&&[...this.connections.values()].every(connection=>connection.ws.bufferedAmount===0)&&this.state.machines.every(row=>!this.hasActiveTask(row.machine.id));
+  }
+  async retireForRequestContext():Promise<void>{
+    if(!this.requestContextPhysicallyIdle())throw Error("Runtime coordinator handlers or executions remain in flight");
+    if(!this.requestContextRetirement){
+      const sockets=[...new Set([...this.server.clients,...[...this.connections.values()].map(connection=>connection.ws)])];
+      const closed=sockets.map(ws=>ws.readyState===WebSocket.CLOSED?Promise.resolve():new Promise<void>(resolve=>ws.once("close",()=>resolve())));
+      this.close();for(const ws of sockets)if(ws.readyState!==WebSocket.CLOSED)ws.terminate();
+      this.requestContextRetirement=Promise.all([...closed,this.transportClosed]).then(()=>{});
+    }
+    await this.requestContextRetirement;
+    if(!this.requestContextPhysicallyIdle())throw Error("Runtime coordinator retirement is unconfirmed");
+    this.requestContextRetired=true;
+  }
   private identityValue?: RuntimeServerIdentity;
   /** `enroll-hello` sessions: the fresh private key made for one request, kept in memory only for two minutes and spent by its one `enroll` (or dropped). Keyed by the caller's nonce. */
   private readonly hellos = new Map<string, { privateKey: KeyObject; ephemeral: string; tid: string; expiresAt: number }>();
@@ -307,6 +327,7 @@ export class RuntimeCoordinator {
   }
   private now(): number { return this.options.now?.() ?? Date.now(); }
   private save(): void {
+    if(this.requestContextRetired)throw Error("Runtime coordinator factory is retired");
     const value = JSON.stringify(this.state);
     if (Buffer.byteLength(value) > MAX_STORE_BYTES) throw Error("Runtime machine journal limit reached");
     for (let attempt = 0; ; attempt++) {
@@ -617,11 +638,11 @@ export class RuntimeCoordinator {
     const connection: Connection = { ws, machineId: row.machine.id, generation: row.machine.generation, ready: false, alive: true, activity, helloTimer: setTimeout(() => ws.close(1008, "Runtime hello required"), 10_000) };
     connection.helloTimer.unref(); this.connections.set(row.machine.id, connection);
     ws.on("pong", () => { connection.alive = true; if (this.current(connection)) row.machine.lastSeenAt = this.now(); });
-    ws.on("message", (data, binary) => { if (binary) { ws.close(1008, "Runtime requires JSON text frames"); return; } void this.message(connection, data).catch(error => {
+    ws.on("message", (data, binary) => { if (binary) { ws.close(1008, "Runtime requires JSON text frames"); return; } this.physicalMessages++;void this.message(connection, data).catch(error => {
       // The cause (a static validation message) goes to the log and, trimmed, to the runtime so its terminal can show it.
       const reason = error instanceof RuntimeProtocolError ? `Invalid runtime message: ${error.message}`.replace(/[^ -~]/g, "?").slice(0, 120) : "Invalid runtime message";
       this.options.warn?.({ machineId: connection.machineId, code: 1008, reason, detail: error instanceof Error ? error.message : String(error) }, "Runtime connection closed because of an invalid runtime message"); ws.close(1008, reason);
-    }); });
+    }).finally(()=>{this.physicalMessages--;}); });
     ws.on("error", () => { /* close owns disconnect handling */ });
     ws.on("close", () => {
       clearTimeout(connection.helloTimer);

@@ -51,6 +51,16 @@ const execOptionsDigest=(options:WindowsAgentSendOptions)=>createHash("sha256").
 const idPattern = /^[a-f0-9-]{36}$/i;
 const shortText = (value: unknown, limit: number): value is string => typeof value === "string" && value.length <= limit && !value.includes("\0");
 export class WindowsAgents {
+  /** Existing ownership journal only. No cached executor is adopted and no physical port can be invoked. */
+  static requestContextOwnersOnDisk(home:string):Array<{agentId:string;instance?:string;requestId:string;kind:"pane"|"exec"}>{
+    const unavailable=():never=>{throw Error("Read-only native ownership inspection cannot execute");};
+    const view=new WindowsAgents(home,{probe:unavailable,prepareWorkspace:unavailable,start:unavailable,get:unavailable,list:unavailable,hasActiveTask:unavailable,cancel:unavailable,releaseUnknown:unavailable,close:unavailable});
+    for(const agent of view.data.agents){
+      if(!agent||!idPattern.test(agent.id)||[agent.activeId,agent.paneLaunchId].some(id=>id!==undefined&&(typeof id!=="string"||!idPattern.test(id)))||agent.paneLaunchId!==undefined&&agent.activeId!==agent.paneLaunchId)throw Error("Native ownership journal is invalid");
+      if(agent.activeId&&!agent.paneLaunchId&&(!Object.hasOwn(view.data.requests,agent.activeId)||view.data.requests[agent.activeId]?.agentId!==agent.id||!agent.turns.some(turn=>turn.id===agent.activeId)))throw Error("Native ownership journal is incomplete");
+    }
+    return view.data.agents.filter(agent=>agent.activeId||agent.paneLaunchId).map(agent=>({agentId:agent.id,...(agent.fleet_instance?{instance:agent.fleet_instance}:{}),requestId:agent.activeId??agent.paneLaunchId!,kind:agent.paneLaunchId?"pane":"exec"}));
+  }
   private drainSerial=0;
   get requestContextDrainRevision():string{return String(this.drainSerial);}
   requestContextPaneLaunches(){return this.data.agents.filter(agent=>agent.paneLaunchId).map(agent=>({agentId:agent.id,launchId:agent.paneLaunchId!,instance:agent.fleet_instance,machineId:agent.machineId??"local"}));}

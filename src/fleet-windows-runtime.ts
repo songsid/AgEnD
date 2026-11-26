@@ -66,12 +66,23 @@ export type NativeRuntimePatch = Pick<InstanceConfig,"display_name"|"description
 export type NativeExecutionResult = WindowsCliTask & {reportedCorrelationIds?: readonly string[]};
 
 export class FleetWindowsRuntime {
+  private retired=false;
+  private preparations=0;
+  private settling=0;
+  requestContextPhysicallyIdle():boolean{return !this.preparations&&!this.settling&&!this.mcpLeases.size&&!this.requestContextRuns.size&&!this.store.requestContextActiveExecutions().length&&this.bridge.idleForRequestContext?.()===true;}
+  retireForRequestContext():void {
+    if(!this.requestContextPhysicallyIdle())throw Error("Native conversations are not physically retired");
+    this.retired=true;
+  }
+  private async prepareFactory<T>(operation:()=>Promise<T>):Promise<T>{
+    this.enabled();this.preparations++;try{return await operation();}finally{this.preparations--;}
+  }
   private hasClaimed = false;
   private readonly requestContextRuns = new RequestContextReferenceMap<string, { requestId: string; rootContextId:string; retire(): void }>(run=>run.rootContextId,run=>`exec-run:${run.requestId}`);
   private requestContextLifecycle?: { turns(instance: string): RequestContextLocalTurns; owner(instance: string): RequestContextRuntimeOwner; prepare?: (instance:string,...args:Parameters<RequestContextExecOwner["prepare"]>)=>RequestContextExecInput };
   /** Uninstalled in production until L. The lane owner is stable across exec claims, not the new run id. */
   setRequestContextExecLifecycle(turns: RequestContextLocalTurns, owner: (instance: string) => RequestContextRuntimeOwner): void {
-    if (this.requestContextLifecycle || this.hasClaimed || this.mcpLeases.size) throw Error("Native request context must be installed before claims");
+    if (this.retired || this.requestContextLifecycle || this.hasClaimed || this.mcpLeases.size) throw Error("Native request context must be installed before claims");
     this.requestContextRuns.installRegistration(turns.registrationGate??undefined);
     this.requestContextLifecycle = { turns: () => turns, owner };
   }
@@ -79,7 +90,7 @@ export class FleetWindowsRuntime {
   setRequestContextExecLifecycles(turnsOf: (instance: string) => RequestContextLocalTurns,
     owner: (instance: string) => RequestContextRuntimeOwner, registration: RequestContextRegistrationGate,
     prepare?: (instance:string,...args:Parameters<RequestContextExecOwner["prepare"]>)=>RequestContextExecInput): void {
-    if (this.requestContextLifecycle || this.hasClaimed || this.mcpLeases.size) throw Error("Native request context must be installed before claims");
+    if (this.retired || this.requestContextLifecycle || this.hasClaimed || this.mcpLeases.size) throw Error("Native request context must be installed before claims");
     this.requestContextRuns.installRegistration(registration);
     const lanes = new Map<string, RequestContextLocalTurns>();
     this.requestContextLifecycle = { owner, ...(prepare?{prepare}:{}), turns: instance => {
@@ -93,7 +104,7 @@ export class FleetWindowsRuntime {
   /** Exact server-owned completion evidence remains readable after its C turn ended. */
   requestContextCompletion(name:string,requestId:string,inputId?:string){
     const lifecycle=this.requestContextLifecycle;
-    if(!lifecycle?.prepare||this.host.stopping()||!isNativeExecInstance(this.config(name)))throw Error("Native scoped completion is unavailable");
+    if(this.retired||!lifecycle?.prepare||this.host.stopping()||!isNativeExecInstance(this.config(name)))throw Error("Native scoped completion is unavailable");
     const agentId=this.id(name),owner=Object.freeze(structuredClone(lifecycle.owner(name))),reference=this.store.requestExecContext(agentId,requestId);
     if(!reference||reference.instance!==name||reference.incarnation!==owner.incarnation||inputId!==undefined&&reference.inputId!==inputId)throw Error("Native run belongs to another admitted input");
     const inputKey=nativeExecContextInputKey(reference),claim=this.store.requestExecInput(agentId,requestId,inputKey);
@@ -123,7 +134,7 @@ export class FleetWindowsRuntime {
     if (!id) throw new Error("Instance does not name a valid Windows runtime agent");
     return id;
   }
-  private enabled(): void { if (!windowsCliEnabled()) throw new Error("Windows runtime is disabled"); }
+  private enabled(): void { if(this.retired)throw Error("Native conversation factory is retired");if (!windowsCliEnabled()) throw new Error("Windows runtime is disabled"); }
   private closeMcp(name: string): void {
     const active=this.mcpLeases.get(name);
     this.mcpLeases.delete(name);
@@ -136,6 +147,7 @@ export class FleetWindowsRuntime {
   /** The host replaces this lightweight signal with the complete shared status frame. */
   private statusFrame(): {runtimeChanged:true} { return {runtimeChanged:true}; }
   register(): boolean {
+    if(this.retired)throw Error("Native conversation factory is retired");
     const fleet = this.host.fleet();
     return !!fleet && windowsCliEnabled() && registerWindowsProfiles(fleet,this.store,this.host.save);
   }
@@ -148,6 +160,7 @@ export class FleetWindowsRuntime {
     }
   }
   get(name: string): (WindowsAgent & {blocked:boolean}) | null {
+    if(this.retired)throw Error("Native conversation factory is retired");
     const config = this.config(name);
     if (!isWindowsInstance(config)) return null;
     const agent = this.store.get(this.id(name));
@@ -168,10 +181,11 @@ export class FleetWindowsRuntime {
     return !agent || agent.paused || agent.blocked || !switchedOn(agent) ? null : agent.activeId ? "working" : "idle";
   }
   /** Prepare a separate, pre-bound profile. The old conversation remains intact; startup cannot import an orphan. */
-  async prepareRuntimeChange(name:string,before:InstanceConfig,target:AgentRuntimeTarget,current:()=>boolean):Promise<PreparedAgentRuntime>{
+  prepareRuntimeChange(name:string,before:InstanceConfig,target:AgentRuntimeTarget,current:()=>boolean):Promise<PreparedAgentRuntime>{return this.prepareFactory(()=>this.prepareRuntimeChangeOwned(name,before,target,current));}
+  private async prepareRuntimeChangeOwned(name:string,before:InstanceConfig,target:AgentRuntimeTarget,current:()=>boolean):Promise<PreparedAgentRuntime>{
     const identity=target.machineId?this.host.machineGeneration?.(target.machineId):undefined;let revoked=false;
     const targetCurrent=()=>{
-      if(revoked)return false;
+      if(revoked||this.retired)return false;
       try{
       if(target.machineId){if(!remoteRuntimeEnabled()||!this.host.validateMachine)throw Error("Remote runtime is disabled");this.host.validateMachine(target.machineId,target.backend,target.sandbox,target.credentialProfile);}
       else if(!localWindowsCliEnabled())throw Error(LOCAL_WINDOWS_CLI_OFF);
@@ -212,7 +226,8 @@ export class FleetWindowsRuntime {
       && (!agent.machineId || this.host.machineAvailable?.(agent.machineId) === true)
       && !this.bridge.hasActiveTask(agent.machineId);
   }
-  async create(input: Record<string,unknown>, authorized: () => boolean, transaction?:Pick<SettingsExecution,"mutate"|"complete">,binding?:{native_adapter:"pane";topic_id?:number|string;channel_id?:string}): Promise<{name:string;runtime:"windows";agent:WindowsAgent}> {
+  create(input: Record<string,unknown>, authorized: () => boolean, transaction?:Pick<SettingsExecution,"mutate"|"complete">,binding?:{native_adapter:"pane";topic_id?:number|string;channel_id?:string}): Promise<{name:string;runtime:"windows";agent:WindowsAgent}> {return this.prepareFactory(()=>this.createOwned(input,()=>!this.retired&&authorized(),transaction,binding));}
+  private async createOwned(input: Record<string,unknown>, authorized: () => boolean, transaction?:Pick<SettingsExecution,"mutate"|"complete">,binding?:{native_adapter:"pane";topic_id?:number|string;channel_id?:string}): Promise<{name:string;runtime:"windows";agent:WindowsAgent}> {
     this.enabled();
     const fleet = this.host.fleet();
     if (!fleet) throw new Error("Fleet configuration is unavailable");
@@ -309,11 +324,12 @@ export class FleetWindowsRuntime {
     if (paused) { this.closeMcp(name);this.store.cancel(this.id(name)); }
     this.changed(name);
   }
-  cancel(name: string): WindowsCliTask | null { this.closeMcp(name);const result=this.store.cancel(this.id(name));this.changed(name);return result; }
+  cancel(name: string): WindowsCliTask | null { this.enabled();this.closeMcp(name);const result=this.store.cancel(this.id(name));this.changed(name);return result; }
   recover(name: string, confirmedStopped: unknown): WindowsAgent & {blocked:boolean} {
-    const result=this.store.recover(this.id(name),confirmedStopped);this.changed(name);return result;
+    this.enabled();const result=this.store.recover(this.id(name),confirmedStopped);this.changed(name);return result;
   }
-  async recoverAsync(name:string,confirmedStopped:unknown):Promise<WindowsAgent & {blocked:boolean}> {
+  recoverAsync(name:string,confirmedStopped:unknown):Promise<WindowsAgent & {blocked:boolean}> {return this.prepareFactory(()=>this.recoverAsyncOwned(name,confirmedStopped));}
+  private async recoverAsyncOwned(name:string,confirmedStopped:unknown):Promise<WindowsAgent & {blocked:boolean}> {
     const agent=this.get(name);
     if(!agent?.machineId)return this.recover(name,confirmedStopped);
     if(confirmedStopped!==true || !agent.activeId || !agent.blocked)throw new Error("Confirm the remote execution stopped before recovery");
@@ -333,7 +349,7 @@ export class FleetWindowsRuntime {
   }
   /** Idempotently bring existing native conversations into shared chat history and search. */
   importHistory(instance?:string): void {
-    if (!this.host.history) return;
+    if (this.retired||!this.host.history) return;
     for (const [name,config] of Object.entries(this.host.fleet()?.instances ?? {})) {
       if(instance&&name!==instance)continue;
       if (!isWindowsInstance(config)) continue;
@@ -435,6 +451,7 @@ export class FleetWindowsRuntime {
     const context=lease ? contextText : existing&&execInput?contextText:undefined;
     let task:ReturnType<WindowsAgents["send"]>;
     try { task=this.store.send(agent.id,{requestId,prompt},()=>!this.host.stopping() && authority?.() !== false,{...(lease ? {mcp:lease.connection} : {}),...(context?{context}:{}),...(credentialProfile ? {credentialProfile} : {}),...(execInput?{execInput,...(inputKey?{requestContextInputKey:inputKey}:{}),...(contextReference?{requestContextReference:contextReference}:{}),onInputWritten:inputFrame?inputFrame.written:()=>{throw Error("Retired native input cannot be written again");}}:{}),onSettled:task=>{
+      this.settling++;try{
       const reportedCorrelationIds=lease?.reportedCorrelations(typeof meta.from_instance === "string" ? meta.from_instance : undefined) ?? [];
       closeLease();inputFrame?.finish();
       // A confirmed run end is terminal. An uncertain native outcome is not proof that work ended.
@@ -445,6 +462,7 @@ export class FleetWindowsRuntime {
         else this.host.emit("message",{instance:name,role:task.status === "completed" ? "agent" : "status",sender:this.config(name)?.display_name || agent.name,text:task.status === "completed" ? task.output || "(No text output)" : [task.output,task.error || task.status].filter(Boolean).join("\n"),ts:new Date(task.finishedAt ?? Date.now()).toISOString(),messageId:replyId});
       }
       this.changed(name);settled({...task,reportedCorrelationIds});
+      }finally{this.settling--;}
     }}); } catch(error) { closeLease();retireContext();throw error; }
     if (task.finishedAt) closeLease();
     if (!execInput && meta.source !== "web" && meta.source !== "app") {

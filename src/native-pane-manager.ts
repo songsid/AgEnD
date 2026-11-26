@@ -43,6 +43,13 @@ export interface NativePaneManagerOptions {
 }
 interface Binding {native:RuntimeNativePaneLifecycle;lease:PaneMcpAuthorityLease;bind(daemon:Daemon):void}
 export class NativePaneManager {
+ private retired=false;
+ private requireOpen():void{if(this.retired)throw Error("Native pane manager is retired");}
+ requestContextPhysicallyIdle():boolean{return !this.preparing.size&&!this.bindings.size&&!this.drainLeases.size&&!!this.options.store.requestContextPaneLaunches&&this.options.store.requestContextPaneLaunches().length===0;}
+ retireForRequestContext():void {
+  if(!this.requestContextPhysicallyIdle())throw Error("Native panes have not proven their owned exit");
+  this.retired=true;
+ }
  private bindings=new Map<string,Binding>();
  private drainLeases=new Map<string,PaneMcpAuthorityLease>();
  private drainSerial=0;
@@ -79,6 +86,7 @@ export class NativePaneManager {
  private preparing=new Set<string>();
  constructor(private options:NativePaneManagerOptions){}
  private directory(id:string):string {
+  this.requireOpen();
   if(!UUID.test(id))throw Error("Invalid native agent identity");
   const root=join(this.options.home,"native-panes");mkdirSync(root,{recursive:true,mode:0o700});
   const stat=lstatSync(root);if(!stat.isDirectory()||stat.isSymbolicLink()||process.getuid&&(stat.uid!==process.getuid()||!!(stat.mode&0o077)))throw Error("Unsafe native pane registry");
@@ -103,7 +111,7 @@ export class NativePaneManager {
    return value;
   }catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return null;throw error;}
  }
- private save(file:string,value:Manifest):void{atomicWriteFileSync(file,JSON.stringify(value),{mode:0o600});}
+ private save(file:string,value:Manifest):void{this.requireOpen();atomicWriteFileSync(file,JSON.stringify(value),{mode:0o600});}
  private configurationHash(agent:WindowsAgent,config:InstanceConfig):string{
   // A profile joins the hash only when there is one, so every launch made before this existed keeps the hash it was saved with.
   const credentialProfile=nativeCredentialProfile(config);
@@ -134,6 +142,7 @@ export class NativePaneManager {
   this.options.store.pinFreshCodexSession(launch.agentId,fresh.previous,observed);return next;
  }
  private recordExit(file:string,manifest:Manifest,snapshot:RuntimePaneSnapshot):Manifest{
+  this.requireOpen();
   if(manifest.launch.cli==="codex"&&manifest.fresh?.sessionId&&snapshot.sessionId!==undefined&&snapshot.sessionId!==manifest.fresh.sessionId)throw Error("Fresh Codex exit conversation differs");
   let next=manifest;
   if(manifest.launch.cli==="codex"&&manifest.fresh&&snapshot.sessionId&&snapshot.sessionId!==manifest.fresh.previous.sessionId
@@ -164,6 +173,7 @@ export class NativePaneManager {
  }
  /** Prepare metadata and helper authority first; acquire() alone may reserve and spawn. */
  async prepare(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<RuntimeNativePaneLifecycle> {
+  this.requireOpen();
   const id=config.native_agent_id;if(!id||!UUID.test(id)||this.preparing.has(id))throw Error("Native pane preparation already has an owner or lacks an identity");
   this.preparing.add(id);this.drainSerial++;try{return await this.prepareOwned(name,config,assertCurrent);}catch(error){if(error instanceof NativePaneRecoveryError){assertCurrent();this.options.store.setPaneRecovery(id,error.recovery);}throw error;}finally{this.preparing.delete(id);this.drainSerial++;}
  }

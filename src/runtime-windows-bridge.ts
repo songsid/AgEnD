@@ -20,6 +20,13 @@ export interface RuntimeExecutionCoordinator {
 type Pending = {machineId: string; task: WindowsCliTask; settle?: WindowsRunOptions["onSettled"]; input?:{claim:NonNullable<WindowsRunOptions["execInput"]>;publish:NonNullable<WindowsRunOptions["onInputWritten"]>;written:boolean;failed:boolean}; timer: ReturnType<typeof setTimeout>};
 
 export class RuntimeWindowsBridge implements WindowsCliExecutor {
+  private retired=false;
+  private requireOpen():void{if(this.retired)throw Error("Native runtime bridge is retired");}
+  idleForRequestContext():boolean{return this.pending.size===0&&this.scopes.size===0&&this.local.idleForRequestContext?.()===true;}
+  retireForRequestContext():void {
+    if(!this.idleForRequestContext()||!this.local.retireForRequestContext)throw Error("Native runtime bridge is not physically idle");
+    this.local.retireForRequestContext();this.retired=true;this.close();
+  }
   private readonly local: WindowsCliExecutor;
   private readonly pending = new Map<string, Pending>();
   private readonly scopes = new Map<string,{machineId: string; connection: NativeMcpConnection}>();
@@ -29,6 +36,7 @@ export class RuntimeWindowsBridge implements WindowsCliExecutor {
     this.local = local ?? windowsBridgeFor(owner);
   }
   private remote(): RuntimeExecutionCoordinator {
+    this.requireOpen();
     const remote = this.coordinator();
     if (!remote) throw new Error("Remote runtimes are not enabled");
     if (this.attached !== remote) {
@@ -67,12 +75,14 @@ export class RuntimeWindowsBridge implements WindowsCliExecutor {
     return remote;
   }
   async probe(options: {force?:boolean;machineId?:string} = {}): Promise<WindowsCliProbe> {
+    this.requireOpen();
     if (!options.machineId) return this.local.probe(options);
     const remote=this.machine(options.machineId), machine=remote.machine(options.machineId)!;
     if (!options.force) return structuredClone(machine.inventory ?? {clis:[],home:"",probedAt:null});
     return await remote.call(options.machineId,"probe",{force:true}) as WindowsCliProbe;
   }
   async prepareWorkspace(agentId: string, authorized: ()=>boolean = ()=>true, machineId?:string): Promise<string> {
+    this.requireOpen();
     if (!machineId) return this.local.prepareWorkspace(agentId,authorized);
     if (!authorized()) throw new Error("Authorization expired");
     const result=await this.machine(machineId).call(machineId,"workspace",{agentId}) as {cwd?:unknown};
@@ -81,6 +91,7 @@ export class RuntimeWindowsBridge implements WindowsCliExecutor {
     return result.cwd;
   }
   start(value: unknown, authorized: ()=>boolean = ()=>true, options: WindowsRunOptions = {}): WindowsCliTask {
+    this.requireOpen();
     if (!options.machineId) return this.local.start(value,authorized,options);
     const input=validateNativeTask(value), machineId=options.machineId, remote=this.machine(machineId);
     const execInput=options.execInput===undefined?undefined:validateNativeExecInputClaim(options.execInput);

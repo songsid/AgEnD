@@ -16,12 +16,30 @@ export interface LocalPaneOptions {
  diagnostic?(text:string):void;
 }
 export class LocalPaneEndpoint implements NativeMachineEndpoint {
+ private static readonly physicalRelays=new Map<string,Set<LocalPaneEndpoint>>();
+ static requestContextScopeIdle(scope:string):boolean{return [...this.physicalRelays.get(scope)??[]].every(endpoint=>endpoint.requestContextPhysicallyIdle());}
+ static async retireScopeForRequestContext(scope:string):Promise<void>{
+  const owned=[...this.physicalRelays.get(scope)??[]];if(!this.requestContextScopeIdle(scope))throw Error("Local pane relay handlers remain in flight");
+  await Promise.all(owned.map(endpoint=>endpoint.retireForRequestContext()));
+  if(this.physicalRelays.get(scope)?.size)throw Error("Local pane relay owner changed during retirement");
+ }
+ requestContextPhysicallyIdle():boolean{return this.mcpPending===0&&this.pending.size===0;}
+
  readonly machineId="local";private readonly attachment=randomUUID();private child:ChildProcess|undefined;private connected=false;private stopped=false;private mcpPending=0;private cleanupOnly=false;private lastLease=0;
  private pending=new Map<string,Pending>();private listeners=new Set<(event:RuntimeCoordinatorEvent)=>void>();private interval:ReturnType<typeof setInterval>|undefined;
  private hostBootId:string|undefined;private requestContextProtocol=false;
+ private resolveRelayClosed!:()=>void;
+ private readonly relayClosed=new Promise<void>(resolve=>{this.resolveRelayClosed=resolve;});
  private constructor(private options:LocalPaneOptions){}
+ async retireForRequestContext():Promise<void>{
+  if(!this.requestContextPhysicallyIdle())throw Error("Local pane relay handlers remain in flight");
+  this.stop();await this.relayClosed;
+  if(this.mcpPending||this.pending.size)throw Error("Local pane relay retirement is unconfirmed");
+ }
  static async open(options:LocalPaneOptions):Promise<LocalPaneEndpoint>{
   const endpoint=new LocalPaneEndpoint(options);options.admit();const child=await options.launch();endpoint.child=child;
+  const relays=this.physicalRelays.get(options.scope)??new Set<LocalPaneEndpoint>();relays.add(endpoint);this.physicalRelays.set(options.scope,relays);
+  child.once("close",()=>{relays.delete(endpoint);if(this.physicalRelays.get(options.scope)===relays&&!relays.size)this.physicalRelays.delete(options.scope);endpoint.resolveRelayClosed();});
   try{options.admit();await endpoint.attach(child);options.admit();return endpoint;}catch(error){endpoint.stop();throw error;}
  }
  online():boolean{if(this.stopped||!this.connected||performance.now()-this.lastLease>=15_000)return false;if(this.cleanupOnly)return true;try{this.options.admit();return true;}catch{return false;}}

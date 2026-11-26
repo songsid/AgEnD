@@ -176,3 +176,10 @@ it('retains the launch tool ceiling across a wider live menu and coordinator rea
  const fresh=await manager.prepare('native',f.config,()=>{});fresh.bindDaemon({paneToolResponseWritten:vi.fn()}as never);await fresh.acquire(()=>{});expect(fresh.snapshot()!.launchId).not.toBe(oldLaunch);
  expect(await manager.handle('local',call(),()=>true)).toMatchObject({result:{content:[{type:'text',text:'ok'}]}});expect(f.invoke).toHaveBeenCalledOnce();await fresh.release('close');
 });
+
+it("S-230 keeps a native factory until the retained exact launch exits, and its retired object cannot prepare again",async()=>{
+ const f=await fixture(),native=await f.manager.prepare("native",f.config,()=>{});await native.acquire(()=>{});
+ expect(()=>f.manager.retireForRequestContext()).toThrow("owned exit");const pinned=f.store.get(f.agent.id).threadId;
+ await native.release("close");f.manager.retireForRequestContext();
+ await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("manager is retired");expect(f.store.get(f.agent.id).threadId).toBe(pinned);expect(f.spawn).toHaveBeenCalledOnce();
+});

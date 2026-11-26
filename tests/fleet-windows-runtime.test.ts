@@ -498,3 +498,11 @@ describe("S-230 actual exec claim and accepted human input",()=>{
   f.tasks.set(id,{...f.tasks.get(id)!,outcomeConfirmed:true});f.runtime.get(f.name);expect(scope.current()).toBe(false);
  });
 });
+
+
+it("S-230 retired conversation factories cannot serve again, and a pending profile preparation blocks retirement",async()=>{
+ const f=fixture();(f.bridge as any).idleForRequestContext=()=>true;
+ let resume!:(cwd:string)=>void;(f.bridge as any).prepareWorkspace=()=>new Promise<string>(resolve=>resume=resolve);
+ const pending=f.create();expect(()=>f.runtime.retireForRequestContext()).toThrow("not physically retired");resume("C:\\Fixture");const {name,agent}=await pending;
+ f.runtime.retireForRequestContext();await expect(f.runtime.deliver(name,{content:"Must not start"})).rejects.toThrow("factory is retired");expect(()=>f.runtime.register()).toThrow("factory is retired");expect(f.start).not.toHaveBeenCalled();expect(f.store.get(agent.id).instructions).toBe("Use native tools");
+});
