@@ -166,12 +166,11 @@ describe("drawn (drawPart)", () => {
     F = await import("/ui/js/fleet-office.js");
   });
   afterAll(async () => { await p.unmount(); p.restore(); });
-  /** Cozy with every seat of its working area facing `facing` (or plain), one agent in `state`: what drawCharacter got. */
+  /** Cozy with every seat of every area (the Help desk's too) facing `facing` (or plain), one agent in `state`: what drawCharacter got. */
   function drawn(state: string, facing: string | null, waitingFor: ((n: string) => any) | null = null) {
     const base = K.SKINS.get("cozy"), calls: any[] = [];
-    const work = base.pack.stateZones.working;
-    const pack = { ...base.pack, areas: { ...base.pack.areas, [work]: { ...base.pack.areas[work],
-      seats: base.pack.areas[work].seats.map((s: any) => (facing ? { ...s, standFacing: facing } : s)) } } };
+    const pack = { ...base.pack, areas: Object.fromEntries(Object.entries(base.pack.areas).map(([k, a]: [string, any]) => [k,
+      { ...a, seats: a.seats.map((s: any) => (facing ? { ...s, standFacing: facing } : s)) }])) };
     const skin = { ...base, pack, drawCharacter: (_c: any, _b: any, look: any, ms: number) => calls.push({ look, ms }), drawFurniture() {}, drawBackground() {}, drawTag() {}, drawBubble() {} };
     const L = Z.zonesLayout(pack, [{ name: "example-agent", state, i: { name: "example-agent" } }]);
     const looks = new Map(L.rooms.flatMap((r: any) => r.desks).filter((d: any) => d.node).map((d: any) => [d.key,
