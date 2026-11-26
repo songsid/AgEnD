@@ -6,7 +6,7 @@ Real-app captures from the owned web fixture (`scripts/manual/smoke-fixture`) in
 
 The page, the routes, the Settings form (a real save into `fleet.yaml`) and the check's own logic are the real ones.
 
-Script: `scripts/manual/preview-fixed-host-m3814/capture.mts`. It ran at `0b333d129` (`src` clean) and passed 47 of 47 checks; `receipt.json` lists each check and each PNG's sha256. Desk light en and phone dark zh-TW.
+Script: `scripts/manual/preview-fixed-host-m3814/capture.mts`. It ran at `37e34d102` (`src` clean) and passed 51 of 51 checks; `receipt.json` lists each check and each PNG's sha256. Desk light en and phone dark zh-TW.
 
 | Frame | What it shows |
 |---|---|

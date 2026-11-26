@@ -1,5 +1,5 @@
 {
-  "sourceHead": "0b333d12954383e8b5d6a85a657d0905408ec8ef",
+  "sourceHead": "37e34d102684869e4b9369e78722309db676b2d8",
   "dirty": [],
   "checks": [
     {
@@ -143,6 +143,22 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW 2: 「規則」 kept whole in the fixed address's card",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「指到」 kept whole in the fixed address's card",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「下方」 kept whole in the fixed address's card",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「預覽網址」 kept whole in the fixed address's card",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 2b: the steps are numbered under a heading with its disclosure marker",
       "ok": true
     },
@@ -194,45 +210,45 @@
   "pictures": [
     {
       "path": "m3814-desk-light-en-1-notice.png",
-      "sha256": "993f12da2b6848819cd736b1123ace10da0192e43a403597e605f62a830ee549"
+      "sha256": "d0ef1bf675715013cd5a0819b57183d9c4fdfd4e9c3c7a65319075caf50b5abe"
     },
     {
       "path": "m3814-desk-light-en-2-settings-landed.png",
-      "sha256": "78565e42eceb62380632bb19bd23406e911c6eb5117260cad1537b5c4895e427"
+      "sha256": "f2557e7bbfd907a28793d5b2d37e0ba20122684655b9f6d699a186913dcbdfcd"
     },
     {
       "path": "m3814-desk-light-en-2b-route-step.png",
-      "sha256": "63387d4e9d3ce8c9d12ffffbde69a283c686c20b6473ad0cbca4ec6b9f4d81bb"
+      "sha256": "69b1aaebd694bf6429a56d32a3b20611143c05b73bea95ebe326360f5397b554"
     },
     {
       "path": "m3814-desk-light-en-2c-no-fixed-hostname.png",
-      "sha256": "936b610ebff111709cafc3082c5549dd05f79495319dccc003de430299a9aa70"
+      "sha256": "0ef1962aabe3fddbf284a1624e24ba15af11928530b18bde3940235ab77f4d81"
     },
     {
       "path": "m3814-desk-light-en-3-saved.png",
-      "sha256": "5fe6cb4e3374d973ff8e90785320f6084d3165b02dd1ed04b945815608a67e47"
+      "sha256": "ecd14111d69d05e55fd0a55ccaea297bcc5d05c71da02a35106f9467f472767d"
     },
     {
       "path": "m3814-desk-light-en-4-check.png",
-      "sha256": "556aa0c95615da88bd0814fe72e6d24b80b6f6f2e01627f94538d611581065b7"
+      "sha256": "eeb6fe1f0aec3584b7af624f91c04c3c70289ed1bcad60eb45f6ceabb4f68431"
     },
     {
       "path": "m3814-phone-dark-zh-TW-1-notice.png",
-      "sha256": "965b2fffc9697dd88062e32f5e6264e880d5706d4d1f7fed21db3d86b46e509c"
+      "sha256": "d0dbdba439b384eee2a0f66321af9a9307a0b96c07359e965a1d01923eb5c9ce"
     },
     {
       "path": "m3814-phone-dark-zh-TW-2-settings-landed.png",
-      "sha256": "47efd02a64eb15fe2345e3094df6486242b316b05d2c9071c6285260ae2ac758"
+      "sha256": "bc5d418ea703f9c8980f8ebfede3594dc4545f393c47c8ce22326b842f6c339f"
     },
     {
       "path": "m3814-phone-dark-zh-TW-2b-route-step.png",
-      "sha256": "daaf9cf5210489f2f3f2d120561ba830b8f17952c6422067309394e06270850b"
+      "sha256": "4e8625ab49e16d0b42fa6b4b302fd1ea217d44179add48cba6d9e8d72583bd35"
     },
     {
       "path": "m3814-phone-dark-zh-TW-4-check.png",
-      "sha256": "f530b653d2b9da62a4a6eebc1fbc052584441a0c68634fa9b60b46d5f610ecd3"
+      "sha256": "5613cc14346c16b8fca3e84813fc2ffd7abfd8f9073521f39885111fa27f43e0"
     }
   ],
-  "passed": 47,
-  "total": 47
+  "passed": 51,
+  "total": 51
 }
