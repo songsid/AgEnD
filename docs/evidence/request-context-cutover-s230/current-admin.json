@@ -1,0 +1,45 @@
+{
+  "sourceCommit": "ab70d0cb83cee2036beca66099c614fb26986c95",
+  "scope": "Current administrator recheck for privileged tools in the explicit installation policy factory; ordinary admitted native contact unchanged.",
+  "checks": {
+    "restored": {
+      "files": 4,
+      "passed": 155,
+      "failed": 0
+    },
+    "typecheckTests": "passed",
+    "mutants": [
+      {
+        "mutation": "privileged-admin-recheck-removed",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "demotion-contact-hold",
+        "exit": 1,
+        "red": true
+      }
+    ],
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "Canonical administrator-only tools are derived from the central coordinator-versus-worker profile, not model arguments.",
+    "Recheck resolves original root actor and checks current contactAdminOf before privileged operation, including commit-point policy calls.",
+    "Demotion alone leaves ordinary contact normal; current-access removal refuses in E host.current without a lifetime lock.",
+    "The explicit factory remains dormant until production installation; accepted-ingress and current-access host factory still require assembly."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "061d9b5218039fff0082ffc05b72dacf7aafe20e4a2193e0c44353df278aa1de"
+    },
+    {
+      "path": "tests/request-contact-gate-s225.test.ts",
+      "sha256": "1e7e21f78ce223b5f8556ac43b10b75a6d779c637b0f385b04252a78a8629889"
+    },
+    {
+      "path": "tests/request-context-policy-s232.test.ts",
+      "sha256": "0334fc1256130abd1b9b1d8ce4a7132760ef67f1f35d2bc12ec0862b01b33cf1"
+    }
+  ]
+}
