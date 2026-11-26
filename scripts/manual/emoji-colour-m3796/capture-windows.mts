@@ -89,7 +89,7 @@ try {
       }
       receipt.fonts[c.tag] = rows;
       receipt.chatClass = { ...(receipt.chatClass || {}), [c.tag]: await page.evaluate(`[...(document.querySelector(".p-chat") || { classList: [] }).classList].join(" ")`) };
-      if (c.agent !== "alpha") check(`${c.tag}: the agent's theme font is on the chat`, receipt.chatClass[c.tag].includes(`th-font-${c.agent === "beta" ? "system" : "mono"}`), receipt.chatClass[c.tag]);
+      if (c.agent === "beta" || c.agent === "gamma") check(`${c.tag}: the agent's theme font is on the chat`, receipt.chatClass[c.tag].includes(`th-font-${c.agent === "beta" ? "system" : "mono"}`), receipt.chatClass[c.tag]);
       // A list item's fonts also count its surrounding whitespace (one or two glyphs in the text font): the emoji is
       // drawn by Segoe UI Emoji when that is the only other font listed.
       // The whitespace's font is the one drawing this case's Latin text (the most glyphs on the plain text line).
