@@ -21,12 +21,13 @@ describe("M-3770 §5.1: the scope", () => {
       ["tmux", "runtime"], ["tmux/default", "runtime"], ["operator/x", "runtime"], ["instances/a/channel.sock", "runtime"], ["fleet.pid", "runtime"], ["fleet.lock", "runtime"],
       ["fleet.lock.reclaim", "runtime"], [".update.lock", "runtime"], [".service.lock", "runtime"], [".update.lock.reclaim", "runtime"], ["tunnel.lease", "runtime"], ["web.token", "runtime"], ["view.token", "runtime"],
       [".state-lease.sqlite", "lease"], [".state-lease.sqlite-journal", "lease"],
+      ["instances/a/muse-xdg", "user-state"], ["instances/a/muse-xdg/opencode", "user-state"], ["instances/a/muse-xdg/auth.json", "user-state"],
     ];
     for (const [rel, kind] of cases) expect(classify(rel), rel).toMatchObject({ included: false, kind });
   });
 
   it("is precise at the edges: a name that merely starts like an excluded one is included", () => {
-    for (const rel of ["workspaces-old", "cachex", "tmux-migration.json", "search", "fleet.lockfile", "logs-archive.json", "instances/a/output.logx"]) {
+    for (const rel of ["workspaces-old", "cachex", "tmux-migration.json", "search", "fleet.lockfile", "logs-archive.json", "instances/a/output.logx", "instances/a/muse-xdgx", "instances/a/codex-home", "muse-xdg"]) {
       expect(classify(rel), rel).toEqual({ included: true });
     }
   });

@@ -303,6 +303,7 @@ The test seeds committed WAL frames that aren't checkpointed yet (they must be i
   - `workspaces/` (the agents' working directories);
   - `credential-profiles/` (whole, rev 3: the CLIs' homes, including the profiles' `.claude.json`);
   - `cx/`;
+  - `instances/*/muse-xdg/` (rev 9): muse's isolated XDG home, with links into the user's `~/.config`; CLI user state, like `cx/`;
   - `cache/`, `cache-codex-rollouts.json`, `usage-last-good.json`, `search.db*` (caches and a rebuildable index);
   - logs (`*.log`, `instances/*/output.log`, `profiles/`);
   - runtime (`tmux/`, `operator/`, `*.sock`, `fleet.pid`, `fleet.lock`, the update and service locks, `tunnel.lease`, `web.token`, `view.token`);
@@ -334,7 +335,12 @@ Today's inventory has no pre-commit writer outside the scope. A release that add
 
 ### 5.2 Confinement (before anything is opened)
 - The scope is walked from `realpath(home)` with `lstat`, never following a link.
-- **Symlinks:** a symlink is recorded as a link, with its target text; it is not opened and its target is not copied. A symlinked **directory** is a link and is not entered.
+- **Symlinks:** a symlink is recorded as a link, with its target text; it is not opened and its target is not copied. A symlinked **directory** is never entered.
+  - **Recorded:**
+    - a link that resolves **inside** the home, whatever it points to. AgEnD makes such links: `instances/<name>/codex-home` → `cx/<hash>`, and `cli-env/codex-home`. Their targets are snapshotted already or excluded on purpose;
+    - a dangling link;
+    - a link to a plain file.
+  - **Refused (rev 9):** a link that resolves **outside** the home to a **directory** or a **SQLite database** (its first 16 bytes peeked, never opened as one). A rollback would restore the link while the newer state behind it stays: the exact failure the snapshot exists to prevent.
 - **Every included regular file**, a database first, must have a path whose components below the home are all real directories (`lstat`, no link), and whose `realpath` is inside `realpath(home)`.
 - **Databases** are opened only after that check. Their `dev`/`ino` is compared before and after the open, and a difference abandons the attempt.
 - Files that are neither regular files, directories nor symlinks are refused, and the attempt is abandoned.
@@ -345,7 +351,7 @@ Today's inventory has no pre-commit writer outside the scope. A release that add
 - **The manifest**, `snapshot.json`, lists every entry: `{ rel, type: "file" | "dir" | "link", mode, size?, sha256?, target? }`, plus each database's `user_version` and schema hash.
 - **The order:** the manifest is written last and fsynced, then the attempt directory, then stage `snapshotted` is published.
 - **Verification:** the snapshot tree is walked again and compared with the manifest as an exact set: no extra entry, no missing one, the same types, sha256 and link targets. A mismatch, before `snapshotted` is published, is abandoning.
-- **Immutability:** `snapshot/` is never written after `snapshotted`. A restore copies from it and never renames out of it.
+- **Immutability:** `snapshot/` is never written after `snapshotted`. A restore copies from it and never renames out of it. Taking a snapshot where `snapshot/` or `snapshot.json` already exists is refused before anything is done, and a failed snapshot removes only what that call created (rev 9).
 
 ### 5.4 Space
 P6 adds the scope's size, measured before the barrier opens.
@@ -600,6 +606,12 @@ A retry recognises each effect by the path's presence and its hash against the p
 | The inventory gate's roots (any member chain ending in `dataDir`, `DATA_DIR`, `agendHome` or `stateDir`, plus `getAgendHome()`) and its literals (`"…"`, `'…'`, `` `…` ``); helper-reached names listed by hand | §5.1 |
 | `host-monitoring.sqlite` is a pre-commit SQLite database: §5.3's checkpoint applies to it | §5.1, §4.5 |
 | 2.4 must pin with a test that trial mode never reaches `startInstance`: post-commit user-state eligibility rests on it | §5.1, 2.4 |
+
+### Revision 9 (2.3 part 2, Fable #4523)
+| Change | Where |
+|---|---|
+| A link that resolves outside the home to a directory or a SQLite database refuses the snapshot. Links inside the home (`codex-home` → `cx/`), dangling links and links to plain files are recorded. `instances/*/muse-xdg/` is excluded as CLI user state | §5.1, §5.2 |
+| A snapshot already present is never touched: a second take refuses up front; a failure removes only what that call made | §5.3 |
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
 - `update-journal.ts`: the layout, publication order, readers, stages and marks;
