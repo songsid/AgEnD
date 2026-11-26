@@ -113,6 +113,7 @@ async function walk(c: any) {
     await page.evaluate(`document.querySelector("#publicPreviewAddress").scrollIntoView({ block: "start" })`);
     const list = await page.evaluate(`({ marker: getComputedStyle(document.querySelector(".fixed-preview-steps summary")).display, numbers: getComputedStyle(document.querySelector(".fixed-preview-steps ol")).listStyleType })`) as any;
     check(`${tag} 2b: the steps are numbered under a heading with its disclosure marker`, list.marker === "list-item" && list.numbers === "decimal", list);
+    if (zh) check(`${tag} 2b: 「（傳 /web 開啟）」 kept whole`, await unsplit(page, "（傳 /web 開啟）", ".fixed-preview-steps") === true, await unsplit(page, "（傳 /web 開啟）", ".fixed-preview-steps"));
     if (!saved) {
       const why = await page.evaluate(`({ disabled: document.querySelector("#previewAddressCheck").disabled, why: (document.querySelector("#previewAddressCheckWhy") || {}).innerText })`) as any;
       check(`${tag} 2b: Check is greyed and says why`, why.disabled && why.why === W(zh, "Fill in the preview address first.", "先填好預覽網址。"), why);
@@ -128,6 +129,8 @@ async function walk(c: any) {
       check(`${tag} 2c: no fixed hostname: no preview field, one line saying the fixed public hostname comes first`, !none.field && none.line === W(zh,
         "HTML previews over the public link use a temporary Cloudflare link. To give them a fixed preview address, fill in the fixed public hostname above first.",
         "透過公開連結的 HTML 預覽會用 Cloudflare 臨時連結。要改用固定的預覽網址，請先填上方的固定公開網域。"), none);
+      const sizes = await page.evaluate(`({ line: parseFloat(getComputedStyle(document.querySelector("#publicPreviewNeedsFixed")).fontSize), note: parseFloat(getComputedStyle(document.querySelector(".s-public-entry .note")).fontSize) })`) as any;
+      check(`${tag} 2c: that line is set apart at body size, larger than the help notes around it`, sizes.line > sizes.note, sizes);
       await page.evaluate(`document.querySelector("#publicFixedAddress").scrollIntoView({ block: "start" })`);
       await shot(page, `${tag}-2c-no-fixed-hostname`);
       await page.locator("#publicWebHostname").fill(HOST);

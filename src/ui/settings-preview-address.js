@@ -58,7 +58,7 @@ register("settings", {
     pvaStep2Any: "「Hostname」欄填一個名稱，例如 {0}",
     pvaStep3: "「Service URL」欄填 http://127.0.0.1:{0}（預覽專用的埠，不是 {1}）",
     pvaStep4: "按「Add route」儲存。Cloudflare 會自動新增 DNS 記錄。",
-    pvaStep5: "在這裡填上網址並儲存。公開連結開著時（傳 /web 開啟），按「檢查預覽網址」。",
+    pvaStep5: "在這裡填上網址並儲存。公開連結開著時（傳 /web 開啟），按「檢查預覽網址」。",
     pvaCheck: "檢查預覽網址",
     pvaNeedsAddress: "先填好預覽網址。",
     previewNeedsFixedHost: "透過公開連結的 HTML 預覽會用 Cloudflare 臨時連結。要改用固定的預覽網址，請先填上方的固定公開網域。",
