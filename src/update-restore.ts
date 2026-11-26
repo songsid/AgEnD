@@ -177,7 +177,8 @@ export function restoreHome(home: string, attemptDir: string, deps: RestoreDeps)
       }
       const lines = text.split("\n").filter(Boolean);
       if (lines.length === 0) throw new Manual("restore.log has no header");
-      header = JSON.parse(lines[0]!) as Header;
+      try { header = JSON.parse(lines[0]!) as Header; }
+      catch { throw new Manual("restore.log's header can't be read"); }   // a damaged header: manual, never a crash (Fable #4525 nit)
       if (header.schema !== 1 || header.manifestSha256 !== manifestSha256) throw new Manual("restore.log's header doesn't match this snapshot");
       logged = [];
       for (const l of lines.slice(1)) {

@@ -188,6 +188,9 @@ describe("M-3770 §5.5: the states the table doesn't cover go to manual-recovery
     writeFileSync(join(s.attempt, "snapshot", "fleet.yaml"), "tampered");
     expect(restoreHome(s.home, s.attempt, gone)).toMatchObject({ ok: false, manual: true, reason: expect.stringMatching(/doesn't verify/) });
     expect(readFileSync(join(s.home, "fleet.yaml"), "utf8")).toBe("version: new\nmigrated: true\n");
+    const c = scenario();
+    writeFileSync(join(c.attempt, RESTORE_LOG), "{not a header\n");
+    expect(restoreHome(c.home, c.attempt, gone)).toMatchObject({ ok: false, manual: true, reason: expect.stringMatching(/header can't be read/) });
     const t = scenario();
     writeFileSync(join(t.attempt, RESTORE_LOG), JSON.stringify({ schema: 1, manifestSha256: "0".repeat(64), units: [], containers: [] }) + "\n");
     expect(restoreHome(t.home, t.attempt, gone)).toMatchObject({ ok: false, manual: true, reason: expect.stringMatching(/header doesn't match/) });
