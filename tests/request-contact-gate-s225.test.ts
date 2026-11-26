@@ -257,3 +257,18 @@ it("ordinary native root contact stays normal after demotion, but current-access
  expect(f.box.listPending()).toHaveLength(2);expect(f.box.contactAuthorizations.pending()).toHaveLength(0);
  expect(root.initiatingActor).toEqual({kind:"person",platform:"discord",userId:"demo-person"});
 });
+
+it("a Free source switched to Restricted holds its next new operation without relabelling its root",()=>{
+ const f=rig(),g=f.gate(),root=f.context("free-room");let restricted=false;f.host.sourceRestricted=()=>restricted;
+ const before=f.input(root);expect(g.admit(before.delivery,root,before.binding).inserted).toBe(true);
+ restricted=true;const later=f.input(root),ticket=f.hold(g,later);expect(ticket.state).toBe("pending");
+ expect(f.box.requestContext(root.ref.contextId)?.ingress).toBe("free-room");
+ f.admin(true);const asAdmin=f.input(root);expect(g.admit(asAdmin.delivery,root,asAdmin.binding).inserted).toBe(true);
+ expect(f.hold(g,later).id).toBe(ticket.id); // preserve-pending, even after promotion
+ f.admin(false);restricted=false;const freeAgain=f.input(root);expect(g.admit(freeAgain.delivery,root,freeAgain.binding).inserted).toBe(true);
+ expect(f.box.requestContext(root.ref.contextId)).toEqual(root);
+});
+it("a Restricted root never becomes Free merely because the source room's current mode changed",()=>{
+ const f=rig(),g=f.gate(),root=f.context("restricted-room");f.host.sourceRestricted=()=>false;
+ expect(f.hold(g,f.input(root)).state).toBe("pending");expect(f.box.requestContext(root.ref.contextId)?.ingress).toBe("restricted-room");
+});

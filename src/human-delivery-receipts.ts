@@ -43,16 +43,23 @@ export interface HumanOrigin {
   web_identity?: WebSessionIdentity;
 }
 
+export interface NativeHumanAdmissionBasis {readonly kind:"guild"|"group"|"user";readonly id:string;readonly roomId:string}
+const nativeIngress=new WeakMap<HumanOrigin,Readonly<NativeHumanAdmissionBasis>>();
+export function admittedNativeHumanIngress(origin:HumanOrigin):Readonly<NativeHumanAdmissionBasis>|null{return nativeIngress.get(origin)??null;}
+
 /** Called only by trusted SDK event producers, never on text/agent metadata. */
 export function nativeHumanOrigin(platform: "telegram" | "discord", adapterId: string, userId: string,
   username: string | undefined, isBot: boolean | undefined, messageId: string | null,
-  action?: { anchor: string; event: string }): HumanOrigin | undefined {
+  action?: { anchor: string; event: string }, admission?:NativeHumanAdmissionBasis): HumanOrigin | undefined {
   if (isBot !== false || !adapterId || !userId) return undefined;
-  return {
+  const origin:HumanOrigin={
     platform, adapter_id: adapterId, user_id: userId, username: username ?? null,
     platform_message_id: action ? null : messageId, ingress: action ? "action" : "message",
     ...(action ? { anchor_message_id: action.anchor, event_id: action.event } : {}),
   };
+  if(admission&&["guild","group","user"].includes(admission.kind)&&[admission.id,admission.roomId].every(value=>typeof value==="string"&&value.length>0&&value.length<=256&&!/[\x00-\x1f\x7f]/.test(value)))
+    nativeIngress.set(origin,Object.freeze({kind:admission.kind,id:admission.id,roomId:admission.roomId}));
+  return origin;
 }
 
 /** Ephemeral ingress evidence stays out of the strict stored origin and cannot be supplied by body/meta text. */

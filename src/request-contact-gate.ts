@@ -18,6 +18,8 @@ export interface RequestContactGateHost {
   /** Resolve native identity transport from trusted ingress evidence, never a Hub/display/body fallback. */
   person(actor: RequestContextActorV1): ContactPerson | null;
   adminOf(instance: string, person: ContactPerson): boolean;
+  /** Current policy of the root's accepted source room. It may add a restriction, never erase retained provenance. */
+  sourceRestricted?(root:RequestContextV1):boolean;
   canDecide(target: string, person: ContactPerson): boolean;
   canManage(target: string, person: ContactPerson): boolean;
   /** F/I lifecycle must prove no live turn, input, derivative work or native call ledger references. Uninstalled before cutover. */
@@ -163,8 +165,9 @@ export class RequestContactGate {
       if (this.db.prepare("SELECT 1 FROM deliveries WHERE request_context_id IS NULL AND (source_key=? OR (source_instance=? AND operation_id=?)) LIMIT 1").get(delivery.sourceKey,delivery.sourceInstance,delivery.operationId)) throw Error("request-context cannot adopt legacy operation");
       const release = this.release(context.ref.rootContextId), root = this.contexts.context(context.ref.rootContextId);
       const person = root ? this.person(root) : null;
-      const normal = context.ingress === "owner" || context.ingress === "free-room"
-        || context.ingress === "restricted-room" && !!root && !!person && this.host.adminOf(root.source.instance, person);
+      const currentlyRestricted=context.ingress==="restricted-room"||context.ingress==="free-room"&&!!root&&this.host.sourceRestricted?.(root)===true;
+      const normal = context.ingress === "owner" || context.ingress === "free-room"&&!currentlyRestricted
+        || currentlyRestricted && !!root && !!person && this.host.adminOf(root.source.instance, person);
       const hub=context.ingress==="hub"&&this.host.hubRelayAllowed?.(context,binding,delivery)===true;
       if (release || normal || hub) return { admitted: this.admitImage(image) };
       const request=this.request(image),ticket = this.tickets.hold(request);

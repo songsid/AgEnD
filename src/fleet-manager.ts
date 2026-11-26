@@ -1,3 +1,4 @@
+import type { RequestContextV1 } from "./request-context-protocol.js";
 import { markRetainedHumanControl, retainedHumanControl } from "./retained-human-control.js";
 import type { RequestContextLaunchIdle, RequestContextLaunchRetirement } from "./request-context-retirement.js";
 import { requestContextDigest } from "./request-context-store.js";
@@ -71,7 +72,7 @@ import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notic
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
-import { humanOwnerObjectId, admittedHumanWebIngress, webHumanOrigin, isWebSessionIdentity, type WebSessionIdentity, type HumanOrigin } from "./human-delivery-receipts.js";
+import { humanOwnerObjectId, admittedHumanWebIngress, admittedNativeHumanIngress, webHumanOrigin, isWebSessionIdentity, type WebSessionIdentity, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
 import { hubPilotTrustSettings } from "./hub-pilot-trust-settings.js";
 import { hubMembershipSettings } from "./hub-membership-settings.js";
@@ -6349,16 +6350,56 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private requestContactCardsPort: RequestContactCards | null = null;
   installRequestContactCards(cards: RequestContactCards | null): void { this.requestContactCardsPort = cards; }
 
+  /** Re-run the original synchronous admission basis. It supplies no role or go-ahead authority. */
+  requestContextNativeAdmissionCurrent(context:RequestContextV1):boolean {
+    try{
+      const root=this.deliveryOutbox?.requestContext(context.ref.rootContextId);if(!root)return false;
+      if("platform"in root.initiatingActor&&root.initiatingActor.platform==="hub")return true; // Hub's owning current-share/resource check is separate.
+      const source=root.source.instance,room=this.contactRoom(source);
+      if(!Object.hasOwn(this.fleetConfig?.instances??{},source)&&!room&&!this.daemons?.has(source))return false;
+      if(this.contactGeneration(source)!==root.source.incarnation)return false;
+      if(root.initiatingActor.kind==="unknown")return root.ingress!=="owner"&&root.ingress!=="free-room";
+      if(root.initiatingActor.kind!=="person")return false;
+      const match=/^human:hmsg-([a-f0-9-]{36})$/.exec(root.rootEvidenceRef);if(!match)return false;
+      const captured=this.deliveryOutbox!.requestContextHumans.read(match[1]!);
+      if(!captured||requestContextDigest(captured.context)!==requestContextDigest(root))return false;
+      const actor=root.initiatingActor;
+      if(captured.route.kind==="web"){
+        const session=captured.route.sessionHandle?this.webSessions?.findByHandle(captured.route.sessionHandle):null;
+        if(!session||!this.webToken||!this.webSessions?.isCurrent(session,tokenEpoch(this.webToken)))return false;
+        const identity=this.webSessionIdentity(session);
+        if(!identity||identity.platform!==actor.platform||identity.user_id!==actor.userId)return false;
+        return root.ingress==="guest"?session.tier==="guest"&&this.fleetConfig?.web?.guests?.enabled===true&&this.guestScope({adapterId:identity.adapter_id,userId:identity.user_id}).has(source):session.tier==="admin";
+      }
+      const basis=this.deliveryOutbox!.requestContextHumans.classicBasis(match[1]!);
+      if(basis){
+        if(!room||room.channelId!==basis.roomId||(room.adapterId??this.contactAdapter(source)?.id)!==basis.adapterId||!this.classicChannels?.isClassicChannel(basis.roomId,basis.adapterId))return false;
+        // These are messages inside a registered room. Guild/group/user allowlists gate creation,
+        // and Classic admins may bypass them; applying those lists here would tighten Free rooms.
+        return this.classicChannels.getInstanceByChannel(basis.roomId,basis.adapterId)===source;
+      }
+      if(room)return false; // No historical guild/group/user basis means no guessed Classic admission.
+      if(actor.platform==="host")return false; // Host identity is admitted only through its bound web session.
+      const adapter=this.contactAdapter(source);if(!adapter||adapter.type!==actor.platform)return false;
+      const person:ContactPerson={platform:actor.platform,adapterId:adapter.id,userId:actor.userId,label:actor.userId};
+      if(this.contactAdminOf(source,person))return true;
+      const access=this.worlds.get(adapter.id)?.accessManager??(adapter.id===this.getPrimaryAdapterId()?this.accessManager:null);
+      return access?.isAllowed(actor.userId)===true;
+    }catch{return false;}
+  }
+
   /** Dormant assembly for L and synthetic rigs; merely defining this method installs no service or route authority. */
   makeRequestContactCards() {
     this.ensureDeliveryOutbox();const outbox=this.deliveryOutbox!,legacy=this.contactService();
     const names=()=>[...new Set([...Object.keys(this.fleetConfig?.instances??{}),...(this.classicChannels?.getAll()??[]).map(room=>room.instanceName)])].sort();
     const manage=(name:string,person:ContactPerson)=>this.contactAdminOf(name,person);
     const cards=outbox.requestContactCards({
-      current:(_context,binding)=>this.contactGeneration(binding.source.instance)===binding.source.incarnation&&this.contactGeneration(binding.target.instance)===binding.target.incarnation&&!this.hubContactRestricted(binding.source.instance),
+      current:(context,binding)=>this.contactGeneration(binding.source.instance)===binding.source.incarnation&&this.contactGeneration(binding.target.instance)===binding.target.incarnation
+        &&(!requestContextPolicyInstalled(this.requestContextPolicy)||this.requestContextNativeAdmissionCurrent(context))&&!this.hubContactRestricted(binding.source.instance),
       generation:name=>{try{return this.contactGeneration(name);}catch{return null;}},
       canManage:manage,canDecide:(name,person)=>{if(!manage(name,person))return false;const policy=legacy.host.store.policySnapshot(name,this.contactGeneration(name));return person.platform==="host"&&person.userId==="operator"||(policy.approvers??legacy.host.defaultApprovers(name)).some(row=>sameContactPerson(row,person));},
       adminOf:(name,person)=>this.contactAdminOf(name,person),
+      sourceRestricted:root=>this.contactRoom(root.source.instance)?.restrictedMode===true,
       person:actor=>{
         if(actor.kind!=="person"||actor.platform==="hub")return null;
         if(actor.platform==="host")return {platform:"host",adapterId:"host",userId:"operator",label:"Operator"};
@@ -9593,9 +9634,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const configured=(this.fleetConfig?.channels??(this.fleetConfig?.channel?[this.fleetConfig.channel]:[])).find(channel=>(channel.id??channel.type)===id);
         const kind=adapter?.type??configured?.type;return kind==="discord"||kind==="telegram"?kind:null;
       };
+      const nativeBasis=admittedNativeHumanIngress(origin);
+      if(room&&origin.platform!=="web"&&(!nativeBasis||nativeBasis.roomId!==room.channelId||origin.adapter_id!==(room.adapterId??this.contactAdapter(instance)?.id)))throw Error("Accepted Classic admission basis is unavailable");
       const captured=box.createHumanReceiptWithRequestContext({targetInstance:instance,originalBody:body,origin:{...origin},inputKind:String(payload.type),managerBootId:this.managerBootId},
         {incarnation:this.contactGeneration(instance),room:room?{restricted:room.restrictedMode===true}:null,
           web:origin.platform==="web"?admittedHumanWebIngress(origin):null,
+          classic:room&&origin.platform!=="web"&&nativeBasis?{...nativeBasis,adapterId:origin.adapter_id!}:null,
           route:origin.platform==="web"?{kind:"web",...(origin.web_identity?.session_handle?{sessionHandle:origin.web_identity.session_handle}:{})}
             :{kind:"room",adapterId:origin.adapter_id??undefined,chatId:meta?.chat_id??"",threadId:meta?.thread_id??""},platform});
       return captured.receipt;
