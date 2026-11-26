@@ -36,6 +36,13 @@ const GUARD_TONE = { ready: "ok", "restart-required": "warn", "not-covered": "wa
 /** The guard's state as said — anything the contract doesn't name is never shown as ready. */
 const guardState = (g) => (g && ["ready", "restart-required", "not-covered", "failed"].includes(g.state) ? g.state : "failed");
 const personLabel = (p) => (p && (p.label || p.userId)) || "";
+/** M-3818: who may clear a retained origin, said when this viewer can't — the agent's managing admins (its eligible
+ *  approvers, the server's list) and the verified host operator, who manages every local agent. */
+const isOperator = (x) => x?.platform === "host" && x.adapterId === "host" && x.userId === "operator";
+const clearWho = (people) => {
+  const names = (people || []).filter((x) => !isOperator(x)).map(personLabel).filter(Boolean);
+  return names.length ? ca("originClearWho", names.join(", ")) : ca("originClearWhoHost");
+};
 
 /** Keep `name`'s permissions read: once, on its contact-auth frame (a newer revision), and when the page is shown again. */
 export function usePermissions(name) {
@@ -241,6 +248,7 @@ export function ContactPermissionsPanel({ name }) {
       <p class="note">${ca("originReceipts", p.originState.receiptCount)}</p>
       ${p.originState.lastCleared ? html`<p class="contact-origin-last">${ca("originLastCleared", personLabel(p.originState.lastCleared.actor), when(p.originState.lastCleared.at))}</p>` : null}
       ${p.originState.canClear ? html`<button type="button" class="btn btn-sm btn-danger contact-origin-clear" disabled=${busy} onClick=${() => void clearRetainedOrigin()}>${ca("originClear")}</button>` : null}
+      ${!p.originState.canClear && p.originState.kind !== "none" ? html`<p class="note contact-origin-who">${clearWho(p.eligibleApprovers)}</p>` : null}
     </section>` : null}
     <section class="card contact-history">
       <h3>${ca("historyTitle")}</h3>

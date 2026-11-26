@@ -66,6 +66,25 @@ it("cancel sends nothing; a non-manager sees state but no clear control", async 
   const readOnly = await rig(data);
   expect(readOnly.pg.root.querySelector(".contact-origin")).toBeTruthy(); expect(readOnly.pg.root.querySelector(".contact-origin-clear")).toBeNull();
 });
+// M-3818: a viewer without the clear control is told who has it — the agent's managing admins and the host operator.
+it.each(["en", "zh-TW"] as const)("a non-manager is told who can clear it (%s); a manager and an empty origin are not", async locale => {
+  const { setLang } = await import("/assets/app-i18n.js") as any;
+  setLang(locale, { store: false });
+  try {
+    const manager = await rig(fixture("mixed"));
+    expect(manager.pg.root.querySelector(".contact-origin-who")).toBeNull();
+    const named = fixture("mixed"); named.originState!.canClear = false; named.canManage = false;
+    named.eligibleApprovers = [admin, { platform: "discord", adapterId: "discord", userId: "fake-1", label: "Admin One" }, { platform: "discord", adapterId: "discord", userId: "fake-2", label: "" }];
+    const who = (await rig(named)).pg.root.querySelector(".contact-origin-who")?.textContent?.trim();
+    expect(who).toBe(locale === "en" ? "Only this agent's managing admins (Admin One, fake-2) or the verified host operator can clear it."
+      : "只有管理這個 Agent 的管理員（Admin One, fake-2）或已驗證的主機操作者能清除。");
+    const hostOnly = fixture("unknown"); hostOnly.originState!.canClear = false; hostOnly.canManage = false;
+    expect((await rig(hostOnly)).pg.root.querySelector(".contact-origin-who")?.textContent?.trim())
+      .toBe(locale === "en" ? "Only the verified host operator can clear it." : "只有已驗證的主機操作者能清除。");
+    const empty = fixture("none"); empty.canManage = false;
+    expect((await rig(empty)).pg.root.querySelector(".contact-origin-who")).toBeNull();
+  } finally { setLang("en", { store: false }); }
+});
 it("conflict refreshes rather than clearing newer input, and origin-only SSE/message frames refresh", async () => {
   const r = await rig(fixture(), true, true); await r.click();
   expect(r.calls.map(call => call.method)).toEqual(["GET", "POST", "GET"]);

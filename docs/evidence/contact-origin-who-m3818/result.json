@@ -1,0 +1,30 @@
+{
+  "desk-light-en-manager": {
+    "clearButton": 1,
+    "whoNote": null,
+    "overflow": false,
+    "pageErrors": [],
+    "csp": []
+  },
+  "desk-light-en-viewer": {
+    "clearButton": 0,
+    "whoNote": "Only this agent's managing admins (Admin One, Admin Two) or the verified host operator can clear it.",
+    "overflow": false,
+    "pageErrors": [],
+    "csp": []
+  },
+  "phone-dark-zh-TW-manager": {
+    "clearButton": 1,
+    "whoNote": null,
+    "overflow": false,
+    "pageErrors": [],
+    "csp": []
+  },
+  "phone-dark-zh-TW-viewer": {
+    "clearButton": 0,
+    "whoNote": "只有管理這個 Agent 的管理員（Admin One, Admin Two）或已驗證的主機操作者能清除。",
+    "overflow": false,
+    "pageErrors": [],
+    "csp": []
+  }
+}
