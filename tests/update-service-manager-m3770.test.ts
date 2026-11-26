@@ -111,6 +111,8 @@ describe("M-3770 2.5: recover.cjs's real hands", () => {
       expect(realHands(home, 0).waitTakeover("d".repeat(32))).toBeNull();                           // another nonce
       writeFileSync(join(home, "fleet.lock"), JSON.stringify({ pid: 4321, nonce, createdAt: new Date().toISOString(), role: "update", attemptId: "a1" }));
       expect(realHands(home, 0).waitTakeover(nonce)).toBeNull();                                     // not a fleet's record
+      expect(realHands(home, 0).waitHandedBack(() => true)).toBe(true);
+      expect(realHands(home, 0).waitHandedBack(() => false)).toBe(false);                             // bounded, not forever
     } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });

@@ -22,14 +22,14 @@
  * generation started from the fence, when it was stopped), `hand-back`, the route off, `abandoned`. From `snapshotted`
  * through `proving` it rolls back (`rollBack`). An identity check that fails after the install is manual-recovery.
  */
-import { existsSync } from "node:fs";
-import { acquireFleetLock, adoptUpdateFence, readFleetLockRecord, releaseFleetLock, setFleetLockHandoff, type FleetLockHandle } from "./fleet-lock.js";
+import { acquireFleetLock, readFleetLockRecord, type FleetLockHandle } from "./fleet-lock.js";
 import { checkStage, identityOf, recordExpectedNew, recordInstallIntent, type Ownership, type Proven, type TupleRead } from "./install-ownership.js";
 import { ackGeneration, advance, attemptDir, defaultJournalIo, finish, readCurrent, substep, type AttemptRecord, type Artifact, type FleetGeneration, type JournalIo } from "./update-journal.js";
 import { takeAttemptPreimage } from "./update-package-restore.js";
 import { buildRecoveryKit, type KitSources } from "./update-recovery/kit.js";
-import { removeRecoveryRoute, unitPreimagePath, writeRecoveryRoute } from "./update-recovery/route.js";
+import { removeRecoveryRoute, writeRecoveryRoute } from "./update-recovery/route.js";
 import { recordRetained } from "./update-retained.js";
+import { abandonAttempt, journalManual as manual, type UpdateResult } from "./update-abandon.js";
 import { ensureFence, rollBack, startGeneration, type RollbackDeps } from "./update-rollback.js";
 import { takeSnapshot } from "./update-snapshot.js";
 
@@ -63,11 +63,8 @@ export interface UpdateDeps extends RollbackDeps {
 
 export interface UpdatePlan { target: Artifact; command: string[] }
 
-export type UpdateResult =
-  | { ok: true; attempt: AttemptRecord }
-  /** Not committed. `abandoned` / `rolled-back`: the way back completed. `manual`: manual-recovery is journaled.
-   *  `retry`: the attempt stays open (a later run — the recovery runner, through the route — resumes it). */
-  | { ok: false; outcome: "abandoned" | "rolled-back" | "manual" | "retry"; reason: string; attempt: AttemptRecord };
+export type { UpdateResult } from "./update-abandon.js";
+export { abandonAttempt } from "./update-abandon.js";
 
 const generationsOf = (a: AttemptRecord): FleetGeneration[] => (Array.isArray(a.fleets) ? (a.fleets as FleetGeneration[]) : []);
 const didSubstep = (a: AttemptRecord, stage: string, name: string) => a.history.some(h => h.stage === stage && h.substep === name);
@@ -216,68 +213,9 @@ export function resumeCommitting(home: string, attemptId: string, d: Pick<Update
   return commitAttempt(home, read.attempt, d);
 }
 
-/**
- * §2.3 abandon: a procedure, not a label — `restart-old`, `hand-back`, `route-removed`, then `abandoned`. Allowed from
- * opened, barrier and stopping (no snapshot published). `fence` is the fence's handle when the caller holds it.
- */
-export function abandonAttempt(home: string, attempt: AttemptRecord, d: UpdateDeps, reason: string, fence: FleetLockHandle | null = null): UpdateResult {
-  const io = d.io ?? defaultJournalIo;
-  let a = attempt;
-  const fail = (why: string, isManual = true): UpdateResult => (isManual ? manual(home, a, why, io) : { ok: false, outcome: "retry", reason: why, attempt: a });
-  const id = identityOf(a);
-  if (!id) return manual(home, a, "the attempt's recorded ownership is missing or malformed", io);
-  if (a.stage !== "abandoning") a = advance(home, a, "abandoning", { note: reason }, io);
-  const done = (n: string) => didSubstep(a, "abandoning", n);
-
-  if (!done("restart-old")) {
-    const holder = readFleetLockRecord(home);
-    const old = generationsOf(a).find(g => g.gen === "old");
-    if (holder?.role === "fleet") {
-      // A fleet holds the lock: the old fleet never stopped (barrier, an early failure), or abandon's own restart landed.
-      const gen = generationsOf(a).find(g => g.nonce === holder.nonce && !g.dead);
-      if (!gen || gen.gen !== "old" || !d.isProcessAlive(holder.pid)) return fail(`fleet.lock's holder (pid ${holder.pid}) isn't the running old fleet`);
-      if (!gen.consumed) a = startGeneration(home, a, "old", null, d).attempt;                     // its takeover landed before a crash
-    } else if (holder?.role === "update") {
-      if (holder.attemptId !== a.id) return fail(`fleet.lock fences another attempt (${holder.attemptId})`);
-      const own = fence ?? (() => { const r = adoptUpdateFence(home, { pid: d.self.pid, attemptId: a.id }, { isProcessAlive: d.isProcessAlive }); return r.ok ? r.handle : null; })();
-      if (!own) return fail("this attempt's fence can't be held to restart the old fleet");
-      if (old) {
-        const started = startGeneration(home, a, "old", own, d);
-        a = started.attempt;
-        if (!started.ok) return fail(`the old fleet didn't restart: ${started.reason}`, started.manual);
-      } else {
-        // No fleet ran when the attempt opened: the fence is simply let go.
-        const clear = own.record.handoff ? setFleetLockHandoff(own, null, () => true) : own;
-        if (!clear || !releaseFleetLock(clear)) return fail("this attempt's fence couldn't be released");
-      }
-    } else if (holder === null && old) {
-      return fail("fleet.lock is gone, but the old fleet was recorded running");
-    }
-    a = substep(home, a, "restart-old", io);
-  }
-  if (!done("hand-back")) {
-    if (!d.handBack(a)) return fail("the old fleet didn't take the held messages and jobs back; it resumes on the next start", false);
-    a = substep(home, a, "hand-back", io);
-  }
-  // Only a route that was written (its unit preimage kept first): an abandon at the barrier has none to take off.
-  if (id.ownership.service && !done("route-removed") && existsSync(unitPreimagePath(home, a.id))) {
-    const r = removeRecoveryRoute(home, a, { plistArgs: d.plistArgs }, io);
-    if (!r.ok) return fail(r.reason);
-    if (!d.manager.reload()) return fail("the service manager couldn't reload after the route was taken off", false);
-    a = substep(home, a, "route-removed", io);
-  }
-  a = finish(home, a, { kind: "abandoned", reason }, io);
-  return { ok: false, outcome: "abandoned", reason, attempt: a };
-}
-
 function rollBackAs(home: string, attempt: AttemptRecord, d: UpdateDeps, reason: string, io: JournalIo): UpdateResult {
   const r = rollBack(home, attempt, d);
   if (r.ok) return { ok: false, outcome: "rolled-back", reason, attempt: r.attempt };
   if (r.manual) return manual(home, r.attempt, `${reason}; the rollback needs a person: ${r.reason}`, io);
   return { ok: false, outcome: "retry", reason: `${reason}; the rollback stopped: ${r.reason}`, attempt: r.attempt };
-}
-
-function manual(home: string, attempt: AttemptRecord, reason: string, io: JournalIo): UpdateResult {
-  const a = finish(home, attempt, { kind: "manual-recovery", reason }, io);
-  return { ok: false, outcome: "manual", reason, attempt: a };
 }

@@ -375,6 +375,25 @@ function replaceDeadHolder(dataDir: string, fence: { pid?: number; attemptId: st
   }
 }
 
+/**
+ * M-3770 §4.3 (Fable #4536 F3): this attempt's `update` fence on an ABSENT fleet.lock — the recovery runner's case after
+ * the old fleet exited cleanly (its exit unlinks the lock). O_EXCL, fsynced, the directory fsynced; the record exactly
+ * `acquireFleetLock`'s update shape. Bundle-safe for recover.cjs: no `ensureAgendHome` (its lazy createRequire has no
+ * `import.meta.url` in the cjs bundle) — the runner has proven the home under its locks. A lock already there refuses.
+ */
+export function createUpdateFence(dataDir: string, fence: { pid: number; attemptId: string }): { ok: true; handle: FleetLockHandle } | { ok: false; reason: string } {
+  if (!/^\d{8}T\d{6}Z-[0-9a-f]{8}$/.test(fence.attemptId)) return { ok: false, reason: "an update fence needs its attempt id" };
+  const lockPath = join(dataDir, "fleet.lock");
+  const record: FleetLockRecord = { pid: fence.pid, nonce: randomBytes(16).toString("hex"), createdAt: new Date().toISOString(), role: "update", attemptId: fence.attemptId, handoff: null };
+  const serialized = JSON.stringify(record) + "\n";
+  let fd: number;
+  try { fd = openSync(lockPath, "wx", 0o600); }
+  catch (err) { return { ok: false, reason: (err as NodeJS.ErrnoException).code === "EEXIST" ? "fleet.lock appeared meanwhile" : `fleet.lock can't be created (${(err as Error).message})` }; }
+  try { writeSync(fd, serialized); fsyncSync(fd); } finally { closeSync(fd); }
+  fsyncDir(dataDir);
+  return { ok: true, handle: { path: lockPath, record, serialized } };
+}
+
 /** The fleet lock's record as written (null: absent or unparsable). For the updater's acknowledgement of a takeover. */
 export function readFleetLockRecord(dataDir: string): FleetLockRecord | null {
   try { return parseRecord(readFileSync(join(dataDir, "fleet.lock"), "utf8")); } catch { return null; }
