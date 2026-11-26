@@ -3,6 +3,10 @@
   "dirty": [],
   "checks": [
     {
+      "name": "dark-default-en: the UI is in en (<html lang>, and the chat's own words aren't Chinese)",
+      "ok": true
+    },
+    {
       "name": "dark-default-en: 🆕 drawn by the colour emoji font (no other font draws it)",
       "ok": false,
       "detail": "Noto Sans TC(1), Inter Variable(2)"
@@ -65,6 +69,10 @@
     },
     {
       "name": "dark-default-en: 🆕︎ (text style) keeps a text glyph",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: the UI is in en (<html lang>, and the chat's own words aren't Chinese)",
       "ok": true
     },
     {
@@ -133,6 +141,10 @@
       "ok": true
     },
     {
+      "name": "dark-system-en: the UI is in en (<html lang>, and the chat's own words aren't Chinese)",
+      "ok": true
+    },
+    {
       "name": "dark-system-en: the agent's theme font is on the chat",
       "ok": true
     },
@@ -194,6 +206,10 @@
     },
     {
       "name": "dark-system-en: 🆕︎ (text style) keeps a text glyph",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: the UI is in en (<html lang>, and the chat's own words aren't Chinese)",
       "ok": true
     },
     {
@@ -264,6 +280,10 @@
       "ok": true
     },
     {
+      "name": "dark-default-zh-TW: the UI is in zh-TW (<html lang>, and the chat's own words are Chinese)",
+      "ok": true
+    },
+    {
       "name": "dark-default-zh-TW: 🆕 drawn by the colour emoji font (no other font draws it)",
       "ok": false,
       "detail": "Noto Sans TC(1), Inter Variable(2)"
@@ -316,9 +336,9 @@
       "ok": true
     },
     {
-      "name": "dark-default-zh-TW: the bullet \"🆕 The update card…\": its 🆕 in Segoe UI Emoji",
+      "name": "dark-default-zh-TW: the bullet \"🆕 General 聊天室的更新卡片…\": its 🆕 in Segoe UI Emoji",
       "ok": false,
-      "detail": "Noto Sans TC(1), Inter Variable(36)"
+      "detail": "Noto Sans TC(9), Inter Variable(11)"
     },
     {
       "name": "dark-default-zh-TW: the text line uses no emoji font",
@@ -327,28 +347,32 @@
     {
       "name": "dark-default-zh-TW: 🆕︎ (text style) keeps a text glyph",
       "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: the frame is not the en one's (sha256)",
+      "ok": true
     }
   ],
   "pictures": [
     {
       "path": "m3796-win-edge-dark-default-en.png",
-      "sha256": "20f63c782bcbe4e164bdabad88a46c174f1368b6a02a230b75bd80cdb65c56f3"
+      "sha256": "594230de1db8e69aecfd203e10e4e1ab13f8fae5f962dabbba343f1075243c67"
     },
     {
       "path": "m3796-win-edge-light-default-en.png",
-      "sha256": "419cc3964b2187ef8f2845a87ec3c59b1caceaa7bfed47676e4d5cf9281a963b"
+      "sha256": "29e5481171870482fc05e5ff3699e54a45f843ed197686e3c46789af7a86efc3"
     },
     {
       "path": "m3796-win-edge-dark-system-en.png",
-      "sha256": "8fde455cbd710df99155e51c5775466294c3afc33c8935667ab2cf4a27d1a7fc"
+      "sha256": "618e7b6591e59d20156ae2864223f57935cd73771df2bfaa6382203b56b75982"
     },
     {
       "path": "m3796-win-edge-dark-mono-en.png",
-      "sha256": "06f66c0a27f82b8880a410248d5f5c65a939cb2b70285a38c7b2f817202c1802"
+      "sha256": "4014b45a042ca69f43ee4fa15f069f3acec2efae32b0605f083d99d348d63261"
     },
     {
       "path": "m3796-win-edge-dark-default-zh-TW.png",
-      "sha256": "20f63c782bcbe4e164bdabad88a46c174f1368b6a02a230b75bd80cdb65c56f3"
+      "sha256": "b4c853aba517407bbfe09c2ad39cad21d5bc86a81dcf53d7f15a8705c818d44e"
     }
   ],
   "fonts": {
@@ -372,6 +396,7 @@
       "Ready: 🆕︎ (text style)": "Noto Sans TC(1), Inter Variable(22)",
       "code: 🆕 ☕ 1 #": "Segoe UI Emoji(1), Menlo(12)"
     },
+    "dark-default-en:first": "🆕 The update card in General's chat → Noto Sans TC(1), Inter Variable(36)",
     "dark-default-en:text": [
       "1 # * © ™ ★ ♥ → 中文 text → Noto Sans TC(4), Inter Variable(21)",
       "Ready: 🆕︎ (text style) → Noto Sans TC(1), Inter Variable(22)"
@@ -396,6 +421,7 @@
       "Ready: 🆕︎ (text style)": "Noto Sans TC(1), Inter Variable(22)",
       "code: 🆕 ☕ 1 #": "Segoe UI Emoji(1), Menlo(12)"
     },
+    "light-default-en:first": "🆕 The update card in General's chat → Noto Sans TC(1), Inter Variable(36)",
     "light-default-en:text": [
       "1 # * © ™ ★ ♥ → 中文 text → Noto Sans TC(4), Inter Variable(21)",
       "Ready: 🆕︎ (text style) → Noto Sans TC(1), Inter Variable(22)"
@@ -420,6 +446,7 @@
       "Ready: 🆕︎ (text style)": "Segoe UI Symbol(1), Microsoft JhengHei UI(22)",
       "code: 🆕 ☕ 1 #": "Segoe UI Emoji(1), Menlo(12)"
     },
+    "dark-system-en:first": "🆕 The update card in General's chat → Segoe UI Emoji(1), Microsoft JhengHei UI(36)",
     "dark-system-en:text": [
       "1 # * © ™ ★ ♥ → 中文 text → Segoe UI(1), Microsoft JhengHei UI(24)",
       "Ready: 🆕︎ (text style) → Segoe UI Symbol(1), Microsoft JhengHei UI(22)"
@@ -444,14 +471,15 @@
       "Ready: 🆕︎ (text style)": "Segoe UI Symbol(1), Menlo(22)",
       "code: 🆕 ☕ 1 #": "Segoe UI Emoji(1), Menlo(12)"
     },
+    "dark-mono-en:first": "🆕 The update card in General's chat → Segoe UI Emoji(1), Menlo(36)",
     "dark-mono-en:text": [
       "1 # * © ™ ★ ♥ → 中文 text → Noto Sans TC(2), Menlo(23)",
       "Ready: 🆕︎ (text style) → Segoe UI Symbol(1), Menlo(22)"
     ],
     "dark-default-zh-TW": {
-      "🆕 The update card in General's chat": "Noto Sans TC(1), Inter Variable(36)",
-      "🆕 Pick a time on the web": "Noto Sans TC(1), Inter Variable(25)",
-      "✅ Pre-flight words": "Inter Variable(19), Segoe UI Emoji(1)",
+      "🆕 General 聊天室的更新卡片": "Noto Sans TC(9), Inter Variable(11)",
+      "🆕 在網頁上選個時間": "Noto Sans TC(9), Inter Variable(3)",
+      "✅ 更新前檢查的說明": "Noto Sans TC(8), Inter Variable(3), Segoe UI Emoji(1)",
       "🆕": "Noto Sans TC(1), Inter Variable(2)",
       "🆗": "Noto Sans TC(1), Inter Variable(2)",
       "🆓": "Noto Sans TC(1), Inter Variable(2)",
@@ -468,12 +496,35 @@
       "Ready: 🆕︎ (text style)": "Noto Sans TC(1), Inter Variable(22)",
       "code: 🆕 ☕ 1 #": "Segoe UI Emoji(1), Menlo(12)"
     },
+    "dark-default-zh-TW:first": "🆕 General 聊天室的更新卡片 → Noto Sans TC(9), Inter Variable(11)",
     "dark-default-zh-TW:text": [
       "1 # * © ™ ★ ♥ → 中文 text → Noto Sans TC(4), Inter Variable(21)",
       "Ready: 🆕︎ (text style) → Noto Sans TC(1), Inter Variable(22)"
     ]
   },
   "browser": "158.0.4370.33",
+  "ui": {
+    "dark-default-en": {
+      "lang": "en",
+      "chrome": "AgEnD Fleet Needs you Notices Search Ctrl K New agent Instances Custom Edit OTHER 4 Atlas just now Backend: Claude Code Beacon just now Backend: Claude Code Com"
+    },
+    "light-default-en": {
+      "lang": "en",
+      "chrome": "AgEnD Fleet Needs you Notices Search Ctrl K New agent Instances Custom Edit OTHER 4 Atlas just now Backend: Claude Code Beacon just now Backend: Claude Code Com"
+    },
+    "dark-system-en": {
+      "lang": "en",
+      "chrome": "AgEnD Fleet Needs you Notices Search Ctrl K New agent Instances Custom Edit OTHER 4 Atlas just now Backend: Claude Code Beacon just now Backend: Claude Code Com"
+    },
+    "dark-mono-en": {
+      "lang": "en",
+      "chrome": "AgEnD Fleet Needs you Notices Search Ctrl K New agent Instances Custom Edit OTHER 4 Atlas just now Backend: Claude Code Beacon just now Backend: Claude Code Com"
+    },
+    "dark-default-zh-TW": {
+      "lang": "zh-Hant",
+      "chrome": "AgEnD Fleet 概覽 等你處理 通知 搜尋 Ctrl K 新增 Agent Agent 自訂 編輯 其他 4 Atlas 剛剛 後端：Claude Code Beacon 剛剛 後端：Claude Code Comet 剛剛 後端：Codex Dawn 剛剛 後端：Claude Code 篩選：名稱、模型、後端"
+    }
+  },
   "chatClass": {
     "dark-default-en": "panel p-chat",
     "light-default-en": "panel p-chat",
@@ -488,5 +539,5 @@
     "dark-mono-en": "Menlo",
     "dark-default-zh-TW": "Inter Variable"
   },
-  "summary": "59/77"
+  "summary": "65/83"
 }
