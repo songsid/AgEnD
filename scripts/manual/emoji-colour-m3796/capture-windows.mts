@@ -94,6 +94,10 @@ try {
       receipt.fonts[c.tag + ":text"] = TEXT.map((t) => `${t} → ${rows[t]}`);
       check(`${c.tag}: the text line uses no emoji font`, !!rows[TEXT[0]] && !/Segoe UI Emoji/.test(rows[TEXT[0]]), rows[TEXT[0]]);
       check(`${c.tag}: 🆕︎ (text style) keeps a text glyph`, !!rows[TEXT[1]] && !/Segoe UI Emoji/.test(rows[TEXT[1]]), rows[TEXT[1]]);
+      // CROPS=<dir>: each single-emoji list item on its own, for a pixel check of colour vs grey (not evidence).
+      if (process.env.CROPS) { mkdirSync(process.env.CROPS, { recursive: true });
+        for (const [i, e] of EMOJI.entries()) await page.locator(".msg .md li", { hasText: new RegExp(`^${e.replace(/[*+?^${}()|[\]\\]/g, "\\$&")}$`) }).last()
+          .screenshot({ path: join(process.env.CROPS, `${c.tag}-${i}.png`) }).catch(() => {}); }
       const path = `m3796-win-edge-${c.tag}.png`;
       await page.locator(".msg .md").last().screenshot({ path: join(OUT, path) });
       receipt.pictures.push({ path, sha256: createHash("sha256").update(readFileSync(join(OUT, path))).digest("hex") });
