@@ -5,7 +5,7 @@
   },
   {
     "path": "docs/evidence/hub-room-react-ack-s254/README.md",
-    "sha256": "182a903055e61de7de20d3e21a4ca3945b48eb7dbffeb9fb80628d405807e49d"
+    "sha256": "1e5dd7b2be7215bdf2686c3219ded3c215ca8e53bdfa5bddcc798f4f941e23c8"
   },
   {
     "path": "docs/evidence/hub-room-react-ack-s254/after-desk-dark-en.png",
@@ -100,6 +100,18 @@
     "sha256": "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748"
   },
   {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/r2-ci-failfirst.log",
+    "sha256": "46ef1ce0aecd10fc5bce9975af5b6bcf03b111c056f82f8216ae9cc63303a35d"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/r2-ci-green.log",
+    "sha256": "e170c9d9301230e6a2cb100a49192cfae9b580c9ea85b886e4a9dd69e82b60d0"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/r2-menu-bytes.json",
+    "sha256": "3c97b6c8f23c5b3ab8fa7fe70308f81b3605b45b1c75fda0ae8b4d9d9662bca4"
+  },
+  {
     "path": "docs/evidence/hub-room-react-ack-s254/checks/test-types-final.log",
     "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
   },
@@ -117,7 +129,7 @@
   },
   {
     "path": "src/channel/mcp-tools.ts",
-    "sha256": "ec6dbd0f5255b4d07b339f3910126c18607579cf0da75a4bd7487e16d4dfd8ab"
+    "sha256": "9d5aaf5c5259ea58fb6ccc4ba15a616d2fff89a1995305ee43eee0467667ffaf"
   },
   {
     "path": "src/general-knowledge/skills/cross-instance-messaging/SKILL.md",
@@ -182,6 +194,10 @@
   {
     "path": "src/ui/hub-room-thread.js",
     "sha256": "b1d86f15aed0a45c9b08eddd5cdf08240c0b6fd555f70eecd310d907be37bc32"
+  },
+  {
+    "path": "tests/hub-groups-mount-s89.test.ts",
+    "sha256": "6c78e8a5c5968f38ed1dfe542e0c5a09e2ef774d2041c055ab0545fbe8273bd9"
   },
   {
     "path": "tests/hub-room-agent-react-m3127.test.ts",
