@@ -48,7 +48,7 @@ const tupleOf = (r: Rig): ArtifactTuple => {
   const t = readArtifactTuple(own.value, r.deps); if (t.state !== "complete") throw new Error(t.reason);
   return t.tuple;
 };
-const live = (r: Rig) => { const ownership = prove(r); return { ownership, tuple: ownership.ok ? readArtifactTuple(ownership.value, r.deps) : { state: "partial" as const, reason: "-", paths: [], interpreter: null, execStart: null } }; };
+const live = (r: Rig) => { const ownership = prove(r); return { ownership, tuple: ownership.ok ? readArtifactTuple(ownership.value, r.deps) : { state: "partial" as const, reason: "-", paths: [], interpreter: null, execStart: null, unresolved: [] } }; };
 
 function opened(r: Rig, oldFleet: { pid: number; nonce: string } | null = { pid: 4100, nonce: NONCE }, service: OwnedService | null = r.service): AttemptRecord {
   const own = proveOwnership({ home: r.home, prefix: r.prefix, service }, r.deps); if (!own.ok) throw new Error(own.reason);
@@ -121,7 +121,23 @@ describe("M-3770 §3.1: the package location is bound to its resolved ancestors 
     expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/outside the intent's destination/) });
     symlinkSync(join(r.root, "void"), join(dirA, "@songsid", "agend", "hole"));
     unlinkSync(join(r.prefix, "bin", "agend")); symlinkSync(join(dirA, "@songsid", "agend", "hole", "agend"), join(r.prefix, "bin", "agend"));
-    expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/outside the intent's destination/) });
+    expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/resolves to nothing/) });
+  });
+
+  it("an unresolvable dangling target fails explicitly, even when the bin directory itself lives inside the package (Prism #4502 R3)", () => {
+    const r = rig();
+    // prefix/bin -> <package>/bin: the owned bin links are themselves inside the package path.
+    mkdirSync(join(r.pkg, "bin"));
+    for (const name of ["agend", "agend-agent"]) symlinkSync(join(r.pkg, "launcher", name), join(r.pkg, "bin", name));
+    rmSync(join(r.prefix, "bin"), { recursive: true }); symlinkSync(join(r.pkg, "bin"), join(r.prefix, "bin"));
+    let a = walk(r, opened(r), ["barrier", "stopping", "snapshotted", "installing"]);
+    const own = prove(r); if (!own.ok) throw new Error(own.reason);
+    a = recordInstallIntent(r.home, a, { ...intentOf(r), destination: { packagePath: r.pkg, binLinks: Object.values(own.value.binLinks) } });
+    rmSync(join(r.pkg, "dist"), { recursive: true });
+    expect(checkStage(a, live(r))).toEqual({ ok: true, found: "partial" });                         // the control
+    symlinkSync(join(r.root, "void"), join(r.pkg, "hole"));
+    unlinkSync(join(r.pkg, "bin", "agend")); symlinkSync(join(r.pkg, "hole", "agend"), join(r.pkg, "bin", "agend"));
+    expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/resolves to nothing/) });
   });
 
   it("node_modules itself resolved even with no scope directory yet, and a re-pointed bin directory changes the owned bin links", () => {

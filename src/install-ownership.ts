@@ -155,7 +155,9 @@ export function ownershipDiff(a: Ownership, b: Ownership): string[] {
 /** A tuple's live read: complete, or partial (what could be resolved, for the `installing` intent check). */
 export type TupleRead =
   | { state: "complete"; tuple: ArtifactTuple }
-  | { state: "partial"; reason: string; paths: string[]; interpreter: string | null; execStart: string[] | null };
+  | { state: "partial"; reason: string; paths: string[]; interpreter: string | null; execStart: string[] | null;
+      /** Bin links whose dangling target can't be judged (a dangling link on its way): never "inside" anything. */
+      unresolved: string[] };
 
 /**
  * `path`, which may not exist, with its deepest existing ancestor resolved and the missing tail appended. null when a
@@ -189,6 +191,7 @@ function integrityOf(ownership: Ownership, deps: OwnershipDeps): string | null {
 /** §3.2: read the live tuple at the ownership's locations. */
 export function readArtifactTuple(ownership: Ownership, deps: OwnershipDeps): TupleRead {
   const paths: string[] = [];
+  const unresolved: string[] = [];
   const bins = {} as Record<BinName, string | null>;
   let dangling: string | null = null;
   for (const name of BIN_NAMES) {
@@ -200,15 +203,16 @@ export function readArtifactTuple(ownership: Ownership, deps: OwnershipDeps): Tu
       dangling ??= link;
       const target = deps.linkTarget(link);
       // A dangling link's own target must stay inside the destination too, judged canonically (Prism #4502 R2): its
-      // existing ancestors resolved, the missing tail kept. Unprovable: the link itself, never inside the package.
-      paths.push((target && canonicalMissing(target, deps)) ?? link);
+      // existing ancestors resolved, the missing tail kept. Unprovable: an explicit failure (R3), never a stand-in path.
+      const canonical = target ? canonicalMissing(target, deps) : null;
+      if (canonical) paths.push(canonical); else unresolved.push(link);
     }
   }
   const entry = deps.realpath(join(ownership.packagePath, "dist", "cli.js"));
   if (entry) paths.push(entry);
   const interpreter = deps.interpreterFor(ownership);
   const execStart = ownership.service ? deps.execStart(ownership.service) : null;
-  const partial = (reason: string): TupleRead => ({ state: "partial", reason, paths, interpreter, execStart });
+  const partial = (reason: string): TupleRead => ({ state: "partial", reason, paths, interpreter, execStart, unresolved });
   if (ownership.service && !execStart) return partial(`the service ${ownership.service.unit}'s ExecStart can't be read`);
   let manifest: { name?: unknown; version?: unknown } | null = null;
   try { manifest = JSON.parse(deps.readFile(join(ownership.packagePath, "package.json")) ?? "null"); } catch { manifest = null; }
@@ -355,6 +359,7 @@ function partialWithinIntent(id: Identity, tuple: TupleRead): StageCheck | null 
   const owned = BIN_NAMES.map(name => id.ownership.binLinks[name]).sort();
   const named = [...dest.binLinks].sort();
   if (owned.length !== named.length || owned.some((p, i) => p !== named[i])) return fail("the install intent's bin links are not the owned ones");
+  if (tuple.state === "partial" && tuple.unresolved.length) return fail(`the bin link ${tuple.unresolved[0]} points through a link that resolves to nothing`);
   const paths = tuple.state === "complete" ? [...Object.values(tuple.tuple.bins).filter((p): p is string => p !== null), tuple.tuple.entry] : tuple.paths;
   const outside = paths.find(p => !inside(p, dest.packagePath));
   if (outside) return fail(`the install reaches ${outside}, outside the intent's destination ${dest.packagePath}`);
