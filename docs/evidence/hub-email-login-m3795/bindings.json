@@ -27,7 +27,7 @@
     },
     {
       "path": "src/ui/hub-strings.js",
-      "sha256": "caf6629af988e20be806d42331f627d378954d719ed0284eb32c0a273dce96fe"
+      "sha256": "53fab2aa0633a1574d9e1c321d5808e6306f35664d3a8fab856647d1aa975b0f"
     },
     {
       "path": "src/general-knowledge/skills/hub/SKILL.md",
@@ -64,6 +64,10 @@
     {
       "path": "tests/support/hub-init-fixtures.ts",
       "sha256": "525cd18401289b87adf9b408ec3d42d4ff6a5c47fd3a94fb779fb7e886df0c91"
+    },
+    {
+      "path": "tests/named-link-test-2906.test.ts",
+      "sha256": "b581352fd8dd0ae06c2fe91e8a8d9227ea14c59b22284f29e208ebbeb9052a18"
     }
   ],
   "evidence": [
@@ -164,12 +168,20 @@
       "sha256": "38d376cfbda16e3f423b5c7d1cdff26b04f281b206da0692fe2e5acff8000a28"
     },
     {
+      "path": "docs/evidence/hub-email-login-m3795/r3-copy-bindings.json",
+      "sha256": "097c5821c6bbe8df4204037b2465d4f13013f91d6bb3567fe7aaf695446b8096"
+    },
+    {
       "path": "docs/evidence/hub-email-login-m3795/review-r1.md",
       "sha256": "a91d391d7cc54955a38204611e71df417860beae9c6403b16bac0984b60191ee"
     },
     {
       "path": "docs/evidence/hub-email-login-m3795/review-r2.md",
       "sha256": "beece2b957c95b797dfa108ddbdcca566ef5091c2a245f2144b63e640f1d5e48"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/review-r3.md",
+      "sha256": "43aa6fea833cd291ccad5ffed4a400e1cc174b48a1b4e5b4d3352d31ee204d4c"
     }
   ]
 }
