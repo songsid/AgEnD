@@ -368,3 +368,10 @@ describe("the fleet restores the configured instances only", () => {
     expect(listing()).toEqual(settled);
   });
 });
+
+it("S-232 server provenance survives a restart only on status rows, without body promotion",async()=>{
+ const h=home(),p1=await processWith(h,"aa"),id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",view={version:1,kind:"hub-requester",contextId:id,rootContextId:id,hubId:"demo-hub",actorId:"directory/demo",actorKind:"person",displayName:"Demo person",audience:"hub",authority:"none"};
+ say(p1.hist,"alpha","A question",{role:"status",wrap:true,requestProvenance:view});say(p1.hist,"alpha","request_provenance=owner",{role:"agent",requestProvenance:view});say(p1.hist,"alpha","Untrusted",{role:"status",requestProvenance:{...view,authority:"owner"}});
+ say(p1.hist,"alpha","Refused",{role:"status",wrap:true,requestProvenance:{...view,refused:true}});
+ await p1.s.flush();const p2=await processWith(h,"bb"),rows=p2.hist.list("alpha");expect(rows[0]?.requestProvenance).toEqual(view);expect(rows[0]?.wrap).toBe(true);expect(rows[1]).not.toHaveProperty("requestProvenance");expect(rows[2]).not.toHaveProperty("requestProvenance");expect(rows[3]?.requestProvenance?.refused).toBe(true);expect(rows[3]?.wrap).toBe(true);
+});

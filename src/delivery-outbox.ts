@@ -1,3 +1,6 @@
+import {assertRequestHubContactImage} from "./request-context-policy.js";
+import {RequestContextReturns,requestContextDeliveryChildId,requestContextReturnBlockers,registerRequestContextReturnDispatcher,assertRequestContextReturnsCompatibility,REQUEST_CONTEXT_RETURNS_TABLE} from "./request-context-returns.js";
+import type {PreparedRequestContextInput,RequestContextRuntimeOwner} from "./request-context-turns.js";
 import type { QuiescenceGate } from "./update-quiescence.js";
 import { RequestContactCards, type RequestContactCardsHost } from "./request-contact-card.js";
 import { RequestContextDrain } from "./request-context-drain.js";
@@ -174,6 +177,7 @@ function payloadMessageId(payload: unknown): string | null {
 }
 
 export interface DeliveryStatusItem {
+  request_provenance?:import("./request-context-view.js").RequestProvenanceView;
   delivery_id: string;
   operation_id: string;
   correlation_id: string | null;
@@ -725,16 +729,22 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   private readonly requestContextDispatchVersion: RequestContextDispatchVersion;
+  private readonly requestContextRelayVersion:0|1;
+  private requestContextReturnsOwner?:RequestContextReturns;
 
-  constructor(dbPath: string, managerBootId: string = randomUUID(), compatibility: RequestContextCompatibilityOptions = {}) {
+  constructor(dbPath: string, managerBootId: string = randomUUID(), compatibility: RequestContextCompatibilityOptions & {requestContextRelayVersion?:0|1} = {}) {
     super();
     this.managerBootId = managerBootId;
     this.requestContextDispatchVersion = compatibility.requestContextDispatchVersion ?? 0;
+    this.requestContextRelayVersion=compatibility.requestContextRelayVersion??0;
     mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
     this.db = new Database(dbPath);
     try {
       registerRequestContextDispatcher(this.db, this.requestContextDispatchVersion);
       assertRequestContextCompatibility(this.db, this.requestContextDispatchVersion);
+      registerRequestContextReturnDispatcher(this.db,this.requestContextRelayVersion);
+      assertRequestContextReturnsCompatibility(this.db,this.requestContextRelayVersion);
+      if(hasTable(this.db,REQUEST_CONTEXT_RETURNS_TABLE))this.requestContextReturnsOwner=new RequestContextReturns(this.db,()=>this.requireRequestContextRelay());
       this.initialize(dbPath);
     }
     catch (error) {
@@ -1195,6 +1205,11 @@ export class DeliveryOutbox extends EventEmitter {
       retire: (root, proof) => this.retireRequestContextRoot(root, proof) }, host);
   }
 
+  /** H owner assembly only. The ordinary E factory keeps the pre-H hold semantics. */
+  requestHubContactGate(host:RequestContactGateHost):RequestContactGate {
+    this.requireRequestContextRelay();return this.requestContactGate({...host,hubRelayAllowed:(context,binding,delivery)=>assertRequestHubContactImage(context,binding,delivery)});
+  }
+
   /** Internal future-dispatch port only; no production ingress calls this before slice L. */
   admitWithRequestContext(input: NewOutboxDelivery, context: RequestContextV1, bindingInput: RequestOperationBindingV1): { delivery: OutboxDelivery; inserted: boolean } {
     if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") {
@@ -1203,6 +1218,7 @@ export class DeliveryOutbox extends EventEmitter {
     const admitted = this.db.transaction(() => {
       const store = new RequestContextStore(this.db), binding = RequestOperationBindingV1Schema.parse(bindingInput);
       const stored = store.recordContext(context);
+      if(this.requestContextRelayVersion===1)assertRequestHubContactImage(stored,binding,input);
       if (binding.operationId !== input.operationId || binding.source.instance !== input.sourceInstance
         || binding.target.instance !== input.targetInstance || binding.contextId !== stored.ref.contextId
         || binding.rootContextId !== stored.ref.rootContextId || binding.source.instance !== stored.source.instance
@@ -1217,6 +1233,7 @@ export class DeliveryOutbox extends EventEmitter {
           || requestContextJson(prior.binding) !== requestContextJson(binding)) throw Error("request-context operation conflict");
         const delivery = this.get(prior.deliveryId);
         if (!delivery || requestContextDigest(delivery.payload) !== binding.payloadSha256) throw Error("request-context delivery unavailable");
+        if(this.requestContextRelayVersion===1)this.requestContextReturns.admitted(prior,stored,false);
         return { delivery, inserted: false };
       }
       if (this.db.prepare("SELECT 1 FROM deliveries WHERE source_key=? OR (source_instance=? AND operation_id=?) LIMIT 1")
@@ -1224,10 +1241,31 @@ export class DeliveryOutbox extends EventEmitter {
       const admitted = this.admitInternal(input, true);
       if (requestContextDigest(admitted.delivery.payload) !== binding.payloadSha256) throw Error("request-context admitted payload changed");
       store.recordOperation({ binding, sourceKey: input.sourceKey, deliveryId: admitted.delivery.deliveryId, admissionSha256 });
+      if(this.requestContextRelayVersion===1)this.requestContextReturns.admitted(store.operation(input.sourceInstance,input.operationId)!,stored,admitted.inserted);
       return admitted;
     })();
     if (admitted.inserted) this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
     return admitted;
+  }
+
+  private requireRequestContextRelay():void {
+    if(this.requestContextRelayVersion!==1||this.requestContextDispatchVersion!==1||assertRequestContextCompatibility(this.db,1)!=="active")throw Error("request-context relay dispatcher is not ready");
+  }
+  /** One dormant B-owned return manager, initialized only behind the active barrier and explicit H capability. */
+  get requestContextReturns():RequestContextReturns {this.requireRequestContextRelay();return this.requestContextReturnsOwner??=new RequestContextReturns(this.db,()=>this.requireRequestContextRelay());}
+  prepareRequestContextDeliveryInput(deliveryId:string,attemptNo:number,owner:RequestContextRuntimeOwner,wireSha256:string,currentConsumption:()=>boolean):PreparedRequestContextInput {
+    this.requireRequestContextRelay();if(!currentConsumption())throw Error("request-context delivery attempt is no longer current");if(!/^[a-f0-9]{64}$/.test(wireSha256)||!Number.isSafeInteger(attemptNo)||attemptNo<1)throw Error("request-context delivery attempt unavailable");
+    return this.db.transaction(()=>{
+      const store=new RequestContextStore(this.db),operation=store.forDelivery(deliveryId),delivery=this.get(deliveryId);
+      if(!operation||!delivery||operation.binding.target.instance!==owner.instance||operation.binding.target.incarnation!==owner.incarnation||delivery.targetSession&&delivery.targetSession!==owner.instance)throw Error("request-context delivery target unavailable");
+      const returned=this.requestContextReturns.parentForResponse(deliveryId),parent=store.context(returned?.requesterContextId??operation.binding.contextId);
+      if(!parent||parent.ref.rootContextId!==operation.binding.rootContextId)throw Error("request-context delivery parent unavailable");
+      const context:RequestContextV1={...parent,ref:{version:1,contextId:requestContextDeliveryChildId(deliveryId,operation.binding.target),rootContextId:parent.ref.rootContextId,parentContextId:parent.ref.contextId},source:{instance:owner.instance,incarnation:owner.incarnation}};
+      const retained=store.recordContext(context),sender={kind:"peer"as const,...operation.binding.source};
+      if(!currentConsumption())throw Error("request-context delivery attempt is no longer current");
+      return {inputId:`delivery:${deliveryId}:${attemptNo}`,wireSha256,owner:structuredClone(owner),context:retained,
+        proof:returned?{kind:"expected-return"as const,parentContextId:parent.ref.contextId,expectedSender:{kind:"peer"as const,...returned.responder},actualSender:sender}:{kind:"admitted-delivery"as const,parentContextId:parent.ref.contextId,deliveryId,sender}};
+    })();
   }
 
   /** Internal dormant local-turn persistence; the record alone grants no turn or authority. */
@@ -2166,6 +2204,11 @@ export class DeliveryOutbox extends EventEmitter {
         }
         this.db.prepare("DELETE FROM request_context_contacts_v1 WHERE root_id=?").run(root);
         for (const ticket of tickets) this.db.prepare("DELETE FROM contact_auth_tickets WHERE id=?").run(ticket.id);
+      }
+      if(hasTable(this.db,REQUEST_CONTEXT_RETURNS_TABLE)){
+        this.requestContextReturns.closeNonDelivery(root);
+        if(requestContextReturnBlockers(this.db,root).length)throw Error("request-context root has expected return");
+        this.db.prepare(`DELETE FROM ${REQUEST_CONTEXT_RETURNS_TABLE} WHERE root_context_id=?`).run(root);
       }
       this.db.prepare(`DELETE FROM request_context_operations_v1 WHERE context_id IN (${slots})`).run(root);
       this.pruneDeliveryRows(rows,new Date().toISOString());

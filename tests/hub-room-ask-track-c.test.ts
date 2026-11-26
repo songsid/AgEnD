@@ -1,3 +1,4 @@
+import {hubRequestInputKey} from "../src/request-hub-context.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -359,4 +360,12 @@ it("M-3660: a room ask's contact window ends once it is answered, never while it
 it("M3300 H7 adapter renders each ask with the current configured history limit",async()=>{
  const f=member();let limit=512;f.options.maxCrossInstanceMessageBytes=()=>limit;f.ask.context=Array.from({length:10},(_,i)=>({author:"A colleague",text:String(i)+"x".repeat(1000),at:i+1}));
  for(const expected of [512,4096]){limit=expected;f.adapter.accept({...f.ask,messageId:randomUUID()},f.link);await f.adapter.settled();const parsed=JSON.parse(f.inputs.at(-1)!.text.split("```json\n")[1]!.split("\n```")[0]!);expect(Buffer.byteLength(JSON.stringify({context:parsed.context},null,2))).toBeLessThanOrEqual(expected);expect(parsed.question.text).toBe(f.ask.text);}
+});
+
+it("S-232 room report and react refuse another Hub root before sending",async()=>{
+ const f=member(),hubId=randomUUID();f.options.hubId=hubId;f.adapter.accept(f.ask,f.link);await f.adapter.settled();
+ const id=hubRequestInputKey(hubId,f.ask.messageId,"existing-agent").contextId,context:any={ref:{version:1,contextId:id,rootContextId:id},rootEvidenceRef:"accepted",ingress:"hub",initiatingActor:{kind:"person",platform:"hub",hubId,id:"demo-person"},source:{instance:"existing-agent",incarnation:"runtime"},sourceAudience:{kind:"room",ref:f.ask.roomId}};
+ const input={caller:"existing-agent",correlationId:f.inputs[0]!.correlationId},bad={context:{...context,ref:{...context.ref,rootContextId:randomUUID()}},current:()=>true};
+ expect(await f.adapter.report({...input,text:"wrong",requestScope:bad})).toMatchObject({ok:false});expect(await f.adapter.react({...input,emoji:"x",requestScope:bad})).toMatchObject({ok:false});expect(f.sent).toHaveLength(0);
+ expect(await f.adapter.report({...input,text:"right",requestScope:{context,current:()=>true}})).toMatchObject({ok:true});expect(f.sent).toHaveLength(1);
 });

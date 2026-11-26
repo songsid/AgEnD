@@ -19,7 +19,11 @@ export interface OwnedHubRequestDelivery {agent:string;acceptedHubRequest?:HubRe
 /** One stable root/input per accepted message; a transient begin retry's new cid is deliberately absent. */
 export function hubRequestInputIdentity(accepted:HubRequestSnapshotV1):Readonly<{contextId:string;inputId:string}> {
  const actor=accepted.actor;if(!("platform" in actor)||actor.platform!=="hub")throw Error("request-hub actor unavailable");
- const hex=requestContextDigest(["hub-request-v1",actor.hubId,accepted.messageId,accepted.destination.agent]).slice(0,32).split("");
+ return hubRequestInputKey(actor.hubId,accepted.messageId,accepted.destination.agent);
+}
+/** Server owner key: no consumed journal or display name lookup is needed to bind an output. */
+export function hubRequestInputKey(hubId:string,messageId:string,agent:string):Readonly<{contextId:string;inputId:string}> {
+ const hex=requestContextDigest(["hub-request-v1",hubId,messageId,agent]).slice(0,32).split("");
  hex[12]="8";hex[16]=((parseInt(hex[16]!,16)&3)|8).toString(16);const value=hex.join("");
  const contextId=`${value.slice(0,8)}-${value.slice(8,12)}-${value.slice(12,16)}-${value.slice(16,20)}-${value.slice(20)}`;
  return Object.freeze({contextId,inputId:`hub-input:${contextId}`});

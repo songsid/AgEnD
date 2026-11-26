@@ -1,3 +1,4 @@
+import {requireRequestContextPolicy} from "./request-context-policy.js";
 import {withHubRoomReplyWarning} from "./hub-room-reply-warning.js";
 import { replyPreviews } from "./reply-preview-spec.js";
 /**
@@ -398,6 +399,13 @@ export async function dispatchAgentOperation(
     }
   }
 
+  if(ctx.requestContextPolicy&&!ctx.requestContextCallAdmission){
+    // A disk-token HTTP caller proves an instance, not a CLI turn. Never consult the latest pane context.
+    if(!callerCurrent)throw Error("Request-context caller fence unavailable");
+    ctx=(await import("./native-agent-admission.js")).nativeAgentAdmissionContext(ctx,{instance,current:callerCurrent,taskAllowed:()=>true,notCoveredReason:"unbound-input",operation:{tool:requestedTool??op,args}});
+  }
+  if(ctx.requestContextPolicy)requireRequestContextPolicy(ctx,instance,requestedTool??op,args);
+
   // HTTP/CLI agents do not pass through mcp-server.ts, so assign the same
   // durable-operation identity at this ingress before invoking an outbound
   // handler. Compact communication replies expose delivery IDs; the operation ID
@@ -612,6 +620,7 @@ export async function dispatchAgentOperation(
     };
     const returned = handler(ctx, args, respond, {
       instanceName: instance,
+      ...(ctx.requestContextCallAdmission?{requestContextAdmission:ctx.requestContextCallAdmission}:{}),
       requestId: undefined,
       fleetRequestId: undefined,
       senderSessionName: undefined,

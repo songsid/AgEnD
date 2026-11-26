@@ -1,0 +1,592 @@
+{
+  "sourceHead": "6db323345037516eb435bf934b549918d7962178",
+  "productionInstallation": "OFF; all H assembly ports remain uninstalled until L",
+  "tests": [
+    {
+      "command": "npx vitest run <49 affected files> tests/request-contact-native-s229.test.ts tests/cross-instance-notice-ids.test.ts tests/cross-instance-visibility-1302.test.ts --maxWorkers=2",
+      "files": 52,
+      "passed": 1106,
+      "failed": 0,
+      "source": "6db323345037516eb435bf934b549918d7962178"
+    },
+    {
+      "command": "npm run typecheck",
+      "passed": true
+    },
+    {
+      "command": "npm run typecheck:tests",
+      "passed": true
+    }
+  ],
+  "captureChecks": {
+    "passed": 128,
+    "failed": 0,
+    "pictures": 56
+  },
+  "mutations": [
+    {
+      "name": "relay-joins-active",
+      "path": "src/request-context-turns.ts",
+      "test": "tests/request-context-returns-s232.test.ts",
+      "exit": 1,
+      "killed": true
+    },
+    {
+      "name": "no-return-parent",
+      "path": "src/request-context-returns.ts",
+      "test": "tests/request-context-returns-s232.test.ts",
+      "exit": 1,
+      "killed": true
+    },
+    {
+      "name": "no-expected-return-registration",
+      "path": "src/request-context-returns.ts",
+      "test": "tests/request-context-returns-s232.test.ts",
+      "exit": 1,
+      "killed": true
+    },
+    {
+      "name": "no-official-question-root",
+      "path": "src/request-hub-output.ts",
+      "test": "tests/hub-representative.test.ts",
+      "exit": 1,
+      "killed": true
+    },
+    {
+      "name": "no-room-audience",
+      "path": "src/request-hub-output.ts",
+      "test": "tests/hub-room-post-fleet.test.ts",
+      "exit": 1,
+      "killed": true
+    },
+    {
+      "name": "hub-task-mutator",
+      "path": "src/request-context-policy.ts",
+      "test": "tests/request-context-mutations-s232.test.ts",
+      "exit": 1,
+      "killed": true
+    },
+    {
+      "name": "forwards-allowed",
+      "path": "src/request-context-policy.ts",
+      "test": "tests/request-context-policy-s232.test.ts",
+      "exit": 1,
+      "killed": true
+    },
+    {
+      "name": "no-native-entry-fence",
+      "path": "src/native-mcp.ts",
+      "test": "tests/native-mcp.test.ts",
+      "exit": 0,
+      "killed": false,
+      "note": "Expected redundant-layer survivor: the common HTTP dispatcher and commit owner still refused the write; no effect committed."
+    },
+    {
+      "name": "hub-settings-allowed",
+      "path": "src/request-context-policy.ts",
+      "test": "tests/request-context-mutations-s232.test.ts",
+      "exit": 1,
+      "killed": true
+    }
+  ],
+  "integration": {
+    "base": "c014938042ce11fd4da5cc57f8c4462d861f775d",
+    "ownHead": "cc1c0a92b486a6946b14bde079033f9168f1d199",
+    "incoming": "113bc471083fc5f9a59070c0599f40f24900a8c2",
+    "mergeHead": "c910772aae22da3cb09f6a077b921df71173ec80",
+    "paths": [
+      {
+        "path": "changes/4500.md",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "changes/4500.zh-TW.md",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "docs/design/request-hub-relay-s232.md",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "scripts/manual/request-hub-relay-s232/capture.mts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/agent-endpoint.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/daemon.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/delivery-outbox.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/fleet-manager.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/general-knowledge/skills/cross-instance-messaging/SKILL.md",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/general-knowledge/skills/worker-collaboration/SKILL.md",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/hub/compose/member.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/hub/member/room-ask.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/hub/member/room-post.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/hub/representative.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/instructions.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/native-agent-admission.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/native-mcp.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/outbound-handlers.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/request-contact-card.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/request-contact-gate.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/request-context-drain.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/request-context-policy.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/request-context-relay.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/request-context-returns.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/request-context-store.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/request-context-turns.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/request-context-view.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/request-hub-context.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/request-hub-output.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/ui/shared/app.css",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/ui/shared/chat-strings.js",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/ui/shared/chat-thread.js",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "src/web-chat-history.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/fixtures/instructions-matrix.json",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/hub-representative.test.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/hub-room-ask-track-c.test.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/hub-room-post-fleet.test.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/native-mcp.test.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/request-context-daemon-s224.test.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/request-context-mutations-s232.test.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/request-context-policy-s232.test.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/request-context-relay-s232.test.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/request-context-returns-s232.test.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/web-chat-persist-1565.test.ts",
+        "ownPatchIdentical": true
+      },
+      {
+        "path": "tests/web-cross-instance-1672.test.ts",
+        "ownPatchIdentical": true
+      }
+    ]
+  },
+  "mergedModuleParse": [
+    {
+      "path": "src/cli.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/contact-change-proposals.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/fleet-lock.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/hub/member/room-mention-feedback.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/hub/member/room-post-answers.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/hub/member/room-post.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/hub/representative.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/locale.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/request-contact-native.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/scheduler/scheduler.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/scheduler/task-board.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/scheduler/types.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/service-lock.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/state-lease.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/update-journal.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    },
+    {
+      "path": "src/update-quiescence.ts",
+      "parseDiagnostics": 0,
+      "transpileDiagnostics": 0,
+      "duplicateNames": []
+    }
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "scripts/manual/request-hub-relay-s232/capture.mts",
+      "sha256": "1f3b9f9ab277c2b1b47e764f333ac99da038307c81c21f3b7914ac29c5a0cb90"
+    },
+    {
+      "path": "src/agent-endpoint.ts",
+      "sha256": "41f28f79050289352ff9fb0b412882cd26e186b99311f8b24f151148abec8b0b"
+    },
+    {
+      "path": "src/cross-instance-notice.ts",
+      "sha256": "f6504c00a228a130e8e1a9bdb0e35977729510f10b2dce36c3900b6f56afa2c9"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "32164b11d37ced26c627aa14ea72015855b7b800f8d232b75f5e50f22f244098"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "eb3ac094135c4e2322f7215750f978c19f5502788442c0068776c291dab0b706"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "d14676f6672e9e38aacb14a92252e794285c807a3e62047dbd72c95f04ac151a"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "15e820adbcfcad549b2f4e479b763c43973d630e237252bef9af268c897e68aa"
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "sha256": "1d7cbe3f7a0a39831763e41f4b23f7a77245f784457ebb5eb8fc5d314b20fa18"
+    },
+    {
+      "path": "src/hub/member/room-post.ts",
+      "sha256": "208fb196bd80f9b7954544ef988bb002873ba46eaf4d76d9328218453521e344"
+    },
+    {
+      "path": "src/hub/representative.ts",
+      "sha256": "0045c6b7a06ce69f014d21db336b94723a613ff8ca485b1106ce958ca037e88c"
+    },
+    {
+      "path": "src/instructions.ts",
+      "sha256": "26521ed87e494381da8030a1e51ac725ec3f6c0517296463039373e0448f633d"
+    },
+    {
+      "path": "src/native-agent-admission.ts",
+      "sha256": "2596942e3d775bddfb0a0d13e259d542d00b2d5ab57f93dddb6259830265d8a8"
+    },
+    {
+      "path": "src/native-mcp.ts",
+      "sha256": "2a705aae9b36881bd88ab6d2914e44c8634b5bb078de4afd99f6ab75d2d3889c"
+    },
+    {
+      "path": "src/outbound-handlers.ts",
+      "sha256": "d84eb18219012143a047508891f76061b0e18740aad910b59450a56c713bc4b2"
+    },
+    {
+      "path": "src/request-contact-card.ts",
+      "sha256": "e70367fd842bbf549fbdd5877f4958508c69ec24c9e8afbca195599a47507ae5"
+    },
+    {
+      "path": "src/request-contact-gate.ts",
+      "sha256": "0d48ca851ab01f8f285c1caabdd5fe0716927479e064ba725cd7f7e74bbc0bdb"
+    },
+    {
+      "path": "src/request-context-drain.ts",
+      "sha256": "bc00fbc5808d3bfe734ec6c0591b47f63b1c11bc93ca405543678190357d18fe"
+    },
+    {
+      "path": "src/request-context-policy.ts",
+      "sha256": "e3323f2ce20ab585324c5d0f3d1e0597df6b0b598578cdd744abcb45f71085b0"
+    },
+    {
+      "path": "src/request-context-relay.ts",
+      "sha256": "07d8c2bf1732b92c867ddd8dfe01fc6cd1c299a6224c82248fa8ea719bbc69f6"
+    },
+    {
+      "path": "src/request-context-returns.ts",
+      "sha256": "ae462aa7b547f6ae07f893aab7b6d3bbb68df464cecfd43d2eab1d4d1b4ebabd"
+    },
+    {
+      "path": "src/request-context-store.ts",
+      "sha256": "460f541b89b62b6ef5c9a765bf47dd306ff3dc08aae1be29bd9914ef2c2510df"
+    },
+    {
+      "path": "src/request-context-turns.ts",
+      "sha256": "30918eb5c08873fa716977537ca46146d32cc87c0ae326c30679799b3c00a77c"
+    },
+    {
+      "path": "src/request-context-view.ts",
+      "sha256": "8a73bef14adb3949c54b47a3007590575e5c03e08dac35a9476c7da63dbd1c61"
+    },
+    {
+      "path": "src/request-hub-context.ts",
+      "sha256": "99e3d5cdd1b3bb805722af56690057ca9564c105fbafd507cbd5dbfcb72771dc"
+    },
+    {
+      "path": "src/request-hub-output.ts",
+      "sha256": "1a33da4dc21c8f88d180e58b8ba128d31eb199aed48656792e5f9f119d014ec8"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "00d06a6b104bd788ce2338142a16002bf8517b86ff63df7a13c52ca1dd9c5ea6"
+    },
+    {
+      "path": "src/ui/shared/chat-strings.js",
+      "sha256": "bf8b00377e207593ea112c7d3d7a5decc6c9ffb1ca76c38a60b24367a1d97ece"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "sha256": "43107e8f55f7561271d605c8609b51d7da4ba4f8dc64e9370a68863d113718aa"
+    },
+    {
+      "path": "src/web-chat-history.ts",
+      "sha256": "4fcf331a5c59552875289e29c6484da085542a4ffcf35a744477cc26ce9859eb"
+    },
+    {
+      "path": "tests/agent-instructions.test.ts",
+      "sha256": "46a1acde61a99505deef9c055ecc8de936df011e95081fdb4e0172de79551729"
+    },
+    {
+      "path": "tests/cross-instance-notice-ids.test.ts",
+      "sha256": "2c8025effbbc4d4690ef4b7ce00c152819c35226473e5a401cc30d313dc04f1d"
+    },
+    {
+      "path": "tests/hub-representative.test.ts",
+      "sha256": "ab01e395a78c06deaffe41cd44f62c404cd6f40b6c7955a46a621070f21a275f"
+    },
+    {
+      "path": "tests/hub-room-ask-track-c.test.ts",
+      "sha256": "3754fa2bfb6f313228e445e82f04a1b42465bb6845bb38f8e6660cb6bb11839a"
+    },
+    {
+      "path": "tests/hub-room-post-fleet.test.ts",
+      "sha256": "6619f33561e806dec2ef5145dc398b445a91702988acd1a39109a0e6127fc33b"
+    },
+    {
+      "path": "tests/native-mcp.test.ts",
+      "sha256": "3fcb523a4310ea55e1647c2736b0a1f53b9eeed0be37f8a8a3b39cbff45bc5d7"
+    },
+    {
+      "path": "tests/request-context-daemon-s224.test.ts",
+      "sha256": "c69cb6a625897bf462bf52f0a5fda7096017842b543c578f7a7edff559e22b8e"
+    },
+    {
+      "path": "tests/request-context-mutations-s232.test.ts",
+      "sha256": "62551b19223941a0b4082a3325d6328753d876c941b2b1e7abb3a4ba5c5b5d6b"
+    },
+    {
+      "path": "tests/request-context-policy-s232.test.ts",
+      "sha256": "396915bcfa607b465119bc1a661403cd001c9611813552d16c06d3cbb220e336"
+    },
+    {
+      "path": "tests/request-context-relay-s232.test.ts",
+      "sha256": "eb3ff67817821ad37b3c313a1e04e8df75d748c375f4802535e6c79bbe1ed88a"
+    },
+    {
+      "path": "tests/request-context-returns-s232.test.ts",
+      "sha256": "96039cea543c5a53089681e4e7ca1a4e8e56ab31ebc6edf753e6690a5c70bdd5"
+    },
+    {
+      "path": "tests/web-chat-persist-1565.test.ts",
+      "sha256": "40c84ae49f51df0b61d1f03eddda5ea7736b13858f1ed5e39d5d071fd1aba359"
+    },
+    {
+      "path": "tests/web-cross-instance-1672.test.ts",
+      "sha256": "4e69efd5ceb23bf81ac45ff463dd654894cce97076e02013bb03362735abf187"
+    }
+  ],
+  "limits": [
+    "Synthetic owners and scratch HTTP/UI only; no CLI, account, provider, model or live Fleet calls.",
+    "Physical input/transport installation, full cutover and published-version downgrade proof remain L responsibilities.",
+    "Labels and application tool guards do not sandbox shell processes or erase model conversation history.",
+    "S-249 supplies web interruption wording before L; native same-card reason presentation must also be checked."
+  ],
+  "previousSourceHead": "0d19a08df1cb80205e8f1a00792c5ef7e82f9431",
+  "mutationsCarry": "The initial 8 semantic reversals and redundant native-entry control are retained as baseline evidence. R1 adds the two explicit controls in r1.json.",
+  "currentSourceHead": "a2d0a7a34fd8b8960eed25366f666778579ae637",
+  "captureUpdates": {
+    "manifest": "receipt.json",
+    "r2": "r2.json",
+    "updated": 6,
+    "carriedByteIdentical": 50
+  },
+  "latestFocusedTests": {
+    "files": 2,
+    "passed": 89,
+    "failed": 0
+  }
+}

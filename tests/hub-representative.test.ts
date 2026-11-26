@@ -1,5 +1,5 @@
 import {RequestContextInputDeferred} from "../src/request-context-turns.js";
-import {prepareHubRequestInput,labelHubRequest} from "../src/request-hub-context.js";
+import {hubRequestInputKey,prepareHubRequestInput,labelHubRequest} from "../src/request-hub-context.js";
 import {requestContextDigest} from "../src/request-context-store.js";
 import {HubDirectRooms} from "../src/hub/member/direct-rooms.js";
 /**
@@ -91,7 +91,7 @@ function fixture(opts: { beforeDelivery?: (input:HubRepresentativeDelivery)=>Pro
   let failAudit: string | null = null;
   let exchangeMode: "ok" | "reject" | "bad-ack" = "ok";
   const rep = new HubRepresentativeExecution({
-    db,
+    db,hubId:profile.hub.hubId,
     get journal() { return journal; },
     binding: () => ({ fleetId: profile.fleetId, owner, linkEpoch: 1, revocationVersion: 1, current: () => live }),
     localExposure: () => current,
@@ -874,4 +874,16 @@ it("S-231 preflight waits with the row dispatching and consumes no begin while C
   const current=()=>blocked?{inputId:"unrelated",wireSha256:"x",owner}as any:null;
   try{prepareHubRequestInput(input,owner,requestContextDigest(input.text),{context:()=>null,current});}catch(error){if(!(error instanceof RequestContextInputDeferred))throw error;await wait;prepareHubRequestInput(input,owner,requestContextDigest(input.text),{context:()=>null,current});}
  }});f.publish();const q=f.question();await f.admission.admit(q);await until(()=>f.deliveries.length===1,"dispatch awaiting turn");expect(f.state(q.identity.messageId)?.state).toBe("dispatching");expect(f.authorize.mock.calls.map(([request])=>request.phase)).toEqual(["admit"]);expect(f.handed).toEqual([]);blocked=false;release();await until(()=>f.handed.length===1,"turn released");expect(f.handed).toEqual([true]);expect(f.authorize.mock.calls.map(([request])=>request.phase)).toEqual(["admit","begin"]);
+});
+
+it("S-232 an official Hub answer cannot target a different accepted question",async()=>{
+ const f=fixture();f.publish();const q=f.question();await f.admission.admit(q);await until(()=>f.handed.length===1,"handoff");const d=f.deliveries[0]!,accepted=d.acceptedHubRequest!;
+ const owner={instance:"rep",incarnation:"runtime-v1",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0};
+ const context=prepareHubRequestInput({...d,stillCurrent:()=>true},owner,requestContextDigest(d.text),{context:()=>null,current:()=>null}).context!;let current=true;
+ const base={caller:"rep",correlationId:d.correlationId,text:"answer"};
+ const wrong={...context,ref:{version:1 as const,contextId:randomUUID(),rootContextId:randomUUID()}};
+ expect(await f.rep.report({...base,requestScope:{context:wrong,current:()=>true}})).toMatchObject({ok:false});expect(f.frames.filter(x=>x.type==="answer")).toHaveLength(0);
+ expect(await f.rep.report({...base,requestScope:{context,current:()=>false}})).toMatchObject({ok:false});
+ expect(context.ref.rootContextId).toBe(hubRequestInputKey(q.identity.issuer,q.identity.messageId,"rep").contextId);
+ expect(await f.rep.report({...base,requestScope:{context,current:()=>current}})).toMatchObject({ok:true});expect(f.frames.filter(x=>x.type==="answer")).toHaveLength(1);
 });

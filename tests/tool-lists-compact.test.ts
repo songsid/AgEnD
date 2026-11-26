@@ -41,6 +41,7 @@ describe("compact paged agent lists",()=>{
  it("plain tasks page before the legacy100 cap on both MCP and HTTP",async()=>{
   const db=rig();for(let i=0;i<125;i++)db.createTask({title:`Task ${i}`,description:"body",created_by:"dev"});
   const sent:any[]=[];const fake:any={scheduler:{db},fleetConfig:{instances:{dev:{working_directory:"/owned"}}},logger:{info(){},warn(){}},instanceIpcClients:new Map([["dev",{send:(m:any)=>sent.push(m)}]])};
+  Object.defineProperty(fake,"requestContextCallOf",{get(){throw new Error("OFF task handling must not read request-context admission");}});
   const proto=FleetManager.prototype as any;const ids:string[]=[];let pages=0;let cursor:string|undefined;
   do{expect(++pages).toBeLessThan(10);const args={action:"list",limit:40,...(cursor?{cursor}:{})};const page=await proto.handleTaskCrudHttp.call(fake,"dev",args);proto.handleTaskCrud.call(fake,"dev",{type:"fleet_task",fleetRequestId:"test",payload:args,meta:{instance_name:"dev"}});expect(sent.at(-1).result).toEqual(page);ids.push(...page.tasks.map((x:any)=>x.id));cursor=page.next_cursor;}while(cursor);
   expect(ids).toHaveLength(125);expect(new Set(ids).size).toBe(125);

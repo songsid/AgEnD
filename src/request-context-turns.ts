@@ -17,6 +17,7 @@ const senderIdentity = (sender: Sender): unknown => {
 };
 export type RequestContextInputProof =
   | { kind: "independent" }
+  | { kind: "admitted-delivery"; parentContextId:string; deliveryId:string; sender:{kind:"peer";instance:string;incarnation:string} }
   | { kind: "expected-return"; parentContextId: string; expectedSender: Sender; actualSender: Sender }
   | { kind: "admin-steer"; activeToken?: string; parentContextId?: string; actor: RequestContextActorV1 }
   | { kind: "recovery"; parentContextId?: string };
@@ -24,6 +25,7 @@ const key = z.string().min(1).max(256);
 const senderSchema = z.union([z.strictObject({ kind: z.literal("peer"), instance: key, incarnation: key }), RequestContextActorV1Schema]);
 const proofSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("independent") }),
+  z.strictObject({kind:z.literal("admitted-delivery"),parentContextId:z.uuid(),deliveryId:z.uuid(),sender:z.strictObject({kind:z.literal("peer"),instance:key,incarnation:key})}),
   z.strictObject({ kind: z.literal("expected-return"), parentContextId: z.uuid(), expectedSender: senderSchema, actualSender: senderSchema }),
   z.strictObject({ kind: z.literal("admin-steer"), activeToken: z.uuid().optional(), parentContextId: z.uuid().optional(), actor: RequestContextActorV1Schema })
     .refine(value => !!value.activeToken !== !!value.parentContextId, "Exactly one current turn or mapped work is required"),
@@ -138,6 +140,11 @@ export class RequestContextLocalTurns {
         if (active && active.context.ref.rootContextId !== context.ref.rootContextId) throw new RequestContextInputDeferred();
       }
       // Recognition of this administrator is not a go-ahead and does not replace the outside requester.
+    } else if(proof.kind==="admitted-delivery"){
+      if(active)throw new RequestContextInputDeferred(); // Sibling relays never join even the same-root active turn.
+      const parent=this.ports.context(proof.parentContextId);
+      if(!parent||!context||context.ref.parentContextId!==parent.ref.contextId||context.ref.rootContextId!==parent.ref.rootContextId||proof.sender.instance!==parent.source.instance||proof.sender.incarnation!==parent.source.incarnation||!inputId.startsWith(`delivery:${proof.deliveryId}:`))throw Error("request-context admitted delivery unavailable");
+      for(const key of ["rootEvidenceRef","initiatingActor","ingress","sourceAudience","returnAudience"]as const){if(!same(parent[key]??null,context[key]??null))throw Error("request-context delivery changed provenance");}
     } else if (proof.kind === "expected-return" || proof.kind === "recovery" && proof.parentContextId) {
       const parentId = proof.parentContextId!;
       const parent = this.ports.context(parentId);

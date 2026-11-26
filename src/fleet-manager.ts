@@ -1,3 +1,6 @@
+import {requestDeliveryView,requestContextDisplayView} from "./request-context-view.js";
+import {captureRequestHubOutput} from "./request-hub-output.js";
+import {assertRequestContextOperation,requireRequestContextPolicy,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import type { RequestContactApiHost } from "./request-contact-api.js";
 import type { RequestContactPrincipal, RequestContactSnapshotV1 } from "./request-contact-types.js";
@@ -1981,7 +1984,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const { dispatchAgentOperation } = await import("./agent-endpoint.js");
         return daemon.handlePaneToolCall(input, { current, allowed: tool => allowed(name, tool), ...(input.requestContext ? { requestContext: input.requestContext } : {}),
           dispatch: (tool, args) => ops[tool] ? dispatchAgentOperation(nativeAgentAdmissionContext(this, {
-            instance: name, current: () => current() && allowed(name, tool), taskAllowed: () => current() && allowed(name, "task"),
+            instance: name, operation:{tool,args}, current: () => current() && allowed(name, tool), taskAllowed: () => current() && allowed(name, "task"),
             ...(input.requestContext?.coverage === "covered" ? { requestContext: input.requestContext.lease } : input.requestContext ? { notCoveredReason: input.requestContext.reason } : {}),
           }), name, ops[tool], args, input.operationId, () => current() && allowed(name,tool)) : undefined });
       },
@@ -3476,7 +3479,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubMemberLink: "online" | "offline" | "revoked" | "rejected" = "offline";
   private hubMemberLinkBinding: string | null = null;
   /** OutboundContext: the Hub representative's answer hook (null: no member service running, or not a Hub answer). */
-  hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
+  hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; requestScope?:import("./request-hub-output.js").RequestHubOutputScope; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
     const result = this.hubReports?.(input) ?? null;
     if (!result) return null;
     return result.then(outcome => {
@@ -3489,10 +3492,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
   /** M-3127 OutboundContext: an agent's `react` on a Hub room question (its correlation id as message_id); null: not one. */
-  hubReact(input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
+  hubReact(input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean; requestScope?:import("./request-hub-output.js").RequestHubOutputScope }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
     return this.hubReacts?.(input) ?? null;
   }
-  private hubReacts: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<import("./hub-report-target.js").HubReportOutcome> | null) | null = null;
+  private hubReacts: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean; requestScope?:import("./request-hub-output.js").RequestHubOutputScope }) => Promise<import("./hub-report-target.js").HubReportOutcome> | null) | null = null;
   /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
   private hubRoomOwed:{replyWarning(agent:string):string|undefined;turnEnded(agent:string,generation:string,turn:string):Promise<void>}|null=null;
   hubRoomReplyWarning(agent:string):string|undefined{try{return this.hubRoomOwed?.replyWarning(agent);}catch{return undefined;}}
@@ -3540,7 +3543,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const ipc of this.instanceIpcClients.values()) ipc.send({type:"hub_room_tools_changed"});
   }
   /** The member side's report_result hook for HUB_REPORT_TARGET while a representative service runs (else null). */
-  private hubReports: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
+  private hubReports: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; requestScope?:import("./request-hub-output.js").RequestHubOutputScope; extras?: import("./hub-report-target.js").HubReportExtras }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
   /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
   private hubRuntimeInit: Promise<import("./hub/runtime.js").HubRuntime> | null = null;
   private hubEffectsReady = false;
@@ -6023,6 +6026,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Identity-only read. This does not install/enable the same-card host. */
+  requestContextPolicy?:RequestContextPolicyPort;
+  requestContextRelay?:import("./request-context-relay.js").RequestContextRelayPort;
+  /** L installs this explicitly; H defines no production switch. */
+  makeRequestContextPolicy():RequestContextPolicyPort{return {assert:input=>{
+    try{return assertRequestContextOperation(input);}catch(error){
+      if(error instanceof RequestContextPolicyError){
+        const call=input.admission,view=call?.coverage==="covered"&&call.lease.snapshot.owner.instance===input.instance?requestContextDisplayView(call.lease.snapshot.context):null;
+        this.emitSseEvent("message",{instance:input.instance,sender:"AgEnD",role:"status",wrap:true,text:error.message,ts:new Date().toISOString(),...(view?{requestProvenance:{...view,refused:true}}:{})});
+      }
+      throw error;
+    }
+  }};}
+
   requestContactPrincipal(req:import("node:http").IncomingMessage,url:URL):RequestContactPrincipal|null {
     const resolve=()=>{
       const verdict=evaluateWebRequest(req as unknown as WebGateRequest,url,this.webToken,this.webSessions,{touch:false});
@@ -6557,6 +6573,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     forwards?: readonly string[];
     requestedKind?: string;
   }): { deliveryId: string; state: string; duplicate: boolean; kind: string } {
+    if(this.requestContextPolicy||this.requestContextRelay)throw Error("Scoped contact admission is required; no legacy fallback");
     const bindingHold = this.generalLocationDeliveryHold(input.targetInstance);
     if (bindingHold) throw Error(bindingHold);
     const outbox = this.deliveryOutbox;
@@ -6606,12 +6623,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
   }
 
+  requestDeliveryView(deliveryId:string){return this.requestContextPolicy&&this.requestContextRelay&&this.deliveryOutbox?requestDeliveryView(this.deliveryOutbox,deliveryId):null;}
+
   queryDurableDeliveryStatus(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage {
     this.ensureDeliveryOutbox();
     const page = this.deliveryOutbox!.queryStatusForInstance(callerInstance, selector);
     // #1939 §10: a human receipt's authority as it reads now (switch, epoch, loopback_only).
     const state = page.items.some(item => item.authority) ? this.webAuthorityState() : null;
     const human = (item: DeliveryStatusItem): DeliveryStatusItem => {
+      if(selector.messageId){const projection=this.requestDeliveryView(item.delivery_id);if(projection)item={...item,request_provenance:projection.view};}
       if (!item.authority || !state) return item;
       const authority = this.receiptAuthorityNow(item.authority, state);
       return { ...item, authority, ...(authority.downgraded && !isWebSessionIdentity(item.origin?.web_identity) ? { source_instance: "human:web:unknown" } : {}) };
@@ -15996,15 +16016,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,instanceName,tool==="hub_room_status"?"hub_room_list":tool,args,originatingCall?.admission);}catch(error){respond(null,(error as Error).message);return;}
+
     // Fleet tools resolve their own targets. A missing chat world must not prevent local
     // delivery, inspection or receipt lookup; only channel tools need reply routing below.
     const handler = outboundHandlers.get(tool);
     if (handler && !usesChannelAddress(tool)) {
       this.eventLog?.logActivity("tool_call", senderSessionName ?? instanceName, this.summarizeToolCall(tool, args));
-      const context = originatingCall ? (await import("./native-agent-admission.js")).nativeAgentAdmissionContext(this, {
-        instance: instanceName, current: () => originatingCall.current(), taskAllowed: () => this.checkToolPermission("ipc-outbound", instanceName, "task").allowed,
-        ...(originatingCall.admission.coverage === "covered" ? { requestContext: originatingCall.admission.lease } : { notCoveredReason: originatingCall.admission.reason }),
-      }) : this;
+      let context: import("./agent-endpoint.js").AgentEndpointContext = this;
+      if(originatingCall || this.requestContextPolicy){
+        const entryBoot=sourceDaemonBootId??this.getDaemonBootId(instanceName);
+        context=(await import("./native-agent-admission.js")).nativeAgentAdmissionContext(this, {
+          instance: instanceName, operation:{tool,args}, current: () => originatingCall?originatingCall.current():!!entryBoot&&this.getDaemonBootId(instanceName)===entryBoot, taskAllowed: () => this.checkToolPermission("ipc-outbound", instanceName, "task").allowed,
+          ...(originatingCall?.admission.coverage === "covered" ? { requestContext: originatingCall.admission.lease } : { notCoveredReason: originatingCall?.admission.reason??"unbound-input" }),
+        });
+      }
       await handler(context, args, respond, {
         instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
         ...(originatingCall ? { callerCurrent: () => originatingCall.current(), requestContextAdmission: originatingCall.admission } : {}),
@@ -16018,6 +16044,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const bootNow = this.getDaemonBootId(instanceName), bootSent = sourceDaemonBootId ?? bootNow;
       if (!bootNow || bootSent !== bootNow) { respond(null, "Source daemon generation is no longer current; outcome is unknown"); return; }
       const claimed = this.hubReact({ correlationId: args.message_id, caller: instanceName, emoji: typeof args.emoji === "string" ? args.emoji : "",
+        ...(this.requestContextPolicy?{requestScope:captureRequestHubOutput(originatingCall?.admission)}:{}),
         callerCurrent: () => this.getDaemonBootId(instanceName) === bootSent && (!originatingCall || originatingCall.current()) });
       if (!claimed) { respond(null, "That message_id is not a Hub room question you were asked."); return; }
       const outcome = await claimed;
@@ -16746,6 +16773,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const captured = this.requestContextCallOf(msg);
     if (captured && !captured.current()) { this.refuseTypedIpc(name, msg, "Originating request context is no longer current"); return; }
     const type = String(msg.type);
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,name,toolForIpcType(type)??type,(msg.payload??{})as Record<string,unknown>,captured?.admission);}catch(error){this.refuseTypedIpc(name,msg,(error as Error).message);return;}
     if (type.startsWith("fleet_schedule_")) { this.handleScheduleCrud(name, msg); return; }
     if (type.startsWith("fleet_decision_")) { this.handleDecisionCrud(name, msg); return; }
     if (type === "fleet_task") { this.handleTaskCrud(name, msg); return; }
@@ -16778,6 +16806,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const tool = String(msg.type).replace(/^fleet_/, "");
     try {
       const args = (msg.payload ?? {}) as Record<string, unknown>;
+      if(this.requestContextPolicy)requireRequestContextPolicy(this,instanceName,tool,args,this.requestContextCallOf(msg)?.admission);
       const result = tool === "get_web_appearance" || tool === "preview_web_appearance"
         ? this.appearanceTools.handle(instanceName, tool, args)
         : tool === "office_view" || tool === "office_set" ? this.officeActs.handle(instanceName, tool, args)
@@ -16826,6 +16855,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const op = String(msg.type).replace("fleet_schedule_", "") as "create" | "list" | "update" | "delete";
       const result = this.performScheduleOp(instanceName, op, payload, {
+        requestContextAdmission:this.requestContextCallOf(msg)?.admission,
         // The daemon sends its last chat id, which is unset until the instance
         // has had a chat message — and cross-instance traffic never sets it. So
         // a worker that only takes delegated tasks, the very instance #895 lets
@@ -16994,14 +17024,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // ── Agent CLI HTTP handlers ─────────────────────────────────────────
 
-  async handleScheduleCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
+  async handleScheduleCrudHttp(instance: string, op: string, args: Record<string, unknown>,requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     if (op !== "create" && op !== "list" && op !== "update" && op !== "delete") {
       return { error: `Unknown schedule op: ${op}` };
     }
     // No bound chat on this path, as before: a schedule made through the agent
     // endpoint has nowhere of its own to reply.
-    return this.performScheduleOp(instance, op, args, { chatId: "", threadId: null });
+    return this.performScheduleOp(instance, op, args, { chatId: "", threadId: null,requestContextAdmission });
   }
 
   /**
@@ -17020,8 +17050,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     caller: string,
     op: "create" | "list" | "update" | "delete",
     args: Record<string, unknown>,
-    reply: { chatId: string; threadId: string | null; adapterId?: string | null; silent?: boolean },
+    reply: { chatId: string; threadId: string | null; adapterId?: string | null; silent?: boolean; requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission },
   ): unknown {
+    if(this.requestContextPolicy)requireRequestContextPolicy(this,caller,op==="list"?"list_schedules":`${op}_schedule`,args,reply.requestContextAdmission);
     const scheduler = this.scheduler!;
     // Shape first, so the value the permission decision reads is the value the
     // scheduler gets. `target` used to be filtered through typeof for the
@@ -17210,9 +17241,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  async handleTaskCrudHttp(instance: string, args: Record<string, unknown>): Promise<unknown> {
+  async handleTaskCrudHttp(instance: string, args: Record<string, unknown>,_snapshot?:unknown,requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
+    if(this.requestContextPolicy)requireRequestContextPolicy(this,instance,"task",args,requestContextAdmission);
     const action = args.action as string;
     const asStr = (v: unknown): string | undefined => typeof v === "string" ? v : undefined;
     const asStrArr = (v: unknown): string[] | undefined =>
@@ -17322,7 +17354,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #1629: `agend-agent theme …` — the same service as the tools; `instance` is the token's. */
-  async handleWebThemeHttp(instance: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
+  async handleWebThemeHttp(instance: string, tool: string, args: Record<string, unknown>,requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission): Promise<unknown> {
+    if(this.requestContextPolicy)requireRequestContextPolicy(this,instance,tool,args,requestContextAdmission);
     if (isCanvasWorkerTool(tool)) return { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };   // #2799: removed
     if (tool === "get_web_appearance" || tool === "preview_web_appearance") return this.appearanceTools.handle(instance, tool, args);
     if (tool === "office_view" || tool === "office_set") return this.officeActs.handle(instance, tool, args);   // #2578
@@ -17377,6 +17410,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const db = this.scheduler.db;
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,instanceName,"task",payload,this.requestContextCallOf(msg)?.admission);}catch(error){ipc.send({type:"fleet_task_response",fleetRequestId,error:(error as Error).message});return;}
     const action = payload.action as string;
     // #1336 P2: use the shared normalizer — trims whitespace AND drops empties,
     // so " \t " / [" ","\t"] are treated identically to undefined.
@@ -17880,7 +17914,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * document. Unknown keys and comments remain untouched; redundant
    * non-identity instance leaves are canonicalized to inheritance afterward.
    */
-  saveFleetConfig(explicitPatches: RawConfigPatch[] = []): void {
+  saveFleetConfig(explicitPatches: RawConfigPatch[] = [],requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission): void {
+    if(this.requestContextPolicy&&requestContextAdmission)requireRequestContextPolicy(this,requestContextAdmission.coverage==="covered"?requestContextAdmission.lease.snapshot.owner.instance:"", "update_instance_config",{},requestContextAdmission);
     if (!this.companyMembershipWrite && explicitPatches.some(p => p.path[0] === "hub_member"
       && (p.path[1] === "enabled" ? p.value !== true || p.remove : p.path.length === 1))) this.invalidateHubCompanyJoin();
     this.publicWebLink?.refresh();
@@ -25918,7 +25953,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2861: an Office share's dialogue box hears that someone talked to an instance (never what was said).
       this.officeTalk.noteMessage(data);
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; retryOwner?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown; contactTicket?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; retryOwner?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown; contactTicket?: unknown; requestProvenance?:unknown;wrap?:unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -25937,6 +25972,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         posts: m.posts,                                  // #2281: kept beside the row, never broadcast (not a row field)
         reserved: m.reserved,                            // #1774: an agent reply's place, taken when it was sent
         contactTicket: m.contactTicket,
+        requestProvenance:m.requestProvenance,
+        wrap:m.wrap,
       });
       // A sending page's own id for its pending bubble rides on the live copy only: never recorded, never replayed.
       const clientId = typeof (data as { clientId?: unknown }).clientId === "string" ? (data as { clientId: string }).clientId : "";

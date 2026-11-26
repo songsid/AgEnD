@@ -1,3 +1,4 @@
+import {requestHubQuestionMatches} from "../request-hub-output.js";
 import {freezeHubRequestSnapshot,type HubRequestSnapshotV1} from "../request-hub-context.js";
 import type { HubHeldCloseOutcome } from "./question-close-model.js";
 import { HUB_QUESTION_CLOSE_CAPABILITY, questionCloseResultSchema } from "./question-close-model.js";
@@ -93,6 +94,7 @@ export interface HubRepresentativeDelivery {
   stillCurrent(): boolean;
 }
 export interface HubRepresentativeOptions {
+  hubId?:string;
   db: Database.Database;
   journal: HubMemberJournal;
   binding(): HubRepresentativeBinding;
@@ -416,17 +418,19 @@ export class HubRepresentativeExecution {
    * issued to this caller (the call then takes its ordinary route); otherwise consumes it once and releases the answer.
    * callerCurrent: the reporting daemon generation is still the agent's current one (asked again before every release step).
    */
-  report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null {
+  report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean; requestScope?:import("../request-hub-output.js").RequestHubOutputScope; extras?: HubReportExtras }): Promise<HubReportOutcome> | null {
     if (this.closed || !input.correlationId.startsWith("hub-")) return null;
     const row = this.row("cid", input.correlationId);
     if (!row || row.agent !== input.caller) return null;
+    const scopeCurrent=()=>requestHubQuestionMatches(input.requestScope,this.options.hubId,row.message_id,row.agent);
+    if(!scopeCurrent())return Promise.resolve({ok:false,message:"Not sent: this reply must stay in its original Hub conversation."});
     const was = row.state;
     // Consume once, synchronously: a second report on the same id finds it no longer live.
     if (!this.setState(row, "answering", ["input", "delivered"])) {
       const state=this.refresh(row),hint=this.directFollowUp(row);
       return Promise.resolve({ok:false,message:state==="answering"?HUB_ANSWER_SENDING:state==="held"?HUB_ANSWER_HELD:hint?`Not sent: this Hub question already has its one answer. ${hint}`:HUB_ANSWER_USED});
     }
-    return this.release(row, was, input.text, input.callerCurrent ?? (() => true), input.extras ?? {});
+    return this.release(row, was, input.text, () => scopeCurrent() && (input.callerCurrent?.() ?? true), input.extras ?? {});
   }
 
   private async release(row: Row, was: State, raw: string, callerCurrent: () => boolean, extras: HubReportExtras): Promise<HubReportOutcome> {
@@ -450,6 +454,7 @@ export class HubRepresentativeExecution {
         const prepared = await files.prepare(row.agent, extras.files);
         live();
         for (const file of prepared) await files.send(file, async (chunk) => {
+          live();
           const ack = await link.exchange({ v: 1, type: "attachment.put", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: chunk }, "attachment.ack");
           if (ack.type !== "attachment.ack" || ack.payload.id !== chunk.id || ack.payload.offset !== chunk.offset) throw new HubProtocolError("uncertain");
         });

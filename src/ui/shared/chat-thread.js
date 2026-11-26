@@ -359,7 +359,11 @@ export function createThread(list, scroller, opts) {
     const folded = x.wrap === true ? "" : ` folded${overflows ? " overflows" : ""}`;
     // M-3339: a ClassicBot room's held-request line carries its contact badge too (the Fleet chat's hook; a Hub passes none).
     const contact = typeof opts.contactBadge === "function" && x.contactTicket ? String(opts.contactBadge(x) || "") : "";
-    return `<div class="msg status-line${folded}"><div class="meta">${time}${contact}</div><div class="body"><div class="st-text">${body}</div>${x.wrap === true ? "" : more}${action}</div>${x.bare === true ? "" : tools}</div>`;
+    const p=x.requestProvenance;
+    // This inert field is emitted only from the validated outbox projection. Label-looking body text stays plain text.
+    const provenance=p&&p.version===1&&p.kind==="hub-requester"&&p.authority==="none"&&["person","agent","assistant"].includes(p.actorKind)
+      ? `<div class="request-provenance"><strong>${escAttr(p.displayName?trf("chat.hubOnBehalf",p.displayName):tr("chat.hubRequester"))}</strong><p>${escAttr(p.refused===true?text:tr(p.audience==="room"?"chat.hubRoomAudience":"chat.hubDirectAudience"))}</p><details class="n-raw"><summary>${escAttr(tr("chat.hubRequestDetails"))}</summary><div class="n-raw-text">${escAttr(trf("chat.hubRequestIdentifiers",p.hubId,p.actorId,p.rootContextId))}</div>${x.bare===true?"":tools}</details></div>` : "";
+    return `<div class="msg status-line${folded}"><div class="meta">${time}${contact}</div>${provenance}${provenance&&p.refused===true?"":`<div class="body"><div class="st-text">${body}</div>${x.wrap === true ? "" : more}${action}</div>`}${x.bare === true || provenance ? "" : tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,
