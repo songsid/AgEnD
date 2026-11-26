@@ -50,7 +50,7 @@ import { admitServiceCommand } from "./service-lock.js";
 import { claimHandoff, fleetStartGate } from "./update-journal.js";
 import { takeSharedLease } from "./state-lease.js";
 import { ensureAgendHome } from "./agend-home.js";
-import { spawnSync, execSync, execFileSync, type ExecSyncOptionsWithStringEncoding } from "node:child_process";
+import { spawnSync, execSync, execFileSync } from "node:child_process";
 import { spawn } from "./child-process.js";
 import { getAgendHome, isDefaultAgendHome, realDefaultAgendHome } from "./paths.js";
 import { tmuxArgs as tmuxArgsFor, tmuxBinary as tmuxBin, tmuxEnvOption as tmuxEnvOpt } from "./tmux-binary.js";
@@ -1749,7 +1749,7 @@ program
       // M-3806: for a UUID in the path, `npm config get prefix` refuses (npm 10–12): read `npm prefix -g`, which npm
       // 11/12 print with `***`; that is asked the way npm tells a child, from the filesystem root (Fable #4526 F2).
       // No answer at all: as before, assume no sudo.
-      const quiet: ExecSyncOptionsWithStringEncoding = { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] };
+      const quiet = { encoding: "utf-8" as const, stdio: ["ignore", "pipe", "ignore"] as Array<"ignore" | "pipe"> };
       const said = (command: string, cwd?: string) => { try { return execSync(command, cwd ? { ...quiet, cwd } : quiet); } catch { return ""; } };
       let configured = said("npm config get prefix");
       if (!npmGlobalPrefix.lastLine(configured) || npmGlobalPrefix.masked(configured)) configured = said("npm prefix -g");
