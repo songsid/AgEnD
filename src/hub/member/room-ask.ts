@@ -72,6 +72,8 @@ export interface RoomAskOptions {
   /** Only a published, owner-consented mapping with the agent's current lifecycle token. */
   localExposure(id: string): RoomExposure | null;
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
+  /** S-244: while an update barrier is up, a queued ask stays queued. */
+  updateHeld?: () => boolean;
   locale?: "en" | "zh-TW";
   /** Read current Fleet defaults when each question is rendered, including after configuration reload. */
   maxCrossInstanceMessageBytes?(): number | undefined;
@@ -291,7 +293,7 @@ export class HubRoomAskAdapter {
   }
   private async dispatch(id: string): Promise<void> {
     const row = this.row(id), source = this.admitted.get(id);
-    if (!row || row.state !== "queued" || !source || !this.usable(source)) return;
+    if (!row || row.state !== "queued" || !source || !this.usable(source) || this.options.updateHeld?.()) return;
     const saved = this.read(row);
     if (!this.current(saved)||!this.provenanceReady(saved)) return;
     this.save(id, "dispatching", saved);
@@ -320,18 +322,21 @@ export class HubRoomAskAdapter {
         ...(verifiedHubAsker ? {verifiedHubAsker,roomAskerMessageId:id,roomAskerDestination:Object.freeze(this.accepted(saved).destination)} : {}),
         text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, { maxContextBytes: this.options.maxCrossInstanceMessageBytes?.(), react: !!source.features?.has(HUB_ROOM_REACT_CAPABILITY) && typeof source.sendReact === "function", fileLines }), stillCurrent: current,
         beforeInput: async () => {
-          if (!current() || this.row(id)?.state !== "dispatching") return false;
+          if (!current() || this.row(id)?.state !== "dispatching" || this.options.updateHeld?.()) return false;
           // Durable first-input intent BEFORE handing bytes to the ordinary Fleet delivery path.
           this.save(id, "input", saved); return current();
         } });
       if (this.closed) return;
       const latest = this.row(id);
-      if (latest?.state === "input") this.save(id, delivered ? "delivered" : "held", this.read(latest));
+      // A fence that rose during the hand-off refused the send. Nothing reached the agent: queue it again.
+      if (latest?.state === "input" && !delivered && this.options.updateHeld?.()) this.save(id, "queued", this.read(latest));
+      else if (latest?.state === "input") this.save(id, delivered ? "delivered" : "held", this.read(latest));
       else if (latest?.state === "dispatching") this.save(id, "queued", this.read(latest));
     } catch {
       if (this.closed) return;
       const latest = this.row(id);
-      if (latest?.state === "input") this.save(id, "held", this.read(latest));
+      if (latest?.state === "input" && this.options.updateHeld?.()) this.save(id, "queued", this.read(latest));
+      else if (latest?.state === "input") this.save(id, "held", this.read(latest));
       else if (latest?.state === "dispatching") this.save(id, "queued", this.read(latest));
     } finally { this.admitted.delete(id); }
   }
@@ -438,7 +443,7 @@ export class HubRoomAskAdapter {
   private readonly owedFlights=new Set<string>();
   private async flushOwed(link:RoomAskLink):Promise<void>{
     for(const {row,saved} of this.obligations()){
-      if(!saved.owed||this.owedFlights.has(row.message_id)||!this.usable(link)||!this.current(saved))continue;
+      if(!saved.owed||this.owedFlights.has(row.message_id)||!this.usable(link)||!this.current(saved)||this.options.updateHeld?.())continue;
       this.owedFlights.add(row.message_id);
       try{
         if(saved.owed.phase===1&&!saved.owed.reminderInput&&this.options.remind){

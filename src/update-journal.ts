@@ -16,6 +16,7 @@
  */
 import { closeSync, fsyncSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import { basename, dirname, join, parse as parsePath } from "node:path";
+import { holderState, type InstallLockDeps } from "./install-lock.js";
 
 export type Stage =
   | "opened" | "barrier" | "stopping" | "abandoning" | "abandoned"
@@ -520,5 +521,116 @@ export function recoveryPlan(read: JournalRead, updater: UpdaterState, ownStart 
   }
 }
 
+/**
+ * §4.3 "the fence doesn't depend on fleet.lock alone", §7: every fleet start reads the journal FIRST. It goes on only
+ * when the plan is a normal start — no attempt, a closing one (a plain start doesn't run `finishClosing`: the updater,
+ * the recovery runner or the next update does, under the home lock — 2.1c), or this
+ * start holding the open attempt's planned nonce while its updater lives. Everything else refuses, naming the attempt;
+ * resuming an interrupted attempt is the recovery runner's (2.1c), never a plain start's.
+ */
+export function fleetStartGate(home: string, handoffNonce: string | null, liveness: LivenessDeps, io: JournalIo = defaultJournalIo): { ok: true } | { ok: false; reason: string } {
+  const read = readCurrent(home, io);
+  const own = read.state === "open" && !!handoffNonce && plannedGeneration(read.attempt, handoffNonce) !== null;
+  const plan = recoveryPlan(read, read.state === "open" ? updaterState(read.attempt, liveness) : "gone", own);
+  if (plan.kind === "start" || plan.kind === "finish-closing") return { ok: true };
+  if (read.state === "unknown") return { ok: false, reason: `This fleet start is refused: the update journal can't be read (${read.reason}: ${read.path}). Run \`agend update --resolve\`.` };
+  const a = (read as { attempt: AttemptRecord }).attempt;
+  if (plan.kind === "refuse" && plan.reason === "in-progress") return { ok: false, reason: `AgEnD is updating (attempt ${a.id}, ${a.stage}); this fleet start is refused until the update hands over or ends.` };
+  if (plan.kind === "refuse" && plan.reason === "manual") return { ok: false, reason: `This fleet start is refused: update attempt ${a.id} needs manual recovery. Run \`agend update --resolve\`.` };
+  return { ok: false, reason: `This fleet start is refused: update attempt ${a.id} (${a.stage}) was interrupted and must be recovered first. Run \`agend update --resolve\`.` };
+}
+
 /** The publication primitives, for the crash tests only. */
 export const journalPrimitivesForTests = { writeNew, writeAtomic, mkdirDurable };
+
+// ── §3.3, §4.3: fleet generations and the handoff claim (2.1b) ───────────────────────────────────────────────────
+
+export type GenerationName = "old" | "trial" | "rollback";
+export interface FleetGeneration { gen: GenerationName; nonce: string; plannedAt: string; pid?: number; consumed?: boolean; dead?: boolean }
+const generationsOf = (a: AttemptRecord): FleetGeneration[] => (Array.isArray(a.fleets) ? a.fleets as FleetGeneration[] : []);
+
+/** §3.3: journal a generation with a fresh nonce BEFORE it is started (substep `start-planned`). */
+export function planGeneration(home: string, attempt: AttemptRecord, gen: GenerationName, nonce: string, io: JournalIo = defaultJournalIo): AttemptRecord {
+  if (!/^[0-9a-f]{32}$/.test(nonce)) throw new Error("a handoff nonce is 32 hex digits");
+  if (generationsOf(attempt).some(g => g.nonce === nonce)) throw new Error("a nonce is never reused");
+  const fleets = [...generationsOf(attempt), { gen, nonce, plannedAt: io.now().toISOString() }];
+  return substep(home, { ...attempt, fleets }, "start-planned", io);
+}
+
+/** The generation a nonce names, if it is planned and not yet consumed or voided. */
+export function plannedGeneration(attempt: AttemptRecord, nonce: string): FleetGeneration | null {
+  return generationsOf(attempt).find(g => g.nonce === nonce && !g.consumed && !g.dead) ?? null;
+}
+
+/**
+ * §4.3 step 1: the single-use claim of a handoff. Only for the open attempt's planned, unconsumed nonce; created with
+ * O_EXCL and synced, so exactly one contender wins. Returns false when another holds it or the nonce isn't planned.
+ */
+export function claimHandoff(home: string, attemptId: string, nonce: string, claimant: { pid: number; start: ProcessStartRecord },
+  liveness: LivenessDeps, io: JournalIo = defaultJournalIo): boolean {
+  const read = readCurrent(home, io);
+  if (read.state !== "open" || read.attempt.id !== attemptId || !plannedGeneration(read.attempt, nonce)) return false;
+  // §2.7, §7: only while the attempt's owner lives. A gone or unknown updater's planned nonce hands nothing over —
+  // recovery owns that attempt (a start holding the nonce then refuses, and the pre-start step starts the runner).
+  if (updaterState(read.attempt, liveness) !== "live") return false;
+  const path = join(attemptDir(home, attemptId), `handoff-${nonce}.claim`);
+  try { writeNew(io, path, JSON.stringify({ pid: claimant.pid, start: claimant.start }) + "\n"); }
+  catch { return false; }
+  // An exact retry by the same claimant is fine; another claimant's bytes differ, and writeNew refused them above.
+  return true;
+}
+
+/** §4.3 step 3: the updater acknowledges a takeover: the generation's pid recorded, its nonce consumed. */
+export function ackGeneration(home: string, attempt: AttemptRecord, nonce: string, pid: number, opts: { dead?: boolean } = {}, io: JournalIo = defaultJournalIo): AttemptRecord {
+  if (!isPid(pid)) throw new Error("a generation's pid is a positive integer");
+  const fleets = generationsOf(attempt).map(g => (g.nonce === nonce ? { ...g, pid, consumed: true, ...(opts.dead ? { dead: true } : {}) } : g));
+  if (!fleets.some(g => g.nonce === nonce)) throw new Error("no generation was planned with that nonce");
+  return substep(home, { ...attempt, fleets }, opts.dead ? "start-dead" : "start-acknowledged", io);
+}
+
+/** The process-identity probes §2.7 judges liveness with (install-lock's). */
+export type LivenessDeps = Pick<InstallLockDeps, "processStart" | "exists" | "startTicks" | "bootId">;
+
+const startOf = (pid: number, start: ProcessStartRecord) => ({ pid, processStart: start.processStart, ...(start.startTicks !== undefined ? { startTicks: start.startTicks, bootId: start.bootId } : {}) });
+
+/**
+ * §2.7: the attempt's updater, by install-lock's `holderState` on its `{ pid, start }`. `gone` only on proof (no such
+ * pid, or another start in this boot); `unknown` never authorizes anything. (The recovery runner's `attempt.runner`
+ * joins this in 2.1c.)
+ */
+export function updaterState(attempt: AttemptRecord, deps: LivenessDeps): UpdaterState {
+  const state = holderState(startOf(attempt.updater.pid, attempt.updater.start), deps);
+  return state === "stale" ? "gone" : state;
+}
+
+export type RevokeResult = "revoked" | "claimed-live" | "claimant-gone" | "claimant-unknown";
+
+/**
+ * §4.3: the updater takes back a planned handoff (to replace or clear it) by taking its single-use claim itself — the
+ * same O_EXCL file a start's `claimHandoff` creates, so exactly one of them wins. True: revoked (no start can claim it
+ * now; an exact retry by the same updater is fine). False: a start already holds the claim — the updater must not
+ * rewrite fleet.lock; it acknowledges or voids that generation instead.
+ */
+export function revokeHandoff(home: string, attemptId: string, nonce: string, updater: { pid: number; start: ProcessStartRecord },
+  liveness: LivenessDeps, io: JournalIo = defaultJournalIo): RevokeResult {
+  if (!/^[0-9a-f]{32}$/.test(nonce)) throw new Error("a handoff nonce is 32 hex digits");
+  const path = join(attemptDir(home, attemptId), `handoff-${nonce}.claim`);
+  try { writeNew(io, path, JSON.stringify({ revokedBy: updater.pid, start: updater.start }) + "\n"); return "revoked"; }
+  catch { /* a start holds the claim (or it can't be written): judge its holder */ }
+  // §4.3 "a claim left by a claimant that died": a claimant proven gone can never rename over fleet.lock, so the
+  // updater may go on — voiding that nonce (voidGeneration) and planning a new one. An unknown claimant is never voided.
+  // Every failure from here on (an unreadable or malformed claim, a probe that throws) is "claimant-unknown": the
+  // updater rewrites nothing on it (Prism #4499 R2).
+  try {
+    const claim = JSON.parse(io.read(path) ?? "null") as { pid?: unknown; start?: unknown } | null;
+    if (!isObj(claim) || !isPid(claim.pid) || !isStart(claim.start)) return "claimant-unknown";
+    const state = holderState(startOf(claim.pid as number, claim.start as ProcessStartRecord), liveness);
+    return state === "stale" ? "claimant-gone" : state === "live" ? "claimed-live" : "claimant-unknown";
+  } catch { return "claimant-unknown"; }
+}
+
+/** A nonce whose claimant is proven gone with the update's fence still in place: void, never reused (§4.3). */
+export function voidGeneration(home: string, attempt: AttemptRecord, nonce: string, io: JournalIo = defaultJournalIo): AttemptRecord {
+  const fleets = generationsOf(attempt).map(g => (g.nonce === nonce ? { ...g, consumed: true, dead: true } : g));
+  return substep(home, { ...attempt, fleets }, "start-voided", io);
+}

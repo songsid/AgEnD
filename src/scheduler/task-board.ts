@@ -12,6 +12,7 @@
  * itself (derived moves). Only a person confirms or rejects work waiting for review, clears "needs review", moves a
  * card to another project, or reopens a finished card; an instance moves its own cards along.
  */
+import type { QuiescenceGate } from "../update-quiescence.js";
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { parseMentions } from "./task-board-mentions.js";
@@ -750,6 +751,9 @@ export class TaskBoard {
   private fileStore: TaskFileStore | null = null;
   /** What undoes this write's file moves, when the write fails after them. */
   private undo: Array<() => void> = [];
+  /** S-244: while the barrier flag is up, an open card is not claimed. Unset: today's claim. */
+  private quiescence: QuiescenceGate | null = null;
+  setQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
 
   constructor(private readonly db: Database.Database, private readonly now: () => Date = () => new Date()) {}
 
@@ -2378,6 +2382,9 @@ export class TaskBoard {
   /** Status bookkeeping shared by every move, then what the move sets off. */
   private applyMove(card: Card, actor: Actor, to: CardStatus, reason: string, comment?: string, attach?: string[]): void {
     const from = card.status;
+    if (from === "open" && to === "claimed" && this.quiescence?.holdTaskClaim()) {
+      throw new TaskBoardError("conflict", "an update is in progress; this claim waits until it finishes");
+    }
     const now = this.nowIso();
     card.status = to;
     if (to === "claimed" && !card.startedAt) card.startedAt = now;

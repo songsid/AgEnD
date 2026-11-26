@@ -3,10 +3,12 @@ import {captureRequestHubOutput} from "./request-hub-output.js";
 import {assertRequestContextOperation,requireRequestContextPolicy,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import type { RequestContactApiHost } from "./request-contact-api.js";
-import type { RequestContactPrincipal } from "./request-contact-types.js";
+import type { RequestContactPrincipal, RequestContactSnapshotV1 } from "./request-contact-types.js";
+import type { RequestContactCards } from "./request-contact-card.js";
+import { nativeContactCardText, nativeContactOutcome, nativeContactPrincipal, nativeDecisionFailure } from "./request-contact-native.js";
 import { RequestContextReferenceMap, type RequestContextRegistrationGate } from "./request-context-fence.js";
 type HubHeldCloseOutcome = import("./hub/question-close-model.js").HubHeldCloseOutcome;
-import { prepareContactChange, shortContactTicketId, type PreparedContactChange } from "./contact-change-proposals.js";
+import { ContactChangeSchema, prepareContactChange, resolvePendingTicket, shortContactTicketId, type PreparedContactChange } from "./contact-change-proposals.js";
 import { contactStateView, ownContactRequestsView } from "./contact-state-view.js";
 import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
 import { SharedDefaultAdoption } from "./shared-default-adoption.js";
@@ -388,6 +390,7 @@ import { WebSettingsTools } from "./web-settings-tools.js";
 import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
+import { turnSource, type QuiescenceGate } from "./update-quiescence.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateOfferReply, type UpdateCardView } from "./update-card.js";
 import { preflightAllows } from "./update-readiness.js";
@@ -917,6 +920,12 @@ interface NonceButtonEntry {
   contactChange?: { plan: PreparedContactChange; current(): boolean };
   /** M-3680: the held contact request a General card decides (CONTACT_TICKET_PREFIX). */
   contactTicketId?: string;
+  /** S-229: the same card's CAS snapshot as posted; a click decides exactly this image through RequestContactCards. */
+  contactSnapshot?: RequestContactSnapshotV1;
+  /** S-229: a General proposal's card (one suggested choice + Not now) and what keeps it valid. */
+  contactProposalCurrent?: () => boolean;
+  /** S-229: the choices this card offered; a click naming any other action on its nonce is refused. */
+  contactActions?: readonly string[];
   /**
    * #1490 row 27: the lifecycle of `instanceName` the prompt was offered for (lifecyclePin), taken when it is posted.
    * A Restart acts only while it still holds: a stop, restart or same-name replacement since makes the button stale.
@@ -1139,7 +1148,7 @@ const CONTACT_TICKET_PREFIX = "contact-ticket:";
 /** How many requests' cards are remembered (one card per request; a decided one is forgotten at once). */
 const HELD_CARDS_KEPT = 512;
 /** A held request's card, retired after it was decided elsewhere (the dashboard, Needs you, another card) or closed. */
-const heldCardOutcome = (state: string): string => t(state === "approved" ? "contactHeld.approvedElsewhere"
+const heldCardOutcome = (state: string, root = false): string => t(state === "approved" ? root ? "contactCard.continued_elsewhere" : "contactHeld.approvedElsewhere"
   : state === "declined" ? "contactHeld.declinedElsewhere" : state === "expired" ? "contactHeld.expired" : "contactHeld.closed");
 const HUB_FLEET_UPDATE_CALLBACK_PREFIX = "hub-fleet-update:";
 const KIRO_RECONCILE_CALLBACK_PREFIX = "kiro-reconcile:";
@@ -1325,6 +1334,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Test seam: inject a spy to verify saveFleetConfig calls fsync. Default: fsyncSync. */
   fsyncForTest: ((fd: number) => void) | undefined = undefined;
+  /** S-244: the quiescence barrier. Unset, every pane write and admission proceeds as today. */
+  private quiescence: QuiescenceGate | null = null;
+  attachQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
 
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
@@ -2832,6 +2844,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
                   && (interaction.kind === "permission" || interaction.kind === "dangerous_command") };
             },
             deliver: input => this.deliverHubQuestion(input),
+            updateHeld: () => this.quiescence?.armed() === true,
             agentToken: agent => this.hubAgentToken(agent),
             // attachments-v1: a question's files go into the agent's inbox; an answer's come from its own paths.
             files: { stateDir: this.dataDir,
@@ -6039,6 +6052,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return {...first,current:()=>{try{const now=resolve();return !!now&&now.binding===first.binding&&sameContactPerson(now.person,first.person)&&now.verified===first.verified;}catch{return false;}}};
   }
 
+  /**
+   * S-229: the same-card service the native cards use. Null — today's M-3680 card and General proposals, unchanged —
+   * until L installs it at the cutover; synthetic rigs install it directly. Installing it grants no actor: every
+   * decision still comes from a platform callback's person through cards.decide.
+   */
+  private requestContactCardsPort: RequestContactCards | null = null;
+  installRequestContactCards(cards: RequestContactCards | null): void { this.requestContactCardsPort = cards; }
+
   /** Dormant assembly for L and synthetic rigs; merely defining this method installs no service or route authority. */
   makeRequestContactCards() {
     this.ensureDeliveryOutbox();const outbox=this.deliveryOutbox!,legacy=this.contactService();
@@ -6062,7 +6083,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       label:name=>this.fleetConfig?.instances[name]?.display_name??this.classicChannels?.getAll().find(room=>room.instanceName===name)?.displayName??name,
       deliveryState:ticket=>ticket.deliveryId?outbox.get(ticket.deliveryId)?.state:undefined,
       legacyCurrent:request=>!this.hubContactRestricted(request.source)&&this.contactGeneration(request.source)===request.sourceGeneration&&this.contactGeneration(request.target)===request.targetGeneration,
-      admitLegacy:(request,id)=>legacy.host.admit(request,id),changed:ticket=>{this.sweepContactAuthorizationOutcomes();this.emitSseEvent("contact-auth",{instance:ticket.target,ticketId:ticket.id,revision:ticket.revision});this.needsYou?.poke();},
+      admitLegacy:(request,id)=>legacy.host.admit(request,id),changed:ticket=>{this.sweepContactAuthorizationOutcomes();this.emitSseEvent("contact-auth",{instance:ticket.target,ticketId:ticket.id,revision:ticket.revision});
+        // S-229: a decision anywhere (the web, a card) closes every native card of that request.
+        try{this.syncHeldTicketCard(ticket);}catch(err){this.logger?.warn?.({err:(err as Error)?.message,ticket:ticket.id},"Held contact request card failed");}
+        this.needsYou?.poke();},
     });
     return cards;
   }
@@ -6159,8 +6183,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async requestContactChange(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }> {
     if (!callerCurrent() || this.fleetConfig?.instances[requester]?.general_topic !== true) throw Error("general-only");
     if (this.hubContactRestricted(requester)) throw Error("hub-contact-restricted");
-    const pending = [...this.pendingNonceButtons.values()].filter(e => e.prefix === "contact-change:");
+    // S-229: a same-card proposal (contact-ticket: with a General) counts against the same limits.
+    const pending = [...this.pendingNonceButtons.values()].filter(e => e.prefix === "contact-change:" || e.prefix === CONTACT_TICKET_PREFIX && !!e.generalName);
     if (pending.length >= 64 || pending.filter(e => e.generalName === requester).length >= 8) throw Error("contact-proposal-limit");
+    const port = this.requestContactCardsPort;
+    if (port && (raw as { kind?: unknown } | null)?.kind === "ticket-decision") return this.proposeSameContactCard(port, requester, raw, callerCurrent);
     const service = this.contactService();
     const plan = prepareContactChange(raw, { service, label: n => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || n, timeZone: () => this.usageZone(), mode: n => { const room = this.contactRoom(n); return room ? room.restrictedMode ? "restricted" : "legacy" : undefined; },
       generation: n => this.contactGeneration(n), modeAdmin: (n, p) => this.contactAdminOf(n, p),
@@ -6234,7 +6261,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.pendingNonceButtons.delete(nonce);
         if (entry.timer) clearTimeout(entry.timer);
         // #4438 review: a card still being posted has no message yet; postHeldTicketCard retires it once it has one.
-        if (entry.messageId) void this.retireNonceButtons(entry, entry.messageId, heldCardOutcome(ticket.state));
+        if (entry.messageId) void this.retireNonceButtons(entry, entry.messageId, heldCardOutcome(ticket.state, !!ticket.requestContext));
       }
       return;
     }
@@ -6247,20 +6274,90 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     void this.postHeldTicketCard(ticket).catch((err: unknown) => this.logger?.warn?.({ err: (err as Error)?.message, ticket: ticket.id },
       "Could not post a held contact request to General"));
   }
-  private async postHeldTicketCard(ticket: ContactTicket): Promise<void> {
-    const adapter = this.contactAdapter(ticket.target);
-    if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return;
+  /** The one General on the target's Discord/Telegram connection that may carry its contact cards. */
+  private contactCardRoute(target: string): { adapter: ChannelAdapter; route: { name: string; adapterId: string; adapter: ChannelAdapter; chatId: string; topic?: string; current(): boolean } } | "use-web" | "route-unavailable" {
+    const adapter = this.contactAdapter(target);
+    if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return "use-web";
     const routes = Object.keys(this.fleetConfig?.instances ?? {}).flatMap(n => {
       const route = this.settingsGeneralRoute(n, adapter.type as "discord" | "telegram", new Set());
       return route && route.adapterId === adapter.id && route.adapter === adapter ? [{ name: n, ...route }] : [];
     });
-    if (routes.length !== 1) { this.logger.info({ ticket: ticket.id, routes: routes.length }, "No single General for a held contact request's card"); return; }
+    if (routes.length !== 1) { this.logger.info({ target, routes: routes.length }, "No single General for a held contact request's card"); return "route-unavailable"; }
+    return { adapter, route: routes[0]! };
+  }
+  /**
+   * S-229: post slice I's same card. prepareForNativePost checks this exact General route as the posting owner before
+   * and after reading (authority none, canDecide false); the entry keeps the card's CAS snapshot, so a click decides
+   * exactly the image people saw, through cards.decide.
+   */
+  private postSameContactCard(port: RequestContactCards, id: string, found: Exclude<ReturnType<FleetManager["contactCardRoute"]>, string>,
+    opts: { proposal?: "approve-once" | "decline"; generalName?: string; proposalCurrent?: () => boolean } = {}): Promise<string> {
+    const { adapter, route } = found;
+    const owner = (ticket: ContactTicket): boolean => ticket.id === id && route.current() && this.contactAdapter(ticket.target) === adapter
+      && this.adapters.get(adapter.id) === adapter && (!opts.proposalCurrent || opts.proposalCurrent());
+    const card = port.prepareForNativePost(id, owner);
+    if (card.ticket.state !== "pending" || card.continuedFrom) throw Error("contact-proposal-ticket-unavailable");
+    const view = nativeContactCardText(card, opts.proposal ? { proposal: opts.proposal } : {});
+    const left = Date.parse(card.ticket.expiresAt) - Date.now();
+    return this.postNonceButtonPromptOrThrow({ prefix: CONTACT_TICKET_PREFIX, alertType: "clear_confirm", instanceName: route.name,
+      adapter: route.adapter, adapterId: route.adapterId, chatId: route.chatId, threadId: route.topic,
+      message: view.message, choices: view.choices,
+      expiredText: t(opts.proposal ? "contactProposal.expired" : "contactHeld.expired"),
+      timeoutMs: opts.proposal ? 5 * 60_000 : Math.max(60_000, Math.min(left, 24 * 3_600_000)),
+      extra: { contactTicketId: id, contactSnapshot: card.snapshot, contactActions: view.choices.map(c => c.action), ...(opts.generalName ? { generalName: opts.generalName } : {}),
+        ...(opts.proposalCurrent ? { contactProposalCurrent: opts.proposalCurrent } : {}) } });
+  }
+  /**
+   * S-229: General proposes a decision on the same card — its one suggested choice plus Not now. General never decides:
+   * the platform callback's person does, through cards.decide. Always allow needs people, expiry and a confirmation, so
+   * a grant proposal is sent to the web.
+   */
+  private async proposeSameContactCard(port: RequestContactCards, requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }> {
+    const input = ContactChangeSchema.parse(raw);
+    if (input.kind !== "ticket-decision") throw Error("contact-proposal-use-web");
+    if (input.grant) throw Error("contact-proposal-use-web");
+    const ticket = resolvePendingTicket(this.contactService().host.store, input.ticket_id);
+    if (input.revision !== undefined && input.revision !== ticket.revision) throw Error("conflict");
+    const found = this.contactCardRoute(ticket.target);
+    if (found === "use-web") throw Error("contact-proposal-use-web");
+    if (found === "route-unavailable") throw Error("contact-proposal-route-unavailable");
+    const requesterPin = this.lifecyclePin(requester), deadline = performance.now() + 5 * 60_000;
+    let retired = false;
+    const current = (): boolean => !retired && !this.shuttingDown && performance.now() < deadline && callerCurrent() && requesterPin()
+      && this.fleetConfig?.instances[requester]?.general_topic === true && !this.hubContactRestricted(requester)
+      && found.route.current() && this.contactAdapter(ticket.target) === found.adapter && this.adapters.get(found.adapter.id) === found.adapter;
+    if (!current()) throw Error("conflict");
+    const armedBefore = new Set(this.pendingNonceButtons.values());
+    const posted = this.postSameContactCard(port, ticket.id, found, { proposal: input.decision, generalName: requester, proposalCurrent: current });
+    // The entry is armed synchronously; keep it, because a decision while the post is in flight removes it from the map
+    // before it has a message (Prism #4501 P2) — the posted message must still close with the committed outcome.
+    const entry = [...this.pendingNonceButtons.values()].find(e => !armedBefore.has(e) && e.contactTicketId === ticket.id && e.generalName === requester);
+    let closed = false;
+    const retire = (nonce: string): void => {
+      if (!entry || closed) return;
+      const armed = this.pendingNonceButtons.get(nonce) === entry, fresh = this.contactService().host.store.get(ticket.id);
+      if (armed && fresh?.state === "pending" && !retired && current()) return;
+      if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
+      if (!entry.messageId) return;   // never an edit without a message
+      closed = true;
+      void this.retireNonceButtons(entry, entry.messageId, fresh && fresh.state !== "pending" ? heldCardOutcome(fresh.state, !!fresh.requestContext) : t("contactProposal.expired"));
+    };
+    void posted.then(retire, () => {});
+    try { const nonce = await withinBudget(posted, performance.now() + 5000);
+      if (!current() || this.contactService().host.store.get(ticket.id)?.state !== "pending") { retire(nonce); throw Error("conflict"); }
+      return { status: "awaiting_platform_admin_confirmation" };
+    } catch (error) { retired = true; throw error; }
+  }
+  private async postHeldTicketCard(ticket: ContactTicket): Promise<void> {
+    const found = this.contactCardRoute(ticket.target);
+    if (typeof found === "string") return;
+    const { route } = found, port = this.requestContactCardsPort;
     // A ClassicBot room by its own name (its display name, else its channel's), as Fleet lists it.
-    const route = routes[0]!, label = (n: string) => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || this.contactRoom(n)?.name || n;
+    const label = (n: string) => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || this.contactRoom(n)?.name || n;
     const shortId = /^R[a-f0-9]{8}-/.test(ticket.id) ? ticket.id.slice(0, 9) : ticket.id;
     const left = Date.parse(ticket.expiresAt) - Date.now();
     const text = ticket.message.length > 300 ? `${ticket.message.slice(0, 299)}…` : ticket.message;
-    const posting = this.postNonceButtonPromptOrThrow({ prefix: CONTACT_TICKET_PREFIX, alertType: "clear_confirm", instanceName: route.name,
+    const posting = port ? this.postSameContactCard(port, ticket.id, found) : this.postNonceButtonPromptOrThrow({ prefix: CONTACT_TICKET_PREFIX, alertType: "clear_confirm", instanceName: route.name,
       adapter: route.adapter, adapterId: route.adapterId, chatId: route.chatId, threadId: route.topic,
       message: [t("contactHeld.title", label(ticket.source), label(ticket.target)), `> ${text.replace(/\n+/g, " ")}`,
         t("contactHeld.meta", shortId, ticket.verb, left < 2 * 3_600_000 ? t("contactHeld.minutes", Math.max(1, Math.round(left / 60_000))) : t("contactHeld.hours", Math.round(left / 3_600_000))),
@@ -6269,7 +6366,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       expiredText: t("contactHeld.expired"), timeoutMs: Math.max(60_000, Math.min(left, 24 * 3_600_000)),
       extra: { contactTicketId: ticket.id } });
     // The entry is armed before the platform answers (postNonceButtonPromptOrThrow sets it synchronously).
-    const entry = [...this.pendingNonceButtons.values()].find(e => e.prefix === CONTACT_TICKET_PREFIX && e.contactTicketId === ticket.id);
+    const entry = [...this.pendingNonceButtons.values()].find(e => e.prefix === CONTACT_TICKET_PREFIX && e.contactTicketId === ticket.id && !e.generalName);
     const nonce = await posting;
     // #4438 review: decided elsewhere, or expired, while the card was being posted — it had no message to retire then; it
     // has one now. A card still armed for a request still waiting stays.
@@ -6277,23 +6374,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fresh = this.contactService().host.store.get(ticket.id), armed = this.pendingNonceButtons.get(nonce) === entry;
     if (armed && fresh?.state === "pending") return;
     if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
-    await this.retireNonceButtons(entry, entry.messageId, !fresh || fresh.state === "pending" ? t("contactHeld.expired") : heldCardOutcome(fresh.state));
+    await this.retireNonceButtons(entry, entry.messageId, !fresh || fresh.state === "pending" ? t("contactHeld.expired") : heldCardOutcome(fresh.state, !!fresh.requestContext));
   }
   private async handleContactTicketCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
     if (!data.callbackData.startsWith(CONTACT_TICKET_PREFIX)) return false;
     const person = data.userId && adapter && this.adapters.get(adapterId) === adapter && adapter.id === adapterId
       && (adapter.type === "discord" || adapter.type === "telegram") && data.userId !== adapter.getBotUserId?.()
       ? { platform: adapter.type as "discord" | "telegram", adapterId, userId: data.userId, label: data.username || data.userId } : null;
-    const service = this.contactService();
-    const mayDecide = (entry: NonceButtonEntry): boolean => {
+    const service = this.contactService(), port = this.requestContactCardsPort;
+    // S-229: the clicker on the bot that posted the card; the nonce binds adapter, chat, thread and message.
+    const nonce = /^contact-ticket:([0-9a-f]{32}):/.exec(data.callbackData)?.[1] ?? "";
+    const principal = port ? nativeContactPrincipal({ adapter, adapterId, userId: data.userId, username: data.username, nonce,
+      live: () => !!adapter && this.adapters.get(adapterId) === adapter && !this.shuttingDown }) : null;
+    const sameCard = (entry: NonceButtonEntry): boolean => !!port && !!entry.contactSnapshot;
+    const mayDecide = (entry: NonceButtonEntry, action: string): boolean => {
+      if (sameCard(entry)) {
+        // Only a choice this card offered: Not now exists only on a General proposal, and a proposal offers one decision.
+        if (!principal || !entry.contactTicketId || !entry.contactActions?.includes(action)) return false;
+        // A reader who may decide it acts; a manager who reads a request already closed hears its outcome.
+        try { const card = port!.read(entry.contactTicketId, principal); return card.actions.canDecide || card.ticket.state !== "pending" && this.contactAdminOf(card.ticket.target, principal.person); } catch { return false; }
+      }
+      if (action === "cancel") return false;
       const ticket = person && entry.contactTicketId ? service.host.store.get(entry.contactTicketId) : undefined;
       try { return !!ticket && !!person && service.view(ticket, person).canDecide; } catch { return false; }
     };
-    const claimed = this.consumeNonceCallback(CONTACT_TICKET_PREFIX, /^contact-ticket:([0-9a-f]{32}):(approve|decline)$/, data, adapterId, adapter, undefined,
-      (_user, entry) => !!entry.messageId && !this.webPromptClicks.has(data) && mayDecide(entry));
+    const action0 = /:(approve|decline|cancel)$/.exec(data.callbackData)?.[1] ?? "";
+    const claimed = this.consumeNonceCallback(CONTACT_TICKET_PREFIX, /^contact-ticket:([0-9a-f]{32}):(approve|decline|cancel)$/, data, adapterId, adapter, undefined,
+      (_user, entry) => !!entry.messageId && !this.webPromptClicks.has(data) && mayDecide(entry, action0));
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry, action } = claimed;
+    if (sameCard(entry)) { await this.decideSameContactCard(port!, principal!, entry, action, data); return true; }
     const ticket = entry.contactTicketId ? service.host.store.get(entry.contactTicketId) : undefined;
     let text = t("contactHeld.closed");
     if (ticket?.state === "pending" && person) {
@@ -6304,6 +6415,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, text);
     return true;
+  }
+  /**
+   * S-229: one click on the same card. The decision is the clicker's, on the posted snapshot, through cards.decide —
+   * the web's writer — so a duplicate, another card or the web racing it yields one committed outcome. A lost race
+   * re-reads and shows that outcome; a changed request closes this card and posts one fresh card.
+   */
+  private async decideSameContactCard(port: RequestContactCards, principal: RequestContactPrincipal, entry: NonceButtonEntry, action: string, data: AdapterCallbackData): Promise<void> {
+    const id = entry.contactTicketId!, proposal = !!entry.generalName;
+    const read = () => { try { return port.read(id, principal); } catch { return null; } };
+    let text: string, repost = false;
+    if (action === "cancel") text = t(entry.contactProposalCurrent?.() ? "contactCard.not_now_done" : "contactProposal.expired");
+    else if (proposal && entry.contactProposalCurrent?.() !== true) text = t("contactProposal.expired");
+    else {
+      try {
+        const card = port.decide(id, { snapshot: entry.contactSnapshot!, decision: action === "approve" ? "approve-once" : "decline" }, principal);
+        text = nativeContactOutcome(card, { decided: true, by: principal.person });
+      } catch (error) {
+        const failure = nativeDecisionFailure(error), card = read();
+        if (failure === "changed" && card?.ticket.state === "pending") { text = t(proposal ? "contactProposal.expired" : "contactCard.changed"); repost = !proposal; }
+        else if (failure === "failed" && card?.ticket.state === "pending") text = t("contactHeld.failed");
+        else text = nativeContactOutcome(card, { decided: false });
+        this.logger.info({ ticket: id, code: (error as Error)?.message }, "A native contact card's decision did not apply");
+      }
+    }
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, text);
+    const fresh = this.contactService().host.store.get(id);
+    if (!fresh) return;
+    if (repost) this.heldTicketCards?.delete(id);
+    try { this.syncHeldTicketCard(fresh); } catch (err) { this.logger?.warn?.({ err: (err as Error)?.message, ticket: id }, "Held contact request card failed"); }
   }
 
   contactAuthorization(id: string, actor: ContactPerson) {
@@ -6459,6 +6599,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       { ...inheritedOrigin, chain: [...inheritedOrigin.chain, input.targetInstance] });
     const sourceKey = `mcp:${input.sourceInstance}:${input.operationId}:${input.targetInstance}:${input.targetSession ?? ""}:${input.kind}`;
     const admitted = outbox.admit({ ...input, sourceDaemonBootId, sourceKey });
+    if (admitted.inserted) this.quiescence?.noteAdmission(admitted.delivery.deliveryId, admitted.delivery.createdSeq);
     if (admitted.inserted) this.publishTraffic(admitted.delivery);
     if (admitted.inserted) this.logger.info({
       deliveryId: admitted.delivery.deliveryId,
@@ -8699,6 +8840,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * Last synchronous commit of a pane write (S-244). True: the barrier journaled an adapter or web turn, so it is
+   * not sent. There is no await between this and `ipc.send`. Unarmed, or not an agent turn: false, and the send proceeds.
+   * A Hub or room payload is not a copy: `refuseHubPane` refuses it before this, and the producer leaves the row queued.
+   */
+  private holdPaneSend(payload: Record<string, unknown>): boolean {
+    return this.quiescence?.commitTurn(payload) === true;
+  }
+
+  /** The fence is up and this payload belongs to a durable Hub or room row. Do not send it and do not copy it. */
+  private refuseHubPane(payload: Record<string, unknown>): boolean {
+    return this.quiescence?.armed() === true && turnSource(payload) === "hub";
+  }
+
+  /**
    * Hand a payload to an instance's IPC, waiting out a *transient* disconnect.
    *
    * A daemon that is restarting — `/restart`, crash recovery, a model switch —
@@ -8731,7 +8886,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const ipc = this.instanceIpcClients.get(instanceName);
       if (ipc?.connected) {
         if (beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
-        if (ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
+        const wire = this.bindHumanReceiptPayload(instanceName, payload);
+        if (this.refuseHubPane(wire)) return false;
+        if (this.holdPaneSend(wire)) return true;
+        if (ipc.send(wire)) return true;
       }
     }
 
@@ -8763,12 +8921,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async handOffAfterBeforeInput(instanceName: string, payload: Record<string, unknown>, deliveryEpoch: number,
     stillCurrent: (() => boolean) | undefined, beforeInput: () => Promise<boolean>): Promise<boolean> {
+    // The flag is read before beforeInput and before prepareClassicForPerson. A Hub or room row stays
+    // queued at its producer: no begin lease, no input intent, and no plaintext copy of the question.
+    if (this.refuseHubPane(payload)) return false;
+    if (this.quiescence?.armed()) {
+      const early = this.bindHumanReceiptPayload(instanceName, payload);
+      if (this.holdPaneSend(early)) return true;
+    }
     if (!(await beforeInput())) return false;
+    if (this.refuseHubPane(payload)) return false;
     const privateToken = await this.prepareClassicForPerson(instanceName, payload, deliveryEpoch, stillCurrent);
     if (privateToken === false || this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc?.connected || (privateToken && this.classicPrivacy().read(instanceName)?.token !== privateToken)) return false;
-    const sent = ipc.send(this.bindHumanReceiptPayload(instanceName, payload));
+    const wire = this.bindHumanReceiptPayload(instanceName, payload);
+    if (this.refuseHubPane(wire)) return false;
+    if (this.holdPaneSend(wire)) return true;
+    const sent = ipc.send(wire);
     if (sent && privateToken) {
       try {
         if (this.classicPrivacy().resume(instanceName, privateToken)) {
@@ -8801,7 +8970,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // so a cached reference would stay dead forever.
       const ipc = this.instanceIpcClients.get(instanceName);
       if (ipc?.connected && beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
-      if (ipc?.connected && ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
+      if (ipc?.connected) {
+        const wire = this.bindHumanReceiptPayload(instanceName, payload);
+        if (this.refuseHubPane(wire)) return false;
+        if (this.holdPaneSend(wire)) return true;
+        if (ipc.send(wire)) return true;
+      }
       // #2484: while the instance waits for (or runs) its own start retry, the grace runs from now — so the message is
       // delivered once a retry brings it up, and fails only after the retries stop (they gave up, or a person stopped
       // or paused it) and a last grace passes without it.
@@ -9211,7 +9385,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const admitted = this.humanReceiptPayload(instanceName, payload, origin, originalBody);
     const id = (admitted.meta as Record<string, string> | undefined)?.human_receipt_id;
     let sent = false;
-    try { sent = ipc.send(this.bindHumanReceiptPayload(instanceName, admitted)); return sent; }
+    try {
+      const wire = this.bindHumanReceiptPayload(instanceName, admitted);
+      if (this.refuseHubPane(wire)) return false;
+      if (this.holdPaneSend(wire)) { sent = true; return true; }
+      sent = ipc.send(wire);
+      return sent;
+    }
     finally { if (!sent && id) this.deliveryOutbox?.markHumanReceiptUncertain(id, instanceName); }
   }
 
@@ -19921,7 +20101,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     view?: import("./backend/types.js").RemoteCardView;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "contactChange" | "contactTicketId" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
+    extra?: Pick<NonceButtonEntry, "contactChange" | "contactTicketId" | "contactSnapshot" | "contactProposalCurrent" | "contactActions" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
     timeoutMs?: number;
     /** #2675: an action the dashboard offers beyond the platform's buttons (a typed answer, which the platform takes as a reply). */
     webInput?: { action: string; label: string } | null;

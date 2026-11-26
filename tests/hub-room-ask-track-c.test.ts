@@ -190,6 +190,16 @@ describe("Track C durable room adapter (injectable Track R seam)", () => {
     expect(await f.adapter.report({ caller: "existing-agent", correlationId: cid, text: "answer", callerCurrent: () => false })).toMatchObject({ ok: false });
     expect(f.sent).toHaveLength(0); expect(await f.report()).toMatchObject({ ok: true });
   });
+  it("re-queues a room ask when the fence rises during the hand-off, instead of holding it", async () => {
+    const f = member();
+    let held = false;
+    f.options.updateHeld = () => held;
+    f.options.deliver = async input => { await input.beforeInput(); held = true; return false; };
+    expect(f.adapter.accept(f.ask, f.link)).toBe("accepted");
+    await f.adapter.settled();
+    expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).toEqual({ state: "queued" });
+    f.adapter.close();
+  });
   it("holds an interrupted first input instead of replaying executable work, but accepts its eventual answer", async () => {
     const f = member(); let cid = ""; const attempted = vi.fn(async (input: HubRepresentativeDelivery) => {
       cid = input.correlationId; expect(await input.beforeInput()).toBe(true); throw Error("lost handoff result");

@@ -57,6 +57,8 @@ export interface RoomPostOptions {
   lapsed?(agent: string): boolean;
   receipt?(caller: RoomCaller, receiptId: string): RoomReceiptProof | null;
   notify?(input: RoomPostNotification): Promise<boolean>;
+  /** S-244: while an update barrier is up, a queued room reply stays queued. */
+  updateHeld?: () => boolean;
   held?(id: string): void;
   changed?(): void;
   feedback?(value:HubRoomMentionFeedback,source:RoomFeedbackSource,operation:string):boolean;
