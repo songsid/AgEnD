@@ -7771,7 +7771,9 @@ export class Daemon extends EventEmitter {
           });
           return;
         }
-        const prompt = this.replyDraft.recoveryPrompt(current, REPLY_RECOVERY_PROMPT);
+        let prompt = REPLY_RECOVERY_PROMPT;
+        try { prompt = this.replyDraft.recoveryPrompt(current, REPLY_RECOVERY_PROMPT); }
+        catch { /* Draft evidence is best-effort; keep the existing generic recovery. */ }
         const recoveryText = parent && this.requestContextLifecycle ? `[agend-request-input:${recoveryInputId}]\n${prompt}` : prompt;
         const delivered = await this.deliverMessage(recoveryText, undefined, {
           deliveryEpoch,

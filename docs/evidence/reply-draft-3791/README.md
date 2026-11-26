@@ -23,3 +23,8 @@ Rollback: revert the draft collector and monitor/daemon integration; the prior g
 ## Constructorless daemon compatibility
 
 The first PR CI exposed two credential-change tests whose partial daemons do not run the constructor. Initialize the draft collector lazily and skip draft observation when such a harness has no reply guard. The expanded local run also exposed three Follow cases with that absent guard; the final corrected run passes all **36 selected suites / 651 tests**. The original assertions and all test files remain unchanged in this correction. Selection: every test file matching `Object.create(Daemon.prototype)` or `Daemon.prototype`, plus the draft controls. Source and test typechecks pass with zero errors. This changes no draft ownership, send path, timer, or recovery budget.
+
+
+## Best-effort draft failure containment
+
+A partial snapshot in the request-context recovery harness has no target. Draft lookup now returns the generic prompt for missing/malformed target data, and the caller contains unexpected extraction errors so draft retention cannot prevent the existing recovery input. Seven malformed-snapshot controls and a throwing-extractor daemon control pin this behavior. Both request-context daemon suites and both draft/reply suites pass **110 tests**; source and test typechecks pass with zero errors. The existing logical-parent assertions remain unchanged. The earlier 651-test compatibility run is historical evidence outside this narrow correction. Generic recovery timing, parent context, send behavior and the single-round budget remain unchanged.

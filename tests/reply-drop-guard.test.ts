@@ -250,6 +250,16 @@ describe("Claude human-turn reply completion harness", () => {
     expect(d.replyDraft.recoveryPrompt(d.turnReplyGuard.snapshot(), "generic")).toBe("generic");
   });
 
+  it("#4507 an extractor error cannot break or replace the existing recovery job", async () => {
+    const d = makeDaemon(); d.markTurnStarted(meta(), "input");
+    vi.spyOn(d.replyDraft, "recoveryPrompt").mockImplementation(() => { throw new Error("unavailable draft"); });
+    d.startReplyRecovery(d.turnReplyGuard.snapshot(), "no_valid_call"); await d.pasteLock;
+    expect(d.deliverMessage).toHaveBeenCalledTimes(1);
+    expect(d.deliverMessage.mock.calls[0][0]).toContain("[system:reply-required]");
+    expect(d.deliverMessage.mock.calls[0][0]).not.toContain("Quoted draft");
+    expect(d.deliverDaemonReply).not.toHaveBeenCalled();
+  });
+
   it("#4507 erases retained draft on completion and cancellation", () => {
     const d = makeDaemon();
     const reset = vi.spyOn(d.replyDraft, "reset");

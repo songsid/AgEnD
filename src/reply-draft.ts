@@ -51,8 +51,10 @@ export class ReplyDraft {
     if (text.trim() && text.length <= REPLY_DRAFT_MAX_CHARS && !/<(?:antml:)?(?:invoke|function_calls|tool_use)\b/i.test(text)) this.draft = text;
   }
 
-  recoveryPrompt(turn: TurnReplySnapshot, generic: string): string {
-    const target = turn.target;
+  recoveryPrompt(turn: TurnReplySnapshot | null | undefined, generic: string): string {
+    const target = turn?.target;
+    if (!target || typeof target.deliveredText !== "string" || typeof target.deliveredAt !== "number" ||
+      !Number.isFinite(target.deliveredAt) || (target.inboundMarker !== undefined && typeof target.inboundMarker !== "string")) return generic;
     const wanted = target.deliveredText ? normalizeTurnText(target.deliveredText) : "";
     if (this.generation !== turn.generation || !this.input || !this.draft || !wanted || !target.deliveredAt ||
       this.input.at < target.deliveredAt - 30_000 || this.input.text !== wanted ||

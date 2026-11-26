@@ -1,11 +1,11 @@
 {
   "scope": "Synthetic offline author evidence, not a live model-compliance experiment",
   "sourceSha256": {
-    "src/reply-draft.ts": "c4ec3c2b9040474fbe81443389d62dceb1000d0ac7c2f9312faa0c5d73096711",
-    "src/daemon.ts": "ebaef82a2036f966a0ac2fc3dbb8b1d6c634b64a4df7cc0c2c8fc06dfd976d8a",
+    "src/reply-draft.ts": "463769272529ae5b99eaf558d00bd53616bb951b42e4eb28fadfa3d349d96806",
+    "src/daemon.ts": "bf812d1c3110c290c818ea8e917cbd7f733b67309e572f363e93b8213793f886",
     "src/transcript-monitor.ts": "beeeb51a09a4b65152832c67eaee4a3cc3ab5deab1deb09586b7f38b95af613d",
-    "tests/reply-draft-m3791.test.ts": "e28aeebdd728cd61bbeadded0a6ca5bf60306f30c64a0cf03292420ab2c9f1be",
-    "tests/reply-drop-guard.test.ts": "35fd9c4658e2e1bfd8f3ace9555cd0911746d9fad8d4d05ee4138ad410a78d84",
+    "tests/reply-draft-m3791.test.ts": "d5ce670e7f19f1662aedc3e411fc0b6a6b284eff325f5f0162ffec49683c5895",
+    "tests/reply-drop-guard.test.ts": "267d9ef8e84d19cc37ab8ebd9d5a00a03563719768cce73cec7042ddad744234",
     "src/general-knowledge/skills/cross-instance-messaging/SKILL.md": "117295d7b0cdbb1a914ed3f553ed5b34747bb4fb7e06f5d2ac89f9b470ab8494",
     "changes/3791-reply-draft.md": "75ddd48d895eb60ac4b185c68ef879bab0491fb1908b28492fdc163c25ebe0c2",
     "changes/3791-reply-draft.zh-TW.md": "b2c43cd7e9285854393859ac2f08e4d5a4345e6ff25cece3adc083dc190ca36f"
@@ -84,5 +84,24 @@
     ],
     "unchangedTests": true,
     "initialExpandedRun": "Three Follow cases exposed an absent guard in the new listener; corrected before the final all-green run"
+  },
+  "r2": {
+    "scope": "Malformed snapshots keep generic recovery; caller contains unexpected extraction errors",
+    "ciFailure": {
+      "run": 45747328382,
+      "job": 139667493091,
+      "suite": "tests/request-context-daemon-s223.test.ts"
+    },
+    "suites": [
+      "tests/request-context-daemon-s223.test.ts",
+      "tests/request-context-daemon-s224.test.ts",
+      "tests/reply-draft-m3791.test.ts",
+      "tests/reply-drop-guard.test.ts"
+    ],
+    "testsPassed": 110,
+    "sourceTypeErrors": 0,
+    "testTypeErrors": 0,
+    "controls": "Missing/malformed targets return generic; a throwing extractor still queues exactly one generic recovery and no direct send",
+    "historicalR1Scope": "651 tests belong to the prior lazy-initialization revision; no repeated broader campaign"
   }
 }
