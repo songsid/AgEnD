@@ -59,26 +59,30 @@ const named = (pl: Record<string, unknown> = {}, web: Record<string, unknown> = 
   ({ web: { ...web, public_link: { hostname: "agend.example.net", tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN", ...pl } }, ...top });
 
 describe("M-3814: the preview address in Settings → Access", () => {
-  it("not drawn without a fixed hostname (a quick link)", async () => {
+  it("without a fixed hostname (a quick link): no field, one line saying it needs the fixed public hostname first", async () => {
     const w = await open();
     expect(w.$("publicWebPreviewHostname")).toBeNull();
     expect(w.$("publicPreviewAddress")).toBeNull();
+    expect(w.$("publicPreviewNeedsFixed").textContent).toBe("HTML previews over the public link use a temporary Cloudflare link. To give them a fixed preview address, fill in the fixed public hostname above first.");
+    expect((await open(named())).$("publicPreviewNeedsFixed"), "gone once there is one").toBeNull();
   });
   it("beside a fixed hostname: the field (preview.<hostname> suggested) and the one route step, with this fleet's preview port", async () => {
     const w = await open(named());
     expect(w.$("publicWebPreviewHostname").getAttribute("placeholder")).toBe("preview.agend.example.net");
     expect(w.steps()).toEqual([
-      "Open this tunnel's Routes tab → Add route → Published application.",
-      "Hostname: a name such as preview.agend.example.net",
-      "Service URL: http://127.0.0.1:19281 (the preview port; not the origin port above).",
-      "Save the route. Cloudflare adds the DNS record by itself.",
-      "Fill in the address here, save, then press Check with the fixed link open.",
+      "In Cloudflare, open “Networking” → “Tunnels”, click your tunnel, then press “Routes” → “Add route” → “Published application” (Cloudflare's own buttons).",
+      "In the “Hostname” field: a name such as preview.agend.example.net",
+      "In the “Service URL” field: http://127.0.0.1:19281 (the preview's own port, not 19282)",
+      "Press “Add route” to save. Cloudflare adds the DNS record by itself.",
+      "Fill in the address here and save. With the public link open (send /web), press “Check preview address”.",
     ]);
     expect(w.$("publicPreviewAddress").querySelector("details").open, "not set yet: the steps are open").toBe(true);
     const custom = await open(named({ preview_hostname: "pv.example.net" }, { preview_port: 20001 }, { health_port: 18000 }));
-    expect(custom.steps()[1]).toBe("Hostname: pv.example.net");
-    expect(custom.steps()[2]).toContain("http://127.0.0.1:20001");
+    expect(custom.steps()[1]).toBe("In the “Hostname” field: pv.example.net");
+    expect(custom.steps()[2]).toBe("In the “Service URL” field: http://127.0.0.1:20001 (the preview's own port, not 19282)");
     expect(custom.$("publicPreviewAddress").querySelector("details").open, "saved: folded").toBe(false);
+    const other = await open(named({ origin_port: 19300 }));
+    expect(other.steps()[2], "the fixed hostname's own port, as set").toContain("not 19300");
     const hp = await open(named({}, {}, { health_port: 18000 }));
     expect(hp.steps()[2], "web port + 1").toContain("http://127.0.0.1:18001");
   });
@@ -142,7 +146,7 @@ describe("M-3814: Check", () => {
     await w.type(w.$("publicWebPreviewHostname"), " https://Preview.agend.example.net/ ");
     fire(w.$("previewAddressCheck"), "click"); await settle(10);
     expect(sent.filter(s => s.path.endsWith("/preview-test")).map(s => s.body)).toEqual([{ hostname: "preview.agend.example.net" }]);
-    expect(w.checks()[0]).toBe("✗ The preview address — Save first: Check uses the saved address.");
+    expect(w.checks()[0]).toBe("✗ The preview address is saved — Save first: Check uses the saved address.");
   });
   it("typed, then saved in the same visit: Check uses it at once (no stale \"Save first\")", async () => {
     checkAnswer = answer([["values", true, "ok"], ["link", true, "ok"], ["dns", true, "ok"], ["reach", true, "ok"]]);
@@ -162,10 +166,10 @@ describe("M-3814: Check", () => {
     fire(w.$("previewAddressCheck"), "click"); await settle(10);
     expect(sent.filter(s => s.path.endsWith("/preview-test")).map(s => [s.method, s.body])).toEqual([["POST", { hostname: "preview.agend.example.net" }]]);
     expect(w.checks()).toEqual([
-      "✓ The preview address — Saved.",
-      "✓ The fixed link is open — Open.",
-      "✓ preview.agend.example.net can be looked up — Found.",
-      "✓ preview.agend.example.net reaches this AgEnD's previews — It works: previews over the fixed address use preview.agend.example.net.",
+      "✓ The preview address is saved",
+      "✓ The public link is open",
+      "✓ preview.agend.example.net can be looked up",
+      "✓ preview.agend.example.net reaches this AgEnD's previews — It works: previews over the public link use preview.agend.example.net.",
     ]);
   });
   it("a ✗ says what to do; the rest is not checked (zh-TW)", async () => {
@@ -174,16 +178,24 @@ describe("M-3814: Check", () => {
     const w = await open(named({ preview_hostname: "preview.agend.example.net" }));
     fire(w.$("previewAddressCheck"), "click"); await settle(10);
     expect(w.checks()).toEqual([
-      "✓ 預覽網址 — 已儲存。",
-      "✗ 固定連結已開啟 — 請先開啟固定連結（/web）再檢查：預覽網址只在連結開著時回應。",
+      "✓ 預覽網址已儲存",
+      "✗ 公開連結已開啟 — 請先開啟公開連結（/web）再檢查：預覽網址只在公開連結開著時回應。",
       "– 查得到 preview.agend.example.net — 未檢查（前面的步驟失敗）。",
       "– preview.agend.example.net 連得到這台 AgEnD 的預覽 — 未檢查（前面的步驟失敗）。",
     ]);
   });
+  it("an empty address: Check is greyed, and says why beside it", async () => {
+    const w = await open(named());
+    expect(w.$("previewAddressCheck").disabled).toBe(true);
+    expect(w.$("previewAddressCheckWhy").textContent).toBe("Fill in the preview address first.");
+    await w.type(w.$("publicWebPreviewHostname"), "preview.agend.example.net");
+    expect(w.$("previewAddressCheck").disabled).toBe(false);
+    expect(w.$("previewAddressCheckWhy")).toBeNull();
+  });
   it("every server step and code has words in both languages, the same keys in each", async () => {
     const { t, setLang } = i18n;
     await import("/ui/js/settings-preview-address.js");
-    const codes: Record<string, PreviewRouteCode[]> = { values: ["ok", "not-set", "not-saved"], link: ["ok", "link-closed", "no-listener"], dns: ["ok", "dns-missing", "dns-failed"],
+    const codes: Record<string, PreviewRouteCode[]> = { values: ["not-set", "not-saved"], link: ["link-closed", "no-listener"], dns: ["dns-missing", "dns-failed"],
       reach: ["ok", "wrong-service", "other-page", "route-missing", "self-unreachable", "reach-failed"] };
     expect(Object.keys(codes)).toEqual([...PREVIEW_ROUTE_STEPS]);
     for (const lang of ["en", "zh-TW"]) {
@@ -192,7 +204,7 @@ describe("M-3814: Check", () => {
         const key = `settings.pva_${step}_${code}`;
         expect(t(key), `${lang} ${key}`).not.toBe(key);
       }
-      for (const k of ["pvaTimeout", "pvaNotRun", "pvaBusy", "pvaFailed", "previewHostname", "previewHostSame", "previewHostNeedsHostname"]) expect(t(`settings.${k}`), `${lang} ${k}`).not.toBe(`settings.${k}`);
+      for (const k of ["pvaNeedsAddress", "previewNeedsFixedHost", "pvaTimeout", "pvaNotRun", "pvaBusy", "pvaFailed", "previewHostname", "previewHostSame", "previewHostNeedsHostname"]) expect(t(`settings.${k}`), `${lang} ${k}`).not.toBe(`settings.${k}`);
     }
     setLang("en");
   });

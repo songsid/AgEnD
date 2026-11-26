@@ -110,7 +110,26 @@ async function walk(c: any) {
     await page.evaluate(`document.querySelector("#publicPreviewAddress").scrollIntoView({ block: "start" })`);
     const list = await page.evaluate(`({ marker: getComputedStyle(document.querySelector(".fixed-preview-steps summary")).display, numbers: getComputedStyle(document.querySelector(".fixed-preview-steps ol")).listStyleType })`) as any;
     check(`${tag} 2b: the steps are numbered under a heading with its disclosure marker`, list.marker === "list-item" && list.numbers === "decimal", list);
+    if (!saved) {
+      const why = await page.evaluate(`({ disabled: document.querySelector("#previewAddressCheck").disabled, why: (document.querySelector("#previewAddressCheckWhy") || {}).innerText })`) as any;
+      check(`${tag} 2b: Check is greyed and says why`, why.disabled && why.why === W(zh, "Fill in the preview address first.", "先填好預覽網址。"), why);
+    }
+    const step3 = await page.evaluate(`document.querySelectorAll(".fixed-preview-steps li")[2].textContent.trim()`);
+    check(`${tag} 2b: the port line names both ports`, step3 === W(zh, `In the “Service URL” field: http://127.0.0.1:${fx.previewPort} (the preview's own port, not 19282)`, `「Service URL」欄填 http://127.0.0.1:${fx.previewPort}（預覽專用的埠，不是 19282）`), step3);
     await shot(page, `${tag}-2b-route-step`);
+    if (!saved) {
+      // No fixed public hostname (a quick link): the field is cleared in the form (not saved) — one line says what is needed.
+      await page.locator("#publicWebHostname").fill("");
+      await page.waitForTimeout(400);
+      const none = await page.evaluate(`({ line: (document.querySelector("#publicPreviewNeedsFixed") || {}).innerText, field: !!document.querySelector("#publicWebPreviewHostname") })`) as any;
+      check(`${tag} 2c: no fixed hostname: no preview field, one line saying the fixed public hostname comes first`, !none.field && none.line === W(zh,
+        "HTML previews over the public link use a temporary Cloudflare link. To give them a fixed preview address, fill in the fixed public hostname above first.",
+        "透過公開連結的 HTML 預覽會用 Cloudflare 臨時連結。要改用固定的預覽網址，請先填上方的固定公開網域。"), none);
+      await page.evaluate(`document.querySelector("#publicFixedAddress").scrollIntoView({ block: "start" })`);
+      await shot(page, `${tag}-2c-no-fixed-hostname`);
+      await page.locator("#publicWebHostname").fill(HOST);
+      await page.waitForTimeout(400);
+    }
 
     // 3 type and save (first case only; the second sees it saved)
     if (!saved) {
@@ -145,7 +164,8 @@ async function walk(c: any) {
     await page.waitForTimeout(300);
     const rows = await page.evaluate(`[...document.querySelectorAll(".fixed-preview .named-test-steps li")].map((l) => l.innerText.trim())`) as string[];
     check(`${tag} 4: every step ✓, the last says it works`, rows.length === 4 && rows.every((r) => r.startsWith("✓"))
-      && rows[3].includes(W(zh, `It works: previews over the fixed address use ${PREVIEW}.`, `正常：透過固定網址的預覽會使用 ${PREVIEW}。`)),
+      && rows[3].includes(W(zh, `It works: previews over the public link use ${PREVIEW}.`, `正常：透過公開連結的預覽會使用 ${PREVIEW}。`))
+      && rows.slice(0, 3).every((r) => !r.includes(" — ")),,
       { rows, block: await page.evaluate(`(document.querySelector(".fixed-preview") || {}).innerText`), disabled: await page.evaluate(`document.querySelector("#previewAddressCheck").disabled`), checks, dialog: await page.evaluate(`(document.querySelector("dialog[open]") || {}).innerText || null`), url: page.url() });
     check(`${tag} 4: it asked https://${PREVIEW}/frame`, asked.at(-1) === `https://${PREVIEW}/frame`, asked);
     if (zh) for (const w of ["查得到", "使用"]) check(`${tag} 4: 「${w}」 kept whole`, await unsplit(page, w, ".fixed-preview .named-test-steps") === true, await unsplit(page, w, ".fixed-preview .named-test-steps"));

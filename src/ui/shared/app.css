@@ -1116,6 +1116,7 @@ html.lb-open .scroller { overflow: hidden; }
 .fixed-preview-steps summary { cursor: pointer; padding: 6px 0; }
 .fixed-preview-steps ol { margin: var(--s-1) 0 0; padding-left: 1.6em; list-style: decimal; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .fixed-preview-steps li + li { margin-top: 4px; }
+.fixed-preview .save-row .fixed-preview-why { margin: 0 0 0 var(--s-2); align-self: center; }
 .pv-banner { margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); font-size: var(--fs-xs); background: var(--warn-bg); border: 1px solid var(--warn-line);
   display: flex; align-items: flex-start; gap: var(--s-2); }
 .pv-banner[hidden] { display: none; }
