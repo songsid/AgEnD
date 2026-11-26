@@ -1,3 +1,4 @@
+import { RequestContextPublication } from "../src/request-context-installation.js";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -36,13 +37,16 @@ it("the exact IPC server proves callback closure and socket retirement, includin
 });
 it("local retirement needs the captured window, process group and exact IPC closure", async () => {
   const d = daemon(); let ipcClosed = false, gone = false;
-  const tmux = { getWindowId: () => "%fixture" }; d.tmux = tmux; d.ipcServer = { retired: () => ipcClosed };
+  const tmux = { getWindowId: () => "%fixture" }, ipc = { retired: () => ipcClosed }; d.tmux = tmux; d.ipcServer = ipc;
   Object.defineProperty(d, "paneHost", { value: { getPanePid: async () => 777123 } });
   vi.spyOn(TmuxManager, "listWindowsStrict").mockResolvedValue([]);
   const kill = vi.spyOn(process, "kill").mockImplementation((() => { if (gone) throw Object.assign(Error("gone"), { code: "ESRCH" }); return true; }) as any);
   const proof = await d.captureRequestContextRetirement();
   expect(await proof.retired()).toBe(false); ipcClosed = true; expect(await proof.retired()).toBe(false);
   gone = true; expect(await proof.retired()).toBe(true);
+  d.ipcServer = null; expect(await proof.retired()).toBe(true); // abortStartup clears its closed server reference.
+  d.ipcServer = { retired: () => true }; expect(await proof.retired()).toBe(false);
+  d.ipcServer = ipc;
   expect(kill.mock.calls.every(call => call[1] === 0)).toBe(true);
   d.tmux = { getWindowId: () => "%fixture" }; expect(await proof.retired()).toBe(false);
 });
@@ -70,4 +74,27 @@ it("a replacement reserves later generations pre-start and the setter stays clos
   expect(d.requestContextOwner()).toMatchObject({ spawnGeneration: 8, launchFenceEpoch: 12 });
   expect(() => d.seedRequestContextReplacement({ spawnGeneration: 0, launchFenceEpoch: 0 })).toThrow(/before startup/);
   const live = daemon(); live.ipcServer = {}; expect(() => live.setRequestContextLocalLifecycle(turns, () => ({ incarnation: "fixture", workGeneration: "fixture" }))).toThrow(/before/);
+});
+it("first On captures actual idle pane evidence and late calls invalidate it even after they finish", async () => {
+  const d = daemon(), capture = vi.fn(async () => "synthetic idle composer");
+  const publication = new RequestContextPublication({ owner: "fixture", current: () => true }, false);
+  d.setRequestContextAdmission(publication.admission); expect(await d.captureRequestContextIdle()).toBeNull(); publication.fence();
+  d.tmux = { getWindowId: () => "owned", capturePane: capture }; d.ipcServer = {};
+  d.processStatus = "running"; d.instanceState = "idle"; d.workingBackgroundObservation = null; // No optional background parser on this backend.
+  vi.spyOn(d, "paneAuthoritativelyIdle").mockReturnValue(true); vi.spyOn(d, "inputTransientInPane").mockReturnValue(false);
+  const proof = await d.captureRequestContextIdle(); expect(proof?.current()).toBe(true); expect(capture).toHaveBeenCalledWith(2000);
+  const finish = d.requestContextPendingWork.begin("worker"); finish(); expect(proof?.current()).toBe(false);
+  const next = await d.captureRequestContextIdle(); expect(next?.current()).toBe(true);
+  d.ipcServer = {}; expect(next?.current()).toBe(false);
+});
+it("cached idle cannot hide a busy pane, queued work, unknown background work or a changed owner across the read", async () => {
+  const d = daemon(); const publication = new RequestContextPublication({ owner: "fixture", current: () => true }, false); publication.fence(); d.setRequestContextAdmission(publication.admission); d.processStatus = "running"; d.instanceState = "idle"; d.workingBackgroundObservation = false;
+  const capture = vi.fn(async () => "synthetic pane"); d.tmux = { getWindowId: () => "owned", capturePane: capture };
+  const idle = vi.spyOn(d, "paneAuthoritativelyIdle").mockReturnValue(false); vi.spyOn(d, "inputTransientInPane").mockReturnValue(false);
+  expect(await d.captureRequestContextIdle()).toBeNull(); idle.mockReturnValue(true);
+  d.workingBackgroundObservation = null; d.backend = { backgroundWorkRunning: () => null }; expect(await d.captureRequestContextIdle()).toBeNull(); expect(capture).toHaveBeenCalledTimes(2);
+  d.workingBackgroundObservation = false; d.backend.backgroundWorkRunning = () => false;
+  let release!: (pane: string) => void; capture.mockImplementationOnce(() => new Promise<string>(resolve => { release = resolve; }));
+  const pending = d.captureRequestContextIdle(); await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+  d.spawnGeneration++; release("synthetic idle"); expect(await pending).toBeNull();
 });

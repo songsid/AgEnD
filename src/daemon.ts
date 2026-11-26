@@ -1,6 +1,6 @@
 import type { RequestContextAdmissionPort } from "./request-context-admission.js";
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
-import { requestContextProcessGroupGone, type RequestContextLaunchRetirement } from "./request-context-retirement.js";
+import { requestContextProcessGroupGone, type RequestContextLaunchRetirement, type RequestContextLaunchIdle } from "./request-context-retirement.js";
 import { ReplyDraft } from "./reply-draft.js";
 import {requireRequestContextPolicy,requestContextInstructionMode,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { RequestContextReferenceMap } from "./request-context-fence.js";
@@ -2728,13 +2728,47 @@ export class Daemon extends EventEmitter {
       starting: this.spawning, stopping: this.deliveryWritesStopping || this.startupAborted,
       replacementRequired: !this.requestContextLifecycle || this.requestContextInterruptedLaunch === this.requestContextLaunch() });
   }
+  /** First-On uses a real bounded pane read, not the cached idle badge; admission must already be fenced. */
+  async captureRequestContextIdle(): Promise<RequestContextLaunchIdle | null> {
+    const admission = this.requestContextAdmission;
+    if (!admission || admission.available()) return null;
+    // Capture before waiting for the write lock: a replaced/respawned owner cannot inherit this request.
+    const tmux = this.tmux, ipc = this.ipcServer, owner = JSON.stringify(this.interactionOwner());
+    const daemonBootId = this.bootId, spawnGeneration = this.spawnGeneration, launchFenceEpoch = this.launchFenceEpoch, deliveryEpoch = this.deliveryEpoch;
+    const pendingRevision = this.requestContextPendingWork.revision, turn = this.turnReplyGuard.snapshot();
+    return this.paneWriteLock.run(async () => {
+      const stable = () => {
+        const observed = this.requestContextLaunchObservation(), now = this.turnReplyGuard.snapshot();
+        return this.requestContextAdmission === admission && !admission.available()
+          && this.tmux === tmux && this.ipcServer === ipc && JSON.stringify(this.interactionOwner()) === owner
+          && this.deliveryEpoch === deliveryEpoch && this.requestContextPendingWork.revision === pendingRevision
+          && observed.pendingCalls === 0 && observed.responseWaiters === 0 && observed.queuedInputs === 0
+          && !observed.transcriptOpen && !observed.starting && !observed.stopping && !this.runtimeMonitorsFrozen
+          && observed.observation.processStatus === "running" && observed.observation.executionState === "idle"
+          && (!this.backend?.backgroundWorkRunning || observed.observation.backgroundWork !== true)
+          && now?.generation === turn?.generation
+          && (!now || now.cancelledByUser || now.completionDelivered);
+      };
+      if (!tmux || !stable()) return null;
+      let pane: string;
+      try { pane = await tmux.capturePane(2000); } catch { return null; }
+      if (!stable() || !this.paneAuthoritativelyIdle(pane) || this.inputTransientInPane(pane)
+        || this.backend?.backgroundWorkRunning && this.backend.backgroundWorkRunning(pane) !== false) return null;
+      // The owning gate still checks its durable rows and producer revision. A late handler, queue, turn,
+      // IPC replacement or owner change invalidates this proof even if it later looks idle again.
+      return Object.freeze({ daemonBootId, spawnGeneration, launchFenceEpoch, deliveryEpoch,
+        current: () => !this.paneWriteLock.isBusy && stable() });
+    });
+  }
+
   /** Capture the exact old resources BEFORE stop removes metadata; this proof never kills or signals anything. */
   async captureRequestContextRetirement(): Promise<RequestContextLaunchRetirement> {
     const tmux = this.tmux, windowId = tmux?.getWindowId(), native = this.nativePaneLifecycle, ipc = this.ipcServer;
     const spawnGeneration = this.spawnGeneration, launchFenceEpoch = this.launchFenceEpoch, daemonBootId = this.bootId;
     if (!tmux || !windowId) throw Error("Owned launch unavailable for retirement");
     const owned = () => this.bootId === daemonBootId && this.spawnGeneration === spawnGeneration
-      && this.tmux === tmux && tmux.getWindowId() === windowId && this.nativePaneLifecycle === native && this.ipcServer === ipc;
+      && this.tmux === tmux && tmux.getWindowId() === windowId && this.nativePaneLifecycle === native
+      && (this.ipcServer === ipc || this.ipcServer === null && ipc?.retired() === true);
     const captured = native?.snapshot?.();
     const panePid = native ? null : await this.paneHost.getPanePid(this.tmuxSessionName, windowId);
     if (!owned() || !native && (!panePid || !Number.isSafeInteger(panePid) || panePid <= 1)

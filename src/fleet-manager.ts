@@ -1,3 +1,5 @@
+import type { RequestContextLaunchIdle, RequestContextLaunchRetirement } from "./request-context-retirement.js";
+import { requestContextDigest } from "./request-context-store.js";
 import { RequestContextBoot, readRequestContextBootState } from "./request-context-boot.js";
 import type { RequestContextStartPreparation } from "./request-context-start.js";
 import { requestContextSkillText, requestContextSteeringText, type RequestContextKnowledgeMode } from "./request-context-knowledge.js";
@@ -1350,6 +1352,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private requestContextBoot?: RequestContextBoot;
   prepareRequestContextStart?: (name: string, config: InstanceConfig) => RequestContextStartPreparation;
   configureRequestContextBeforeStart?: (name: string, daemon: Daemon, config: InstanceConfig, preparation?: RequestContextStartPreparation) => void;
+  /** Exact persistent roster for controlled On; exec owners and durable drain assessment are separate required participants. */
+  private async captureRequestContextOwnedLaunches() {
+    const admission = this.requestContextAdmission, lease = captureProcessFleetLease(this.dataDir);
+    if (!admission || admission.available() || !lease?.current()) throw Error("Request-context owner preparation unavailable");
+    const pending = this.requestContextPendingWork, revision = pending.revision, boot = this.managerBootId;
+    const freeze = <T>(value: T): T => {
+      if (value && typeof value === "object") { for (const child of Object.values(value)) freeze(child); Object.freeze(value); }
+      return value;
+    };
+    const roster = [...this.daemons.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, daemon]) => ({
+      name, daemon, config: freeze(daemon.getConfigSnapshot()),
+    }));
+    const images = roster.map(row => requestContextDigest(row.config));
+    const owned = () => admission === this.requestContextAdmission && !admission.available() && lease.current()
+      && this.managerBootId === boot && !this.shuttingDown && pending.revision === revision
+      && this.daemons.size === roster.length && roster.every((row, i) => this.daemons.get(row.name) === row.daemon
+        && pending.count(row.name) === 0 && requestContextDigest(row.config) === images[i]
+        && requestContextDigest(row.daemon.getConfigSnapshot()) === images[i]);
+    const records: Array<Readonly<(typeof roster)[number] & { idle: RequestContextLaunchIdle; retirement: RequestContextLaunchRetirement }>> = [];
+    for (const row of roster) {
+      const unavailable = () => Object.assign(Error("Request-context owner is not ready"), { code: "request-context-owner-not-ready", agent: row.name });
+      if (!owned()) throw unavailable();
+      const idle = await row.daemon.captureRequestContextIdle();
+      if (!owned() || !idle?.current()) throw unavailable();
+      const retirement = await row.daemon.captureRequestContextRetirement();
+      if (!owned() || !idle.current() || retirement.daemonBootId !== idle.daemonBootId
+        || retirement.spawnGeneration !== idle.spawnGeneration || retirement.launchFenceEpoch !== idle.launchFenceEpoch) throw unavailable();
+      records.push(Object.freeze({ ...row, config: Object.freeze(row.config), idle, retirement }));
+    }
+    const current = () => { try { return owned() && records.every(row => row.idle.current()); } catch { return false; } };
+    if (!current()) throw Error("Request-context owner preparation changed");
+    return Object.freeze({ records: Object.freeze(records), current });
+  }
+
   /** Shared input gate only; C/D scope binding remains a separate pre-start preparation. */
   attachRequestContextAdmission(port: RequestContextAdmissionPort): void {
     if (this.requestContextAdmission === port) return;

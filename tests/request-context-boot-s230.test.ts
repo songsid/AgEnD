@@ -107,3 +107,23 @@ it("a missing main database with retained WAL evidence cannot be recreated as a 
  expect(() => readRequestContextBootState(h)).toThrow(/journal remains/);
  const m = manager(h); expect(() => m.ensureDeliveryOutbox()).toThrow(); expect(existsSync(join(h, "delivery-outbox.db"))).toBe(false);
 });
+it("the real Fleet inventory captures exactly its fenced persistent owners and never treats an idle badge as proof", async () => {
+ const h=home();lock(h);const m=manager(h),publication=new (await import("../src/request-context-installation.js")).RequestContextPublication({owner:"fixture",current:()=>true},false);
+ m.attachRequestContextAdmission(publication.admission);m.requestContextPendingWork=new (await import("../src/request-context-pending-work.js")).RequestContextPendingWork();
+ const identity={daemonBootId:"owned",spawnGeneration:1,launchFenceEpoch:2,deliveryEpoch:0};
+ const idle=vi.fn(async()=>({...identity,current:()=>true})),retirement=vi.fn(async()=>({...identity,windowId:"owned",panePid:123,retired:async()=>false}));
+ const daemon={getConfigSnapshot:()=>({working_directory:h,backend:"claude-code"}),captureRequestContextIdle:idle,captureRequestContextRetirement:retirement};
+ m.lifecycle.daemons.set("worker",daemon);
+ await expect(m.captureRequestContextOwnedLaunches()).rejects.toThrow(/unavailable/);expect(idle).not.toHaveBeenCalled();publication.fence();
+ const proof=await m.captureRequestContextOwnedLaunches();expect(proof.records.map((row:any)=>row.name)).toEqual(["worker"]);expect(proof.current()).toBe(true);expect(retirement).toHaveBeenCalledOnce();
+ const finish=m.requestContextPendingWork.begin("worker");finish();expect(proof.current()).toBe(false);
+ idle.mockResolvedValueOnce(null as any);await expect(m.captureRequestContextOwnedLaunches()).rejects.toMatchObject({code:"request-context-owner-not-ready",agent:"worker"});
+});
+it("a replacement or configuration change during the Fleet roster read cannot be adopted", async () => {
+ const h=home();lock(h);const m=manager(h),publication=new (await import("../src/request-context-installation.js")).RequestContextPublication({owner:"fixture",current:()=>true},false);publication.fence();
+ m.attachRequestContextAdmission(publication.admission);m.requestContextPendingWork=new (await import("../src/request-context-pending-work.js")).RequestContextPendingWork();
+ let release!:()=>void;const waiting=new Promise<void>(resolve=>{release=resolve;});const identity={daemonBootId:"owned",spawnGeneration:1,launchFenceEpoch:2};const exit=vi.fn(async()=>({...identity,windowId:"owned",panePid:123,retired:async()=>false}));
+ const daemon={getConfigSnapshot:()=>({working_directory:h}),captureRequestContextIdle:async()=>{await waiting;return {...identity,current:()=>true};},captureRequestContextRetirement:exit};m.lifecycle.daemons.set("worker",daemon);
+ const result=m.captureRequestContextOwnedLaunches();m.lifecycle.daemons.set("worker",{...daemon});release();
+ await expect(result).rejects.toMatchObject({agent:"worker"});expect(exit).not.toHaveBeenCalled();
+});

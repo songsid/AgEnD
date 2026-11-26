@@ -16,3 +16,12 @@ export function requestContextProcessGroupGone(pid: number, probe: (pid: number,
   };
   return absent(pid) && absent(-pid);
 }
+
+/** Bounded pane read plus exact owner/work currency; never permission to stop a different launch. */
+export interface RequestContextLaunchIdle {
+  readonly daemonBootId: string;
+  readonly spawnGeneration: number;
+  readonly launchFenceEpoch: number;
+  readonly deliveryEpoch: number;
+  current(): boolean;
+}
