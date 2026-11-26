@@ -2281,6 +2281,7 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .uc-answered.open .uc-fold svg { transform: rotate(180deg); }
 @media (max-width: 700px) {
   .uc-fold { display: inline-flex; }
+  .uc-answered.open .update-actions { flex: 1 1 100%; flex-wrap: wrap; }   /* four buttons may need a second row */
   .uc-answered:not(.open) .update-line { flex-wrap: nowrap; }
   .uc-answered:not(.open) .update-text { flex: 1 1 auto; align-items: center; }
   .uc-answered:not(.open) :is(.update-icon, .update-spinner) { margin-top: 0; }

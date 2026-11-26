@@ -54,10 +54,11 @@ const geom = async (page: any) => page.evaluate(`(() => {
     titleLines: title ? Math.round(title.getBoundingClientRect().height / lh) : 0,
     clipped: title ? title.scrollWidth > title.clientWidth + 1 : null,
     drawn: [...(line ? line.querySelectorAll("button") : [])].filter((b) => b.getBoundingClientRect().width).map((b) => b.innerText.trim()),
+    inside: [...(line ? line.querySelectorAll("button") : [])].filter((b) => b.getBoundingClientRect().width).every((b) => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }),
     taps: [...(line ? line.querySelectorAll("button") : [])].filter((b) => b.getBoundingClientRect().width).map((b) => Math.round(b.getBoundingClientRect().height)),
     sub: [...(line ? line.querySelectorAll(".update-sub") : [])].filter((s) => s.getBoundingClientRect().width).length,
     scroll: document.documentElement.scrollWidth <= innerWidth };
-})()`) as Promise<{ h: number; titleLines: number; clipped: boolean | null; drawn: string[]; taps: number[]; sub: number; scroll: boolean }>;
+})()`) as Promise<{ h: number; titleLines: number; clipped: boolean | null; drawn: string[]; inside: boolean; taps: number[]; sub: number; scroll: boolean }>;
 const click = async (page: any, text: string) => { await page.locator(".update-line button", { hasText: text }).first().click(); await page.waitForTimeout(800); };
 
 async function walk(c: any) {
@@ -81,14 +82,14 @@ async function walk(c: any) {
       check(`${tag} 1: one line: the short words and Change only`, t.trim().startsWith(W(zh, "AgEnD updates when idle", "AgEnD 閒置時更新")) && g.titleLines === 1 && !g.clipped
         && JSON.stringify(g.drawn) === JSON.stringify([change]) && g.sub === 0, { t, g });
       check(`${tag} 1: the banner is one 44 px button high plus its padding: at most 66 px (was ${offered.h} px offered)`, g.h <= 66, g);
-      check(`${tag} 1: Change is a 44 px button`, g.taps.every((x) => x >= 44), g.taps);
+      check(`${tag} 1: Change is a 44 px button, on the screen`, g.taps.every((x) => x >= 44) && g.inside, g);
       await shot(page, `${tag}-1-waiting`);
       await click(page, change);
       g = await geom(page); t = await lineText(page);
       check(`${tag} 1b: Change opens the full line: the words, who it waits for, Update now / Pick a time / Cancel / Close`,
         t.includes(W(zh, `Updating to ${NEXT} as soon as your agents are idle.`, `Agent 一閒置就更新到 ${NEXT}。`)) && g.sub === 1
         && [W(zh, "Update now", "立即更新"), W(zh, "Pick a time", "選個時間"), W(zh, "Cancel", "取消"), close].every((x) => g.drawn.includes(x)), { t, g });
-      check(`${tag} 1b: 44 px buttons, no sideways scroll`, g.taps.every((x) => x >= 44) && g.scroll, g);
+      check(`${tag} 1b: 44 px buttons, every one wholly on the screen, no sideways scroll`, g.taps.every((x) => x >= 44) && g.inside && g.scroll, g);
       receipt.heights[`${tag}-waiting-open`] = g.h;
       await shot(page, `${tag}-1b-waiting-open`);
     } else {
@@ -118,6 +119,7 @@ async function walk(c: any) {
       g = await geom(page); t = await lineText(page);
       check(`${tag} 2b: opened: the full time, Update now / Cancel / Close`, t.includes(W(zh, "when your agents are idle", "等 Agent 閒置後更新到"))
         && [W(zh, "Update now", "立即更新"), W(zh, "Cancel", "取消"), close].every((x) => g.drawn.includes(x)), { t, g });
+      check(`${tag} 2b: every button wholly on the screen`, g.inside, g);
       receipt.heights[`${tag}-scheduled-open`] = g.h;
       await shot(page, `${tag}-2b-scheduled-open`);
     } else {
