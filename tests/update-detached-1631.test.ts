@@ -51,7 +51,8 @@ case "$*" in
   "prefix -g") echo '${home}';;
   # #2264: \`agend update\` hands the install to the target's own installer: the REAL launcher/agend-install.cjs runs
   # here, with this stub as its npm (npm exec … --package <spec> -- agend-install --upgrade).
-  "exec --yes --package "*) exec node '${join(process.cwd(), "launcher", "agend-install.cjs")}' "$7" --spec "$4";;
+  # M-3812: as npm exec does, the folder it runs in puts its node_modules/.bin first on PATH (a project's own node wins).
+  "exec --yes --package "*) echo "npm exec in $PWD" >> '${log}'; PATH="$PWD/node_modules/.bin:$PATH" exec node '${join(process.cwd(), "launcher", "agend-install.cjs")}' "$7" --spec "$4";;
   "install -g "*) v=$(echo "$3" | sed 's/.*@//'); echo "$v" > '${installed}'
     printf '{"name":"@songsid/agend","version":"%s","bin":{"agend":"dist/cli.js"}}' "$v" > '${join(globalPkg, "package.json")}';;
 esac
@@ -73,7 +74,7 @@ exit 0
   symlinkSync(process.execPath, join(bin, "node"));
   // The hand-started fleet runs (fleet.pid names a live process — this test's): the installer restarts it.
   writeFileSync(join(agendHome, "fleet.pid"), String(process.pid));
-  const update = (next: string) => {
+  const update = (next: string, cwd?: string) => {
     writeFileSync(beta, next);
     const from = readFileSync(installed, "utf8").trim();
     // The installed version runs the update: its package.json is what `agend update` reads as "installed".
@@ -81,12 +82,12 @@ exit 0
     writeFileSync(log, "");
     const r = spawnSync(process.execPath, [join(pkg, "dist", "cli.js"), "update"], {
       env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:/usr/bin:/bin`, npm_config_prefix: home },
-      encoding: "utf8", timeout: 90_000,
+      encoding: "utf8", timeout: 90_000, ...(cwd ? { cwd } : {}),
     });
     const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
     return { r, calls, out: `${r.stdout}\n${r.stderr}\n${calls.join("\n")}` };
   };
-  return { home, update, installed };
+  return { home, update, installed, log };
 }
 
 describe("#1631 A: a hand-started fleet, no reachable user manager — every update completes, no unit is created", () => {
@@ -179,5 +180,23 @@ describe("#1631 B: the real `install --no-activate` creates nothing only for a c
     expect(out).toContain("rc=0");
     expect(unit).not.toContain("/old/cli.js");
     expect(unit).toContain("ExecStart=");
+  });
+});
+
+describe("M-3812: `agend update` started inside a project launches the installer from the filesystem root", () => {
+  it("a project with its own node_modules/.bin/node: the installer runs on npm's node, not the project's, and the update completes", { timeout: 120_000 }, () => {
+    const w = updateWorld();
+    const project = scratch();
+    mkdirSync(join(project, "node_modules", ".bin"), { recursive: true });
+    writeFileSync(join(project, "package.json"), JSON.stringify({ name: "some-project", version: "1.0.0" }));
+    const ran = join(project, "project-node-ran");
+    writeFileSync(join(project, "node_modules", ".bin", "node"), `#!/bin/sh\necho "$*" > '${ran}'\n`);
+    chmodSync(join(project, "node_modules", ".bin", "node"), 0o755);
+    const first = w.update("2.2.0-beta.3", project);
+    expect(first.r.status, first.out).toBe(0);
+    expect(first.calls.filter(c => c.startsWith("npm exec in ")), first.out).toEqual(["npm exec in /"]);
+    expect(existsSync(ran), "the project's node never ran").toBe(false);
+    expect(readFileSync(w.installed, "utf8").trim()).toBe("2.2.0-beta.3");
+    expect(first.calls).toContain("agend restart --yes");
   });
 });
