@@ -1,3 +1,4 @@
+import {outsideRequestBody} from "./request-context-outside-label.js";
 import { assertRequestContextRootOpen } from "./request-context-fence.js";
 /** Dormant request-scoped contact policy. Only the outbox owns its transaction/admission ports. */
 import { t } from "./locale.js";
@@ -104,7 +105,7 @@ export class RequestContactGate {
     return { operationId: image.delivery.operationId, source: image.delivery.sourceInstance, target: image.delivery.targetInstance,
       sourceGeneration: image.binding.source.incarnation, targetGeneration: image.binding.target.incarnation,
       verb: image.binding.verb as ContactVerb, origin: { kind: person ? "human" : "unknown", people: person ? [person] : [], receiptIds: [], chain: [] },
-      message: typeof payload.content === "string" ? payload.content : requestContextJson(payload),
+      message: typeof payload.content === "string" ? outsideRequestBody(image.context,payload.content) : requestContextJson(payload),
       correlationId: image.delivery.correlationId ?? image.delivery.operationId, correlationExplicit: true,
       resultRecipient: image.delivery.sourceInstance, payload, forwards: image.delivery.forwards, requestContext: image.context.ref };
   }

@@ -51,3 +51,15 @@ it("delayed approval and a matching standing grant register expected answers onl
 it("directory bidi controls cannot reorder the visible requester label",()=>{
  const f=fixture(),context={...f.context,initiatingActor:{...f.context.initiatingActor,displayName:"Demo\u202eowner"}},lease=captureRequestContextCall({...f.lease.snapshot,context},()=>true),op={...f.operation(),admission:{coverage:"covered"as const,lease}},result=f.relay.admit(f.image(),op,()=>true),name=requestDeliveryView(f.box,result.deliveryId)!.view.displayName!;expect(name).not.toContain("\u202e");expect(name).toContain("202e");
 });
+
+it.each(["guest","restricted-room"]as const)("%s label survives the actual hold/Continue admission and onward D1",ingress=>{
+ const f=fixture(),id=randomUUID(),context:RequestContextV1={...f.context,ref:{version:1,contextId:id,rootContextId:id},ingress,initiatingActor:{kind:"person",platform:"discord",userId:"demo-guest",displayName:"Demo requester"},sourceAudience:{kind:"room",ref:randomUUID()},returnAudience:{kind:"web",ref:randomUUID()}},lease=captureRequestContextCall({...f.lease.snapshot,context},()=>true),op={...f.operation(),admission:{coverage:"covered"as const,lease}},input=f.image();
+ const manager={platform:"host"as const,adapterId:"host",userId:"operator",label:"Demo manager"};let ticket:any;
+ try{f.relay.admit(input,op,()=>true);}catch(e){if(!(e instanceof ContactHeldError))throw e;ticket=f.box.contactAuthorizations.get(e.result.authorization_id)!;}
+ expect(ticket).toBeTruthy();expect(ticket.message).toBe(input.payload.content);const gate=f.box.requestHubContactGate(f.host),snapshot=gate.snapshot(ticket.id);
+ expect(String(snapshot.image.delivery.payload.content)).toContain('"kind":"outside-request"');
+ gate.decide(ticket.id,{revision:ticket.revision,decision:"approve-once"},manager,f.box.contactAuthorizations.policy(ticket.target,ticket.targetGeneration).revision,snapshot.imageSha256);
+ const first=f.relay.admit(input,op,()=>true),next=f.relay.admit(f.image(),op,()=>true);
+ for(const result of [first,next]){const delivery=f.box.get(result.deliveryId)!;expect(delivery.payload.content).toContain('"authority":"none"');expect(delivery.payload.content).toContain('"ingress":"'+ingress+'"');expect(f.box.requestContextForDelivery(result.deliveryId)!.binding.payloadSha256).toBe(requestContextDigest(delivery.payload));}
+ expect(f.box.contactAuthorizations.origin("target")).toBeUndefined();
+});

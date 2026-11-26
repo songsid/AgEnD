@@ -4,6 +4,7 @@ import type {RequestContactGateHost} from "./request-contact-gate.js";
 import type {RequestContextOperation} from "./request-context-policy.js";
 import {ContactHeldError} from "./contact-auth-service.js";
 import {assertRequestContextOperation,RequestContextPolicyError} from "./request-context-policy.js";
+import {labelOutsideRequest} from "./request-context-outside-label.js";
 import {labelHubRequest} from "./request-hub-context.js";
 import {requestContextDeliveryChildId} from "./request-context-returns.js";
 import {requestContextDigest,requestContextJson} from "./request-context-store.js";
@@ -40,6 +41,7 @@ export function makeRequestContextRelay(box:DeliveryOutbox,host:RequestContextRe
    payload.content=`request_provenance=${requestContextJson({version:1,kind:"unproved-request",contextId:context.ref.contextId,rootContextId:context.ref.rootContextId,authority:"none"})}\nThe initiating person could not be proved. This request needs approval; approval never grants owner authority.\n\n${payload.content}`;
    if(Math.max(...(["mcp","cli"]as const).map(mode=>Buffer.byteLength(formatCrossInstanceInboundMessage(String(payload.content),routing,mode))))>MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES)throw Error("request-context assembled message too large");
   }
+  else if(["guest","restricted-room","free-room"].includes(context.ingress))payload.content=labelOutsideRequest(context,payload.content,routing);
   const delivery:NewOutboxDelivery={...input,sourceKey:`request-contact:${input.sourceInstance}:${input.operationId}`},binding={version:1 as const,operationId:input.operationId,contextId:context.ref.contextId,rootContextId:context.ref.rootContextId,source:context.source,target:{instance:input.targetInstance,incarnation:target},verb:permit.tool,payloadSha256:requestContextDigest(payload)};
   if(!current()||operation.admission?.coverage==="covered"&&!operation.admission.lease.current())throw new RequestContextPolicyError("stale");
   let result:ReturnType<typeof gate.admit>;
