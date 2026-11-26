@@ -1,3 +1,4 @@
+import type { RequestContextAdmissionPort } from "./request-context-admission.js";
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
 import { requestContextProcessGroupGone, type RequestContextLaunchRetirement } from "./request-context-retirement.js";
 import { ReplyDraft } from "./reply-draft.js";
@@ -1536,6 +1537,12 @@ export class Daemon extends EventEmitter {
   }
   private guardian: ContextGuardian | null = null;
   private adapter: ChannelAdapter | null = null;
+  private requestContextAdmission?: RequestContextAdmissionPort;
+  /** Input fencing may attach to a legacy owner; it does not bind C or reinterpret an existing turn. */
+  setRequestContextAdmission(port: RequestContextAdmissionPort): void {
+    if (this.requestContextAdmission && this.requestContextAdmission !== port) throw Error("Request-context admission owner differs");
+    this.requestContextAdmission = port;
+  }
   readonly requestContextPendingWork = new RequestContextPendingWork();
   private pendingIpcRequests = new Map<string, (msg: Record<string, unknown>) => void>();
   /**
@@ -2924,6 +2931,7 @@ export class Daemon extends EventEmitter {
   fenceDeliveryWritesForStop(): void {
     if (this.deliveryWritesStopping) return;
     this.deliveryWritesStopping = true;
+    this.requestContextAdmission?.changed();
     this.deliveryEpoch++;
     this.replyDraft.reset();
     this.requestContextLifecycle?.turns.fence();
@@ -6350,13 +6358,16 @@ export class Daemon extends EventEmitter {
   /** Local system work: no user turn, channel reply target, wake or replay of an original request. */
   async deliverWorkingRecovery(content: string, delivery: { deliveryId: string; attemptNo: number }, admitted: () => boolean): Promise<void> {
     const tmux = this.tmux, owner = JSON.stringify(this.interactionOwner()), epoch = this.deliveryEpoch;
-    const current = (): boolean => this.tmux === tmux && owner === JSON.stringify(this.interactionOwner())
+    let begun = false;
+    const current = (): boolean => (begun || !this.requestContextAdmission || this.requestContextAdmission.available()) && this.tmux === tmux && owner === JSON.stringify(this.interactionOwner())
       && this.deliveryEpoch === epoch && !this.deliveryWritesStopping && !this.runtimeMonitorsFrozen
       && !this.spawning && !this.startupAborted && !this.isPaused && !this.healthCheckPaused
       && this.processStatus === "running" && this.pasteQueueDepth === 0
       && (this.workingRecoveryInputOwner === owner || this.instanceState === "idle" && !this.recoveryNativeWork)
       && this.recoveryBootSettled && !this.recoveryCancelled && !this.isSessionOomStopped() && admitted();
-    let begun = false;
+    const heldCurrent = () => this.tmux === tmux && owner === JSON.stringify(this.interactionOwner())
+      && this.deliveryEpoch === epoch && !this.deliveryWritesStopping && !this.startupAborted && admitted();
+    if (this.requestContextAdmission && !await this.requestContextAdmission.wait(heldCurrent)) return;
     try {
       await this.paneWriteLock.run(async () => {
         if (!tmux || !current()) return;
@@ -8523,6 +8534,7 @@ export class Daemon extends EventEmitter {
     this.cancelCapacityNudge("the instance was stopped, paused or respawned");
     this.runtimeMonitorsFrozen = true;
     this.launchFenceEpoch++;
+    this.requestContextAdmission?.changed();
     this.interactionObservation.reset(this.interactionOwner());
     this.clearInteractionConfirmation();
     if (this.healthCheckTimer) { clearTimeout(this.healthCheckTimer); this.healthCheckTimer = null; }
@@ -9349,6 +9361,15 @@ export class Daemon extends EventEmitter {
     const cancelled = () => (opts?.deliveryEpoch !== undefined && !this.isDeliveryEpochCurrent(opts.deliveryEpoch))
       || (!!opts?.roomContextGeneration && opts.roomContextGeneration !== this.roomConversationGeneration());
     if (cancelled() || this.stormWindow?.isStopped()) return false;
+    let heldOwner: string | undefined;
+    const admissionCurrent = () => !cancelled() && !this.deliveryWritesStopping && !this.startupAborted
+      && (heldOwner === undefined || heldOwner === JSON.stringify(this.interactionOwner()));
+    const waitAdmission = async () => {
+      const port = this.requestContextAdmission!;
+      if (!port.available()) heldOwner ??= JSON.stringify(this.interactionOwner());
+      return await port.wait(admissionCurrent) && admissionCurrent();
+    };
+    if (this.requestContextAdmission && !await waitAdmission()) return false;
     formatted = prepareDeliveryWire(formatted, opts?.preserveExactBytes);
 
     // Direct paths such as /steer, /btw, /raw and schedules do not pass the
@@ -9502,8 +9523,9 @@ export class Daemon extends EventEmitter {
     // what makes progress. The one under-lock wait below is explicitly passive:
     // it clears by itself and closes a repaint race immediately before paste.
     for (let round = 0; ; round++) {
-      const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog" | "spawn-started" | KiroPendingDelivery> => {
+      const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog" | "spawn-started" | "request-context-held" | KiroPendingDelivery> => {
         if (cancelled()) return false;
+        if (this.requestContextAdmission && !this.requestContextAdmission.available() && !verdict.paneWriteStarted && !verdict.durableBeginCommitted) return "request-context-held";
         // A spawn that started after the settle wait above invalidates the
         // window id and every readiness verdict since: the pane about to be
         // written may already belong to a replacement process. The same holds
@@ -9541,13 +9563,15 @@ export class Daemon extends EventEmitter {
         // same process, a pause/stop/respawn is not (launchFenceEpoch moves even
         // when a failed pause resumes the monitors).
         const writeCurrent = () => !cancelled()
+          && (!this.requestContextAdmission || admissionCurrent() && (this.requestContextAdmission.available() || !!verdict.paneWriteStarted || !!verdict.durableBeginCommitted))
           && !this.staleAuthIssue()
           && !this.deliveryWritesStopping
           && !this.runtimeMonitorsFrozen
           && !this.spawning
           && settleGeneration === this.spawnGeneration
           && settleFence === this.launchFenceEpoch;
-        const stale = () => (this.spawning || settleGeneration !== this.spawnGeneration ? "spawn-started" as const : false);
+        const stale = () => this.requestContextAdmission && !this.requestContextAdmission.available() && !verdict.paneWriteStarted && !verdict.durableBeginCommitted
+          ? "request-context-held" as const : this.spawning || settleGeneration !== this.spawnGeneration ? "spawn-started" as const : false;
         const residue = await this.clearRestoredInputDraft(handingOffToNativeQueue, writeCurrent);
         if (residue === "stale") return stale();
         if (residue !== "clear") return this.failDelivery(verdict, status, "input-residue", residue);
@@ -9588,9 +9612,15 @@ export class Daemon extends EventEmitter {
         if (written === "handoff-box-unread") return "dialog";
         // M-2267: the pane is in a tmux mode: nothing written — wait for readiness (it holds while the mode lasts), retry.
         if (written === "pane-in-mode") return "dialog";
+        // A publication fence before input keeps this attempt at its producer; never turn the wait into failure.
+        if (written === false && this.requestContextAdmission && !this.requestContextAdmission.available() && !verdict.paneWriteStarted && !verdict.durableBeginCommitted) return "request-context-held";
         // Fenced before its first write: not attempted — redo after a spawn, else drop without a ❌.
         return written === false && verdict.fenced ? stale() : written;
       });
+      if (outcome === "request-context-held") {
+        if (!this.requestContextAdmission || !await waitAdmission()) return false;
+        round--; continue; // Waiting on admission consumes neither a dialog retry nor any input intent.
+      }
       if (outcome === "spawn-started") {
         // The pane changed under this delivery: its queued paste must not land
         // in the replacement process's first screen. Redo the whole delivery
@@ -13688,6 +13718,7 @@ export class Daemon extends EventEmitter {
       this.humanPreparations?.clear(); this.humanReminderAttempts?.clear();
       this.cliOomObservation = null;
       this.spawnGeneration++;
+      this.requestContextAdmission?.changed();
       this.interactionObservation.reset(this.interactionOwner());
       this.clearInteractionConfirmation();
       this.inputTransientGuardGeneration = (this.backend?.getInputUnavailableTransients?.().length ?? 0) > 0

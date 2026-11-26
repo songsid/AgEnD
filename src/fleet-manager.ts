@@ -1,3 +1,4 @@
+import { runWithRequestContextAdmission, type RequestContextAdmissionPort } from "./request-context-admission.js";
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
 import {requestDeliveryView,requestContextDisplayView} from "./request-context-view.js";
 import {captureRequestHubOutput} from "./request-hub-output.js";
@@ -1342,6 +1343,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Test seam: inject a spy to verify saveFleetConfig calls fsync. Default: fsyncSync. */
   fsyncForTest: ((fd: number) => void) | undefined = undefined;
+  private requestContextAdmission?: RequestContextAdmissionPort;
+  configureRequestContextBeforeStart?: (name: string, daemon: Daemon, config: InstanceConfig) => void;
+  /** Shared input gate only; C/D scope binding remains a separate pre-start preparation. */
+  attachRequestContextAdmission(port: RequestContextAdmissionPort): void {
+    if (this.requestContextAdmission === port) return;
+    if (this.requestContextAdmission) throw Error("Request-context admission owner differs");
+    this.requestContextAdmission = port;
+    for (const daemon of this.daemons.values()) daemon.setRequestContextAdmission(port);
+    const prepare = this.configureRequestContextBeforeStart;
+    this.configureRequestContextBeforeStart = (name, daemon, config) => { daemon.setRequestContextAdmission(port); prepare?.(name, daemon, config); };
+    port.subscribe(available => {
+      if (available && !this.shuttingDown && this.deliveryOutbox?.isOpen) { this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); }
+    });
+  }
   /** S-244: the quiescence barrier. Unset, every pane write and admission proceeds as today. */
   private quiescence: QuiescenceGate | null = null;
   attachQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
@@ -1728,6 +1743,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   nativeInstanceRuntime(): FleetWindowsRuntime {
     return this.fleetWindowsRuntime ??= new FleetWindowsRuntime({
       owner:this,fleet:()=>this.fleetConfig,save:()=>this.saveFleetConfig(),stopping:()=>this.shuttingDown,history:this.webChatHistory,
+      requestContextAdmission:()=>this.requestContextAdmission,
       openMcp:(instance,requestId,sandbox,stillCurrent,requestContext)=>this.healthServerListening
         ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,...(requestContext?{requestContext}:{}),endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
       warn:(message,error)=>this.logger.warn({err:error},message),
@@ -5922,7 +5938,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     outbox.on("working_references", (names: string[]) => {
       for (const name of names) this.observeWorkingState(name, "obligations");
     });
-    outbox.on("admitted", () => { this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); });
+    outbox.on("request_context_admitted", () => {
+      if (this.requestContextAdmission) { this.requestContextAdmission.arrived(); this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); }
+    });
+    outbox.on("admitted", () => { this.requestContextAdmission?.arrived(); this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); });
     outbox.on("state", (event: { deliveryId?: string; state?: string }) => {
       if (event.deliveryId) {
         const row = outbox.get(event.deliveryId);
@@ -7134,7 +7153,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // A closed database is never queried: this runs from timers, where a throw
     // is an unhandled rejection. Checking here covers the finally block too:
     // the body below never awaits, so the database cannot close in between.
-    if (!outbox || this.shuttingDown || this.deliveryPumpRunning || !outbox.isOpen) return;
+    if (!outbox || this.shuttingDown || this.deliveryPumpRunning || !outbox.isOpen || this.requestContextAdmission?.available() === false) return;
     this.deliveryPumpRunning = true;
     this.deliveryPumpScheduled = false;
     try {
@@ -7215,10 +7234,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const worker: TargetQueueWorker = new TargetQueueWorker(target, {
       owns: () => this.queueWorkers.get(target) === worker,
       wanted: () => this.deliveryWorkerMode(target) === "on",
-      available: () => !this.shuttingDown && this.deliveryOutbox?.isOpen === true,
+      available: () => !this.shuttingDown && this.deliveryOutbox?.isOpen === true && this.requestContextAdmission?.available() !== false,
       blocked: () => this.isInstanceRestarting(target) || this.wakeCoordinator?.blocksClaim(target) === true,
       daemonBootId: () => this.deliveryBootId(target),
-      claim: bootId => this.deliveryOutbox?.claimNext(
+      claim: bootId => this.requestContextAdmission?.available() === false ? undefined : this.deliveryOutbox?.claimNext(
         this.managerBootId,
         candidate => candidate === target ? bootId : null,
         new Set(),
@@ -7266,6 +7285,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.dispatchNativeDurableDelivery(claimed);
       return;
     }
+    const humanControl = claimed.kind === "human_control";
     const target = claimed.targetInstance;
     const attempt = claimed.attemptNo;
     const payload = { ...claimed.payload };
@@ -7276,6 +7296,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Arm the visible liveness alert as soon as this generation owns the lane,
     // including time spent waiting for a handoff/idle gate to return.
     try {
+    if (humanControl && (claimed.sourceInstance !== "agend-system" || claimed.sourceKey !== claimed.operationId || !claimed.sourceKey.startsWith("human-control:"))) throw Error("Invalid retained human control");
       let sent: boolean | void;
       if (claimed.kind === WORKING_RECOVERY_KIND) {
         const daemon = this.daemons.get(target), key = claimed.sourceKey.replace(/^working-recovery:/, "");
@@ -7304,15 +7325,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ...rawMeta,
           delivery_id: claimed.deliveryId,
           delivery_attempt: String(claimed.attemptNo),
-          from_instance: typeof rawMeta.from_instance === "string" && rawMeta.from_instance
-            ? rawMeta.from_instance
-            : claimed.sourceInstance,
+          ...(!humanControl ? { from_instance: typeof rawMeta.from_instance === "string" && rawMeta.from_instance
+            ? rawMeta.from_instance : claimed.sourceInstance } : {}),
           correlation_id: claimed.correlationId ?? String(rawMeta.correlation_id ?? ""),
         };
+        if (humanControl) { payload.delivery_id = claimed.deliveryId; payload.delivery_attempt = String(claimed.attemptNo); }
         sent = await this.deliverToInstance(target, payload, {
-          isCrossInstance: true,
+          isCrossInstance: !humanControl,
           stillCurrent: () => this.contactDeliveryCurrent(claimed),
-          waitForIdle: claimed.kind !== "steer",
+          waitForIdle: !humanControl && claimed.kind !== "steer",
           noInlineWake: this.deliveryWorkerMode(target) !== "off",
         });
       }
@@ -9078,12 +9099,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     onStartRetryHold?: () => void,
     beforeInput?: () => Promise<boolean>,
   ): Promise<boolean> {
+    if (this.requestContextAdmission && !await this.requestContextAdmission.wait(() => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent))) return false;
     if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const queued = this.ipcWaitTails.get(instanceName);
     if (!queued) {
       const ipc = this.instanceIpcClients.get(instanceName);
       if (ipc?.connected) {
         if (beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
+        if (this.requestContextAdmission?.available() === false) return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold, beforeInput);
         const wire = this.bindHumanReceiptPayload(instanceName, payload);
         if (this.refuseHubPane(wire)) return false;
         if (this.holdPaneSend(wire)) return true;
@@ -9119,6 +9142,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async handOffAfterBeforeInput(instanceName: string, payload: Record<string, unknown>, deliveryEpoch: number,
     stillCurrent: (() => boolean) | undefined, beforeInput: () => Promise<boolean>): Promise<boolean> {
+    if (this.requestContextAdmission && !await this.requestContextAdmission.wait(() => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent))) return false;
     // The flag is read before beforeInput and before prepareClassicForPerson. A Hub or room row stays
     // queued at its producer: no begin lease, no input intent, and no plaintext copy of the question.
     if (this.refuseHubPane(payload)) return false;
@@ -9126,28 +9150,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const early = this.bindHumanReceiptPayload(instanceName, payload);
       if (this.holdPaneSend(early)) return true;
     }
-    if (!(await beforeInput())) return false;
+    const begin = this.requestContextAdmission
+      ? await runWithRequestContextAdmission(this.requestContextAdmission, () => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent), beforeInput)
+      : await beforeInput();
+    if (!begin) return false;
     if (this.refuseHubPane(payload)) return false;
     const privateToken = await this.prepareClassicForPerson(instanceName, payload, deliveryEpoch, stillCurrent);
     if (privateToken === false || this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
-    const ipc = this.instanceIpcClients.get(instanceName);
-    if (!ipc?.connected || (privateToken && this.classicPrivacy().read(instanceName)?.token !== privateToken)) return false;
-    const wire = this.bindHumanReceiptPayload(instanceName, payload);
-    if (this.refuseHubPane(wire)) return false;
-    if (this.holdPaneSend(wire)) return true;
-    const sent = ipc.send(wire);
-    if (sent && privateToken) {
-      try {
-        if (this.classicPrivacy().resume(instanceName, privateToken)) {
-          this.instanceProgress.delete(instanceName);
-          this.instanceActivity.delete(instanceName);
+    const send = () => {
+      if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
+      const ipc = this.instanceIpcClients.get(instanceName);
+      if (!ipc?.connected || (privateToken && this.classicPrivacy().read(instanceName)?.token !== privateToken)) return false;
+      const wire = this.bindHumanReceiptPayload(instanceName, payload);
+      if (this.refuseHubPane(wire)) return false;
+      if (this.holdPaneSend(wire)) return true;
+      const sent = ipc.send(wire);
+      if (sent && privateToken) {
+        try {
+          if (this.classicPrivacy().resume(instanceName, privateToken)) {
+            this.instanceProgress.delete(instanceName);
+            this.instanceActivity.delete(instanceName);
+          }
+        } catch (err) {
+          // Input was accepted: never invite a duplicate. Keep output closed if its durable release fails.
+          this.logger.warn({ err, instanceName }, "Classic room output remains private after the person input");
         }
-      } catch (err) {
-        // Input was accepted: never invite a duplicate. Keep output closed if its durable release fails.
-        this.logger.warn({ err, instanceName }, "Classic room output remains private after the person input");
       }
-    }
-    return sent;
+      return sent;
+    };
+    return this.requestContextAdmission
+      ? runWithRequestContextAdmission(this.requestContextAdmission, () => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent), send)
+      : send();
   }
 
   /** Poll for the instance's IPC to come back, then send. Throws if it does not. */
@@ -9163,6 +9196,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let warned = false;
     let held = false;
     for (;;) {
+      if (this.requestContextAdmission && !this.requestContextAdmission.available()) {
+        if (!await this.requestContextAdmission.wait(() => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent))) return false;
+        deadline = Date.now() + IPC_RECONNECT_GRACE_MS; // Cutover waiting is not an IPC reconnect timeout.
+        continue;
+      }
       if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
       // Re-read every round: a reconnect replaces the IpcClient object entirely,
       // so a cached reference would stay dead forever.
@@ -9578,10 +9616,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Synchronous steer/btw handoff, using the same evidence and owner binding. */
   sendHumanControl(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin | undefined, originalBody: string): boolean {
-    const ipc = this.instanceIpcClients.get(instanceName);
-    if (this.shuttingDown || !ipc?.connected) return false;
+    if (this.shuttingDown || this.requestContextAdmission?.available() !== false && !this.instanceIpcClients.get(instanceName)?.connected) return false;
     const admitted = this.humanReceiptPayload(instanceName, payload, origin, originalBody);
     const id = (admitted.meta as Record<string, string> | undefined)?.human_receipt_id;
+    if (this.requestContextAdmission && !this.requestContextAdmission.available()) {
+      try {
+        if (!this.deliveryOutbox) throw Error("Held human control storage unavailable");
+        const key = `human-control:${id ?? randomUUID()}`;
+        this.deliveryOutbox.admit({ operationId: key, sourceKey: key, sourceInstance: "agend-system",
+          sourceDaemonBootId: this.managerBootId, targetInstance: instanceName, kind: "human_control", payload: admitted });
+        this.scheduleDeliveryOutboxPump();
+        return true; // Acknowledged only after durable admission; publishing/aborting wakes the existing pump.
+      } catch (error) {
+        if (id) this.deliveryOutbox?.markHumanReceiptUncertain(id, instanceName);
+        this.logger.warn({ err: error, instanceName }, "Human control could not be retained");
+        return false;
+      }
+    }
+    return FleetManager.prototype.sendAdmittedHumanControl.call(this, instanceName, admitted);
+  }
+  private sendAdmittedHumanControl(instanceName: string, admitted: Record<string, unknown>): boolean {
+    const ipc = this.instanceIpcClients.get(instanceName);
+    const id = (admitted.meta as Record<string, string> | undefined)?.human_receipt_id;
+    if (this.shuttingDown || !ipc?.connected) { if (id) this.deliveryOutbox?.markHumanReceiptUncertain(id, instanceName); return false; }
     let sent = false;
     try {
       const wire = this.bindHumanReceiptPayload(instanceName, admitted);
@@ -9599,6 +9656,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     payload: Record<string, unknown>,
     options: DeliveryOptions = {},
   ): Promise<boolean | void> {
+    if (this.requestContextAdmission && !await this.requestContextAdmission.wait(() => !this.shuttingDown && options.stillCurrent?.() !== false)) return false;
     if (this.generalLocationDeliveryHold(instanceName)) return false;
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       if (options.beforeInput) return false; // no pre-input hook on the Windows runtime
@@ -29922,6 +29980,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    this.requestContextAdmission?.changed();
     try { this.updateCard?.close(); } catch { /* stopping */ }
     this.hostMonitor?.stop();
     this.stopQuotaObserver?.(); this.stopQuotaObserver = null;

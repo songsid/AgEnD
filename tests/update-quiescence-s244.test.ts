@@ -606,9 +606,10 @@ describe("S-244 cancel and the service lock", () => {
 describe("S-244 ingress inventory", () => {
   it("names the commit points, and the installer does not call the barrier", () => {
     const fleet = FleetManager.prototype as unknown as Record<string, { toString(): string }>;
-    for (const name of ["sendWhenConnected", "handOffAfterBeforeInput", "sendAfterIpcReturns", "sendHumanControl"]) {
+    for (const name of ["sendWhenConnected", "handOffAfterBeforeInput", "sendAfterIpcReturns", "sendAdmittedHumanControl"]) {
       holdBeforeSend(fleet[name]!.toString());
     }
+    expect(fleet.sendHumanControl!.toString()).toContain("sendAdmittedHumanControl");
     const admit = fleet.admitDurableDelivery!.toString();
     expect(admit.indexOf("noteAdmission")).toBeGreaterThan(admit.indexOf("outbox.admit"));
     const claim = (DeliveryOutbox.prototype as unknown as Record<string, { toString(): string }>).claimNextSync!.toString();

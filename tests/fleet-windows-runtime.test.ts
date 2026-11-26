@@ -1,3 +1,4 @@
+import { RequestContextPublication } from "../src/request-context-installation.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -404,4 +405,27 @@ describe("S-224 exec admitted-input capture", () => {
     f.runtime.get(f.name);expect(f.runtime.drainView(root).references).toEqual([]);
   });
 
+});
+
+
+describe("S-230 shared admission fence", () => {
+  it.each(["deliver", "execute"] as const)("%s holds before native claim or journal and resumes once", async lane => {
+    const f = fixture(), { name, agent } = await f.create();
+    const publication = new RequestContextPublication({ owner: "fixture-fleet", current: () => true }, false), fence = publication.fence();
+    (f.runtime as any).host.requestContextAdmission = () => publication.admission;
+    const work = f.runtime[lane](name, { requestId: id, content: "synthetic held input" });
+    await Promise.resolve(); expect(f.start).not.toHaveBeenCalled(); expect(f.store.get(agent.id).turns).toHaveLength(0);
+    publication.abandon(fence, () => null);
+    await vi.waitFor(() => expect(f.start).toHaveBeenCalledTimes(1));
+    f.settle(); await work; expect(f.store.get(agent.id).turns).toHaveLength(1);
+  });
+  it("stopping while held creates no native turn and cannot become a later owner's input", async () => {
+    const f = fixture(), { name, agent } = await f.create();
+    const publication = new RequestContextPublication({ owner: "fixture-fleet", current: () => true }, false), fence = publication.fence();
+    (f.runtime as any).host.requestContextAdmission = () => publication.admission;
+    const work = f.runtime.execute(name, { requestId: id, content: "stale held input" });
+    const refused = expect(work).rejects.toThrow(/no longer current/);
+    f.stop(); publication.admission.changed(); await refused;
+    publication.abandon(fence, () => null); expect(f.start).not.toHaveBeenCalled(); expect(f.store.get(agent.id).turns).toHaveLength(0);
+  });
 });

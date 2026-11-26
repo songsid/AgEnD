@@ -1258,7 +1258,10 @@ export class DeliveryOutbox extends EventEmitter {
       if(this.requestContextRelayVersion===1)this.requestContextReturns.admitted(store.operation(input.sourceInstance,input.operationId)!,stored,admitted.inserted);
       return admitted;
     })();
-    if (admitted.inserted) this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
+    if (admitted.inserted) {
+      this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
+      this.emit("request_context_admitted");
+    }
     return admitted;
   }
 
@@ -1295,7 +1298,10 @@ export class DeliveryOutbox extends EventEmitter {
 
   /** Commit admission before returning success. Duplicate source keys return their original row. */
   admit(input: NewOutboxDelivery): { delivery: OutboxDelivery; inserted: boolean } {
-    return this.admitInternal(input, false);
+    const admitted = this.admitInternal(input, false);
+    // Observation only. An outer decision transaction may still roll back; invalidating preparation is conservative.
+    if (admitted.inserted) this.emit("request_context_admitted");
+    return admitted;
   }
 
   private admitInternal(input: NewOutboxDelivery, scoped: boolean): { delivery: OutboxDelivery; inserted: boolean } {

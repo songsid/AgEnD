@@ -4,6 +4,7 @@ import { z } from "zod";
 import { commitRequestContextActivation, readRequestContextActivations, type RequestContextActivationRecord } from "./request-context-activation.js";
 import { assertRequestContextCompatibility, REQUEST_CONTEXT_VERSION_FUNCTION } from "./request-context-compatibility.js";
 import type { RequestContextActivationLease } from "./request-context-update-guard.js";
+import type { RequestContextAdmissionPort } from "./request-context-admission.js";
 import { requestContextDigest, requestContextJson } from "./request-context-store.js";
 
 const TABLE = "request_context_installation_v1";
@@ -102,6 +103,18 @@ export class RequestContextPublication<T extends object> {
   private fenced = false;
   private fenceSerial = 0;
   private arrivals = 0;
+  private readonly waiting = new Set<{ current(): boolean; resolve(available: boolean): void }>();
+  private readonly admissionListeners = new Set<(available: boolean) => void>();
+  readonly admission: RequestContextAdmissionPort = Object.freeze({
+    available: () => this.admissionAvailable(),
+    arrived: () => { if (!this.admissionAvailable()) this.arrivals++; },
+    wait: (current: () => boolean) => this.waitForAdmission(current),
+    changed: () => this.refreshAdmission(),
+    subscribe: (listener: (available: boolean) => void) => {
+      if (this.admissionListeners.size >= 64) throw Error("Request-context admission listeners are full");
+      this.admissionListeners.add(listener); return () => { this.admissionListeners.delete(listener); };
+    },
+  });
   constructor(private readonly owner: RequestContextInstallationOwner, previouslyActivated: boolean) { this.required = previouslyActivated; this.fenced = previouslyActivated; }
   /**
    * Policy/instruction mode for the published executions, retained while their owner/ports remain current even
@@ -112,16 +125,40 @@ export class RequestContextPublication<T extends object> {
   installed(): boolean { return this.installedMode() !== null; }
   /** Startup recovery can mutate only behind the current owner's held admission fence. */
   recoveryAvailable(): boolean { return this.fenced && this.owner.current(); }
+  private admissionAvailable(): boolean {
+    try { return this.owner.current() && !this.fenced && (!this.required || this.published?.current() === true); }
+    catch { return false; }
+  }
+  private producerCurrent(current: () => boolean): boolean { try { return current(); } catch { return false; } }
+  private waitForAdmission(current: () => boolean): Promise<boolean> {
+    if (!this.producerCurrent(current) || !this.producerCurrent(() => this.owner.current())) return Promise.resolve(false);
+    if (this.admissionAvailable()) return Promise.resolve(true);
+    if (this.waiting.size >= 4096) return Promise.reject(Error("Request-context admission backlog is full"));
+    // Only an actual producer arrival invalidates preparation, never a pump/readiness poll.
+    this.arrivals++;
+    return new Promise(resolve => this.waiting.add({ current, resolve }));
+  }
+  private refreshAdmission(): void {
+    const available = this.admissionAvailable();
+    for (const waiter of this.waiting) {
+      const current = this.producerCurrent(() => this.owner.current()) && this.producerCurrent(waiter.current);
+      if (!current || available) { this.waiting.delete(waiter); waiter.resolve(current && available); }
+    }
+    for (const listener of this.admissionListeners) {
+      try { listener(available); } catch { /* A scheduling observer cannot undo publication or block another producer. */ }
+    }
+  }
   /** A remote/local producer arriving under preparation invalidates its exact proof, without starting input. */
   ingressAvailable(): boolean {
     if (this.fenced) { this.arrivals++; return false; }
-    return !this.required || !!this.published?.current();
+    return this.admissionAvailable();
   }
-  fence(): { current(): boolean } {
+  fence(): { current(): boolean; owned(): boolean } {
     if (!this.owner.current()) throw Error("Installation fence unavailable");
     this.fenced = true; this.fenceSerial++;
     const serial = this.fenceSerial, arrivals = this.arrivals;
-    return Object.freeze({ current: () => this.owner.current() && this.fenced && this.fenceSerial === serial && this.arrivals === arrivals });
+    const owned = () => this.owner.current() && this.fenced && this.fenceSerial === serial;
+    return Object.freeze({ owned, current: () => owned() && this.arrivals === arrivals });
   }
   /** Call only after durable state commits, all nine ports are staged, and readiness is revalidated. */
   publish(state: RequestContextInstallationState, ports: T, fence: { current(): boolean }, ready: () => boolean,
@@ -135,6 +172,7 @@ export class RequestContextPublication<T extends object> {
       current: () => this.published === publication && !this.fenced && ready() && executionCurrent() });
     this.executions.add(publication);
     this.published = publication; this.required = true; this.fenced = false;
+    this.refreshAdmission();
   }
   /** Activated-but-fenced or lost-owner never falls through to the lifetime dispatcher. */
   capture(): RequestContextPublishedInstallation<T> | null {
@@ -143,8 +181,9 @@ export class RequestContextPublication<T extends object> {
     return this.published;
   }
   /** Failed first preparation can resume legacy only when no durable activation committed. */
-  abandon(fence: { current(): boolean }, durable: () => RequestContextInstallationState | null): void {
-    if (!fence.current() || this.required || durable() !== null) throw Error("Activated installation cannot revert to legacy");
+  abandon(fence: { current(): boolean; owned?(): boolean }, durable: () => RequestContextInstallationState | null): void {
+    if (!(fence.owned?.() ?? fence.current()) || this.required || durable() !== null) throw Error("Activated installation cannot revert to legacy");
     this.fenced = false;
+    this.refreshAdmission();
   }
 }
