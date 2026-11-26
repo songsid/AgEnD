@@ -113,6 +113,54 @@ describe("M-3770 §6.2: the recovery runner (--run)", () => {
     expect(lockFiles(r)).toEqual([]);
   });
 
+  describe("evidence that changes while the locks are taken is checked again before anything is written (Prism #4515)", () => {
+    /** Runner deps whose FIRST lock attempt runs `during` — i.e. after the first checks, before the locks are all held. */
+    const during = (fn: () => void, live = [RUNNER, OTHER]) => { const d = deps(live); const nt = d.lock.newToken; let n = 0; d.lock = { ...d.lock, newToken: () => { if (n++ === 0) fn(); return nt(); } }; return d; };
+    const runnerFile = (r: Rig) => join(r.home, ".update-journal", "attempts", ID, "runner.json");
+
+    it("a live runner recorded meanwhile: refused; its record's bytes, current and every lock untouched/released", () => {
+      const r = rig(); closing(r);
+      const err: string[] = [];
+      const d = during(() => writeRunnerRecord(r.home, ID, { pid: OTHER, start: START }));
+      d.err = l => err.push(l);
+      const bytes = () => readFileSync(runnerFile(r), "utf8");
+      expect(runRecovery(r.home, ID, d)).toBe(1);
+      expect(err.at(-1)).toMatch(/another recovery runner \(pid 6161\).*under the locks/);
+      expect(JSON.parse(bytes())).toMatchObject({ pid: OTHER });
+      expect(readCurrent(r.home).state).toBe("closing");
+      expect(lockFiles(r)).toEqual([]);
+    });
+
+    it("an unreadable runner record meanwhile: refused, its bytes preserved", () => {
+      const r = rig(); closing(r);
+      expect(runRecovery(r.home, ID, during(() => writeFileSync(runnerFile(r), "{broken")))).toBe(1);
+      expect(readFileSync(runnerFile(r), "utf8")).toBe("{broken");
+      expect(readCurrent(r.home).state).toBe("closing");
+      expect(lockFiles(r)).toEqual([]);
+    });
+
+    it("the attempt turned manual meanwhile: refused, no runner record written", () => {
+      const r = rig();
+      const a = advance(r.home, advance(r.home, advance(r.home, open(r), "barrier"), "stopping"), "snapshotted");
+      expect(runRecovery(r.home, ID, during(() => { finish(r.home, a, { kind: "manual-recovery", reason: "t" }); }))).toBe(1);
+      expect(existsSync(runnerFile(r))).toBe(false);
+      expect(lockFiles(r)).toEqual([]);
+    });
+
+    it("the recorded prefix changed meanwhile: refused (the locked prefix is no longer the attempt's)", () => {
+      const r = rig(); closing(r);
+      const recordPath = join(r.home, ".update-journal", "attempts", ID, "attempt.json");
+      const err: string[] = [];
+      const d = during(() => { const rec = JSON.parse(readFileSync(recordPath, "utf8")); rec.ownership.prefix = join(r.prefix, "..", "elsewhere"); writeFileSync(recordPath, JSON.stringify(rec)); });
+      d.err = l => err.push(l);
+      expect(runRecovery(r.home, ID, d)).toBe(1);
+      expect(err.at(-1)).toMatch(/npm prefix changed while the locks were taken/);
+      expect(existsSync(runnerFile(r))).toBe(false);
+      expect(readCurrent(r.home).state).toBe("closing");
+      expect(lockFiles(r)).toEqual([]);
+    });
+  });
+
   it("the order is home → prefix → service; a lock it can't take releases the ones it took", () => {
     const other = { pid: OTHER, ...LIVE([OTHER]), newToken: () => "e".repeat(32), now: () => new Date(), log: () => {} };
     const take = (dir: string, opts: { file?: string }) => { const l = acquireInstallLock(dir, { spec: "x", agendHome: dir }, other, opts); if (!l.ok) throw new Error(l.reason); return l; };

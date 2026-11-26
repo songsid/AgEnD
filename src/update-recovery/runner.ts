@@ -6,7 +6,9 @@
  * 1. it refuses while the updater lives or can't be told gone, or while another runner of the attempt lives;
  * 2. it takes the same three locks as the updater, in the same order — home, prefix, service — each proven free or its
  *    holder proven gone (install-lock's owned reclaim); any failure releases what it took, in reverse;
- * 3. it records itself (`runner.json`: the bootstrap handshake's answer), then re-reads the journal under the locks;
+ * 3. under the locks it checks everything again from fresh reads (the journal, the updater, any other runner, the
+ *    recorded prefix — still the one it locked) and refuses, writing nothing, if any changed; only then does it record
+ *    itself (`runner.json`: the bootstrap handshake's answer);
  * 4. it acts on `recoveryPlan(…, "gone")`: a closing attempt is finished (`current` cleared); resuming an abandon, a
  *    rollback or a commit needs the restores of slice 2.3, so this kit refuses those and changes nothing;
  * 5. it releases the locks in reverse.
@@ -19,7 +21,7 @@ import { acquireInstallLock, holderState, type InstallLock, type InstallLockDeps
 import { HOME_UPDATE_LOCK_FILE } from "../home-update-lock.js";
 import { identityOf } from "../install-ownership.js";
 import { finishClosing, readCurrent, readRunnerRecord, recoveryPlan, updaterState, writeRunnerRecord, type AttemptRecord, type JournalIo,
-  type LivenessDeps } from "../update-journal.js";
+  type JournalRead, type LivenessDeps } from "../update-journal.js";
 import { kitDir, operatorCommand } from "./pre-start.js";
 
 /** The service lock's file (service-lock.ts's SERVICE_LOCK_FILE; that module isn't bundled — it loads the home checks). */
@@ -41,27 +43,40 @@ const startOf = (pid: number, d: RunnerDeps) => {
   return { processStart, ...(ticks !== null && boot !== null ? { startTicks: ticks, bootId: boot } : {}) };
 };
 
+type Evidence = { ok: true; read: Exclude<JournalRead, { state: "none" | "unknown" }>; prefix: string } | { ok: false; done: boolean; words: string };
+
+/**
+ * Every check that decides whether this runner may act, from a fresh read: the journal (its attempt, not manual), the
+ * updater (gone), any other runner (gone), and the recorded prefix. Run before the locks — to take nothing when it
+ * refuses — and AGAIN under them, before anything is written (Prism #4515): evidence can change while they're taken.
+ */
+function evidence(home: string, attemptId: string, d: RunnerDeps): Evidence {
+  const read = readCurrent(home, d.io);
+  if (read.state === "none") return { ok: false, done: true, words: "No AgEnD update attempt is open; there is nothing to recover." };
+  if (read.state === "unknown") return { ok: false, done: false, words: `the update journal can't be read (${read.reason}: ${read.path}). Run \`agend update --resolve\`.` };
+  if (read.attempt.id !== attemptId) return { ok: false, done: false, words: `the journal's attempt is ${read.attempt.id}, not this kit's.` };
+  if (read.state === "manual") return { ok: false, done: false, words: "it needs manual recovery. Run `agend update --resolve`." };
+  if (read.state === "open") {
+    const updater = updaterState(read.attempt, d.liveness);
+    if (updater === "live") return { ok: false, done: false, words: "its updater is still running; the update owns it until it ends." };
+    if (updater === "unknown") return { ok: false, done: false, words: "whether its updater still runs can't be told; nothing is taken over." };
+  }
+  const runner = readRunnerRecord(home, attemptId, d.io);
+  if (runner === "unreadable") return { ok: false, done: false, words: "its recovery runner's record can't be read." };
+  if (runner !== null && runner.pid !== d.pid) {
+    const s = holderState({ pid: runner.pid, ...runner.start }, d.liveness);
+    if (s !== "stale") return { ok: false, done: false, words: s === "live" ? `another recovery runner (pid ${runner.pid}) is acting for it.` : `whether its recovery runner (pid ${runner.pid}) still runs can't be told.` };
+  }
+  const prefix = identityOf(read.attempt)?.ownership.prefix;
+  if (!prefix) return { ok: false, done: false, words: "its recorded ownership (the npm prefix) is missing or malformed, so the prefix lock can't be taken." };
+  return { ok: true, read, prefix };
+}
+
 /** `recover.cjs --run`: 0 done (or nothing to do), 1 refused (words on stderr; nothing changed). */
 export function runRecovery(home: string, attemptId: string, d: RunnerDeps): number {
   const refuse = (why: string) => { d.err(`AgEnD's update recovery for attempt ${attemptId} is refused: ${why}`); return 1; };
-  const before = readCurrent(home, d.io);
-  if (before.state === "none") { d.out("No AgEnD update attempt is open; there is nothing to recover."); return 0; }
-  if (before.state === "unknown") return refuse(`the update journal can't be read (${before.reason}: ${before.path}). Run \`agend update --resolve\`.`);
-  if (before.attempt.id !== attemptId) return refuse(`the journal's attempt is ${before.attempt.id}, not this kit's.`);
-  if (before.state === "manual") return refuse("it needs manual recovery. Run `agend update --resolve`.");
-  if (before.state === "open") {
-    const updater = updaterState(before.attempt, d.liveness);
-    if (updater === "live") return refuse("its updater is still running; the update owns it until it ends.");
-    if (updater === "unknown") return refuse("whether its updater still runs can't be told; nothing is taken over.");
-  }
-  const runner = readRunnerRecord(home, attemptId, d.io);
-  if (runner === "unreadable") return refuse("its recovery runner's record can't be read.");
-  if (runner !== null && runner.pid !== d.pid) {
-    const s = holderState({ pid: runner.pid, ...runner.start }, d.liveness);
-    if (s !== "stale") return refuse(s === "live" ? `another recovery runner (pid ${runner.pid}) is acting for it.` : `whether its recovery runner (pid ${runner.pid}) still runs can't be told.`);
-  }
-  const prefix = identityOf(before.attempt)?.ownership.prefix;
-  if (!prefix) return refuse("its recorded ownership (the npm prefix) is missing or malformed, so the prefix lock can't be taken.");
+  const first = evidence(home, attemptId, d);
+  if (!first.ok) { if (first.done) { d.out(first.words); return 0; } return refuse(first.words); }
 
   // §3.4: home → prefix → service; released in reverse.
   const held: InstallLock[] = [];
@@ -70,7 +85,7 @@ export function runRecovery(home: string, attemptId: string, d: RunnerDeps): num
   // The service lock's record names the attempt (`attempt:<id>`): its token then admits this runner's own children.
   const locks: Array<[string, string, { file?: string; name?: string }]> = [
     [home, `recover:${attemptId}`, { file: HOME_UPDATE_LOCK_FILE, name: "home update lock" }],
-    [prefix, `recover:${attemptId}`, {}],
+    [first.prefix, `recover:${attemptId}`, {}],
     [home, `attempt:${attemptId}`, { file: SERVICE_LOCK_FILE, name: "service lock" }],
   ];
   for (const [dir, spec, opts] of locks) {
@@ -79,12 +94,14 @@ export function runRecovery(home: string, attemptId: string, d: RunnerDeps): num
     held.push(taken);
   }
   try {
+    // Under the locks, the whole evidence again — before the handshake record or any journal write.
+    const now = evidence(home, attemptId, d);
+    if (!now.ok) { if (now.done) { d.out(`The attempt was closed meanwhile. ${now.words}`); return 0; } return refuse(`${now.words} (found again under the locks)`); }
+    if (now.prefix !== first.prefix) return refuse(`its recorded npm prefix changed while the locks were taken (${first.prefix} → ${now.prefix}).`);
     const start = startOf(d.pid, d);
     if (!start) return refuse("this process's own start time can't be read, so it can't record itself.");
     writeRunnerRecord(home, attemptId, { pid: d.pid, start }, d.io);
-    const read = readCurrent(home, d.io);                       // again, under the locks
-    if (read.state === "none") { d.out("The attempt was closed meanwhile; nothing to recover."); return 0; }
-    if (read.state === "unknown" || read.attempt.id !== attemptId) return refuse("the journal changed while the locks were taken.");
+    const read = now.read;
     const plan = recoveryPlan(read, "gone");
     switch (plan.kind) {
       case "finish-closing":
