@@ -1,3 +1,4 @@
+import {nativeExecInputRequestDigest,validateNativeExecInputClaim,validateNativeExecInputProof,type NativeExecInputClaim,type NativeExecInputProof} from "./native-exec-input.js";
 /** Opt-in, single-task Windows CLI bridge. The existing Linux fleet remains unchanged. */
 import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches.js";
 import { spawn, execFile } from "./child-process.js";
@@ -9,7 +10,7 @@ import { dirname, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validWindowsAgentId, validWindowsDirectory, validateNativeTask, withAuthenticated, type NativeCliRow, type NativeTaskInput } from "./windows-cli-worker.js";
 import { isCredentialProfileCli, type CredentialProfileReport } from "./runtime-credential-profiles.js";
-import { isNativeProviderId, parseNativeProviderEvent, validateNativeMcpConnection, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
+import { nativeProvider, isNativeProviderId, parseNativeProviderEvent, validateNativeMcpConnection, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
 import { assertPersonalTask, personalTaskFailure, type PersonalTaskFailure } from "./runtime-personal-protocol.js";
 
 const exec = promisify(execFile);
@@ -33,11 +34,15 @@ export interface WindowsCliTask {
   status: "starting" | "running" | "cancelling" | "completed" | "failed" | "cancelled";
   startedAt: number; finishedAt?: number; output: string; error?: string;
   threadId?: string; outcomeConfirmed?: boolean;
+  /** Owned worker input evidence, never inferred from a starting or terminal status. */
+  execInputProof?: Readonly<NativeExecInputProof>;
   /** Only the dedicated personal profile supplies this field, after terminal process completion. */
   answer?: string;
   personalFailure?: PersonalTaskFailure;
 }
 export interface WindowsRunOptions {
+  execInput?: Readonly<NativeExecInputClaim>;
+  onInputWritten?(proof:Readonly<NativeExecInputProof>):void;
   personal?: true;
   answerOnly?: true;
   resumeSessionId?: string; onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; machineId?: string;
@@ -97,7 +102,7 @@ export async function nativeWindowsTransport(): Promise<WindowsTransport> {
 }
 
 export class WindowsCliBridge {
-  private tasks = new Map<string, { input: NativeTaskInput; task: WindowsCliTask; personal: boolean; answerOnly: boolean }>();
+  private tasks = new Map<string, { input: NativeTaskInput; task: WindowsCliTask; personal: boolean; answerOnly: boolean; execInput?: Readonly<NativeExecInputClaim> }>();
   private submitted = new Set<string>();
   private child: ChildProcess | null = null;
   private active: string | null = null;
@@ -208,6 +213,10 @@ export class WindowsCliBridge {
   }
   start(value: unknown, authorized: () => boolean = () => true, options: WindowsRunOptions = {}): WindowsCliTask {
     const input = validateNativeTask(value);
+    const execInput=options.execInput===undefined?undefined:validateNativeExecInputClaim(options.execInput);
+    if(execInput && (execInput.requestId!==input.requestId || execInput.requestSha256!==nativeExecInputRequestDigest(input,options)
+      ||!options.onInputWritten) || !execInput && options.onInputWritten)throw Error("Native exec input composition changed");
+    if(execInput)options={...options,execInput};
     if (this.personal && options.personal !== true) throw Error("This Runtime accepts personal-agent tasks only");
     if (options.answerOnly && !options.personal) throw Error("Answer only requires a personal Runtime");
     if (options.personal) assertPersonalTask(input, options as unknown as Record<string, unknown>);
@@ -216,6 +225,7 @@ export class WindowsCliBridge {
     if (options.credentialHome !== undefined && (!isCredentialProfileCli(input.cli) || !validWindowsDirectory(options.credentialHome))) throw new Error("Invalid credential profile folder");
     const old = this.tasks.get(input.requestId);
     if (old) {
+      if (JSON.stringify(old.execInput??null)!==JSON.stringify(execInput??null))throw Error("requestId already belongs to another native input claim");
       if (JSON.stringify(old.input) !== JSON.stringify(input) || old.personal !== !!options.personal || old.answerOnly !== !!options.answerOnly) throw new Error("requestId already belongs to another task");
       return visible(old.task);
     }
@@ -233,7 +243,7 @@ export class WindowsCliBridge {
     // Reserve before any await: retries and competing requests cannot launch another process.
     this.active = task.id;
     this.submitted.add(task.id);
-    this.tasks.set(task.id, { input, task, personal: !!options.personal, answerOnly: !!options.answerOnly });
+    this.tasks.set(task.id, { input, task, personal: !!options.personal, answerOnly: !!options.answerOnly, ...(execInput?{execInput}:{}) });
     if (this.tasks.size > MAX_TASKS) this.tasks.delete(this.tasks.keys().next().value!);
     void this.run(input, task, authorized, options);
     return visible(task);
@@ -271,7 +281,7 @@ export class WindowsCliBridge {
       await new Promise<void>((resolve) => {
         const child = this.child = spawn(transport.executable, transport.args, { stdio: ["pipe", "pipe", "pipe"] });
         this.physicalWorkers.add(child); child.once("close", () => this.physicalWorkers.delete(child));
-        let wire = "", provider = "", stderr = "", received = 0, finished = false, turnCompleted = false;
+        let wire = "", provider = "", stderr = "", received = 0, finished = false, turnCompleted = false, mainStarted = false;
         const fail = (message: string): void => { if (options.personal) delete task.answer; task.error = message.slice(0,8192); if (task.status !== "cancelling") task.status = "failed"; };
         const append = (text: string): void => { task.output = (task.output + text + (input.cli === "grok" ? "" : "\n")).slice(-TEXT_LIMIT); };
         const providerEvent = (line: string): void => {
@@ -295,7 +305,14 @@ export class WindowsCliBridge {
             const line = wire.slice(0, at); wire = wire.slice(at + 1);
             try {
               const e = JSON.parse(line);
-              if (e.type === "started" && task.status === "starting") task.status = "running";
+              if (e.type === "started") {mainStarted=true;if(task.status === "starting")task.status = "running";}
+              if (e.type === "input-written") {
+                if(!options.execInput||!mainStarted||finished)throw Error("Unexpected native exec input proof");
+                const proof=validateNativeExecInputProof(e.proof,options.execInput);
+                if(proof.transport!==nativeProvider(input.cli).promptTransport)throw Error("Native exec input transport differs");
+                if(task.execInputProof){if(JSON.stringify(task.execInputProof)!==JSON.stringify(proof))throw Error("Native exec input proof changed");}
+                else {task.execInputProof=proof;options.onInputWritten?.(proof);}
+              }
               if (!options.personal && e.type === "stdout" && typeof e.text === "string") {
                 provider += e.text;
                 let end: number;
@@ -340,7 +357,7 @@ export class WindowsCliBridge {
           if (finished) this.active = null;
           resolve();
         });
-        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.personal ? { personal: true, ...(options.answerOnly ? { answerOnly: true } : {}) } : {}), ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),...(options.credentialHome ? {credentialHome:options.credentialHome} : {}) })}\n`);
+        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.execInput?{execInput:options.execInput}:{}), ...(options.personal ? { personal: true, ...(options.answerOnly ? { answerOnly: true } : {}) } : {}), ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),...(options.credentialHome ? {credentialHome:options.credentialHome} : {}) })}\n`);
       });
     } catch (e) { task.error = e instanceof Error ? e.message : "Windows CLI launch failed"; task.status = "failed"; task.outcomeConfirmed = true; task.finishedAt = Date.now(); this.active = null; }
     finally { try { options.onSettled?.(visible(task)); } catch (e) { task.error = `Could not save Windows conversation: ${e instanceof Error ? e.message : e}`; task.status = "failed"; } }

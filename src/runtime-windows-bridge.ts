@@ -1,3 +1,4 @@
+import {NATIVE_EXEC_INPUT_CAPABILITY,validateNativeExecInputClaim,validateNativeExecInputProof,nativeExecInputRequestDigest} from "./native-exec-input.js";
 /** Route the existing native conversation store to a local worker or a paired Windows runtime. */
 import { windowsBridgeFor, type WindowsCliExecutor, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "./windows-cli.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
@@ -13,9 +14,10 @@ export interface RuntimeExecutionCoordinator {
   call(machineId: string, operation: RuntimeOperation, payload: unknown): Promise<unknown>;
   task(id: string): WindowsCliTask | null;
   hasActiveTask(machineId: string): boolean;
+  requestContextReadiness?(machineId:string):{requestContextVersion:number}|null;
   subscribe(listener: (event: RuntimeCoordinatorEvent) => void): () => void;
 }
-type Pending = {machineId: string; task: WindowsCliTask; settle?: WindowsRunOptions["onSettled"]; timer: ReturnType<typeof setTimeout>};
+type Pending = {machineId: string; task: WindowsCliTask; settle?: WindowsRunOptions["onSettled"]; input?:{claim:NonNullable<WindowsRunOptions["execInput"]>;publish:NonNullable<WindowsRunOptions["onInputWritten"]>;written:boolean;failed:boolean}; timer: ReturnType<typeof setTimeout>};
 
 export class RuntimeWindowsBridge implements WindowsCliExecutor {
   private readonly local: WindowsCliExecutor;
@@ -35,11 +37,22 @@ export class RuntimeWindowsBridge implements WindowsCliExecutor {
         if (event.type !== "task" || !event.task) return;
         const pending = this.pending.get(event.task.id);
         if (!pending || pending.machineId !== event.machineId) return;
+        this.acceptInput(pending,event.task);
         pending.task = structuredClone(event.task);
         if (event.task.finishedAt) this.finish(event.task.id,event.task);
       });
     }
     return remote;
+  }
+  private acceptInput(pending:Pending,task:WindowsCliTask):void {
+    if(task.execInputProof===undefined)return;
+    const input=pending.input;
+    if(!input)throw Error("Unexpected native exec input proof");
+    const proof=validateNativeExecInputProof(task.execInputProof,input.claim);
+    if(pending.task.execInputProof&&JSON.stringify(pending.task.execInputProof)!==JSON.stringify(proof))throw Error("Native exec input proof changed");
+    if(input.written||input.failed)return;
+    try{input.written=true;input.publish(proof);}
+    catch(error){input.failed=true;this.scopes.delete(task.id);throw error;}
   }
   private finish(id: string, task: WindowsCliTask): void {
     const pending=this.pending.get(id);
@@ -70,6 +83,10 @@ export class RuntimeWindowsBridge implements WindowsCliExecutor {
   start(value: unknown, authorized: ()=>boolean = ()=>true, options: WindowsRunOptions = {}): WindowsCliTask {
     if (!options.machineId) return this.local.start(value,authorized,options);
     const input=validateNativeTask(value), machineId=options.machineId, remote=this.machine(machineId);
+    const execInput=options.execInput===undefined?undefined:validateNativeExecInputClaim(options.execInput);
+    if(execInput&&(!options.onInputWritten||execInput.requestId!==input.requestId||execInput.requestSha256!==nativeExecInputRequestDigest(input,options)))throw Error("Native exec input composition changed");
+    if(!execInput&&options.onInputWritten)throw Error("Native exec input claim is missing");
+    if(execInput&&(remote.requestContextReadiness?.(machineId)?.requestContextVersion!==1||!remote.machine(machineId)?.runtimeInfo?.capabilities.includes(NATIVE_EXEC_INPUT_CAPABILITY)))throw Error("Native exec input protocol not negotiated");
     if (!authorized()) throw new Error("Authorization expired before remote execution");
     if (options.credentialHome!==undefined) throw new Error("A credential profile folder is never sent to a Runtime; send the profile name");
     if (options.credentialProfile!==undefined) {
@@ -89,13 +106,13 @@ export class RuntimeWindowsBridge implements WindowsCliExecutor {
       const pending=this.pending.get(task.id);if(!pending)return;
       this.finish(task.id,{...pending.task,status:"failed",finishedAt:Date.now(),outcomeConfirmed:false,error:"Remote execution outcome is unknown. Reconnect the runtime to reconcile; do not retry automatically."});
     },360_000);
-    timer.unref?.();this.pending.set(task.id,{machineId,task,settle:options.onSettled,timer});
+    timer.unref?.();this.pending.set(task.id,{machineId,task,settle:options.onSettled,timer,...(execInput?{input:{claim:execInput,publish:options.onInputWritten!,written:false,failed:false}}:{})});
     if(options.mcp)this.scopes.set(task.id,{machineId,connection:options.mcp});
-    const payload={task:input,...(options.resumeSessionId?{resumeSessionId:options.resumeSessionId}:{}),...(options.context?{context:options.context}:{}),...(options.mcp?{mcp:{tools:options.mcp.tools}}:{}),...(options.credentialProfile?{credentialProfile:options.credentialProfile}:{})};
+    const payload={task:input,...(execInput?{execInput}:{}),...(options.resumeSessionId?{resumeSessionId:options.resumeSessionId}:{}),...(options.context?{context:options.context}:{}),...(options.mcp?{mcp:{tools:options.mcp.tools}}:{}),...(options.credentialProfile?{credentialProfile:options.credentialProfile}:{})};
     void remote.call(machineId,"run",payload).then(result=>{
       const accepted=result as WindowsCliTask;
       if(!accepted || accepted.id!==task.id)throw new Error("Invalid remote execution acceptance");
-      const pending=this.pending.get(task.id);if(pending)pending.task=structuredClone(accepted);
+      const pending=this.pending.get(task.id);if(pending){this.acceptInput(pending,accepted);pending.task=structuredClone(accepted);}
       if(accepted.finishedAt)this.finish(task.id,accepted);
     }).catch(()=>{
       const pending=this.pending.get(task.id);if(!pending)return;

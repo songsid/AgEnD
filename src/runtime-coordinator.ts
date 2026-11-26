@@ -1,3 +1,4 @@
+import {NATIVE_EXEC_INPUT_CAPABILITY,validateNativeExecInputClaim,validateNativeExecInputProof,nativeExecInputRequestDigest} from "./native-exec-input.js";
 /** Durable machine registration and outbound-client transport; never starts a remote shell. */
 import { createHash, randomBytes, randomUUID, timingSafeEqual, type KeyObject } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
@@ -11,7 +12,7 @@ import { validateNativeTask, validWindowsDirectory, type NativeTaskInput } from 
 import { isPersonalProfile, assertPersonalTask, personalTaskFailure } from "./runtime-personal-protocol.js";
 import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./windows-cli.js";
 import type { NativeCliRow } from "./windows-cli-worker.js";
-import { isNativeProviderId } from "./windows-cli-providers.js";
+import { nativeProvider, isNativeProviderId } from "./windows-cli-providers.js";
 import { assertCredentialProfileCli, assertCredentialProfileName, parseCredentialProfileReport } from "./runtime-credential-profiles.js";
 import { parseAccountIdentity } from "./claude-auth-status.js";
 import { RuntimeUpdateActivity, type RuntimeUpdateFence } from "./runtime-update-activity.js";
@@ -276,6 +277,14 @@ export class RuntimeCoordinator {
       || this.state.commands.some(row => !record(row) || !text(row.id, 128) || !UUID.test(String(row.machineId)) || !/^[a-f0-9]{64}$/.test(row.digest)
         || !["probe", "workspace", "run", "cancel", "reconcile", "recover"].includes(row.operation)
         || !["pending", "accepted", "failed", "uncertain"].includes(row.state) || !Number.isSafeInteger(row.seq) || row.seq < 0)) throw Error("Malformed runtime machine store");
+    // Additive v1 evidence is strict when present; old rows never acquire an input proof at restart.
+    for(const command of this.state.commands){
+      if(record(command.payload)&&command.payload.execInput!==undefined){
+        const claim=validateNativeExecInputClaim(command.payload.execInput),task=validateNativeTask(command.payload.task);
+        if(command.operation!=="run"||command.payload.profile!==undefined||claim.requestId!==task.requestId||claim.requestSha256!==nativeExecInputRequestDigest(task,command.payload))throw Error("Malformed native exec input claim");
+      }
+      if(command.task?.execInputProof!==undefined)this.validateTask(command,command.task);
+    }
     // A coordinator restart never grants execution authority or redelivers an in-flight command.
     for (const row of this.state.machines) {
       if (row.machine.status === "online") row.machine.status = "offline";
@@ -661,7 +670,12 @@ export class RuntimeCoordinator {
     if (value.answer !== undefined && (!personal || typeof value.answer !== "string" || !value.answer.trim() || Buffer.byteLength(value.answer) > 64 * 1024
       || value.status !== "completed" || value.outcomeConfirmed !== true) || personal && (value.output !== "" || value.status === "completed" && value.answer === undefined)
       || value.personalFailure !== undefined && (!personal || !personalTaskFailure(value.personalFailure))) throw new RuntimeProtocolError("Invalid personal task result");
-    return { id: value.id as string, cli: value.cli as WindowsCliTask["cli"], cwd: value.cwd as string, sandbox: value.sandbox as WindowsCliTask["sandbox"], ...(value.model ? { model: value.model as string } : {}),
+    const claim=command.payload.execInput===undefined?undefined:validateNativeExecInputClaim(command.payload.execInput);
+    const proof=value.execInputProof===undefined?undefined:validateNativeExecInputProof(value.execInputProof,claim);
+    if(proof&&(!claim||value.status==="starting"||!isNativeProviderId(input.cli)||proof.transport!==nativeProvider(input.cli).promptTransport))throw new RuntimeProtocolError("Unexpected native exec input proof");
+    const previous=command.task?.execInputProof;
+    if(previous&&proof&&JSON.stringify(previous)!==JSON.stringify(proof))throw new RuntimeProtocolError("Native exec input proof changed");
+    return { ...(proof||previous?{execInputProof:proof??previous}:{}),id: value.id as string, cli: value.cli as WindowsCliTask["cli"], cwd: value.cwd as string, sandbox: value.sandbox as WindowsCliTask["sandbox"], ...(value.model ? { model: value.model as string } : {}),
       status: value.status as WindowsCliTask["status"], startedAt: value.startedAt, output: value.output,
       ...(value.finishedAt !== undefined ? { finishedAt: value.finishedAt as number } : {}), ...(value.error ? { error: value.error as string } : {}), ...(value.threadId ? { threadId: value.threadId as string } : {}), ...(value.outcomeConfirmed !== undefined ? { outcomeConfirmed: value.outcomeConfirmed as boolean } : {}),
       ...(typeof value.answer === "string" ? { answer: value.answer } : {}), ...(personalTaskFailure(value.personalFailure) ? { personalFailure: value.personalFailure } : {}) };
@@ -1002,8 +1016,13 @@ export class RuntimeCoordinator {
     if (machine.status !== "online" || !connection || !this.admitting(connection)) throw Error("Runtime machine is offline or updating");
     let id = randomUUID(), normalized = payload;
     if (operation === "run") {
-      if (!record(payload) || Object.keys(payload).some(k => !["task", "profile", "resumeSessionId", "context", "mcp", "credentialProfile"].includes(k))) throw Error("Invalid runtime run payload");
+      if (!record(payload) || Object.keys(payload).some(k => !["task", "profile", "resumeSessionId", "context", "mcp", "credentialProfile", "execInput"].includes(k))) throw Error("Invalid runtime run payload");
       const task = validateNativeTask(payload.task);
+      if(payload.execInput!==undefined){
+        const claim=validateNativeExecInputClaim(payload.execInput);
+        if(!connection.requestContextProtocol||!machine.runtimeInfo?.capabilities.includes(NATIVE_EXEC_INPUT_CAPABILITY))throw Error("Native exec input protocol not negotiated");
+        if(payload.profile!==undefined||claim.requestId!==task.requestId||claim.requestSha256!==nativeExecInputRequestDigest(task,payload))throw Error("Native exec input composition changed");
+      }
       if (payload.profile !== undefined) {
         if (!isPersonalProfile(payload.profile) || !machine.runtimeInfo?.capabilities.includes(payload.profile)) throw Error("Personal-agent profile was not negotiated");
         assertPersonalTask(task, payload);
