@@ -5,7 +5,7 @@ import { afterEach, expect, it } from "vitest";
 import { acquireRequestContextActivationLease, requestContextUpdateSettled } from "../src/request-context-update-guard.js";
 import { acquireHomeUpdateLock, homeUpdateLockPath } from "../src/home-update-lock.js";
 import { takeExclusiveLease } from "../src/state-lease.js";
-import { advance, finish, openAttempt, defaultJournalIo, canAdvance, type Stage } from "../src/update-journal.js";
+import { advance, finish, openAttempt, defaultJournalIo, canAdvance, readCurrent, finishClosing, type Stage } from "../src/update-journal.js";
 const homes: string[] = [];
 afterEach(() => { for (const h of homes.splice(0)) rmSync(h, { recursive: true, force: true }); });
 function rig() {
@@ -51,13 +51,19 @@ it("owner loss or lock replacement invalidates the final COMMIT proof without re
   expect(readFileSync(path, "utf8")).toBe(replacement);
 });
 
-it("healthy trial and committing are still blocked; only the terminal committed attempt closes rollback", () => {
+it("healthy trial, committing and committed closing all block until the updater closes its journal", () => {
   const r = rig(); let a = r.opened();
   for (const stage of ["barrier", "stopping", "snapshotted", "installing", "trial", "proving", "committing"] as Stage[]) {
     a = advance(r.home, a, stage); expect(r.lease()).toBeNull();
   }
   expect(() => finish(r.home, a, { kind: "committed" }, { ...defaultJournalIo, step: n => { if (n === "terminal-committed") throw Error("crash"); } })).toThrow();
-  expect(requestContextUpdateSettled(r.home)).toBe(true);
-  const held = r.lease(); expect(held?.current()).toBe(true); held?.release();
+  expect(requestContextUpdateSettled(r.home)).toBe(false);expect(r.lease()).toBeNull();
+  const closing=readCurrent(r.home);expect(closing.state).toBe("closing");if(closing.state!=="closing")throw Error("Expected committed cleanup");
+  expect(closing.attempt.stage).toBe("committed");finishClosing(r.home,closing.attempt); // The updater, never the On guard, owns cleanup.
+  expect(readCurrent(r.home).state).toBe("none");const held=r.lease();expect(held?.current()).toBe(true);held?.release();
   expect(canAdvance("committed", "rolling-back")).toBe(false);
+});
+
+it("the final activation lease re-read refuses any unexpected journal arrival without finishing it",()=>{
+ const r=rig(),lease=r.lease()!;expect(lease.current()).toBe(true);r.opened();expect(lease.current()).toBe(false);lease.release();expect(readCurrent(r.home).state).toBe("open");
 });

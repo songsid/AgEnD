@@ -12,7 +12,8 @@ export interface RequestContextActivationLease {
 }
 export function requestContextUpdateSettled(home: string): boolean {
   const read = readCurrent(home);
-  return read.state === "none" || read.state === "closing" && read.attempt.stage === "committed";
+  // Terminal journal cleanup still belongs to the updater/recovery owner, never Settings On.
+  return read.state === "none";
 }
 /**
  * The caller supplies an actually held Fleet lease, never a config flag. This excludes legacy in-process rollback
