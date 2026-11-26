@@ -1,7 +1,7 @@
 [
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/README.md",
-    "sha256": "4507e0ba5661bbf1aef22dd60e5ddbbd4e097c2b22d0e5eaa9f1b2e68e30b559"
+    "sha256": "1a42c6cded43e39d97406fca112938ecb6358565951d2b14264162238924c586"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-dark-en.png",
@@ -100,6 +100,10 @@
     "sha256": "e1619d9eb54c58d7c775a09192c145d5bacf67560611aec5e4a114651e2dcf91"
   },
   {
+    "path": "docs/evidence/codex-policy-recourse-m3804/r2-checks-summary.json",
+    "sha256": "e6e46abfae432e7c98061ec82dcd4e94bc1b79b0a7a41b58a4d08f56ee87d626"
+  },
+  {
     "path": "docs/evidence/codex-policy-recourse-m3804/task-context.patch",
     "sha256": "8a67168144280a3397c8d22870d32b6722c843f17927a566f6ecb89b4b8852b1"
   },
@@ -178,5 +182,9 @@
   {
     "path": "tests/fixtures/codex-policy-recourse-m3804/cyber-recourse.pane.txt",
     "sha256": "1d33688c2f67cd50b04f4c0a48078c2e49f5d62d650e59654cd7d31e7ccaf97d"
+  },
+  {
+    "path": "tests/web-only-dialogs-2910.test.ts",
+    "sha256": "aaa784a070282d4708664e8c4a403d352c1c7857d1511bec3e7d90f95e9c0796"
   }
 ]
