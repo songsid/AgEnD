@@ -103,7 +103,11 @@ export class RequestContextPublication<T extends object> {
   private fenceSerial = 0;
   private arrivals = 0;
   constructor(private readonly owner: RequestContextInstallationOwner, previouslyActivated: boolean) { this.required = previouslyActivated; this.fenced = previouslyActivated; }
-  /** The single installed predicate for policy/instruction consumers; admission still captures the serving reference. */
+  /**
+   * Policy/instruction mode for the published executions, retained while their owner/ports remain current even
+   * under a recovery or preparation fence. This does NOT mean admission is open: ingress must use capture(),
+   * which refuses under the fence. Before the first publication (including startup recovery), this is null.
+   */
   installedMode(): RequestContextInstallationState["mode"] | null { return this.published?.executionCurrent() ? this.published.state.mode : null; }
   installed(): boolean { return this.installedMode() !== null; }
   /** Startup recovery can mutate only behind the current owner's held admission fence. */
