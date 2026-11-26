@@ -30,15 +30,16 @@ register("settings", {
     pvaNotRun: "Not checked (an earlier step failed).",
     pvaStep_values: "The preview address is saved",
     pvaStep_link: "The public link is open",
-    pvaStep_dns: "{0} can be looked up",
-    pvaStep_reach: "{0} reaches this AgEnD's previews",
+    pvaResultFor: "Check of {0}",
+    pvaStep_dns: "Found in DNS",
+    pvaStep_reach: "Reaches this AgEnD's previews",
     "pva_values_not-set": "No preview address is saved.",
     "pva_values_not-saved": "Save first: Check uses the saved address.",
     "pva_link_link-closed": "Open the public link (/web), then check again: the preview address only answers while the public link is open.",
     "pva_link_no-listener": "Previews are off or not running on this AgEnD.",
     "pva_dns_dns-missing": "{0} does not exist yet. Add the Published application route for {0} on this tunnel (step 1).",
     "pva_dns_dns-failed": "This machine could not look up {0}: this machine's network may block DNS. Ask the network administrator.",
-    pva_reach_ok: "It works: previews over the public link use {0}.",
+    pva_reach_ok: "It works: previews over the public link use this address.",
     "pva_reach_wrong-service": "Cloudflare answered but could not reach the service: make the route's service http://127.0.0.1:{1} (HTTP, not HTTPS).",
     "pva_reach_other-page": "{0} answered with another page: point its route to this tunnel, with the service http://127.0.0.1:{1}.",
     "pva_reach_route-missing": "{0} is not routed to this tunnel. Add the Published application route for {0} (step 1).",
@@ -67,15 +68,16 @@ register("settings", {
     pvaNotRun: "未檢查（前面的步驟失敗）。",
     pvaStep_values: "預覽網址已儲存",
     pvaStep_link: "公開連結已開啟",
-    pvaStep_dns: "查得到 {0}",
-    pvaStep_reach: "{0} 連得到這台 AgEnD 的預覽",
+    pvaResultFor: "{0} 的檢查結果",
+    pvaStep_dns: "查得到",
+    pvaStep_reach: "連得到這台 AgEnD 的預覽",
     "pva_values_not-set": "還沒有儲存預覽網址。",
     "pva_values_not-saved": "請先儲存：檢查用的是已儲存的網址。",
     "pva_link_link-closed": "請先開啟公開連結（/web）再檢查：預覽網址只在公開連結開著時回應。",
     "pva_link_no-listener": "這台 AgEnD 的預覽已關閉或沒有在執行。",
     "pva_dns_dns-missing": "{0} 還不存在。請在這條通道新增 {0} 的 Published application 路由（第 1 步）。",
     "pva_dns_dns-failed": "這台主機查不到 {0}：這台主機所在的網路可能擋了 DNS。請洽網路管理員。",
-    pva_reach_ok: "正常：透過公開連結的預覽會使用 {0}。",
+    pva_reach_ok: "正常：透過公開連結的預覽會用這個網址。",
     "pva_reach_wrong-service": "Cloudflare 有回應，但連不到服務：請把路由的 service 設成 http://127.0.0.1:{1}（HTTP，不是 HTTPS）。",
     "pva_reach_other-page": "{0} 回應了別的頁面：請把它的路由指向這條通道，service 設成 http://127.0.0.1:{1}。",
     "pva_reach_route-missing": "{0} 沒有路由到這條通道。請新增 {0} 的 Published application 路由（第 1 步）。",
@@ -141,6 +143,7 @@ export function FixedPreviewAddress({ field, hostname, saved, port, placeholder,
     </details>
     <div class="save-row"><button type="button" class="btn btn-sm" id="previewAddressCheck" disabled=${busy || !host} onClick=${run}>${busy ? tn("pvaChecking") : tn("pvaCheck")}</button>${!host ? html`<span class="note fixed-preview-why" id="previewAddressCheckWhy">${tn("pvaNeedsAddress")}</span>` : null}</div>
     ${note ? html`<p class="note" role="status">${note}</p>` : null}
+    ${result ? html`<p class="note fixed-preview-result" id="previewAddressResultFor"><strong>${tn("pvaResultFor", shown)}</strong></p>` : null}
     ${result ? html`<ol class="named-test-steps" role="status" aria-live="polite">${STEPS.map((step) => {
       const r = result.steps.find((s) => s.step === step);
       const mark = !r ? "–" : r.ok ? "✓" : "✗";

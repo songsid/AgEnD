@@ -65,7 +65,7 @@ On the direct, signed-in dashboard (not through the public link), open
 1. Enter `agend.example.com` in **Fixed public hostname**. An HTTPS root URL
    such as `https://agend.example.com/` also works. No wildcard, IP address,
    port, path, query, user information or fragment is accepted.
-2. Set **Named tunnel origin port** to 19282, or the port used above. Valid
+2. Set **Port for the fixed address** to 19282, or the port used above. Valid
    edits immediately appear in the sticky **unsaved changes** bar. Select
    **Save**, then confirm the requested change when prompted.
 3. Paste the token into the masked **Cloudflare connector token** field and

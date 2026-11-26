@@ -168,9 +168,10 @@ describe("M-3814: Check", () => {
     expect(w.checks()).toEqual([
       "✓ The preview address is saved",
       "✓ The public link is open",
-      "✓ preview.agend.example.net can be looked up",
-      "✓ preview.agend.example.net reaches this AgEnD's previews — It works: previews over the public link use preview.agend.example.net.",
+      "✓ Found in DNS",
+      "✓ Reaches this AgEnD's previews — It works: previews over the public link use this address.",
     ]);
+    expect(p.root.querySelector("#previewAddressResultFor").textContent, "the address named once, above the rows").toBe("Check of preview.agend.example.net");
   });
   it("a ✗ says what to do; the rest is not checked (zh-TW)", async () => {
     i18n.setLang("zh-TW");
@@ -180,8 +181,8 @@ describe("M-3814: Check", () => {
     expect(w.checks()).toEqual([
       "✓ 預覽網址已儲存",
       "✗ 公開連結已開啟 — 請先開啟公開連結（/web）再檢查：預覽網址只在公開連結開著時回應。",
-      "– 查得到 preview.agend.example.net — 未檢查（前面的步驟失敗）。",
-      "– preview.agend.example.net 連得到這台 AgEnD 的預覽 — 未檢查（前面的步驟失敗）。",
+      "– 查得到 — 未檢查（前面的步驟失敗）。",
+      "– 連得到這台 AgEnD 的預覽 — 未檢查（前面的步驟失敗）。",
     ]);
   });
   it("an empty address: Check is greyed, and says why beside it", async () => {
@@ -204,7 +205,7 @@ describe("M-3814: Check", () => {
         const key = `settings.pva_${step}_${code}`;
         expect(t(key), `${lang} ${key}`).not.toBe(key);
       }
-      for (const k of ["pvaNeedsAddress", "previewNeedsFixedHost", "pvaTimeout", "pvaNotRun", "pvaBusy", "pvaFailed", "previewHostname", "previewHostSame", "previewHostNeedsHostname"]) expect(t(`settings.${k}`), `${lang} ${k}`).not.toBe(`settings.${k}`);
+      for (const k of ["pvaResultFor", "pvaNeedsAddress", "previewNeedsFixedHost", "pvaTimeout", "pvaNotRun", "pvaBusy", "pvaFailed", "previewHostname", "previewHostSame", "previewHostNeedsHostname"]) expect(t(`settings.${k}`), `${lang} ${k}`).not.toBe(`settings.${k}`);
     }
     setLang("en");
   });

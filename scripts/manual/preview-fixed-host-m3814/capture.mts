@@ -104,6 +104,8 @@ async function walk(c: any) {
       at.preview && at.steps.length === 5 && at.steps[2].includes(`http://127.0.0.1:${fx.previewPort}`), at);
     if (!saved) check(`${tag} 2: nothing saved yet → the steps are open`, await page.evaluate(`document.querySelector(".fixed-preview-steps").open`) === true, null);
     const sc2 = await scroll(page); check(`${tag} 2: no sideways scroll`, sc2.s <= sc2.w, sc2);
+    const portLabel = await page.evaluate(`document.querySelector("label[for=publicWebOriginPort]").innerText.trim()`);
+    check(`${tag} 2: the port field is "${W(zh, "Port for the fixed address", "固定網址用的埠")}" (step 3's "not 19282" points at it)`, portLabel === W(zh, "Port for the fixed address", "固定網址用的埠"), portLabel);
     if (zh) for (const w of ["規則", "指到", "下方", "預覽網址"]) check(`${tag} 2: 「${w}」 kept whole in the fixed address's card`, await unsplit(page, w, ".s-public-entry") !== false, await unsplit(page, w, ".s-public-entry"));
     await shot(page, `${tag}-2-settings-landed`);
     // The steps, opened as a person would (folded once an address is saved): numbered, under a heading with its marker.
@@ -165,11 +167,13 @@ async function walk(c: any) {
     await page.waitForTimeout(300);
     const rows = await page.evaluate(`[...document.querySelectorAll(".fixed-preview .named-test-steps li")].map((l) => l.innerText.trim())`) as string[];
     check(`${tag} 4: every step ✓, the last says it works`, rows.length === 4 && rows.every((r) => r.startsWith("✓"))
-      && rows[3].includes(W(zh, `It works: previews over the public link use ${PREVIEW}.`, `正常：透過公開連結的預覽會使用 ${PREVIEW}。`))
+      && rows[3].includes(W(zh, "It works: previews over the public link use this address.", "正常：透過公開連結的預覽會用這個網址。"))
+      && rows.every((r) => !r.includes(PREVIEW))
+      && await page.evaluate(`document.querySelector("#previewAddressResultFor").innerText`) === W(zh, `Check of ${PREVIEW}`, `${PREVIEW} 的檢查結果`)
       && rows.slice(0, 3).every((r) => !r.includes(" — ")),
       { rows, block: await page.evaluate(`(document.querySelector(".fixed-preview") || {}).innerText`), disabled: await page.evaluate(`document.querySelector("#previewAddressCheck").disabled`), checks, dialog: await page.evaluate(`(document.querySelector("dialog[open]") || {}).innerText || null`), url: page.url() });
     check(`${tag} 4: it asked https://${PREVIEW}/frame`, asked.at(-1) === `https://${PREVIEW}/frame`, asked);
-    if (zh) for (const w of ["查得到", "使用"]) check(`${tag} 4: 「${w}」 kept whole`, await unsplit(page, w, ".fixed-preview .named-test-steps") === true, await unsplit(page, w, ".fixed-preview .named-test-steps"));
+    if (zh) for (const w of ["查得到", "連得到"]) check(`${tag} 4: 「${w}」 kept whole`, await unsplit(page, w, ".fixed-preview .named-test-steps") === true, await unsplit(page, w, ".fixed-preview .named-test-steps"));
     if (phone) {
       const b = await page.evaluate(`Math.round(document.querySelector("#previewAddressCheck").getBoundingClientRect().height)`);
       check(`${tag} 4: Check is at least 32 px tall`, b >= 32, b);
