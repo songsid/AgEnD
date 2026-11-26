@@ -2,7 +2,7 @@
   "scope": "Synthetic offline author evidence, not a live model-compliance experiment",
   "sourceSha256": {
     "src/reply-draft.ts": "c4ec3c2b9040474fbe81443389d62dceb1000d0ac7c2f9312faa0c5d73096711",
-    "src/daemon.ts": "73fc67c6963b37ca7076fcd93adaee79cbe904795ce314f0894a826cbdbd426d",
+    "src/daemon.ts": "ebaef82a2036f966a0ac2fc3dbb8b1d6c634b64a4df7cc0c2c8fc06dfd976d8a",
     "src/transcript-monitor.ts": "beeeb51a09a4b65152832c67eaee4a3cc3ab5deab1deb09586b7f38b95af613d",
     "tests/reply-draft-m3791.test.ts": "e28aeebdd728cd61bbeadded0a6ca5bf60306f30c64a0cf03292420ab2c9f1be",
     "tests/reply-drop-guard.test.ts": "35fd9c4658e2e1bfd8f3ace9555cd0911746d9fad8d4d05ee4138ad410a78d84",
@@ -31,5 +31,58 @@
     "backendsWithDraftEvidence": [
       "claude-code"
     ]
+  },
+  "r1": {
+    "scope": "Only lazy collector initialization and a defensive guard lookup in constructorless daemon harnesses; recovery policy and tests unchanged",
+    "ciFailure": {
+      "run": 45745399111,
+      "job": 139660707603,
+      "cases": 2,
+      "reason": "partial daemon has no eagerly initialized collector"
+    },
+    "relatedSuites": 36,
+    "testsPassed": 651,
+    "sourceTypeErrors": 0,
+    "testTypeErrors": 0,
+    "selectedSuites": [
+      "tests/claude-mcp-carry-m3749.test.ts",
+      "tests/workspace-follow-stream-3160.test.ts",
+      "tests/agy-banner-3116.test.ts",
+      "tests/hub-quota-fleet.test.ts",
+      "tests/codex-pane-native-exclusion-2301.test.ts",
+      "tests/supervision-ended.test.ts",
+      "tests/crash-resume-marker.test.ts",
+      "tests/claude-model-minimum-3441.test.ts",
+      "tests/reply-drop-guard.test.ts",
+      "tests/daemon-startup-incarnation-3313.test.ts",
+      "tests/repo-worktree-containment.test.ts",
+      "tests/dashboard-permissions.test.ts",
+      "tests/claude-credential-change-m3419.test.ts",
+      "tests/turn-question-m3239.test.ts",
+      "tests/missing-backend-binary-m3302.test.ts",
+      "tests/owner-app-origin-m3221.test.ts",
+      "tests/remove-gemini-cli-1280.test.ts",
+      "tests/native-pane-fleet-integration-2950.test.ts",
+      "tests/agy-survey-3143.test.ts",
+      "tests/codex-exact-cwd-resume.test.ts",
+      "tests/kiro-transcript-daemon-1375.test.ts",
+      "tests/classic-cli-guard-daemon-m3339.test.ts",
+      "tests/kiro-migration-verified-2598.test.ts",
+      "tests/kiro-upgrade-adoption-1624.test.ts",
+      "tests/status-emojis-1005.test.ts",
+      "tests/remaining-sync-which-1490.test.ts",
+      "tests/wake-saved-config.test.ts",
+      "tests/decision-team-scope.test.ts",
+      "tests/host-monitoring-footprint-integration-m3454.test.ts",
+      "tests/working-state-observation-2473.test.ts",
+      "tests/kiro-busy-insert-2676.test.ts",
+      "tests/session-oom-stop-2035.test.ts",
+      "tests/codex-capacity-backoff.test.ts",
+      "tests/hub-room-owed-wiring-h6.test.ts",
+      "tests/durable-outbox-daemon.test.ts",
+      "tests/reply-draft-m3791.test.ts"
+    ],
+    "unchangedTests": true,
+    "initialExpandedRun": "Three Follow cases exposed an absent guard in the new listener; corrected before the final all-green run"
   }
 }

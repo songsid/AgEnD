@@ -18,3 +18,8 @@ Recovery quotes the answer as a JSON string explicitly labelled as data. The mod
 - No private transcript text is committed. No provider CLI, live delivery, restart, screenshot or model-compliance experiment was performed.
 
 Rollback: revert the draft collector and monitor/daemon integration; the prior generic recovery remains. No transcript or delivery-store migration is involved.
+
+
+## Constructorless daemon compatibility
+
+The first PR CI exposed two credential-change tests whose partial daemons do not run the constructor. Initialize the draft collector lazily and skip draft observation when such a harness has no reply guard. The expanded local run also exposed three Follow cases with that absent guard; the final corrected run passes all **36 selected suites / 651 tests**. The original assertions and all test files remain unchanged in this correction. Selection: every test file matching `Object.create(Daemon.prototype)` or `Daemon.prototype`, plus the draft controls. Source and test typechecks pass with zero errors. This changes no draft ownership, send path, timer, or recovery budget.

@@ -7624,7 +7624,7 @@ export class Daemon extends EventEmitter {
     });
     monitor.on("reply_draft_record", (entry: unknown) => {
       if (this.transcriptMonitor === monitor && owner === launchIdentity(this.interactionOwner())) {
-        const turn = this.turnReplyGuard.snapshot();
+        const turn = this.turnReplyGuard?.snapshot();
         if (turn) this.replyDraft.observe(entry, turn.generation);
         else this.replyDraft.reset();
       }
@@ -7749,7 +7749,9 @@ export class Daemon extends EventEmitter {
     });
   }
 
-  private readonly replyDraft = new ReplyDraft();
+  private _replyDraft?: ReplyDraft;
+  /** Also supports existing prototype-based lifecycle harnesses without constructor state. */
+  private get replyDraft(): ReplyDraft { return this._replyDraft ??= new ReplyDraft(); }
 
   private queueReplyRecoveryPrompt(turn: TurnReplySnapshot): void {
     const deliveryEpoch = this.deliveryEpoch;
