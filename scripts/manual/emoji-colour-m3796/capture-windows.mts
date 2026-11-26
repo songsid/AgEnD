@@ -80,8 +80,11 @@ try {
       if (c.agent !== "alpha") check(`${c.tag}: the agent's theme font is on the chat`, receipt.chatClass[c.tag].includes(`th-font-${c.agent === "beta" ? "system" : "mono"}`), receipt.chatClass[c.tag]);
       // A list item's fonts also count its surrounding whitespace (one or two glyphs in the text font): the emoji is
       // drawn by Segoe UI Emoji when that is the only other font listed.
+      // The whitespace's font is the one drawing this case's Latin text (the most glyphs on the plain text line).
+      const latin = (rows[TEXT[1]] ?? "").split(", ").map((p) => /^(.*)\((\d+)\)$/.exec(p)!).filter(Boolean).sort((x, y) => Number(y[2]) - Number(x[2]))[0]?.[1] ?? "";
+      receipt.latinFont = { ...(receipt.latinFont || {}), [c.tag]: latin };
       const emojiOnly = (f: string) => { const parts = f.split(", ").filter(Boolean);
-        return parts.some((p) => /^Segoe UI Emoji\(\d+\)$/.test(p)) && parts.every((p) => /^Segoe UI Emoji\(\d+\)$/.test(p) || /\(([12])\)$/.test(p) && !/Noto|Symbol|JhengHei|YaHei|MingLiU|Gothic|Meiryo|Menlo/.test(p)); };
+        return parts.some((p) => /^Segoe UI Emoji\(\d+\)$/.test(p)) && parts.every((p) => /^Segoe UI Emoji\(\d+\)$/.test(p) || p === `${latin}(1)` || p === `${latin}(2)`); };
       for (const e of EMOJI) {
         const f = rows[e] ?? "";
         check(`${c.tag}: ${e} drawn by the colour emoji font (no other font draws it)`, emojiOnly(f), f);
