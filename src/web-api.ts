@@ -5567,7 +5567,7 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
  * — no cookie (the fleet's or the Hub's), no session, no Host: who is signed in is the page's own /hub/v1/session.
  */
 export const HUB_SHELL_DROPS = '<script src="/assets/agend-auth.js"></script>';
-export function serveHubWorkspaceShell(res: ServerResponse, hub: { name: string; preview?: Readonly<import("./hub/preview.js").HubPreviewView>; loginWithoutAt?: boolean }): void {
+export function serveHubWorkspaceShell(res: ServerResponse, hub: { name: string; preview?: Readonly<import("./hub/preview.js").HubPreviewView>; loginWithEmail?: boolean }): void {
   try {
     // Without the fleet's fetch wrapper (agend-auth.js): it reads the fleet's /auth/session for a CSRF value and answers
     // a 401 with the fleet's "session ended" banner. The Hub's pages carry the Hub's own CSRF (hub-client.js).
@@ -5578,7 +5578,7 @@ export function serveHubWorkspaceShell(res: ServerResponse, hub: { name: string;
     const previewAttrs = preview ? ` data-dashboard-origin="${attr(preview.dashboardOrigin)}"`
       + (preview.previewOrigin && preview.bootId ? ` data-preview-origin="${attr(preview.previewOrigin)}" data-preview-boot="${attr(preview.bootId)}"`
         : ` data-preview-reason-code="${attr(preview.reasonCode ?? "notOffered")}" data-preview-reason="${attr(preview.reason ?? "")}"`) : "";
-    const body = `<body data-mode="full" data-web-transport="none" data-usage-panel="0" data-log-tab="0" data-hub="hub"${name ? ` data-hub-name="${attr(name)}"` : ""}${hub.loginWithoutAt ? ` data-hub-login="no-at"` : ""}${previewAttrs}>`;
+    const body = `<body data-mode="full" data-web-transport="none" data-usage-panel="0" data-log-tab="0" data-hub="hub"${name ? ` data-hub-name="${attr(name)}"` : ""}${hub.loginWithEmail ? ` data-hub-login="email-or-account"` : ""}${previewAttrs}>`;
     sendPanelHtml(res, withAppIconLinks(html).replace("<body>", body), 200, { "Cache-Control": "no-store" }, { mediaSrc: "'none'", ...(preview?.previewOrigin ? { frameSrc: `${preview.previewOrigin}/frame` } : {}) });
   } catch {
     json(res, 500, { error: "app.html not found" });

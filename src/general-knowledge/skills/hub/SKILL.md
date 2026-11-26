@@ -127,6 +127,7 @@ Rarely needed. On the Hub's computer: **Settings → Hub**, the folded card **Fl
 The page is **Sign in to the Hub** (登入 Hub): "Use your company account. Your password goes to the directory only and
 is never kept." Fields **Account** and **Password**, button **Sign in**.
 
+- An AD Hub accepts the company email address, full sign-in name (UPN), or AD account name. Keep the full address; do not drop the `@` part. The directory must resolve it to one enabled account. OpenLDAP keeps its configured login attribute.
 - The Hub signs in with the company account and password only. A code from `/web` or an authenticator app is for a
   person's own dashboard and does nothing here.
 - "That account and password didn't work." → wrong account or password. "The directory can't be reached right now. Try

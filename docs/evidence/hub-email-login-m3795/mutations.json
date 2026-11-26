@@ -1,0 +1,24 @@
+{
+  "restoredSha256": "a69651b52c7025f18488042f15c043f37cd271158a7385a1258bc35a1351f036",
+  "mutations": [
+    {
+      "name": "alias-escaping",
+      "sourceSha256": "5c0145be46af800a87e5ac2c8d43dfccd9c58c808970f3d543a27cc4611833b3",
+      "exit": 1,
+      "assertionRed": true
+    },
+    {
+      "name": "profile-gate",
+      "sourceSha256": "b5fb79eb9c5813e7d2dbdf1a3cee9c4a36900e78f92c37199d300106bd95e6ac",
+      "exit": 1,
+      "assertionRed": true
+    },
+    {
+      "name": "ambiguity",
+      "sourceSha256": "f998fce340b721f0f2d94c811a0ac5d666699d8d62b33ef34e0b3609764997f0",
+      "exit": 1,
+      "assertionRed": true
+    }
+  ],
+  "scope": "Preceding error-module-load guard revision; alias escaping/profile/ambiguity predicates are byte-unchanged. Final restored tests cover the final guard."
+}

@@ -318,12 +318,12 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
       const [login, pw] = ["#hubLogin", "#hubPassword"].map((sel) => pg.root.querySelector(sel) as any);
       expect([login.getAttribute("name"), login.getAttribute("autocomplete"), pw.getAttribute("name"), pw.getAttribute("autocomplete")])
         .toEqual(["username", "username", "password", "current-password"]);
-      // This Hub signs in by sAMAccountName (the shell's mark): an account typed with "@" is told what to type.
-      pg.document.body.setAttribute("data-hub-login", "no-at");
+      // The AD shell offers full-email sign-in; a refusal stays generic.
+      pg.document.body.setAttribute("data-hub-login", "email-or-account");
       input(pg, "#hubLogin", "alex@example.com"); input(pg, "#hubPassword", "pw"); await settle(5);
       fire(pg.root.querySelector(".hub-signin form")!, "submit");
       await until(() => pg.root.querySelector(".hub-signin [role=alert]"));
-      expect(pg.root.querySelector(".hub-signin [role=alert]")!.textContent).toBe("That account and password didn't work. Type only your account name, the part before the @ (for example alex), not your email address.");
+      expect(pg.root.querySelector(".hub-signin [role=alert]")!.textContent).toBe("That account and password didn't work.");
       expect(stored, "a refusal is never saved").toEqual([]);
       input(pg, "#hubLogin", " alex "); input(pg, "#hubPassword", "pw"); await settle(5);
       fire(pg.root.querySelector(".hub-signin form")!, "submit");

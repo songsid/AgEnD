@@ -1,0 +1,11 @@
+--- a/src/hub/directory/directory.ts
++++ b/src/hub/directory/directory.ts
+@@ -579,7 +579,7 @@
+       } catch (err) {
+         // LDAP refuses 3+ exact matches at the bounded search limit. Ambiguity is the same public
+         // sign-in refusal as zero matches, not an infrastructure error or an account-enumeration hint.
+-        const SizeLimitExceededError = (await ldaptsModule?.catch(() => undefined))?.SizeLimitExceededError;
++        const { SizeLimitExceededError } = await loadLdapts();
+         if (cfg.profile === "ad" && SizeLimitExceededError && err instanceof SizeLimitExceededError) {
+           report("sign-in", "invalid-credentials");
+           return { ok: false, reason: "invalid-credentials" };

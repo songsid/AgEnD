@@ -242,17 +242,17 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     expect(JSON.parse(json)).toEqual({ enabled: false });
   });
 
-  // M-3563 (#4386 review): the HTTP config says the sign-in account can hold no "@" only for AD's sAMAccountName login.
-  it("loginWithoutAt: set for an AD directory (sAMAccountName), never for OpenLDAP (uid)", async () => {
+  // AD sign-in has exact UPN/mail fallback; OpenLDAP still uses its configured login.
+  it("loginWithEmail: set for an AD directory, never for OpenLDAP (uid)", async () => {
     const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry);
     sealFixtureHub(hub);
     const first = await f.create(hub.config.hub, () => true);
-    expect(http.state.deps!.config.loginWithoutAt).toBeUndefined();
+    expect(http.state.deps!.config.loginWithEmail).toBeUndefined();
     await first.close();
     const ad = { ...hub.config.hub, directory: { ...(hub.config.hub.directory as object), profile: "ad" } };
     sealFixtureHub(hub, ad);
     const second = await f.create(ad, () => true);
-    expect(http.state.deps!.config.loginWithoutAt).toBe(true);
+    expect(http.state.deps!.config.loginWithEmail).toBe(true);
     await second.close();
   });
 

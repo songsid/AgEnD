@@ -302,9 +302,8 @@ function HubSignIn() {
     const r = await hubClient().signIn(form.login.trim(), form.password);
     if (mine !== generation.current || joinRequest() !== requestId) return;
     if (r.ok) {
-      // M-3563: the browser keeps this login as typed (the directory account), so it offers it next time — never the
-      // email address from its own saved personal info. The fields keep their values until the form goes away (a
-      // browser judges a sign-in by them).
+      // Keep the successful identifier as typed (account name, UPN or email), so the browser offers it next time.
+      // The fields keep their values until the form goes away; browsers judge a sign-in by them.
       rememberLogin(form.login.trim(), form.password);
       if (company.requestId) {
         const joined = await approval.run(r.csrf);
@@ -315,11 +314,7 @@ function HubSignIn() {
     }
     setBusy(false);
     setForm((f) => ({ ...f, password: "" }));
-    // M-3563: a browser fills its saved email address into 帳號. Where this Hub signs in by an account that can hold no "@"
-    // (AD's sAMAccountName: the shell's data-hub-login="no-at"), say what to type instead; elsewhere ("@" may be right:
-    // userPrincipalName, mail…) the plain line.
-    const noAt = typeof document !== "undefined" && document.body?.dataset?.hubLogin === "no-at";
-    setMsg(r.code === "backpressure" ? hw("errBusyHub") : r.code === "unavailable" ? hw("errDirectory") : hw(noAt && form.login.includes("@") ? "errSignInAt" : "errSignIn"));
+    setMsg(r.code === "backpressure" ? hw("errBusyHub") : r.code === "unavailable" ? hw("errDirectory") : hw("errSignIn"));
   };
   return html`<main class="hub-signin-page"><section class="hub-signin hub-signin-card" aria-labelledby="hubSignInTitle">
     <div class="hub-signin-brand"><strong>${t("hubShell.brand")}</strong>${name ? html`<span>${name}</span>` : null}</div>
@@ -331,6 +326,7 @@ function HubSignIn() {
       <label for="hubLogin">${hw("login")}</label>
       <input id="hubLogin" name="username" autocomplete="username" spellcheck=${false} autocapitalize="none"
         value=${form.login} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, login: v })); }} />
+      ${typeof document !== "undefined" && document.body?.dataset?.hubLogin === "email-or-account" ? html`<p class="note">${hw("loginEmailHint")}</p>` : null}
       <label for="hubPassword">${hw("password")}</label>
       <input id="hubPassword" name="password" type="password" autocomplete="current-password"
         value=${form.password} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, password: v })); }} />
