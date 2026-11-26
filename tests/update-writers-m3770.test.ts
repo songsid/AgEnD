@@ -104,7 +104,11 @@ describe("M-3770 §4.4: an incomplete scan is never proof", () => {
 
 describe.runIf(process.platform === "linux")("M-3770 §4.4: the real /proc scanner", () => {
   const admission = require(join(process.cwd(), "launcher", "install-admission.cjs")) as { processStart(pid: number): string | null };
-  const deps = () => procWritersDeps((pid, start) => admission.processStart(pid) === start.processStart);
+  /**
+   * The real /proc readers, over this test's own processes only: the whole host's process list varies by machine (a CI
+   * runner's own processes can't all be read), and what is under test is how real processes are read and classified.
+   */
+  const deps = (pids: number[]) => ({ ...procWritersDeps((pid, start) => admission.processStart(pid) === start.processStart), listPids: () => [process.pid, ...pids] });
   const self = (): Exempt => ({ updater: { pid: process.pid, start: { processStart: admission.processStart(process.pid)! } }, runner: null, helpers: [] });
   /** A child that holds until its stdin closes; `ready` resolves once it has set itself up. */
   const child = (code: string, opts: { cwd?: string; env?: Record<string, string> } = {}) => {
@@ -122,12 +126,14 @@ describe.runIf(process.platform === "linux")("M-3770 §4.4: the real /proc scann
     const byCwd = await child("", { cwd: h });
     const byFile = await child(`require("fs").openSync(${JSON.stringify(join(h, "fleet.yaml"))}, "r")`);
     const byLog = await child(`require("fs").openSync(${JSON.stringify(join(h, "fleet.log"))}, "r")`);
-    const res = proveWritersGone(h, self(), deps());
+    const mine = [byEnv, byCwd, byFile, byLog].map(k => k.pid!);
+    const res = proveWritersGone(h, self(), deps(mine));
+    expect(res, JSON.stringify(res)).toMatchObject({ ok: false, incomplete: false });
     const pids = res.ok ? [] : "writers" in res ? res.writers.map(w => w.pid) : [];
     expect(pids).toEqual(expect.arrayContaining([byEnv.pid, byCwd.pid, byFile.pid]));
     expect(pids).not.toContain(byLog.pid);
     expect(pids).not.toContain(process.pid);                                                          // the updater: exempt
     for (const k of [byEnv, byCwd, byFile, byLog]) await stop(k);
-    expect(proveWritersGone(h, self(), deps())).toMatchObject({ ok: true });
+    expect(proveWritersGone(h, self(), deps(mine))).toEqual({ ok: true });                           // exited: gone
   }, 30_000);
 });
