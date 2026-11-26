@@ -299,11 +299,34 @@ export function setFleetLockHandoff(
  */
 export function retakeDeadFleetLock(dataDir: string, fence: { pid?: number; attemptId: string; nonce: string }, probe: Pick<FleetLockProbe, "isProcessAlive"> = {}):
   { ok: true; handle: FleetLockHandle } | { ok: false; reason: string } {
+  return replaceDeadHolder(dataDir, fence, owner => (owner.role ?? "fleet") === "fleet" && owner.nonce === fence.nonce ? null : "fleet.lock doesn't hold that generation's record", probe);
+}
+
+/**
+ * M-3770 §6.2: the recovery runner takes over the fence of the attempt's own updater, once that updater is proven gone —
+ * the same owned replacement as above (marker, compare again, tmp + fsync + rename, directory fsync). Only an `update`
+ * record of THIS attempt; a live holder is never taken. When the fence is already this process's, it is returned as is.
+ */
+export function adoptUpdateFence(dataDir: string, fence: { pid?: number; attemptId: string }, probe: Pick<FleetLockProbe, "isProcessAlive"> = {}):
+  { ok: true; handle: FleetLockHandle } | { ok: false; reason: string } {
+  const pid = fence.pid ?? process.pid;
+  let current: string;
+  try { current = readFileSync(join(dataDir, "fleet.lock"), "utf8"); } catch (err) { return { ok: false, reason: `fleet.lock can't be read (${(err as Error).message})` }; }
+  const owner = parseRecord(current);
+  if (owner && owner.role === "update" && owner.attemptId === fence.attemptId && owner.pid === pid) return { ok: true, handle: { path: join(dataDir, "fleet.lock"), record: owner, serialized: current } };
+  return replaceDeadHolder(dataDir, { pid, attemptId: fence.attemptId }, o => (o.role === "update" && o.attemptId === fence.attemptId ? null : "fleet.lock isn't this attempt's fence"), probe);
+}
+
+/** The owned replacement of a dead holder's record by a fresh update fence (no handoff). `accept` returns why not, or null. */
+function replaceDeadHolder(dataDir: string, fence: { pid?: number; attemptId: string }, accept: (owner: FleetLockRecord) => string | null, probe: Pick<FleetLockProbe, "isProcessAlive">):
+  { ok: true; handle: FleetLockHandle } | { ok: false; reason: string } {
   const lockPath = join(dataDir, "fleet.lock"), marker = `${lockPath}.reclaim`;
   let observed: string;
   try { observed = readFileSync(lockPath, "utf8"); } catch (err) { return { ok: false, reason: `fleet.lock can't be read (${(err as Error).message})` }; }
   const owner = parseRecord(observed);
-  if (!owner || (owner.role ?? "fleet") !== "fleet" || owner.nonce !== fence.nonce) return { ok: false, reason: "fleet.lock doesn't hold that generation's record" };
+  if (!owner) return { ok: false, reason: "fleet.lock can't be read as a record" };
+  const why = accept(owner);
+  if (why) return { ok: false, reason: why };
   if ((probe.isProcessAlive ?? processAlive)(owner.pid)) return { ok: false, reason: `fleet.lock's holder (pid ${owner.pid}) is still a live process; it is never taken` };
   const pid = fence.pid ?? process.pid;
   const record: FleetLockRecord = { pid, nonce: randomBytes(16).toString("hex"), createdAt: new Date().toISOString(), role: "update", attemptId: fence.attemptId, handoff: null };
