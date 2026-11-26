@@ -1827,7 +1827,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const graph=this.requestContextNativeGraph||this.requestContextBoot?this.currentRequestContextNativeGraph():null;
     if(this.nativeMcpStore)return graph?this.requireRequestContextNativeFactory(this.nativeMcpStore,graph):this.nativeMcpStore;
     const sessions=new NativeMcpSessions(this as unknown as AgentEndpointContext,graph?.registration);
-    if(graph)sessions.setRequestContextRequired(true);
+    if(graph)sessions.setRequestContextRequired(true,true);
     return this.nativeMcpStore=graph?this.ownRequestContextNativeFactory(sessions,graph):sessions;
   }
   /** Retire only existing native capabilities; ordinary lifecycle changes do not instantiate the Windows path. */
@@ -1839,8 +1839,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const runtime=new FleetWindowsRuntime({
       owner:this,fleet:()=>this.fleetConfig,save:()=>this.saveFleetConfig(),stopping:()=>this.shuttingDown,history:this.webChatHistory,
       requestContextAdmission:()=>this.requestContextAdmission,
-      openMcp:(instance,requestId,sandbox,stillCurrent,requestContext)=>this.healthServerListening
-        ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,...(requestContext?{requestContext}:{}),endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
+      openMcp:(instance,requestId,sandbox,stillCurrent,requestContext,inputReady)=>this.healthServerListening
+        ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,...(requestContext?{requestContext}:{}),...(inputReady?{inputReady}:{}),endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
       warn:(message,error)=>this.logger.warn({err:error},message),
       removed:name=>this.nativeInstanceRemoved(name),
       paneCurrent:name=>this.daemons.get(name)?.nativePaneCurrent?.() === true,

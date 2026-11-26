@@ -32,11 +32,14 @@ interface Call { operationId:string; digest:string; result:Promise<ToolResult> }
 interface Session {
   token:string; instance:string; requestId:string; agentId:string; backend:string;
   requestContext?:RequestContextCallLease;
+  inputReady?:()=>Promise<boolean>;closeInputWait?:()=>void;
   sandbox:NativeSandbox; policy:string; expires:number; stillCurrent:()=>boolean; closed:boolean;
   timer:ReturnType<typeof setTimeout>; calls:Map<string,Call>; reported:Map<string,Set<string>>;
 }
 export interface NativeMcpGrant {
   instance:string; requestId:string; sandbox:NativeSandbox; endpoint:string; stillCurrent:()=>boolean;
+  /** The exact owned run's positive input boundary; tools/list does not wait, tools/call must. */
+  inputReady?():Promise<boolean>;
   /** Captured from the admitted exec input at claim, never at HTTP arrival. */
   requestContext?:RequestContextCallLease;
 }
@@ -93,10 +96,11 @@ export class NativeMcpSessions {
   get drainRevision():string{return `${this.sessions.revision}:${this.drainCalls.revision}`;}
   drainView(rootId:string){const sessions=this.sessions.view(rootId),calls=this.drainCalls.view(rootId);return {...sessions,revision:this.drainRevision,references:[...sessions.references,...calls.references],unknown:sessions.unknown||calls.unknown};}
   private requestContextRequired=false;
+  private inputProofRequired=false;
   /** Internal rollout only; production stays OFF until L. Existing grants do not acquire a context. */
-  setRequestContextRequired(required:boolean):void {
-    if(required===this.requestContextRequired)return;
-    this.closeAll();this.requestContextRequired=required;
+  setRequestContextRequired(required:boolean,inputProofRequired=false):void {
+    if(required===this.requestContextRequired&&this.inputProofRequired===(required&&inputProofRequired))return;
+    this.closeAll();this.requestContextRequired=required;this.inputProofRequired=required&&inputProofRequired;
   }
 
 
@@ -108,6 +112,7 @@ export class NativeMcpSessions {
       throw Error("Native MCP request context is no longer current");
     }
 
+    if(this.inputProofRequired&&!input.inputReady)throw Error("Native MCP requires the owned input proof boundary");
     if(input.requestContext)this.sessions.registrationGate?.assertRegistration(input.requestContext.snapshot.context.ref.rootContextId);
     if(!windowsCliEnabled() || config?.runtime!=="windows" || !UUID.test(config.native_agent_id ?? "")
       || !["codex","claude-code"].includes(config.backend ?? "") || !UUID.test(input.requestId)
@@ -119,6 +124,12 @@ export class NativeMcpSessions {
     const session:Session={token,instance:input.instance,requestId:input.requestId,agentId:config.native_agent_id!,backend:config.backend!,sandbox:input.sandbox,policy,
       expires:Date.now()+TTL_MS,stillCurrent:input.stillCurrent,closed:false,calls:new Map(),reported:new Map(),
       timer:setTimeout(()=>this.closeToken(token),TTL_MS),...(input.requestContext?{requestContext:input.requestContext}:{})};
+    if(input.inputReady){
+      let ready:Promise<boolean>|undefined,close!:()=>void;
+      const closed=new Promise<boolean>(resolve=>{close=()=>resolve(false);});
+      session.closeInputWait=close;
+      session.inputReady=()=>ready??=Promise.race([Promise.resolve().then(()=>input.inputReady!()),closed]).then(value=>value===true,()=>false);
+    }
     session.timer.unref?.();this.sessions.set(token,session);
     return {connection:{endpoint:address,token,tools:this.memberNames(session)},close:()=>this.closeToken(token),
       reportedCorrelations:target=>target===undefined ? [...new Set([...session.reported.values()].flatMap(ids=>[...ids]))] : [...(session.reported.get(target) ?? [])]};
@@ -130,7 +141,7 @@ export class NativeMcpSessions {
   closeAll():void { for(const token of this.sessions.keys())this.closeToken(token); }
   private closeToken(token:string):void {
     const session=this.sessions.get(token);if(!session)return;
-    session.closed=true;clearTimeout(session.timer);session.calls.clear();this.sessions.delete(token);
+    session.closed=true;session.closeInputWait?.();clearTimeout(session.timer);session.calls.clear();this.sessions.delete(token);
   }
   /** Publication retires a generation before later lifecycle/configuration work can run. */
   observePolicies():void { this.prune(); }
@@ -234,6 +245,7 @@ export class NativeMcpSessions {
       if(!old&&session.requestContext)this.sessions.registrationGate?.assertRegistration(session.requestContext.snapshot.context.ref.rootContextId);
       const operationId=old?.operationId ?? randomUUID();
       const call=old ?? {operationId,digest,result:Promise.resolve().then(async()=>{
+        if(session.inputReady&&!await session.inputReady())return toolError("Native MCP capability or tool access was revoked");
         if(!this.current(session) || !this.canCall(session,name,args))return toolError("Native MCP capability or tool access was revoked");
         try {
           if(this.ctx.requestContextPolicy)requireRequestContextPolicy(this.ctx,session.instance,name,args,session.requestContext?{coverage:"covered",lease:session.requestContext}:undefined);

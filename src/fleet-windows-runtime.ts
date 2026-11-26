@@ -32,7 +32,7 @@ export interface FleetWindowsRuntimeHost {
   stopping(): boolean;
   requestContextAdmission?(): RequestContextAdmissionPort | undefined;
   history?: Pick<WebChatHistory,"findByMessageId"> & Partial<Pick<WebChatHistory,"reconcileNativeMessages" | "findByNativeHistoryId">>;
-  openMcp?(instance: string, requestId: string, sandbox: WindowsAgent["sandbox"], stillCurrent: () => boolean, requestContext?: RequestContextCallLease): NativeMcpLease | null;
+  openMcp?(instance: string, requestId: string, sandbox: WindowsAgent["sandbox"], stillCurrent: () => boolean, requestContext?: RequestContextCallLease, inputReady?:()=>Promise<boolean>): NativeMcpLease | null;
   warn?(message: string,error: unknown): void;
   removed?(name: string,config: InstanceConfig): void;
   machineAvailable?(machineId: string): boolean;
