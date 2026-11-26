@@ -1,6 +1,8 @@
+import { createSettingsReplay } from "../src/settings-request-capability.js";
+import { SettingsExecution } from "../src/settings-transaction.js";
 import { PassThrough } from "node:stream";
 import { expect, it, vi } from "vitest";
-import { handleRequestContextControlApi, projectRequestContextControl, projectRequestContextNeeds, requestContextControlSnapshot, type RequestContextControlHost, type RequestContextControlView } from "../src/request-context-control-api.js";
+import { prepareRequestContextControlReplay, handleRequestContextControlApi, projectRequestContextControl, projectRequestContextNeeds, requestContextControlSnapshot, type RequestContextControlHost, type RequestContextControlView } from "../src/request-context-control-api.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
 
@@ -23,18 +25,22 @@ function rig() {
       } else Object.assign(view, { revision: view.revision + 1, enabled: input.action !== "disable", phase: input.action === "disable" ? "draining" : "on" });
       return structuredClone(view);
     }) };
-  const request = (method = "GET", body?: unknown, url = path, installed = true, throughSettings = false) => {
-    const req = Object.assign(new PassThrough(), { method, url, headers: {} }); let finish!: () => void;
+  const request = (method = "GET", body?: unknown, url = path, installed = true, throughSettings = false, confirmed = false) => {
+    const original = Object.assign(new PassThrough(), { method, url, headers: {} });
+    const execution = confirmed ? new SettingsExecution({current:()=>allowed && verified,snapshot:()=>null}) : undefined;
+    const req = execution ? createSettingsReplay({method,url,binding:"fixture",body:Buffer.from(JSON.stringify(body))},execution) : original;
+    if (execution) prepareRequestContextControlReplay(original as any,new URL(url,"http://localhost"),host)(req as any,()=>allowed && verified); let finish!: () => void;
     const done = new Promise<void>(resolve => { finish = resolve; });
     const res: any = { destroyed: false, writableEnded: false, status: 0, text: "", writeHead(status: number) { this.status = status; },
       end(text: string) { this.text = text; this.writableEnded = true; finish(); } };
     const consumed = throughSettings
       ? handleSettingsRequest(req as any, res, new URL(url, "http://localhost"), { requestContextControl: installed ? host : undefined } as any)
       : handleRequestContextControlApi(req as any, res, new URL(url, "http://localhost"), installed ? host : undefined);
-    if (body !== undefined) req.end(typeof body === "string" ? body : JSON.stringify(body));
+    if (!confirmed && body !== undefined) (req as PassThrough).end(typeof body === "string" ? body : JSON.stringify(body));
     return { req, consumed, done: async () => { await done; return { status: res.status, body: JSON.parse(res.text) }; } };
   };
-  return { host, view, request, verify: (value = true) => { verified = value; }, revoke: () => { allowed = false; },
+  const confirmed = (method: string, body?: unknown, url=path, installed=true, throughSettings=false) => request(method,body,url,installed,throughSettings,true);
+  return { host, view, request, confirmed, verify: (value = true) => { verified = value; }, revoke: () => { allowed = false; },
     replace: () => { binding = "another-session"; }, csrf: () => { continued = false; } };
 }
 it("an unverified recognized owner can read status but cannot change activation", async () => {
@@ -48,12 +54,12 @@ it("an absent host stays absent and never probes or enables policy", async () =>
 });
 it("the real Settings router reaches the control before its terminal unknown-route response", async () => {
   const r = rig(); expect((await r.request("GET", undefined, path, true, true).done()).body).toMatchObject({ phase: "blocked", canChange: false });
-  r.verify(); expect((await r.request("POST", { revision: 2, action: "disable" }, path, true, true).done()).body).toMatchObject({ phase: "draining" });
+  r.verify(); expect((await r.confirmed("POST", { revision: 2, action: "disable" }, path, true, true).done()).body).toMatchObject({ phase: "draining" });
 });
 it.each(["revoke", "replace", "unverify"])("a %s during the body read prevents a host write", async change => {
   const r = rig(); r.verify(); const pending = r.request("POST");
   if (change === "revoke") r.revoke(); else if (change === "replace") r.replace(); else r.verify(false);
-  pending.req.end(JSON.stringify({ revision: 2, action: "disable" }));
+  (pending.req as PassThrough).end(JSON.stringify({ revision: 2, action: "disable" }));
   expect((await pending.done()).status).toBe(403); expect(r.host.change).not.toHaveBeenCalled();
 });
 it.each(["revoke", "replace"])("a %s during an awaited read cannot reveal the owner status", async change => {
@@ -64,8 +70,8 @@ it.each(["revoke", "replace"])("a %s during an awaited read cannot reveal the ow
 });
 it("Off is an explicit revision-bound owner write, not an optimistic client state", async () => {
   const r = rig(); r.verify();
-  expect(await r.request("POST", { revision: 1, action: "disable" }).done()).toEqual({ status: 409, body: { error: "stale" } });
-  expect((await r.request("POST", { revision: 2, action: "disable" }).done()).body).toMatchObject({ enabled: false, phase: "draining", revision: 3 });
+  expect(await r.confirmed("POST", { revision: 1, action: "disable" }).done()).toEqual({ status: 409, body: { error: "stale" } });
+  expect((await r.confirmed("POST", { revision: 2, action: "disable" }).done()).body).toMatchObject({ enabled: false, phase: "draining", revision: 3 });
   expect((await r.request("POST", { revision: 3, action: "check" }).done()).status).toBe(200);
 });
 it.each([{ revision: 2, action: "enable", authority: "owner" }, { revision: 2, action: "drop-barrier" }, { enabled: true }, "{"])(
@@ -80,9 +86,9 @@ it("a drain resolution carries only the exact offered item/action and cannot be 
   const r = rig(); r.verify(); r.view.phase = "draining"; r.view.everActivated = true;
   r.view.blockers = [{ id: "return-fixture", kind: "returns", labels: ["Demo worker"], action: "stop-waiting" }];
   const input = { revision: 2, action: "resolve", blockerId: "return-fixture", resolution: "stop-waiting" };
-  expect((await r.request("POST", { ...input, resolution: "withdraw" }).done()).status).toBe(409);
-  expect((await r.request("POST", input).done()).body).toMatchObject({ phase: "off", blockers: [], revision: 3 });
-  expect((await r.request("POST", input).done()).status).toBe(409);
+  expect((await r.confirmed("POST", { ...input, resolution: "withdraw" }).done()).status).toBe(409);
+  expect((await r.confirmed("POST", input).done()).body).toMatchObject({ phase: "off", blockers: [], revision: 3 });
+  expect((await r.confirmed("POST", input).done()).status).toBe(409);
   expect(r.view.revision).toBe(3);
 });
 it("unexpected installer/storage errors never expose their private text", async () => {
@@ -94,7 +100,7 @@ it("a result lost after the owner changed state is unavailable, never replayed; 
   vi.mocked(r.host.change).mockImplementation(() => {
     Object.assign(r.view, { revision: 3, enabled: false, phase: "draining" }); throw Error("unavailable");
   });
-  expect(await r.request("POST", { revision: 2, action: "disable" }).done()).toEqual({ status: 503, body: { error: "unavailable" } });
+  expect(await r.confirmed("POST", { revision: 2, action: "disable" }).done()).toEqual({ status: 503, body: { error: "unavailable" } });
   expect(r.host.change).toHaveBeenCalledTimes(1);
   expect((await r.request().done()).body).toMatchObject({ revision: 3, phase: "draining" });
   expect(r.host.change).toHaveBeenCalledTimes(1);
@@ -139,4 +145,8 @@ it("the relaunch count comes from the owner-scoped view and cannot be set by the
   r.verify(); expect((await r.request("POST", { revision: 2, action: "enable", restartCount: 0 }).done()).status).toBe(400);
   expect(r.host.change).not.toHaveBeenCalled();
   r.revoke(); expect((await r.request().done()).status).toBe(403);
+});
+
+it("a verified raw POST cannot bypass the standard Settings confirmation",async()=>{
+ const r=rig();r.verify();expect((await r.request("POST",{revision:2,action:"disable"}).done()).status).toBe(403);expect(r.host.change).not.toHaveBeenCalled();
 });

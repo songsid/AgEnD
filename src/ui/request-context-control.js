@@ -3,6 +3,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { lang, register, t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
+import { confirmedWrite } from "/assets/settings-confirm.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { detailsPath, settingsPath } from "/assets/app-route.js";
 import { AuthorizeChip } from "/assets/web-authorize.js";
@@ -69,6 +70,11 @@ export function RequestContextBlocked({ state, onCheck, onResolve, busy = false,
     </div>
   </div>`;
 }
+async function writeControl(lease, input) {
+  if (input.action !== "check") return confirmedWrite("/api/settings/request-context", { body: input, label: requestContextControlText("title") });
+  const response = await lease.fetch("/api/settings/request-context", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+  return { ok: response.ok, status: response.status, body: await response.json() };
+}
 /** Passive Needs-you payload, from the same owner status as Settings. No background GET or timer. */
 export function RequestContextNeed({ item }) {
   const lease = useLease(`request-context-need:${item.id}`), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), writing = useRef(false);
@@ -80,7 +86,7 @@ export function RequestContextNeed({ item }) {
     try {
       if (["stop-work", "stop-waiting"].includes(blocker?.action) && !await confirmStopWork(blocker.action)) return;
       const input = blocker ? { revision: state.revision, action: "resolve", blockerId: blocker.id, resolution: blocker.action } : { revision: state.revision, action: "check" };
-      const response = await lease.fetch("/api/settings/request-context", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+      const response = await writeControl(lease, input);
       if (!lease.current()) return;
       if (!response.ok && response.status !== 409) throw Error("refused");
     } catch { if (lease.current()) setFailed(true); }
@@ -123,12 +129,11 @@ export function RequestContextSettings() {
       if (["stop-work", "stop-waiting"].includes(blocker?.action) && !await confirmStopWork(blocker.action)) return;
       if (action === "disable" && !await confirmDialog({ title: requestContextControlText("confirmTitle"), message: requestContextControlText("confirmBody"), confirmLabel: requestContextControlText("confirm"), danger: false })) return;
       if (!lease.current()) return;
-      const response = await lease.fetch("/api/settings/request-context", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(blocker ? { revision: state.revision, action: "resolve", blockerId: blocker.id, resolution: blocker.action } : { revision: state.revision, action }) });
+      const response = await writeControl(lease, blocker ? { revision: state.revision, action: "resolve", blockerId: blocker.id, resolution: blocker.action } : { revision: state.revision, action });
       if (!lease.current()) return;
       if (response.status === 409) { await load(); return; }
       if (!response.ok) throw Error("refused");
-      const value = await response.json(); if (lease.current()) accept(value);
+      const value = response.body; if (lease.current()) accept(value);
     } catch { if (lease.current()) setFailed(true); }
     finally { writing.current = false; if (lease.current()) setBusy(false); }
   };

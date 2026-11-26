@@ -7,7 +7,7 @@ import { markRetainedHumanControl, retainedHumanControl } from "./retained-human
 import type { RequestContextLaunchIdle, RequestContextLaunchRetirement } from "./request-context-retirement.js";
 import { requestContextDigest } from "./request-context-store.js";
 import { RequestContextBoot, readRequestContextBootState } from "./request-context-boot.js";
-import type {RequestContextControlPrincipal} from "./request-context-control-api.js";
+import type {RequestContextControlHost,RequestContextControlPrincipal} from "./request-context-control-api.js";
 import {RequestContextPreparedWork} from "./request-context-work.js";
 import type { RequestContextStartPreparation, RequestContextDaemonWork } from "./request-context-start.js";
 import { requestContextSkillText, requestContextSteeringText, type RequestContextKnowledgeMode } from "./request-context-knowledge.js";
@@ -4734,6 +4734,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const baselines = this.settingsBaselineReader = new SettingsBaselines({ dataDir: this.dataDir, configPath: () => this.configPath,
       config: () => this.fleetConfig, current: () => [this.settingsGeneration, this.settingsRuntimeRevision, this.shuttingDown],
       generalLocation: input => this.previewGeneralLocation(input),
+      requestContextControl: () => this.requestContextControl?.snapshot() ?? null,
       hubMembership: raw => hubMembershipSettings(raw),
       hubPageSharing: raw => hubPageSharingSettings(raw),
       guestDerivedScopes: () => this.guestDerivedScopes(),
@@ -4794,6 +4795,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           current: () => current() && sessions === this.webSessions && !!this.webToken
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
       }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
+      requestContextControl: () => this.requestContextControl,
       selfConfirm: (req, id) => this.settingsSelfConfirmation(store, req, id),
       totp: { state: (req, id) => this.settingsTotpState(store, req, id), confirm: (req, id, code, digest) => this.settingsTotpConfirm(store, req, id, code, digest) },
       remote: req => this.settingsPageIsRemote(req),
@@ -6403,6 +6405,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }};}
 
   /** Existing Settings administrator scope. This only identifies a principal; it never bypasses per-change confirmation. */
+  requestContextControl?:RequestContextControlHost;
   requestContextControlPrincipal(req:IncomingMessage,url:URL):RequestContextControlPrincipal|null {
     const resolve=()=>{
       const verdict=evaluateWebRequest(req as unknown as WebGateRequest,url,this.webToken,this.webSessions,{touch:false});
