@@ -1,4 +1,5 @@
 {
+  "scope": "Eight previously cleared permission/creator frames are retained with unchanged relevant UI bindings. Twelve current settled/populated drawer, primary-action and native-open frames come from four independent CASE runs (15 checks each, overlapping). The retained runtime predates only the display-hint cache and shared search copy; strict create/candidate blocks are unchanged.",
   "runs": [
     {
       "head": "7a9d2b3e9c0d39eca41994861aa75269ef27ee53",
@@ -167,8 +168,111 @@
       }
     },
     {
-      "head": "aaa9cf41b79e1de21c9569266c1c30b5733aacf2",
-      "tree": "7071a4ead1d88329e82044b0dc7274665a543aae",
+      "head": "b522c0e4b2d06b6575877054ce41732463ad9705",
+      "tree": "f67be90a87afc8cb726134962df5d3cdc9dedd09",
+      "dirty": "",
+      "browser": "156.0.8078.4",
+      "scope": "Initialized production Hub runtime, HTTPS, SQLite and UI with synthetic directory identities only. No Fleet or provider process; Chromium headless under WSL.",
+      "checks": [
+        {
+          "label": "production Hub ready",
+          "pass": true
+        },
+        {
+          "label": "real HTTP saves a custom creation role and eligible AD-group assignment",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW granted role row",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW page assignment action visible",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW people no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW room role permits AD-group recipients",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW drawer transition fully settled",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW selected group enables visible primary",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW AD-group wording explicit",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW shared AD search copy",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW assign no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW native recipient dropdown opened",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW assign-open no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "positive exact capture count",
+          "pass": true
+        },
+        {
+          "label": "no page errors",
+          "pass": true
+        }
+      ],
+      "screens": [
+        {
+          "file": "desk-dark-zh-TW-people.png",
+          "sha256": "db35d2905659faceade1aabddd7a5a9a3cbd8e964d15ddb0b3383c093829baa1"
+        },
+        {
+          "file": "desk-dark-zh-TW-assign.png",
+          "sha256": "db482922a95bca6faf2f026ddd28a328d654f5e909cd209333cf4ad156d308de"
+        },
+        {
+          "file": "desk-dark-zh-TW-assign-open.png",
+          "sha256": "7c2065460dd098b8c1cbb761741f2e71e2cd27513bce8a807cfefdcf2feca87e"
+        }
+      ],
+      "errors": [],
+      "bindings": {
+        "src/hub/roles/model.ts": "dce1aef1b74b9f9c23c349e89d6e59bed46445d85b6e1b5053ca356e495569e4",
+        "src/hub/roles/authority.ts": "86df2fa2e2acc8dd8d4b7075adb75f44f5717d1656e8c23d0a8a3b2357579401",
+        "src/hub/roles/delegation.ts": "2405e5b0ae71e43d6469000486917f499b4d48aae04ae71c44ded8d4c5337e07",
+        "src/hub/compose/server.ts": "1979970420b814a8e62ddfa14049a2129501c62d8fd6f3039703de7eecf5b341",
+        "src/hub/http/deps.ts": "9d8239e0bb528c05a384ea980c57dc17721fb56f6990deea01a7b7bf79d4f320",
+        "src/hub/roles/admin-control.ts": "d172c9f60f851aa9cc148f700764a12d3fa10a36287139083ac13360fc40270b",
+        "src/hub/roles/review.ts": "0dcc0ff06acd14bf3b77e8d658f57844bfa139a440b73abe1c3faadd6aec4608",
+        "src/hub/rooms/admin.ts": "5aa341a521a50ee4795e7619b9945e2314dd3febb72da7cb92932ae69477606e",
+        "src/hub/rooms/service.ts": "3603602e2675776155683b76ee703e3880a00b1794dfb508ebe4940265b8f26a",
+        "src/ui/hub-roles.js": "1959688e65c16898965d69ae72327df1a4d79910f149386ffadc5b1e4403a954",
+        "src/ui/hub-role-view.js": "28c6dd908c298eb00c35b6d421cae1570b067781010f1666320a8727ea9167aa",
+        "src/ui/hub-roles-strings.js": "ecfc1250876eec03e1e607a7d2e826d46bb016c5faf65ce838ddeb4a46988e56",
+        "src/ui/hub-admin-rooms.js": "891d54c3950dfc4ea4419cc0398676416bfe6dc1a528c5e5efcb18f6386932b2",
+        "src/ui/hub-admin-rooms-strings.js": "154b421a63a1932cc85732b45c536d612d24327b6559fa93e82fb61a8d7dc761",
+        "src/ui/hub-room-strings.js": "6bf70b6378b04172fe40f92580234cce29af79cae29f7beb7c0226fbbfd57f02",
+        "src/ui/hub-group-search.js": "1544d43538beba78ef1317f2091671e2951f864395b03bc485de2cbae5a6132e",
+        "scripts/manual/hub-room-create-role-s256/browser.mts": "6927cd37bea7cf4d883dc00da0cca90cc096588c231652d6a841a2f433106b68"
+      }
+    },
+    {
+      "head": "b522c0e4b2d06b6575877054ce41732463ad9705",
+      "tree": "f67be90a87afc8cb726134962df5d3cdc9dedd09",
       "dirty": "",
       "browser": "156.0.8078.4",
       "scope": "Initialized production Hub runtime, HTTPS, SQLite and UI with synthetic directory identities only. No Fleet or provider process; Chromium headless under WSL.",
@@ -186,7 +290,23 @@
           "pass": true
         },
         {
+          "label": "desk-dark-en page assignment action visible",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en people no horizontal overflow",
+          "pass": true
+        },
+        {
           "label": "desk-dark-en room role permits AD-group recipients",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en drawer transition fully settled",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en selected group enables visible primary",
           "pass": true
         },
         {
@@ -194,55 +314,23 @@
           "pass": true
         },
         {
+          "label": "desk-dark-en shared AD search copy",
+          "pass": true
+        },
+        {
           "label": "desk-dark-en assign no horizontal overflow",
           "pass": true
         },
         {
-          "label": "desk-dark-zh-TW granted role row",
+          "label": "desk-dark-en native recipient dropdown opened",
           "pass": true
         },
         {
-          "label": "desk-dark-zh-TW room role permits AD-group recipients",
+          "label": "desk-dark-en assign-open no horizontal overflow",
           "pass": true
         },
         {
-          "label": "desk-dark-zh-TW AD-group wording explicit",
-          "pass": true
-        },
-        {
-          "label": "desk-dark-zh-TW assign no horizontal overflow",
-          "pass": true
-        },
-        {
-          "label": "phone-dark-en granted role row",
-          "pass": true
-        },
-        {
-          "label": "phone-dark-en room role permits AD-group recipients",
-          "pass": true
-        },
-        {
-          "label": "phone-dark-en AD-group wording explicit",
-          "pass": true
-        },
-        {
-          "label": "phone-dark-en assign no horizontal overflow",
-          "pass": true
-        },
-        {
-          "label": "phone-dark-zh-TW granted role row",
-          "pass": true
-        },
-        {
-          "label": "phone-dark-zh-TW room role permits AD-group recipients",
-          "pass": true
-        },
-        {
-          "label": "phone-dark-zh-TW AD-group wording explicit",
-          "pass": true
-        },
-        {
-          "label": "phone-dark-zh-TW assign no horizontal overflow",
+          "label": "positive exact capture count",
           "pass": true
         },
         {
@@ -252,20 +340,16 @@
       ],
       "screens": [
         {
+          "file": "desk-dark-en-people.png",
+          "sha256": "f01b4e33b8388f129f63dbb6bf20f36a11bc14fe9c9359981e91c6b1e209c9b4"
+        },
+        {
           "file": "desk-dark-en-assign.png",
-          "sha256": "f0829a887d78556f6de630a26030ea611e69c27a43020fddbbe8a715cc4d12a4"
+          "sha256": "cacb6c505ebbb4b10eafab903c74698c880b35d0a775f0d89e04cb75a7b5c16f"
         },
         {
-          "file": "desk-dark-zh-TW-assign.png",
-          "sha256": "2ba2e5eaa7ebce58b38a4dab3a0935d3ba971b8a1d41e0273266b52e18df3014"
-        },
-        {
-          "file": "phone-dark-en-assign.png",
-          "sha256": "135559120bf919e1bc7749a7550f859c3060a4ae1706e847828bd360ed8a1842"
-        },
-        {
-          "file": "phone-dark-zh-TW-assign.png",
-          "sha256": "97801caf1625db5b0754cbd03a683f61e8ded9bfec0a1d1ba67ccf9b229f2ef2"
+          "file": "desk-dark-en-assign-open.png",
+          "sha256": "b22c046a652e6ad09bccd6e00876f88bdc4279f8dcd9b399b7af9c2350706d29"
         }
       ],
       "errors": [],
@@ -278,16 +362,222 @@
         "src/hub/roles/admin-control.ts": "d172c9f60f851aa9cc148f700764a12d3fa10a36287139083ac13360fc40270b",
         "src/hub/roles/review.ts": "0dcc0ff06acd14bf3b77e8d658f57844bfa139a440b73abe1c3faadd6aec4608",
         "src/hub/rooms/admin.ts": "5aa341a521a50ee4795e7619b9945e2314dd3febb72da7cb92932ae69477606e",
-        "src/hub/rooms/service.ts": "10e8ed6ccf64053a1379c11aa7dad0fcbbde5bb2d38565f5886fca30b299f9bb",
+        "src/hub/rooms/service.ts": "3603602e2675776155683b76ee703e3880a00b1794dfb508ebe4940265b8f26a",
         "src/ui/hub-roles.js": "1959688e65c16898965d69ae72327df1a4d79910f149386ffadc5b1e4403a954",
         "src/ui/hub-role-view.js": "28c6dd908c298eb00c35b6d421cae1570b067781010f1666320a8727ea9167aa",
         "src/ui/hub-roles-strings.js": "ecfc1250876eec03e1e607a7d2e826d46bb016c5faf65ce838ddeb4a46988e56",
         "src/ui/hub-admin-rooms.js": "891d54c3950dfc4ea4419cc0398676416bfe6dc1a528c5e5efcb18f6386932b2",
         "src/ui/hub-admin-rooms-strings.js": "154b421a63a1932cc85732b45c536d612d24327b6559fa93e82fb61a8d7dc761",
         "src/ui/hub-room-strings.js": "6bf70b6378b04172fe40f92580234cce29af79cae29f7beb7c0226fbbfd57f02",
-        "scripts/manual/hub-room-create-role-s256/browser.mts": "6a298ffeff777462397debe27ae3120fd357bec1fb67248f07c91f9987140d02"
+        "src/ui/hub-group-search.js": "1544d43538beba78ef1317f2091671e2951f864395b03bc485de2cbae5a6132e",
+        "scripts/manual/hub-room-create-role-s256/browser.mts": "6927cd37bea7cf4d883dc00da0cca90cc096588c231652d6a841a2f433106b68"
+      }
+    },
+    {
+      "head": "b522c0e4b2d06b6575877054ce41732463ad9705",
+      "tree": "f67be90a87afc8cb726134962df5d3cdc9dedd09",
+      "dirty": "",
+      "browser": "156.0.8078.4",
+      "scope": "Initialized production Hub runtime, HTTPS, SQLite and UI with synthetic directory identities only. No Fleet or provider process; Chromium headless under WSL.",
+      "checks": [
+        {
+          "label": "production Hub ready",
+          "pass": true
+        },
+        {
+          "label": "real HTTP saves a custom creation role and eligible AD-group assignment",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en granted role row",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en page assignment action visible",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en people no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en room role permits AD-group recipients",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en drawer transition fully settled",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en selected group enables visible primary",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en AD-group wording explicit",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en shared AD search copy",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en assign no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en native recipient dropdown opened",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en assign-open no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "positive exact capture count",
+          "pass": true
+        },
+        {
+          "label": "no page errors",
+          "pass": true
+        }
+      ],
+      "screens": [
+        {
+          "file": "phone-dark-en-people.png",
+          "sha256": "bd09d05399248af177cbd5ef250445bd9e8b7346cc3196e0667f9b06c785db4a"
+        },
+        {
+          "file": "phone-dark-en-assign.png",
+          "sha256": "d57178acfbf8449e92bf2ed65b36c347cee522322e67eaccd3ed1c26ee357f60"
+        },
+        {
+          "file": "phone-dark-en-assign-open.png",
+          "sha256": "a0cea658aaa2391d2c17e22cabab3168d1c7a2372188f24b1902702df324ce63"
+        }
+      ],
+      "errors": [],
+      "bindings": {
+        "src/hub/roles/model.ts": "dce1aef1b74b9f9c23c349e89d6e59bed46445d85b6e1b5053ca356e495569e4",
+        "src/hub/roles/authority.ts": "86df2fa2e2acc8dd8d4b7075adb75f44f5717d1656e8c23d0a8a3b2357579401",
+        "src/hub/roles/delegation.ts": "2405e5b0ae71e43d6469000486917f499b4d48aae04ae71c44ded8d4c5337e07",
+        "src/hub/compose/server.ts": "1979970420b814a8e62ddfa14049a2129501c62d8fd6f3039703de7eecf5b341",
+        "src/hub/http/deps.ts": "9d8239e0bb528c05a384ea980c57dc17721fb56f6990deea01a7b7bf79d4f320",
+        "src/hub/roles/admin-control.ts": "d172c9f60f851aa9cc148f700764a12d3fa10a36287139083ac13360fc40270b",
+        "src/hub/roles/review.ts": "0dcc0ff06acd14bf3b77e8d658f57844bfa139a440b73abe1c3faadd6aec4608",
+        "src/hub/rooms/admin.ts": "5aa341a521a50ee4795e7619b9945e2314dd3febb72da7cb92932ae69477606e",
+        "src/hub/rooms/service.ts": "3603602e2675776155683b76ee703e3880a00b1794dfb508ebe4940265b8f26a",
+        "src/ui/hub-roles.js": "1959688e65c16898965d69ae72327df1a4d79910f149386ffadc5b1e4403a954",
+        "src/ui/hub-role-view.js": "28c6dd908c298eb00c35b6d421cae1570b067781010f1666320a8727ea9167aa",
+        "src/ui/hub-roles-strings.js": "ecfc1250876eec03e1e607a7d2e826d46bb016c5faf65ce838ddeb4a46988e56",
+        "src/ui/hub-admin-rooms.js": "891d54c3950dfc4ea4419cc0398676416bfe6dc1a528c5e5efcb18f6386932b2",
+        "src/ui/hub-admin-rooms-strings.js": "154b421a63a1932cc85732b45c536d612d24327b6559fa93e82fb61a8d7dc761",
+        "src/ui/hub-room-strings.js": "6bf70b6378b04172fe40f92580234cce29af79cae29f7beb7c0226fbbfd57f02",
+        "src/ui/hub-group-search.js": "1544d43538beba78ef1317f2091671e2951f864395b03bc485de2cbae5a6132e",
+        "scripts/manual/hub-room-create-role-s256/browser.mts": "6927cd37bea7cf4d883dc00da0cca90cc096588c231652d6a841a2f433106b68"
+      }
+    },
+    {
+      "head": "b522c0e4b2d06b6575877054ce41732463ad9705",
+      "tree": "f67be90a87afc8cb726134962df5d3cdc9dedd09",
+      "dirty": "",
+      "browser": "156.0.8078.4",
+      "scope": "Initialized production Hub runtime, HTTPS, SQLite and UI with synthetic directory identities only. No Fleet or provider process; Chromium headless under WSL.",
+      "checks": [
+        {
+          "label": "production Hub ready",
+          "pass": true
+        },
+        {
+          "label": "real HTTP saves a custom creation role and eligible AD-group assignment",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW granted role row",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW page assignment action visible",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW people no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW room role permits AD-group recipients",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW drawer transition fully settled",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW selected group enables visible primary",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW AD-group wording explicit",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW shared AD search copy",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW assign no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW native recipient dropdown opened",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW assign-open no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "positive exact capture count",
+          "pass": true
+        },
+        {
+          "label": "no page errors",
+          "pass": true
+        }
+      ],
+      "screens": [
+        {
+          "file": "phone-dark-zh-TW-people.png",
+          "sha256": "69c1f0daf31b685760ce029168caf038840f81a6d33b0880e919760b154c848f"
+        },
+        {
+          "file": "phone-dark-zh-TW-assign.png",
+          "sha256": "f05f1ccfad9502bd6f4996e842153b2bd158430a011b138b0ff08becce244345"
+        },
+        {
+          "file": "phone-dark-zh-TW-assign-open.png",
+          "sha256": "ef557cc98c47d7e204df2d95fd01f4fdb4efda6e5a20d3edfb181fcd17a9df62"
+        }
+      ],
+      "errors": [],
+      "bindings": {
+        "src/hub/roles/model.ts": "dce1aef1b74b9f9c23c349e89d6e59bed46445d85b6e1b5053ca356e495569e4",
+        "src/hub/roles/authority.ts": "86df2fa2e2acc8dd8d4b7075adb75f44f5717d1656e8c23d0a8a3b2357579401",
+        "src/hub/roles/delegation.ts": "2405e5b0ae71e43d6469000486917f499b4d48aae04ae71c44ded8d4c5337e07",
+        "src/hub/compose/server.ts": "1979970420b814a8e62ddfa14049a2129501c62d8fd6f3039703de7eecf5b341",
+        "src/hub/http/deps.ts": "9d8239e0bb528c05a384ea980c57dc17721fb56f6990deea01a7b7bf79d4f320",
+        "src/hub/roles/admin-control.ts": "d172c9f60f851aa9cc148f700764a12d3fa10a36287139083ac13360fc40270b",
+        "src/hub/roles/review.ts": "0dcc0ff06acd14bf3b77e8d658f57844bfa139a440b73abe1c3faadd6aec4608",
+        "src/hub/rooms/admin.ts": "5aa341a521a50ee4795e7619b9945e2314dd3febb72da7cb92932ae69477606e",
+        "src/hub/rooms/service.ts": "3603602e2675776155683b76ee703e3880a00b1794dfb508ebe4940265b8f26a",
+        "src/ui/hub-roles.js": "1959688e65c16898965d69ae72327df1a4d79910f149386ffadc5b1e4403a954",
+        "src/ui/hub-role-view.js": "28c6dd908c298eb00c35b6d421cae1570b067781010f1666320a8727ea9167aa",
+        "src/ui/hub-roles-strings.js": "ecfc1250876eec03e1e607a7d2e826d46bb016c5faf65ce838ddeb4a46988e56",
+        "src/ui/hub-admin-rooms.js": "891d54c3950dfc4ea4419cc0398676416bfe6dc1a528c5e5efcb18f6386932b2",
+        "src/ui/hub-admin-rooms-strings.js": "154b421a63a1932cc85732b45c536d612d24327b6559fa93e82fb61a8d7dc761",
+        "src/ui/hub-room-strings.js": "6bf70b6378b04172fe40f92580234cce29af79cae29f7beb7c0226fbbfd57f02",
+        "src/ui/hub-group-search.js": "1544d43538beba78ef1317f2091671e2951f864395b03bc485de2cbae5a6132e",
+        "scripts/manual/hub-room-create-role-s256/browser.mts": "6927cd37bea7cf4d883dc00da0cca90cc096588c231652d6a841a2f433106b68"
       }
     }
-  ],
-  "scope": "Primary eight changed frames plus a separate four-frame AD-recipient drawer pass; all production blobs match between runs. Checks overlap; do not sum as distinct cases."
+  ]
 }
