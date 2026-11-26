@@ -1,0 +1,748 @@
+{
+  "sourceHead": "aa43054b8ed27ba2369fff5c2ef1c8b3686c44cf",
+  "fixture": "Real web server, settings/needs/chat renderers and control route; synthetic installer states, not activation or full-mode proof.",
+  "pictures": [
+    {
+      "name": "desk-light-en-on.png",
+      "sha256": "f1543f665dfd0030669da2a3cb33d3616c75ba53b56c32b62ad3f41255fee096"
+    },
+    {
+      "name": "desk-light-en-blocked-recovery.png",
+      "sha256": "47c1415efabb9b7902c6430bf46f06503889dcb33ed8fe568006da6d59dc0874"
+    },
+    {
+      "name": "desk-light-en-unconfirmed-change.png",
+      "sha256": "d8988f5f19a0731c46fea8f39461b2d70c8b09d886ed6f760b09e98412fff8a8"
+    },
+    {
+      "name": "desk-light-zh-TW-on.png",
+      "sha256": "14348415460d73745bf40d5b7c43ca1bfc9b724361da44d35d578b422dfb0d63"
+    },
+    {
+      "name": "desk-light-zh-TW-blocked-recovery.png",
+      "sha256": "3bf7bcb74e7aeda88fcea2c01d49ddcd85b4c71ba8302695dc2445ce12038d20"
+    },
+    {
+      "name": "desk-light-zh-TW-unconfirmed-change.png",
+      "sha256": "3da5da9049ec4044fa8a70c3df5c1cae8c399e5f47208f7bb541b2e1ed3d03ee"
+    },
+    {
+      "name": "desk-dark-en-on.png",
+      "sha256": "931bac32c8aa1f13598c0a879a3512a9a2740c611005fcda567e4f67fc920c07"
+    },
+    {
+      "name": "desk-dark-en-blocked-recovery.png",
+      "sha256": "70607284df1a74ece12a79fe2f381652b65c3eecc5ff6163d85ed9352154c479"
+    },
+    {
+      "name": "desk-dark-en-unconfirmed-change.png",
+      "sha256": "20d45b6511871060250884e541e8101fc539f5c16d553b59357b33ae2bc3a9c1"
+    },
+    {
+      "name": "desk-dark-zh-TW-on.png",
+      "sha256": "def218ae8045b10d5ad51cccf7876242f13c0f6e0e1b6e17e15c6aa3ca04067f"
+    },
+    {
+      "name": "desk-dark-zh-TW-blocked-recovery.png",
+      "sha256": "13c960815038d8a91870eb038f612e5950000a1be77687703fe3dd2a6eb504db"
+    },
+    {
+      "name": "desk-dark-zh-TW-unconfirmed-change.png",
+      "sha256": "d8f2757ce80aeaa940e7c294768377da3009b53b599ac3cce940bf25c2350fda"
+    },
+    {
+      "name": "phone-light-en-on.png",
+      "sha256": "051dee44ec4d49c88a8c0a99ed067d6107ad1066d45e3eeff5c33d501a3c7288"
+    },
+    {
+      "name": "phone-light-en-blocked-recovery.png",
+      "sha256": "b0ffa42aec12dbd286112fb912eb79031998430db84e7c2a8f643849d392ba77"
+    },
+    {
+      "name": "phone-light-en-unconfirmed-change.png",
+      "sha256": "7e7b74a47744b54ce52542efcf6126fc25bf6466ecfab6561be22a5156b9c257"
+    },
+    {
+      "name": "phone-light-zh-TW-on.png",
+      "sha256": "9df8102153f94f4d7f99ca82be6fbf808d5d4ec480ce5788353222d2ef99a6af"
+    },
+    {
+      "name": "phone-light-zh-TW-blocked-recovery.png",
+      "sha256": "3f83b7b83f99e66846cb65dcbbf285c63087ea5406a0a39ec3c24fe2beb5aa94"
+    },
+    {
+      "name": "phone-light-zh-TW-unconfirmed-change.png",
+      "sha256": "29f0ee402feac5f84929dbc6331ff25260631626250f89e0ede4a2a846b1a52b"
+    },
+    {
+      "name": "phone-dark-en-on.png",
+      "sha256": "8ce12c81ed5ba83151bdbfe65241f15af5d6a08d221c32245d6d3d44f083fc70"
+    },
+    {
+      "name": "phone-dark-en-blocked-recovery.png",
+      "sha256": "b4bb897881b8e0c79aacf61156e2bc0ff6d0f520d853c361af1d5075f1da3a03"
+    },
+    {
+      "name": "phone-dark-en-unconfirmed-change.png",
+      "sha256": "9fbbe4482aacd1ecd4fd1d9754bc62e1b06d39d3b1c688de7a669983fd59dc92"
+    },
+    {
+      "name": "phone-dark-zh-TW-on.png",
+      "sha256": "969fd2fbd59190474adf61054db7785e1493f2abe07b6cfd230a1b14278ef0b8"
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-recovery.png",
+      "sha256": "35dbbe7ed9abee43c7fb1726982a571ac8cebf9003b9cb5c1c967aa63f57d7ec"
+    },
+    {
+      "name": "phone-dark-zh-TW-unconfirmed-change.png",
+      "sha256": "47594ce52e1730762593609dd5ed2c2c5e5046dcefb18bd8fcc021606ae97864"
+    }
+  ],
+  "checks": [
+    {
+      "name": "desk-light-en-on: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on: stale passive status cannot roll back the switch",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-recovery: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-recovery: concrete blocker",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-recovery: no invented raw code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-recovery: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-recovery: previous rules only before activation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-recovery: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-recovery: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-unconfirmed-change: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-unconfirmed-change: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-unconfirmed-change: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-unconfirmed-change: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-unconfirmed-change: unconfirmed wording",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-unconfirmed-change: no blind write retry",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-unconfirmed-change: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-unconfirmed-change: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on: stale passive status cannot roll back the switch",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-blocked-recovery: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-blocked-recovery: concrete blocker",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-blocked-recovery: no invented raw code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-blocked-recovery: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-blocked-recovery: previous rules only before activation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-blocked-recovery: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-blocked-recovery: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-unconfirmed-change: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-unconfirmed-change: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-unconfirmed-change: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-unconfirmed-change: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-unconfirmed-change: unconfirmed wording",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-unconfirmed-change: no blind write retry",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-unconfirmed-change: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-unconfirmed-change: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on: stale passive status cannot roll back the switch",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-blocked-recovery: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-blocked-recovery: concrete blocker",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-blocked-recovery: no invented raw code",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-blocked-recovery: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-blocked-recovery: previous rules only before activation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-blocked-recovery: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-blocked-recovery: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-unconfirmed-change: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-unconfirmed-change: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-unconfirmed-change: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-unconfirmed-change: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-unconfirmed-change: unconfirmed wording",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-unconfirmed-change: no blind write retry",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-unconfirmed-change: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-unconfirmed-change: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on: stale passive status cannot roll back the switch",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-blocked-recovery: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-blocked-recovery: concrete blocker",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-blocked-recovery: no invented raw code",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-blocked-recovery: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-blocked-recovery: previous rules only before activation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-blocked-recovery: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-blocked-recovery: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-unconfirmed-change: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-unconfirmed-change: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-unconfirmed-change: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-unconfirmed-change: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-unconfirmed-change: unconfirmed wording",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-unconfirmed-change: no blind write retry",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-unconfirmed-change: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-unconfirmed-change: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on: stale passive status cannot roll back the switch",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-blocked-recovery: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-blocked-recovery: concrete blocker",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-blocked-recovery: no invented raw code",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-blocked-recovery: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-blocked-recovery: previous rules only before activation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-blocked-recovery: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-blocked-recovery: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-unconfirmed-change: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-unconfirmed-change: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-unconfirmed-change: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-unconfirmed-change: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-unconfirmed-change: unconfirmed wording",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-unconfirmed-change: no blind write retry",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-unconfirmed-change: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-unconfirmed-change: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on: stale passive status cannot roll back the switch",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-blocked-recovery: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-blocked-recovery: concrete blocker",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-blocked-recovery: no invented raw code",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-blocked-recovery: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-blocked-recovery: previous rules only before activation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-blocked-recovery: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-blocked-recovery: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-unconfirmed-change: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-unconfirmed-change: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-unconfirmed-change: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-unconfirmed-change: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-unconfirmed-change: unconfirmed wording",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-unconfirmed-change: no blind write retry",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-unconfirmed-change: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-unconfirmed-change: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on: stale passive status cannot roll back the switch",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-blocked-recovery: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-blocked-recovery: concrete blocker",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-blocked-recovery: no invented raw code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-blocked-recovery: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-blocked-recovery: previous rules only before activation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-blocked-recovery: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-blocked-recovery: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-unconfirmed-change: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-unconfirmed-change: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-unconfirmed-change: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-unconfirmed-change: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-unconfirmed-change: unconfirmed wording",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-unconfirmed-change: no blind write retry",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-unconfirmed-change: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-unconfirmed-change: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on: stale passive status cannot roll back the switch",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-recovery: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-recovery: concrete blocker",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-recovery: no invented raw code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-recovery: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-recovery: previous rules only before activation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-recovery: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-recovery: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-unconfirmed-change: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-unconfirmed-change: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-unconfirmed-change: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-unconfirmed-change: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-unconfirmed-change: unconfirmed wording",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-unconfirmed-change: no blind write retry",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-unconfirmed-change: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-unconfirmed-change: CSP",
+      "ok": true
+    },
+    {
+      "name": "only deliberate synthetic unknown-result writes occurred",
+      "ok": true
+    }
+  ]
+}

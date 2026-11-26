@@ -1,6 +1,6 @@
 # Request-scoped contacts: controlled cutover (S-230)
 
-Status: proposed activation plan; implementation and evidence are not complete. Draft / USER LOOK HOLD. The user chose A on 11-26: automatic after whole-Fleet readiness, with the D6 Off meaning below. Actual surfaces still need a user look before merge. Nothing in this document starts or changes a running Fleet.
+Status: selected A plan; production assembly and full-mode evidence are not complete. Draft / USER LOOK HOLD. The user chose A on 11-26: automatic after whole-Fleet readiness, with the D6 Off meaning below. Actual surfaces still need a user look before merge. Nothing in this document starts or changes a running Fleet.
 
 This is the installation slice of [the approved request-context design](request-scoped-contact-provenance.md). A–K provide dormant components; having those components in a release is not proof that their owners, transports or input bindings are installed.
 

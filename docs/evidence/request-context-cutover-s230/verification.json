@@ -1,0 +1,43 @@
+{
+  "stage": "UI and dormant preparation checkpoint; no production activation/full-mode claim",
+  "sourceHead": "aa43054b8ed27ba2369fff5c2ef1c8b3686c44cf",
+  "focused": {
+    "files": 19,
+    "passed": 302,
+    "failed": 0
+  },
+  "typecheckTests": "pass",
+  "changelog": "860 fragments OK",
+  "preparationMutations": [
+    {
+      "mutation": "missing-policy-readiness",
+      "test": "tests/request-context-readiness-s230.test.ts",
+      "result": "red"
+    },
+    {
+      "mutation": "stale-readiness-proof",
+      "test": "tests/request-context-readiness-s230.test.ts",
+      "result": "red"
+    },
+    {
+      "mutation": "adopt-later-owner",
+      "test": "tests/request-context-inputs-s230.test.ts",
+      "result": "red"
+    }
+  ],
+  "captures": {
+    "uniquePictures": 88,
+    "sources": 3,
+    "checksByReceipt": [
+      441,
+      257,
+      161
+    ],
+    "individualVisualInspection": "88/88 final originals; no visual blocker",
+    "galleryDecodedPngHashes": 88,
+    "galleryBytes": 8743202,
+    "localBrowserDecodeAndFilter": "pass"
+  },
+  "liveOperations": false,
+  "fullModeProof": "pending production owner assembly"
+}
