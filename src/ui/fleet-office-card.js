@@ -364,7 +364,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   // #4504: a skin pack's pose preview (`preview` = { poses, pose, set, replay }): the person plays the picked pose in place.
   const previewRow = preview ? html`<div key="preview" class="oo-card-preview"><label>${tc("previewPose")}
       <select value=${preview.pose} onChange=${(e) => preview.set(e.target.value)}><option value="">${tc("previewOff")}</option>${preview.poses.map((p) => html`<option value=${p}>${poseName(p)}</option>`)}</select></label>
-      <button type="button" class="btn btn-sm btn-ghost oo-card-replay" disabled=${!preview.pose} onClick=${preview.replay}>${tc("replay")}</button></div>` : null;
+      <button type="button" class="btn btn-sm oo-card-replay" disabled=${!preview.pose} onClick=${preview.replay}>${tc("replay")}</button></div>` : null;
   // `action`: one, or a list (M-3565: a Hub room's "@ it" and "Chat with it one-to-one"); the first is the primary button.
   const actions = Array.isArray(action) ? action.filter(Boolean) : action ? [action] : [];
   const actionButtons = actions.map((a, i) => html`<button key=${i} type="button" class=${`btn btn-sm ${i === 0 ? "btn-primary " : ""}oo-card-action`} title=${a.title || undefined} aria-label=${a.title || undefined} onClick=${a.run}>${a.label}</button>`);

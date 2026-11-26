@@ -2718,9 +2718,11 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card.sheet .oo-card-close { width: var(--tap); height: var(--tap); margin: -6px -8px 0 0; }
 .oo-card.sheet .oo-card-actions .btn { flex: 1; min-height: var(--tap); justify-content: center; }
 .oo-card.sheet .oo-card-actions { flex-wrap: wrap; }
-/* #4504: the card's pose preview — a labelled picker and Replay, wrapping on a narrow card. */
-.oo-card-preview { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
-.oo-card-preview label { display: flex; align-items: center; gap: var(--s-1); }
+/* #4504: the card's pose preview — a labelled picker and Replay (a small button) on one row: the picker shrinks, Replay keeps its size. */
+.oo-card-preview { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
+.oo-card-preview label { display: flex; align-items: center; gap: var(--s-1); flex: 1; min-width: 0; }
+.oo-card-preview select { flex: 1; min-width: 0; }
+.oo-card-preview .btn { flex: none; }
 /* #4508 review: on the sheet, a fingertip's 44 px like the actions row; the select keeps 16 px text from the coarse-pointer rule at the top. */
 .oo-card.sheet .oo-card-preview select, .oo-card.sheet .oo-card-preview .btn { min-height: var(--tap); }
 .oo-card-grip { width: 36px; height: 4px; margin: 0 auto var(--s-2); border-radius: var(--r-full); background: var(--surface-2); }

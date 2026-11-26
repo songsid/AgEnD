@@ -66,6 +66,9 @@ describe("the card's picker and Replay", () => {
     const on = await open({ poses: F.PREVIEW_POSES, pose: "pat", set: () => {}, replay: () => { replays++; } });
     const replay = on.querySelector(".oo-card-replay") as any;
     expect(replay.disabled).toBe(false);
+    // #4508 review: a small button like the card's others (bordered), not bare ghost text.
+    expect(replay.className.split(/\s+/)).toEqual(expect.arrayContaining(["btn", "btn-sm"]));
+    expect(replay.className).not.toContain("btn-ghost");
     fire(replay, "click");
     expect(replays).toBe(1);
   });
@@ -123,6 +126,12 @@ describe("#4508 review: zh-TW names, the phone's 44 px", () => {
   it("on the sheet the picker and Replay are 44 px tall, like the actions row; the block sits apart from M-3253's sheet rule", () => {
     const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8");
     expect(css).toContain(".oo-card.sheet .oo-card-preview select, .oo-card.sheet .oo-card-preview .btn { min-height: var(--tap); }");
+    // #4508 review: one row in both languages — no wrap; the label and select shrink, Replay keeps its size.
+    const row = css.slice(css.indexOf(".oo-card-preview {"), css.indexOf("}", css.indexOf(".oo-card-preview {")));
+    expect(row).not.toContain("flex-wrap: wrap");
+    expect(css).toContain(".oo-card-preview label { display: flex; align-items: center; gap: var(--s-1); flex: 1; min-width: 0; }");
+    expect(css).toContain(".oo-card-preview select { flex: 1; min-width: 0; }");
+    expect(css).toContain(".oo-card-preview .btn { flex: none; }");
     expect(css).toMatch(/@media \(pointer: coarse\), \(max-width: 899px\) \{ input, select, textarea \{ font-size: max\(16px, 1em\); \} \}/);
     const m3253 = css.indexOf("/* M-3253: the sheet sits on the window's foot");
     expect(css.slice(m3253, css.indexOf("}", m3253))).toMatch(/\*\/\n\.oo-card\.sheet \{ padding:/);   // the comment right above its rule
