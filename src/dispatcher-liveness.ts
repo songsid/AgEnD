@@ -318,12 +318,19 @@ export class DispatcherLiveness {
       const f = d.facts(c.assignee);
       if (!f) continue;
       const times = { claimedAt: c.claimedAt, updatedAt: c.updatedAt };
-      const open = d.ledger.get(c.uuid);
-      // A person's reassignment request is not cancelled by a pane disappearing, a stop, or a restart.
-      // It stays until the card is settled/reassigned (the ownership cleanup above), even with automation off.
-      if (open && manualPolicyHandoff(open)) continue;
-      if (!s.enabled) continue;
+      let open = d.ledger.get(c.uuid);
       const v = judgeAssignee(f, times, s, now);
+      if (open && manualPolicyHandoff(open)) {
+        // Suppress only this policy prompt, never a later crash, supervision loss or quiet episode.
+        // Leave the admitted human notice intact when retiring its suppression marker.
+        const samePrompt = f.process === "running" && f.prompt?.reason === "codex_policy_recourse"
+          && f.prompt.since === open.since && (!v || v.kind === "prompt");
+        if (samePrompt) continue;
+        d.ledger.close(c.uuid);
+        if (open.dispatcherKind === "person" || open.needsYou) d.personChanged?.();
+        open = null;
+      }
+      if (!s.enabled) continue;
       if (open) {
         if (stillStopped(open, f, times)) {
           if (!v || livenessRank(v.kind) <= livenessRank(open.kind)) continue;     // the same news, or less: once

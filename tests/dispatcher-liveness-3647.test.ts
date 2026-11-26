@@ -489,13 +489,33 @@ it("M-3804 explicit handoff suppresses the later automatic prompt notice", async
 });
 
 
-it("M-3804 disabling automatic liveness preserves an explicit handoff until the card moves on", async () => {
+it("M-3804 disabling automatic liveness preserves only the current policy prompt marker", async () => {
   const r = rig({ cards: [claimed("M-100", "reviewer")] }); r.enabled = false;
   r.facts.set("reviewer", { process: "running", prompt: { since: T0, reason: "codex_policy_recourse" } });
   r.ledger.open({ cardUuid: "uuid-M-100", assignee: "reviewer", dispatcher: "leader", dispatcherKind: "instance", kind: "prompt", since: T0,
     detail: "codex_policy_recourse", noticeKey: "manual", notifiedAt: T0, policyHandoff: `selection:${"a".repeat(64)}` });
   r.at(T0 + 60 * MIN); await r.tick(); expect(r.ledger.get("uuid-M-100")!.policyHandoff).toBeTruthy(); expect(r.sent()).toHaveLength(0);
   r.facts.set("reviewer", { process: "running", execution: { state: "working", since: T0 + 61 * MIN } });
-  r.at(T0 + 61 * MIN); await r.tick(); expect(r.ledger.get("uuid-M-100")!.policyHandoff).toBeTruthy();
+  r.at(T0 + 61 * MIN); await r.tick(); expect(r.ledger.get("uuid-M-100")).toBeNull();
   r.cards.splice(0); r.at(T0 + 62 * MIN); await r.tick(); expect(r.ledger.get("uuid-M-100")).toBeNull(); expect(r.sent()).toHaveLength(0);
+});
+
+
+it.each([
+  ["crashed", { process: "crashed", crashedAt: T0 + 30 * MIN }],
+  ["gone", { process: "crashed", gone: { kind: "crash_loop", reason: "supervision stopped", at: T0 + 30 * MIN } }],
+  ["quiet", { process: "running", execution: { state: "idle", since: T0 } }],
+  ["prompt", { process: "running", prompt: { since: T0 + 30 * MIN, reason: "codex_policy_recourse" } }],
+] as Array<[string, AssigneeFacts]>)("M-3804 handoff does not suppress a later %s episode", async (kind, facts) => {
+  const r = rig({ cards: [claimed("M-100", "reviewer")] });
+  r.ledger.open({ cardUuid: "uuid-M-100", assignee: "reviewer", dispatcher: "leader", dispatcherKind: "instance", kind: "prompt", since: T0,
+    detail: "codex_policy_recourse", noticeKey: "human-policy-notice", notifiedAt: T0, policyHandoff: `selection:${"a".repeat(64)}` });
+  r.outbox.set("human-policy-notice", { to: "leader", text: "human reassignment request", state: "queued" });
+  r.facts.set("reviewer", facts);
+  r.at(T0 + 90 * MIN); await r.tick();
+  expect(r.ledger.get("uuid-M-100")).toMatchObject({ kind });
+  expect(r.ledger.get("uuid-M-100")!.policyHandoff).toBeUndefined();
+  expect(r.sent()).toHaveLength(2); // keep the person's notice; independently tell the dispatcher the new problem
+  expect(r.outbox.get("human-policy-notice")!.state).toBe("queued");
+  r.at(T0 + 91 * MIN); await r.tick(); expect(r.sent()).toHaveLength(2);
 });

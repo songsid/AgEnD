@@ -41,19 +41,21 @@ try {
         if (stage === "after") {
           if (!text.includes("M-100") || !text.includes("Review helper")) throw Error("task or in-item agent missing");
           const labels = await card.locator("button").allTextContents();
+          const heights = await card.locator(".n-actions > button").evaluateAll((els: Element[]) => els.map(e => ({ label: e.textContent, height: e.getBoundingClientRect().height })));
+          if (c.device === "phone" && heights.some((e: { height: number }) => e.height < 44)) throw Error("phone targets under44: " + JSON.stringify(heights));
           const handoff = c.lang === "en" ? "Hand to the dispatcher" : "交給派工的人處理";
           if (process.env.STATE === "handed") {
             if (labels.includes(handoff) || !text.includes(c.lang === "en" ? "Handed to the dispatcher" : "已交給派工的人處理")) throw Error("handoff status missing");
           } else if (labels[0] !== handoff || !await card.locator("button").first().evaluate((el: Element) => el.classList.contains("btn-primary"))) throw Error("primary handoff action missing");
           if (!text.includes(c.lang === "en" ? "1–3 are rewordings Codex suggests" : "範圍可能變小") || !text.includes(c.lang === "en" ? "doesn't continue the work" : "不會繼續工作")) throw Error("localized choice explanation missing");
           if (!["1. Explain the topic", "2. Describe safe practices", "3. Explain the risks", "4. Give feedback"].every(label => labels.includes(label))) throw Error("CLI choices missing: " + JSON.stringify(labels));
-          if (!text.includes(c.lang === "en" ? "Pick a suggested rewrite to continue" : "可以選一個建議的改寫繼續")) throw Error("next step missing");
+          if (!text.includes(c.lang === "en" ? "Recommended: hand it to the dispatcher." : "建議交給派工的人處理")) throw Error("next step missing");
         }
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
         if (overflow || errors.length) throw Error(JSON.stringify({ overflow, errors }));
         const file = `${process.env.STATE === "handed" ? "handed" : stage}-${caseName(c)}.png`;
         await page.screenshot({ path: join(out, file), fullPage: false });
-        checks.push({ stage, case: caseName(c), file, text, overflow, pageErrors: errors.length });
+        checks.push({ stage, case: caseName(c), file, text, overflow, pageErrors: errors.length, buttonHeights: await card.locator(".n-actions > button").evaluateAll((els: Element[]) => els.map(e => ({ label: e.textContent, height: e.getBoundingClientRect().height }))) });
       } finally { await ctx.close(); fx.fm.retireRemoteCard(name, null, "fixture closed"); }
     }
   }

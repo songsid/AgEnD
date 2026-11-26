@@ -95,7 +95,7 @@ it("R1 binds every actual choice, not the cursor or a code-owned replacement see
       setLocale(locale);
       const prompt = remoteCardPrompt("reviewer", card, "Review helper");
       expect(prompt.message).toContain(locale === "en" ? "Codex's safety check blocked this turn" : "Codex 的安全檢查擋下了這一輪");
-      expect(prompt.message).toContain(locale === "en" ? "Pick a suggested rewrite to continue, or hand this work to another agent." : "可以選一個建議的改寫繼續，或把這件工作交給別的 Agent。");
+      expect(prompt.message).toContain(locale === "en" ? "Recommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue." : "建議交給派工的人處理；也可以選一個 Codex 建議的改寫繼續。");
       expect(prompt.message).toContain("Review helper");
       expect(prompt.choices.filter(c => /^opt-/.test(c.action)).map(c => c.webLabel)).toEqual(card.options.map(o => `${o.n}. ${o.title}`));
       expect(prompt.choices.map(c => c.action)).toEqual(["handoff", "opt-1", "opt-2", "opt-3", "opt-4"]);
