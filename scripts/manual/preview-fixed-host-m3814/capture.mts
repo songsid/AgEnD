@@ -104,6 +104,7 @@ async function walk(c: any) {
       at.preview && at.steps.length === 5 && at.steps[2].includes(`http://127.0.0.1:${fx.previewPort}`), at);
     if (!saved) check(`${tag} 2: nothing saved yet → the steps are open`, await page.evaluate(`document.querySelector(".fixed-preview-steps").open`) === true, null);
     const sc2 = await scroll(page); check(`${tag} 2: no sideways scroll`, sc2.s <= sc2.w, sc2);
+    if (zh) for (const w of ["規則", "指到", "下方", "預覽網址"]) check(`${tag} 2: 「${w}」 kept whole in the fixed address's card`, await unsplit(page, w, ".s-public-entry") !== false, await unsplit(page, w, ".s-public-entry"));
     await shot(page, `${tag}-2-settings-landed`);
     // The steps, opened as a person would (folded once an address is saved): numbered, under a heading with its marker.
     await page.evaluate(`document.querySelector(".fixed-preview-steps").open = true`);
