@@ -45,7 +45,7 @@ import { t } from "../locale.js";
 import { snapshotCodexQuotaHistory, snapshotCodexSessionQuotaHistory } from "./codex-quota-history.js";
 import { quotaLine, quotaLowLine, quotaPausedLine } from "../quota-notice.js";
 import { parse as parseToml } from "smol-toml";
-import { codexPolicyRecourseVisible, CODEX_POLICY_RECOURSE_TITLE } from "./codex-policy-recourse.js";
+import { codexPolicyRecourseVisible, codexPolicyRecourseCard } from "./codex-policy-recourse.js";
 import { codexPrecaution } from "./codex-precaution.js";
 import { selectionCard } from "../selection-card.js";
 /**
@@ -1749,8 +1749,9 @@ export class CodexPaneDetectors {
       keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true, humanOnly: true,
       interactionKind: "policy_recourse",
       isActive: codexPolicyRecourseVisible,
-      // Never retain or forward the provider's generated rewrite as an agent instruction.
-      requestIdentity: pane => codexPolicyRecourseVisible(pane) ? CODEX_POLICY_RECOURSE_TITLE : null,
+      // The binding includes every actual label; changed suggestions retire old answer buttons.
+      requestIdentity: pane => codexPolicyRecourseCard(pane)?.identity ?? null,
+      remoteCard: codexPolicyRecourseCard,
     };
   }
 

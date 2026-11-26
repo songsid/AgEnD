@@ -991,7 +991,7 @@ interface NonceButtonEntry {
   /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
   assistFor?: { owner: string | null; episode: number | null };
   /** card-answer only (#2675): the card it offers, as it was read — what is asked and the rows the buttons name. */
-  remoteCard?: { identity: string; kind: RemoteCard["kind"]; options: Array<{ n: number; title: string }>; requiresAdmin?: boolean; ownerAdapterId?: string; humanOnly?: boolean };
+  remoteCard?: { identity: string; kind: RemoteCard["kind"]; options: Array<{ n: number; title: string }>; requiresAdmin?: boolean; ownerAdapterId?: string; humanOnly?: boolean; policyRecourse?: true };
 }
 
 
@@ -20299,7 +20299,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     chatId: string;
     threadId?: string;
     message: string;
-    choices: Array<{ action: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+    choices: Array<{ action: string; label: string; webLabel?: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
     /** M-3757: the dashboard's compact form of the card. */
     view?: import("./backend/types.js").RemoteCardView;
     expiredText: string;
@@ -20379,7 +20379,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           text: web.text,
           ...(links ? { links } : {}),
           ...(opts.view ? { view: opts.view } : {}),
-          actions: [...opts.choices.map(c => ({ id: c.action, label: c.label, ...(c.hint ? { hint: c.hint } : {}), ...(c.role ? { role: c.role } : {}), ...(c.confirmation ? { confirmation: c.confirmation } : {}) })), ...(opts.webInput ? [{ id: opts.webInput.action, label: opts.webInput.label, input: true as const }] : [])],
+          actions: [...opts.choices.map(c => ({ id: c.action, label: c.webLabel ?? c.label, ...(c.hint ? { hint: c.hint } : {}), ...(c.role ? { role: c.role } : {}), ...(c.confirmation ? { confirmation: c.confirmation } : {}) })), ...(opts.webInput ? [{ id: opts.webInput.action, label: opts.webInput.label, input: true as const }] : [])],
           expiresAt: Date.now() + (opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS),
         };
         this.emitSseEvent("prompt", { instance: entry.instanceName, nonce, ...entry.web });
@@ -20944,6 +20944,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(e.threadId !== undefined ? { threadId: e.threadId } : {}), ...(e.messageId ? { messageId: e.messageId } : {}),
         ...(e.assistFor ? { assistFor: e.assistFor } : {}),
         ...(e.web.view ? { view: e.web.view } : {}),
+        ...(e.remoteCard?.policyRecourse ? { policyRecourse: true as const } : {}),
       });
     }
     return out;
@@ -23139,7 +23140,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       message: prompt.message, choices: prompt.choices, webInput: prompt.webInput, ...(prompt.view ? { view: prompt.view } : {}),
       expiredText: t("card.expired", instanceName), timeoutMs: REMOTE_CARD_TIMEOUT_MS,
       extra: { remoteCard: { identity: card.identity, kind: card.kind, options: shown.kind === "question" ? shown.options.map(o => ({ n: o.n, title: o.title })) : [],
-        requiresAdmin, ownerAdapterId: this.getInstanceAdapterId(instanceName), humanOnly: card.kind === "question" && card.humanOnly === true } },
+        requiresAdmin, ownerAdapterId: this.getInstanceAdapterId(instanceName), humanOnly: card.kind === "question" && card.humanOnly === true,
+        ...(card.kind === "question" && card.policyRecourse ? { policyRecourse: true as const } : {}) } },
     });
     if (nonce) this.remoteCardPosts.set(instanceName, nonce);
   }

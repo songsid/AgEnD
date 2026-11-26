@@ -1,0 +1,19 @@
+{
+  "scope": "R1: Leader UI/button regression only; native incident/dispatcher policy evidence carries from original stage",
+  "distinctCases": 93,
+  "files": 3,
+  "stagedRuns": [
+    "92 cases in policy file + existing remote-card chat/sequencer suites",
+    "added wrapped-label case; final restored10-case file green"
+  ],
+  "productionTypes": 0,
+  "testTypes": 0,
+  "build": 0,
+  "afterFrames": 8,
+  "allIndividuallyInspected": true,
+  "originalBeforeFrames": "unchanged controlled generic fallback, no posted remote card; not historical legacy remote buttons",
+  "buttons": "CLI labels, full on dashboard; existing chat platform clip retained",
+  "automaticKeys": 0,
+  "explicitChoice": "human-only current nonce/card identity; script-token403; stale identity0keys; verified Down/Enter only after chosen option",
+  "longUnusedSentence": "removed; requested short heading and visible next step replace it"
+}

@@ -32,5 +32,6 @@
   "captureOriginals": 16,
   "imagesIndividuallyInspected": true,
   "ownedAuditProcessesAfterStop": 0,
-  "scope": "No native account/provider or full fleet daemon e2e. Native loopback CLI plus actual production methods/real ledger and real-dashboard fixture."
+  "scope": "No native account/provider or full fleet daemon e2e. Native loopback CLI plus actual production methods/real ledger and real-dashboard fixture.",
+  "stageCommit": "1467ab21c38840a8dfb17716df2ee9828fce5116 (original evidence; later scoped changes separately recorded)"
 }

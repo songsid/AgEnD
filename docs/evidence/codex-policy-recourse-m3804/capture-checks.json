@@ -11,7 +11,7 @@
     "stage": "before",
     "case": "desk-light-zh-TW",
     "file": "before-desk-light-zh-TW.png",
-    "text": "停在對話框\n12 分鐘前\n開啟聊天",
+    "text": "\u505c\u5728\u5c0d\u8a71\u6846\n12 \u5206\u9418\u524d\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0
   },
@@ -27,7 +27,7 @@
     "stage": "before",
     "case": "desk-dark-zh-TW",
     "file": "before-desk-dark-zh-TW.png",
-    "text": "停在對話框\n12 分鐘前\n開啟聊天",
+    "text": "\u505c\u5728\u5c0d\u8a71\u6846\n12 \u5206\u9418\u524d\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0
   },
@@ -43,7 +43,7 @@
     "stage": "before",
     "case": "phone-light-zh-TW",
     "file": "before-phone-light-zh-TW.png",
-    "text": "停在對話框\n12 分鐘前\n開啟聊天",
+    "text": "\u505c\u5728\u5c0d\u8a71\u6846\n12 \u5206\u9418\u524d\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0
   },
@@ -59,7 +59,7 @@
     "stage": "before",
     "case": "phone-dark-zh-TW",
     "file": "before-phone-dark-zh-TW.png",
-    "text": "停在對話框\n12 分鐘前\n開啟聊天",
+    "text": "\u505c\u5728\u5c0d\u8a71\u6846\n12 \u5206\u9418\u524d\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0
   },
@@ -67,7 +67,7 @@
     "stage": "after",
     "case": "desk-light-en",
     "file": "after-desk-light-en.png",
-    "text": "Codex’s safety check stopped this turn and suggests rewording it\n12 min ago\n\nM-100 — Review the proposed change\n\nOpen chat",
+    "text": "Codex's safety check blocked this turn\njust now\n\nPick a suggested rewrite to continue, or hand this work to another agent.\n\nAgent: Review helper\n\nM-100 \u2014 Review the proposed change\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
     "overflow": false,
     "pageErrors": 0
   },
@@ -75,7 +75,7 @@
     "stage": "after",
     "case": "desk-light-zh-TW",
     "file": "after-desk-light-zh-TW.png",
-    "text": "Codex 的安全檢查已停止這一輪，並建議改寫\n12 分鐘前\n\nM-100 — Review the proposed change\n\n開啟聊天",
+    "text": "Codex \u7684\u5b89\u5168\u6aa2\u67e5\u64cb\u4e0b\u4e86\u9019\u4e00\u8f2a\n\u525b\u525b\n\n\u53ef\u4ee5\u9078\u4e00\u500b\u5efa\u8b70\u7684\u6539\u5beb\u7e7c\u7e8c\uff0c\u6216\u628a\u9019\u4ef6\u5de5\u4f5c\u4ea4\u7d66\u5225\u7684 Agent\u3002\n\nAgent\uff1aReview helper\n\nM-100 \u2014 Review the proposed change\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0
   },
@@ -83,7 +83,7 @@
     "stage": "after",
     "case": "desk-dark-en",
     "file": "after-desk-dark-en.png",
-    "text": "Codex’s safety check stopped this turn and suggests rewording it\n12 min ago\n\nM-100 — Review the proposed change\n\nOpen chat",
+    "text": "Codex's safety check blocked this turn\njust now\n\nPick a suggested rewrite to continue, or hand this work to another agent.\n\nAgent: Review helper\n\nM-100 \u2014 Review the proposed change\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
     "overflow": false,
     "pageErrors": 0
   },
@@ -91,7 +91,7 @@
     "stage": "after",
     "case": "desk-dark-zh-TW",
     "file": "after-desk-dark-zh-TW.png",
-    "text": "Codex 的安全檢查已停止這一輪，並建議改寫\n12 分鐘前\n\nM-100 — Review the proposed change\n\n開啟聊天",
+    "text": "Codex \u7684\u5b89\u5168\u6aa2\u67e5\u64cb\u4e0b\u4e86\u9019\u4e00\u8f2a\n\u525b\u525b\n\n\u53ef\u4ee5\u9078\u4e00\u500b\u5efa\u8b70\u7684\u6539\u5beb\u7e7c\u7e8c\uff0c\u6216\u628a\u9019\u4ef6\u5de5\u4f5c\u4ea4\u7d66\u5225\u7684 Agent\u3002\n\nAgent\uff1aReview helper\n\nM-100 \u2014 Review the proposed change\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0
   },
@@ -99,7 +99,7 @@
     "stage": "after",
     "case": "phone-light-en",
     "file": "after-phone-light-en.png",
-    "text": "Codex’s safety check stopped this turn and suggests rewording it\n12 min ago\n\nM-100 — Review the proposed change\n\nOpen chat",
+    "text": "Codex's safety check blocked this turn\njust now\n\nPick a suggested rewrite to continue, or hand this work to another agent.\n\nAgent: Review helper\n\nM-100 \u2014 Review the proposed change\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
     "overflow": false,
     "pageErrors": 0
   },
@@ -107,7 +107,7 @@
     "stage": "after",
     "case": "phone-light-zh-TW",
     "file": "after-phone-light-zh-TW.png",
-    "text": "Codex 的安全檢查已停止這一輪，並建議改寫\n12 分鐘前\n\nM-100 — Review the proposed change\n\n開啟聊天",
+    "text": "Codex \u7684\u5b89\u5168\u6aa2\u67e5\u64cb\u4e0b\u4e86\u9019\u4e00\u8f2a\n\u525b\u525b\n\n\u53ef\u4ee5\u9078\u4e00\u500b\u5efa\u8b70\u7684\u6539\u5beb\u7e7c\u7e8c\uff0c\u6216\u628a\u9019\u4ef6\u5de5\u4f5c\u4ea4\u7d66\u5225\u7684 Agent\u3002\n\nAgent\uff1aReview helper\n\nM-100 \u2014 Review the proposed change\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0
   },
@@ -115,7 +115,7 @@
     "stage": "after",
     "case": "phone-dark-en",
     "file": "after-phone-dark-en.png",
-    "text": "Codex’s safety check stopped this turn and suggests rewording it\n12 min ago\n\nM-100 — Review the proposed change\n\nOpen chat",
+    "text": "Codex's safety check blocked this turn\njust now\n\nPick a suggested rewrite to continue, or hand this work to another agent.\n\nAgent: Review helper\n\nM-100 \u2014 Review the proposed change\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
     "overflow": false,
     "pageErrors": 0
   },
@@ -123,7 +123,7 @@
     "stage": "after",
     "case": "phone-dark-zh-TW",
     "file": "after-phone-dark-zh-TW.png",
-    "text": "Codex 的安全檢查已停止這一輪，並建議改寫\n12 分鐘前\n\nM-100 — Review the proposed change\n\n開啟聊天",
+    "text": "Codex \u7684\u5b89\u5168\u6aa2\u67e5\u64cb\u4e0b\u4e86\u9019\u4e00\u8f2a\n\u525b\u525b\n\n\u53ef\u4ee5\u9078\u4e00\u500b\u5efa\u8b70\u7684\u6539\u5beb\u7e7c\u7e8c\uff0c\u6216\u628a\u9019\u4ef6\u5de5\u4f5c\u4ea4\u7d66\u5225\u7684 Agent\u3002\n\nAgent\uff1aReview helper\n\nM-100 \u2014 Review the proposed change\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0
   }

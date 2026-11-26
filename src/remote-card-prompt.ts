@@ -19,7 +19,7 @@ const clip = (text: string, max = LABEL_MAX) => (text.length > max ? `${text.sli
 export interface RemoteCardPrompt {
   message: string;
   /** The platform's buttons: `action` is the id after `<prefix><nonce>:`. */
-  choices: Array<{ action: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  choices: Array<{ action: string; label: string; webLabel?: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
   /** M-3757: the dashboard's compact form of this card, when it has one. */
   view?: import("./backend/types.js").RemoteCardView;
   /** The dashboard's extra action: the typed answer, which the platform takes as a reply to the message instead. */
@@ -64,10 +64,11 @@ export function remoteCardPrompt(instance: string, card: RemoteCard, agent = ins
   const buttons = card.options.length <= REMOTE_CARD_MAX_OPTIONS
     ? card.options.map(o => {
       const confirmation = o.usageCredits ? usageCreditsConfirmation(agent, o.usageCredits) : o.confirmation;
-      return { action: `opt-${o.n}`, label: clip(`${o.n}. ${o.title}${o.recommended ? " ★" : ""}`), ...(o.hint ? { hint: o.hint } : {}), ...(o.role ? { role: o.role } : {}), ...(confirmation ? { confirmation } : {}) };
+      return { action: `opt-${o.n}`, label: clip(`${o.n}. ${o.title}${o.recommended ? " ★" : ""}`),
+        ...(card.policyRecourse ? { webLabel: `${o.n}. ${o.title}` } : {}), ...(o.hint ? { hint: o.hint } : {}), ...(o.role ? { role: o.role } : {}), ...(confirmation ? { confirmation } : {}) };
     }) : [];
   return {
-    message: [t("card.question_intro", instance), card.question, ...listed,
+    message: [...(card.policyRecourse ? [t("needs.reason.codex_policy_recourse"), t("codex.policy_recourse.next"), t("codex.policy_recourse.agent", agent)] : [t("card.question_intro", instance), card.question]), ...listed,
       card.humanOnly && card.options.length === 0 ? "" : card.noSkip ? t("card.selection_hint") : card.freeText ? t("card.question_hint_text") : t("card.question_hint")].join("\n"),
     // #2910 D4: a dialog whose Esc is not a skip offers only its own options.
     choices: [...buttons, ...(card.noSkip ? [] : [{ action: "skip", label: t("card.skip") }])],

@@ -241,7 +241,7 @@ export function NeedsPanel({ navKey }) {
           ${g.items.map((item) => item.type === "contact"
             // M-3339: a contact request or the restricted-mode suggestion — its own card (contact-needs.js; references only).
             ? html`<${ContactNeedsItem} key=${item.id} item=${item} />`
-            : html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
+            : html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} agentName=${nameFor(item.instance)} />`)}
         </section>`).concat(suggestions.length ? [html`<${ContactSuggestionsGroup} key="contact-suggestions" items=${suggestions} />`] : [])}
       <${HostDirectoryNotices} />
       <${NotifyToggle} />
@@ -249,7 +249,7 @@ export function NeedsPanel({ navKey }) {
   </div>`;
 }
 
-function NeedsItem({ item, nowMs, owner }) {
+function NeedsItem({ item, nowMs, owner, agentName }) {
   const c = useStore(claims);
   // A prompt: the page's chat store holds the one claim (Chat and Needs you, any panel, any render).
   const p = item.type === "prompt" && item.nonce && owner ? owner.state.prompts[item.nonce] : null;
@@ -352,6 +352,7 @@ function NeedsItem({ item, nowMs, owner }) {
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
       <div class="n-title"><strong>${item.type==='host'?hostAlertName(item.hostAlert):itemReason(item)}</strong><span class="n-age">${item.type==='host'?hostAlertText('started')+age(item.since, nowMs):age(item.since, nowMs)}</span></div>
+      ${item.reason === "codex_policy_recourse" ? html`<p class="n-detail">${t("app.needs_policy_recourse_next")}</p><p class="n-detail">${t("app.needs_policy_recourse_agent", agentName || item.instance)}</p>` : null}
       ${item.type==='host'&&item.hostAlert?html`<p class="n-detail">${hostAlertText(item.hostAlert.level)} · ${hostAlertDescription(item.hostAlert)}</p>`:item.type==='host'?html`<p class="n-detail">${hostAlertText('failed')}</p>`:detailOf(item)?html`<p class="n-detail">${detailOf(item)}</p>`:null}
       ${item.type === "hub" && item.hubClose ? html`<p class="n-detail">${tn("hubCloseDetail")}</p>` : null}
       ${item.type === "hub" && item.hubRetry ? html`<p class="n-detail">${tn("hubHoldDetail")}</p>` : null}

@@ -118,6 +118,7 @@ export interface PromptInput {
   prefix: string;
   instance: string;
   text: string;
+  policyRecourse?: true;
   actions: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
   /** M-3757: the card's compact form. */
   view?: import("./backend/types.js").RemoteCardView;
@@ -260,9 +261,9 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     const reason = PROMPT_REASON[p.prefix];
     if (!reason) continue;
     items.push({
-      id: `prompt:${p.nonce}`, type: "prompt", instance: p.instance, reason,
+      id: `prompt:${p.nonce}`, type: "prompt", instance: p.instance, reason: p.policyRecourse ? "codex_policy_recourse" : reason,
       ...(p.view ? { view: p.view } : {}),
-      detail: oneLine(p.text), since: p.createdAt, nonce: p.nonce, actions: p.actions,
+      detail: p.policyRecourse ? (inputs.instances.find(i => i.name === p.instance)?.policyTasks ?? []).slice(0, 3).map(s => oneLine(s).slice(0, 160)).join(" · ") : oneLine(p.text), since: p.createdAt, nonce: p.nonce, actions: p.actions,
       promptAt: { adapterId: p.adapterId, chatId: p.chatId, ...(p.threadId !== undefined ? { threadId: p.threadId } : {}), ...(p.messageId ? { messageId: p.messageId } : {}) },
     });
   }

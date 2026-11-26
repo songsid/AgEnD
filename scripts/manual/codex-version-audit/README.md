@@ -207,8 +207,9 @@ Both Nov26 incidents record `cyber_policy`; the morning failed at 07:13 before t
 The afternoon’s 436,298 input tokens in a 475k window happened before its policy refusal,
 but that correlation does not make the menu a context-full prompt. No private rollout or generated suggestion is published.
 
-AgEnD holds this exact live picker for a person. It sends no keys, does not start a fresh thread, select a rewrite,
-enable Daybreak or retry the refused request. Needs you gives a plain reason, the agent and bounded claimed-task context.
+AgEnD holds this exact live picker for a person. It never automatically selects or dismisses it, starts a fresh thread,
+enables Daybreak or retries the refused request. The existing human-only remote-card path keeps the CLI’s own options as
+answer buttons: only the person’s explicit selection is keyed into the verified current pane; changed options invalidate old buttons. Needs you gives a plain reason, the agent and bounded claimed-task context.
 The dispatcher's existing liveness sweep reports the policy reason after the configured prompt threshold (default 10min),
 with its normal startup grace, persistent dedupe and recovery handling. No new timer or automatic recovery is added.
 
