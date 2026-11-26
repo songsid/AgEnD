@@ -123,8 +123,6 @@ export const INSTALLABLE_CLIS = Object.freeze({
  * Nothing the server or the page sends is ever part of any of it. tests/runtime-cli-install-latest-153.test.ts pins that this table and the registry's `runtime.update` of kind `latest-unaudited` name the same CLIs.
  */
 export const LATEST_UNAUDITED = Object.freeze({
-  // M-3815: 1.5.18 Windows manifest read 2026-11-26; downloaded 245461240 bytes, sha512 matched.
-  // Signer policy remains Google LLC and is enforced at install; this ledger sync did not execute a Windows binary.
   antigravity: {
     manifest: "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json",
     file: /^https:\/\/storage\.googleapis\.com\/antigravity-public\/antigravity-cli\/(\d{1,6}\.\d{1,6}\.\d{1,6})-\d{1,20}\/windows-x64\/cli_windows_x64\.exe$/,
