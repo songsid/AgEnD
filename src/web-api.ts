@@ -4865,7 +4865,7 @@ async function handleResendMessage(req: IncomingMessage, res: ServerResponse, ct
   } };
   let handedOff = false;
   try {
-    const delivered = ctx.deliverHumanToInstance ? await ctx.deliverHumanToInstance(instance, payload, webHumanOrigin(false, authority, webIdentityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx)), row.text, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
+    const delivered = ctx.deliverHumanToInstance ? await ctx.deliverHumanToInstance(instance, payload, webHumanOrigin(false, authority, webIdentityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx), !!guest), row.text, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
       : await ctx.deliverToInstance(instance, payload, { stillCurrent, ...(native ? { authorityCurrent } : {}) });
     if (delivered === false) throw new Error("delivery changed");
     handedOff = true;
@@ -5077,7 +5077,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       const reactions = ctx.pendingReactionsMeta?.(instance) ?? { meta: {}, consume: () => {} };
       try {
         const deliver = (name: string, payload: Record<string, unknown>) => ctx.deliverHumanToInstance
-          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority, webIdentityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx)), typed, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
+          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority, webIdentityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx), !!guest), typed, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
           : ctx.deliverToInstance(name, payload, { stillCurrent, ...(native ? { authorityCurrent } : {}) });
         delivered = await deliver(instance, {
           type: "fleet_inbound",

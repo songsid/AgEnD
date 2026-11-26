@@ -1,3 +1,4 @@
+import { RequestHumanInputStore, type RequestHumanAdmissionFacts, requestHumanInputBlockers } from "./request-context-human.js";
 import type { RetainedHumanControl } from "./retained-human-control.js";
 import { RequestContextWorkStore } from "./request-context-work.js";
 import { RequestContextInstallationStore, readRequestContextInstallation } from "./request-context-installation.js";
@@ -1330,6 +1331,19 @@ export class DeliveryOutbox extends EventEmitter {
     });
   }
 
+  /** Accepted ingress is separate from receipt authority and is absent while the flow is not installed. */
+  get requestContextHumans():RequestHumanInputStore {
+    return new RequestHumanInputStore(this.db,()=>{
+      if(this.requestContextDispatchVersion!==1||assertRequestContextCompatibility(this.db,1)!=="active")throw Error("request-context dispatcher is not ready");
+    });
+  }
+  createHumanReceiptWithRequestContext(input:Parameters<DeliveryOutbox["createHumanReceipt"]>[0],facts:RequestHumanAdmissionFacts){
+    return this.db.transaction(()=>{
+      const receipt=this.createHumanReceipt(input),captured=this.requestContextHumans.record(receipt.receipt_id,facts);
+      return {receipt,...captured};
+    })();
+  }
+
   requestContextForDelivery(deliveryId: string) { return new RequestContextStore(this.db).forDelivery(deliveryId); }
   requestContext(id: string): RequestContextV1 | null { return new RequestContextStore(this.db).context(id); }
   requestContextOperation(source: string, operationId: string) { return new RequestContextStore(this.db).operation(source, operationId); }
@@ -2312,6 +2326,7 @@ export class DeliveryOutbox extends EventEmitter {
         FROM deliveries d JOIN request_context_operations_v1 o ON o.delivery_id=d.delivery_id WHERE o.context_id IN (${slots})`).all(root) as Array<{delivery_id:string;source_instance:string;target_instance:string;state:string;at:string}>;
       if (rows.some(row=>!["delivered","failed","cancelled"].includes(row.state)||!Number.isFinite(Date.parse(row.at))||Date.parse(row.at)>=Date.parse(cutoff))) throw Error("request-context root retention not elapsed");
       if (this.db.prepare(`SELECT 1 FROM reply_obligations WHERE state='open' AND request_delivery_id IN (SELECT delivery_id FROM request_context_operations_v1 WHERE context_id IN (${slots})) LIMIT 1`).get(root)) throw Error("request-context root has open reply");
+      if(requestHumanInputBlockers(this.db,root).length)throw Error("request-context root has accepted human input");
       if (hasTable(this.db,"request_context_recovery_v1") && this.db.prepare(`SELECT 1 FROM request_context_recovery_v1 WHERE json_extract(pointer_json,'$.contextId') IN (${slots}) LIMIT 1`).get(root)) throw Error("request-context root has recovery reference");
       if (hasTable(this.db,"request_context_contacts_v1")) {
         const tickets = this.db.prepare("SELECT t.id,t.ticket_json FROM contact_auth_tickets t JOIN request_context_contacts_v1 c ON c.ticket_id=t.id WHERE c.root_id=?").all(root) as Array<{id:string;ticket_json:string}>;
@@ -2324,6 +2339,7 @@ export class DeliveryOutbox extends EventEmitter {
         this.db.prepare("DELETE FROM request_context_contacts_v1 WHERE root_id=?").run(root);
         for (const ticket of tickets) this.db.prepare("DELETE FROM contact_auth_tickets WHERE id=?").run(ticket.id);
       }
+      if(hasTable(this.db,"request_context_human_inputs_v1"))this.db.prepare("DELETE FROM request_context_human_inputs_v1 WHERE root_id=?").run(root);
       if(hasTable(this.db,REQUEST_CONTEXT_RETURNS_TABLE)){
         this.requestContextReturns.closeNonDelivery(root);
         if(requestContextReturnBlockers(this.db,root).length)throw Error("request-context root has expected return");
@@ -2389,7 +2405,8 @@ export class DeliveryOutbox extends EventEmitter {
     // Human rows are evidence only: retention never schedules or retries them.
     for (;;) {
       if (!this.db.open) break;
-      const rows = this.db.prepare("SELECT receipt_id FROM human_delivery_receipts WHERE updated_at<? LIMIT 500").all(cutoff) as Array<{ receipt_id: string }>;
+      const protectedHuman=hasTable(this.db,"request_context_human_inputs_v1")?" AND NOT (state!='delivered' AND receipt_id IN (SELECT receipt_id FROM request_context_human_inputs_v1))":"";
+      const rows = this.db.prepare("SELECT receipt_id FROM human_delivery_receipts WHERE updated_at<?"+protectedHuman+" LIMIT 500").all(cutoff) as Array<{ receipt_id: string }>;
       if (!rows.length) break;
       this.db.transaction(() => {
         for (const row of rows) {

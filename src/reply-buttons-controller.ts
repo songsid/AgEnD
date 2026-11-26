@@ -218,7 +218,7 @@ export class ReplyButtonsController {
     let notice: string | undefined;
     // #1827: the choice is the web person's (their web id and name; "web-user" when there is none) — still `via web`
     // with no verified platform actor (webHumanOrigin); #1939: the receipt records the session's authority.
-    const ok = await this.choose(id, index, { userId: voter?.userId ?? "web-user", username: voter?.name ?? "web-user", source: "web", humanOrigin: webHumanOrigin(true, voter?.authority, voter?.identity), ...(voter?.guest ? { guest: true as const } : {}) }, n => { notice = n; });
+    const ok = await this.choose(id, index, { userId: voter?.userId ?? "web-user", username: voter?.name ?? "web-user", source: "web", humanOrigin: webHumanOrigin(true, voter?.authority, voter?.identity, !!voter?.guest), ...(voter?.guest ? { guest: true as const } : {}) }, n => { notice = n; });
     return ok ? { status: 200 } : { status: 409, error: notice ?? t("reply_buttons.closed") };
   }
 

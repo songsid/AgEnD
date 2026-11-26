@@ -55,10 +55,17 @@ export function nativeHumanOrigin(platform: "telegram" | "discord", adapterId: s
   };
 }
 
+/** Ephemeral ingress evidence stays out of the strict stored origin and cannot be supplied by body/meta text. */
+const webIngress = new WeakMap<HumanOrigin, Readonly<{guest:boolean}>>();
+export function admittedHumanWebIngress(origin:HumanOrigin):Readonly<{guest:boolean}>|null {
+  return webIngress.get(origin)??null;
+}
 /** Platform actor fields stay null. Independent session recognition never grants web-verified authority. */
-export function webHumanOrigin(action = false, authority?: HumanAuthority, identity?: WebSessionIdentity): HumanOrigin {
-  return { platform: "web", adapter_id: null, user_id: null, username: null,
+export function webHumanOrigin(action = false, authority?: HumanAuthority, identity?: WebSessionIdentity, guest?: boolean): HumanOrigin {
+  const origin:HumanOrigin={ platform: "web", adapter_id: null, user_id: null, username: null,
     platform_message_id: null, ingress: action ? "action" : "web", ...(authority ? { authority } : {}), ...(identity ? { web_identity: { ...identity } } : {}) };
+  if(guest!==undefined)webIngress.set(origin,Object.freeze({guest}));
+  return origin;
 }
 
 export type HumanWriteMode = "idle_submit" | "native_queue_handoff" | "steer" | "raw_paste";

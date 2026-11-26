@@ -59,3 +59,11 @@ it("installed owner policy rechecks current admin without holding a demoted memb
  expect(m.contactAdminOf).toHaveBeenLastCalledWith("demo-source",expect.objectContaining({platform:"discord",userId:"demo-person"}));
  expect(f.context.initiatingActor).toEqual({kind:"person",platform:"discord",userId:"demo-person"});
 });
+
+it.each(["free-room","restricted-room","guest"] as const)("%s cannot borrow a role from ordinary contact permission",ingress=>{
+ const f=fixture(ingress);let admin=false;
+ const m:any=Object.assign(Object.create(FleetManager.prototype),{adapters:new Map([["fixture",{id:"fixture",type:"discord"}]]),worlds:new Map(),fleetConfig:{instances:{}},contactAdminOf:()=>admin,emitSseEvent:vi.fn()});
+ const policy=m.makeRequestContextPolicy(),call=()=>policy.assert({instance:"demo-source",tool:"set_web_settings",args:{},admission:f.admission});
+ expect(()=>call()).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.settings);admin=true;
+ if(ingress==="guest")expect(()=>call()).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.settings);else expect(call().kind).toBe("ordinary");
+});

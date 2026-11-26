@@ -1,3 +1,4 @@
+import {requestHumanInputBlockers} from "./request-context-human.js";
 import {requestContextReturnBlockers} from "./request-context-returns.js";
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
@@ -64,7 +65,7 @@ export class RequestContextDrain {
     return !!this.db.prepare("SELECT 1 FROM request_context_drain_v1 WHERE root_id=? AND epoch=? AND owner=?").get(rootId,epoch,owner);
   }
   private durable(rootId:string):string[] {
-    const blockers:string[]=[...requestContextReturnBlockers(this.db,rootId)];
+    const blockers:string[]=[...requestContextReturnBlockers(this.db,rootId),...requestHumanInputBlockers(this.db,rootId)];
     const exists=(table:string)=>!!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
     if(!exists("request_contexts_v1"))return ["context-store-unavailable"];
     const contexts="SELECT context_id FROM request_contexts_v1 WHERE json_extract(context_json,'$.ref.rootContextId')=?";

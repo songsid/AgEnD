@@ -8,7 +8,7 @@ import { runWithRequestContextAdmission, type RequestContextAdmissionPort } from
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
 import {requestDeliveryView,requestContextDisplayView} from "./request-context-view.js";
 import {captureRequestHubOutput} from "./request-hub-output.js";
-import {assertRequestContextOperation,requireRequestContextPolicy,requestContextInstructionMode,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
+import {assertRequestContextOperation,requireRequestContextPolicy,requestContextInstructionMode,requestContextPolicyInstalled,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import type { RequestContactApiHost } from "./request-contact-api.js";
 import type { RequestContactPrincipal, RequestContactSnapshotV1 } from "./request-contact-types.js";
@@ -71,7 +71,7 @@ import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notic
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
-import { humanOwnerObjectId, webHumanOrigin, isWebSessionIdentity, type WebSessionIdentity, type HumanOrigin } from "./human-delivery-receipts.js";
+import { humanOwnerObjectId, admittedHumanWebIngress, webHumanOrigin, isWebSessionIdentity, type WebSessionIdentity, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
 import { hubPilotTrustSettings } from "./hub-pilot-trust-settings.js";
 import { hubMembershipSettings } from "./hub-membership-settings.js";
@@ -6304,7 +6304,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const permit=assertRequestContextOperation(input);
       // Ordinary ingress is not administrator authority. Recheck the ORIGINAL actor for owner-only
       // tools on every call, including commit-point calls; demotion alone never adds a contact hold.
-      if(permit.context?.ingress==="owner"&&toolsFor("coordinator").has(permit.tool)&&!toolsFor("worker").has(permit.tool)){
+      if(permit.context&&toolsFor("coordinator").has(permit.tool)&&!toolsFor("worker").has(permit.tool)){
+        if(permit.context.ingress==="guest"||permit.context.ingress==="hub")throw new RequestContextPolicyError("settings");
         const actor=permit.context.initiatingActor;
         const adapter=actor.kind==="person"&&actor.platform!=="hub"&&actor.platform!=="host"
           ? [...this.adapters.values(),...[...this.worlds.values()].map(world=>world.adapter)].find(row=>row.type===actor.platform):undefined;
@@ -9581,16 +9582,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
 
+  /** Assigned only by the complete installer at publication; candidate launch rendering cannot install this. */
+  private requestContextHumanAdmission?: (instance:string,payload:Record<string,unknown>,origin:HumanOrigin,body:string)=>ReturnType<DeliveryOutbox["createHumanReceipt"]>;
+  makeRequestContextHumanAdmission(){
+    this.ensureDeliveryOutbox();const box=this.deliveryOutbox!;
+    return (instance:string,payload:Record<string,unknown>,origin:HumanOrigin,body:string)=>{
+      const room=this.contactRoom(instance),meta=payload.meta as Record<string,string>|undefined;
+      const platform=(id:string):"discord"|"telegram"|null=>{
+        const adapter=this.adapters.get(id)??this.worlds.get(id)?.adapter;
+        const configured=(this.fleetConfig?.channels??(this.fleetConfig?.channel?[this.fleetConfig.channel]:[])).find(channel=>(channel.id??channel.type)===id);
+        const kind=adapter?.type??configured?.type;return kind==="discord"||kind==="telegram"?kind:null;
+      };
+      const captured=box.createHumanReceiptWithRequestContext({targetInstance:instance,originalBody:body,origin:{...origin},inputKind:String(payload.type),managerBootId:this.managerBootId},
+        {incarnation:this.contactGeneration(instance),room:room?{restricted:room.restrictedMode===true}:null,
+          web:origin.platform==="web"?admittedHumanWebIngress(origin):null,
+          route:origin.platform==="web"?{kind:"web",...(origin.web_identity?.session_handle?{sessionHandle:origin.web_identity.session_handle}:{})}
+            :{kind:"room",adapterId:origin.adapter_id??undefined,chatId:meta?.chat_id??"",threadId:meta?.thread_id??""},platform});
+      return captured.receipt;
+    };
+  }
+
   /** Evidence-only admission. Bots/system/agent payloads have no trusted origin. */
   private humanReceiptPayload(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin | undefined, originalBody: string): Record<string, unknown> {
     // #1939 S3: "via web (verified)" comes only from the receipt written here — never from a caller's meta.
     const given = payload.meta as Record<string, unknown> | undefined;
     if (given && "web_verified" in given) { const { web_verified: _claimed, ...rest } = given; payload = { ...payload, meta: rest }; }
     if (!origin || !this.deliveryOutbox) return payload;
-    const row = this.deliveryOutbox.createHumanReceipt({ targetInstance: instanceName, originalBody,
-      origin: { ...origin }, inputKind: String(payload.type), managerBootId: this.managerBootId });
-    const contactStore = this.deliveryOutbox.contactAuthorizations;
-    if (this.contactRoom(instanceName)?.restrictedMode === true && !contactStore) throw Error("Contact origin storage unavailable");
+    const installed=requestContextPolicyInstalled(this.requestContextPolicy);
+    if(installed&&!this.requestContextHumanAdmission)throw Error("Accepted human input admission is unavailable");
+    const row = installed?this.requestContextHumanAdmission!(instanceName,payload,origin,originalBody)
+      :this.deliveryOutbox.createHumanReceipt({ targetInstance: instanceName, originalBody,
+        origin: { ...origin }, inputKind: String(payload.type), managerBootId: this.managerBootId });
+    // Installed work uses its admitted request only; lifetime history is no longer a permission input or shadow.
+    const contactStore = installed?undefined:this.deliveryOutbox.contactAuthorizations;
+    if (!installed && this.contactRoom(instanceName)?.restrictedMode === true && !contactStore) throw Error("Contact origin storage unavailable");
     if (contactStore && (this.contactRoom(instanceName)?.restrictedMode === true || contactStore.origin(instanceName))) {
       const authority = origin.authority;
       const identity = origin.platform === "web" && isWebSessionIdentity(origin.web_identity) ? origin.web_identity : undefined;
@@ -22623,7 +22648,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #1827: a /steer or /btw reaches the agent as the web person who wrote it.
         chatId: this.getGroupIdForInstance(instance) || "", messageId: newWebMessageId(),
         username: opts.person?.name ?? WEB_NAME_FALLBACK, userId: opts.person?.userId ?? WEB_NAME_FALLBACK,
-        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true, opts.authority, opts.identity),
+        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true, opts.authority, opts.identity, !!opts.guest),
         ...(opts.guest ? { webGuest: true } : {}),       // #2855: a guest's /steer or /btw reaches the agent as a guest's
       };
     };
