@@ -126,7 +126,8 @@ it.each(["guild","group","user"] as const)("historical %s SDK evidence rechecks 
  let registered=true,mapped="worker";const mapping=vi.fn(()=>mapped),creation=vi.fn(()=>{throw Error("Creation allowlists did not admit this room message");}),room={channelId:roomId,adapterId:"fixture",restrictedMode:false};
  const m:any=Object.assign(Object.create(FleetManager.prototype),{deliveryOutbox:f.box,contactRoom:()=>room,contactGeneration:()=>"agent-incarnation",fleetConfig:{instances:{}},classicChannels:{isClassicChannel:()=>registered,getInstanceByChannel:mapping,isGuildAllowed:creation,isGroupAllowed:creation,isUserAllowed:creation}});
  expect(m.requestContextNativeAdmissionCurrent(captured.context)).toBe(true);expect(mapping).toHaveBeenLastCalledWith(roomId,"fixture");expect(creation).not.toHaveBeenCalled();
- room.restrictedMode=true;expect(m.requestContextNativeAdmissionCurrent(captured.context)).toBe(true); // E applies current restriction separately.
+ expect(m.requestContextSourceRoomRestricted(captured.context)).toBe(false);
+ room.restrictedMode=true;expect(m.requestContextNativeAdmissionCurrent(captured.context)).toBe(true);expect(m.requestContextSourceRoomRestricted(captured.context)).toBe(true); // E applies current restriction separately.
  mapped="other-instance";expect(m.requestContextNativeAdmissionCurrent(captured.context)).toBe(false);mapped="worker";registered=false;expect(m.requestContextNativeAdmissionCurrent(captured.context)).toBe(false);
 });
 it("ordinary native admission rechecks current access independently of current administrator role",()=>{
@@ -156,4 +157,11 @@ it.each([false,true])("current web admission retains identity but rechecks live 
  session.owner.userId="someone-else";expect(m.requestContextNativeAdmissionCurrent(r.context)).toBe(false);session.owner.userId="demo-person";
  if(guest){granted=false;expect(m.requestContextNativeAdmissionCurrent(r.context)).toBe(false);granted=true;m.fleetConfig.web.guests.enabled=false;expect(m.requestContextNativeAdmissionCurrent(r.context)).toBe(false);}
  else {session.tier="guest";expect(m.requestContextNativeAdmissionCurrent(r.context)).toBe(false);}
+});
+
+it("unknown web/recovery evidence cannot borrow a current Classic Free-mode override",()=>{
+ const f=rig(),origin=webHumanOrigin(false,undefined,undefined,false),captured=f.capture(origin,{web:admittedHumanWebIngress(origin),route:{kind:"web"}});
+ const m:any=Object.assign(Object.create(FleetManager.prototype),{deliveryOutbox:f.box,contactRoom:()=>({restrictedMode:false})});
+ expect(m.requestContextSourceRoomRestricted(captured.context)).toBeUndefined();
+ expect(m.requestContextSourceRoomRestricted({...captured.context,rootEvidenceRef:"unproved-recovery:fixture"})).toBeUndefined();
 });

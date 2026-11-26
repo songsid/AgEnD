@@ -6351,6 +6351,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private requestContactCardsPort: RequestContactCards | null = null;
   installRequestContactCards(cards: RequestContactCards | null): void { this.requestContactCardsPort = cards; }
 
+  /** Only a validated accepted room can supply a current room-policy override. Unknown recovery is not a Free-room proof. */
+  requestContextSourceRoomRestricted(root:RequestContextV1):boolean|undefined {
+    try{
+      if(!["free-room","restricted-room"].includes(root.ingress))return undefined;
+      const id=/^human:hmsg-([a-f0-9-]{36})$/.exec(root.rootEvidenceRef)?.[1];if(!id)return undefined;
+      const captured=this.deliveryOutbox?.requestContextHumans.read(id);
+      if(!captured||requestContextDigest(captured.context)!==requestContextDigest(root))return undefined;
+      const basis=this.deliveryOutbox!.requestContextHumans.classicBasis(id);
+      if(!basis&&(captured.route.kind!=="web"||root.initiatingActor.kind==="unknown"))return undefined;
+      const room=this.contactRoom(root.source.instance);return room?room.restrictedMode===true:undefined;
+    }catch{return undefined;}
+  }
+
   /** Re-run the original synchronous admission basis. It supplies no role or go-ahead authority. */
   requestContextNativeAdmissionCurrent(context:RequestContextV1):boolean {
     try{
@@ -6400,7 +6413,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       generation:name=>{try{return this.contactGeneration(name);}catch{return null;}},
       canManage:manage,canDecide:(name,person)=>{if(!manage(name,person))return false;const policy=legacy.host.store.policySnapshot(name,this.contactGeneration(name));return person.platform==="host"&&person.userId==="operator"||(policy.approvers??legacy.host.defaultApprovers(name)).some(row=>sameContactPerson(row,person));},
       adminOf:(name,person)=>this.contactAdminOf(name,person),
-      sourceRestricted:root=>this.contactRoom(root.source.instance)?.restrictedMode===true,
+      sourceRestricted:root=>this.requestContextSourceRoomRestricted(root),
       person:actor=>{
         if(actor.kind!=="person"||actor.platform==="hub")return null;
         if(actor.platform==="host")return {platform:"host",adapterId:"host",userId:"operator",label:"Operator"};

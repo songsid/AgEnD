@@ -127,3 +127,35 @@ it("a replacement or configuration change during the Fleet roster read cannot be
  const result=m.captureRequestContextOwnedLaunches();m.lifecycle.daemons.set("worker",{...daemon});release();
  await expect(result).rejects.toMatchObject({agent:"worker"});expect(exit).not.toHaveBeenCalled();
 });
+
+it("the actual boot policy lets current covered work finish during drain/readiness loss while new calls stay fenced",async()=>{
+ const {randomUUID}=await import("node:crypto"),{captureRequestContextCall}=await import("../src/request-context-call.js"),{assertRequestContextOperation}=await import("../src/request-context-policy.js");
+ const r=activated();let owned=true,ready=true,livePorts=true,turnCurrent=true;
+ const boot=new RequestContextBoot(r.state,{id:"process-owner",current:()=>owned});
+ const box=new DeliveryOutbox(r.path,"new",{requestContextDispatchVersion:1,requestContextRelayVersion:1,requestContextRecoveryFence:boot.recoveryCurrent});cleanup.push(()=>box.close());
+ const id=randomUUID(),context={ref:{version:1 as const,contextId:id,rootContextId:id},rootEvidenceRef:"admitted-fixture",initiatingActor:{kind:"person"as const,platform:"discord"as const,userId:"demo-person"},ingress:"owner"as const,source:{instance:"target",incarnation:"v1"},sourceAudience:{kind:"instance"as const,ref:randomUUID()}};
+ const snapshot={token:randomUUID(),inputId:"owned-fixture",context,wireSha256:"0".repeat(64),owner:{instance:"target",incarnation:"v1",workGeneration:randomUUID(),daemonBootId:randomUUID(),spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0}};
+ const lease=captureRequestContextCall(snapshot,()=>turnCurrent&&owned),admission={coverage:"covered"as const,lease};
+ const asserted=vi.fn(assertRequestContextOperation),ports={policy:{assert:asserted}};
+ boot.publication.publish(r.state,ports,boot.publication.fence(),()=>ready,()=>box.requestContextInstallation().read(),()=>livePorts);
+ const operation={instance:"target",tool:"send_to_instance",args:{instance_name:"another"},admission};
+ expect(boot.policy.assert(operation).kind).toBe("ordinary");
+ const fence=boot.publication.fence(),draining=box.requestContextInstallation().beginOff(1,boot.owner);
+ boot.publication.publish(draining,ports,fence,()=>ready,()=>box.requestContextInstallation().read(),()=>livePorts);
+ ready=false;expect(boot.policy.assert(operation).kind).toBe("ordinary");expect(boot.policy.installedMode?.()).toBe("draining");
+ expect(()=>boot.policy.assert({...operation,admission:undefined})).toThrow(/fenced/);
+ boot.publication.fence();expect(boot.policy.assert(operation).kind).toBe("ordinary");
+ expect(()=>boot.policy.assert({...operation,admission:undefined})).toThrow(/fenced/);
+ livePorts=false;expect(()=>boot.policy.assert(operation)).toThrow(/unavailable|current/);livePorts=true;
+ turnCurrent=false;expect(()=>boot.policy.assert(operation)).toThrow(/current/);turnCurrent=true;owned=false;
+ expect(()=>boot.policy.assert(operation)).toThrow(/current|unavailable/);
+});
+it("boot policy rechecks execution ownership after a validation callback, before returning a permit",async()=>{
+ const {randomUUID}=await import("node:crypto"),{captureRequestContextCall}=await import("../src/request-context-call.js"),{assertRequestContextOperation}=await import("../src/request-context-policy.js");
+ const r=activated(),boot=new RequestContextBoot(r.state,{id:"process-owner",current:()=>true});let livePorts=true;
+ const id=randomUUID(),context={ref:{version:1 as const,contextId:id,rootContextId:id},rootEvidenceRef:"admitted-fixture",initiatingActor:{kind:"person"as const,platform:"discord"as const,userId:"demo-person"},ingress:"owner"as const,source:{instance:"target",incarnation:"v1"},sourceAudience:{kind:"instance"as const,ref:randomUUID()}};
+ const lease=captureRequestContextCall({token:randomUUID(),inputId:"owned-fixture",context,wireSha256:"0".repeat(64),owner:{instance:"target",incarnation:"v1",workGeneration:randomUUID(),daemonBootId:randomUUID(),spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0}},()=>true);
+ const ports={policy:{assert:(input:Parameters<typeof assertRequestContextOperation>[0])=>{const result=assertRequestContextOperation(input);livePorts=false;return result;}}};
+ boot.publication.publish(r.state,ports,boot.publication.fence(),()=>true,()=>r.state,()=>livePorts);
+ expect(()=>boot.policy.assert({instance:"target",tool:"send_to_instance",args:{},admission:{coverage:"covered",lease}})).toThrow(/current/);
+});

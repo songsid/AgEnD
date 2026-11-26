@@ -177,6 +177,11 @@ export class RequestContextPublication<T extends object> {
     this.published = publication; this.required = true; this.fenced = false;
     this.refreshAdmission();
   }
+  /** Existing covered execution only. Admission fences/readiness do not discard owned in-flight work. */
+  captureExecution():RequestContextPublishedInstallation<T> {
+    if(!this.published?.executionCurrent())throw Error("Request-context execution is unavailable");
+    return this.published;
+  }
   /** Activated-but-fenced or lost-owner never falls through to the lifetime dispatcher. */
   capture(): RequestContextPublishedInstallation<T> | null {
     if (!this.required && !this.fenced) return null;

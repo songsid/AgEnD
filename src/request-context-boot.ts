@@ -47,9 +47,13 @@ export class RequestContextBoot {
     this.publication = new RequestContextPublication(this.owner, true);
     this.policy = Object.freeze({
       assert: (input: RequestContextOperation) => {
-        const installed = this.publication.capture();
+        const covered=input.admission?.coverage==="covered"?input.admission.lease:null;
+        if(covered&&!covered.current())throw new RequestContextPolicyError("stale");
+        const installed = covered?this.publication.captureExecution():this.publication.capture();
         if (!installed) throw new RequestContextPolicyError("uncovered");
-        return installed.ports.policy.assert(input);
+        const permit=installed.ports.policy.assert(input);
+        if(covered? !covered.current()||!installed.executionCurrent():!installed.current())throw new RequestContextPolicyError("stale");
+        return permit;
       },
       installedMode: () => this.publication.installedMode(),
     });
