@@ -35,6 +35,12 @@ export function readRequestContextInstallation(db: Database.Database): RequestCo
 export class RequestContextInstallationStore {
   constructor(private readonly db: Database.Database) {}
   read(): RequestContextInstallationState | null { return readRequestContextInstallation(this.db); }
+  /** Validated immutable record for the currently installed epoch, including inside its activation transaction. */
+  activation():RequestContextActivationRecord|null {
+    const state=this.read();if(!state)return null;
+    const record=readRequestContextActivations(this.db).find(row=>row.epoch===state.epoch&&row.owner===state.owner);
+    if(!record)throw Error("Installation activation unavailable");return record;
+  }
   private requireOwner(owner: RequestContextInstallationOwner, state?: RequestContextInstallationState): void {
     if (!owner.current() || state && state.owner !== owner.owner) throw Error("Installation owner changed");
   }

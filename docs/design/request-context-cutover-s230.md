@@ -438,3 +438,10 @@ These composition tests use private databases and inert process/transport ports.
 
 
 First-On's controlled stops also use the standard Settings execution's exact-route `stopTarget` continuation, and candidate starts carry that same execution through asynchronous startup. Revocation before COMMIT invalidates readiness; cleanup is independent of the expired decision. The synchronous post-COMMIT publication uses process readiness, so consuming a successful confirmation cannot revoke the installation it just committed. This does not make the browser a long-lived owner.
+
+
+### Actual helper and confirmed Go back observations
+
+First-On captures each replacement's actual helper readiness and exact admitting launch, in addition to the external runtime negotiation proof. It observes the same live daemon and bound C/D owner. A registry, policy object, version advertisement, missing helper or exited native pane cannot qualify. Native readiness requires the live negotiated transport, while its generation identifies the launch rather than output sequence changes. A bounded wait only schedules fresh observations; timeout names the agent and restores unpublished owners. A changed helper/launch invalidates the final readiness proof. The serving publication does not retain this preflight as a permanent Fleet-wide gate.
+
+The Go back confirmation uses the real read-only retained-update offer. An absent file offers nothing; unreadable or malformed history refuses rather than hiding a window. The proof binds eligible ids, commit/deadline/version fields and the latest deadline, so expiry or any replacement offer requires confirmation again. The first-On initializer checks that the immutable activation record contains exactly that confirmed invalidation set and deadline, inside the same transaction as activation. This does not replace the required home lock/SHARED lease or the exact update-settled check.

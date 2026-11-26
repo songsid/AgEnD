@@ -92,3 +92,14 @@ it.each(['fresh','resumed','reattached'] as const)('scoped native %s startup nev
  expect(f.daemon.requestContextInterruptedLaunch===f.daemon.requestContextLaunch()).toBe(disposition==='reattached');
  expect(f.forbidden).not.toHaveBeenCalled();
 });
+
+it('native helper readiness binds the admitting launch, without treating output observations as new owners',()=>{
+ const f=fixture();f.daemon.requestContextLifecycle={};let connected=true;Object.assign(f.native,{requestContextAvailable:()=>true,requestContextTransportCurrent:()=>connected});
+ const snapshot={state:"running",hostBootId:randomUUID(),paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),seq:1,outputAt:1};f.native.snapshot.mockReturnValue(snapshot);
+ const first=f.daemon.requestContextHelperReadiness();expect(first?.ready).toBe(true);
+ f.native.snapshot.mockReturnValue({...snapshot,seq:2,outputAt:100});expect(f.daemon.requestContextHelperReadiness()?.generation).toBe(first.generation);
+ f.native.snapshot.mockReturnValue({...snapshot,launchId:randomUUID()});expect(f.daemon.requestContextHelperReadiness()?.generation).not.toBe(first.generation);
+ connected=false;expect(f.daemon.requestContextHelperReadiness()?.ready).toBe(false);connected=true;
+ f.native.snapshot.mockReturnValue({...snapshot,state:"exited"});expect(f.daemon.requestContextHelperReadiness()?.ready).toBe(false);
+ f.native.snapshot.mockReturnValue(null);expect(f.daemon.requestContextHelperReadiness()).toBeNull();expect(f.forbidden).not.toHaveBeenCalled();
+});

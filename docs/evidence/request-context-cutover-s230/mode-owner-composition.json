@@ -32,6 +32,28 @@
       "passed": 14,
       "failed": 0,
       "note": "Includes Settings follow-stop, revoked confirmation and consumed-decision controls; overlaps previous run."
+    },
+    {
+      "files": [
+        "tests/request-context-first-on-assembly-s230.test.ts",
+        "tests/request-context-enable-offer-s230.test.ts",
+        "tests/request-context-activation-s230.test.ts"
+      ],
+      "passed": 26,
+      "failed": 0,
+      "note": "Exact offer and activation-record mismatch controls; overlaps other assembly runs."
+    },
+    {
+      "files": [
+        "tests/request-context-helper-readiness-s230.test.ts",
+        "tests/request-context-first-on-assembly-s230.test.ts",
+        "tests/native-pane-daemon-lifecycle-2950.test.ts",
+        "tests/request-context-helper-s230.test.ts",
+        "tests/request-context-transport-readiness-s230.test.ts"
+      ],
+      "passed": 49,
+      "failed": 0,
+      "note": "Includes actual helper observation boundary and negative timeout; overlaps previous runs."
     }
   ],
   "remaining": [

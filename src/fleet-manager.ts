@@ -1458,8 +1458,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * happens here. Its readiness callbacks must come from the actual legacy drain and negotiated port inventories.
    */
   async prepareRequestContextFirstOnAssembly(durableDrained:()=>boolean,transportsReady:()=>boolean,
-    rootRetired:(drain:import("./request-context-drain.js").RequestContextDrain,root:string)=>boolean,execution?:SettingsExecution){
-    const {RequestContextPaneProofs}=await import("./request-context-pane.js");execution?.assert();
+    rootRetired:(drain:import("./request-context-drain.js").RequestContextDrain,root:string)=>boolean,
+    offer:import("./request-context-enable-offer.js").RequestContextEnableOffer,execution?:SettingsExecution){
+    const [{RequestContextPaneProofs},{RequestContextOffOwner},{captureRequestContextHelpers}]=await Promise.all([import("./request-context-pane.js"),import("./request-context-off.js"),import("./request-context-helper-readiness.js")]);execution?.assert();if(!offer.current())throw Error("stale");
     const first=this.prepareRequestContextFirstOn(),box=this.deliveryOutbox!,boot=first.boot;
     let connection:ReturnType<DeliveryOutbox["stageRequestContextConnection"]>;
     try{connection=box.stageRequestContextConnection({current:first.fence.owned});}catch(error){first.abandon();throw error;}
@@ -1499,15 +1500,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       for(const [name,config]of configurations){if(!config)throw Error("Request owner configuration unavailable");if(!this.daemons.has(name))await factory!.beforeStart(name,config);execution?.assert();}
       const sameRoster=()=>requestContextDigest(names.map(name=>[name,this.hubAgentConfig(name)]))===rosterImage
         &&requestContextDigest([...new Set([...Object.keys(this.fleetConfig?.instances??{}),...(this.classicChannels?.getAll()??[]).map(room=>room.instanceName)])].sort())===requestContextDigest(names);
-      const processReady=()=>owned()&&first.fence.current()&&connection.current()&&relaunch!.ready()&&factory!.current()&&inventory!.current()
+      const baseReady=()=>owned()&&first.fence.current()&&connection.current()&&relaunch!.ready()&&factory!.current()&&inventory!.current()
         &&sameRoster()&&durableDrained()&&transportsReady();
-      const ready=()=>processReady()&&(!execution||execution.current());
+      const candidates=relaunch.owners(),readHelpers=()=>captureRequestContextHelpers(candidates,name=>this.daemons.get(name));
+      let helpers=readHelpers();const helperDeadline=performance.now()+30_000;
+      while(!helpers.ready){
+        if(!baseReady()||!offer.current()||execution&&!execution.current()||performance.now()>=helperDeadline)
+          throw Object.assign(Error("Request-context owner is not ready"),{code:"request-context-owner-not-ready",agent:helpers.unready[0]});
+        // A timer only schedules another actual connection observation; elapsed time never proves readiness.
+        await new Promise<void>(resolve=>setTimeout(resolve,100));helpers=readHelpers();
+      }
+      const processReady=()=>baseReady()&&helpers.current();
+      const ready=()=>processReady()&&offer.current()&&(!execution||execution.current());
       if(!ready())throw Error("Request-context owner or transport is not ready");
       const portsCurrent=()=>owned()&&factory!.current()&&inventory!.current();
       let serving:ReturnType<FleetManager["prepareRequestContextServingOwners"]>|undefined;
-      return Object.freeze({boot,drain,registration,policy,ready,
+      const off=new RequestContextOffOwner(box.requestContextInstallation(),drain,boot.publication,{owner:boot.owner.owner,current:owned});
+      return Object.freeze({boot,drain,registration,policy,ready,off,offer,
         /** Call only inside the single installation.activate transaction. No publication or async work. */
-        initialize:()=>{if(!ready())throw Error("Activation preparation changed");relaunch!.retain();factory!.retain();
+        initialize:()=>{if(!ready())throw Error("Activation preparation changed");
+          const record=box.requestContextInstallation().activation();
+          if(!record||requestContextDigest(record.invalidates)!==requestContextDigest(offer.invalidates)||record.offeredLatestDeadline!==offer.latestDeadline)
+            throw Error("Activation offer differs from confirmation");
+          relaunch!.retain();factory!.retain();
           serving=this.prepareRequestContextServingOwners(portsCurrent,root=>rootRetired(drain,root),factory!.hub,()=>boot.publication.installedMode());},
         /** Synchronous post-COMMIT publication. Failure stays capable and fenced for recovery. */
         publish:()=>{

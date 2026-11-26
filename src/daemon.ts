@@ -2775,7 +2775,12 @@ export class Daemon extends EventEmitter {
   }
   requestContextHelperReadiness():Readonly<{version:1;generation:string;ready:boolean}>|null {
     if(!this.requestContextLifecycle)return null;
-    if(this.nativePaneLifecycle)return {version:1,generation:JSON.stringify(this.nativePaneLifecycle.snapshot?.()??null),ready:this.nativePaneLifecycle.requestContextAvailable?.()===true};
+    if(this.nativePaneLifecycle){
+      const snapshot=this.nativePaneLifecycle.snapshot?.();if(!snapshot)return null;
+      // Output/sequence changes are observations, not a new admitting launch. Bind the actual owner tuple.
+      return {version:1,generation:JSON.stringify([this.bootId,this.spawnGeneration,this.launchFenceEpoch,snapshot.hostBootId,snapshot.paneId,snapshot.launchId,snapshot.agentId]),
+        ready:snapshot.state==="running"&&this.nativePaneLifecycle.requestContextTransportCurrent?.()===true};
+    }
     return this.requestContextHelper?{version:1,generation:`${this.bootId}:${this.requestContextHelper.revision}`,ready:this.requestContextHelper.ready()}:null;
   }
   getRequestContextLaunchSpec():Readonly<{config:InstanceConfig;topicMode:boolean;kind:"fleet-topic"|"classic"}>{
