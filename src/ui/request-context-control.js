@@ -22,6 +22,7 @@ register("requestContextControl", {
     check: "Check again", error: "Couldn't read the current state. Try again.", failed: "Nothing changed. Refresh and try again.",
     notice: "Contact approvals now follow each request. Earlier conversations won't block an administrator's new request. The switch is in Settings → Access & security → Request-based contact approvals. Older versions cannot open this Fleet's data, even after you turn it off.",
     open: "Open settings", loading: "Checking the current state…",
+    "stop-waiting": "Stop waiting", decline: "Decline", withdraw: "Withdraw", "stop-work": "Stop this work",
   },
   "zh-TW": {
     title: "依請求核准聯絡", on: "已開啟。核准只跟著這次請求。",
@@ -38,17 +39,20 @@ register("requestContextControl", {
     check: "重新檢查", error: "無法讀取目前狀態，請再試一次。", failed: "沒有變更，請重新整理後再試一次。",
     notice: "聯絡核准現在只跟著這次請求。先前的對話不會再擋住管理員的新請求。開關在「設定」→「存取與安全」→「依請求核准聯絡」。即使關閉，舊版也無法再開啟這個機群的資料。",
     open: "開啟設定", loading: "正在確認目前狀態…",
+    "stop-waiting": "不再等候", decline: "拒絕", withdraw: "撤回", "stop-work": "結束這項工作",
   },
 });
 export const requestContextControlText = (key, ...args) => t(`requestContextControl.${key}`, ...args);
 export function requestContextBlockerText(blocker) {
   return requestContextControlText(blocker.kind, (blocker.labels || []).join(lang() === "zh-TW" ? "、" : ", "));
 }
-export function RequestContextBlocked({ state, onCheck, busy = false }) {
+export function RequestContextBlocked({ state, onCheck, onResolve, busy = false }) {
   if (!state) return null;
   return html`<div class="request-context-blocked">
     <p>${requestContextControlText(state.phase === "draining" ? "draining" : "blocked")}</p>
-    ${(state.blockers || []).map(blocker => html`<p key=${blocker.id}>${requestContextBlockerText(blocker)}</p>`)}
+    ${(state.blockers || []).map(blocker => html`<div key=${blocker.id}><p>${requestContextBlockerText(blocker)}</p>
+      ${state.canChange && onResolve && blocker.action && blocker.action !== "inspect" ? html`<button type="button" class="btn btn-sm" disabled=${busy}
+        onClick=${() => onResolve(blocker)}>${requestContextControlText(blocker.action)}</button>` : null}</div>`)}
     ${!state.everActivated ? html`<p class="note">${requestContextControlText("previous")}</p>` : null}
     ${onCheck ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${onCheck}>${requestContextControlText("check")}</button>` : null}
   </div>`;
@@ -57,18 +61,19 @@ export function RequestContextBlocked({ state, onCheck, busy = false }) {
 export function RequestContextNeed({ item }) {
   const lease = useLease(`request-context-need:${item.id}`), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), writing = useRef(false);
   const state = item.requestContextCutover;
-  const check = async () => {
+  const change = async (blocker = null) => {
     if (writing.current || !state?.canChange) return;
     writing.current = true; setBusy(true); setFailed(false);
     try {
-      const response = await lease.fetch("/api/settings/request-context", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: state.revision, action: "check" }) });
+      const input = blocker ? { revision: state.revision, action: "resolve", blockerId: blocker.id, resolution: blocker.action } : { revision: state.revision, action: "check" };
+      const response = await lease.fetch("/api/settings/request-context", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
       if (!lease.current()) return;
       if (!response.ok && response.status !== 409) throw Error("refused");
     } catch { if (lease.current()) setFailed(true); }
     finally { writing.current = false; if (lease.current()) setBusy(false); }
   };
-  return html`<article class="card"><h3>${requestContextControlText("title")}</h3>
-    <${RequestContextBlocked} state=${state} busy=${busy} onCheck=${state?.canChange ? check : null} />
+  return html`<article class="card request-context-need"><h3>${requestContextControlText("title")}</h3>
+    <${RequestContextBlocked} state=${state} busy=${busy} onCheck=${state?.canChange ? () => change() : null} onResolve=${state?.canChange ? change : null} />
     ${state && !state.canChange ? html`<${AuthorizeChip} />` : null}
     ${failed ? html`<p class="notice warn" role="alert">${requestContextControlText("failed")}</p>` : null}
     <a class="btn btn-sm" href="/settings/access#request-context">${requestContextControlText("open")}</a></article>`;
@@ -87,14 +92,14 @@ export function RequestContextSettings() {
   };
   useEffect(() => { void load(); }, [lease]);
   useEffect(() => { if (pushed !== undefined && lease.current()) setState(pushed); }, [pushed, lease]);
-  const change = async action => {
+  const change = async (action, blocker = null) => {
     if (writing.current || !state || !state.canChange) return;
     writing.current = true; setBusy(true); setFailed(false);
     try {
       if (action === "disable" && !await confirmDialog({ title: requestContextControlText("confirmTitle"), message: requestContextControlText("confirmBody"), confirmLabel: requestContextControlText("confirm"), danger: true })) return;
       if (!lease.current()) return;
       const response = await lease.fetch("/api/settings/request-context", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ revision: state.revision, action }) });
+        body: JSON.stringify(blocker ? { revision: state.revision, action: "resolve", blockerId: blocker.id, resolution: blocker.action } : { revision: state.revision, action }) });
       if (!lease.current()) return;
       if (response.status === 409) { await load(); return; }
       if (!response.ok) throw Error("refused");
@@ -107,7 +112,7 @@ export function RequestContextSettings() {
     ${state ? html`<label class="check request-context-toggle"><input type="checkbox" class="s-ui-toggle" checked=${state.enabled}
       disabled=${busy || !state.canChange || state.phase === "draining"} onChange=${event => { event.target.checked = state.enabled; void change(state.enabled ? "disable" : "enable"); }} />
       <span>${requestContextControlText("title")}</span></label>
-      ${["blocked", "draining"].includes(state.phase) ? html`<${RequestContextBlocked} state=${state} busy=${busy} onCheck=${state.canChange ? () => change("check") : null} />`
+      ${["blocked", "draining"].includes(state.phase) ? html`<${RequestContextBlocked} state=${state} busy=${busy} onCheck=${state.canChange ? () => change("check") : null} onResolve=${state.canChange ? blocker => change("resolve", blocker) : null} />`
         : html`<p role="status">${requestContextControlText(state.phase === "off" && !state.everActivated ? "offBefore" : state.phase)}</p>`}
       <p class="note">${requestContextControlText(state.everActivated ? "floor" : "floorBefore")}</p>
       ${!state.canChange ? html`<${AuthorizeChip} />` : null}` : !failed ? html`<p>${requestContextControlText("loading")}</p>` : null}

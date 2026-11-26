@@ -11,6 +11,12 @@ export const RequestContextControlViewSchema = z.strictObject({
     labels: z.array(label).max(64), action: z.enum(["inspect", "stop-waiting", "decline", "withdraw", "stop-work"]).optional() })).max(128),
 });
 export type RequestContextControlView = z.infer<typeof RequestContextControlViewSchema>;
+export const RequestContextControlDecisionSchema = z.discriminatedUnion("action", [
+  z.strictObject({ revision: z.number().int().nonnegative(), action: z.enum(["enable", "disable", "check"]) }),
+  z.strictObject({ revision: z.number().int().nonnegative(), action: z.literal("resolve"), blockerId: label,
+    resolution: z.enum(["stop-waiting", "decline", "withdraw", "stop-work"]) }),
+]);
+export type RequestContextControlDecision = z.infer<typeof RequestContextControlDecisionSchema>;
 export interface RequestContextControlPrincipal {
   /** Exact admitted session/account binding, not a browser-provided key. */
   readonly binding: string;
@@ -23,7 +29,7 @@ export interface RequestContextControlHost {
   read(actor: RequestContextControlPrincipal): RequestContextControlView | Promise<RequestContextControlView>;
   /** Already-derived state for passive channels; never runs readiness or any installer mutation. */
   snapshot(): RequestContextControlView | null;
-  change(input: Readonly<{ revision: number; action: "enable" | "disable" | "check" }>, actor: RequestContextControlPrincipal): RequestContextControlView | Promise<RequestContextControlView>;
+  change(input: Readonly<RequestContextControlDecision>, actor: RequestContextControlPrincipal): RequestContextControlView | Promise<RequestContextControlView>;
 }
 export function projectRequestContextControl(req: IncomingMessage, url: URL, host: RequestContextControlHost | undefined,
   value: unknown): RequestContextControlView | undefined {
@@ -48,7 +54,6 @@ export function requestContextControlSnapshot(req: IncomingMessage, url: URL, ho
   try { return projectRequestContextControl(req, url, host, host.snapshot?.()) ?? null; }
   catch { return null; }
 }
-const decision = z.strictObject({ revision: z.number().int().nonnegative(), action: z.enum(["enable", "disable", "check"]) });
 const live = (actor: RequestContextControlPrincipal | null): actor is RequestContextControlPrincipal => {
   try { return !!actor && actor.current() === true; } catch { return false; }
 };
@@ -76,12 +81,12 @@ export function handleRequestContextControlApi(req: IncomingMessage, res: Server
       if (req.method === "POST") {
         if (!first.verified) throw Error("verification-required");
         if (!host.permitContinuation(req, res)) return;
-        let input: z.infer<typeof decision>;
-        try { const body = await readBoundedWebBody(req, 4096); input = decision.parse(JSON.parse(body.toString("utf8"))); }
+        let input: RequestContextControlDecision;
+        try { const body = await readBoundedWebBody(req, 4096); input = RequestContextControlDecisionSchema.parse(JSON.parse(body.toString("utf8"))); }
         catch { throw Error("invalid-request"); }
         const admitted = current();
         if (!admitted.verified) throw Error("verification-required");
-        // Revision/host role/installation epoch must also be checked inside the owning transaction.
+        // Revision/host role/installation epoch and the offered blocker/action must also match inside the owning transaction.
         value = await host.change(input, admitted);
       } else value = await host.read(first);
       const after = current();

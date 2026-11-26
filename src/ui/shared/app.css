@@ -807,6 +807,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-setting-row .note { margin: 5px 0 0; }
 .request-context-toggle { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; }
 .request-context-control, .request-context-blocked { overflow-wrap: anywhere; }
+.request-context-control .btn, .request-context-need .btn { min-height: 44px; }
 .p-settings input.s-ui-toggle, .p-hub input.s-ui-toggle, .p-fleet input.s-ui-toggle { appearance: none; position: relative; display: inline-block; flex: none; width: 38px; height: 22px; min-height: 0; margin: 0; padding: 0; border: 1px solid var(--border-strong); border-radius: 20px; background: var(--surface-3, var(--surface-2)); cursor: pointer; }
 .p-settings input.s-ui-toggle::after, .p-hub input.s-ui-toggle::after, .p-fleet input.s-ui-toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-3); transition: transform var(--t-fast); }
 .p-settings input.s-ui-toggle:checked, .p-hub input.s-ui-toggle:checked, .p-fleet input.s-ui-toggle:checked { background: var(--accent); border-color: var(--accent); }

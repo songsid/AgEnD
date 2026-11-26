@@ -42,8 +42,8 @@ try {
   for (const variant of matrix()) for (const state of states) {
     const blocked = state.startsWith("blocked-"), kind = state.slice(8), phase = blocked ? "blocked" : state.startsWith("off") && state !== "off-confirm" ? "off" : state === "draining" ? "draining" : "on";
     view = { revision: ++revision, enabled: !["off", "off-before", "draining"].includes(state), everActivated: state === "blocked-recovery" || !blocked && state !== "off-before", phase, canChange: true,
-      blockers: blocked ? [{ id: "readiness-fixture", kind, labels: kind === "peers" ? ["Demo runtime"] : ["owners", "recovery"].includes(kind) ? ["Demo worker"] : [] }]
-        : state === "draining" ? [{ id: "return-fixture", kind: "returns", labels: ["Demo worker"] }] : [] };
+      blockers: blocked ? [{ id: "readiness-fixture", kind, labels: kind === "peers" ? ["Demo runtime"] : ["owners", "recovery"].includes(kind) ? ["Demo worker"] : [], ...(kind === "recovery" ? { action: "stop-work" } : {}) }]
+        : state === "draining" ? [{ id: "return-fixture", kind: "returns", labels: ["Demo worker"], action: "stop-waiting" }] : [] };
     const tag = `${caseName(variant)}-${state}`, path = blocked ? "/ui/needs" : state === "general-notice" ? "/ui/chat/general" : "/settings/access#request-context";
     fm.webChatHistory.forget("general");
     if (state === "general-notice") fm.emitSseEvent("message", { instance: "general", sender: "AgEnD", role: "status", text: requestContextEnabledNotice(variant.lang), ts: new Date().toISOString(), wrap: true });
@@ -61,7 +61,7 @@ try {
         const text = await page.locator(".request-context-blocked").innerText();
         check(`${tag}: concrete blocker`, kind === "legacy" || text.includes(kind === "peers" ? "Demo runtime" : "Demo worker"));
         check(`${tag}: no invented raw code`, !text.includes("request_context"));
-        check(`${tag}: inline recheck`, await page.locator(".request-context-blocked button").isVisible());
+        check(`${tag}: inline recheck`, await page.locator(".request-context-blocked button").last().isVisible());
         check(`${tag}: previous rules only before activation`, text.includes(dictionary.previous) === !view.everActivated);
       } else {
         const card = page.locator("#request-context"); await card.waitFor();

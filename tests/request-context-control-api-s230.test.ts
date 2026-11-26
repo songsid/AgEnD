@@ -15,7 +15,13 @@ function rig() {
     read: vi.fn(() => view), change: vi.fn((input, actor): RequestContextControlView => {
       if (!actor.current() || !actor.verified) throw Error("owner-required");
       if (input.revision !== view.revision) throw Error("stale");
-      return { ...view, revision: 3, enabled: input.action !== "disable", phase: input.action === "disable" ? "draining" : "on" };
+      if (input.action === "resolve") {
+        const blocker = view.blockers.find(row => row.id === input.blockerId && row.action === input.resolution);
+        if (!blocker) throw Error("stale");
+        view.blockers = view.blockers.filter(row => row !== blocker); view.revision++;
+        if (!view.blockers.length) { view.phase = "off"; view.enabled = false; }
+      } else Object.assign(view, { revision: view.revision + 1, enabled: input.action !== "disable", phase: input.action === "disable" ? "draining" : "on" });
+      return structuredClone(view);
     }) };
   const request = (method = "GET", body?: unknown, url = path, installed = true, throughSettings = false) => {
     const req = Object.assign(new PassThrough(), { method, url, headers: {} }); let finish!: () => void;
@@ -60,7 +66,7 @@ it("Off is an explicit revision-bound owner write, not an optimistic client stat
   const r = rig(); r.verify();
   expect(await r.request("POST", { revision: 1, action: "disable" }).done()).toEqual({ status: 409, body: { error: "stale" } });
   expect((await r.request("POST", { revision: 2, action: "disable" }).done()).body).toMatchObject({ enabled: false, phase: "draining", revision: 3 });
-  expect((await r.request("POST", { revision: 2, action: "check" }).done()).status).toBe(200);
+  expect((await r.request("POST", { revision: 3, action: "check" }).done()).status).toBe(200);
 });
 it.each([{ revision: 2, action: "enable", authority: "owner" }, { revision: 2, action: "drop-barrier" }, { enabled: true }, "{"])(
   "model/body claims cannot widen the control protocol", async body => {
@@ -69,6 +75,15 @@ it.each([{ revision: 2, action: "enable", authority: "owner" }, { revision: 2, a
 it("CSRF refusal runs before reading or dispatching the write", async () => {
   const r = rig(); r.verify(); r.csrf();
   expect(await r.request("POST").done()).toEqual({ status: 403, body: { error: "csrf" } }); expect(r.host.change).not.toHaveBeenCalled();
+});
+it("a drain resolution carries only the exact offered item/action and cannot be replayed or substituted", async () => {
+  const r = rig(); r.verify(); r.view.phase = "draining"; r.view.everActivated = true;
+  r.view.blockers = [{ id: "return-fixture", kind: "returns", labels: ["Demo worker"], action: "stop-waiting" }];
+  const input = { revision: 2, action: "resolve", blockerId: "return-fixture", resolution: "stop-waiting" };
+  expect((await r.request("POST", { ...input, resolution: "withdraw" }).done()).status).toBe(409);
+  expect((await r.request("POST", input).done()).body).toMatchObject({ phase: "off", blockers: [], revision: 3 });
+  expect((await r.request("POST", input).done()).status).toBe(409);
+  expect(r.view.revision).toBe(3);
 });
 it("unexpected installer/storage errors never expose their private text", async () => {
   const r = rig(); vi.mocked(r.host.read).mockImplementation(() => { throw Error("PRIVATE_SQL_OR_MACHINE_STATE"); });
