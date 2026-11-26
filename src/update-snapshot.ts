@@ -3,7 +3,10 @@
  * `snapshotted` while every writer is fenced (§4.2) and proven gone (§4.4; `proveWritersGone`, before and after).
  *
  * - **Confinement (§5.2).** The scope (§5.1) is walked from `realpath(home)` with `lstat`, never following a link. A
- *   symlink is recorded as a link with its target text; it is not opened and a linked directory isn't entered. Every
+ *   symlink is recorded as a link with its target text — unless its target is a directory or a SQLite database, which
+ *   refuses the snapshot (Fable #4523 F2): a rollback would put the link back while the newer state behind it stays,
+ *   the very failure the snapshot exists to prevent. (The target is `stat`ed and its first 16 bytes peeked; it is never
+ *   opened as a database, and a linked directory is never entered.) Every
  *   included regular file's components below the home are real directories (the walk only descends into those), and
  *   its realpath lies inside the home's. Anything that is neither a file, a directory nor a link refuses the snapshot.
  * - **SQLite (§4.5).** A file is a database when it starts with SQLite's header. Each is opened alone at its confined
@@ -16,12 +19,14 @@
  *   fsynced, then the attempt directory. `verifySnapshot` walks the copy again and compares it with the manifest as an
  *   exact set.
  *
- * A failure anywhere — confinement, a database, the copy, the writers' proof — removes the partial snapshot and says
- * why: the caller abandons the attempt (§2.3). Nothing here writes into the home.
+ * A failure anywhere — confinement, a database, the copy, the writers' proof — removes the partial snapshot THIS call
+ * made, and says why: the caller abandons the attempt (§2.3). A snapshot already present is never touched (§5.3: it is
+ * immutable once published). Nothing is written into the home except each database's own checkpoint (§4.5: the WAL
+ * folded into the main file and truncated, a `-shm` possibly created, a hot rollback journal rolled back).
  */
 import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
-import { closeSync, constants as fsConstants, copyFileSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync,
+import { closeSync, constants as fsConstants, copyFileSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync,
   readSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, chmodSync, writeSync, renameSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { classify } from "./update-snapshot-scope.js";
@@ -54,6 +59,18 @@ function isSqlite(path: string): boolean {
   try { const buf = Buffer.alloc(16); return readSync(fd, buf, 0, 16, 0) === 16 && buf.equals(SQLITE_HEADER); } finally { closeSync(fd); }
 }
 
+/**
+ * What a link leads to that the snapshot can't protect: a directory, or a SQLite database (header peeked, never opened
+ * as one). null: a dangling link, or one to a plain file — recorded as a link.
+ */
+function linkedTarget(link: string): string | null {
+  let st;
+  try { st = statSync(link); } catch { return null; }
+  if (st.isDirectory()) return "a directory";
+  if (st.isFile()) { try { if (isSqlite(link)) return "a SQLite database"; } catch { return "a file that can't be read"; } }
+  return null;
+}
+
 class Refused extends Error {}
 const refuse = (why: string): never => { throw new Refused(why); };
 
@@ -70,7 +87,12 @@ export function walkScope(home: string): Walked {
       if (!classify(childRel).included) continue;
       const st = lstatSync(join(abs, name));
       const mode = st.mode & 0o7777;
-      if (st.isSymbolicLink()) { entries.push({ rel: childRel, type: "link", mode, target: readlinkSync(join(abs, name)) }); continue; }
+      if (st.isSymbolicLink()) {
+        const behind = linkedTarget(join(abs, name));
+        if (behind) refuse(`${childRel} is a link to ${behind}; the rollback couldn't restore what's behind it`);
+        entries.push({ rel: childRel, type: "link", mode, target: readlinkSync(join(abs, name)) });
+        continue;
+      }
       if (st.isDirectory()) { entries.push({ rel: childRel, type: "dir", mode }); visit(childRel); continue; }
       if (!st.isFile()) refuse(`${childRel} is neither a file, a directory nor a link`);
       const real = realpathSync(join(abs, name));
@@ -108,7 +130,10 @@ function settleDatabase(path: string, rel: string): DatabaseRecord {
  * exist; the snapshot directory must not (a retry starts over: the caller removes a partial one first).
  */
 export function takeSnapshot(home: string, attemptDir: string, deps: SnapshotDeps): SnapshotResult {
-  const out = join(attemptDir, SNAPSHOT_DIR);
+  const out = join(attemptDir, SNAPSHOT_DIR), manifestPath = join(attemptDir, SNAPSHOT_MANIFEST);
+  // A snapshot already here is never touched (Fable #4523 F1): refused before anything is done.
+  if (existsSync(out) || existsSync(manifestPath)) return { ok: false, reason: "a snapshot is already here; the caller removes a partial one first" };
+  let madeDir = false, wroteManifest = false;
   try {
     const first = deps.proveWritersGone();
     if (!first.ok) refuse(`writers are present: ${first.reason}`);
@@ -124,6 +149,7 @@ export function takeSnapshot(home: string, attemptDir: string, deps: SnapshotDep
     const sidecarOf = (rel: string) => SIDECARS.some(s => rel.endsWith(s) && dbRels.has(rel.slice(0, -s.length)));
     const entries = walked.entries.filter(e => !(e.type === "file" && sidecarOf(e.rel)));
     mkdirSync(out, { mode: 0o700 });
+    madeDir = true;
     const dirs: string[] = [out];
     for (const e of entries) {
       const src = join(root, e.rel), dst = join(out, e.rel);
@@ -145,16 +171,18 @@ export function takeSnapshot(home: string, attemptDir: string, deps: SnapshotDep
     for (const e of entries) delete e.mtimeMs;
     const manifest: SnapshotManifest = { schema: 1, home: root, entries, databases };
     const text = JSON.stringify(manifest, null, 2) + "\n";
-    const manifestPath = join(attemptDir, SNAPSHOT_MANIFEST), tmp = `${manifestPath}.tmp-${process.pid}`;
+    const tmp = `${manifestPath}.tmp-${process.pid}`;
     const fd = openSync(tmp, "wx", 0o600);
     try { writeSync(fd, text); fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(tmp, manifestPath);
+    wroteManifest = true;
     fsyncPath(attemptDir);
     const verified = verifySnapshot(attemptDir, manifest);
     if (!verified.ok) refuse(verified.reason);
     return { ok: true, manifest, manifestSha256: createHash("sha256").update(text).digest("hex") };
   } catch (err) {
-    try { rmSync(out, { recursive: true, force: true }); rmSync(join(attemptDir, SNAPSHOT_MANIFEST), { force: true }); } catch { /* best effort */ }
+    // Only what this call made is removed.
+    try { if (wroteManifest) rmSync(manifestPath, { force: true }); if (madeDir) rmSync(out, { recursive: true, force: true }); } catch { /* best effort */ }
     return { ok: false, reason: err instanceof Refused ? err.message : `the snapshot failed (${(err as Error).message})` };
   }
 }

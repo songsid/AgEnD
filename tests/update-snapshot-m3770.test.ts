@@ -55,10 +55,9 @@ function seed(): string {
   writeFileSync(join(home, "credential-profiles", "claude-code", "p", ".claude.json"), "{}");                          // excluded
   mkdirSync(join(home, "cache")); writeFileSync(join(home, "cache", "c"), "c");             // excluded
   writeFileSync(join(home, ".state-lease.sqlite"), "lease");                                // excluded
-  // A symlinked directory, and a database behind a symlinked parent: recorded as links, never entered.
-  const outside = join(tmp("outside-"), "d"); mkdirSync(outside); walDatabase(join(outside, "secret.db"), ["outside"], false);
-  symlinkSync(outside, join(home, "linked-dir"));
+  // Links the snapshot can record: to a plain file, and a dangling one.
   symlinkSync("fleet.yaml", join(home, "fleet-link"));
+  symlinkSync("nowhere", join(home, "dangling-link"));
   return home;
 }
 
@@ -81,9 +80,8 @@ describe("M-3770 §5.2–5.3: the snapshot", () => {
     expect(rowsOf(join(snap, "hub", "hub.db"))).toEqual(["hub-row"]);
     for (const sidecar of ["events.db-wal", "events.db-shm", "hub/hub.db-wal"]) expect(existsSync(join(snap, sidecar)), sidecar).toBe(false);
     for (const excluded of ["instances/a/output.log", "workspaces", "credential-profiles", "cache", ".state-lease.sqlite"]) expect(existsSync(join(snap, excluded)), excluded).toBe(false);
-    expect(lstatSync(join(snap, "linked-dir")).isSymbolicLink()).toBe(true);
-    expect(res.manifest.entries.some(e => e.rel.startsWith("linked-dir/"))).toBe(false);                 // never entered
-    expect(res.manifest.databases.map(d => d.rel)).toEqual(["events.db", "hub/hub.db"]);                // not secret.db
+    expect(lstatSync(join(snap, "dangling-link")).isSymbolicLink()).toBe(true);
+    expect(res.manifest.databases.map(d => d.rel)).toEqual(["events.db", "hub/hub.db"]);
     expect(res.manifest.databases[0]).toMatchObject({ userVersion: 7, schemaSha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
     expect(res.manifest.entries.find(e => e.rel === "fleet-link")).toEqual({ rel: "fleet-link", type: "link", mode: expect.any(Number), target: "fleet.yaml" });
     expect(readFileSync(join(snap, "instances", "a", "session.jsonl"), "utf8")).toBe("{}\n");
@@ -160,11 +158,44 @@ describe("M-3770 §4.4, §5.2: what refuses the snapshot (nothing partial is lef
     expect(existsSync(join(attempt, SNAPSHOT_DIR))).toBe(false);
   });
 
-  it("the walk records links without entering them, and refuses nothing that's excluded", () => {
+  it("a link to a directory or to a database refuses — the rollback couldn't restore what's behind it (Fable #4523 F2)", () => {
+    const outside = join(tmp("outside-"), "d"); mkdirSync(outside); walDatabase(join(outside, "secret.db"), ["outside"], false);
+    const linkedDir = seed();
+    symlinkSync(outside, join(linkedDir, "linked-dir"));
+    expect(takeSnapshot(linkedDir, tmp("attempt-"), gone)).toMatchObject({ ok: false, reason: expect.stringMatching(/linked-dir is a link to a directory/) });
+    const linkedDb = seed();
+    symlinkSync(join(outside, "secret.db"), join(linkedDb, "hub.db"));
+    expect(takeSnapshot(linkedDb, tmp("attempt-"), gone)).toMatchObject({ ok: false, reason: expect.stringMatching(/hub\.db is a link to a SQLite database/) });
+    // A link to a plain file, and a dangling link, are recorded (the seed has both).
+    const walked = walkScope(seed());
+    expect(walked.entries.filter(e => e.type === "link").map(e => e.rel)).toEqual(["dangling-link", "fleet-link"]);
+  });
+
+  it("the walk refuses nothing that's excluded", () => {
     const home = seed();
     writeFileSync(join(home, "operator.sock"), "");                                                   // excluded *.sock
-    const walked = walkScope(home);
-    expect(walked.entries.find(e => e.rel === "linked-dir")).toMatchObject({ type: "link" });
-    expect(walked.files).not.toContain("operator.sock");
+    expect(walkScope(home).files).not.toContain("operator.sock");
+  });
+
+  it("a snapshot already present is never touched: a second call refuses, and the first still verifies (Fable #4523 F1)", () => {
+    const home = seed(), attempt = tmp("attempt-");
+    const first = takeSnapshot(home, attempt, gone);
+    if (!first.ok) throw new Error(first.reason);
+    expect(takeSnapshot(home, attempt, gone)).toMatchObject({ ok: false, reason: expect.stringMatching(/already here/) });
+    expect(verifySnapshot(attempt, first.manifest)).toEqual({ ok: true });
+    expect(readManifest(attempt)).toEqual(first.manifest);
+    // A manifest alone (no snapshot directory) refuses too, and is kept.
+    const other = tmp("attempt-");
+    writeFileSync(join(other, SNAPSHOT_MANIFEST), "{}");
+    expect(takeSnapshot(home, other, gone)).toMatchObject({ ok: false, reason: expect.stringMatching(/already here/) });
+    expect(readFileSync(join(other, SNAPSHOT_MANIFEST), "utf8")).toBe("{}");
+  });
+
+  it("a snapshot directory that appears after the up-front check (another taker) is kept when this call fails on it", () => {
+    const home = seed(), attempt = tmp("attempt-");
+    const theirs = join(attempt, SNAPSHOT_DIR);
+    const res = takeSnapshot(home, attempt, { proveWritersGone: () => { if (!existsSync(theirs)) { mkdirSync(theirs); writeFileSync(join(theirs, "theirs"), "x"); } return { ok: true }; } });
+    expect(res).toMatchObject({ ok: false, reason: expect.stringMatching(/EEXIST/) });
+    expect(readFileSync(join(theirs, "theirs"), "utf8")).toBe("x");                                // not this call's: untouched
   });
 });
