@@ -1,3 +1,4 @@
+import {escapeInboundField} from "./inbound-presentation.js";
 /** An inert display projection of B-validated delivery metadata, never body-inferred authority. */
 import {z} from "zod";
 import type {DeliveryOutbox} from "./delivery-outbox.js";
@@ -14,5 +15,6 @@ export function requestDeliveryView(box:DeliveryOutbox,deliveryId:string):{view:
  const meta=delivery.payload.meta;if(!meta||typeof meta!=="object"||Array.isArray(meta)||Object.values(meta).some(v=>typeof v!=="string")||typeof delivery.payload.content!=="string")throw Error("Request provenance image unavailable");
  const prefix=labelHubRequest(context,"",meta as Record<string,string>).content;
  if(!delivery.payload.content.startsWith(prefix))throw Error("Request provenance image differs");
- return {body:delivery.payload.content.slice(prefix.length),view:schema.parse({version:1,kind:"hub-requester",contextId:context.ref.contextId,rootContextId:context.ref.rootContextId,hubId:actor.hubId,actorId:actor.id,actorKind:actor.kind,...(actor.displayName?{displayName:actor.displayName}:{}),audience:audience.kind,authority:"none"})};
+ const name=actor.displayName?escapeInboundField(actor.displayName):undefined;
+ return {body:delivery.payload.content.slice(prefix.length),view:schema.parse({version:1,kind:"hub-requester",contextId:context.ref.contextId,rootContextId:context.ref.rootContextId,hubId:actor.hubId,actorId:actor.id,actorKind:actor.kind,...(name&&name.length<=256?{displayName:name}:{}),audience:audience.kind,authority:"none"})};
 }

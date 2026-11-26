@@ -47,3 +47,7 @@ it("delayed approval and a matching standing grant register expected answers onl
  const g=f.box.requestHubContactGate(host);g.decide(ticket.id,{revision:ticket.revision,decision:"approve-once",grant:{expiresAt:new Date(Date.now()+86400000).toISOString(),remainingUses:1}},manager,f.box.contactAuthorizations.policy(ticket.target,ticket.targetGeneration).revision,g.snapshot(ticket.id).imageSha256);const approved=relay.admit(input,op,()=>true);expect(f.box.requestContextReturns.get(approved.deliveryId)?.state).toBe("open");
  const newId=randomUUID(),nextContext={...context,ref:{version:1 as const,contextId:newId,rootContextId:newId}},nextLease=captureRequestContextCall({...f.lease.snapshot,context:nextContext},()=>true),next=relay.admit(f.image(),{...op,admission:{coverage:"covered",lease:nextLease}},()=>true);expect(f.box.requestContextReturns.get(next.deliveryId)?.state).toBe("open");expect(f.box.contactAuthorizations.policy("target","v1").grants[0]?.remainingUses).toBe(0);
 });
+
+it("directory bidi controls cannot reorder the visible requester label",()=>{
+ const f=fixture(),context={...f.context,initiatingActor:{...f.context.initiatingActor,displayName:"Demo\u202eowner"}},lease=captureRequestContextCall({...f.lease.snapshot,context},()=>true),op={...f.operation(),admission:{coverage:"covered"as const,lease}},result=f.relay.admit(f.image(),op,()=>true),name=requestDeliveryView(f.box,result.deliveryId)!.view.displayName!;expect(name).not.toContain("\u202e");expect(name).toContain("202e");
+});

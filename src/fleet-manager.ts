@@ -6031,7 +6031,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** L installs this explicitly; H defines no production switch. */
   makeRequestContextPolicy():RequestContextPolicyPort{return {assert:input=>{
     try{return assertRequestContextOperation(input);}catch(error){
-      if(error instanceof RequestContextPolicyError)this.emitSseEvent("message",{instance:input.instance,sender:"AgEnD",role:"status",text:error.message,ts:new Date().toISOString()});
+      if(error instanceof RequestContextPolicyError)this.emitSseEvent("message",{instance:input.instance,sender:"AgEnD",role:"status",wrap:true,text:error.message,ts:new Date().toISOString()});
       throw error;
     }
   }};}
@@ -25947,7 +25947,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2861: an Office share's dialogue box hears that someone talked to an instance (never what was said).
       this.officeTalk.noteMessage(data);
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; retryOwner?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown; contactTicket?: unknown; requestProvenance?:unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; retryOwner?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown; contactTicket?: unknown; requestProvenance?:unknown;wrap?:unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -25967,6 +25967,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         reserved: m.reserved,                            // #1774: an agent reply's place, taken when it was sent
         contactTicket: m.contactTicket,
         requestProvenance:m.requestProvenance,
+        wrap:m.wrap,
       });
       // A sending page's own id for its pending bubble rides on the live copy only: never recorded, never replayed.
       const clientId = typeof (data as { clientId?: unknown }).clientId === "string" ? (data as { clientId: string }).clientId : "";
