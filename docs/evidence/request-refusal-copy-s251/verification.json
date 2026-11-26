@@ -1,0 +1,30 @@
+{
+  "sourceHead": "8fc4dc67027551528aaabf3e9789cc0f30ea6555",
+  "productionDelta": "Exactly eight string literal edits; all policy code outside the copy dictionary byte-identical to516a4f523.",
+  "tests": {
+    "files": 6,
+    "passed": 150,
+    "typecheckTests": "pass",
+    "realMutationAssertions": "retained; only old owner-text expectations updated"
+  },
+  "captures": {
+    "originals": 32,
+    "checks": 193,
+    "failed": 0,
+    "fixture": "actual outbound wrapper \u2192 production policy \u2192 SSE/history \u2192 real signed-in web chat",
+    "noSideEffects": true,
+    "mutatingSinks": "stopped fixture ports; never call lifecycle/model/provider if policy breaks"
+  },
+  "inventory": "inventory.md",
+  "limits": [
+    "Production rollout remains OFF until L.",
+    "Fixture-only owners/requests; no CLI/pane/native/provider/account run.",
+    "Source-bound originals are author evidence; user look and independent review remain separate."
+  ],
+  "visualInspection": {
+    "individualOriginalsOpened": 32,
+    "reviewer": "read-only image subagent",
+    "findings": "No clipping, missing glyph, overflow or privacy blocker; phone outside notice wraps; Hub headers only for Hub roots.",
+    "approval": "Not a user-look release or formal reviewer gate."
+  }
+}
