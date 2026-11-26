@@ -12,6 +12,8 @@ import { syntheticTunnelToken } from "./helpers/named-tunnel-token.js";
 import { createServer, request, type Server } from "node:http";
 import { handleSettingsRequest } from "../src/settings-api.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
+import { bindGatewayRequest } from "../src/web-request-context.js";
+import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PublicWebLink, publicLinkModeProblem, publicLinkPatchShape, publicLinkPreviewHostname } from "../src/public-web-link.js";
 import { PUBLIC_TUNNEL_TOKEN_ENV } from "../src/public-tunnel-config.js";
@@ -265,20 +267,28 @@ describe("M-3814: the route — admin only, the page's shown address handed on, 
     const token = "c".repeat(48), sessions = new WebSessionStore({});
     const testPreviewRoute = vi.fn(async (_input?: unknown) => ({ steps: [{ step: "values", ok: false, code: "not-saved" }], hostname: PREV, port: 19281 }));
     const ctx = { webToken: token, webSessions: sessions, testPreviewRoute, logger: { warn() {}, info() {}, debug() {}, error() {} } } as never;
-    const server = createServer((req, res) => { if (!handleSettingsRequest(req, res, new URL(req.url!, origin), ctx)) { res.writeHead(404); res.end(); } });
+    let gateway = false;
+    const server = createServer((req, res) => {
+      // Over the public link as its gateway serves it: only a route on its list reaches the handler (public-web-gateway.ts).
+      if (gateway) {
+        if (!isPublicWebRoute(req.method ?? "GET", new URL(req.url!, origin).pathname)) { res.writeHead(404); res.end(); return; }
+        bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: origin, isCurrent: () => true });
+      }
+      if (!handleSettingsRequest(req, res, new URL(req.url!, origin), ctx)) { res.writeHead(404); res.end(); }
+    });
     servers.push(server);
     await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
     const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-    const session = (tier: "admin" | "read" | "guest") => {
-      const made = sessions.create({ tier, surface: "local", label: "scratch", tokenEpoch: tokenEpoch(token), ...(tier === "guest" ? { owner: { adapterId: "web", userId: "g" } } : {}) });
-      return { cookie: `agend_session=${made.sessionId}`, origin, "x-agend-csrf": csrfTokenFor(made.sessionId), "content-type": "application/json" } as Record<string, string>;
+    const session = (tier: "admin" | "read" | "guest", surface: "local" | "gateway" = "local") => {
+      const made = sessions.create({ tier, surface, label: "scratch", tokenEpoch: tokenEpoch(token), ...(surface === "gateway" ? { exposureId: "e".repeat(32) } : {}), ...(tier === "guest" ? { owner: { adapterId: "web", userId: "g" } } : {}) });
+      return { cookie: `${surface === "gateway" ? "__Host-" : ""}agend_session=${made.sessionId}`, origin, "x-agend-csrf": csrfTokenFor(made.sessionId), "content-type": "application/json" } as Record<string, string>;
     };
     const post = (headers: Record<string, string>, body: string) => new Promise<{ status: number; raw: string }>((resolve, reject) => {
       const req = request(origin + "/api/settings/public-link/preview-test", { method: "POST", headers }, res => {
         let raw = ""; res.on("data", c => { raw += c; }); res.on("end", () => resolve({ status: res.statusCode!, raw }));
       }); req.on("error", reject); req.end(body);
     });
-    return { post, session, testPreviewRoute };
+    return { post, session, testPreviewRoute, setGateway: (v: boolean) => { gateway = v; } };
   }
   it("an admin's request: the shown address reaches the check; the answer is its closed codes", async () => {
     const h = await api();
@@ -288,6 +298,16 @@ describe("M-3814: the route — admin only, the page's shown address handed on, 
     expect(JSON.parse(r.raw)).toEqual({ steps: [{ step: "values", ok: false, code: "not-saved" }], hostname: PREV, port: 19281 });
     await h.post(h.session("admin"), "{}");
     expect(h.testPreviewRoute).toHaveBeenLastCalledWith({});
+  });
+  it("over the public link (M-3278, as Test connection): on the gateway's list; an admin session is served, read, guest and none are refused", async () => {
+    expect(isPublicWebRoute("POST", "/api/settings/public-link/preview-test")).toBe(true);
+    expect(isPublicWebRoute("GET", "/api/settings/public-link/preview-test")).toBe(false);
+    const h = await api();
+    h.setGateway(true);
+    for (const headers of [h.session("read", "gateway"), h.session("guest", "gateway"), { "content-type": "application/json" }]) expect((await h.post(headers, "{}")).status).toBeGreaterThanOrEqual(401);
+    expect(h.testPreviewRoute).not.toHaveBeenCalled();
+    expect((await h.post(h.session("admin", "gateway"), JSON.stringify({ hostname: PREV }))).status).toBe(200);
+    expect(h.testPreviewRoute).toHaveBeenCalledWith({ hostname: PREV });
   });
   it("refused: read, guest and no session; bad JSON", async () => {
     const h = await api();
