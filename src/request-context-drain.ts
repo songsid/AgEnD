@@ -80,9 +80,12 @@ export class RequestContextDrain {
     if(exists("request_context_recovery_v1")&&this.db.prepare(`SELECT 1 FROM request_context_recovery_v1 WHERE json_extract(pointer_json,'$.contextId') IN (${contexts}) LIMIT 1`).get(rootId))blockers.push("recovery-pointer");
     return blockers;
   }
-  inspect(rootId:string,epoch:string):{blockers:string[];revisions:Map<string,string>} {
+  /** Read-only installation status. Unlike root retirement, this does not fence continuations still finishing. */
+  inspectWork(rootId:string):{blockers:string[];revisions:Map<string,string>} {
     ROOT.parse(rootId);this.ready();const owner=this.owner(),blockers=this.durable(rootId),revisions=new Map<string,string>();
-    if(!owner||!this.fenced(rootId,epoch,owner))blockers.push("drain-owner-or-fence");
+    const context=new RequestContextStore(this.db).context(rootId);
+    if(!context||context.ref.rootContextId!==rootId||context.ref.parentContextId)blockers.push("context-unavailable");
+    if(!owner)blockers.push("drain-owner-unavailable");
     for(const registration of this.usedRegistrations)if(![...this.participants.values()].some(row=>row.value.registration===registration))blockers.push("unregistered-producer");
     for(const family of REQUEST_CONTEXT_DRAIN_FAMILIES)if(![...this.participants.values()].some(row=>row.family===family))blockers.push(`missing:${family}`);
     for(const [id,row]of this.participants){
@@ -93,6 +96,11 @@ export class RequestContextDrain {
       }catch{blockers.push(`unavailable:${id}`);}
     }
     return {blockers,revisions};
+  }
+  inspect(rootId:string,epoch:string):{blockers:string[];revisions:Map<string,string>} {
+    const view=this.inspectWork(rootId),owner=this.owner();
+    if(!owner||!this.fenced(rootId,epoch,owner))view.blockers.push("drain-owner-or-fence");
+    return view;
   }
   prove(rootId:string,epoch:string):RequestContextRetirementProof {
     const owner=this.owner(),membership=this.membership,inspected=this.inspect(rootId,epoch);

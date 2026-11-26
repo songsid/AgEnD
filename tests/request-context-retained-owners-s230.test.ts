@@ -107,3 +107,11 @@ it("a missing retained work row invalidates aggregate revisions even when the tu
  expect(r.factory.turnView(root).unknown).toBe(true);expect(r.factory.callView(root).unknown).toBe(true);expect(r.factory.inputView(root).unknown).toBe(true);
  expect(r.factory.revision()).not.toBe(before);
 });
+
+it("a root-retirement fence refuses queued recovery without throwing from the timer path or leaking a reference",async()=>{
+ const r=rig(),d=await r.bind(),root=randomUUID(),context={ref:{version:1 as const,contextId:root,rootContextId:root},rootEvidenceRef:"outside",
+  initiatingActor:{kind:"unknown" as const,reason:"unidentified" as const},ingress:"restricted-room" as const,source:{instance:"worker",incarnation:r.work.incarnation},sourceAudience:{kind:"room" as const,ref:root}};
+ r.box.requestContextRecovery.retain(context);r.box.requestContextDrain(()=>"fleet").fence(root);
+ d.workingTurnRequestContext={generation:42,snapshot:{context}};let refused=0;d.reportUnrecoveredReplyDrop=()=>{refused++;};
+ expect(()=>d.queueReplyRecoveryPrompt({generation:42})).not.toThrow();expect(refused).toBe(1);expect(r.factory.inputView(root).references).toEqual([]);
+});

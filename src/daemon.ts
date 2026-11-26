@@ -7938,7 +7938,8 @@ export class Daemon extends EventEmitter {
     const registered=parent&&this.requestContextLifecycle?{root:parent.context.ref.rootContextId}:null;
     if(registered){
       if(this.requestContextQueuedWork.has(recoveryInputId))return;
-      this.requestContextQueuedWork.set(recoveryInputId,registered);
+      try{this.requestContextQueuedWork.set(recoveryInputId,registered);}
+      catch{this.turnReplyGuard.complete(turn.generation);this.reportUnrecoveredReplyDrop(turn,"recovery_prompt_delivery_failed");return;}
     }
     this.pasteQueueDepth++;
     this.pasteLock = this.pasteLock.then(async () => {
