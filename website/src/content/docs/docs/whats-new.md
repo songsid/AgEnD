@@ -108,7 +108,7 @@ AgEnD 2.4 is about working together and staying in control. Colleagues can share
 - **Connect your own app.** Under **Settings → Chat & connections → Connect your app**, copy a setup prompt for Claude Code, Codex or another MCP app. The app can list your agents, send ordinary messages, read answers and read the task board. It has no admin or approval tools, the prompt holds no token, and its messages are marked as coming from a local app.
 - **Installing CLIs.** AI CLIs install with one click from Settings and update to versions AgEnD has checked. An npm copy of Claude Code can be switched to the native install with **Switch to the native install**, which runs only when you press it. AgEnD also handles Antigravity's first-run setup, and an unknown screen goes to Needs you.
 - **Usage.** Accounts of one provider can be folded into a single line with a −/+ button. Accounts that no agent uses stay listed.
-- **Audited versions.** The latest audited versions are Claude Code 2.1.331, Codex 0.172.0, Antigravity 1.5.18, Kiro CLI 3.6.2, Grok 1.0.92 and Muse 1.4.25.
+- **Audited versions.** The latest audited versions are Claude Code 2.1.332, Codex 0.172.0, Antigravity 1.5.18, Kiro CLI 3.6.2, Grok 1.0.92 and Muse 1.4.25.
 
 ### Install and platforms
 
