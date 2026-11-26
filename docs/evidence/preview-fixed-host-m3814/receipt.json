@@ -1,5 +1,5 @@
 {
-  "sourceHead": "37e34d102684869e4b9369e78722309db676b2d8",
+  "sourceHead": "9c9f1003f40676e394b563e9266aa569c843d207",
   "dirty": [],
   "checks": [
     {
@@ -40,6 +40,10 @@
     },
     {
       "name": "desk-light-en 2: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: the port field is \"Port for the fixed address\" (step 3's \"not 19282\" points at it)",
       "ok": true
     },
     {
@@ -143,6 +147,10 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW 2: the port field is \"固定網址用的埠\" (step 3's \"not 19282\" points at it)",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 2: 「規則」 kept whole in the fixed address's card",
       "ok": true
     },
@@ -187,7 +195,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 4: 「使用」 kept whole",
+      "name": "phone-dark-zh-TW 4: 「連得到」 kept whole",
       "ok": true
     },
     {
@@ -210,11 +218,11 @@
   "pictures": [
     {
       "path": "m3814-desk-light-en-1-notice.png",
-      "sha256": "d0ef1bf675715013cd5a0819b57183d9c4fdfd4e9c3c7a65319075caf50b5abe"
+      "sha256": "0c84d1491088196b7f828612122b34ec55a7c41e608dedf90df09854d13784bb"
     },
     {
       "path": "m3814-desk-light-en-2-settings-landed.png",
-      "sha256": "f2557e7bbfd907a28793d5b2d37e0ba20122684655b9f6d699a186913dcbdfcd"
+      "sha256": "57726cdea15fb7c531cc28969d645ec7684804948fa2ab3e5cee4dd2b74bf20d"
     },
     {
       "path": "m3814-desk-light-en-2b-route-step.png",
@@ -222,7 +230,7 @@
     },
     {
       "path": "m3814-desk-light-en-2c-no-fixed-hostname.png",
-      "sha256": "0ef1962aabe3fddbf284a1624e24ba15af11928530b18bde3940235ab77f4d81"
+      "sha256": "fe0f2ef3cba7cb38f46b5650d77ea234a10572dd1dce18f77b697edabb23bf45"
     },
     {
       "path": "m3814-desk-light-en-3-saved.png",
@@ -230,15 +238,15 @@
     },
     {
       "path": "m3814-desk-light-en-4-check.png",
-      "sha256": "eeb6fe1f0aec3584b7af624f91c04c3c70289ed1bcad60eb45f6ceabb4f68431"
+      "sha256": "ffed9ca8b36f92347c1ef8f1f7073b0d15b18b31604e2e8c8acf31a37d603040"
     },
     {
       "path": "m3814-phone-dark-zh-TW-1-notice.png",
-      "sha256": "d0dbdba439b384eee2a0f66321af9a9307a0b96c07359e965a1d01923eb5c9ce"
+      "sha256": "29f2f823efdb3e0a6d5265f48ebf04b581d1942d11cb1a0d9e8202565b1d8bc3"
     },
     {
       "path": "m3814-phone-dark-zh-TW-2-settings-landed.png",
-      "sha256": "bc5d418ea703f9c8980f8ebfede3594dc4545f393c47c8ce22326b842f6c339f"
+      "sha256": "6b93c80701d4aeac1c9aef3adc8a215cb436152ee7dff19868f1949701010fae"
     },
     {
       "path": "m3814-phone-dark-zh-TW-2b-route-step.png",
@@ -246,9 +254,9 @@
     },
     {
       "path": "m3814-phone-dark-zh-TW-4-check.png",
-      "sha256": "5613cc14346c16b8fca3e84813fc2ffd7abfd8f9073521f39885111fa27f43e0"
+      "sha256": "3ad3a8d349607befe9e0ac1b56e6578c0379dad49c7b35b04dd75b374c4a3d3a"
     }
   ],
-  "passed": 51,
-  "total": 51
+  "passed": 53,
+  "total": 53
 }
