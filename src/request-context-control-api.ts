@@ -21,7 +21,32 @@ export interface RequestContextControlHost {
   principal(req: IncomingMessage, url: URL): RequestContextControlPrincipal | null;
   permitContinuation(req: IncomingMessage, res: ServerResponse): boolean;
   read(actor: RequestContextControlPrincipal): RequestContextControlView | Promise<RequestContextControlView>;
+  /** Already-derived state for passive channels; never runs readiness or any installer mutation. */
+  snapshot(): RequestContextControlView | null;
   change(input: Readonly<{ revision: number; action: "enable" | "disable" | "check" }>, actor: RequestContextControlPrincipal): RequestContextControlView | Promise<RequestContextControlView>;
+}
+export function projectRequestContextControl(req: IncomingMessage, url: URL, host: RequestContextControlHost | undefined,
+  value: unknown): RequestContextControlView | undefined {
+  try {
+    const actor = host?.principal(req, url);
+    if (!live(actor ?? null)) return;
+    const view = RequestContextControlViewSchema.parse(value);
+    if (!actor!.current()) return;
+    return { ...view, canChange: view.canChange && actor!.verified };
+  } catch { return; }
+}
+export function projectRequestContextNeeds(req: IncomingMessage, url: URL, host: RequestContextControlHost | undefined,
+  items: unknown[]): unknown[] {
+  return items.flatMap(item => {
+    if (!item || typeof item !== "object" || (item as { reason?: string }).reason !== "request_context_cutover") return [item];
+    const view = projectRequestContextControl(req, url, host, (item as { requestContextCutover?: unknown }).requestContextCutover);
+    return view ? [{ ...item, requestContextCutover: view }] : [];
+  });
+}
+export function requestContextControlSnapshot(req: IncomingMessage, url: URL, host: RequestContextControlHost | undefined): RequestContextControlView | null | undefined {
+  if (!host) return;
+  try { return projectRequestContextControl(req, url, host, host.snapshot?.()) ?? null; }
+  catch { return null; }
 }
 const decision = z.strictObject({ revision: z.number().int().nonnegative(), action: z.enum(["enable", "disable", "check"]) });
 const live = (actor: RequestContextControlPrincipal | null): actor is RequestContextControlPrincipal => {

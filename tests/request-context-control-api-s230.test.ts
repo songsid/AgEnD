@@ -1,6 +1,6 @@
 import { PassThrough } from "node:stream";
 import { expect, it, vi } from "vitest";
-import { handleRequestContextControlApi, type RequestContextControlHost, type RequestContextControlView } from "../src/request-context-control-api.js";
+import { handleRequestContextControlApi, projectRequestContextControl, projectRequestContextNeeds, requestContextControlSnapshot, type RequestContextControlHost, type RequestContextControlView } from "../src/request-context-control-api.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
 
@@ -10,6 +10,7 @@ function rig() {
   const view: RequestContextControlView = { revision: 2, enabled: true, everActivated: false, phase: "blocked", canChange: true,
     blockers: [{ id: "owner-fixture", kind: "owners", labels: ["Demo worker"] }] };
   const host: RequestContextControlHost = { principal: () => ({ binding, verified, current: () => allowed }),
+    snapshot: () => view,
     permitContinuation: (_req, res) => { if (continued) return true; res.writeHead(403); res.end(JSON.stringify({ error: "csrf" })); return false; },
     read: vi.fn(() => view), change: vi.fn((input, actor): RequestContextControlView => {
       if (!actor.current() || !actor.verified) throw Error("owner-required");
@@ -77,4 +78,23 @@ it("both control methods are routed on quick and named links; the same owner gat
   expect(isPublicWebRoute("GET", path)).toBe(true); expect(isPublicWebRoute("POST", path)).toBe(true);
   const r = rig(); r.revoke();
   expect((await r.request().done()).status).toBe(403); expect((await r.request("POST").done()).status).toBe(403);
+});
+it("passive Needs you and stream state are scoped to the same current owner, including before verification", () => {
+  const r = rig(), req = {} as any, url = new URL("http://localhost/ui/needs");
+  const ordinary = { id: "ordinary" }, item = { id: "cutover", reason: "request_context_cutover", requestContextCutover: r.view };
+  expect(projectRequestContextNeeds(req, url, undefined, [ordinary, item])).toEqual([ordinary]);
+  expect(projectRequestContextNeeds(req, url, r.host, [item])).toEqual([{ ...item, requestContextCutover: { ...r.view, canChange: false } }]);
+  r.verify(); expect(projectRequestContextControl(req, url, r.host, r.view)?.canChange).toBe(true);
+  r.revoke(); expect(projectRequestContextNeeds(req, url, r.host, [ordinary, item])).toEqual([ordinary]);
+  expect(projectRequestContextControl(req, url, r.host, r.view)).toBeUndefined();
+});
+it("passive poll/reconnect snapshots neither run readiness nor leak a revoked owner's state", () => {
+  const r = rig(), req = {} as any, url = new URL("http://localhost/ui/poll");
+  r.host.snapshot = vi.fn(() => r.view);
+  expect(requestContextControlSnapshot(req, url, undefined)).toBeUndefined();
+  expect(requestContextControlSnapshot(req, url, r.host)).toMatchObject({ phase: "blocked", canChange: false });
+  expect(r.host.read).not.toHaveBeenCalled(); expect(r.host.change).not.toHaveBeenCalled();
+  r.revoke(); expect(requestContextControlSnapshot(req, url, r.host)).toBeNull();
+  r.host.snapshot = () => { throw Error("PRIVATE_FLEET_STATE"); };
+  expect(requestContextControlSnapshot(req, url, r.host)).toBeNull();
 });

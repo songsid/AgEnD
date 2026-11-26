@@ -1,4 +1,5 @@
 import { handleRequestContactApi, type RequestContactApiHost } from "./request-contact-api.js";
+import { projectRequestContextControl, projectRequestContextNeeds, requestContextControlSnapshot, type RequestContextControlHost } from "./request-context-control-api.js";
 import { historyQuery } from './host-monitoring-history-policy.js';
 import { instructionFileSizes } from "./instruction-file-sizes.js";
 import { handleClaudeCredentials, type ClaudeCredentialApi } from "./web-claude-credentials.js";
@@ -269,6 +270,7 @@ const safeInstanceSegment = (name: string): boolean => /^[^\\/\x00]+$/.test(name
 const streamGuests = new WeakMap<ServerResponse, GuestRequest>();
 const streamContactProjection = new WeakMap<ServerResponse, (event: string, data: unknown) => unknown>();
 function contactNeedsFor(req: IncomingMessage, url: URL, ctx: WebApiContext, base: unknown[]): unknown[] {
+  base = projectRequestContextNeeds(req, url, ctx.requestContextControl, base);
   const auth=evaluateWebRequest(req as unknown as WebGateRequest,url,ctx.webToken??null,ctx.webSessions,{touch:false});
   const admin=auth.kind==='allow'&&auth.via==='session'&&auth.session.tier==='admin';
   base=admin?base:base.filter(item=>!item||typeof item!=='object'||(item as {type?:string}).type!=='host');
@@ -447,6 +449,7 @@ export interface AccountMachine { id: string; actor: string }
 export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
 
 export interface WebApiContext extends ClaudeCredentialApi {
+  requestContextControl?: RequestContextControlHost;
   /** Uninstalled until L. New API reads/decisions do not replace legacy routes while OFF. */
   requestContactApi?:RequestContactApiHost;
   hostHistoryQuery?(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult>;
@@ -2592,6 +2595,7 @@ export function handleWebRequest(
       // #1386: "Needs you" rides the passive channels only — no endpoint of its own to poll. Over the public link,
       // without the task board's hidden cards (#2306 review).
       needs: visibleNeeds(ctx, linkRestricted(req, url, ctx), contactNeedsFor(req, url, ctx, ctx.needsYouItems?.() ?? [])),
+      requestContextCutover: requestContextControlSnapshot(req, url, ctx.requestContextControl),
       // #1577: the newest message this answer accounts for — after a restart, the last restored one until this process
       // records its own (`<boot>-0` would be after(0): the whole restored history again on every poll).
       cursor: history ? history.pollCursor() : null,
@@ -2626,6 +2630,7 @@ export function handleWebRequest(
     const guest = guestRequestOf(req);
     if (guest) { streamGuests.set(res, guest); guest.streamOpened?.(); }
     if (!guest) streamContactProjection.set(res, (event, value) => {
+      if (event === "request-context-control") return projectRequestContextControl(req, url, ctx.requestContextControl, value) ?? null;
       if (event === "needs") return { items: contactNeedsFor(req, url, ctx,
         (value && typeof value === "object" && Array.isArray((value as { items?: unknown }).items)) ? (value as { items: unknown[] }).items : []) };
       if (event === "contact-auth") {
@@ -2664,6 +2669,7 @@ export function handleWebRequest(
     if (!guest && ctx.listWebPrompts) res.write(`event: prompts\ndata: ${JSON.stringify(ctx.listWebPrompts())}\n\n`);
     // #1386: and "Needs you" as it is now; changes follow as `needs` events.
     if (!guest && ctx.needsYouItems) res.write(`event: needs\ndata: ${JSON.stringify({ items: contactNeedsFor(req, url, ctx, ctx.needsYouItems()) })}\n\n`);
+    if (!guest && ctx.requestContextControl) res.write(`event: request-context-control\ndata: ${JSON.stringify(requestContextControlSnapshot(req, url, ctx.requestContextControl) ?? null)}\n\n`);
     ctx.sseClients.add(res);
     // #1956: the heartbeat's status comes from the one build every open stream shares each tick (statusTick), with
     // this stream's own projection; this stream's checks stay its own.

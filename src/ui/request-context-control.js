@@ -10,6 +10,7 @@ register("requestContextControl", {
   en: {
     title: "Request-based contact approvals", on: "On. Approvals follow each request.",
     off: "Off. Your own messages go through as usual; requests that came from outside wait for your decision.",
+    offBefore: "Not enabled. Contacts haven't changed.",
     draining: "Turning off. Waiting for current work to finish.", blocked: "Request-based approvals are waiting.",
     confirmTitle: "Turn off request-based approvals?", confirm: "Turn off",
     confirmBody: "New outside requests will wait while current work finishes. Then your own messages go through as usual; outside requests wait for your decision.",
@@ -25,6 +26,7 @@ register("requestContextControl", {
   "zh-TW": {
     title: "依請求核准聯絡", on: "已開啟。核准只跟著這次請求。",
     off: "已關閉。你自己的訊息照常；從外部來的請求會等你決定。",
+    offBefore: "尚未開啟，聯絡方式沒有變更。",
     draining: "正在關閉，等目前的工作結束。", blocked: "依請求核准尚未開啟。",
     confirmTitle: "關閉依請求核准聯絡？", confirm: "關閉",
     confirmBody: "新的外部請求會先等候，直到目前的工作結束。之後，你自己的訊息照常；從外部來的請求會等你決定。",
@@ -53,8 +55,22 @@ export function RequestContextBlocked({ state, onCheck, busy = false }) {
 }
 /** Passive Needs-you payload, from the same owner status as Settings. No background GET or timer. */
 export function RequestContextNeed({ item }) {
+  const lease = useLease(`request-context-need:${item.id}`), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), writing = useRef(false);
+  const state = item.requestContextCutover;
+  const check = async () => {
+    if (writing.current || !state?.canChange) return;
+    writing.current = true; setBusy(true); setFailed(false);
+    try {
+      const response = await lease.fetch("/api/settings/request-context", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: state.revision, action: "check" }) });
+      if (!lease.current()) return;
+      if (!response.ok && response.status !== 409) throw Error("refused");
+    } catch { if (lease.current()) setFailed(true); }
+    finally { writing.current = false; if (lease.current()) setBusy(false); }
+  };
   return html`<article class="card"><h3>${requestContextControlText("title")}</h3>
-    <${RequestContextBlocked} state=${item.requestContextCutover} />
+    <${RequestContextBlocked} state=${state} busy=${busy} onCheck=${state?.canChange ? check : null} />
+    ${state && !state.canChange ? html`<${AuthorizeChip} />` : null}
+    ${failed ? html`<p class="notice warn" role="alert">${requestContextControlText("failed")}</p>` : null}
     <a class="btn btn-sm" href="/settings/access#request-context">${requestContextControlText("open")}</a></article>`;
 }
 export function RequestContextSettings() {
@@ -70,7 +86,7 @@ export function RequestContextSettings() {
     } catch { if (lease.current()) setFailed(true); }
   };
   useEffect(() => { void load(); }, [lease]);
-  useEffect(() => { if (pushed && lease.current()) setState(pushed); }, [pushed, lease]);
+  useEffect(() => { if (pushed !== undefined && lease.current()) setState(pushed); }, [pushed, lease]);
   const change = async action => {
     if (writing.current || !state || !state.canChange) return;
     writing.current = true; setBusy(true); setFailed(false);
@@ -92,7 +108,7 @@ export function RequestContextSettings() {
       disabled=${busy || !state.canChange || state.phase === "draining"} onChange=${event => { event.target.checked = state.enabled; void change(state.enabled ? "disable" : "enable"); }} />
       <span>${requestContextControlText("title")}</span></label>
       ${["blocked", "draining"].includes(state.phase) ? html`<${RequestContextBlocked} state=${state} busy=${busy} onCheck=${state.canChange ? () => change("check") : null} />`
-        : html`<p role="status">${requestContextControlText(state.phase)}</p>`}
+        : html`<p role="status">${requestContextControlText(state.phase === "off" && !state.everActivated ? "offBefore" : state.phase)}</p>`}
       <p class="note">${requestContextControlText(state.everActivated ? "floor" : "floorBefore")}</p>
       ${!state.canChange ? html`<${AuthorizeChip} />` : null}` : !failed ? html`<p>${requestContextControlText("loading")}</p>` : null}
     ${failed ? html`<p class="notice warn" role="alert">${requestContextControlText(state ? "failed" : "error")}</p><button class="btn btn-sm" type="button" disabled=${busy} onClick=${load}>${requestContextControlText("check")}</button>` : null}
