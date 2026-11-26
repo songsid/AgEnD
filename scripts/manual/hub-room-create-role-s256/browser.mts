@@ -16,7 +16,7 @@ const hash=(value:string|Buffer)=>createHash("sha256").update(value).digest("hex
 const receipt:any={mode,head:git("rev-parse","HEAD"),tree:git("rev-parse","HEAD^{tree}"),dirty:git("status","--porcelain","--untracked-files=no"),checks:[],screens:[],errors:[],scope:"Initialized production Hub runtime, HTTPS, SQLite and UI with synthetic directory identities only. No Fleet or provider process; Chromium headless under WSL."};
 const check=(label:string,value:unknown)=>{receipt.checks.push({label,pass:!!value});if(!value)throw Error(label);};
 const port=async()=>{const server=createServer();await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));const value=(server.address() as any).port;await new Promise<void>(resolve=>server.close(()=>resolve()));return value;};
-const requested=process.env.STAGES?.split(","),wanted=(stage:string)=>!requested||requested.includes(stage);receipt.stages=requested??["roles","permissions","create","assign","review","audit"];
+const requested=process.env.STAGES?.split(","),wanted=(stage:string)=>!requested||requested.includes(stage);receipt.stages=requested??["role","assign","creators","flows"];
 let runtime:any,browser:any,certs:any;
 try{
  const [{createHubInitializer},{hubIdentityProvider},{makeTestCerts,ADMIN},{HubRuntime},{default:yaml}]=await Promise.all([load("src/hub/init/initializer.ts"),load("src/hub/init/identity.ts"),load("tests/support/hub-init-fixtures.ts"),load("src/hub/runtime.ts"),import("js-yaml")]);
@@ -47,6 +47,7 @@ try{
   const preview=await request("/preview",{policy:view.policy});await request("/apply",{policy:view.policy,previewDigest:preview.previewDigest});
  },{product});
  check("real HTTP saves a custom creation role and eligible AD-group assignment",true);
+ if(wanted("flows")){
  const memberContext=await browser.newContext({ignoreHTTPSErrors:true});await memberContext.addInitScript("window.__name=fn=>fn;");
  const member=await memberContext.newPage();await member.goto(origin+"/ui/hub");await member.locator("#hubLogin").fill(alex.login);await member.locator("#hubPassword").fill("Synthetic-browser-only");await member.locator("#hubPassword").press("Enter");await member.locator("#hubLogin").waitFor({state:"detached"});
  const memberCall=async(path:string,body?:any)=>member.evaluate(async({path,body}:any)=>{const session=await(await fetch("/hub/v1/session")).json();const response=await fetch(path,{method:body===undefined?"GET":"POST",headers:body===undefined?{}:{"Content-Type":"application/json","X-AgEnD-Hub-CSRF":session.csrf},...(body===undefined?{}:{body:JSON.stringify(body)})});return{status:response.status,body:await response.json()};},{path,body});
@@ -54,6 +55,7 @@ try{
  roomCreatorMember=false;const refused=await memberCall("/hub/v1/rooms",{name:"No longer a creator"});check("fresh AD membership removal refuses new creation",refused.status===403);
  const kept=await memberCall("/hub/v1/rooms/"+made.body.room.id);check("AD membership removal preserves existing room manager",kept.status===200&&kept.body.me?.role==="manager");
  roomCreatorMember=true;await memberContext.close();
+ }
  await seedContext.close();
  for(const device of ["desk","phone"])for(const lang of ["en","zh-TW"]){
   const tag=`${device}-dark-${lang}`,zh=lang==="zh-TW",context=await browser.newContext({ignoreHTTPSErrors:true,viewport:device==="phone"?{width:390,height:844}:{width:1366,height:1000},isMobile:device==="phone",hasTouch:device==="phone",locale:lang});
@@ -70,11 +72,22 @@ try{
    await row.scrollIntoViewIfNeeded();check(tag+" granted role row",(await row.innerText()).includes("✓"));
    await page.evaluate(()=>document.fonts.ready);
    const capture=async(stage:string)=>{check(tag+" "+stage+" no horizontal overflow",await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth<=1));const file=`${tag}-${stage}.png`;await page.screenshot({path:join(out,file),fullPage:true});receipt.screens.push({file,sha256:hash(readFileSync(join(out,file)))});};
-   await capture("role");
+   if(wanted("role"))await capture("role");
+   if(wanted("assign")){
+    await page.getByRole("tab",{name:new RegExp("^"+(zh?"人員":"People"))}).click();
+    await page.getByRole("button",{name:zh?"指派人員或 AD 群組":"Assign people or AD groups",exact:true}).click();
+    const panel=page.locator(".hub-role-panel"),subject=panel.locator("select").nth(1);
+    check(tag+" room role permits AD-group recipients",await subject.locator('option[value="group"]').isEnabled());
+    await subject.selectOption("group");
+    check(tag+" AD-group wording explicit",(await panel.innerText()).includes(zh?"管理這個 AD 群組":"manages this AD group"));
+    await capture("assign");
+   }
+   if(wanted("creators")){
    await page.goto(origin+"/ui/hub/admin?view=manage");await page.locator(".hub-admin-creators").waitFor();await page.locator(".hub-admin-creators").scrollIntoViewIfNeeded();
    check(tag+" Administration explains independent role grants",(await page.locator(".hub-admin-creators").innerText()).includes(zh?"開房間」權限":"Create rooms role permission"));
    check(tag+" list and role grants remain independent",(await page.locator(".hub-admin-creators").innerText()).includes(zh?"不會移除他的角色授權":"does not remove their role grant"));
    await capture("creators");
+   }
   }finally{await context.close();}
  }
  check("no page errors",receipt.errors.length===0);
