@@ -1,5 +1,6 @@
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, copyFileSync, readdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 import { afterEach, expect, it } from "vitest";
@@ -7,7 +8,7 @@ import { commitRequestContextActivation, readRequestContextActivations, requestC
 import { registerRequestContextDispatcher } from "../src/request-context-compatibility.js";
 const close: Database.Database[] = [];
 const homes: string[] = [];
-afterEach(() => { for (const db of close.splice(0)) db.close(); for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true }); });
+afterEach(() => { for (const db of close.splice(0)) if (db.open) db.close(); for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true }); });
 function snapshot(db: Database.Database, readonly = true) {
   const dir = mkdtempSync(join(tmpdir(), "activation-snapshot-")); homes.push(dir);
   const path = join(dir, "outbox.db"); writeFileSync(path, db.serialize());
@@ -80,4 +81,20 @@ it("an older activated snapshot cannot erase a later activation epoch, even with
   commitRequestContextActivation(r.db, { ...r.value, epoch: "epoch-2", activatedAt: 1000, invalidates: [], offeredLatestDeadline: null }, r.lease, () => true);
   expect(requestContextGoBackAllowed(r.db, id, 99999, old)).toBe(false);
   expect(requestContextGoBackAllowed(r.db, id, 0, snapshot(r.db))).toBe(true);
+});
+
+it("a verified private copy can inspect a WAL snapshot without changing the immutable snapshot tree", () => {
+  const r = rig(); commitRequestContextActivation(r.db, r.value, r.lease, () => true);
+  const source = snapshot(r.db, false), path = source.name; source.pragma("journal_mode = WAL");
+  source.pragma("wal_checkpoint(TRUNCATE)"); source.close();
+  const directory = dirname(path), files = readdirSync(directory);
+  const before = readFileSync(path), digest = createHash("sha256").update(before).digest("hex");
+  expect(before[18]).toBe(2); // WAL header survives the checkpointed standalone .db.
+  const scratch = mkdtempSync(join(tmpdir(), "verified-snapshot-copy-")); homes.push(scratch);
+  const copy = join(scratch, "outbox.db"); copyFileSync(path, copy);
+  expect(createHash("sha256").update(readFileSync(copy)).digest("hex")).toBe(digest);
+  const candidate = new Database(copy, { readonly: true, fileMustExist: true }); close.push(candidate);
+  expect(requestContextGoBackAllowed(r.db, "20261126T010209Z-deadbeef", 0, candidate)).toBe(true);
+  expect(readdirSync(directory)).toEqual(files);
+  expect(createHash("sha256").update(readFileSync(path)).digest("hex")).toBe(digest);
 });

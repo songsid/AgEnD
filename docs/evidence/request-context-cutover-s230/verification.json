@@ -1,10 +1,11 @@
 {
   "stage": "Selected B UI and dormant safety checkpoint; no production activation/full-mode claim",
-  "sourceHead": "3930920b36d71ab7ccdfcd64a6b8b41b2ba3bf22",
+  "sourceHead": "0c8ad02ace309af4cdff8b0701616bb71bbda1f1",
   "focused": {
     "files": 21,
-    "passed": 315,
-    "failed": 0
+    "passed": 318,
+    "failed": 0,
+    "note": "Final wording source before the additional WAL-copy regression"
   },
   "typecheckTests": "pass",
   "changelog": "860 fragments OK",
@@ -26,18 +27,20 @@
     }
   ],
   "captures": {
-    "uniquePictures": 120,
-    "sources": 2,
+    "uniquePictures": 128,
+    "sources": 3,
     "checksByReceipt": [
       737,
       401,
-      4
+      4,
+      469
     ],
-    "individualVisualInspection": "120/120 final originals, no remaining visual exception",
-    "galleryDecodedPngHashes": 120,
+    "finalDeltaPictures": 72,
+    "individualVisualInspection": "128/128 final originals; no remaining visual exception",
+    "galleryDecodedPngHashes": 128,
     "galleryBytes": [
-      8449436,
-      3650034
+      9184714,
+      3954790
     ],
     "localBrowserDecodeAndFilter": "pass"
   },
@@ -55,5 +58,18 @@
       "result": "red"
     }
   ],
-  "neighborLimit": "update-locks-m3770 missing-home cross-process case fails locally on this branch and untouched prior6daa35da; source unchanged and author notified"
+  "neighborLimit": "update-locks-m3770 missing-home child lifetime race reproduced on prior6daa35da; author confirms test-only fix #4523cd1b8281f, not yet merged into this branch",
+  "latestAffected": {
+    "files": 5,
+    "passed": 66,
+    "failed": 0,
+    "note": "Includes WAL snapshot private-copy preservation regression; final restored helper"
+  },
+  "snapshotPreservationMutation": [
+    {
+      "mutation": "skip-snapshot-preservation",
+      "test": "tests/request-context-activation-s230.test.ts",
+      "result": "red"
+    }
+  ]
 }

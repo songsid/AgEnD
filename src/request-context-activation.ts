@@ -28,7 +28,8 @@ export function readRequestContextActivations(db: Database.Database): readonly R
     invalidates: JSON.parse(r.invalidates_json), offeredLatestDeadline: r.offered_latest_deadline }));
 }
 /**
- * Before any restore, under updater locks and the EXCLUSIVE lease, pass the actual verified snapshot opened readonly.
+ * Before any restore, under updater locks and the EXCLUSIVE lease, pass a manifest-hash-verified private copy of the actual snapshot, opened readonly.
+ * Never open the immutable snapshot in place: even readonly WAL opens can create sidecars.
  * A timestamp cannot prove ordering: a backwards clock can stamp a pre-activation commit later than activation.
  * Only preservation of the live activation history proves that restoration will not erase the version floor.
  */
