@@ -69,7 +69,7 @@ describe("M-3814: the preview address in Settings → Access", () => {
     expect(w.$("publicWebPreviewHostname").getAttribute("placeholder")).toBe("preview.agend.example.net");
     expect(w.steps()).toEqual([
       "Open this tunnel's Routes tab → Add route → Published application.",
-      "Hostname: a name such as preview.agend.example.com",
+      "Hostname: a name such as preview.agend.example.net",
       "Service URL: http://127.0.0.1:19281 (the preview port; not the origin port above).",
       "Save the route. Cloudflare adds the DNS record by itself.",
       "Fill in the address here, save, then press Check with the fixed link open.",
@@ -110,6 +110,23 @@ describe("M-3814: the preview address in Settings → Access", () => {
     await w.apply();
     expect(w.webWrites()).toEqual([]);
     expect(p.root.querySelector(".fixed-preview")!.textContent).toContain("A preview address needs the fixed public hostname above.");
+  });
+  it("saving on Sharing keeps Sharing open after the reload that redraws the form (it fell back to Overview)", async () => {
+    const w = await open(named());
+    const tab = (id: string) => p.root.querySelector(`[data-settings-tabs=access][data-settings-tab=${id}]`) as any;
+    fire(p.root.querySelector("#access-tab-sharing"), "click"); await settle(4);
+    expect(tab("sharing").hidden).toBe(false);
+    const before = w.$("publicWebPreviewHostname");
+    await w.type(before, "preview.agend.example.net");
+    fleet.web.public_link.preview_hostname = "preview.agend.example.net";
+    await w.apply(); await settle(16);
+    expect(w.$("publicWebPreviewHostname"), "the form was redrawn from the reload").not.toBe(before);
+    expect(tab("sharing").hidden, "still on Sharing").toBe(false);
+    expect(tab("overview").hidden).toBe(true);
+  });
+  it("a new visit to Access still opens on Overview", async () => {
+    await open(named());
+    expect((p.root.querySelector("[data-settings-tabs=access][data-settings-tab=overview]") as any).hidden).toBe(false);
   });
   it("Settings' search finds it", async () => {
     const { searchSettings } = await import("/ui/js/settings-registry.js");

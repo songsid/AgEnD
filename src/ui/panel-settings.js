@@ -164,6 +164,10 @@ export function SettingsPanel({ route, navKey }) {
   const stagedRef = useRef(staged);
   stagedRef.current = staged;
   const [dialog, setDialog] = useState(null);         // { kind, ...props, key: navKey }
+  // M-3814: a section's open tab for this navigation, kept across the reload that remounts it after a save (its key
+  // moves with loadedAt): saving on Access → Sharing no longer drops back to Overview a moment later.
+  const tabMemory = useRef({ navKey: null, tabs: {} });
+  if (tabMemory.current.navKey !== navKey) tabMemory.current = { navKey, tabs: {} };
   const [search, setSearch] = useState("");
   // #2347: each section's draft while it is edited (settings-draft.js), and the epoch that remounts the sections when
   // the drafts go: a Save that went through whole, or Discard. A Save that failed keeps them (what did not land is staged
@@ -400,7 +404,7 @@ export function SettingsPanel({ route, navKey }) {
   // #2347: sections read `staged` (each change as staged, its extra fields kept: Guests carries its whole draft) and
   // `drafts` to come back to their edits; `draftEpoch` moves on Discard and after a Save to start them from what is saved.
   const ctx = data && !data.error ? makeCtx(data, setData, stage, unstage, reload, reloadLive, () => mount.current(),
-    { drafts: drafts.current, draftEpoch, staged, savingDrafts: () => submitted.current,
+    { drafts: drafts.current, draftEpoch, staged, savingDrafts: () => submitted.current, tabMemory: tabMemory.current,
       savingStaged: () => (submitted.current || operationActive() ? submittedStaged.current : null) }) : null;
   // #1519 P7: "Connect a chat app" on the first-run card elsewhere came here for the wizard: it opens once the data is in.
   // #2347: it writes a connection and an agent at once — not while a fleet.yaml edit waits to be saved.
@@ -1333,7 +1337,9 @@ export function uploadMbInEffect(web) {
 }
 function WebSection({ ctx, staged, part = "all" }) {
   const { schema } = ctx;
-  const [accessTab, setAccessTab] = useSettingsTabs("access", "overview");
+  const memory = ctx.tabMemory || null;
+  const [accessTab, setAccessTab] = useSettingsTabs("access", (memory && memory.tabs.access) || "overview");
+  useEffect(() => { if (memory) memory.tabs.access = accessTab; }, [accessTab, memory]);
   const web = ctx.fleet.web || {}, local = (web.session && web.session.local) || {}, term = ctx.fleet.web_terminal || {};
   const plSession = (web.session && web.session.public_link) || {};   // #3708
   // M-3278 (decision 7933bf90): over the public link an admin edits these as anywhere (Guests and Web authority included);
@@ -1590,7 +1596,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       <p class="note">${tn("namedTunnelHint")} <a href="https://github.com/songsid/AgEnD/blob/main/docs/named-tunnel.md" target="_blank" rel="noopener noreferrer">${tn("namedTunnelSetup")}</a></p>
       ${String(f.hostname || "").trim() ? html`<${NamedLinkTest} hostname=${f.hostname} port=${f.originPort} protocol=${f.protocol} />` : null}
       ${named || String(f.previewHost || "").trim() ? html`<${FixedPreviewAddress} field=${html`<div class=${fc("field", "previewHost")}><label for="publicWebPreviewHostname">${tn("previewHostname")}<${Impact} schema=${schema} field="web.public_link.preview_hostname" /></label><input id="publicWebPreviewHostname" type="text" value=${f.previewHost} placeholder=${previewHostPlaceholder(f.hostname)} class=${errors.previewHost ? "invalid" : ""} onInput=${(e) => set("previewHost")(e.target.value)} /><${Feedback} error=${errors.previewHost} /></div>`}
-        hostname=${String(f.previewHost || "").trim()} saved=${bareHost(f.previewHost) !== "" && bareHost(f.previewHost) === bareHost(web.public_link && web.public_link.preview_hostname)} port=${previewPortOf(ctx.fleet)} />` : null}
+        hostname=${String(f.previewHost || "").trim()} placeholder=${previewHostPlaceholder(f.hostname)} saved=${bareHost(f.previewHost) !== "" && bareHost(f.previewHost) === bareHost(web.public_link && web.public_link.preview_hostname)} port=${previewPortOf(ctx.fleet)} />` : null}
       <div class="grid2">
         <div class=${fc("field", "ttl")}><label for="publicWebTtl">${tn(named ? "publicTtlNamed" : "publicTtl")}</label><input id="publicWebTtl" type="number" min=${named ? "0" : "1"} max=${named ? "10080" : "480"} step="1" class=${errors.ttl ? "invalid" : ""} value=${f.ttl} onInput=${(e) => set("ttl")(e.target.value)} /><${Feedback} error=${errors.ttl} /></div>
         <div class=${fc("field", "protocol")}><label for="publicWebProtocol">${tn("publicProtocol")}</label><${Select} id="publicWebProtocol" value=${f.protocol} onChange=${set("protocol")} options=${["http2", "quic", "auto"]} /></div>

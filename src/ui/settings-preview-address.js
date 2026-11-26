@@ -107,7 +107,7 @@ export function previewPortOf(fleet) {
 }
 
 /** The field, the one route step, and Check (on the saved address). */
-export function FixedPreviewAddress({ field, hostname, saved, port }) {
+export function FixedPreviewAddress({ field, hostname, saved, port, placeholder }) {
   const lease = useLease("fixed-preview-check");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -135,7 +135,7 @@ export function FixedPreviewAddress({ field, hostname, saved, port }) {
       <summary>${tn("pvaStepsTitle")}</summary>
       <ol>
         <li>${tn("pvaStep1")}</li>
-        <li>${host ? tn("pvaStep2", host) : tn("pvaStep2Any", "preview.agend.example.com")}</li>
+        <li>${host ? tn("pvaStep2", host) : tn("pvaStep2Any", placeholder || "preview.agend.example.com")}</li>
         <li>${tn("pvaStep3", port ?? "—")}</li>
         <li>${tn("pvaStep4")}</li>
         <li>${tn("pvaStep5")}</li>

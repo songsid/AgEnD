@@ -55,6 +55,13 @@ fm.emitSseEvent("message", { instance: "dev", sender: "dev", role: "agent", text
 const W = (zh: boolean, en: string, zhText: string) => (zh ? zhText : en);
 const scroll = async (page: any) => page.evaluate(`({ w: innerWidth, s: document.documentElement.scrollWidth })`);
 const waitFor = async (page: any, expr: string, ms = 10000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await page.evaluate(expr)) return true; await page.waitForTimeout(100); } return false; };
+// A word kept on one line: its text range's boxes share one top.
+const unsplit = async (page: any, word: string, root: string) => page.evaluate(`(() => { const w = ${JSON.stringify(word)};
+  const walk = document.createTreeWalker(document.querySelector(${JSON.stringify(root)}), NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) { const i = n.data.indexOf(w); if (i < 0) continue;
+    const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + w.length);
+    return new Set([...r.getClientRects()].filter((b) => b.width).map((b) => Math.round(b.top))).size === 1; }
+  return null; })()`);
 const inView = async (page: any, sel: string) => page.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const r = e.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.height > 0; })()`);
 
 let saved = false;
@@ -80,6 +87,7 @@ async function walk(c: any) {
     check(`${tag} 1: the link is the accent colour (blue), underlined, unlike the note`, card.color !== card.noteColor && card.underline === "underline", card);
     check(`${tag} 1: Download is offered; Preview is not`, card.dl && !card.run, card);
     const sc1 = await scroll(page); check(`${tag} 1: no sideways scroll`, sc1.s <= sc1.w, sc1);
+    if (zh) for (const w of ["建立", "臨時連結", "下載檔案"]) check(`${tag} 1: 「${w}」 kept whole`, await unsplit(page, w, ".msg.agent .html-card .pv-note") === true, await unsplit(page, w, ".msg.agent .html-card .pv-note"));
     await shot(page, `${tag}-1-notice`);
 
     // 2 the link pressed: Settings → Access, at the fixed address
@@ -96,7 +104,11 @@ async function walk(c: any) {
     if (!saved) check(`${tag} 2: nothing saved yet → the steps are open`, await page.evaluate(`document.querySelector(".fixed-preview-steps").open`) === true, null);
     const sc2 = await scroll(page); check(`${tag} 2: no sideways scroll`, sc2.s <= sc2.w, sc2);
     await shot(page, `${tag}-2-settings-landed`);
+    // The steps, opened as a person would (folded once an address is saved): numbered, under a heading with its marker.
+    await page.evaluate(`document.querySelector(".fixed-preview-steps").open = true`);
     await page.evaluate(`document.querySelector("#publicPreviewAddress").scrollIntoView({ block: "start" })`);
+    const list = await page.evaluate(`({ marker: getComputedStyle(document.querySelector(".fixed-preview-steps summary")).display, numbers: getComputedStyle(document.querySelector(".fixed-preview-steps ol")).listStyleType })`) as any;
+    check(`${tag} 2b: the steps are numbered under a heading with its disclosure marker`, list.marker === "list-item" && list.numbers === "decimal", list);
     await shot(page, `${tag}-2b-route-step`);
 
     // 3 type and save (first case only; the second sees it saved)
@@ -113,6 +125,9 @@ async function walk(c: any) {
       check(`${tag} 3: saved through the form: web.public_link.preview_hostname = ${PREVIEW}`, saved, fm.fleetConfig?.web?.public_link);
       const yaml = readFileSync(join(fx.dir, "fleet.yaml"), "utf8");
       check(`${tag} 3: fleet.yaml has it`, yaml.includes(`preview_hostname: ${PREVIEW}`), yaml.slice(0, 600));
+      await page.evaluate(`document.querySelector("#publicPreviewAddress").scrollIntoView({ block: "start" })`);
+      await page.waitForTimeout(4000);   // the reload after a save redraws the form (it used to fall back to Overview)
+      check(`${tag} 3: still on Sharing after the reload`, await page.evaluate(`(document.querySelector("[data-settings-tab=sharing]") || {}).hidden === false`), null);
       await page.evaluate(`document.querySelector("#publicPreviewAddress").scrollIntoView({ block: "start" })`);
       await shot(page, `${tag}-3-saved`);
     } else {
@@ -132,6 +147,7 @@ async function walk(c: any) {
       && rows[3].includes(W(zh, `It works: previews over the fixed address use ${PREVIEW}.`, `正常：透過固定網址的預覽會使用 ${PREVIEW}。`)),
       { rows, block: await page.evaluate(`(document.querySelector(".fixed-preview") || {}).innerText`), disabled: await page.evaluate(`document.querySelector("#previewAddressCheck").disabled`), checks, dialog: await page.evaluate(`(document.querySelector("dialog[open]") || {}).innerText || null`), url: page.url() });
     check(`${tag} 4: it asked https://${PREVIEW}/frame`, asked.at(-1) === `https://${PREVIEW}/frame`, asked);
+    if (zh) for (const w of ["查得到", "使用"]) check(`${tag} 4: 「${w}」 kept whole`, await unsplit(page, w, ".fixed-preview .named-test-steps") === true, await unsplit(page, w, ".fixed-preview .named-test-steps"));
     if (phone) {
       const b = await page.evaluate(`Math.round(document.querySelector("#previewAddressCheck").getBoundingClientRect().height)`);
       check(`${tag} 4: Check is at least 32 px tall`, b >= 32, b);
