@@ -1454,6 +1454,78 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return Object.freeze({ records: Object.freeze(records), current });
   }
 
+  /** The confirmed first-On controller owns this complete preparation. No durable activation or input publication
+   * happens here. Its readiness callbacks must come from the actual legacy drain and negotiated port inventories.
+   */
+  async prepareRequestContextFirstOnAssembly(durableDrained:()=>boolean,transportsReady:()=>boolean,
+    rootRetired:(drain:import("./request-context-drain.js").RequestContextDrain,root:string)=>boolean){
+    const {RequestContextPaneProofs}=await import("./request-context-pane.js");
+    const first=this.prepareRequestContextFirstOn(),box=this.deliveryOutbox!,boot=first.boot;
+    let connection:ReturnType<DeliveryOutbox["stageRequestContextConnection"]>;
+    try{connection=box.stageRequestContextConnection({current:first.fence.owned});}catch(error){first.abandon();throw error;}
+    const drain=connection.drain(()=>first.current()?boot.owner.owner:null),registration=drain.registration();
+    let factory:ReturnType<FleetManager["installRequestContextRetainedOwners"]>|undefined;
+    let inventory:Awaited<ReturnType<FleetManager["prepareRequestContextDrainOwners"]>>|undefined;
+    let fleetRegistration:ReturnType<FleetManager["stageRequestContextFleetRegistration"]>|undefined;
+    let relaunch:Awaited<ReturnType<FleetManager["prepareRequestContextPersistentRelaunch"]>>|undefined;
+    let committed=false,disposed=false;
+    const owned=()=>!disposed&&first.current();
+    // Rendering may be staged for a fenced replacement; policy execution still uses only the publication.
+    const policy:RequestContextPolicyPort=Object.freeze({assert:(input:Parameters<RequestContextPolicyPort["assert"]>[0])=>boot.policy.assert(input),installedMode:()=>boot.publication.installedMode(),
+      instructionMode:()=>boot.publication.installedMode()??(owned()&&first.fence.owned()?"active":null)});
+    const undoNative=async()=>{
+      if(committed||box.requestContextInstallation().read()!==null)throw Error("Activated owners cannot revert");
+      inventory?.dispose();inventory=undefined;
+      await this.retireRequestContextNativeFactories(owned);
+      await factory?.disposeStaged();factory=undefined;fleetRegistration?.restore();fleetRegistration=undefined;
+    };
+    const abandon=()=>{connection.restore();first.abandon();disposed=true;};
+    try{
+      relaunch=await this.prepareRequestContextPersistentRelaunch(policy,registration,first.fence,durableDrained,async()=>{
+        try{
+        await this.retireRequestContextNativeFactories(owned);
+        fleetRegistration=this.stageRequestContextFleetRegistration(registration,owned);
+        factory=this.installRequestContextRetainedOwners(policy,registration,owned,[],{firstOnStage:{current:()=>owned()&&first.fence.owned()},deferStartHooks:true});
+        this.stageRequestContextNativeGraph({registration,panes:new RequestContextPaneProofs(randomBytes(32).toString("hex"),registration),
+          execTurns:factory.execTurns,execOwner:factory.execOwner,execInput:factory.execInput,current:()=>owned()&&factory?.current()===true});
+        inventory=await this.prepareRequestContextDrainOwners(drain,registration,factory,owned);
+        return undoNative;
+        }catch(error){await undoNative();throw error;}
+      });
+      factory!.adopt(relaunch.owners());
+      // Do not start deliberately stopped agents. Prepare only their future owned start/exec closures.
+      const names=[...new Set([...Object.keys(this.fleetConfig!.instances),...(this.classicChannels?.getAll()??[]).map(room=>room.instanceName)])].sort();
+      const configurations=names.map(name=>[name,this.hubAgentConfig(name)]as const),rosterImage=requestContextDigest(configurations);
+      for(const [name,config]of configurations){if(!config)throw Error("Request owner configuration unavailable");if(!this.daemons.has(name))await factory!.beforeStart(name,config);}
+      const sameRoster=()=>requestContextDigest(names.map(name=>[name,this.hubAgentConfig(name)]))===rosterImage
+        &&requestContextDigest([...new Set([...Object.keys(this.fleetConfig?.instances??{}),...(this.classicChannels?.getAll()??[]).map(room=>room.instanceName)])].sort())===requestContextDigest(names);
+      const ready=()=>owned()&&first.fence.current()&&connection.current()&&relaunch!.ready()&&factory!.current()&&inventory!.current()
+        &&sameRoster()&&durableDrained()&&transportsReady();
+      if(!ready())throw Error("Request-context owner or transport is not ready");
+      const portsCurrent=()=>owned()&&factory!.current()&&inventory!.current();
+      let serving:ReturnType<FleetManager["prepareRequestContextServingOwners"]>|undefined;
+      return Object.freeze({boot,drain,registration,policy,ready,
+        /** Call only inside the single installation.activate transaction. No publication or async work. */
+        initialize:()=>{if(!ready())throw Error("Activation preparation changed");relaunch!.retain();factory!.retain();
+          serving=this.prepareRequestContextServingOwners(portsCurrent,root=>rootRetired(drain,root),factory!.hub,()=>boot.publication.installedMode());},
+        /** Synchronous post-COMMIT publication. Failure stays capable and fenced for recovery. */
+        publish:()=>{
+          const state=box.requestContextInstallation().read();if(!state||state.mode!=="active"||!serving||!ready())throw Error("Activation publication unavailable");
+          committed=true;first.adoptCommitted(state.epoch);relaunch!.seal();factory!.seal();relaunch!.releaseStartHooks();factory!.attach();
+          this.bindRequestContextServingPublication(boot);
+          boot.publication.publish(state,{policy:serving.policy,serving},first.fence,portsCurrent,()=>box.requestContextInstallation().read(),portsCurrent);
+          return state;
+        },
+        rollback:async()=>{if(committed||box.requestContextInstallation().read()!==null)throw Error("Activated owners cannot revert");await relaunch!.rollback();abandon();},
+      });
+    }catch(error){
+      // Persistent preparation unwinds its own candidates. If it returned, retire them before native ownership.
+      try{if(relaunch)await relaunch.rollback();else if(this.requestContextNativeGraph||factory||fleetRegistration)await undoNative();abandon();}
+      catch(cleanup){throw new AggregateError([error,cleanup],"Request-context preparation could not restore every owner; admission stays fenced");}
+      throw error;
+    }
+  }
+
   /** First-On persistent replacements. This does not activate, publish, open admission or construct a native factory.
    * The installer separately stages native factories and checks every transport before its one activation COMMIT.
    */

@@ -118,6 +118,8 @@ export interface RequestContextPublishedInstallation<T> {
   current(): boolean;
   /** Existing tracked execution may finish during a preparation fence or same-epoch drain. */
   executionCurrent(): boolean;
+  /** Exact installed owner/ports, independent of this publication's execution membership. Mode changes reuse it. */
+  portsCurrent(): boolean;
   continuationAllowed?(rootContextId:string):boolean;
 }
 /** One process-owned publication reference. Every ingress captures it, never a desired config flag. */
@@ -217,8 +219,9 @@ export class RequestContextPublication<T extends object> {
     if (!fence.current()) throw Error("Installation preparation changed");
     const copy = Object.freeze(State.parse(state)), owner = this.owner;
     if (!(copy.mode === "draining" && this.published?.state.epoch === copy.epoch && this.published.ports === ports)) this.executions.clear();
-    const executionCurrent = () => this.executions.has(publication) && owner.current() && executionPortsCurrent();
-    const publication: RequestContextPublishedInstallation<T> = Object.freeze({ state: copy, ports: Object.freeze(ports), executionCurrent,continuationAllowed,
+    const portsCurrent = () => owner.current() && executionPortsCurrent();
+    const executionCurrent = () => this.executions.has(publication) && portsCurrent();
+    const publication: RequestContextPublishedInstallation<T> = Object.freeze({ state: copy, ports: Object.freeze(ports), executionCurrent,portsCurrent,continuationAllowed,
       current: () => this.published === publication && !this.fenced && ready() && executionCurrent() });
     this.executions.add(publication);
     this.published = publication; this.required = true; this.fenced = false;
@@ -234,6 +237,15 @@ export class RequestContextPublication<T extends object> {
     if (!this.required && !this.fenced) return null;
     if (!this.admissionAvailable(continuation)||!this.published) throw Error("Request-context installation is fenced");
     return this.published;
+  }
+  /** A failed synchronous mode transition may reopen the exact prior publication, preserving its executions.
+   * Producer arrivals invalidate preparation but cannot prevent safe return to unchanged durable state.
+   */
+  resume(fence:{owned():boolean},durable:()=>RequestContextInstallationState|null):void {
+    const publication=this.published;
+    if(!fence.owned()||!publication?.executionCurrent()||requestContextJson(durable())!==requestContextJson(publication.state))
+      throw Error("Installation publication cannot resume");
+    this.fenced=false;this.refreshAdmission();
   }
   /** Failed first preparation can resume legacy only when no durable activation committed. */
   abandon(fence: { current(): boolean; owned?(): boolean }, durable: () => RequestContextInstallationState | null): void {
