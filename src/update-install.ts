@@ -27,7 +27,7 @@ export interface CommandRunner {
    * Run a program; `inherit` streams its output to the terminal (npm's progress), otherwise it is captured. `env` is
    * added to this process's environment for that one program (the install token goes to npm and nothing else).
    */
-  run(command: string, args: string[], options?: { inherit?: boolean; timeoutMs?: number; env?: Record<string, string> }): CommandResult;
+  run(command: string, args: string[], options?: { inherit?: boolean; timeoutMs?: number; env?: Record<string, string>; /** M-3806: where it runs (default: here). */ cwd?: string }): CommandResult;
   /** Progress for the operator, printed when it happens. */
   log(message: string): void;
 }
@@ -87,7 +87,7 @@ export const NVM_BIN_SCRIPT = 'd=$1; shift; PATH="$d:$PATH"; export PATH; exec "
  * Run `argv` in the environment the new `agend` will run in: the parent's PATH for a direct install, nvm's Node 22
  * for an nvm install — so `agend`'s `#!/usr/bin/env node` and a bare `node` resolve to the same interpreter.
  */
-function inInstallEnv(runner: CommandRunner, plan: UpdateInstallPlan, argv: string[], options: { inherit?: boolean; timeoutMs?: number; env?: Record<string, string> } = {}): CommandResult {
+function inInstallEnv(runner: CommandRunner, plan: UpdateInstallPlan, argv: string[], options: { inherit?: boolean; timeoutMs?: number; env?: Record<string, string>; cwd?: string } = {}): CommandResult {
   if (!plan.viaNvm) return runner.run(argv[0]!, argv.slice(1), options);
   if (plan.nvmBin) return runner.run("bash", ["-c", NVM_BIN_SCRIPT, "bash", plan.nvmBin, ...argv], options);
   return runner.run("bash", ["-c", NVM_RUN_SCRIPT, "bash", plan.nvmSh, ...argv], options);
@@ -174,7 +174,7 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
   const prefixRun = run([npmBin, "prefix", "-g"]);
   // M-3806: npm 11/12 print `***` for a UUID in the path; then the prefix is asked the way npm tells a child.
   const where = rootRun.status === 0 && prefixRun.status === 0
-    ? npmGlobalPrefix.resolve(prefixRun.stdout, rootRun.stdout, () => { const r = run([npmBin, ...npmGlobalPrefix.ASK]); return r.status === 0 ? r.stdout : ""; })
+    ? npmGlobalPrefix.resolve(prefixRun.stdout, rootRun.stdout, () => { const r = inInstallEnv(runner, plan, [npmBin, ...npmGlobalPrefix.ASK], { timeoutMs: 15_000, cwd: npmGlobalPrefix.neutralCwd() }); return r.status === 0 ? r.stdout : ""; })
     : { prefix: "", root: "" };
   if (!where.root || !where.prefix) {
     return fail("  ✗ Verification failed: could not ask npm where it installed the package.");
@@ -299,7 +299,7 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
   if (plan.lock) {
     const prefix = inInstallEnv(runner, plan, [npmBin, "prefix", "-g"], { timeoutMs: 15_000 });
     // M-3806: a redacted answer (`***`) is asked again the way npm tells a child; never a lock on a folder that isn't there.
-    const askInEnv = () => { const r = inInstallEnv(runner, plan, [npmBin, ...npmGlobalPrefix.ASK], { timeoutMs: 15_000 }); return r.status === 0 ? r.stdout : ""; };
+    const askInEnv = () => { const r = inInstallEnv(runner, plan, [npmBin, ...npmGlobalPrefix.ASK], { timeoutMs: 15_000, cwd: npmGlobalPrefix.neutralCwd() }); return r.status === 0 ? r.stdout : ""; };
     const where = prefix.status === 0 ? npmGlobalPrefix.resolve(prefix.stdout, undefined, askInEnv).prefix : "";
     if (prefix.status !== 0 || !where) return { ok: false, stage: "lock", message: "  ✗ Could not ask npm which prefix it installs into; nothing was changed." };
     const lock = plan.lock(where);
@@ -308,7 +308,7 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
     if (plan.rollback) {
       const rootRun = inInstallEnv(runner, plan, [npmBin, "root", "-g"], { timeoutMs: 15_000 });
       const rootOut = npmGlobalPrefix.lastLine(rootRun.stdout);
-      const root = npmGlobalPrefix.masked(rootOut) ? npmGlobalPrefix.rootOf(where) : rootOut;
+      const root = npmGlobalPrefix.masked(rootOut) ? npmGlobalPrefix.confirmed(rootOut, npmGlobalPrefix.rootOf(where)) : rootOut;
       if (rootRun.status !== 0 || !root) return { ok: false, stage: "lock", message: "  ✗ Could not ask npm where it installs packages; nothing was changed." };
       const taken = takePackagePreimage(root, where, plan.now?.() ?? new Date());
       if (!taken.ok) return { ok: false, stage: "lock", message: `  ✗ Not updating: ${taken.reason}. Nothing was changed.` };

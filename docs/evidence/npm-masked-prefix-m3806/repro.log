@@ -32,18 +32,18 @@ npm exec -c (child)  → <scratch>/p-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab
 (exit 0)
 
 === 3. AFTER: the candidate's installer into a UUID prefix, npm 12.2.3
-  ✓ AgEnD v2.4.0-m3806.1 is installed (<scratch>/p-after-12.2.3-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/bin/agend)
-2.4.0-m3806.1
+  ✓ AgEnD v2.4.0-m3806.2 is installed (<scratch>/p-after-12.2.3-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/bin/agend)
+2.4.0-m3806.2
 (exit 0)
 
 === 3. AFTER: the candidate's installer into a UUID prefix, npm 11.21.3
-  ✓ AgEnD v2.4.0-m3806.1 is installed (<scratch>/p-after-11.21.3-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/bin/agend)
-2.4.0-m3806.1
+  ✓ AgEnD v2.4.0-m3806.2 is installed (<scratch>/p-after-11.21.3-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/bin/agend)
+2.4.0-m3806.2
 (exit 0)
 
 === 3. AFTER: the candidate's installer into a UUID prefix, npm 10.9.7
-  ✓ AgEnD v2.4.0-m3806.1 is installed (<scratch>/p-after-10.9.7-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/bin/agend)
-2.4.0-m3806.1
+  ✓ AgEnD v2.4.0-m3806.2 is installed (<scratch>/p-after-10.9.7-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/bin/agend)
+2.4.0-m3806.2
 (exit 0)
 
 === 4. install.sh's prefix/sudo step with real npm, prefix <scratch>/home/.npm-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab (does not exist yet)
@@ -59,3 +59,12 @@ npm exec -c (child)  → <scratch>/p-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab
 --- npm 10.9.7, after:
   NPM_PREFIX=<scratch>/home/.npm-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab  SUDO=<none>
   created: <scratch>/home/.npm-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/lib
+
+=== 5. Started from inside a project with its own node_modules/.bin/node (what the npm package `node` installs): npm 12
+--- what a child of npm exec says there: /from-project-local-node
+--- the candidate's installer, started there (out of scope, noted: npm exec runs the installer itself on the project's node):
+/from-project-local-node
+env: ‘<scratch>/p-proj-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/bin/agend’: No such file or directory
+(exit 127)
+--- install.sh's prefix step (after), run there:
+  NPM_PREFIX=<scratch>/home/.npm-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab  SUDO=<none>

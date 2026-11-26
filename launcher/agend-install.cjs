@@ -33,7 +33,7 @@ function defaultDeps() {
   return {
     run: function (cmd, args, opts) {
       var o = opts || {};
-      var r = childProcess.spawnSync(cmd, args, { encoding: "utf8", stdio: o.inherit ? "inherit" : ["ignore", "pipe", "pipe"], env: o.env || process.env, timeout: o.timeoutMs });
+      var r = childProcess.spawnSync(cmd, args, { encoding: "utf8", stdio: o.inherit ? "inherit" : ["ignore", "pipe", "pipe"], env: o.env || process.env, timeout: o.timeoutMs, cwd: o.cwd });
       return { status: r.status, signal: r.signal, stdout: r.stdout || "", stderr: r.stderr || "", error: r.error ? String(r.error.code || r.error.message) : null };
     },
     log: function (line) { process.stdout.write(line + "\n"); },
@@ -751,7 +751,7 @@ function main(argv, injected) {
   // M-3806: npm 11/12 print `***` for a UUID in the path; then the prefix is asked the way npm tells a child.
   var rootOut = deps.run("npm", ["root", "-g"], { timeoutMs: 30000 }).stdout;
   var where = npmGlobal.resolve(deps.run("npm", ["prefix", "-g"], { timeoutMs: 30000 }).stdout, rootOut,
-    function () { return deps.run("npm", npmGlobal.ASK, { timeoutMs: 30000 }).stdout; });
+    function () { return deps.run("npm", npmGlobal.ASK, { timeoutMs: 30000, cwd: npmGlobal.neutralCwd() }).stdout; });
   var root = where.root;
   var prefix = where.prefix;
   if (!root || !prefix) {
@@ -919,5 +919,5 @@ function main(argv, injected) {
   }
 }
 
-module.exports = { main: main, repair: repair, admit: admit, openedBy: openedBy, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmChangingFromProcessList: npmChangingFromProcessList, waitForOtherNpm: waitForOtherNpm, OTHER_NPM_WAIT_MS: OTHER_NPM_WAIT_MS, npmCommands: npmCommands, withoutUpdateNpmBounds: withoutUpdateNpmBounds, LOCK: LOCK };
+module.exports = { main: main, defaultDeps: defaultDeps, repair: repair, admit: admit, openedBy: openedBy, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmChangingFromProcessList: npmChangingFromProcessList, waitForOtherNpm: waitForOtherNpm, OTHER_NPM_WAIT_MS: OTHER_NPM_WAIT_MS, npmCommands: npmCommands, withoutUpdateNpmBounds: withoutUpdateNpmBounds, LOCK: LOCK };
 if (require.main === module) process.exit(main(process.argv.slice(2)));
