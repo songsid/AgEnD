@@ -1,0 +1,552 @@
+{
+  "sourceHead": "0d19a08df1cb80205e8f1a00792c5ef7e82f9431",
+  "dirtySource": "",
+  "checks": [
+    {
+      "name": "desk-light-en: actual request admitted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-relay: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: exact return admitted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-late-return: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-room: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: mutation refused",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: refusal stays fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: disclosure tap target",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: request warning fully visible",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: actual request admitted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-relay: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: exact return admitted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-late-return: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-room: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: mutation refused",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: refusal stays fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: disclosure tap target",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: request warning fully visible",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: actual request admitted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-relay: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: exact return admitted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-late-return: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-room: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: mutation refused",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: refusal stays fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: disclosure tap target",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: request warning fully visible",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: actual request admitted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-relay: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: exact return admitted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-late-return: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-room: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: mutation refused",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: refusal stays fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: disclosure tap target",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: request warning fully visible",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: actual request admitted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-relay: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: exact return admitted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-late-return: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-room: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: mutation refused",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: refusal stays fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: disclosure tap target",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: request warning fully visible",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: actual request admitted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-relay: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: exact return admitted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-late-return: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-room: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: mutation refused",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: refusal stays fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: disclosure tap target",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: request warning fully visible",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: actual request admitted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-relay: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: exact return admitted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-late-return: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-room: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: mutation refused",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: refusal stays fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: disclosure tap target",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: request warning fully visible",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: actual request admitted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-relay: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: exact return admitted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-late-return: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-room: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: mutation refused",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-refusal: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: refusal stays fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-details: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: disclosure tap target",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: request warning fully visible",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "name": "desk-light-en-before.png",
+      "sha256": "f86b8af2deedf3e106aab58e74fd67b605f733a9deb722103ce7af2f4039c30b"
+    },
+    {
+      "name": "desk-light-en-relay.png",
+      "sha256": "f92104295e9b5fb8edf5c7bca70c0dcbea3e6bd3342f3bb4f4b44321dd9ddb03"
+    },
+    {
+      "name": "desk-light-en-late-return.png",
+      "sha256": "db1b2141a26b60d4d539e2c24e2261a95bc593ebfb7fe547bab6c9b498285b05"
+    },
+    {
+      "name": "desk-light-en-room.png",
+      "sha256": "bcba6d31f02002083e3644fb96d657e02bf58089ca15d830d497fa3c2833d377"
+    },
+    {
+      "name": "desk-light-en-refusal.png",
+      "sha256": "c76419cbc92ca95c445e69386edd3bb9b045228e569e1f758a1cb3df1c362d29"
+    },
+    {
+      "name": "desk-light-en-details.png",
+      "sha256": "480ce4ed7226becb2df5316b970ffe835d35a4aef00721674bd7593db193c7ea"
+    },
+    {
+      "name": "desk-light-zh-TW-before.png",
+      "sha256": "02e53945478ea20a8f773b0f3b3c124a2cf587164f5f9f28443e8c58386028c2"
+    },
+    {
+      "name": "desk-light-zh-TW-relay.png",
+      "sha256": "2c78f365326a3475510127b5b8e498dcfc17bd2e17418c8cfa099c0197efa20f"
+    },
+    {
+      "name": "desk-light-zh-TW-late-return.png",
+      "sha256": "f69fead42953fc293e29f61f6ff812bb951f1a223bd7b93aa1b34ee76dca7884"
+    },
+    {
+      "name": "desk-light-zh-TW-room.png",
+      "sha256": "378aad2a60aec8cfc0ff71bb6827277366a1f4fffa6ae16099fc3f32265f95f4"
+    },
+    {
+      "name": "desk-light-zh-TW-refusal.png",
+      "sha256": "ca4da68ea0570c8a7778572428c71d3ac662a1821d205c587443b04570032ed3"
+    },
+    {
+      "name": "desk-light-zh-TW-details.png",
+      "sha256": "a4d900e90ec00f91f562518e2406a6e1a29ffd6ae9941a5346c946515450bab9"
+    },
+    {
+      "name": "desk-dark-en-before.png",
+      "sha256": "cabf468d951bff58dfa283e603dd69d0770ee93c26bea4191ce2daff6bf3a66e"
+    },
+    {
+      "name": "desk-dark-en-relay.png",
+      "sha256": "02194c7998cea613f0f7241061336a98a508fb95442fe15540815238148175ce"
+    },
+    {
+      "name": "desk-dark-en-late-return.png",
+      "sha256": "6764e01d9988923fc1f5a9deda7e9791fdb19e739a6a9d5ce19df8de61aa5d7d"
+    },
+    {
+      "name": "desk-dark-en-room.png",
+      "sha256": "87bc0ceeabf8d93eccdade69fe37a9efdab6b9e555366743d19b9f0b0bf6f488"
+    },
+    {
+      "name": "desk-dark-en-refusal.png",
+      "sha256": "7705086069d722c5cb6d54653ff769a153aced88666eaa1dbadf9d0b1ce5e832"
+    },
+    {
+      "name": "desk-dark-en-details.png",
+      "sha256": "8d9edb292d4ed6474fba39ad07ee8c59d5456c3d8e0ad891a3d9b618bff1c97b"
+    },
+    {
+      "name": "desk-dark-zh-TW-before.png",
+      "sha256": "adff267aa147869e892856762263f87f885b0c8366fee7017a62da43ac293b98"
+    },
+    {
+      "name": "desk-dark-zh-TW-relay.png",
+      "sha256": "46c29140856109bae83b87047713315fdec2fd7194627146e4c71c48a6ab50c9"
+    },
+    {
+      "name": "desk-dark-zh-TW-late-return.png",
+      "sha256": "7030f5f0c8d9dfab1bf27109212ba445ad31d125cd3553fb2e49be212788c976"
+    },
+    {
+      "name": "desk-dark-zh-TW-room.png",
+      "sha256": "3a5a4a4c874d0d86ea01754a2a60e41fcd8ca1c32e1b898d3315923a5393a119"
+    },
+    {
+      "name": "desk-dark-zh-TW-refusal.png",
+      "sha256": "790f0fa0f4e42e0a2c56a7a482e3e21dd65aa47c345cdff6aac0064a766ebcfb"
+    },
+    {
+      "name": "desk-dark-zh-TW-details.png",
+      "sha256": "afa4db7f5d32257a6ef473ac5a5689af671e6d6c707ffeabe95ac5ef4b5a55b5"
+    },
+    {
+      "name": "phone-light-en-before.png",
+      "sha256": "89f22fcb00e8f1f3caf2411400a6b68dfc5e2356a7b92fd6ac9c4d2c11cd4c8e"
+    },
+    {
+      "name": "phone-light-en-relay.png",
+      "sha256": "8237817065b491c053df9ba07644fba6efe29a770e685e78b725dfbe7859f8e6"
+    },
+    {
+      "name": "phone-light-en-late-return.png",
+      "sha256": "6a04c8e79c9201629269b43c205adba7cc63748a9a29c37f4c2ec429743c0a3a"
+    },
+    {
+      "name": "phone-light-en-room.png",
+      "sha256": "264ce000d65c6333a300b7002b14cbc49bff60a31639bfb5acdc3dd98899aec0"
+    },
+    {
+      "name": "phone-light-en-refusal.png",
+      "sha256": "32a207c39c295fe47072ee040064c705f373fceaaac2539ef472a64fea8f2066"
+    },
+    {
+      "name": "phone-light-en-details.png",
+      "sha256": "383ee2b7b9c1b23cb9d476752f2bfabe171616d28869baa076a04074765bd091"
+    },
+    {
+      "name": "phone-light-zh-TW-before.png",
+      "sha256": "3038499b82ae75094228c3e5cf3a5517a7ba04c997c46f9332581d0dd3270645"
+    },
+    {
+      "name": "phone-light-zh-TW-relay.png",
+      "sha256": "55375b02ed67d8f552e08c02e6ff57bf7d880dcc605047db7416dd2ebf74f1d7"
+    },
+    {
+      "name": "phone-light-zh-TW-late-return.png",
+      "sha256": "f988088a3cc8eb5f23ebb7d38726ec7c9a3abcd7d02966922248baeded434649"
+    },
+    {
+      "name": "phone-light-zh-TW-room.png",
+      "sha256": "b129812744b23125589b49d6a2df10f309e8fb329a8875cddcbebe739728656c"
+    },
+    {
+      "name": "phone-light-zh-TW-refusal.png",
+      "sha256": "4f5aa0f2bdd963af524c4b3bd432231b18328c8d0bc710d1070aaafcc04e0a06"
+    },
+    {
+      "name": "phone-light-zh-TW-details.png",
+      "sha256": "ca9f36710377f094f3e82fd31d73860e5b91756842f4bfc3eef3c44ef69ec828"
+    },
+    {
+      "name": "phone-dark-en-before.png",
+      "sha256": "ae9a30607606caa39ef1ff21bb0d17566fb69657c908e40c9335d957c1a3fb58"
+    },
+    {
+      "name": "phone-dark-en-relay.png",
+      "sha256": "8e753275b93e050955cd68c23c4bad8d680395775b632571ad06b96de0b1cba9"
+    },
+    {
+      "name": "phone-dark-en-late-return.png",
+      "sha256": "dca992c1935f63cb88c57720eb294b55013938c1d50974515b4590e5d8fcd907"
+    },
+    {
+      "name": "phone-dark-en-room.png",
+      "sha256": "ee5b939b1f30907d950b2699f00b982449a9ea0aceefd727dce65a4137b25f2f"
+    },
+    {
+      "name": "phone-dark-en-refusal.png",
+      "sha256": "61374e1f36451f78550be28b9611aa58247d16ad5a7e87a9ec90daaeb5ef8260"
+    },
+    {
+      "name": "phone-dark-en-details.png",
+      "sha256": "6443dfcedbfc6a648d18acf84b13e19ecd799d2746602b1677c00dab885b28e8"
+    },
+    {
+      "name": "phone-dark-zh-TW-before.png",
+      "sha256": "a19fcdf4a0c0a74bce440a4dd001a052a2c8f0298cbda4845519af021236ea56"
+    },
+    {
+      "name": "phone-dark-zh-TW-relay.png",
+      "sha256": "abbf09b05affcf2d79b400970c274e02362c4b075b2f1376c67db7cad7de02eb"
+    },
+    {
+      "name": "phone-dark-zh-TW-late-return.png",
+      "sha256": "22a12e1939dfff915b9c8dbcac3fa97692214286d3c734c0e3590e609475cfeb"
+    },
+    {
+      "name": "phone-dark-zh-TW-room.png",
+      "sha256": "cd3164c674937704d2ae8b0dd51ddc0759d3190aec765842c6ac032118b1fba4"
+    },
+    {
+      "name": "phone-dark-zh-TW-refusal.png",
+      "sha256": "d8b56cf9dd77d7f1ae9363297083ff7f0189d54f2dedf9ca38c453e2fd89d5f2"
+    },
+    {
+      "name": "phone-dark-zh-TW-details.png",
+      "sha256": "a36c58526cd787334653c21018f0b0c90ad55eb580a157ebb3e9ad9ef4c7504a"
+    }
+  ]
+}
