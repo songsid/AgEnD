@@ -23,7 +23,7 @@ import { closeSync, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSyn
   rmSync, symlinkSync, unlinkSync, writeSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { Ownership } from "./install-ownership.js";
-import { removeRecoveryRoute, unitPreimagePath, wrapPlist } from "./update-recovery/route.js";
+import { dropInPath, dropInText, removeRecoveryRoute, unitPreimagePath, wrapPlist } from "./update-recovery/route.js";
 import { identityOf } from "./install-ownership.js";
 import type { AttemptRecord } from "./update-journal.js";
 
@@ -32,7 +32,9 @@ export const PREIMAGE_MANIFEST = "preimage.json";
 export const attemptPreimageDir = (prefix: string, attemptId: string) => join(prefix, ".agend-rollback", `${ATTEMPT_PREIMAGE_PREFIX}${attemptId}`);
 
 interface TreeEntry { rel: string; type: "file" | "dir" | "link"; mode: number; sha256?: string; target?: string }
-export interface PreimageManifest { schema: 1; attemptId: string; packagePath: string; entries: TreeEntry[]; bins: Record<string, { link: string; target: string | null }> }
+/** What stood at a bin path before the install: nothing, npm's link (its target), or a plain file (its hash). */
+export type BinBefore = { link: string; kind: "absent" } | { link: string; kind: "link"; target: string } | { link: string; kind: "file"; sha256: string };
+export interface PreimageManifest { schema: 1; attemptId: string; packagePath: string; entries: TreeEntry[]; bins: Record<string, BinBefore> }
 
 const fsyncPath = (p: string) => { const fd = openSync(p, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } };
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
@@ -82,9 +84,10 @@ export function takeAttemptPreimage(ownership: Ownership, attemptId: string): Pr
     fsyncTree(join(dir, "agend"));
     const bins: PreimageManifest["bins"] = {};
     for (const [name, link] of Object.entries(ownership.binLinks)) {
-      let target: string | null = null;
-      try { if (lstatSync(link).isSymbolicLink()) target = readlinkSync(link); } catch { target = null; }
-      bins[name] = { link, target };
+      const st = lstatSync(link, { throwIfNoEntry: false });
+      bins[name] = !st ? { link, kind: "absent" }
+        : st.isSymbolicLink() ? { link, kind: "link", target: readlinkSync(link) }
+        : { link, kind: "file", sha256: sha256(readFileSync(link)) };
     }
     const manifest: PreimageManifest = { schema: 1, attemptId, packagePath: ownership.packagePath, entries: treeOf(join(dir, "agend")), bins };
     const text = JSON.stringify(manifest, null, 2) + "\n";
@@ -143,13 +146,20 @@ export function restorePackage(ownership: Ownership, attemptId: string, manifest
       steps.record("pkg-placed");
     }
     if (!steps.done("bins")) {
-      for (const { link, target } of Object.values(manifest.bins)) {
-        const now = isLink(link) ? readlinkSync(link) : existsSync(link) ? "(a file)" : null;
-        if (now === target) continue;
-        if (target === null) { unlinkSync(link); continue; }
+      for (const before of Object.values(manifest.bins)) {
+        const { link } = before;
+        const st = lstatSync(link, { throwIfNoEntry: false });
+        if (before.kind === "file") {
+          // Not npm's link (Fable #4528 N1): never removed or replaced — it must still be the same file.
+          if (!st || !st.isFile() || sha256(readFileSync(link)) !== before.sha256) throw new Manual(`${link} was a file before the install, and isn't that file now`);
+          continue;
+        }
+        if (before.kind === "absent") { if (st) { if (st.isSymbolicLink()) unlinkSync(link); else throw new Manual(`${link} wasn't there before, and isn't a link now`); } continue; }
+        if (st?.isSymbolicLink() && readlinkSync(link) === before.target) continue;
+        if (st && !st.isSymbolicLink()) throw new Manual(`${link} is a file now, not the link it was`);
         const tmp = `${link}.restore-tmp`;
         rmSync(tmp, { force: true });
-        symlinkSync(target, tmp);
+        symlinkSync(before.target, tmp);
         renameSync(tmp, link);
       }
       for (const d of new Set(Object.values(manifest.bins).map(b => dirname(b.link)))) fsyncPath(d);
@@ -193,6 +203,24 @@ export function restoreUnit(home: string, attempt: AttemptRecord, opts: { keepRo
       try { writeSync(fd, want); fsyncSync(fd); } finally { closeSync(fd); }
       renameSync(tmp, service.fragmentPath); fsyncPath(dirname(service.fragmentPath));
       steps.record("unit-written");
+    }
+    // keepRoute ENSURES the route (Fable #4528 F2): systemd's drop-in must be exactly this attempt's — absent, it is
+    // written again (tmp, fsync, rename, directory fsync); other bytes fail closed (§3.2). launchd's wrapper was written
+    // above with the fragment.
+    if (opts.keepRoute && service.kind === "systemd" && !steps.done("unit-route-kept")) {
+      const path = dropInPath(service), want = dropInText(home, attempt.id);
+      let now: string | null = null;
+      try { now = readFileSync(path, "utf8"); } catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
+      if (now !== null && now !== want) throw new Manual(`${path} isn't this attempt's drop-in any more`);
+      if (now === null) {
+        mkdirSync(dirname(path), { recursive: true, mode: 0o755 });
+        const tmp = `${path}.restore-tmp`;
+        rmSync(tmp, { force: true });
+        const fd = openSync(tmp, "wx", 0o644);
+        try { writeSync(fd, want); fsyncSync(fd); } finally { closeSync(fd); }
+        renameSync(tmp, path); fsyncPath(dirname(path)); fsyncPath(dirname(dirname(path)));
+      }
+      steps.record("unit-route-kept");
     }
     if (!opts.keepRoute && service.kind === "systemd" && !steps.done("unit-route-removed")) {
       const removed = removeRecoveryRoute(home, attempt, { plistArgs: opts.plistArgs });
