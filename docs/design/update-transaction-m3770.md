@@ -275,7 +275,8 @@ Neither CLI-owned files nor files in a CLI's profile are included, rev 3. `crede
 
 ### 4.4 The writers-gone proof, and who is exempt
 - **The proof looks for** any process of this uid that has `AGEND_HOME` equal to this home, its cwd under the home, or a file of the scope open or mapped (Linux `/proc/*/{environ,cwd,fd,maps}`; macOS `lsof -Fn +D`).
-- **An incomplete scan** (a failed listing, or a process of this uid that can't be read) is never proof of absence.
+- **An incomplete scan** (a failed listing, or a process of this uid that can't be read) is never proof of absence. A process that exits during the scan is gone, not unreadable.
+- **Sealed processes (rev 10):** a process of this uid that the kernel made non-dumpable can't be inspected without root, because its `/proc/<pid>/{cwd,fd,maps,environ}` belong to root. It is identified positively: its `status` reads this uid while its `fd` directory is root's. It is reported as **uninspectable**, not a gap. Every systemd user session has one (`(sd-pam)`), so without this the proof could never pass. AgEnD's own processes and the CLIs it launches are never sealed: AgEnD lowers `coredump_filter` and never clears the dumpable flag. Any other unreadable process still makes the scan incomplete.
 - **The exempt set** is exactly these, each recorded with its start time:
   - the updater (`attempt.updater`);
   - the recovery runner (`attempt.runner`, §6.2);
@@ -612,6 +613,12 @@ A retry recognises each effect by the path's presence and its hash against the p
 |---|---|
 | A link that resolves outside the home to a directory or a SQLite database refuses the snapshot. Links inside the home (`codex-home` → `cx/`), dangling links and links to plain files are recorded. `instances/*/muse-xdg/` is excluded as CLI user state | §5.1, §5.2 |
 | A snapshot already present is never touched: a second take refuses up front; a failure removes only what that call made | §5.3 |
+
+### Revision 10 (2.3 part 3)
+| Change | Where |
+|---|---|
+| A sealed (non-dumpable) process of this uid is reported as uninspectable instead of making the writers-gone proof incomplete; any other unreadable process still does | §4.4 |
+| A helper is exempt only when its own start and every intermediate ancestor (each a recorded helper with its start) are proven up to the updater or the runner | §4.4 |
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
 - `update-journal.ts`: the layout, publication order, readers, stages and marks;
