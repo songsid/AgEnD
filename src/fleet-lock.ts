@@ -320,13 +320,16 @@ export function adoptUpdateFence(dataDir: string, fence: { pid?: number; attempt
   return replaceDeadHolder(dataDir, { pid, attemptId: fence.attemptId }, o => (o.role === "update" && o.attemptId === fence.attemptId ? null : "fleet.lock isn't this attempt's fence"), probe);
 }
 
+/** The owned re-take's marker beside fleet.lock (one helper for every reader and writer of it). */
+const reclaimMarkerPath = (dataDir: string): string => `${join(dataDir, "fleet.lock")}.reclaim`;
+
 /**
  * A reclaim marker left by a crash (Fable #4531 F1): the marker holds the record its taker meant to write. When that is
  * THIS attempt's update record and its pid is proven gone, it is our own crashed reclaim — removed (the directory
  * fsynced) so the replacement can run again. Any other marker (another attempt, a live pid, unreadable) stays.
  */
 function clearCrashedReclaim(dataDir: string, attemptId: string, selfPid: number, probe: Pick<FleetLockProbe, "isProcessAlive">): boolean {
-  const marker = join(dataDir, "fleet.lock.reclaim");
+  const marker = reclaimMarkerPath(dataDir);
   let text: string;
   try { text = readFileSync(marker, "utf8"); } catch { return false; }
   const rec = parseRecord(text);
@@ -338,7 +341,7 @@ function clearCrashedReclaim(dataDir: string, attemptId: string, selfPid: number
 /** The owned replacement of a dead holder's record by a fresh update fence (no handoff). `accept` returns why not, or null. */
 function replaceDeadHolder(dataDir: string, fence: { pid?: number; attemptId: string }, accept: (owner: FleetLockRecord) => string | null, probe: Pick<FleetLockProbe, "isProcessAlive">):
   { ok: true; handle: FleetLockHandle } | { ok: false; reason: string } {
-  const lockPath = join(dataDir, "fleet.lock"), marker = `${lockPath}.reclaim`;
+  const lockPath = join(dataDir, "fleet.lock"), marker = reclaimMarkerPath(dataDir);
   let observed: string;
   try { observed = readFileSync(lockPath, "utf8"); } catch (err) { return { ok: false, reason: `fleet.lock can't be read (${(err as Error).message})` }; }
   const owner = parseRecord(observed);
