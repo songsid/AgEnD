@@ -6,15 +6,16 @@ Real-app captures from the owned web fixture (`scripts/manual/smoke-fixture`) in
 
 The page, the routes, the Settings form (a real save into `fleet.yaml`) and the check's own logic are the real ones.
 
-Script: `scripts/manual/preview-fixed-host-m3814/capture.mts`. It ran at `bf7941450` (`src` clean) and passed 43 of 43 checks; `receipt.json` lists each check and each PNG's sha256. Desk light en and phone dark zh-TW.
+Script: `scripts/manual/preview-fixed-host-m3814/capture.mts`. It ran at `0b333d129` (`src` clean) and passed 47 of 47 checks; `receipt.json` lists each check and each PNG's sha256. Desk light en and phone dark zh-TW.
 
 | Frame | What it shows |
 |---|---|
 | 1-notice | An agent's HTML card whose preview failed on Cloudflare's limit (429). The note says why, and that downloading the file still opens it. Then comes a blue, underlined link: **Set up a fixed preview address** / 「設定固定的預覽網址」. Download is on the card; there is no Preview to press. In zh, 建立 / 臨時連結 / 下載檔案 stay whole. |
 | 2-settings-landed | The link pressed: Settings → Access & security → Sharing, at the fixed address's fields (label and field in view). Right below is **Preview address (optional)**. |
-| 2b-route-step | Its one Cloudflare step, numbered 1–5. On the tunnel's Routes tab: Add route → Published application, the name, and Service URL `http://127.0.0.1:<preview port>`; Cloudflare adds the DNS record itself. |
+| 2c-no-fixed-hostname (desk) | No fixed public hostname yet (the field cleared, not saved), as on a fleet that uses temporary links. There is no preview field, and one line says previews use a temporary Cloudflare link until the fixed public hostname above is filled in. |
+| 2b-route-step | Its one Cloudflare step, numbered 1–5, with Cloudflare's own buttons marked as such: Networking → Tunnels → your tunnel → Routes → Add route → Published application; the Hostname field; the Service URL field `http://127.0.0.1:<preview port>`, which names the fixed hostname's port it must not be; save with Add route. Cloudflare adds the DNS record itself. While the address is empty, **Check preview address** is greyed and says why. |
 | 3-saved (desk) | `preview.agend.example.net` typed and saved through the form. `fleet.yaml` has `web.public_link.preview_hostname`. The page stays on Sharing after the reload that redraws the form; before this change it fell back to Overview a moment later. |
-| 4-check | **Check preview address**: four ✓. The address is saved, the fixed link is open, the name resolves, and `https://<name>/frame` comes back with this AgEnD's preview boot id. |
+| 4-check | **Check preview address**: four ✓, each said once. The address is saved, the public link is open, the name resolves, and `https://<name>/frame` comes back with this AgEnD's preview boot id ("It works"). |
 
 ## What isn't in the pictures (tests)
 
