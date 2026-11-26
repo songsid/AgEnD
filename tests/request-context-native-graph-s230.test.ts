@@ -11,7 +11,7 @@ afterEach(()=>{releaseProcessFleetLock();for(const root of roots.splice(0))rmSyn
 function rig(){
  const root=mkdtempSync(join(tmpdir(),"native-graph-s230-"));roots.push(root);setProcessFleetLock(acquireFleetLock(root));
  let current=true,fenced=true;const registration={assertRegistration:()=>{}};
- const graph={registration,panes:new RequestContextPaneProofs("fixture-proof-key-which-is-at-least-thirty-two-bytes",registration),execTurns:()=>{throw Error("No run started");},execOwner:()=>{throw Error("No run started");},current:()=>current};
+ const graph={registration,panes:new RequestContextPaneProofs("fixture-proof-key-which-is-at-least-thirty-two-bytes",registration),execTurns:()=>{throw Error("No run started");},execOwner:()=>{throw Error("No run started");},execInput:()=>{throw Error("No run started");},current:()=>current};
  const fm:any=Object.assign(Object.create(FleetManager.prototype),{dataDir:root,requestContextAdmission:{available:()=>!fenced},fleetConfig:{instances:{}}});
  return {fm,graph,registration,current:(value:boolean)=>current=value,fenced:(value:boolean)=>fenced=value};
 }

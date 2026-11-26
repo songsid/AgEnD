@@ -1,3 +1,4 @@
+import {prepareRequestNativeHumanInput} from "./request-context-native-human.js";
 import { RequestHumanInputStore, type RequestHumanAdmissionFacts, requestHumanInputBlockers } from "./request-context-human.js";
 import type { RetainedHumanControl } from "./retained-human-control.js";
 import { RequestContextWorkStore } from "./request-context-work.js";
@@ -214,7 +215,7 @@ export interface DeliveryStatusItem {
   origin?: HumanOrigin;
   wire_content_sha256?: string | null;
   delivered_at?: string | null;
-  proof_kind?: HumanReceiptProof["tag"] | null;
+  proof_kind?: HumanReceiptProof["tag"] | "owned-native-exec" | null;
   /** #1939: who authorized a human receipt — platform, web-session or none — written at admission (not delivery evidence). */
   authority?: import("./authority/web-authority.js").HumanAuthority;
   /**
@@ -222,8 +223,8 @@ export interface DeliveryStatusItem {
    * next message). The fleet decided this at admission; it is the row's kind.
    */
   delivery_mode: "steer" | "idle_queue";
-  /** How the latest attempt was written to the pane (`native_queue_handoff`: into the CLI's own queue); null before any. */
-  submission_mode: DurableSubmissionMode | null;
+  /** How input was written: a pane submission or an owned native exec; null before any. */
+  submission_mode: DurableSubmissionMode | "native_exec" | null;
   /** #1201: when the CLI's transcript showed it consumed — accepted is not read; null until then (or never seen). */
   consumed_at: string | null;
   /** #1201: `turn` (taken as its own turn) or `mid_turn` (absorbed into a running turn at a tool boundary). */
@@ -1511,6 +1512,12 @@ export class DeliveryOutbox extends EventEmitter {
   getHumanReceipt(id: string): HumanReceiptRow | undefined { return getHumanReceipt(this.db, id); }
   bindHumanReceipt(id: string, target: string, ownerKey: string, wire: string, managerBootId: string): HumanReceiptRow {
     return bindHumanReceipt(this.db, id, target, ownerKey, wire, managerBootId);
+  }
+  /** Composed exec owner only. The pane IPC settlement can never settle this run owner. */
+  prepareRequestContextNativeHumanInput(input:Parameters<typeof prepareRequestNativeHumanInput>[2]){
+    const ready=()=>{if(this.requestContextDispatchVersion!==1||assertRequestContextCompatibility(this.db,1)!=="active")throw Error("request-context dispatcher is not ready");};
+    ready();if(input.managerBootId!==this.managerBootId)throw Error("Native human input manager changed");
+    return prepareRequestNativeHumanInput(this.db,ready,input);
   }
   /** Read-only alias proof; neither body text nor a peer's copied hmsg can acquire human receipt authority. */
   ownsHumanControlReceipt(deliveryId: string, targetBootId: string, attemptNo: number, receiptId: string, ownerKey: string, wireSha256: string): boolean {

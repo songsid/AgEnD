@@ -1,3 +1,5 @@
+import {createRequestContextExecOwner} from "../src/request-context-exec-owner.js";
+import {claimNativeExecInput,NativeExecInputWitness,nativeExecInputBytes} from "../src/native-exec-input.js";
 import {makeRequestDeliveryInputResolver} from "../src/request-context-delivery-resolver.js";
 import {randomUUID} from "node:crypto";
 import {mkdtempSync,rmSync} from "node:fs";
@@ -68,4 +70,20 @@ it("a foreign manager or a replacement during final delivery validation cannot r
  const wrong=makeRequestDeliveryInputResolver(f.box,{instance:"b",managerBootId:"another-manager",current:()=>true,runtimeOwner:()=>runtime,consumptionCurrent:()=>true});expect(()=>wrong.prepare(input,wire,runtime)).toThrow(/current/);
  let calls=0;const replaced=makeRequestDeliveryInputResolver(f.box,{instance:"b",managerBootId:"manager",current:()=>++calls<4,runtimeOwner:()=>runtime,consumptionCurrent:()=>true});expect(()=>replaced.prepare(input,wire,runtime)).toThrow(/current/);
  expect(f.db.prepare("SELECT COUNT(*) n FROM request_contexts_v1").get()).toEqual(before);
+});
+
+
+it("an exec peer consumes only its exact B attempt after the owned main-child input write",async()=>{
+ const f=fixture(),request=f.admit(f.root(),"b","request_information"),id=request.result.delivery.deliveryId;
+ const registration={assertRegistration:()=>{}},generation=randomUUID();
+ const stable=createRequestContextExecOwner(f.box,{instance:"b",managerBootId:"manager",registration,work:{current:()=>true,identity:()=>({incarnation:"v1",workGeneration:generation}),fresh:()=>{}},current:()=>true,incarnation:()=>"v1",deliveryEpoch:()=>0,admitted:()=>true,canManage:()=>false,consumptionCurrent:()=>true});
+ const claimed=f.box.claimNext("manager",()=>"manager",new Set())!;
+ const task={requestId:id,cli:"codex" as const,cwd:"C:\\Fixture",sandbox:"read-only" as const,prompt:String(claimed.payload.content)},options={context:"Exact native execution"},claim=claimNativeExecInput(task,options);
+ const frame=stable.prepare(`delivery:${id}:1`,task,options,claim),snapshot=stable.turns.beforeWrite(frame.inputId,frame.wireSha256,stable.owner());frame.bind(snapshot);
+ expect(snapshot.context.ref.parentContextId).toBe(request.context.ref.contextId);expect(snapshot.context.source.instance).toBe("b");expect(f.box.begin(id,"manager",1)).toBe("begun");
+ let written=false;void frame.inputReady().then(v=>written=v);
+ const proof=new NativeExecInputWitness(claim,task,options,"stdin-text",nativeExecInputBytes(task,options),p=>frame.written(p));proof.spawnedMain();await Promise.resolve();expect(written).toBe(false);expect(f.box.get(id)?.state).toBe("submission_started");
+ proof.stdinFinished();expect(await frame.inputReady()).toBe(true);expect(f.box.get(id)?.state).toBe("delivered");expect(f.box.queryStatusForInstance("b",{deliveryId:id}).items[0]?.consumed_at).toBeTruthy();expect(f.box.requestContextReturns.get(id)?.state).toBe("open");
+ // Provider completion and positive input consumption are distinct; failure cannot erase the input proof.
+ expect(f.box.complete(id,"manager",1,"failed")).toBe(false);frame.finish();expect(stable.turns.current(stable.owner())?.token).toBe(snapshot.token);
 });

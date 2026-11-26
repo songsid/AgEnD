@@ -1,3 +1,7 @@
+import {DeliveryOutbox} from "../src/delivery-outbox.js";
+import {createRequestContextExecOwner} from "../src/request-context-exec-owner.js";
+import {nativeHumanOrigin,formatHumanInboundMessage as formatNativeHuman} from "../src/human-delivery-receipts.js";
+import {NativeExecInputWitness,nativeExecInputBytes,type NativeExecInputProof} from "../src/native-exec-input.js";
 import { RequestContextPublication } from "../src/request-context-installation.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -19,10 +23,10 @@ import type { RequestContextCallLease } from "../src/request-context-call.js";
 import { SettingsExecution } from "../src/settings-transaction.js";
 import { authorizeExplicitInstanceRemoval } from "../src/instance-removal.js";
 
-const roots:string[]=[];
+const roots:string[]=[],outboxes:DeliveryOutbox[]=[];
 const id="12345678-1234-4321-abcd-123456789012", thread="12345678-1234-4321-abcd-123456789013";
 beforeEach(()=>vi.stubEnv("AGEND_WINDOWS_CLI","1"));
-afterEach(()=>{vi.unstubAllEnvs();for(const dir of roots.splice(0)){if(!resolve(dir).startsWith(resolve(tmpdir())))throw Error("Unsafe scratch path");rmSync(dir,{recursive:true,force:true});}});
+afterEach(()=>{for(const box of outboxes.splice(0))box.close();vi.unstubAllEnvs();for(const dir of roots.splice(0)){if(!resolve(dir).startsWith(resolve(tmpdir())))throw Error("Unsafe scratch path");rmSync(dir,{recursive:true,force:true});}});
 function fixture(openMcp?:FleetWindowsRuntimeHost["openMcp"]) {
   const home=mkdtempSync(join(tmpdir(),"agend-native-runtime-"));roots.push(home);
   const tasks=new Map<string,WindowsCliTask>(), callbacks=new Map<string,WindowsRunOptions>();let active=false;
@@ -42,7 +46,7 @@ function fixture(openMcp?:FleetWindowsRuntimeHost["openMcp"]) {
   }},{store,bridge});
   const create=()=>runtime.create({name:"Windows helper",cli:"codex",sandbox:"read-only",instructions:"Use native tools",tags:["tools"]},()=>true);
   const settle=(key=id,change:Partial<WindowsCliTask>={})=>{active=false;const task={...tasks.get(key)!,status:"completed" as const,output:"native reply",threadId:thread,outcomeConfirmed:true,finishedAt:Date.now(),...change};tasks.set(key,task);callbacks.get(key)?.onSettled?.(task);return task;};
-  return {home,fleet,store,runtime,bridge,start,save,warn,removed,history,events,create,settle,tasks,stop:()=>{stopping=true;}};
+  return {home,fleet,store,runtime,bridge,start,save,warn,removed,history,events,create,settle,tasks,callbacks,stop:()=>{stopping=true;}};
 }
 
 describe("Fleet Windows runtime adapter",()=>{
@@ -428,4 +432,44 @@ describe("S-230 shared admission fence", () => {
     f.stop(); publication.admission.changed(); await refused;
     publication.abandon(fence, () => null); expect(f.start).not.toHaveBeenCalled(); expect(f.store.get(agent.id).turns).toHaveLength(0);
   });
+});
+
+
+describe("S-230 actual exec claim and accepted human input",()=>{
+ async function prepared(){
+  const close=vi.fn(),open=vi.fn<FleetWindowsRuntimeHost["openMcp"] & Function>(()=>({connection:{endpoint:"http://127.0.0.1:19280/agent",token:"a".repeat(64),tools:["task"]},close,reportedCorrelations:()=>[]}));
+  const f=fixture(open),{name,agent}=await f.create(),box=new DeliveryOutbox(join(f.home,"outbox.db"),"manager",{requestContextDispatchVersion:1});outboxes.push(box);box.activateRequestContextBarrier();
+  const registration={assertRegistration:()=>{}},workGeneration=randomUUID();
+  const owner=createRequestContextExecOwner(box,{instance:name,managerBootId:"manager",registration,
+   work:{current:()=>true,identity:()=>({incarnation:"native-v1",workGeneration}),fresh:()=>{throw Error("Not a fresh launch");}},
+   current:()=>true,incarnation:()=>"native-v1",deliveryEpoch:()=>0,admitted:()=>true,canManage:()=>false,consumptionCurrent:()=>true});
+  f.runtime.setRequestContextExecLifecycles(()=>owner.turns,()=>owner.owner(),registration,(_name,...args)=>owner.prepare(...args));
+  const body="Original admitted question",receipt=box.createHumanReceiptWithRequestContext({targetInstance:name,originalBody:body,origin:nativeHumanOrigin("telegram","fixture","demo-person","Demo person",false,"message")!,inputKind:"fleet_inbound",managerBootId:"manager"},
+   {incarnation:"native-v1",room:null,web:null,route:{kind:"instance"},platform:()=>"telegram"}).receipt;
+  const content=formatNativeHuman(body,{source:"telegram",user:"Demo person",user_id:"demo-person",verification_id:receipt.message_id},"mcp",{dialect:"compact",replyHint:false});
+  const options={requestContextInputId:`human:${receipt.message_id}`};
+  return {...f,name,agent,box,receipt,content,options,owner,open,close};
+ }
+ it("claims the actual composed bytes, keeps its original grant waiting, and consumes once only after the main input write",async()=>{
+  const f=await prepared(),pending=f.runtime.execute(f.name,{requestId:id,content:f.content},f.options);
+  const [task,,options]=f.start.mock.calls[0];expect(options.execInput).toBeTruthy();expect(task.prompt).toContain("Agent instructions:");
+  const scope=f.open.mock.calls[0][4]!,ready=f.open.mock.calls[0][5]!;let permitted=false;void ready().then(v=>permitted=v);await Promise.resolve();expect(permitted).toBe(false);
+  expect(f.box.getHumanReceipt(f.receipt.receipt_id)?.state).toBe("queued");
+  const witness=new NativeExecInputWitness(options.execInput!,task,options,"stdin-text",nativeExecInputBytes(task,options),p=>options.onInputWritten!(p));
+  witness.spawnedMain();await Promise.resolve();expect(permitted).toBe(false);witness.stdinFinished();expect(await ready()).toBe(true);
+  expect(f.box.getHumanReceipt(f.receipt.receipt_id)?.state).toBe("delivered");expect(scope.current()).toBe(true);
+  await f.runtime.deliver(f.name,{requestId:id,content:f.content},f.options);expect(f.start).toHaveBeenCalledOnce();expect(f.open).toHaveBeenCalledOnce();
+  f.settle();await pending;expect(scope.current()).toBe(false);expect(f.owner.turns.current(f.owner.owner())).toBeNull();
+ });
+ it("a missing actual MCP endpoint aborts before provider start and leaves the exact receipt uncertain",async()=>{
+  const f=await prepared();f.open.mockReturnValueOnce(null);
+  await expect(f.runtime.execute(f.name,{requestId:id,content:f.content},f.options)).rejects.toThrow("tools are unavailable");
+  expect(f.start).not.toHaveBeenCalled();expect(f.owner.turns.current(f.owner.owner())).toBeNull();expect(f.box.getHumanReceipt(f.receipt.receipt_id)?.state).toBe("uncertain");
+ });
+ it("ending without a positive write releases waiting tools as false and retains uncertain C work until confirmed recovery",async()=>{
+  const f=await prepared(),pending=f.runtime.execute(f.name,{requestId:id,content:f.content},f.options),ready=f.open.mock.calls[0][5]!,scope=f.open.mock.calls[0][4]!;
+  f.settle(id,{status:"failed",outcomeConfirmed:false});await pending;expect(await ready()).toBe(false);expect(scope.current()).toBe(true);expect(f.box.getHumanReceipt(f.receipt.receipt_id)?.state).toBe("uncertain");
+  const options=f.callbacks.get(id)!;expect(()=>options.onInputWritten!({...options.execInput!,inputSha256:options.execInput!.wireSha256} as NativeExecInputProof)).toThrow();
+  f.tasks.set(id,{...f.tasks.get(id)!,outcomeConfirmed:true});f.runtime.get(f.name);expect(scope.current()).toBe(false);
+ });
 });

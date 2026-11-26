@@ -136,8 +136,8 @@ export interface HumanReceiptRow {
   owner_key: string | null;
   input_kind: string;
   state: "queued" | "delivered" | "uncertain";
-  proof_tag: HumanPositiveTag | null;
-  proof_mode: HumanWriteMode | null;
+  proof_tag: HumanPositiveTag | "owned-native-exec" | null;
+  proof_mode: HumanWriteMode | "native_exec" | null;
   created_at: string;
   updated_at: string;
   delivered_at: string | null;
@@ -217,7 +217,8 @@ export function settleHumanReceipt(db: Database.Database, id: string, target: st
   proof: unknown, currentOwnerKey: string | null): boolean {
   return db.transaction(() => {
     const row = getHumanReceipt(db, id);
-    if (!row || row.target_instance !== target || row.owner_key !== ownerKey || row.state === "delivered") return false;
+    if (!row || row.target_instance !== target || row.owner_key !== ownerKey || row.state === "delivered"
+      || row.owner_key?.startsWith('["native-exec-v1",')) return false;
     let positive: HumanReceiptProof | null = null;
     if (isHumanPositiveProof(proof)) {
       const modeMatches = row.input_kind === "steer" || row.input_kind === "btw"

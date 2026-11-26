@@ -1080,6 +1080,9 @@ interface PendingClassicStart {
   showMenu?: (text: string, choices: Choice[]) => Promise<string | undefined>;
 }
 
+// Exact server-admitted payload objects only; metadata never chooses an exec input key.
+const nativeHumanInputs=new WeakMap<object,{instance:string;inputId:string}>();
+
 export interface DeliveryOptions {
   /**
    * A Windows instance only: the sender's authority after the handoff (see NativeRuntimeDeliveryOptions.authorityCurrent).
@@ -1354,6 +1357,7 @@ interface RequestContextNativeGraph {
  readonly panes:import("./request-context-pane.js").RequestContextPaneProofs;
  readonly execTurns:Parameters<FleetWindowsRuntime["setRequestContextExecLifecycles"]>[0];
  readonly execOwner:Parameters<FleetWindowsRuntime["setRequestContextExecLifecycles"]>[1];
+ readonly execInput:NonNullable<Parameters<FleetWindowsRuntime["setRequestContextExecLifecycles"]>[3]>;
  /** Process/graph ownership, independent of the confirming browser and transport readiness. */
  current():boolean;
 }
@@ -1757,7 +1761,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const lease=captureProcessFleetLease(this.dataDir);
     if(this.requestContextNativeGraph||!lease?.current()||this.requestContextAdmission?.available()!==false||!graph.current()
       ||this.runtimeHub||this.localPaneRelay||this.openingLocalPane||this.requestContextOpeningPaneManagers||this.paneManager||this.nativeMcpStore||this.fleetWindowsRuntime
-      ||graph.panes.drainView("").registration!==graph.registration)throw Error("Request-context native graph is not retired");
+      ||typeof graph.execInput!=="function"||graph.panes.drainView("").registration!==graph.registration)throw Error("Request-context native graph is not retired");
     this.requestContextNativeGraph=graph;this.requestContextNativeGraphLease=lease;
   }
   private currentRequestContextNativeGraph():RequestContextNativeGraph|null {
@@ -1869,7 +1873,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (event === "activity") this.scheduleDeliveryOutboxPump();
       },
     },{bridge:this.runtimeWindowsExecutor()});
-    if(graph)runtime.setRequestContextExecLifecycles(graph.execTurns,graph.execOwner,graph.registration);
+    if(graph)runtime.setRequestContextExecLifecycles(graph.execTurns,graph.execOwner,graph.registration,graph.execInput);
     return this.fleetWindowsRuntime=graph?this.ownRequestContextNativeFactory(runtime,graph):runtime;
   }
   private agentRuntimeChangeService?:AgentRuntimeChanges;
@@ -7603,6 +7607,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       const meta=claimed.payload.meta && typeof claimed.payload.meta === "object" ? claimed.payload.meta as Record<string,unknown> : {};
       const task=await this.nativeInstanceRuntime().execute(target,{...claimed.payload,requestId:deliveryId,meta:{...meta,from_instance:claimed.sourceInstance,correlation_id:claimed.correlationId}}, {
+        ...(this.requestContextPolicy?{requestContextInputId:`delivery:${deliveryId}:${attemptNo}`} : {}),
         stillCurrent:()=>!this.shuttingDown && this.contactDeliveryCurrent(claimed),
         beforeStart:()=>{ if(!this.contactDeliveryCurrent(claimed) || outbox.begin(deliveryId,targetDaemonBootId,attemptNo)!=="begun") throw new Error("Windows delivery attempt is no longer current");begun=true; },
       });
@@ -9956,6 +9961,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     originalBody: string, options?: DeliveryOptions): Promise<boolean | void> {
     const admitted = this.humanReceiptPayload(instanceName, payload, origin, originalBody);
     const id = (admitted.meta as Record<string, string> | undefined)?.human_receipt_id;
+    if(id&&requestContextPolicyInstalled(this.requestContextPolicy))nativeHumanInputs.set(admitted,{instance:instanceName,inputId:`human:hmsg-${id}`});
     let sent = false;
     try {
       const result = options ? await this.deliverToInstance(instanceName, admitted, options) : await this.deliverToInstance(instanceName, admitted);
@@ -10022,7 +10028,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.generalLocationDeliveryHold(instanceName)) return false;
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       if (options.beforeInput) return false; // no pre-input hook on the Windows runtime
+      const input=nativeHumanInputs.get(payload);
       return this.nativeInstanceRuntime().deliver(instanceName,payload,{stillCurrent:options.stillCurrent,
+        ...(input?.instance===instanceName?{requestContextInputId:input.inputId}:{}),
         ...(options.authorityCurrent ? {authorityCurrent:options.authorityCurrent} : {})});
     }
     const deliveryEpoch = this.getDeliveryEpoch(instanceName);

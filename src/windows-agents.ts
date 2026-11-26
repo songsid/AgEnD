@@ -91,6 +91,12 @@ export class WindowsAgents {
     return agent;
   }
   useExecutor(executor: WindowsCliExecutor): void { this.bridge = executor; }
+  /** Read only this conversation's immutable claim; a retry never mints or adopts another scope. */
+  requestExecInput(id:string,requestId:string):Readonly<NativeExecInputClaim>|null {
+    this.find(id);const row=Object.hasOwn(this.data.requests,requestId)?this.data.requests[requestId]:null;
+    if(!row||row.agentId!==id||!row.execInput)return null;
+    return validateNativeExecInputClaim(row.execInput);
+  }
   get(id: string): WindowsAgent & { blocked: boolean } {
     // A paired runtime can finish while the coordinator is restarting. Reconcile its durable result before
     // interpreting a saved active turn as an orphan; provider session IDs still belong to the same machine.
