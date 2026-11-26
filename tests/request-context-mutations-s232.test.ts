@@ -11,12 +11,12 @@ it("actual TaskBoard, scheduler, config and theme commit owners refuse captured 
  const f=fixture(),fm:any=Object.create(FleetManager.prototype),write=vi.fn();fm.requestContextPolicy=f.policy;fm.scheduler={db:{},create:write,update:write,delete:write};fm.fleetConfig={instances:{worker:{working_directory:"/fixture"}}};Object.defineProperty(fm,"appearanceTools",{value:{handle:write}});Object.defineProperty(fm,"webAppearance",{value:{handleTool:write}});
  await expect(fm.handleTaskCrudHttp("worker",{action:"create",title:"Not created"},undefined,f.admission)).rejects.toThrow(/task cards/);
  expect(()=>fm.performScheduleOp("worker","create",{target:"worker",cron:"* * * * *",message:"Not scheduled"},{chatId:"",threadId:null,requestContextAdmission:f.admission})).toThrow(/scheduled work/);
- expect(()=>fm.saveFleetConfig([],f.admission)).toThrow(/separate owner/);
- await expect(fm.handleWebThemeHttp("worker","set_web_theme",{},f.admission)).rejects.toThrow(/separate owner/);expect(write).not.toHaveBeenCalled();
+ expect(()=>fm.saveFleetConfig([],f.admission)).toThrow(/owner.*new request/);
+ await expect(fm.handleWebThemeHttp("worker","set_web_theme",{},f.admission)).rejects.toThrow(/owner.*new request/);expect(write).not.toHaveBeenCalled();
 });
 it("actual config patch refuses before changing the in-memory config",()=>{
  const f=fixture(),save=vi.fn(),raw:any={requestContextPolicy:f.policy,fleetConfig:{instances:{worker:{working_directory:"/fixture",model:"original"}}},saveFleetConfig:save},ctx=nativeAgentAdmissionContext(raw,{instance:"worker",current:()=>true,taskAllowed:()=>true,requestContext:f.lease,operation:{tool:"update_instance_config",args:{name:"worker",config:{model:"changed"}}}}),respond=vi.fn();
- applyInstanceConfigPatch(ctx,"worker",{model:"changed"},respond);expect(raw.fleetConfig.instances.worker.model).toBe("original");expect(save).not.toHaveBeenCalled();expect(respond).toHaveBeenCalledWith(null,expect.stringContaining("separate owner"));
+ applyInstanceConfigPatch(ctx,"worker",{model:"changed"},respond);expect(raw.fleetConfig.instances.worker.model).toBe("original");expect(save).not.toHaveBeenCalled();expect(respond).toHaveBeenCalledWith(null,expect.stringContaining("owner to start a new request"));
 });
 it("the actual HTTP dispatcher refuses Hub task CRUD before its early-return branch",async()=>{
  const f=fixture(),write=vi.fn(),ctx=nativeAgentAdmissionContext({requestContextPolicy:f.policy,fleetConfig:{instances:{worker:{tool_set:"worker"}}},logger:{warn:vi.fn()},handleTaskCrudHttp:write}as any,{instance:"worker",current:()=>true,taskAllowed:()=>true,requestContext:f.lease,operation:{tool:"task",args:{action:"create"}}});
