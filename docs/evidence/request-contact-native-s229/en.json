@@ -50,6 +50,22 @@
         ]
       },
       "afterNotNow": "Not now. The request still waits."
+    },
+    "interrupted-launch": {
+      "card": {
+        "type": "clear_confirm",
+        "text": "Let Example lead contact Example worker?\n> Please run the release checklist.\n#R1a2b3c4d · expires in 30 min\nThis agent was interrupted; this contact needs one approval.\nContinue = this request and its follow-up contacts only.",
+        "buttons": [
+          {
+            "label": "Continue",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:approve"
+          },
+          {
+            "label": "Decline",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:decline"
+          }
+        ]
+      }
     }
   }
 }
