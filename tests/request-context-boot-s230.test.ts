@@ -200,3 +200,11 @@ it("a durable first-On commit cannot abandon into legacy and adopted owner curre
  expect(first.adoptCommitted(state.epoch)).toEqual(state);expect(first.current()).toBe(true);expect(m.requestContextPolicy).toBe(first.boot.policy);
  expect(m.requestContextAdmission.available()).toBe(false);expect(()=>stage.restore()).toThrow();
 });
+
+it("Fleet typed IPC cannot bypass the temporary first-On gate before a serving publication exists",()=>{
+ const h=home();lock(h);const m=manager(h);m.fleetConfig={instances:{}};m.ensureDeliveryOutbox();
+ m.refuseTypedIpc=vi.fn();m.handleTaskCrud=vi.fn();const first=m.prepareRequestContextFirstOn();
+ const message={type:"fleet_task",requestId:"fixture",payload:{action:"create",title:"must not write"}};
+ m.dispatchTypedIpc("candidate",message);expect(m.handleTaskCrud).not.toHaveBeenCalled();expect(m.refuseTypedIpc).toHaveBeenCalledWith("candidate",message,expect.stringMatching(/fenced/));
+ first.abandon();m.dispatchTypedIpc("candidate",message);expect(m.handleTaskCrud).toHaveBeenCalledOnce();
+});
