@@ -28,9 +28,9 @@ try{
    await page.evaluate(async value=>{
      const loaded=performance.getEntriesByType("resource").map(row=>row.name).filter(name=>/\/ui\/js\/(?:v-[^/]+\/)?settings-confirm\.js(?:[?#]|$)/.test(name));
      const path=loaded.find(name=>name.includes("/v-"))??loaded[0]??"/ui/js/settings-confirm.js";
-     const m:any=await import(path);void m.track(value,"Access & security");
+     const m:any=await import(path),control:any=await import(path.replace(/settings-confirm\.js(?:[?#].*)?$/,"request-context-control.js"));void m.track(value,control.requestContextControlText("title"));
    },pending);
-   await page.locator(".pending-card").waitFor();await page.locator(".pending-card").scrollIntoViewIfNeeded();await page.waitForTimeout(120);
+   await page.locator(".pending-card").waitFor();await page.locator(".pending-card .pending-details > summary").click();await page.locator(".pending-card").scrollIntoViewIfNeeded();await page.waitForTimeout(120);
    check(`${tag}: pending summary carries irreversible effect`,(await page.locator(".pending-card").innerText()).includes(c.lang==="en"?"older AgEnD":"舊版 AgEnD"));await shot("settings-pending");
    await page.goto(`${fx.base}/ui/chat/worker`);await page.waitForTimeout(200);
    const root=randomUUID(),context:any={ref:{version:1,contextId:randomUUID(),rootContextId:root,parentContextId:root},rootEvidenceRef:"synthetic-delegation",ingress:"owner",source:{instance:"worker",incarnation:"fixture"},initiatingActor:{kind:"person",platform:"discord",userId:"demo-person",displayName:"Demo person"},sourceAudience:{kind:"instance",ref:"general"}};
