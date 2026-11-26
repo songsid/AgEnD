@@ -247,7 +247,22 @@ fi
 # or the prefix is under $HOME, create the missing directories. After that, pick
 # sudo from whether lib/node_modules or lib is writable. A writable prefix must
 # not override an existing unwritable lib (mkdir -p does not chmod it).
-NPM_PREFIX=$(npm config get prefix </dev/null 2>/dev/null || echo "/usr/local")
+# M-3806: for a UUID in the path, npm config get prefix refuses ("protected", npm
+# 10-12) and npm 11/12 print *** in its place. A program npm starts still gets
+# the real one (npm_config_global_prefix), so ask that way. Never create or judge
+# a folder from a redacted or missing answer.
+NPM_PREFIX=$(npm config get prefix </dev/null 2>/dev/null) || NPM_PREFIX=""
+case "$NPM_PREFIX" in
+  "" | *'***'*)
+    NPM_PREFIX=$(npm exec -c 'node -p process.env.npm_config_global_prefix' </dev/null 2>/dev/null | tail -n 1 || true)
+    case "$NPM_PREFIX" in
+      *'***'*) NPM_PREFIX="" ;;
+      /*) ;;
+      *) NPM_PREFIX="" ;;
+    esac
+    [ -n "$NPM_PREFIX" ] || error "npm did not say where it installs global packages (npm config get prefix / npm prefix -g)."
+    ;;
+esac
 npm_prefix_existing="$NPM_PREFIX"
 while [ ! -e "$npm_prefix_existing" ]; do
   npm_prefix_parent=$(dirname "$npm_prefix_existing")
@@ -273,7 +288,7 @@ if npm list -g @suzuke/agend </dev/null >/dev/null 2>&1; then
   warn "Removing old @suzuke/agend to avoid conflicts..."
   $SUDO npm uninstall -g @suzuke/agend </dev/null 2>/dev/null || true
   # Remove leftover binary symlink (npm uninstall sometimes leaves it)
-  rm -f "$(npm prefix -g </dev/null)/bin/agend" 2>/dev/null || true
+  rm -f "$NPM_PREFIX/bin/agend" 2>/dev/null || true   # M-3806: npm prefix -g may print *** for a UUID
 elif command_exists agend; then
   AGEND_REAL=$(readlink -f "$(command -v agend)" 2>/dev/null || true)
   if [[ "$AGEND_REAL" == */AgEnD/* ]] || [[ "$AGEND_REAL" == *"@suzuke/agend"* ]] || [[ "$AGEND_REAL" == */Projects/* ]]; then

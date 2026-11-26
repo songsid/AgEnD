@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { rmSync } from "node:fs";
 import { shellQuote } from "./backend/types.js";
 import { restorePackagePreimage, takePackagePreimage, type PackagePreimage } from "./package-preimage.js";
-import { npmAllowScripts } from "./update-npm-env.js";
+import { npmAllowScripts, npmGlobalPrefix } from "./update-npm-env.js";
 
 export interface CommandResult {
   status: number | null;
@@ -172,10 +172,14 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
   // `agend` happens to win PATH (#1449 review: a same-version checkout earlier on PATH must not pass).
   const rootRun = run([npmBin, "root", "-g"]);
   const prefixRun = run([npmBin, "prefix", "-g"]);
-  if (rootRun.status !== 0 || prefixRun.status !== 0 || !out(rootRun) || !out(prefixRun)) {
+  // M-3806: npm 11/12 print `***` for a UUID in the path; then the prefix is asked the way npm tells a child.
+  const where = rootRun.status === 0 && prefixRun.status === 0
+    ? npmGlobalPrefix.resolve(prefixRun.stdout, rootRun.stdout, () => { const r = run([npmBin, ...npmGlobalPrefix.ASK]); return r.status === 0 ? r.stdout : ""; })
+    : { prefix: "", root: "" };
+  if (!where.root || !where.prefix) {
     return fail("  ✗ Verification failed: could not ask npm where it installed the package.");
   }
-  const pkgDir = join(out(rootRun), "@songsid", "agend");
+  const pkgDir = join(where.root, "@songsid", "agend");
   const identityRun = run(["node", "-e", PACKAGE_IDENTITY_SCRIPT, pkgDir]);
   let identity: { name?: string; version?: string; dir?: string; bin?: string | null; entry?: string | null } = {};
   try { identity = JSON.parse(out(identityRun)); } catch { /* checked below */ }
@@ -186,7 +190,7 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
   if (plan.targetVersion && version !== plan.targetVersion) {
     return fail(`  ✗ Verification failed: npm installed v${version} at ${pkgDir}, not v${plan.targetVersion}.`);
   }
-  const agendPath = join(out(prefixRun), "bin", "agend");
+  const agendPath = join(where.prefix, "bin", "agend");
   const binReal = runner.run("readlink", ["-f", agendPath], { timeoutMs: 5_000 });
   if (binReal.status !== 0 || out(binReal) !== identity.bin) {
     return fail(`  ✗ Verification failed: ${agendPath} does not lead to the installed package (${identity.bin}).`);
@@ -247,7 +251,7 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
 export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner): UpdateInstallOutcome {
   // A real local link is only reported: the install below replaces it in place, and a failed install leaves it.
   const root = runner.run("npm", ["root", "-g"], { timeoutMs: 15_000 });
-  if (root.status === 0 && root.stdout.trim()) {
+  if (root.status === 0 && root.stdout.trim() && !npmGlobalPrefix.masked(root.stdout)) {   // M-3806: a redacted root names no folder; this is only a note
     const entry = join(root.stdout.trim(), "@songsid", "agend");
     const link = runner.run("readlink", [entry], { timeoutMs: 5_000 });
     if (link.status === 0) {
@@ -294,14 +298,17 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
   let rollback: { root: string; prefix: string; preimage: PackagePreimage | null } | undefined;
   if (plan.lock) {
     const prefix = inInstallEnv(runner, plan, [npmBin, "prefix", "-g"], { timeoutMs: 15_000 });
-    const where = prefix.stdout.trim().split("\n").pop()?.trim() ?? "";
+    // M-3806: a redacted answer (`***`) is asked again the way npm tells a child; never a lock on a folder that isn't there.
+    const askInEnv = () => { const r = inInstallEnv(runner, plan, [npmBin, ...npmGlobalPrefix.ASK], { timeoutMs: 15_000 }); return r.status === 0 ? r.stdout : ""; };
+    const where = prefix.status === 0 ? npmGlobalPrefix.resolve(prefix.stdout, undefined, askInEnv).prefix : "";
     if (prefix.status !== 0 || !where) return { ok: false, stage: "lock", message: "  ✗ Could not ask npm which prefix it installs into; nothing was changed." };
     const lock = plan.lock(where);
     if (!lock.ok) return { ok: false, stage: "lock", message: `  ✗ Not updating: ${lock.reason}. Nothing was changed.` };
     env.AGEND_INSTALL_TOKEN = lock.token;
     if (plan.rollback) {
       const rootRun = inInstallEnv(runner, plan, [npmBin, "root", "-g"], { timeoutMs: 15_000 });
-      const root = rootRun.stdout.trim().split("\n").pop()?.trim() ?? "";
+      const rootOut = npmGlobalPrefix.lastLine(rootRun.stdout);
+      const root = npmGlobalPrefix.masked(rootOut) ? npmGlobalPrefix.rootOf(where) : rootOut;
       if (rootRun.status !== 0 || !root) return { ok: false, stage: "lock", message: "  ✗ Could not ask npm where it installs packages; nothing was changed." };
       const taken = takePackagePreimage(root, where, plan.now?.() ?? new Date());
       if (!taken.ok) return { ok: false, stage: "lock", message: `  ✗ Not updating: ${taken.reason}. Nothing was changed.` };

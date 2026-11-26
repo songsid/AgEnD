@@ -72,7 +72,7 @@ import {
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, readUpdateProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
 import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
-import { dropUpdateNpmBounds, npmAllowScripts, withoutUpdateNpmBounds } from "./update-npm-env.js";
+import { dropUpdateNpmBounds, npmAllowScripts, npmGlobalPrefix, withoutUpdateNpmBounds } from "./update-npm-env.js";
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { fleetServiceOwner } from "./fleet-service-owner.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
@@ -1746,7 +1746,14 @@ program
     // ── Check if npm global needs sudo (read-only; decides the nvm path the preflight judges) ──
     let needsSudo = false;
     try {
-      const prefix = execSync("npm config get prefix", { encoding: "utf-8" }).trim();
+      // M-3806: for a UUID in the path, `npm config get prefix` refuses (npm 10–12) and `npm prefix -g` prints `***`
+      // (npm 11/12); then the prefix is asked the way npm tells a child. No answer at all: as before, assume no sudo.
+      const quiet = { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] } as const;
+      let configured = "";
+      try { configured = execSync("npm config get prefix", quiet); } catch { /* refused: asked below */ }
+      const prefix = npmGlobalPrefix.resolve(configured, undefined,
+        () => execSync(`npm ${npmGlobalPrefix.ASK.slice(0, 2).join(" ")} "${npmGlobalPrefix.ASK[2]}"`, quiet)).prefix;
+      if (!prefix) throw new Error("npm did not say where it installs global packages");
       const { accessSync, constants } = await import("node:fs");
       try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
     } catch { /* assume no sudo needed */ }
