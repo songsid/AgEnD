@@ -223,6 +223,12 @@ function parseRecord(text: string, id: string): AttemptRecord | null {
   return r as AttemptRecord;
 }
 
+/** One attempt's own record, validated (null: absent, unreadable or invalid) — whatever `current` names. */
+export function readAttemptRecord(home: string, id: string, io: JournalIo = defaultJournalIo): AttemptRecord | null {
+  if (!ID.test(id)) return null;
+  try { const text = io.read(recordPath(home, id)); return text === null ? null : parseRecord(text, id); } catch { return null; }
+}
+
 export type JournalRead =
   | { state: "none" }
   | { state: "unknown"; reason: string; path: string }

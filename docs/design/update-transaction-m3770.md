@@ -430,8 +430,23 @@ The kit is kept as long as anything can still need it: through `rolled-back`/`ma
 
 ### 6.2 How it is reached: a pre-start check that hands off, never runs the transaction itself
 **The pre-start step (rev 3).** Before the install, under the service lock, the service definition gains a pre-start step:
-- **systemd:** a drop-in `<unit>.d/agend-update-recovery.conf` with `ExecStartPre=<kit>/node <kit>/recover.cjs --home <home> --pre-start`;
-- **launchd:** a wrapper in `ProgramArguments`.
+- **systemd:** a drop-in `<fragment dir>/<unit>.d/agend-update-recovery.conf` (the unit file itself is untouched):
+  ```
+  [Service]
+  ExecStartPre=<kit>/node <kit>/recover.cjs --home <home> --attempt <id> --pre-start
+  EnvironmentFile=-<home>/.update-journal/attempts/<id>/handoff.env
+  ```
+  It is written only when the home, the kit and `handoff.env` are each one plain word in a unit file: no whitespace, quotes, `%` specifiers or `$` expansions. Otherwise the route is refused and the attempt abandons.
+- **launchd:** `ProgramArguments` wrapped (rev 7: Node can't `exec`, and launchd's MainPID must be the fleet, so the wrapper is `/bin/sh`):
+  `["/bin/sh", "-c", WRAPPER_SCRIPT, "agend-update-recovery", <kit>/node, <kit>/recover.cjs, <home>, <id>, …original]`.
+  `WRAPPER_SCRIPT` (in `src/update-recovery/route.ts`, matched byte-for-byte):
+  - it runs the pre-start step, and a refusal stops the start with its exit code;
+  - it reads `handoff.env` without sourcing it, and exports only an exact `AGEND_UPDATE_HANDOFF=<32 hex>` line;
+  - then it `exec`s the original arguments.
+
+  The original arguments are always taken from `unit.preimage`, never from the plist on disk.
+- **`--attempt <id>`** names the attempt the route was written for. `handoff.env` is that attempt's: the pre-start writes it only for a handoff on that attempt, and otherwise removes it and fsyncs its directory, whatever the journal reads.
+- **A retry, or the route's removal,** rewrites only what the route wrote: the definition on disk must be the preimage itself or exactly this route's form. Anything else (systemd: a unit changed since its preimage; launchd: a plist that is neither the preimage nor its exact wrapper) is refused (§3.2: fail closed).
 
 The original definition's bytes are `unit.preimage`. The pre-start step runs **inside the service's start**, so it never stops, starts or reloads that service, and never restores anything. It only decides, from the journal:
 | Journal | Pre-start does |
@@ -443,8 +458,8 @@ The original definition's bytes are `unit.preimage`. The pre-start step runs **i
 | open; updater or runner liveness unknown, or unknown or manual | exit non-zero with the paths and the operator command |
 
 **The independent runner** runs outside the service's cgroup and job:
-- **systemd:** `systemd-run --user --unit=agend-update-recovery-<id> --collect --property=KillMode=process <kit>/node <kit>/recover.cjs --home <home> --run`. That is a transient service of its own, not a child of the unit.
-- **launchd:** a separate job, `launchctl submit -l com.agend.update-recovery.<id> -- <kit>/node … --run`.
+- **systemd:** `systemd-run [--user] --unit=agend-update-recovery-<id> --collect --property=KillMode=process <kit>/node <kit>/recover.cjs --home <home> --attempt <id> --run`, with `--user` unless root. That is a transient service of its own, not a child of the unit.
+- **launchd:** a separate job, `launchctl submit -l com.agend.update-recovery.<id> -- <kit>/node <kit>/recover.cjs --home <home> --attempt <id> --run`.
 
 **The bootstrap handshake:**
 1. The pre-start step starts the runner and waits up to 10 s for `attempts/<id>/runner.json` (the runner's `{ pid, start }`, written after it holds the three locks).
@@ -460,17 +475,18 @@ The original definition's bytes are `unit.preimage`. The pre-start step runs **i
 5. It runs `systemctl --user reset-failed` and `start`, or `launchctl kickstart`. The pre-start check delivers the nonce, and the old version's fleet claims it and takes `fleet.lock` over (§4.3).
 6. **After the takeover is acknowledged** (rev 4):
    - **systemd:** the runner removes the drop-in and runs `daemon-reload` while the unit is active, with no job queued. A reload doesn't restart a running unit.
-   - **launchd:** the loaded job keeps the wrapper until the next load. Reloading a running job would restart it, so the runner writes the unwrapped plist to disk, and the next load (the next `agend restart`, a reboot, or an update) uses it.
+   - **launchd:** the loaded job keeps the wrapper until the next load. Reloading a running job would restart it, so the runner writes the preimage's bytes back to disk, and the next load (the next `agend restart`, a reboot, or an update) uses it. It writes them only over this route's exact wrapper: if the preimage is already there, it is done; if the plist is anything else, it refuses and leaves the plist as it is.
    - **The wrapper itself** is harmless outside an attempt: with no open attempt it only execs the original arguments.
    - **The kit stays as long as a loaded job references it (rev 5).** Retention never removes a kit while the loaded launchd job's `ProgramArguments` (read with `launchctl print`) names it, even past the 7 days. Pruning reads the loaded arguments first. An unreadable answer counts as "referenced", so the kit is kept.
-   - **P3 accepts the wrapper only when it is exactly this:**
-     - arguments `[<kit>/node, <kit>/recover.cjs, --home, <home>, --then, …]`, where the `…` is byte-for-byte `unit.preimage`'s `ProgramArguments`;
-     - `<kit>` is a recovery directory of this home whose `kit.json` names a **terminal** attempt;
-     - the two files' sha256 match `kit.json`.
+   - **P3 accepts the wrapper only when it is exactly this** (`unwrapRecoveryRoute`):
+     - arguments `["/bin/sh", "-c", WRAPPER_SCRIPT, "agend-update-recovery", <kit>/node, <kit>/recover.cjs, <home>, <id>, …]`, with the script byte-for-byte and `<home>` this home;
+     - `<kit>` is this home's recovery directory for `<id>`, and the two files' sha256 match its `kit.json`;
+     - **the attempt `<id>` is terminal by its own record** (committed, rolled-back or abandoned; not manual-recovery). It is never inferred from `current`, and no attempt may be in flight now;
+     - the tail `…` is byte-for-byte the `ProgramArguments` of that attempt's `unit.preimage`. A missing or unreadable preimage or record is unproven.
 
      Anything else (another path, other arguments, a changed kit, an open or unknown attempt) is `service-unknown`. The expected tuple's `execStart` (§3.2) is the wrapped form until the next load, then the unwrapped one.
 
-**The operator command**, `<home>/.update-journal/recovery/<id>/node …/recover.cjs --home <home> --run`, is the same runner, run from a shell outside the service. It works with the package missing or broken.
+**The operator command**, `<home>/.update-journal/recovery/<id>/node <home>/.update-journal/recovery/<id>/recover.cjs --home <home> --attempt <id> --run` (each word shell-quoted as printed), is the same runner, run from a shell outside the service. It works with the package missing or broken.
 
 **The live updater's own starts** (trial, abandon's restart) go through the same pre-start check, carrying their planned generation's nonce.
 
@@ -561,6 +577,15 @@ A retry recognises each effect by the path's presence and its hash against the p
 | `.state-lease.sqlite` and its sidecar excluded from snapshot, restore and prune (its locked inode is kept) | §5.1 |
 | A claimant dead after its rename and before the acknowledgement: the generation is journaled dead, the fence re-taken by owned stale replacement, the journal-first start refusal covers the gap | §4.3 |
 | The kit kept while a loaded launchd job references it; P3's exact check of the wrapper (arguments, kit path and hashes, terminal attempt) | §6.2 |
+
+### Revision 7 (2.1c as shipped: #4511, #4515, #4517; Prism and Fable reviews)
+| Change | Where |
+|---|---|
+| The pre-start and the runner take `--attempt <id>`, the route's attempt. `handoff.env` is that attempt's file, removed durably on every decision other than a handoff | §6.2 |
+| launchd's wrapper is `/bin/sh` running the pre-start, then `exec`ing the original (Node can't `exec`; MainPID must be the fleet). `handoff.env` is read, never sourced | §6.2 |
+| The drop-in's exact text; paths limited to one plain word in a unit file | §6.2 |
+| P3's unwrap: the tail is the preimage's exact `ProgramArguments`, and the attempt is terminal by its own record, not by `current` | §6.2 |
+| A retry or removal of the route rewrites only the route's own bytes (the preimage, or its exact wrapped form); anything else is refused | §6.2 |
 
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
