@@ -1,10 +1,30 @@
 {
+  "desk-light-en-bell-off": "Notify me on this device — Get a desktop notification when someone @mentions you, an agent answers, or a new invitation arrives.",
+  "desk-light-en-bell-on": "Notify me on this device — Notifications are on while a Hub tab or the AgEnD app is open, even in the background.",
   "desk-light-en": {
-    "notice": "Keep notifications coming Notifications arrive while a Hub tab is open, even in the background; closing every Hub tab stops them. Keep a Hub tab open. This Hub can't be installed as an app yet: its certificate isn't trusted by this browser (the button beside the bell says more). OK",
+    "notice": "Keep notifications coming Notifications arrive while a Hub tab is open, even in the background; closing every Hub tab stops them. Keep a Hub tab open. This Hub can't be installed as an app yet: its address doesn't have a certificate your company's computers trust (the button beside the bell says more). OK",
     "secondTime": 0
   },
+  "desk-light-en-tab": {
+    "notice": "Keep notifications coming Notifications arrive while a Hub tab is open, even in the background; closing every Hub tab stops them. To keep them coming, install the Hub as an app (the button beside the bell) and leave it running, minimized is fine. In Edge or Chrome, the app's settings also offer \"Start app when you sign in\". OK",
+    "secondTime": 0
+  },
+  "desk-light-en-app": {
+    "notice": "Keep notifications coming Notifications arrive while this app is open, even minimized; quitting it stops them. Leave it running. In Edge or Chrome, the app's settings offer \"Start app when you sign in\", so it is there after a restart. OK",
+    "secondTime": 0
+  },
+  "phone-dark-zh-TW-bell-off": "在這個裝置上通知我 — 有人 @ 你、Agent 回答或有新邀請時，收到桌面通知。",
+  "phone-dark-zh-TW-bell-on": "在這個裝置上通知我 — Hub 分頁或 AgEnD 應用程式開著時（在背景也可以）會收到通知。",
   "phone-dark-zh-TW": {
-    "notice": "持續收到通知 Hub 分頁開著時（在背景也可以）會收到通知；關掉所有 Hub 分頁後就不會再通知。請讓一個 Hub 分頁保持開著。這個 Hub 目前還不能安裝成應用程式：這個瀏覽器不信任它的憑證（鈴鐺旁的按鈕有說明）。 知道了",
+    "notice": "持續收到通知 Hub 分頁開著時（在背景也可以）會收到通知；關掉所有 Hub 分頁後就不會再通知。請讓一個 Hub 分頁保持開著。這個 Hub 目前還不能安裝成應用程式：它的網址還沒有公司認可的憑證（鈴鐺旁的按鈕有說明）。 知道了",
+    "secondTime": 0
+  },
+  "phone-dark-zh-TW-tab": {
+    "notice": "持續收到通知 Hub 分頁開著時（在背景也可以）會收到通知；關掉所有 Hub 分頁後就不會再通知。想一直收到，可以把 Hub 安裝成應用程式（鈴鐺旁的按鈕）並讓它保持開著，縮到最小也可以。在 Edge 或 Chrome 的應用程式設定中，也可以開啟「登入時啟動應用程式」。 知道了",
+    "secondTime": 0
+  },
+  "phone-dark-zh-TW-app": {
+    "notice": "持續收到通知 這個應用程式開著時（縮到最小也可以）會收到通知；把它關掉就不會再通知。請讓它保持開著。在 Edge 或 Chrome 的應用程式設定中，可以開啟「登入時啟動應用程式」，重新開機後也會自動開啟。 知道了",
     "secondTime": 0
   }
 }

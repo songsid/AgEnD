@@ -15,7 +15,7 @@ async function rig(installed: boolean | string = false) {
   vi.stubGlobal("Notification", Notification); vi.stubGlobal("isSecureContext", true);
   const i18n = await import("/assets/app-i18n.js") as any; i18n.setLang("en", { store: false });
   const install = await import("/assets/app-install.js") as any; install.installStore.set({ state: typeof installed === "string" ? installed : installed ? "installed" : "none" });
-  const notify = await import("/ui/js/hub-room-notify.js") as any;
+  const notify = await import("/ui/js/hub-notify-keep.js") as any; notify.forgetKeepHint();
   const asked: string[] = []; (globalThis as any).confirm = (m: string) => { asked.push(m); return true; };
   return { notify, asked, install };
 }
@@ -63,4 +63,27 @@ it("a Hub this browser can't install (an untrusted certificate): keep a tab open
     expect(asked[0]).toContain("can't be installed as an app yet");
     expect(asked[0]).not.toContain("install the Hub as an app (the button beside the bell) and leave it running");
   } finally { (globalThis as any).confirm = undefined; }
+});
+it.each(["en", "zh-TW"] as const)("%s: the words are this module's own (a tab holding an older room dictionary still reads them), never raw keys", async (locale) => {
+  const { notify, asked } = await rig();
+  const i18n = await import("/assets/app-i18n.js") as any; i18n.setLang(locale, { store: false });
+  try {
+    localStorage.removeItem("agend_hub_notify_kept");
+    await notify.setHubNotify(true); await settle(2);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).not.toMatch(/hubkeep\.|\bkeep(Tab|App|NoInstall)\b/);
+    expect(asked[0]).toContain(locale === "en" ? "closing every Hub tab stops them" : "關掉所有 Hub 分頁後就不會再通知");
+    const strings = await import("/ui/js/hub-room-strings.js").then(() => "loaded");
+    expect(strings).toBe("loaded");
+  } finally { i18n.setLang("en", { store: false }); (globalThis as any).confirm = undefined; }
+});
+it("a browser whose storage refuses: still once per page across off and on", async () => {
+  const { notify, asked } = await rig();
+  const real = globalThis.localStorage;
+  vi.stubGlobal("localStorage", { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); }, removeItem: () => {} });
+  try {
+    await notify.setHubNotify(true); await settle(2);
+    await notify.setHubNotify(false); await notify.setHubNotify(true); await settle(2);
+    expect(asked).toHaveLength(1);
+  } finally { vi.stubGlobal("localStorage", real); (globalThis as any).confirm = undefined; }
 });

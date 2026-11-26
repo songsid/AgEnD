@@ -20,21 +20,57 @@ try {
   await new Promise<void>((yes, no) => { server.once("error", no); server.listen(0, "127.0.0.1", yes); });
   const origin = `https://127.0.0.1:${(server.address() as { port: number }).port}`;
   r = await s3bRig({ webOrigin: origin, realAudit: true });
-  for (const [device, lang, theme] of [["desk", "en", "light"], ["phone", "zh-TW", "dark"]] as const) {
-    const phone = device === "phone", tag = `${device}-${theme}-${lang}`;
+  // Variants: "untrusted" is what this self-signed Hub really is (observed). "tab" and "app" fake only the facts the
+  // page reads — a worker registration that succeeds (as on a trusted certificate), and the installed window's
+  // display-mode — so the frame shows those notices; nothing else differs.
+  const FAKE: Record<string, string> = {
+    untrusted: "",
+    // A trusted certificate: the worker registers and Chrome makes its install offer (headless never does: one synthetic event).
+    tab: `if (navigator.serviceWorker) navigator.serviceWorker.register = () => Promise.resolve({ scope: "/" });
+      addEventListener("load", () => setTimeout(() => { const e = new Event("beforeinstallprompt", { cancelable: true }); e.prompt = async () => {}; e.userChoice = Promise.resolve({ outcome: "dismissed" }); dispatchEvent(e); }, 300));`,
+    app: `const mm = window.matchMedia.bind(window); window.matchMedia = (q) => /display-mode: *standalone/.test(q) ? { matches: true, media: q, addEventListener() {}, removeEventListener() {} } : mm(q);`,
+  };
+  for (const [device, lang, theme] of [["desk", "en", "light"], ["phone", "zh-TW", "dark"]] as const) for (const variant of ["untrusted", "tab", "app"]) {
+    const phone = device === "phone", tag = `${device}-${theme}-${lang}${variant === "untrusted" ? "" : "-" + variant}`;
     const ctx = await browser.newContext({ viewport: phone ? { width: 390, height: 844 } : { width: 1366, height: 900 }, isMobile: phone, hasTouch: phone,
       deviceScaleFactor: 2, locale: lang === "en" ? "en-US" : "zh-TW", colorScheme: theme, ignoreHTTPSErrors: true,
       // A phone has no desktop notifications (the bell is off there); the phone frame uses a desktop user agent so the
       // notice can be shown at phone width.
       ...(phone ? { userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36" } : {}) });
     await ctx.grantPermissions(["notifications"], { origin });
-    await ctx.addInitScript({ content: `localStorage.setItem('agend_lang',${JSON.stringify(lang)});localStorage.setItem('agend_theme',${JSON.stringify(theme)});localStorage.setItem('agend_tour_done','1');` });
+    await ctx.addInitScript({ content: `localStorage.setItem('agend_lang',${JSON.stringify(lang)});localStorage.setItem('agend_theme',${JSON.stringify(theme)});localStorage.setItem('agend_tour_done','1');` + FAKE[variant] });
     const page = await ctx.newPage(); page.setDefaultTimeout(20000);
     const errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
     try {
       await page.goto(origin + "/ui/hub?view=notices");
       await page.fill("#hubLogin", "admin"); await page.fill("#hubPassword", "pw-admin"); await page.locator(".hub-signin button[type=submit]").click();
-      const bell = page.locator(".hub-head-tools .hub-notify").first(); await bell.waitFor(); await page.waitForTimeout(1500);
+      const bell = page.locator(".hub-head-tools .hub-notify:visible").first(); await bell.waitFor(); await page.waitForTimeout(1500);
+      const state = await page.evaluate(async () => (await import("/assets/app-install.js")).installStore.get().state);
+      assert.equal(state, { untrusted: "untrusted", tab: "available", app: "installed" }[variant]);
+      if (variant === "untrusted") {
+        // The bell's own words are its tooltip (title), which headless Chromium doesn't paint: the fixture draws that
+        // exact title text under the bell, before and after turning it on, and records the attribute.
+        const tip = async (name: string) => {
+          await page.waitForTimeout(500);
+          if (await page.locator("dialog[open]").count()) throw Error("a dialog is still open: the tooltip frame would show it");
+          const title = await page.locator(".hub-head-tools .hub-notify:visible").first().getAttribute("title");
+          await page.evaluate((text) => { document.getElementById("s257-tip")?.remove(); const b = [...document.querySelectorAll(".hub-head-tools .hub-notify")].find((x) => (x as HTMLElement).getBoundingClientRect().width > 0) as HTMLElement; const r = b.getBoundingClientRect();
+            const d = document.createElement("div"); d.id = "s257-tip"; d.textContent = text; // The page's CSP refuses inline style attributes: set the box through the CSSOM.
+            Object.assign(d.style, { position: "fixed", top: `${r.bottom + 6}px`, right: `${Math.max(8, innerWidth - r.right)}px`, maxWidth: "min(320px, 90vw)", padding: "6px 8px",
+              borderRadius: "6px", background: "#333", color: "#fff", font: "12px/1.4 system-ui, sans-serif", zIndex: "99999", boxShadow: "0 2px 8px rgba(0,0,0,.3)" }); document.body.append(d); }, title);
+          await page.screenshot({ path: join(out, `hub-${tag}-bell-${name}.png`) });
+          await page.evaluate(() => document.getElementById("s257-tip")?.remove());
+          return title;
+        };
+        result[`${tag}-bell-off`] = await tip("off");
+        await bell.click(); await page.locator("dialog[open]").waitFor();
+        await page.locator('dialog[open] [data-confirm="yes"]').click(); await page.waitForTimeout(400);
+        result[`${tag}-bell-on`] = await tip("on");
+        // Off again, forget the device's "shown" mark and open the page anew (a page shows it once), then as for the others.
+        await bell.click(); await page.waitForTimeout(400);
+        await page.evaluate(() => localStorage.removeItem("agend_hub_notify_kept"));
+        await page.reload(); await bell.waitFor(); await page.waitForTimeout(1500);
+      }
       await bell.click();
       const dialog = page.locator("dialog[open]"); await dialog.waitFor();
       const words = (await dialog.innerText()).replace(/\s+/g, " ").trim();

@@ -4,8 +4,7 @@ import { notifyOn, notifySupport, notifyStore, refreshNotify, setNotify } from "
 import { html, useEffect } from "/assets/app-html.js";
 import { useStore } from "/assets/app-store.js";
 import { Icon } from "/assets/ui-icons.js";
-import { confirmDialog } from "/assets/ui-confirm.js";
-import { installStore } from "/assets/app-install.js";
+import { setHubNotify } from "./hub-notify-keep.js";
 import { counts, shouldNotify } from "./hub-room-unread.js";
 import { hroom } from "./hub-room-strings.js";
 
@@ -144,25 +143,6 @@ export function startHubRoomNotifier({ client, me, setMe, resolveMe, roomName, r
     : () => {};
   stopPrev = () => { stopPrev = null; liveGen++; try { off(); } catch { /* already stopped */ } };
   return stopPrev;
-}
-
-const KEEP_HINT_KEY = "agend_hub_notify_kept";
-/**
- * S-257 step 1: turn Notify on, and the first time it goes on on this device, say what keeps notifications coming
- * once every Hub window is closed — the installed app left running, or started at sign-in (S-255) — in the app's own
- * notice. Turning it off asks nothing.
- */
-export async function setHubNotify(on) {
-  const state = await setNotify(on);
-  if (!on || state !== "on") return state;
-  let shown = false;
-  try { shown = localStorage.getItem(KEEP_HINT_KEY) === "1"; localStorage.setItem(KEEP_HINT_KEY, "1"); } catch { /* shown once per page then */ }
-  if (!shown) {
-    // In the app: leave it running. A Hub that can't be installed here (an untrusted certificate, plain http): keep a tab.
-    const where = installStore.get().state, words = where === "installed" ? "keepApp" : where === "untrusted" || where === "insecure" ? "keepNoInstall" : "keepTab";
-    void confirmDialog({ title: hroom("keepTitle"), message: hroom(words), confirmLabel: hroom("keepOk"), notice: true });
-  }
-  return state;
 }
 
 /** The Hub header's compact Notify-me button: this device's choice (notifyStore), asking on click. */
