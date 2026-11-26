@@ -38,15 +38,16 @@ fm.requestContextControl = {
 fm.needsYouItems = () => view.phase === "blocked" ? [{ id: "cutover-fixture", type: "config", reason: "request_context_cutover", instance: "", detail: "", since: Date.now(), requestContextCutover: structuredClone(view) }] : [];
 const never = () => { throw Error("Capture fixture must never start, mutate or deliver to an agent"); };
 fm.deliverToInstance = never; fm.deliverHumanToInstance = never; fm.saveFleetConfig = never;
-const allStates = ["on", "off", "off-before", "draining", "blocked-legacy", "blocked-peers", "blocked-owners", "blocked-recovery", "on-confirm", "on-confirm-go-back", "stop-work-confirm", "blocked-update", "off-confirm", "unconfirmed-change", "general-notice"];
+const allStates = ["on", "off", "off-before", "draining", "blocked-legacy", "blocked-peers", "blocked-owners", "blocked-recovery", "on-confirm", "on-confirm-go-back", "stop-waiting-confirm", "stop-work-confirm", "blocked-update", "off-confirm", "unconfirmed-change", "general-notice"];
 const states = process.env.STATES ? allStates.filter(state => process.env.STATES!.split(",").includes(state)) : allStates;
 try {
   for (const variant of matrix()) for (const state of states) {
     failAfterWrite = state === "unconfirmed-change";
-    const blocked = state.startsWith("blocked-") || state === "stop-work-confirm", kind = state === "stop-work-confirm" ? "recovery" : state.slice(8), phase = blocked ? "blocked" : (state.startsWith("off") && state !== "off-confirm" || state.startsWith("on-confirm")) ? "off" : state === "draining" ? "draining" : "on";
-    view = { revision: ++revision, enabled: !["off", "off-before", "draining", "on-confirm", "on-confirm-go-back"].includes(state), attempted: state !== "off-before", everActivated: state === "blocked-recovery" || state === "stop-work-confirm" || !blocked && !["off-before", "on-confirm", "on-confirm-go-back"].includes(state), phase, canChange: true,
+    const blocked = state.startsWith("blocked-") || state === "stop-work-confirm", kind = state === "stop-work-confirm" ? "recovery" : state.slice(8), phase = blocked ? "blocked" : (state.startsWith("off") && state !== "off-confirm" || state.startsWith("on-confirm")) ? "off" : ["draining", "stop-waiting-confirm"].includes(state) ? "draining" : "on";
+    view = { revision: ++revision, enabled: !["off", "off-before", "draining", "on-confirm", "on-confirm-go-back", "stop-waiting-confirm"].includes(state), attempted: state !== "off-before", everActivated: state === "blocked-recovery" || state === "stop-work-confirm" || !blocked && !["off-before", "on-confirm", "on-confirm-go-back"].includes(state), phase, canChange: true,
       blockers: blocked ? [{ id: "readiness-fixture", kind, labels: kind === "peers" ? ["Demo Windows computer"] : kind === "legacy" ? ["Demo worker → Demo helper #R1234"] : ["owners", "recovery"].includes(kind) ? ["Demo worker"] : [], ...(kind === "recovery" ? { action: "stop-work" } : kind === "legacy" ? { action: "inspect" } : {}) }]
-        : state === "draining" ? [{ id: "return-fixture", kind: "returns", labels: ["Demo worker"], action: "stop-waiting" }] : [] };
+        : ["draining", "stop-waiting-confirm"].includes(state) ? [{ id: "return-fixture", kind: "returns", labels: ["Demo worker"], action: "stop-waiting" }] : [] };
+    if (kind === "owners") view.blockers = [{ id: "working-fixture", kind: "owners", ownerCause: "work", labels: ["Demo worker"], agents: [{ id: "worker", label: "Demo worker" }] }, { id: "update-fixture", kind: "owners", ownerCause: "update", labels: ["General"], agents: [{ id: "general", label: "General" }] }];
     if (state === "on-confirm-go-back") view.goBack = { attemptIds: ["20261126T010203Z-0a1b2c3d"], availableUntil: "2026-12-03T02:30:00Z", timeZone: "Asia/Taipei" };
     const tag = `${caseName(variant)}-${state}`, path = blocked ? "/ui/needs" : state === "general-notice" ? "/ui/chat/general" : "/settings/access#request-context";
     fm.webChatHistory.forget("general");
@@ -64,6 +65,8 @@ try {
         await page.getByRole("heading", { name: dictionary.title, exact: true }).waitFor();
         const text = await page.locator(".request-context-blocked").innerText();
         check(`${tag}: concrete blocker`, ["legacy", "update"].includes(kind) || text.includes(kind === "peers" ? "Demo Windows computer" : "Demo worker"));
+        if (kind === "update") check(`${tag}: real update-section link`, await page.locator('.request-context-actions a[href="/settings/advanced#settings-update"]').count() === 1);
+        if (kind === "owners") check(`${tag}: agent links and split causes`, await page.locator('.request-context-actions a[href="/ui/fleet/agent/worker"]').count() === 1 && await page.locator('.request-context-actions a[href="/ui/fleet/agent/general"]').count() === 1);
         check(`${tag}: no invented raw code`, !text.includes("request_context"));
         check(`${tag}: inline recheck`, await page.locator(".request-context-blocked button").last().isVisible());
         if (variant.device === "desk") { const boxes = await page.locator(".request-context-actions > *").evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().top)); check(`${tag}: desktop actions share a row`, Math.max(...boxes) - Math.min(...boxes) < 2); }
@@ -81,10 +84,12 @@ try {
           await page.waitForTimeout(50);
           check(`${tag}: stale passive status cannot roll back the switch`, await card.locator("input").isChecked());
         }
+        if (state === "stop-waiting-confirm") { const before = writes; await card.locator(".request-context-actions button").first().click(); await page.getByRole("dialog").waitFor(); check(`${tag}: no closure before confirmation`, before === writes); check(`${tag}: warning confirmation`, await page.locator('[data-confirm="yes"]').evaluate(el => el.classList.contains("btn-danger"))); }
         if (["on-confirm", "on-confirm-go-back", "off-confirm", "unconfirmed-change"].includes(state)) {
           const before = writes; await card.locator("label").click();
           await page.getByRole("dialog").waitFor();
           check(`${tag}: no write before confirmation`, writes === before);
+          if (state === "off-confirm") check(`${tag}: Off confirm is neutral`, !await page.locator('[data-confirm="yes"]').evaluate(el => el.classList.contains("btn-danger")));
           check(`${tag}: no old-rules promise`, !(await page.getByRole("dialog").innerText()).includes("previous"));
           if (state === "unconfirmed-change") {
             await page.locator('[data-confirm="yes"]').click();

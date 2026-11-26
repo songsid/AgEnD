@@ -9,7 +9,8 @@ export const RequestContextControlViewSchema = z.strictObject({
   goBack: z.strictObject({ attemptIds: z.array(z.string().regex(/^\d{8}T\d{6}Z-[a-f0-9]{8}$/)).min(1).max(1024), availableUntil: z.iso.datetime(), timeZone: label }).optional(),
   phase: z.enum(["on", "off", "draining", "blocked"]), canChange: z.boolean(),
   blockers: z.array(z.strictObject({ id: label, kind: z.enum(["legacy", "peers", "owners", "recovery", "update", "returns", "tickets", "work"]),
-    labels: z.array(label).max(64), action: z.enum(["inspect", "stop-waiting", "decline", "withdraw", "stop-work"]).optional() })).max(128),
+    labels: z.array(label).max(64), ownerCause: z.enum(["work", "update"]).optional(),
+    agents: z.array(z.strictObject({ id: label, label })).max(64).optional(), action: z.enum(["inspect", "stop-waiting", "decline", "withdraw", "stop-work"]).optional() })).max(128),
 });
 export type RequestContextControlView = z.infer<typeof RequestContextControlViewSchema>;
 export const RequestContextControlDecisionSchema = z.discriminatedUnion("action", [

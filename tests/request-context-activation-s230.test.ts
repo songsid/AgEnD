@@ -1,9 +1,18 @@
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 import { afterEach, expect, it } from "vitest";
 import { commitRequestContextActivation, readRequestContextActivations, requestContextGoBackAllowed, type RequestContextActivationRecord } from "../src/request-context-activation.js";
 import { registerRequestContextDispatcher } from "../src/request-context-compatibility.js";
 const close: Database.Database[] = [];
-afterEach(() => { for (const db of close.splice(0)) db.close(); });
+const homes: string[] = [];
+afterEach(() => { for (const db of close.splice(0)) db.close(); for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true }); });
+function snapshot(db: Database.Database, readonly = true) {
+  const dir = mkdtempSync(join(tmpdir(), "activation-snapshot-")); homes.push(dir);
+  const path = join(dir, "outbox.db"); writeFileSync(path, db.serialize());
+  const result = new Database(path, { readonly, fileMustExist: true }); close.push(result); return result;
+}
 function rig() {
   const db = new Database(":memory:"); close.push(db); db.exec("CREATE TABLE deliveries(id TEXT); CREATE TABLE delivery_attempts(id TEXT)");
   registerRequestContextDispatcher(db, 1);
@@ -17,7 +26,7 @@ it("floor, activation and Go back invalidation commit together without a retaine
   expect(readRequestContextActivations(r.db)).toEqual([r.value]);
   expect(requestContextGoBackAllowed(r.db, r.id, 1000)).toBe(false);
   expect(requestContextGoBackAllowed(r.db, "20261126T010204Z-deadbeef", 1000)).toBe(false);
-  expect(requestContextGoBackAllowed(r.db, "20261126T010205Z-deadbeef", 3000)).toBe(true);
+  expect(requestContextGoBackAllowed(r.db, "20261126T010205Z-deadbeef", 3000, snapshot(r.db))).toBe(true);
   expect(() => r.db.exec("DELETE FROM request_context_activations_v1")).toThrow(/immutable/);
 });
 it("a changed readiness or offered set at COMMIT rolls back the marker and the compatibility floor", () => {
@@ -44,4 +53,31 @@ it("confirmation data cannot silently omit a window deadline or contain duplicat
   expect(() => commitRequestContextActivation(r.db, { ...r.value, offeredLatestDeadline: null }, r.lease, () => true)).toThrow();
   expect(() => commitRequestContextActivation(r.db, { ...r.value, invalidates: [r.id, r.id] }, r.lease, () => true)).toThrow();
   expect(readRequestContextActivations(r.db)).toEqual([]);
+});
+it("a backwards clock cannot permit an unlisted pre-activation snapshot", () => {
+  const r = rig(), before = snapshot(r.db); commitRequestContextActivation(r.db, r.value, r.lease, () => true);
+  // Actual order: update committed at wall time 3000, then activation after clock rollback at 2000.
+  // The invalidation list is defense in depth; an omitted entry must never make this snapshot safe.
+  expect(requestContextGoBackAllowed(r.db, "20261126T010206Z-deadbeef", 3000, before)).toBe(false);
+  expect(requestContextGoBackAllowed(r.db, "20261126T010206Z-deadbeef", 3000)).toBe(false);
+});
+
+it("post-activation snapshots remain safe across clock shifts; missing or altered history is refused", () => {
+  const r = rig(); commitRequestContextActivation(r.db, r.value, r.lease, () => true);
+  const good = snapshot(r.db), writable = snapshot(r.db, false), id = "20261126T010207Z-deadbeef";
+  for (const stamp of [0, 1000, 2000, 3000]) expect(requestContextGoBackAllowed(r.db, id, stamp, good)).toBe(true);
+  expect(requestContextGoBackAllowed(r.db, r.id, 0, good)).toBe(false);
+  expect(requestContextGoBackAllowed(r.db, id, 3000, r.db)).toBe(false);
+  expect(requestContextGoBackAllowed(r.db, id, 3000, writable)).toBe(false);
+  writable.exec("DROP TRIGGER request_context_activation_no_update; UPDATE request_context_activations_v1 SET owner='changed'");
+  expect(requestContextGoBackAllowed(r.db, id, 3000, snapshot(writable))).toBe(false);
+  writable.exec("UPDATE request_context_activations_v1 SET invalidates_json='{}'");
+  expect(() => requestContextGoBackAllowed(r.db, id, 3000, snapshot(writable))).toThrow();
+});
+it("an older activated snapshot cannot erase a later activation epoch, even with a future timestamp", () => {
+  const r = rig(); commitRequestContextActivation(r.db, r.value, r.lease, () => true);
+  const old = snapshot(r.db), id = "20261126T010208Z-deadbeef";
+  commitRequestContextActivation(r.db, { ...r.value, epoch: "epoch-2", activatedAt: 1000, invalidates: [], offeredLatestDeadline: null }, r.lease, () => true);
+  expect(requestContextGoBackAllowed(r.db, id, 99999, old)).toBe(false);
+  expect(requestContextGoBackAllowed(r.db, id, 0, snapshot(r.db))).toBe(true);
 });

@@ -19,6 +19,7 @@ export function readRequestContextActivations(db: Database.Database): readonly R
   const floor = db.prepare("SELECT 1 FROM sqlite_master WHERE name='request_context_compatibility'").get();
   if (!table) { if (floor) throw Error("Activation history unavailable"); return []; }
   if (table.type !== "table" || !floor) throw Error("Invalid activation history");
+  assertRequestContextCompatibility(db, 1);
   const rows = db.prepare(`SELECT epoch,owner,activated_at,invalidates_json,offered_latest_deadline FROM ${REQUEST_CONTEXT_ACTIVATIONS_TABLE} ORDER BY activated_at,epoch LIMIT 1025`).all() as Array<{
     epoch: string; owner: string; activated_at: number; invalidates_json: string; offered_latest_deadline: number | null;
   }>;
@@ -26,10 +27,20 @@ export function readRequestContextActivations(db: Database.Database): readonly R
   return rows.map(r => record.parse({ epoch: r.epoch, owner: r.owner, activatedAt: r.activated_at,
     invalidates: JSON.parse(r.invalidates_json), offeredLatestDeadline: r.offered_latest_deadline }));
 }
-/** Must be called before Go back restores anything, while holding the updater's locks and EXCLUSIVE state lease. */
-export function requestContextGoBackAllowed(db: Database.Database, id: string, committedAt: number): boolean {
-  attemptId.parse(id); time.parse(committedAt);
-  return !readRequestContextActivations(db).some(r => r.invalidates.includes(id) || r.activatedAt >= committedAt);
+/**
+ * Before any restore, under updater locks and the EXCLUSIVE lease, pass the actual verified snapshot opened readonly.
+ * A timestamp cannot prove ordering: a backwards clock can stamp a pre-activation commit later than activation.
+ * Only preservation of the live activation history proves that restoration will not erase the version floor.
+ */
+export function requestContextGoBackAllowed(db: Database.Database, id: string, committedAt: number,
+  snapshotDb?: Database.Database): boolean {
+  attemptId.parse(id); time.parse(committedAt); // Audit metadata only; never evidence for permission.
+  const live = readRequestContextActivations(db);
+  if (live.some(r => r.invalidates.includes(id))) return false;
+  if (!live.length) return true;
+  if (!snapshotDb || snapshotDb === db || !snapshotDb.readonly) return false;
+  const snapshot = readRequestContextActivations(snapshotDb);
+  return JSON.stringify(live) === JSON.stringify(snapshot);
 }
 /**
  * Dormant assembly primitive. The caller stages every owner before this, and supplies freshly rechecked readiness
