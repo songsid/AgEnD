@@ -62,7 +62,7 @@ describe("M-3814: the 429 notice links to the fixed preview address", () => {
     const { card, note, link } = await chat();
     expect(note.textContent).toContain("Cloudflare is limiting new temporary links from this machine — try again in a while, or download the file to open it");
     expect(link?.textContent).toBe("Set up a fixed preview address");
-    expect(link?.getAttribute("href")).toBe("/settings/access#publicWebHostname");
+    expect(link?.getAttribute("href")).toBe("/settings/access#publicFixedAddress");
     expect(card.querySelector(".pv-dl"), "Download stays the other action").not.toBeNull();
     expect(card.querySelector(".pv-run").hidden, "no Preview to press").toBe(true);
   });
@@ -89,7 +89,7 @@ describe("M-3814: the 429 notice links to the fixed preview address", () => {
     await settle(8);
     const note = [...doc.querySelectorAll(".pv-panel .pv-note")].find((n: any) => /Cloudflare is limiting/.test(n.textContent)) as any;
     expect(note, "the panel says why").toBeTruthy();
-    expect(note.querySelector("a.pv-fix")?.getAttribute("href")).toBe("/settings/access#publicWebHostname");
+    expect(note.querySelector("a.pv-fix")?.getAttribute("href")).toBe("/settings/access#publicFixedAddress");
     expect(doc.querySelector(".pv-panel .pv-panel-dl")).not.toBeNull();
   });
 });
@@ -102,7 +102,7 @@ describe("M-3814: preview.js's availability() names the fix only for the 429", (
     const P = sandbox.module.exports; P.init(cfg); return P.availability();
   };
   it("rate-limited → { href, label }; other reasons, guests and a working preview → none", () => {
-    expect(load(FAILED).fix).toEqual({ href: "/settings/access#publicWebHostname", label: "Set up a fixed preview address" });
+    expect(load(FAILED).fix).toEqual({ href: "/settings/access#publicFixedAddress", label: "Set up a fixed preview address" });
     expect(load({ ...FAILED, previewDetail: "unreachable" }).fix).toBeUndefined();
     expect(load({ ...FAILED, previewReasonCode: "publicLinkStarting", previewDetail: "" }).fix).toBeUndefined();
     expect(load(FAILED, true).fix).toBeUndefined();

@@ -83,7 +83,7 @@ async function walk(c: any) {
     check(`${tag} 1: the notice says Cloudflare limits temporary links, and to download the file`,
       card.note.includes(W(zh, "Cloudflare is limiting new temporary links from this machine — try again in a while, or download the file to open it", "Cloudflare 正在限制這台機器建立新的臨時連結 — 請過一陣子再試，或下載檔案來開啟")), card.note);
     check(`${tag} 1: the link "${W(zh, "Set up a fixed preview address", "設定固定的預覽網址")}" → Settings → Access at the fixed address`,
-      card.link === W(zh, "Set up a fixed preview address", "設定固定的預覽網址") && card.href === "/settings/access#publicWebHostname", card);
+      card.link === W(zh, "Set up a fixed preview address", "設定固定的預覽網址") && card.href === "/settings/access#publicFixedAddress", card);
     check(`${tag} 1: the link is the accent colour (blue), underlined, unlike the note`, card.color !== card.noteColor && card.underline === "underline", card);
     check(`${tag} 1: Download is offered; Preview is not`, card.dl && !card.run, card);
     const sc1 = await scroll(page); check(`${tag} 1: no sideways scroll`, sc1.s <= sc1.w, sc1);
@@ -97,8 +97,9 @@ async function walk(c: any) {
     const at = await page.evaluate(`({ path: location.pathname + location.hash, tab: (document.querySelector("[data-settings-tab=sharing]") || {}).hidden === false,
       host: (document.querySelector("#publicWebHostname") || {}).value, preview: !!document.querySelector("#publicWebPreviewHostname"),
       steps: [...document.querySelectorAll(".fixed-preview-steps li")].map((l) => l.textContent.trim()) })`) as any;
-    check(`${tag} 2: landed on Settings → Access → Sharing (the fixed address's tab)`, at.path === "/settings/access#publicWebHostname" && at.tab, at);
-    check(`${tag} 2: the fixed hostname is in view`, await inView(page, "#publicWebHostname") === true, await inView(page, "#publicWebHostname"));
+    check(`${tag} 2: landed on Settings → Access → Sharing (the fixed address's tab)`, at.path === "/settings/access#publicFixedAddress" && at.tab, at);
+    check(`${tag} 2: the fixed hostname, its label too, is in view`, await inView(page, "#publicWebHostname") === true && await inView(page, "label[for=publicWebHostname]") === true,
+      [await inView(page, "#publicWebHostname"), await inView(page, "label[for=publicWebHostname]")]);
     check(`${tag} 2: the preview address field is right below it, with the route step and this fleet's preview port`,
       at.preview && at.steps.length === 5 && at.steps[2].includes(`http://127.0.0.1:${fx.previewPort}`), at);
     if (!saved) check(`${tag} 2: nothing saved yet → the steps are open`, await page.evaluate(`document.querySelector(".fixed-preview-steps").open`) === true, null);

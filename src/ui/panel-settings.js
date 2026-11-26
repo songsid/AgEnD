@@ -1589,7 +1589,7 @@ function WebSection({ ctx, staged, part = "all" }) {
           ${lock(html`<section class="card s-public-entry"><h3>${layoutText("revPublicEntry")}</h3>
       <label class=${fc("check", "pub")}><input id="publicWebLink" type="checkbox" checked=${f.pub} onChange=${(e) => set("pub")(e.target.checked)} /><span>${tn("publicLink")}</span><${Impact} schema=${schema} field="web.public_link.allow_public" /></label>
       <p class="note">${tn("publicLinkHint")}</p>
-      <div class="grid2">
+      <div class="grid2" id="publicFixedAddress">
         <div class=${fc("field", "hostname")}><label for="publicWebHostname">${tn("namedHostname")}</label><input id="publicWebHostname" type="text" value=${f.hostname} placeholder="agend.example.com" class=${errors.hostname ? "invalid" : ""} onInput=${(e) => set("hostname")(e.target.value)} /><${Feedback} error=${errors.hostname} /></div>
         <div class=${fc("field", "originPort")}><label for="publicWebOriginPort">${tn("namedOriginPort")}</label><input id="publicWebOriginPort" type="number" min="1024" max="65535" value=${f.originPort} class=${errors.originPort ? "invalid" : ""} onInput=${(e) => set("originPort")(e.target.value)} /><${Feedback} error=${errors.originPort} /></div>
       </div>

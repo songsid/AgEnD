@@ -30,8 +30,8 @@
   var BANNER_ACK_KEY = "agend_html_preview_banner_ack";
   var BANNER = "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.";
 
-  /** M-3814: Settings → Access, at the fixed address (its preview address is set up just below it). */
-  var FIX_HREF = "/settings/access#publicWebHostname";
+  /** M-3814: Settings → Access → Sharing, at the fixed address's fields (its preview address is set up just below them). */
+  var FIX_HREF = "/settings/access#publicFixedAddress";
   var cfg = { dashboardOrigin: "", previewOrigin: "", boot: "", reason: "", reasonCode: "", detail: "" };
   // Why it failed, in English when the app's dictionary has no word for it (chat-strings.js pvFail_*).
   var FAIL_EN = { exited: "its address closed unexpectedly", "spawn-failed": "cloudflared could not start for it", "no-address": "no address was given for it",

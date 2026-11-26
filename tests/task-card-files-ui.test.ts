@@ -312,12 +312,12 @@ describe("files on the card", () => {
   it("M-3814: Cloudflare's limit on temporary links (429) — the note links to the fixed preview address, the download stays", async () => {
     withFiles();
     const reason = "Previews are unavailable on this public link: Cloudflare is limiting new temporary links from this machine — try again in a while, or download the file to open it. The link itself keeps working.";
-    (globalThis as any).AgendPreview = { availability: () => ({ ok: false, why: "server", reason, fix: { href: "/settings/access#publicWebHostname", label: "Set up a fixed preview address" } }),
+    (globalThis as any).AgendPreview = { availability: () => ({ ok: false, why: "server", reason, fix: { href: "/settings/access#publicFixedAddress", label: "Set up a fixed preview address" } }),
       start: vi.fn(), stop: vi.fn(), bannerAcked: () => true, banner: () => "b", bannerAckLabel: () => "ok", bannerAckTitle: () => "t", ackBanner() {} };
     await mount(); await open();
     const note = qa(".tp-files .tf-html").find((el) => el.querySelector(".tf-actions") !== null)!.querySelector(".tf-note");
     expect(text(note)).toContain("Cloudflare is limiting new temporary links");
-    expect(note.querySelector("a.pv-fix")?.getAttribute("href")).toBe("/settings/access#publicWebHostname");
+    expect(note.querySelector("a.pv-fix")?.getAttribute("href")).toBe("/settings/access#publicFixedAddress");
     expect(text(note.querySelector("a.pv-fix"))).toBe("Set up a fixed preview address");
     expect(qa(".tp-files a.tf-dl").length, "the download is there").toBe(4);
   });

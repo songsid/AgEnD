@@ -11632,7 +11632,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const listener = this.previewListening ? this.previewListener : null;
       const hostname = publicLinkPreviewHostname(this.fleetConfig?.web);
-      const result = await runPreviewRouteTest({ hostname, linkOpen: !!hostname && this.publicWebLink?.fixedPreviewHost() === hostname,
+      const result = await runPreviewRouteTest({ hostname, linkOpen: !!hostname && this.publicWebLink?.fixedPreviewHost?.() === hostname,
         bootId: listener?.bootId ?? null, port: listener?.settings.port ?? null, ...(input.hostname !== undefined ? { shown: input.hostname } : {}) });
       this.logger.info({ steps: result.steps.map(s => `${s.step}:${s.code}`) }, "Fixed preview address check");
       return result;
@@ -33247,11 +33247,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const listener = createPreviewListener({ settings, healthPort: boundPort, config: this.fleetConfig,
       // #1723: with a web.preview_origin, the open public link's dashboard frames this listener's preview too.
       extraOrigins: () => {
-        const o = settings.origin || this.publicWebLink?.fixedPreviewHost() ? this.publicWebLink?.openDashboardOrigin() : null;
+        const o = settings.origin || this.publicWebLink?.fixedPreviewHost?.() ? this.publicWebLink?.openDashboardOrigin() : null;
         return o ? [o] : [];
       },
       // M-3814: the fixed link's preview address (a second route on its named tunnel to this port), only while it is open.
-      extraHosts: () => { const h = this.publicWebLink?.fixedPreviewHost(); return h ? [h] : []; },
+      extraHosts: () => { const h = this.publicWebLink?.fixedPreviewHost?.(); return h ? [h] : []; },
       // #2911 (7): CDN libraries in previews, as fleet.yaml says now (a change applies to the next preview started).
       cdn: () => this.fleetConfig?.web?.preview_cdn === true });
     this.previewListener = listener;
@@ -33332,7 +33332,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     // M-3814: a fixed link with a fixed preview address frames this listener through its own named tunnel — never a
     // quick tunnel (no 429 from Cloudflare's limit on new temporary links).
-    const fixedHost = this.publicWebLink?.fixedPreviewHost(exposureId) ?? null;
+    const fixedHost = this.publicWebLink?.fixedPreviewHost?.(exposureId) ?? null;
     if (fixedHost) {
       const listener = this.previewListening ? this.previewListener : null;
       if (!listener) { const why = this.previewNotListening(); return off(why.code, why.reason, why.detail ? { detail: why.detail } : {}); }
