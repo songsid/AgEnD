@@ -91,3 +91,14 @@ it("elapsed helper wait never counts as a ready connection and restores unpublis
  await expect(r.prepare()).rejects.toMatchObject({code:"request-context-owner-not-ready",agent:"fixture-agent"});
  expect(r.box.requestContextInstallation().read()).toBeNull();expect(r.fm.requestContextAdmission.available()).toBe(true);expect(r.fm.requestContextNativeGraph).toBeUndefined();
 });
+
+it("a runtime can finish its actual negotiation during fenced preparation without an early false failure",async()=>{
+ const r=rig();r.transports(false);const pending=r.prepare();await vi.waitFor(()=>expect(r.fm.requestContextNativeGraph).toBeDefined());
+ expect(r.fm.requestContextAdmission.available()).toBe(false);expect(r.box.requestContextInstallation().read()).toBeNull();r.transports(true);
+ const stage=await pending;expect(stage.ready()).toBe(true);await stage.rollback();
+});
+it("an unnegotiated runtime never passes because its observation window elapsed",async()=>{
+ const r=rig();r.transports(false);let clock=0,reads=0;vi.spyOn(performance,"now").mockImplementation(()=>clock);
+ vi.spyOn(helperReadiness,"captureRequestContextHelpers").mockImplementation(()=>{if(++reads===2)clock=30_001;return {ready:true,sha256:"helpers-ready",unready:[],current:()=>true};});
+ await expect(r.prepare()).rejects.toMatchObject({code:"request-context-transport-not-ready"});expect(r.box.requestContextInstallation().read()).toBeNull();expect(r.fm.requestContextAdmission.available()).toBe(true);
+});

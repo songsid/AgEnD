@@ -448,3 +448,8 @@ The Go back confirmation uses the real read-only retained-update offer. An absen
 
 
 The explicit recovery resolution has an owning-store CAS: only the exact confirmed pointer can be cleared, with its launch/turn/wake retirement proof checked before and after deletion in the transaction. A newer context, work generation or incarnation refuses; failed proof rolls deletion back. Historical contexts remain retained. The method is not a stop proof itself and creates no automatic expiry/reset. The Settings action must still obtain real physical retirement and actor currency before calling it; that production resolution wiring remains unfinished.
+
+
+During explicit first-On preparation, Fleet also binds the rejecting Boot policy to its tool sinks. This is a closed gate, not publication: installedMode stays null, ordinary legacy prompts and lifetime-origin selection are not switched early, and every candidate call refuses while no serving publication exists. It prevents a candidate's startup or surviving helper call from slipping through an uninstalled Fleet policy path. Abort removes that exact temporary policy when it restores legacy admission; owner loss keeps the fence. A pre-existing unrelated policy cannot be adopted as this preparation.
+
+The same bounded connection-observation window includes the actual runtime negotiation callback, not just helpers. A runtime may reconnect under the new graph during preparation; it must positively negotiate before commit. Elapsed time only produces a named owner/transport blocker and rollback, never readiness.

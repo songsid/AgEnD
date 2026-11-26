@@ -185,9 +185,10 @@ it("first On owns a fenced preparation without inventing activation; abort and r
  const h=home();lock(h);const m=manager(h);m.fleetConfig={instances:{}};m.ensureDeliveryOutbox();
  const first=m.prepareRequestContextFirstOn();expect(first.boot.initial).toBeNull();expect(first.current()).toBe(true);
  expect(m.deliveryOutbox.requestContextInstallation().read()).toBeNull();expect(m.requestContextAdmission.available()).toBe(false);
- expect(()=>first.boot.publication.capture()).toThrow(/fenced/);expect(m.requestContextPolicy).toBeUndefined();
+ expect(()=>first.boot.publication.capture()).toThrow(/fenced/);expect(m.requestContextPolicy).toBe(first.boot.policy);expect(m.requestContextPolicy.installedMode()).toBeNull();
+ expect(()=>m.requestContextPolicy.assert({instance:"fixture",tool:"get_fleet_config",args:{}})).toThrow(/fenced/);
  const db=new Database(join(h,"delivery-outbox.db"),{readonly:true});try{expect(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name LIKE 'request_context_%'").get()).toEqual({n:0});}finally{db.close();}
- first.abandon();expect(first.current()).toBe(false);expect(m.requestContextBoot).toBeUndefined();expect(m.requestContextAdmission.available()).toBe(true);
+ first.abandon();expect(first.current()).toBe(false);expect(m.requestContextBoot).toBeUndefined();expect(m.requestContextPolicy).toBeUndefined();expect(m.requestContextAdmission.available()).toBe(true);
  const retry=m.prepareRequestContextFirstOn();expect(retry.boot).toBe(first.boot);expect(retry.current()).toBe(true);expect(first.current()).toBe(false);
  expect(()=>first.abandon()).toThrow();retry.abandon();expect(m.requestContextAdmission.available()).toBe(true);
 });

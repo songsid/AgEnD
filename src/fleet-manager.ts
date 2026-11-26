@@ -1395,14 +1395,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   prepareRequestContextFirstOn(){
     const box=this.deliveryOutbox,lease=captureProcessFleetLease(this.dataDir),manager=this.managerBootId;
-    if(!box||!this.fleetConfig||!lease?.current()||this.requestContextBoot||box.requestContextInstallation().read()!==null)throw Error("First activation preparation unavailable");
+    if(!box||!this.fleetConfig||!lease?.current()||this.requestContextBoot||this.requestContextPolicy||box.requestContextInstallation().read()!==null)throw Error("First activation preparation unavailable");
     const preparation:{boot:RequestContextBoot;attempt?:object}=this.requestContextFirstOn??{boot:RequestContextBoot.prepareFirstOn(randomUUID(),lease)};
     const boot=preparation.boot;
     if(!boot.owner.current()||this.requestContextAdmission&&this.requestContextAdmission!==boot.publication.admission)throw Error("First activation owner changed");
     this.requestContextFirstOn=preparation;this.attachRequestContextAdmission(boot.publication.admission);
-    const fence=boot.publication.fence(),attempt={};preparation.attempt=attempt;let adopted=false;this.requestContextBoot=boot;
+    const fence=boot.publication.fence(),attempt={};preparation.attempt=attempt;let adopted=false;this.requestContextBoot=boot;this.requestContextPolicy=boot.policy;
     const current=()=>!this.shuttingDown&&this.managerBootId===manager&&lease.current()&&boot.owner.current()
-      &&this.deliveryOutbox===box&&this.requestContextBoot===boot&&(adopted||this.requestContextFirstOn===preparation&&preparation.attempt===attempt);
+      &&this.deliveryOutbox===box&&this.requestContextBoot===boot&&this.requestContextPolicy===boot.policy&&(adopted||this.requestContextFirstOn===preparation&&preparation.attempt===attempt);
     return Object.freeze({boot,fence,current,
       /** The actual activation transaction already committed; only then publish capable policy ownership. */
       adoptCommitted:(epoch:string)=>{
@@ -1413,9 +1413,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       /** Physical candidates/ports and the staged connection must be undone first by their owning orchestration. */
       abandon:()=>{
         if(!current()||this.requestContextNativeGraph||box.requestContextInstallation().read()!==null)throw Error("Activation preparation cannot revert");
-        this.requestContextBoot=undefined;
+        this.requestContextBoot=undefined;this.requestContextPolicy=undefined;
         try{boot.publication.abandon(fence,()=>box.requestContextInstallation().read());preparation.attempt=undefined;}
-        catch(error){this.requestContextBoot=boot;throw error;}
+        catch(error){this.requestContextBoot=boot;this.requestContextPolicy=boot.policy;throw error;}
       },
     });
   }
@@ -1501,16 +1501,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const sameRoster=()=>requestContextDigest(names.map(name=>[name,this.hubAgentConfig(name)]))===rosterImage
         &&requestContextDigest([...new Set([...Object.keys(this.fleetConfig?.instances??{}),...(this.classicChannels?.getAll()??[]).map(room=>room.instanceName)])].sort())===requestContextDigest(names);
       const baseReady=()=>owned()&&first.fence.current()&&connection.current()&&relaunch!.ready()&&factory!.current()&&inventory!.current()
-        &&sameRoster()&&durableDrained()&&transportsReady();
+        &&sameRoster()&&durableDrained();
       const candidates=relaunch.owners(),readHelpers=()=>captureRequestContextHelpers(candidates,name=>this.daemons.get(name));
-      let helpers=readHelpers();const helperDeadline=performance.now()+30_000;
-      while(!helpers.ready){
+      let helpers=readHelpers(),peersReady=transportsReady();const helperDeadline=performance.now()+30_000;
+      while(!helpers.ready||!peersReady){
         if(!baseReady()||!offer.current()||execution&&!execution.current()||performance.now()>=helperDeadline)
-          throw Object.assign(Error("Request-context owner is not ready"),{code:"request-context-owner-not-ready",agent:helpers.unready[0]});
+          throw Object.assign(Error("Request-context owner or transport is not ready"),{code:helpers.ready?"request-context-transport-not-ready":"request-context-owner-not-ready",...(helpers.unready[0]?{agent:helpers.unready[0]}:{})});
         // A timer only schedules another actual connection observation; elapsed time never proves readiness.
-        await new Promise<void>(resolve=>setTimeout(resolve,100));helpers=readHelpers();
+        await new Promise<void>(resolve=>setTimeout(resolve,100));helpers=readHelpers();peersReady=transportsReady();
       }
-      const processReady=()=>baseReady()&&helpers.current();
+      const processReady=()=>baseReady()&&helpers.current()&&transportsReady();
       const ready=()=>processReady()&&offer.current()&&(!execution||execution.current());
       if(!ready())throw Error("Request-context owner or transport is not ready");
       const portsCurrent=()=>owned()&&factory!.current()&&inventory!.current();
