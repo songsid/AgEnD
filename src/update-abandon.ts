@@ -37,17 +37,21 @@ export function abandonAttempt(home: string, attempt: AttemptRecord, d: AbandonD
   if (a.stage !== "abandoning") a = advance(home, a, "abandoning", { note: reason }, io);
   const done = (n: string) => didSubstep(a, "abandoning", n);
 
-  if (!done("restart-old")) {
+  // The old fleet must RUN until the hand-back is acknowledged (Fable #4536 F1): checked on every pass, not only once.
+  // A recorded `restart-old` whose fleet has since died (a crash, a reboot before the acks) is journaled dead and a new
+  // `old` generation started from the re-taken fence.
+  if (!done("hand-back")) {
     const holder = readFleetLockRecord(home);
     const old = generationsOf(a).find(g => g.gen === "old");
     if (holder?.role === "fleet" && d.isProcessAlive(holder.pid)) {
-      // A live fleet holds the lock: the old fleet never stopped (barrier, an early failure), or abandon's own restart landed.
+      // A live fleet holds the lock: the old fleet never stopped (barrier, an early failure), or abandon's own restart.
       const gen = generationsOf(a).find(g => g.nonce === holder.nonce && !g.dead);
       if (!gen || gen.gen !== "old") return fail(`fleet.lock's holder (pid ${holder.pid}) isn't the running old fleet`);
       if (!gen.consumed) a = startGeneration(home, a, "old", null, d).attempt;                     // its takeover landed before a crash
     } else if (holder) {
       // This attempt's fence (the updater's, adopted when it is gone), or a recorded generation's record whose fleet died
-      // (the old fleet crashed before the updater stopped it): journaled dead and its record re-taken (`ensureFence`).
+      // (the old fleet crashed before the updater stopped it, or after abandon restarted it): journaled dead and its
+      // record re-taken (`ensureFence`).
       if (holder.role === "update" && holder.attemptId !== a.id) return fail(`fleet.lock fences another attempt (${holder.attemptId})`);
       let own = fence;
       if (!own) {
@@ -65,12 +69,10 @@ export function abandonAttempt(home: string, attempt: AttemptRecord, d: AbandonD
         const clear = own.record.handoff ? setFleetLockHandoff(own, null, () => true) : own;
         if (!clear || !releaseFleetLock(clear)) return fail("this attempt's fence couldn't be released");
       }
-    } else if (holder === null && old) {
+    } else if (old) {
       return fail("fleet.lock is gone, but the old fleet was recorded running");
     }
-    a = substep(home, a, "restart-old", io);
-  }
-  if (!done("hand-back")) {
+    if (!done("restart-old")) a = substep(home, a, "restart-old", io);
     if (!d.handBack(a)) return fail("the old fleet didn't take the held messages and jobs back; it resumes on the next start", false);
     a = substep(home, a, "hand-back", io);
   }

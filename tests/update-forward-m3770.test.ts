@@ -13,7 +13,7 @@ import { abandonAttempt, commitAttempt, resumeCommitting, runUpdate, type Update
 import { fleetStartGate, ownerState } from "../src/update-journal.js";
 import { preStartDecision } from "../src/update-recovery/pre-start.js";
 import { runRecovery, type RecoveryHands } from "../src/update-recovery/runner.js";
-import { listHandback, markHandback, writeInboxItem } from "../src/update-journal.js";
+import { listHandback, markHandback, readAttemptRecord, writeInboxItem } from "../src/update-journal.js";
 import { readRetained } from "../src/update-retained.js";
 import { dropInPath } from "../src/update-recovery/route.js";
 import { parsePlist } from "../src/service-activation.js";
@@ -379,6 +379,25 @@ describe("M-3770 2.5: the recovery runner resumes an abandon (S-252 part 4)", ()
     expect(read.state).toBe("none");
     expect(endState(w)).toEqual(ROLLED_BACK);
     expect(w.calls.filter(c => c === "start:old")).toHaveLength(1);
+  });
+
+  it("the restarted old fleet dies before acknowledging the hand-back: the next run restarts it again with a new nonce, not retrying forever (Fable #4536 F1)", () => {
+    const w = world();
+    diedInStopping(w);
+    const first = runner(w, 7956, { waitHandedBack: () => false });                                  // the acks don't come in time
+    expect(first.code).toBe(1);
+    const restarted = readFleetLockRecord(w.home)!;
+    expect(restarted.role).toBe("fleet");
+    w.alive.delete(restarted.pid);                                                                   // a crash or a reboot before the acks
+    const second = runner(w, 7957);
+    expect(second.code, second.err.join("\n")).toBe(0);
+    expect(w.calls.filter(c => c === "start:old")).toHaveLength(2);
+    const now = readFleetLockRecord(w.home)!;
+    expect(now.nonce).not.toBe(restarted.nonce);
+    expect(w.alive.has(now.pid)).toBe(true);
+    const done = readAttemptRecord(w.home, ID)!;
+    expect(gens(done)).toEqual(["old:acked:dead", "old:acked:dead", "old:acked"]);
+    expect(endState(w)).toEqual(ROLLED_BACK);
   });
 
   it("no service manager given: refused, nothing changed", () => {
