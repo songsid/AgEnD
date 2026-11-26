@@ -38,6 +38,22 @@ export class RequestContextRecoveryStore {
       else this.db.prepare("DELETE FROM request_context_recovery_v1 WHERE instance=?").run(instance);
     })();
   }
+  /** Explicit Stop this work only, after its owner proves the exact launch/turn/wakes retired.
+   * Clearing a pointer does not prove retirement, and a stale card may never erase newer recovery work.
+   */
+  clear(expected:RequestContextRecoveryPointer,retired:(pointer:Readonly<RequestContextRecoveryPointer>)=>boolean):boolean {
+    const input=pointerSchema.parse(expected);this.writable();
+    return this.db.transaction(()=>{
+      const pointer=this.pointer(input.instance);if(!pointer)return false;
+      if(JSON.stringify(pointer)!==JSON.stringify(input))throw Error("request-context recovery changed");
+      const proof=Object.freeze({...input});if(!retired(proof))throw Error("request-context recovery retirement unproved");
+      const row=this.db.prepare("SELECT pointer_json FROM request_context_recovery_v1 WHERE instance=?").get(input.instance) as {pointer_json:string}|undefined;
+      if(!row||JSON.stringify(pointerSchema.parse(JSON.parse(row.pointer_json)))!==JSON.stringify(input)
+        ||this.db.prepare("DELETE FROM request_context_recovery_v1 WHERE instance=? AND pointer_json=?").run(input.instance,row.pointer_json).changes!==1)
+        throw Error("request-context recovery changed");
+      this.writable();if(!retired(proof))throw Error("request-context recovery retirement changed");return true;
+    })();
+  }
   /** Prepared input is resolved by trusted admission/attempt/job identity; no text or model argument resolver is supplied. */
   ports(instance: string, input: RequestContextTurnPorts["input"],
     canManage: RequestContextTurnPorts["canManage"]): RequestContextTurnPorts {
