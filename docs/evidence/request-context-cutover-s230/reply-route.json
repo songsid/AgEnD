@@ -1,0 +1,115 @@
+{
+  "sourceCommit": "036ea7b9da12eeeeb3e51e5d7af122db5f386871",
+  "scope": "Private admitted browser route, original human reply destination and positive-delivery scoped TurnReplyGuard lease. This does not enable unknown guest outputs or install the production dispatcher.",
+  "checks": {
+    "restored": {
+      "files": 14,
+      "passed": 391,
+      "failed": 0
+    },
+    "mutants": [
+      {
+        "mutation": "unknown-skips-session",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "receiver-borrows-human-sink",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "prearm-binding-ignored",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "cancelled-route-still-current",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "steer-replaces-outside-sink",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "mutable-browser-route",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "identity-only-web-route",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "arm-uses-last-meta",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      }
+    ],
+    "typecheck": "NODE_OPTIONS=--max-old-space-size=8192 npm run typecheck:tests: passed",
+    "public": "source patch and new test: clean",
+    "gitleaks": "Pinned 8.24.3, range 9c943c619..036ea7b9d: no leaks"
+  },
+  "sourceAndTestSha256": [
+    {
+      "path": "src/daemon.ts",
+      "sha256": "7af50076df768e47a532dd322ad000b7195b9ead1f63adcc070507a4ca813663"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "182dc8dde9303d0df6b6b5dee3008f81667541d8b1f1efa2a03aa2bbb502318e"
+    },
+    {
+      "path": "src/human-delivery-receipts.ts",
+      "sha256": "140f69fb2cb8a28cdf6203a961873c288457e1d4ebbc5c40faa96999e39c226f"
+    },
+    {
+      "path": "src/reply-buttons-controller.ts",
+      "sha256": "380fe6a42a2250b21a46056a3cb7f79523397c57d3dd675dc28ff471cd52a857"
+    },
+    {
+      "path": "src/request-context-human-resolver.ts",
+      "sha256": "f369a2cf6824059646b2bc56487d1b7a932c53ab82da57ead11ccd3cbfd670c9"
+    },
+    {
+      "path": "src/turn-reply-guard.ts",
+      "sha256": "c524e02dead89eec6e702c069933b47773dff73dc7d57f04db902f78a5f8f024"
+    },
+    {
+      "path": "src/web-api.ts",
+      "sha256": "4e9690dee0f3731a45dbffb9c91fd742def485b8fe5a72ffc99d3118ce6fbe1f"
+    },
+    {
+      "path": "tests/request-context-human-s230.test.ts",
+      "sha256": "2be13a846cf55250ebed3c3dd8cbe16563e339b62e3071d7fdf4dfad08cda26b"
+    },
+    {
+      "path": "tests/request-context-reply-route-s230.test.ts",
+      "sha256": "eb141e497df1d0463741fe559ed32f658e859a223147111ae341cd869c5dfa74"
+    },
+    {
+      "path": "tests/web-chat-resend-http-m3502.test.ts",
+      "sha256": "20ed76e161ec7e1bc360fc103425ae22331db8c82d652424d293510a3ca6555c"
+    },
+    {
+      "path": "tests/web-session-contact-origin-m3713.test.ts",
+      "sha256": "f671c241954bc3b6df0317aa602243b64f97625d019965d7c8cf11972703c22e"
+    }
+  ],
+  "limits": [
+    "No live fleet, CLI, provider, pane or runtime starts. HTTP tests use only a scratch private home and localhost server.",
+    "No policy permission is loosened; real channel and browser sinks still need original-call route enforcement.",
+    "No UI, locale, CSS or PNG patch changed. Production installer and full-mode proof remain unfinished."
+  ]
+}

@@ -60,3 +60,7 @@ Accepted human ingress: `human-input.json` binds the atomic companion/facade, ex
 Current request admission: `registered-access.json` binds the SDK registration evidence, native/web current-access checks, current room-mode behavior and seven mutation controls. Creation allowlists are kept separate from registered-room message admission. This is not full-mode or activation acceptance.
 
 Final human write: `human-resolver.json` binds the actual facade/formatter/C/pane-judge composition, stale-owner and anti-laundering controls. It is not a complete production installation or full-mode acceptance.
+
+### Delivered reply-route checkpoint
+
+[Source and proof binding](reply-route.json): all four real web producers capture their admitted browser independently of account recognition. The original human companion supplies the post-paste guard’s immutable destination, bound to the C token and generation. Registered returns can use the original source’s route; other peers and unknown recovery cannot. Restored:391/14; eight guard mutants red; types clean. This prepares the route only: unknown outputs stay refused until the actual sinks preserve and enforce the captured audience. Production assembly/full-mode proof remains unfinished. No UI or captured image changed.
