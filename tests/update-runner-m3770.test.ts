@@ -1,6 +1,6 @@
 // M-3770 slice 2.1c part 2 (design update-transaction §6.2, §7): the independent recovery runner (`--run`) — its
 // refusals, the three locks in order with release in reverse, its record, finishing a closing attempt, and refusing
-// (unchanged) what needs 2.3's restores — and the pre-start step's launch of it with the 10 s handshake. The launch is
+// (unchanged) a rollback it has no hands for — and the pre-start step's launch of it with the 10 s handshake. The launch is
 // always stubbed: no test starts systemd-run or launchctl. The last test runs the real bundled recover.cjs --run.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -101,13 +101,13 @@ describe("M-3770 §6.2: the recovery runner (--run)", () => {
     expect(err.at(-1)).toMatch(/manual recovery/);
   });
 
-  it("an interrupted attempt that needs 2.3's restores: refused with the journal unchanged, after the locks (and released)", () => {
+  it("a rollback to resume, but no hands to drive it (no service manager given): refused with the journal unchanged, after the locks (and released)", () => {
     const r = rig();
     advance(r.home, advance(r.home, advance(r.home, open(r), "barrier"), "stopping"), "snapshotted");
     const before = readFileSync(join(r.home, ".update-journal", "attempts", ID, "attempt.json"), "utf8");
     const err: string[] = [];
     expect(runRecovery(r.home, ID, deps([RUNNER], [], err))).toBe(1);
-    expect(err.at(-1)).toMatch(/resuming rolling-back from snapshotted.*can't do yet\. Nothing was changed/);
+    expect(err.at(-1)).toMatch(/can't drive a rollback \(no service manager given\)/);
     expect(readFileSync(join(r.home, ".update-journal", "attempts", ID, "attempt.json"), "utf8")).toBe(before);
     expect(readRunnerRecord(r.home, ID)).toMatchObject({ pid: RUNNER });
     expect(lockFiles(r)).toEqual([]);

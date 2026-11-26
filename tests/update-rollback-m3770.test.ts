@@ -15,6 +15,7 @@ import { takeAttemptPreimage } from "../src/update-package-restore.js";
 import { dropInPath, writeRecoveryRoute } from "../src/update-recovery/route.js";
 import { rollBack, type RollbackDeps } from "../src/update-rollback.js";
 import { buildRecoveryKit } from "../src/update-recovery/kit.js";
+import { runRecovery } from "../src/update-recovery/runner.js";
 import { parsePlist } from "../src/service-activation.js";
 
 const dirs: string[] = [];
@@ -113,6 +114,60 @@ const endState = (w: World) => ({
   fleetYaml: readFileSync(join(w.home, "fleet.yaml"), "utf8"), newState: existsSync(join(w.home, "new-state.json")),
   version: JSON.parse(readFileSync(join(w.o.packagePath, "package.json"), "utf8")).version, unit: readFileSync(w.fragment, "utf8"),
   dropIn: existsSync(dropInPath(w.o.service!)), journal: readCurrent(w.home).state, lockRole: readFleetLockRecord(w.home)?.role,
+});
+
+describe("M-3770 2.5: the recovery runner resumes a rollback (recover.cjs --run, its hands injected)", () => {
+  it("the updater gone mid-trial: the runner takes the three locks, settles, rolls back through the driver, releases", () => {
+    const w = world();
+    w.alive.delete(UPDATER);
+    const RUNNER = 7900; w.alive.add(RUNNER);
+    const base = w.deps();
+    const out: string[] = [], err: string[] = [];
+    let settled = 0;
+    const code = runRecovery(w.home, ID, {
+      pid: RUNNER, liveness: base.liveness, io: defaultJournalIo, out: l => out.push(l), err: l => err.push(l),
+      lock: { ...base.liveness, newToken: () => "a".repeat(32), now: () => new Date(), log: () => {} },
+      hands: { manager: () => ({ ...base.manager, waitSettled: () => { settled++; return true; } }), waitTakeover: base.waitTakeover, proveWritersGone: () => ({ ok: true }) },
+    });
+    expect(code, err.join("\n")).toBe(0);
+    expect(settled).toBe(1);
+    expect(out.join("\n")).toMatch(/is rolled back/);
+    expect(endState(w)).toEqual({ fleetYaml: "version: old\n", newState: false, version: "2.4.0", unit: UNIT, dropIn: false, journal: "none", lockRole: "fleet" });
+    expect([".update.lock", ".service.lock"].filter(f => existsSync(join(w.home, f)))).toEqual([]);   // released
+  });
+
+  it("the rollback generation's start fails: the runner reports it as retryable, not rolled back", () => {
+    const w = world();
+    w.alive.delete(UPDATER);
+    w.alive.add(7902);
+    const base = w.deps();
+    const out: string[] = [], err: string[] = [];
+    const code = runRecovery(w.home, ID, {
+      pid: 7902, liveness: base.liveness, io: defaultJournalIo, out: l => out.push(l), err: l => err.push(l),
+      lock: { ...base.liveness, newToken: () => "e".repeat(32), now: () => new Date(), log: () => {} },
+      hands: { manager: () => ({ ...base.manager, start: () => false, waitSettled: () => true }), waitTakeover: base.waitTakeover, proveWritersGone: () => ({ ok: true }) },
+    });
+    expect(code).toBe(1);
+    expect(out.join("\n")).not.toMatch(/is rolled back/);
+    expect(err.at(-1)).toMatch(/Run the recovery again\.$/);
+    expect(readCurrent(w.home).state).toBe("open");
+  });
+
+  it("a refused start that never settles: refused, nothing changed", () => {
+    const w = world();
+    w.alive.delete(UPDATER);
+    w.alive.add(7901);
+    const base = w.deps();
+    const err: string[] = [];
+    const code = runRecovery(w.home, ID, {
+      pid: 7901, liveness: base.liveness, io: defaultJournalIo, out: () => {}, err: l => err.push(l),
+      lock: { ...base.liveness, newToken: () => "b".repeat(32), now: () => new Date(), log: () => {} },
+      hands: { manager: () => ({ ...base.manager, waitSettled: () => false }), waitTakeover: base.waitTakeover, proveWritersGone: () => ({ ok: true }) },
+    });
+    expect(code).toBe(1);
+    expect(err.join("\n")).toMatch(/hasn't settled/);
+    expect(readFileSync(join(w.home, "fleet.yaml"), "utf8")).toBe("version: new\nmigrated: true\n");
+  });
 });
 
 describe("M-3770 2.5: the rollback, end to end on a scratch world", () => {
