@@ -1,5 +1,4 @@
 import { handleRequestContactApi, type RequestContactApiHost } from "./request-contact-api.js";
-import { handleRequestContextControlApi, type RequestContextControlHost } from "./request-context-control-api.js";
 import { historyQuery } from './host-monitoring-history-policy.js';
 import { instructionFileSizes } from "./instruction-file-sizes.js";
 import { handleClaudeCredentials, type ClaudeCredentialApi } from "./web-claude-credentials.js";
@@ -448,7 +447,6 @@ export interface AccountMachine { id: string; actor: string }
 export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
 
 export interface WebApiContext extends ClaudeCredentialApi {
-  requestContextControl?: RequestContextControlHost;
   /** Uninstalled until L. New API reads/decisions do not replace legacy routes while OFF. */
   requestContactApi?:RequestContactApiHost;
   hostHistoryQuery?(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult>;
@@ -2344,7 +2342,6 @@ export function handleWebRequest(
   }
 
   if (handleAgentRuntimeChange(req, res, url, ctx)) return true;
-  if (handleRequestContextControlApi(req,res,url,ctx.requestContextControl)) return true;
   if (handleRequestContactApi(req,res,url,ctx.requestContactApi)) return true;
 
   if (ctx.contactPermissions && ctx.writeContactPermissions && ctx.contactAuthorization && ctx.contactAuthorizations && ctx.decideContactAuthorization && ctx.contactActor
