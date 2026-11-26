@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { procWritersDeps, proveWritersGone, type Exempt, type WritersDeps } from "../src/update-writers.js";
+import { capsExceed, procWritersDeps, proveWritersGone, type Exempt, type WritersDeps } from "../src/update-writers.js";
 
 const dirs: string[] = [];
 const kids: ChildProcess[] = [];
@@ -18,7 +18,7 @@ const home = () => { const d = mkdtempSync(join(tmpdir(), "writers-")); dirs.pus
 const START = { processStart: "s" };
 
 /** A fake process; `seq` gives, read by read, what env, cwd and files return (then the last entry repeats). */
-interface FakeProc { uid?: number | "gone" | null; env?: string | undefined | "gone" | null; cwd?: string | "gone" | null; files?: string[] | "gone" | null; ppid?: number; start?: string; sealed?: boolean;
+interface FakeProc { uid?: number | "gone" | null; env?: string | undefined | "gone" | null; cwd?: string | "gone" | null; files?: string[] | "gone" | null; ppid?: number; start?: string; sealed?: boolean; privileged?: boolean;
   seq?: Array<{ env?: string | undefined | "gone" | null; cwd?: string | "gone" | null; files?: string[] | "gone" | null; uid?: number | "gone"; start?: string }> }
 function fake(h: string, procs: Record<number, FakeProc>, over: Partial<WritersDeps> = {}): WritersDeps {
   const looks = new Map<number, number>();
@@ -32,7 +32,8 @@ function fake(h: string, procs: Record<number, FakeProc>, over: Partial<WritersD
     // The last read of a look: it advances a `seq` process to its next state.
     filesOf: pid => { const v = p(pid).files === undefined ? [] : p(pid).files!; if (procs[pid]?.seq) looks.set(pid, (looks.get(pid) ?? 0) + 1); return v; },
     ppidOf: pid => p(pid).ppid ?? 1,
-    sealed: pid => p(pid).sealed === true,
+    sealed: pid => (p(pid).sealed === true ? "non-dumpable" : p(pid).privileged === true ? "privileged" : false),
+    nameOf: pid => `proc-${pid}`,
     startOf: pid => ({ processStart: p(pid).start ?? "s" }),
     sleep: () => {},
     sameProcess: (pid, start) => (p(pid).start ?? "s") === start.processStart,
@@ -92,12 +93,21 @@ describe("M-3770 §4.4: an incomplete scan is never proof", () => {
   it("a failed listing, an unreadable owner, or an unreadable process of this user: incomplete; a process that exited mid-scan is gone", () => {
     const h = home();
     expect(proveWritersGone(h, exempt(), fake(h, {}, { listPids: () => null }))).toMatchObject({ ok: false, incomplete: true });
-    expect(proveWritersGone(h, exempt(), fake(h, { 50: { uid: null } }))).toMatchObject({ ok: false, incomplete: true, reason: expect.stringMatching(/pid 50 .*owner/) });
+    expect(proveWritersGone(h, exempt(), fake(h, { 50: { uid: null } }))).toMatchObject({ ok: false, incomplete: true, reason: expect.stringMatching(/pid 50\b.*owner/) });
     for (const k of ["env", "cwd", "files"] as const) {
       expect(proveWritersGone(h, exempt(), fake(h, { 51: { [k]: null } })), k).toMatchObject({ ok: false, incomplete: true, reason: expect.stringMatching(/pid 51/) });
     }
     expect(proveWritersGone(h, exempt(), fake(h, { 52: { uid: "gone" }, 53: { files: "gone", env: h } }))).toEqual({ ok: true });
     expect(proveWritersGone(h, exempt(), fake(h, {}, { platform: "darwin" }))).toMatchObject({ ok: false, incomplete: true, reason: expect.stringMatching(/darwin/) });
+  });
+
+  it("the capability subset rule: a target holding a permitted capability the reader lacks is privileged; a subset isn't", () => {
+    const st = (prm: string) => `Name:\tx\nCapInh:\t0000000000000000\nCapPrm:\t${prm}\nCapEff:\t${prm}\n`;
+    expect(capsExceed(st("0000000000000400"), st("0000000000000000"))).toBe(true);                    // CAP_NET_BIND_SERVICE
+    expect(capsExceed(st("0000000000000000"), st("0000000000000000"))).toBe(false);
+    expect(capsExceed(st("0000000000000400"), st("0000000000000c00"))).toBe(false);                   // a subset of the reader's
+    expect(capsExceed(st("0000000000001400"), st("0000000000000c00"))).toBe(true);                    // one bit beyond
+    expect(capsExceed("Name:\tx\n", st("0000000000000000"))).toBe(false);                            // no line: none
   });
 
   it("a process unreadable for a moment (mid-exec, mid-exit) is re-read: gone, or readable and clean, is no gap; staying unreadable is (Fable #4524 F1)", () => {
@@ -112,7 +122,7 @@ describe("M-3770 §4.4: an incomplete scan is never proof", () => {
     expect(proveWritersGone(h, exempt(), fake(h, { 72: { seq: [{ files: null }, { env: h }] } }, counting))).toMatchObject({ ok: false, incomplete: false, writers: [{ pid: 72 }] });
     // The same process unreadable through every try: incomplete, after exactly the bounded re-reads.
     slept = 0;
-    expect(proveWritersGone(h, exempt(), fake(h, { 73: { seq: [{ env: null }] } }, counting))).toMatchObject({ ok: false, incomplete: true, reason: expect.stringMatching(/pid 73 .* stays unreadable .* through 5 re-reads/) });
+    expect(proveWritersGone(h, exempt(), fake(h, { 73: { seq: [{ env: null }] } }, counting))).toMatchObject({ ok: false, incomplete: true, reason: expect.stringMatching(/pid 73 \(proc-73\), this user's, stays unreadable .* through 5 re-reads/) });
     expect(slept).toBe(5);
     // A pid that became a different process (a new start) gets its own tries, a bounded number of times.
     slept = 0;
@@ -131,8 +141,10 @@ describe("M-3770 §4.4: an incomplete scan is never proof", () => {
 
   it("a sealed (non-dumpable) process of this user is reported as uninspectable, not a gap; an unsealed unreadable one still is (design rev 10)", () => {
     const h = home();
-    expect(proveWritersGone(h, exempt(), fake(h, { 60: { sealed: true, env: null, cwd: null, files: null } }))).toEqual({ ok: true, uninspectable: [60] });
-    expect(proveWritersGone(h, exempt(), fake(h, { 60: { sealed: false, env: null } }))).toMatchObject({ ok: false, incomplete: true });
+    expect(proveWritersGone(h, exempt(), fake(h, { 60: { sealed: true, env: null, cwd: null, files: null } }))).toEqual({ ok: true, uninspectable: [{ pid: 60, name: "proc-60", why: "non-dumpable" }] });
+    // Privileged (capabilities this process lacks; dumpable, its files still ours): uninspectable too (rev 11).
+    expect(proveWritersGone(h, exempt(), fake(h, { 62: { privileged: true, env: null } }))).toEqual({ ok: true, uninspectable: [{ pid: 62, name: "proc-62", why: "privileged" }] });
+    expect(proveWritersGone(h, exempt(), fake(h, { 60: { sealed: false, env: null } }))).toMatchObject({ ok: false, incomplete: true, reason: expect.stringMatching(/pid 60 \(proc-60\), this user's, stays unreadable/) });
     // A sealed process never hides a writer beside it.
     expect(proveWritersGone(h, exempt(), fake(h, { 60: { sealed: true }, 61: { env: h } }))).toMatchObject({ ok: false, incomplete: false, writers: [{ pid: 61 }] });
   });
@@ -173,6 +185,12 @@ describe.runIf(process.platform === "linux")("M-3770 §4.4: the real /proc scann
     for (const k of [byEnv, byCwd, byFile, byLog]) await stop(k);
     expect(proveWritersGone(h, self(), deps(mine))).toEqual({ ok: true });                           // exited: gone
   }, 30_000);
+
+  it("the real sealed check: this process isn't sealed; a capability-holding or non-dumpable one would be (by its status)", () => {
+    const d = real();
+    expect(d.sealed(process.pid)).toBe(false);
+    expect(d.nameOf?.(process.pid)).toMatch(/node|vitest/);
+  });
 
   it("the whole host, under process churn (shells exec-ing short sleeps): never spuriously incomplete (Fable #4524 F1)", async () => {
     const h = home();

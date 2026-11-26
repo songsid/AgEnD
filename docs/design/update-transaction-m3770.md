@@ -276,7 +276,11 @@ Neither CLI-owned files nor files in a CLI's profile are included, rev 3. `crede
 ### 4.4 The writers-gone proof, and who is exempt
 - **The proof looks for** any process of this uid that has `AGEND_HOME` equal to this home, its cwd under the home, or a file of the scope open or mapped (Linux `/proc/*/{environ,cwd,fd,maps}`; macOS `lsof -Fn +D`).
 - **An incomplete scan** (a failed listing, or a process of this uid that can't be read) is never proof of absence. A process that exits during the scan is gone, not unreadable.
-- **Sealed processes (rev 10):** a process of this uid that the kernel made non-dumpable can't be inspected without root, because its `/proc/<pid>/{cwd,fd,maps,environ}` belong to root. It is identified positively: its `status` reads this uid while its `fd` directory is root's. It is reported as **uninspectable**, not a gap. Every systemd user session has one (`(sd-pam)`), so without this the proof could never pass. AgEnD's own processes and the CLIs it launches are never sealed: AgEnD lowers `coredump_filter` and never clears the dumpable flag. Any other unreadable process still makes the scan incomplete.
+- **Sealed processes (rev 10):** a process of this uid that the kernel made non-dumpable can't be inspected without root, because its `/proc/<pid>/{cwd,fd,maps,environ}` belong to root. It is identified positively: its `status` reads this uid while its `fd` directory is root's. It is reported as **uninspectable**, not a gap. Every systemd user session has one (`(sd-pam)`), so without this the proof could never pass.
+  - **Privileged processes (rev 11):** a dumpable process of this uid holding a **permitted capability this reader lacks** is refused by the kernel's subset rule (`ptrace_may_access`), although its `/proc` files stay this user's. A unit with `AmbientCapabilities` is one example; a CI runner's helper is another. It is identified from its world-readable `status` (`CapPrm` against this process's own) and reported as uninspectable too.
+  - **Why this is safe:** AgEnD's own processes and the CLIs it launches are neither non-dumpable nor privileged. AgEnD lowers `coredump_filter`, never clears the dumpable flag, and grants no capabilities.
+  - **Reporting:** each uninspectable process is listed with its `Name` and why ("non-dumpable" or "privileged"). An unreadable process names its `Name` in the incomplete reason.
+  - **Transient unreadability (mid-exec, mid-exit) is retried:** up to 5 re-reads, 20 ms apart, re-identified by its start each time. Any other process that stays unreadable still makes the scan incomplete.
 - **The exempt set** is exactly these, each recorded with its start time:
   - the updater (`attempt.updater`);
   - the recovery runner (`attempt.runner`, §6.2);
@@ -619,6 +623,12 @@ A retry recognises each effect by the path's presence and its hash against the p
 |---|---|
 | A sealed (non-dumpable) process of this uid is reported as uninspectable instead of making the writers-gone proof incomplete; any other unreadable process still does | §4.4 |
 | A helper is exempt only when its own start and every intermediate ancestor (each a recorded helper with its start) are proven up to the updater or the runner | §4.4 |
+
+### Revision 11 (2.3 part 3, Fable #4524 CI)
+| Change | Where |
+|---|---|
+| A same-uid process holding capabilities the reader lacks (the kernel's subset rule refuses the read) is uninspectable, identified by `status` `CapPrm` | §4.4 |
+| An unreadable process is re-read (5 × 20 ms, re-identified by its start) before the scan is incomplete; uninspectable processes are listed with their name and why | §4.4 |
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
 - `update-journal.ts`: the layout, publication order, readers, stages and marks;

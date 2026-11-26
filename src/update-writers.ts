@@ -9,11 +9,11 @@
  *   is read again a few times with a short backoff (Fable #4524 F1); between tries it is re-identified — gone is gone, a
  *   new start is a different process (classified afresh). Only the same process, unreadable through every try, makes
  *   the scan incomplete.
- * - **Sealed processes (design rev 10).** A process of this uid that the kernel has made non-dumpable — its
- *   `/proc/<pid>/{cwd,fd,maps,environ}` belong to root, so no unprivileged reader can inspect them — is positively
- *   identified (its `status` reads this uid while its `fd` directory is root's) and reported as `uninspectable`, not as
- *   a gap: every systemd user session has one (`(sd-pam)`), and AgEnD's own processes and the CLIs it launches are
- *   never sealed (AgEnD lowers `coredump_filter`, it never clears the dumpable flag). Any other unreadable process
+ * - **Sealed processes (design rev 10).** A process of this uid that the kernel closes to this reader is positively
+ *   identified and reported as `uninspectable`, not as a gap: one made non-dumpable (its `status` reads this uid while
+ *   its `fd` directory is root's — every systemd user session's `(sd-pam)`), or one holding capabilities this process
+ *   doesn't (`CapPrm`, readable in `status`; the kernel then denies the read). AgEnD's own processes and the CLIs it
+ *   launches are neither: AgEnD never clears the dumpable flag and grants no capabilities. Any other unreadable process
  *   still makes the scan incomplete.
  * - **The exempt set is exactly:** the updater (`attempt.updater`), the recovery runner (`runner.json`), and helpers the
  *   attempt itself spawned (`attempt.helpers[]`, each `{ pid, start }`) whose ancestor chain — by ppid, each step's
@@ -44,8 +44,13 @@ export interface WritersDeps {
   startOf(pid: number): ProcessStartRecord | null;
   /** Wait (synchronously) between re-reads of an unreadable process. */
   sleep(ms: number): void;
-  /** Is `pid` sealed: this uid's, but non-dumpable (its per-process files are root's)? */
-  sealed(pid: number): boolean;
+  /**
+   * Is `pid` sealed: this uid's, but closed to this process — non-dumpable (its per-process files are root's), or
+   * holding capabilities this process doesn't (the kernel denies the read)?
+   */
+  sealed(pid: number): false | "non-dumpable" | "privileged";
+  /** Its command name (status `Name:`), for the words; null when unknown. */
+  nameOf?(pid: number): string | null;
   /** Does `pid`'s current start match `start`? (install-lock's identity: ticks + boot, else the lstart text.) */
   sameProcess(pid: number, start: ProcessStartRecord): boolean;
   uid: number;
@@ -56,11 +61,20 @@ export interface Identity { pid: number; start: ProcessStartRecord }
 export interface Exempt { updater: Identity; runner: Identity | null; helpers: Identity[] }
 
 export type WritersProof =
-  | { ok: true; uninspectable?: number[] }
+  | { ok: true; uninspectable?: Array<{ pid: number; name: string | null; why: "non-dumpable" | "privileged" }> }
   | { ok: false; incomplete: true; reason: string }
   | { ok: false; incomplete: false; writers: Array<{ pid: number; why: string }>; reason: string };
 
 const isUnder = (path: string, root: string) => path === root || path.startsWith(root + sep);
+
+/**
+ * The kernel's subset rule for a same-uid read (ptrace_may_access): refused when the target's permitted capabilities
+ * hold a bit the reader's don't. Each argument is a `/proc/<pid>/status` text; a missing CapPrm line reads as none.
+ */
+export function capsExceed(targetStatus: string, readerStatus: string): boolean {
+  const caps = (text: string) => BigInt(`0x${/^CapPrm:\s+([0-9a-f]+)/m.exec(text)?.[1] ?? "0"}`);
+  return (caps(targetStatus) & ~caps(readerStatus)) !== 0n;
+}
 
 /** Re-reads of a process of this uid that can't be read, and the wait before each (≈ 100 ms in all). */
 export const UNREADABLE_RETRIES = 5;
@@ -94,8 +108,8 @@ export function proveWritersGone(home: string, exempt: Exempt, d: WritersDeps): 
   };
 
   const writers: Array<{ pid: number; why: string }> = [];
-  const uninspectable: number[] = [];
-  type Read = { kind: "skip" } | { kind: "uninspectable" } | { kind: "unreadable"; what: string }
+  const uninspectable: Array<{ pid: number; name: string | null; why: "non-dumpable" | "privileged" }> = [];
+  type Read = { kind: "skip" } | { kind: "uninspectable"; why: "non-dumpable" | "privileged" } | { kind: "unreadable"; what: string }
     | { kind: "read"; env: string | undefined; cwd: string; files: string[] };
   /** One look at a pid: not ours, exempt, sealed, gone, unreadable, or its three reads. */
   const look = (pid: number): Read => {
@@ -104,7 +118,8 @@ export function proveWritersGone(home: string, exempt: Exempt, d: WritersDeps): 
     if (uid === null) return { kind: "unreadable", what: "owner" };
     if (uid !== d.uid) return { kind: "skip" };
     if (owners.some(o => isExact(pid, o)) || isHelper(pid)) return { kind: "skip" };
-    if (d.sealed(pid)) return { kind: "uninspectable" };
+    const sealed = d.sealed(pid);
+    if (sealed) return { kind: "uninspectable", why: sealed };
     const env = d.agendHomeOf(pid), cwd = d.cwdOf(pid), files = d.filesOf(pid);
     if (env === "gone" || cwd === "gone" || files === "gone") return { kind: "skip" };
     if (env === null || cwd === null || files === null) return { kind: "unreadable", what: env === null ? "environment" : cwd === null ? "working directory" : "open files" };
@@ -123,8 +138,11 @@ export function proveWritersGone(home: string, exempt: Exempt, d: WritersDeps): 
       r = look(pid);
     }
     if (r.kind === "skip") continue;
-    if (r.kind === "uninspectable") { uninspectable.push(pid); continue; }
-    if (r.kind === "unreadable") return { ok: false, incomplete: true, reason: `pid ${pid} (this user's) stays unreadable (its ${r.what}) through ${UNREADABLE_RETRIES} re-reads` };
+    if (r.kind === "uninspectable") { uninspectable.push({ pid, name: d.nameOf?.(pid) ?? null, why: r.why }); continue; }
+    if (r.kind === "unreadable") {
+      const name = d.nameOf?.(pid);
+      return { ok: false, incomplete: true, reason: `pid ${pid}${name ? ` (${name})` : ""}, this user's, stays unreadable (its ${r.what}) through ${UNREADABLE_RETRIES} re-reads` };
+    }
     const { env, cwd, files } = r;
     const real = (p: string) => { try { return realpathSync(p); } catch { return p; } };
     if (env !== undefined && real(env) === root) { writers.push({ pid, why: `its AGEND_HOME is this home` }); continue; }
@@ -173,10 +191,17 @@ export function procWritersDeps(sameProcess: WritersDeps["sameProcess"], startOf
     sleep: ms => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
     sealed: pid => {
       try {
-        const real = /^Uid:\s+(\d+)/m.exec(readFileSync(`/proc/${pid}/status`, "utf8"))?.[1];
-        return real !== undefined && Number(real) !== 0 && statSync(`/proc/${pid}/fd`).uid === 0;
+        const status = readFileSync(`/proc/${pid}/status`, "utf8");
+        const real = /^Uid:\s+(\d+)/m.exec(status)?.[1];
+        if (real === undefined || Number(real) === 0) return false;
+        // Non-dumpable: its per-process files are root's.
+        if (statSync(`/proc/${pid}/fd`).uid === 0) return "non-dumpable";
+        // Privileged: it holds capabilities this process doesn't, so the kernel refuses to let this process read it
+        // (ptrace read access) though both run as one uid (Fable #4524 CI: a runner process). AgEnD's processes hold none.
+        return capsExceed(status, readFileSync("/proc/self/status", "utf8")) ? "privileged" : false;
       } catch { return false; }
     },
+    nameOf: pid => { try { return /^Name:\s+(.*)$/m.exec(readFileSync(`/proc/${pid}/status`, "utf8"))?.[1] ?? null; } catch { return null; } },
     sameProcess,
     uid: typeof process.getuid === "function" ? process.getuid() : -1,
     platform: process.platform,
