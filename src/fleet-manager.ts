@@ -1,3 +1,4 @@
+import {createRequestContextExecOwner,type RequestContextExecOwner} from "./request-context-exec-owner.js";
 import {makeRequestContextRelay} from "./request-context-relay.js";
 import type {RequestContactGateHost,RequestContactGate} from "./request-contact-gate.js";
 import {rotateHubAgentIncarnation,forgetHubAgentIncarnation,requestWorkRegistrationEvidence, type HubAgentIncarnationRecord} from "./hub-agent-incarnation-record.js";
@@ -1381,6 +1382,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   fsyncForTest: ((fd: number) => void) | undefined = undefined;
   private requestContextAdmission?: RequestContextAdmissionPort;
   private requestContextBoot?: RequestContextBoot;
+  prepareRequestContextOwnerRegistration?: (name:string,config:InstanceConfig)=>Promise<void>;
+  requestContextOwnerStarted?: (name:string,daemon:Daemon)=>void;
+  private requestContextRetainedFactory?:object;
   prepareRequestContextStart?: (name: string, config: InstanceConfig) => RequestContextStartPreparation;
   configureRequestContextBeforeStart?: (name: string, daemon: Daemon, config: InstanceConfig, preparation?: RequestContextStartPreparation) => void;
   /** Exact persistent roster for controlled On; exec owners and durable drain assessment are separate required participants. */
@@ -1492,7 +1496,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if(afterRetirement){undoAfterRetirement=await afterRetirement();if(!current()||!fence.current()||!durableDrained())throw Error("Request relaunch preparation changed");}
       for(const row of rows){
         if(!current()||!fence.current()||!durableDrained())throw failed(row.name);
-        row.prepared=this.prepareRequestContextDaemonOwner(row.name,row.spec.config,policy,registration,()=>committed?processOwned()&&configured(row)&&this.daemons.get(row.name)===row.candidate:current());
+        row.prepared=this.prepareRequestContextDaemonOwner(row.name,row.spec.config,policy,registration,()=>committed?processOwned()&&this.contactGeneration(row.name)===row.incarnation&&this.daemons.get(row.name)===row.candidate:current());
         await this.startInstance(row.name,row.spec.config,row.spec.topicMode,row.spec.kind);
         row.published=true;
         if(!current())throw failed(row.name);row.prepared.sealRegistered();
@@ -1501,6 +1505,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if(!ready())throw Error("Request relaunch preparation changed");
       return Object.freeze({
         ready,
+        owners:()=>rows.map(row=>{if(!row.candidate||!row.startup||!row.prepared?.bound())throw Error("Request relaunch owner unavailable");return Object.freeze({name:row.name,daemon:row.candidate,prepared:row.prepared,resources:row.startup});}),
         /** Synchronous initializer inside activation's outer SQLite transaction. */
         retain:()=>{if(!ready())throw Error("Request relaunch preparation changed");for(const row of rows)row.prepared!.work.retainPrepared();if(!ready())throw Error("Request relaunch preparation changed");},
         /** Post-COMMIT only. The installer replaces the start hooks with its capable owner factory before releasing admission. */
@@ -10133,6 +10138,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         registered=true;
       },
       bound:()=>registered&&preparation.current()&&binding?.current()===true,
+      hub:()=>registered&&preparation.current()?binding?.hub??null:null,
       dispose:()=>work.dispose(),
     });
   }
@@ -10158,6 +10164,121 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if(this.writeHubIncarnations(raw)!=="written")throw Error("Request work registration evidence unavailable");
     if(!lease.current()||!retirement.current()||this.contactGeneration(instance)!==incarnation)throw Error("Request work registration changed");
     return value;
+  }
+
+  /** Finish a committed registration's marker, including crash recovery. This creates no work, context or permission. */
+  sealRequestContextWorkRegistration(instance:string,current:()=>boolean):void {
+    const box=this.deliveryOutbox,lease=captureProcessFleetLease(this.dataDir),incarnation=this.contactGeneration(instance),work=box?.requestContextWork.read(instance);
+    if(!box||!work||work.incarnation!==incarnation||!lease?.current()||!current()||this.hubIncarnationsBroken)throw Error("Committed request registration unavailable");
+    const path=this.hubIncarnationsPath(),image=readFileSync(path,"utf8"),raw=JSON.parse(image),entry=Object.hasOwn(raw,instance)?raw[instance]:undefined;
+    requestWorkRegistrationEvidence(instance,entry,incarnation,work.incarnation);
+    const owned=()=>lease.current()&&current()&&!this.hubIncarnationsBroken&&this.contactGeneration(instance)===incarnation
+      &&requestContextDigest(box.requestContextWork.read(instance))===requestContextDigest(work);
+    if(!owned()||readFileSync(path,"utf8")!==image)throw Error("Committed request registration changed");
+    if(entry.requestWork!=="registered"){
+      raw[instance]={...entry,requestWork:"registered"};if(this.writeHubIncarnations(raw)!=="written")throw Error("Request registration marker unavailable");
+    }
+    if(!owned())throw Error("Committed request registration changed");
+  }
+
+  /** Capable boot/restart factory. A current retained work row is mandatory; a missing/new incarnation uses
+   * only the explicit durable registration lane. No running daemon is hot-bound and no active turn is restored.
+   */
+  installRequestContextRetainedOwners(policy:RequestContextPolicyPort,registration:RequestContextRegistrationGate,
+    current:()=>boolean,adopt:readonly {name:string;daemon:Daemon;prepared:ReturnType<FleetManager["prepareRequestContextDaemonOwner"]>;resources:{retired():Promise<boolean>}}[]=[],
+    options:{firstOnStage?:{current():boolean};deferStartHooks?:boolean}={}){
+    const box=this.deliveryOutbox,admission=this.requestContextAdmission,lease=captureProcessFleetLease(this.dataDir),token={},initial=box?.requestContextInstallation().read();
+    if(!box||!initial&&!options.firstOnStage?.current()||!admission||admission.available()||!lease?.current()||!current()||this.requestContextRetainedFactory)throw Error("Retained request owner factory unavailable");
+    let sealed=!!initial,attached=false;
+    type Entry={name:string;incarnation:string;config:InstanceConfig;starting:boolean;daemon?:Daemon;previous?:{spawnGeneration:number;launchFenceEpoch:number};
+      prepared?:ReturnType<FleetManager["prepareRequestContextDaemonOwner"]>;resources?:{retired():Promise<boolean>};exec?:RequestContextExecOwner;work:RequestContextPreparedWork};
+    const entries=new Map<string,Entry>(),preparing=new Set<string>();let serial=0;
+    this.requestContextRetainedFactory=token;
+    const owned=()=>{try{return this.requestContextRetainedFactory===token&&!this.shuttingDown&&lease.current()&&current()&&this.requestContextAdmission===admission;}catch{return false;}};
+    const entryCurrent=(entry:Entry)=>{try{return owned()&&entries.get(entry.name)===entry&&this.contactGeneration(entry.name)===entry.incarnation
+      &&(!entry.daemon||this.daemons.get(entry.name)===entry.daemon||entry.starting&&!this.daemons.has(entry.name));}catch{return false;}};
+    const prepare=async(name:string,config:InstanceConfig)=>{
+      if(!owned()||preparing.has(name))throw Error("Request owner registration changed");
+      preparing.add(name);
+      try{
+        const incarnation=this.contactGeneration(name),previous=entries.get(name),stored=box.requestContextWork.read(name),staging=!sealed&&options.firstOnStage?.current()===true;
+        if(previous?.exec){
+          if(!previous.exec.idle())throw Error("Request owner is still preparing or running");
+          if(previous.incarnation===incarnation&&previous.work.current()){if(!staging)this.sealRequestContextWorkRegistration(name,owned);return;}
+        }
+        if(previous?.daemon&&this.daemons.get(name)===previous.daemon)throw Error("Request owner is still running");
+        if(previous?.daemon&&(!previous.resources||!await previous.resources.retired())||!owned())throw Error("Request predecessor has not retired");
+        if((!stored||stored.incarnation!==incarnation)&&!(!stored&&staging)){
+          // Cold unknown predecessors remain blocked. A new birth proves absence of any earlier owned launch;
+          // a recorded predecessor must additionally have this factory's exact retired resource receipt.
+          if(stored&&!previous?.resources)throw Error("Request predecessor retirement unavailable");
+          const absent=()=>!this.daemons.has(name)&&!existsSync(join(this.getInstanceDir(name),"window-id"))&&!existsSync(join(this.getInstanceDir(name),"channel.sock"))
+            &&!WindowsAgents.requestContextOwnersOnDisk(this.dataDir).some(row=>row.instance===name);
+          await this.registerRequestContextWork(name,{current:()=>owned()&&this.contactGeneration(name)===incarnation&&!this.daemons.has(name)&&entries.get(name)===previous,
+            retired:()=>previous?.resources?.retired()??Promise.resolve(absent())});
+        }
+        if(!owned()||this.contactGeneration(name)!==incarnation||this.daemons.has(name))throw Error("Request owner registration changed");
+        if(!staging)this.sealRequestContextWorkRegistration(name,owned);
+        previous?.prepared?.dispose();previous?.exec?.dispose();previous?.work.dispose();
+        const entry={} as Entry;Object.assign(entry,{name,incarnation,config:structuredClone(config),starting:true,...(previous?.daemon?{previous:previous.daemon.requestContextLaunchObservation()}: {})});entries.set(name,entry);serial++;
+        const local=()=>entryCurrent(entry);
+        try{
+          if(isNativeExecInstance(config)){
+            entry.work=new RequestContextPreparedWork(box.requestContextWork,name,incarnation,local,staging);
+            entry.exec=createRequestContextExecOwner(box,{instance:name,managerBootId:this.managerBootId,work:entry.work,registration,current:local,
+              incarnation:()=>this.contactGeneration(name),deliveryEpoch:()=>this.getDeliveryEpoch(name),admitted:root=>this.requestContextNativeAdmissionCurrent(root),
+              consumptionCurrent:delivery=>this.contactDeliveryCurrent(delivery),canManage:actor=>{const person=this.makeRequestContextContactHost(owned,()=>false,()=>"active").person(actor);return !!person&&this.contactAdminOf(name,person);}});
+            entry.starting=false;
+          }else{
+            entry.prepared=this.prepareRequestContextDaemonOwner(name,config,policy,registration,local);entry.work=entry.prepared.work;
+          }
+        }catch(error){if(entries.get(name)===entry)entries.delete(name);serial++;throw error;}
+      }finally{preparing.delete(name);}
+    };
+    const attach=()=>{
+    if(attached||!owned()||admission.available())throw Error("Retained request start hooks unavailable");
+    const originalConfigure=this.configureRequestContextBeforeStart;
+    this.prepareRequestContextOwnerRegistration=prepare;
+    this.prepareRequestContextStart=(name,config)=>{
+      const entry=entries.get(name);if(!entry?.prepared||entry.daemon||!entryCurrent(entry)||requestContextDigest(entry.config)!==requestContextDigest(config))throw Error("Retained request preparation unavailable");return entry.prepared.preparation;
+    };
+    this.configureRequestContextBeforeStart=(name,daemon,config,offered)=>{
+      const entry=entries.get(name);if(!entry?.prepared||entry.daemon||!entryCurrent(entry)||!offered?.current()||offered.policy!==policy
+        ||requestContextDigest(config)!==requestContextDigest(entry.config))throw Error("Retained request owner differs");
+      entry.daemon=daemon;if(entry.previous)daemon.seedRequestContextReplacement(entry.previous);entry.resources=daemon.prepareRequestContextStartupRetirement();
+      originalConfigure?.(name,daemon,config,offered);entry.prepared.configure(daemon,config,offered);
+    };
+    this.requestContextOwnerStarted=(name,daemon)=>{
+      const entry=entries.get(name);if(!entry?.prepared||entry.daemon!==daemon||this.daemons.get(name)!==daemon||!entryCurrent(entry))throw Error("Retained request owner differs");
+      entry.prepared.sealRegistered();entry.starting=false;serial++;
+    };
+    attached=true;
+    };
+    const adoptOwners=(values:typeof adopt)=>{for(const row of values){
+      if(entries.has(row.name)||this.daemons.get(row.name)!==row.daemon||!row.prepared.bound())throw Error("Retained request adoption differs");
+      const incarnation=this.contactGeneration(row.name),entry:Entry={name:row.name,incarnation,config:row.daemon.getConfigSnapshot(),starting:false,daemon:row.daemon,prepared:row.prepared,resources:row.resources,work:row.prepared.work};
+      entries.set(row.name,entry);serial++;
+    }};
+    adoptOwners(adopt);if(!options.deferStartHooks)attach();
+    const exec=(name:string)=>{const entry=entries.get(name);if(!entry?.exec||!entryCurrent(entry))throw Error("Retained native owner unavailable");return entry.exec;};
+    return Object.freeze({current:owned,beforeStart:prepare,attach,adopt:adoptOwners,
+      retain:()=>{if(sealed||!owned()||!options.firstOnStage?.current())throw Error("Request owner staging changed");for(const entry of entries.values())entry.work.retainPrepared();},
+      seal:()=>{if(!owned()||!box.requestContextInstallation().read())throw Error("Request owner staging has not committed");for(const entry of entries.values()){entry.work.sealRetained();this.sealRequestContextWorkRegistration(entry.name,owned);}sealed=true;},
+      disposeStaged:async()=>{
+        if(sealed||box.requestContextInstallation().read()||!owned()||attached)throw Error("Retained request owners cannot revert");
+        for(const entry of entries.values())if(entry.exec&&!entry.exec.idle()||entry.daemon&&(!entry.resources||!await entry.resources.retired()))throw Error("Staged request owner is still running");
+        for(const entry of entries.values()){entry.exec?.dispose();entry.prepared?.dispose();entry.work.dispose();}entries.clear();serial++;
+        if(this.requestContextRetainedFactory!==token)throw Error("Retained request owner changed");this.requestContextRetainedFactory=undefined;
+      },
+      hub:(name:string)=>{const entry=entries.get(name);return entry&&entryCurrent(entry)?entry.prepared?.hub()??null:null;},
+      execTurns:(name:string)=>exec(name).turns,execOwner:(name:string)=>exec(name).owner(),
+      execInput:(name:string,...args:Parameters<RequestContextExecOwner["prepare"]>)=>exec(name).prepare(...args),
+      revision:()=>String(serial)+":"+[...entries.values()].map(row=>row.exec?.turns.drainRevision??row.daemon?.requestContextTurnDrainRevision??"unstarted").join(":"),
+      turnView:(root:string)=>{
+        const views=[...entries.values()].map(row=>row.exec?.turns.drainView(root)??row.daemon?.requestContextTurnDrainView(root)).filter((row):row is NonNullable<typeof row>=>!!row);
+        return {registration,revision:String(serial)+":"+[...entries.values()].map(row=>row.exec?.turns.drainRevision??row.daemon?.requestContextTurnDrainRevision??"unstarted").join(":"),references:views.flatMap(row=>row.references),unknown:views.some(row=>row.unknown||row.registration!==registration)};
+      },
+    });
   }
 
   /** One replacement's C/D-local binding. It is constructed before startup, never hot-bound or published here. */
@@ -11207,6 +11328,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // M-2457 §6: no agent starts on a held tmux server (an old one AgEnD could not prove its own may still run it).
     if (this.tmuxHold) throw new Error(this.tmuxHold.detail);
     if (isNativeExecInstance(config)) {
+      if(this.prepareRequestContextOwnerRegistration)await this.prepareRequestContextOwnerRegistration(name,config);
       execution?.assert();
       if (!windowsCliEnabled()) throw new Error("Windows runtime is disabled");
       if (resumePaused) this.nativeInstanceRuntime().setPaused(name,false);
@@ -11274,6 +11396,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         || (this.explicitStopGeneration.get(name) ?? 0) !== stopGen) {
         throw new SupersededStartError(name);
       }
+      if(this.prepareRequestContextOwnerRegistration){
+        await this.prepareRequestContextOwnerRegistration(name,config);execution?.assert();
+        if(this.lifecycle.epochOf(name)!==epoch||(this.explicitStopGeneration.get(name)??0)!==stopGen)throw new SupersededStartError(name);
+      }
       const ownedStart = this.prepareRequestContextStart?.(name, config);
       const instructionMode = requestContextInstructionMode(ownedStart?.policy);
       const requestContextStart = ownedStart ? Object.freeze({ policy: ownedStart.policy,
@@ -11328,6 +11454,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         throw err;
       }
+      if(this.requestContextOwnerStarted){const owned=this.daemons.get(name);if(!owned)throw Error("Request owner did not start");this.requestContextOwnerStarted(name,owned);}
       if (this.legacyWindowHolds.delete(name)) this.needsYou?.poke();
       execution?.assert();
       // Only clear a stale process status after a real start succeeded.  Clearing

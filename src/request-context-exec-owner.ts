@@ -41,7 +41,7 @@ export function createRequestContextExecOwner(box:DeliveryOutbox,ports:RequestCo
   }
   return delivery.prepare(id,wire,actual);
  },ports.canManage),registration:ports.registration});
- return Object.freeze({owner,turns,current:owned,
+ return Object.freeze({owner,turns,current:owned,idle:()=>{try{return frames.size===0&&turns.current(owner())===null;}catch{return false;}},
   prepare:(inputId:string|null,task:NativeTaskInput,options:NativeExecInputOptions,value:Readonly<NativeExecInputClaim>)=>{
    const expectedOwner=owner(),claim=validateNativeExecInputClaim(value),wire=nativeExecInputBytes(task,options).toString("utf8");
    if(claim.requestId!==task.requestId||claim.requestSha256!==nativeExecInputRequestDigest(task,options)||claim.wireSha256!==requestContextDigestBytes(wire))throw Error("Native request input composition changed");
