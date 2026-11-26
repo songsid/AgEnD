@@ -1671,6 +1671,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info("Update commit: left the trial (tmux set up, admissions open)");
     })();
   }
+  /** The update marker the trial's start adopted; cleared once its commit has started the agents. */
+  private updateTrialBootMarker: UpdateMarkerIdentity | null = null;
   /** Set between leaving the trial and finishing what it skipped (tmux, the Hub); agents start only after. */
   private updateTrialLeaving = false;
 
@@ -1695,6 +1697,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const classic = topicMode && (fleet.channel || fleet.channels?.length) ? this.classicChannels?.getAll() ?? [] : [];
       if (others.length > 0 || classic.length > 0) await this.startInstancesWithConcurrency(others, topicMode, () => {}, classic);
       await this.announceUpdateCommitted(fleet, topicMode);
+      this.clearSettledUpdateMarker(this.updateTrialBootMarker);                                  // now the post-update fleet
+      this.updateTrialBootMarker = null;
     })();
   }
 
@@ -8340,7 +8344,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const settled of this.applyJobs.settleAfterRestart()) {
       this.logger.info({ jobId: settled.id }, "Settings apply job settled by fleet restart");
     }
-    this.clearSettledUpdateMarker(bootUpdateMarker);
+    // M-3770 part 4 (§5): a trial (or a resumed commit) isn't the post-update fleet yet: the marker stays until its
+    // commit has started the agents (startAgentsAfterTrial clears it then).
+    if (this.updateTrial) this.updateTrialBootMarker = bootUpdateMarker;
+    else this.clearSettledUpdateMarker(bootUpdateMarker);
     if (this.reloadPending) this.scheduleReconcile();
     void this.sweepOrphanedCancelButtons();
     void this.parkedNotices.sweep();

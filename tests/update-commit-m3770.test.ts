@@ -136,8 +136,12 @@ describe("M-3770 2.5 wiring part 4: the updater's commit hands over the mailbox"
     expect(f.calls).toEqual(["tmux-server", "control-client", "tmux-windows", "hub"]);
     expect(f.fm.updateTrial).toBeNull();
     expect(f.fm.updateBarrier.barrier.armed() && !f.outbox.admissionsRefused()).toBe(true);
+    const marker = { startedAt: 1, receipt: null };
+    f.fm.updateTrialBootMarker = marker;                                                             // adopted at the trial's start
+    f.fm.clearSettledUpdateMarker = vi.fn();
     expect(await run("startAgents")).toBe(true);
     expect(f.calls.slice(4)).toEqual(["start:general", "start-rest:worker", "ready-line"]);
+    expect(f.fm.clearSettledUpdateMarker).toHaveBeenCalledWith(marker);                              // now the post-update fleet
     expect(await run("deliverInbox")).toBe(true);
     expect(f.fm.updateBarrier).toBeNull();
     expect(f.fm.quiescence).toBeNull();

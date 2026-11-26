@@ -199,7 +199,8 @@ Adapters are informational, as counts only (§10.6). The updater's side is `prov
 **startAgents** is what a normal start does: the General first, then the rest and the ClassicBot rooms with the same concurrency. It then posts the fleet's ready line.
 - The trial itself posts no restart progress and no ready line.
 - A fleet still held (its tmux server unproven, M-2457) starts no agent, as at any start. That isn't a commit failure.
-- Adopting the update's own progress message (`pendingUpdateProgress`) is left to the progress-marker stages.
+- The update marker the trial's start adopted isn't cleared by `finishStartup` in a trial (or a resumed commit). `startAgents` clears it once the agents are up, because only then is this the post-update fleet.
+- Adopting the update's own progress message (`pendingUpdateProgress`) is left to the updater's part (5), which writes the trial, proving and committing stages.
 
 **deliverInbox** walks the attempt's ONE inbox in order: the old fleet's held items, then the trial's, then anything held since. It admits them as hand-back copies (claims for references).
 - The hold comes down in the same turn, even when the walk throws (Fable #4554's rule), so nothing newer interleaves.

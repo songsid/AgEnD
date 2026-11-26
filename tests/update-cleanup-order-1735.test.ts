@@ -179,7 +179,8 @@ describe("#1735: the boot wires it — the completion renders a landed outcome, 
     const fallback = body.indexOf("text += `\\n\\n⚠️ ${cleanupOutcome.render.warning}`");
     const send = body.indexOf("await this.sendFleetStartCompletionFallback(");
     expect([spread > 0, finish > spread, arm > finish, fallback > arm, send > fallback]).toEqual([true, true, true, true, true]);
-    expect(src).toContain("    this.clearSettledUpdateMarker(bootUpdateMarker);\n    if (this.reloadPending)");
+    // M-3770 part 4: a trial keeps the boot's marker until its commit has started the agents (tests/update-commit-m3770).
+    expect(src).toContain("    else this.clearSettledUpdateMarker(bootUpdateMarker);\n    if (this.reloadPending)");
     expect(src).toContain("    this.finishStartup(bootUpdateMarker);");
   });
 });
