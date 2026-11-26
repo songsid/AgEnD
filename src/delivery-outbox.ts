@@ -1,3 +1,4 @@
+import { RequestContextInstallationStore, readRequestContextInstallation } from "./request-context-installation.js";
 import {assertRequestHubContactImage} from "./request-context-policy.js";
 import {RequestContextReturns,requestContextDeliveryChildId,requestContextReturnBlockers,registerRequestContextReturnDispatcher,assertRequestContextReturnsCompatibility,REQUEST_CONTEXT_RETURNS_TABLE} from "./request-context-returns.js";
 import type {PreparedRequestContextInput,RequestContextRuntimeOwner} from "./request-context-turns.js";
@@ -728,13 +729,15 @@ export class DeliveryOutbox extends EventEmitter {
     try { this.emit("working_references", [...new Set(instances)]); } catch { /* observation only */ }
   }
 
+  private readonly requestContextRecoveryFence?: () => boolean;
   private readonly requestContextDispatchVersion: RequestContextDispatchVersion;
   private readonly requestContextRelayVersion:0|1;
   private requestContextReturnsOwner?:RequestContextReturns;
 
-  constructor(dbPath: string, managerBootId: string = randomUUID(), compatibility: RequestContextCompatibilityOptions & {requestContextRelayVersion?:0|1} = {}) {
+  constructor(dbPath: string, managerBootId: string = randomUUID(), compatibility: RequestContextCompatibilityOptions & {requestContextRelayVersion?:0|1; requestContextRecoveryFence?:()=>boolean} = {}) {
     super();
     this.managerBootId = managerBootId;
+    this.requestContextRecoveryFence = compatibility.requestContextRecoveryFence;
     this.requestContextDispatchVersion = compatibility.requestContextDispatchVersion ?? 0;
     this.requestContextRelayVersion=compatibility.requestContextRelayVersion??0;
     mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
@@ -742,6 +745,7 @@ export class DeliveryOutbox extends EventEmitter {
     try {
       registerRequestContextDispatcher(this.db, this.requestContextDispatchVersion);
       assertRequestContextCompatibility(this.db, this.requestContextDispatchVersion);
+      this.requireInstalledRecoveryFence();
       registerRequestContextReturnDispatcher(this.db,this.requestContextRelayVersion);
       assertRequestContextReturnsCompatibility(this.db,this.requestContextRelayVersion);
       if(hasTable(this.db,REQUEST_CONTEXT_RETURNS_TABLE))this.requestContextReturnsOwner=new RequestContextReturns(this.db,()=>this.requireRequestContextRelay());
@@ -1188,6 +1192,16 @@ export class DeliveryOutbox extends EventEmitter {
     const ready = (): void => { if(this.requestContextDispatchVersion!==1||assertRequestContextCompatibility(this.db,1)!=="active")throw Error("request-context dispatcher is not ready"); };
     ready();return new RequestContextDrain(this.db,ready,owner);
   }
+
+  /** New cutover metadata is validated before initialization/recovery, never silently opened as legacy. */
+  private requireInstalledRecoveryFence(): void {
+    if (!hasTable(this.db,"request_context_installation_v1") && !hasTable(this.db,"request_context_activations_v1")) return;
+    readRequestContextInstallation(this.db);
+    if (this.requestContextRecoveryFence?.() !== true) throw Error("Request-context recovery needs its owned admission fence");
+  }
+
+  /** L owns activation and drain intent on this same connection; constructing it installs no schema. */
+  requestContextInstallation(): RequestContextInstallationStore { return new RequestContextInstallationStore(this.db); }
 
   /** Read-only shadow is safe before activation; never initializes contact/context artifacts. */
   requestContextMigrationShadow(host: RequestMigrationHost): RequestContextMigrationShadow {
@@ -1998,6 +2012,7 @@ export class DeliveryOutbox extends EventEmitter {
   recoverForBoot(managerBootId: string): { queued: number; reconciliationPending: number } {
     const now = new Date().toISOString();
     const transaction = this.db.transaction(() => {
+      this.requireInstalledRecoveryFence();
       this.db.prepare("UPDATE human_delivery_receipts SET state='uncertain',updated_at=? WHERE state='queued' AND manager_boot_id<>?")
         .run(now, managerBootId);
       const queued = this.db.prepare(`
@@ -2010,6 +2025,7 @@ export class DeliveryOutbox extends EventEmitter {
         UPDATE deliveries SET reconciliation_pending=1,updated_at=?,last_error='process restarted during submission; reconciliation required'
         WHERE manager_boot_id IS NOT NULL AND manager_boot_id<>? AND state='submission_started'
       `).run(now, managerBootId).changes;
+      this.requireInstalledRecoveryFence();
       return { queued, reconciliationPending };
     });
     return transaction();
