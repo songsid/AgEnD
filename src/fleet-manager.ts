@@ -7,6 +7,7 @@ import { markRetainedHumanControl, retainedHumanControl } from "./retained-human
 import type { RequestContextLaunchIdle, RequestContextLaunchRetirement } from "./request-context-retirement.js";
 import { requestContextDigest } from "./request-context-store.js";
 import { RequestContextBoot, readRequestContextBootState } from "./request-context-boot.js";
+import type {RequestContextControlPrincipal} from "./request-context-control-api.js";
 import {RequestContextPreparedWork} from "./request-context-work.js";
 import type { RequestContextStartPreparation, RequestContextDaemonWork } from "./request-context-start.js";
 import { requestContextSkillText, requestContextSteeringText, type RequestContextKnowledgeMode } from "./request-context-knowledge.js";
@@ -1348,6 +1349,15 @@ export class RestartSupersededError extends Error {
   }
 }
 
+interface RequestContextNativeGraph {
+ readonly registration:RequestContextRegistrationGate;
+ readonly panes:import("./request-context-pane.js").RequestContextPaneProofs;
+ readonly execTurns:Parameters<FleetWindowsRuntime["setRequestContextExecLifecycles"]>[0];
+ readonly execOwner:Parameters<FleetWindowsRuntime["setRequestContextExecLifecycles"]>[1];
+ /** Process/graph ownership, independent of the confirming browser and transport readiness. */
+ current():boolean;
+}
+
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private decisionSnapshot: readonly ActiveDecisionRow[] = [];
   private static signalTarget: FleetManager | null = null;
@@ -1738,11 +1748,41 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private runtimeExecutor: RuntimeWindowsBridge | null = null;
   private runtimeStatusScheduled = false;
   private readonly reconciledRemoteResults = new Set<string>();
+  private requestContextNativeGraph?:RequestContextNativeGraph;
+  private requestContextNativeGraphLease?:{current():boolean};
+  private requestContextNativeFactoryOwners?:WeakMap<object,RequestContextNativeGraph>;
+  private requestContextOpeningPaneManagers=0;
+  /** Only after exact old-owner retirement and transport teardown, behind the shared Fleet admission fence. */
+  stageRequestContextNativeGraph(graph:RequestContextNativeGraph):void {
+    const lease=captureProcessFleetLease(this.dataDir);
+    if(this.requestContextNativeGraph||!lease?.current()||this.requestContextAdmission?.available()!==false||!graph.current()
+      ||this.runtimeHub||this.localPaneRelay||this.openingLocalPane||this.requestContextOpeningPaneManagers||this.paneManager||this.nativeMcpStore||this.fleetWindowsRuntime
+      ||graph.panes.drainView("").registration!==graph.registration)throw Error("Request-context native graph is not retired");
+    this.requestContextNativeGraph=graph;this.requestContextNativeGraphLease=lease;
+  }
+  private currentRequestContextNativeGraph():RequestContextNativeGraph|null {
+    const graph=this.requestContextNativeGraph;
+    if(graph){if(!this.requestContextNativeGraphLease?.current()||!graph.current())throw Error("Request-context native graph owner changed");return graph;}
+    if(this.requestContextBoot)throw Error("Request-context native graph is not prepared");
+    return null;
+  }
+  private ownRequestContextNativeFactory<T extends object>(value:T,graph:RequestContextNativeGraph):T {
+    if(this.currentRequestContextNativeGraph()!==graph)throw Error("Request-context native factory owner changed");
+    (this.requestContextNativeFactoryOwners??=new WeakMap()).set(value,graph);return value;
+  }
+  private requireRequestContextNativeFactory<T extends object>(value:T,graph:RequestContextNativeGraph):T {
+    if(this.currentRequestContextNativeGraph()!==graph||this.requestContextNativeFactoryOwners?.get(value)!==graph)throw Error("Request-context native factory was not prepared");
+    return value;
+  }
+
   /** Machine credentials are separate from dashboard sessions and per-turn agent capabilities. */
   runtimeCoordinator(): RuntimeCoordinator {
     if (!remoteRuntimeEnabled()) throw new Error("Remote runtimes are not enabled");
     if(!this.runtimeHub && this.readPendingOwnerNotices().length)this.scheduleOwnerNoticeFlush(30_000);   // a notice kept before a restart is delivered once the fleet is up
-    return this.runtimeHub ??= new RuntimeCoordinator(this.dataDir,{
+    const graph=this.requestContextNativeGraph||this.requestContextBoot?this.currentRequestContextNativeGraph():null;
+    if(this.runtimeHub)return graph?this.requireRequestContextNativeFactory(this.runtimeHub,graph):this.runtimeHub;
+    const hub=new RuntimeCoordinator(this.dataDir,{
+      ...(graph?{requestContextProtocol:1 as const}:{}),
       handleMcp:(machineId,runId,body)=>this.runtimeWindowsExecutor().mcp(machineId,runId,body),
       handlePaneMcp:async(machineId,body,current,stamp)=>stamp?(await this.nativePanes()).handle(machineId,body,current,stamp):(await this.nativePanes()).handle(machineId,body,current),
       warn:(fields,message)=>this.logger.warn(fields,message),
@@ -1777,19 +1817,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         });
       },
     });
+    return this.runtimeHub=graph?this.ownRequestContextNativeFactory(hub,graph):hub;
   }
   private runtimeWindowsExecutor(): RuntimeWindowsBridge {
     return this.runtimeExecutor ??= new RuntimeWindowsBridge(this,()=>remoteRuntimeEnabled() && !this.shuttingDown ? this.runtimeCoordinator() : null);
   }
   /** Per-turn capabilities for native MCP, separate from browser and Linux-agent credentials. */
   nativeMcpSessions(): NativeMcpSessions {
-    return this.nativeMcpStore ??= new NativeMcpSessions(this as unknown as AgentEndpointContext);
+    const graph=this.requestContextNativeGraph||this.requestContextBoot?this.currentRequestContextNativeGraph():null;
+    if(this.nativeMcpStore)return graph?this.requireRequestContextNativeFactory(this.nativeMcpStore,graph):this.nativeMcpStore;
+    const sessions=new NativeMcpSessions(this as unknown as AgentEndpointContext,graph?.registration);
+    if(graph)sessions.setRequestContextRequired(true);
+    return this.nativeMcpStore=graph?this.ownRequestContextNativeFactory(sessions,graph):sessions;
   }
   /** Retire only existing native capabilities; ordinary lifecycle changes do not instantiate the Windows path. */
   invalidateNativeMcp(name: string): void { this.nativeMcpStore?.closeInstance(name); }
   /** The same instance registry and delivery entry point, with a native Windows execution adapter. */
   nativeInstanceRuntime(): FleetWindowsRuntime {
-    return this.fleetWindowsRuntime ??= new FleetWindowsRuntime({
+    const graph=this.requestContextNativeGraph||this.requestContextBoot?this.currentRequestContextNativeGraph():null;
+    if(this.fleetWindowsRuntime)return graph?this.requireRequestContextNativeFactory(this.fleetWindowsRuntime,graph):this.fleetWindowsRuntime;
+    const runtime=new FleetWindowsRuntime({
       owner:this,fleet:()=>this.fleetConfig,save:()=>this.saveFleetConfig(),stopping:()=>this.shuttingDown,history:this.webChatHistory,
       requestContextAdmission:()=>this.requestContextAdmission,
       openMcp:(instance,requestId,sandbox,stillCurrent,requestContext)=>this.healthServerListening
@@ -1822,6 +1869,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (event === "activity") this.scheduleDeliveryOutboxPump();
       },
     },{bridge:this.runtimeWindowsExecutor()});
+    if(graph)runtime.setRequestContextExecLifecycles(graph.execTurns,graph.execOwner,graph.registration);
+    return this.fleetWindowsRuntime=graph?this.ownRequestContextNativeFactory(runtime,graph):runtime;
   }
   private agentRuntimeChangeService?:AgentRuntimeChanges;
   agentRuntimeChanges():AgentRuntimeChanges {
@@ -1974,33 +2023,41 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { ...(result.version ? { native_cli_version: result.version } : {}), native_cli_verification: result.state };
   }
   private async localNativePaneEndpoint(): Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> {
-    const admit = (): void => { if (this.shuttingDown || this.localPaneDrain || !localWindowsCliEnabled()) throw Error("Local Windows runtime is switched off or draining"); };
-    admit(); if(this.localPaneDrain)throw Error("Local Windows runtime cleanup is pending"); if (this.localPaneRelay?.online()) return this.localPaneRelay;
+    const graph=this.requestContextNativeGraph||this.requestContextBoot?this.currentRequestContextNativeGraph():null;
+    const admit = (): void => { if(graph&&this.currentRequestContextNativeGraph()!==graph)throw Error("Request-context native factory owner changed");if (this.shuttingDown || this.localPaneDrain || !localWindowsCliEnabled()) throw Error("Local Windows runtime is switched off or draining"); };
+    admit(); if(this.localPaneDrain)throw Error("Local Windows runtime cleanup is pending"); if (this.localPaneRelay?.online()) return graph?this.requireRequestContextNativeFactory(this.localPaneRelay,graph):this.localPaneRelay;
     if (this.openingLocalPane) return this.openingLocalPane;
     const opening = (async () => {
       const [{ LocalPaneEndpoint }, { launchLocalPaneRelay, localPaneScope }, inventory] = await Promise.all([
         import("./local-pane-endpoint.js"), import("./local-pane-launcher.js"), this.runtimeWindowsExecutor().probe({ force: false }),
       ]); admit(); this.localPaneRelay?.stop(); this.localPaneInventory = inventory;
-      const relay = await LocalPaneEndpoint.open({ scope: localPaneScope(this.dataDir), admit, maxAgents: maxAgentsPerMachine,
+      const relay = await LocalPaneEndpoint.open({ scope: localPaneScope(this.dataDir), ...(graph?{requestContextProtocol:1 as const}:{}), admit, maxAgents: maxAgentsPerMachine,
         diagnostic: text => this.logger.warn({ stderr: text }, "Local Windows pane relay wrote to stderr"),
         version: provider => inventory.clis.find(row => row.id === provider && row.runnable)?.version ?? null,
         launch: () => launchLocalPaneRelay(this.dataDir, admit),
         mcp: async (body, current, stamp) => stamp ? (await this.nativePanes()).handle("local", body, current, stamp) : (await this.nativePanes()).handle("local", body, current),
       });
-      try { admit(); this.localPaneRelay = relay; return relay; } catch (error) { relay.stop(); throw error; }
+      try { admit(); this.localPaneRelay = graph?this.ownRequestContextNativeFactory(relay,graph):relay; return relay; } catch (error) { relay.stop(); throw error; }
     })(); this.openingLocalPane = opening;
     try { return await opening; } finally { if (this.openingLocalPane === opening) this.openingLocalPane = null; }
   }
   /** Persistent ownership is independent of the exec worker's per-turn capabilities. */
   private async nativePanes(): Promise<import("./native-pane-manager.js").NativePaneManager> {
-    if (this.paneManager) return this.paneManager;
+    const graph=this.requestContextNativeGraph||this.requestContextBoot?this.currentRequestContextNativeGraph():null;
+    if (this.paneManager) return graph?this.requireRequestContextNativeFactory(this.paneManager,graph):this.paneManager;
+    const boot=this.requestContextBoot;
+    this.requestContextOpeningPaneManagers=(this.requestContextOpeningPaneManagers??0)+1;
+    try{
     const { NativePaneManager } = await import("./native-pane-manager.js");
-    if (this.paneManager) return this.paneManager;
+    if(this.requestContextNativeGraph!==(graph??undefined)||this.requestContextBoot!==boot)throw Error("Request-context native factory owner changed");
+    if (this.paneManager) return graph?this.requireRequestContextNativeFactory(this.paneManager,graph):this.paneManager;
+    if(graph&&this.currentRequestContextNativeGraph()!==graph)throw Error("Request-context native factory owner changed");
     const store = windowsAgentsFor(this, this.runtimeWindowsExecutor());
     const allowed = (name: string, tool: string): boolean => (!this.classicContactRestricted(name) || CLASSIC_RESTRICTED_TOOLS.includes(tool))
       && nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
       && !dashboardRefusalIn(this.fleetConfig, name, tool);
-    return this.paneManager = new NativePaneManager({
+    const manager=new NativePaneManager({
+      ...(graph?{requestContexts:graph.panes,registration:graph.registration}:{}),
       home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],
       freshNotice: async (name,provider) => {
         const message=t(provider === "codex" ? "native_pane.codex_fresh_started" : "native_pane.fresh_started");
@@ -2062,6 +2119,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }), name, ops[tool], args, input.operationId, () => current() && allowed(name,tool)) : undefined });
       },
     });
+    return this.paneManager=graph?this.ownRequestContextNativeFactory(manager,graph):manager;
+    }finally{this.requestContextOpeningPaneManagers--;}
   }
   /** Prepare only bundled role files; this neither switches General nor starts a provider process. */
   async prepareWindowsGeneralWorkspace(name: string, machineId: string, cli: "codex" | "claude-code", bindingId: string, authorized: () => boolean): Promise<import("./runtime-general-protocol.js").GeneralWorkspaceReceipt> {
@@ -6342,6 +6401,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       throw error;
     }
   }};}
+
+  /** Existing Settings administrator scope. This only identifies a principal; it never bypasses per-change confirmation. */
+  requestContextControlPrincipal(req:IncomingMessage,url:URL):RequestContextControlPrincipal|null {
+    const resolve=()=>{
+      const verdict=evaluateWebRequest(req as unknown as WebGateRequest,url,this.webToken,this.webSessions,{touch:false});
+      if(verdict.kind==="reject"&&(verdict.reason==="csrf"||verdict.reason==="cross-site"))throw Error(verdict.reason);
+      if(verdict.kind!=="allow"||verdict.via!=="session"||verdict.session.tier!=="admin")return null;
+      if(hostSessionHere(verdict.session,req))return {binding:requestContextDigest(["host-here",verdict.session.handle,verdict.session.tokenEpoch]),verified:true};
+      const contact=this.requestContactPrincipal(req,url);
+      if(!contact||!contact.current()||(contact.person.platform==="host"?!this.isWebOnlyFleet():this.adminGate(contact.person.userId,contact.person.adapterId)!=="ok"))return null;
+      return {binding:requestContextDigest([contact.binding,contact.person.platform,contact.person.userId]),verified:contact.verified};
+    };
+    const first=resolve();if(!first)return null;
+    return Object.freeze({...first,current:()=>{try{const now=resolve();return !!now&&now.binding===first.binding&&now.verified===first.verified;}catch{return false;}}});
+  }
 
   requestContactPrincipal(req:import("node:http").IncomingMessage,url:URL):RequestContactPrincipal|null {
     const resolve=()=>{
