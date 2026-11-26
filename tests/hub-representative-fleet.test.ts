@@ -373,3 +373,17 @@ describe("Hub contact window at the Fleet handoff", () => {
     } finally { fm.stormWindow.shutdown(); rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+describe("S-230 accepted Hub input admission",()=>{
+ it("the actual Fleet facade waits for its owned turn before spending begin, and sends the server input key",async()=>{
+  const home=mkdtempSync(join(tmpdir(),"hub-input-admission-")),fm:any=new FleetManager(home);
+  try{
+   fm.fleetConfig={instances:{worker:{working_directory:home,backend:"claude-code"}}};fm.requestContextPolicy={installedMode:()=>"active"};
+   const order:string[]=[],capture=vi.fn(()=>({inputId:"hub-input:00000000-0000-4000-8000-000000000001",waitBeforeInput:async()=>{order.push("owned turn clear");return true;}}));fm.requestContextHubAdmission=capture;
+   vi.spyOn(fm,"deliverToInstance").mockImplementation(async(_name:any,payload:any,options:any)=>{expect(payload.request_context_input_id).toBe("hub-input:00000000-0000-4000-8000-000000000001");const ready=await options.beforeInput();if(ready)order.push("send");return ready;});
+   const input={agent:"worker",correlationId:"hub-fixture",text:"Q",stillCurrent:()=>true,beforeInput:async()=>{order.push("begin");return true;}};
+   await expect(fm.deliverHubQuestion(input)).resolves.toBe(true);expect(capture).toHaveBeenCalledWith(input);expect(order).toEqual(["owned turn clear","begin","send"]);
+   fm.requestContextHubAdmission=undefined;await expect(fm.deliverHubQuestion(input)).rejects.toThrow(/admission is unavailable/);
+  }finally{fm.stormWindow.shutdown();rmSync(home,{recursive:true,force:true});}
+ });
+});

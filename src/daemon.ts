@@ -6606,7 +6606,8 @@ export class Daemon extends EventEmitter {
       const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
       void this.wake().then(() => {
         if (!current()) { this.deferDurableDelivery(meta, "native channel owner changed before pane submission"); return; }
-        this.pushChannelMessage(msg.content as string, meta, targetSession, deliveryEpoch);
+        this.pushChannelMessage(msg.content as string, meta, targetSession, deliveryEpoch,
+          this.requestContextLifecycle&&isHubQuestionMeta(meta)&&typeof msg.request_context_input_id==="string"?msg.request_context_input_id:undefined);
       }).catch(err => {
         this.deferDurableDelivery(meta, `target wake failed before pane submission: ${(err as Error).message}`);
         this.logger.error({ err: (err as Error).message }, "Wake failed for inbound delivery");
@@ -9217,7 +9218,9 @@ export class Daemon extends EventEmitter {
     meta: Record<string, string>,
     _targetSession?: string,
     deliveryEpoch = this.deliveryEpoch,
+    requestContextInputId?:string,
   ): void {
+    if(requestContextInputId&&!/^hub-input:[a-f0-9-]{36}$/.test(requestContextInputId))throw Error("Hub request input id is unavailable");
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
       this.logger.info("Pending channel delivery dropped by user cancel");
       this.deferDurableDelivery(meta, "delivery epoch changed before queue admission");
@@ -9302,7 +9305,8 @@ export class Daemon extends EventEmitter {
           ? this.currentWhatsNew(this.pendingWhatsNew) : null;
         const body = whatsNew ? withWhatsNew(formatted, whatsNew.notice) : formatted;
         const roomMarker = roomContextInputMarker(meta);
-        const pasted = roomMarker ? `${roomMarker}\n${body}` : body;
+        const unmarked = roomMarker ? `${roomMarker}\n${body}` : body;
+        const pasted = requestContextInputId?`[agend-request-input:${requestContextInputId}]\n${unmarked}`:unmarked;
         const status = channelStatus(meta);
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
@@ -9334,6 +9338,7 @@ export class Daemon extends EventEmitter {
           sent = await this.deliverMessage(pasted, status, {
             deliveryEpoch,
             submissionId: meta.message_id,
+            ...(requestContextInputId?{requestContextInputId}:{}),
             ...(isHubQuestionMeta(meta) ? { hubQuestion: meta.correlation_id, hubContactLimit: meta.hub_contact_limit !== "off" } : {}),
             ...(meta.hub_room_context_generation ? { roomContextGeneration: meta.hub_room_context_generation } : {}),
             ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}),

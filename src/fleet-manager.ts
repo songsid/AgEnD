@@ -1,3 +1,4 @@
+import {RequestHubInputResolver} from "./request-context-hub-resolver.js";
 import {makeRequestDeliveryInputResolver} from "./request-context-delivery-resolver.js";
 import {makeRequestHumanInputResolver} from "./request-context-human-resolver.js";
 import type { RequestContextV1 } from "./request-context-protocol.js";
@@ -3597,12 +3598,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * A Hub question to its representative agent: ordinary cross-instance delivery (idle gate, wake, retries), from the
    * reserved Hub sender with the Hub-issued correlation id. beforeInput runs immediately before the IPC hand-off.
    */
+  private requestContextHubAdmission?: (input:import("./hub/representative.js").HubRepresentativeDelivery)=>ReturnType<RequestHubInputResolver["capture"]>;
+  /** Installed as one of the publication's ingress owners, never from a tool or a question selector. */
+  makeRequestContextHubAdmission(resolve:(instance:string)=>RequestHubInputResolver|null){
+    return (input:import("./hub/representative.js").HubRepresentativeDelivery)=>{
+      const resolver=resolve(input.agent);if(!resolver)throw Error("Hub request input owner is unavailable");
+      return resolver.capture(input);
+    };
+  }
   private async deliverHubQuestion(input: import("./hub/representative.js").HubRepresentativeDelivery): Promise<boolean> {
+    if(this.requestContextAdmission&&!await this.requestContextAdmission.wait(()=>!this.shuttingDown&&input.stillCurrent()))return false;
     const { HUB_REPORT_TARGET } = await import("./hub/representative.js");
     const config=this.hubAgentConfig(input.agent);
     if (this.shuttingDown || !config) return false;
     // Windows agents run through their own runtime, which has no pre-input hook: not a P1 representative.
     if (isNativeExecInstance(config)) return false;
+    const scoped=requestContextPolicyInstalled(this.requestContextPolicy)?this.requestContextHubAdmission?.(input):undefined;
+    if(requestContextPolicyInstalled(this.requestContextPolicy)&&!scoped)throw Error("Hub request input admission is unavailable");
     const ipcMeta: Record<string, string> = {
       chat_id: "",
       message_id: `hubmsg-${input.correlationId.slice(4)}`,
@@ -3620,13 +3632,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (input.roomContextGeneration) ipcMeta.hub_room_context_generation = input.roomContextGeneration;
     // M-3660: the share's opt-out travels with the question; its daemon's hub_question_input then opens no window.
     if (input.contactLimit === false) ipcMeta.hub_contact_limit = "off";
-    const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: this.screenHubText(input.text), meta: ipcMeta },
+    const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: this.screenHubText(input.text), meta: ipcMeta,...(scoped?{request_context_input_id:scoped.inputId}:{}) },
       { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: async () => {
         const classic=this.isClassicInstance(input.agent);
         // A busy Classic room must finish its public turn first; never force a private question into that turn's queue.
         const idle=()=>this.waitForInstanceIdle(input.agent,0,this.lastDeliveryAt.get(input.agent)??0,()=>!input.stillCurrent());
         if(classic&&!await idle())return false;
         if(!ipcMeta.hub_room_context_generation&&/^hub-room-[a-f0-9-]{36}$/.test(input.correlationId)){const generation=this.daemons.get(input.agent)?.roomConversationGeneration();if(generation)ipcMeta.hub_room_context_generation=generation;}
+        if(scoped&&!await scoped.waitBeforeInput())return false;
         if (!(await input.beforeInput())) return false;
         if(classic){if(!await idle())return false;this.classicPrivacy().begin(input.agent,input.correlationId);}
         // M-3660: the window covers only the turn that answers the question. The agent's daemon (Classic rooms' too)
@@ -9636,6 +9649,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         daemon.noteHumanReceiptSettlement?.(result.receipt_id, accepted === true && result.proof !== null);
       } catch (err) { this.logger.error({ err, instanceName }, "Could not persist human delivery evidence"); }
     });
+  }
+
+  /** Accepted Hub input owner; construction is pre-start and remains unpublished until the complete installer. */
+  makeRequestContextHubResolver(instance:string,daemon:Daemon,current:()=>boolean,registration:import("./request-context-fence.js").RequestContextRegistrationGate){
+    const box=this.deliveryOutbox;if(!box)throw Error("Hub request input owner is unavailable");
+    return new RequestHubInputResolver(box,{instance,current:()=>current()&&this.daemons.get(instance)===daemon,
+      runtimeOwner:()=>daemon.captureRequestContextOwner(),active:()=>daemon.requestContextTurnSnapshot(),registration});
   }
 
   /** Physical B attempt resolver for the exact replacement daemon; no origin or correlation fallback. */

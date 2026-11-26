@@ -161,3 +161,11 @@ it("S-224 ordinary input on a queue-capable backend waits for owned idle before 
  expect(d.waitForPaneReadyForDelivery).toHaveBeenCalled();expect(d.writeMessageToPane.mock.calls.at(-1)[2]).toBe(false);
  expect(d.requestContextTurnSnapshot().inputId).toBe("human:b");
 });
+it("the real Hub IPC/queue formatter carries its owned input key and transcript anchor to C",async()=>{
+ const r=rig(),inputId=`hub-input:${ROOT}`,meta={chat_id:"",message_id:"hubmsg-fixture",from_instance:"agend-hub",correlation_id:"hub-00000000-0000-4000-8000-000000000099",request_kind:"query",requires_reply:"true",user:"instance:agend-hub",user_id:"instance:agend-hub",ts:"2026-11-26T00:00:00Z",thread_id:""},body="Synthetic accepted Hub question";
+ const expected=`[agend-request-input:${inputId}]\n${r.daemon.formatInboundMessage(body,meta)}`;
+ r.prepare(inputId,expected);const input=r.inputs.get(inputId)!;input.context={...input.context!,ingress:"hub",initiatingActor:{kind:"person",platform:"hub",hubId:"hub-fixture",id:"accepted-asker"},sourceAudience:{kind:"hub",ref:AUDIENCE}};
+ expect(r.daemon.handleFleetMessage({type:"fleet_inbound",content:body,meta,request_context_input_id:inputId},()=>{},()=>true)).toBe(true);
+ await vi.runAllTimersAsync();await r.daemon.pasteLock;
+ expect(r.writes).toEqual([expected]);expect(r.daemon.requestContextTurnSnapshot()?.inputId).toBe(inputId);expect(r.daemon.requestContextWrite.endAnchor).toBe(true);
+});
