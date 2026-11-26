@@ -19,7 +19,8 @@ export interface ServiceManager {
   mainPid(): number | null;
   stop(): boolean;
   reload(): boolean;
-  start(): boolean;
+  /** The handoff reaches the fleet through the route's pre-start step (§6.2), not through this call. */
+  start(handoff?: { nonce: string; gen: string }): boolean;
   /** §6.2 step 1: wait until no start (or stop) job is in progress — the refused start has ended. */
   waitSettled(timeoutMs?: number): boolean;
 }

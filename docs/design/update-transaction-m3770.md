@@ -80,7 +80,8 @@ opened ─► barrier ─► stopping ─► snapshotted ─► installing ─�
 
   Only then is it `abandoned`. A crash anywhere in it resumes at the substep recorded.
 - `abandoning` is allowed from `stopping` only while no snapshot is published and nothing is installed. Then the state is the old fleet's own, unchanged. Once `snapshotted` is published, every failure goes to `rolling-back` instead (open point 3, §8).
-- `committing` holds 2.5's commit substeps (leave trial, start agents, deliver the inbox, run deferred jobs). A crash there resumes them. It never rolls back after agents have started.
+- `committing` holds 2.5's commit substeps, in order (rev 13): `retained` (§5.6), `route-removed` (+ reload), then the fleet's own `left-trial`, `agents-started`, `inbox-delivered`, `deferred-run`. A crash there resumes them. It never rolls back after agents have started.
+- **The forward order in `stopping` (rev 13):** the kit and the route first, while the old fleet still runs; then the old fleet stopped and fenced (§4.2); then the drain. So every later start, abandon's restart of the old generation included, goes through the pre-start step (§6.2).
 - **A busy second check closes the attempt it opened** (agreed with 2.2, #4493). The barrier publishes `opened` before it fences, then checks again (§2.6). If that second check finds the fleet busy:
   1. the fleet clears its fence flag and writes nothing, no prefix included;
   2. the updater runs `abandoning`: `restart-old` finds the old fleet running (it was never stopped), and `hand-back` has no files;
@@ -409,6 +410,8 @@ Each unit is one of three kinds, fixed by the header: **both** (in the current u
 
 ### 5.6 Commit
 - At commit (2.5), the attempt's artifacts are recorded in `retained.json` for **Go back**: the snapshot, the package preimage, the unit preimage and the recovery kit. They are kept for 7 days.
+  - `<home>/.update-journal/retained.json` is `{ schema: 1, entries: [...] }`, written whole (tmp, fsync, rename, directory fsync). Each entry holds `attemptId`, `from`, `version`, `committedAt`, `expiresAt` (commit + 7 days), `snapshotDir`, `preimage { dir, manifestSha256 }`, `unitPreimage` (null with no service) and `kit`.
+  - It is written as committing's first substep. A retry keeps the first record for that attempt. An unreadable or malformed file is reported, never read as empty (rev 13).
 - `current` is cleared as in §2.4.
 
 ### 5.7 Go back, and retention
@@ -639,6 +642,19 @@ A retry recognises each effect by the path's presence and its hash against the p
 | The runner's kept route is ensured (the drop-in rewritten if absent, refused if changed); the general rule removes it | §6.3, §6.2 |
 | A bin path's prior state is recorded as absent, a link or a file; a file is never removed | §6.3 |
 | The legacy `prunePreimages` skips `attempt-*` preimages | §5.7, §6.3 |
+
+### Revision 13 (2.5 part 3, the forward driver)
+| Change | Where |
+|---|---|
+| The forward order inside `stopping`: the kit built and the route written (and the manager reloaded) **first**, while the old fleet still runs; then the old fleet stopped and fenced; then the drain. Every later start, abandon's restart of the old generation included, goes through the pre-start step, so it receives its nonce. A kit or route that can't be made abandons before anything is stopped | §2.3, §6.2 |
+| `stopping` with no `fleet.lock` holder: a recorded old fleet must be proven gone (then journaled dead) before the fence is taken afresh; a live one without the lock abandons | §4.2, §4.3 |
+| A trial that doesn't take `fleet.lock` over in time: the service is stopped (a start still on its way), then the rollback | §4.3 |
+| One plan at a time: starting a generation first recognises or voids **any** planned, unconfirmed generation, not only its own (a trial that never took over is voided by its rollback) | §3.3, §4.3 |
+| The fence acknowledges a planned generation whose takeover landed unacknowledged before it stops it as that generation | §4.3 |
+| Abandon's substeps: `restart-old` (nothing when the old fleet still runs; the old generation started from the fence when it was stopped; the fence released when no fleet ran), `hand-back`, `route-removed` (only a route that was written), then `abandoned` | §2.3 |
+| Committing's substeps, in this order: `retained` (§5.6), `route-removed` (+ reload), then the fleet's own: `left-trial`, `agents-started`, `inbox-delivered`, `deferred-run`; then `committed`. The route comes off before the fleet leaves trial, so a crash after that point is resumed by the new version's own fleet start (§7), never refused by the old kit | §2.3, §5.6, §7 |
+| `retained.json` (`.update-journal/`): one entry per committed attempt, the first record kept on a retry, with its snapshot directory, package preimage, unit preimage and kit, and `expiresAt` = commit + 7 days | §5.6, §5.7 |
+| An identity check that fails after the install is `manual-recovery`, journaled by the live updater; a failed rollback is `manual-recovery` when it needs a person, and otherwise leaves the attempt open for the runner | §3.2, §7 |
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
 - `update-journal.ts`: the layout, publication order, readers, stages and marks;
