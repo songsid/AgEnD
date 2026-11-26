@@ -26,6 +26,8 @@ import { acquireInstallLock, type InstallLock } from "../src/install-lock.js";
 const REPO = join(import.meta.dirname, "..");
 const lockReaders = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null; parse(t: string): unknown; holderState(l: unknown, d: unknown): string };
 const roots: string[] = [];
+/** M-3805: every install the installer runs allows its own scripts (npm 12 skips them otherwise). */
+const ALLOW = "--allow-scripts=@songsid/agend";
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
 function release(dir: string, version: string, opts: { brokenVersion?: string } = {}): string {
@@ -43,6 +45,7 @@ exit 0
   cpSync(join(REPO, "launcher", "fleet-service-owner.cjs"), join(pkg, "launcher", "fleet-service-owner.cjs"));
   cpSync(join(REPO, "launcher", "agend-install.cjs"), join(pkg, "launcher", "agend-install.cjs"));
   cpSync(join(REPO, "launcher", "private-home.cjs"), join(pkg, "launcher", "private-home.cjs"));
+  cpSync(join(REPO, "launcher", "npm-allow-scripts.cjs"), join(pkg, "launcher", "npm-allow-scripts.cjs"));   // M-3805
   cpSync(join(REPO, "launcher", "install-admission.cjs"), join(pkg, "launcher", "install-admission.cjs"));   // the lock's process readers
   chmodSync(join(pkg, "launcher", "agend-install.cjs"), 0o755);
   const packed = spawnSync("npm", ["pack", "--silent", "--pack-destination", dir], { cwd: pkg, encoding: "utf8", env: npmEnv(dir) });
@@ -520,7 +523,7 @@ for (let attempt = 0; attempt < 400; attempt++) {
     r.deps.run = ((cmd: string, args: string[]) => args[0] === "--version" ? { status: 1, stdout: "", stderr: "" } : run(cmd, args)) as typeof r.deps.run;
     expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(1);
     expect(seen).toEqual([4242, "peer refused", 4242, "peer refused", 4242, "peer refused"]);
-    expect(r.calls.filter(c => c.startsWith("npm install -g"))).toEqual([`npm install -g @songsid/agend@${OWN_VERSION}`, `npm install -g @songsid/agend@${OWN_VERSION}`, "npm install -g @songsid/agend@0.0.1"]);
+    expect(r.calls.filter(c => c.startsWith("npm install -g"))).toEqual([`npm install -g @songsid/agend@${OWN_VERSION} ${ALLOW}`, `npm install -g @songsid/agend@${OWN_VERSION} ${ALLOW}`, `npm install -g @songsid/agend@0.0.1 ${ALLOW}`]);
     expect(r.read(r.lock), "released at the end").toBeNull();
   });
 

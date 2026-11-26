@@ -33,8 +33,10 @@ For a fresh Windows beta install, run `$env:AGEND_VERSION = 'beta'` in the same 
 Already have Node and tmux:
 
 ```bash
-npm install -g @songsid/agend
+npm install -g --allow-scripts=@songsid/agend @songsid/agend
 ```
+
+`--allow-scripts=@songsid/agend` lets npm 12 run AgEnD's install step, which checks its bundled Node; npm 12 skips a package's install scripts unless they are allowed, and AgEnD then won't start. Older npm accepts the flag and runs the step either way.
 
 On WSL, the installer avoids the Windows `node.exe` on your PATH. If commands still resolve to Windows binaries, add this to `/etc/wsl.conf`. It applies the next time this Linux starts; to restart only this one, run `wsl --terminate <distro>` in PowerShell (AgEnD in it stops too: run `agend start` once you are back in):
 

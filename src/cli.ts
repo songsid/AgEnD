@@ -1347,10 +1347,16 @@ program
     // and its `npm install -g`) gives up on a silent connection instead of waiting minutes per try — set once, in this
     // process's environment, for each key nobody set (a person's .npmrc, variable or flag is kept, whatever its value).
     {
-      const { applyUpdateNpmBounds, npmConfigQuery, parseNpmConfigLs, registryStop, updateRegistry } = await import("./update-npm-env.js");
+      const { applyUpdateAllowScripts, applyUpdateNpmBounds, npmConfigQuery, parseNpmConfigLs, registryStop, scriptsIgnoredStop, updateRegistry, updateScriptsIgnored } = await import("./update-npm-env.js");
       const listed = spawnSync("npm", npmConfigQuery(), { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "ignore"] });
       const explicit = listed.status === 0 ? parseNpmConfigLs(listed.stdout ?? "") : null;
+      // M-3805: npm set to skip install scripts would install a release that cannot start: stop before anything changes.
+      if (updateScriptsIgnored(process.env, explicit)) {
+        const stop = scriptsIgnoredStop();
+        console.error(`\n${stop}\n`); setUpdateProgressStage(DATA_DIR, "failed", { error: stop.trim() }); process.exitCode = 1; return;
+      }
       applyUpdateNpmBounds(process.env, explicit);
+      applyUpdateAllowScripts(process.env, explicit);   // M-3805: npm 12 runs AgEnD's install scripts only when allowed
       // With the network gone npm answers the version lookup from its stale cache, and the install then fails as a version
       // that does not exist. Ask the registry AgEnD comes from (the @songsid scope's, never a cache) first: unreachable →
       // stop here, nothing changed. Its config unreadable: nothing is asked, the update goes on as before.
@@ -1569,7 +1575,7 @@ program
           },
         );
         if (!verified.ok) {
-          const message = `${verified.message}\n  Not restarting the fleet onto it. Reinstall a working version: npm install -g @songsid/agend@<version>`;
+          const message = `${verified.message}\n  Not restarting the fleet onto it. Reinstall a working version: npm install -g --allow-scripts=@songsid/agend @songsid/agend@<version>`;
           console.error(message);
           setUpdateProgressStage(DATA_DIR, "failed", { error: message.trim() });
           process.exitCode = 1;
