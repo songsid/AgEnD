@@ -24,7 +24,7 @@ import { removeRecoveryRoute, unitPreimagePath, writeRecoveryRoute } from "./upd
 import { verifyRecoveryKit } from "./update-recovery/kit.js";
 import { existsSync } from "node:fs";
 import { ackGeneration, advance, attemptDir, defaultJournalIo, finish, planGeneration, readCurrent, revokeHandoff, substep, voidGeneration,
-  type AttemptRecord, type FleetGeneration, type JournalIo, type LivenessDeps, type ProcessStartRecord } from "./update-journal.js";
+  type AttemptRecord, type FleetGeneration, type GenerationName, type JournalIo, type LivenessDeps, type ProcessStartRecord } from "./update-journal.js";
 
 export interface RollbackDeps {
   /** Who is driving: the updater, or the recovery runner (its pid and start). */
@@ -41,8 +41,8 @@ export interface RollbackDeps {
     stop(): boolean;
     /** daemon-reload / plist reload, with no start job in progress. */
     reload(): boolean;
-    /** reset-failed + start / kickstart. */
-    start(): boolean;
+    /** reset-failed + start / kickstart (the pre-start step hands the fence's nonce on); a detached fleet is spawned with `handoff` in its environment. */
+    start(handoff: { nonce: string; gen: GenerationName }): boolean;
   };
   /** Wait for fleet.lock to hold a `fleet` record with this nonce; its pid, or null on timeout. */
   waitTakeover(nonce: string): number | null;
@@ -56,12 +56,16 @@ const ROLLBACK_FROM = new Set(["snapshotted", "installing", "trial", "proving"])
 const generationsOf = (a: AttemptRecord): FleetGeneration[] => (Array.isArray(a.fleets) ? (a.fleets as FleetGeneration[]) : []);
 const didSubstep = (a: AttemptRecord, name: string) => a.history.some(h => h.stage === "rolling-back" && h.substep === name);
 
-/** §3.3–§4.3: make fleet.lock this attempt's fence, owned by `self`. */
-function ensureFence(home: string, attempt: AttemptRecord, d: RollbackDeps): { ok: true; handle: FleetLockHandle; attempt: AttemptRecord } | { ok: false; reason: string; attempt: AttemptRecord } {
+/**
+ * §3.3–§4.3: make fleet.lock this attempt's fence, owned by `self`. A live fleet holding it is stopped only as the
+ * generation the stage expects (`stopTarget`: `old` in stopping, `trial` in rolling-back). Shared with the forward driver.
+ */
+export function ensureFence(home: string, attempt: AttemptRecord, d: Pick<RollbackDeps, "self" | "isProcessAlive" | "manager" | "io">):
+  { ok: true; handle: FleetLockHandle; attempt: AttemptRecord } | { ok: false; reason: string; attempt: AttemptRecord } {
   let a = attempt;
   for (let round = 0; round < 3; round++) {
     const rec = readFleetLockRecord(home);
-    if (!rec) return { ok: false, reason: "fleet.lock is missing or unreadable during the rollback", attempt: a };
+    if (!rec) return { ok: false, reason: `fleet.lock is missing or unreadable in ${a.stage}`, attempt: a };
     if (rec.role === "update") {
       if (rec.attemptId !== a.id) return { ok: false, reason: `fleet.lock fences another attempt (${rec.attemptId})`, attempt: a };
       const adopted = adoptUpdateFence(home, { pid: d.self.pid, attemptId: a.id }, { isProcessAlive: d.isProcessAlive });
@@ -69,9 +73,11 @@ function ensureFence(home: string, attempt: AttemptRecord, d: RollbackDeps): { o
       if (/changed during/.test(adopted.reason)) continue;                    // lost a race (Fable #4531 F2): look again
       return { ok: false, reason: adopted.reason, attempt: a };
     }
-    // A fleet holds it: only a recorded generation, identified by pid + nonce (and the service's MainPID).
-    const gen = generationsOf(a).find(g => g.nonce === rec.nonce);
+    // A fleet holds it: only a recorded generation, identified by pid + nonce (and the service's MainPID). A planned one
+    // whose takeover landed unacknowledged (a late start, or a crash before the ack) is acknowledged first (§4.3 step 3).
+    let gen = generationsOf(a).find(g => g.nonce === rec.nonce);
     if (!gen) return { ok: false, reason: `fleet.lock's holder (pid ${rec.pid}) is no recorded generation`, attempt: a };
+    if (!gen.consumed && !gen.dead) { a = ackGeneration(home, a, gen.nonce, rec.pid, {}, d.io); gen = generationsOf(a).find(g => g.nonce === rec.nonce)!; }
     if (d.isProcessAlive(rec.pid)) {
       const target = stopTarget(a, { pid: rec.pid, nonce: rec.nonce }, d.manager.mainPid());
       if (!target.ok) return { ok: false, reason: target.reason, attempt: a };
@@ -84,7 +90,65 @@ function ensureFence(home: string, attempt: AttemptRecord, d: RollbackDeps): { o
     if (retaken.ok) return { ok: true, handle: retaken.handle, attempt: a };
     if (!/changed during/.test(retaken.reason)) return { ok: false, reason: retaken.reason, attempt: a };
   }
-  return { ok: false, reason: "fleet.lock kept changing during the rollback", attempt: a };
+  return { ok: false, reason: `fleet.lock kept changing in ${a.stage}`, attempt: a };
+}
+
+export type GenerationStart = { ok: true; attempt: AttemptRecord } | { ok: false; manual: boolean; reason: string; attempt: AttemptRecord };
+
+/**
+ * §3.3, §4.3: bring generation `gen` up from this attempt's fence — planned with a fresh nonce, written into the fence's
+ * handoff (revoke-protected), started, its takeover awaited and acknowledged. A retry recognises a takeover that landed
+ * before a crash; an unconfirmed plan is revoked (its claimant gone, or none), voided and planned afresh. `fence` is the
+ * fence's handle (null when a generation already holds fleet.lock). Shared by the trial, the rollback and abandon's old.
+ */
+export function startGeneration(home: string, attempt: AttemptRecord, gen: GenerationName, fence: FleetLockHandle | null,
+  d: Pick<RollbackDeps, "self" | "liveness" | "manager" | "waitTakeover" | "newNonce" | "io">): GenerationStart {
+  const io = d.io ?? defaultJournalIo;
+  let a = attempt;
+  const fail = (reason: string, manual = true): GenerationStart => ({ ok: false, manual, reason, attempt: a });
+  const id = identityOf(a);
+  if (!id) return fail("the attempt's recorded ownership is missing or malformed");
+  if (generationsOf(a).some(g => g.gen === gen && g.consumed && !g.dead)) return { ok: true, attempt: a };
+  let handle = fence;
+  // One plan at a time: any generation planned and not confirmed (this one before a crash, or a trial that never took
+  // over before its rollback) is recognised or voided first.
+  const planned = generationsOf(a).find(g => !g.consumed && !g.dead);
+  if (planned) {
+    // A start may already have taken over with it.
+    const taken = readFleetLockRecord(home);
+    if (taken?.role === "fleet" && taken.nonce === planned.nonce) {
+      if (planned.gen !== gen) return fail(`the ${planned.gen} generation took fleet.lock over; the ${gen} generation can't start`);
+      return { ok: true, attempt: ackGeneration(home, a, planned.nonce, taken.pid, {}, io) };
+    }
+    // Not taken: take the claim back (a gone or never-started claimant), void it, and plan afresh.
+    const revoked = revokeHandoff(home, a.id, planned.nonce, d.self, d.liveness, io);
+    if (revoked === "claimed-live" || revoked === "claimant-unknown") return fail(`the ${planned.gen} generation's claim is held (${revoked})`);
+    if (!handle) return fail(`fleet.lock holds no fence to hand the ${gen} generation over from`);
+    if (handle.record.handoff) {
+      const cleared = setFleetLockHandoff(handle, null, () => true);
+      if (!cleared) return fail("fleet.lock changed while the old handoff was cleared");
+      handle = cleared;
+    }
+    a = voidGeneration(home, a, planned.nonce, io);
+  }
+  if (!handle) return fail(`no fence to hand the ${gen} generation over from`);
+  const nonce = d.newNonce?.() ?? randomBytes(16).toString("hex");
+  a = planGeneration(home, a, gen, nonce, io);
+  // The route's pre-start step runs the kit: a kit that doesn't verify would fail every start as if it were transient
+  // (Fable #4531 N1) — manual, with the kit's reason, before anything is started.
+  if (id.ownership.service) {
+    const kit = verifyRecoveryKit(home, a.id);
+    if (!kit.ok) return fail(`the ${gen} generation can't start through the recovery route: ${kit.reason}`);
+  }
+  const handed = setFleetLockHandoff(handle, { nonce, gen }, (attemptId, n) => {
+    const r = revokeHandoff(home, attemptId, n, d.self, d.liveness, io);
+    return r === "revoked" || r === "claimant-gone";
+  });
+  if (!handed) return fail("fleet.lock isn't this attempt's fence any more");
+  if (!d.manager.start({ nonce, gen })) return fail(`the service didn't start for the ${gen} generation; retry`, false);
+  const pid = d.waitTakeover(nonce);
+  if (pid === null) return fail(`the ${gen} generation didn't take fleet.lock over in time; retry`, false);
+  return { ok: true, attempt: ackGeneration(home, a, nonce, pid, {}, io) };
 }
 
 /** Roll `attempt` back. The caller holds the three locks, has re-proven ownership and is the attempt's owner. */
@@ -139,48 +203,9 @@ export function rollBack(home: string, attempt: AttemptRecord, d: RollbackDeps):
   }
 
   // 4. the rollback generation: planned, handed off, started, acknowledged
-  if (!generationsOf(a).some(g => g.gen === "rollback" && g.consumed && !g.dead)) {
-    let gen = generationsOf(a).find(g => g.gen === "rollback" && !g.consumed && !g.dead);
-    let handle = fenceHandle;
-    if (gen) {
-      // Planned before a crash: a start may already have taken over with it.
-      const taken = readFleetLockRecord(home);
-      if (taken?.role === "fleet" && taken.nonce === gen.nonce) { a = ackGeneration(home, a, gen.nonce, taken.pid, {}, io); gen = undefined; }
-      else {
-        // Not taken: take the claim back (a gone or never-started claimant), void it, and plan afresh.
-        const revoked = revokeHandoff(home, a.id, gen.nonce, d.self, d.liveness, io);
-        if (revoked === "claimed-live" || revoked === "claimant-unknown") return fail(`the rollback generation's claim is held (${revoked})`);
-        if (!handle) return fail("fleet.lock holds the rollback generation's record, but it isn't planned");
-        if (handle.record.handoff) {
-          const cleared = setFleetLockHandoff(handle, null, () => true);
-          if (!cleared) return fail("fleet.lock changed while the old handoff was cleared");
-          handle = cleared;
-        }
-        a = voidGeneration(home, a, gen.nonce, io);
-        gen = undefined;
-      }
-    }
-    if (!generationsOf(a).some(g => g.gen === "rollback" && g.consumed && !g.dead)) {
-      const nonce = d.newNonce?.() ?? randomBytes(16).toString("hex");
-      a = planGeneration(home, a, "rollback", nonce, io);
-      if (!handle) return fail("no fence to hand the rollback generation over from");
-      // The route's pre-start step runs the kit: a kit that doesn't verify would fail every start as if it were transient
-      // (Fable #4531 N1) — manual, with the kit's reason, before anything is started.
-      if (id.ownership.service) {
-        const kit = verifyRecoveryKit(home, a.id);
-        if (!kit.ok) return fail(`the rollback generation can't start through the recovery route: ${kit.reason}`);
-      }
-      const planned = setFleetLockHandoff(handle, { nonce, gen: "rollback" }, (attemptId, n) => {
-        const r = revokeHandoff(home, attemptId, n, d.self, d.liveness, io);
-        return r === "revoked" || r === "claimant-gone";
-      });
-      if (!planned) return fail("fleet.lock isn't this attempt's fence any more");
-      if (!d.manager.start()) return fail("the service didn't start for the rollback generation; retry", false);
-      const pid = d.waitTakeover(nonce);
-      if (pid === null) return fail("the rollback generation didn't take fleet.lock over in time; retry", false);
-      a = ackGeneration(home, a, nonce, pid, {}, io);
-    }
-  }
+  const started = startGeneration(home, a, "rollback", fenceHandle, d);
+  a = started.attempt;
+  if (!started.ok) return fail(started.reason, started.manual);
 
   // 5. the route off, the manager reloaded, rolled-back
   if (id.ownership.service && !steps.done("route-removed")) {

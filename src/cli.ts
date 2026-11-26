@@ -263,6 +263,10 @@ function claimFleetSingleton(): boolean {
     const liveness = { processStart: admission.processStart, startTicks: admission.startTicks, bootId: admission.bootId };
     const gate = fleetStartGate(DATA_DIR, process.env.AGEND_UPDATE_HANDOFF ?? null, liveness);
     if (!gate.ok) throw new Error(gate.reason);
+    // §7 (rev 13; Fable #4533): an interrupted commit is this start's to finish with the fleet's commit hands
+    // (`resumeCommitting`). Until those hands exist, it is refused, never admitted as a plain start that leaves the attempt
+    // committing for good. The `agend update` wiring replaces this refusal with the resumeCommitting(...) call.
+    if (gate.resumeCommitting) throw new Error(`This fleet start is refused: update attempt ${gate.resumeCommitting} is committing, and this build can't finish it yet. Run \`agend update --resolve\`.`);
     setProcessFleetLock(acquireFleetLock(DATA_DIR, {
       claimHandoff: (attemptId, nonce, pid) => {
         const processStart = admission.processStart(pid);

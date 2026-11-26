@@ -73,6 +73,25 @@ describe("M-3770 2.5: launchd", () => {
     ]);
   });
 
+  it("a job still loaded but idle (loaded before the route was written) is booted out and bootstrapped from disk before the kickstart; a running one is refused", () => {
+    let loaded = true, running = false;
+    const r = recorder(line => {
+      if (line.startsWith("launchctl print")) return loaded ? { status: 0, stdout: `\tstate = ${running ? "running\n\tpid = 778" : "not running"}\n` } : { status: 113, stdout: "" };
+      if (line.startsWith("launchctl bootout")) { loaded = false; return { status: 0, stdout: "" }; }
+      if (line.startsWith("launchctl bootstrap")) { loaded = true; return { status: 0, stdout: "" }; }
+      return { status: 0, stdout: "" };
+    });
+    const m = serviceManager(LAUNCHD, r.deps(501));
+    expect(m.start()).toBe(true);
+    expect(r.calls).toEqual([
+      "launchctl print gui/501/com.agend.fleet", "launchctl bootout gui/501/com.agend.fleet", "launchctl print gui/501/com.agend.fleet",
+      `launchctl bootstrap gui/501 ${LAUNCHD.fragmentPath}`, "launchctl kickstart gui/501/com.agend.fleet",
+    ]);
+    r.calls.length = 0; running = true;
+    expect(m.start()).toBe(false);
+    expect(r.calls).toEqual(["launchctl print gui/501/com.agend.fleet"]);           // never kickstarts a running job's old arguments
+  });
+
   it("a bootout that fails with the job still loaded is a failed stop; a job still spawning hasn't settled", () => {
     const r = recorder(line => (line.startsWith("launchctl bootout") ? { status: 5, stdout: "" } : { status: 0, stdout: "\tstate = spawn scheduled\n" }));
     const m = serviceManager(LAUNCHD, r.deps(501));

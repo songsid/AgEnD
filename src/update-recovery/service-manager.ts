@@ -7,8 +7,9 @@
  * - **systemd** (`--user` unless root): `show -p MainPID --value`, `stop` then polling `is-active` until it is
  *   inactive or failed, `daemon-reload`, `reset-failed` + `start --no-block`.
  * - **launchd** (`gui/<uid>/<label>`): `print` for the pid, `bootout` (KeepAlive would restart a killed job) then
- *   polling `print` until the job is gone, reload as a no-op (a `bootstrap` reads the plist from disk), `bootstrap`
- *   (when not loaded) + `kickstart`.
+ *   polling `print` until the job is gone, reload as a no-op (a `bootstrap` reads the plist from disk), then for a
+ *   start: a loaded idle job booted out first (it holds the arguments it was loaded with), a running one refused, then
+ *   `bootstrap` + `kickstart`.
  */
 import type { OwnedService } from "../install-ownership.js";
 
@@ -19,7 +20,8 @@ export interface ServiceManager {
   mainPid(): number | null;
   stop(): boolean;
   reload(): boolean;
-  start(): boolean;
+  /** The handoff reaches the fleet through the route's pre-start step (§6.2), not through this call. */
+  start(handoff?: { nonce: string; gen: string }): boolean;
   /** §6.2 step 1: wait until no start (or stop) job is in progress — the refused start has ended. */
   waitSettled(timeoutMs?: number): boolean;
 }
@@ -54,7 +56,17 @@ export function serviceManager(service: OwnedService, d: ManagerDeps): ServiceMa
     },
     reload: () => true,
     start: () => {
-      if (printed().status !== 0 && d.run("launchctl", ["bootstrap", `gui/${d.uid}`, service.fragmentPath]).status !== 0) return false;
+      const loaded = printed();
+      if (loaded.status === 0) {
+        // A loaded job keeps the ProgramArguments it was loaded with (Fable #4533 F2): one loaded before the route was
+        // written would kickstart the unwrapped arguments, past the pre-start step. An idle job is booted out and
+        // bootstrapped from the plist on disk; a running one is refused — the caller stops it first.
+        if (pidOf(loaded.stdout) !== null) return false;
+        const out = d.run("launchctl", ["bootout", target]);
+        if (out.status !== 0 && printed().status === 0) return false;
+        if (!poll(() => printed().status !== 0, SETTLE_MS)) return false;
+      }
+      if (d.run("launchctl", ["bootstrap", `gui/${d.uid}`, service.fragmentPath]).status !== 0) return false;
       return d.run("launchctl", ["kickstart", target]).status === 0;
     },
     waitSettled: (timeoutMs = SETTLE_MS) => poll(() => { const r = printed(); return r.status !== 0 || !/^\s*state = (spawn scheduled|xpcproxy)\s*$/m.test(r.stdout); }, timeoutMs),
