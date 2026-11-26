@@ -65,6 +65,13 @@ const dialog = async (page: any) => page.evaluate(`(() => { const d = document.q
   const r = d.getBoundingClientRect();
   return { text: d.innerText, buttons: [...d.querySelectorAll("button")].map((b) => ({ t: b.innerText.trim(), h: Math.round(b.getBoundingClientRect().height) })).filter((b) => b.t),
     bottom: Math.round(innerHeight - r.bottom), left: Math.round(r.left), right: Math.round(innerWidth - r.right) }; })()`);
+// A word kept on one line: its text range's boxes share one top.
+const unsplit = async (page: any, word: string, root: string) => page.evaluate(`(() => { const w = ${JSON.stringify(word)};
+  const walk = document.createTreeWalker(document.querySelector(${JSON.stringify(root)}), NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) { const i = n.data.indexOf(w); if (i < 0) continue;
+    const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + w.length);
+    return new Set([...r.getClientRects()].filter((b) => b.width).map((b) => Math.round(b.top))).size === 1; }
+  return null; })()`);
 const waitFor = async (page: any, expr: string, ms = 10000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await page.evaluate(expr)) return true; await page.waitForTimeout(100); } return false; };
 const scroll = async (page: any) => page.evaluate(`({ w: innerWidth, s: document.documentElement.scrollWidth })`);
 const posts: any[] = [];
@@ -100,6 +107,7 @@ async function walk(c: any) {
       && d.text.includes(W(zh, "AgEnD can bring itself back after an update.", "AgEnD 都能自己重新啟動。")), d);
     check(`${tag} 2: Restart as a service and Cancel`, !!d && [GO, CANCEL].every((t) => d.buttons.some((x: any) => x.t === t)), d);
     check(`${tag} 2: nothing sent yet`, posts.length === sent, posts);
+    if (zh) for (const w of ["短暫停止", "自動回來", "重新啟動"]) check(`${tag} 2: 「${w}」 kept whole`, await unsplit(page, w, "dialog.dlg[open]") === true, await unsplit(page, w, "dialog.dlg[open]"));
     if (phone) check(`${tag} 2: a bottom sheet with 44 px buttons`, !!d && d.bottom <= 1 && d.left <= 1 && d.right <= 1 && d.buttons.every((x: any) => x.h >= 44), d);
     await shot(page, `${tag}-2-confirm`);
     // 3 Cancel: nothing sent, nothing ran
@@ -136,6 +144,7 @@ async function walk(c: any) {
     m = await machine(page);
     check(`${tag} 5b: back: says so, in full; the line is ✓ and its button gone`, back && await toastWhole(page, W(zh, "AgEnD is back, running as a service.", "AgEnD 回來了，現在以服務方式執行。"))
       && m.includes("✓") && (await buttons(page)).length === 0, { m, t: await toasts(page) });
+    check(`${tag} 5b: the restarting toast is gone`, !(await toasts(page)).some((t) => t.includes(W(zh, "restarting as a service", "重新啟動，回來後"))), await toasts(page));
     await page.unroute("**/ui/update");
     await shot(page, `${tag}-5b-back`);
     check(`${tag}: no page errors`, errors.length === 0, errors);

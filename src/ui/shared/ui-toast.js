@@ -6,10 +6,13 @@ import { createStore } from "./app-store.js";
 const toasts = createStore([]);
 let seq = 0;
 
+/** Show a toast; returns a function that takes it down early (M-3770 S-246: "restarting" goes once AgEnD is back). */
 export function toast(text, ok = true, { detail = false } = {}) {
   const id = ++seq;
+  const dismiss = () => toasts.set(list => list.filter(x => x.id !== id));
   toasts.set(list => [...list, { id, text: String(text), ok, ...(detail ? { detail: true } : {}) }]);
-  setTimeout(() => toasts.set(list => list.filter(x => x.id !== id)), detail ? 12000 : 4000);
+  setTimeout(dismiss, detail ? 12000 : 4000);
+  return dismiss;
 }
 
 export function Toasts() {

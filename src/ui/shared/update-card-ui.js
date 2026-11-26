@@ -162,7 +162,7 @@ const stillNotService = (info) => failedChecks(info && info.preflight).some((c) 
  * S-246: the hand-over has begun. Wait for AgEnD to answer again after it was gone (every 3 s, up to 6 minutes), then
  * have it look again and say whether it is a service now. A fleet that never went away is judged at the end.
  */
-export async function waitForService(deps, { sleep = pause, tries = 120 } = {}) {
+export async function waitForService(deps, { sleep = pause, tries = 120, restarting = null } = {}) {
   let gone = false;
   for (let i = 0; i < tries; i++) {
     await sleep(3000);
@@ -174,6 +174,8 @@ export async function waitForService(deps, { sleep = pause, tries = 120 } = {}) 
   try { await fetch("/ui/update/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); } catch { /* judged on what it has */ }
   const info = (await deps.refresh()) || deps.getInfo();
   const still = !info || stillNotService(info);
+  // The "restarting" toast goes first (an older ui-toast.js returns nothing: then it times out as before).
+  if (typeof restarting === "function") restarting();
   toast(tc(still ? "serviceStill" : "serviceBack"), !still, { detail: true });
   return { service: !still };
 }
@@ -195,8 +197,8 @@ export async function fixCheck(fix, check, deps, opts = {}) {
   if (fix === "service") {
     // 202: the hand-over began. No answer at all: AgEnD stopped before it could answer — the same.
     if (!res || res.status === 202) {
-      toast(tc("serviceRestarting"), true, { detail: true });
-      return { ok: (await waitForService(deps, opts)).service };
+      const restarting = toast(tc("serviceRestarting"), true, { detail: true });
+      return { ok: (await waitForService(deps, { ...opts, restarting })).service };
     }
     if (res.status === 422) { toast(tc("serviceFailed", (out && out.reason) || ""), false, { detail: true }); return { ok: false }; }
     if (res.ok) return { ok: (await waitForService(deps, { ...opts, tries: 0 })).service };

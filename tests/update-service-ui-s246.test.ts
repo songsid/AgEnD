@@ -96,12 +96,14 @@ describe("S-246: Install as a service", () => {
     upd.updateStore.set({ info: ADMIN(NOT_SERVICE) });
     const deps = upd.cardDeps, before = shown().length;
     const sleeps: number[] = [];
-    const out = await uc.fixCheck("service", { id: "P3", ok: false, code: "not-service" }, deps, { sleep: async (ms: number) => { sleeps.push(ms); }, tries: 10 });
+    let during: unknown[] = [];
+    const out = await uc.fixCheck("service", { id: "P3", ok: false, code: "not-service" }, deps, { sleep: async (ms: number) => { if (!sleeps.length) { await settle(2); during = shown().slice(before); } sleeps.push(ms); }, tries: 10 });
     await settle(6);
     expect(out).toEqual({ ok: true });
     expect(sleeps.every(ms => ms === 3000)).toBe(true);
     expect(reqs.map(r => `${r.method} ${r.url}`)).toEqual(["POST /ui/update/fixes", "GET /ui/update", "GET /ui/update", "GET /ui/update", "POST /ui/update/check", "GET /ui/update"]);
-    expect(shown().slice(before)).toEqual([["AgEnD is restarting as a service. This page reconnects when it's back.", true], ["AgEnD is back, running as a service.", true]]);
+    expect(during).toEqual([["AgEnD is restarting as a service. This page reconnects when it's back.", true]]);
+    expect(shown().slice(before)).toEqual([["AgEnD is back, running as a service.", true]]);   // "restarting" taken down
     expect(upd.updateStore.get().info.preflight).toEqual(SERVICE);
   });
 
@@ -113,8 +115,7 @@ describe("S-246: Install as a service", () => {
     const out = await uc.fixCheck("service", { id: "P3", ok: false, code: "not-service" }, upd.cardDeps, { sleep: async () => {}, tries: 3 });
     await settle(6);
     expect(out).toEqual({ ok: false });
-    expect(shown().slice(before)).toEqual([["AgEnD is restarting as a service. This page reconnects when it's back.", true],
-      ["AgEnD isn't running as a service yet. What happened is in service-install.log in the AgEnD folder.", false]]);
+    expect(shown().slice(before)).toEqual([["AgEnD isn't running as a service yet. What happened is in service-install.log in the AgEnD folder.", false]]);
   });
 
   it("the words in English and zh-TW: every key, the same placeholders; zh says 「Agent」", async () => {

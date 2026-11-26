@@ -2450,6 +2450,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .notice-new { font-size: var(--fs-xs); color: var(--accent); font-weight: var(--fw-semibold); }
 .notice-sub { margin: 0 var(--s-1) var(--s-3); }
 .confirm-text { white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text-2); }
+/* M-3770 S-246: zh breaks at spaces and punctuation (no 「短暫停 / 止」), as the toasts do (1.6); a word too long still breaks. */
+:lang(zh) .confirm-text { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
 /* M-3387: a list closed under a confirm's text (every tool name a restricted switch stops), and the same on Permissions. */
 .confirm-more, .contact-would-all { margin-top: var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
 .confirm-more > summary, .contact-would-all > summary { cursor: pointer; }
