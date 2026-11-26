@@ -30,6 +30,12 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { decideSlash } from "../src/slash-authz.js";
 import { t } from "../src/locale.js";
 import { commandSpec } from "../src/command-table.js";
+// M-3770: an update launch proves the machine's pre-flight first (#4480 §4); here the machine is one that may update
+// itself, and no probe (npm, systemctl) runs.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }], Date.now())) };
+});
 
 const GROUP = "-1001";
 const ADMIN_A = "111";
@@ -195,7 +201,7 @@ describe("the check and the act are one stretch: an instance rebound to another 
 });
 
 describe("the table judges only what a handler would run: other text is the agent's, for a member and an admin alike (#1399 review)", () => {
-  const generalForms = ["/status report", "/STATUS", "/Doctor", "/update now", "/sysinfo please"];
+  const generalForms = ["/status report", "/STATUS", "/Doctor", "/update nowhere", "/sysinfo please"];
   const instanceForms = ["/COLLAB", "/pause one two", "/Compact", "/clear all", "/cancel now", "/ctx please"];
   for (const user of [PLAIN, ADMIN_A]) {
     it(`General, ${user === PLAIN ? "member" : "admin"}: ${generalForms.join(", ")} pass through with no reply`, async () => {

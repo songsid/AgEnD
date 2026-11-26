@@ -117,7 +117,9 @@ export interface WebUpdatePin { version: string; revision: number }
 /** What the fleet gives the web routes. */
 export interface WebUpdateHost {
   /** The running version, the last check's offer, and when it was checked (null: not yet). */
-  updateState(): { current: string | null; offer: UpdateOffer | null; hubRecommendation?: import("./hub/recommendation-model.js").HubRecommendedUpdate | null; checkedAt: number | null; checkFailed: boolean };
+  updateState(): { current: string | null; offer: UpdateOffer | null; hubRecommendation?: import("./hub/recommendation-model.js").HubRecommendedUpdate | null; checkedAt: number | null; checkFailed: boolean;
+    /** M-3770: this machine's last pre-flight (admin only; null until the first one ran). */
+    preflight?: import("./update-readiness.js").UpdatePreflight | null };
   /** Look now (no chat notice); rate-limited by the caller's host. */
   checkUpdateNow(): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   updateProgress(): WebUpdateProgress | null;
@@ -129,4 +131,8 @@ export interface WebUpdateHost {
   /** Owner action on one retained Hub request. The host resolves its verified version. */
   startHubRequestedUpdate?(key: string, person: string, stillAllowed: () => boolean, requestId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   updateLog(): { text: string | null; error: string | null };
+  /** The one update card. Null when nothing is offered (including a pin). */
+  card?(): import("./update-card.js").UpdateCardView | null;
+  /** POST /ui/update/answer. `by` is a display label, never an id. `stillAllowed` is the asking session, checked again at an immediate launch. */
+  answerUpdate?(key: string, by: string, body: import("./update-card.js").UpdateAnswerBody, stillAllowed: () => boolean): Promise<import("./update-card.js").UpdateAnswerResult>;
 }

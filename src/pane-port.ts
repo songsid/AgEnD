@@ -3,7 +3,7 @@ export interface PaneSize { columns: number; rows: number }
 export type PaneKey = "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q";
 /** Internal only, never a runtime wire field: delivery means the daemon checked its backend's runtime dialogs;
  * composer callers and explicit identity-bound human card answers retain their separate policies. */
-export interface PaneInputProof { kind: "composer" | "delivery" | "dialog"; screen: string; retryCount?: number }
+export interface PaneInputProof { kind: "composer" | "delivery" | "dialog"; screen: string; retryCount?: number; cancelTurn?: true }
 /** Metadata only: never includes pasted text, screen contents or credentials. */
 export interface PaneInputDiagnostic { expectedSeq: number; observedSeq: number | null; operationId: string; commandSequence: number; action: "input" | "key" | "edit"; retryCount: number }
 export interface PaneStatus { alive: boolean; exitCode?: number; pid?: number }

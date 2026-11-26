@@ -124,10 +124,10 @@ describe("a General-only command in a Telegram instance topic points to General,
     }
   });
 
-  it("a form General would not run either (/status report, /STATUS, /Doctor, /update now) is the agent's text, for anyone", async () => {
+  it("a form General would not run either (/status report, /STATUS, /Doctor, /update nowhere) is the agent's text, for anyone", async () => {
     for (const who of [PLAIN, ADMIN_A]) {
       const r = rig("open");
-      for (const text of ["/status report", "/STATUS", "/Doctor", "/update now"]) {
+      for (const text of ["/status report", "/STATUS", "/Doctor", "/update nowhere"]) {
         expect(await r.any.topicCommands.handleInstanceCommand(typed(text, who, "30"), "alpha"), `${who} ${text}`).toBe(false);
       }
       expect(r.replies, who).toEqual([]);

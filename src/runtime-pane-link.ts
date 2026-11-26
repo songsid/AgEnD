@@ -1,5 +1,6 @@
 /** Private authenticated link to a persistent host. Closing the runtime client never closes its CLI panes. */
 import WebSocket from "ws";
+import { validateRequestContextCallStamp, type RequestContextCallStamp } from "./request-context-call-protocol.js";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -15,6 +16,7 @@ import type {} from "./runtime-pane-service.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { PANE_HOST_DIRECTORY } from "./runtime-pane-store.js";
 export interface PaneLinkOptions {
+  requestContextProtocol?: 1;
   directory: string;
   server: string;
   machineId: string;
@@ -26,7 +28,7 @@ export interface PaneLinkOptions {
   output?(snapshot: RuntimePaneSnapshot): void;
   /** Transport loss only; retained CLI/process ownership is unchanged. */
   disconnected?(): void;
-  mcp?(body: PaneMcpBody, current: () => boolean): Promise<unknown>;
+  mcp?(body: PaneMcpBody, current: () => boolean, stamp?: RequestContextCallStamp): Promise<unknown>;
 }
 interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
 export class RuntimePaneLink {
@@ -36,8 +38,10 @@ export class RuntimePaneLink {
   private closed = false;
   private cleanupOnly=false;
   private idleShutdown = false;
+  private requestContextNegotiated = false;
+  requestContextSupported(): boolean { return this.requestContextNegotiated; }
   private readonly clientEpoch = randomUUID();
-  private constructor(private socket: WebSocket, readonly hostBootId: string, private options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp" | "disconnected">) {}
+  private constructor(private socket: WebSocket, readonly hostBootId: string, private options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp" | "disconnected" | "requestContextProtocol">) {}
   static async open(options: PaneLinkOptions): Promise<RuntimePaneLink> {
     if (process.platform !== "win32") throw Error("Persistent pane host requires Windows Node");
     const directory = join(options.directory, PANE_HOST_DIRECTORY);
@@ -51,7 +55,7 @@ export class RuntimePaneLink {
       try { process.kill(descriptor.pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") live = false; }
     }
     if (!live) {
-      const child = spawn(process.execPath, [fileURLToPath(new URL("./runtime-pane-service.js", import.meta.url)), directory, scope, ...(options.credentialRoot ? [options.credentialRoot] : [])], {
+      const child = spawn(process.execPath, [fileURLToPath(new URL("./runtime-pane-service.js", import.meta.url)), directory, scope, ...(options.credentialRoot ? [options.credentialRoot] : []), ...(options.requestContextProtocol === 1 ? ["--request-context-call-v1"] : [])], {
         detached: true, windowsHide: true, stdio: "ignore", shell: false, env: nativeCliEnvironment(),
       });
       let failed = false; child.on("error", () => { failed = true; }); child.unref();
@@ -114,7 +118,7 @@ export class RuntimePaneLink {
     } finally { if (!retained) await link.stop(); }
   }
   /** Authenticated discovery seam; fixtures bind only private loopback services. */
-  static attach(descriptor: PaneHostDescriptor, options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp" | "disconnected">): Promise<RuntimePaneLink> {
+  static attach(descriptor: PaneHostDescriptor, options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp" | "disconnected" | "requestContextProtocol">): Promise<RuntimePaneLink> {
     return new Promise((resolve, reject) => {
       const socket = new WebSocket(`ws://127.0.0.1:${descriptor.port}/pane/v1`, { headers: { Authorization: `Bearer ${descriptor.token}` },
         handshakeTimeout: 10_000, maxPayload: 256 * 1024, followRedirects: false, perMessageDeflate: false });
@@ -130,10 +134,15 @@ export class RuntimePaneLink {
           if (!ready) {
             if (value?.type !== "hello" || value.hostBootId !== descriptor.hostBootId) throw Error("Pane host boot changed");
             link.idleShutdown = value.idleShutdown === 1;
+            if (value.requestContextProtocol !== undefined && value.requestContextProtocol !== 1) throw Error("Invalid originating-call protocol");
+            link.requestContextNegotiated = options.requestContextProtocol === 1 && value.requestContextProtocol === 1;
             ready = true; clearTimeout(deadline); link.lease(); link.timer = setInterval(() => link.lease(), 5000); link.timer.unref(); resolve(link); return;
           }
           if (value?.type === "mcp.request") {
-            if (Object.keys(value).some(key => !["type", "id", "epoch", "body"].includes(key)) || !/^[a-f0-9-]{36}$/i.test(value.id) || value.epoch !== link.epoch()) throw Error("Invalid pane MCP frame");
+            if (Object.keys(value).some(key => !["type", "id", "epoch", "body", "requestContext"].includes(key)) || !/^[a-f0-9-]{36}$/i.test(value.id) || value.epoch !== link.epoch()) throw Error("Invalid pane MCP frame");
+            if (value.requestContext !== undefined && !link.requestContextNegotiated) throw Error("Originating-call protocol not negotiated");
+            const stamp = value.requestContext !== undefined ? validateRequestContextCallStamp(value.requestContext) : undefined;
+            if (link.requestContextNegotiated && !stamp) throw Error("Originating-call stamp missing");
             const body = validatePaneMcpBody(value.body), epoch = value.epoch;
             const current = (): boolean => !link.closed && !link.cleanupOnly && socket.readyState === WebSocket.OPEN && options.online() && link.epoch() === epoch;
             if (link.mcpPending >= 32) throw Error("Pane MCP transport backlog");
@@ -141,7 +150,7 @@ export class RuntimePaneLink {
             void (async () => {
               try {
                 if (!current() || !options.mcp) throw Error("Pane MCP lease unavailable");
-                const result = await options.mcp(body, current);
+                const result = stamp ? await options.mcp(body, current, stamp) : await options.mcp(body, current);
                 if (current()) link.mcpReply(value.id, epoch, true, result);
               } catch { if (current()) link.mcpReply(value.id, epoch, false); }
               finally { link.mcpPending--; }
@@ -169,10 +178,11 @@ export class RuntimePaneLink {
     if (this.socket.readyState !== WebSocket.OPEN || this.closed) return;
     const maxAgents = this.options.maxAgents();
     if (!Number.isInteger(maxAgents) || maxAgents < 1 || maxAgents > 16) { this.socket.close(1008, "Invalid machine limit"); return; }
-    this.socket.send(JSON.stringify({ type: "lease", epoch: this.epoch(), online: this.cleanupOnly || this.options.online(), maxAgents }));
+    this.socket.send(JSON.stringify({ type: "lease", epoch: this.epoch(), online: this.cleanupOnly || this.options.online(), maxAgents, ...(this.requestContextNegotiated ? { requestContextProtocol: 1 } : {}) }));
   }
   request(raw: unknown, current: () => boolean = () => true): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
+    if (request.action === "input" && request.requestContext && !this.requestContextNegotiated) return Promise.reject(Error("Originating-call protocol not negotiated"));
     if(this.cleanupOnly&&!["list","snapshot","close","shutdown"].includes(request.action))return Promise.reject(Error("Pane link only permits owned retirement"));
     if (!current() || this.closed || this.socket.readyState !== WebSocket.OPEN || !(this.cleanupOnly || this.options.online())) return Promise.reject(Error("Pane client is disconnected"));
     if (this.pending.size >= 64 || this.socket.bufferedAmount > 256 * 1024) return Promise.reject(Error("Pane client backpressure limit"));

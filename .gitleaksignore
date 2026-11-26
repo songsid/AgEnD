@@ -172,3 +172,8 @@ c8404fcdbe4b8c542705f4653324d66568aaed72:docs/evidence/reply-file-previews-m3283
 
 # M3540 historical main evidence checksum for src/auth-api.ts, not a credential.
 70dfc5043ecddf6ce55d754e77e62a345028f2da:docs/evidence/composer-edge-focus-m3540/verification.json:generic-api-key:7
+
+# PR #4486: historical SHA-256 checksums of the two public contact-auth source files.
+# Independently recomputed from the tested commit; current evidence uses separate path/digest fields.
+d95a7b66b22356af46420f14661ae933100118c7:docs/evidence/request-contact-gate-s225/verification.json:generic-api-key:126
+d95a7b66b22356af46420f14661ae933100118c7:docs/evidence/request-contact-gate-s225/verification.json:generic-api-key:127

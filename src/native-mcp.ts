@@ -1,6 +1,9 @@
+import {requireRequestContextPolicy} from "./request-context-policy.js";
+import { RequestContextReferenceMap, type RequestContextRegistrationGate } from "./request-context-fence.js";
 /** Per-turn, instance-bound MCP capabilities for native Windows CLI children. */
 import { agentCredentialPolicy } from "./agent-credentials.js";
 import { nativeAgentAdmissionContext } from "./native-agent-admission.js";
+import type { RequestContextCallLease } from "./request-context-call.js";
 import { windowsCliEnabled } from "./windows-cli.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -28,11 +31,14 @@ type ToolResult = { content:Array<{type:"text";text:string}>;isError?:boolean };
 interface Call { operationId:string; digest:string; result:Promise<ToolResult> }
 interface Session {
   token:string; instance:string; requestId:string; agentId:string; backend:string;
+  requestContext?:RequestContextCallLease;
   sandbox:NativeSandbox; policy:string; expires:number; stillCurrent:()=>boolean; closed:boolean;
   timer:ReturnType<typeof setTimeout>; calls:Map<string,Call>; reported:Map<string,Set<string>>;
 }
 export interface NativeMcpGrant {
   instance:string; requestId:string; sandbox:NativeSandbox; endpoint:string; stillCurrent:()=>boolean;
+  /** Captured from the admitted exec input at claim, never at HTTP arrival. */
+  requestContext?:RequestContextCallLease;
 }
 export interface NativeMcpLease {
   connection:NativeMcpConnection;
@@ -81,12 +87,28 @@ function refuse(req:IncomingMessage,res:ServerResponse,status:number,message:str
 }
 
 export class NativeMcpSessions {
-  private readonly sessions=new Map<string,Session>();
-  constructor(private readonly ctx:AgentEndpointContext) {}
+  private readonly sessions=new RequestContextReferenceMap<string,Session>(session=>session.requestContext?.snapshot.context.ref.rootContextId??null,session=>`native-grant:${session.requestId}`);
+  private readonly drainCalls=new RequestContextReferenceMap<string,Session>(session=>session.requestContext?.snapshot.context.ref.rootContextId??null,session=>`native-call:${session.requestId}`);
+  constructor(private readonly ctx:AgentEndpointContext,registration?:RequestContextRegistrationGate) {this.sessions.installRegistration(registration);this.drainCalls.installRegistration(registration);}
+  get drainRevision():string{return `${this.sessions.revision}:${this.drainCalls.revision}`;}
+  drainView(rootId:string){const sessions=this.sessions.view(rootId),calls=this.drainCalls.view(rootId);return {...sessions,revision:this.drainRevision,references:[...sessions.references,...calls.references],unknown:sessions.unknown||calls.unknown};}
+  private requestContextRequired=false;
+  /** Internal rollout only; production stays OFF until L. Existing grants do not acquire a context. */
+  setRequestContextRequired(required:boolean):void {
+    if(required===this.requestContextRequired)return;
+    this.closeAll();this.requestContextRequired=required;
+  }
+
 
   grant(input:NativeMcpGrant):NativeMcpLease {
     this.prune();
     const config=this.ctx.fleetConfig?.instances[input.instance];
+    if(this.requestContextRequired&&!input.requestContext)throw Error("Native MCP requires an admitted request context");
+    if(input.requestContext&&(!input.requestContext.current()||input.requestContext.snapshot.owner.instance!==input.instance)) {
+      throw Error("Native MCP request context is no longer current");
+    }
+
+    if(input.requestContext)this.sessions.registrationGate?.assertRegistration(input.requestContext.snapshot.context.ref.rootContextId);
     if(!windowsCliEnabled() || config?.runtime!=="windows" || !UUID.test(config.native_agent_id ?? "")
       || !["codex","claude-code"].includes(config.backend ?? "") || !UUID.test(input.requestId)
       || !["read-only","workspace-write"].includes(input.sandbox) || typeof input.stillCurrent!=="function") throw Error("Native MCP requires an active supported Windows instance");
@@ -96,7 +118,7 @@ export class NativeMcpSessions {
     const address=endpoint(input.endpoint), token=randomBytes(32).toString("hex");
     const session:Session={token,instance:input.instance,requestId:input.requestId,agentId:config.native_agent_id!,backend:config.backend!,sandbox:input.sandbox,policy,
       expires:Date.now()+TTL_MS,stillCurrent:input.stillCurrent,closed:false,calls:new Map(),reported:new Map(),
-      timer:setTimeout(()=>this.closeToken(token),TTL_MS)};
+      timer:setTimeout(()=>this.closeToken(token),TTL_MS),...(input.requestContext?{requestContext:input.requestContext}:{})};
     session.timer.unref?.();this.sessions.set(token,session);
     return {connection:{endpoint:address,token,tools:this.memberNames(session)},close:()=>this.closeToken(token),
       reportedCorrelations:target=>target===undefined ? [...new Set([...session.reported.values()].flatMap(ids=>[...ids]))] : [...(session.reported.get(target) ?? [])]};
@@ -122,6 +144,7 @@ export class NativeMcpSessions {
     const config=this.ctx.fleetConfig?.instances[session.instance];
     let current=false;try{current=session.stillCurrent();}catch{/* a revoked owner is unavailable */}
     return !session.closed && Date.now()<session.expires && windowsCliEnabled() && current
+      && (!session.requestContext || session.requestContext.current())
       && this.policy(session.instance)===session.policy && config?.runtime==="windows" && config.native_agent_id===session.agentId && config.backend===session.backend;
   }
   private prune():void { for(const session of this.sessions.values())if(!this.current(session))this.closeToken(session.token); }
@@ -143,9 +166,10 @@ export class NativeMcpSessions {
    */
   private dispatcherContext(session:Session,name:string,args:Record<string,unknown>):AgentEndpointContext {
     return nativeAgentAdmissionContext(this.ctx, {
-      instance: session.instance,
+      instance: session.instance, operation:{tool:name,args},
       current: () => this.current(session) && this.canCall(session, name, args),
       taskAllowed: value => this.canCall(session, "task", value),
+      ...(session.requestContext?{requestContext:session.requestContext}:{}),
     });
   }
 
@@ -207,10 +231,12 @@ export class NativeMcpSessions {
       const old=session.calls.get(body.callId);
       if(old && old.digest!==digest){json(res,409,{error:"Native MCP callId belongs to different arguments"});return;}
       if(!old && session.calls.size>=MAX_CALLS){json(res,429,{error:"Native MCP turn call limit reached"});return;}
+      if(!old&&session.requestContext)this.sessions.registrationGate?.assertRegistration(session.requestContext.snapshot.context.ref.rootContextId);
       const operationId=old?.operationId ?? randomUUID();
       const call=old ?? {operationId,digest,result:Promise.resolve().then(async()=>{
         if(!this.current(session) || !this.canCall(session,name,args))return toolError("Native MCP capability or tool access was revoked");
         try {
+          if(this.ctx.requestContextPolicy)requireRequestContextPolicy(this.ctx,session.instance,name,args,session.requestContext?{coverage:"covered",lease:session.requestContext}:undefined);
           const value=await dispatchAgentOperation(this.dispatcherContext(session,name,args),session.instance,OPS[name]!,args,operationId,()=>this.current(session) && this.canCall(session,name,args));
           if(name==="report_result" && !failed(value) && value!==undefined && typeof args.target_instance==="string" && args.target_instance
             && typeof args.correlation_id==="string" && args.correlation_id) {
@@ -220,7 +246,10 @@ export class NativeMcpSessions {
           return result(value);
         } catch(error){return toolError(error instanceof Error ? error.message : "AgEnD tool failed");}
       })};
-      if(!old)session.calls.set(body.callId,call);
+      if(!old){
+        session.calls.set(body.callId,call);
+        if(this.drainCalls.registrationGate){this.drainCalls.set(operationId,session);void call.result.then(()=>this.drainCalls.delete(operationId),()=>this.drainCalls.delete(operationId));}
+      }
       const response=await call.result;
       if(!this.current(session)){json(res,401,{error:"Native MCP capability is invalid or expired"});return;}
       if(!this.canCall(session,name,args)) {

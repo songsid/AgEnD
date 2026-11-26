@@ -1,8 +1,8 @@
 import { ensureAgendHome } from "./agend-home.js";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 /**
  * What kind of process holds the lock.
@@ -11,13 +11,17 @@ import { join } from "node:path";
  * a fleet, so that is what a missing value means. Never widen that default —
  * "unknown" must not become "safe to take from".
  */
-export type FleetLockRole = "fleet" | "setup-host";
+export type FleetLockRole = "fleet" | "setup-host" | "update";
 
 interface FleetLockRecord {
   pid: number;
   nonce: string;
   createdAt: string;
   role?: FleetLockRole;
+  /** M-3770 (design update-transaction §4.3), role "update": the attempt that fences the home. */
+  attemptId?: string;
+  /** Role "update": the planned generation a fleet start may take the lock over for, by its single-use nonce. */
+  handoff?: { nonce: string; gen: "old" | "trial" | "rollback" } | null;
 }
 
 export interface FleetLockHandle {
@@ -29,8 +33,17 @@ export interface FleetLockHandle {
 export interface FleetLockProbe {
   pid?: number;
   nonce?: string;
-  /** Defaults to "fleet"; the pre-fleet setup host claims "setup-host". */
+  /** Defaults to "fleet"; the pre-fleet setup host claims "setup-host"; an updater fencing the home claims "update". */
   role?: FleetLockRole;
+  /** Role "update": its attempt id. */
+  attemptId?: string;
+  /**
+   * M-3770 §4.3: this fleet start's handoff nonce (the environment's AGEND_UPDATE_HANDOFF by default). With it, a start
+   * may take over an "update" record that plans exactly this nonce — through `claimHandoff`, never by staleness.
+   */
+  handoffNonce?: string | null;
+  /** Creates the single-use claim for a handoff (O_EXCL); false when another contender holds it. The journal's. */
+  claimHandoff?: (attemptId: string, nonce: string, pid: number) => boolean;
   isProcessAlive?: (pid: number) => boolean;
   readCommandLine?: (pid: number) => string;
 }
@@ -85,6 +98,9 @@ function parseRecord(raw: string): FleetLockRecord | null {
     if (!Number.isSafeInteger(value.pid) || (value.pid ?? 0) <= 1 || typeof value.nonce !== "string") {
       return null;
     }
+    if (value.role === "update" && (typeof value.attemptId !== "string" || !value.attemptId)) return null;
+    if (value.handoff != null && (typeof value.handoff.nonce !== "string" || !/^[0-9a-f]{32}$/.test(value.handoff.nonce)
+      || !["old", "trial", "rollback"].includes(value.handoff.gen))) return null;
     return value as FleetLockRecord;
   } catch {
     return null;
@@ -104,7 +120,9 @@ export function acquireFleetLock(dataDir: string, probe: FleetLockProbe = {}): F
     nonce: probe.nonce ?? randomBytes(16).toString("hex"),
     createdAt: new Date().toISOString(),
     role: probe.role ?? "fleet",
+    ...(probe.role === "update" ? { attemptId: probe.attemptId ?? "", handoff: null } : {}),
   };
+  if (record.role === "update" && !/^\d{8}T\d{6}Z-[0-9a-f]{8}$/.test(record.attemptId ?? "")) throw new Error("an update fence needs its attempt id");
   const serialized = JSON.stringify(record) + "\n";
   const isAlive = probe.isProcessAlive ?? processAlive;
   const readCommandLine = probe.readCommandLine ?? readProcessCommandLine;
@@ -124,6 +142,30 @@ export function acquireFleetLock(dataDir: string, probe: FleetLockProbe = {}): F
       continue;
     }
     const owner = parseRecord(observed);
+    // M-3770 §4.3: an updater's fence. Never stale by its command line (an updater isn't `fleet start`): it is taken
+    // over only by the start its record plans, holding that nonce and winning the single-use claim — atomically, by a
+    // rename over the lock (no release and re-acquire). Anything else refuses while the updater lives.
+    if (owner && owner.role === "update") {
+      const nonce = probe.handoffNonce === undefined ? (process.env.AGEND_UPDATE_HANDOFF ?? null) : probe.handoffNonce;
+      if (nonce && owner.handoff && owner.handoff.nonce === nonce && record.role === "fleet") {
+        const claim = probe.claimHandoff;
+        if (!claim || !claim(owner.attemptId!, nonce, pid)) throw new Error(`Another start has claimed this update's handoff (attempt ${owner.attemptId})`);
+        const taken: FleetLockRecord = { ...record, nonce };
+        const takenSerialized = JSON.stringify(taken) + "\n";
+        const tmp = `${lockPath}.handoff-${pid}-${randomBytes(4).toString("hex")}`;
+        const fd = openSync(tmp, "wx", 0o600);
+        try { writeSync(fd, takenSerialized); fsyncSync(fd); } finally { closeSync(fd); }
+        if (readFileSync(lockPath, "utf8") !== observed) { unlinkSync(tmp); throw new Error(`The update's fence changed during the handoff (attempt ${owner.attemptId})`); }
+        renameSync(tmp, lockPath);
+        fsyncDir(dataDir);
+        return { path: lockPath, record: taken, serialized: takenSerialized };
+      }
+      if (isAlive(owner.pid)) {
+        throw new Error(`AgEnD is updating (attempt ${owner.attemptId}); this fleet start is refused until the update hands over or ends`);
+      }
+      // The updater is gone. Its fence is never taken by staleness here: recovery (the journal) owns it.
+      throw new Error(`An update's fence is left by a stopped updater (attempt ${owner.attemptId}); run the recovery (agend update --resolve)`);
+    }
     if (owner && isAlive(owner.pid)) {
       const commandLine = readCommandLine(owner.pid);
       // A live setup host is an owner in its own right. Before the role existed
@@ -176,6 +218,7 @@ export function fleetLockHeldByAnother(dataDir: string, probe: Pick<FleetLockPro
   try {
     const owner = parseRecord(readFileSync(join(dataDir, "fleet.lock"), "utf8"));
     if (!owner || owner.pid === (probe.pid ?? process.pid) || !(probe.isProcessAlive ?? processAlive)(owner.pid)) return false;
+    if (owner.role === "update") return true;                        // M-3770: a live updater's fence is held, whatever its command line
     const commandLine = (probe.readCommandLine ?? readProcessCommandLine)(owner.pid);
     if (!commandLine) return true;                                   // an unreadable live owner is never assumed absent
     return owner.role === "setup-host" ? isSetupHostCommandLine(commandLine) : isFleetStartCommandLine(commandLine);
@@ -185,6 +228,9 @@ export function fleetLockHeldByAnother(dataDir: string, probe: Pick<FleetLockPro
 /** Delete only the exact lock record acquired by this process. */
 export function releaseFleetLock(handle: FleetLockHandle | undefined): boolean {
   if (!handle || !existsSync(handle.path)) return false;
+  // M-3770 §4.3: an update fence with a planned handoff is never unlinked directly — the planned start may rename its
+  // record in between this compare and the unlink. Revoke first (setFleetLockHandoff(handle, null, revoke)).
+  if (handle.record.role === "update" && handle.record.handoff) return false;
   try {
     if (readFileSync(handle.path, "utf8") !== handle.serialized) return false;
     unlinkSync(handle.path);
@@ -205,4 +251,45 @@ export function releaseProcessFleetLock(): boolean {
   const released = releaseFleetLock(handle);
   if (released) processFleetLock = undefined;
   return released;
+}
+
+const fsyncDir = (dir: string): void => { const fd = openSync(dir, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } };
+
+/**
+ * M-3770 §4.3: the updater writes the planned handoff into its own fence record (tmp, fsync, rename, directory fsync),
+ * only while the lock is still exactly its record. Returns the new handle, or null when the lock is no longer its own.
+ *
+ * Replacing or clearing a handoff already planned races the start that holds its nonce: that start may win the claim
+ * and rename its record over the lock between this function's compare and its rename, which would put the fence back
+ * over a live fleet. So the planned nonce is revoked first through `revoke` — the journal's `revokeHandoff`, which
+ * takes the SAME single-use claim file. Exactly one of the two wins it: when the start did, nothing is rewritten (null).
+ */
+export function setFleetLockHandoff(
+  handle: FleetLockHandle,
+  handoff: { nonce: string; gen: "old" | "trial" | "rollback" } | null,
+  revoke?: (attemptId: string, nonce: string) => boolean,
+): FleetLockHandle | null {
+  if (handle.record.role !== "update") throw new Error("only an update fence plans a handoff");
+  if (handoff && !/^[0-9a-f]{32}$/.test(handoff.nonce)) throw new Error("a handoff nonce is 32 hex digits");
+  const planned = handle.record.handoff;
+  if (planned) {
+    if (!revoke) throw new Error("a planned handoff is replaced only after its nonce is revoked");
+    if (!revoke(handle.record.attemptId!, planned.nonce)) return null;          // the start won its claim: the lock is its
+  }
+  let current: string;
+  try { current = readFileSync(handle.path, "utf8"); } catch { return null; }
+  if (current !== handle.serialized) return null;
+  const record: FleetLockRecord = { ...handle.record, handoff };
+  const serialized = JSON.stringify(record) + "\n";
+  const tmp = `${handle.path}.plan-${record.pid}-${randomBytes(4).toString("hex")}`;
+  const fd = openSync(tmp, "wx", 0o600);
+  try { writeSync(fd, serialized); fsyncSync(fd); } finally { closeSync(fd); }
+  renameSync(tmp, handle.path);
+  fsyncDir(dirname(handle.path));
+  return { path: handle.path, record, serialized };
+}
+
+/** The fleet lock's record as written (null: absent or unparsable). For the updater's acknowledgement of a takeover. */
+export function readFleetLockRecord(dataDir: string): FleetLockRecord | null {
+  try { return parseRecord(readFileSync(join(dataDir, "fleet.lock"), "utf8")); } catch { return null; }
 }

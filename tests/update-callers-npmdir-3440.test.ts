@@ -11,6 +11,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const spawned = vi.hoisted(() => [] as Array<{ cmd: string; args: string[] }>);
+// M-3770: the launch's pre-flight (#4480 §4) is proven on a real install; here the machine is one that may update itself.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }], Date.now())) };
+});
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return { ...real, spawn: ((cmd: string, args: string[]) => { spawned.push({ cmd, args }); return Object.assign(new EventEmitter(), { unref: () => {}, pid: 0 }); }) as never };
@@ -43,7 +48,7 @@ async function slash(): Promise<void> {
   const fm = new FleetManager(scratch());
   try {
     Object.assign(fm, { fleetAdminGate: () => "ok" });
-    await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", respond: vi.fn().mockResolvedValue(undefined) }, "discord-main");
+    await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", options: { now: true }, respond: vi.fn().mockResolvedValue(undefined) }, "discord-main");
   } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
 }
 async function general(): Promise<void> {
@@ -53,7 +58,7 @@ async function general(): Promise<void> {
     adapter, adapters: new Map([["telegram-main", adapter]]), fleetConfig: { channel: { access: { allowed_users: ["admin"] } } },
     hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin", isFleetStopping: () => false, dataDir: scratch(),
   } as any);
-  expect(await commands.handleGeneralCommand({ text: "/update", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any)).toBe(true);
+  expect(await commands.handleGeneralCommand({ text: "/update now", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any)).toBe(true);
 }
 
 describe("#3440 F2: each /update caller carries the proved npm's directory into the launch", () => {

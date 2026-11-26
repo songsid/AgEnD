@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const boundaries = vi.hoisted(() => ({ commands: [] as any[], reads: [] as any[], version: "systemd 255\n", cgroup: "0::/\n", fail: false }));
+// M-3770: the launch's pre-flight (#4480 §4) is proven on a real install; here the machine is one that may update itself.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }], Date.now())) };
+});
 vi.mock("node:fs/promises", async original => {
   const real = await original<typeof import("node:fs/promises")>();
   return { ...real, readFile: ((path: unknown, options: unknown) => {
@@ -143,12 +148,12 @@ async function handler(platform: "discord" | "telegram", admin = () => true) {
   if (platform === "discord") {
     const fm = new FleetManager(scratch()); managers.push(fm);
     Object.assign(fm, { fleetAdminGate: () => admin() ? "ok" : "denied", failUpdateProgress: failed });
-    await (fm as any).handleUpdateSlash({ channelId: "general", userId: "admin", respond: vi.fn().mockResolvedValue(undefined) }, "discord-main");
+    await (fm as any).handleUpdateSlash({ channelId: "general", userId: "admin", options: { now: true }, respond: vi.fn().mockResolvedValue(undefined) }, "discord-main");
   } else {
     const adapter = { id: "telegram-main", type: "telegram", sendText: vi.fn().mockResolvedValue({ messageId: "m" }) };
     const commands = new TopicCommands({ adapter, adapters: new Map([[adapter.id, adapter]]), dataDir: scratch(),
       hasFleetAdmins: () => true, isFleetAdmin: admin, isFleetStopping: () => false, failUpdateProgress: failed, fleetConfig: { channel: {} } } as any);
-    await (commands as any).handleUpdateCommand({ chatId: "group", threadId: "1", userId: "admin", adapterId: adapter.id });
+    await (commands as any).handleUpdateCommand({ text: "/update now", chatId: "group", threadId: "1", userId: "admin", adapterId: adapter.id });
   }
   return failed;
 }
@@ -230,8 +235,8 @@ function fleetHandler(platform: "discord" | "telegram") {
   vi.spyOn(fm as any, "shutdownLoginWindows").mockResolvedValue(undefined);
   vi.spyOn(fm as any, "stopPreviewListener").mockReturnValue(undefined);
   const run = () => platform === "discord"
-    ? (fm as any).handleUpdateSlash({ channelId: "general", userId: "admin", respond: vi.fn().mockResolvedValue("m") }, adapter.id)
-    : (fm as any).topicCommands.handleUpdateCommand({ chatId: "group", threadId: "1", userId: "admin", adapterId: adapter.id });
+    ? (fm as any).handleUpdateSlash({ channelId: "general", userId: "admin", options: { now: true }, respond: vi.fn().mockResolvedValue("m") }, adapter.id)
+    : (fm as any).topicCommands.handleUpdateCommand({ text: "/update now", chatId: "group", threadId: "1", userId: "admin", adapterId: adapter.id });
   return { fm, config, adapter, failed, run };
 }
 

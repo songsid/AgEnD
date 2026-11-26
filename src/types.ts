@@ -350,6 +350,12 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
      * project), as a project's lead follows its project's. Absent: none.
      */
     leader?: string;
+    /**
+     * M-3668: the dashboard archives a finished main task (done or cancelled) this many days after it finished: it leaves
+     * the board's columns and the projects' numbers, and is found in the project's Archive list, by search and by its
+     * number; moving it to To do reopens it. A view rule only (nothing is deleted). Whole days 0–3650; 0 = never; default 3.
+     */
+    archive_after_days?: number;
   };
   webhooks?: WebhookConfig[];
 }
@@ -682,6 +688,11 @@ export interface FleetConfig {
    * once on each Windows computer, 1..16, default 4.
    */
   runtimes?: { windows_cli?: boolean; remote_runtime?: boolean; max_agents_per_machine?: number };
+  /**
+   * M-3762: one update offer. `mode` auto-when-idle is stored and not acted on until Phase 5.
+   * `pause` days are 0 (Sunday) through 6. `pin` set means nothing is offered. `maxIdleWait` is hours (default 24).
+   */
+  updates?: import("./update-settings.js").UpdatesSettings;
 }
 
 /**

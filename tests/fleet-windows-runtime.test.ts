@@ -10,6 +10,11 @@ import { FleetManager } from "../src/fleet-manager.js";
 import type { FleetConfig } from "../src/types.js";
 import type { WindowsCliBridge, WindowsCliTask, WindowsRunOptions } from "../src/windows-cli.js";
 import type { NativeTaskInput } from "../src/windows-cli-worker.js";
+import { randomUUID } from "node:crypto";
+import { RequestContextLocalTurns, type PreparedRequestContextInput, type RequestContextRuntimeOwner } from "../src/request-context-turns.js";
+import type { RequestContextV1 } from "../src/request-context-protocol.js";
+import { deliveryContentDigest } from "../src/delivery-outbox.js";
+import type { RequestContextCallLease } from "../src/request-context-call.js";
 import { SettingsExecution } from "../src/settings-transaction.js";
 import { authorizeExplicitInstanceRemoval } from "../src/instance-removal.js";
 
@@ -36,7 +41,7 @@ function fixture(openMcp?:FleetWindowsRuntimeHost["openMcp"]) {
   }},{store,bridge});
   const create=()=>runtime.create({name:"Windows helper",cli:"codex",sandbox:"read-only",instructions:"Use native tools",tags:["tools"]},()=>true);
   const settle=(key=id,change:Partial<WindowsCliTask>={})=>{active=false;const task={...tasks.get(key)!,status:"completed" as const,output:"native reply",threadId:thread,outcomeConfirmed:true,finishedAt:Date.now(),...change};tasks.set(key,task);callbacks.get(key)?.onSettled?.(task);return task;};
-  return {home,fleet,store,runtime,bridge,start,save,warn,removed,history,events,create,settle,stop:()=>{stopping=true;}};
+  return {home,fleet,store,runtime,bridge,start,save,warn,removed,history,events,create,settle,tasks,stop:()=>{stopping=true;}};
 }
 
 describe("Fleet Windows runtime adapter",()=>{
@@ -280,4 +285,90 @@ describe("Fleet native routing and durable lane",()=>{
     outbox.complete.mockClear();native.execute.mockImplementationOnce(async(_name:any,_payload:any,opts:any)=>{opts.beforeStart();return {status:"failed",output:"",error:"unknown",outcomeConfirmed:false};});
     await fm.dispatchDurableDelivery({...row,kind:"fleet_inbound"});expect(outbox.complete).toHaveBeenCalledWith(id,"manager-boot",1,"uncertain","unknown");expect(outbox.retryBeforeBegin).not.toHaveBeenCalled();
   });
+});
+
+describe("S-224 exec admitted-input capture", () => {
+  async function scoped(registration?:import("../src/request-context-fence.js").RequestContextRegistrationGate) {
+    const close = vi.fn(), connection = { endpoint: "http://127.0.0.1:19280/agent", token: "a".repeat(64), tools: ["task"] };
+    const open = vi.fn<FleetWindowsRuntimeHost["openMcp"] & Function>((_name, _id, _sandbox, _current, _scope) => ({ connection, close, reportedCorrelations: () => [] }));
+    const f = fixture(open), { name, agent } = await f.create();
+    const owner: RequestContextRuntimeOwner = { instance: name, incarnation: "native-generation", workGeneration: "exec-lane", daemonBootId: "coordinator-boot", spawnGeneration: 1, launchFenceEpoch: 0, deliveryEpoch: 0 };
+    const inputs = new Map<string, PreparedRequestContextInput>(), contexts = new Map<string, RequestContextV1>();
+    const turns = new RequestContextLocalTurns({ registration, input: key => inputs.get(key) ?? null, context: key => contexts.get(key) ?? null,
+      retain: value => { contexts.set(value.ref.contextId, value); }, canManage: () => true, recovery: () => null, saveRecovery: () => {} });
+    const prepare = (key: string, text = "Question") => { const root = randomUUID(); inputs.set(key, { inputId: key, wireSha256: deliveryContentDigest(text), owner,
+      proof: { kind: "independent" }, context: { ref: { version: 1, contextId: root, rootContextId: root }, rootEvidenceRef: "accepted-input", ingress: "guest",
+        initiatingActor: { kind: "person", platform: "discord", userId: "demo-person" }, source: { instance: name, incarnation: owner.incarnation },
+        sourceAudience: { kind: "web", ref: randomUUID() } } }); };
+    f.runtime.setRequestContextExecLifecycle(turns, () => owner);
+    return { ...f, name, agent, owner, turns, inputs, prepare, open, close };
+  }
+  it("resolves the admitted input at claim, preserves the captured grant across retry, and ends on confirmed completion", async () => {
+    const f = await scoped(); f.prepare("input-a");
+    await f.runtime.deliver(f.name, { requestId: id, content: "Question" }, { requestContextInputId: "input-a" });
+    const captured = f.open.mock.calls[0][4] as RequestContextCallLease;
+    expect(captured.snapshot.inputId).toBe("input-a"); expect(captured.current()).toBe(true);
+    await f.runtime.deliver(f.name, { requestId: id, content: "Question" }, { requestContextInputId: "not-a-new-input" });
+    expect(f.open).toHaveBeenCalledTimes(1); expect(captured.current()).toBe(true);
+    expect(JSON.stringify(f.store.get(f.agent.id))).not.toContain(captured.snapshot.token);
+    f.settle(); expect(captured.current()).toBe(false); expect(f.turns.current(f.owner)).toBeNull();
+  });
+  it("retires an unconfirmed exec binding only after durable recovery confirms its outcome, then admits independent B", async () => {
+    const f=await scoped(); f.prepare("a"); f.prepare("b");
+    await f.runtime.deliver(f.name,{requestId:id,content:"Question"},{requestContextInputId:"a"});
+    const a=f.turns.current(f.owner);
+    f.settle(id,{outcomeConfirmed:false});
+    expect(f.turns.current(f.owner)).toBe(a);
+    await expect(f.runtime.deliver(f.name,{requestId:thread,content:"Question"},{requestContextInputId:"b"})).rejects.toThrow(/must wait/);
+    f.tasks.set(id,{...f.tasks.get(id)!,outcomeConfirmed:true}); // Executor recovery, no second onSettled callback.
+    await f.runtime.deliver(f.name,{requestId:thread,content:"Question"},{requestContextInputId:"b"});
+    expect(f.turns.current(f.owner)?.inputId).toBe("b");
+    expect(f.open).toHaveBeenCalledTimes(2); f.settle(thread);
+  });
+  it("execute retires recovered confirmed A at claim without a prior status read, then accepts independent B", async () => {
+    const f=await scoped(); f.prepare("a"); f.prepare("b");
+    const first=f.runtime.execute(f.name,{requestId:id,content:"Question"},{requestContextInputId:"a"});
+    f.settle(id,{outcomeConfirmed:false}); await first;
+    const a=f.turns.current(f.owner); expect(a?.inputId).toBe("a");
+    await expect(f.runtime.execute(f.name,{requestId:thread,content:"Question"},{requestContextInputId:"b"})).rejects.toThrow(/must wait/);
+    expect(f.turns.current(f.owner)).toBe(a);
+    f.tasks.set(id,{...f.tasks.get(id)!,outcomeConfirmed:true});
+    const get=vi.spyOn(f.runtime,"get"),beforeStart=vi.fn(()=>expect(get).not.toHaveBeenCalled());
+    const next=f.runtime.execute(f.name,{requestId:thread,content:"Question"},{requestContextInputId:"b",beforeStart});
+    const accepted=next.then(()=>true,()=>false);
+    expect(f.turns.current(f.owner)?.inputId).toBe("b"); expect(beforeStart).toHaveBeenCalledOnce();
+    expect(f.start).toHaveBeenCalledTimes(2); f.settle(thread); expect(await accepted).toBe(true);
+  });
+  it("defers independent B before any old-grant close or journal write, without laundering A", async () => {
+    const f = await scoped(); f.prepare("a"); f.prepare("b");
+    await f.runtime.deliver(f.name, { requestId: id, content: "Question" }, { requestContextInputId: "a" });
+    const a = f.turns.current(f.owner); const beforeStart = vi.fn();
+    await expect(f.runtime.deliver(f.name, { requestId: thread, content: "Question" }, { requestContextInputId: "b", beforeStart })).rejects.toThrow(/must wait/);
+    expect(beforeStart).not.toHaveBeenCalled(); expect(f.close).not.toHaveBeenCalled(); expect(f.open).toHaveBeenCalledTimes(1);
+    expect(f.turns.current(f.owner)).toBe(a); expect(f.store.get(f.agent.id).turns).toHaveLength(1); f.settle();
+  });
+  it("also applies C eligibility when no native process owns the slot", async () => {
+    const f = await scoped(); f.prepare("outside"); f.prepare("independent");
+    const prior = f.turns.beforeWrite("outside", deliveryContentDigest("Question"), f.owner);
+    await expect(f.runtime.deliver(f.name, { requestId: id, content: "Question" }, { requestContextInputId: "independent" })).rejects.toThrow(/must wait/);
+    expect(f.turns.current(f.owner)).toBe(prior); expect(f.open).not.toHaveBeenCalled(); expect(f.start).not.toHaveBeenCalled();
+  });
+  it("rejects missing or changed admitted input before launch, and a failed claim doesn't leave a phantom turn", async () => {
+    const f = await scoped(); f.prepare("a");
+    await expect(f.runtime.deliver(f.name, { requestId: id, content: "Question", requestContextInputId: "a" })).rejects.toThrow(/no trustworthy parent/);
+    await expect(f.runtime.deliver(f.name, { requestId: id, content: "different" }, { requestContextInputId: "a" })).rejects.toThrow(/admitted input unavailable/);
+    expect(f.start).not.toHaveBeenCalled(); expect(f.open).not.toHaveBeenCalled();
+    await expect(f.runtime.deliver(f.name, { requestId: id, content: "Question" }, { requestContextInputId: "a", beforeStart: () => { throw Error("claim revoked"); } })).rejects.toThrow("claim revoked");
+    expect(f.turns.current(f.owner)).toBeNull(); expect(f.open).not.toHaveBeenCalled();
+  });
+  it("S-226 unconfirmed exec remains a drain reference until actual recovery confirmation",async()=>{
+    const registration={assertRegistration:vi.fn()},f=await scoped(registration);f.prepare("a");
+    await f.runtime.deliver(f.name,{requestId:id,content:"Question"},{requestContextInputId:"a"});const root=f.inputs.get("a")!.context!.ref.rootContextId;
+    expect(f.runtime.drainView(root).references).toHaveLength(1);
+    f.settle(id,{status:"failed",outcomeConfirmed:false});
+    f.runtime.get(f.name);expect(f.runtime.drainView(root).references).toHaveLength(1);
+    f.tasks.set(id,{...(f.tasks.get(id)!),status:"completed",outcomeConfirmed:true});
+    f.runtime.get(f.name);expect(f.runtime.drainView(root).references).toEqual([]);
+  });
+
 });

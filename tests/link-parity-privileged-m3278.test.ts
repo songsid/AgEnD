@@ -3,8 +3,13 @@
  * on the local dashboard are on the public link's route list too. Each handler still admits an admin session only (guests
  * and read sessions are refused there, as before); the technical limits stay — the live stream only on the fixed link (part 5).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
+// M-3770: the update check also refreshes the pre-flight (#4480 §4); its probes are stubbed here (no npm or systemctl runs).
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }], Date.now())) };
+});
 
 const HEX = "0123456789abcdef0123456789abcdef";
 const UUID = "01234567-89ab-cdef-0123-456789abcdef";
@@ -13,7 +18,7 @@ describe("M-3278 4/5: the public link routes each lifted group", () => {
     // the app icon
     ["GET", "/ui/app-icon"], ["PUT", "/ui/app-icon"], ["DELETE", "/ui/app-icon"],
     // AgEnD's own web update
-    ["GET", "/ui/update"], ["POST", "/ui/update/check"], ["POST", "/ui/update/start"], ["GET", "/ui/update/log"],
+    ["GET", "/ui/update"], ["POST", "/ui/update/check"], ["POST", "/ui/update/start"], ["POST", "/ui/update/answer"], ["GET", "/ui/update/log"],
     // owner CSS
     ["GET", "/ui/owner-css.css"], ["GET", "/ui/owner-css/state"], ["GET", `/ui/owner-css/asset/${HEX}`], ["POST", "/ui/owner-css"], ["POST", "/ui/owner-css/restore"],
     // mods

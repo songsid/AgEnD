@@ -1,3 +1,5 @@
+import {requireRequestContextPolicy,type RequestContextPolicyPort} from "./request-context-policy.js";
+import { RequestContextReferenceMap } from "./request-context-fence.js";
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { managedClaudeBinding } from "./claude-credential-launch.js";
 import { HUB_REPORT_TARGET } from "./hub-report-target.js";
@@ -67,6 +69,8 @@ import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
+import type { RequestContextLocalTurns, RequestContextRuntimeOwner, RequestContextTurnSnapshot } from "./request-context-turns.js";
+import { captureRequestContextCall, type RequestContextLocalCall } from "./request-context-call.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, InputBox, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog, SteerComposerMode } from "./backend/types.js";
 import { shellQuote, KiroCompatibilityError, UnsupportedCliError, ResumeBlockedError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
@@ -126,7 +130,8 @@ import {
 import type { TurnFingerprint } from "./backend/session-signals.js";
 import { codexLiveRowMatches } from "./backend/codex.js";
 import { codexPackageProblemMessage } from "./backend/codex-package.js";
-import { claudeConfigDirFor, claudeProfileConfigDir, claudeProjectKey, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
+import { claudeConfigDirFor, claudeJsonPath, claudeProfileConfigDir, claudeProjectKey, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
+import { checkClaudeMcpAtLaunch, dismissClaudeMcpMissing, type McpMissing } from "./backend/claude-mcp-carry.js";
 import { MuseBackend } from "./backend/muse.js";
 import { BACKEND_LABELS, InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt.js";
@@ -2298,6 +2303,41 @@ export class Daemon extends EventEmitter {
   private usageLimitErrorSeq = 0;
   static readonly MODEL_USAGE_LIMIT = CLAUDE_MODEL_USAGE_LIMIT;
 
+  /** M-3749: the MCP servers missing since a profile switch — Needs you lists them until they are back or dismissed. */
+  private mcpMissingState: McpMissing | null = null;
+  mcpMissing(): McpMissing | null {
+    return this.mcpMissingState ? { ...this.mcpMissingState, names: [...this.mcpMissingState.names] } : null;
+  }
+
+  /** M-3749: a person dismissed the missing-MCP list (Needs you → Acknowledge). false: nothing was outstanding. */
+  dismissMcpMissing(): boolean {
+    dismissClaudeMcpMissing(this.instanceDir);
+    if (!this.mcpMissingState) return false;
+    this.mcpMissingState = null;
+    this.emit("mcp_missing", { name: this.name, missing: null });
+    return true;
+  }
+
+  /**
+   * M-3749: at each Claude launch, the user/local-scope MCP servers it had before a credential-profile switch and does not
+   * have now (outstanding until back or dismissed). Never fails a launch; names only, never an entry.
+   */
+  private checkClaudeMcpServers(backendConfig: CliBackendConfig): void {
+    const before = this.mcpMissingState;
+    this.mcpMissingState = null;
+    if ((this.config.backend ?? "claude-code") === "claude-code") {
+      try {
+        const profileDir = claudeProfileConfigDir(backendConfig.backendOptions);
+        this.mcpMissingState = checkClaudeMcpAtLaunch({ instanceDir: this.instanceDir, configDir: claudeConfigDirFor(profileDir),
+          jsonPath: claudeJsonPath(profileDir), workingDirectory: this.config.working_directory });
+      } catch (err) {
+        this.logger.debug({ err }, "MCP server check at launch skipped");
+      }
+    }
+    if (this.mcpMissingState) this.logger.warn({ missing: this.mcpMissingState.names }, "MCP servers from the previous credential profile are not in this one");
+    if (before || this.mcpMissingState) this.emit("mcp_missing", { name: this.name, missing: this.mcpMissing() });
+  }
+
   /** #2822: the usage-limit hold, while it lasts — Needs you lists it. */
   usageHold(): { model: string; since: number } | null {
     return this.usageLimitHold ? { ...this.usageLimitHold } : null;
@@ -2616,9 +2656,102 @@ export class Daemon extends EventEmitter {
       ? { state: "restart-required", backend, reason: "not-running" } : status);
   }
 
+  /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
+  private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string } };
+  private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean };
+  requestContextPolicy?:RequestContextPolicyPort;
+  bindRequestContextPolicy(policy:RequestContextPolicyPort):void {if(this.requestContextPolicy||!this.requestContextLifecycle)throw Error("request-context policy requires its owned turn binding");this.requestContextPolicy=policy;}
+  private readonly requestContextCalls = new RequestContextReferenceMap<string, RequestContextLocalCall>(call=>call.admission.coverage==="covered"?call.admission.lease.snapshot.context.ref.rootContextId:null,call=>`local-call:${call.id}`);
+  private requestContextInterruptedLaunch: string | undefined;
+  private requestContextLaunch(): string { return JSON.stringify([this.bootId, this.spawnGeneration, this.nativePaneLifecycle?.snapshot?.()?.launchId ?? null]); }
+  /** First local owned hop only. No lookup at a later Fleet receipt may retag this call. */
+  private beginRequestContextCall(socket?: import("node:net").Socket): RequestContextLocalCall | undefined {
+    if (!this.requestContextLifecycle) return;
+    if (this.requestContextCalls.size >= 128) throw Error("Request context call admission backlog");
+    const launch = this.requestContextLaunch();
+    const snapshot = socket && this.socketSessionNames.get(socket) === this.name ? this.requestContextTurnSnapshot() : null;
+    const reason: "interrupted-launch" | "unbound-input" = this.requestContextInterruptedLaunch === launch ? "interrupted-launch" : "unbound-input";
+    const admission = snapshot && reason !== "interrupted-launch"
+      ? { coverage: "covered" as const, lease: captureRequestContextCall(snapshot, captured => this.requestContextTurnCurrent(captured)) }
+      : { coverage: "not-covered" as const, reason };
+    const call: RequestContextLocalCall = Object.freeze({ id: randomUUID(), admission: Object.freeze(admission),
+      current: () => !this.deliveryWritesStopping && this.requestContextLaunch() === launch
+        && (admission.coverage !== "covered" || admission.lease.current()) });
+    this.requestContextCalls.set(call.id, call); return call;
+  }
+  /** Internal Fleet accessor, paired with the current daemon/IPC connection; returns original scope or nothing. */
+  requestContextCall(callId: string): RequestContextLocalCall | null {
+    const call = this.requestContextCalls.get(callId);
+    return call?.current() ? call : null;
+  }
+  requestContextCallsRequired(): boolean { return this.requestContextLifecycle !== undefined; }
+  get requestContextCallDrainRevision():string{return this.requestContextCalls.revision;}
+  requestContextCallDrainView(rootId:string){return this.requestContextCalls.view(rootId);}
+  requestContextTurnDrainView(rootId:string){return this.requestContextLifecycle?.turns.drainView(rootId)??null;}
+  get requestContextTurnDrainRevision():string{return this.requestContextLifecycle?.turns.drainRevision??"unavailable";}
+
+  private handleOwnedToolCall(message: Record<string, unknown>, socket: import("node:net").Socket): void {
+    let call: RequestContextLocalCall | undefined;
+    try { call = this.beginRequestContextCall(socket); this.handleToolCall(message, socket, undefined, call); }
+    catch {
+      if (call) this.requestContextCalls.delete(call.id);
+      this.ipcServer?.send(socket, { requestId: message.requestId, result: null, error: "Request context call admission is unavailable" });
+    }
+  }
+  setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }): void {
+    if (this.tmux || this.ipcServer || this.requestContextLifecycle || this.nativePaneLifecycle && !this.nativePaneLifecycle.requestContextAvailable?.()) throw Error("Request context must be bound before a supported daemon startup");
+    this.requestContextCalls.installRegistration(turns.registrationGate??undefined);
+    this.requestContextLifecycle = { turns, identity };
+  }
+  private requestContextOwner(): RequestContextRuntimeOwner | null {
+    const lifecycle = this.requestContextLifecycle;
+    return lifecycle ? { ...lifecycle.identity(), instance: this.name, daemonBootId: this.bootId,
+      spawnGeneration: this.spawnGeneration, launchFenceEpoch: this.launchFenceEpoch, deliveryEpoch: this.deliveryEpoch } : null;
+  }
+  requestContextTurnSnapshot(): RequestContextTurnSnapshot | null {
+    const owner = this.requestContextOwner();
+    return owner ? this.requestContextLifecycle!.turns.current(owner) : null;
+  }
+  requestContextTurnCurrent(snapshot: RequestContextTurnSnapshot): boolean {
+    const owner = this.requestContextOwner();
+    return !!owner && this.requestContextLifecycle!.turns.isCurrent(snapshot, owner);
+  }
+  private bindRequestContextWrite(inputId: string | null, text: string, queued: boolean,
+    recovery?: { inputId: string; parent: RequestContextTurnSnapshot; current: () => boolean }): void {
+    const owner = this.requestContextOwner(); if (!owner) return;
+    // Ordinary queues are never evidence of consumption. Only a proven steer can join the EXISTING turn.
+    if (queued && recovery) throw Error("request-context queued input consumption is not covered yet");
+    if (recovery && !recovery.current()) throw Error("request-context recovery job is no longer current");
+    const previous = this.requestContextTurnSnapshot();
+    const snapshot = queued ? this.requestContextLifecycle!.turns.beforeQueuedSteer(inputId, deliveryContentDigest(text), owner)
+      : recovery ? this.requestContextLifecycle!.turns.beforeRecoveryWrite(recovery.inputId, deliveryContentDigest(text), owner, recovery.parent)
+      : this.requestContextLifecycle!.turns.beforeWrite(inputId, deliveryContentDigest(text), owner);
+    try { this.nativePaneLifecycle?.stageRequestContext?.(snapshot, deliveryContentDigest(text), () => this.requestContextTurnCurrent(snapshot), this.requestContextInterruptedLaunch === this.requestContextLaunch()); }
+    catch (error) { if (snapshot !== previous) this.requestContextLifecycle!.turns.ended(snapshot, owner); throw error; }
+    if (this.requestContextWrite?.snapshot.token !== snapshot.token) {
+      const id = snapshot.inputId;
+      const humanId = id.startsWith("human:") ? id.slice(6) : null;
+      const deliveryId = /^delivery:([^:]+):[0-9]+$/.exec(id)?.[1];
+      const endAnchor = !!humanId && /^[A-Za-z0-9_-]+$/.test(humanId) && text.split("\n").some(line =>
+        line.startsWith(`[hid:${humanId}]`) || line.startsWith(`[agend-human-id:${humanId}]`))
+        || !!deliveryId && text.startsWith(`[agend-delivery-id:${deliveryId}]\n`)
+        || /^[A-Za-z0-9:_-]+$/.test(id) && text.startsWith(`[agend-request-input:${id}]\n`);
+      this.requestContextWrite = { snapshot, text, at: Date.now(), ledger: new TranscriptTurnLedger(), endAnchor };
+    }
+  }
+  private settleRequestContextFromTranscript(): void {
+    const write = this.requestContextWrite, owner = this.requestContextOwner();
+    if (!write || !write.endAnchor || !owner || !this.requestContextLifecycle!.turns.isCurrent(write.snapshot, owner)) return;
+    const verdict = write.ledger.verdict(write.text, write.at);
+    if (verdict === "ended" || verdict === "aborted" || verdict === "error") {
+      if (verdict !== "ended") this.requestContextInterruptedLaunch = this.requestContextLaunch();
+      this.requestContextLifecycle!.turns.ended(write.snapshot, owner); this.requestContextWrite = undefined;
+    }
+  }
+
   /** Internal lifecycle injection, before start. Native paths and provider files stay on their runner. */
   setNativePaneLifecycle(native: NativePaneLifecycle): void {
-    if (this.tmux || this.ipcServer || this.nativePaneLifecycle) throw Error("Native pane adapter must be bound before daemon startup");
+    if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle && !native.requestContextAvailable?.()) throw Error("Native pane adapter must be bound before daemon startup with a supported request-context producer");
     this.nativePaneLifecycle = native; this.backend = native.backend; this.paneTransport = native.host; this.controlClient = native.observation;
   }
 
@@ -2745,6 +2878,8 @@ export class Daemon extends EventEmitter {
     if (this.deliveryWritesStopping) return;
     this.deliveryWritesStopping = true;
     this.deliveryEpoch++;
+    this.requestContextLifecycle?.turns.fence();
+    this.requestContextCalls.clear();
   }
 
   /** Bounded drain: timeout remains safe because Enter has a write-ahead fence. */
@@ -3457,7 +3592,7 @@ export class Daemon extends EventEmitter {
     this.ipcServer.on("message", (msg: Record<string, unknown>, socket: import("node:net").Socket) => {
       if (msg.type === "tool_call") {
         // MCP server forwarding a Claude tool call (reply, react, edit, download)
-        this.handleToolCall(msg, socket);
+        this.handleOwnedToolCall(msg, socket);
       } else if (msg.type === "mcp_ready") {
         this.handleMcpReady(msg, socket);
       } else if (msg.type === "pong") {
@@ -5281,7 +5416,7 @@ export class Daemon extends EventEmitter {
       // does on Linux's tmux pane, on the same screen, with the same key.
       const screen = await tmux.capturePane().catch(() => null);
       if (screen === null) return;
-      await tmux.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c", undefined, { kind: "dialog", screen });
+      await tmux.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c", undefined, { kind: "dialog", screen, cancelTurn: true });
       return;
     }
     await tmux.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c");
@@ -6219,6 +6354,7 @@ export class Daemon extends EventEmitter {
   }
 
   private workingTurnDelivery: { generation: number; deliveryId: string | null } | null = null;
+  private workingTurnRequestContext: { generation: number; snapshot: RequestContextTurnSnapshot } | null = null;
   private workingBackgroundObservation: boolean | null = null;
 
   /** Pure metadata read: never discovers sessions, captures a pane or reads backend files. */
@@ -6930,6 +7066,8 @@ export class Daemon extends EventEmitter {
     }, this.pendingWork.lastInboundTimestamp());
     const armed = this.turnReplyGuard.snapshot()!;
     this.workingTurnDelivery = { generation: armed.generation, deliveryId: meta.delivery_id || null };
+    const requestContext = this.requestContextTurnSnapshot();
+    this.workingTurnRequestContext = requestContext ? { generation: armed.generation, snapshot: requestContext } : null;
     this.publishWorkingState("turn_started");
     // #1209: persist the in-flight turn with a seam checkpoint. A marker
     // that survives a restart is an interrupted turn by construction —
@@ -7482,6 +7620,10 @@ export class Daemon extends EventEmitter {
     const touch = () => { this.transcriptActivityAt = performance.now(); };
     monitor.on("turns", (turns: TranscriptTurnEvent[]) => {
       this.transcriptTurns.observe(turns, performance.now()); touch();
+      if (this.transcriptMonitor === monitor && owner === launchIdentity(this.interactionOwner())) {
+        this.requestContextWrite?.ledger.observe(turns, performance.now());
+        this.settleRequestContextFromTranscript();
+      }
     });
     // #3160: the files this turn reads, edits and searches, for the Files & changes panel's Follow (a few string checks;
     // nothing is read from disk until someone asks). Claude's turn boundary is its next prompt.
@@ -7591,6 +7733,8 @@ export class Daemon extends EventEmitter {
 
   private queueReplyRecoveryPrompt(turn: TurnReplySnapshot): void {
     const deliveryEpoch = this.deliveryEpoch;
+    const parent = this.workingTurnRequestContext?.generation === turn.generation ? this.workingTurnRequestContext.snapshot : null;
+    const recoveryInputId = `reply-recovery:${this.bootId}:${turn.generation}:${deliveryEpoch}`;
     this.pasteQueueDepth++;
     this.pasteLock = this.pasteLock.then(async () => {
       try {
@@ -7605,8 +7749,11 @@ export class Daemon extends EventEmitter {
           });
           return;
         }
-        const delivered = await this.deliverMessage(REPLY_RECOVERY_PROMPT, undefined, {
+        const recoveryText = parent && this.requestContextLifecycle ? `[agend-request-input:${recoveryInputId}]\n${REPLY_RECOVERY_PROMPT}` : REPLY_RECOVERY_PROMPT;
+        const delivered = await this.deliverMessage(recoveryText, undefined, {
           deliveryEpoch,
+          ...(parent ? { requestContextRecovery: { inputId: recoveryInputId, parent,
+            current: () => !!this.currentReplyRecovery(turn.generation, deliveryEpoch) } } : {}),
         });
         if (!this.currentReplyRecovery(turn.generation, deliveryEpoch)) return;
         if (!delivered) {
@@ -9112,6 +9259,9 @@ export class Daemon extends EventEmitter {
       hubQuestion?: string;
       /** M-3660: false when the share opted out of the contact limit (the fleet's meta hub_contact_limit=off). */
       hubContactLimit?: boolean;
+      /** Server-owned registered recovery/input key only; never derived from the text or correlation. */
+      requestContextInputId?: string;
+      requestContextRecovery?: { inputId: string; parent: RequestContextTurnSnapshot; current: () => boolean };
       /** Board 003648ac: just before each paste of this message (after every wait and fence), synchronously. */
       beforePaneWrite?: () => void;
       /**
@@ -9167,7 +9317,7 @@ export class Daemon extends EventEmitter {
     // M-3660: a Hub question is never handed into a running turn (Claude would merge it into that turn's work), and while
     // a Hub answer turn runs, nothing else is handed into it: each waits for the idle pane and becomes a turn of its own.
     const exclusiveTurn = opts?.hubQuestion !== undefined || this.hubAnswerTurnMayRun();
-    const handOffEligible = !exclusiveTurn && !!(supportsQueuedInput || opts?.steer || composerQueue);
+    const handOffEligible = !exclusiveTurn && (!this.requestContextLifecycle || opts?.steer === true) && !!(supportsQueuedInput || opts?.steer || composerQueue);
     const handOffAdmissible = async (): Promise<boolean> => (await this.probeBlockingDialog()).state === "clear"
       && await this.hasPositiveDeliveryInput(true)
       && ((!opts?.steer && !composerQueue) || (this.launchTakesSteer() && await this.steerComposerAdmits(false, opts?.steer === true)));
@@ -9330,6 +9480,7 @@ export class Daemon extends EventEmitter {
         const residue = await this.clearRestoredInputDraft(handingOffToNativeQueue, writeCurrent);
         if (residue === "stale") return stale();
         if (residue !== "clear") return this.failDelivery(verdict, status, "input-residue", residue);
+        let newlyBound: RequestContextTurnSnapshot | null = null;
         const written = await this.writeMessageToPane(
           formatted,
           windowId,
@@ -9342,10 +9493,24 @@ export class Daemon extends EventEmitter {
           writeCurrent,
           opts?.humanVerificationId,
           // M-3660: written into an idle pane, so whatever Hub answer turn ran is over; a Hub question begins its own.
-          () => { if (!handingOffToNativeQueue) this.hubAnswerTurnBegins(opts?.hubQuestion, opts?.hubContactLimit !== false); opts?.beforePaneWrite?.(); },
+          (wireText) => {
+            const receiptId = opts?.humanMeta?.verification_id ?? opts?.humanVerificationId;
+            const inputId = opts?.requestContextInputId ?? (receiptId ? `human:${receiptId}` : opts?.durableAttempt
+              ? `delivery:${opts.durableAttempt.deliveryId}:${opts.durableAttempt.attemptNo}` : null);
+            const prior = this.requestContextTurnSnapshot();
+            this.bindRequestContextWrite(inputId, wireText, handingOffToNativeQueue, opts?.requestContextRecovery);
+            const after = this.requestContextTurnSnapshot();
+            if (after && after !== prior) newlyBound = after;
+            if (!handingOffToNativeQueue) this.hubAnswerTurnBegins(opts?.hubQuestion, opts?.hubContactLimit !== false);
+            opts?.beforePaneWrite?.();
+          },
           opts?.lookBeforePaneWrite,
           opts?.humanMeta,
         );
+        if (written === false && newlyBound && this.nativePaneLifecycle?.lastInputWasNotSent?.()) {
+          const owner = this.requestContextOwner();
+          if (owner && this.requestContextLifecycle!.turns.ended(newlyBound, owner)) this.requestContextWrite = undefined;
+        }
         // #1690: still under the lock — whatever waits on it next must already see what this write started.
         if (verdict.paneWriteStarted) opts?.onPaneWritten?.();
         // The hand-off's last capture had no box: nothing was begun or written — wait for readiness, then try again.
@@ -11299,7 +11464,7 @@ export class Daemon extends EventEmitter {
     stillCurrent?: () => boolean,
     humanVerificationId?: string,
     // Board 003648ac: called synchronously right before each paste — after the last await and fence of that attempt.
-    beforePaste?: () => void,
+    beforePaste?: (wireText: string) => void,
     // Board 907c7899: awaited each attempt after its last capture, begin and fence; the fence is asked again after it.
     lookBeforePaste?: () => Promise<void>,
     humanMeta?: Record<string, string>,
@@ -11505,7 +11670,7 @@ export class Daemon extends EventEmitter {
         if (mode === "held") return this.failDelivery(verdict, status, "paste", "pane-in-tmux-mode");
       }
       const pasteGeneration = this.spawnGeneration;
-      beforePaste?.();
+      beforePaste?.(formatted);
       const pasted = await this.sendDeliveryPaste(formatted, nativeOwner);
       if (!pasted && this.nativePaneLifecycle) {
         // The native write attempt is retained as uncertain, including exhausted positive refusals. Never route an
@@ -12729,18 +12894,20 @@ export class Daemon extends EventEmitter {
    * Routes to the channel adapter via MessageBus.
    */
   /** Internal native-MCP admission. The pane/machine/launch owner supplies a current, dynamically checked tool lease. */
-  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined }): Promise<{ result: unknown; error?: string; errorCode?: string | number }> {
+  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined; requestContext?: import("./request-context-call.js").RequestContextCallAdmission }): Promise<{ result: unknown; error?: string; errorCode?: string | number }> {
     const refusal = nativePaneToolRefusal(input.tool, input.args);
     if (refusal) return Promise.resolve({ result: null, error: refusal });
     if (!lease.current() || !lease.allowed(input.tool, input.args) || this.deliveryWritesStopping) return Promise.resolve({ result: null, error: "Pane tool permission is no longer current" });
     const fence = this.launchFenceEpoch;
     const current = (): boolean => lease.current() && lease.allowed(input.tool, input.args) && !this.deliveryWritesStopping && fence === this.launchFenceEpoch;
     return new Promise(resolve => {
-      let settled = false;
-      const finish = (value: { result: unknown; error?: string; errorCode?: string | number }): void => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
+      let settled = false; let call: RequestContextLocalCall | undefined;
+      const finish = (value: { result: unknown; error?: string; errorCode?: string | number }): void => { if (settled) return; settled = true; if (call) this.requestContextCalls.delete(call.id); clearTimeout(timer); resolve(value); };
       const timer = setTimeout(() => finish({ result: null, error: "Pane tool result is unconfirmed; inspect its operation before retrying" }), daemonBudgetMs(input.tool) + 1000);
       timer.unref?.();
       try {
+        call = lease.requestContext ? Object.freeze({ id: randomUUID(), admission: lease.requestContext, current }) : undefined;
+        if (call) this.requestContextCalls.set(call.id, call);
         this.handleToolCall({ ...input, requestId: ++this.fleetRequestSeq }, undefined, {
           current,
           dispatch: (tool, args, respond) => {
@@ -12753,7 +12920,7 @@ export class Daemon extends EventEmitter {
           // Resolving the relay is not proof that its HTTP response reached the provider. No response-written receipt yet.
           send: value => { finish({ result: value.result, ...(typeof value.error === "string" ? { error: value.error } : {}),
             ...(typeof value.errorCode === "string" || typeof value.errorCode === "number" ? { errorCode: value.errorCode } : {}) }); return false; },
-        });
+        }, call);
       } catch { finish({ result: null, error: "Pane tool operation failed" }); }
     });
   }
@@ -12764,7 +12931,7 @@ export class Daemon extends EventEmitter {
     this.emit("mcp_tool_response_written", { operationId, daemonBootId: this.bootId });
   }
 
-  private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }): void {
+  private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }, originatingCall?: RequestContextLocalCall): void {
     const tool = msg.tool as string;
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number;
@@ -12789,6 +12956,8 @@ export class Daemon extends EventEmitter {
 
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
     const respond = (result: unknown, error?: string, errorCode?: string | number) => {
+      if (originatingCall && !originatingCall.current()) { result = null; error = `Tool outcome is unconfirmed. ${operationId ? `Inspect operation ${operationId}` : "Inspect the tool operation status"}; do not repeat it.`; }
+      if (originatingCall) this.requestContextCalls.delete(originatingCall.id);
       // A message that verifiably went out stands down the dead-MCP proxy reply
       // for this turn: the agent proved it can still speak for itself.
       if (!error && result != null && TURN_OUTBOUND_TOOLS.has(tool)) {
@@ -12838,6 +13007,25 @@ export class Daemon extends EventEmitter {
       }
     };
 
+    const sendFleet = (message: Record<string, unknown>): void => {
+      if (originatingCall && !originatingCall.current()) {
+        const id = String(message.fleetRequestId ?? ""), callback = this.pendingIpcRequests.get(id);
+        this.pendingIpcRequests.delete(id);
+        if (callback) callback({ error: "Originating request context is no longer current" });
+        else respond(null, "Originating request context is no longer current");
+        return;
+      }
+      this.broadcastFleetMessage(originatingCall ? { ...message, requestContextCallId: originatingCall.id, sourceDaemonBootId: this.bootId } : message);
+    };
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,this.name,tool,args,originatingCall?.admission);}catch(error){respond(null,(error as Error).message);return;}
+    if (this.requestContextLifecycle && !peer && !originatingCall || originatingCall && !originatingCall.current()) {
+      respond(null, "Originating request context is unavailable"); return;
+    }
+    // These local shell mutations have no scoped admission boundary yet (F); never imply coverage.
+    if (originatingCall && (tool === "checkout_repo" || tool === "release_repo")) {
+      respond(null, "This operation is not covered by request-context admission"); return;
+    }
+
     // Native Fleet/task operations carry their lease to the existing dispatcher mutation admission points.
     if (peer?.dispatch?.(tool, args, respond)) return;
 
@@ -12870,7 +13058,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.broadcastFleetMessage({
+      sendFleet({
         type,
         payload: args,
         meta: { instance_name: this.name },
@@ -12896,7 +13084,7 @@ export class Daemon extends EventEmitter {
           clearTimeout(timeout);
           resolve({ result: respMsg.result, error: respMsg.error as string | undefined });
         });
-        this.broadcastFleetMessage({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
+        sendFleet({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
       });
       void (async () => {
         if (tool === "preview_web_appearance") {
@@ -12952,7 +13140,7 @@ export class Daemon extends EventEmitter {
           clearTimeout(timeout);
           resolve({ result: respMsg.result, error: respMsg.error as string | undefined });
         });
-        this.broadcastFleetMessage({
+        sendFleet({
           type: "fleet_task",
           payload,
           meta: { instance_name: this.name },
@@ -12983,7 +13171,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.broadcastFleetMessage({
+      sendFleet({
         type: typeMap[tool],
         payload: args,
         meta: { instance_name: this.name, working_directory: this.config.working_directory },
@@ -13013,7 +13201,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.broadcastFleetMessage({
+      sendFleet({
         type: typeMap[tool],
         payload: args,
         meta: {
@@ -13045,7 +13233,7 @@ export class Daemon extends EventEmitter {
           clearTimeout(timeout);
           respond(respMsg.result, respMsg.error as string | undefined);
         });
-        this.broadcastFleetMessage({
+        sendFleet({
           type: "fleet_outbound",
           tool,
           args,
@@ -13104,7 +13292,7 @@ export class Daemon extends EventEmitter {
       // Register the waiter before broadcasting. A fast/mock adapter can settle
       // immediately; broadcasting first left a response-before-registration
       // window that degraded into a timeout despite a completed POST.
-      this.broadcastFleetMessage({
+      sendFleet({
         type: "fleet_outbound",
         tool,
         args,
@@ -14529,6 +14717,7 @@ export class Daemon extends EventEmitter {
     if (freshInboundInstructions) this.installCompactInboundInstructions();
     else { this.compactInboundInstructions = false; this.inboundCompatibilityPending = true; this.resetInboundPresentation(); }
     this.backend!.preTrust?.(this.config.working_directory, backendConfig);
+    this.checkClaudeMcpServers(backendConfig);
 
     // Resolve working directory (e.g. symlink for hidden paths)
     const resolvedCwd = this.backend!.resolveWorkingDirectory?.(this.config.working_directory, this.name) ?? this.config.working_directory;

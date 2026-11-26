@@ -109,11 +109,11 @@ describe("the page", () => {
     expect(cards.map((c: any) => text(c.querySelector("p.note")))).toEqual(["An individual agent can override these", "One value for the whole fleet — an agent can't change it",
       "An individual agent can override these", "One value for the whole fleet — an agent can't change it, except the hang detector, which an agent can also set for itself"]);
     const drawer = $("details.drawer");
-    expect(text(drawer.querySelector("summary"))).toBe("Advanced (12)");
+    expect(text(drawer.querySelector("summary"))).toBe("Advanced (13)");
     // The first two cards are the main view, the last two are in the drawer.
     expect(cards.map((c: any) => !!c.closest("details"))).toEqual([false, false, true, true]);
-    expect(cards.map((c: any) => c.querySelectorAll(".field").length)).toEqual([4, 3, 7, 5]);
-    expect(drawer.querySelectorAll(".field").length).toBe(12);
+    expect(cards.map((c: any) => c.querySelectorAll(".field").length)).toEqual([4, 3, 7, 6]);   // M-3668: + when finished cards are archived
+    expect(drawer.querySelectorAll(".field").length).toBe(13);
     expect(text($(".s-back-here") ?? $(".s-nav .active"))).toContain("Shared agent settings");
   });
 
@@ -626,7 +626,7 @@ describe("the words", () => {
     await open();
     expect(text($(".s-page-lead"))).toBe("設定會套用到所有未自行設定的 Agent，包括之後新增的。");
     expect(p.root.querySelectorAll(".s-shared .s-group").map((c: any) => text(c.querySelector("h3")))).toEqual(["Agent 共用設定", "系統與頻道", "Agent 共用設定", "系統與頻道"]);
-    expect(text($("details.drawer summary"))).toBe("進階設定（12 項）");
+    expect(text($("details.drawer summary"))).toBe("進階設定（13 項）");
     expect(p.root.querySelectorAll(".s-shared .s-group").map((c: any) => text(c.querySelector("p.note")))).toEqual(["個別 Agent 可以自己改掉", "整個 Fleet 一起，不能個別改",
       "個別 Agent 可以自己改掉", "整個 Fleet 一起，不能個別改；只有卡住偵測可以另外在個別 Agent 設定"]);
     expect(pill("g-dash")).toBe("6/6 套用中 · ops 部分自訂");

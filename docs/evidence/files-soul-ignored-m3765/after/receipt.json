@@ -1,0 +1,887 @@
+{
+  "sourceHead": "ac5c1379ba4e70038bb6ebff974a13d056d41652",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "link-desk-light-en: on the public link",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: soul.md listed, marked ignored by git",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: the toggle is there, off",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: folders show a collapsed (right-pointing) chevron",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: soul.md opens",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: with the toggle, node_modules, dist and debug.log listed and marked",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: .env listed, still hidden (not openable)",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: tracked files unmarked",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "link-desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: on the public link",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: soul.md listed, marked ignored by git",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: the toggle is there, off",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: the toggle is a 44 px row",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: folders show a collapsed (right-pointing) chevron",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: soul.md opens",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: with the toggle, node_modules, dist and debug.log listed and marked",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: .env listed, still hidden (not openable)",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: tracked files unmarked",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "link-phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: soul.md listed, marked ignored by git",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the toggle is there, off",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: folders show a collapsed (right-pointing) chevron",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: soul.md opens",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: with the toggle, node_modules, dist and debug.log listed and marked",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: .env listed, still hidden (not openable)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: tracked files unmarked",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: soul.md listed, marked ignored by git",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the toggle is there, off",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: folders show a collapsed (right-pointing) chevron",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: soul.md opens",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: with the toggle, node_modules, dist and debug.log listed and marked",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: .env listed, still hidden (not openable)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: tracked files unmarked",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: soul.md listed, marked ignored by git",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: the toggle is there, off",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: the toggle is a 44 px row",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: folders show a collapsed (right-pointing) chevron",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: soul.md opens",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: with the toggle, node_modules, dist and debug.log listed and marked",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: .env listed, still hidden (not openable)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: tracked files unmarked",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: soul.md listed, marked ignored by git",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: the other ignored entries are not listed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: the toggle is there, off",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: the toggle is a 44 px row",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: folders show a collapsed (right-pointing) chevron",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: soul.md opens",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: with the toggle, node_modules, dist and debug.log listed and marked",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: .env listed, still hidden (not openable)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: tracked files unmarked",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3765-link-desk-light-en-1-top.png",
+      "sha256": "293fd70c8e6f8afc6c3cbdd7ad617c729f429de85a6780303c394904f9cda48f"
+    },
+    {
+      "path": "m3765-link-desk-light-en-2-soul.png",
+      "sha256": "86f6b8107a347c43f6470af9ebf224fafffcb3c6e60756137ad64574601be826"
+    },
+    {
+      "path": "m3765-link-desk-light-en-3-ignored.png",
+      "sha256": "622edff64dd4e1ee0be4908deb74118c35e9796e430195e9ea72122202c4a81d"
+    },
+    {
+      "path": "m3765-link-phone-dark-zh-TW-1-top.png",
+      "sha256": "87f8a135e2966427766465c0a7c10e9c857e55a2e8b5430d9b5440523c224eea"
+    },
+    {
+      "path": "m3765-link-phone-dark-zh-TW-2-soul.png",
+      "sha256": "789bddbe6922894ad08a9737faf4b64b57f6b9b7a4b3a38598f3da9a227648c6"
+    },
+    {
+      "path": "m3765-link-phone-dark-zh-TW-3-ignored.png",
+      "sha256": "38d117c2d80b8ab054916b4892402a0b7d23112a1d860f39c05948a8dc7f73f3"
+    },
+    {
+      "path": "m3765-desk-light-en-1-top.png",
+      "sha256": "41e58fc6b76354b7c44a11c69e3f31776e5330fa615d647b95004db8df2ce2c7"
+    },
+    {
+      "path": "m3765-desk-light-en-2-soul.png",
+      "sha256": "e19c6ac8efc43d0c1e1616bd178f86aa3144ba02dd1565a9c69a7204b3aea59a"
+    },
+    {
+      "path": "m3765-desk-light-en-3-ignored.png",
+      "sha256": "027f9f4dbff06f8d1536724cefb024ee9b641138037120e49ff3d2f8892af10c"
+    },
+    {
+      "path": "m3765-desk-dark-zh-TW-1-top.png",
+      "sha256": "1bda88d2eb5cca20fed2dff06cd0db38ef09ed0ca7843227f61e7cbc86a29fd1"
+    },
+    {
+      "path": "m3765-desk-dark-zh-TW-2-soul.png",
+      "sha256": "c5f767c63bcf207e69b27cfd74fac6c3b0a33d9f17a16963f2d0e720c3ba1b0b"
+    },
+    {
+      "path": "m3765-desk-dark-zh-TW-3-ignored.png",
+      "sha256": "3850e803e10d730ad5377974afa2ef959b7c87134c0b3c06a7a65d30e5d8d961"
+    },
+    {
+      "path": "m3765-phone-light-zh-TW-1-top.png",
+      "sha256": "b8dbac053c3a1073ba5299ee2f98452f0bdfbf336c0b77964aafcffb006979e3"
+    },
+    {
+      "path": "m3765-phone-light-zh-TW-2-soul.png",
+      "sha256": "e889b92f6858b82825b61bbd1365b70b273fc17ec5586fd8ee74141804e6ac54"
+    },
+    {
+      "path": "m3765-phone-light-zh-TW-3-ignored.png",
+      "sha256": "3915573a2e7e6ea008b5e759bf09e87e92f97976d47bb339bb296b9d925328f0"
+    },
+    {
+      "path": "m3765-phone-dark-en-1-top.png",
+      "sha256": "88d805ecd9cf66a05c63a22e85e0f7805eaf4ec8f2cb593c1d68b494ea6c87cd"
+    },
+    {
+      "path": "m3765-phone-dark-en-2-soul.png",
+      "sha256": "be9f3ccef76161523a4f2799ef5d494cc11f63d1673fca93dd73e31e2ca9db04"
+    },
+    {
+      "path": "m3765-phone-dark-en-3-ignored.png",
+      "sha256": "524afb129fce9b7a4931bab7226559e6876d626d29dd50f0d2d9f0b811e33515"
+    }
+  ],
+  "seen": {
+    "link-desk-light-en-top": [
+      {
+        "name": ".git/",
+        "meta": "hidden: may contain secrets",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · ignored by git",
+        "ignored": true,
+        "disabled": false
+      }
+    ],
+    "link-desk-light-en-all": [
+      {
+        "name": ".git/",
+        "meta": "hidden: may contain secrets",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "dist/",
+        "meta": "ignored by git",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "node_modules/",
+        "meta": "ignored by git",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".env",
+        "meta": "hidden: may contain secrets · ignored by git",
+        "ignored": true,
+        "disabled": true
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "debug.log",
+        "meta": "12 B · ignored by git",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · ignored by git",
+        "ignored": true,
+        "disabled": false
+      }
+    ],
+    "link-phone-dark-zh-TW-top": [
+      {
+        "name": ".git/",
+        "meta": "已隱藏：可能含有機密",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · git 已忽略",
+        "ignored": true,
+        "disabled": false
+      }
+    ],
+    "link-phone-dark-zh-TW-all": [
+      {
+        "name": ".git/",
+        "meta": "已隱藏：可能含有機密",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "dist/",
+        "meta": "git 已忽略",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "node_modules/",
+        "meta": "git 已忽略",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".env",
+        "meta": "已隱藏：可能含有機密 · git 已忽略",
+        "ignored": true,
+        "disabled": true
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "debug.log",
+        "meta": "12 B · git 已忽略",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · git 已忽略",
+        "ignored": true,
+        "disabled": false
+      }
+    ],
+    "desk-light-en-top": [
+      {
+        "name": ".git/",
+        "meta": "hidden: may contain secrets",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · ignored by git",
+        "ignored": true,
+        "disabled": false
+      }
+    ],
+    "desk-light-en-all": [
+      {
+        "name": ".git/",
+        "meta": "hidden: may contain secrets",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "dist/",
+        "meta": "ignored by git",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "node_modules/",
+        "meta": "ignored by git",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".env",
+        "meta": "hidden: may contain secrets · ignored by git",
+        "ignored": true,
+        "disabled": true
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "debug.log",
+        "meta": "12 B · ignored by git",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · ignored by git",
+        "ignored": true,
+        "disabled": false
+      }
+    ],
+    "desk-dark-zh-TW-top": [
+      {
+        "name": ".git/",
+        "meta": "已隱藏：可能含有機密",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · git 已忽略",
+        "ignored": true,
+        "disabled": false
+      }
+    ],
+    "desk-dark-zh-TW-all": [
+      {
+        "name": ".git/",
+        "meta": "已隱藏：可能含有機密",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "dist/",
+        "meta": "git 已忽略",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "node_modules/",
+        "meta": "git 已忽略",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".env",
+        "meta": "已隱藏：可能含有機密 · git 已忽略",
+        "ignored": true,
+        "disabled": true
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "debug.log",
+        "meta": "12 B · git 已忽略",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · git 已忽略",
+        "ignored": true,
+        "disabled": false
+      }
+    ],
+    "phone-light-zh-TW-top": [
+      {
+        "name": ".git/",
+        "meta": "已隱藏：可能含有機密",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · git 已忽略",
+        "ignored": true,
+        "disabled": false
+      }
+    ],
+    "phone-light-zh-TW-all": [
+      {
+        "name": ".git/",
+        "meta": "已隱藏：可能含有機密",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "dist/",
+        "meta": "git 已忽略",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "node_modules/",
+        "meta": "git 已忽略",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".env",
+        "meta": "已隱藏：可能含有機密 · git 已忽略",
+        "ignored": true,
+        "disabled": true
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "debug.log",
+        "meta": "12 B · git 已忽略",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · git 已忽略",
+        "ignored": true,
+        "disabled": false
+      }
+    ],
+    "phone-dark-en-top": [
+      {
+        "name": ".git/",
+        "meta": "hidden: may contain secrets",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · ignored by git",
+        "ignored": true,
+        "disabled": false
+      }
+    ],
+    "phone-dark-en-all": [
+      {
+        "name": ".git/",
+        "meta": "hidden: may contain secrets",
+        "ignored": false,
+        "disabled": true
+      },
+      {
+        "name": "dist/",
+        "meta": "ignored by git",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "node_modules/",
+        "meta": "ignored by git",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "src/",
+        "meta": "",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": ".env",
+        "meta": "hidden: may contain secrets · ignored by git",
+        "ignored": true,
+        "disabled": true
+      },
+      {
+        "name": ".gitignore",
+        "meta": "39 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "README.md",
+        "meta": "18 B",
+        "ignored": false,
+        "disabled": false
+      },
+      {
+        "name": "debug.log",
+        "meta": "12 B · ignored by git",
+        "ignored": true,
+        "disabled": false
+      },
+      {
+        "name": "soul.md",
+        "meta": "110 B · ignored by git",
+        "ignored": true,
+        "disabled": false
+      }
+    ]
+  },
+  "summary": "69/69"
+}

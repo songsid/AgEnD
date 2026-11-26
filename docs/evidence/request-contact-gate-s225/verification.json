@@ -1,0 +1,198 @@
+{
+  "sourceRevision": "c835404c466e5bda0fff89821067093f8a42f274",
+  "baseRevision": "d4d3299bd5141238873874402ad6ac3d542c8aab",
+  "tests": {
+    "passed": 615,
+    "skipped": 1,
+    "failed": 0,
+    "files": [
+      "tests/durable-outbox-dispatch.test.ts",
+      "tests/reply-obligations-notices-926.test.ts",
+      "tests/outbox-open-errors-1490.test.ts",
+      "tests/classic-contact-dispatch-3339.test.ts",
+      "tests/contact-person-identity-m3679.test.ts",
+      "tests/hub-contact-window-settles-m3660.test.ts",
+      "tests/runtime-transcript-outbox-2950.test.ts",
+      "tests/web-contact-card-copy-m3385.test.ts",
+      "tests/web-contact-origin-clear-3366.test.ts",
+      "tests/web-needs-contact-suggestions-m3381.test.ts",
+      "tests/request-context-daemon-s223.test.ts",
+      "tests/classic-start-contact-notice-3339.test.ts",
+      "tests/request-context-recovery-s223.test.ts",
+      "tests/web-contact-later-m3410.test.ts",
+      "tests/classic-contact-api-3339.test.ts",
+      "tests/request-context-pane-s224.test.ts",
+      "tests/contact-outcome-notices-3372.test.ts",
+      "tests/reply-obligation-expiry-1694.test.ts",
+      "tests/contact-origin-feedback-4213.test.ts",
+      "tests/task-board-contact-4367.test.ts",
+      "tests/contact-auth-public-link-m3680.test.ts",
+      "tests/web-session-contact-origin-m3713.test.ts",
+      "tests/durable-outbox-daemon.test.ts",
+      "tests/contact-change-proposals-m3544.test.ts",
+      "tests/contact-origin-clear-3366.test.ts",
+      "tests/web-contact-grants-m3544.test.ts",
+      "tests/classic-contact-auth-3339.test.ts",
+      "tests/contact-tool-groups-m3387.test.ts",
+      "tests/classic-contact-files-3339.test.ts",
+      "tests/hub-contact-limit-3160.test.ts",
+      "tests/classic-contact-approvers-3339.test.ts",
+      "tests/request-context-turns-s223.test.ts",
+      "tests/contact-suggestion-later-m3410.test.ts",
+      "tests/request-context-protocol-s221.test.ts",
+      "tests/request-context-daemon-s224.test.ts",
+      "tests/web-contact-auth-m3339.test.ts",
+      "tests/request-contact-gate-s225.test.ts",
+      "tests/request-context-commit-s224.test.ts",
+      "tests/contact-held-outcome-m3716.test.ts",
+      "tests/request-context-call-s224.test.ts",
+      "tests/outbox-supersede-thread-2785.test.ts",
+      "tests/request-context-store-s222.test.ts",
+      "tests/contact-held-card-m3680.test.ts",
+      "tests/needs-you-contact-suggestions-m3381.test.ts",
+      "tests/reply-obligations-926.test.ts",
+      "tests/contact-approval-journey-m3709.test.ts",
+      "tests/contact-standing-grants-m3544.test.ts",
+      "tests/request-context-barrier-s221.test.ts",
+      "tests/retention-1335.test.ts",
+      "src/delivery-outbox.test.ts"
+    ],
+    "command": [
+      "node_modules/.bin/vitest",
+      "run",
+      "tests/durable-outbox-dispatch.test.ts",
+      "tests/reply-obligations-notices-926.test.ts",
+      "tests/outbox-open-errors-1490.test.ts",
+      "tests/classic-contact-dispatch-3339.test.ts",
+      "tests/contact-person-identity-m3679.test.ts",
+      "tests/hub-contact-window-settles-m3660.test.ts",
+      "tests/runtime-transcript-outbox-2950.test.ts",
+      "tests/web-contact-card-copy-m3385.test.ts",
+      "tests/web-contact-origin-clear-3366.test.ts",
+      "tests/web-needs-contact-suggestions-m3381.test.ts",
+      "tests/request-context-daemon-s223.test.ts",
+      "tests/classic-start-contact-notice-3339.test.ts",
+      "tests/request-context-recovery-s223.test.ts",
+      "tests/web-contact-later-m3410.test.ts",
+      "tests/classic-contact-api-3339.test.ts",
+      "tests/request-context-pane-s224.test.ts",
+      "tests/contact-outcome-notices-3372.test.ts",
+      "tests/reply-obligation-expiry-1694.test.ts",
+      "tests/contact-origin-feedback-4213.test.ts",
+      "tests/task-board-contact-4367.test.ts",
+      "tests/contact-auth-public-link-m3680.test.ts",
+      "tests/web-session-contact-origin-m3713.test.ts",
+      "tests/durable-outbox-daemon.test.ts",
+      "tests/contact-change-proposals-m3544.test.ts",
+      "tests/contact-origin-clear-3366.test.ts",
+      "tests/web-contact-grants-m3544.test.ts",
+      "tests/classic-contact-auth-3339.test.ts",
+      "tests/contact-tool-groups-m3387.test.ts",
+      "tests/classic-contact-files-3339.test.ts",
+      "tests/hub-contact-limit-3160.test.ts",
+      "tests/classic-contact-approvers-3339.test.ts",
+      "tests/request-context-turns-s223.test.ts",
+      "tests/contact-suggestion-later-m3410.test.ts",
+      "tests/request-context-protocol-s221.test.ts",
+      "tests/request-context-daemon-s224.test.ts",
+      "tests/web-contact-auth-m3339.test.ts",
+      "tests/request-contact-gate-s225.test.ts",
+      "tests/request-context-commit-s224.test.ts",
+      "tests/contact-held-outcome-m3716.test.ts",
+      "tests/request-context-call-s224.test.ts",
+      "tests/outbox-supersede-thread-2785.test.ts",
+      "tests/request-context-store-s222.test.ts",
+      "tests/contact-held-card-m3680.test.ts",
+      "tests/needs-you-contact-suggestions-m3381.test.ts",
+      "tests/reply-obligations-926.test.ts",
+      "tests/contact-approval-journey-m3709.test.ts",
+      "tests/contact-standing-grants-m3544.test.ts",
+      "tests/request-context-barrier-s221.test.ts",
+      "tests/retention-1335.test.ts",
+      "src/delivery-outbox.test.ts",
+      "--maxWorkers=2"
+    ],
+    "sourceRevision": "53fb12d0cbca606b1737ccc85403f3e346b55baf"
+  },
+  "typecheck": {
+    "command": [
+      "node_modules/.bin/tsc",
+      "--noEmit",
+      "-p",
+      "tsconfig.test.json"
+    ],
+    "exitCode": 0
+  },
+  "sourceAndTestSha256": [
+    {
+      "path": "src/contact-auth-store.ts",
+      "sha256": "f499d42078382a2c657da6289936d8a16d8622cb30103b6b078961667ba3e510"
+    },
+    {
+      "path": "src/contact-auth-types.ts",
+      "sha256": "af048340e58c6de4179c07304b5850947a41f914898368714afcdc1502aa2fd9"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "08d993d26ce2ff1b3963625fbb27612f13a4179cb4a529a5b69be2dbd59109f1"
+    },
+    {
+      "path": "src/request-contact-gate.ts",
+      "sha256": "b4173e272a61bc5d12dc3e97d3c80319e1b2683ba0f74b4beb12e21ee6e19728"
+    },
+    {
+      "path": "src/request-context-store.ts",
+      "sha256": "d6eb5307a5008886e41e3c12a2a8ceffe1b8bfae85a387675911bc2c67c79a06"
+    },
+    {
+      "path": "tests/request-contact-gate-s225.test.ts",
+      "sha256": "28d523b6c2d6bbabf2b1aaf29999586216d19f5c9513fa72a07efccb96dc9a78"
+    }
+  ],
+  "baseRegression": {
+    "missingFactory": true,
+    "newTestsBeforeImplementationExitCode": 1
+  },
+  "production": {
+    "factoryOnly": true,
+    "callersInstalled": false,
+    "newFlowEnabled": false
+  },
+  "limits": [
+    "Synthetic SQLite/outbox fixtures only; no live Fleet, CLI/provider/account/model calls.",
+    "No UI, notification routing, ingress or receiver activation in this slice.",
+    "F/I must install the drained-root lifecycle proof and periodic scoped sweep before L cutover.",
+    "Shared pending limits remain 32 per source and 512 total."
+  ],
+  "reviewCorrectionValidation": {
+    "sourceRevision": "c835404c466e5bda0fff89821067093f8a42f274",
+    "baseRevision": "d1a73c93a823433382996c891c624a1f80c3837d",
+    "passed": 67,
+    "failed": 0,
+    "files": [
+      "tests/request-contact-gate-s225.test.ts",
+      "tests/retention-1335.test.ts",
+      "tests/contact-outcome-notices-3372.test.ts"
+    ],
+    "command": [
+      "node_modules/.bin/vitest",
+      "run",
+      "tests/request-contact-gate-s225.test.ts",
+      "tests/retention-1335.test.ts",
+      "tests/contact-outcome-notices-3372.test.ts",
+      "--maxWorkers=2"
+    ],
+    "typecheckExitCode": 0,
+    "baseRegression": {
+      "exitCode": 1,
+      "failed": 4,
+      "controls": [
+        "terminal retry en",
+        "terminal retry zh-TW",
+        "unread expiry at retirement boundary",
+        "indexed legacy adoption query"
+      ]
+    },
+    "policyChoice": "An exact operation already held retains its decision requirement after promotion; new operations use current root-source admin status."
+  }
+}

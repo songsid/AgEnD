@@ -1,3 +1,4 @@
+import { handleRequestContactApi, type RequestContactApiHost } from "./request-contact-api.js";
 import { historyQuery } from './host-monitoring-history-policy.js';
 import { instructionFileSizes } from "./instruction-file-sizes.js";
 import { handleClaudeCredentials, type ClaudeCredentialApi } from "./web-claude-credentials.js";
@@ -69,7 +70,7 @@ import { CreateInstanceArgs, CreateScheduleArgs, UpdateScheduleArgs, validateArg
 import { scheduleView } from "./web-schedules.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { Schedule, ScheduleRetry } from "./scheduler/types.js";
-import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, cardCode, type Actor as BoardActor, type TaskBoard } from "./scheduler/task-board.js";
+import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, archiveAfterDays, cardCode, type Actor as BoardActor, type TaskBoard } from "./scheduler/task-board.js";
 import { TASK_REF_SEPARATOR, cardsForRefs, taskReadWay, taskRefBlock, taskRefCodes, taskRefView } from "./chat-task-refs.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
@@ -91,6 +92,7 @@ import { resolveToolSet } from "./tool-permissions.js";
 import type { WebSessionStore, SessionRecord, WebDeviceRow } from "./web-session.js";
 import { OPERATOR, isOwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
 import { WEB_NAME_FALLBACK, type WebAccount, webPersonKey } from "./web-profile.js";
+import { updateAnswerLabel } from "./update-card.js";
 import { commitTeamCreate, commitTeamUpdate } from "./outbound-handlers.js";
 import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-mentions.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
@@ -271,6 +273,15 @@ function contactNeedsFor(req: IncomingMessage, url: URL, ctx: WebApiContext, bas
   const admin=auth.kind==='allow'&&auth.via==='session'&&auth.session.tier==='admin';
   base=admin?base:base.filter(item=>!item||typeof item!=='object'||(item as {type?:string}).type!=='host');
   const ordinary = base.filter(item => !item || typeof item !== "object" || (item as { type?: string }).type !== "contact");
+  if(ctx.requestContactApi){
+    // Active host replaces the count-only fallback with per-target scoped ids, including before verification.
+    // The new service never supplies a decision permit through these passive item ids.
+    let scoped:unknown[]=[];
+    try{const viewer=ctx.requestContactApi.principal(req,url);if(viewer?.current())scoped=ctx.requestContactApi.needs?.(viewer)??[];}catch{/* The explicit card API reports unavailable; never leak the legacy global count. */}
+    const observer=ctx.contactSuggestionActor?.(req,url);
+    const suggestions=observer&&ctx.contactNeeds?ctx.contactNeeds(observer).filter(item=>item&&typeof item==="object"&&(item as {reason?:string}).reason==="contact_restricted_suggestion"):[];
+    return [...ordinary,...scoped,...suggestions];
+  }
   const actor = ctx.contactActor?.(req, url);
   if (actor && ctx.contactNeeds) return [...ordinary, ...ctx.contactNeeds(actor)];
   const observer = ctx.contactSuggestionActor?.(req, url);
@@ -311,7 +322,9 @@ function boardHiding(ctx: WebApiContext, gateway: boolean) {
   const fleet = ctx.fleetConfig as Parameters<typeof crossInstanceVisibility>[0];
   const hiddenName = (n: unknown) => gateway && typeof n === "string" && !!n && !!ctx.fleetConfig?.instances?.[n] && crossInstanceVisibility(fleet, n) === "hidden";
   const hidden = (c: { assignee: string | null; createdBy: string; dispatcher: { name: string } | null }) => [c.assignee, c.createdBy, c.dispatcher?.name].some(hiddenName);
-  return { hiddenName, hidden };
+  /** M-3668 review: the names hiddenName() refuses, for a read that must leave them out before it pages (the Archive). */
+  const hiddenNames = () => Object.keys(ctx.fleetConfig?.instances ?? {}).filter(hiddenName);
+  return { hiddenName, hidden, hiddenNames };
 }
 
 /**
@@ -434,6 +447,8 @@ export interface AccountMachine { id: string; actor: string }
 export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
 
 export interface WebApiContext extends ClaudeCredentialApi {
+  /** Uninstalled until L. New API reads/decisions do not replace legacy routes while OFF. */
+  requestContactApi?:RequestContactApiHost;
   hostHistoryQuery?(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult>;
   hostHealthSnapshot?(agentOffset?:number): import("./host-monitoring.js").HostHealthSnapshot;
   hostAlertAction?(key:string,revision:number,actor:string,snoozeMs?:number):Promise<boolean>;
@@ -494,7 +509,7 @@ export interface WebApiContext extends ClaudeCredentialApi {
     channel?: { group_id?: number | string; mode?: string };
     health_port?: number;
     web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; office_levels?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
-    defaults?: { backend?: string; effort?: string };
+    defaults?: { backend?: string; effort?: string; task_board?: { archive_after_days?: number } };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string; model?:string; backend_options?:Record<string,Record<string,unknown>>; runtime?: "wsl" | "windows"; machine_id?: string; native_agent_id?: string; native_sandbox?: "read-only" | "workspace-write" }>;
     teams?: Record<string, { members: string[]; description?: string }>;
   } | null;
@@ -874,10 +889,11 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
 
 /**
  * M-2738 (#3332): updating AgEnD from the web.
- *   GET  /ui/update        { admin, current, offer?, checked_at?, check_failed?, progress?, now } — an admin session; a
+ *   GET  /ui/update        { admin, current, offer?, card?, checked_at?, check_failed?, progress?, now } — an admin session; a
  *                          read-only session gets { admin: false, current } (its stale-tab reload line)
  *   POST /ui/update/check  look now (one a minute) → the GET's answer
  *   POST /ui/update/start  { confirm: "update-agend" } + Idempotency-Key → 202 { started } (the progress is the GET's)
+ *   POST /ui/update/answer { action } + Idempotency-Key → 200 { card } (the one update offer)
  *   GET  /ui/update/log    { text, error } — the updater's own words, for the failure's "full log"
  * Signed-in sessions only (never the CLI's token or a guest; M-3278: the public link's sessions too, as locally); an
  * admin's for all but the version. Asked again once a body is in.
@@ -885,22 +901,22 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
 function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   const host = ctx.webUpdate;
   if (!host) { json(res, 404, { error: "not found" }); return true; }
-  const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/log": "GET" };
+  const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/answer": "POST", "/ui/update/log": "GET" };
   if (!routes[path]) { json(res, 404, { error: "not found" }); return true; }
   if (routes[path] !== method) { res.setHeader("Allow", routes[path]!); json(res, 405, { error: "method not allowed" }); return true; }
   res.setHeader("Cache-Control", "no-store");
-  const who = (): { admin: boolean; person: string } | { status: number; error: string } => {
+  const who = (): { admin: boolean; person: string; label: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
     if (verdict.via !== "session" || !verdict.session || verdict.session.tier === "guest") return { status: 403, error: "update_needs_a_signed_in_person" };
     const owner = verdict.session.owner;
-    return { admin: verdict.session.tier === "admin", person: owner ? webPersonKey(owner) : "admin-session" };
+    return { admin: verdict.session.tier === "admin", person: owner ? webPersonKey(owner) : "admin-session", label: owner ? (ctx.webPerson?.(owner)?.name ?? "") : "" };
   };
   const view = (admin: boolean) => {
     const st = host.updateState();
     if (!admin) return { admin: false, current: st.current };
     const progress = host.updateProgress();
-    return { admin: true, current: st.current, offer: st.offer, hubRecommendation: st.hubRecommendation ?? null, checked_at: st.checkedAt, check_failed: st.checkFailed, progress, now: Date.now() };
+    return { admin: true, current: st.current, offer: st.offer, hubRecommendation: st.hubRecommendation ?? null, checked_at: st.checkedAt, check_failed: st.checkFailed, preflight: st.preflight ?? null, progress, card: host.card?.() ?? null, now: Date.now() };
   };
   const first = who();
   if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -909,15 +925,26 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
   if (path === "/ui/update/log") { const l = host.updateLog(); json(res, 200, { text: l.text, error: l.error }); return true; }
   (async () => {
     let body: Record<string, unknown> = {};
-    try { body = await parseBody(req); } catch { if (path === "/ui/update/start") { json(res, 400, { error: "Invalid JSON" }); return; } }
+    try { body = await parseBody(req); } catch { if (path === "/ui/update/start" || path === "/ui/update/answer") { json(res, 400, { error: "Invalid JSON" }); return; } }
     if (!permitWebContinuation(req, res, ctx) || res.destroyed) return;
     const now = who();
     if ("status" in now) { json(res, now.status, { error: now.error }); return; }
     if (!now.admin) { json(res, 403, { error: "update_needs_an_admin_session" }); return; }
+    // Prism #3505 P2-3: the session that asked, still current and still an admin's, right up to an immediate launch.
+    const stillAllowed = (): boolean => { const v = who(); return !("status" in v) && v.admin && v.person === now.person; };
     if (path === "/ui/update/check") {
       const r = await host.checkUpdateNow();
       if (!r.ok) { json(res, r.status, { error: r.error }); return; }
       json(res, 200, view(true));
+      return;
+    }
+    if (path === "/ui/update/answer") {
+      if (!host.answerUpdate) { json(res, 404, { error: "unavailable" }); return; }
+      const header = req.headers["idempotency-key"];
+      const key = typeof header === "string" ? header : "";
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
+      const answered = await host.answerUpdate(key, updateAnswerLabel(now.label), body, stillAllowed);
+      json(res, answered.status, answered.ok ? { card: answered.card } : answered.body);
       return;
     }
     const header = req.headers["idempotency-key"];
@@ -925,8 +952,6 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
     if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
     // A literal, not a boolean: a stray `true` in a replayed body never means "update AgEnD".
     if (body.confirm !== "update-agend") { json(res, 400, { error: 'confirm must be the literal "update-agend"' }); return; }
-    // Prism #3505 P2-3: the session that asked, still current and still an admin's, right up to the updater's launch.
-    const stillAllowed = (): boolean => { const v = who(); return !("status" in v) && v.admin && v.person === now.person; };
     // M-3140: `recommended` — the Hub's advice this page showed ({ version, revision }); the server re-reads its own.
     const rec = body.recommended as { version?: unknown; revision?: unknown } | undefined;
     if (rec !== undefined && (typeof rec !== "object" || rec === null || typeof rec.version !== "string" || rec.version.length > 128
@@ -2317,6 +2342,8 @@ export function handleWebRequest(
   }
 
   if (handleAgentRuntimeChange(req, res, url, ctx)) return true;
+  if (handleRequestContactApi(req,res,url,ctx.requestContactApi)) return true;
+
   if (ctx.contactPermissions && ctx.writeContactPermissions && ctx.contactAuthorization && ctx.contactAuthorizations && ctx.decideContactAuthorization && ctx.contactActor
     && handleContactAuthorizationApi(req, res, url, ctx as ContactApiHost)) return true;
   if (handleNativeInstanceRequest(req, res, url, ctx)) return true;
@@ -2814,7 +2841,8 @@ export function handleWebRequest(
         // The session must still be the same one when the answer goes out (it may have ended while git ran).
         const answer = async () => {
           if (op === "changes") return { kind: "json" as const, body: await workspaceChanges(ws) };
-          if (op === "list") return { kind: "json" as const, body: await workspaceList(ws, p.get("path") ?? "") };
+          // M-3765: `ignored=1` lists what git ignores too (each marked); soul.md at the top is listed either way.
+          if (op === "list") return { kind: "json" as const, body: await workspaceList(ws, p.get("path") ?? "", { showIgnored: p.get("ignored") === "1" }) };
           if (op === "file") return { kind: "json" as const, body: await workspaceFile(ws, p.get("path")) };
           if (op === "diff") return { kind: "json" as const, body: await workspaceFileDiff(ws, p.get("path")) };
           if (op === "follow") {
@@ -4102,8 +4130,10 @@ export function handleWebRequest(
   // ── Task board (scheduler/task-board.ts) ──────────────
   // Reads are the session's; every write is the signed-in person's, through the same rules an instance's tools use.
 
-  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/refs" || path === "/ui/tasks/work" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects") || path.startsWith("/ui/tasks/files/")) {
+  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/refs" || path === "/ui/tasks/work" || path === "/ui/tasks/archive" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects") || path.startsWith("/ui/tasks/files/")) {
     const board = ctx.scheduler?.db.board;
+    // M-3668: how many days after it finished a main task leaves the board (defaults.task_board.archive_after_days).
+    const archiveDays = archiveAfterDays(ctx.fleetConfig?.defaults?.task_board?.archive_after_days);
     if (!board) { json(res, 503, { error: "The task board is not available", code: "unavailable", key: "unavailable" }); return true; }
     // M-3278 (decision 7933bf90): an admin session changes the board over the public link too, as itself (boardActor), and
     // sees it whole; a read-only session over the link keeps the link's hiding.
@@ -4111,7 +4141,7 @@ export function handleWebRequest(
     // A write is an admin session's (or the CLI's header token): a read-only session reads the board, on any listener.
     if (method !== "GET" && !adminAdmissionOf(req, url, ctx)) { json(res, 403, { error: "task_board_needs_an_admin_session", code: "forbidden", key: "needs_admin" }); return true; }
     // …nor shows the cards of instances kept out of sight (cross_instance_visibility: hidden).
-    const { hiddenName, hidden } = boardHiding(ctx, !!gateway);
+    const { hiddenName, hidden, hiddenNames } = boardHiding(ctx, !!gateway);
     // #2303 review: what a visible card shows of the cards around it follows the same rule — its children, its main
     // task (a search hit's too) — and so do the words and the history a hidden instance left on it.
     // …and a hidden instance's words on a visible card are not counted, named or found there (#2304 review).
@@ -4178,9 +4208,14 @@ export function handleWebRequest(
     try {
       const ref = card ? decodeURIComponent(card[1]!) : "";
       if (method === "GET" && path === "/ui/tasks/board") {
-        // A page that has this revision already is told so, not sent the board again.
+        // A page that has this revision already is told so, not sent the board again. #4428 review: and only when time
+        // has not moved a card across one of the board's lines (archived, this week, the recent window) since it read:
+        // `epoch` says where they stood (a page that sends none, an older one, always gets the board).
         const rev = board.revision();
-        if (url.searchParams.get("rev") === String(rev)) { json(res, 200, { rev, unchanged: true }); return true; }
+        // #4428 review: over the public link the hidden instances' cards move neither the epoch nor any project number.
+        const leaveOut = hiddenNames();
+        const epoch = board.boardEpoch(archiveDays, undefined, leaveOut);
+        if (url.searchParams.get("rev") === String(rev) && url.searchParams.get("epoch") === epoch) { json(res, 200, { rev, epoch, unchanged: true }); return true; }
         const allDone = url.searchParams.get("done") === "all";
         // #2296: every open Tasks tab reads the board again after each change; on the dashboard they all get the same
         // board for a revision, so it is built once per (revision, done=all, minute) — the minute for the 14-day
@@ -4189,16 +4224,16 @@ export function handleWebRequest(
         // The instances with the task board switched off: no card is handed to them (the pickers mark them), and a
         // fleet.yaml edit changes them with the revision unchanged.
         const boardOff = taskBoardOffNames(ctx.fleetConfig).filter((n) => !hiddenName(n));
-        const key = gateway ? null : `${rev}:${allDone ? 1 : 0}:${Math.floor(Date.now() / 60_000)}:${board.goneDispatchers(ctx.dispatcherGone)}:${boardOff.join("\u0000")}`;
+        const key = gateway ? null : `${rev}:${allDone ? 1 : 0}:${epoch}:${Math.floor(Date.now() / 60_000)}:${board.goneDispatchers(ctx.dispatcherGone)}:${boardOff.join("\u0000")}`;
         const kept = key ? boardBodies.get(board) : undefined;
         if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
-        const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
+        const cards = board.boardCards(undefined, allDone, archiveDays).filter((c) => !hidden(c));
         // #2352: over the public link a hidden lead is not named (the project reads as having none).
         const projects = board.listProjects(true).map((p) => (p.leadInstance && hiddenName(p.leadInstance) ? { ...p, leadInstance: null } : p));
         // #2355 review: the names a project's lead may be — the fleet's instances (a Classic-only room is not one); over the
         // public link, not a hidden one.
         const leads = Object.keys(ctx.fleetConfig?.instances ?? {}).filter((n) => !hiddenName(n)).sort();
-        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone).map(unnumbered), projects, leads, boardOff, stats: board.projectStats(ctx.dispatcherGone) });
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone).map(unnumbered), projects, leads, boardOff, stats: board.projectStats(ctx.dispatcherGone, archiveDays, leaveOut), archiveAfterDays: archiveDays, epoch });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;
@@ -4239,6 +4274,8 @@ export function handleWebRequest(
         const results = hits.map(({ card: c, match }, i) => ({
           card: views[i],
           match,
+          // M-3668: a card the board has archived says so (its number and this search still open it).
+          ...(board.isArchived(c, archiveDays) ? { archived: true } : {}),
           project: c.projectId === null ? null : names.get(c.projectId) ?? null,
           parentTitle: c.parent && !hiddenRef(c.parent) ? board.findCard(c.parent)?.title ?? null : null,
         }));
@@ -4271,7 +4308,21 @@ export function handleWebRequest(
       if (method === "GET" && card && !card[2]) {
         const found = board.getCard(ref);
         if (hidden(found)) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
-        json(res, 200, shown(board.detail(ref, scope, ctx.dispatcherGone)));
+        json(res, 200, { ...shown(board.detail(ref, scope, ctx.dispatcherGone)), ...(board.isArchived(found, archiveDays) ? { archived: true, archiveAfterDays: archiveDays } : {}) });
+        return true;
+      }
+      if (method === "GET" && path === "/ui/tasks/archive") {
+        // M-3668: a project's archived main tasks (`project`: an id, or "none"), newest first, a page at a time (`before`),
+        // filtered by who had them (`assignee`). Over the public link, not a card that names an instance kept out of sight.
+        const p = url.searchParams.get("project") ?? "none";
+        const project = p === "none" ? null : /^\d{1,9}$/.test(p) ? Number(p) : NaN;
+        if (Number.isNaN(project)) { json(res, 400, { error: "invalid project", code: "invalid" }); return true; }
+        const who = url.searchParams.get("assignee");
+        // #4428 review: the hidden ones are left out inside the read, before its page, cursor, total and assignees.
+        const list = board.archiveList(project, archiveDays, { before: url.searchParams.get("before"), limit: Number(url.searchParams.get("limit")) || 50,
+          assignee: who && !hiddenName(who) ? who : null, leaveOut: hiddenNames() });
+        json(res, 200, { cards: board.views(list.cards, scope, ctx.dispatcherGone).map(unnumbered), next: list.next, total: list.total,
+          assignees: list.assignees, archiveAfterDays: archiveDays });
         return true;
       }
       if (method === "POST" && path === "/ui/tasks/cards") {

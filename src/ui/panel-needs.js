@@ -27,6 +27,7 @@ import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
+import { usageCreditsActions, usageCreditsTitle, usageCreditsDetail, kindClass, showRawLabel } from "./usage-credits-card.js";
 import { decideProposal, installProposals } from "./agent-proposals.js";
 import { GeneralLocation } from "./general-location.js";
 import { runtimeUpdateText } from "./runtime-update-status.js";
@@ -36,8 +37,8 @@ import { HostDirectoryNotices, hostDirectoryNoticesOffered } from "./hub-host-se
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
 register("app", {
-  en: { needs_reason_host_health: "Host health", needs_reason_stale_auth: "Codex needs a restart", needs_stale_auth_detail: "Codex cannot refresh this agent’s current sign-in. Restart the agent; sign in again only if Codex asks.", needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running", needs_reason_tmux_hold: "Held: an old tmux server or window" },
-  "zh-TW": { needs_reason_host_health: "主機狀態", needs_reason_stale_auth: "Codex 需要重新啟動", needs_stale_auth_detail: "Codex 無法更新這個 Agent 執行中使用的登入。請重新啟動 Agent；只有 Codex 要求時才需要重新登入。", needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視", needs_reason_hub_unavailable: "Hub 未在執行", needs_reason_tmux_hold: "已暫停：舊的 tmux 伺服器或視窗" },
+  en: { needs_reason_mcp_missing: "MCP servers missing after an AI account switch", needs_reason_host_health: "Host health", needs_reason_stale_auth: "Codex needs a restart", needs_stale_auth_detail: "Codex cannot refresh this agent’s current sign-in. Restart the agent; sign in again only if Codex asks.", needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running", needs_reason_tmux_hold: "Held: an old tmux server or window" },
+  "zh-TW": { needs_reason_mcp_missing: "切換 AI 帳號後缺少 MCP 伺服器", needs_reason_host_health: "主機狀態", needs_reason_stale_auth: "Codex 需要重新啟動", needs_stale_auth_detail: "Codex 無法更新這個 Agent 執行中使用的登入。請重新啟動 Agent；只有 Codex 要求時才需要重新登入。", needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視", needs_reason_hub_unavailable: "Hub 未在執行", needs_reason_tmux_hold: "已暫停：舊的 tmux 伺服器或視窗" },
 });
 
 register("needs", {
@@ -254,13 +255,16 @@ function NeedsItem({ item, nowMs, owner }) {
   const p = item.type === "prompt" && item.nonce && owner ? owner.state.prompts[item.nonce] : null;
   const fallback = item.nonce ? c.prompts[item.nonce] : undefined;
   const promptBusy = p ? p.busy || p.resolved : !!fallback;
+  // M-3757: Claude's usage-credits prompt, compact: a one-line title, its options named by what they do, its own words folded.
+  const ucView = item.type === "prompt" && item.view && item.view.kind === "usage-credits" ? item.view : null;
+  const shownActions = ucView ? usageCreditsActions(ucView, item.actions) : item.actions;
   const answer = async (action) => {
     const store = chatOwner();
     if (store) { store.answerByNonce(item, action); return; }
     // Only before Chat has booted: the page's own claim on this nonce, taken now (synchronously), kept until the
     // server's list drops the prompt (or the answer fails).
     if (claims.get().prompts[item.nonce]) return;
-    const confirmation = item.actions?.find(a => a.id === action)?.confirmation;
+    const confirmation = shownActions?.find(a => a.id === action)?.confirmation;
     setClaim("prompts", item.nonce, confirmation ? "confirming" : "busy");
     if (confirmation && !await confirmDialog({ ...confirmation, danger: true })) {
       setClaim("prompts", item.nonce, null);
@@ -328,6 +332,22 @@ function NeedsItem({ item, nowMs, owner }) {
     setClaim("acks", hubKey, ok ? "done" : null);
     toast(ok ? tn("hubRetryDone") : res && res.status === 404 ? tn("hubRetryGone") : res && res.status === 409 ? tn("hubRetryNot") : t("app.failed"), ok);
   };
+  const answering = (p ? p.busy && !p.confirming : fallback === "busy");
+  // M-3757: Claude's usage-credits prompt in the standard layout: the question, one sentence on the bill, Claude's own
+  // words folded, then its choices (named by what they do) and Open chat.
+  if (ucView) return html`<article data-trust="permission" class="n-item n-usage-credits">
+    <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
+    <div class="n-body">
+      <div class="n-title"><strong>${usageCreditsTitle(ucView, { named: false })}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
+      <p class="n-detail">${usageCreditsDetail(ucView)}</p>
+      <details class="n-raw"><summary>${showRawLabel()}</summary><pre class="n-raw-text">${ucView.raw}</pre></details>
+      <div class="n-actions">
+        ${shownActions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class=${`btn btn-sm${kindClass(a.kind)}`}
+            disabled=${promptBusy} onClick=${() => answer(a.id)}>${answering ? tn("answering") : a.label}</button>`)}
+        ${item.instance ? html`<a class="btn btn-sm btn-ghost" href=${chatPath(item.instance)}>${tn("open")}</a>` : null}
+      </div>
+    </div>
+  </article>`;
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
@@ -340,11 +360,11 @@ function NeedsItem({ item, nowMs, owner }) {
       ${item.type==='host'?(item.hostAlert?html`<${HostAlertActions} record=${item.hostAlert}/>`:html`<a class="btn btn-sm" href=${fleetPath('host-health')}>${hostAlertText('open')}</a>`):null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
-            disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy && !p.confirming : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
+            disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy && !p.confirming : fallback === "busy") ? tn("answering") : a.label}${a.hint ? html`<span class="btn-hint">${a.hint}</span>` : null}</button>`) : null}
         ${item.type === "hub" && item.hubRetry ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!!hubAck || !!closeAck} onClick=${retryHub}>
             <${Icon} name="restart" size=${14} />${hubAck === "busy" ? tn("hubRetrying") : tn("hubRetry")}</button>` : null}
         ${item.type === "hub" && item.hubClose ? html`<button type="button" class="btn btn-sm hub-close" disabled=${!!closeAck || !!hubAck} onClick=${closeHub}>${tn(closeAck === "busy" ? "hubClosing" : "hubClose")}</button>` : null}
-        ${item.type === "delivery" || item.type === "missed" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
+        ${item.type === "delivery" || item.type === "missed" || item.reason === "mcp_missing" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
         ${(item.reason === "auth_paused" || item.reason === "backend_signin") && item.signIn && signInOffered() ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}
         ${item.type === "task" && item.card ? html`<a class="btn btn-sm" href=${`/ui/fleet?card=${encodeURIComponent(item.card.code)}`}>${tn("openCard")}</a>` : null}

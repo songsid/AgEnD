@@ -1,3 +1,4 @@
+import type { RequestContextRegistrationGate } from "./request-context-fence.js";
 import { t } from "./locale.js";
 import { loadGeneralKnowledge } from "./runtime-general-workspace.js";
 import { generalWorkspaceUpgrade, validateGeneralWorkspaceReceipt } from "./runtime-general-protocol.js";
@@ -11,7 +12,9 @@ import {runtimeJobDigest} from "./runtime-client-store.js";
 import {RuntimeNativePaneLifecycle} from "./native-pane-lifecycle.js";
 import {assertRunnableNativePaneVersion,nativeCliVersionState} from "./runtime-pane-native.js";
 import {nativeCredentialProfile} from "./native-instance-registry.js";
-import {PaneMcpAuthorityLease} from "./runtime-pane-mcp.js";
+import type { RequestContextPaneProofs } from "./request-context-pane.js";
+import type { PaneMcpAuthority } from "./runtime-pane-mcp.js";
+import {PaneMcpAuthorityLease,readRetainedPaneMcpRoots} from "./runtime-pane-mcp.js";
 import {validateRuntimePaneLaunch,validateRuntimePaneSnapshot,validateRuntimePaneSessionProof,type RuntimePaneLaunch,type RuntimePaneSnapshot} from "./runtime-pane-protocol.js";
 import {validatePaneMcpBody,type PaneMcpBody} from "./runtime-pane-mcp-protocol.js";
 import type {PaneEndpoint} from "./runtime-pane-port.js";
@@ -24,6 +27,8 @@ interface Manifest {version:1;machineId:string;configuration:string;launch:Runti
  fresh?:{previous:RuntimePaneSnapshot;automatic:boolean;announced?:true;previousLaunch?:RuntimePaneLaunch;sessionId?:string;decisionLaunchId?:string}}
 export interface NativeMachineEndpoint extends PaneEndpoint {epoch():string|null; version(provider:string):string|null}
 export interface NativePaneManagerOptions {
+ requestContexts?: RequestContextPaneProofs;
+ registration?: RequestContextRegistrationGate;
  home:string;
  store:WindowsAgents;
  config(name:string):InstanceConfig|undefined;
@@ -34,11 +39,43 @@ export interface NativePaneManagerOptions {
  allowed(name:string,tool:string,args:Record<string,unknown>):boolean;
  published(name:string,daemon:Daemon):boolean;
  freshNotice?(name:string,provider?:"codex"|"claude-code"):Promise<void>|void;
- invoke(daemon:Daemon,input:{tool:string;args:Record<string,unknown>;operationId:string},current:()=>boolean,name:string):Promise<{result:unknown;error?:string;errorCode?:string|number}>;
+ invoke(daemon:Daemon,input:Parameters<PaneMcpAuthority["invoke"]>[0],current:()=>boolean,name:string):Promise<{result:unknown;error?:string;errorCode?:string|number}>;
 }
 interface Binding {native:RuntimeNativePaneLifecycle;lease:PaneMcpAuthorityLease;bind(daemon:Daemon):void}
 export class NativePaneManager {
  private bindings=new Map<string,Binding>();
+ private drainLeases=new Map<string,PaneMcpAuthorityLease>();
+ private drainSerial=0;
+ private retainedDigests=new Map<string,string>();
+ private retainedDrain(){
+  const panes=this.options.store.requestContextPaneLaunches?.();
+  let unknown=!panes||this.preparing.size>0;const roots:Array<{rootId:string;reference:string}>=[],seen=new Set<string>();
+  for(const pane of panes??[]){
+   if(this.drainLeases.has(pane.launchId))continue;
+   const key=JSON.stringify([pane.agentId,pane.launchId]);seen.add(key);let digest="unavailable";
+   try{
+    if(!UUID.test(pane.agentId)||!UUID.test(pane.launchId)||!pane.instance)throw Error("Unbound launch identity unavailable");
+    const root=join(this.options.home,"native-panes"),directory=join(root,pane.agentId);
+    for(const path of [root,directory]){const stat=lstatSync(path);if(!stat.isDirectory()||stat.isSymbolicLink()||process.getuid&&(stat.uid!==process.getuid()||stat.mode&0o077))throw Error("Unsafe retained launch directory");}
+    const manifest=this.load(join(directory,"active.json")),launch=manifest?.launch;
+    if(!manifest||!launch||manifest.machineId!==pane.machineId||launch.agentId!==pane.agentId||launch.launchId!==pane.launchId||launch.instance!==pane.instance)throw Error("Retained launch identity differs");
+    const ledger=readRetainedPaneMcpRoots(join(directory,`${pane.launchId}.mcp.json`),manifest.machineId,{agentId:pane.agentId,launchId:pane.launchId,paneId:launch.paneId,instance:pane.instance});
+    digest=ledger.sha256;
+    roots.push(...ledger.roots.map(row=>({rootId:row.rootId,reference:`pane-ledger:${pane.launchId}:${row.operationId}`})));
+   }catch{unknown=true;}
+   if(this.retainedDigests.get(key)!==digest){this.retainedDigests.set(key,digest);this.drainSerial++;}
+  }
+  for(const key of this.retainedDigests.keys())if(!seen.has(key)){this.retainedDigests.delete(key);this.drainSerial++;}
+  return {unknown,roots};
+ }
+ get drainRevision():string{this.retainedDrain();return this.localDrainRevision();}
+ private localDrainRevision():string{return `${this.drainSerial}:${this.options.store.requestContextDrainRevision}:${[...this.drainLeases].map(([id,lease])=>`${id}:${lease.drainRevision}`).join(";")}`;}
+ drainView(rootId:string){
+  const retained=this.retainedDrain();let unknown=retained.unknown;
+  const references=retained.roots.filter(row=>row.rootId===rootId).map(row=>row.reference);
+  for(const lease of this.drainLeases.values()){const view=lease.drainView(rootId);references.push(...view.references);unknown ||= view.unknown||view.registration!==this.options.registration;}
+  return {registration:this.options.registration??null,revision:this.localDrainRevision(),references,unknown};
+ }
  private preparing=new Set<string>();
  constructor(private options:NativePaneManagerOptions){}
  private directory(id:string):string {
@@ -102,6 +139,8 @@ export class NativePaneManager {
   if(manifest.launch.cli==="codex"&&manifest.fresh&&snapshot.sessionId&&snapshot.sessionId!==manifest.fresh.previous.sessionId
     &&this.options.store.get(snapshot.agentId).threadId!==snapshot.sessionId)next=this.bindFreshCodex(file,manifest,snapshot);
   next={...next,exited:snapshot};this.save(file,next);
+  this.drainLeases.get(snapshot.launchId)?.retire(snapshot);this.drainLeases.delete(snapshot.launchId);this.drainSerial++;
+  this.options.requestContexts?.retire({hostBootId:snapshot.hostBootId,paneId:snapshot.paneId,launchId:snapshot.launchId,agentId:snapshot.agentId,instance:snapshot.instance});
   const profile=this.options.store.get(snapshot.agentId);
   if(!snapshot.noLaunch&&!profile.threadId&&snapshot.sessionId&&profile.activeId)this.options.store.pinPaneSession(snapshot.agentId,snapshot.launchId,snapshot.sessionId);
   if(this.options.store.get(snapshot.agentId).activeId){
@@ -126,7 +165,7 @@ export class NativePaneManager {
  /** Prepare metadata and helper authority first; acquire() alone may reserve and spawn. */
  async prepare(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<RuntimeNativePaneLifecycle> {
   const id=config.native_agent_id;if(!id||!UUID.test(id)||this.preparing.has(id))throw Error("Native pane preparation already has an owner or lacks an identity");
-  this.preparing.add(id);try{return await this.prepareOwned(name,config,assertCurrent);}catch(error){if(error instanceof NativePaneRecoveryError){assertCurrent();this.options.store.setPaneRecovery(id,error.recovery);}throw error;}finally{this.preparing.delete(id);}
+  this.preparing.add(id);this.drainSerial++;try{return await this.prepareOwned(name,config,assertCurrent);}catch(error){if(error instanceof NativePaneRecoveryError){assertCurrent();this.options.store.setPaneRecovery(id,error.recovery);}throw error;}finally{this.preparing.delete(id);this.drainSerial++;}
  }
  private async prepareOwned(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<RuntimeNativePaneLifecycle> {
   config=structuredClone(config);
@@ -234,6 +273,8 @@ export class NativePaneManager {
   };
   const owned=()=>!!daemon&&current()&&this.options.published(name,daemon);
   const lease=new PaneMcpAuthorityLease(join(directory,`${launch.launchId}.mcp.json`),{
+   ...(this.options.requestContexts ? { requestContexts: this.options.requestContexts } : {}),
+   ...(this.options.registration?{registration:this.options.registration}:{}),
    toolCeiling:launch.mcpTools??[],
    machineId:endpoint.machineId,owner:{hostBootId,paneId:launch.paneId,launchId:launch.launchId!,agentId:id,instance:name},current,transportEpoch:()=>endpoint.epoch(),
    menu:()=>this.options.menu(name),allowed:(tool,args)=>current()&&this.options.allowed(name,tool,args),
@@ -241,7 +282,8 @@ export class NativePaneManager {
    responseWritten:operationId=>daemon?.paneToolResponseWritten(operationId,owned),
    toolFailed:details=>daemon?.logNativeToolFailure(details),
   });
-  const native:RuntimeNativePaneLifecycle=new RuntimeNativePaneLifecycle({endpoint,launch,receiptFile:join(directory,`${launch.launchId}.pane.json`),...(launch.cli==="codex"&&retained.fresh?{freshPrevious:retained.fresh.previous}:{}),
+  if(this.options.registration){this.drainLeases.set(launch.launchId!,lease);this.drainSerial++;}
+  const native:RuntimeNativePaneLifecycle=new RuntimeNativePaneLifecycle({endpoint,launch,...(this.options.requestContexts ? { requestContexts: this.options.requestContexts } : {}),receiptFile:join(directory,`${launch.launchId}.pane.json`),...(launch.cli==="codex"&&retained.fresh?{freshPrevious:retained.fresh.previous}:{}),
    admit:()=>{assertCurrent();this.options.admit(name,config);},reserve:launchId=>{this.options.store.reservePane(id,launchId);},pin:(launchId,sessionId)=>{
     if(launch.cli==="codex"&&retained.fresh){const observed=native.port.ownedSnapshot();if(!observed||observed.launchId!==launchId||observed.sessionId!==sessionId)throw Error("Fresh Codex observation differs");retained=this.bindFreshCodex(file,retained,observed);}
     else this.options.store.pinPaneSession(id,launchId,sessionId);
@@ -263,7 +305,7 @@ export class NativePaneManager {
  async startFresh(name:string,config:InstanceConfig,launchId:string,sessionId:string|null,assertCurrent:()=>void):Promise<void>{
   config=structuredClone(config);
   const id=config.native_agent_id;if(!id||this.preparing.has(id)||this.bindings.has(id))throw Error("Native pane preparation still has an owner");
-  this.preparing.add(id);try{
+  this.preparing.add(id);this.drainSerial++;try{
    assertCurrent();this.options.admit(name,config);const agent=this.options.store.get(id),file=join(this.directory(id),"active.json"),manifest=this.load(file);
    // A replay consumes its already-committed UUID only after the original decision's proof is rechecked.
    const replay=!!(manifest?.fresh&&!manifest.exited&&!manifest.fresh.announced&&(manifest.fresh.decisionLaunchId??manifest.fresh.previous.launchId)===launchId&&(manifest.fresh.previous.sessionId??null)===sessionId);
@@ -298,12 +340,12 @@ export class NativePaneManager {
     :this.freshIntent(file,manifest,false,config,agent);
    if(replay)this.save(file,next);if(agent.cli==="claude-code")this.options.store.replacePaneSession(id,previous,next.launch.launchId!);
   }catch(error){if(error instanceof NativePaneRecoveryError){assertCurrent();this.options.store.setPaneRecovery(id,error.recovery);}throw error;}
-  finally{this.preparing.delete(id);}
+  finally{this.preparing.delete(id);this.drainSerial++;}
  }
  /** Explicit admin attestation, bound to the held launch; no keys, tool calls or process signals. */
  async recover(name:string,config:InstanceConfig,launchId:string,confirmedStopped:boolean,assertCurrent:()=>void):Promise<void>{
   const id=config.native_agent_id;if(!id||!UUID.test(id)||this.preparing.has(id))throw Error("Native pane preparation is in flight");
-  this.preparing.add(id);
+  this.preparing.add(id);this.drainSerial++;
   try {
    assertCurrent();this.options.admit(name,config);
    const agent=this.options.store.get(id),file=join(this.directory(id),"active.json"),manifest=this.load(file);
@@ -335,7 +377,7 @@ export class NativePaneManager {
    if(!agent.threadId)this.options.store.pinPaneSession(id,launchId,pin);
    if(!this.bindings.has(id))this.recordExit(file,manifest,ended);
    this.options.store.setPaneRecovery(id,manifest.launch.cli==="codex"&&manifest.fresh&&!ended.sessionId?{kind:"session-unconfirmed",provider:"codex",launchId,sessionId:pin}:undefined);
-  } finally {this.preparing.delete(id);}
+  } finally {this.preparing.delete(id);this.drainSerial++;}
  }
  /** Close only the retained exact launch. Offline, missing, or unknown exit remains reserved. */
  async closeRetained(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<void>{
@@ -357,8 +399,11 @@ export class NativePaneManager {
   });
   await native.release("close");
  }
- async handle(machineId:string,raw:PaneMcpBody,transport:()=>boolean):Promise<unknown>{
+ async handle(machineId:string,raw:PaneMcpBody,transport:()=>boolean,stamp?:import("./request-context-call-protocol.js").RequestContextCallStamp):Promise<unknown>{
   const body=validatePaneMcpBody(raw),binding=this.bindings.get(body.owner.agentId);
-  if(!binding)throw Error("Native pane tool owner is unavailable");return binding.lease.handle(machineId,body,transport);
+  if(!binding)throw Error("Native pane tool owner is unavailable");
+  // Negotiated transports refuse missing stamps before this callback. Old transports get only unknown per-operation scope.
+  const captured = stamp ?? (this.options.requestContexts ? { version:1 as const, coverage:"not-covered" as const, reason:"unbound-input" as const } : undefined);
+  return captured ? binding.lease.handle(machineId,body,transport,captured) : binding.lease.handle(machineId,body,transport);
  }
 }

@@ -31,7 +31,9 @@ export interface NeedsYouItem {
   since: number;
   /** prompt: the nonce the web answers through POST /ui/prompt, its buttons, and where the buttons are. */
   nonce?: string;
-  actions?: Array<{ id: string; label: string; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  actions?: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  /** M-3757: a card the dashboard shows compact; `raw` is the CLI's own words, folded behind a toggle. */
+  view?: import("./backend/types.js").RemoteCardView;
   promptAt?: { adapterId: string; chatId: string; threadId?: string; messageId?: string };
   /** delivery: the outbox row; Acknowledge offered. */
   deliveryId?: string;
@@ -69,6 +71,8 @@ export interface NeedsYouItem {
    * which every panel already renders with its Sign in button; the chat line adds the detail.
    */
   keepAlive?: true;
+  /** M-3749: the missing MCP servers and the profiles, for each surface to word in its own language (detail is the fallback). */
+  mcpMissing?: { names: string[]; from: string; to: string };
 }
 
 export type NeedsYouReason =
@@ -77,7 +81,7 @@ export type NeedsYouReason =
   | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
   | "general_windows_offline" | "general_location_hold"
-  | "model_switch" | "auth_paused" | "stale_auth" | "crashed" | "usage_limit" | "native_pane_hold" | "backend_missing"  // instance
+  | "model_switch" | "auth_paused" | "stale_auth" | "crashed" | "usage_limit" | "native_pane_hold" | "backend_missing" | "mcp_missing"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "missed_offline"                                                // missed while the fleet was down
   | "task_review" | "task_blocked" | "task_stalled" | "backend_signin" | "config_invalid" | "config_fallback"
@@ -114,7 +118,9 @@ export interface PromptInput {
   prefix: string;
   instance: string;
   text: string;
-  actions: Array<{ id: string; label: string; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  actions: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+  /** M-3757: the card's compact form. */
+  view?: import("./backend/types.js").RemoteCardView;
   createdAt: number;
   adapterId: string;
   chatId: string;
@@ -148,6 +154,8 @@ export interface InstanceInput {
   kiroCompatibility?: { message: string; since: number } | null;
   /** M-3302 (#4146): held because its backend's CLI is not installed — the binary, and the command that installs it. */
   backendMissing?: { backend: string; binary: string; since: number; fix: string } | null;
+  /** M-3749: MCP servers it had under its previous credential profile (`from`) and does not have now (`to`) — names only. */
+  mcpMissing?: { names: string[]; from: string; to: string; since: number } | null;
 }
 
 export interface DeliveryInput {
@@ -250,6 +258,7 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     if (!reason) continue;
     items.push({
       id: `prompt:${p.nonce}`, type: "prompt", instance: p.instance, reason,
+      ...(p.view ? { view: p.view } : {}),
       detail: oneLine(p.text), since: p.createdAt, nonce: p.nonce, actions: p.actions,
       promptAt: { adapterId: p.adapterId, chatId: p.chatId, ...(p.threadId !== undefined ? { threadId: p.threadId } : {}), ...(p.messageId ? { messageId: p.messageId } : {}) },
     });
@@ -303,6 +312,11 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
       const m = inst.backendMissing;
       items.push({ id: `backend-missing:${inst.name}:${m.since}`, type: "instance", instance: inst.name, reason: "backend_missing",
         detail: m.fix ? `${m.binary} — ${m.fix}` : m.binary, since: m.since });
+    }
+    if (inst.mcpMissing?.names.length) {
+      const m = inst.mcpMissing;
+      items.push({ id: `mcp-missing:${inst.name}:${m.since}`, type: "instance", instance: inst.name, reason: "mcp_missing",
+        detail: oneLine(`${m.names.join(", ")} (${m.from} → ${m.to})`), since: m.since, mcpMissing: { names: [...m.names], from: m.from, to: m.to } });
     }
     if (inst.crashedAt != null && !inst.generalLocation && !inst.kiroCompatibility) {
       items.push({ id: `crashed:${inst.name}:${inst.crashedAt}`, type: "instance", instance: inst.name, reason: "crashed", detail: "", since: inst.crashedAt });

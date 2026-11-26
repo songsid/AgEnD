@@ -1,7 +1,8 @@
 // #3153 P1: an agent's Files / Changes in the side panel (read-only) — the folder it works in, as the server's
 // /ui/workspace answers it (src/agent-workspace.ts: confined to that folder, secrets hidden by name, size limits).
 // - Changes (the default): git status and the uncommitted diff against HEAD, untracked files included, per file.
-// - Files: the folder's tree, one directory at a time (gitignored entries left out), and a read-only viewer — text
+// - Files: the folder's tree, one directory at a time (gitignored entries left out but for soul.md, M-3765; a toggle
+//   lists them all, marked), and a read-only viewer — text
 //   with line numbers, an image inline, otherwise why not (binary, too large, hidden, a link).
 // Refreshed on demand, and when the agent replies (the end of its turn). Nothing here writes to the folder, and
 // everything is drawn as text nodes: no HTML from the folder is ever parsed.
@@ -15,6 +16,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { Skeleton } from "/assets/ui-states.js";
 import { assetUrl } from "/assets/asset-url.js";
 import "./workspace-strings.js";          // this panel's own words (an older cached chat-strings.js lacks them)
+import "./workspace-ignored-strings.js";  // M-3765: the ignored-files toggle's words (a module of their own: an older cached workspace-strings.js lacks them)
 import "./workspace-follow-strings.js";   // #3160's words, a module of their own (an older workspace-strings.js lacks them)
 
 /** This panel's stylesheets, linked once (a tab opened before an upgrade has an app.css without these rules). */
@@ -95,6 +97,10 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
   const [current, setCurrent] = useState(null);
   const [hlEntry, setHlEntry] = useState(null);
   const [followInfo, setFollowInfo] = useState(null);  // { supported, running }
+  // M-3765: also list what git ignores (build output, dependencies), each marked; soul.md is listed either way.
+  const [showIgnored, setShowIgnored] = useState(false);
+  const ignoredRef = useRef(false);
+  const listExtra = () => (ignoredRef.current ? "&ignored=1" : "");
   const gen = useRef(0);
   const changesGen = useRef(0), dirGen = useRef(0), alive = useRef(true);
   const actions = useRef(null), autoScroll = useRef(null);
@@ -117,7 +123,7 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
   const loadDir = async (path, automatic = false) => {
     const mine = ++gen.current;
     if (!automatic) { setListing({ state: "loading", path }); setFile(null); }
-    const r = await read(instance, "list", path);
+    const r = await read(instance, "list", path, listExtra());
     if (!valid(mine, automatic)) return;
     if (automatic) setTab("files");
     setFile(null);
@@ -168,7 +174,7 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
   // The crumbs follow the file without dropping the viewer (loadDir would close it).
   const loadDirQuiet = async (path, token = gen.current, automatic = false) => {
     const mine = ++dirGen.current;
-    const r = await read(instance, "list", path);
+    const r = await read(instance, "list", path, listExtra());
     if (r.ok && mine === dirGen.current && valid(token, automatic)) { setDir(path); setListing({ state: "ready", body: r.body, path }); }
   };
   actions.current = { show };
@@ -177,6 +183,7 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
   useEffect(() => {
     alive.current = true; gen.current++; dirGen.current++; changesGen.current++;
     followRef.current = "off"; setFollow("off"); setHistory([]); setCurrent(null); setFile(null); setListing(null); setTab("changes");
+    ignoredRef.current = false; setShowIgnored(false);
     pos.current = { scope: null, turn: null, last: 0 }; pending.current = null;
     loadChanges();
     return () => { alive.current = false; gen.current++; dirGen.current++; changesGen.current++; clearTimeout(changesTimer.current); };
@@ -283,7 +290,9 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
             body.scrollTop += el.getBoundingClientRect().top - body.getBoundingClientRect().top - body.clientHeight / 2;
             autoScroll.current = body.scrollTop;
           }} back=${() => { pause(); setFile(null); }} />`
-            : html`<${Listing} listing=${listing} dir=${dir} hl=${hlEntry} openDir=${userDir} openFile=${userFile} />`}
+            : html`<label class="check ws-ignored-toggle" title=${t("chat.wsShowIgnoredTitle")}><input type="checkbox" checked=${showIgnored}
+                onChange=${(e) => { pause(); ignoredRef.current = !!e.currentTarget.checked; setShowIgnored(ignoredRef.current); loadDir(dir); }} /><span>${t("chat.wsShowIgnored")}</span></label>
+              <${Listing} listing=${listing} dir=${dir} hl=${hlEntry} openDir=${userDir} openFile=${userFile} />`}
         </div>`}
     </div>
   </aside>`;
@@ -342,11 +351,11 @@ function Listing({ listing, hl, openDir, openFile }) {
     <ul class="ws-entries">${l.entries.map((e) => {
       const rel = l.path ? `${l.path}/${e.name}` : e.name;
       const usable = !e.hidden && (e.type === "dir" || e.type === "file");
-      return html`<li key=${e.name} class=${`ws-entry t-${e.type}${e.hidden ? " is-hidden" : ""}${hl === rel ? " hl" : ""}`}>
+      return html`<li key=${e.name} class=${`ws-entry t-${e.type}${e.hidden ? " is-hidden" : ""}${e.ignored ? " is-ignored" : ""}${hl === rel ? " hl" : ""}`}>
         <button type="button" class="ws-entry-btn" disabled=${!usable} onClick=${() => (e.type === "dir" ? openDir(rel) : openFile(rel))}>
           <${Icon} name=${e.type === "dir" ? "chevron" : e.type === "symlink" ? "external" : "file"} size=${14} />
           <span class="ws-name">${e.name}${e.type === "dir" ? "/" : ""}</span>
-          <span class="ws-meta">${e.hidden ? t("chat.wsHiddenFile") : e.type === "symlink" ? t("chat.wsLink") : e.type === "file" ? size(e.size) : ""}</span>
+          <span class="ws-meta">${[e.hidden ? t("chat.wsHiddenFile") : e.type === "symlink" ? t("chat.wsLink") : e.type === "file" ? size(e.size) : "", e.ignored ? t("chat.wsIgnored") : ""].filter(Boolean).join(" · ")}</span>
         </button></li>`;
     })}</ul></div>`;
 }

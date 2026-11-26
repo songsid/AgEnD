@@ -268,7 +268,9 @@ model wrote a summary.
 **Files & changes (#3153, #3160, alpha).** An agent's **⋯ → Files & changes** opens the folder it works in, read-only
 (secret-looking files such as `.env` and keys are hidden): tabs **Changes** and **Files**, **Refresh**. **Follow
 agent** shows the file a local Claude Code or Codex agent is reading, editing or searching as it works; scrolling or
-choosing a file pauses it (**Paused · Resume**).
+choosing a file pauses it (**Paused · Resume**). **Files** leaves out what git ignores, except the agent's `soul.md` at the
+folder's top (marked "ignored by git"). **Show git-ignored files** lists the rest too (`node_modules`, build output…), each
+marked; secret-looking files stay hidden.
 
 **Buttons and polls.** An agent's reply can carry up to 10 buttons ("Choices"); a click shows as a 🔘 chip and the
 agent receives `[button] <label>` (with `(value: …)` when it differs). Buttons expire after 24 h ("Expired — reply in
@@ -366,6 +368,9 @@ tab title. Items, grouped by instance, oldest first:
 "Asking you a question" is a kiro V3 question card, posted to the instance's chat with a button per answer and a box
 for answering in words (on Discord/Telegram: reply to the post); an MCP input request offers Decline / Cancel and is
 filled in at the terminal (View).
+Claude Code's usage-credits prompt ("Fable 5.2 now uses usage credits", before a turn on a model the plan bills to
+usage credits) is "Waiting at a dialog": AgEnD never answers it (its default, and Esc, switch the model), and a signed-in
+administrator picks one of its own choices on the card; a choice that may spend credits asks to be confirmed first.
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
 A held contact request (an agent or ClassicBot room asking another agent, waiting for approval) is shown only to a
 verified administrator: with **Approve once** / **Decline**. A browser not yet verified (Authorize this browser not
@@ -434,7 +439,14 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   number, title, fields, checklist or assignee), **Filter** (status, assignee or nobody, priority, size, **Needs you**;
   each chip **is** / **is not**; a main task stays when it or a sub task matches) and **Display** (the list grouped by
   status, assignee or priority, ordered by board order, priority, last change, newest, assignee or title;
-  **Sub tasks as rows of their own**; finished cards last 7 days / all / hidden). The list shows every row's priority,
+  **Sub tasks as rows of their own**; finished cards shown or hidden). **Finished work (M-3668):** the Done column shows its
+  newest 20 (**Show 20 more**) with "N this week" beside its title; a main task done or cancelled is **archived**
+  `defaults.task_board.archive_after_days` after it finished (default 3; 0 = never: then "last 7 days / all" as before;
+  Settings → Shared agent settings → Advanced → **Archive finished cards after**, in days). An archived main task's sub
+  tasks go with it.
+  Archived cards leave the columns and the project's numbers; the header's **Archived · N** opens the project's Archive
+  (newest first, by assignee); search marks them **Archived**, their number still opens them, and moving one to To do
+  reopens it. Nothing is deleted by it. The list shows every row's priority,
   sorts by its column headers (again: reversed) and folds its groups. The project and filters are in the address
   (`?tp=`, `?tf=`): a link opens that filtered board; the choices are remembered per device (`agend_tasks_display`,
   `agend_tasks_filters`, `agend_tasks_query`, `agend_tasks_collapsed`). **A card is a page** (`?card=`; Back returns to

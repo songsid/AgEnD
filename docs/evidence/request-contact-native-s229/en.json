@@ -1,0 +1,55 @@
+{
+  "provenance": "Actual FleetManager nonce posting/callback/retirement on slice I's RequestContactCards and E's gate over a real DeliveryOutbox; synthetic adapter and people, no platform connection. Ticket short ids and nonces are normalized.",
+  "cases": {
+    "held-request": {
+      "card": {
+        "type": "clear_confirm",
+        "text": "Let Example lead contact Example worker?\n> Please run the release checklist.\nAsked by Demo person · #R1a2b3c4d · expires in 30 min\nContinue = this request and its follow-up contacts only.",
+        "buttons": [
+          {
+            "label": "Continue",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:approve"
+          },
+          {
+            "label": "Decline",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:decline"
+          }
+        ]
+      },
+      "afterContinue": "Continued by Demo admin."
+    },
+    "held-legacy": {
+      "card": {
+        "type": "clear_confirm",
+        "text": "Let Example lead contact Example worker?\n> Please run the release checklist.\nAsked by Demo person · #R1a2b3c4d · expires in 30 min\nApprove once = this one request only.",
+        "buttons": [
+          {
+            "label": "Approve once",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:approve"
+          },
+          {
+            "label": "Decline",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:decline"
+          }
+        ]
+      }
+    },
+    "general-proposal": {
+      "card": {
+        "type": "clear_confirm",
+        "text": "General suggests: Decline\nLet Example lead contact Example worker?\n> Please run the release checklist.\nAsked by Demo person · #R1a2b3c4d · expires in 30 min",
+        "buttons": [
+          {
+            "label": "Decline",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:decline"
+          },
+          {
+            "label": "Not now",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:cancel"
+          }
+        ]
+      },
+      "afterNotNow": "Not now. The request still waits."
+    }
+  }
+}

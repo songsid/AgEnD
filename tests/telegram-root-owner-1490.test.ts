@@ -5,6 +5,12 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const spawned = vi.hoisted(() => [] as Array<{ command: string; args: string[]; options: any }>);
+// M-3770: an update launch proves the machine's pre-flight first (#4480 §4); here the machine is one that may update
+// itself, and no probe (npm, systemctl) runs.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }], Date.now())) };
+});
 vi.mock("node:child_process", async original => ({
   ...await original<typeof import("node:child_process")>(),
   spawn: vi.fn((command: string, args: string[], options: unknown) => {
@@ -82,7 +88,7 @@ async function trace(twoGenerals: boolean, order: string[], command: string, use
 }
 
 describe("#1490 row14: forum-root authority must not depend on the dedup race", () => {
-  for (const command of ["/restart full", "/update"]) {
+  for (const command of ["/restart full", "/update now"]) {
     it(`two Generals: sibling-admin authority is arrival-independent for ${command}`, async () => {
       const ownerFirst = await trace(true, [A, B], command, ADMIN_B);
       const siblingFirst = await trace(true, [B, A], command, ADMIN_B);
@@ -93,13 +99,13 @@ describe("#1490 row14: forum-root authority must not depend on the dedup race", 
     });
     it(`one General: a sibling cannot silently consume ${command}`, async () => {
       const result = await trace(false, [B, A], command, ADMIN_A);
-      if (command === "/update") expect(result.updates).toHaveLength(1);
+      if (command.startsWith("/update")) expect(result.updates).toHaveLength(1);
       else expect(result.restarts).toEqual([A]);
     });
     it(`an explicitly addressed owner retains its own admin: ${command}`, async () => {
       const addressed = command.replace(/^(\/\w+)/, "$1@BetaBot");
       const result = await trace(true, [A, B], addressed, ADMIN_B);
-      if (command === "/update") expect(result.updates).toEqual([`command /update by ${B}:${ADMIN_B}`]);
+      if (command.startsWith("/update")) expect(result.updates).toEqual([`command /update by ${B}:${ADMIN_B}`]);
       else expect(result.restarts).toEqual([B]);
     });
   }

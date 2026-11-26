@@ -1,3 +1,4 @@
+import { assertRequestContextRootOpen } from "./request-context-fence.js";
 import type Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import { RequestContextV1Schema, RequestOperationBindingV1Schema, type RequestContextV1, type RequestOperationBindingV1 } from "./request-context-protocol.js";
@@ -33,7 +34,8 @@ export class RequestContextStore {
     if (rows.length === 1 || (rows.length === 2) !== marker) throw Error("request-context incomplete companion schema");
     return rows.length === 2;
   }
-  private initialize(): void {
+  /** Internal schema preparation; the owning outbox/dispatcher must establish its active compatibility barrier first. */
+  initialize(): void {
     if (this.present()) return;
     this.db.exec(`CREATE TABLE ${CONTEXTS} (
       context_id TEXT PRIMARY KEY, parent_id TEXT REFERENCES ${CONTEXTS}(context_id),
@@ -57,6 +59,7 @@ export class RequestContextStore {
   /** Called inside the outbox's admission transaction. Contexts are append-only; retries must match exactly. */
   recordContext(input: RequestContextV1): RequestContextV1 {
     const context = RequestContextV1Schema.parse(input);
+    assertRequestContextRootOpen(this.db,context.ref.rootContextId);
     if (Buffer.byteLength(requestContextJson(context)) > 16 * 1024) throw Error("request-context too large");
     this.initialize();
     const previous = this.context(context.ref.contextId);
@@ -111,7 +114,10 @@ export class RequestContextStore {
     return record;
   }
   assertLegacyAdmission(source: string, operationId: string, sourceKey: string): void {
-    if (this.present() && this.db.prepare(`SELECT 1 FROM deliveries WHERE request_context_id IS NOT NULL AND ((source_instance=? AND operation_id=?) OR source_key=?)
+    const present = this.present();
+    if (present && this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_context_contacts_v1'").get()
+      && this.db.prepare("SELECT 1 FROM request_context_contacts_v1 WHERE (source_instance=? AND operation_id=?) OR source_key=? LIMIT 1").get(source, operationId, sourceKey)) throw Error("request-context required for scoped retry");
+    if (present && this.db.prepare(`SELECT 1 FROM deliveries WHERE request_context_id IS NOT NULL AND ((source_instance=? AND operation_id=?) OR source_key=?)
       UNION ALL SELECT 1 FROM ${OPERATIONS} WHERE (source_instance=? AND operation_id=?) OR source_key=? LIMIT 1`)
       .get(source, operationId, sourceKey, source, operationId, sourceKey)) throw Error("request-context required for scoped retry");
   }

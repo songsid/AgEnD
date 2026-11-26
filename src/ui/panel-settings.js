@@ -1098,6 +1098,9 @@ function taskBoardDefaults(d, f) {
     if (w[field] === false || hasOwn(tb, key)) out[key] = w[field]; else delete out[key];
   }
   if (w.wakeLeader !== saved.wakeLeader) { if (w.wakeLeader) out.leader = w.wakeLeader; else delete out.leader; }
+  // M-3668: the archive age is kept as saved unless changed (nothing saved stays absent: the form shows the default).
+  const days = f ? f.archiveDays : archiveForm(d).archiveDays;
+  if (Number(days) !== Number(archiveForm(d).archiveDays)) out.archive_after_days = Number(days);
   return out;
 }
 /**
@@ -1108,6 +1111,13 @@ function wakesForm(d) {
   const tb = d.task_board || {};
   return { wakeComment: tb.comment_wakes !== false, wakeProgress: tb.progress_wakes !== false, wakeLeader: typeof tb.leader === "string" ? tb.leader.trim() : "" };
 }
+/** M-3668: `defaults.task_board.archive_after_days` as the form holds it (unset or not a whole number 0–3650: the default, 3). */
+const ARCHIVE_DAYS_DEFAULT = 3;
+function archiveForm(d) {
+  const v = (d.task_board || {}).archive_after_days;
+  return { archiveDays: String(Number.isInteger(v) && v >= 0 && v <= 3650 ? v : ARCHIVE_DAYS_DEFAULT) };
+}
+const daysInRange = (v) => { const n = Number(v); return String(v).trim() !== "" && Number.isInteger(n) && n >= 0 && n <= 3650 ? "" : "archiveRange"; };
 const minutesInRange = (v) => { const n = Number(v); return String(v).trim() !== "" && Number.isFinite(n) && n >= 1 && n <= 1440 ? "" : "livenessRange"; };
 
 /** General's form, from the saved defaults (`d`) and ClassicBot's (`c`). */
@@ -1125,6 +1135,8 @@ function generalForm(d, c, fleet = {}, schema = {}) {
     ...livenessForm(d),
     // Which task board news wakes an agent.
     ...wakesForm(d),
+    // M-3668: when a finished card leaves the board.
+    ...archiveForm(d),
     // #2347 §10 review: unset startup concurrency is automatic (deriveSpawnConcurrency: 2–10 by free memory and cores),
     // not 10 — an empty field, and a save that leaves it unset (the defaults merge replaces `startup` whole).
     concurrency: startup.concurrency == null ? "" : String(startup.concurrency), stagger: String(startup.stagger_delay_ms ?? 500),
@@ -1161,6 +1173,7 @@ function General({ ctx, part = "all" }) {
   const errors = {
     auto: nonNegative(f.auto), hang: positive(f.hang),
     liveQuiet: minutesInRange(f.liveQuiet), livePrompt: minutesInRange(f.livePrompt), liveCrash: minutesInRange(f.liveCrash),
+    archiveDays: daysInRange(f.archiveDays),
     concurrency: f.concurrency.trim() !== "" && (!Number.isInteger(num(f.concurrency)) || num(f.concurrency) < 1 || num(f.concurrency) > 20) ? "concurrencyRange" : "",
     stagger: !Number.isFinite(num(f.stagger)) || f.stagger.trim() === "" || num(f.stagger) < 0 || num(f.stagger) > 30000 ? "staggerRange" : "",
   };
@@ -1174,7 +1187,7 @@ function General({ ctx, part = "all" }) {
   useEffect(() => {
     if (!ready) {
       // Where it is (#2382 review): the bar in another section names it and goes there.
-      const at = { auto: "#g-auto", hang: "#g-hang", concurrency: "#g-conc", stagger: "#g-stag", liveQuiet: "#g-live-quiet", livePrompt: "#g-live-prompt", liveCrash: "#g-live-crash" }[Object.keys(errors).find((k) => errors[k])];
+      const at = { auto: "#g-auto", hang: "#g-hang", concurrency: "#g-conc", stagger: "#g-stag", liveQuiet: "#g-live-quiet", livePrompt: "#g-live-prompt", liveCrash: "#g-live-crash", archiveDays: "#g-archive-days" }[Object.keys(errors).find((k) => errors[k])];
       syncStage(ctx, "defaults:invalid", { label: tn("updateDefaults"), invalid: tn(firstError), section: "agent-defaults", target: at });
       return;
     }
@@ -1244,6 +1257,7 @@ function General({ ctx, part = "all" }) {
       return { liveOn: !hasOwn(lv, "enabled"), liveQuiet: !hasOwn(lv, "quiet_minutes"), livePrompt: !hasOwn(lv, "prompt_minutes"), liveCrash: !hasOwn(lv, "crash_grace_minutes") }; })(),
     // Each wake switch nobody set is the built-in default (on; no leader).
     wakeComment: !hasOwn(d.task_board || {}, "comment_wakes"), wakeProgress: !hasOwn(d.task_board || {}, "progress_wakes"), wakeLeader: !hasOwn(d.task_board || {}, "leader"),
+    archiveDays: !hasOwn(d.task_board || {}, "archive_after_days"),
   };
   const fromDefaults = (k, value, target) => ({ text: valueText(value, k), builtin: !hasOwn(d, k), from: inAgentDefaults(target) });
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;

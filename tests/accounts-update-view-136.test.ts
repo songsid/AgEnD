@@ -18,10 +18,10 @@ const hostRow = (view: ReturnType<typeof buildAccountsView>, backend: string) =>
 
 describe("the version of an installed CLI against the audited release", () => {
   const view = buildAccountsView(input({
-    "claude-code": "2.1.316 (Claude Code)", codex: "codex-cli 0.171.0", "kiro-cli": "kiro-cli 3.5.0", antigravity: "1.3.5", grok: "grok 1.0.99 (abc)", muse: "1.4.12-R6909.1", opencode: null,
+    "claude-code": "2.1.316 (Claude Code)", codex: "codex-cli 0.171.0", "kiro-cli": "kiro-cli 3.6.0", antigravity: "1.3.5", grok: "grok 1.0.99 (abc)", muse: "1.4.12-R6909.1", opencode: null,
   }));
   it("behind, and the registry has an update: a dashboard Update to the audited release", () => {
-    expect(hostRow(view, "claude-code")).toMatchObject({ version: "2.1.316", cliUpdate: { state: "behind", installed: "2.1.316", audited: "2.1.331", button: true, via: "dashboard" } });
+    expect(hostRow(view, "claude-code")).toMatchObject({ version: "2.1.316", cliUpdate: { state: "behind", installed: "2.1.316", audited: "2.1.332", button: true, via: "dashboard" } });
   });
   it("at the audited release: current, no button", () => {
     expect(hostRow(view, "codex")).toMatchObject({ version: "0.171.0", cliUpdate: { state: "current", audited: "0.171.0", button: false, via: "dashboard" } });

@@ -6,6 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Every handler that would do something real is replaced by a recorder: this file proves WHO gets through, and
 // nothing in it may start an update, restart, pause, stop or network call.
 const spawned = vi.hoisted(() => [] as unknown[][]);
+// M-3770: an update launch proves the machine's pre-flight first (#4480 §4); here the machine is one that may update
+// itself, and no probe (npm, systemctl) runs.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }], Date.now())) };
+});
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return { ...real, spawn: vi.fn((...args: unknown[]) => { spawned.push(args); return { once() {}, unref() {}, on() {} }; }) };

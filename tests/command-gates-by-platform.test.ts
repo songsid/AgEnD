@@ -6,6 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Nothing in here may start a backend, a process or a network call: every handler that would is a recorder.
 const spawned = vi.hoisted(() => [] as unknown[][]);
+// M-3770: an update launch proves the machine's pre-flight first (#4480 §4); here the machine is one that may update
+// itself, and no probe (npm, systemctl) runs.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }], Date.now())) };
+});
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return { ...real, spawn: vi.fn((...args: unknown[]) => { spawned.push(args); return { once() {}, unref() {}, on() {} }; }) };
@@ -83,7 +89,8 @@ async function rig(): Promise<Rig> {
     replies.push(String(text));
     if (text === t("restart.usage")) reached.push("restart");
     if (text === "ok:usage") reached.push("usage");
-    if (text === t("update.progress.preparing", 0)) { reached.push("update"); throw stop; }
+    // Bare /update reaches the handler when it posts the card. /update now still stops at the preparing line.
+    if (text === t("update.progress.preparing", 0) || String(text).includes("already current")) { reached.push("update"); if (text === t("update.progress.preparing", 0)) throw stop; }
     if (text === t("doctor.running")) { reached.push("doctor"); throw stop; }
     if (String(text).startsWith(t("visibility.current", "full"))) reached.push("visibility");
     return { messageId: "m", chatId };

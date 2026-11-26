@@ -644,6 +644,8 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .dlg-title { flex: 1; font-size: var(--fs-lg); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
 .dlg-body { padding: var(--s-2) var(--s-5) var(--s-4); overflow-y: auto; display: flex; flex-direction: column; gap: var(--s-3); }
 .dlg-actions { display: flex; justify-content: flex-end; gap: var(--s-2); padding: var(--s-3) var(--s-5) var(--s-5); }
+.dlg-even .dlg-actions .btn { flex: 1 1 0; min-width: 0; }
+.dlg-even .confirm-text { text-wrap: balance; }
 /* A drawer (ui-dialog.js `drawer`): on a desk, the right edge at full height, the page in view beside it. A phone keeps
    the bottom sheet (the rules below are for 900 px and up only). */
 @media (min-width: 900px) and (pointer: fine), (min-width: 900px) and (pointer: none), (min-width: 900px) and (min-height: 501px), (min-width: 1024px) {
@@ -1333,6 +1335,22 @@ img.amb-p { object-fit: contain; }
 .st-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .st-link:hover { text-decoration-thickness: 2px; }
 .prompt .acts { display: flex; gap: var(--s-2); margin-top: var(--s-2); align-items: center; flex-wrap: wrap; }
+/* M-3757: a plain subtitle under a CLI choice's own words (what it means for the plan). */
+.btn:has(> .btn-hint) { flex-direction: column; align-items: flex-start; text-align: left; height: auto; }
+.btn .btn-hint { display: block; font-size: var(--fs-xs); font-weight: 400; color: var(--text-2); white-space: normal; }
+/* M-3757: Claude's text, folded under the detail line (Needs you and the chat). */
+.n-raw { margin-top: var(--s-1); font-size: var(--fs-xs); color: var(--text-2); }
+.n-raw > summary { cursor: pointer; width: fit-content; }
+.n-raw-text { margin: var(--s-1) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-xs); color: var(--text-2); }
+.prompt .prompt-detail { color: var(--text-2); }
+/* The bill sentence wraps at spaces and punctuation only (never inside 「另外」), balanced so no stub is left alone. */
+.n-usage-credits .n-detail, .prompt-usage-credits .prompt-detail { word-break: keep-all; overflow-wrap: anywhere; text-wrap: balance; }
+.prompt-usage-credits > .txt:first-child { text-wrap: balance; }
+/* Phone and touch: the fold and the chat prompt's choices are tap targets, as .n-actions buttons are. */
+@media (max-width: 899px), (pointer: coarse) {
+  .n-raw > summary { min-height: var(--tap); line-height: var(--tap); }
+  .prompt-usage-credits .acts .btn { min-height: var(--tap); }
+}
 .prompt .wait { font-size: var(--fs-xs); color: var(--text-3); }
 /* #2675: a prompt's typed answer. 16px keeps iOS from zooming in on focus (#1612). */
 .prompt .prompt-text { display: flex; gap: var(--s-2); margin-top: var(--s-2); }
@@ -1626,6 +1644,8 @@ img.amb-p { object-fit: contain; }
   /* M-3281: the archived chat files' limit (Settings → Web dashboard): its field is a phone tap target too (its Save keeps the
      section's one .btn height, as the app icon's button beside it). */
   .p-settings .s-archive-files .field input { min-height: var(--tap); }
+  /* M-3668 (ui-gate, #4428): the task board's archive-after-days field is a phone tap target too. */
+  .p-settings #g-archive .s-hang-row input { min-height: var(--tap); }
   /* AGEND-122: Owner verification's own buttons, dialog fields and switches are phone tap targets (style guide rule 7); the Devices
      card's primary action beside it matches (one primary button height on the page). */
   .p-settings .s-outside :is(.save-row .btn, .field input, label.check), .p-settings .s-devices .save-row .btn, .p-settings .s-web-authority .save-row .btn { min-height: var(--tap); }
@@ -2710,6 +2730,14 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card-avatar .oo-badge { position: absolute; left: -6px; top: -6px; }
 .oo-card-names { flex: 1; min-width: 0; }
 .oo-card-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oo-card-name-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.oo-card-name-row .oo-card-name { min-width: 0; }
+.oo-card-rename-btn { flex: none; width: 24px; height: 24px; font-size: var(--fs-sm); color: var(--text-2); }
+.oo-card-rename { width: 100%; font: inherit; font-weight: 600; }
+/* A phone: the pencil keeps its size (the name's row does not grow) and no square behind it; a clear ::after reaches --tap. */
+.oo-card-rename-btn { position: relative; }
+.oo-card.sheet .oo-card-rename-btn, .oo-card.sheet .oo-card-rename-btn:hover { background: transparent; }
+.oo-card.sheet .oo-card-rename-btn::after { content: ""; position: absolute; inset: calc((24px - var(--tap)) / 2); z-index: 4; }   /* over the grip (z 3), as the close button reaches */
 /* One line, cut; a fixed line height so a CJK fallback in the mono stack doesn't make it taller. */
 .oo-card-instance { height: 18px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-2); }
 .oo-card-state { color: var(--text-2); }
@@ -2799,6 +2827,23 @@ button.oo-tile-label:focus-visible { outline: 2px solid var(--focus); outline-of
 .oo-desks:focus-within { position: absolute; z-index: 7; left: var(--s-2); bottom: var(--s-2); width: auto; height: auto; max-height: 40%; margin: 0; padding: var(--s-1); clip: auto; overflow-y: auto;
   display: inline-flex; flex-wrap: wrap; gap: 4px; max-width: calc(100% - 2 * var(--s-2)); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); white-space: normal; }
 .oo-desk { font-size: var(--fs-xs); padding: 2px 6px; border-radius: var(--r-sm); background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+/* M-3665: zoomed too far out to read the name tags (a phone's whole office, about 30 %: 3 px), the names show here — a row
+   of chips over the stage's foot, scrolling sideways, each a whole touch target that opens that person's card. */
+.oo[data-tags-off] .oo-desks { position: absolute; z-index: 5; left: var(--s-2); right: var(--s-2); bottom: var(--s-2); width: auto; height: auto; max-height: none;
+  margin: 0; padding: var(--s-1); clip: auto; overflow-x: auto; overflow-y: hidden; display: flex; flex-wrap: nowrap; gap: var(--s-1); max-width: none; white-space: nowrap;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-full); overscroll-behavior-x: contain; }   /* flat: no shadow (leader's check) */
+.oo[data-tags-off] .oo-desks > li { flex: none; }
+.oo[data-tags-off] .oo-desks > li[data-call] { order: -1; }   /* a call first, in view, its chip in the warning colour */
+.oo[data-tags-off] .oo-desks > li[data-call] .oo-desk { border-color: var(--warn); }
+/* More to scroll (data-more-left/right, desksCue): the row's edge fades, as the zone pills' does — never a chip cut short. */
+.oo[data-tags-off] .oo-desks[data-more-right] { -webkit-mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); }
+.oo[data-tags-off] .oo-desks[data-more-left] { -webkit-mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); }
+.oo[data-tags-off] .oo-desks[data-more-left][data-more-right] { -webkit-mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); }
+/* #4466 Hide names: the zoomed-out row keeps only the callers (as their tags do); nobody calling, no row. */
+.oo[data-tags-off][data-names-off] .oo-desks > li:not([data-call]) { display: none; }
+.oo[data-tags-off][data-names-off] .oo-desks:not(:has(> li[data-call])) { display: none; }
+.oo[data-tags-off] .oo-stage .oo-snacks { bottom: calc(var(--s-2) + var(--tap) + var(--s-4)); }   /* the snack tray above the row */
+.oo[data-tags-off] .oo-desk { display: inline-flex; align-items: center; min-height: var(--tap); padding: 0 var(--s-3); border-radius: var(--r-full); font-size: var(--fs-sm); }
 .oo-desk:focus-visible { outline: none; border-color: var(--focus); box-shadow: inset 0 -2px 0 var(--focus); }
 /* #2513: Edit layout (fleet-office-layout.js) — an SVG over the canvas (placed and sized through the CSSOM), its 1280×720
    grid, the areas, corridors and a handle for each seat, item, the door and waypoint; its bar sticks to the stage's foot. */
@@ -2918,6 +2963,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .oo-zone-pills[data-more-right] { -webkit-mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); }
   .oo-zone-pills[data-more-left] { -webkit-mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); }
   .oo-zone-pills[data-more-left][data-more-right] { -webkit-mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); }
+  /* M-3665: in the row under the stage the chips wrap to a second line rather than scroll off its edge ("Nap cor…"
+     was cut on a phone): every area's whole name and count is in view. */
+  .oo > .oo-zone-pills, .oo > .oo-zone-pills[data-more-left], .oo > .oo-zone-pills[data-more-right] { flex-wrap: wrap; overflow-x: visible; border-radius: var(--r-lg); -webkit-mask-image: none; mask-image: none; }
   .oo-snacks { left: var(--s-2); bottom: max(var(--s-2), env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 2 * var(--s-2)); }
   .oo-stage:has(.oo-zone-pills) .oo-snacks { bottom: calc(max(var(--s-2), env(safe-area-inset-bottom, 0px)) + 52px); }
 }
@@ -2931,7 +2979,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .oo-sheet :is(.oo-sheet-bar > *, .oo-sheet-live) { min-height: var(--tap); }
 .oo-sheet :is(.oo-pick, .check) { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text); }
 .oo-sheet .oo-pick { justify-content: space-between; }
-.oo-sheet .oo-pick .tb-select { width: 62%; min-height: var(--tap); font-size: var(--fs-md); }
+.oo-sheet .oo-pick .tb-select { width: 62%; max-width: none; min-height: var(--tap); font-size: var(--fs-md); }   /* M-3743: not the bar's 150 px cap ("Pop-up window" was cut) */
 .oo-sheet .dlg-x { width: var(--tap); height: var(--tap); }
 /* M-3556: more below the fold fades out at the sheet's foot, over the rows (data-more: set while not at the end). */
 .oo-sheet .dlg-body[data-more]::after { content: ""; position: sticky; bottom: calc(-1 * var(--s-4)); flex: none; display: block; height: 48px;
@@ -5464,3 +5512,18 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* M-3678: the new owner stop action follows the phone tap target. */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .n-actions .hub-close { min-height: var(--tap); min-width: var(--tap); } }
+
+/* H: provenance stays outside the collapsible message, with the existing flat notice disclosure. */
+.request-provenance { color: var(--text-2); margin-bottom: var(--s-2); overflow-wrap: anywhere; }
+.request-provenance strong { color: var(--text); font-size: inherit; font-weight: 600; }
+.request-provenance p { margin: var(--s-1) 0; }
+.request-provenance .n-raw { margin: var(--s-1) 0; }
+.request-provenance summary { cursor: pointer; list-style: disclosure-closed inside; }
+.request-provenance details[open] > summary { list-style-type: disclosure-open; }
+.request-provenance .msg-tools { opacity: 1; }
+.request-provenance .n-raw-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .request-provenance summary { min-height: var(--tap); display: list-item; padding-block: var(--s-3); }
+  .request-provenance .msg-tools button { min-height: var(--tap); min-width: var(--tap); }
+}

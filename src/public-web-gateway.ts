@@ -120,6 +120,8 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // M-3680 (decision 7933bf90): contact permissions and held contact requests — Fleet › 授權, an agent's Permissions tab
   // and Needs you's Approve — were simply missing here, so the link answered 404 and the page said only "Couldn't load
   // permissions". The handler (contact-auth-api.ts) admits a verified admin only, asking the authority on every request.
+  if(method==="GET"&&/^\/ui\/api\/request-contact-authorizations(?:\/R[a-f0-9-]{36})?$/.test(path))return true;
+  if(method==="POST"&&/^\/ui\/api\/request-contact-authorizations\/R[a-f0-9-]{36}\/decision$/.test(path))return true;
   if (method === "GET" && /^\/ui\/api\/contact-authorizations(?:\/R[a-f0-9-]{36})?$/.test(path)) return true;
   if (method === "POST" && /^\/ui\/api\/contact-authorizations\/R[a-f0-9-]{36}\/decision$/.test(path)) return true;
   if ((method === "GET" || method === "PUT") && /^\/ui\/api\/instances\/[^/]+\/contact-permissions$/.test(path)) return true;
@@ -154,7 +156,7 @@ function isPublicPrivilegedRoute(method: string, path: string): boolean {
   if (method === "GET" && (path === "/ui/host-health" || path === "/ui/host-history")) return true; // cached only; handler requires a current admin session
   if ((reads || method === "PUT" || method === "DELETE") && path === "/ui/app-icon") return true;
   if (method === "GET" && (path === "/ui/update" || path === "/ui/update/log")) return true;
-  if (method === "POST" && (path === "/ui/update/check" || path === "/ui/update/start")) return true;
+  if (method === "POST" && (path === "/ui/update/check" || path === "/ui/update/start" || path === "/ui/update/answer")) return true;
   if (method === "GET" && (path === "/ui/owner-css.css" || path === "/ui/owner-css/state" || /^\/ui\/owner-css\/asset\/[0-9a-f]{32}$/.test(path))) return true;
   if (method === "POST" && /^\/ui\/owner-css(?:\/(?:shown|keep|revert|restore|asset))?$/.test(path)) return true;
   if (method === "GET" && /^\/ui\/mods(?:\/(?:staged|file)\/[0-9a-f]{32})?$/.test(path)) return true;

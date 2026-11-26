@@ -1,5 +1,14 @@
+import {requestDeliveryView,requestContextDisplayView} from "./request-context-view.js";
+import {captureRequestHubOutput} from "./request-hub-output.js";
+import {assertRequestContextOperation,requireRequestContextPolicy,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
+import { permitWebContinuation } from "./web-continuation.js";
+import type { RequestContactApiHost } from "./request-contact-api.js";
+import type { RequestContactPrincipal, RequestContactSnapshotV1 } from "./request-contact-types.js";
+import type { RequestContactCards } from "./request-contact-card.js";
+import { nativeContactCardText, nativeContactOutcome, nativeContactPrincipal, nativeDecisionFailure } from "./request-contact-native.js";
+import { RequestContextReferenceMap, type RequestContextRegistrationGate } from "./request-context-fence.js";
 type HubHeldCloseOutcome = import("./hub/question-close-model.js").HubHeldCloseOutcome;
-import { prepareContactChange, shortContactTicketId, type PreparedContactChange } from "./contact-change-proposals.js";
+import { ContactChangeSchema, prepareContactChange, resolvePendingTicket, shortContactTicketId, type PreparedContactChange } from "./contact-change-proposals.js";
 import { contactStateView, ownContactRequestsView } from "./contact-state-view.js";
 import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
 import { SharedDefaultAdoption } from "./shared-default-adoption.js";
@@ -316,6 +325,7 @@ import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { INSTRUCTIONS_FILE } from "./instruction-file-sizes.js";
 import { NativeMcpSessions } from "./native-mcp.js";
+import type { RequestContextLocalCall } from "./request-context-call.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import { cachedNativeModelCatalog, refreshNativeModelCatalogAfterSignIn } from "./native-model-catalog.js";
 import { shapeWebModelCatalog } from "./web-model-groups.js";
@@ -380,11 +390,15 @@ import { WebSettingsTools } from "./web-settings-tools.js";
 import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
+import { turnSource, type QuiescenceGate } from "./update-quiescence.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
+import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateOfferReply, type UpdateCardView } from "./update-card.js";
+import { preflightAllows } from "./update-readiness.js";
+import { inUpdatePause, resolveUpdates } from "./update-settings.js";
 import { resolveInstalledAgend, npmForRunningInstall } from "./update-dispatch.js";
 import { HUB_UPDATE_NOTICE_FILE, HUB_UPDATE_REMIND_MS, hubNoticeDue, hubNoticeKey, readHubNoticeState, writeHubNoticeState } from "./hub-update-notice.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
-import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdatePin, type WebUpdateProgress } from "./web-update.js";
+import { failureCause, isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdatePin, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
 import { CLAUDE_NPM_PACKAGE, claudeInstallKind, displayHostPath, type ClaudeInstall } from "./claude-install-kind.js";
@@ -544,6 +558,7 @@ type ReconcileObserver = (
 import { kiroHome } from "./backend/kiro-kas-store.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, claudeStoreEnded, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLaunch, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
+import { carryClaudeMcpServers, claudeJsonFor, dismissClaudeMcpMissing, recordClaudeMcpBeforeSwitch } from "./backend/claude-mcp-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, accountUsage, buildAccountsView, profilesOnDisk, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import { accountFolderExists, addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
@@ -905,6 +920,12 @@ interface NonceButtonEntry {
   contactChange?: { plan: PreparedContactChange; current(): boolean };
   /** M-3680: the held contact request a General card decides (CONTACT_TICKET_PREFIX). */
   contactTicketId?: string;
+  /** S-229: the same card's CAS snapshot as posted; a click decides exactly this image through RequestContactCards. */
+  contactSnapshot?: RequestContactSnapshotV1;
+  /** S-229: a General proposal's card (one suggested choice + Not now) and what keeps it valid. */
+  contactProposalCurrent?: () => boolean;
+  /** S-229: the choices this card offered; a click naming any other action on its nonce is refused. */
+  contactActions?: readonly string[];
   /**
    * #1490 row 27: the lifecycle of `instanceName` the prompt was offered for (lifecyclePin), taken when it is posted.
    * A Restart acts only while it still holds: a stop, restart or same-name replacement since makes the button stale.
@@ -964,7 +985,7 @@ interface NonceButtonEntry {
    * Set when the prompt is also offered in the web dashboard (web track C4): what the page shows. The same
    * nonce, the same single claim and the same expiry as the platform's buttons — whoever clicks first wins.
    */
-  web?: { text: string; actions: Array<{ id: string; label: string; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
+  web?: { text: string; actions: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>; view?: import("./backend/types.js").RemoteCardView; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
   /** When the prompt was offered (epoch ms): its age in "Needs you" (#1386). */
   createdAt?: number;
   /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
@@ -1127,7 +1148,7 @@ const CONTACT_TICKET_PREFIX = "contact-ticket:";
 /** How many requests' cards are remembered (one card per request; a decided one is forgotten at once). */
 const HELD_CARDS_KEPT = 512;
 /** A held request's card, retired after it was decided elsewhere (the dashboard, Needs you, another card) or closed. */
-const heldCardOutcome = (state: string): string => t(state === "approved" ? "contactHeld.approvedElsewhere"
+const heldCardOutcome = (state: string, root = false): string => t(state === "approved" ? root ? "contactCard.continued_elsewhere" : "contactHeld.approvedElsewhere"
   : state === "declined" ? "contactHeld.declinedElsewhere" : state === "expired" ? "contactHeld.expired" : "contactHeld.closed");
 const HUB_FLEET_UPDATE_CALLBACK_PREFIX = "hub-fleet-update:";
 const KIRO_RECONCILE_CALLBACK_PREFIX = "kiro-reconcile:";
@@ -1313,6 +1334,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Test seam: inject a spy to verify saveFleetConfig calls fsync. Default: fsyncSync. */
   fsyncForTest: ((fd: number) => void) | undefined = undefined;
+  /** S-244: the quiescence barrier. Unset, every pane write and admission proceeds as today. */
+  private quiescence: QuiescenceGate | null = null;
+  attachQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
 
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
@@ -1505,6 +1529,54 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   fleetConfig: FleetConfig | null = null;
   private fleetWindowsRuntime: FleetWindowsRuntime | null = null;
   private nativeMcpStore: NativeMcpSessions | null = null;
+  private readonly requestContextIpcCalls = new WeakMap<object, RequestContextLocalCall>();
+  private readonly requestContextFleetCalls=new RequestContextReferenceMap<string,{call:RequestContextLocalCall;instance:string;bootId:string;ipc:InstanceClient;responseKey:string}>(row=>row.call.admission.coverage==="covered"?row.call.admission.lease.snapshot.context.ref.rootContextId:null,row=>`fleet-call:${row.call.id}`);
+  setRequestContextDrainRegistration(registration:RequestContextRegistrationGate):void {
+    if(this.instanceIpcClients.size)throw Error("Request context drain must bind before IPC starts");
+    const calls=this.requestContextFleetCalls;if(!calls)throw Error("Request context drain registry unavailable");
+    calls.installRegistration(registration);
+  }
+  get requestContextFleetDrainRevision():string{return this.requestContextFleetCalls?.revision??"unavailable";}
+  requestContextFleetDrainView(rootId:string){return this.requestContextFleetCalls?.view(rootId)??{registration:null,revision:"unavailable",references:[],unknown:true};}
+  private finishRequestContextIpcCall(message:object):void {const call=this.requestContextCallOf(message),calls=this.requestContextFleetCalls;if(call&&calls)for(const [id,row]of calls)if(row.call===call)calls.delete(id);}
+  private purgeRequestContextIpcCalls(name:string,ipc:InstanceClient):void {
+    const calls=this.requestContextFleetCalls;if(!calls)return;
+    for(const [id,row]of calls)if(row.instance===name&&row.ipc===ipc)calls.delete(id);
+  }
+  private observeRequestContextResponses(name:string,ipc:InstanceClient):void {
+    const calls=this.requestContextFleetCalls;if(!calls?.registrationGate)return;
+    const send=ipc.send.bind(ipc);
+    ipc.send=(message:unknown):boolean=>{
+      try{return send(message);}finally{
+        if(message&&typeof message==="object"){
+          const row=message as Record<string,unknown>,key=String(row.fleetRequestId??row.requestId??"");
+          if(String(row.type??"").endsWith("_response")&&key)for(const [id,call]of calls)if(call.instance===name&&call.ipc===ipc&&call.responseKey===key)calls.delete(id);
+        }
+      }
+    };
+  }
+  /** Captured at IPC arrival, not a later lookup of this instance's current turn. */
+  requestContextCallOf(message: object): RequestContextLocalCall | null { return this.requestContextIpcCalls?.get(message) ?? null; }
+  private captureRequestContextIpcCall(name: string, message: Record<string, unknown>, ipc: InstanceClient): boolean {
+    const daemon = this.daemons.get(name);
+    if (!daemon?.requestContextCallsRequired?.()) return message.requestContextCallId === undefined;
+    if (this.instanceIpcClients.get(name) !== ipc || message.sourceDaemonBootId !== daemon.bootId || typeof message.requestContextCallId !== "string") return false;
+    const captured = daemon.requestContextCall(message.requestContextCallId);
+    if (!captured) return false;
+    const tool = message.type === "fleet_outbound" ? String(message.tool ?? "") : toolForIpcType(message.type);
+    const originalBoot = daemon.bootId;
+    const scoped = Object.freeze({ id: captured.id, admission: captured.admission,
+      current: () => captured.current() && this.instanceIpcClients.get(name) === ipc && this.getDaemonBootId(name) === originalBoot
+        && !!tool && this.checkToolPermission("ipc-outbound", name, tool === "hub_room_status" ? "hub_room_list" : tool).allowed });
+    const calls=this.requestContextFleetCalls;
+    if(calls?.registrationGate){
+      const responseKey=String(message.fleetRequestId??message.requestId??"");
+      const key=JSON.stringify([name,originalBoot,responseKey]);
+      if(!responseKey||calls.has(key))return false;
+      try{calls.set(key,{call:scoped,instance:name,bootId:originalBoot,ipc,responseKey});}catch{return false;}
+    }
+    this.requestContextIpcCalls.set(message, scoped); return true;
+  }
   private paneManager: import("./native-pane-manager.js").NativePaneManager | null = null;
   private localPaneRelay: import("./local-pane-endpoint.js").LocalPaneEndpoint | null = null;
   private openingLocalPane: Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> | null = null;
@@ -1600,7 +1672,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if(!this.runtimeHub && this.readPendingOwnerNotices().length)this.scheduleOwnerNoticeFlush(30_000);   // a notice kept before a restart is delivered once the fleet is up
     return this.runtimeHub ??= new RuntimeCoordinator(this.dataDir,{
       handleMcp:(machineId,runId,body)=>this.runtimeWindowsExecutor().mcp(machineId,runId,body),
-      handlePaneMcp:async(machineId,body,current)=>(await this.nativePanes()).handle(machineId,body,current),
+      handlePaneMcp:async(machineId,body,current,stamp)=>stamp?(await this.nativePanes()).handle(machineId,body,current,stamp):(await this.nativePanes()).handle(machineId,body,current),
       warn:(fields,message)=>this.logger.warn(fields,message),
       // Issue, use, revocation (and a refused use) of an install-command token: ids and an opaque actor handle only, never the token.
       audit:entry=>{
@@ -1647,8 +1719,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   nativeInstanceRuntime(): FleetWindowsRuntime {
     return this.fleetWindowsRuntime ??= new FleetWindowsRuntime({
       owner:this,fleet:()=>this.fleetConfig,save:()=>this.saveFleetConfig(),stopping:()=>this.shuttingDown,history:this.webChatHistory,
-      openMcp:(instance,requestId,sandbox,stillCurrent)=>this.healthServerListening
-        ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
+      openMcp:(instance,requestId,sandbox,stillCurrent,requestContext)=>this.healthServerListening
+        ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,...(requestContext?{requestContext}:{}),endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
       warn:(message,error)=>this.logger.warn({err:error},message),
       removed:name=>this.nativeInstanceRemoved(name),
       paneCurrent:name=>this.daemons.get(name)?.nativePaneCurrent?.() === true,
@@ -1840,7 +1912,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         diagnostic: text => this.logger.warn({ stderr: text }, "Local Windows pane relay wrote to stderr"),
         version: provider => inventory.clis.find(row => row.id === provider && row.runnable)?.version ?? null,
         launch: () => launchLocalPaneRelay(this.dataDir, admit),
-        mcp: async (body, current) => (await this.nativePanes()).handle("local", body, current),
+        mcp: async (body, current, stamp) => stamp ? (await this.nativePanes()).handle("local", body, current, stamp) : (await this.nativePanes()).handle("local", body, current),
       });
       try { admit(); this.localPaneRelay = relay; return relay; } catch (error) { relay.stop(); throw error; }
     })(); this.openingLocalPane = opening;
@@ -1910,9 +1982,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           delegate_task: "delegate", request_information: "ask", report_result: "report", delivery_status: "delivery-status" };
         const { nativeAgentAdmissionContext } = await import("./native-agent-admission.js");
         const { dispatchAgentOperation } = await import("./agent-endpoint.js");
-        return daemon.handlePaneToolCall(input, { current, allowed: tool => allowed(name, tool),
+        return daemon.handlePaneToolCall(input, { current, allowed: tool => allowed(name, tool), ...(input.requestContext ? { requestContext: input.requestContext } : {}),
           dispatch: (tool, args) => ops[tool] ? dispatchAgentOperation(nativeAgentAdmissionContext(this, {
-            instance: name, current: () => current() && allowed(name, tool), taskAllowed: () => current() && allowed(name, "task"),
+            instance: name, operation:{tool,args}, current: () => current() && allowed(name, tool), taskAllowed: () => current() && allowed(name, "task"),
+            ...(input.requestContext?.coverage === "covered" ? { requestContext: input.requestContext.lease } : input.requestContext ? { notCoveredReason: input.requestContext.reason } : {}),
           }), name, ops[tool], args, input.operationId, () => current() && allowed(name,tool)) : undefined });
       },
     });
@@ -2165,11 +2238,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubUpdates: import("./hub/member/updates.js").HubMemberUpdates | null = null;
   private hubUpdateOwned: { id: string; claim: { startedAt: number } } | null = null;
   private hubUpdateBootProgress: ReturnType<typeof readUpdateProgress> = null;
+  /** This process's local idle launch. Its own claim must not look like some other update holding the machine. */
+  private localIdleOwned: { startedAt: number } | null = null;
+  private localIdleBootProgress: ReturnType<typeof readUpdateProgress> = null;
   private pendingHubFleetUpdates = new Map<string, string>();
   hubFleetUpdates(): import("./hub/member/updates.js").HubMemberUpdates | null { return this.hubUpdates; }
-  private hubUpdateIdle(): boolean {
+  /** `ownClaim` is this caller's launch, so that launch does not look busy to itself. The Hub queue passes its claim; the local card passes its own. */
+  private hubUpdateIdle(ownClaim: { startedAt: number } | null = this.hubUpdateOwned?.claim ?? null): boolean {
+    const updates = resolveUpdates(this.fleetConfig?.updates);
+    // Pause and pin hold the row. Update now forces idle on the Hub queue itself; allowed() must not cancel it.
+    if (updates.pin || inUpdatePause(updates.pause, new Date())) return false;
     if (!this.startupComplete || this.shuttingDown || this.reconcileInFlight || this.topicCleanupInFlight
-      || this.deliveryPumpRunning || (this.webUpdateOwned && this.webUpdateOwned !== this.hubUpdateOwned?.claim)) return false;
+      || this.deliveryPumpRunning || (this.webUpdateOwned && this.webUpdateOwned !== ownClaim)) return false;
     for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
       if (this.restartsInFlight.has(name) || this.stopsInFlight.has(name) || this.handOffsInFlight.has(name)
         || this.ipcConnectInFlight.has(name) || this.ipcReconnectInFlight.has(name) || this.hasPendingIdleGatedDelivery(name)
@@ -2188,35 +2268,73 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { access } = await import("node:fs/promises"), { constants } = await import("node:fs");
     try { await access(found.root, constants.W_OK); await access(found.prefix, constants.W_OK); return true; } catch { return false; }
   }
-  private async launchHubUpdate(row: import("./update-idle.js").IdleUpdate, control: import("./update-idle.js").IdleUpdateLaunch): Promise<boolean> {
-    if (this.shuttingDown || this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !control.current()) return false;
-    const claim = { startedAt: Date.now() }, owned = { id: row.id, claim };
-    this.hubUpdateOwned = owned; this.webUpdateOwned = claim;
-    const release = () => { if (this.hubUpdateOwned === owned) this.hubUpdateOwned = null; if (this.webUpdateOwned === claim) this.webUpdateOwned = null; };
-    if (!persistUpdateProgress(this.dataDir, { ...webUpdateTarget(claim.startedAt), messageId: `hub-fleet-update:${row.id}` }, claim.startedAt)
-      || !setUpdateProgressStage(this.dataDir, "preparing", { version: row.version })) { release(); return false; }
+  private async launchHubUpdate(row: import("./update-idle.js").IdleUpdate, control: import("./update-idle.js").IdleUpdateLaunch, pressed = false): Promise<boolean> {
+    return this.launchClaimedUpdate({
+      id: row.id, version: row.version, origin: `Hub-requested update ${row.id}`, messageId: `hub-fleet-update:${row.id}`, control, hub: true,
+      // M-3770 (#4480 §4.1): the owner's own Update now is a press; the idle wait starting the request is unattended.
+      kind: pressed ? "press" : "unattended",
+      onExit: () => {
+        const outcome = this.hubUpdateOutcome(row);
+        if (outcome) this.hubUpdates?.complete(row.id, outcome.state, outcome.currentVersion, "interrupted");
+      },
+    });
+  }
+  /**
+   * One idle installer, Hub or local. Claims the machine and writes a marker before any await, then settles the row
+   * when the child is gone and the marker is no longer in progress.
+   */
+  private async launchClaimedUpdate(input: {
+    id: string; version: string; origin: string; messageId: string;
+    control: import("./update-idle.js").IdleUpdateLaunch; hub: boolean; onExit: () => void;
+    /** M-3770: whose start it is, for the pre-flight's class (a press, or a schedule/idle wait nobody pressed). */
+    kind: "press" | "unattended";
+  }): Promise<boolean> {
+    if (this.shuttingDown || this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !input.control.current()) return false;
+    const claim = { startedAt: Date.now() };
+    const hubOwned = input.hub ? { id: input.id, claim } : null;
+    if (hubOwned) this.hubUpdateOwned = hubOwned;
+    else this.localIdleOwned = claim;
+    this.webUpdateOwned = claim;
+    const owns = () => input.hub ? this.hubUpdateOwned === hubOwned : this.localIdleOwned === claim;
+    const release = () => {
+      if (hubOwned && this.hubUpdateOwned === hubOwned) this.hubUpdateOwned = null;
+      if (!input.hub && this.localIdleOwned === claim) this.localIdleOwned = null;
+      if (this.webUpdateOwned === claim) this.webUpdateOwned = null;
+    };
+    if (!persistUpdateProgress(this.dataDir, { ...webUpdateTarget(claim.startedAt), messageId: input.messageId }, claim.startedAt)
+      || !setUpdateProgressStage(this.dataDir, "preparing", { version: input.version })) { release(); return false; }
     try {
-      const child = await this.launchInstalledUpdate(`Hub-requested update ${row.id}`,
-        () => !this.shuttingDown && this.hubUpdateOwned === owned && control.current() && control.claim(), row.version);
+      const child = await this.launchInstalledUpdate(input.origin,
+        () => !this.shuttingDown && owns() && input.control.current() && input.control.claim(), input.version, input.kind);
       if (!child) { release(); return false; }
       let endedOnce = false;
       const ended = () => {
         if (endedOnce) return; endedOnce = true;
         const settle = () => {
-          if (this.shuttingDown || this.hubUpdateOwned !== owned) return;
+          if (this.shuttingDown || !owns()) return;
           // systemd-run may exit before its independent updater. Keep the claim while its bounded marker is active.
           const marker = readUpdateProgress(this.dataDir)?.progress;
-          if (marker?.target.messageId === `hub-fleet-update:${row.id}` && isUpdateInProgress(this.dataDir)) {
+          if (marker?.target.messageId === input.messageId && isUpdateInProgress(this.dataDir)) {
             const timer = setTimeout(settle, 5000); timer.unref(); return;
           }
           release();
-          const outcome = this.hubUpdateOutcome(row);
-          if (outcome) this.hubUpdates?.complete(row.id, outcome.state, outcome.currentVersion, "interrupted");
+          input.onExit();
         };
         settle();
       };
       child.once("exit", ended); child.once("error", ended); return true;
     } catch { release(); return false; }
+  }
+  private claimedIdleOutcome(id: string, version: string): { state: "done" | "rolled-back" | "failed" } {
+    let current: string | null = null;
+    try { current = this.runningAgendVersion(); } catch { current = null; }
+    const messageId = idleUpdateMessageId(id);
+    const matches = (marker: ReturnType<typeof readUpdateProgress>) => !!marker
+      && marker.progress.target.messageId === messageId
+      && (marker.progress.version === undefined || marker.progress.version === version);
+    const saved = readUpdateProgress(this.dataDir);
+    const marker = matches(saved) ? saved : matches(this.localIdleBootProgress) ? this.localIdleBootProgress : null;
+    return { state: idleClaimOutcome(version, current, marker) };
   }
   private hubUpdateOutcome(row: import("./update-idle.js").IdleUpdate): { state: "done" | "rolled-back" | "failed"; currentVersion: string } | null {
     if (!this.startupComplete || this.hubUpdateOwned?.id === row.id) return null;
@@ -2726,6 +2844,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
                   && (interaction.kind === "permission" || interaction.kind === "dangerous_command") };
             },
             deliver: input => this.deliverHubQuestion(input),
+            updateHeld: () => this.quiescence?.armed() === true,
             agentToken: agent => this.hubAgentToken(agent),
             // attachments-v1: a question's files go into the agent's inbox; an answer's come from its own paths.
             files: { stateDir: this.dataDir,
@@ -2759,8 +2878,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }, caller.agent, receiptId),
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: (read, retry, close) => this.attachHubExecutionAttention(read, retry, close),
-          updates: { idle: () => this.hubUpdateIdle(), busy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir),
-            canInstall: () => this.hubUpdateCanInstall(), launch: (row, control) => this.launchHubUpdate(row, control),
+          updates: { idle: () => this.hubUpdateIdle(), busy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !!this.updateCard?.blocksAdmission(),
+            canInstall: () => this.hubUpdateCanInstall(), launch: (row, control, pressed) => this.launchHubUpdate(row, control, pressed),
+            onQueue: row => { this.ensureUpdateCard().observeHub(row); },
             active: id => this.hubUpdateOwned?.id === id, outcome: row => this.hubUpdateOutcome(row), notify: n => this.recordHubUpdateNotice(n) },
           attachUpdates: updates => { this.hubUpdates = updates; },
           attachRecommendations: read => { this.hubRecommendationRead = read; },
@@ -3359,7 +3479,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubMemberLink: "online" | "offline" | "revoked" | "rejected" = "offline";
   private hubMemberLinkBinding: string | null = null;
   /** OutboundContext: the Hub representative's answer hook (null: no member service running, or not a Hub answer). */
-  hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
+  hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; requestScope?:import("./request-hub-output.js").RequestHubOutputScope; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
     const result = this.hubReports?.(input) ?? null;
     if (!result) return null;
     return result.then(outcome => {
@@ -3372,10 +3492,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
   /** M-3127 OutboundContext: an agent's `react` on a Hub room question (its correlation id as message_id); null: not one. */
-  hubReact(input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
+  hubReact(input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean; requestScope?:import("./request-hub-output.js").RequestHubOutputScope }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
     return this.hubReacts?.(input) ?? null;
   }
-  private hubReacts: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<import("./hub-report-target.js").HubReportOutcome> | null) | null = null;
+  private hubReacts: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean; requestScope?:import("./request-hub-output.js").RequestHubOutputScope }) => Promise<import("./hub-report-target.js").HubReportOutcome> | null) | null = null;
   /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
   private hubRoomOwed:{replyWarning(agent:string):string|undefined;turnEnded(agent:string,generation:string,turn:string):Promise<void>}|null=null;
   hubRoomReplyWarning(agent:string):string|undefined{try{return this.hubRoomOwed?.replyWarning(agent);}catch{return undefined;}}
@@ -3423,7 +3543,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const ipc of this.instanceIpcClients.values()) ipc.send({type:"hub_room_tools_changed"});
   }
   /** The member side's report_result hook for HUB_REPORT_TARGET while a representative service runs (else null). */
-  private hubReports: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
+  private hubReports: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; requestScope?:import("./request-hub-output.js").RequestHubOutputScope; extras?: import("./hub-report-target.js").HubReportExtras }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
   /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
   private hubRuntimeInit: Promise<import("./hub/runtime.js").HubRuntime> | null = null;
   private hubEffectsReady = false;
@@ -3744,8 +3864,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
   /** M-2738: the last update check's answer, for the web (null until the first check settles). */
   private updateCheckState: { offer: UpdateOffer | null; checkedAt: number; failed: boolean } | null = null;
+  /** S-234: the one durable update offer. Opened on the first check or answer. */
+  private updateCard?: UpdateOfferCard;
   /** M-2738: a web "check now" in flight, and when the last one ran (one a minute at most). */
   private updateCheckNow: { running: Promise<void> | null; lastAt: number } = { running: null, lastAt: 0 };
+  /** M-3770 (#4480 §4): the last pre-flight — a diagnostic for the page; every launch proves its local checks again. */
+  private updatePreflight: import("./update-readiness.js").UpdatePreflight | null = null;
+  private updatePreflightRunning: Promise<void> | null = null;
   /** M-2738: a web start's Idempotency-Key → its answer (a retried request never starts a second update). */
   private webUpdateStarts = new Map<string, Promise<{ ok: true } | { ok: false; status: number; error: string }>>();
   /**
@@ -5829,6 +5954,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       delivered: ticket => !!ticket.deliveryId && this.deliveryOutbox!.get(ticket.deliveryId)?.state === "delivered",
       deliveryState: ticket => ticket.deliveryId ? this.deliveryOutbox!.get(ticket.deliveryId)?.state : undefined,
       admit: (request, ticketId) => {
+        if(this.daemons.get(request.target)?.requestContextCallsRequired?.()||this.fleetWindowsRuntime?.requestContextCallsRequired?.(request.target))throw Object.assign(Error(t("contact.legacyUpgrade")),{code:"request-context-legacy-decision-upgrade-required"});
         const payload = { ...request.payload, contactTicket: { id: ticketId, state: "delivered" } };
         const admitted = this.deliveryOutbox!.admit({ operationId: request.operationId,
           sourceKey: `contact:${ticketId}`, sourceInstance: request.source,
@@ -5897,6 +6023,79 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       roomTools: { ...policy.roomTools, wouldDisable: [...new Set([...removedTools, ...(nativeGuard.wouldDisable ?? [])])] }, grants: policy.grants, history: store.histories(name, this.contactGeneration(name)),
       ...(service.needsApplication(name) ? { originRestriction: { active: true as const,
         reason: !service.origin(name) || service.origin(name)?.kind === "unknown" ? "unknown-origin" as const : "earlier-non-admin" as const, resetSupported: false as const } } : {}) };
+  }
+
+  /** Identity-only read. This does not install/enable the same-card host. */
+  requestContextPolicy?:RequestContextPolicyPort;
+  requestContextRelay?:import("./request-context-relay.js").RequestContextRelayPort;
+  /** L installs this explicitly; H defines no production switch. */
+  makeRequestContextPolicy():RequestContextPolicyPort{return {assert:input=>{
+    try{return assertRequestContextOperation(input);}catch(error){
+      if(error instanceof RequestContextPolicyError){
+        const call=input.admission,view=call?.coverage==="covered"&&call.lease.snapshot.owner.instance===input.instance?requestContextDisplayView(call.lease.snapshot.context):null;
+        this.emitSseEvent("message",{instance:input.instance,sender:"AgEnD",role:"status",wrap:true,text:error.message,ts:new Date().toISOString(),...(view?{requestProvenance:{...view,refused:true}}:{})});
+      }
+      throw error;
+    }
+  }};}
+
+  requestContactPrincipal(req:import("node:http").IncomingMessage,url:URL):RequestContactPrincipal|null {
+    const resolve=()=>{
+      const verdict=evaluateWebRequest(req as unknown as WebGateRequest,url,this.webToken,this.webSessions,{touch:false});
+      if(verdict.kind==="reject"&&(verdict.reason==="csrf"||verdict.reason==="cross-site"))throw Error(verdict.reason);
+      if(verdict.kind!=="allow"||verdict.via!=="session"||verdict.session.tier!=="admin")return null;
+      const identity=this.webSessionIdentity(verdict.session);if(!identity)return null;
+      const authority=this.webAuthority({session:verdict.session,gateway:!!gatewayRequestContext(req),peer:gatewayRequestContext(req)?gatewayRequestContext(req)!.named?"named_link":"quick_link":classifyWebPeer(req)}).authority;
+      const action=this.contactActor(req,url),person:ContactPerson={platform:identity.platform,adapterId:identity.adapter_id,userId:identity.user_id,label:identity.user_id};
+      const verified=!!action&&sameContactPerson(action,person);
+      const binding=JSON.stringify([identity.session_handle,authority.authority_epoch,authority.kind==="web-verified"?authority.session?.authorized_at:null]);
+      return {person,binding,verified};
+    };
+    const first=resolve();if(!first)return null;
+    return {...first,current:()=>{try{const now=resolve();return !!now&&now.binding===first.binding&&sameContactPerson(now.person,first.person)&&now.verified===first.verified;}catch{return false;}}};
+  }
+
+  /**
+   * S-229: the same-card service the native cards use. Null — today's M-3680 card and General proposals, unchanged —
+   * until L installs it at the cutover; synthetic rigs install it directly. Installing it grants no actor: every
+   * decision still comes from a platform callback's person through cards.decide.
+   */
+  private requestContactCardsPort: RequestContactCards | null = null;
+  installRequestContactCards(cards: RequestContactCards | null): void { this.requestContactCardsPort = cards; }
+
+  /** Dormant assembly for L and synthetic rigs; merely defining this method installs no service or route authority. */
+  makeRequestContactCards() {
+    this.ensureDeliveryOutbox();const outbox=this.deliveryOutbox!,legacy=this.contactService();
+    const names=()=>[...new Set([...Object.keys(this.fleetConfig?.instances??{}),...(this.classicChannels?.getAll()??[]).map(room=>room.instanceName)])].sort();
+    const manage=(name:string,person:ContactPerson)=>this.contactAdminOf(name,person);
+    const cards=outbox.requestContactCards({
+      current:(_context,binding)=>this.contactGeneration(binding.source.instance)===binding.source.incarnation&&this.contactGeneration(binding.target.instance)===binding.target.incarnation&&!this.hubContactRestricted(binding.source.instance),
+      generation:name=>{try{return this.contactGeneration(name);}catch{return null;}},
+      canManage:manage,canDecide:(name,person)=>{if(!manage(name,person))return false;const policy=legacy.host.store.policySnapshot(name,this.contactGeneration(name));return person.platform==="host"&&person.userId==="operator"||(policy.approvers??legacy.host.defaultApprovers(name)).some(row=>sameContactPerson(row,person));},
+      adminOf:(name,person)=>this.contactAdminOf(name,person),
+      person:actor=>{
+        if(actor.kind!=="person"||actor.platform==="hub")return null;
+        if(actor.platform==="host")return {platform:"host",adapterId:"host",userId:"operator",label:"Operator"};
+        const channel=(this.fleetConfig?.channels??(this.fleetConfig?.channel?[this.fleetConfig.channel]:[])).find(row=>row.type===actor.platform);
+        const adapter=[...this.adapters.values(),...[...this.worlds.values()].map(world=>world.adapter)].find(row=>row.type===actor.platform);
+        const adapterId=adapter?.id??channel?.id??channel?.type;if(!adapterId)return null;
+        return {platform:actor.platform,adapterId,userId:actor.userId,label:actor.displayName??actor.userId};
+      },
+      managedTargets:person=>names().filter(name=>manage(name,person)),
+      roleRevision:()=>settingsFingerprint([settingsRevision(this.configPath),this.settingsRuntimeRevision,this.fleetConfig,names().map(name=>[name,this.contactGeneration(name),legacy.host.defaultApprovers(name),legacy.host.store.policySnapshot(name).revision])]),
+      label:name=>this.fleetConfig?.instances[name]?.display_name??this.classicChannels?.getAll().find(room=>room.instanceName===name)?.displayName??name,
+      deliveryState:ticket=>ticket.deliveryId?outbox.get(ticket.deliveryId)?.state:undefined,
+      legacyCurrent:request=>!this.hubContactRestricted(request.source)&&this.contactGeneration(request.source)===request.sourceGeneration&&this.contactGeneration(request.target)===request.targetGeneration,
+      admitLegacy:(request,id)=>legacy.host.admit(request,id),changed:ticket=>{this.sweepContactAuthorizationOutcomes();this.emitSseEvent("contact-auth",{instance:ticket.target,ticketId:ticket.id,revision:ticket.revision});
+        // S-229: a decision anywhere (the web, a card) closes every native card of that request.
+        try{this.syncHeldTicketCard(ticket);}catch(err){this.logger?.warn?.({err:(err as Error)?.message,ticket:ticket.id},"Held contact request card failed");}
+        this.needsYou?.poke();},
+    });
+    return cards;
+  }
+  makeRequestContactApi():RequestContactApiHost {
+    const cards=this.makeRequestContactCards();
+    return {principal:(req,url)=>this.requestContactPrincipal(req,url),needs:actor=>cards.needs(actor),permitContinuation:(req,res)=>permitWebContinuation(req,res,{webToken:this.webToken,webSessions:this.webSessions}),canRead:(card,actor)=>cards.canRead(card,actor),read:(id,actor)=>cards.read(id,actor),list:(filter,actor)=>cards.list(filter,actor),decide:(id,input,actor)=>cards.decide(id,input,actor)};
   }
 
   contactActor(req: import("node:http").IncomingMessage, url: URL): ContactPerson | null {
@@ -5987,8 +6186,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async requestContactChange(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }> {
     if (!callerCurrent() || this.fleetConfig?.instances[requester]?.general_topic !== true) throw Error("general-only");
     if (this.hubContactRestricted(requester)) throw Error("hub-contact-restricted");
-    const pending = [...this.pendingNonceButtons.values()].filter(e => e.prefix === "contact-change:");
+    // S-229: a same-card proposal (contact-ticket: with a General) counts against the same limits.
+    const pending = [...this.pendingNonceButtons.values()].filter(e => e.prefix === "contact-change:" || e.prefix === CONTACT_TICKET_PREFIX && !!e.generalName);
     if (pending.length >= 64 || pending.filter(e => e.generalName === requester).length >= 8) throw Error("contact-proposal-limit");
+    const port = this.requestContactCardsPort;
+    if (port && (raw as { kind?: unknown } | null)?.kind === "ticket-decision") return this.proposeSameContactCard(port, requester, raw, callerCurrent);
     const service = this.contactService();
     const plan = prepareContactChange(raw, { service, label: n => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || n, timeZone: () => this.usageZone(), mode: n => { const room = this.contactRoom(n); return room ? room.restrictedMode ? "restricted" : "legacy" : undefined; },
       generation: n => this.contactGeneration(n), modeAdmin: (n, p) => this.contactAdminOf(n, p),
@@ -6062,7 +6264,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.pendingNonceButtons.delete(nonce);
         if (entry.timer) clearTimeout(entry.timer);
         // #4438 review: a card still being posted has no message yet; postHeldTicketCard retires it once it has one.
-        if (entry.messageId) void this.retireNonceButtons(entry, entry.messageId, heldCardOutcome(ticket.state));
+        if (entry.messageId) void this.retireNonceButtons(entry, entry.messageId, heldCardOutcome(ticket.state, !!ticket.requestContext));
       }
       return;
     }
@@ -6075,20 +6277,90 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     void this.postHeldTicketCard(ticket).catch((err: unknown) => this.logger?.warn?.({ err: (err as Error)?.message, ticket: ticket.id },
       "Could not post a held contact request to General"));
   }
-  private async postHeldTicketCard(ticket: ContactTicket): Promise<void> {
-    const adapter = this.contactAdapter(ticket.target);
-    if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return;
+  /** The one General on the target's Discord/Telegram connection that may carry its contact cards. */
+  private contactCardRoute(target: string): { adapter: ChannelAdapter; route: { name: string; adapterId: string; adapter: ChannelAdapter; chatId: string; topic?: string; current(): boolean } } | "use-web" | "route-unavailable" {
+    const adapter = this.contactAdapter(target);
+    if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return "use-web";
     const routes = Object.keys(this.fleetConfig?.instances ?? {}).flatMap(n => {
       const route = this.settingsGeneralRoute(n, adapter.type as "discord" | "telegram", new Set());
       return route && route.adapterId === adapter.id && route.adapter === adapter ? [{ name: n, ...route }] : [];
     });
-    if (routes.length !== 1) { this.logger.info({ ticket: ticket.id, routes: routes.length }, "No single General for a held contact request's card"); return; }
+    if (routes.length !== 1) { this.logger.info({ target, routes: routes.length }, "No single General for a held contact request's card"); return "route-unavailable"; }
+    return { adapter, route: routes[0]! };
+  }
+  /**
+   * S-229: post slice I's same card. prepareForNativePost checks this exact General route as the posting owner before
+   * and after reading (authority none, canDecide false); the entry keeps the card's CAS snapshot, so a click decides
+   * exactly the image people saw, through cards.decide.
+   */
+  private postSameContactCard(port: RequestContactCards, id: string, found: Exclude<ReturnType<FleetManager["contactCardRoute"]>, string>,
+    opts: { proposal?: "approve-once" | "decline"; generalName?: string; proposalCurrent?: () => boolean } = {}): Promise<string> {
+    const { adapter, route } = found;
+    const owner = (ticket: ContactTicket): boolean => ticket.id === id && route.current() && this.contactAdapter(ticket.target) === adapter
+      && this.adapters.get(adapter.id) === adapter && (!opts.proposalCurrent || opts.proposalCurrent());
+    const card = port.prepareForNativePost(id, owner);
+    if (card.ticket.state !== "pending" || card.continuedFrom) throw Error("contact-proposal-ticket-unavailable");
+    const view = nativeContactCardText(card, opts.proposal ? { proposal: opts.proposal } : {});
+    const left = Date.parse(card.ticket.expiresAt) - Date.now();
+    return this.postNonceButtonPromptOrThrow({ prefix: CONTACT_TICKET_PREFIX, alertType: "clear_confirm", instanceName: route.name,
+      adapter: route.adapter, adapterId: route.adapterId, chatId: route.chatId, threadId: route.topic,
+      message: view.message, choices: view.choices,
+      expiredText: t(opts.proposal ? "contactProposal.expired" : "contactHeld.expired"),
+      timeoutMs: opts.proposal ? 5 * 60_000 : Math.max(60_000, Math.min(left, 24 * 3_600_000)),
+      extra: { contactTicketId: id, contactSnapshot: card.snapshot, contactActions: view.choices.map(c => c.action), ...(opts.generalName ? { generalName: opts.generalName } : {}),
+        ...(opts.proposalCurrent ? { contactProposalCurrent: opts.proposalCurrent } : {}) } });
+  }
+  /**
+   * S-229: General proposes a decision on the same card — its one suggested choice plus Not now. General never decides:
+   * the platform callback's person does, through cards.decide. Always allow needs people, expiry and a confirmation, so
+   * a grant proposal is sent to the web.
+   */
+  private async proposeSameContactCard(port: RequestContactCards, requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }> {
+    const input = ContactChangeSchema.parse(raw);
+    if (input.kind !== "ticket-decision") throw Error("contact-proposal-use-web");
+    if (input.grant) throw Error("contact-proposal-use-web");
+    const ticket = resolvePendingTicket(this.contactService().host.store, input.ticket_id);
+    if (input.revision !== undefined && input.revision !== ticket.revision) throw Error("conflict");
+    const found = this.contactCardRoute(ticket.target);
+    if (found === "use-web") throw Error("contact-proposal-use-web");
+    if (found === "route-unavailable") throw Error("contact-proposal-route-unavailable");
+    const requesterPin = this.lifecyclePin(requester), deadline = performance.now() + 5 * 60_000;
+    let retired = false;
+    const current = (): boolean => !retired && !this.shuttingDown && performance.now() < deadline && callerCurrent() && requesterPin()
+      && this.fleetConfig?.instances[requester]?.general_topic === true && !this.hubContactRestricted(requester)
+      && found.route.current() && this.contactAdapter(ticket.target) === found.adapter && this.adapters.get(found.adapter.id) === found.adapter;
+    if (!current()) throw Error("conflict");
+    const armedBefore = new Set(this.pendingNonceButtons.values());
+    const posted = this.postSameContactCard(port, ticket.id, found, { proposal: input.decision, generalName: requester, proposalCurrent: current });
+    // The entry is armed synchronously; keep it, because a decision while the post is in flight removes it from the map
+    // before it has a message (Prism #4501 P2) — the posted message must still close with the committed outcome.
+    const entry = [...this.pendingNonceButtons.values()].find(e => !armedBefore.has(e) && e.contactTicketId === ticket.id && e.generalName === requester);
+    let closed = false;
+    const retire = (nonce: string): void => {
+      if (!entry || closed) return;
+      const armed = this.pendingNonceButtons.get(nonce) === entry, fresh = this.contactService().host.store.get(ticket.id);
+      if (armed && fresh?.state === "pending" && !retired && current()) return;
+      if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
+      if (!entry.messageId) return;   // never an edit without a message
+      closed = true;
+      void this.retireNonceButtons(entry, entry.messageId, fresh && fresh.state !== "pending" ? heldCardOutcome(fresh.state, !!fresh.requestContext) : t("contactProposal.expired"));
+    };
+    void posted.then(retire, () => {});
+    try { const nonce = await withinBudget(posted, performance.now() + 5000);
+      if (!current() || this.contactService().host.store.get(ticket.id)?.state !== "pending") { retire(nonce); throw Error("conflict"); }
+      return { status: "awaiting_platform_admin_confirmation" };
+    } catch (error) { retired = true; throw error; }
+  }
+  private async postHeldTicketCard(ticket: ContactTicket): Promise<void> {
+    const found = this.contactCardRoute(ticket.target);
+    if (typeof found === "string") return;
+    const { route } = found, port = this.requestContactCardsPort;
     // A ClassicBot room by its own name (its display name, else its channel's), as Fleet lists it.
-    const route = routes[0]!, label = (n: string) => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || this.contactRoom(n)?.name || n;
+    const label = (n: string) => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || this.contactRoom(n)?.name || n;
     const shortId = /^R[a-f0-9]{8}-/.test(ticket.id) ? ticket.id.slice(0, 9) : ticket.id;
     const left = Date.parse(ticket.expiresAt) - Date.now();
     const text = ticket.message.length > 300 ? `${ticket.message.slice(0, 299)}…` : ticket.message;
-    const posting = this.postNonceButtonPromptOrThrow({ prefix: CONTACT_TICKET_PREFIX, alertType: "clear_confirm", instanceName: route.name,
+    const posting = port ? this.postSameContactCard(port, ticket.id, found) : this.postNonceButtonPromptOrThrow({ prefix: CONTACT_TICKET_PREFIX, alertType: "clear_confirm", instanceName: route.name,
       adapter: route.adapter, adapterId: route.adapterId, chatId: route.chatId, threadId: route.topic,
       message: [t("contactHeld.title", label(ticket.source), label(ticket.target)), `> ${text.replace(/\n+/g, " ")}`,
         t("contactHeld.meta", shortId, ticket.verb, left < 2 * 3_600_000 ? t("contactHeld.minutes", Math.max(1, Math.round(left / 60_000))) : t("contactHeld.hours", Math.round(left / 3_600_000))),
@@ -6097,7 +6369,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       expiredText: t("contactHeld.expired"), timeoutMs: Math.max(60_000, Math.min(left, 24 * 3_600_000)),
       extra: { contactTicketId: ticket.id } });
     // The entry is armed before the platform answers (postNonceButtonPromptOrThrow sets it synchronously).
-    const entry = [...this.pendingNonceButtons.values()].find(e => e.prefix === CONTACT_TICKET_PREFIX && e.contactTicketId === ticket.id);
+    const entry = [...this.pendingNonceButtons.values()].find(e => e.prefix === CONTACT_TICKET_PREFIX && e.contactTicketId === ticket.id && !e.generalName);
     const nonce = await posting;
     // #4438 review: decided elsewhere, or expired, while the card was being posted — it had no message to retire then; it
     // has one now. A card still armed for a request still waiting stays.
@@ -6105,23 +6377,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fresh = this.contactService().host.store.get(ticket.id), armed = this.pendingNonceButtons.get(nonce) === entry;
     if (armed && fresh?.state === "pending") return;
     if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
-    await this.retireNonceButtons(entry, entry.messageId, !fresh || fresh.state === "pending" ? t("contactHeld.expired") : heldCardOutcome(fresh.state));
+    await this.retireNonceButtons(entry, entry.messageId, !fresh || fresh.state === "pending" ? t("contactHeld.expired") : heldCardOutcome(fresh.state, !!fresh.requestContext));
   }
   private async handleContactTicketCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
     if (!data.callbackData.startsWith(CONTACT_TICKET_PREFIX)) return false;
     const person = data.userId && adapter && this.adapters.get(adapterId) === adapter && adapter.id === adapterId
       && (adapter.type === "discord" || adapter.type === "telegram") && data.userId !== adapter.getBotUserId?.()
       ? { platform: adapter.type as "discord" | "telegram", adapterId, userId: data.userId, label: data.username || data.userId } : null;
-    const service = this.contactService();
-    const mayDecide = (entry: NonceButtonEntry): boolean => {
+    const service = this.contactService(), port = this.requestContactCardsPort;
+    // S-229: the clicker on the bot that posted the card; the nonce binds adapter, chat, thread and message.
+    const nonce = /^contact-ticket:([0-9a-f]{32}):/.exec(data.callbackData)?.[1] ?? "";
+    const principal = port ? nativeContactPrincipal({ adapter, adapterId, userId: data.userId, username: data.username, nonce,
+      live: () => !!adapter && this.adapters.get(adapterId) === adapter && !this.shuttingDown }) : null;
+    const sameCard = (entry: NonceButtonEntry): boolean => !!port && !!entry.contactSnapshot;
+    const mayDecide = (entry: NonceButtonEntry, action: string): boolean => {
+      if (sameCard(entry)) {
+        // Only a choice this card offered: Not now exists only on a General proposal, and a proposal offers one decision.
+        if (!principal || !entry.contactTicketId || !entry.contactActions?.includes(action)) return false;
+        // A reader who may decide it acts; a manager who reads a request already closed hears its outcome.
+        try { const card = port!.read(entry.contactTicketId, principal); return card.actions.canDecide || card.ticket.state !== "pending" && this.contactAdminOf(card.ticket.target, principal.person); } catch { return false; }
+      }
+      if (action === "cancel") return false;
       const ticket = person && entry.contactTicketId ? service.host.store.get(entry.contactTicketId) : undefined;
       try { return !!ticket && !!person && service.view(ticket, person).canDecide; } catch { return false; }
     };
-    const claimed = this.consumeNonceCallback(CONTACT_TICKET_PREFIX, /^contact-ticket:([0-9a-f]{32}):(approve|decline)$/, data, adapterId, adapter, undefined,
-      (_user, entry) => !!entry.messageId && !this.webPromptClicks.has(data) && mayDecide(entry));
+    const action0 = /:(approve|decline|cancel)$/.exec(data.callbackData)?.[1] ?? "";
+    const claimed = this.consumeNonceCallback(CONTACT_TICKET_PREFIX, /^contact-ticket:([0-9a-f]{32}):(approve|decline|cancel)$/, data, adapterId, adapter, undefined,
+      (_user, entry) => !!entry.messageId && !this.webPromptClicks.has(data) && mayDecide(entry, action0));
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry, action } = claimed;
+    if (sameCard(entry)) { await this.decideSameContactCard(port!, principal!, entry, action, data); return true; }
     const ticket = entry.contactTicketId ? service.host.store.get(entry.contactTicketId) : undefined;
     let text = t("contactHeld.closed");
     if (ticket?.state === "pending" && person) {
@@ -6132,6 +6418,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, text);
     return true;
+  }
+  /**
+   * S-229: one click on the same card. The decision is the clicker's, on the posted snapshot, through cards.decide —
+   * the web's writer — so a duplicate, another card or the web racing it yields one committed outcome. A lost race
+   * re-reads and shows that outcome; a changed request closes this card and posts one fresh card.
+   */
+  private async decideSameContactCard(port: RequestContactCards, principal: RequestContactPrincipal, entry: NonceButtonEntry, action: string, data: AdapterCallbackData): Promise<void> {
+    const id = entry.contactTicketId!, proposal = !!entry.generalName;
+    const read = () => { try { return port.read(id, principal); } catch { return null; } };
+    let text: string, repost = false;
+    if (action === "cancel") text = t(entry.contactProposalCurrent?.() ? "contactCard.not_now_done" : "contactProposal.expired");
+    else if (proposal && entry.contactProposalCurrent?.() !== true) text = t("contactProposal.expired");
+    else {
+      try {
+        const card = port.decide(id, { snapshot: entry.contactSnapshot!, decision: action === "approve" ? "approve-once" : "decline" }, principal);
+        text = nativeContactOutcome(card, { decided: true, by: principal.person });
+      } catch (error) {
+        const failure = nativeDecisionFailure(error), card = read();
+        if (failure === "changed" && card?.ticket.state === "pending") { text = t(proposal ? "contactProposal.expired" : "contactCard.changed"); repost = !proposal; }
+        else if (failure === "failed" && card?.ticket.state === "pending") text = t("contactHeld.failed");
+        else text = nativeContactOutcome(card, { decided: false });
+        this.logger.info({ ticket: id, code: (error as Error)?.message }, "A native contact card's decision did not apply");
+      }
+    }
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, text);
+    const fresh = this.contactService().host.store.get(id);
+    if (!fresh) return;
+    if (repost) this.heldTicketCards?.delete(id);
+    try { this.syncHeldTicketCard(fresh); } catch (err) { this.logger?.warn?.({ err: (err as Error)?.message, ticket: id }, "Held contact request card failed"); }
   }
 
   contactAuthorization(id: string, actor: ContactPerson) {
@@ -6258,6 +6573,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     forwards?: readonly string[];
     requestedKind?: string;
   }): { deliveryId: string; state: string; duplicate: boolean; kind: string } {
+    if(this.requestContextPolicy||this.requestContextRelay)throw Error("Scoped contact admission is required; no legacy fallback");
     const bindingHold = this.generalLocationDeliveryHold(input.targetInstance);
     if (bindingHold) throw Error(bindingHold);
     const outbox = this.deliveryOutbox;
@@ -6286,6 +6602,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       { ...inheritedOrigin, chain: [...inheritedOrigin.chain, input.targetInstance] });
     const sourceKey = `mcp:${input.sourceInstance}:${input.operationId}:${input.targetInstance}:${input.targetSession ?? ""}:${input.kind}`;
     const admitted = outbox.admit({ ...input, sourceDaemonBootId, sourceKey });
+    if (admitted.inserted) this.quiescence?.noteAdmission(admitted.delivery.deliveryId, admitted.delivery.createdSeq);
     if (admitted.inserted) this.publishTraffic(admitted.delivery);
     if (admitted.inserted) this.logger.info({
       deliveryId: admitted.delivery.deliveryId,
@@ -6306,12 +6623,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
   }
 
+  requestDeliveryView(deliveryId:string){return this.requestContextPolicy&&this.requestContextRelay&&this.deliveryOutbox?requestDeliveryView(this.deliveryOutbox,deliveryId):null;}
+
   queryDurableDeliveryStatus(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage {
     this.ensureDeliveryOutbox();
     const page = this.deliveryOutbox!.queryStatusForInstance(callerInstance, selector);
     // #1939 §10: a human receipt's authority as it reads now (switch, epoch, loopback_only).
     const state = page.items.some(item => item.authority) ? this.webAuthorityState() : null;
     const human = (item: DeliveryStatusItem): DeliveryStatusItem => {
+      if(selector.messageId){const projection=this.requestDeliveryView(item.delivery_id);if(projection)item={...item,request_provenance:projection.view};}
       if (!item.authority || !state) return item;
       const authority = this.receiptAuthorityNow(item.authority, state);
       return { ...item, authority, ...(authority.downgraded && !isWebSessionIdentity(item.origin?.web_identity) ? { source_instance: "human:web:unknown" } : {}) };
@@ -7579,12 +7899,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await data.respond(gate === "disabled" ? t("update.disabled", this.adminListKey(adapterId)) : t("not_authorized"));
       return;
     }
+    // Bare slash /update is the card. `/update now` (options.now) keeps today's immediate path.
+    if (data.options?.now !== true) {
+      await data.respond(this.describeUpdateOffer());
+      return;
+    }
+    const refused = this.refuseImmediateUpdate();
+    if (refused) { await data.respond(refused); return; }
     const messageId = await data.respond(t("update.progress.preparing", 0));
     const adapter = this.adapters.get(adapterId) ?? this.adapter;
     if (messageId && adapter) {
       const chatId = String(this.getChannelConfig(adapterId)?.group_id ?? data.channelId);
       this.beginUpdateProgress(adapter, chatId, data.channelId, messageId);
     }
+    this.beginUpdateRun();
     // Plain `agend update`: the CLI picks the channel from the version it is about to replace (a beta install
     // stays on beta). Deciding here, from the package.json next to THIS code, read a source checkout's 1.22.0 as
     // "not a beta" and sent a beta install to @latest. #1450 C5: the INSTALLED agend, verified, by absolute path.
@@ -7597,8 +7925,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * independently with its log — or a failure in the progress marker. `stillAllowed` is asked again once the awaits
    * are done (the asker may have lost the right, or the fleet begun stopping, meanwhile).
    */
-  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean, pin?: string): Promise<import("node:child_process").ChildProcess | null> {
+  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean, pin?: string, kind: "press" | "unattended" = "press"): Promise<import("node:child_process").ChildProcess | null> {
     const { spawn } = await import("./child-process.js");
+    // M-3770 (#4480 §4): the machine's pre-flight, proven again now — before the installed agend is resolved or run.
+    const refused = await this.updatePreflightGate(kind);
+    if (refused) {
+      this.failUpdateProgress(refused);
+      return null;
+    }
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);
@@ -8509,6 +8843,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * Last synchronous commit of a pane write (S-244). True: the barrier journaled an adapter or web turn, so it is
+   * not sent. There is no await between this and `ipc.send`. Unarmed, or not an agent turn: false, and the send proceeds.
+   * A Hub or room payload is not a copy: `refuseHubPane` refuses it before this, and the producer leaves the row queued.
+   */
+  private holdPaneSend(payload: Record<string, unknown>): boolean {
+    return this.quiescence?.commitTurn(payload) === true;
+  }
+
+  /** The fence is up and this payload belongs to a durable Hub or room row. Do not send it and do not copy it. */
+  private refuseHubPane(payload: Record<string, unknown>): boolean {
+    return this.quiescence?.armed() === true && turnSource(payload) === "hub";
+  }
+
+  /**
    * Hand a payload to an instance's IPC, waiting out a *transient* disconnect.
    *
    * A daemon that is restarting — `/restart`, crash recovery, a model switch —
@@ -8541,7 +8889,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const ipc = this.instanceIpcClients.get(instanceName);
       if (ipc?.connected) {
         if (beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
-        if (ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
+        const wire = this.bindHumanReceiptPayload(instanceName, payload);
+        if (this.refuseHubPane(wire)) return false;
+        if (this.holdPaneSend(wire)) return true;
+        if (ipc.send(wire)) return true;
       }
     }
 
@@ -8573,12 +8924,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async handOffAfterBeforeInput(instanceName: string, payload: Record<string, unknown>, deliveryEpoch: number,
     stillCurrent: (() => boolean) | undefined, beforeInput: () => Promise<boolean>): Promise<boolean> {
+    // The flag is read before beforeInput and before prepareClassicForPerson. A Hub or room row stays
+    // queued at its producer: no begin lease, no input intent, and no plaintext copy of the question.
+    if (this.refuseHubPane(payload)) return false;
+    if (this.quiescence?.armed()) {
+      const early = this.bindHumanReceiptPayload(instanceName, payload);
+      if (this.holdPaneSend(early)) return true;
+    }
     if (!(await beforeInput())) return false;
+    if (this.refuseHubPane(payload)) return false;
     const privateToken = await this.prepareClassicForPerson(instanceName, payload, deliveryEpoch, stillCurrent);
     if (privateToken === false || this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc?.connected || (privateToken && this.classicPrivacy().read(instanceName)?.token !== privateToken)) return false;
-    const sent = ipc.send(this.bindHumanReceiptPayload(instanceName, payload));
+    const wire = this.bindHumanReceiptPayload(instanceName, payload);
+    if (this.refuseHubPane(wire)) return false;
+    if (this.holdPaneSend(wire)) return true;
+    const sent = ipc.send(wire);
     if (sent && privateToken) {
       try {
         if (this.classicPrivacy().resume(instanceName, privateToken)) {
@@ -8611,7 +8973,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // so a cached reference would stay dead forever.
       const ipc = this.instanceIpcClients.get(instanceName);
       if (ipc?.connected && beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
-      if (ipc?.connected && ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
+      if (ipc?.connected) {
+        const wire = this.bindHumanReceiptPayload(instanceName, payload);
+        if (this.refuseHubPane(wire)) return false;
+        if (this.holdPaneSend(wire)) return true;
+        if (ipc.send(wire)) return true;
+      }
       // #2484: while the instance waits for (or runs) its own start retry, the grace runs from now — so the message is
       // delivered once a retry brings it up, and fails only after the retries stop (they gave up, or a person stopped
       // or paused it) and a last grace passes without it.
@@ -9021,7 +9388,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const admitted = this.humanReceiptPayload(instanceName, payload, origin, originalBody);
     const id = (admitted.meta as Record<string, string> | undefined)?.human_receipt_id;
     let sent = false;
-    try { sent = ipc.send(this.bindHumanReceiptPayload(instanceName, admitted)); return sent; }
+    try {
+      const wire = this.bindHumanReceiptPayload(instanceName, admitted);
+      if (this.refuseHubPane(wire)) return false;
+      if (this.holdPaneSend(wire)) { sent = true; return true; }
+      sent = ipc.send(wire);
+      return sent;
+    }
     finally { if (!sent && id) this.deliveryOutbox?.markHumanReceiptUncertain(id, instanceName); }
   }
 
@@ -10904,6 +11277,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (credentialSwitchStartsFresh(sw.backend)) this.writeFreshStartMarker(name);
       return null;
     }
+    // M-3749: the agent's own MCP servers (user scope, and local scope for its folder) go along too, merged — whatever
+    // becomes of the conversation. A failure is logged; the next launch's check tells the agent what it lacks.
+    if (sw.backend === "claude-code") {
+      const profileDir = (profile: string | null) => profile ? credentialProfileHome(this.dataDir, sw.backend, profile) : null;
+      try {
+        // What it has in the profile it leaves now (added this session too), so the next launch can say what is missing.
+        recordClaudeMcpBeforeSwitch({ instanceDir: this.getInstanceDir(name), configDir: claudeConfigDirFor(profileDir(sw.from)),
+          jsonPath: claudeJsonFor(profileDir(sw.from)), workingDirectory: sw.workingDirectory ?? "" });
+        const mcp = carryClaudeMcpServers({ fromProfileDir: profileDir(sw.from), toProfileDir: profileDir(sw.to), workingDirectory: sw.workingDirectory ?? "" });
+        const where = { name, from: sw.from ?? "default", to: sw.to ?? "default" };
+        if (!mcp.carried) this.logger.warn({ ...where, reason: mcp.reason }, "MCP servers not carried to the new credential profile");
+        else if (mcp.user.length || mcp.local.length || mcp.keptTarget.length) this.logger.info({ ...where, user: mcp.user, local: mcp.local, keptTarget: mcp.keptTarget }, "MCP servers carried to the new credential profile");
+      } catch (err) {
+        this.logger.warn({ name, err: (err as Error).message }, "MCP servers not carried to the new credential profile");
+      }
+    }
     let sessionId: string | null = null;
     try { sessionId = readFileSync(join(this.getInstanceDir(name), "session-id"), "utf-8"); } catch { /* none: nothing to carry */ }
     const dir = (profile: string | null) => claudeConfigDirFor(profile ? credentialProfileHome(this.dataDir, sw.backend, profile) : null);
@@ -12491,6 +12880,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const bootUpdateMarker = updateMarkerIdentity(this.dataDir);
     const savedUpdateProgress = readUpdateProgress(this.dataDir);
     this.hubUpdateBootProgress = savedUpdateProgress;
+    this.localIdleBootProgress = savedUpdateProgress;
     const pendingUpdateProgress = savedUpdateProgress
       && savedUpdateProgress.progress.stage !== "failed"
       && savedUpdateProgress.progress.stage !== "complete"
@@ -14048,6 +14438,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (this.instanceIpcClients.get(name) === existing) {
           this.instanceIpcClients.delete(name);
         }
+        this.purgeRequestContextIpcCalls(name,existing);
       }
     }
 
@@ -14062,7 +14453,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       await ipc.connect();
       this.instanceIpcClients.set(name, ipc);
+      this.observeRequestContextResponses(name,ipc);
       ipc.on("message", safeHandler(async (msg: Record<string, unknown>) => {
+        if ((msg.type === "fleet_outbound" || toolForIpcType(msg.type) !== null) && !this.captureRequestContextIpcCall(name, msg, ipc)) {
+          if (this.instanceIpcClients.get(name) !== ipc) return;
+          if (msg.type === "fleet_outbound") ipc.send({ type: "fleet_outbound_response", fleetRequestId: msg.fleetRequestId, error: "Originating request context is unavailable" });
+          else this.refuseTypedIpc(name, msg, "Originating request context is unavailable");
+          return;
+        }
         if (msg.type === "mcp_ready") {
           // Register external sessions (sessionName differs from instance name)
           const sessionName = msg.sessionName as string | undefined;
@@ -14085,7 +14483,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             this.sessionRegistry.set(sender, name);
             this.logger.info({ sessionName: sender, instanceName: name }, "Registered external session");
           }
-          await this.handleOutboundFromInstance(name, msg);
+          try { await this.handleOutboundFromInstance(name, msg); } finally { this.finishRequestContextIpcCall(msg); }
         } else if (toolForIpcType(msg.type) !== null) {
           // Sink 2 of 3. Each of these types IS a tool and reaches its own
           // handler without passing through the outbound path — which is how
@@ -14185,6 +14583,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // current connection or start another reconnect loop.
         if (this.instanceIpcClients.get(name) !== ipc) return;
         this.instanceIpcClients.delete(name);
+        this.purgeRequestContextIpcCalls(name,ipc);
         if (this.ipcStoppingInstances.has(name)) return;
         this.ipcReconnect(name).catch(() => {});
       });
@@ -15572,6 +15971,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleOutboundFromInstance(instanceName: string, msg: Record<string, unknown>): Promise<void> {
+    const originatingCall = this.requestContextCallOf(msg);
     this.touchActivity(instanceName);
     this.setTopicIcon(instanceName, "green");
     const tool = msg.tool as string;
@@ -15616,13 +16016,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,instanceName,tool==="hub_room_status"?"hub_room_list":tool,args,originatingCall?.admission);}catch(error){respond(null,(error as Error).message);return;}
+
     // Fleet tools resolve their own targets. A missing chat world must not prevent local
     // delivery, inspection or receipt lookup; only channel tools need reply routing below.
     const handler = outboundHandlers.get(tool);
     if (handler && !usesChannelAddress(tool)) {
       this.eventLog?.logActivity("tool_call", senderSessionName ?? instanceName, this.summarizeToolCall(tool, args));
-      await handler(this, args, respond, {
+      let context: import("./agent-endpoint.js").AgentEndpointContext = this;
+      if(originatingCall || this.requestContextPolicy){
+        const entryBoot=sourceDaemonBootId??this.getDaemonBootId(instanceName);
+        context=(await import("./native-agent-admission.js")).nativeAgentAdmissionContext(this, {
+          instance: instanceName, operation:{tool,args}, current: () => originatingCall?originatingCall.current():!!entryBoot&&this.getDaemonBootId(instanceName)===entryBoot, taskAllowed: () => this.checkToolPermission("ipc-outbound", instanceName, "task").allowed,
+          ...(originatingCall?.admission.coverage === "covered" ? { requestContext: originatingCall.admission.lease } : { notCoveredReason: originatingCall?.admission.reason??"unbound-input" }),
+        });
+      }
+      await handler(context, args, respond, {
         instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
+        ...(originatingCall ? { callerCurrent: () => originatingCall.current(), requestContextAdmission: originatingCall.admission } : {}),
       });
       return;
     }
@@ -15633,7 +16044,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const bootNow = this.getDaemonBootId(instanceName), bootSent = sourceDaemonBootId ?? bootNow;
       if (!bootNow || bootSent !== bootNow) { respond(null, "Source daemon generation is no longer current; outcome is unknown"); return; }
       const claimed = this.hubReact({ correlationId: args.message_id, caller: instanceName, emoji: typeof args.emoji === "string" ? args.emoji : "",
-        callerCurrent: () => this.getDaemonBootId(instanceName) === bootSent });
+        ...(this.requestContextPolicy?{requestScope:captureRequestHubOutput(originatingCall?.admission)}:{}),
+        callerCurrent: () => this.getDaemonBootId(instanceName) === bootSent && (!originatingCall || originatingCall.current()) });
       if (!claimed) { respond(null, "That message_id is not a Hub room question you were asked."); return; }
       const outcome = await claimed;
       if (outcome.ok) respond("ok"); else respond(null, outcome.message);
@@ -15668,15 +16080,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const restrictedBoot = restrictedRoute ? this.getDaemonBootId(instanceName) : undefined;
     if (restrictedRoute && Array.isArray(args.previews) && args.previews.length) { respond(null, "File previews are not available in restricted rooms; use the room's own attachments"); return; }
     let replyBookkeeping = Promise.resolve();
-    const restrictedExtras = restrictedRoute ? {
-      prepareFiles: (paths: readonly string[]) => this.prepareContactFiles(instanceName, paths),
+    const restrictedExtras = restrictedRoute || originatingCall ? {
+      ...(restrictedRoute ? { prepareFiles: (paths: readonly string[]) => this.prepareContactFiles(instanceName, paths),
+      downloadAttachment: (id: string) => this.downloadRoomAttachment(instanceName, id) } : {}),
       replyFinished: () => replyBookkeeping,
-      downloadAttachment: (id: string) => this.downloadRoomAttachment(instanceName, id),
       beforeSend: () => {
+        if (originatingCall && !originatingCall.current()) throw Error("Originating request context is no longer current");
         const current = this.restrictedClassicRouting(instanceName);
-        if (!current || current.adapterId !== restrictedRoute.adapterId || current.chatId !== restrictedRoute.chatId
+        if (restrictedRoute && (!current || current.adapterId !== restrictedRoute.adapterId || current.chatId !== restrictedRoute.chatId
           || current.threadId !== restrictedRoute.threadId || this.contactGeneration(instanceName) !== restrictedIncarnation
-          || this.getDaemonBootId(instanceName) !== restrictedBoot) throw Error("Restricted room route changed before delivery");
+          || this.getDaemonBootId(instanceName) !== restrictedBoot)) throw Error("Restricted room route changed before delivery");
       },
     } : {};
     // Resolve threadId: use sender's topic_id if sender is a known fleet instance,
@@ -16357,7 +16770,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private dispatchTypedIpc(name: string, msg: Record<string, unknown>): void {
+    const captured = this.requestContextCallOf(msg);
+    if (captured && !captured.current()) { this.refuseTypedIpc(name, msg, "Originating request context is no longer current"); return; }
     const type = String(msg.type);
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,name,toolForIpcType(type)??type,(msg.payload??{})as Record<string,unknown>,captured?.admission);}catch(error){this.refuseTypedIpc(name,msg,(error as Error).message);return;}
     if (type.startsWith("fleet_schedule_")) { this.handleScheduleCrud(name, msg); return; }
     if (type.startsWith("fleet_decision_")) { this.handleDecisionCrud(name, msg); return; }
     if (type === "fleet_task") { this.handleTaskCrud(name, msg); return; }
@@ -16390,6 +16806,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const tool = String(msg.type).replace(/^fleet_/, "");
     try {
       const args = (msg.payload ?? {}) as Record<string, unknown>;
+      if(this.requestContextPolicy)requireRequestContextPolicy(this,instanceName,tool,args,this.requestContextCallOf(msg)?.admission);
       const result = tool === "get_web_appearance" || tool === "preview_web_appearance"
         ? this.appearanceTools.handle(instanceName, tool, args)
         : tool === "office_view" || tool === "office_set" ? this.officeActs.handle(instanceName, tool, args)
@@ -16438,6 +16855,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const op = String(msg.type).replace("fleet_schedule_", "") as "create" | "list" | "update" | "delete";
       const result = this.performScheduleOp(instanceName, op, payload, {
+        requestContextAdmission:this.requestContextCallOf(msg)?.admission,
         // The daemon sends its last chat id, which is unset until the instance
         // has had a chat message — and cross-instance traffic never sets it. So
         // a worker that only takes delegated tasks, the very instance #895 lets
@@ -16606,14 +17024,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // ── Agent CLI HTTP handlers ─────────────────────────────────────────
 
-  async handleScheduleCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
+  async handleScheduleCrudHttp(instance: string, op: string, args: Record<string, unknown>,requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     if (op !== "create" && op !== "list" && op !== "update" && op !== "delete") {
       return { error: `Unknown schedule op: ${op}` };
     }
     // No bound chat on this path, as before: a schedule made through the agent
     // endpoint has nowhere of its own to reply.
-    return this.performScheduleOp(instance, op, args, { chatId: "", threadId: null });
+    return this.performScheduleOp(instance, op, args, { chatId: "", threadId: null,requestContextAdmission });
   }
 
   /**
@@ -16632,8 +17050,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     caller: string,
     op: "create" | "list" | "update" | "delete",
     args: Record<string, unknown>,
-    reply: { chatId: string; threadId: string | null; adapterId?: string | null; silent?: boolean },
+    reply: { chatId: string; threadId: string | null; adapterId?: string | null; silent?: boolean; requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission },
   ): unknown {
+    if(this.requestContextPolicy)requireRequestContextPolicy(this,caller,op==="list"?"list_schedules":`${op}_schedule`,args,reply.requestContextAdmission);
     const scheduler = this.scheduler!;
     // Shape first, so the value the permission decision reads is the value the
     // scheduler gets. `target` used to be filtered through typeof for the
@@ -16822,9 +17241,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  async handleTaskCrudHttp(instance: string, args: Record<string, unknown>): Promise<unknown> {
+  async handleTaskCrudHttp(instance: string, args: Record<string, unknown>,_snapshot?:unknown,requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
+    if(this.requestContextPolicy)requireRequestContextPolicy(this,instance,"task",args,requestContextAdmission);
     const action = args.action as string;
     const asStr = (v: unknown): string | undefined => typeof v === "string" ? v : undefined;
     const asStrArr = (v: unknown): string[] | undefined =>
@@ -16934,7 +17354,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #1629: `agend-agent theme …` — the same service as the tools; `instance` is the token's. */
-  async handleWebThemeHttp(instance: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
+  async handleWebThemeHttp(instance: string, tool: string, args: Record<string, unknown>,requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission): Promise<unknown> {
+    if(this.requestContextPolicy)requireRequestContextPolicy(this,instance,tool,args,requestContextAdmission);
     if (isCanvasWorkerTool(tool)) return { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };   // #2799: removed
     if (tool === "get_web_appearance" || tool === "preview_web_appearance") return this.appearanceTools.handle(instance, tool, args);
     if (tool === "office_view" || tool === "office_set") return this.officeActs.handle(instance, tool, args);   // #2578
@@ -16989,6 +17410,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const db = this.scheduler.db;
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,instanceName,"task",payload,this.requestContextCallOf(msg)?.admission);}catch(error){ipc.send({type:"fleet_task_response",fleetRequestId,error:(error as Error).message});return;}
     const action = payload.action as string;
     // #1336 P2: use the shared normalizer — trims whitespace AND drops empties,
     // so " \t " / [" ","\t"] are treated identically to undefined.
@@ -17492,7 +17914,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * document. Unknown keys and comments remain untouched; redundant
    * non-identity instance leaves are canonicalized to inheritance afterward.
    */
-  saveFleetConfig(explicitPatches: RawConfigPatch[] = []): void {
+  saveFleetConfig(explicitPatches: RawConfigPatch[] = [],requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission): void {
+    if(this.requestContextPolicy&&requestContextAdmission)requireRequestContextPolicy(this,requestContextAdmission.coverage==="covered"?requestContextAdmission.lease.snapshot.owner.instance:"", "update_instance_config",{},requestContextAdmission);
     if (!this.companyMembershipWrite && explicitPatches.some(p => p.path[0] === "hub_member"
       && (p.path[1] === "enabled" ? p.value !== true || p.remove : p.path.length === 1))) this.invalidateHubCompanyJoin();
     this.publicWebLink?.refresh();
@@ -19679,10 +20102,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     chatId: string;
     threadId?: string;
     message: string;
-    choices: Array<{ action: string; label: string; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+    choices: Array<{ action: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
+    /** M-3757: the dashboard's compact form of the card. */
+    view?: import("./backend/types.js").RemoteCardView;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "contactChange" | "contactTicketId" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
+    extra?: Pick<NonceButtonEntry, "contactChange" | "contactTicketId" | "contactSnapshot" | "contactProposalCurrent" | "contactActions" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
     timeoutMs?: number;
     /** #2675: an action the dashboard offers beyond the platform's buttons (a typed answer, which the platform takes as a reply). */
     webInput?: { action: string; label: string } | null;
@@ -19756,7 +20181,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         entry.web = {
           text: web.text,
           ...(links ? { links } : {}),
-          actions: [...opts.choices.map(c => ({ id: c.action, label: c.label, ...(c.confirmation ? { confirmation: c.confirmation } : {}) })), ...(opts.webInput ? [{ id: opts.webInput.action, label: opts.webInput.label, input: true as const }] : [])],
+          ...(opts.view ? { view: opts.view } : {}),
+          actions: [...opts.choices.map(c => ({ id: c.action, label: c.label, ...(c.hint ? { hint: c.hint } : {}), ...(c.role ? { role: c.role } : {}), ...(c.confirmation ? { confirmation: c.confirmation } : {}) })), ...(opts.webInput ? [{ id: opts.webInput.action, label: opts.webInput.label, input: true as const }] : [])],
           expiresAt: Date.now() + (opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS),
         };
         this.emitSseEvent("prompt", { instance: entry.instanceName, nonce, ...entry.web });
@@ -19997,6 +20423,38 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   onAttentionChanged(name: string): void {
     this.needsPauseCache.delete(name);
     this.needsYou?.poke();
+  }
+
+  /** M-3749: the credential profile a Claude config dir belongs to, for people and agents: its name, or "default". */
+  private claudeProfileLabel(configDir: string): string {
+    const dir = resolvePath(configDir);
+    return dirname(dir) === resolvePath(dirname(credentialProfileHome(this.dataDir, "claude-code", "x"))) ? basename(dir) : "default";
+  }
+
+  /**
+   * M-3749: a launch found MCP servers the agent had under its previous profile and does not have now. Told to the agent
+   * once per set (the outbox key), held until it is delivered; Needs you lists it from the daemon (instancesForNeeds).
+   */
+  onMcpMissing(name: string, missing: import("./backend/claude-mcp-carry.js").McpMissing | null): void {
+    if (!missing?.names.length) return;
+    try {
+      this.ensureDeliveryOutbox();
+      const outbox = this.deliveryOutbox;
+      if (!outbox) return;
+      const digest = createHash("sha256").update(`${missing.fromConfigDir}\u0000${missing.toConfigDir}\u0000${missing.names.join(",")}`).digest("hex").slice(0, 16);
+      const text = t("inst.mcp_missing", this.claudeProfileLabel(missing.fromConfigDir), this.claudeProfileLabel(missing.toConfigDir), missing.names.join(t("needs.mcp_missing_sep")));
+      outbox.admitSystemNotice(name, `mcp-missing:${name}:${digest}`, text, new Date(missing.since));
+    } catch (err) {
+      this.logger.warn({ err, name }, "Could not queue the MCP-missing notice");
+    }
+  }
+
+  /** M-3749: a person dismissed an agent's missing-MCP item (web or chat Acknowledge). false: nothing was outstanding. */
+  acknowledgeMcpMissing(name: string): boolean {
+    const daemon = this.daemons.get(name);
+    if (daemon?.dismissMcpMissing) return daemon.dismissMcpMissing();
+    dismissClaudeMcpMissing(this.getInstanceDir(name));
+    return false;
   }
 
   /** The list for the web: every world's items, and those of instances with no world (#1386 §5.0). */
@@ -20265,6 +20723,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
         modelSwitch: this.modelObservationForInstance(name)?.active ?? null,
         usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
+        mcpMissing: (() => { const m = this.daemons.get(name)?.mcpMissing?.(); return m ? { names: m.names, from: this.claudeProfileLabel(m.fromConfigDir), to: this.claudeProfileLabel(m.toConfigDir), since: m.since } : null; })(),
         nativeDeliveryHold: this.daemons.get(name)?.nativeDeliveryHold?.() ?? null,
         generalLocation: this.generalLocationAttention(name),
         paneRecovery: (()=>{const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config)||!config.native_agent_id)return null;
@@ -20283,6 +20742,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         createdAt: e.createdAt ?? Date.now(), adapterId: e.adapterId, chatId: e.chatId,
         ...(e.threadId !== undefined ? { threadId: e.threadId } : {}), ...(e.messageId ? { messageId: e.messageId } : {}),
         ...(e.assistFor ? { assistFor: e.assistFor } : {}),
+        ...(e.web.view ? { view: e.web.view } : {}),
       });
     }
     return out;
@@ -20347,6 +20807,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         id: m.id, instance: m.instance, owner: m.adapterId, username: m.username, place: m.place, preview: m.preview, since: m.since,
       })),
       acknowledgeMissed: (id, by) => this.missedOfflineStore?.acknowledge(id, by) ?? false,
+      acknowledgeMcpMissing: instance => this.acknowledgeMcpMissing(instance),
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
       signInKeepAlive: () => this.keepAliveAttention(),
@@ -20492,7 +20953,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The prompts open on the dashboard right now (a page that loads after one was posted asks for them). */
-  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] }> {
+  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>; view?: import("./backend/types.js").RemoteCardView; expiresAt: number; links?: import("./topic-link.js").TextLink[] }> {
     const open: ReturnType<FleetManager["listWebPrompts"]> = [];
     for (const [nonce, e] of this.pendingNonceButtons) {
       if (e.web) open.push({ instance: e.instanceName, nonce, ...e.web });
@@ -22471,10 +22932,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...card, title: redactSecrets(card.title), question: redactSecrets(card.question),
       options: card.options.map(o => ({ ...o, title: redactSecrets(o.title), description: o.description === null ? null : redactSecrets(o.description) })),
     } : card;
-    const prompt = remoteCardPrompt(instanceName, shown);
+    const prompt = remoteCardPrompt(instanceName, shown, this.shownInstanceName(instanceName));
     const nonce = await this.postNonceButtonPrompt({
       prefix: REMOTE_CARD_CALLBACK_PREFIX, alertType: "interactive_prompt", instanceName, ...place,
-      message: prompt.message, choices: prompt.choices, webInput: prompt.webInput,
+      message: prompt.message, choices: prompt.choices, webInput: prompt.webInput, ...(prompt.view ? { view: prompt.view } : {}),
       expiredText: t("card.expired", instanceName), timeoutMs: REMOTE_CARD_TIMEOUT_MS,
       extra: { remoteCard: { identity: card.identity, kind: card.kind, options: shown.kind === "question" ? shown.options.map(o => ({ n: o.n, title: o.title })) : [],
         requiresAdmin, ownerAdapterId: this.getInstanceAdapterId(instanceName), humanOnly: card.kind === "question" && card.humanOnly === true } },
@@ -25492,7 +25953,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2861: an Office share's dialogue box hears that someone talked to an instance (never what was said).
       this.officeTalk.noteMessage(data);
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; retryOwner?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown; contactTicket?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; retryOwner?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown; contactTicket?: unknown; requestProvenance?:unknown;wrap?:unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -25511,6 +25972,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         posts: m.posts,                                  // #2281: kept beside the row, never broadcast (not a row field)
         reserved: m.reserved,                            // #1774: an agent reply's place, taken when it was sent
         contactTicket: m.contactTicket,
+        requestProvenance:m.requestProvenance,
+        wrap:m.wrap,
       });
       // A sending page's own id for its pending bubble rides on the live copy only: never recorded, never replayed.
       const clientId = typeof (data as { clientId?: unknown }).clientId === "string" ? (data as { clientId: string }).clientId : "";
@@ -29254,6 +29717,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    try { this.updateCard?.close(); } catch { /* stopping */ }
     this.hostMonitor?.stop();
     this.stopQuotaObserver?.(); this.stopQuotaObserver = null;
     const quotaNoticesStopped = this.quotaNotices?.stop();
@@ -29449,6 +29913,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await Promise.all([...this.instanceIpcClients.values()].map(ipc =>
       Promise.resolve(ipc.close()).catch(() => { /* best effort */ })));
     this.instanceIpcClients.clear();
+    this.requestContextFleetCalls?.clear();
     this.ipcStoppingInstances.clear();
 
     for (const [, w] of this.worlds) {
@@ -31328,6 +31793,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await ipc.close();
     }
     this.instanceIpcClients.clear();
+    this.requestContextFleetCalls?.clear();
 
     await this.stopInstancesInBatches(instanceNames, name => this.stopInstance(name));
 
@@ -31520,10 +31986,166 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { target, fromChannel };
   }
 
-  /** M-2738: record a look's answer for the web — the same offer the notice below would make. */
+  /** M-3770: the pre-flight probes (runUpdatePreflight; tests stub that module, so no real npm or systemctl runs). */
+  protected async probeUpdatePreflight(opts: { target?: string | null; localOnly?: boolean }): Promise<import("./update-readiness.js").UpdatePreflight> {
+    const { defaultReadinessDeps, runUpdatePreflight } = await import("./update-readiness.js");
+    return runUpdatePreflight(opts, { ...defaultReadinessDeps(), home: this.dataDir });
+  }
+
+  /**
+   * M-3770: refresh the cached pre-flight for the offered version. One at a time; never throws. A run is bound to the
+   * version it judged: if the offer moved meanwhile its result is not published (Prism #4483 3) and the run starts again
+   * for the new one. What it finds is merged by check (mergePreflight): a launch's fresher local rows are kept.
+   */
+  refreshUpdatePreflight(): Promise<void> {
+    if (this.updatePreflightRunning) return this.updatePreflightRunning;
+    const running = (async () => {
+      const { mergePreflight } = await import("./update-readiness.js");
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const target = this.updateCheckState?.offer?.version ?? null;
+        let fresh: import("./update-readiness.js").UpdatePreflight;
+        try { fresh = await this.probeUpdatePreflight({ target }); }
+        catch (err) { this.logger.warn({ err }, "Update pre-flight could not run"); return; }
+        const now = this.updateCheckState?.offer?.version ?? null;
+        if (now !== target) continue;                                     // the offer changed: judge the new one
+        this.updatePreflight = mergePreflight(this.updatePreflight, fresh, now);
+        return;
+      }
+    })().finally(() => { if (this.updatePreflightRunning === running) this.updatePreflightRunning = null; });
+    this.updatePreflightRunning = running;
+    return running;
+  }
+
+  /**
+   * M-3770 (#4480 §4.2): identity is proven at the moment of change. The local checks run again now, whatever the cached
+   * result says, and decide; the network ones (P7, P10) are `agend update`'s own. The cache takes the fresh rows and
+   * keeps a cached P7/P10 only while it still applies, with its own age (mergePreflight).
+   * Returns the refusal in words, or null to go ahead.
+   */
+  async updatePreflightGate(origin: "press" | "unattended"): Promise<string | null> {
+    const { mergePreflight, preflightRefusal } = await import("./update-readiness.js");
+    let fresh: import("./update-readiness.js").UpdatePreflight;
+    try { fresh = await this.probeUpdatePreflight({ localOnly: true }); }
+    catch (err) {
+      this.logger.warn({ err }, "Update pre-flight could not run at launch");
+      return t("update.preflight.refused", t("update.preflight.code.unreadable"));
+    }
+    this.updatePreflight = mergePreflight(this.updatePreflight, fresh, this.updateCheckState?.offer?.version ?? null);
+    return preflightRefusal(fresh, origin, (key, ...args) => t(key, ...args));
+  }
+
+  private ensureUpdateCard(): UpdateOfferCard {
+    if (this.updateCard) return this.updateCard;
+    this.updateCard = new UpdateOfferCard({
+      dataDir: this.dataDir,
+      now: () => Date.now(),
+      settings: () => this.fleetConfig?.updates,
+      busyNames: () => this.updateBusyNames(),
+      // The local claim only. The Hub queue keeps the default, so this launch still looks busy to it.
+      agentsIdle: () => this.hubUpdateIdle(this.localIdleOwned),
+      externalBusy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !!this.hubUpdates?.idlePending(),
+      launchNow: (by, stillAllowed) => this.startWebUpdate(by, () => !this.shuttingDown && stillAllowed()),
+      launchHubNow: async (id, stillAllowed) => {
+        const owner = this.hubUpdates;
+        if (!owner) return { ok: false, status: 409, error: "request_not_found" };
+        const current = () => !this.shuttingDown && this.hubUpdates === owner && stillAllowed();
+        return await owner.updateNow(id, current) ? { ok: true } : { ok: false, status: 409, error: "update_not_started" };
+      },
+      cancelHub: id => { this.hubUpdates?.cancelWaiting(id); },
+      // M-3770 (#4480 §4.1): the card refuses (412) what the machine's last pre-flight doesn't allow — a press needs
+      // pressHere, a picked time (a schedule) needs self. No result yet: nothing is refused here; the launch decides.
+      preflight: action => {
+        const p = this.updatePreflight;
+        if (!p || (action !== "when-idle" && action !== "now" && action !== "pick-time")) return null;
+        return preflightAllows(p, action === "pick-time" ? "unattended" : "press") ? null : { preflight: p };
+      },
+      launchIdle: (version, control, id) => this.launchClaimedUpdate({
+        id, version, origin: `idle update ${version}`, messageId: idleUpdateMessageId(id), control, hub: false,
+        // M-3770 (#4480 §4.1): "Update when idle" is an admin's press that waits for idle; a picked time is a schedule,
+        // which an admin-only machine never takes.
+        kind: this.updateCard?.view()?.lastAnswer?.action === "when-idle" ? "press" : "unattended",
+        onExit: () => { this.updateCard?.settleLocal(id, this.claimedIdleOutcome(id, version).state); },
+      }),
+      currentVersion: () => { try { return this.runningAgendVersion(); } catch { return null; } },
+      bootMarker: () => this.localIdleBootProgress,
+    });
+    return this.updateCard;
+  }
+
+  /** Display names of agents still working. Pause is not an agent. */
+  private updateBusyNames(): string[] {
+    const out: string[] = [];
+    for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
+      try {
+        if (this.restartsInFlight.has(name) || this.stopsInFlight.has(name) || this.handOffsInFlight.has(name)
+          || this.ipcConnectInFlight.has(name) || this.ipcReconnectInFlight.has(name) || this.hasPendingIdleGatedDelivery(name)
+          || this.webChannelEchoTails.has(name)) { out.push(this.shownInstanceName(name)); continue; }
+        const process = this.getInstanceStatus(name);
+        if (process === "stopped" || process === "crashed") continue;
+        if (process === "paused" && ["stopped", "crashed"].includes(this.daemons.get(name)?.getProcessStatus?.() ?? "unknown")) continue;
+        if (process !== "running" || this.getInstanceExecutionState(name) !== "idle" || this.getInstanceInteraction(name)?.phase === "waiting") {
+          out.push(this.shownInstanceName(name));
+        }
+      } catch { /* one agent that cannot be read is not named */ }
+    }
+    return out;
+  }
+
+  private refreshUpdateCard(): UpdateCardView | null {
+    try {
+      const card = this.ensureUpdateCard();
+      const marker = readUpdateProgress(this.dataDir);
+      if (marker) {
+        const progress = marker.progress;
+        card.noteMarker({
+          startedAt: marker.startedAt,
+          stage: progress.stage,
+          operation: progress.operation,
+          ...(progress.version ? { version: progress.version } : {}),
+          ...(progress.stage === "failed" ? { cause: failureCause(progress.error) } : {}),
+        });
+      }
+      card.tick();
+      return card.view();
+    } catch (err) {
+      this.logger.warn({ err }, "Update card could not be read");
+      return null;
+    }
+  }
+
+  /** The card, for a test or a chat reply. Null when nothing is offered, including a pin. */
+  updateOfferView(): UpdateCardView | null {
+    try { return this.ensureUpdateCard().view(); } catch { return null; }
+  }
+
+  describeUpdateOffer(): string {
+    let current: string | null = null;
+    try { current = this.runningAgendVersion(); } catch { /* unknown */ }
+    const pinned = !!resolveUpdates(this.fleetConfig?.updates).pin;
+    const reply = updateOfferReply(this.updateOfferView(), current, pinned);
+    return t(reply.key, ...reply.args);
+  }
+
+  refuseImmediateUpdate(): string | null {
+    return resolveUpdates(this.fleetConfig?.updates).pin ? t("update.offer.pinned") : null;
+  }
+
+  beginUpdateRun(): void {
+    try { this.ensureUpdateCard().beginRun(this.updateCheckState?.offer?.version ?? ""); }
+    catch (err) { this.logger.warn({ err }, "Update card could not record the run"); }
+  }
+
+  /** M-2738: record a look's answer for the web — the same offer the card keeps. */
   private recordUpdateCheck(currentVersion: string, found: { target: string; fromChannel: boolean } | null): void {
     const offer = found ? updateOffer(currentVersion, found.target, found.fromChannel, !!found.target && this.semverGt(found.target, currentVersion)) : null;
     this.updateCheckState = { offer, checkedAt: Date.now(), failed: found === null };
+    try {
+      const card = this.ensureUpdateCard();
+      if (offer) {
+        const channel = offer.channel === "latest" ? "stable" : offer.channel;
+        card.noteOffer({ version: offer.version, channel, installable: offer.installable });
+      } else if (found) card.clearQuietOffer();
+    } catch (err) { this.logger.warn({ err }, "Update offer could not be recorded"); }
   }
 
   private async checkForUpdates(): Promise<void> {
@@ -31532,9 +32154,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const { target, fromChannel } = await this.lookUpUpdateTarget(currentVersion);
       this.recordUpdateCheck(currentVersion, { target, fromChannel });
+      void this.refreshUpdatePreflight();                       // M-3770: the page's "Updates on this machine" line
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
+        // The daily "Run: /update" post stays until the General chat card replaces it.
         // #2910 D2 (#2925 review): a web-only fleet first — even with a General instance it has no chat for /update.
         const generalId = this.webOnlyPromptPlace() ? null : this.findGeneralInstance();
         if (generalId) {
@@ -31564,13 +32188,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         let current: string | null = null;
         try { current = this.runningAgendVersion(); } catch { /* unknown: the page compares nothing */ }
         const s = this.updateCheckState;
-        return { current, offer: s?.offer ?? null, hubRecommendation: this.hubRecommendedUpdate(), checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false };
+        return { current, offer: s?.offer ?? null, hubRecommendation: this.hubRecommendedUpdate(), checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false, preflight: this.updatePreflight };
       },
       checkUpdateNow: () => this.checkUpdateNow(),
       updateProgress: (): WebUpdateProgress | null => webProgressOf(readUpdateProgress(this.dataDir)),
       startWebUpdate: (key, person, stillAllowed, pin) => this.startWebUpdateOnce(key, person, stillAllowed, pin),
       startHubRequestedUpdate: (key, person, stillAllowed, id) => this.startHubRequestedUpdateOnce(key, person, stillAllowed, id),
       updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
+      card: () => this.refreshUpdateCard(),
+      answerUpdate: (key, by, body, stillAllowed) => this.ensureUpdateCard().answer(key, by, body, stillAllowed),
     };
   }
 
@@ -31585,6 +32211,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try { currentVersion = this.runningAgendVersion(); } catch { return; }
       try { this.recordUpdateCheck(currentVersion, await this.lookUpUpdateTarget(currentVersion)); }
       catch { this.recordUpdateCheck(currentVersion, null); }
+      await this.refreshUpdatePreflight();                      // M-3770: answered with the page's next view
     })();
     try { await c.running; } finally { c.running = null; }
     return { ok: true };
@@ -31596,6 +32223,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * targets no chat message (WEB_UPDATE_ADAPTER); the page reads the stages the updater writes into it.
    */
   private async startWebUpdate(person: string, stillAllowed: () => boolean, pin?: WebUpdatePin, hubRequestId?: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    if (resolveUpdates(this.fleetConfig?.updates).pin) return { ok: false, status: 409, error: "pinned" };
     if (this.shuttingDown) return { ok: false, status: 409, error: "stopping" };
     // Synchronous from here to the claim: a second start cannot slip in between on the event loop.
     if (this.webUpdateOwned || isUpdateInProgress(this.dataDir)) return { ok: false, status: 409, error: "update_running" };
@@ -31627,6 +32255,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.error("Web update refused: its progress marker could not be written");
       return { ok: false, status: 503, error: "progress_not_recorded" };
     }
+    try { this.ensureUpdateCard().beginRun(offer.version); } catch (err) { this.logger.warn({ err }, "Update card could not record the run"); }
     const origin = `web update by ${person}`;
     // Prism #3505 P2-3: the asking session must still be current and an admin's when the updater is launched.
     void this.launchInstalledUpdate(origin, () => !this.shuttingDown && stillAllowed() && (!pin || this.hubRecommendationFor(pin) !== null)

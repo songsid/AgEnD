@@ -1,0 +1,24 @@
+{
+  "en": {
+    "agentNotice": "MCP servers missing after the Claude account switch (default → work): m365, outline. They were in your previous account's Claude settings and are not in this one, so their tools did not load. To add one back, run `claude mcp add -s local <name> …` in your shell (it writes this account's settings), then ask to be restarted. Ask the user if it needs a key.",
+    "chatLine": "MCP servers missing after an AI account switch: m365, outline (default → work)"
+  },
+  "zh-TW": {
+    "agentNotice": "切換 Claude 帳號（default → work）後缺少這些 MCP 伺服器：m365、outline。它們在原帳號的 Claude 設定裡，新帳號沒有，所以這些工具沒有載入。要加回來，請在你的 shell 執行 `claude mcp add -s local <名稱> …`（會寫進這個帳號的設定），再請人重新啟動你。需要金鑰時請問使用者。",
+    "chatLine": "切換 AI 帳號後缺少 MCP 伺服器：m365、outline（default → work）"
+  },
+  "web": {
+    "desk-light-en": [
+      "MCP servers missing after an AI account switch 4 min ago m365, outline (default → work) Acknowledge Open chat"
+    ],
+    "desk-dark-zh-TW": [
+      "切換 AI 帳號後缺少 MCP 伺服器 4 分鐘前 m365、outline（default → work） 確認 開啟聊天"
+    ],
+    "phone-light-zh-TW": [
+      "切換 AI 帳號後缺少 MCP 伺服器 4 分鐘前 m365、outline（default → work） 確認 開啟聊天"
+    ],
+    "phone-dark-en": [
+      "MCP servers missing after an AI account switch 4 min ago m365, outline (default → work) Acknowledge Open chat"
+    ]
+  }
+}

@@ -179,3 +179,11 @@ describe("agent payload stays byte-identical", () => {
     }
   });
 });
+
+it("S-232 scopes the zh sender colon to labelled notices without changing OFF text or payload",()=>{
+ setLocale("zh-TW");const input={label:"Lumen → Atlas",message:"A: B",requestKind:"query"};
+ expect(senderTopicNotice("full",input)).toBe("Lumen → Atlas:\nA: B");
+ expect(senderTopicNotice("full",{...input,requestScoped:true})).toBe("Lumen → Atlas：\nA: B");
+ expect(targetTopicNotice("summary",{...input,requestScoped:true})).toBe("Lumen → Atlas： A: B");
+ setLocale("en");expect(senderTopicNotice("full",{...input,requestScoped:true})).toBe("Lumen → Atlas:\nA: B");
+});

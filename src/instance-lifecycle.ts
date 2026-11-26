@@ -289,6 +289,8 @@ export interface LifecycleContext {
   retireRemoteCard?(name: string, identity: string | null): void;
   /** #1386: an instance's interaction observation, pause or wake changed ("Needs you" recomputes at once, not at its tick). */
   onAttentionChanged?(name: string): void;
+  /** M-3749: a Claude launch found (or no longer has) MCP servers missing after a profile switch: tell the agent once. */
+  onMcpMissing?(name: string, missing: import("./backend/claude-mcp-carry.js").McpMissing | null): void;
   /** #3647: supervision gave up on the instance (crash loop, supervision ended): it will not come back by itself. */
   onSupervisionGone?(name: string, kind: "crash_loop" | "supervision_ended", reason: string): void;
   /**
@@ -1498,6 +1500,10 @@ export class InstanceLifecycle {
     // #2822: a usage-limit hold began or ended — Needs you lists it while it lasts.
     daemon.on("model_observation", () => this.ctx.onAttentionChanged?.(name));
     daemon.on("usage_hold", () => this.ctx.onAttentionChanged?.(name));
+    daemon.on("mcp_missing", (data: { missing: import("./backend/claude-mcp-carry.js").McpMissing | null }) => {
+      try { this.ctx.onMcpMissing?.(name, data?.missing ?? null); } catch (err) { this.ctx.logger.warn({ err, name }, "MCP-missing notice failed"); }
+      this.ctx.onAttentionChanged?.(name);
+    });
 
     daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string; screen?: string }) => {
       this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind, ...this.screenForLog(name, data.screen) });

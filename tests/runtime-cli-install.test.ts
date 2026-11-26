@@ -39,16 +39,16 @@ describe("managed CLI install (#3190 3b)", () => {
   });
   it("installs with a fixed argv and no shell, checks integrity, signatures and publisher, then points current.json at it", async () => {
     const { run, calls } = fakeRun("claude-code"), steps: string[] = [];
-    const root = join(home, "cli"), staging = join(root, "claude-code", "2.1.331.staging"), user = join(staging, "agend-user.npmrc"), global = join(staging, "agend-global.npmrc");
+    const root = join(home, "cli"), staging = join(root, "claude-code", "2.1.332.staging"), user = join(staging, "agend-user.npmrc"), global = join(staging, "agend-global.npmrc");
     // Private configuration and local mode, on the command line as well as in the environment: no user or global `.npmrc` is read, and nothing is installed globally.
     const local = ["--userconfig", user, "--globalconfig", global, "--global=false", "--prefix", staging, "--registry", "https://registry.npmjs.org/"];
     const result = await installManagedCli("claude-code", { root, nodePath: node, run, signerOf: signed, report: s => steps.push(s) });
     expect(steps).toEqual(["installing", "checking-integrity", "checking-signatures", "checking-publisher", "ready"]);
-    expect(calls[0].slice(1)).toEqual([expect.stringMatching(/npm-cli\.js$/), "install", "@anthropic-ai/claude-code@2.1.331", "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund", ...local]);
+    expect(calls[0].slice(1)).toEqual([expect.stringMatching(/npm-cli\.js$/), "install", "@anthropic-ai/claude-code@2.1.332", "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund", ...local]);
     expect(calls[1].slice(2)).toEqual(["audit", "signatures", ...local]);
-    expect(result.version).toBe("2.1.331");
-    expect(JSON.parse(readFileSync(join(root, "claude-code", "current.json"), "utf8"))).toEqual({ version: "2.1.331" });
-    expect(managedCliExecutable(root, "claude-code")).toMatchObject({ command: result.command, args: [], version: "2.1.331" });
+    expect(result.version).toBe("2.1.332");
+    expect(JSON.parse(readFileSync(join(root, "claude-code", "current.json"), "utf8"))).toEqual({ version: "2.1.332" });
+    expect(managedCliExecutable(root, "claude-code")).toMatchObject({ command: result.command, args: [], version: "2.1.332" });
   });
   // AGEND-133 (#3521): OpenCode — an unscoped package, three pinned packages (both Windows x64 builds land), the baseline build is the one that runs, and its own signer.
   it("OpenCode: pinned opencode-ai@1.19.6 with both Windows x64 builds, the baseline one runs, and the publisher is Anomaly Innovations (measured Authenticode subject)", async () => {
@@ -188,7 +188,7 @@ describe("N3: the signer is compared exactly, as CN and O (#3190 3b)", () => {
   });
   it("installs when the subject is exactly right", async () => {
     const root = join(home, "cli");
-    await expect(installManagedCli("claude-code", { root, nodePath: node, run: fakeRun("claude-code").run, signerOf: async () => ({ status: "Valid", subject: CLAUDE }) })).resolves.toMatchObject({ version: "2.1.331" });
+    await expect(installManagedCli("claude-code", { root, nodePath: node, run: fakeRun("claude-code").run, signerOf: async () => ({ status: "Valid", subject: CLAUDE }) })).resolves.toMatchObject({ version: "2.1.332" });
   });
 });
 

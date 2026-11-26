@@ -82,7 +82,7 @@ describe("install a CLI from the dashboard: who may ask", () => {
   it("a local administrator reads the computer's switches from the computer, and the audit name is an opaque session handle", async () => {
     const answer = await ask(SETUP, "GET", "admin");
     expect(answer.status).toBe(200);
-    expect(answer.json).toMatchObject({ capable: true, online: true, switches: { install: { on: true } }, job: null, catalog: [{ id: "claude-code", version: "2.1.331", kind: "npm", pin: "audited" }, { id: "codex", version: "0.171.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.15", kind: "download", pin: "audited" }, { id: "opencode", version: "1.19.6", kind: "npm", pin: "audited" }] });
+    expect(answer.json).toMatchObject({ capable: true, online: true, switches: { install: { on: true } }, job: null, catalog: [{ id: "claude-code", version: "2.1.332", kind: "npm", pin: "audited" }, { id: "codex", version: "0.171.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.15", kind: "download", pin: "audited" }, { id: "opencode", version: "1.19.6", kind: "npm", pin: "audited" }] });
     expect(calls[0]).toMatchObject({ operation: "accounts.switches", payload: {} });
     const install = await ask(INSTALL, "POST", "replay", { cli: "codex" });
     expect(install.status).toBe(202);
@@ -220,7 +220,7 @@ describe("N5: the job is taken before anything is awaited", () => {
     expect((await ask(INSTALL, "POST", "replay", { cli: "claude-code" })).status).toBe(400);
     expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ cli: "codex", state: "done", version: "0.171.0" });
     // and the machine is not left "installing": the next request is accepted
-    outcome = async () => ({ version: "2.1.331" });
+    outcome = async () => ({ version: "2.1.332" });
     expect((await ask(INSTALL, "POST", "replay", { cli: "claude-code" })).status).toBe(202);
   });
 });

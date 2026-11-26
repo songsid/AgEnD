@@ -12,6 +12,7 @@
  * itself (derived moves). Only a person confirms or rejects work waiting for review, clears "needs review", moves a
  * card to another project, or reopens a finished card; an instance moves its own cards along.
  */
+import type { QuiescenceGate } from "../update-quiescence.js";
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { parseMentions } from "./task-board-mentions.js";
@@ -56,6 +57,18 @@ export const CARD_LIMITS = {
 
 /** How far back finished sub tasks and cancelled main tasks stay on the board. */
 const BOARD_DAYS = 14;
+/**
+ * M-3668 (the user, 11-24): a finished main task — done or cancelled — leaves the dashboard's board this many days after it
+ * finished (defaults.task_board.archive_after_days; 0 = never). A view rule only: nothing in the database changes, search
+ * and its number still find it, and moving it to To do reopens it (its status, not its age, makes it archived).
+ */
+export const ARCHIVE_AFTER_DAYS = 3;
+/** The archive age as fleet.yaml gives it: a whole number of days, 0–3650; anything else is the default. */
+export function archiveAfterDays(v: unknown): number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 3650 ? v : ARCHIVE_AFTER_DAYS;
+}
+/** M-3668: how many finished main tasks a project's Done column counts as "this week". */
+const WEEK_MS = 7 * 86_400_000;
 const BATCH_MAX = 30;
 
 /**
@@ -218,6 +231,13 @@ export interface ProjectStats {
   waiting: number;
   blocked: number;
   lastActivity: string | null;
+  /**
+   * M-3668: finished main tasks archived (left out of the numbers above), main tasks done in the last 7 days, and how many
+   * of those are archived already (the Done column shows the rest: "45 done this week · 8 archived").
+   */
+  archived: number;
+  doneWeek: number;
+  archivedWeek: number;
 }
 
 /** A card as the dashboard draws it: references by card number. */
@@ -731,6 +751,9 @@ export class TaskBoard {
   private fileStore: TaskFileStore | null = null;
   /** What undoes this write's file moves, when the write fails after them. */
   private undo: Array<() => void> = [];
+  /** S-244: while the barrier flag is up, an open card is not claimed. Unset: today's claim. */
+  private quiescence: QuiescenceGate | null = null;
+  setQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
 
   constructor(private readonly db: Database.Database, private readonly now: () => Date = () => new Date()) {}
 
@@ -1020,8 +1043,20 @@ export class TaskBoard {
    * tasks — or every done main task with `allDone` (the Done column's "All"). Older finished work stays in the
    * database and in the projects' numbers (projectStats), not in every board read.
    */
-  boardCards(days = BOARD_DAYS, allDone = false): Card[] {
+  boardCards(days = BOARD_DAYS, allDone = false, archiveDays = 0): Card[] {
     const since = new Date(this.now().getTime() - days * 86_400_000).toISOString();
+    if (archiveDays > 0) {
+      // M-3668: finished main tasks until they are archived (`allDone` no longer reads past it: the Archive list does).
+      // #4428 review: an archived main task's sub tasks go with it (isArchived), even one done more recently.
+      const kept = new Date(this.now().getTime() - archiveDays * 86_400_000).toISOString();
+      return (this.db.prepare(
+        `SELECT * FROM tasks WHERE
+           (kind = 'main' AND (status NOT IN ('done', 'cancelled') OR COALESCE(done_at, updated_at) >= ?))
+           OR (kind = 'sub' AND status != 'cancelled' AND (status != 'done' OR COALESCE(done_at, updated_at) >= ?)
+               AND NOT EXISTS (SELECT 1 FROM tasks m WHERE m.id = tasks.parent_id AND m.status IN ('done', 'cancelled') AND COALESCE(m.done_at, m.updated_at) < ?))
+         ORDER BY sort`,
+      ).all(kept, since, kept) as Row[]).map(toCard);
+    }
     const rows = this.db.prepare(
       `SELECT * FROM tasks WHERE
          (kind = 'main' AND (status NOT IN ('done', 'cancelled') OR (status = 'done' AND (? OR COALESCE(done_at, updated_at) >= ?)) OR (status = 'cancelled' AND updated_at >= ?)))
@@ -1032,16 +1067,60 @@ export class TaskBoard {
   }
 
   /**
+   * #4428 review: ` AND …` leaving out the cards that name one of `names` (assigned to, created by or handed out by one:
+   * the public link's hiding, web-api boardHiding), with its values; empty when none.
+   */
+  private unseen(names: readonly string[] = []): { sql: string; args: string[] } {
+    const out = [...new Set(names)];
+    if (!out.length) return { sql: "", args: [] };
+    const marks = out.map(() => "?").join(", ");
+    return { sql: ` AND (assignee IS NULL OR assignee NOT IN (${marks})) AND created_by NOT IN (${marks}) AND (dispatcher IS NULL OR dispatcher NOT IN (${marks}))`,
+      args: [...out, ...out, ...out] };
+  }
+
+  /**
+   * #4428 review: what time alone changes in a board read and its numbers — how many finished cards have passed each
+   * of its lines (archived, out of this week's count, out of the recent window) — with the archive age. A card passes a
+   * line without a write (the revision stays), so a page's "same revision" read is answered `unchanged` only when this
+   * matches too. One counting pass, no rows. `leaveOut`: as projectStats (the public link's hidden instances' cards never
+   * move it).
+   */
+  boardEpoch(archiveDays = 0, days = BOARD_DAYS, leaveOut: readonly string[] = []): string {
+    const nowMs = this.now().getTime();
+    const at = (ms: number) => new Date(nowMs - ms).toISOString();
+    const kept = archiveDays > 0 ? at(archiveDays * 86_400_000) : "", week = at(WEEK_MS), since = at(days * 86_400_000), hide = this.unseen(leaveOut);
+    const r = this.db.prepare(
+      `SELECT
+         COALESCE(SUM(kind = 'main' AND status IN ('done', 'cancelled') AND COALESCE(done_at, updated_at) < ?), 0) AS archived,
+         COALESCE(SUM(kind = 'main' AND status = 'done' AND COALESCE(done_at, updated_at) < ?), 0) AS week,
+         COALESCE(SUM(status IN ('done', 'cancelled') AND (CASE WHEN kind = 'main' AND status = 'cancelled' THEN updated_at ELSE COALESCE(done_at, updated_at) END) < ?), 0) AS old
+       FROM tasks WHERE 1${hide.sql}`,
+    ).get(kept, week, since, ...hide.args) as { archived: number; week: number; old: number };
+    return `${archiveDays}:${r.archived}:${r.week}:${r.old}`;
+  }
+
+  /**
    * Each project's numbers (by id; "none" for No project) over all its cards, finished ones included: main tasks,
    * work units (a main task's sub tasks, or one unit for a main task without them; a done main task counts all its
    * units done), cards waiting for the person and blocked, and the last change. One pass over the table. #2080: waiting
    * counts only the cards in review the person confirms (waitsForPerson, `gone` as for Needs you), never an agent's.
+   * #4428 review: `leaveOut` names (the public link's hidden instances) — their cards, and a hidden main task's sub tasks,
+   * count nowhere, as the board read leaves them out.
    */
-  projectStats(gone?: GoneDispatcher): Record<string, ProjectStats> {
-    const rows = this.db.prepare("SELECT id, kind, status, project_id, parent_id, updated_at, needs_review, dispatcher, dispatcher_kind FROM tasks").all() as Row[];
+  projectStats(gone?: GoneDispatcher, archiveDays = 0, leaveOut: readonly string[] = []): Record<string, ProjectStats> {
+    const all = this.db.prepare("SELECT id, kind, status, project_id, parent_id, updated_at, done_at, needs_review, dispatcher, dispatcher_kind, assignee, created_by FROM tasks").all() as Row[];
+    const unseenNames = new Set(leaveOut);
+    const names = (r: Row) => [r.assignee, r.created_by, r.dispatcher].some((n) => typeof n === "string" && unseenNames.has(n));
+    const hiddenMains = unseenNames.size ? new Set(all.filter((r) => r.kind === "main" && names(r)).map((r) => r.id as string)) : new Set<string>();
+    const rows = unseenNames.size ? all.filter((r) => !names(r) && !(r.kind === "sub" && hiddenMains.has(r.parent_id as string))) : all;
+    const nowMs = this.now().getTime(), kept = archiveDays > 0 ? new Date(nowMs - archiveDays * 86_400_000).toISOString() : null;
+    const week = new Date(nowMs - WEEK_MS).toISOString();
+    const finished = (r: Row) => ((r.done_at as string | null) ?? (r.updated_at as string));
+    // M-3668: an archived main task (and its sub tasks) is left out of every number but `archived`.
+    const archivedMains = new Set(kept ? rows.filter((r) => r.kind === "main" && (r.status === "done" || r.status === "cancelled") && finished(r) < kept).map((r) => r.id as string) : []);
     const subs = new Map<string, Progress>();
     for (const r of rows) {
-      if (r.kind !== "sub" || !r.parent_id || r.status === "cancelled") continue;
+      if (r.kind !== "sub" || !r.parent_id || r.status === "cancelled" || archivedMains.has(r.parent_id as string)) continue;
       const p = subs.get(r.parent_id as string) ?? { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 };
       p.total++;
       p[r.status as Exclude<CardStatus, "cancelled">]++;
@@ -1050,9 +1129,12 @@ export class TaskBoard {
     const out: Record<string, ProjectStats> = {};
     for (const r of rows) {
       const key = r.project_id === null || r.project_id === undefined ? "none" : String(r.project_id);
-      const st = out[key] ??= { mains: 0, units: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 }, percent: 0, waiting: 0, blocked: 0, lastActivity: null };
+      const st = out[key] ??= { mains: 0, units: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 }, percent: 0, waiting: 0, blocked: 0, lastActivity: null, archived: 0, doneWeek: 0, archivedWeek: 0 };
       if (!st.lastActivity || (r.updated_at as string) > st.lastActivity) st.lastActivity = r.updated_at as string;
       const status = r.status as CardStatus;
+      if (r.kind === "main" && status === "done" && finished(r) >= week) { st.doneWeek++; if (archivedMains.has(r.id as string)) st.archivedWeek++; }
+      if (archivedMains.has(r.id as string)) { st.archived++; continue; }
+      if (r.kind === "sub" && archivedMains.has(r.parent_id as string)) continue;
       if (status === "cancelled") continue;
       if (status === "review" && waitsForPerson({ status, needsReview: Number(r.needs_review) === 1,
         dispatcher: r.dispatcher ? { kind: r.dispatcher_kind === "person" ? "person" : "instance", name: r.dispatcher as string } : null }, gone)) st.waiting++;
@@ -1066,6 +1148,40 @@ export class TaskBoard {
     }
     for (const st of Object.values(out)) st.percent = st.units.total ? Math.round((st.units.done / st.units.total) * 100) : 0;
     return out;
+  }
+
+  /** M-3668: whether the dashboard has archived this card (a sub task goes with its main task). */
+  isArchived(card: Card, archiveDays: number): boolean {
+    if (archiveDays <= 0) return false;
+    const main = card.kind === "sub" && card.parent ? this.byUuid(card.parent) : card;
+    if (!main || main.kind !== "main" || (main.status !== "done" && main.status !== "cancelled")) return false;
+    return (main.doneAt ?? main.updatedAt) < new Date(this.now().getTime() - archiveDays * 86_400_000).toISOString();
+  }
+
+  /**
+   * M-3668: a project's archived main tasks (`project` null: No project), the most recently finished first, a page at a
+   * time (`before`: the last one's cursor), and who they were assigned to (the list's filter, `assignee`).
+   * `leaveOut`: names whose cards the reader may not see (assigned to, created by or handed out by one) — left out
+   * before the page, its cursor, the total and the assignees are worked out, so none of them tells of such a card.
+   */
+  archiveList(project: number | null, archiveDays: number, opts: { before?: string | null; limit?: number; assignee?: string | null; leaveOut?: readonly string[] } = {}):
+    { cards: Card[]; next: string | null; total: number; assignees: string[] } {
+    if (archiveDays <= 0) return { cards: [], next: null, total: 0, assignees: [] };
+    const kept = new Date(this.now().getTime() - archiveDays * 86_400_000).toISOString();
+    const hide = this.unseen(opts.leaveOut);
+    const where = `kind = 'main' AND status IN ('done', 'cancelled') AND COALESCE(done_at, updated_at) < ? AND ${project === null ? "project_id IS NULL" : "project_id = ?"}${hide.sql}`;
+    const base: unknown[] = [kept, ...(project === null ? [] : [project]), ...hide.args];
+    const assignees = (this.db.prepare(`SELECT DISTINCT assignee FROM tasks WHERE ${where} AND assignee IS NOT NULL ORDER BY assignee`).all(...base) as { assignee: string }[]).map((r) => r.assignee);
+    const who = opts.assignee ? " AND assignee = ?" : "", whoArgs = opts.assignee ? [opts.assignee] : [];
+    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE ${where}${who}`).get(...base, ...whoArgs) as { n: number }).n;
+    const cursor = typeof opts.before === "string" ? /^(.+)\|([^|]+)$/.exec(opts.before) : null;
+    const after = cursor ? " AND (COALESCE(done_at, updated_at) < ? OR (COALESCE(done_at, updated_at) = ? AND id < ?))" : "";
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+    const rows = this.db.prepare(`SELECT * FROM tasks WHERE ${where}${who}${after} ORDER BY COALESCE(done_at, updated_at) DESC, id DESC LIMIT ?`)
+      .all(...base, ...whoArgs, ...(cursor ? [cursor[1], cursor[1], cursor[2]] : []), limit + 1) as Row[];
+    const cards = rows.slice(0, limit).map(toCard);
+    const last = cards[cards.length - 1];
+    return { cards, next: rows.length > limit && last ? `${last.doneAt ?? last.updatedAt}|${last.uuid}` : null, total, assignees };
   }
 
   view(card: Card, scope: ReadScope = {}, gone?: GoneDispatcher): CardView {
@@ -2266,6 +2382,9 @@ export class TaskBoard {
   /** Status bookkeeping shared by every move, then what the move sets off. */
   private applyMove(card: Card, actor: Actor, to: CardStatus, reason: string, comment?: string, attach?: string[]): void {
     const from = card.status;
+    if (from === "open" && to === "claimed" && this.quiescence?.holdTaskClaim()) {
+      throw new TaskBoardError("conflict", "an update is in progress; this claim waits until it finishes");
+    }
     const now = this.nowIso();
     card.status = to;
     if (to === "claimed" && !card.startedAt) card.startedAt = now;

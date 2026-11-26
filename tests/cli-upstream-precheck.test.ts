@@ -184,13 +184,48 @@ describe("precheck.py's verdict", () => {
     expect(r.out.trim().split("\n").at(-2)).toBe("BASIS: hard=0; hinted=0");
     expect(r.verdict).toBe("PRECHECK: NONE");
   });
-  it("the manifest carries sources.json's retired marks (kiro's V2→V3 ease-in, gone after 3.0.0)", () => {
-    const kiro = (JSON.parse(readFileSync(join(process.cwd(), "scripts/manual/cli-upstream-precheck/manifest.json"), "utf8")) as { backends: Record<string, { literals: { symbol: string; retiredAfter?: string }[] }> }).backends["kiro-cli"]!.literals;
-    const retired = kiro.filter(l => l.retiredAfter);
-    expect(retired.length).toBeGreaterThan(0);
-    expect(retired.every(l => /^KIRO_V3_EASE_IN(?:_V2_USER)?\./.test(l.symbol) && l.retiredAfter === "3.0.0")).toBe(true);
-    // Text the Classic nudge still shows is not retired with the ease-in (Prism on #3245).
-    expect(kiro.find(l => (l as { text?: string }).text === "Remind me later")?.retiredAfter).toBeUndefined();
+  it("the manifest carries sources.json's retired marks: kiro's V2→V3 ease-in after 3.0.0, its deleted Classic harness after 3.5.0", () => {
+    const kiro = (JSON.parse(readFileSync(join(process.cwd(), "scripts/manual/cli-upstream-precheck/manifest.json"), "utf8")) as { backends: Record<string, { literals: { text: string; symbol: string; retiredAfter?: string; embeddedIn?: string }[] }> }).backends["kiro-cli"]!.literals;
+    const at = (v: string) => kiro.filter(l => l.retiredAfter === v);
+    expect(at("3.0.0").length).toBeGreaterThan(0);
+    expect(at("3.0.0").every(l => /^KIRO_V3_EASE_IN(?:_V2_USER)?\./.test(l.symbol))).toBe(true);
+    // M-3752: 3.6.0 deleted the legacy/Classic (v1) harness; exactly these 15 texts went with it (leader D1).
+    expect(at("3.5.0").map(l => l.text).sort()).toEqual(["/agent swap ", "Authentication expired - please log in again", "Classic is being deprecated with the Kiro CLI 3.0",
+      "Kiro is having trouble responding right now", "Kiro rate limit reached", "Please wait a moment and try again", "Remind me later", "Request quota exceeded",
+      "Switch to V3 and upgrade my agent configs", "The limits reset on", "This will erase the conversation history", "Your login session has expired. Please log in again using",
+      "having trouble responding", "q_prompt", "request limit reached"].sort());
+    expect(kiro.filter(l => l.retiredAfter && !["3.0.0", "3.5.0"].includes(l.retiredAfter))).toEqual([]);
+    // A per-text mark leaves the declaration's other text live (the Classic nudge's option 3.6.0 never had is not retired).
+    expect(kiro.find(l => l.text === "Switch to 3.0 and upgrade my agent configs")?.retiredAfter).toBeUndefined();
+    // M-3752 (leader D2): the six texts 3.6.0 still has only inside its zstd-framed tui.js / engine tar are embedded-only.
+    expect(kiro.filter(l => l.embeddedIn).map(l => [l.text, l.embeddedIn]).sort()).toEqual([["Completed in", "tui.js"], ["Select model", "tui.js"], ["bearer token", "engine tar"],
+      ["is ambiguous", "tui.js + engine tar"], ["type to search", "tui.js"], ["using tool", "tui.js"]].sort());
+    expect(kiro.find(l => l.text === "Error: Session id")?.embeddedIn).toBeUndefined();
+  });
+  it("a per-text retired / embedded map marks only the texts it names; a release string marks the whole declaration", () => {
+    const entry = { file: "src/backend/k-fixture.ts", retired: { K: { "The old harness said goodbye": "1.0.0" }, WHOLE: "2.0.0" }, embedded: { K: { "The terminal UI says hello": "tui.js" } } };
+    const source = `export const K = ["The old harness said goodbye", "The terminal UI says hello", "The plain binary keeps this"];\nexport const WHOLE = ["Every word of it went away"];\n`;
+    const got = Object.fromEntries(literalsOf(entry, source).map(l => [l.text, [l.retiredAfter ?? null, l.embeddedIn ?? null]]));
+    expect(got).toEqual({ "The old harness said goodbye": ["1.0.0", null], "The terminal UI says hello": [null, "tui.js"],
+      "The plain binary keeps this": [null, null], "Every word of it went away": ["2.0.0", null] });
+  });
+  it("shared text is embedded-only only when every declaration that has it says so", () => {
+    const lit = (symbol: string, embeddedIn?: string) => ({ text: "Shared words", kind: "string" as const, surface: "dialog" as const, file: "src/k.ts", line: symbol.length, symbol, ...(embeddedIn ? { embeddedIn } : {}) });
+    expect(dedupeLiterals([lit("A", "tui.js"), lit("BB")])[0]!.embeddedIn).toBeUndefined();
+    expect(dedupeLiterals([lit("A", "tui.js"), lit("BB", "engine tar")])[0]!.embeddedIn).toBe("tui.js");
+  });
+  it("an embedded-only literal's plain copy going is listed, not a finding; kiro-cli runs say the zstd frames are not read", () => {
+    const d = scratch();
+    writeFileSync(join(d, "old.bin"), OLD); writeFileSync(join(d, "new.bin"), OLD.replace("Rate limited, retrying soon", pad(27)));
+    for (const backend of ["fake", "kiro-cli"]) {
+      const m = join(d, `${backend}.json`);
+      writeFileSync(m, JSON.stringify({ format: 1, source: "test", backends: { [backend]: { literals: LITS.map(l => l.symbol === "getErrorPatterns" ? { ...l, embeddedIn: "tui.js" } : l) } } }));
+      const r = spawnSync("python3", ["-I", PRECHECK, backend, join(d, "old.bin"), join(d, "new.bin"), "--manifest", m], { encoding: "utf8" });
+      expect(r.stdout).toContain("MISSING (in old, not in new): 0");
+      expect(r.stdout).toMatch(/EMBEDDED ONLY \([^)]*\): 1\n  \[error\] 1 -> 0  "Rate limited, retrying soon" .*in tui\.js\)/);
+      expect(r.stdout.trim().split("\n").at(-2)).toBe("BASIS: hard=0; hinted=0");
+      expect(r.stdout.includes("does not read them"), backend).toBe(backend === "kiro-cli");
+    }
   });
   it("shared text is retired only when every declaration that has it is (either order); then up to the newest release named", () => {
     const lit = (text: string, symbol: string, retiredAfter?: string) => ({ text, kind: "string" as const, surface: "onboarding" as const, file: "src/k.ts", line: symbol.length, symbol, ...(retiredAfter ? { retiredAfter } : {}) });

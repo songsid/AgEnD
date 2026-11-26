@@ -34,7 +34,7 @@ describe("the version rule", () => {
     expect(nativeCliVersionState("codex", "codex-cli 0.165.0", { codex: Object.create({ "0.165.0": "inherited" }), "claude-code": {} }).state).toBe("verified");
   });
   it("the audited set holds exactly the releases that passed an audit", () => {
-    expect(NATIVE_CLI_AUDITED).toEqual({ codex: ["0.165.0", "0.166.0", "0.167.0", "0.169.0", "0.170.0", "0.171.0"], "claude-code": ["2.1.316", "2.1.318", "2.1.319", "2.1.325", "2.1.326", "2.1.327", "2.1.328", "2.1.329", "2.1.330", "2.1.331"] });
+    expect(NATIVE_CLI_AUDITED).toEqual({ codex: ["0.165.0", "0.166.0", "0.167.0", "0.169.0", "0.170.0", "0.171.0"], "claude-code": ["2.1.316", "2.1.318", "2.1.319", "2.1.325", "2.1.326", "2.1.327", "2.1.328", "2.1.329", "2.1.330", "2.1.331", "2.1.332"] });
   });
   it("labelling an inventory copies it, labels only the two pane CLIs and replaces any label it carried", () => {
     const inventory = { clis: [{ id: "codex", version: "codex-cli 0.199.0", paneVerification: "verified" as const }, { id: "claude-code", version: "2.1.316" }, { id: "grok", version: "1.0.0", paneVerification: "verified" as const }] };

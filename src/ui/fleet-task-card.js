@@ -63,7 +63,7 @@ register("taskcard", {
     loading: "載入中…", missing: "找不到 {0}", version: "v{0}", copyLink: "複製這張卡的連結", linkCopied: "已複製連結",
     conflict: "{0} 在你編輯時被改過了。已載入最新內容，你的修改還在，再存一次就會覆蓋。",
     followsSubs: "有子任務，狀態會跟著子任務自動變化",
-    reopen: "重新打開", cancelCard: "取消這張卡", confirmMain: "確認主任務", moreActions: "更多動作",
+    reopen: "重新開啟", cancelCard: "取消這張卡", confirmMain: "確認主任務", moreActions: "更多動作",
     assignee: "負責人", nobody: "沒人負責", unassign: "沒人負責", other: "其他…", otherTitle: "指派給其他 Agent", otherLabel: "Agent 名稱",
     status: "狀態", project: "專案", priority: "優先級", size: "大小", review: "待我確認", reviewBox: "做完要停在待確認，等我確認", reviewShort: "完成前停在待確認",
     reviewOn: "做完會停在待確認，等你確認", reviewOff: "做完直接完成，不等你確認",
@@ -375,7 +375,7 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
     ${bar({ parent, actions: html`${copyBtn}${blockBtn}${more}` })}
     <div class="tp-grid">
       <div class="tp-head">
-        <div class="tp-idrow"><span class="tb-code tp-code">${card.id}</span><${StatusPill} status=${card.status} card=${card} />
+        <div class="tp-idrow"><span class="tb-code tp-code">${card.id}</span><${StatusPill} status=${card.status} card=${card} />${detail.archived ? html`<span class="tb-tag" title=${t("tasksArchive.tagTip", detail.archiveAfterDays ?? "")}>${t("tasksArchive.tag")}</span>` : null}
           ${derived && !finished ? html`<span class="tp-derived">${t("taskcard.followsSubs")}</span>` : null}</div>
         <div class="tc-head" ref=${head} tabindex="-1" role="heading" aria-level="2">
           ${can ? html`<${InlineTitle} value=${card.title} version=${card.version} limit=${LIMIT.title} onSave=${(title, base) => save({ title }, base)} />` : html`<h2 class="tc-title">${card.title}</h2>`}

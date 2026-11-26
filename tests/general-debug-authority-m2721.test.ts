@@ -32,6 +32,7 @@ function rig() {
   const responses: Array<{ result: unknown; error?: string }> = [];
   const adapter = { type: "telegram" };
   const fm = {
+    requestContextCallOf: (FleetManager.prototype as any).requestContextCallOf,
     fleetConfig: config, dataDir: home, saveFleetConfig,
     classicHubPrivateBlocked: () => false, restrictedClassicRouting: () => undefined,
     lifecycle: { handleCreate, has: () => false },
@@ -57,6 +58,16 @@ function argsFor(tool: string, extra: Record<string, unknown>) {
 
 const configTools = ["update_instance_config", "create_instance"] as const;
 describe("General debug and tool-set authority (36525f1b)", () => {
+  it("OFF dispatch never reads request-context launch ownership", async () => {
+    const r = rig();
+    const bootLookup = vi.fn(() => { throw new Error("OFF must not inspect launch ownership"); });
+    Object.defineProperty(r.fm, "getDaemonBootId", { get: bootLookup });
+    const out = await r.call("admin", "get_instance_logs", { name: "worker" });
+    expect(out.error).toBeUndefined();
+    expect(out.result).toMatchObject({ lines: "scratch diagnostic output\n" });
+    expect(bootLookup).not.toHaveBeenCalled();
+  });
+
   it.each(["get_instance_logs", "get_fleet_config", "validate_config", "list_deployments"])("General reaches the real %s handler", async tool => {
     const r = rig();
     const args = tool === "get_instance_logs" ? { name: "worker" } : tool === "get_fleet_config" ? { scope: "instance", name: "worker" } : {};

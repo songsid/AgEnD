@@ -13,6 +13,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const spawned = vi.hoisted(() => [] as Array<{ cmd: string; args: string[] }>);
 const registry = vi.hoisted(() => ({ tags: {} as Record<string, string>, views: [] as string[], prefix: null as string | null }));
+// M-3770: the launch's pre-flight (#4480 §4) is proven on a real install; here the machine is one that may update itself.
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async () => real.summarize([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }], Date.now())) };
+});
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return {
@@ -104,7 +109,7 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
     try {
       Object.assign(fm, { fleetAdminGate: () => "ok" });
       const respond = vi.fn().mockResolvedValue(undefined);
-      await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", respond }, "discord-main");
+      await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", options: { now: true }, respond }, "discord-main");
       expect(spawned).toEqual([{ cmd: "sh", args: PLAIN(prefix) }]);
     } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
   });
@@ -119,9 +124,38 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
       hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin", isFleetStopping: () => false,
       dataDir: scratch(),
     } as any);
-    const msg = { text: "/update", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;
+    const msg = { text: "/update now", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;
     expect(await commands.handleGeneralCommand(msg)).toBe(true);
     expect(spawned).toEqual([{ cmd: "sh", args: PLAIN(prefix) }]);
+  });
+
+  it("bare /update and a bare slash do not launch", async () => {
+    globalInstall();
+    const fm = new FleetManager(scratch());
+    const respond = vi.fn().mockResolvedValue(undefined);
+    try {
+      Object.assign(fm, { fleetAdminGate: () => "ok", runningAgendVersion: () => "2.2.0" });
+      await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", respond }, "discord-main");
+      expect(spawned).toEqual([]);
+      expect(String(respond.mock.calls[0]?.[0])).toContain("already current");
+    } finally {
+      try { (fm as any).updateCard?.close(); } catch { /* already closed */ }
+      fm.stormWindow.shutdown(); fm.spawnGate.shutdown();
+    }
+    const sendText = vi.fn().mockResolvedValue({ messageId: "p1", chatId: "chat", threadId: "1" });
+    const adapter = { id: "telegram-main", type: "telegram", sendText };
+    const commands = new TopicCommands({
+      adapter, adapters: new Map([["telegram-main", adapter]]),
+      fleetConfig: { channel: { access: { allowed_users: ["admin"] } } },
+      hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin", isFleetStopping: () => false,
+      dataDir: scratch(), describeUpdateOffer: () => "card words",
+    } as any);
+    const msg = { text: "/update", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;
+    expect(await commands.handleGeneralCommand(msg)).toBe(true);
+    expect(sendText).toHaveBeenCalledWith("chat", "card words", { threadId: "1" });
+    expect(spawned).toEqual([]);
+    const stray = { ...msg, text: "/update nowhere" };
+    expect(await commands.handleGeneralCommand(stray)).toBe(false);
   });
 
   // No unverified fallback (Prism v2-3): whatever `agend` is on PATH is never run instead.
@@ -140,7 +174,7 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
     try {
       Object.assign(fm, { fleetAdminGate: () => "ok", failUpdateProgress: (m: string) => { failed.push(m); } });
       const respond = vi.fn().mockResolvedValue(undefined);
-      await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", respond }, "discord-main");
+      await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", options: { now: true }, respond }, "discord-main");
       expect(spawned).toEqual([]);
       expect(failed).toEqual([expect.stringContaining(reason)]);
       expect(failed[0]).toContain("AgEnD could not finish the update automatically. Manual repair is not available here.");
@@ -158,10 +192,31 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
       hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin", isFleetStopping: () => false,
       dataDir: scratch(), failUpdateProgress: (m: string) => { failed.push(m); },
     } as any);
-    const msg = { text: "/update", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;
+    const msg = { text: "/update now", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;
     expect(await commands.handleGeneralCommand(msg)).toBe(true);
     expect(spawned).toEqual([]);
     expect(failed).toEqual([expect.stringContaining("not the installed package's")]);
+  });
+});
+
+describe("M-3770 (#4480 §4.2): chat /update proves the machine's pre-flight at launch", () => {
+  it("Telegram /update now asks the fleet's gate as a press; a refusal is the progress's words, and nothing is resolved or run", async () => {
+    globalInstall();
+    const failed: string[] = [], asked: string[] = [];
+    const sendText = vi.fn().mockResolvedValue({ messageId: "p1", chatId: "chat", threadId: "1" });
+    const adapter = { id: "telegram-main", type: "telegram", sendText };
+    const commands = new TopicCommands({
+      adapter, adapters: new Map([["telegram-main", adapter]]),
+      fleetConfig: { channel: { access: { allowed_users: ["admin"] } } },
+      hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin", isFleetStopping: () => false,
+      dataDir: scratch(), failUpdateProgress: (m: string) => { failed.push(m); },
+      updatePreflightGate: async (origin: string) => { asked.push(origin); return "This machine can't be updated from here: AgEnD runs in a container; update the image. Nothing was changed."; },
+    } as any);
+    const msg = { text: "/update now", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;
+    expect(await commands.handleGeneralCommand(msg)).toBe(true);
+    expect(asked).toEqual(["press"]);
+    expect(spawned).toEqual([]);
+    expect(failed).toEqual(["This machine can't be updated from here: AgEnD runs in a container; update the image. Nothing was changed."]);
   });
 });
 
@@ -171,27 +226,35 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     registry.tags = tags;
     const fm = new FleetManager(scratch());
     const posted: string[] = [];
+    let card: { version: string; channel: string; installable: boolean } | null = null;
     try {
       // M-2738: the version this fleet runs is read once as it loads (RUNNING_AGEND_VERSION), not the file on disk at each check.
       Object.assign(fm, { runningAgendVersion: () => version, findGeneralInstance: () => "general", notifyInstanceTopic: (_n: string, text: string) => { posted.push(text); } });
       await (fm as any).checkForUpdates();
-    } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
-    return { posted, views: [...registry.views] };
+      card = (fm as any).updateOfferView();
+    } finally {
+      try { (fm as any).updateCard?.close(); } catch { /* already closed */ }
+      fm.stormWindow.shutdown(); fm.spawnGate.shutdown();
+    }
+    return { posted, views: [...registry.views], card };
   }
 
-  it("an rc install is on @beta: it hears about a newer rc", async () => {
-    const { posted, views } = await notice("2.1.11-rc.1", { "@songsid/agend": "2.1.10", "@songsid/agend@beta": "2.1.11-rc.2" });
+  it("an rc install is on @beta: it hears about a newer rc, and the card records it", async () => {
+    const { posted, views, card } = await notice("2.1.11-rc.1", { "@songsid/agend": "2.1.10", "@songsid/agend@beta": "2.1.11-rc.2" });
     expect(views).toContain("@songsid/agend@beta");
     expect(posted).toHaveLength(1);
     expect(posted[0]).toContain("v2.1.11-rc.2");
+    expect(posted[0]).toContain("Run: /update");
+    expect(card).toMatchObject({ version: "2.1.11-rc.2", channel: "beta", installable: true });
   });
 
   it("an alpha install (#1259) looks at @alpha and @latest, never @beta, and hears about the next alpha", async () => {
     const tags = { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.9", "@songsid/agend@alpha": "2.2.0-alpha.2" };
-    const { posted, views } = await notice("2.2.0-alpha.1", tags);
+    const { posted, views, card } = await notice("2.2.0-alpha.1", tags);
     expect(views.sort()).toEqual(["@songsid/agend", "@songsid/agend@alpha"]);
     expect(posted).toHaveLength(1);
     expect(posted[0]).toContain("v2.2.0-alpha.2");
+    expect(card).toMatchObject({ version: "2.2.0-alpha.2", channel: "alpha", installable: true });
   });
 
   it("an alpha install hears about a newer stable without offering an unsupported chat switch", async () => {
@@ -200,12 +263,15 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     expect(newer.posted[0]).toContain("v2.2.1");
     expect(newer.posted[0]).toContain("Switching to stable is not available in this chat.");
     expect(newer.posted[0]).not.toContain("agend update --stable");
+    expect(newer.card).toMatchObject({ version: "2.2.1", channel: "stable", installable: false });
     // The rule beta installs already have: a stable of the SAME core is not offered (a prerelease may continue
     // after it). So when 2.2.0 ships, the release moves @alpha to it (see docs/cli.md).
     const sameCore = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0-alpha.3" });
     expect(sameCore.posted).toEqual([]);
+    expect(sameCore.card).toBeNull();
     const quiet = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.9", "@songsid/agend@alpha": "2.2.0-alpha.3" });
     expect(quiet.posted).toEqual([]);
+    expect(quiet.card).toBeNull();
   });
 
   // #1926: beta users stay on the beta line after a stable ships — their notice comes from @beta only. With 2.2.0
@@ -213,58 +279,66 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
   // same-core guard dropped it).
   describe("a beta install hears about @beta only (#1926)", () => {
     it("beta.16 with 2.2.0 out is told about beta.17, with the plain /update text", async () => {
-      const { posted } = await notice("2.2.0-beta.16", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0-beta.17" });
+      const { posted, card } = await notice("2.2.0-beta.16", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0-beta.17" });
       expect(posted).toHaveLength(1);
       expect(posted[0]).toContain("v2.2.0-beta.17");
       expect(posted[0]).toContain("Run: /update");
       expect(posted[0]).not.toContain("--stable");
+      expect(card).toMatchObject({ version: "2.2.0-beta.17", channel: "beta", installable: true });
     });
     it("beta.17 (the newest beta) with 2.2.0 out is silent", async () => {
-      const { posted } = await notice("2.2.0-beta.17", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0-beta.17" });
+      const { posted, card } = await notice("2.2.0-beta.17", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0-beta.17" });
       expect(posted).toEqual([]);
+      expect(card).toBeNull();
     });
-    // #2775: no switch-to-stable notice for a beta install, whatever @latest holds.
-    it("2.3.2-beta.16 with 2.3.3 on @latest: silent while @beta has nothing newer, then only the next beta", async () => {
+    // #2775: no switch-to-stable offer for a beta install, whatever @latest holds.
+    it("2.3.2-beta.16 with 2.3.3 on @latest: no offer while @beta has nothing newer, then only the next beta", async () => {
       const quiet = await notice("2.3.2-beta.16", { "@songsid/agend": "2.3.3", "@songsid/agend@beta": "2.3.2-beta.16" });
       expect(quiet.posted).toEqual([]);
+      expect(quiet.card).toBeNull();
       const next = await notice("2.3.2-beta.16", { "@songsid/agend": "2.3.3", "@songsid/agend@beta": "2.3.3-beta.1" });
       expect(next.posted).toEqual([expect.stringContaining("v2.3.3-beta.1")]);
       expect(next.posted[0]).not.toMatch(/--stable|stable/);
+      expect(next.card).toMatchObject({ version: "2.3.3-beta.1", channel: "beta", installable: true });
     });
     it("a stable of a higher core (2.2.1) does not reach a beta install either", async () => {
-      const { posted } = await notice("2.2.0-beta.17", { "@songsid/agend": "2.2.1", "@songsid/agend@beta": "2.2.0-beta.17" });
+      const { posted, card } = await notice("2.2.0-beta.17", { "@songsid/agend": "2.2.1", "@songsid/agend@beta": "2.2.0-beta.17" });
       expect(posted).toEqual([]);
+      expect(card).toBeNull();
     });
   });
 
-  // #1928 review: once the release points the install's own channel tag at the new stable, /update installs it — the
-  // notice says "Run: /update", not "/update stays on … use --stable".
+  // #1928 review: once the release points the install's own channel tag at the new stable, /update installs it.
   it.each([
-    ["an alpha, after the release points @alpha at 2.2.0", "2.2.0-alpha.4", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0" }],
-    ["a beta, if @beta is pointed at 2.2.0", "2.2.0-beta.17", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0" }],
-  ])("%s: told to run /update, not --stable", async (_n, version, tags) => {
-    const { posted } = await notice(version, tags);
+    ["an alpha, after the release points @alpha at 2.2.0", "2.2.0-alpha.4", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0" }, "alpha"],
+    ["a beta, if @beta is pointed at 2.2.0", "2.2.0-beta.17", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0" }, "beta"],
+  ] as const)("%s: told to run /update, not --stable, and the card is installable", async (_n, version, tags, channel) => {
+    const { posted, card } = await notice(version, tags);
     expect(posted).toEqual([expect.stringContaining("v2.2.0")]);
     expect(posted[0]).toContain("Run: /update");
     expect(posted[0]).not.toContain("--stable");
+    expect(card).toMatchObject({ version: "2.2.0", channel, installable: true });
   });
 
   it("an alpha install is not left silent by a same-core stable: it still hears about the newer alpha (#1926)", async () => {
-    const { posted } = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0-alpha.4" });
+    const { posted, card } = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0-alpha.4" });
     expect(posted).toEqual([expect.stringContaining("v2.2.0-alpha.4")]);
     expect(posted[0]).not.toContain("--stable");
+    expect(card).toMatchObject({ version: "2.2.0-alpha.4", channel: "alpha", installable: true });
   });
 
   it("a beta install still looks at @beta and @latest, never @alpha", async () => {
     const tags = { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.5", "@songsid/agend@alpha": "2.2.0-alpha.1" };
-    const { posted, views } = await notice("2.1.12-beta.4", tags);
+    const { posted, views, card } = await notice("2.1.12-beta.4", tags);
     expect(views.sort()).toEqual(["@songsid/agend", "@songsid/agend@beta"]);
     expect(posted[0]).toContain("v2.1.12-beta.5");
+    expect(card).toMatchObject({ version: "2.1.12-beta.5", channel: "beta", installable: true });
   });
 
   it("a stable install looks at @latest only", async () => {
-    const { posted, views } = await notice("2.1.10", { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.1" });
+    const { posted, views, card } = await notice("2.1.10", { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.1" });
     expect(views).toEqual(["@songsid/agend"]);
     expect(posted[0]).toContain("v2.1.11");
+    expect(card).toMatchObject({ version: "2.1.11", channel: "stable", installable: true });
   });
 });

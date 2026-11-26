@@ -11,6 +11,21 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const spawned = vi.hoisted(() => [] as Array<{ cmd: string; args: string[]; env?: Record<string, string | undefined>; child: any }>);
+// M-3770: the launch's pre-flight (#4480 §4) is proven on a real install; here the machine is one that may update itself
+// (`preflight.checks` set: what the probes find instead; `preflight.calls`: what each run was asked).
+// `network`: the P7/P10 rows a full (not localOnly) run adds; `hold`: a run waits for it before answering.
+const preflight = vi.hoisted(() => ({ checks: null as null | Array<Record<string, unknown>>, network: null as null | Array<Record<string, unknown>>,
+  hold: null as null | Promise<void>, calls: [] as unknown[] }));
+vi.mock("../src/update-readiness.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-readiness.js")>();
+  return { ...real, runUpdatePreflight: vi.fn(async (opts: { target?: string | null; localOnly?: boolean } = {}) => {
+    preflight.calls.push(opts);
+    if (preflight.hold) await preflight.hold;
+    const local = preflight.checks ?? [{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }];
+    const network = !opts.localOnly && preflight.network ? preflight.network : [];
+    return real.summarize([...local, ...network] as never, Date.now(), { target: network.some(c => c.id === "P10") ? opts.target ?? null : null, install: "/home/u/.npm-global/bin/agend" });
+  }) };
+});
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return { ...real, spawn: ((cmd: string, args: string[], o?: { env?: Record<string, string | undefined> }) => {
@@ -40,7 +55,7 @@ const { readUpdateProgress, beginUpdateProgress, setUpdateProgressStage } = awai
 const { failureCause, updateOffer, webProgressOf, webUpdateTarget, WEB_UPDATE_ADAPTER, SETTLED_SHOWN_MS } = await import("../src/web-update.js");
 
 const dirs: string[] = [];
-afterEach(() => { spawned.length = 0; installed.ok = true; installed.gate = null; vi.useRealTimers(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { spawned.length = 0; preflight.checks = null; preflight.network = null; preflight.hold = null; preflight.calls.length = 0; installed.ok = true; installed.gate = null; vi.useRealTimers(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 function raw(port: number, method: string, path: string, headers: Record<string, string> = {}, body?: string): Promise<{ status: number; body: any }> {
   return new Promise((resolve, reject) => {
@@ -72,7 +87,7 @@ async function fleet() {
     fm.lookUpUpdateTarget = vi.fn(async () => ({ target, fromChannel }));
     await fm.checkForUpdates();
   };
-  const stop = async () => { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); await new Promise<void>(r => (fm.healthServer as Server).close(() => r())); };
+  const stop = async () => { try { fm.updateCard?.close(); } catch { /* already closed */ } fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); await new Promise<void>(r => (fm.healthServer as Server).close(() => r())); };
   return { fm, dir, port, session, offer, stop };
 }
 const START = JSON.stringify({ confirm: "update-agend" });
@@ -109,7 +124,7 @@ describe("M-2738: the offer follows the notice's rules", () => {
 
 describe("M-2738: /ui/update on the dashboard", () => {
   it("anonymous 401, a guest 403, a read session only the version, an admin the offer; M-3278: on the public link's route list too", async () => {
-    for (const [m, p] of [["GET", "/ui/update"], ["POST", "/ui/update/check"], ["POST", "/ui/update/start"], ["GET", "/ui/update/log"]] as const) expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(true);
+    for (const [m, p] of [["GET", "/ui/update"], ["POST", "/ui/update/check"], ["POST", "/ui/update/start"], ["POST", "/ui/update/answer"], ["GET", "/ui/update/log"]] as const) expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(true);
     const f = await fleet();
     try {
       await f.offer("2.3.5-beta.3");
@@ -187,6 +202,138 @@ describe("M-2738: /ui/update on the dashboard", () => {
     } finally { await f.stop(); }
   });
 
+  it("M-3770: the admin's view carries the machine's pre-flight (refreshed by the check); a read session's never does", async () => {
+    const f = await fleet();
+    try {
+      preflight.checks = [{ id: "P1", ok: true }, { id: "P3", ok: false, code: "linger-off", detail: { user: "u" } }];
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight).toMatchObject({
+        class: "admin-only", pressHere: true, checks: [{ id: "P1", ok: true }, { id: "P3", ok: false, code: "linger-off", detail: { user: "u" } }] }));
+      expect(preflight.calls[0]).toEqual({ target: "2.3.5-beta.3" });                 // P10 judges the offered version
+      expect((await raw(f.port, "GET", "/ui/update", f.session("read").read)).body).toEqual({ admin: false, current: "2.3.5-beta.2" });
+    } finally { await f.stop(); }
+  });
+
+  it("M-3770: a launch proves the pre-flight again (local checks only); a stop refuses it in words, and nothing runs", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");                                                   // cached: self
+      const admin = f.session("admin");
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight?.class).toBe("self"));
+      preflight.calls.length = 0;
+      preflight.checks = [{ id: "P1", ok: false, code: "checkout" }];                 // … but the machine changed since
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-pf-0001"), START)).status).toBe(202);
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.progress).toMatchObject({ stage: "failed", failed_stage: "preparing" }));
+      expect(preflight.calls).toEqual([{ localOnly: true }]);
+      expect(spawned).toEqual([]);
+      expect((await raw(f.port, "GET", "/ui/update/log", admin.read)).body.error).toMatch(/^This machine can't be updated from here: this AgEnD runs from a source checkout/);
+      expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight).toMatchObject({ class: "stop", pressHere: false });
+    } finally { await f.stop(); }
+  });
+
+  // Prism #4483 (3): the cached result keeps each row's scope and age.
+  it("M-3770: a refresh whose offer moved while it ran is not published; it runs again for the version offered now", async () => {
+    const f = await fleet();
+    try {
+      preflight.network = [{ id: "P7", ok: true }, { id: "P10", ok: false, code: "node-too-old", detail: { node: "20.11.0", needs: ">=22.14.0" } }];
+      let release!: () => void;
+      preflight.hold = new Promise<void>(r => { release = r; });
+      await f.offer("2.3.5-beta.3");                                                   // its refresh is now waiting …
+      await vi.waitFor(() => expect(preflight.calls).toEqual([{ target: "2.3.5-beta.3" }]));
+      f.fm.updateCheckState.offer = { ...f.fm.updateCheckState.offer, version: "2.3.5-beta.4" };   // … and the offer moves
+      preflight.hold = null; release();
+      const admin = f.session("admin");
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight).toMatchObject({ target: "2.3.5-beta.4" }));
+      expect(preflight.calls).toEqual([{ target: "2.3.5-beta.3" }, { target: "2.3.5-beta.4" }]);
+    } finally { await f.stop(); }
+  });
+
+  it("M-3770: a launch's local re-proof keeps the cached P7/P10 with their own time — the result is as old as its oldest row", async () => {
+    const f = await fleet();
+    try {
+      preflight.network = [{ id: "P7", ok: true }, { id: "P10", ok: true }];
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight?.target).toBe("2.3.5-beta.3"));
+      const before = (await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight;
+      const p10At = before.checks.find((c: { id: string }) => c.id === "P10").checkedAt;
+      await new Promise(r => setTimeout(r, 15));
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-pf-0005"), START)).status).toBe(202);
+      await vi.waitFor(() => expect(spawned).toHaveLength(1));
+      const after = (await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight;
+      expect(after.checks.find((c: { id: string }) => c.id === "P1").checkedAt).toBeGreaterThan(p10At);   // re-proven at launch
+      expect(after.checks.find((c: { id: string }) => c.id === "P10").checkedAt).toBe(p10At);             // kept with its age
+      expect(after).toMatchObject({ checkedAt: before.checkedAt, target: "2.3.5-beta.3" });
+    } finally { await f.stop(); }
+  });
+
+  // M-3770 × S-234 (#4484): the one update card's answers and idle launches meet the pre-flight.
+  it("M-3770: the card's answer is refused 412 with the pre-flight when the machine's last result doesn't allow it", async () => {
+    const f = await fleet();
+    try {
+      const admin = f.session("admin");
+      const answer = (key: string, body: unknown) => raw(f.port, "POST", "/ui/update/answer", admin.write(key), JSON.stringify(body));
+      preflight.checks = [{ id: "P1", ok: true }, { id: "P3", ok: false, code: "not-service" }, { id: "P4", ok: true }, { id: "P9", ok: true }];
+      await f.offer("2.3.5-beta.3");
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight?.class).toBe("admin-only"));
+      // A picked time is a schedule: an admin-only machine never takes one.
+      const picked = await answer("k-card-0001", { action: "pick-time", at: Date.now() + 3_600_000 });
+      expect(picked).toMatchObject({ status: 412, body: { key: "preflight", preflight: { class: "admin-only" } } });
+      // "Update when idle" is the admin's own press, waiting for idle: taken.
+      expect((await answer("k-card-0002", { action: "when-idle" })).status).toBe(200);
+      expect((await answer("k-card-0003", { action: "cancel" })).status).toBe(200);
+      // No write access (P4): no press from the web at all.
+      preflight.checks = [{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: false, code: "no-write", detail: { path: "/usr/local" } }, { id: "P9", ok: true }];
+      await raw(f.port, "POST", "/ui/update/check", admin.write("k-card-0004"), "{}");
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update", admin.read)).body.preflight?.pressHere).toBe(false));
+      expect(await answer("k-card-0005", { action: "when-idle" })).toMatchObject({ status: 412, body: { key: "preflight" } });
+      expect(await answer("k-card-0006", { action: "now", confirm: "update-agend" })).toMatchObject({ status: 412, body: { key: "preflight" } });
+      expect((await answer("k-card-0007", { action: "not-now" })).status).toBe(200);              // never gated
+      expect(spawned).toEqual([]);
+    } finally { await f.stop(); }
+  });
+
+  it("M-3770: the card's idle launch is a press after \"Update when idle\" and unattended after a picked time", async () => {
+    const f = await fleet();
+    try {
+      const admin = f.session("admin");
+      const answer = (key: string, body: unknown) => raw(f.port, "POST", "/ui/update/answer", admin.write(key), JSON.stringify(body));
+      await f.offer("2.3.5-beta.3");
+      const launches = vi.spyOn(f.fm, "launchInstalledUpdate").mockResolvedValue(null);
+      const card = f.fm.ensureUpdateCard();
+      const control = { current: () => true, claim: () => true };
+      expect((await answer("k-kind-0001", { action: "when-idle" })).status).toBe(200);
+      await card.deps.launchIdle("2.3.5-beta.3", control, "row-1");
+      expect(launches.mock.calls.at(-1)![3]).toBe("press");
+      setUpdateProgressStage(f.dir, "failed", { error: "stub" });                       // the stubbed launch ended (a real one fails its marker)
+      expect((await answer("k-kind-0002", { action: "cancel" })).status).toBe(200);
+      expect((await answer("k-kind-0003", { action: "pick-time", at: Date.now() + 3_600_000 })).status).toBe(200);
+      await card.deps.launchIdle("2.3.5-beta.3", control, "row-2");
+      expect(launches).toHaveBeenCalledTimes(2);
+      expect(launches.mock.calls.at(-1)![3]).toBe("unattended");
+    } finally { await f.stop(); }
+  });
+
+  it("M-3770: an admin-only machine (no service) still takes an admin's press; P4 (no write access) does not", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      preflight.checks = [{ id: "P1", ok: true }, { id: "P4", ok: false, code: "no-write", detail: { path: "/usr/local/lib/node_modules" } }];
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-pf-0003"), START)).status).toBe(202);
+      await vi.waitFor(async () => expect((await raw(f.port, "GET", "/ui/update/log", admin.read)).body.error).toContain("run `sudo agend update` in a terminal there"));
+      expect(spawned).toEqual([]);
+    } finally { await f.stop(); }
+    const g = await fleet();
+    try {
+      await g.offer("2.3.5-beta.3");
+      preflight.checks = [{ id: "P1", ok: true }, { id: "P3", ok: false, code: "not-service" }];
+      expect((await raw(g.port, "POST", "/ui/update/start", g.session("admin").write("k-pf-0004"), START)).status).toBe(202);
+      await vi.waitFor(() => expect(spawned).toHaveLength(1));
+    } finally { await g.stop(); }
+  });
+
   it("Check for updates: looks now, no chat notice; once a minute", async () => {
     const f = await fleet();
     try {
@@ -197,10 +344,31 @@ describe("M-2738: /ui/update on the dashboard", () => {
       expect(r.status).toBe(200);
       expect(r.body.offer).toMatchObject({ version: "2.3.5-beta.3", installable: true });
       expect(notify).not.toHaveBeenCalled();
-      expect((await raw(f.port, "POST", "/ui/update/check", admin.write(), "{}"))).toEqual({ status: 429, body: { error: "checked_recently" } });
+      expect((await raw(f.port, "POST", "/ui/update/check", admin.write(), "{}")).status).toBe(429);
+      expect((await raw(f.port, "POST", "/ui/update/check", admin.write(), "{}")).body).toEqual({ error: "checked_recently" });
       f.fm.lookUpUpdateTarget = vi.fn(async () => { throw new Error("offline"); });
       f.fm.updateCheckNow.lastAt = 0;
       expect((await raw(f.port, "POST", "/ui/update/check", admin.write(), "{}")).body).toMatchObject({ check_failed: true, offer: null });
+    } finally { await f.stop(); }
+  });
+
+  it("the admin GET carries the one card; a read session does not; an answer is idempotent", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      const got = await raw(f.port, "GET", "/ui/update", admin.read);
+      expect(got.body.card).toMatchObject({ version: "2.3.5-beta.3", channel: "beta", installable: true, state: "offered" });
+      expect(await raw(f.port, "GET", "/ui/update", f.session("read").read)).toEqual({ status: 200, body: { admin: false, current: "2.3.5-beta.2" } });
+      expect((await raw(f.port, "POST", "/ui/update/answer", admin.write(), JSON.stringify({ action: "not-now" }))).status).toBe(400);
+      expect((await raw(f.port, "POST", "/ui/update/answer", admin.write("answer-now"), JSON.stringify({ action: "now" }))).status).toBe(400);
+      const notNow = await raw(f.port, "POST", "/ui/update/answer", admin.write("answer-01"), JSON.stringify({ action: "not-now" }));
+      expect(notNow.status).toBe(200);
+      expect(notNow.body.card).toMatchObject({ state: "not-now", version: "2.3.5-beta.3", lastAnswer: { action: "not-now", by: "web-user" } });
+      expect(notNow.body.card.lastAnswer.by).not.toMatch(/discord|\d{6,}/);
+      const replay = await raw(f.port, "POST", "/ui/update/answer", admin.write("answer-01"), JSON.stringify({ action: "when-idle" }));
+      expect(replay.body).toEqual(notNow.body);
+      expect(spawned).toEqual([]);
     } finally { await f.stop(); }
   });
 });
@@ -241,6 +409,38 @@ describe("M-2738 Prism #3505 review: ownership, the asking session, idempotency,
       spawned[0]!.child.emit("exit", 1, null);
       expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-ttl-0004"), START)).status).toBe(202);
       await vi.waitFor(() => expect(spawned).toHaveLength(2));
+    } finally { await f.stop(); }
+  });
+
+  it("answer now keeps the session fence: revoking before the launch launches nothing", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      const open = held();
+      const body = JSON.stringify({ action: "now", confirm: "update-agend" });
+      expect((await raw(f.port, "POST", "/ui/update/answer", admin.write("k-ans-rev1"), body)).status).toBe(200);
+      expect(f.fm.webSessions.revokeById(admin.id).removed).toBe(true);
+      open();
+      await vi.waitFor(() => expect(readUpdateProgress(f.dir)!.progress.stage).toBe("failed"));
+      await settle();
+      expect(spawned).toEqual([]);
+    } finally { await f.stop(); }
+  });
+
+  it("when-idle claims the machine and writes its marker before the installer is resolved", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      vi.spyOn(f.fm, "hubUpdateIdle").mockReturnValue(true);
+      const open = held();
+      const admin = f.session("admin");
+      expect((await raw(f.port, "POST", "/ui/update/answer", admin.write("k-idle-0001"), JSON.stringify({ action: "when-idle" }))).status).toBe(200);
+      await vi.waitFor(() => expect(readUpdateProgress(f.dir)?.progress.stage).toBe("preparing"));
+      expect(readUpdateProgress(f.dir)!.progress.target.messageId).toMatch(/^idle-update:/);
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-idle-0002"), START)).status).toBe(409);
+      open();
+      await vi.waitFor(() => expect(spawned).toHaveLength(1));
     } finally { await f.stop(); }
   });
 

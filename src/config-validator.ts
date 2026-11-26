@@ -23,6 +23,7 @@ import { CROSS_INSTANCE_VISIBILITY_MODES, isCrossInstanceVisibility } from "./cr
 import { dashboardAccessProblem } from "./dashboard-permissions.js";
 import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker.js";
 import { isNativeProviderId, nativeProvider } from "./windows-cli-providers.js";
+import { updatesProblems } from "./update-settings.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -419,6 +420,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     const problem = monitoringProblem(config.monitoring);
     if (problem) err("monitoring", problem);
   }
+  for (const problem of updatesProblems((config as { updates?: unknown }).updates)) err(problem.path, problem.message);
   if (config.needs_you !== undefined && !isObj(config.needs_you)) {
     err("needs_you", "must be a mapping");
   } else if (isObj(config.needs_you)) {
@@ -652,6 +654,11 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
       // Following a card (docs/design/task-board.md, "Following a card"): on unless false; the board's leader is an instance.
       if (isObj(config.defaults.task_board) && config.defaults.task_board.progress_wakes !== undefined && typeof config.defaults.task_board.progress_wakes !== "boolean") {
         err("defaults.task_board.progress_wakes", "must be true or false");
+      }
+      // M-3668: the dashboard's archive age.
+      if (isObj(config.defaults.task_board) && config.defaults.task_board.archive_after_days !== undefined) {
+        const days = config.defaults.task_board.archive_after_days;
+        if (typeof days !== "number" || !Number.isInteger(days) || days < 0 || days > 3650) err("defaults.task_board.archive_after_days", "must be a whole number of days (0-3650; 0 = never archive)");
       }
       if (isObj(config.defaults.task_board) && config.defaults.task_board.leader !== undefined) {
         const leader = config.defaults.task_board.leader;
