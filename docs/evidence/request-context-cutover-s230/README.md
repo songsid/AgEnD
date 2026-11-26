@@ -54,3 +54,5 @@ The Leader authorized one conditional confirmation line after Fable confirmed th
 This proves only the conditional UI. Controlled physical stop/IPC retirement, pre-start C/D replacement binding, negotiation, failure restoration and late-call generation fences are production assembly work, not established by these captures. The server supplies the count; a decision body attempting to set it is rejected.
 
 Retained human controls: `human-control.json` binds the exact source and restored tests, including the real Fleet facade/pane judge, raw/begun refusal controls and mutation results. This is an assembly checkpoint, not activation or full-mode acceptance.
+
+Accepted human ingress: `human-input.json` binds the atomic companion/facade, explicit guest facts, indexed durable references, retirement and pruning controls. It records the prior-source pane-fixture diagnostic and the isolated inert-executable run separately. Final-write and complete installation remain unfinished.
