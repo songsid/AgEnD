@@ -1225,8 +1225,8 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   /** Internal same-card service; no production host installs it before L. */
-  requestContactCards(host:RequestContactCardsHost):RequestContactCards {
-    return new RequestContactCards(this.db,this.contactAuthorizations,()=>this.requestContactGate(host),host);
+  requestContactCards(host:RequestContactCardsHost,gate?:RequestContactGate):RequestContactCards {
+    return new RequestContactCards(this.db,this.contactAuthorizations,()=>gate??this.requestContactGate(host),host);
   }
 
   /** Scratch/cutover assembly only; a certificate is process-bound and never persisted as authority. */
@@ -1264,7 +1264,7 @@ export class DeliveryOutbox extends EventEmitter {
 
   /** H owner assembly only. The ordinary E factory keeps the pre-H hold semantics. */
   requestHubContactGate(host:RequestContactGateHost):RequestContactGate {
-    this.requireRequestContextRelay();return this.requestContactGate({...host,hubRelayAllowed:(context,binding,delivery)=>assertRequestHubContactImage(context,binding,delivery)});
+    this.requireRequestContextRelay();return this.requestContactGate({...host,hubRelayAllowed:(context,binding,delivery)=>assertRequestHubContactImage(context,binding,delivery)&&(host.hubRelayAllowed?.(context,binding,delivery)??true)});
   }
 
   /** Internal future-dispatch port only; no production ingress calls this before slice L. */

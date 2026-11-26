@@ -82,3 +82,10 @@ it("rollback never resurrects a deleted or retargeted original from its captured
 it("unresolved durable legacy work refuses before stopping any launch",async()=>{
  const r=rig();r.busy();await expect(r.prepare()).rejects.toThrow(/changed/);expect(r.m.lifecycle.stopIfCurrent).not.toHaveBeenCalled();expect(r.m.startInstance).not.toHaveBeenCalled();
 });
+
+it("native/IPC staging runs only after old launches retire and unwinds before legacy replacements",async()=>{
+ const r=rig();r.fail("two");let staged=false;
+ const after=vi.fn(async()=>{expect(r.originals.every(value=>value.retired())).toBe(true);expect(r.map.size).toBe(0);staged=true;return async()=>{expect(r.created.every(value=>value.retired())).toBe(true);staged=false;r.events.push("native-stage-undone");};});
+ await expect(r.m.prepareRequestContextPersistentRelaunch(r.policy,r.registration,r.fence,()=>true,after)).rejects.toThrow(/fixture startup failure/);
+ expect(after).toHaveBeenCalledOnce();expect(staged).toBe(false);expect(r.events.indexOf("native-stage-undone")).toBeLessThan(r.events.indexOf("start:one:legacy:fleet-topic:true"));
+});

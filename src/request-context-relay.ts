@@ -1,7 +1,7 @@
 import {labelUnprovedRequest} from "./request-context-unproved-label.js";
 /** Dormant H facade: one E/B admission path, never legacy origins or correlation releases. */
 import type {DeliveryOutbox,NewOutboxDelivery} from "./delivery-outbox.js";
-import type {RequestContactGateHost} from "./request-contact-gate.js";
+import type {RequestContactGateHost,RequestContactGate} from "./request-contact-gate.js";
 import type {RequestContextOperation} from "./request-context-policy.js";
 import {ContactHeldError} from "./contact-auth-service.js";
 import {assertRequestContextOperation,RequestContextPolicyError} from "./request-context-policy.js";
@@ -19,8 +19,8 @@ export interface RequestContextRelayHost extends RequestContactGateHost {
  accepted?(deliveryId:string,inserted:boolean):void;
 }
 /** Factory is explicit and requires activated H storage. Production installs none before L. */
-export function makeRequestContextRelay(box:DeliveryOutbox,host:RequestContextRelayHost):RequestContextRelayPort {
- const gate=box.requestHubContactGate(host);
+export function makeRequestContextRelay(box:DeliveryOutbox,host:RequestContextRelayHost,givenGate?:RequestContactGate):RequestContextRelayPort {
+ const gate=givenGate??box.requestHubContactGate(host);
  return {admit(raw,operation,current){
   const input=structuredClone(raw),permit=assertRequestContextOperation(operation),source=host.incarnation(input.sourceInstance),target=host.incarnation(input.targetInstance);
   if(!current()||!source||!target||operation.instance!==input.sourceInstance||input.targetSession&&input.targetSession!==input.targetInstance)throw new RequestContextPolicyError("stale");

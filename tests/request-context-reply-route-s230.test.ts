@@ -129,3 +129,9 @@ it("a web reply with no platform destination uses its original instance conversa
  guard.arm(target,Date.now(),{binding:f.snapshot.token,target});const original=f.manager.requestContextCallOf({});f.manager.requestContextCallOf=()=>({...original,replyRoute:guard.captureReplyRoute(f.snapshot.token)});
  const result=await f.send();expect(result.error).toBeUndefined();expect(f.sendText).not.toHaveBeenCalled();expect(f.wrong).not.toHaveBeenCalled();expect(f.records[0]?.[1].chat_id).toBe("");expect(f.records[0]?.[4]).toBe(false);
 });
+
+it.each(["en","zh-TW"] as const)("a covered descendant without a delivered route names its missing destination, not an unknown person (%s)",locale=>{
+ const f=rig(false),context={...f.snapshot.context,ref:{...f.snapshot.context.ref,contextId:randomUUID(),parentContextId:f.snapshot.context.ref.contextId},source:{instance:"peer",incarnation:"peer-inc"}},snapshot={...f.snapshot,context,owner:{...f.snapshot.owner,instance:"peer",incarnation:"peer-inc"}};
+ const lease=captureRequestContextCall(snapshot,()=>true);
+ expect(()=>assertRequestContextOperation({instance:"peer",tool:"reply",args:{text:"Fixture"},admission:{coverage:"covered",lease}},locale)).toThrow(expect.objectContaining({code:"request-context-destination",message:locale==="en"?"Not sent: reply through the agent that asked.":"未送出：請透過提出請求的 Agent 回覆。"}));
+});

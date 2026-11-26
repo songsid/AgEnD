@@ -1,3 +1,4 @@
+import { RequestContextHelperAdmission } from "./request-context-helper.js";
 import {requestContextDigest} from "./request-context-store.js";
 import type { RequestContextAdmissionPort } from "./request-context-admission.js";
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
@@ -2740,6 +2741,7 @@ export class Daemon extends EventEmitter {
       starting: this.spawning, stopping: this.deliveryWritesStopping || this.startupAborted,
       replacementRequired: !this.requestContextLifecycle || this.requestContextInterruptedLaunch === this.requestContextLaunch() });
   }
+  private requestContextHelper?:RequestContextHelperAdmission;
   private requestContextStartupResources?: {
     pending:number; unknown:boolean;
     windows:Array<{session:string;window:string;pid:number}>;
@@ -2767,6 +2769,11 @@ export class Daemon extends EventEmitter {
         return this.requestContextStartupResources===resources&&!resources.pending&&!resources.unknown&&[...resources.ipc].every(ipc=>ipc.retired());
       }catch{return false;}
     }});
+  }
+  requestContextHelperReadiness():Readonly<{version:1;generation:string;ready:boolean}>|null {
+    if(!this.requestContextLifecycle)return null;
+    if(this.nativePaneLifecycle)return {version:1,generation:JSON.stringify(this.nativePaneLifecycle.snapshot?.()??null),ready:this.nativePaneLifecycle.requestContextAvailable?.()===true};
+    return this.requestContextHelper?{version:1,generation:`${this.bootId}:${this.requestContextHelper.revision}`,ready:this.requestContextHelper.ready()}:null;
   }
   getRequestContextLaunchSpec():Readonly<{config:InstanceConfig;topicMode:boolean;kind:"fleet-topic"|"classic"}>{
     const kind=this.runtimeIdentity?.kind;
@@ -2833,6 +2840,7 @@ export class Daemon extends EventEmitter {
   setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }, newWork?: (reason: "fresh") => void, replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null): void {
     if (this.tmux || this.ipcServer || this.requestContextLifecycle || this.nativePaneLifecycle && !this.nativePaneLifecycle.requestContextAvailable?.()) throw Error("Request context must be bound before a supported daemon startup");
     this.requestContextCalls.installRegistration(turns.registrationGate??undefined);
+    this.requestContextHelper=new RequestContextHelperAdmission();
     this.requestContextLifecycle = { turns, identity, newWork, replyTarget };
   }
   /** Authoritative fresh-launch boundary only; session discovery and a merely written clear command do not prove it. */
@@ -3727,6 +3735,11 @@ export class Daemon extends EventEmitter {
     const sockPath = join(this.instanceDir, "channel.sock");
     this.ipcServer = new IpcServer(sockPath, this.logger);
     this.requestContextStartupResources?.ipc.add(this.ipcServer);
+    if(this.requestContextHelper)this.ipcServer.setMessageAdmission((message,socket)=>{
+      const admitted=this.requestContextHelper!.admit(message,socket);
+      if(!admitted)this.logger.warn({instance:this.name},"old_launch_helper_refused");
+      return admitted;
+    });
     // Forward IPC server errors as daemon events (prevents unhandled 'error' crash).
     // Guard: only forward post-listen errors — startup errors are handled by listen() rejection.
     let ipcListening = false;
@@ -6262,6 +6275,7 @@ export class Daemon extends EventEmitter {
     this.logger.info("Stopping daemon instance");
     this.clearQuitRelaunchWatch();
     this.fenceDeliveryWritesForStop();
+    this.requestContextHelper?.revoke();
     this.turnReplyGuard.reset();
     this.clearReplyGuardConfirm();
     this.sawBlockedInput = false;
@@ -13710,6 +13724,8 @@ export class Daemon extends EventEmitter {
       : resolveToolSet(this.config, this.name);
     mcpEnv.AGEND_TOOL_SET = toolSet;
     if (this.classicRestriction) mcpEnv.AGEND_CLASSIC_ALLOWED_TOOLS = JSON.stringify(this.classicRestriction.allowedAgendTools);
+    const helperLaunch=this.requestContextHelper?.environment();
+    if(helperLaunch)mcpEnv.AGEND_LAUNCH_TOKEN=helperLaunch;
     // The dashboard features the person switched off: out of the tool menu from this start (the fleet refuses them
     // at once, whatever the menu still shows).
     const dashboardOff = dashboardFeaturesOff(dashboardAccessOf(this.config));
@@ -14612,6 +14628,7 @@ export class Daemon extends EventEmitter {
   async abortStartup(): Promise<void> {
     if (this.startupAborted) return;
     this.startupAborted = true;
+    this.requestContextHelper?.revoke();
     this.freezeRuntimeMonitors();
     this.pendingIpcRequests.clear();
     if (this.museUsageRelay) {
@@ -14969,6 +14986,7 @@ export class Daemon extends EventEmitter {
     this.assertSessionOomAdmission();
     admit();
     const launchFence = this.launchFenceEpoch;
+    const helperLaunch=this.requestContextHelper?.begin();
     const backendConfig = this.buildBackendConfig(true);
     if (this.classicRestrictionFailed) throw Error("Restricted room policy is unavailable");
 
@@ -15115,6 +15133,7 @@ export class Daemon extends EventEmitter {
     }catch(error){if(retirementResources)retirementResources.unknown=true;throw error;}
     finally{if(retirementResources)retirementResources.pending--;}
     admit();
+    if(helperLaunch)this.requestContextHelper!.confirm(helperLaunch);
     this.writeWindowId(windowId);
 
     // Enable remain-on-exit to capture exit codes on crash

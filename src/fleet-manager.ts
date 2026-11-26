@@ -1,3 +1,5 @@
+import {makeRequestContextRelay} from "./request-context-relay.js";
+import type {RequestContactGateHost,RequestContactGate} from "./request-contact-gate.js";
 import {rotateHubAgentIncarnation,forgetHubAgentIncarnation,requestWorkRegistrationEvidence, type HubAgentIncarnationRecord} from "./hub-agent-incarnation-record.js";
 import {projectRequestContextNativeOutput} from "./request-context-native-output.js";
 import {validateNativeExecInputProof} from "./native-exec-input.js";
@@ -19,7 +21,7 @@ import { runWithRequestContextAdmission, type RequestContextAdmissionPort } from
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
 import {requestDeliveryView,requestContextDisplayView} from "./request-context-view.js";
 import {captureRequestHubOutput} from "./request-hub-output.js";
-import {assertRequestContextOperation,requireRequestContextPolicy,requestContextInstructionMode,requestContextPolicyInstalled,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
+import {assertRequestContextOperation,assertRequestHubContactImage,requireRequestContextPolicy,requestContextInstructionMode,requestContextPolicyInstalled,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import type { RequestContactApiHost } from "./request-contact-api.js";
 import type { RequestContactPrincipal, RequestContactSnapshotV1 } from "./request-contact-types.js";
@@ -50,7 +52,7 @@ import { changeIdleClaudeCredential } from "./claude-credential-change.js";
 import { readClaudeCredentialSelection, claudeSubscriptionSuppressed, type ManagedClaudeBinding } from "./claude-credential-launch.js";
 import { ClaudeCredentialVault, ClaudeCredentialError, type ClaudeCredentialKind, type ClaudeCredentialMetadata, type CredentialActor } from "./claude-credential-vault.js";
 import {withHubRoomReplyWarning} from "./hub-room-reply-warning.js";
-import { ContactAuthService } from "./contact-auth-service.js";
+import { ContactAuthService, ContactHeldError } from "./contact-auth-service.js";
 import { stageContactFiles, type ContactFileLease } from "./contact-auth-files.js";
 import { ContactOriginClearSchema, ContactPermissionsSchema, sameContactPerson } from "./contact-auth-policy.js";
 import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus, type ContactOrigin, type ContactOriginClear, type ContactPerson, type ContactPermissions, type ContactPermissionsWrite, type ContactRoomTools, type ContactTicket, type ContactTicketDecision } from "./contact-auth-types.js";
@@ -1358,6 +1360,8 @@ export class RestartSupersededError extends Error {
   }
 }
 
+type RequestContactCardsPort = Pick<RequestContactCards,"canRead"|"read"|"needs"|"list"|"decide"|"prepareForNativePost">;
+
 interface RequestContextNativeGraph {
  readonly registration:RequestContextRegistrationGate;
  readonly panes:import("./request-context-pane.js").RequestContextPaneProofs;
@@ -1417,7 +1421,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The installer separately stages native factories and checks every transport before its one activation COMMIT.
    */
   async prepareRequestContextPersistentRelaunch(policy:RequestContextPolicyPort,registration:RequestContextRegistrationGate,
-    fence:{current():boolean;owned():boolean},durableDrained:()=>boolean){
+    fence:{current():boolean;owned():boolean},durableDrained:()=>boolean,afterRetirement?:()=>Promise<()=>Promise<void>>){
     const box=this.deliveryOutbox,admission=this.requestContextAdmission,lease=captureProcessFleetLease(this.dataDir),boot=this.managerBootId;
     if(!box||box.requestContextInstallation().read()!==null||!admission||admission.available()||!lease?.current()||!fence.current())throw Error("Request relaunch preparation unavailable");
     const inventory=await this.captureRequestContextOwnedLaunches();
@@ -1426,7 +1430,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       startup:null as ReturnType<Daemon["prepareRequestContextStartupRetirement"]>|null,
       prepared:null as ReturnType<FleetManager["prepareRequestContextDaemonOwner"]>|null}));
     const originalPrepare=this.prepareRequestContextStart,originalConfigure=this.configureRequestContextBeforeStart;
-    let alive=true,committed=false,rollingBack=false;
+    let alive=true,committed=false,rollingBack=false,undoAfterRetirement:(()=>Promise<void>)|undefined;
     const processOwned=()=>{try{return alive&&!this.shuttingDown&&this.managerBootId===boot&&lease.current()
       &&this.requestContextAdmission===admission&&(committed||fence.owned()&&!admission.available());}catch{return false;}};
     const configured=(row:typeof rows[number])=>{try{return this.contactGeneration(row.name)===row.incarnation
@@ -1462,6 +1466,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if(!processOwned()||!row.startup||!await row.startup.retired())throw failed(row.name);
         row.candidate=null;row.prepared?.dispose();
       }
+      if(undoAfterRetirement){await undoAfterRetirement();undoAfterRetirement=undefined;}
       restoreHooks();
       for(const row of rows){
         row.prepared?.dispose();
@@ -1484,6 +1489,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if(!await this.lifecycle.stopIfCurrent(row.name,row.daemon))throw failed(row.name);
         if(!current()||!await row.retirement.retired()||!current())throw failed(row.name);
       }
+      if(afterRetirement){undoAfterRetirement=await afterRetirement();if(!current()||!fence.current()||!durableDrained())throw Error("Request relaunch preparation changed");}
       for(const row of rows){
         if(!current()||!fence.current()||!durableDrained())throw failed(row.name);
         row.prepared=this.prepareRequestContextDaemonOwner(row.name,row.spec.config,policy,registration,()=>committed?processOwned()&&configured(row)&&this.daemons.get(row.name)===row.candidate:current());
@@ -3736,12 +3742,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
   /** The agent's durable incarnation id (create: make one if none; else null). A changed fingerprint rotates it. */
-  private hubAgentIncarnation(agent: string, cfg: { backend?: string; working_directory: string; runtime?: string; machine_id?: string; hubClassicIdentity?: string }, create: boolean): string | null {
+  private hubAgentIncarnation(agent: string, cfg: { backend?: string; working_directory: string; runtime?: string; machine_id?: string; hubClassicIdentity?: string }, create: boolean, explicitBirth = false): string | null {
     const fp = createHash("sha256").update(JSON.stringify([cfg.backend ?? "claude-code", cfg.working_directory, cfg.runtime ?? "", cfg.machine_id ?? "", ...(cfg.hubClassicIdentity ? [cfg.hubClassicIdentity] : [])])).digest("hex");
     const map = this.readHubIncarnations(), entry = Object.prototype.hasOwnProperty.call(map, agent) ? map[agent] : undefined;
-    if (entry && entry.fp === fp && typeof entry.id === "string") return entry.id;
+    if (entry && entry.fp === fp && typeof entry.id === "string") {
+      if(explicitBirth&&!entry.requestWork&&!entry.retired?.length){map[agent]={...entry,requestWork:"pending"};return this.writeHubIncarnations(map)==="written"?entry.id:null;}
+      return entry.id;
+    }
     if (!entry && !create) return null;
-    map[agent] = rotateHubAgentIncarnation(entry, fp, !!cfg.hubClassicIdentity);
+    map[agent] = rotateHubAgentIncarnation(entry, fp, !!cfg.hubClassicIdentity, Date.now(), explicitBirth);
     // A rotation that could only clear the file still invalidated the old id durably; the new one is made next time.
     return this.writeHubIncarnations(map) === "written" ? map[agent]!.id ?? null : null;
   }
@@ -3757,6 +3766,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       this.settleHubIncarnations();
       if (this.hubIncarnationsBroken) throw new Error("Hub agent incarnations cannot be written here");
+      // Only a strict new configuration entry can mint first-birth evidence. A lazy token read,
+      // a restart or a missing/corrupt incarnation/work file can never invent that transition.
+      if(strict&&this.savedFleetConfigSnapshot?.instances){
+        for(const agent of Object.keys(this.fleetConfig.instances))if(!Object.hasOwn(this.savedFleetConfigSnapshot.instances,agent)){
+          const config=this.hubAgentConfig(agent);if(config)this.hubAgentIncarnation(agent,config,true,true);
+        }
+      }
       if (!existsSync(this.hubIncarnationsPath())) return;
       for (const agent of Object.keys(this.readHubIncarnations())) {
         // Gone from the configuration in force (removed by hand in fleet.yaml, too): forgotten, never revived by a re-add.
@@ -6654,7 +6670,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * until L installs it at the cutover; synthetic rigs install it directly. Installing it grants no actor: every
    * decision still comes from a platform callback's person through cards.decide.
    */
-  private requestContactCardsPort: RequestContactCards | null = null;
+  private requestContactCardsPort: RequestContactCardsPort | null = null;
   installRequestContactCards(cards: RequestContactCards | null): void { this.requestContactCardsPort = cards; }
 
   /** Only a validated accepted room can supply a current room-policy override. Unknown recovery is not a Free-room proof. */
@@ -6674,10 +6690,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   requestContextNativeAdmissionCurrent(context:RequestContextV1):boolean {
     try{
       const root=this.deliveryOutbox?.requestContext(context.ref.rootContextId);if(!root)return false;
-      if("platform"in root.initiatingActor&&root.initiatingActor.platform==="hub")return true; // Hub's owning current-share/resource check is separate.
       const source=root.source.instance,room=this.contactRoom(source);
       if(!Object.hasOwn(this.fleetConfig?.instances??{},source)&&!room&&!this.daemons?.has(source))return false;
       if(this.contactGeneration(source)!==root.source.incarnation)return false;
+      if("platform"in root.initiatingActor&&root.initiatingActor.platform==="hub")return true; // Hub's owning current-share/resource check is separate.
       const match=/^human:hmsg-([a-f0-9-]{36})$/.exec(root.rootEvidenceRef);
       // Unproved recovery has no human route to borrow. An actual unknown web input must still
       // recheck its own session below; being unidentified is never a session-revocation bypass.
@@ -6713,8 +6729,85 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }catch{return false;}
   }
 
+  /** One installed gate host for direct sends and same-card decisions. No lifetime origin or return-release lookup.
+   * Currentness belongs to the installation/process, not a browser, transport-readiness poll or old Hub timer.
+   */
+  makeRequestContextContactHost(current:()=>boolean,rootRetired:(rootId:string)=>boolean,mode:()=>"active"|"draining"|"off"|null):import("./request-context-relay.js").RequestContextRelayHost {
+    const incarnation=(name:string)=>{try{return current()?this.contactGeneration(name):null;}catch{return null;}};
+    const person=(actor:RequestContextV1["initiatingActor"]):ContactPerson|null=>{
+      if(actor.kind!=="person"||actor.platform==="hub")return null;
+      if(actor.platform==="host")return actor.userId==="operator"?{platform:"host",adapterId:"host",userId:"operator",label:"Operator"}:null;
+      const adapter=[...this.adapters.values(),...[...this.worlds.values()].map(world=>world.adapter)].find(row=>row.type===actor.platform);
+      const configured=(this.fleetConfig?.channels??(this.fleetConfig?.channel?[this.fleetConfig.channel]:[])).find(row=>row.type===actor.platform);
+      const adapterId=adapter?.id??configured?.id??configured?.type;
+      return adapterId?{platform:actor.platform,adapterId,userId:actor.userId,label:actor.displayName??actor.userId}:null;
+    };
+    const manage=(name:string,actor:ContactPerson)=>current()&&incarnation(name)!==null&&this.contactAdminOf(name,actor);
+    return {
+      incarnation,person,adminOf:manage,canManage:manage,
+      canDecide:(name,actor)=>{
+        if(!manage(name,actor))return false;
+        const policy=this.deliveryOutbox!.contactAuthorizations.policySnapshot(name,incarnation(name)!);
+        return actor.platform==="host"&&actor.userId==="operator"||(policy.approvers??this.contactDefaultApprovers(name)).some(value=>sameContactPerson(value,actor));
+      },
+      current:(context,binding)=>current()&&incarnation(binding.source.instance)===binding.source.incarnation
+        &&incarnation(binding.target.instance)===binding.target.incarnation&&this.requestContextNativeAdmissionCurrent(context),
+      sourceRestricted:root=>this.requestContextSourceRoomRestricted(root),
+      normalAllowed:root=>{
+        const installed=mode();if(installed==="active"||installed==="draining")return true;
+        if(installed!=="off"||root.ingress==="hub"||root.ingress==="guest"||!/^human:hmsg-[a-f0-9-]{36}$/.test(root.rootEvidenceRef))return false;
+        const actor=person(root.initiatingActor);return !!actor&&manage(root.source.instance,actor);
+      },
+      rootRetired:root=>current()&&rootRetired(root),
+      hubRelayAllowed:(context,binding,delivery)=>current()&&(mode()==="active"||mode()==="draining")&&assertRequestHubContactImage(context,binding,delivery),
+      accepted:()=>{this.scheduleDeliveryOutboxPump();this.needsYou?.poke();},
+    };
+  }
+
+  /** One publication owns every live ingress. These forwarding ports never cache a mode, owner or current turn. */
+  requestContactApi?:RequestContactApiHost;
+  bindRequestContextServingPublication(boot:RequestContextBoot):void {
+    if(this.requestContextBoot!==boot||this.requestContextAdmission!==boot.publication.admission)throw Error("Request serving publication owner differs");
+    const serving=(execution=false)=>{
+      if(this.requestContextBoot!==boot||this.requestContextAdmission!==boot.publication.admission)throw Error("Request serving publication changed");
+      const publication=execution?boot.publication.captureExecution():boot.publication.capture();
+      const ports=publication?.ports.serving;if(!ports||!ports.current())throw Error("Request serving publication unavailable");return ports;
+    };
+    this.requestContextPolicy=boot.policy;
+    this.requestContextRelay={admit:(input,operation,current)=>serving(operation.admission?.coverage==="covered").relay.admit(input,operation,current)};
+    this.requestContextHumanAdmission=(...args)=>serving().human(...args);
+    this.requestContextHubAdmission=input=>serving().hub(input);
+    this.requestContactApi={
+      principal:(req,url)=>this.requestContactPrincipal(req,url),permitContinuation:(req,res)=>permitWebContinuation(req,res,{webToken:this.webToken,webSessions:this.webSessions}),
+      needs:actor=>serving(true).api.needs?.(actor)??[],canRead:(card,actor)=>serving(true).api.canRead(card,actor),
+      read:(id,actor)=>serving(true).api.read(id,actor),list:(filter,actor)=>serving(true).api.list(filter,actor),decide:(id,input,actor)=>serving(true).api.decide(id,input,actor),
+    };
+    this.requestContactCardsPort={
+      canRead:(card,actor)=>serving(true).cards.canRead(card,actor),read:(id,actor)=>serving(true).cards.read(id,actor),
+      needs:actor=>serving(true).cards.needs(actor),list:(filter,actor)=>serving(true).cards.list(filter,actor),
+      decide:(id,input,actor)=>serving(true).cards.decide(id,input,actor),prepareForNativePost:(id,current)=>serving(true).cards.prepareForNativePost(id,current),
+    };
+  }
+
+  /** Construct only inside the capable activation initializer or capable boot. Nothing is published here. */
+  prepareRequestContextServingOwners(current:()=>boolean,rootRetired:(rootId:string)=>boolean,
+    resolveHub:(instance:string)=>RequestHubInputResolver|null,mode:()=>"active"|"draining"|"off"|null){
+    const box=this.deliveryOutbox;if(!box||!current())throw Error("Request-context serving owner unavailable");
+    const host=this.makeRequestContextContactHost(current,rootRetired,mode),gate=box.requestHubContactGate(host);
+    const relay=makeRequestContextRelay(box,host,gate),cards=this.makeRequestContactCards(host,gate),api=this.makeRequestContactApi(cards);
+    const human=this.makeRequestContextHumanAdmission(),hub=this.makeRequestContextHubAdmission(resolveHub),policy=this.makeRequestContextPolicy();
+    const admitted:typeof relay={admit:(...args)=>{
+      if(!current())throw new RequestContextPolicyError("stale");
+      try{return relay.admit(...args);}catch(error){
+        if(error instanceof ContactHeldError)this.contactService().host.changed?.(args[0].targetInstance,error.result.authorization_id);
+        throw error;
+      }
+    }};
+    return Object.freeze({policy,relay:admitted,cards,api,human,hub,gate,current});
+  }
+
   /** Dormant assembly for L and synthetic rigs; merely defining this method installs no service or route authority. */
-  makeRequestContactCards() {
+  makeRequestContactCards(gateHost?:RequestContactGateHost,gate?:RequestContactGate) {
     this.ensureDeliveryOutbox();const outbox=this.deliveryOutbox!,legacy=this.contactService();
     const names=()=>[...new Set([...Object.keys(this.fleetConfig?.instances??{}),...(this.classicChannels?.getAll()??[]).map(room=>room.instanceName)])].sort();
     const manage=(name:string,person:ContactPerson)=>this.contactAdminOf(name,person);
@@ -6742,11 +6835,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // S-229: a decision anywhere (the web, a card) closes every native card of that request.
         try{this.syncHeldTicketCard(ticket);}catch(err){this.logger?.warn?.({err:(err as Error)?.message,ticket:ticket.id},"Held contact request card failed");}
         this.needsYou?.poke();},
-    });
+      ...gateHost,
+    },gate);
     return cards;
   }
-  makeRequestContactApi():RequestContactApiHost {
-    const cards=this.makeRequestContactCards();
+  makeRequestContactApi(given?:RequestContactCards):RequestContactApiHost {
+    const cards=given??this.makeRequestContactCards();
     return {principal:(req,url)=>this.requestContactPrincipal(req,url),needs:actor=>cards.needs(actor),permitContinuation:(req,res)=>permitWebContinuation(req,res,{webToken:this.webToken,webSessions:this.webSessions}),canRead:(card,actor)=>cards.canRead(card,actor),read:(id,actor)=>cards.read(id,actor),list:(filter,actor)=>cards.list(filter,actor),decide:(id,input,actor)=>cards.decide(id,input,actor)};
   }
 
@@ -6945,7 +7039,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * and after reading (authority none, canDecide false); the entry keeps the card's CAS snapshot, so a click decides
    * exactly the image people saw, through cards.decide.
    */
-  private postSameContactCard(port: RequestContactCards, id: string, found: Exclude<ReturnType<FleetManager["contactCardRoute"]>, string>,
+  private postSameContactCard(port: RequestContactCardsPort, id: string, found: Exclude<ReturnType<FleetManager["contactCardRoute"]>, string>,
     opts: { proposal?: "approve-once" | "decline"; generalName?: string; proposalCurrent?: () => boolean } = {}): Promise<string> {
     const { adapter, route } = found;
     const owner = (ticket: ContactTicket): boolean => ticket.id === id && route.current() && this.contactAdapter(ticket.target) === adapter
@@ -6967,7 +7061,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the platform callback's person does, through cards.decide. Always allow needs people, expiry and a confirmation, so
    * a grant proposal is sent to the web.
    */
-  private async proposeSameContactCard(port: RequestContactCards, requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }> {
+  private async proposeSameContactCard(port: RequestContactCardsPort, requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }> {
     const input = ContactChangeSchema.parse(raw);
     if (input.kind !== "ticket-decision") throw Error("contact-proposal-use-web");
     if (input.grant) throw Error("contact-proposal-use-web");
@@ -7096,7 +7190,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the web's writer — so a duplicate, another card or the web racing it yields one committed outcome. A lost race
    * re-reads and shows that outcome; a changed request closes this card and posts one fresh card.
    */
-  private async decideSameContactCard(port: RequestContactCards, principal: RequestContactPrincipal, entry: NonceButtonEntry, action: string, data: AdapterCallbackData): Promise<void> {
+  private async decideSameContactCard(port: RequestContactCardsPort, principal: RequestContactPrincipal, entry: NonceButtonEntry, action: string, data: AdapterCallbackData): Promise<void> {
     const id = entry.contactTicketId!, proposal = !!entry.generalName;
     const read = () => { try { return port.read(id, principal); } catch { return null; } };
     let text: string, repost = false;
@@ -30540,6 +30634,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const instanceName = classicChannels.deriveInstanceName(channelName || channelId, channelId, adapterId);
     clearPausedMarker(this.getInstanceDir(instanceName));
     const selectedBackend = isSelectableClassicBackend(backend) ? backend : undefined;
+    if(requestContextPolicyInstalled(this.requestContextPolicy)&&!classicChannels.get(channelId,adapterId)){
+      // Durable first-birth intent precedes the Classic registry's own save. A restart/token read cannot mint it.
+      this.settleHubIncarnations();if(this.hubIncarnationsBroken)throw Error("Request work registration evidence unavailable");
+      const planned={...DEFAULT_INSTANCE_CONFIG,...this.fleetConfig?.defaults,backend:selectedBackend??this.fleetConfig?.defaults?.backend??"claude-code",
+        working_directory:this.classicWorkspaceDir(instanceName),hubClassicIdentity:JSON.stringify([adapterId??"",channelId])};
+      if(!this.hubAgentIncarnation(instanceName,planned,true,true))throw Error("Request work registration evidence unavailable");
+    }
     classicChannels.register(channelId, adapterId, instanceName, channelName || channelId, userId, selectedBackend, restricted);
     // Bind this classic instance to the bot that started it (authoritative), so
     // replies/cancel go out through that bot even though every same-guild bot

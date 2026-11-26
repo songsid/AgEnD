@@ -15,9 +15,9 @@ export function readHubAgentIncarnationRecord(value: unknown): HubAgentIncarnati
 export function hubAgentIncarnationToken(agent: string, id: string): string {
  return createHash("sha256").update(JSON.stringify(["agend-hub-agent-v2", agent, z.uuid().parse(id)])).digest("hex");
 }
-export function rotateHubAgentIncarnation(previous: unknown | undefined, fp: string, classic: boolean, now = Date.now()): HubAgentIncarnationRecord {
+export function rotateHubAgentIncarnation(previous: unknown | undefined, fp: string, classic: boolean, now = Date.now(), explicitBirth = false): HubAgentIncarnationRecord {
  const old = previous === undefined ? undefined : readHubAgentIncarnationRecord(previous);
- return readHubAgentIncarnationRecord({ id: randomUUID(), fp, ...(classic ? { classic: true } : {}), requestWork: "pending",
+ return readHubAgentIncarnationRecord({ id: randomUUID(), fp, ...(classic ? { classic: true } : {}), ...(old ? {requestWork:"pending"} : explicitBirth ? {requestWork:"pending"} : {}),
   retired: [...(old?.retired ?? []), ...(old?.id ? [{ id: old.id, fp: old.fp!, at: now }] : [])].slice(-8) });
 }
 export function forgetHubAgentIncarnation(previous: unknown, now = Date.now()): HubAgentIncarnationRecord {

@@ -6,7 +6,15 @@ import { RequestContextPublication, readRequestContextInstallation, type Request
 import { RequestContextPolicyError, type RequestContextPolicyPort, type RequestContextOperation } from "./request-context-policy.js";
 
 export interface RequestContextFleetLease { readonly id: string; current(): boolean }
-export interface RequestContextBootPorts { readonly policy: RequestContextPolicyPort }
+export interface RequestContextServingIngress {
+ readonly relay:import("./request-context-relay.js").RequestContextRelayPort;
+ readonly human:(instance:string,payload:Record<string,unknown>,origin:import("./human-delivery-receipts.js").HumanOrigin,body:string)=>ReturnType<import("./delivery-outbox.js").DeliveryOutbox["createHumanReceipt"]>;
+ readonly hub:(input:import("./hub/representative.js").HubRepresentativeDelivery)=>ReturnType<import("./request-context-hub-resolver.js").RequestHubInputResolver["capture"]>;
+ readonly api:import("./request-contact-api.js").RequestContactApiHost;
+ readonly cards:import("./request-contact-card.js").RequestContactCards;
+ current():boolean;
+}
+export interface RequestContextBootPorts { readonly policy: RequestContextPolicyPort; readonly serving?:RequestContextServingIngress }
 /** Missing is legacy. Unreadable, redirected, partial or malformed is never legacy. Live DB only, never a snapshot. */
 export function readRequestContextBootState(dataDir: string): RequestContextInstallationState | null {
   const path = join(dataDir, "delivery-outbox.db");

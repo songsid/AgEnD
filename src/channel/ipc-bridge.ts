@@ -55,12 +55,19 @@ export class IpcServer extends EventEmitter {
   private closeCompleted = false;
   private closePromise: Promise<void> | null = null;
   private clients: Set<Socket> = new Set();
+  private messageAdmission?: (message: unknown, socket: Socket) => boolean;
   private logger?: { warn(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void };
 
   constructor(sockPath: string, logger?: { warn(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void }) {
     super();
     this.sockPath = sockPath;
     this.logger = logger;
+  }
+
+  /** Installed by an owned daemon before listen; rejection happens before any message listener/call capture. */
+  setMessageAdmission(admit:(message:unknown,socket:Socket)=>boolean):void {
+    if(this.server||this.messageAdmission)throw Error("IPC admission must precede listen");
+    this.messageAdmission=admit;
   }
 
   async listen(): Promise<void> {
@@ -143,6 +150,11 @@ export class IpcServer extends EventEmitter {
   private acceptClient(socket: Socket): void {
     this.clients.add(socket);
     const parse = makeLineParser((msg) => {
+      if(socket.destroyed)return;
+      if(this.messageAdmission){
+        let accepted=false;try{accepted=this.messageAdmission(msg,socket);}catch{/* Unavailable admission refuses. */}
+        if(!accepted){socket.destroy();return;}
+      }
       this.emit("message", msg, socket);
     }, () => {
       this.logger?.warn("IPC buffer overflow, dropping client");
