@@ -5,7 +5,8 @@ import { register, t } from "/assets/app-i18n.js";
 
 register("hubAdminRooms", {
   en: {
-    adminOnly: "Right now only Hub administrators can start rooms.",
+    adminOnly: "No additional people or teams are selected below.",
+    roleCreators: "The initial Hub administrator and people with an active Create rooms role permission can also start rooms. Manage role grants in Roles.",
     colPeople: "People", colAgents: "Agents", colLast: "Last activity", colState: "Status",
     none: "No rooms yet.",
     rowMenu: "More for {0}",
@@ -15,7 +16,8 @@ register("hubAdminRooms", {
     joined: "You are a room manager of “{0}” now. A line in the room says so.",
   },
   "zh-TW": {
-    adminOnly: "目前只有 Hub 管理員可以開房間。",
+    adminOnly: "下方尚未另外指定可開房間的人或團隊。",
+    roleCreators: "Hub 初始管理員與目前角色授予「開房間」權限的人，也可以開房間。角色權限請至「角色」管理。",
     colPeople: "人數", colAgents: "Agent 數", colLast: "最後活動", colState: "狀態",
     none: "還沒有房間。",
     rowMenu: "{0} 的更多動作",

@@ -6,6 +6,7 @@ import { personKeyString } from "../identity.js";
 import { personFromString, type HubCore } from "../http/core.js";
 import type { HubRequestContext } from "../types.js";
 import { HubProtocolError, validated } from "../validation.js";
+import type { HubManagementPermit } from "../roles/authority.js";
 import type { RoomEvent } from "./types.js";
 
 type DB = Database.Database;
@@ -15,6 +16,31 @@ export function canCreateRoom(core: HubCore, db: DB, person: string): boolean {
   return person === personKeyString(core.deps.config.administrator) || !!db.prepare("SELECT 1 FROM hub_room_creators WHERE kind='person' AND subject=?").get(person)
     || (db.prepare("SELECT subject FROM hub_room_creators WHERE kind='team'").all() as { subject: string }[])
       .some(row => core.deps.roomTeams?.isMember(db, row.subject, person)?.member === true);
+}
+/** Prepare once per operation; the legacy SQL branch is re-read at every checkpoint.
+ * Room managers may keep using their existing member picker after a creator grant is removed. */
+export async function prepareRoomCreation(core: HubCore, ctx: HubRequestContext, person: string,
+  alternative: (db: DB) => boolean = () => false) {
+  const legacy = (db: DB) => canCreateRoom(core, db, person) || alternative(db);
+  let role: HubManagementPermit | undefined;
+  const provider = core.deps.management;
+  if (!core.atomic(legacy) && provider) {
+    try { role = await provider.require(ctx, "rooms.create"); }
+    catch (error) {
+      // An optional role service cannot narrow an independently current legacy grant.
+      if (!core.atomic(legacy) && !(error instanceof HubProtocolError && error.code === "denied")) throw error;
+    }
+  }
+  const allows = (db: DB) => {
+    if (legacy(db)) return true;
+    if (!role) return false;
+    if (provider !== core.deps.management) throw new HubProtocolError("unavailable");
+    role.assertCurrent(); return true;
+  };
+  return { allows, assertCurrent() {
+    if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
+    core.atomic(db => { if (!allows(db)) throw new HubProtocolError("denied"); });
+  } };
 }
 export class HubRoomAdmin {
   constructor(private readonly core: HubCore, private readonly publish: (event: RoomEvent) => void, private readonly archived: (id: string) => void) {}

@@ -41,7 +41,7 @@ describe("pure Hub role evaluation (not a live operation permit)", () => {
   it("grants no root self-use implicitly and needs fresh eligibility, not group membership, for root management", () => {
     const p = policy();
     for (const permission of SELF_PERMISSIONS) expect(can(p, permission, root, eligible(root))).toMatchObject({ outcome: "deny" });
-    for (const permission of MANAGEMENT_PERMISSIONS) expect(can(p, permission, root, eligible(root))).toMatchObject({ outcome: "allow", reason: "root", via: [] });
+    for (const permission of MANAGEMENT_PERMISSIONS.filter(p => p !== "rooms.create")) expect(can(p, permission, root, eligible(root))).toMatchObject({ outcome: "allow", reason: "root", via: [] });
     expect(can(p, "hub.admin", root, { kind: "unknown" })).toMatchObject({ outcome: "unknown", authoritative: false });
     expect(can(p, "hub.admin", root, { kind: "ineligible", person: root, reason: "disabled", observedAt: 100 })).toMatchObject({ outcome: "deny", reason: "ineligible" });
     expect(can(p, "hub.admin", alice, eligible())).toMatchObject({ outcome: "deny" });

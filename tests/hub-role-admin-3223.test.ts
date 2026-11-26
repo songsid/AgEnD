@@ -17,7 +17,7 @@ async function world(){
  return {...w,writer,control};
 }
 it("presents a second admin and grants a request-owned admin proof without recursion",async()=>{
- const w=await world();expect(await w.control.presentation(w.ctx.ctx)).toEqual({admin:true,management:MANAGEMENT_PERMISSIONS});
+ const w=await world();expect(await w.control.presentation(w.ctx.ctx)).toEqual({admin:true,management:MANAGEMENT_PERMISSIONS.filter(p=>p!=="rooms.create")});
  const view=await w.control.read(w.ctx.ctx);expect(view.policy?.assignments[0]?.subject).toEqual({kind:"person",person:w.admin});
  expect(await w.ctx.ctx.requireAdmin()).toMatchObject({kind:"directory",person:w.admin});expect(w.ctx.ctx.isCurrent?.()).toBe(true);
  w.policy.assignments=[];w.save(w.policy);expect(w.ctx.ctx.isCurrent?.()).toBe(false);
@@ -108,4 +108,12 @@ it("a malformed legacy actor or role event remains an unknown safe row rather th
  w.db.prepare("UPDATE hub_audit SET actor=? WHERE id=?").run("not-json",id);w.db.prepare("INSERT INTO hub_role_events VALUES(?,?,?)").run(id,'{"before":{"name":"secret raw legacy"}}',100);
  const page=await w.control.audit(w.ctx.ctx,{}),row=page.rows.find(row=>row.id===id);expect(row).toMatchObject({actor:{id:"unknown",name:""},summary:[]});expect(row?.details).toBeUndefined();expect((await w.control.audit(w.ctx.ctx,{person:"unknown"})).rows.some(row=>row.id===id)).toBe(true);expect(JSON.stringify(page)).not.toContain("secret raw legacy");
  await expect(w.control.audit(w.ctx.ctx,{from:200,to:100})).rejects.toMatchObject({code:"invalid"});
+});
+
+it("a Create rooms grant does not present Hub administration or role-management access",async()=>{
+ const w=await world();w.policy.roles.push({id:"room-creator",name:"Room creator",kind:"custom",permissions:["rooms.create"],defaultMaxFleets:0});
+ w.policy.assignments[0]!.roleId="room-creator";w.save(w.policy);
+ expect(await w.control.presentation(w.ctx.ctx)).toEqual({admin:false,management:[]});
+ await expect(w.control.read(w.ctx.ctx)).rejects.toMatchObject({code:"denied"});
+ expect((await w.authority.require(w.ctx.ctx,"rooms.create")).permission).toBe("rooms.create");
 });

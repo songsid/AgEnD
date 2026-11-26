@@ -47,9 +47,10 @@ async function menu(pg: AppPage, roomId: string, item: string) {
 }
 
 describe("Hub Administration → Rooms (section 11)", () => {
-  it("who may start rooms: named tags, saved on change; empty says administrators only; every room, no content", async () => {
+  it("who may start rooms: named tags, saved on change; empty lists no additional creators; roles remain independent; every room, no content", async () => {
     const { pg, calls } = await fixture();
     expect(tags(pg)).toEqual(["王經理"]);
+    expect(pg.root.textContent).toContain("Hub 初始管理員與目前角色授予「開房間」權限的人，也可以開房間。");
     expect(pg.root.textContent).toContain("每個人都可以開一對一對話。");
     expect(pg.root.textContent).toContain("這裡看不到任何房間的內容。");
     expect(rows(pg)).toEqual([["每週主管會議", "3", "12", "王經理", "time", "使用中"], ["專案例會", "2", "4", "陳主任", "time", "使用中"], ["去年專案", "2", "1", "王經理", "time", "已封存"]]);
@@ -58,7 +59,7 @@ describe("Hub Administration → Rooms (section 11)", () => {
     expect(tags(pg)).toEqual(["王經理", "研發 · 2 人"]);
     fire(pg.root.querySelectorAll(".hub-room-tags button")[0], "click"); await settle(30);
     fire(pg.root.querySelectorAll(".hub-room-tags button")[0], "click"); await settle(30);
-    expect(pg.root.textContent).toContain("目前只有 Hub 管理員可以開房間。");
+    expect(pg.root.textContent).toContain("下方尚未另外指定可開房間的人或團隊。");
     expect(writes(calls)).toEqual([
       ["PUT", "/hub/v1/admin/rooms/creators", { people: ["person-wang"], teams: ["team-1"] }],
       ["PUT", "/hub/v1/admin/rooms/creators", { people: [], teams: ["team-1"] }],

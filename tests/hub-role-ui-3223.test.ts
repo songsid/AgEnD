@@ -17,19 +17,19 @@ const click=async(root:any,text:string)=>{const el=button(root,text);expect(el,`
 async function newRole(p:AppPage,name="Helpers"){
  await click(p.root,"Create new role");const form=p.root.querySelector(".hub-role-info")!,input=form.querySelector('input[maxlength="120"]')!;input.value=name;fire(input,"input");await settle(5);return form;
 }
-it.each(["en","zh-TW"])("opens built-in role details, keeps all12 permissions readable and exposes no Administrator editor (%s)",async lang=>{
+it.each(["en","zh-TW"])("opens built-in role details, keeps all13 permissions readable and exposes no Administrator editor (%s)",async lang=>{
  const {p}=await mount(lang);expect(p.root.querySelector(".hub-role-list")!.querySelectorAll("tbody tr")).toHaveLength(3);
  expect(button(p.root,lang==="en"?"Edit":"編輯")).toBeUndefined();
  await click(p.root,lang==="en"?"Administrator":"管理員");
  const permissionTab=[...p.root.querySelectorAll('button[role="tab"]')].find((el:any)=>el.textContent.startsWith(lang==="en"?"Permissions":"權限"));fire(permissionTab!,"click");await settle(10);
- expect(p.root.querySelectorAll(".hub-role-permission-mark")).toHaveLength(10);expect(p.root.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+ expect(p.root.querySelectorAll(".hub-role-permission-mark")).toHaveLength(11);expect(p.root.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
  expect(p.root.textContent).toContain(lang==="en"?"Not available yet (2)":"尚未開放（2）");expect(button(p.root,lang==="en"?"Edit permissions":"編輯權限")).toBeUndefined();
- expect(p.root.textContent).toContain(lang==="en"?"It always has every permission":"一律擁有管理 Hub");
+ expect(p.root.textContent).toContain(lang==="en"?"Creating rooms is granted separately":"開房間權限另外授予");
 });
 it("keeps the three-step custom edit local and saves only its checked policy/digest",async()=>{
  const {p,client}=await mount(),form=await newRole(p);const description=form.querySelector('input[maxlength="500"]')!;description.value="Help colleagues";fire(description,"input");
  const template=form.querySelector("select")!;template.value="builtin:member";fire(template,"change");await settle(10);fire(form,"submit");await settle(10);
- expect(p.root.querySelectorAll('input[type="checkbox"]')).toHaveLength(9);expect([...p.root.querySelectorAll('input[type="checkbox"]')].filter((el:any)=>el.checked)).toHaveLength(3);
+ expect(p.root.querySelectorAll('input[type="checkbox"]')).toHaveLength(10);expect([...p.root.querySelectorAll('input[type="checkbox"]')].filter((el:any)=>el.checked)).toHaveLength(3);
  expect([...p.root.querySelectorAll('input[type="checkbox"]')].every((el:any)=>!el.disabled)).toBe(true);expect(client.rolePreview).not.toHaveBeenCalled();
  await click(p.root,"Review");expect(client.roleApply).not.toHaveBeenCalled();expect(client.rolePreview).toHaveBeenCalledTimes(1);const proposed=client.rolePreview.mock.calls[0][0];expect(proposed.roles).toHaveLength(4);expect(proposed.roles[3].name).toBe("Helpers");expect(proposed.roles[3].permissions).toEqual(["ask_agents","publish_agents","pair_fleet"]);
  await click(p.root,"Create role");expect(client.roleApply).toHaveBeenCalledWith(proposed,"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");

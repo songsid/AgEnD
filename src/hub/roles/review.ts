@@ -20,7 +20,7 @@ export function hasCurrentAdministrator(policy:HubRolePolicy,people:Iterable<Per
  return [...people].some(who=>heldRoleBundle(policy,who,facts.get(personKeyString(who))??{kind:"unknown"},at,root).administrator);
 }
 function scopes(bundle:HeldRoleBundle,permission:RolePermission){
- if(bundle.administrator&&(MANAGEMENT_PERMISSIONS as readonly string[]).includes(permission))return [{kind:"hub" as const}];
+ if(permission!=="rooms.create"&&bundle.administrator&&(MANAGEMENT_PERMISSIONS as readonly string[]).includes(permission))return [{kind:"hub" as const}];
  return bundle.rolesActive?bundle.grants.filter(g=>g.permission===permission).map(g=>g.scope):[];
 }
 export function roleReview(plan:RoleChangePlan,people:Iterable<PersonKey>,facts:ReadonlyMap<string,RolePersonFacts>,root:PersonKey,at:number):RoleReview {

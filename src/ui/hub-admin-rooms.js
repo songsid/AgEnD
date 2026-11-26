@@ -1,5 +1,5 @@
 // Hub rooms, Administration → Rooms (docs/design/hub-rooms-ux.md section 11), for the Hub administrator:
-// - 「誰可以開房間」: people and teams who may start rooms besides the administrators (empty: administrators only);
+// - 「誰可以開房間」: people and teams who may start rooms besides the administrators (roles are an independent grant);
 //   saved as soon as it changes; everyone can always start a one-to-one chat.
 // - 「所有房間」: every group room's name, people, agents, managers, last activity and status, never its content. Each
 //   row's menu: 加入自己成為房間管理 (the room then shows a line saying so) and 封存 (after a confirmation).
@@ -54,6 +54,7 @@ export function AdminRooms({ client = hubClient() } = {}) {
     ${error ? html`<p class="note" role="alert">${error}</p>` : null}
     ${note ? html`<p class="note" role="status">${note}</p>` : null}
     <section class="form hub-admin-creators"><h3>${hroom("whoCanCreate")}</h3>
+      <p class="note">${ha("roleCreators")}</p>
       <${RoomPicker} client=${client} id="hubRoomCreators" kinds=${["person", "team"]} label=${hroom("addPeopleOrTeams")} placeholder=${hroom("addPeopleOrTeams")}
         picked=${creators} onChange=${(next) => { if (!busy) void saveCreators(next); }} />
       ${creators.length ? null : html`<p class="note">${ha("adminOnly")}</p>`}

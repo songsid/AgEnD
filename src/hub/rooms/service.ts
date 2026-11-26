@@ -11,7 +11,7 @@ import { HubCatalogService, exposureOf, readExposure } from "../catalog.js";
 import { RoomPostReplies } from "./post-replies.js";
 import { HubGrantSearch } from "../grant-search.js";
 import { HubRoomAssistant } from "./assistant.js";
-import { canCreateRoom } from "./admin.js";
+import { prepareRoomCreation } from "./admin.js";
 import { HubRoomAgents, type RoomPostRow } from "./agents.js";
 import { personKeyString } from "../identity.js";
 import { HubCore, personFromString, type HubOperationPermit } from "../http/core.js";
@@ -540,19 +540,20 @@ export class HubGroupRooms {
     this.addAssistant(db, id);
   }
   async list(ctx: HubRequestContext) {
-    const me = await this.who(ctx); this.agents.sweep();
+    const me = await this.who(ctx), access = await prepareRoomCreation(this.core, ctx, me); this.agents.sweep();
     return this.core.atomic(db => {
       if(!ctx.application)this.assistantRoom(db, me);
       return { rooms: (db.prepare("SELECT * FROM hub_room_members WHERE kind='person' AND subject=?").all(me) as MemberRow[])
         .map(m => this.summary(db, this.room(db, m.room_id), m)).sort((a, b) => b.lastAt - a.lastAt),
-        me: { canCreateRooms: canCreateRoom(this.core, db, me), assistant: this.assistant.availability()?.enabled === true }, invitations: 0 };
+        me: { canCreateRooms: access.allows(db), assistant: this.assistant.availability()?.enabled === true }, invitations: 0 };
     }, this.fence(ctx));
   }
   async candidates(ctx: HubRequestContext, q: string, kind: string, discovery = false) {
     if (q.length > 64 || /[\u0000-\u001f\u007f]/.test(q) || !["person", "team", "group", "agent"].includes(kind)) throw new HubProtocolError("invalid");
-    const me = await this.who(ctx);
-    const allowed = (db: DB) => canCreateRoom(this.core, db, me) || !!db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
-      WHERE m.kind='person' AND m.subject=? AND m.role='manager' AND r.archived=0`).get(me);
+    const me = await this.who(ctx), access = await prepareRoomCreation(this.core, ctx, me,
+      db => !!db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
+        WHERE m.kind='person' AND m.subject=? AND m.role='manager' AND r.archived=0`).get(me));
+    const allowed = access.allows;
     if (kind === "agent") {
       this.core.atomic(db => { if (!allowed(db)) throw new HubRoomRefusal(403, "denied"); }, this.fence(ctx));
       const catalog = new HubCatalogService(this.core);
@@ -585,14 +586,15 @@ export class HubGroupRooms {
       return kind === "team" ? (this.core.deps.roomTeamCandidates?.(db, q.trim()) ?? []).slice(0, 20).map(row => ({ kind: "team", ...row })) : roomPersonLabels(hits);
     }, this.fence(ctx));
   }
-  private candidateAllowed(ctx: HubRequestContext, me: string): void {
-    this.core.atomic(db => {
-      if (!canCreateRoom(this.core, db, me) && !db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
-        WHERE m.kind='person' AND m.subject=? AND m.role='manager' AND r.archived=0 AND r.assistant_for IS NULL`).get(me)) throw new HubRoomRefusal(403, "denied");
-    }, this.fence(ctx));
+  private candidateAccess(ctx: HubRequestContext, me: string) {
+    return prepareRoomCreation(this.core, ctx, me, db => !!db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
+      WHERE m.kind='person' AND m.subject=? AND m.role='manager' AND r.archived=0 AND r.assistant_for IS NULL`).get(me));
   }
-  private async groupSelection(ctx: HubRequestContext, me: string, id: string) {
-    try { return await this.directory.roster(ctx, me, id, () => this.candidateAllowed(ctx, me)); }
+  private async groupSelection(ctx: HubRequestContext, me: string, id: string,
+    prepared?: Awaited<ReturnType<typeof prepareRoomCreation>>) {
+    const access = prepared ?? await this.candidateAccess(ctx, me);
+    const assertCurrent = () => { this.fence(ctx).assertCurrent(); access.assertCurrent(); };
+    try { return await this.directory.roster(ctx, me, id, assertCurrent); }
     catch (e) {
       if (e instanceof HubRoomRefusal || e instanceof HubProtocolError && ["revoked", "denied", "backpressure"].includes(e.code)) throw e;
       throw new HubRoomRefusal(503, "group-unavailable", { group: id });
@@ -603,8 +605,8 @@ export class HubGroupRooms {
     return { kind: "group", id, name: selection.name, people: selection.people.length };
   }
   async create(ctx: HubRequestContext, input: unknown) {
-    const body = validated(createSchema, input), me = await this.who(ctx);
-    this.core.atomic(db => { if (!canCreateRoom(this.core, db, me)) throw new HubRoomRefusal(403, "denied"); }, this.fence(ctx));
+    const body = validated(createSchema, input), me = await this.who(ctx), access = await prepareRoomCreation(this.core, ctx, me);
+    access.assertCurrent();
     const teams = this.core.deps.roomTeams;
     const expansion = (db: DB) => {
       if (!body.teams.length) return { teams: [], people: [], missing: [] };
@@ -613,7 +615,7 @@ export class HubGroupRooms {
     };
     const selected = this.core.atomic(expansion), image = JSON.stringify(selected);
     const groupPeople: string[] = [];
-    for (const group of new Set(body.groups)) groupPeople.push(...(await this.groupSelection(ctx, me, group)).people.map(p => p.id));
+    for (const group of new Set(body.groups)) groupPeople.push(...(await this.groupSelection(ctx, me, group, access)).people.map(p => p.id));
     const people = [...new Set([me, ...body.people, ...selected.people, ...groupPeople])];
     if (people.length > 100) throw new HubRoomRefusal(409, "people-limit", { people: people.length, limit: 100 });
     const selectedPeople: RoomPersonSelection[] = [];
@@ -624,7 +626,7 @@ export class HubGroupRooms {
     const room = this.core.atomic((db, tx) => {
       for (const permit of permits) permit.assertCurrent();
       if (JSON.stringify(expansion(db)) !== image) throw new HubProtocolError("conflict");
-      if (!canCreateRoom(this.core, db, me)) throw new HubRoomRefusal(403, "denied");
+      if (!access.allows(db)) throw new HubRoomRefusal(403, "denied");
       rememberRoomPeople(db, selectedPeople, this.core.now());
       const id = randomUUID(); db.prepare("INSERT INTO hub_group_rooms(id,name,purpose,created_by,created_at,office_enabled) VALUES(?,?,?,?,?,?)").run(id, body.name, body.purpose, me, this.core.now(), newRoomOffice());
       for (const person of people) db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence) VALUES(?,?,'person',?,?,0)").run(randomUUID(), id, person, person === me ? "manager" : "member");
@@ -634,7 +636,7 @@ export class HubGroupRooms {
       if(body.purpose)this.recordPurpose(db,tx,id,me,body.purpose,ctx.requestId);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.created", result: "completed", roomId: id });
       return this.summary(db, this.room(db, id), this.member(db, id, me));
-    }, { assertCurrent: () => { this.fence(ctx).assertCurrent(); for (const permit of permits) permit.assertCurrent(); } });
+    }, { assertCurrent: () => { this.fence(ctx).assertCurrent(); access.assertCurrent(); for (const permit of permits) permit.assertCurrent(); } });
     this.emit({ type: "room.changed", roomId: room.id, data: { roomId: room.id } }); return { room };
   }
   async detail(ctx: HubRequestContext, id: string) {
