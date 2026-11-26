@@ -131,3 +131,15 @@ it("carries a newly selected person's display name into the checked change summa
  await vi.waitFor(()=>expect(button(form,"Choose")).toBeTruthy());await click(form,"Choose");await click(form,"Review");
  expect(p.root.querySelector("[data-role-review]").textContent).toContain("You are giving Administrator to Alex Chen.");
 });
+
+it("allows an AD-group recipient for a room-only member role without weakening management restrictions",async()=>{
+ const current=view();current.policy.roles.push({id:"room-creators",name:"Room creators",kind:"custom",permissions:["rooms.create"],defaultMaxFleets:0});
+ const group={kind:"group",key:{realm:"corp",objectId:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},name:"Example Creators",dn:"CN=Example Creators,DC=example,DC=test"};
+ const {p,client}=await mount("en",{roles:vi.fn(async()=>({ok:true,view:current})),roleSearch:vi.fn(async()=>({ok:true,candidates:[group]}))});
+ await click(p.root,"Assign");const panel=p.root.querySelector(".hub-role-panel")!,selects=panel.querySelectorAll("select");
+ selects[0]!.value="room-creators";fire(selects[0]!,"change");await settle(10);
+ expect(selects[1]!.querySelectorAll("option")[1]!.disabled).toBe(false);selects[1]!.value="group";fire(selects[1]!,"change");await settle(10);
+ expect(panel.textContent).not.toContain("people only");const input=panel.querySelector('input[type="search"]')!;input.value="Example";fire(input,"input");
+ await vi.waitFor(()=>expect(button(panel,"Add")).toBeTruthy());await click(panel,"Add");await click(panel,"Review");
+ expect(client.rolePreview.mock.calls[0][0].assignments[0]).toMatchObject({roleId:"room-creators",subject:{kind:"group",group:group.key,dn:group.dn},scope:{kind:"hub"}});
+});

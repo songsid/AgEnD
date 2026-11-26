@@ -5,8 +5,9 @@ import { GROUP_CAPABILITIES, allowedTeamRule, allowedPersonRule } from "../group
 
 export const SELF_PERMISSIONS = Object.freeze([...GROUP_CAPABILITIES] as const);
 export const TEAM_PERMISSIONS = Object.freeze(["team.view", "team.usage", "team.approve_join", "team.approve_ask"] as const);
-export const MANAGEMENT_PERMISSIONS = Object.freeze(["fleets.manage", "join.manage", "roles.assign", "audit.view", "hub.admin", "rooms.create"] as const);
-export const ROLE_PERMISSIONS = Object.freeze([...SELF_PERMISSIONS, ...TEAM_PERMISSIONS, ...MANAGEMENT_PERMISSIONS] as const);
+export const MANAGEMENT_PERMISSIONS = Object.freeze(["fleets.manage", "join.manage", "roles.assign", "audit.view", "hub.admin"] as const);
+export const MEMBER_PERMISSIONS = Object.freeze(["rooms.create"] as const);
+export const ROLE_PERMISSIONS = Object.freeze([...SELF_PERMISSIONS, ...MEMBER_PERMISSIONS, ...TEAM_PERMISSIONS, ...MANAGEMENT_PERMISSIONS] as const);
 /** Catalogue entries reserved for phase 3; phase 1/2 writers must refuse them in every role. */
 export const ROLE_APPROVAL_PERMISSIONS = Object.freeze(["team.approve_join", "team.approve_ask"] as const);
 export type RolePermission = typeof ROLE_PERMISSIONS[number];

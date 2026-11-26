@@ -6,7 +6,7 @@ import { personKeyString } from "../identity.js";
 import { personFromString, type HubCore } from "../http/core.js";
 import type { HubRequestContext } from "../types.js";
 import { HubProtocolError, validated } from "../validation.js";
-import type { HubManagementPermit } from "../roles/authority.js";
+import type { HubRoomCreationPermit } from "../roles/authority.js";
 import type { RoomEvent } from "./types.js";
 
 type DB = Database.Database;
@@ -22,10 +22,10 @@ export function canCreateRoom(core: HubCore, db: DB, person: string): boolean {
 export async function prepareRoomCreation(core: HubCore, ctx: HubRequestContext, person: string,
   alternative: (db: DB) => boolean = () => false) {
   const legacy = (db: DB) => canCreateRoom(core, db, person) || alternative(db);
-  let role: HubManagementPermit | undefined;
-  const provider = core.deps.management;
+  let role: HubRoomCreationPermit | undefined;
+  const provider = core.deps.roomCreation;
   if (!core.atomic(legacy) && provider) {
-    try { role = await provider.require(ctx, "rooms.create"); }
+    try { role = await provider.requireRoomCreation(ctx); }
     catch (error) {
       // An optional role service cannot narrow an independently current legacy grant.
       if (!core.atomic(legacy) && !(error instanceof HubProtocolError && error.code === "denied")) throw error;
@@ -34,7 +34,7 @@ export async function prepareRoomCreation(core: HubCore, ctx: HubRequestContext,
   const allows = (db: DB) => {
     if (legacy(db)) return true;
     if (!role) return false;
-    if (provider !== core.deps.management) throw new HubProtocolError("unavailable");
+    if (provider !== core.deps.roomCreation) throw new HubProtocolError("unavailable");
     role.assertCurrent(); return true;
   };
   return { allows, assertCurrent() {

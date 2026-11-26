@@ -5,8 +5,9 @@ import { register, t } from "/assets/app-i18n.js";
 
 register("hubAdminRooms", {
   en: {
-    adminOnly: "No additional people or teams are selected below.",
-    roleCreators: "The initial Hub administrator and people with an active Create rooms role permission can also start rooms. Manage role grants in Roles.",
+    adminOnly: "No one else is on this list yet.",
+    roleCreators: "The Hub's first administrator and people with an active Create rooms role permission can also create rooms. Manage role grants in Roles.",
+    independentGrants: "Removing someone from this list does not remove their role grant, and removing a role grant does not remove them from this list.",
     colPeople: "People", colAgents: "Agents", colLast: "Last activity", colState: "Status",
     none: "No rooms yet.",
     rowMenu: "More for {0}",
@@ -16,8 +17,9 @@ register("hubAdminRooms", {
     joined: "You are a room manager of “{0}” now. A line in the room says so.",
   },
   "zh-TW": {
-    adminOnly: "下方尚未另外指定可開房間的人或團隊。",
-    roleCreators: "Hub 初始管理員與目前角色授予「開房間」權限的人，也可以開房間。角色權限請至「角色」管理。",
+    adminOnly: "名單上還沒有其他人。",
+    roleCreators: "Hub 的第一位管理員與目前角色授予「開房間」權限的人，也可以開房間。角色權限請至「角色」管理。",
+    independentGrants: "從這份名單移除某人，不會移除他的角色授權；移除角色授權，也不會將他從這份名單移除。",
     colPeople: "人數", colAgents: "Agent 數", colLast: "最後活動", colState: "狀態",
     none: "還沒有房間。",
     rowMenu: "{0} 的更多動作",

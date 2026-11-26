@@ -17,7 +17,7 @@ async function world(){
  return {...w,writer,control};
 }
 it("presents a second admin and grants a request-owned admin proof without recursion",async()=>{
- const w=await world();expect(await w.control.presentation(w.ctx.ctx)).toEqual({admin:true,management:MANAGEMENT_PERMISSIONS.filter(p=>p!=="rooms.create")});
+ const w=await world();expect(await w.control.presentation(w.ctx.ctx)).toEqual({admin:true,management:MANAGEMENT_PERMISSIONS});
  const view=await w.control.read(w.ctx.ctx);expect(view.policy?.assignments[0]?.subject).toEqual({kind:"person",person:w.admin});
  expect(await w.ctx.ctx.requireAdmin()).toMatchObject({kind:"directory",person:w.admin});expect(w.ctx.ctx.isCurrent?.()).toBe(true);
  w.policy.assignments=[];w.save(w.policy);expect(w.ctx.ctx.isCurrent?.()).toBe(false);
@@ -115,5 +115,5 @@ it("a Create rooms grant does not present Hub administration or role-management 
  w.policy.assignments[0]!.roleId="room-creator";w.save(w.policy);
  expect(await w.control.presentation(w.ctx.ctx)).toEqual({admin:false,management:[]});
  await expect(w.control.read(w.ctx.ctx)).rejects.toMatchObject({code:"denied"});
- expect((await w.authority.require(w.ctx.ctx,"rooms.create")).permission).toBe("rooms.create");
+ expect((await w.authority.requireRoomCreation(w.ctx.ctx)).permission).toBe("rooms.create");
 });

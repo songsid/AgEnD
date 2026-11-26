@@ -68,12 +68,11 @@ describe("S129 operation-owned management authority", () => {
   it("proves an actual auxiliary-admin session independently from the old root-only presentation gate", async () => {
     const w = await fixture(), admission = vi.spyOn(w.pool, "withDirectoryRead");
     await expect(w.ctx.ctx.requireAdmin()).rejects.toMatchObject({ code: "denied" });
-    for (const permission of MANAGEMENT_PERMISSIONS.filter(p => p !== "rooms.create")) {
+    for (const permission of MANAGEMENT_PERMISSIONS) {
       const permit = await w.authority.require(w.ctx.ctx, permission);
       expect(permit.actor.person).toEqual(w.admin); expect(permit.permission).toBe(permission); expect(permit.source).toBe("roles");
       expect(permit.actor.sessionId).toBe((await w.ctx.ctx.current()).sessionId); expect(() => permit.assertCurrent()).not.toThrow();
     }
-    await expect(w.authority.require(w.ctx.ctx, "rooms.create")).rejects.toMatchObject({ code: "denied" });
     expect(admission).toHaveBeenCalledWith(w.admin, expect.any(Function));
     expect(w.db.prepare("SELECT * FROM hub_auditors").all()).toEqual([]); // audit.view never grants content-auditor access.
   });

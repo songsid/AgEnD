@@ -2,7 +2,7 @@
 import {personKeyString} from "../identity.js";
 import type {PersonKey} from "../types.js";
 import {heldRoleBundle,type HeldRoleBundle} from "./delegation.js";
-import {MANAGEMENT_PERMISSIONS,TEAM_PERMISSIONS,type HubRolePolicy,type RolePermission} from "./model.js";
+import {MANAGEMENT_PERMISSIONS,MEMBER_PERMISSIONS,TEAM_PERMISSIONS,type HubRolePolicy,type RolePermission} from "./model.js";
 import type {RolePersonFacts} from "./evaluate.js";
 import type {RoleChangePlan} from "./change.js";
 export interface RoleReview {
@@ -20,13 +20,13 @@ export function hasCurrentAdministrator(policy:HubRolePolicy,people:Iterable<Per
  return [...people].some(who=>heldRoleBundle(policy,who,facts.get(personKeyString(who))??{kind:"unknown"},at,root).administrator);
 }
 function scopes(bundle:HeldRoleBundle,permission:RolePermission){
- if(permission!=="rooms.create"&&bundle.administrator&&(MANAGEMENT_PERMISSIONS as readonly string[]).includes(permission))return [{kind:"hub" as const}];
+ if(bundle.administrator&&(MANAGEMENT_PERMISSIONS as readonly string[]).includes(permission))return [{kind:"hub" as const}];
  return bundle.rolesActive?bundle.grants.filter(g=>g.permission===permission).map(g=>g.scope):[];
 }
 export function roleReview(plan:RoleChangePlan,people:Iterable<PersonKey>,facts:ReadonlyMap<string,RolePersonFacts>,root:PersonKey,at:number):RoleReview {
  const losingPermissions:RoleReview["losingPermissions"]=[],unverified:PersonKey[]=[];
  if(!plan.affected.length&&plan.before.rolesActive===plan.next.rolesActive)return {losingPermissions,unverified};
- const permissions=[...TEAM_PERMISSIONS.filter(p=>!p.startsWith("team.approve_")),...MANAGEMENT_PERMISSIONS];
+ const permissions=[...MEMBER_PERMISSIONS,...TEAM_PERMISSIONS.filter(p=>!p.startsWith("team.approve_")),...MANAGEMENT_PERMISSIONS];
  for(const who of people){
   const fact=facts.get(personKeyString(who))??{kind:"unknown" as const};
   const before=heldRoleBundle(plan.before,who,fact,at,root),after=heldRoleBundle(plan.next,who,fact,at,root);

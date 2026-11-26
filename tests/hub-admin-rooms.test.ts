@@ -50,7 +50,7 @@ describe("Hub Administration → Rooms (section 11)", () => {
   it("who may start rooms: named tags, saved on change; empty lists no additional creators; roles remain independent; every room, no content", async () => {
     const { pg, calls } = await fixture();
     expect(tags(pg)).toEqual(["王經理"]);
-    expect(pg.root.textContent).toContain("Hub 初始管理員與目前角色授予「開房間」權限的人，也可以開房間。");
+    expect(pg.root.textContent).toContain("Hub 的第一位管理員與目前角色授予「開房間」權限的人，也可以開房間。");
     expect(pg.root.textContent).toContain("每個人都可以開一對一對話。");
     expect(pg.root.textContent).toContain("這裡看不到任何房間的內容。");
     expect(rows(pg)).toEqual([["每週主管會議", "3", "12", "王經理", "time", "使用中"], ["專案例會", "2", "4", "陳主任", "time", "使用中"], ["去年專案", "2", "1", "王經理", "time", "已封存"]]);
@@ -59,7 +59,7 @@ describe("Hub Administration → Rooms (section 11)", () => {
     expect(tags(pg)).toEqual(["王經理", "研發 · 2 人"]);
     fire(pg.root.querySelectorAll(".hub-room-tags button")[0], "click"); await settle(30);
     fire(pg.root.querySelectorAll(".hub-room-tags button")[0], "click"); await settle(30);
-    expect(pg.root.textContent).toContain("下方尚未另外指定可開房間的人或團隊。");
+    expect(pg.root.textContent).toContain("名單上還沒有其他人。");
     expect(writes(calls)).toEqual([
       ["PUT", "/hub/v1/admin/rooms/creators", { people: ["person-wang"], teams: ["team-1"] }],
       ["PUT", "/hub/v1/admin/rooms/creators", { people: [], teams: ["team-1"] }],
@@ -116,4 +116,14 @@ describe("Hub Administration → Rooms (section 11)", () => {
     down = false; fire([...second.pg.root.querySelectorAll("button")].find((b: any) => b.textContent === "Try again"), "click"); await settle(30);
     expect(rows(second.pg)).toHaveLength(3);
   });
+});
+
+it.each(["en", "zh-TW"] as const)("explains independent role/list grants with unambiguous %s wording", async lang => {
+ const { pg } = await fixture(lang, path => path === "/hub/v1/admin/rooms/creators" ? { status: 200, body: { ok: true, people: [], teams: [] } } : null);
+ const text = pg.root.querySelector(".hub-admin-creators")!.textContent;
+ expect(text).toContain(lang === "en" ? "Who can create rooms" : "誰可以開房間");
+ expect(text).toContain(lang === "en" ? "The Hub's first administrator" : "Hub 的第一位管理員");
+ expect(text).toContain(lang === "en" ? "No one else is on this list yet." : "名單上還沒有其他人。");
+ expect(text).toContain(lang === "en" ? "does not remove their role grant" : "不會移除他的角色授權");
+ expect(text).toContain(lang === "en" ? "does not remove them from this list" : "不會將他從這份名單移除");
 });

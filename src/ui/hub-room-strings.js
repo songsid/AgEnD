@@ -142,7 +142,7 @@ register("hubRoom", {
     assistantNotEnabled: "The room assistant is not enabled yet.",
     assistantEnableHint: "Sign in an AI account in AgEnD on this computer, then come back and turn it on.",
     // §11 admin → rooms
-    whoCanCreate: "Who can start rooms", addPeopleOrTeams: "Add people or teams",
+    whoCanCreate: "Who can create rooms", addPeopleOrTeams: "Add people or teams",
     everyoneDirect: "Everyone can start a one-to-one chat.",
     allRooms: "All rooms", active: "Active", archived: "Archived",
     noContent: "Room content is not visible here.",

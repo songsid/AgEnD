@@ -2,8 +2,8 @@
 import {hr} from "./hub-roles-strings.js";
 import { dateTimeText } from "/assets/clock-text.js";
 export const personKey=p=>`${p?.realm}/${p?.objectId}`;
-export const management=["fleets.manage","join.manage","roles.assign","audit.view","hub.admin","rooms.create"];
-export const permissionGroups=[{key:"usingHub",permissions:["ask_agents","publish_agents","pair_fleet"]},{key:"theirTeam",permissions:["team.view","team.usage"]},{key:"runningHub",permissions:["fleets.manage","join.manage","roles.assign","audit.view","rooms.create"]}];
+export const management=["fleets.manage","join.manage","roles.assign","audit.view","hub.admin"];
+export const permissionGroups=[{key:"usingHub",permissions:["ask_agents","publish_agents","pair_fleet","rooms.create"]},{key:"theirTeam",permissions:["team.view","team.usage"]},{key:"runningHub",permissions:["fleets.manage","join.manage","roles.assign","audit.view"]}];
 const builtinNames={admin:"Administrator",manager:"Manager",member:"Member"};
 export function roleName(role,view){
  if(!role)return hr("unknownRole");

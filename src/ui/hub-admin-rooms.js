@@ -58,6 +58,7 @@ export function AdminRooms({ client = hubClient() } = {}) {
       <${RoomPicker} client=${client} id="hubRoomCreators" kinds=${["person", "team"]} label=${hroom("addPeopleOrTeams")} placeholder=${hroom("addPeopleOrTeams")}
         picked=${creators} onChange=${(next) => { if (!busy) void saveCreators(next); }} />
       ${creators.length ? null : html`<p class="note">${ha("adminOnly")}</p>`}
+      <p class="note">${ha("independentGrants")}</p>
       <p class="note">${hroom("everyoneDirect")}</p>
     </section>
     <section class="hub-admin-all-rooms"><h3>${hroom("allRooms")}</h3>

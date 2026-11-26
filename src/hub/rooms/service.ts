@@ -11,7 +11,7 @@ import { HubCatalogService, exposureOf, readExposure } from "../catalog.js";
 import { RoomPostReplies } from "./post-replies.js";
 import { HubGrantSearch } from "../grant-search.js";
 import { HubRoomAssistant } from "./assistant.js";
-import { prepareRoomCreation } from "./admin.js";
+import { canCreateRoom, prepareRoomCreation } from "./admin.js";
 import { HubRoomAgents, type RoomPostRow } from "./agents.js";
 import { personKeyString } from "../identity.js";
 import { HubCore, personFromString, type HubOperationPermit } from "../http/core.js";
@@ -540,12 +540,18 @@ export class HubGroupRooms {
     this.addAssistant(db, id);
   }
   async list(ctx: HubRequestContext) {
-    const me = await this.who(ctx), access = await prepareRoomCreation(this.core, ctx, me); this.agents.sweep();
+    const me = await this.who(ctx);
+    let access: Awaited<ReturnType<typeof prepareRoomCreation>> | undefined;
+    // A creation hint never becomes a new dependency of membership-based room reads.
+    try { access = await prepareRoomCreation(this.core, ctx, me); } catch { /* Strict writes obtain a separate proof. */ }
+    this.agents.sweep();
     return this.core.atomic(db => {
       if(!ctx.application)this.assistantRoom(db, me);
+      let canCreateRooms = canCreateRoom(this.core, db, me);
+      try { canCreateRooms ||= access?.allows(db) === true; } catch { /* Expired/changed hint: keep rooms readable. */ }
       return { rooms: (db.prepare("SELECT * FROM hub_room_members WHERE kind='person' AND subject=?").all(me) as MemberRow[])
         .map(m => this.summary(db, this.room(db, m.room_id), m)).sort((a, b) => b.lastAt - a.lastAt),
-        me: { canCreateRooms: access.allows(db), assistant: this.assistant.availability()?.enabled === true }, invitations: 0 };
+        me: { canCreateRooms, assistant: this.assistant.availability()?.enabled === true }, invitations: 0 };
     }, this.fence(ctx));
   }
   async candidates(ctx: HubRequestContext, q: string, kind: string, discovery = false) {
