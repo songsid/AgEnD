@@ -319,9 +319,14 @@ Paths outside the home are listed too. Today these are:
 - a profile's own `.claude.json` (`credential-profiles/claude-code/*/.claude.json`, at agent launch);
 - the CLIs' own files, which AgEnD never writes.
 
-The test fails when a path literal written by the code (a scan of `join(dataDir, …)`, `homedir()`, `CLAUDE_CONFIG_DIR`) isn't classified.
+The test fails when a path literal written by the code isn't classified. It scans `join` over any member chain ending in `dataDir`, `DATA_DIR`, `agendHome` or `stateDir`, plus `getAgendHome()`, `homedir()` and `CLAUDE_CONFIG_DIR`, with a double-, single- or backtick-quoted literal (rev 8). A name reached only through a helper that takes the home as a parameter is listed by hand.
 
-**Eligibility.** A release is eligible for the transaction's automatic rollback only when **no pre-commit writer touches an excluded or outside path**. Ordinary post-commit writes to excluded state (logs, caches, agent and CLI activity, a `.claude.json` at agent launch) don't count:
+**Eligibility (rev 8).** A release is eligible for the transaction's automatic rollback only when no pre-commit writer touches:
+- **excluded user state** (`workspaces/`, `credential-profiles/`, `cx/`);
+- **a path outside the home** that the transaction doesn't restore itself (the unit and package preimages, §6.3);
+- **an excluded cache that an older build would refuse rather than rebuild.** An excluded cache written before commit must be one that an older build rebuilds or ignores: `search.db` rebuilds on another schema; `cache-codex-rollouts.json` and `usage-last-good.json` skip what they don't recognise. The inventory marks each such writer.
+
+Pre-commit writes to runtime files (pids, locks, sockets, tokens, tmux) and logs don't count: they mean nothing after a restore. Ordinary post-commit writes to excluded state (logs, caches, agent and CLI activity, a `.claude.json` at agent launch) don't count either:
 - agents aren't started before commit (trial mode, 2.4);
 - a rollback after commit is Go back, which names what it can't restore.
 
@@ -587,6 +592,14 @@ A retry recognises each effect by the path's presence and its hash against the p
 | P3's unwrap: the tail is the preimage's exact `ProgramArguments`, and the attempt is terminal by its own record, not by `current` | §6.2 |
 | A retry or removal of the route rewrites only the route's own bytes (the preimage, or its exact wrapped form); anything else is refused | §6.2 |
 
+
+### Revision 8 (2.3 part 1, Fable #4520)
+| Change | Where |
+|---|---|
+| Eligibility counts excluded user state, unrestored outside paths, and a pre-commit cache an older build wouldn't rebuild. Pre-commit runtime and log writes don't count | §5.1 |
+| The inventory gate's roots (any member chain ending in `dataDir`, `DATA_DIR`, `agendHome` or `stateDir`, plus `getAgendHome()`) and its literals (`"…"`, `'…'`, `` `…` ``); helper-reached names listed by hand | §5.1 |
+| `host-monitoring.sqlite` is a pre-commit SQLite database: §5.3's checkpoint applies to it | §5.1, §4.5 |
+| 2.4 must pin with a test that trial mode never reaches `startInstance`: post-commit user-state eligibility rests on it | §5.1, 2.4 |
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
 - `update-journal.ts`: the layout, publication order, readers, stages and marks;
