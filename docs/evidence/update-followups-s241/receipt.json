@@ -1,0 +1,287 @@
+{
+  "sourceHead": "45d8358d8840dbfe90e9540ae2a36571429a8ead",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 0: offered is not folded (no Change)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: waiting on the server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the desk is unchanged: the full words, who it waits for, the buttons; no short words, no Change",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: opening it decided nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: Cancel from the opened line → offered",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: scheduled on the server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: the desk is unchanged: the full time and the buttons, no Change",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 0: offered is not folded (no Change)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: waiting on the server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: the desk is unchanged: the full words, who it waits for, the buttons; no short words, no Change",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: opening it decided nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 2: Cancel from the opened line → offered",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 2: scheduled on the server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 2: the desk is unchanged: the full time and the buttons, no Change",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 0: offered is not folded (no Change)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: waiting on the server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: one line: the short words and Change only",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: the banner is one 44 px button high plus its padding: at most 66 px (was 131 px offered)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: Change is a 44 px button, on the screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1b: Change opens the full line: the words, who it waits for, Update now / Pick a time / Cancel / Close",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1b: 44 px buttons, every one wholly on the screen, no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: opening it decided nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: Cancel from the opened line → offered",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: scheduled on the server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: one line again (a new state starts closed): the weekday and the 24-hour time, and Change",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: no AM/PM",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: the banner is at most 66 px",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2b: opened: the full time, Update now / Cancel / Close",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2b: every button wholly on the screen",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 0: offered is not folded (no Change)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: waiting on the server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: one line: the short words and Change only",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the banner is one 44 px button high plus its padding: at most 66 px (was 112 px offered)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: Change is a 44 px button, on the screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1b: Change opens the full line: the words, who it waits for, Update now / Pick a time / Cancel / Close",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1b: 44 px buttons, every one wholly on the screen, no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: opening it decided nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: Cancel from the opened line → offered",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: scheduled on the server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: one line again (a new state starts closed): the weekday and the 24-hour time, and Change",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: no AM/PM",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the banner is at most 66 px",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2b: opened: the full time, Update now / Cancel / Close",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2b: every button wholly on the screen",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "nothing was installed: no launch reached",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "s241-desk-light-en-1-waiting.png",
+      "sha256": "023a5ae9ed68da2eb760b81fba3e558866d35bf50781bacf04b8991764ac8266"
+    },
+    {
+      "path": "s241-desk-light-en-2-scheduled.png",
+      "sha256": "e9b9f9e7ddcd0099e6c234c2c1d0cfa8ae0ea721494589215e21b349a72cbb65"
+    },
+    {
+      "path": "s241-desk-dark-zh-TW-1-waiting.png",
+      "sha256": "c631344634d363355f7e3d9ff08cf1a12ca0030a5b74ee5ae2d1fb47a9b7c40c"
+    },
+    {
+      "path": "s241-desk-dark-zh-TW-2-scheduled.png",
+      "sha256": "ee5ad68cb48e961f6a5d2f50a4a1e42b773ea6d94300b02322a719bd4b520bd1"
+    },
+    {
+      "path": "s241-phone-light-en-1-waiting.png",
+      "sha256": "83d468c1b457f19c6557dba517c99218c83faa021df98ff554a8ac9a2736610f"
+    },
+    {
+      "path": "s241-phone-light-en-1b-waiting-open.png",
+      "sha256": "8bdccb859edd459258d795582a5904393176cc2efa15c66df6922e8980c9cd58"
+    },
+    {
+      "path": "s241-phone-light-en-2-scheduled.png",
+      "sha256": "ff18785eea268003cbdc249b35f8eccc013942c448d1e8416011b9b05a4a4361"
+    },
+    {
+      "path": "s241-phone-light-en-2b-scheduled-open.png",
+      "sha256": "bdc653f7ade39ac00971f2fe08bd9d0049e7f9ff02b4e00e60c6477eb597fb57"
+    },
+    {
+      "path": "s241-phone-dark-zh-TW-1-waiting.png",
+      "sha256": "d30ecd3c3223210af329c36c42f4bb35da92e451ca7058f954ed9c4c2b10400d"
+    },
+    {
+      "path": "s241-phone-dark-zh-TW-1b-waiting-open.png",
+      "sha256": "6958d4e00988b8a181e56d6bc5afad910e16842715476ce78322213b0bf99cd6"
+    },
+    {
+      "path": "s241-phone-dark-zh-TW-2-scheduled.png",
+      "sha256": "d2bd38b0253f2a6619170c81f35997c4d6646d0ea546d6a2c3981a91be00990e"
+    },
+    {
+      "path": "s241-phone-dark-zh-TW-2b-scheduled-open.png",
+      "sha256": "973b59f9a92f324eb3ef8ac1232e212408a60041c50de3369b137c5ed5de22bf"
+    }
+  ],
+  "heights": {
+    "desk-light-en-offered": 57,
+    "desk-light-en-waiting": 57,
+    "desk-light-en-scheduled": 51,
+    "desk-dark-zh-TW-offered": 57,
+    "desk-dark-zh-TW-waiting": 57,
+    "desk-dark-zh-TW-scheduled": 51,
+    "phone-light-en-offered": 131,
+    "phone-light-en-waiting": 65,
+    "phone-light-en-waiting-open": 184,
+    "phone-light-en-scheduled": 65,
+    "phone-light-en-scheduled-open": 114,
+    "phone-dark-zh-TW-offered": 112,
+    "phone-dark-zh-TW-waiting": 65,
+    "phone-dark-zh-TW-waiting-open": 112,
+    "phone-dark-zh-TW-scheduled": 65,
+    "phone-dark-zh-TW-scheduled-open": 114
+  },
+  "summary": "53/53"
+}
