@@ -256,3 +256,23 @@ It takes the home update lock first, as the recovery runner would, then drives t
     - when committed, the definition refresh under the locks still held;
     - the lease and the locks released in reverse.
   - The result is printed. A refresh warning travels with the completion (the update receipt's `warning` and `cleanupCommand`) and is never a failure.
+
+## 15. `--resolve` and `--recover` (part 6) — proposal
+**`agend update --resolve`** (read-only) reports the journal and the exact next step:
+- **none**: nothing to resolve.
+- **closing**: it finishes the close (under the home lock), as any opener would.
+- **open**: the attempt (id, stage, last substep, from → to), its owner (updater or runner: live, gone or unknown), and what follows from that:
+  - a live owner: wait, it's running;
+  - a gone owner in a stage the kit resumes (everything before `committing`, plus `abandoning` and `rolling-back`): `agend update --recover`;
+  - `committing`: the new fleet finishes it. When it is stuck on the route's removal (the fleet's user can't reload a system unit, §13), `agend update --recover` run with the unit's rights does that one step.
+- **manual / unknown**: what is known (the record, or the read error and its path), then `agend update --resolve --clear` once the person has put things right.
+
+**`agend update --resolve --clear`**, the only thing that clears a manual or unknown `current`. It runs under the home lock and refuses while any owner is live or unknown.
+- manual: one more history entry on the terminal record (stage stays `manual-recovery`, note `resolved by a person at <time>`), then `current` is renamed into the attempt (`current.resolved`).
+- unknown: `current` is moved aside, unparsed, to `.update-journal/current.unknown-<time>`. The record it named (if any) stays where it is, for inspection.
+
+**`agend update --recover`**, for an open attempt whose owner is PROVEN gone:
+- **before committing** (the kit's stages): verify the kit (`verifyRecoveryKit`), then run `<kit>/node <kit>/recover.cjs --run --home <home> --attempt <id>` with inherited stdio and its exit status. This is the same runner the pre-start step starts, from the person's terminal (outside the service's cgroup already).
+- **committing, route not yet removed**: under the home lock, `removeRecoveryRoute` and the attempt's service manager reload (with the person's rights), then the `route-removed` substep is journaled. The fleet's next resume pass finishes the commit (its own steps already ran, §13).
+  - For that, the fleet's adopted resume RELEASES the home lock while it is stuck on the route (after running its own steps), and re-adopts only after its 60 s back-off. Otherwise `--recover` could never take the lock.
+- **committing, past the route**: nothing to do here; the fleet finishes it (and says so).
