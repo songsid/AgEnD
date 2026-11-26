@@ -228,3 +228,20 @@ It takes the home update lock first, as the recovery runner would, then drives t
 - the reload runs with a 30 s timeout (`realHands`).
 
 **While the hold is up,** Needs you says why nothing answers: "Updating: checking the new version" (trial), then "Updating: starting agents". One agent's failed start never blocks the commit: it is logged and retried, and `startAgents` counts as attempted.
+
+## 14. The updater's hands (part 5)
+- **Install** (`installHand`): `npm exec --yes --package <name>@<exact> -- agend-install --install-only --target <V>`, run from the filesystem root with this update's prefix-lock token (AGEND_INSTALL_TOKEN).
+  - The installed `package.json` is then read again. It must have the exact name and version, and its own `agend.updateTx` must be ≥ 1, else the update rolls back.
+  - The installer's install-only mode is described with fcde77f9b: npm, the version proof and npm's postinstall only.
+- **What `agend install --no-activate` does** (inventory, Fable): unit/plist writes, the launchd plan, the system unit's ExecStart/OOMPolicy, and linger on a user unit. Nothing else.
+  - Bin links are npm's; the bundled tmux and the runtime receipt are npm's postinstall; the kit is the transaction's.
+  - The trial runs correctly from the old unit: ExecStart is the in-place `<pkg>/dist/cli.js`, and the artifact tuple is checked first.
+- **Template drift → `refreshServiceDefinition`**, after the commit.
+  - It runs after the terminal write and before the home and prefix locks are released, and only when `<prefix>/bin/agend --version` is the committed version; otherwise it is skipped with a warning.
+  - It runs the NEW install's `agend install --no-activate`. systemd gets a daemon-reload only when the unit changed and NeedDaemonReload says yes. launchd stays out until S-260.
+  - A failure is a warning naming the command, never a rollback. It goes in the update's result and as a one-time notice, not only in the log.
+  - The fleet isn't restarted: "the service definition was refreshed; it applies at the next restart".
+- **Barrier** (`barrierHand`): `barrier.arm` to the old generation, by its nonce, while the attempt is still `opened`. `runUpdate` now asks before it advances to `barrier`.
+  - Only `held` from that fleet's pid is ok. Busy, refused, stale or no answer (30 s) abandons.
+  - With no old fleet there is nothing to fence.
+- **Prove / commit** (`proveHand`, `commitHands`): addressed to the trial generation the journal acknowledged at that moment (nonce and pid).

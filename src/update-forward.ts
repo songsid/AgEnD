@@ -85,10 +85,11 @@ export function runUpdate(home: string, attempt: AttemptRecord, plan: UpdatePlan
     return c.ok ? { ok: true } : { ok: false, reason: c.reason, manual: c.to === "manual-recovery" };
   };
 
-  // barrier
-  a = advance(home, a, "barrier", {}, io);
+  // barrier: the old fleet fences and checks again while the attempt is still `opened` (§2.3: its outbox prefix is written
+  // at opened; the mailbox's barrier.arm is valid only there), then the stage records that it holds.
   const b = d.barrier(a);
   if (!b.ok) return abandon(b.reason);
+  a = advance(home, a, "barrier", {}, io);
 
   // stopping: the old fleet, the fence, the drain, the kit and the route
   a = advance(home, a, "stopping", {}, io);

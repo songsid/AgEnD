@@ -139,6 +139,15 @@ const COMMITTED = { fleetYaml: "version: new\nmigrated: true\n", newState: true,
 const ROLLED_BACK = { fleetYaml: "version: old\n", newState: false, version: "2.4.0", unit: UNIT, dropIn: false, journal: "none", lockRole: "fleet" };
 
 describe("M-3770 2.5: the update, forward to committed", () => {
+  it("the barrier is asked while the attempt is still opened (the old fleet's barrier.arm is valid only there); the stage records it after", () => {
+    const w = world();
+    const seen: string[] = [];
+    const r = runUpdate(w.home, w.attempt, PLAN, w.deps({ barrier: a => { const now = readCurrent(w.home); seen.push(a.stage, now.state === "open" ? now.attempt.stage : now.state); return { ok: true }; } }));
+    expect(r.ok, r.ok ? "" : r.reason).toBe(true);
+    expect(seen).toEqual(["opened", "opened"]);
+    expect(r.attempt.history.map(h => h.stage).indexOf("barrier")).toBeGreaterThan(0);
+  });
+
   it("barrier, the old fleet stopped and fenced, drained, snapshotted, installed, the trial taken over and proven, committed", () => {
     const w = world();
     const r = runUpdate(w.home, w.attempt, PLAN, w.deps());
