@@ -52,6 +52,16 @@ describe("SeenUsers on disk", () => {
     const small = new SeenUsers(2);
     small.persistTo({ path });
     expect([small.size, small.get(C), small.get(D)]).toEqual([2, "c", "d"]);
+    expect(parseSeenUsersFile(readFileSync(path, "utf8"), 2)).toEqual([[C, "c"], [D, "d"]]);
+  });
+
+  it("bounded when the file and the people seen before loading together pass the limit: the oldest on disk go", () => {
+    const path = join(home(), SEEN_USERS_FILE);
+    writeFileSync(path, JSON.stringify({ version: 1, users: [[A, "a"], [B, "b"]] }));
+    const seen = new SeenUsers(2);
+    seen.record(C, "c");
+    seen.persistTo({ path });
+    expect([seen.size, seen.get(A), seen.get(B), seen.get(C)]).toEqual([2, undefined, "b", "c"]);
   });
 
   it("atomic and owner-only: no temp file is left, the mode is 0600, and an unchanged record writes nothing", () => {
