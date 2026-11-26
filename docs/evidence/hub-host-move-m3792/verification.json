@@ -1,0 +1,66 @@
+{
+  "base": "e05fb8189698dd4bf804e3993a914e8e03a911d9",
+  "scope": "Design/runbook and scratch fixture only; no product source changes. Private homes and loopback transport fixtures only; no Fleet/HubRuntime/service or external directory/provider start.",
+  "commands": [
+    {
+      "command": "npx --no-install vitest run tests/hub-host-move-m3792.test.ts tests/hub-member-relocation-3429.test.ts tests/hub-relocation-network-3429.test.ts tests/hub-member-address-writer-3429.test.ts tests/hub-install-handoff.test.ts --maxWorkers=2",
+      "files": 5,
+      "passed": 63,
+      "note": "Three scratch controls plus sixty existing neighbor cases; Vitest4.1.12."
+    },
+    {
+      "command": "npx --no-install vitest run tests/hub-host-move-m3792.test.ts --maxWorkers=1",
+      "files": 1,
+      "passed": 4,
+      "note": "Final scratch version adds an actual pinned-member transport connection to the cold destination. Overlaps the preceding run; counts are not additive."
+    }
+  ],
+  "proofs": [
+    "Same Hub UUID, issuer and member SPKI survive a stopped copy to a different private home.",
+    "Signed initialization seal remains valid with copied matching config; arbitrary new hostname is rejected.",
+    "Database transport state/floor and authenticated encrypted content survive the copy; incomplete content-key state is rejected.",
+    "A real signed address decision preserves the acknowledged Fleet credential/generation and pairing bytes; an offline Fleet is revoked.",
+    "Confirmed B-only dialing and new B-to-A pending dialing preserve exact pairing; old identical statement retry does not undo the newer pending move.",
+    "New-host certificate preserves SPKI but fails hostname verification at A, requiring the runbook port/isolation gate.",
+    "A real pinned member pairs once, source listener and DB close, then an unchanged-origin destination using the cold copy accepts it with unchanged member pairing bytes and Fleet binding."
+  ],
+  "fixtureBoundaries": [
+    "Signed-change decision ports use fixture ack-currentness/probe/remount; the separate unchanged-origin cold-copy case uses actual pinned TLS/WebSocket reconnect. Neither starts a Fleet or tests an OS service.",
+    "Existing network neighbor suite uses loopback TLS/WebSocket fixtures, not a Fleet start.",
+    "No actual OS migration, VM capacity, DNS/proxy, AD reachability, service-manager launch, account credential transfer or shared-agent answer was tested.",
+    "No cross-host exclusive lock exists; positive source stop/fencing remains an operational prerequisite."
+  ],
+  "initialProbeFindings": [
+    "Copy permissions needed normalization before production private-path open accepted the destination.",
+    "An old confirmed statement is safely re-ACKed without changing a newer pending relocation; it is not necessarily refused.",
+    "A new-host SAN under the unchanged SPKI is not valid at the old hostname; same-backend-port remount can cause terminal key-changed rather than retry. The runbook requires old-ingress/new-backend isolation."
+  ],
+  "typecheck": "Final typecheck passed with reused existing complete dependencies and8GiB heap; no packages installed. Initial root fallback dependency set was incomplete and default4GiB check exceeded heap.",
+  "files": [
+    {
+      "path": "tests/hub-host-move-m3792.test.ts",
+      "sha256": "03cf7926734da6dc75044acef5a181897ff68f5eb2e899af074d02e206dbc124"
+    },
+    {
+      "path": "docs/design/hub-host-move-runbook.md",
+      "sha256": "3b534a47940613e2061cc56306a01bfce55eeba937f04484912b7f07bc31f495"
+    },
+    {
+      "path": "docs/design/hub-host-move-runbook.zh-TW.md",
+      "sha256": "f045770a0e058e0495d78a6e33b68f648c94ed1c7bf14ea121bf61f0aea4f453"
+    }
+  ],
+  "reviewR1": {
+    "priorHead": "7eb077e6037db6c4563430d302b8bf5d04438c3b",
+    "delta": "EN/zh runbook only: general terminal TLS mismatch, credential-free destination-front-end SPKI/SAN preflight before DNS, refusal while backend down, and per-member move+return hop budget. Test and product code unchanged.",
+    "bilingualChecks": "Both languages retain five-second ACK, five-minute confirmation, eight-hop cap and B-only after promotion; add two-hop round-trip and maximum-six pre-move for reserved return."
+  },
+  "reviewR2": {
+    "priorHead": "f4cb5813009b75e8d1e78dd4103986310c51570f",
+    "scope": "Generic both-origin bare-IP to DNS runbook; actual endpoints are private-task annex only. Product/test code unchanged.",
+    "sequence": "Source web address first, remount, required Fleets current again at old member endpoint; signed member move last; fence/copy; isolated destination supported listener-only edits; credential-free actual-ingress check before DNS/traffic.",
+    "tls": "Browser CA certificate distinct from intentionally self-signed pinned member certificate. Existing member key retained; member CA/key rotation outside this move. No CA-import in current member-address UI.",
+    "network": "Kernel443-to8443 redirect does not terminate TLS or make packets reach loopback. Destination Advanced listener uses actual local interface IP after source is fenced; no concrete firewall/routing command supplied.",
+    "riskList": "Private manual Connected fleets checklist plus capability/link/hop-budget evidence; final followed/reconnect result authoritative."
+  }
+}
