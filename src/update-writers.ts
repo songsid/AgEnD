@@ -4,8 +4,11 @@
  *
  * - **It looks for** any process of this uid that has `AGEND_HOME` equal to this home, its cwd under the home, or a file
  *   of the scope open or mapped (Linux: `/proc/<pid>/{environ,cwd,fd,maps}`).
- * - **An incomplete scan is never proof of absence:** a listing that fails, or a process of this uid that can't be read
- *   (one that exits mid-scan is gone, not unreadable).
+ * - **An incomplete scan is never proof of absence:** a listing that fails, or a process of this uid that STAYS unreadable.
+ *   A process caught mid-execve or mid-exit fails its reads for a moment (EACCES/EPERM, not ENOENT), so an unreadable one
+ *   is read again a few times with a short backoff (Fable #4524 F1); between tries it is re-identified — gone is gone, a
+ *   new start is a different process (classified afresh). Only the same process, unreadable through every try, makes
+ *   the scan incomplete.
  * - **Sealed processes (design rev 10).** A process of this uid that the kernel has made non-dumpable — its
  *   `/proc/<pid>/{cwd,fd,maps,environ}` belong to root, so no unprivileged reader can inspect them — is positively
  *   identified (its `status` reads this uid while its `fd` directory is root's) and reported as `uninspectable`, not as
@@ -37,6 +40,10 @@ export interface WritersDeps {
   filesOf(pid: number): string[] | "gone" | null;
   /** Its parent pid; "gone"; null. */
   ppidOf(pid: number): number | "gone" | null;
+  /** `pid`'s start as install-lock records it; null when it can't be read (gone, or mid-exec). */
+  startOf(pid: number): ProcessStartRecord | null;
+  /** Wait (synchronously) between re-reads of an unreadable process. */
+  sleep(ms: number): void;
   /** Is `pid` sealed: this uid's, but non-dumpable (its per-process files are root's)? */
   sealed(pid: number): boolean;
   /** Does `pid`'s current start match `start`? (install-lock's identity: ticks + boot, else the lstart text.) */
@@ -54,6 +61,10 @@ export type WritersProof =
   | { ok: false; incomplete: false; writers: Array<{ pid: number; why: string }>; reason: string };
 
 const isUnder = (path: string, root: string) => path === root || path.startsWith(root + sep);
+
+/** Re-reads of a process of this uid that can't be read, and the wait before each (≈ 100 ms in all). */
+export const UNREADABLE_RETRIES = 5;
+export const UNREADABLE_BACKOFF_MS = 20;
 
 /** §4.4 for `home` (any spelling; compared as realpath), with the attempt's exempt set. */
 export function proveWritersGone(home: string, exempt: Exempt, d: WritersDeps): WritersProof {
@@ -84,16 +95,37 @@ export function proveWritersGone(home: string, exempt: Exempt, d: WritersDeps): 
 
   const writers: Array<{ pid: number; why: string }> = [];
   const uninspectable: number[] = [];
-  for (const pid of pids) {
+  type Read = { kind: "skip" } | { kind: "uninspectable" } | { kind: "unreadable"; what: string }
+    | { kind: "read"; env: string | undefined; cwd: string; files: string[] };
+  /** One look at a pid: not ours, exempt, sealed, gone, unreadable, or its three reads. */
+  const look = (pid: number): Read => {
     const uid = d.uidOf(pid);
-    if (uid === "gone") continue;
-    if (uid === null) return { ok: false, incomplete: true, reason: `pid ${pid}'s owner can't be read` };
-    if (uid !== d.uid) continue;
-    if (owners.some(o => isExact(pid, o)) || isHelper(pid)) continue;
-    if (d.sealed(pid)) { uninspectable.push(pid); continue; }
+    if (uid === "gone") return { kind: "skip" };
+    if (uid === null) return { kind: "unreadable", what: "owner" };
+    if (uid !== d.uid) return { kind: "skip" };
+    if (owners.some(o => isExact(pid, o)) || isHelper(pid)) return { kind: "skip" };
+    if (d.sealed(pid)) return { kind: "uninspectable" };
     const env = d.agendHomeOf(pid), cwd = d.cwdOf(pid), files = d.filesOf(pid);
-    if (env === "gone" || cwd === "gone" || files === "gone") continue;
-    if (env === null || cwd === null || files === null) return { ok: false, incomplete: true, reason: `pid ${pid} (this user's) can't be read` };
+    if (env === "gone" || cwd === "gone" || files === "gone") return { kind: "skip" };
+    if (env === null || cwd === null || files === null) return { kind: "unreadable", what: env === null ? "environment" : cwd === null ? "working directory" : "open files" };
+    return { kind: "read", env, cwd, files };
+  };
+  for (const pid of pids) {
+    let r = look(pid);
+    // Unreadable: re-read with a backoff. Each look classifies afresh (gone → skipped; readable → judged). A pid that is
+    // now a different process (another start) gets its own full set of tries, a few times at most: the scan stays bounded.
+    let seen = r.kind === "unreadable" ? d.startOf(pid) : null;
+    for (let tries = 0, renewals = 0; r.kind === "unreadable" && tries < UNREADABLE_RETRIES; tries++) {
+      d.sleep(UNREADABLE_BACKOFF_MS);
+      const start = d.startOf(pid);
+      if (start && seen && !d.sameProcess(pid, seen) && renewals < 3) { seen = start; tries = -1; renewals++; }
+      else if (!seen) seen = start;
+      r = look(pid);
+    }
+    if (r.kind === "skip") continue;
+    if (r.kind === "uninspectable") { uninspectable.push(pid); continue; }
+    if (r.kind === "unreadable") return { ok: false, incomplete: true, reason: `pid ${pid} (this user's) stays unreadable (its ${r.what}) through ${UNREADABLE_RETRIES} re-reads` };
+    const { env, cwd, files } = r;
     const real = (p: string) => { try { return realpathSync(p); } catch { return p; } };
     if (env !== undefined && real(env) === root) { writers.push({ pid, why: `its AGEND_HOME is this home` }); continue; }
     if (isUnder(real(cwd), root)) { writers.push({ pid, why: `its working directory is under the home (${cwd})` }); continue; }
@@ -110,7 +142,7 @@ export function proveWritersGone(home: string, exempt: Exempt, d: WritersDeps): 
 }
 
 /** Linux: `/proc`. A process that exits mid-read is "gone"; anything else unreadable is null. */
-export function procWritersDeps(sameProcess: WritersDeps["sameProcess"]): WritersDeps {
+export function procWritersDeps(sameProcess: WritersDeps["sameProcess"], startOf: (pid: number) => string | null): WritersDeps {
   const gone = (err: unknown) => ["ENOENT", "ESRCH"].includes((err as NodeJS.ErrnoException).code ?? "");
   const read = <T>(fn: () => T): T | "gone" | null => { try { return fn(); } catch (err) { return gone(err) ? "gone" : null; } };
   return {
@@ -137,6 +169,8 @@ export function procWritersDeps(sameProcess: WritersDeps["sameProcess"]): Writer
       const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
       return Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
     }),
+    startOf: pid => { const t = startOf(pid); return t ? { processStart: t } : null; },
+    sleep: ms => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
     sealed: pid => {
       try {
         const real = /^Uid:\s+(\d+)/m.exec(readFileSync(`/proc/${pid}/status`, "utf8"))?.[1];
