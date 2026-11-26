@@ -159,3 +159,24 @@ it("boot policy rechecks execution ownership after a validation callback, before
  boot.publication.publish(r.state,ports,boot.publication.fence(),()=>true,()=>r.state,()=>livePorts);
  expect(()=>boot.policy.assert({instance:"target",tool:"send_to_instance",args:{},admission:{coverage:"covered",lease}})).toThrow(/current/);
 });
+
+it("a staged drain can bind memory-only participants before On but cannot register work until commit", () => {
+ const h=home(),path=join(h,"delivery-outbox.db"),box=new DeliveryOutbox(path);cleanup.push(()=>box.close());
+ let held=true;const stage=box.stageRequestContextConnection({current:()=>held}),drain=stage.drain(()=>"fleet"),registration=drain.registration();
+ const root="00000000-0000-4000-8000-000000000001";
+ drain.register("turns","candidate",{registration,revision:()=>"0",inspect:()=>({registration,revision:"0",references:[],unknown:false})});
+ expect(()=>registration.assertRegistration(root)).toThrow(/not ready/);
+ const db=new Database(path,{readonly:true});try{expect(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name LIKE 'request_context_%'").get()).toEqual({n:0});}finally{db.close();}
+ box.requestContextInstallation().activate({epoch:"first",owner:"fleet",activatedAt:1,invalidates:[],offeredLatestDeadline:null},
+  {owner:"fleet",current:()=>true},{current:()=>true,release(){}},()=>stage.current(),0);
+ held=false;expect(()=>registration.assertRegistration(root)).not.toThrow(); // Publication opens admission; the committed registry stays usable.
+ expect(()=>stage.drain(()=>"fleet")).toThrow(/preparation unavailable/);
+});
+it("an abandoned staged drain never borrows a successor connection preparation",()=>{
+ const h=home(),box=new DeliveryOutbox(join(h,"delivery-outbox.db"));cleanup.push(()=>box.close());
+ const first=box.stageRequestContextConnection({current:()=>true}),registration=first.drain(()=>"fleet").registration();first.restore();
+ const second=box.stageRequestContextConnection({current:()=>true});
+ box.requestContextInstallation().activate({epoch:"second",owner:"fleet",activatedAt:1,invalidates:[],offeredLatestDeadline:null},
+  {owner:"fleet",current:()=>true},{current:()=>true,release(){}},()=>second.current(),0);
+ expect(()=>registration.assertRegistration("00000000-0000-4000-8000-000000000001")).toThrow(/not ready/);
+});

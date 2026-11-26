@@ -768,7 +768,7 @@ export class DeliveryOutbox extends EventEmitter {
    * First-On keeps this exact connection and its cached owners. Only connection-local capabilities change here;
    * the floor and every companion schema still belong to the later outer activation transaction.
    */
-  stageRequestContextConnection(fence: { current(): boolean }): { current(): boolean; restore(): void } {
+  stageRequestContextConnection(fence: { current(): boolean }): { current(): boolean; drain(owner: () => string | null): RequestContextDrain; restore(): void } {
     if (!fence.current() || this.requestContextConnectionStage || readRequestContextInstallation(this.db) !== null)
       throw Error("Request-context connection preparation unavailable");
     const previous = { dispatch: this.requestContextDispatchVersion, relay: this.requestContextRelayVersion, recovery: this.requestContextRecoveryFence, returns: this.requestContextReturnsOwner };
@@ -779,6 +779,16 @@ export class DeliveryOutbox extends EventEmitter {
     registerRequestContextDispatcher(this.db, 1); registerRequestContextReturnDispatcher(this.db, 1);
     return Object.freeze({
       current: () => owned() && fence.current() && this.requestContextDispatchVersion === 1 && this.requestContextRelayVersion === 1,
+      // Pre-start registration is memory-only. Every actual registration/write still needs the committed floor.
+      drain: (owner: () => string | null) => {
+        const ready = (): void => {
+          if (!owned() || this.requestContextDispatchVersion !== 1 ||
+              assertRequestContextCompatibility(this.db, 1) !== "active")
+            throw Error("request-context dispatcher is not ready");
+        };
+        if (!owned() || !fence.current()) throw Error("Request-context connection preparation unavailable");
+        return new RequestContextDrain(this.db, ready, owner);
+      },
       restore: () => {
         // Any durable activation is a one-way boundary, even if publication or the owner subsequently failed.
         if (!owned() || !fence.current() || readRequestContextInstallation(this.db) !== null)
