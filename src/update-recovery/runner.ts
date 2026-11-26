@@ -144,7 +144,7 @@ export function runRecovery(home: string, attemptId: string, d: RunnerDeps): num
       }
       case "resume-committing":
         // §7 (rev 13): the new version's own fleet start finishes a commit; the old kit never does.
-        return refuse(`it is committing ${read.attempt.to.version}; the fleet's own start finishes that. Start the fleet (\`agend start\`); nothing was changed.`);
+        return refuse(`it is committing ${read.attempt.to.version}, which only the new version's own fleet start finishes, never this recovery kit. Nothing was changed; if the fleet's start can't finish it, run \`agend update --resolve\`.`);
       default:
         // resume-abandoning: wired by a later S-252 part.
         return refuse(`it needs ${plan.kind.replace("resume-", "resuming ")} from ${read.attempt.stage}${plan.substep ? ` (${plan.substep})` : ""}, which this recovery kit can't do yet. Nothing was changed.`);

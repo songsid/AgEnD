@@ -227,6 +227,15 @@ describe("M-3770 2.5: an interrupted commit is finished by the new version's own
     const other = world();
     expect(resumeCommitting(other.home, ID, other.deps())).toBeNull();                             // open, but not committing
   });
+
+  it("cli.ts's fleet start acts on an admitted commit resume: refused until the fleet's commit hands exist, never let through as a plain start", () => {
+    // Source pin (Fable #4533): the gate's widened `ok` must not be read as a plain start. The `agend update` wiring
+    // replaces the refusal with the resumeCommitting(...) call; dropping both fails here.
+    const cli = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
+    const afterGate = cli.slice(cli.indexOf("const gate = fleetStartGate("), cli.indexOf("setProcessFleetLock(acquireFleetLock(DATA_DIR"));
+    expect(afterGate).toMatch(/if \(!gate\.ok\) throw new Error\(gate\.reason\);/);
+    expect(afterGate).toMatch(/if \(gate\.resumeCommitting\) (?:throw new Error\(`This fleet start is refused: update attempt \$\{gate\.resumeCommitting\} is committing|[^\n]*\bresumeCommitting\()/);
+  });
 });
 
 describe("M-3770 2.5: abandon before the snapshot", () => {
