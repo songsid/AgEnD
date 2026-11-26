@@ -9,7 +9,9 @@
  * real check (fake DNS and fetch). No cloudflared, no fleet, no network.
  */
 import { syntheticTunnelToken } from "./helpers/named-tunnel-token.js";
-import { request } from "node:http";
+import { createServer, request, type Server } from "node:http";
+import { handleSettingsRequest } from "../src/settings-api.js";
+import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PublicWebLink, publicLinkModeProblem, publicLinkPatchShape, publicLinkPreviewHostname } from "../src/public-web-link.js";
 import { PUBLIC_TUNNEL_TOKEN_ENV } from "../src/public-tunnel-config.js";
@@ -253,5 +255,44 @@ describe("M-3814: Check — the saved address, through the open fixed link, to t
     expect(codes(await f.testPreviewRoute()), "no fixed hostname: not in force").toEqual(["values:not-set"]);
     f.previewRouteTestRunning = true;
     expect(await f.testPreviewRoute()).toEqual({ busy: true });
+  });
+});
+
+describe("M-3814: the route — admin only, the page's shown address handed on, closed codes back", () => {
+  const servers: Server[] = [];
+  afterEach(() => { for (const s of servers.splice(0)) s.close(); });
+  async function api() {
+    const token = "c".repeat(48), sessions = new WebSessionStore({});
+    const testPreviewRoute = vi.fn(async (_input?: unknown) => ({ steps: [{ step: "values", ok: false, code: "not-saved" }], hostname: PREV, port: 19281 }));
+    const ctx = { webToken: token, webSessions: sessions, testPreviewRoute, logger: { warn() {}, info() {}, debug() {}, error() {} } } as never;
+    const server = createServer((req, res) => { if (!handleSettingsRequest(req, res, new URL(req.url!, origin), ctx)) { res.writeHead(404); res.end(); } });
+    servers.push(server);
+    await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
+    const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    const session = (tier: "admin" | "read" | "guest") => {
+      const made = sessions.create({ tier, surface: "local", label: "scratch", tokenEpoch: tokenEpoch(token), ...(tier === "guest" ? { owner: { adapterId: "web", userId: "g" } } : {}) });
+      return { cookie: `agend_session=${made.sessionId}`, origin, "x-agend-csrf": csrfTokenFor(made.sessionId), "content-type": "application/json" } as Record<string, string>;
+    };
+    const post = (headers: Record<string, string>, body: string) => new Promise<{ status: number; raw: string }>((resolve, reject) => {
+      const req = request(origin + "/api/settings/public-link/preview-test", { method: "POST", headers }, res => {
+        let raw = ""; res.on("data", c => { raw += c; }); res.on("end", () => resolve({ status: res.statusCode!, raw }));
+      }); req.on("error", reject); req.end(body);
+    });
+    return { post, session, testPreviewRoute };
+  }
+  it("an admin's request: the shown address reaches the check; the answer is its closed codes", async () => {
+    const h = await api();
+    const r = await h.post(h.session("admin"), JSON.stringify({ hostname: "other.example.net" }));
+    expect(r.status).toBe(200);
+    expect(h.testPreviewRoute).toHaveBeenCalledWith({ hostname: "other.example.net" });
+    expect(JSON.parse(r.raw)).toEqual({ steps: [{ step: "values", ok: false, code: "not-saved" }], hostname: PREV, port: 19281 });
+    await h.post(h.session("admin"), "{}");
+    expect(h.testPreviewRoute).toHaveBeenLastCalledWith({});
+  });
+  it("refused: read, guest and no session; bad JSON", async () => {
+    const h = await api();
+    for (const headers of [h.session("read"), h.session("guest"), { "content-type": "application/json" }]) expect((await h.post(headers, "{}")).status).toBeGreaterThanOrEqual(401);
+    expect((await h.post(h.session("admin"), "{not json")).status).toBe(400);
+    expect(h.testPreviewRoute).not.toHaveBeenCalled();
   });
 });
