@@ -6457,7 +6457,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.pendingNonceButtons.delete(nonce);
         if (entry.timer) clearTimeout(entry.timer);
         // #4438 review: a card still being posted has no message yet; postHeldTicketCard retires it once it has one.
-        if (entry.messageId) void this.retireNonceButtons(entry, entry.messageId, heldCardOutcome(ticket.state, !!ticket.requestContext));
+        if (entry.messageId) void this.removeDecidedContactCard(entry, entry.messageId, heldCardOutcome(ticket.state, !!ticket.requestContext));
       }
       return;
     }
@@ -6536,13 +6536,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
       if (!entry.messageId) return;   // never an edit without a message
       closed = true;
-      void this.retireNonceButtons(entry, entry.messageId, fresh && fresh.state !== "pending" ? heldCardOutcome(fresh.state, !!fresh.requestContext) : t("contactProposal.expired"));
+      if (fresh && fresh.state !== "pending") void this.removeDecidedContactCard(entry, entry.messageId, heldCardOutcome(fresh.state, !!fresh.requestContext));
+      else void this.retireNonceButtons(entry, entry.messageId, t("contactProposal.expired"));
     };
     void posted.then(retire, () => {});
     try { const nonce = await withinBudget(posted, performance.now() + 5000);
       if (!current() || this.contactService().host.store.get(ticket.id)?.state !== "pending") { retire(nonce); throw Error("conflict"); }
       return { status: "awaiting_platform_admin_confirmation" };
     } catch (error) { retired = true; throw error; }
+  }
+  /**
+   * M-3820 (the user, 11-26: General filled with cards edited to "approved elsewhere"): a contact card whose request was
+   * decided or expired somewhere else — the web, another card, a General proposal — is deleted; the card a person pressed
+   * keeps its outcome, and the decision stays in the agent's Permissions history. One try: a delete the platform refuses
+   * (no permission, a Telegram message over 48 h old, a gateway not ready) falls back to the edit it had before.
+   */
+  private async removeDecidedContactCard(entry: NonceButtonEntry, messageId: string, text: string): Promise<void> {
+    if (!entry.retire && entry.adapter.deleteMessage) {
+      try {
+        await entry.adapter.deleteMessage(entry.chatId, messageId, entry.threadId);
+        this.webPromptGone(entry, text);
+        return;
+      } catch (err) {
+        this.logger.info({ err: (err as Error)?.message, instanceName: entry.instanceName }, "Could not delete a contact card decided elsewhere; editing it instead");
+      }
+    }
+    await this.retireNonceButtons(entry, messageId, text);
   }
   private async postHeldTicketCard(ticket: ContactTicket): Promise<void> {
     const found = this.contactCardRoute(ticket.target);
@@ -6570,7 +6589,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fresh = this.contactService().host.store.get(ticket.id), armed = this.pendingNonceButtons.get(nonce) === entry;
     if (armed && fresh?.state === "pending") return;
     if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
-    await this.retireNonceButtons(entry, entry.messageId, !fresh || fresh.state === "pending" ? t("contactHeld.expired") : heldCardOutcome(fresh.state, !!fresh.requestContext));
+    if (!fresh || fresh.state === "pending") await this.retireNonceButtons(entry, entry.messageId, t("contactHeld.expired"));
+    else await this.removeDecidedContactCard(entry, entry.messageId, heldCardOutcome(fresh.state, !!fresh.requestContext));
   }
   private async handleContactTicketCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
     if (!data.callbackData.startsWith(CONTACT_TICKET_PREFIX)) return false;
