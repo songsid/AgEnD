@@ -6,6 +6,7 @@ import { readBoundedWebBody } from "./web-body.js";
 const label = z.string().min(1).max(256);
 export const RequestContextControlViewSchema = z.strictObject({
   revision: z.number().int().nonnegative(), enabled: z.boolean(), everActivated: z.boolean(), attempted: z.boolean(),
+  restartCount: z.number().int().positive().max(1000).optional(),
   goBack: z.strictObject({ attemptIds: z.array(z.string().regex(/^\d{8}T\d{6}Z-[a-f0-9]{8}$/)).min(1).max(1024), availableUntil: z.iso.datetime(), timeZone: label }).optional(),
   phase: z.enum(["on", "off", "draining", "blocked"]), canChange: z.boolean(),
   blockers: z.array(z.strictObject({ id: label, kind: z.enum(["legacy", "peers", "owners", "recovery", "update", "returns", "tickets", "work"]),

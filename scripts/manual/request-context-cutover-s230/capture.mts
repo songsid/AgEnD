@@ -38,17 +38,18 @@ fm.requestContextControl = {
 fm.needsYouItems = () => view.phase === "blocked" ? [{ id: "cutover-fixture", type: "config", reason: "request_context_cutover", instance: "", detail: "", since: Date.now(), requestContextCutover: structuredClone(view) }] : [];
 const never = () => { throw Error("Capture fixture must never start, mutate or deliver to an agent"); };
 fm.deliverToInstance = never; fm.deliverHumanToInstance = never; fm.saveFleetConfig = never;
-const allStates = ["on", "off", "off-before", "draining", "blocked-legacy", "blocked-peers", "blocked-owners", "blocked-recovery", "on-confirm", "on-confirm-go-back", "stop-waiting-confirm", "stop-work-confirm", "blocked-update", "off-confirm", "unconfirmed-change", "general-notice"];
+const allStates = ["on", "off", "off-before", "draining", "blocked-legacy", "blocked-peers", "blocked-owners", "blocked-recovery", "on-confirm", "on-confirm-go-back", "on-confirm-restart", "on-confirm-go-back-restart", "stop-waiting-confirm", "stop-work-confirm", "blocked-update", "off-confirm", "unconfirmed-change", "general-notice"];
 const states = process.env.STATES ? allStates.filter(state => process.env.STATES!.split(",").includes(state)) : allStates;
 try {
   for (const variant of matrix()) for (const state of states) {
     failAfterWrite = state === "unconfirmed-change";
     const blocked = state.startsWith("blocked-") || state === "stop-work-confirm", kind = state === "stop-work-confirm" ? "recovery" : state.slice(8), phase = blocked ? "blocked" : (state.startsWith("off") && state !== "off-confirm" || state.startsWith("on-confirm")) ? "off" : ["draining", "stop-waiting-confirm"].includes(state) ? "draining" : "on";
-    view = { revision: ++revision, enabled: !["off", "off-before", "draining", "on-confirm", "on-confirm-go-back", "stop-waiting-confirm"].includes(state), attempted: state !== "off-before", everActivated: state === "blocked-recovery" || state === "stop-work-confirm" || !blocked && !["off-before", "on-confirm", "on-confirm-go-back"].includes(state), phase, canChange: true,
+    view = { revision: ++revision, enabled: !["off", "off-before", "draining", "on-confirm", "on-confirm-go-back", "on-confirm-restart", "on-confirm-go-back-restart", "stop-waiting-confirm"].includes(state), attempted: state !== "off-before", everActivated: state === "blocked-recovery" || state === "stop-work-confirm" || !blocked && state !== "off-before" && !state.startsWith("on-confirm"), phase, canChange: true,
       blockers: blocked ? [{ id: "readiness-fixture", kind, labels: kind === "peers" ? ["Demo Windows computer"] : kind === "legacy" ? ["Demo worker → Demo helper #R1234"] : ["owners", "recovery"].includes(kind) ? ["Demo worker"] : [], ...(kind === "recovery" ? { action: "stop-work" } : kind === "legacy" ? { action: "inspect" } : {}) }]
         : ["draining", "stop-waiting-confirm"].includes(state) ? [{ id: "return-fixture", kind: "returns", labels: ["Demo worker"], action: "stop-waiting" }] : [] };
     if (kind === "owners") view.blockers = [{ id: "working-fixture", kind: "owners", ownerCause: "work", labels: ["Demo worker"], agents: [{ id: "worker", label: "Demo worker" }] }, { id: "update-fixture", kind: "owners", ownerCause: "update", labels: ["General"], agents: [{ id: "general", label: "General" }] }];
-    if (state === "on-confirm-go-back") view.goBack = { attemptIds: ["20261126T010203Z-0a1b2c3d"], availableUntil: "2026-12-03T02:30:00Z", timeZone: "Asia/Taipei" };
+    if (state.endsWith("-restart")) view.restartCount = 2;
+    if (state.startsWith("on-confirm-go-back")) view.goBack = { attemptIds: ["20261126T010203Z-0a1b2c3d"], availableUntil: "2026-12-03T02:30:00Z", timeZone: "Asia/Taipei" };
     const tag = `${caseName(variant)}-${state}`, path = blocked ? "/ui/needs" : state === "general-notice" ? "/ui/chat/general" : "/settings/access#request-context";
     fm.webChatHistory.forget("general");
     if (state === "general-notice") fm.emitSseEvent("message", { instance: "general", sender: "AgEnD", role: "status", text: requestContextEnabledNotice(variant.lang), ts: new Date().toISOString(), wrap: true });
@@ -56,7 +57,7 @@ try {
     try {
       const dictionary = await page.evaluate(async () => {
         const m = await import("/ui/js/request-context-control.js");
-        return { title: m.requestContextControlText("title"), off: m.requestContextControlText("off"), offBefore: m.requestContextControlText("offBefore"), notice: m.requestContextControlText("notice"), floor: m.requestContextControlText("floor"), floorBefore: m.requestContextControlText("floorBefore"), previous: m.requestContextControlText("previous"), failed: m.requestContextControlText("failed") };
+        return { title: m.requestContextControlText("title"), off: m.requestContextControlText("off"), offBefore: m.requestContextControlText("offBefore"), notice: m.requestContextControlText("notice"), floor: m.requestContextControlText("floor"), floorBefore: m.requestContextControlText("floorBefore"), restart: m.requestContextControlText("restart", 2), previous: m.requestContextControlText("previous"), failed: m.requestContextControlText("failed") };
       });
       check(`${tag}: General words match server`, dictionary.notice === requestContextEnabledNotice(variant.lang));
       if (state === "general-notice") {
@@ -85,10 +86,11 @@ try {
           check(`${tag}: stale passive status cannot roll back the switch`, await card.locator("input").isChecked());
         }
         if (state === "stop-waiting-confirm") { const before = writes; await card.locator(".request-context-actions button").first().click(); await page.getByRole("dialog").waitFor(); check(`${tag}: no closure before confirmation`, before === writes); check(`${tag}: warning confirmation`, await page.locator('[data-confirm="yes"]').evaluate(el => el.classList.contains("btn-danger"))); }
-        if (["on-confirm", "on-confirm-go-back", "off-confirm", "unconfirmed-change"].includes(state)) {
+        if (state.startsWith("on-confirm") || ["off-confirm", "unconfirmed-change"].includes(state)) {
           const before = writes; await card.locator("label").click();
           await page.getByRole("dialog").waitFor();
           check(`${tag}: no write before confirmation`, writes === before);
+          if (state.startsWith("on-confirm")) check(`${tag}: restart disclosure only when needed`, (await page.getByRole("dialog").innerText()).includes(dictionary.restart) === !!view.restartCount);
           if (state === "off-confirm") check(`${tag}: Off confirm is neutral`, !await page.locator('[data-confirm="yes"]').evaluate(el => el.classList.contains("btn-danger")));
           check(`${tag}: no old-rules promise`, !(await page.getByRole("dialog").innerText()).includes("previous"));
           if (state === "unconfirmed-change") {

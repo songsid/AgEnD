@@ -132,3 +132,11 @@ it("B stays quiet before an owner enable attempt; a read-only check cannot activ
   expect(r.host.recheck).toHaveBeenCalledOnce(); expect(r.host.change).not.toHaveBeenCalled();
   expect(r.view.phase).toBe("off");
 });
+
+it("the relaunch count comes from the owner-scoped view and cannot be set by the decision body", async () => {
+  const r = rig(); r.view.restartCount = 2;
+  expect((await r.request().done()).body).toMatchObject({ restartCount: 2, canChange: false });
+  r.verify(); expect((await r.request("POST", { revision: 2, action: "enable", restartCount: 0 }).done()).status).toBe(400);
+  expect(r.host.change).not.toHaveBeenCalled();
+  r.revoke(); expect((await r.request().done()).status).toBe(403);
+});
