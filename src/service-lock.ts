@@ -10,7 +10,7 @@ import { ensureAgendHome } from "./agend-home.js";
 import { join } from "node:path";
 import { acquireInstallLock, sameStartText, type InstallLock, type InstallLockDeps } from "./install-lock.js";
 import { lockHolderAt } from "./home-update-lock.js";
-import { readCurrent } from "./update-journal.js";
+import { readCurrent, readRunnerRecord, type ProcessStartRecord } from "./update-journal.js";
 
 export const SERVICE_LOCK_FILE = ".service.lock";
 export const SERVICE_LOCK_TOKEN_ENV = "AGEND_SERVICE_LOCK_TOKEN";
@@ -35,7 +35,7 @@ export type ServiceAdmission = { ok: true; release(): void; viaToken: boolean } 
  * later, while this command still runs.
  *
  * The token admits only the open attempt's own updater's child: the live holder's record is `attempt:<id>`, `current`
- * names that attempt open, and the holder is that attempt's updater (pid and start). (The recovery runner, 2.1c, joins.)
+ * names that attempt open, and the holder is that attempt's updater or its recorded recovery runner (pid and start).
  */
 export function admitServiceCommand(home: string, command: string, deps: InstallLockDeps, env: NodeJS.ProcessEnv = process.env): ServiceAdmission {
   try { ensureAgendHome(home); }
@@ -64,9 +64,12 @@ function tokenBound(home: string, record: { pid: number; processStart: string; t
   if (!id) return false;
   const read = readCurrent(home);
   if (read.state !== "open" || read.attempt.id !== id) return false;
-  const u = read.attempt.updater;
-  if (u.pid !== record.pid || !sameStartText(u.start.processStart, record.processStart)) return false;
-  return u.start.startTicks === record.startTicks && u.start.bootId === record.bootId;
+  // The holder is the attempt's updater, or the recovery runner recorded for it (§6.2) — by its full identity.
+  const same = (who: { pid: number; start: ProcessStartRecord }) => who.pid === record.pid && sameStartText(who.start.processStart, record.processStart)
+    && who.start.startTicks === record.startTicks && who.start.bootId === record.bootId;
+  if (same(read.attempt.updater)) return true;
+  const runner = readRunnerRecord(home, id);
+  return runner !== null && runner !== "unreadable" && same(runner);
 }
 
 function refusal(home: string, command: string, spec: string): string {
