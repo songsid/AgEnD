@@ -7,16 +7,17 @@ import {createHash} from "node:crypto";
 import {afterEach,expect,it,vi} from "vitest";
 vi.mock("../src/child-process.js",()=>({spawn:vi.fn(),execFile:vi.fn()}));
 import {spawn} from "../src/child-process.js";
-import {prepareNativeExecInputWrite,claimNativeExecInput,NativeExecInputWitness,nativeExecInputRequestDigest,validateNativeExecInputProof,type NativeExecInputProof} from "../src/native-exec-input.js";
+import {prepareNativeExecInputWrite,claimNativeExecInput,NativeExecInputWitness,nativeExecInputBytes,nativeExecInputRequestDigest,validateNativeExecInputProof,type NativeExecInputProof} from "../src/native-exec-input.js";
 import {WindowsCliBridge} from "../src/windows-cli.js";
 import {nativeProvider} from "../src/windows-cli-providers.js";
 const task={requestId:"12345678-1234-4321-abcd-123456789012",cli:"codex",cwd:"C:\\Work",prompt:"Exact user input",sandbox:"read-only"}as const;
 const roots:string[]=[];
 afterEach(()=>{vi.clearAllMocks();for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});});
 function witness(transport:"stdin-text"|"stdin-json"|"file"="stdin-text"){
- const options={context:"Exact context",resumeSessionId:"12345678-1234-4321-abcd-123456789013"},claim=claimNativeExecInput(task,options),published=vi.fn();
- const bytes=Buffer.from('actual provider bytes\n{"user":"input"}');
- return {options,claim,published,bytes,value:new NativeExecInputWitness(claim,task,options,transport,bytes,published)};
+ const actual={...task,cli:transport==="file"?"grok"as const:transport==="stdin-json"?"antigravity"as const:task.cli,sandbox:transport==="stdin-text"?task.sandbox:"workspace-write"as const};
+ const options={context:"Exact context",resumeSessionId:"12345678-1234-4321-abcd-123456789013"},claim=claimNativeExecInput(actual,options),published=vi.fn();
+ const bytes=nativeExecInputBytes(actual,options);
+ return {options,claim,published,bytes,value:new NativeExecInputWitness(claim,actual,options,transport,bytes,published)};
 }
 it.each(["stdin-text","stdin-json"]as const)("%s requires both spawn and successful stdin completion, in either order",transport=>{
  for(const order of [true,false]){const w=witness(transport);if(order)w.value.spawnedMain();else w.value.stdinFinished();expect(w.published).not.toHaveBeenCalled();
@@ -53,13 +54,13 @@ it("the real bridge binds the worker pipe to the run claim and preserves one pos
  r.service.start(task,()=>true,{...options,execInput:claim,onInputWritten:written,onSettled:settled});await vi.waitFor(()=>expect(spawn).toHaveBeenCalledOnce());
  expect(JSON.parse(r.child.stdin.read().toString())).toMatchObject({execInput:claim,context:options.context,task});expect(written).not.toHaveBeenCalled();
  r.child.send({type:"started"});expect(written).not.toHaveBeenCalled();let proof!:NativeExecInputProof;
- const w=new NativeExecInputWitness(claim,task,options,nativeProvider(task.cli).promptTransport,"actual stdin",value=>{proof=value;});w.spawnedMain();w.stdinFinished();
+ const w=new NativeExecInputWitness(claim,task,options,nativeProvider(task.cli).promptTransport,nativeExecInputBytes(task,options),value=>{proof=value;});w.spawnedMain();w.stdinFinished();
  r.child.send({type:"input-written",proof});r.child.send({type:"input-written",proof});expect(written).toHaveBeenCalledOnce();r.child.send({type:"finished",code:null,cancelled:true});r.child.close();
  await vi.waitFor(()=>expect(settled).toHaveBeenCalledOnce());expect(r.service.get(task.requestId)).toMatchObject({status:"cancelled",execInputProof:proof});
 });
 it.each(["no-spawn","wrong-run","unexpected"])("the real bridge refuses %s worker proof without granting input delivery",async kind=>{
  const r=bridge(),claim=claimNativeExecInput(task,{}),written=vi.fn();r.service.start(task,()=>true,kind==="unexpected"?{}:{execInput:claim,onInputWritten:written});await vi.waitFor(()=>expect(spawn).toHaveBeenCalledOnce());
- if(kind!=="no-spawn")r.child.send({type:"started"});const proof={...claim,transport:nativeProvider(task.cli).promptTransport,inputSha256:"a".repeat(64),...(kind==="wrong-run"?{token:claimNativeExecInput(task,{}).token}:{})};
+ if(kind!=="no-spawn")r.child.send({type:"started"});const proof={...claim,transport:nativeProvider(task.cli).promptTransport,inputSha256:claim.wireSha256,...(kind==="wrong-run"?{token:claimNativeExecInput(task,{}).token}:{})};
  r.child.send({type:"input-written",proof});expect(written).not.toHaveBeenCalled();expect(r.service.get(task.requestId)?.execInputProof).toBeUndefined();r.child.close();
 });
 it("a same-id retry with changed composition or a different claim conflicts before another worker",async()=>{
@@ -80,4 +81,16 @@ it.each(["write","error","close"])("the actual worker pipe helper waits for its 
 it("file input is observed before the worker's cancel-on-spawn listener, with no stdin flush standing in for it",()=>{
  const child=Object.assign(new EventEmitter(),{stdin:new PassThrough()}),w=witness("file");prepareNativeExecInputWrite(child as any,w.value,"");
  child.once("spawn",()=>{child.emit("close",0);});child.emit("spawn");expect(w.published).toHaveBeenCalledOnce();
+});
+
+it("the pre-claim wire digest must equal the actual final provider bytes, not merely the logical request hash",()=>{
+ const w=witness();expect(()=>new NativeExecInputWitness(w.claim,task,w.options,"stdin-text",Buffer.concat([w.bytes,Buffer.from("changed")]),()=>{})).toThrow("bytes differ");
+ w.value.spawnedMain();w.value.stdinFinished();const proof=w.published.mock.calls[0][0];expect(proof.inputSha256).toBe(w.claim.wireSha256);
+ expect(()=>validateNativeExecInputProof({...proof,inputSha256:"a".repeat(64)},w.claim)).toThrow("bytes differ");
+ expect(()=>claimNativeExecInput(task,{personal:true})).toThrow("owned staged bytes");
+});
+
+it("an empty context serializes exactly like its absent worker suffix",async()=>{
+ const r=bridge(),claim=claimNativeExecInput(task,{context:""});r.service.start(task,()=>true,{context:"",execInput:claim,onInputWritten:()=>{}});await vi.waitFor(()=>expect(spawn).toHaveBeenCalledOnce());
+ const sent=JSON.parse(r.child.stdin.read().toString());expect(sent.context).toBeUndefined();expect(nativeExecInputRequestDigest(sent.task,sent)).toBe(claim.requestSha256);r.child.close();
 });

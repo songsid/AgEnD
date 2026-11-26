@@ -1,3 +1,4 @@
+import {nativeExecInputRequestDigest,validateNativeExecInputClaim,validateNativeExecInputProof,type NativeExecInputClaim} from "./native-exec-input.js";
 import type { NativePaneRecovery } from "./native-pane-recovery.js";
 /** Named Windows CLI conversations; independent of Linux/tmux instances. Local administrator only. */
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
@@ -6,10 +7,10 @@ import { dirname, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { maxAgentsPerMachine } from "./runtime-switches.js";
 import { getAgendHome } from "./paths.js";
-import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker.js";
+import { validWindowsAgentId, validWindowsDirectory, type NativeTaskInput } from "./windows-cli-worker.js";
 import { validNativeSessionId } from "./windows-cli-providers.js";
 import { validateRuntimePaneSnapshot, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
-import { windowsBridgeFor, type WindowsCliExecutor, type WindowsCliTask } from "./windows-cli.js";
+import { windowsBridgeFor, type WindowsCliExecutor, type WindowsCliTask, type WindowsRunOptions } from "./windows-cli.js";
 import { isNativeProviderId, nativeProvider, validateNativeModel, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
 
 export interface WindowsTurn { id: string; prompt: string; output: string; status: string; startedAt: number; finishedAt?: number; error?: string }
@@ -38,8 +39,14 @@ export class MachineSlotLimitError extends Error {
   }
 }
 export interface WindowsAgentPatch { name?: string; cwd?: string; description?: string; instructions?: string; sandbox?: WindowsAgent["sandbox"]; cli?: NativeProviderId; model?: string }
-export interface WindowsAgentSendOptions { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; credentialProfile?: string }
-interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<string, { agentId: string; digest: string }> }
+export interface WindowsAgentSendOptions extends Pick<WindowsRunOptions,"execInput"|"onInputWritten"> { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; credentialProfile?: string }
+interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<string, { agentId: string; digest: string; execInput?:Readonly<NativeExecInputClaim>;execOptionsSha256?:string }> }
+/** The preview and actual bridge invocation share one formatter; no second instruction/context composition. */
+export function windowsAgentExecutionTask(agent:Pick<WindowsAgent,"cli"|"cwd"|"sandbox"|"model"|"instructions">,requestId:string,prompt:string):NativeTaskInput {
+ return {requestId,cli:agent.cli,...(agent.model?{model:agent.model}:{}),cwd:agent.cwd,sandbox:agent.sandbox,
+  prompt:agent.instructions?`Agent instructions:\n${agent.instructions}\n\nUser task:\n${prompt}`:prompt};
+}
+const execOptionsDigest=(options:WindowsAgentSendOptions)=>createHash("sha256").update(JSON.stringify([options.context??null,options.credentialProfile??null])).digest("hex");
 const idPattern = /^[a-f0-9-]{36}$/i;
 const shortText = (value: unknown, limit: number): value is string => typeof value === "string" && value.length <= limit && !value.includes("\0");
 export class WindowsAgents {
@@ -58,6 +65,9 @@ export class WindowsAgents {
       const value = JSON.parse(readFileSync(this.file, "utf8"));
       if (value.version !== 1 || !Array.isArray(value.agents) || !value.requests || typeof value.requests !== "object") throw new Error("Invalid Windows agent store");
       this.data = value;
+      for(const [id,request]of Object.entries(this.data.requests))if(request.execInput!==undefined){
+        if(validateNativeExecInputClaim(request.execInput).requestId!==id||typeof request.execOptionsSha256!=="string"||!/^[a-f0-9]{64}$/.test(request.execOptionsSha256))throw Error("Invalid native exec input identity");
+      }
       // Version 1 profiles created before provider selection were all Codex conversations.
       for (const agent of this.data.agents) { agent.cli ??= "codex"; if (!isNativeProviderId(agent.cli)) throw new Error("Invalid Windows agent CLI"); }
     }
@@ -300,13 +310,18 @@ export class WindowsAgents {
       || typeof v.requestId !== "string" || !idPattern.test(v.requestId) || !shortText(v.prompt, 8000) || !v.prompt.trim()) throw new Error("Invalid Windows agent message");
     const requestId = v.requestId, prompt = v.prompt;
     const digest = createHash("sha256").update(prompt).digest("hex");
+    const execInput=options.execInput===undefined?undefined:validateNativeExecInputClaim(options.execInput);
+    if(execInput&&!options.onInputWritten||!execInput&&options.onInputWritten)throw Error("Native exec input claim is unavailable");
     const old = Object.hasOwn(this.data.requests, requestId) ? this.data.requests[requestId] : null;
     if (old) {
+      if(JSON.stringify(old.execInput??null)!==JSON.stringify(execInput??null)||execInput&&old.execOptionsSha256!==execOptionsDigest(options))throw Error("requestId belongs to a different native input claim");
       if (old.agentId !== id || old.digest !== digest) throw new Error("requestId belongs to a different message");
       const turn = this.get(id).turns.find(t => t.id === requestId);
       if (!turn) throw new Error("This message was already sent; its visible history has expired");
       return turn;
     }
+    const executionTask=windowsAgentExecutionTask(agent,requestId,prompt);
+    if(execInput&&(execInput.requestId!==requestId||execInput.requestSha256!==nativeExecInputRequestDigest(executionTask,{...options,resumeSessionId:agent.threadId})))throw Error("Native exec input composition changed");
     if (agent.paneLaunchId) throw new Error("This Windows profile is reserved by its persistent pane");
     if (agent.activeId) throw new Error(this.get(id).blocked ? "Check Windows processes and unlock this agent before continuing" : "This Windows agent is still working");
     if (agent.paused) throw new Error("This Windows agent is paused; resume it before sending work");
@@ -317,15 +332,20 @@ export class WindowsAgents {
       agent.activeId = requestId;
       agent.turns.push({ id: requestId, prompt, output: "", status: "starting", startedAt: Date.now() });
       if (agent.turns.length > 10) agent.turns.shift();
-      this.data.requests[requestId] = { agentId: id, digest };
+      this.data.requests[requestId] = { agentId: id, digest,...(execInput?{execInput,execOptionsSha256:execOptionsDigest(options)}:{}) };
     }); } catch(error) { this.launching.delete(requestId); throw error; }
+    let inputWritten=false;
     try {
-      return this.bridge.start({ requestId, cli: agent.cli, ...(agent.model ? { model: agent.model } : {}), cwd: agent.cwd, sandbox: agent.sandbox,
-        prompt: agent.instructions ? `Agent instructions:\n${agent.instructions}\n\nUser task:\n${prompt}` : prompt }, authorized, {
+      return this.bridge.start(executionTask, authorized, {
         resumeSessionId: agent.threadId,
         ...(agent.machineId ? {machineId:agent.machineId} : {}),
         ...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),
         ...(options.credentialProfile ? {credentialProfile:options.credentialProfile} : {}),
+        ...(execInput?{execInput,onInputWritten:(value:import("./native-exec-input.js").NativeExecInputProof)=>{
+          const proof=validateNativeExecInputProof(value,execInput),current=this.find(id),request=this.data.requests[requestId];
+          if(current.activeId!==requestId||request?.agentId!==id||request.digest!==digest||JSON.stringify(request.execInput)!==JSON.stringify(execInput))throw Error("Native exec input owner changed");
+          if(inputWritten)return;inputWritten=true;options.onInputWritten!(proof);
+        }}:{}),
         onSettled: task => { try { this.change(() => {
           const current = this.find(id), turn = current.turns.find(t => t.id === requestId)!;
           Object.assign(turn, { output: task.output, status: task.status, finishedAt: task.finishedAt, error: task.error });

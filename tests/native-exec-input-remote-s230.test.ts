@@ -10,7 +10,7 @@ import {RuntimeCoordinator} from "../src/runtime-coordinator.js";
 import {RuntimeClient,type RuntimeBridge} from "../src/runtime-client.js";
 import {RuntimeClientStore} from "../src/runtime-client-store.js";
 import {RuntimeWindowsBridge} from "../src/runtime-windows-bridge.js";
-import {claimNativeExecInput,NativeExecInputWitness,NATIVE_EXEC_INPUT_CAPABILITY,type NativeExecInputProof} from "../src/native-exec-input.js";
+import {nativeExecInputBytes,claimNativeExecInput,NativeExecInputWitness,NATIVE_EXEC_INPUT_CAPABILITY,type NativeExecInputProof} from "../src/native-exec-input.js";
 import type {NativeTaskInput} from "../src/windows-cli-worker.js";
 import type {WindowsCliTask,WindowsRunOptions} from "../src/windows-cli.js";
 const homes:string[]=[],clients:RuntimeClient[]=[],hubs:RuntimeCoordinator[]=[],servers:Server[]=[],routers:RuntimeWindowsBridge[]=[];
@@ -25,7 +25,7 @@ class Worker implements RuntimeBridge {
  cancel(id:string){const task=this.tasks.get(id)!;Object.assign(task,{status:"cancelled",finishedAt:2,outcomeConfirmed:true});this.options.get(id)?.onSettled?.(structuredClone(task));return structuredClone(task);}
  close(){for(const [id,t]of this.tasks)if(!t.finishedAt)this.cancel(id);}releaseUnknown(){}
  input(task:NativeTaskInput,wrong=false){const options=this.options.get(task.requestId)!;let proof!:NativeExecInputProof;
-  const witness=new NativeExecInputWitness(options.execInput!,task,options,"stdin-text","actual provider pipe",value=>{proof=value;});witness.spawnedMain();witness.stdinFinished();
+  const witness=new NativeExecInputWitness(options.execInput!,task,options,"stdin-text",nativeExecInputBytes(task,options),value=>{proof=value;});witness.spawnedMain();witness.stdinFinished();
   if(wrong)proof={...proof,token:randomUUID()};this.tasks.get(task.requestId)!.execInputProof=proof;options.onInputWritten?.(proof);return proof;}
 }
 async function fixture(coordinatorOn=true,clientOn=true){
@@ -60,7 +60,7 @@ it("a different run token in a paired worker's status never satisfies the Fleet'
 });
 it("a native proof retained in a v1 runtime journal is strict and cannot be moved to another task",()=>{
  const root=home(),store=new RuntimeClientStore(root),task={id:randomUUID(),cli:"codex",cwd:"C:\\Fixture",sandbox:"read-only",status:"running",output:"",startedAt:1}as const;
- store.accept(task,"a".repeat(64));const proof={v:1,requestId:task.id,token:randomUUID(),requestSha256:"b".repeat(64),transport:"stdin-text",inputSha256:"c".repeat(64)}as const;
+ store.accept(task,"a".repeat(64));const proof={v:1,requestId:task.id,token:randomUUID(),requestSha256:"b".repeat(64),wireSha256:"c".repeat(64),transport:"stdin-text",inputSha256:"c".repeat(64)}as const;
  store.update({...task,execInputProof:proof});expect(new RuntimeClientStore(root).get(task.id)?.task.execInputProof).toEqual(proof);
  expect(()=>store.update({...task,execInputProof:{...proof,token:randomUUID()}})).toThrow("proof changed");
  const file=join(root,"jobs.json"),raw=JSON.parse(readFileSync(file,"utf8"));raw.jobs[task.id].task.execInputProof.requestId=randomUUID();writeFileSync(file,JSON.stringify(raw));expect(()=>new RuntimeClientStore(root)).toThrow("another run");
