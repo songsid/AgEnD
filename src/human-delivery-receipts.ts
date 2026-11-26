@@ -63,15 +63,18 @@ export function nativeHumanOrigin(platform: "telegram" | "discord", adapterId: s
 }
 
 /** Ephemeral ingress evidence stays out of the strict stored origin and cannot be supplied by body/meta text. */
-const webIngress = new WeakMap<HumanOrigin, Readonly<{guest:boolean}>>();
-export function admittedHumanWebIngress(origin:HumanOrigin):Readonly<{guest:boolean}>|null {
+const webIngress = new WeakMap<HumanOrigin, Readonly<{guest:boolean;sessionHandle?:string}>>();
+export function admittedHumanWebIngress(origin:HumanOrigin):Readonly<{guest:boolean;sessionHandle?:string}>|null {
   return webIngress.get(origin)??null;
 }
 /** Platform actor fields stay null. Independent session recognition never grants web-verified authority. */
-export function webHumanOrigin(action = false, authority?: HumanAuthority, identity?: WebSessionIdentity, guest?: boolean): HumanOrigin {
+export function webHumanOrigin(action = false, authority?: HumanAuthority, identity?: WebSessionIdentity, guest?: boolean, sessionHandle?: string): HumanOrigin {
   const origin:HumanOrigin={ platform: "web", adapter_id: null, user_id: null, username: null,
     platform_message_id: null, ingress: action ? "action" : "web", ...(authority ? { authority } : {}), ...(identity ? { web_identity: { ...identity } } : {}) };
-  if(guest!==undefined)webIngress.set(origin,Object.freeze({guest}));
+  // The admitted route is not account recognition or authority, and never enters the receipt's origin JSON.
+  // An invalid/mismatched private fact supplies no scoped-ingress proof; legacy receipt rendering stays unchanged.
+  if(guest!==undefined&&(sessionHandle===undefined||/^[a-f0-9]{16}$/.test(sessionHandle)&&(!identity||identity.session_handle===sessionHandle)))
+    webIngress.set(origin,Object.freeze({guest,...(sessionHandle?{sessionHandle}:{})}));
   return origin;
 }
 

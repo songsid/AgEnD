@@ -84,7 +84,7 @@ it.each(["native","free-room","restricted-room","plain-web","guest-known","guest
   requestContextPolicy:{installedMode:()=>"active"},adapters:new Map([["fixture",{id:"fixture",type:"discord"}]]),worlds:new Map(),fleetConfig:{instances:{}},
   contactRoom:()=>room,contactGeneration:()=>"agent-incarnation",deliverToInstance:vi.fn(async()=>true)});
  m.requestContextHumanAdmission=m.makeRequestContextHumanAdmission();
- const origin=kind==="plain-web"||kind.startsWith("guest-")?webHumanOrigin(false,undefined,kind==="guest-unknown"?undefined:{platform:"discord",adapter_id:"fixture",user_id:"demo-person",session_handle:"0123456789abcdef"},kind.startsWith("guest-")):f.native;
+ const origin=kind==="plain-web"||kind.startsWith("guest-")?webHumanOrigin(false,undefined,kind==="guest-unknown"?undefined:{platform:"discord",adapter_id:"fixture",user_id:"demo-person",session_handle:"0123456789abcdef"},kind.startsWith("guest-"),"0123456789abcdef"):f.native;
  await m.deliverHumanToInstance("worker",{type:"fleet_inbound",content:"synthetic body",meta:{chat_id:"private-room",thread_id:"topic",web_guest:kind==="native"?"1":"0"}},origin,"synthetic body");
  const payload=m.deliverToInstance.mock.calls[0][1],receipt=f.box.getHumanReceipt(payload.meta.human_receipt_id)!,captured=f.box.requestContextHumans.read(receipt.receipt_id)!;
  expect(captured.context.ingress).toBe(kind.startsWith("guest-")?"guest":kind==="free-room"?"free-room":kind==="restricted-room"?"restricted-room":"owner");
@@ -171,4 +171,20 @@ it("unknown Free recovery reaches one approval when its original source is curre
  const m:any=Object.assign(Object.create(FleetManager.prototype),{deliveryOutbox:f.box,contactRoom:()=>({restrictedMode:false}),contactGeneration:()=>"agent-incarnation",hubAgentConfig:()=>({working_directory:"private-fixture"}),fleetConfig:{instances:{worker:{}}},classicChannels:{getAll:()=>[]}});
  expect(m.requestContextNativeAdmissionCurrent(context)).toBe(true);expect(m.requestContextSourceRoomRestricted(context)).toBeUndefined();
  m.contactGeneration=()=>"replacement";expect(m.requestContextNativeAdmissionCurrent(context)).toBe(false);
+});
+
+it.each([false,true])("unknown web admission rechecks its captured browser and current guest scope guest=%s",guest=>{
+ const f=rig(),handle="0123456789abcdef",origin=webHumanOrigin(false,undefined,undefined,guest,handle);
+ const r=f.capture(origin,{web:admittedHumanWebIngress(origin),route:{kind:"web",sessionHandle:handle}});
+ let current=true,granted=true;const session:any={tier:guest?"guest":"admin",owner:{adapterId:"fixture",userId:"demo-person"},handle};
+ const m:any=Object.assign(Object.create(FleetManager.prototype),{deliveryOutbox:f.box,contactRoom:()=>null,contactGeneration:()=>"agent-incarnation",fleetConfig:{instances:{worker:{}},web:{guests:{enabled:true}}},webSessions:{findByHandle:vi.fn((value:string)=>value===handle?session:null),isCurrent:()=>current},guestScope:()=>new Set(granted?["worker"]:[]),webSessionIdentity:()=>{throw Error("No account recognition is needed for the admitted route");}});
+ Object.defineProperty(m,"webToken",{value:"synthetic-token"});
+ expect(r.context.initiatingActor.kind).toBe("unknown");expect(m.requestContextNativeAdmissionCurrent(r.context)).toBe(true);
+ current=false;expect(m.requestContextNativeAdmissionCurrent(r.context)).toBe(false);current=true;
+ if(guest){granted=false;expect(m.requestContextNativeAdmissionCurrent(r.context)).toBe(false);granted=true;delete session.owner;expect(m.requestContextNativeAdmissionCurrent(r.context)).toBe(false);}
+ else {session.tier="guest";expect(m.requestContextNativeAdmissionCurrent(r.context)).toBe(false);}
+});
+it("private browser routes reject invalid or contradictory recognition without changing the stored origin",()=>{
+ const identity={platform:"discord"as const,adapter_id:"fixture",user_id:"demo-person",session_handle:"0123456789abcdef"};
+ for(const handle of ["wrong","fedcba9876543210"]){const origin=webHumanOrigin(false,undefined,identity,false,handle);expect(admittedHumanWebIngress(origin)).toBeNull();expect(origin).toEqual(webHumanOrigin(false,undefined,identity));}
 });

@@ -1,7 +1,7 @@
 import {RequestContextLocalTurns} from "./request-context-turns.js";
 import {RequestHubInputResolver} from "./request-context-hub-resolver.js";
 import {makeRequestDeliveryInputResolver} from "./request-context-delivery-resolver.js";
-import {makeRequestHumanInputResolver} from "./request-context-human-resolver.js";
+import {makeRequestHumanInputResolver,requestHumanReplyTarget} from "./request-context-human-resolver.js";
 import type { RequestContextV1 } from "./request-context-protocol.js";
 import { markRetainedHumanControl, retainedHumanControl } from "./retained-human-control.js";
 import type { RequestContextLaunchIdle, RequestContextLaunchRetirement } from "./request-context-retirement.js";
@@ -6387,19 +6387,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const source=root.source.instance,room=this.contactRoom(source);
       if(!Object.hasOwn(this.fleetConfig?.instances??{},source)&&!room&&!this.daemons?.has(source))return false;
       if(this.contactGeneration(source)!==root.source.incarnation)return false;
-      if(root.initiatingActor.kind==="unknown")return root.ingress!=="owner";
-      if(root.initiatingActor.kind!=="person")return false;
-      const match=/^human:hmsg-([a-f0-9-]{36})$/.exec(root.rootEvidenceRef);if(!match)return false;
+      const match=/^human:hmsg-([a-f0-9-]{36})$/.exec(root.rootEvidenceRef);
+      // Unproved recovery has no human route to borrow. An actual unknown web input must still
+      // recheck its own session below; being unidentified is never a session-revocation bypass.
+      if(!match)return root.initiatingActor.kind==="unknown"&&root.ingress!=="owner";
+      if(root.initiatingActor.kind!=="person"&&root.initiatingActor.kind!=="unknown")return false;
       const captured=this.deliveryOutbox!.requestContextHumans.read(match[1]!);
       if(!captured||requestContextDigest(captured.context)!==requestContextDigest(root))return false;
       const actor=root.initiatingActor;
       if(captured.route.kind==="web"){
         const session=captured.route.sessionHandle?this.webSessions?.findByHandle(captured.route.sessionHandle):null;
         if(!session||!this.webToken||!this.webSessions?.isCurrent(session,tokenEpoch(this.webToken)))return false;
-        const identity=this.webSessionIdentity(session);
-        if(!identity||identity.platform!==actor.platform||identity.user_id!==actor.userId)return false;
-        return root.ingress==="guest"?session.tier==="guest"&&this.fleetConfig?.web?.guests?.enabled===true&&this.guestScope({adapterId:identity.adapter_id,userId:identity.user_id}).has(source):session.tier==="admin";
+        if(actor.kind==="person"){
+          const identity=this.webSessionIdentity(session);
+          if(!identity||identity.platform!==actor.platform||identity.user_id!==actor.userId)return false;
+        }
+        return root.ingress==="guest"?session.tier==="guest"&&!!session.owner&&this.fleetConfig?.web?.guests?.enabled===true&&this.guestScope(session.owner).has(source):session.tier==="admin";
       }
+      if(actor.kind!=="person")return false;
       const basis=this.deliveryOutbox!.requestContextHumans.classicBasis(match[1]!);
       if(basis){
         if(!room||room.channelId!==basis.roomId||(room.adapterId??this.contactAdapter(source)?.id)!==basis.adapterId||!this.classicChannels?.isClassicChannel(basis.roomId,basis.adapterId))return false;
@@ -9677,7 +9682,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if(!owned())throw Error("Request work identity is no longer current");
       const before=identity();work.fresh();const after=identity();
       if(!owned()||after.incarnation!==before.incarnation||after.workGeneration===before.workGeneration)throw Error("Fresh request work identity did not rotate");
-    });
+    },snapshot=>requestHumanReplyTarget(box,snapshot,()=>owned()&&daemon.requestContextTurnCurrent(snapshot),root=>this.requestContextNativeAdmissionCurrent(root)));
     return Object.freeze({turns,hub,input,current:()=>owned()&&this.daemons.get(instance)===daemon&&daemon.requestContextCallsRequired()});
   }
 
@@ -9721,13 +9726,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const configured=(this.fleetConfig?.channels??(this.fleetConfig?.channel?[this.fleetConfig.channel]:[])).find(channel=>(channel.id??channel.type)===id);
         const kind=adapter?.type??configured?.type;return kind==="discord"||kind==="telegram"?kind:null;
       };
-      const nativeBasis=admittedNativeHumanIngress(origin);
+      const nativeBasis=admittedNativeHumanIngress(origin),webBasis=origin.platform==="web"?admittedHumanWebIngress(origin):null;
+      if(origin.platform==="web"&&!webBasis?.sessionHandle)throw Error("Accepted web input route is unavailable");
       if(room&&origin.platform!=="web"&&(!nativeBasis||nativeBasis.roomId!==room.channelId||origin.adapter_id!==(room.adapterId??this.contactAdapter(instance)?.id)))throw Error("Accepted Classic admission basis is unavailable");
       const captured=box.createHumanReceiptWithRequestContext({targetInstance:instance,originalBody:body,origin:{...origin},inputKind:String(payload.type),managerBootId:this.managerBootId},
         {incarnation:this.contactGeneration(instance),room:room?{restricted:room.restrictedMode===true}:null,
-          web:origin.platform==="web"?admittedHumanWebIngress(origin):null,
+          web:webBasis,
           classic:room&&origin.platform!=="web"&&nativeBasis?{...nativeBasis,adapterId:origin.adapter_id!}:null,
-          route:origin.platform==="web"?{kind:"web",...(origin.web_identity?.session_handle?{sessionHandle:origin.web_identity.session_handle}:{})}
+          route:origin.platform==="web"?{kind:"web",sessionHandle:webBasis!.sessionHandle}
             :{kind:"room",adapterId:origin.adapter_id??undefined,chatId:meta?.chat_id??"",threadId:meta?.thread_id??""},platform});
       return captured.receipt;
     };
@@ -21482,7 +21488,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1266: a click on a reply's button in the web chat (the /ui gate is passed: a session, or the public link). On a
    * poll (#1823) it is `voter`'s vote: the page's session.
    */
-  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority; identity?: WebSessionIdentity }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
+  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority; identity?: WebSessionIdentity; sessionHandle?: string }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
     const buttons = this.replyButtons();
     return buttons ? buttons.clickWeb(instance, id, index, voter) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
   }
@@ -22772,14 +22778,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #2855: the platform an instance's channel is on, for the command table's cell (a web-only fleet: Discord's). */
   private commandPlatform(instance: string): Platform { return this.getAdapterForInstance(instance)?.type === "telegram" ? "telegram" : "discord"; }
 
-  webCommand(input: { instance: string; command: string; args?: string; confirm?: string; action?: import("./web-commands.js").WebModelAction }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; identity?: WebSessionIdentity; guest?: boolean }): Promise<WebCommandResult> {
+  webCommand(input: { instance: string; command: string; args?: string; confirm?: string; action?: import("./web-commands.js").WebModelAction }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; identity?: WebSessionIdentity; sessionHandle?: string; guest?: boolean }): Promise<WebCommandResult> {
     const webMeta = (instance: string) => {
       const topicId = this.fleetConfig?.instances[instance]?.topic_id;
       return {
         // #1827: a /steer or /btw reaches the agent as the web person who wrote it.
         chatId: this.getGroupIdForInstance(instance) || "", messageId: newWebMessageId(),
         username: opts.person?.name ?? WEB_NAME_FALLBACK, userId: opts.person?.userId ?? WEB_NAME_FALLBACK,
-        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true, opts.authority, opts.identity, !!opts.guest),
+        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true, opts.authority, opts.identity, !!opts.guest, opts.sessionHandle),
         ...(opts.guest ? { webGuest: true } : {}),       // #2855: a guest's /steer or /btw reaches the agent as a guest's
       };
     };

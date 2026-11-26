@@ -669,7 +669,7 @@ export interface WebApiContext extends ClaudeCredentialApi {
   /** #2122: the usage report (Fleet → Usage); absent: not offered. */
   usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup }): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
-  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string; action?: WebModelAction }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; identity?: WebSessionIdentity; guest?: boolean }): Promise<{ status: number; body: unknown }>;
+  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string; action?: WebModelAction }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; identity?: WebSessionIdentity; sessionHandle?: string; guest?: boolean }): Promise<{ status: number; body: unknown }>;
   /** #1939 S2b: "Authorize this browser" — the Confirm card in the account's DM; and what the app shows for this browser. */
   requestSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: string; retryAfterMs?: number }>;
   webSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): { state: string; until?: number; expiresInMs?: number; reason?: string };
@@ -714,7 +714,7 @@ export interface WebApiContext extends ClaudeCredentialApi {
   webPromptNeedsHuman?(nonce: string): boolean;
   clickWebPrompt?(instance: string, nonce: string, action: string, text?: string, humanSession?: boolean): Promise<{ status: number; error?: string }>;
   /** #1266: a click on an agent reply's button. */
-  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority; identity?: WebSessionIdentity }): Promise<{ status: number; error?: string; options?: number[] }>;
+  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority; identity?: WebSessionIdentity; sessionHandle?: string }): Promise<{ status: number; error?: string; options?: number[] }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
@@ -1966,6 +1966,11 @@ function webPersonOf(req: IncomingMessage, url: URL, ctx: WebApiContext): WebPer
 function webIdentityOf(req: IncomingMessage, url: URL, ctx: WebApiContext): WebSessionIdentity | undefined {
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
   return v.kind === "allow" && v.via === "session" ? ctx.webSessionIdentity?.(v.session) : undefined;
+}
+/** Exact admitted browser route, independent of whether its account can be recognised. Never from body/headers. */
+function webSessionHandleOf(req: IncomingMessage, url: URL, ctx: WebApiContext): string | undefined {
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  return v.kind === "allow" && v.via === "session" ? v.session.handle : undefined;
 }
 /**
  * #1939 S1: whether this request carries `web-session` authority, asked as it stands now — on arrival without an instance,
@@ -3390,7 +3395,7 @@ export function handleWebRequest(
       // #1920 review: a guest's choice reaches the agent marked as a guest's, as its typed messages do.
       const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
       const identity = webIdentityOf(req, url, ctx);
-      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name, ...(guest ? { guest: true as const } : {}), authority, ...(identity ? { identity } : {}) });
+      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name, ...(guest ? { guest: true as const } : {}), authority, ...(identity ? { identity } : {}), sessionHandle: webSessionHandleOf(req, url, ctx) });
       json(res, r.status, r.status === 200 ? { answered: true, ...(r.options ? { options: r.options } : {}) } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");
@@ -3845,7 +3850,7 @@ export function handleWebRequest(
         const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined, ...(body.action ? { action: body.action as WebModelAction } : {}) },
           // M-3278 (decision 7933bf90): `publicLink` is a request over the link by anyone but an admin session — the link's
           // admin runs /save and gets /model and /backend's Sign in, as on the local dashboard.
-          { publicLink: !!gatewayRequestContext(req) && !adminAdmissionOf(req, url, ctx), person, authority, ...(identity ? { identity } : {}), ...(guest ? { guest: true } : {}) });
+          { publicLink: !!gatewayRequestContext(req) && !adminAdmissionOf(req, url, ctx), person, authority, ...(identity ? { identity } : {}), sessionHandle: webSessionHandleOf(req, url, ctx), ...(guest ? { guest: true } : {}) });
         if (!stillAuthorized(req, res, url, ctx)) return;
         json(res, r.status, r.body);
       } finally { if (guest) guestCommandsRunning.delete(account); }
@@ -4865,7 +4870,7 @@ async function handleResendMessage(req: IncomingMessage, res: ServerResponse, ct
   } };
   let handedOff = false;
   try {
-    const delivered = ctx.deliverHumanToInstance ? await ctx.deliverHumanToInstance(instance, payload, webHumanOrigin(false, authority, webIdentityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx), !!guest), row.text, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
+    const delivered = ctx.deliverHumanToInstance ? await ctx.deliverHumanToInstance(instance, payload, webHumanOrigin(false, authority, webIdentityOf(req, url, ctx), !!guest, webSessionHandleOf(req, url, ctx)), row.text, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
       : await ctx.deliverToInstance(instance, payload, { stillCurrent, ...(native ? { authorityCurrent } : {}) });
     if (delivered === false) throw new Error("delivery changed");
     handedOff = true;
@@ -5077,7 +5082,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       const reactions = ctx.pendingReactionsMeta?.(instance) ?? { meta: {}, consume: () => {} };
       try {
         const deliver = (name: string, payload: Record<string, unknown>) => ctx.deliverHumanToInstance
-          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority, webIdentityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx), !!guest), typed, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
+          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority, webIdentityOf(req, requestUrl, ctx), !!guest, webSessionHandleOf(req, requestUrl, ctx)), typed, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
           : ctx.deliverToInstance(name, payload, { stillCurrent, ...(native ? { authorityCurrent } : {}) });
         delivered = await deliver(instance, {
           type: "fleet_inbound",

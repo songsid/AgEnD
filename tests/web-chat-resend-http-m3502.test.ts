@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 const home = mkdtempSync(join(tmpdir(), "resend-home-")); process.env.AGEND_HOME = home;
 const { FleetManager } = await import("../src/fleet-manager.js");
 const { WEB_CSRF_HEADER, WEB_SESSION_COOKIE } = await import("../src/web-auth.js");
+const { admittedHumanWebIngress } = await import("../src/human-delivery-receipts.js");
 const { csrfTokenFor, tokenEpoch } = await import("../src/web-session.js");
 let fm: any, port: number, dir: string, sid: string;
 beforeAll(async () => {
@@ -138,4 +139,14 @@ it("resends the full accepted 16384-character payload including its suffix after
     deliver.mockClear(); expect((await post("/ui/resend", retry(row))).status).toBe(200);
     expect(JSON.stringify(deliver.mock.calls[0]).includes(text)).toBe(true);
   } finally { fm.webChatHistory = previous; }
+});
+
+it("a resend captures the new admitted browser, not the original message's route or a body claim",async()=>{
+ const deliver=vi.spyOn(fm,"deliverHumanToInstance").mockResolvedValue(true),row=await accepted();
+ const old=admittedHumanWebIngress(deliver.mock.calls.at(-1)![2] as any)!;
+ const next=fm.webSessions.create({tier:"admin",surface:"local",label:"second browser",tokenEpoch:tokenEpoch(fm.getDashboardAccess().token)});
+ deliver.mockClear();expect((await post("/ui/resend",retry(row),next.sessionId)).status).toBe(200);
+ const route=admittedHumanWebIngress(deliver.mock.calls[0]![2] as any)!;
+ expect(route.sessionHandle).toBe(next.record.handle);expect(route.sessionHandle).not.toBe(old.sessionHandle);
+ expect(deliver.mock.calls[0]![2]).not.toHaveProperty("web_identity");
 });

@@ -2668,7 +2668,7 @@ export class Daemon extends EventEmitter {
   }
 
   /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
-  private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string }; newWork?: (reason: "fresh") => void };
+  private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string }; newWork?: (reason: "fresh") => void; replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null };
   private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean };
   requestContextPolicy?:RequestContextPolicyPort;
   bindRequestContextPolicy(policy:RequestContextPolicyPort):void {if(this.requestContextPolicy||!this.requestContextLifecycle)throw Error("request-context policy requires its owned turn binding");this.requestContextPolicy=policy;}
@@ -2785,10 +2785,10 @@ export class Daemon extends EventEmitter {
       } catch { return false; }
     } });
   }
-  setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }, newWork?: (reason: "fresh") => void): void {
+  setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }, newWork?: (reason: "fresh") => void, replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null): void {
     if (this.tmux || this.ipcServer || this.requestContextLifecycle || this.nativePaneLifecycle && !this.nativePaneLifecycle.requestContextAvailable?.()) throw Error("Request context must be bound before a supported daemon startup");
     this.requestContextCalls.installRegistration(turns.registrationGate??undefined);
-    this.requestContextLifecycle = { turns, identity, newWork };
+    this.requestContextLifecycle = { turns, identity, newWork, replyTarget };
   }
   /** Authoritative fresh-launch boundary only; session discovery and a merely written clear command do not prove it. */
   private requestContextNewWork(reason: "fresh"): void {
@@ -7154,7 +7154,9 @@ export class Daemon extends EventEmitter {
     // chat platform has no chat_id (its reply goes to the web chat through the
     // fleet's web-only sink), but it is a person waiting for an answer all the
     // same: the guard arms for it (alpha.2).
-    if (!turnExpectsPersonReply(meta)) {
+    const requestContext = this.requestContextTurnSnapshot();
+    const ownedReplyTarget=requestContext?this.requestContextLifecycle?.replyTarget?.(requestContext):null;
+    if (!turnExpectsPersonReply(meta) && !ownedReplyTarget) {
       this.logger.debug({
         source: meta.source || null,
         user: meta.user || null,
@@ -7174,13 +7176,13 @@ export class Daemon extends EventEmitter {
       threadId: meta.thread_id || undefined,
       messageId: meta.message_id || undefined,
       correlationId: meta.correlation_id || undefined,
+      ...(ownedReplyTarget??{}),
       inboundMarker,
       deliveredText,
       deliveredAt,
-    }, this.pendingWork.lastInboundTimestamp());
+    }, this.pendingWork.lastInboundTimestamp(), requestContext&&ownedReplyTarget?{binding:requestContext.token,target:ownedReplyTarget}:undefined);
     const armed = this.turnReplyGuard.snapshot()!;
     this.workingTurnDelivery = { generation: armed.generation, deliveryId: meta.delivery_id || null };
-    const requestContext = this.requestContextTurnSnapshot();
     this.workingTurnRequestContext = requestContext ? { generation: armed.generation, snapshot: requestContext } : null;
     this.publishWorkingState("turn_started");
     // #1209: persist the in-flight turn with a seam checkpoint. A marker

@@ -1,4 +1,5 @@
 /** Resolve server-admitted human input at C's final write, after the actual formatter/receipt binding. */
+import type { TurnReplyTarget } from "./turn-reply-guard.js";
 import type { DeliveryOutbox } from "./delivery-outbox.js";
 import { humanBodyHash } from "./human-delivery-receipts.js";
 import type { RequestContextActorV1, RequestContextV1 } from "./request-context-protocol.js";
@@ -47,4 +48,26 @@ export function makeRequestHumanInputResolver(box:DeliveryOutbox,ports:RequestHu
   current();
   return freeze(structuredClone({inputId,wireSha256,owner,context,proof}));
  }};
+}
+
+/** Resolve only the original accepted human audience. A receiving peer or unproved recovery has no right to this sink. */
+export function requestHumanReplyTarget(box:DeliveryOutbox,snapshot:RequestContextTurnSnapshot,
+  current:()=>boolean,admitted:(root:RequestContextV1)=>boolean):Readonly<TurnReplyTarget>|null {
+ if(!current())return null;
+ const root=box.requestContext(snapshot.context.ref.rootContextId);
+ if(!root||root.source.instance!==snapshot.owner.instance||root.source.incarnation!==snapshot.owner.incarnation)return null;
+ const id=/^human:hmsg-([a-f0-9-]{36})$/.exec(root.rootEvidenceRef)?.[1];if(!id)return null;
+ const captured=box.requestContextHumans.read(id),receipt=box.getHumanReceipt(id);
+ if(!captured||!receipt||requestContextDigest(captured.context)!==requestContextDigest(root)||!admitted(root))return null;
+ const route=captured.route;
+ let target:TurnReplyTarget;
+ if(route.kind==="web"){
+  if(!route.sessionHandle)return null;
+  target={chatId:"",webRoute:Object.freeze({sessionHandle:route.sessionHandle})};
+ }else if(route.kind==="room"&&route.adapterId&&route.chatId){
+  const origin=JSON.parse(receipt.origin_json) as import("./human-delivery-receipts.js").HumanOrigin;
+  target={adapterId:route.adapterId,chatId:route.chatId,...(route.threadId?{threadId:route.threadId}:{}),
+   ...(origin.platform_message_id?{messageId:origin.platform_message_id}:origin.anchor_message_id?{messageId:origin.anchor_message_id}:{})};
+ }else return null;
+ return current()&&admitted(root)?Object.freeze(target):null;
 }
