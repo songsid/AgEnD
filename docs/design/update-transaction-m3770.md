@@ -473,7 +473,7 @@ The original definition's bytes are `unit.preimage`. The pre-start step runs **i
 | none | exit 0: a normal start (launchd: exec the original arguments) |
 | open; updater or runner live; a planned generation with an unconsumed handoff nonce (§4.3) | pass `AGEND_UPDATE_HANDOFF=<nonce>` on (systemd: written to `attempts/<id>/handoff.env`, read by the unit's `EnvironmentFile=-` in the same drop-in); exit 0 |
 | open; updater or runner live; no planned generation | exit non-zero: "AgEnD is updating (attempt, stage); this start is refused". The updater owns the service until the end |
-| open; updater and runner gone | start the **independent runner**, then exit non-zero (the start is refused) |
+| open; updater and runner gone | start the **independent runner**, then exit non-zero (the start is refused). **Except `committing` (rev 13):** exit 0, a normal start; the new version's own fleet start finishes the commit (§7) |
 | open; updater or runner liveness unknown, or unknown or manual | exit non-zero with the paths and the operator command |
 
 **The independent runner** runs outside the service's cgroup and job:
@@ -543,7 +543,7 @@ A retry recognises each effect by the path's presence and its hash against the p
 | open, updater **unknown** | refuse; only an operator's `--takeover` |
 | open, updater **gone**, stage `opened`, `barrier`, `stopping` (no snapshot), `abandoning` | resume abandoning at its substep: restart old, hand back, abandoned |
 | open, gone, `snapshotted`, `installing`, `trial`, `proving`, `rolling-back` | resume rolling-back (§5.5, §6.3) at its logged step, then rolled-back, then start the old version |
-| open, gone, `committing` | resume committing's substeps (2.5); never roll back after agents started |
+| open, gone, `committing` | resume committing's substeps (2.5) in the new version's own fleet start: the pre-start step lets it through, `fleetStartGate` admits it (`resumeCommitting`), and it runs `commitAttempt`. Never roll back after agents started (rev 13) |
 | any step that finds ownership unknown or a tuple unexpected (§3) | manual-recovery |
 
 ---
@@ -652,6 +652,8 @@ A retry recognises each effect by the path's presence and its hash against the p
 | One plan at a time: starting a generation first recognises or voids **any** planned, unconfirmed generation, not only its own (a trial that never took over is voided by its rollback) | §3.3, §4.3 |
 | The fence acknowledges a planned generation whose takeover landed unacknowledged before it stops it as that generation | §4.3 |
 | Abandon's substeps: `restart-old` (nothing when the old fleet still runs; the old generation started from the fence when it was stopped; the fence released when no fleet ran), `hand-back`, `route-removed` (only a route that was written), then `abandoned` | §2.3 |
+| A committing attempt whose updater is gone is the new version's to finish: the pre-start step exits 0 for it, `fleetStartGate` admits the start with `resumeCommitting`, and that start runs `commitAttempt`. The old kit's runner refuses it and says to start the fleet (Fable #4533 F1) | §6.2, §7 |
+| launchd `start`: a job still loaded keeps the arguments it was loaded with, so an idle loaded job is booted out and bootstrapped from the plist on disk before the kickstart; a running one is refused (the caller stops it first). systemd needs nothing: the drop-in applies to every later start (Fable #4533 F2) | §6.2 |
 | Committing's substeps, in this order: `retained` (§5.6), `route-removed` (+ reload), then the fleet's own: `left-trial`, `agents-started`, `inbox-delivered`, `deferred-run`; then `committed`. The route comes off before the fleet leaves trial, so a crash after that point is resumed by the new version's own fleet start (§7), never refused by the old kit | §2.3, §5.6, §7 |
 | `retained.json` (`.update-journal/`): one entry per committed attempt, the first record kept on a retry, with its snapshot directory, package preimage, unit preimage and kit, and `expiresAt` = commit + 7 days | §5.6, §5.7 |
 | An identity check that fails after the install is `manual-recovery`, journaled by the live updater; a failed rollback is `manual-recovery` when it needs a person, and otherwise leaves the attempt open for the runner | §3.2, §7 |

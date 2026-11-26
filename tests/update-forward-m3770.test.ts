@@ -9,7 +9,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { readFleetLockRecord } from "../src/fleet-lock.js";
 import type { ArtifactTuple, Ownership, TupleRead } from "../src/install-ownership.js";
 import { defaultJournalIo, finishClosing, newAttemptId, openAttempt, readCurrent, readMarks, type AttemptRecord, type FleetGeneration, type JournalIo } from "../src/update-journal.js";
-import { abandonAttempt, commitAttempt, runUpdate, type UpdateDeps } from "../src/update-forward.js";
+import { abandonAttempt, commitAttempt, resumeCommitting, runUpdate, type UpdateDeps } from "../src/update-forward.js";
+import { fleetStartGate, ownerState } from "../src/update-journal.js";
+import { preStartDecision } from "../src/update-recovery/pre-start.js";
 import { readRetained } from "../src/update-retained.js";
 import { dropInPath } from "../src/update-recovery/route.js";
 import { parsePlist } from "../src/service-activation.js";
@@ -199,6 +201,31 @@ describe("M-3770 2.5: the update, forward to committed", () => {
     expect(again.ok).toBe(true);
     expect(left).toEqual([]);                                                        // left-trial was done; not repeated
     expect(endState(w)).toEqual(COMMITTED);
+  });
+});
+
+describe("M-3770 2.5: an interrupted commit is finished by the new version's own fleet start (§7, Fable #4533 F1)", () => {
+  it("the route off, then the fleet and the updater die: pre-start lets a plain start through, the gate admits it, and it finishes the commit", () => {
+    const w = world();
+    const r = runUpdate(w.home, w.attempt, PLAN, w.deps({ commit: { leaveTrial: () => true, startAgents: () => false, deliverInbox: () => true, runDeferred: () => true } }));
+    expect(r.ok === false && r.outcome).toBe("retry");
+    expect(r.attempt.history.filter(h => h.stage === "committing" && h.substep).map(h => h.substep)).toEqual(["retained", "route-removed", "left-trial"]);
+    const liveness = w.deps().liveness;
+    expect(fleetStartGate(w.home, null, liveness)).toMatchObject({ ok: false, reason: expect.stringMatching(/is updating/) });   // the updater still runs
+    w.alive.delete(UPDATER); w.alive.delete(readFleetLockRecord(w.home)!.pid);                     // the updater and the new fleet die
+    const read = readCurrent(w.home);
+    expect(read.state === "open" && preStartDecision(w.home, read, ownerState(w.home, read.attempt, liveness), ID)).toEqual({ kind: "start" });
+    const gate = fleetStartGate(w.home, null, liveness);
+    expect(gate).toEqual({ ok: true, resumeCommitting: ID });
+    const done = resumeCommitting(w.home, ID, w.deps());
+    expect(done?.ok, done && !done.ok ? done.reason : "").toBe(true);
+    expect(w.calls.filter(c => c === "leave-trial")).toEqual([]);                                 // done before the crash: not repeated
+    expect(w.calls.slice(-3)).toEqual(["start-agents", "deliver-inbox", "run-deferred"]);
+    expect(endState(w)).toEqual(COMMITTED);
+    expect(resumeCommitting(w.home, ID, w.deps())).toBeNull();                                     // nothing left to resume
+    expect(fleetStartGate(w.home, null, liveness)).toEqual({ ok: true });
+    const other = world();
+    expect(resumeCommitting(other.home, ID, other.deps())).toBeNull();                             // open, but not committing
   });
 });
 

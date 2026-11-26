@@ -537,11 +537,15 @@ export function recoveryPlan(read: JournalRead, updater: UpdaterState, ownStart 
  * start holding the open attempt's planned nonce while its updater lives. Everything else refuses, naming the attempt;
  * resuming an interrupted attempt is the recovery runner's (2.1c), never a plain start's.
  */
-export function fleetStartGate(home: string, handoffNonce: string | null, liveness: LivenessDeps, io: JournalIo = defaultJournalIo): { ok: true } | { ok: false; reason: string } {
+export function fleetStartGate(home: string, handoffNonce: string | null, liveness: LivenessDeps, io: JournalIo = defaultJournalIo):
+  { ok: true; resumeCommitting?: string } | { ok: false; reason: string } {
   const read = readCurrent(home, io);
   const own = read.state === "open" && !!handoffNonce && plannedGeneration(read.attempt, handoffNonce) !== null;
   const plan = recoveryPlan(read, read.state === "open" ? ownerState(home, read.attempt, liveness, io) : "gone", own);
   if (plan.kind === "start" || plan.kind === "finish-closing") return { ok: true };
+  // §7 (rev 13; Fable #4533 F1): an interrupted commit is admitted — this start finishes it (`resumeCommitting`), never
+  // rolls it back. Its updater is gone; fleet.lock still admits one fleet at a time.
+  if (plan.kind === "resume-committing") return { ok: true, resumeCommitting: plan.attemptId };
   if (read.state === "unknown") return { ok: false, reason: `This fleet start is refused: the update journal can't be read (${read.reason}: ${read.path}). Run \`agend update --resolve\`.` };
   const a = (read as { attempt: AttemptRecord }).attempt;
   if (plan.kind === "refuse" && plan.reason === "in-progress") return { ok: false, reason: `AgEnD is updating (attempt ${a.id}, ${a.stage}); this fleet start is refused until the update hands over or ends.` };

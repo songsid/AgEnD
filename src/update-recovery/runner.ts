@@ -142,8 +142,11 @@ export function runRecovery(home: string, attemptId: string, d: RunnerDeps): num
         if (res.ok) { d.out(`AgEnD update attempt ${attemptId} is rolled back; the previous version runs again.`); return 0; }
         return refuse(`${res.reason}${res.manual ? " Run `agend update --resolve`." : " Run the recovery again."}`);
       }
+      case "resume-committing":
+        // §7 (rev 13): the new version's own fleet start finishes a commit; the old kit never does.
+        return refuse(`it is committing ${read.attempt.to.version}; the fleet's own start finishes that. Start the fleet (\`agend start\`); nothing was changed.`);
       default:
-        // resume-abandoning / resume-committing: wired by later S-252 parts.
+        // resume-abandoning: wired by a later S-252 part.
         return refuse(`it needs ${plan.kind.replace("resume-", "resuming ")} from ${read.attempt.stage}${plan.substep ? ` (${plan.substep})` : ""}, which this recovery kit can't do yet. Nothing was changed.`);
     }
   } finally {

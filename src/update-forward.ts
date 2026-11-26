@@ -25,7 +25,7 @@
 import { existsSync } from "node:fs";
 import { acquireFleetLock, adoptUpdateFence, readFleetLockRecord, releaseFleetLock, setFleetLockHandoff, type FleetLockHandle } from "./fleet-lock.js";
 import { checkStage, identityOf, recordExpectedNew, recordInstallIntent, type Ownership, type Proven, type TupleRead } from "./install-ownership.js";
-import { ackGeneration, advance, attemptDir, defaultJournalIo, finish, substep, type AttemptRecord, type Artifact, type FleetGeneration, type JournalIo } from "./update-journal.js";
+import { ackGeneration, advance, attemptDir, defaultJournalIo, finish, readCurrent, substep, type AttemptRecord, type Artifact, type FleetGeneration, type JournalIo } from "./update-journal.js";
 import { takeAttemptPreimage } from "./update-package-restore.js";
 import { buildRecoveryKit, type KitSources } from "./update-recovery/kit.js";
 import { removeRecoveryRoute, unitPreimagePath, writeRecoveryRoute } from "./update-recovery/route.js";
@@ -203,6 +203,17 @@ export function commitAttempt(home: string, attempt: AttemptRecord, d: Pick<Upda
   for (const [name, run] of steps) { const r = step(name, run); if (r) return r; }
   a = finish(home, a, { kind: "committed", reason: `updated to ${a.to.version}` }, io);
   return { ok: true, attempt: a };
+}
+
+/**
+ * §7 (rev 13): the fleet start that `fleetStartGate` admitted for an interrupted commit finishes it with its own commit
+ * hands — the attempt the journal names, if it is still this one and committing (null: nothing to resume). The caller
+ * holds the home lock and fleet.lock.
+ */
+export function resumeCommitting(home: string, attemptId: string, d: Pick<UpdateDeps, "commit" | "manager" | "plistArgs" | "io">): UpdateResult | null {
+  const read = readCurrent(home, d.io ?? defaultJournalIo);
+  if (read.state !== "open" || read.attempt.id !== attemptId || read.attempt.stage !== "committing") return null;
+  return commitAttempt(home, read.attempt, d);
 }
 
 /**
