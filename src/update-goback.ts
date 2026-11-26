@@ -45,6 +45,18 @@ export type GoBackGuard = (liveDb: string, attemptId: string, committedAt: numbe
 
 type Check = { ok: true } | { ok: false; reason: string };
 
+/** The installed package's version, read from the package the attempts own (the newest readable record names it; every
+ *  attempt of this home owns the same package path). null: it can't be read. */
+function installedVersion(entries: RetainedEntry[], io: JournalIo, home: string): string | null {
+  const id = [...entries].sort((a, b) => Date.parse(b.committedAt) - Date.parse(a.committedAt))
+    .map(e => { const record = readAttemptRecord(home, e.attemptId, io); return record && identityOf(record); }).find(Boolean);
+  if (!id) return null;
+  try {
+    const v = (JSON.parse(readFileSync(join(id.ownership.packagePath, "package.json"), "utf8")) as { version?: unknown }).version;
+    return typeof v === "string" && v ? v : null;
+  } catch { return null; }
+}
+
 /** Why an entry isn't offered (null: it is). Reads only; nothing is written. */
 function unavailableReason(home: string, e: RetainedEntry, now: number, io: JournalIo): string | null {
   if (e.used) return `Go back to ${e.from} was already used (${e.used.by})`;
@@ -73,8 +85,17 @@ export function readGoBackOffer(home: string, now: number = Date.now(), io: Jour
   const read = readRetained(home, io);
   if (!read.ok) return { eligible: [], latestDeadline: null, unavailable: [{ attemptId: "", reason: read.reason }] };
   const eligible: GoBackEligible[] = [], unavailable: GoBackOffer["unavailable"] = [];
+  // One step back only (#4480: "Go back to vX"; Fable #4547 F2): the newest unused entry that made the INSTALLED version
+  // current. Any other entry would skip a hop, or move forward after a Go back.
+  const installed = installedVersion(read.entries, io, home);
+  const byCommit = [...read.entries].sort((a, b) => Date.parse(b.committedAt) - Date.parse(a.committedAt));
+  const candidate = byCommit.find(e => !e.used && e.version === installed) ?? null;
   for (const e of read.entries) {
-    const why = unavailableReason(home, e, now, io);
+    const why = installed === null ? "the installed AgEnD version can't be read"
+      : e !== candidate ? (e.used ? `Go back to ${e.from} was already used (${e.used.by})`
+        : e.version === installed ? `a later update (${candidate!.attemptId}) made ${installed} current again: Go back only returns one step`
+          : `AgEnD ${installed} is installed now, not ${e.version}: Go back only returns one step`)
+        : unavailableReason(home, e, now, io);
     if (why) unavailable.push({ attemptId: e.attemptId, reason: why });
     else eligible.push({ attemptId: e.attemptId, committedAt: Date.parse(e.committedAt), expiresAt: Date.parse(e.expiresAt), from: e.from, version: e.version });
   }
@@ -106,15 +127,20 @@ export function privateSnapshotDb(home: string, snapshotDir: string): { ok: true
   return { ok: true, path: join(dir, OUTBOX_DB), cleanup };
 }
 
-/** The S-230 guard against `snapshotDir`'s outbox DB: a false answer, a thrown error or an unverifiable copy refuses. */
-export function goBackAllowed(home: string, entry: { attemptId: string; committedAt: string }, snapshotDir: string, guard: GoBackGuard): Check {
+/**
+ * The S-230 guard against `snapshotDir`'s outbox DB: a false answer, a thrown error or an unverifiable copy refuses.
+ * Only the guard's own false is `definitive` (On was activated after the commit) and may be cached; an error or a copy
+ * that failed is re-evaluated by the next offer read (Fable #4547 F1).
+ */
+export function goBackAllowed(home: string, entry: { attemptId: string; committedAt: string }, snapshotDir: string, guard: GoBackGuard):
+  { ok: true } | { ok: false; reason: string; definitive: boolean } {
   const copy = privateSnapshotDb(home, snapshotDir);
-  if (!copy.ok) return { ok: false, reason: copy.reason };
+  if (!copy.ok) return { ok: false, reason: copy.reason, definitive: false };
   try {
     return guard(join(home, OUTBOX_DB), entry.attemptId, Date.parse(entry.committedAt), copy.path)
-      ? { ok: true } : { ok: false, reason: "request-based contact approvals were turned on after this update, which ended its Go back" };
+      ? { ok: true } : { ok: false, reason: "request-based contact approvals were turned on after this update, which ended its Go back", definitive: true };
   } catch (err) {
-    return { ok: false, reason: `whether Go back is still allowed can't be read (${(err as Error).message})` };
+    return { ok: false, reason: `whether Go back is still allowed can't be read (${(err as Error).message})`, definitive: false };
   } finally { copy.cleanup(); }
 }
 
@@ -166,7 +192,10 @@ export function runGoBack(home: string, committedId: string, init: Omit<AttemptI
   if (!entry) return { ok: false, outcome: "refused", reason: offer.unavailable.find(u => u.attemptId === committedId)?.reason ?? `no Go back is offered for ${committedId}` };
   const retained = { attemptId: committedId, committedAt: new Date(entry.committedAt).toISOString() };
   const first = goBackAllowed(home, retained, attemptDir(home, committedId), d.guard);
-  if (!first.ok) { cacheRetainedUnavailable(home, committedId, first.reason, io); return { ok: false, outcome: "refused", reason: first.reason }; }
+  if (!first.ok) {
+    if (first.definitive) cacheRetainedUnavailable(home, committedId, first.reason, io);
+    return { ok: false, outcome: "refused", reason: first.reason };
+  }
 
   const read = readRetained(home, io);
   const kept = read.ok ? read.entries.find(e => e.attemptId === committedId) : undefined;

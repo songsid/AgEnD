@@ -303,3 +303,59 @@ describe("M-3770 2.5: what Go back sets aside", () => {
     expect(goBackChanges(w.home, snapshotDir, new Map())).toEqual({ ok: true, changed: ["after-commit.json", "delivery-outbox.db", "fleet.yaml", "new-state.json"] });
   });
 });
+
+describe("M-3770 2.5: Go back review (Fable #4547)", () => {
+  it("F1: a guard that throws refuses this time only — the offer stays, and the next Go back goes through; a guard's false is cached", () => {
+    const w = committed();
+    let calls = 0;
+    const flaky: GoBackGuard = () => { calls += 1; if (calls === 1) throw new Error("database is locked"); return true; };
+    const first = runGoBack(w.home, ID, goBackInit(w), { ...w.deps(noNpm), guard: flaky });
+    expect(first).toMatchObject({ ok: false, outcome: "refused", reason: expect.stringMatching(/database is locked/) });
+    expect(readGoBackOffer(w.home).eligible.map(e => e.attemptId)).toEqual([ID]);                   // not cached
+    const kept = readRetained(w.home);
+    expect(kept.ok && kept.entries[0]!.unavailable).toBeUndefined();
+    const second = runGoBack(w.home, ID, goBackInit(w), { ...w.deps(noNpm), guard: flaky });
+    expect(second.ok, second.ok ? "" : second.reason).toBe(true);
+  });
+
+  it("F2: with two retained updates, only the one that made the installed version current is offered; a Go back makes the older one current; nothing once the installed version moves past", () => {
+    const w = committed();                                                                          // A: 2.4.0 → 2.4.1
+    const B = newAttemptId(new Date("2026-11-27T12:00:00Z"), "0b0b0b0b");
+    const holder = readFleetLockRecord(w.home)!;
+    const opened = openAttempt(w.home, { id: B, kind: "update", updater: { pid: UPDATER, start: START },
+      from: { name: "@songsid/agend", version: "2.4.1", integrity: null }, to: { name: "@songsid/agend", version: "2.4.2", integrity: null },
+      extra: { ownership: w.o, expected: { old: tupleOf(w.o, "2.4.1") }, fleets: [{ gen: "old", nonce: holder.nonce, pid: holder.pid, plannedAt: new Date().toISOString(), consumed: true }] } });
+    if (!opened.ok) throw new Error(opened.reason);
+    const r = runUpdate(w.home, opened.attempt, { target: { name: "@songsid/agend", version: "2.4.2", integrity: null }, command: ["npm", "i"] },
+      w.deps({ install: () => { installPackage(w.o, "2.4.2"); return { ok: true }; } }));
+    expect(r.ok, r.ok ? "" : r.reason).toBe(true);                                                  // B: 2.4.1 → 2.4.2
+    const offer = readGoBackOffer(w.home);
+    expect(offer.eligible.map(e => [e.attemptId, e.from])).toEqual([[B, "2.4.1"]]);
+    expect(offer.unavailable).toEqual([{ attemptId: ID, reason: "AgEnD 2.4.2 is installed now, not 2.4.1: Go back only returns one step" }]);
+    // Go back B → 2.4.1: B used, and now A (which made 2.4.1 current) is the one step back.
+    const holder2 = readFleetLockRecord(w.home)!;
+    const init = { id: newAttemptId(new Date("2026-11-28T11:00:00Z"), "0c0c0c0c"), updater: { pid: UPDATER, start: START }, from: { name: "@songsid/agend", version: "2.4.2", integrity: null },
+      extra: { ownership: w.o, expected: { old: tupleOf(w.o, "2.4.2") }, fleets: [{ gen: "old", nonce: holder2.nonce, pid: holder2.pid, plannedAt: new Date().toISOString(), consumed: true }] } };
+    const back = runGoBack(w.home, B, init, { ...w.deps(noNpm), guard: () => true });
+    expect(back.ok, back.ok ? "" : back.reason).toBe(true);
+    expect(readGoBackOffer(w.home).eligible.map(e => [e.attemptId, e.from])).toEqual([[ID, "2.4.0"]]);
+    // The installed version moves past (an update outside these entries): nothing is offered.
+    installPackage(w.o, "2.4.3");
+    expect(readGoBackOffer(w.home).eligible).toEqual([]);
+  });
+
+  it("F2: two unused entries that both made the installed version current (an ordinary downgrade later): only the newest is the one step back", () => {
+    const w = committed();
+    const path = join(journalDir(w.home), "retained.json");
+    const v = JSON.parse(readFileSync(path, "utf8"));
+    const later = { ...v.entries[0], attemptId: newAttemptId(new Date("2026-11-29T09:00:00Z"), "0d0d0d0d"), from: "2.4.2",
+      committedAt: new Date(Date.parse(v.entries[0].committedAt) + 60_000).toISOString() };
+    writeFileSync(path, JSON.stringify({ ...v, entries: [...v.entries, later] }));                // e.g. 2.4.2 → 2.4.1 by an ordinary update
+    const offer = readGoBackOffer(w.home);
+    expect(offer.eligible).toEqual([]);                                                            // the newest's own record isn't there: not offered
+    expect(offer.unavailable).toEqual([
+      { attemptId: ID, reason: `a later update (${later.attemptId}) made 2.4.1 current again: Go back only returns one step` },
+      { attemptId: later.attemptId, reason: "the update to 2.4.1 isn't recorded as committed" },
+    ]);
+  });
+});
