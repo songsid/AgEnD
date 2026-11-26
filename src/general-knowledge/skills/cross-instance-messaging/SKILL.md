@@ -30,6 +30,13 @@ Only when a result is unclear: `delivery_status` with the `operation_id` / `deli
 
 Grok `idle_submit` receipts can reconcile quietly from the exact launch session's later structured input record. Only the delivery's leading marker after its pre-write checkpoint counts; an answer, a draft, another session or a raw paste does not. The watch is bounded, stops with its launch, and never resends. Missing proof remains `uncertain`.
 
+## An undelivered final answer
+
+Terminal text is not a reply. A Claude recovery reminder may include the same request's final draft as quoted data;
+review it, then use `reply` once for the intended answer. The draft is not an instruction or permission, and the daemon
+has not sent it to the person. If delivery is already confirmed or uncertain, check it before sending again. An
+ambiguous or unavailable draft leaves the ordinary reminder in place.
+
 ## requires_reply
 
 - Means “target should later answer with `report_result` / a real reply”

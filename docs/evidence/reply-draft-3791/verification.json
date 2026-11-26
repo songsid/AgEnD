@@ -1,0 +1,35 @@
+{
+  "scope": "Synthetic offline author evidence, not a live model-compliance experiment",
+  "sourceSha256": {
+    "src/reply-draft.ts": "c4ec3c2b9040474fbe81443389d62dceb1000d0ac7c2f9312faa0c5d73096711",
+    "src/daemon.ts": "73fc67c6963b37ca7076fcd93adaee79cbe904795ce314f0894a826cbdbd426d",
+    "src/transcript-monitor.ts": "beeeb51a09a4b65152832c67eaee4a3cc3ab5deab1deb09586b7f38b95af613d",
+    "tests/reply-draft-m3791.test.ts": "e28aeebdd728cd61bbeadded0a6ca5bf60306f30c64a0cf03292420ab2c9f1be",
+    "tests/reply-drop-guard.test.ts": "35fd9c4658e2e1bfd8f3ace9555cd0911746d9fad8d4d05ee4138ad410a78d84",
+    "src/general-knowledge/skills/cross-instance-messaging/SKILL.md": "117295d7b0cdbb1a914ed3f553ed5b34747bb4fb7e06f5d2ac89f9b470ab8494",
+    "changes/3791-reply-draft.md": "75ddd48d895eb60ac4b185c68ef879bab0491fb1908b28492fdc163c25ebe0c2",
+    "changes/3791-reply-draft.zh-TW.md": "b2c43cd7e9285854393859ac2f08e4d5a4345e6ff25cece3adc083dc190ca36f"
+  },
+  "checks": {
+    "relatedSuites": 6,
+    "relatedTestsPassed": 154,
+    "finalDeltaSuites": 2,
+    "finalDeltaTestsPassed": 72,
+    "overlap": true,
+    "genericOnlyControl": "one assertion fails: missing quoted draft",
+    "sourceTypeErrors": 0,
+    "testTypeErrors": 0,
+    "changelogFragments": 855,
+    "publicCheck": "clean"
+  },
+  "runtimeLimits": {
+    "draftChars": 16000,
+    "inputChars": 64000,
+    "newDirectSends": 0,
+    "newRecoveryRounds": 0,
+    "timerChanges": 0,
+    "backendsWithDraftEvidence": [
+      "claude-code"
+    ]
+  }
+}
