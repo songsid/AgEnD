@@ -133,15 +133,20 @@ function build(snapshot: string, u: string, dst: string, manifest: SnapshotManif
 /**
  * §5.5: restore `home` from `<attemptDir>/snapshot` (verified first). The caller holds the locks, has re-proven
  * ownership and fenced the writers. `manual: true` means the table found a state it doesn't cover — manual-recovery.
+ *
+ * §5.7 Go back (rev 16): `opts.snapshotFrom` reads the snapshot and its manifest from ANOTHER attempt's directory (the
+ * committed one), read-only — every file verified before the first write, nothing written under it. The restore log and
+ * `replaced/` stay in `attemptDir` (the go-back's own work directory, which the caller creates).
  */
-export function restoreHome(home: string, attemptDir: string, deps: RestoreDeps): RestoreResult {
+export function restoreHome(home: string, attemptDir: string, deps: RestoreDeps, opts: { snapshotFrom?: string } = {}): RestoreResult {
   const io = deps.io ?? defaultRestoreIo;
-  const snapshot = join(attemptDir, SNAPSHOT_DIR), replaced = join(attemptDir, REPLACED_DIR), logPath = join(attemptDir, RESTORE_LOG);
-  const manifest = readManifest(attemptDir);
+  const source = opts.snapshotFrom ?? attemptDir;
+  const snapshot = join(source, SNAPSHOT_DIR), replaced = join(attemptDir, REPLACED_DIR), logPath = join(attemptDir, RESTORE_LOG);
+  const manifest = readManifest(source);
   if (!manifest) return { ok: false, manual: true, reason: "the snapshot's manifest can't be read" };
-  const intact = verifySnapshot(attemptDir, manifest);
+  const intact = verifySnapshot(source, manifest);
   if (!intact.ok) return { ok: false, manual: true, reason: `the snapshot doesn't verify: ${intact.reason}` };
-  const manifestSha256 = createHash("sha256").update(readFileSync(join(attemptDir, SNAPSHOT_MANIFEST))).digest("hex");
+  const manifestSha256 = createHash("sha256").update(readFileSync(join(source, SNAPSHOT_MANIFEST))).digest("hex");
 
   try {
     // ── The plan: written once, durable before anything moves ──

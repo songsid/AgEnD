@@ -28,7 +28,7 @@ import { ackGeneration, advance, attemptDir, defaultJournalIo, finish, readCurre
 import { takeAttemptPreimage } from "./update-package-restore.js";
 import { buildRecoveryKit, type KitSources } from "./update-recovery/kit.js";
 import { removeRecoveryRoute, writeRecoveryRoute } from "./update-recovery/route.js";
-import { recordRetained } from "./update-retained.js";
+import { markRetainedUsed, recordRetained } from "./update-retained.js";
 import { abandonAttempt, journalManual as manual, type UpdateResult } from "./update-abandon.js";
 import { ensureFence, rollBack, startGeneration, type RollbackDeps } from "./update-rollback.js";
 import { takeSnapshot } from "./update-snapshot.js";
@@ -59,6 +59,8 @@ export interface UpdateDeps extends RollbackDeps {
   commit: CommitHands;
   /** Abandon's `hand-back`: the old fleet takes the inbox and the deferred jobs back and acknowledges them (2.2). */
   handBack(attempt: AttemptRecord): boolean;
+  /** §5.7 Go back (rev 16): checked at snapshotted → installing, with the fresh snapshot taken; a refusal rolls back. */
+  beforeInstall?(attempt: AttemptRecord): Check;
 }
 
 export interface UpdatePlan { target: Artifact; command: string[] }
@@ -124,6 +126,10 @@ export function runUpdate(home: string, attempt: AttemptRecord, plan: UpdatePlan
   const snap = takeSnapshot(home, attemptDir(home, a.id), { proveWritersGone: d.proveWritersGone });
   if (!snap.ok) return abandon(`the snapshot failed: ${snap.reason}`, fence);
   a = advance(home, a, "snapshotted", {}, io);
+  if (d.beforeInstall) {
+    const gate = d.beforeInstall(a);
+    if (!gate.ok) return back(gate.reason);
+  }
 
   // installing
   const pre = takeAttemptPreimage(id.ownership, a.id);
@@ -185,7 +191,11 @@ export function commitAttempt(home: string, attempt: AttemptRecord, d: Pick<Upda
     return null;
   };
   const steps: [string, () => boolean | string][] = [
-    ["retained", () => { const r = recordRetained(home, a, io); return r.ok || `Go back can't be recorded: ${r.reason}`; }],
+    // A go-back is not itself go-back-able: it consumes the committed entry it returned to instead (rev 16).
+    ["retained", () => {
+      if (a.kind === "go-back") { const r = markRetainedUsed(home, a.goBackOf!, a.id, io); return r.ok || `the Go back entry can't be marked used: ${r.reason}`; }
+      const r = recordRetained(home, a, io); return r.ok || `Go back can't be recorded: ${r.reason}`;
+    }],
     ["route-removed", () => {
       if (!id.ownership.service) return true;
       const r = removeRecoveryRoute(home, a, { plistArgs: d.plistArgs }, io);

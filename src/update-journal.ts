@@ -275,13 +275,20 @@ export interface AttemptInit {
   extra?: Record<string, unknown>;
 }
 
+/**
+ * §5.7 (rev 16, Fable Go back design): the update transaction's protocol, stamped into every attempt at open by the code
+ * that drives it — the OLD install's updater — so a later Go back knows what the version it would return to speaks
+ * (handoff takeover, the fleet's hand-back). Bump it when a version can't take part in a transaction an older one could.
+ */
+export const UPDATE_TX_PROTOCOL = 1;
+
 export function openAttempt(home: string, init: AttemptInit, io: JournalIo = defaultJournalIo): OpenResult {
   if (!ID.test(init.id)) return { ok: false, reason: "not an attempt id" };
   let read = readCurrent(home, io);
   if (read.state === "closing") { finishClosing(home, read.attempt, io); read = readCurrent(home, io); }
   if (read.state !== "none") return { ok: false, reason: read.state === "unknown" ? `the update journal is unknown: ${read.reason} (${read.path})` : `attempt ${read.attempt.id} is ${read.attempt.stage}` };
   const at = io.now().toISOString();
-  const attempt: AttemptRecord = { ...(init.extra ?? {}), schema: 1, id: init.id, kind: init.kind, createdAt: at, updater: init.updater, from: init.from, to: init.to,
+  const attempt: AttemptRecord = { ...(init.extra ?? {}), txProtocol: UPDATE_TX_PROTOCOL, schema: 1, id: init.id, kind: init.kind, createdAt: at, updater: init.updater, from: init.from, to: init.to,
     ...(init.goBackOf ? { goBackOf: init.goBackOf } : {}), stage: "opened", history: [{ stage: "opened", at }] };
   // The chain .update-journal/attempts/<id> made durable first; the attempt's directory must be new (never rebound).
   mkdirDurable(io, home, attemptDir(home, init.id), true);
