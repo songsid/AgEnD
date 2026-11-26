@@ -4,9 +4,9 @@
  * recover.cjs: no snapshot, install or SQLite code, node built-ins only.
  */
 import { existsSync } from "node:fs";
-import { readFleetLockRecord, releaseFleetLock, setFleetLockHandoff, type FleetLockHandle } from "./fleet-lock.js";
+import { acquireFleetLock, readFleetLockRecord, releaseFleetLock, setFleetLockHandoff, type FleetLockHandle } from "./fleet-lock.js";
 import { identityOf } from "./install-ownership.js";
-import { advance, defaultJournalIo, finish, substep, type AttemptRecord, type FleetGeneration, type JournalIo } from "./update-journal.js";
+import { ackGeneration, advance, defaultJournalIo, finish, substep, type AttemptRecord, type FleetGeneration, type JournalIo } from "./update-journal.js";
 import { removeRecoveryRoute, unitPreimagePath } from "./update-recovery/route.js";
 import { ensureFence, startGeneration, type RollbackDeps } from "./update-rollback.js";
 
@@ -70,7 +70,20 @@ export function abandonAttempt(home: string, attempt: AttemptRecord, d: AbandonD
         if (!clear || !releaseFleetLock(clear)) return fail("this attempt's fence couldn't be released");
       }
     } else if (old) {
-      return fail("fleet.lock is gone, but the old fleet was recorded running");
+      // No lock, an old fleet recorded: a clean exit of it unlinks fleet.lock (a host shutdown, `systemctl stop` while the
+      // hand-back waits — Fable #4536 F2). Proven gone, it is journaled dead and a new old generation started from a
+      // fence taken afresh. A live old fleet without the lock stays manual (as the forward driver's no-holder case).
+      const last = [...generationsOf(a)].reverse().find(g => g.gen === "old" && g.consumed && !g.dead);
+      if (last?.pid !== undefined) {
+        if (d.isProcessAlive(last.pid)) return fail(`the old fleet (pid ${last.pid}) runs without holding fleet.lock`);
+        a = ackGeneration(home, a, last.nonce, last.pid, { dead: true }, io);
+      }
+      let own: FleetLockHandle;
+      try { own = acquireFleetLock(home, { pid: d.self.pid, role: "update", attemptId: a.id, isProcessAlive: d.isProcessAlive }); }
+      catch (err) { return fail(`fleet.lock can't be taken as this attempt's fence (${(err as Error).message})`, false); }
+      const started = startGeneration(home, a, "old", own, d);
+      a = started.attempt;
+      if (!started.ok) return fail(`the old fleet didn't restart: ${started.reason}`, started.manual);
     }
     if (!done("restart-old")) a = substep(home, a, "restart-old", io);
     if (!d.handBack(a)) return fail("the old fleet didn't take the held messages and jobs back; it resumes on the next start", false);

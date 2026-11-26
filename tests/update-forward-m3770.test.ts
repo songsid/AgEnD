@@ -306,12 +306,12 @@ describe("M-3770 2.5: abandon before the snapshot", () => {
     expect(endState(w)).toEqual(ROLLED_BACK);
   });
 
-  it("the old fleet runs without holding fleet.lock: abandoned, nothing stopped", () => {
+  it("the old fleet runs without holding fleet.lock: manual, nothing stopped", () => {
     const w = world();
     rmSync(join(w.home, "fleet.lock"));
     const r = runUpdate(w.home, w.attempt, PLAN, w.deps());
     expect(r.ok === false && r.outcome).toBe("manual");                               // abandon then finds no fleet.lock for a recorded fleet
-    expect(r.ok === false && r.reason).toMatch(/fleet\.lock is gone, but the old fleet was recorded running/);
+    expect(r.ok === false && r.reason).toMatch(/the old fleet \(pid 5100\) runs without holding fleet\.lock/);
     expect(w.calls).not.toContain("stop");
     expect(w.alive.has(OLD)).toBe(true);
   });
@@ -398,6 +398,31 @@ describe("M-3770 2.5: the recovery runner resumes an abandon (S-252 part 4)", ()
     const done = readAttemptRecord(w.home, ID)!;
     expect(gens(done)).toEqual(["old:acked:dead", "old:acked:dead", "old:acked"]);
     expect(endState(w)).toEqual(ROLLED_BACK);
+  });
+
+  it("the restarted old fleet exits cleanly before the acks (fleet.lock gone): the next run restarts it, not manual (Fable #4536 F2)", () => {
+    const w = world();
+    diedInStopping(w);
+    const first = runner(w, 7958, { waitHandedBack: () => false });
+    expect(first.code).toBe(1);
+    const restarted = readFleetLockRecord(w.home)!;
+    w.alive.delete(restarted.pid); rmSync(join(w.home, "fleet.lock"));                            // a clean exit unlinks its lock
+    const second = runner(w, 7959);
+    expect(second.code, second.err.join("\n")).toBe(0);
+    expect(w.calls.filter(c => c === "start:old")).toHaveLength(2);
+    expect(gens(readAttemptRecord(w.home, ID)!)).toEqual(["old:acked:dead", "old:acked:dead", "old:acked"]);
+    expect(endState(w)).toEqual(ROLLED_BACK);
+  });
+
+  it("the restarted old fleet still runs but fleet.lock is gone: manual, nothing started", () => {
+    const w = world();
+    diedInStopping(w);
+    runner(w, 7960, { waitHandedBack: () => false });
+    rmSync(join(w.home, "fleet.lock"));
+    const second = runner(w, 7961);
+    expect(second.code).toBe(1);
+    expect(second.err.join("\n")).toMatch(/runs without holding fleet\.lock/);
+    expect(w.calls.filter(c => c === "start:old")).toHaveLength(1);
   });
 
   it("no service manager given: refused, nothing changed", () => {
