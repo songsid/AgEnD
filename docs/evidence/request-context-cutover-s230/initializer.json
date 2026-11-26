@@ -1,0 +1,54 @@
+{
+  "sourceCommit": "a00367eb9b85838b84c3d1081e244deb67a7de77",
+  "scope": "Synchronous durable owner initialization inside atomic activation and cache cleanup on abort.",
+  "checks": {
+    "activationRestored": {
+      "files": 3,
+      "passed": 37,
+      "failed": 0
+    },
+    "returnsRelayGateStore": {
+      "files": 4,
+      "passed": 86,
+      "failed": 0
+    },
+    "typecheckTests": "passed",
+    "mutants": [
+      {
+        "mutation": "initializer-skipped",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "rolled-back-owner-reused",
+        "exit": 1,
+        "red": true
+      }
+    ],
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "initializer failure rolls back floor/history/mode/work identities together",
+    "asynchronous initializer cannot commit activation",
+    "first-On abort restores connection-local capability and discards cache for rolled-back tables",
+    "no installer is published and no live activation is performed"
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "720baddf2a566e6b7c274ede03ebf82faabe8fdfe1afd7d59df769f1ea6e3766"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "1a542c09e7968a51978b9983b0790c4ca483579566e7c51ca2d01cd2331e0873"
+    },
+    {
+      "path": "src/request-context-installation.ts",
+      "sha256": "8b637161b71bbb1e4b2f3b197853e3a9d20ecc44fd4b79a2c9cc43878458f2c4"
+    },
+    {
+      "path": "tests/request-context-installation-s230.test.ts",
+      "sha256": "848e220e4c01eed2d749607ee876f64f1f4399b87b6c02af160b8a523318ee52"
+    }
+  ]
+}
