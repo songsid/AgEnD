@@ -34,6 +34,9 @@ export const EXCLUDED: readonly Rule[] = [
   { rule: "workspaces/", kind: "user-state", match: under("workspaces") },
   { rule: "credential-profiles/", kind: "user-state", match: under("credential-profiles") },
   { rule: "cx/", kind: "user-state", match: under("cx") },
+  // muse's isolated XDG home per instance (backend/muse.ts): links into the user's ~/.config — the CLI's own config
+  // home, the same kind as cx/ and credential-profiles/ (Fable #4523 F3).
+  { rule: "instances/*/muse-xdg/", kind: "user-state", match: rel => /^instances\/[^/]+\/muse-xdg(\/|$)/.test(rel) },
   { rule: "cache/", kind: "cache", match: under("cache") },
   { rule: "cache-codex-rollouts.json, usage-last-good.json", kind: "cache", match: exactly("cache-codex-rollouts.json", "usage-last-good.json") },
   { rule: "search.db*", kind: "cache", match: rel => !rel.includes("/") && rel.startsWith("search.db") },
@@ -122,6 +125,7 @@ export const WRITER_INVENTORY: readonly Writer[] = [
   home("workspaces", "post-commit", "agent launch (the agents' working directories)"),
   home("credential-profiles", "post-commit", "agent launch (the CLIs' homes, each profile's .claude.json)"),
   home("cx", "post-commit", "codex backend at agent launch"),
+  home("instances/*/muse-xdg", "post-commit", "muse backend at agent launch (its isolated XDG home: links into ~/.config)"),
   home("cache", "post-commit", "caches"),
 
   home("usage-quota-history.jsonl", "post-commit", "usage"),

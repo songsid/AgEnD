@@ -4,7 +4,7 @@
 // verification, a writer appearing mid-copy (discarded), and the refusals.
 import Database from "better-sqlite3";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -58,6 +58,15 @@ function seed(): string {
   // Links the snapshot can record: to a plain file, and a dangling one.
   symlinkSync("fleet.yaml", join(home, "fleet-link"));
   symlinkSync("nowhere", join(home, "dangling-link"));
+  // The links AgEnD itself makes (Fable #4523 F3, from a real host): codex-home → cx/<hash> inside the home (directory
+  // links), and muse's isolated XDG home with links out to ~/.config (excluded user state).
+  mkdirSync(join(home, "cx", "h0"), { recursive: true }); writeFileSync(join(home, "cx", "h0", "config.toml"), "x");
+  symlinkSync(join(home, "cx", "h0"), join(home, "instances", "a", "codex-home"));
+  mkdirSync(join(home, "cli-env")); symlinkSync(join(home, "cx", "h0"), join(home, "cli-env", "codex-home"));
+  const xdg = join(tmp("dotconfig-"), ".config"); mkdirSync(join(xdg, "opencode"), { recursive: true }); writeFileSync(join(xdg, "auth.json"), "{}");
+  mkdirSync(join(home, "instances", "a", "muse-xdg"));
+  symlinkSync(join(xdg, "opencode"), join(home, "instances", "a", "muse-xdg", "opencode"));
+  symlinkSync(join(xdg, "auth.json"), join(home, "instances", "a", "muse-xdg", "auth.json"));
   return home;
 }
 
@@ -158,17 +167,28 @@ describe("M-3770 §4.4, §5.2: what refuses the snapshot (nothing partial is lef
     expect(existsSync(join(attempt, SNAPSHOT_DIR))).toBe(false);
   });
 
-  it("a link to a directory or to a database refuses — the rollback couldn't restore what's behind it (Fable #4523 F2)", () => {
+  it("a link out of the home to a directory or a database refuses — the rollback couldn't restore what's behind it (Fable #4523 F2)", () => {
     const outside = join(tmp("outside-"), "d"); mkdirSync(outside); walDatabase(join(outside, "secret.db"), ["outside"], false);
     const linkedDir = seed();
-    symlinkSync(outside, join(linkedDir, "linked-dir"));
-    expect(takeSnapshot(linkedDir, tmp("attempt-"), gone)).toMatchObject({ ok: false, reason: expect.stringMatching(/linked-dir is a link to a directory/) });
+    symlinkSync(outside, join(linkedDir, "hub-elsewhere"));
+    expect(takeSnapshot(linkedDir, tmp("attempt-"), gone)).toMatchObject({ ok: false, reason: expect.stringMatching(/hub-elsewhere is a link to a directory outside the home/) });
     const linkedDb = seed();
     symlinkSync(join(outside, "secret.db"), join(linkedDb, "hub.db"));
-    expect(takeSnapshot(linkedDb, tmp("attempt-"), gone)).toMatchObject({ ok: false, reason: expect.stringMatching(/hub\.db is a link to a SQLite database/) });
-    // A link to a plain file, and a dangling link, are recorded (the seed has both).
-    const walked = walkScope(seed());
-    expect(walked.entries.filter(e => e.type === "link").map(e => e.rel)).toEqual(["dangling-link", "fleet-link"]);
+    expect(takeSnapshot(linkedDb, tmp("attempt-"), gone)).toMatchObject({ ok: false, reason: expect.stringMatching(/hub\.db is a link to a SQLite database outside the home/) });
+  });
+
+  it("AgEnD's own links snapshot fine: codex-home → cx/ (inside) recorded; muse-xdg excluded; links inside the home to directories or databases recorded (Fable #4523 F3)", () => {
+    const home = seed(), attempt = tmp("attempt-");
+    symlinkSync(join(home, "hub"), join(home, "hub-alias"));                                       // inside: a directory
+    symlinkSync(join(home, "events.db"), join(home, "events-alias.db"));                            // inside: a database
+    const res = takeSnapshot(home, attempt, gone);
+    if (!res.ok) throw new Error(res.reason);
+    const links = res.manifest.entries.filter(e => e.type === "link").map(e => e.rel);
+    expect(links).toEqual(["cli-env/codex-home", "dangling-link", "events-alias.db", "fleet-link", "hub-alias", "instances/a/codex-home"]);
+    expect(res.manifest.entries.some(e => e.rel.includes("muse-xdg"))).toBe(false);
+    expect(res.manifest.entries.some(e => e.rel.startsWith("cx"))).toBe(false);                    // its target stays excluded
+    expect(res.manifest.databases.map(d => d.rel)).toEqual(["events.db", "hub/hub.db"]);            // never through a link
+    expect(verifySnapshot(attempt, res.manifest)).toEqual({ ok: true });
   });
 
   it("the walk refuses nothing that's excluded", () => {
@@ -197,5 +217,15 @@ describe("M-3770 §4.4, §5.2: what refuses the snapshot (nothing partial is lef
     const res = takeSnapshot(home, attempt, { proveWritersGone: () => { if (!existsSync(theirs)) { mkdirSync(theirs); writeFileSync(join(theirs, "theirs"), "x"); } return { ok: true }; } });
     expect(res).toMatchObject({ ok: false, reason: expect.stringMatching(/EEXIST/) });
     expect(readFileSync(join(theirs, "theirs"), "utf8")).toBe("x");                                // not this call's: untouched
+  });
+
+  it("a manifest write that fails after its tmp file is opened leaves no tmp behind (Fable #4523 N2)", () => {
+    const home = seed(), attempt = tmp("attempt-");
+    // The rename fails: a directory already sits at snapshot.json's path once the copy is done.
+    let n = 0;
+    const res = takeSnapshot(home, attempt, { proveWritersGone: () => { if (++n === 2) mkdirSync(join(attempt, SNAPSHOT_MANIFEST)); return { ok: true }; } });
+    expect(res).toMatchObject({ ok: false });
+    expect(readdirSync(attempt).filter(f => f.includes(".tmp-"))).toEqual([]);
+    expect(existsSync(join(attempt, SNAPSHOT_DIR))).toBe(false);
   });
 });
