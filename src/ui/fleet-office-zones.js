@@ -83,7 +83,7 @@ export function assignSeats(pack, wants, prev = new Map(), seatPrefs = null) {
   };
   const pos = (area, slot) => (slot >= 0 ? areaOf(area).seats[slot] : spotsOf(area)[-slot - 1]);
   const usedIn = (area) => { if (!taken.has(area)) taken.set(area, new Set()); return taken.get(area); };
-  const give = (name, area, slot) => { const p = pos(area, slot); usedIn(area).add(slot); seats.set(name, { area, slot, x: p.x, y: p.y }); };
+  const give = (name, area, slot) => { const p = pos(area, slot); usedIn(area).add(slot); seats.set(name, { area, slot, x: p.x, y: p.y, ...(p.standFacing ? { standFacing: p.standFacing } : {}) }); };
   const free = (w) => !seats.has(w.name) && !!areaOf(w.area);
   // Owners first: their own seat from last time (or saved seat pref), then their first free one.
   for (const w of wants) {
@@ -152,7 +152,7 @@ export function zonesLayout(pack, nodes, prev = new Map(), { night = false, seat
   const { seats, crowd, over } = placed;
   const desks = nodes.filter((n) => seats.has(n.name)).map((n) => {
     const s = seats.get(n.name);
-    return { key: `zone/${n.name}`, node: n, x: s.x - 24, y: s.y - 52, w: 48, h: 66, seat: { x: s.x, y: s.y }, wp: null, area: s.area, slot: s.slot, night: sleepers.has(n.name) };
+    return { key: `zone/${n.name}`, node: n, x: s.x - 24, y: s.y - 52, w: 48, h: 66, seat: { x: s.x, y: s.y, ...(s.standFacing ? { standFacing: s.standFacing } : {}) }, wp: null, area: s.area, slot: s.slot, night: sleepers.has(n.name) };
   });
   const cv = canvasOf(pack);
   return { mode: "zones", rooms: [{ key: "\u0000zones", name: null, lobby: false, x: 0, y: 0, w: cv.w, h: cv.h, desks }], areas: pack.areas,

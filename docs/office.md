@@ -301,6 +301,7 @@ Some poses are drawn for one seat, such as two people leaning towards each other
 - Nobody else sits there, unless **Lend when away** is on and all its people are elsewhere. A borrower moves off when one of them comes. Plain seats are given out before lent ones.
 - A reserved seat that isn't lent, whose people are all elsewhere, doesn't count towards the area's room for a crowd.
 - A pack can reserve seats too: a seat may be `{ "x": 760, "y": 260, "for": ["atlas"], "lend": false }` instead of `[x, y]`. An office's own reservations replace the pack's for that seat; reserving it for nobody undoes the pack's.
+- A seat can be a standing desk, such as a counter or a whiteboard: `"standFacing": "left"` (or `up`, `down`, `right`). Whoever works there stands facing that way, drawn with the first frame of their walk strip for it, instead of their `working` pose. Any other state looks as before.
 
 ## Bedtime, strolls and mail
 
@@ -374,17 +375,20 @@ A zones pack can run a train (or any vehicle) round a loop of track with `vehicl
   "sprite": { "src": "train.png", "frames": 2, "w": 192, "h": 96, "fps": 4 },
   "path": [[80, 80], [5040, 80], [5040, 2800], [80, 2800]],
   "speed": 120,
-  "stops": [{ "at": 1, "seconds": 10, "platform": [4980, 1650] }],
-  "seats": [{ "dx": -48 }, { "dx": 0 }, { "dx": 48 }]
+  "stops": [{ "at": 1, "seconds": 10, "platform": [4980, 1650], "queue": [[4980, 1720]] }],
+  "seats": [{ "dx": -48, "worker": "conductor" }, { "dx": 0 }, { "dx": 48 }]
 }]
 ```
 
 - `path`: 3–64 points; the last joins the first, and the vehicle goes round and round, lap after lap. `speed` is logical units a second (5–600, default 80).
 - `stops`: the path points it waits at (`at`, a point's index), for `seconds` (1–600, default 8), and the `platform` point where riders wait, board and get off. A vehicle with seats needs at least one stop.
 - `seats` (up to 16): where riders sit, as offsets from the vehicle's anchor along the way it goes (`dx` ahead, `dy` to its right), so they turn with it at the corners.
+- A seat's `worker` (optional) makes it that agent's workplace: while the agent is working, it rides there by itself, and nobody else takes that seat. An instance can be the worker of one vehicle seat in the pack.
+- A stop's `queue` (optional, at most one point per seat): where the worker of seat *i* waits at that stop, off the platform. When the vehicle is in and there's time to reach the platform before it leaves, they step onto it and board; otherwise they wait for the next one. Anyone without a queue point waits on the platform.
 - `sprite`: its picture heading right (mirrored going left); or `sprites` by heading (`right`, `left`, `up`, `down`), each a frame strip. It plays while moving and holds its first frame at a stop.
 - Where a vehicle is depends on the clock alone, so every page shows it in the same place.
-- **Who rides is the agents' own choice** (`office_set { ride }`, see [Agents in the office](#agents-in-the-office)), not the pack's: the rider walks to the platform nearest its seat, waits there until the vehicle stops, takes a free seat and works there as it goes round (its name tag, bubble and card go with it). When the ride ends, it stays on until the next stop, gets off at that platform and walks back. A full vehicle: the next one. Bedtime, or being paused or stopped, ends a ride the same way. Calling for a person (needs, crashed, stuck) is different: the rider gets off at once, where it is, and walks to its place, so nothing keeps a caller from the Help desk; the ride resumes after the call while it lasts.
+- **Who rides is the agents' own choice** (`office_set { ride }`, see [Agents in the office](#agents-in-the-office)), not the pack's: the rider walks to the platform nearest its seat, waits there until the vehicle stops, takes a free seat and works there as it goes round (its name tag, bubble and card go with it). When the ride ends, it stays on until the next stop, gets off at that platform and walks back. A full vehicle: the next one. Bedtime, or being paused or stopped, ends a ride the same way. Calling for a person (needs, crashed, stuck) is different: the rider gets off at once, where it is, and walks to its place, so nothing keeps a caller from the Help desk; the ride resumes after the call while it lasts. A seat's `worker` rides only while working, so a call, like any other state, sends them where it always would.
+- While working and waiting for their vehicle, a worker stands facing where it stops instead of typing.
 
 ## Share a view
 
@@ -407,7 +411,7 @@ An agent can see the offices it's in and direct its own character for a moment, 
 
 - `office_view { office? }`: the stored offices it's in, with their members and states. For an office in an uploaded zones pack it also lists the seats (`"area:index"`), waypoints, furniture (NPCs) and the door, with the office's layout overrides applied. Any other office (Desks, Studio, Cozy, or a pack without zones) returns `walks: false` and no spots.
 - `office_set { office?, go?, say?, pose?, seconds?, clear? }`: walk to a seat, a waypoint or another member (`go`); say a line of 1–40 characters (`say`); hold a pose: idle, working, needs or paused (`pose`); for 5–120 seconds (default 30). `clear: true` ends it. Where `walks` is false, the line and the pose show, and `go` is refused.
-- `office_set { ride, seconds? }`: work on board one of the office's vehicles (see [Vehicles](#vehicles)): the agent walks to the platform, waits for the train to stop there, takes a free seat and goes round with it. A ride lasts 60–28800 seconds (default 3600); new work does not end it, `clear: true` or a new `office_set` does, and the agent gets off at the next stop. Calling for a person takes it off at once, until the call is over. `office_view` lists the vehicles (`spots.vehicles`: id, label, seat count, platforms).
+- `office_set { ride, seconds? }`: work on board one of the office's vehicles (see [Vehicles](#vehicles)): the agent walks to the platform, waits for the train to stop there, takes a free seat (not one that is another agent's workplace: a vehicle whose seats all are is refused) and goes round with it. A ride lasts 60–28800 seconds (default 3600); new work does not end it, `clear: true` or a new `office_set` does, and the agent gets off at the next stop. Calling for a person takes it off at once, until the call is over. `office_view` lists the vehicles (`spots.vehicles`: id, label, seat count, platforms).
 - Each act replaces the last. It ends when its time is up or the agent starts new work, and it isn't shown while the agent calls for a person, is paused or stopped, or is asleep at bedtime. Acts are kept in memory only.
 - At most 6 calls a minute and 60 an hour per agent; a refusal says `cooldown_ms`.
 - Also on the command line: `agend-agent office view [office]` and `agend-agent office set '<json>'`.
@@ -563,7 +567,7 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `portraits`, `dialogBox` | ❌ | the dialogue box's faces and look (see [Make a skin pack](#make-a-skin-pack)) |
 | `card` | ❌ | `{ preset?, style?, layout? }`: optional Agent profile card preset (`default`, `rpg`, `compact`, `dossier`), WCAG-checked `#rrggbb` colours, `backgroundImage` (≤ 1024×1024 px), 9-slice `frame` (≤ 512×512 px), and layout overrides (#4256) |
 
-A seat is `[x, y]` or `{ "x", "y", "for": [instance, …] (up to 16), "lend": false }`, inside its area. Coordinates run 0–1280 across and 0–720 down, or across and down the pack's own `canvas`. A name the pack declares can't be one every object already has (`constructor`, `toString`, `__proto__`, …).
+A seat is `[x, y]` or `{ "x", "y", "for": [instance, …] (up to 16), "lend": false, "standFacing": "up" | "down" | "left" | "right" }`, inside its area. Coordinates run 0–1280 across and 0–720 down, or across and down the pack's own `canvas`. A name the pack declares can't be one every object already has (`constructor`, `toString`, `__proto__`, …).
 
 ### Strips
 
