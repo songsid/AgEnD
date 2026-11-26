@@ -328,3 +328,25 @@ it.each(["en", "zh-TW"] as const)("S-250 %s: a request from an interrupted launc
     expect(posted(r).message).not.toContain(sentence);
   } finally { setLocale("en"); }
 });
+
+it("M-3820: a decision on one card deletes the request's other cards; the pressed one keeps the outcome", async () => {
+  const r = rig(), ticket = r.hold();
+  r.adapter.deleteMessage = vi.fn(async () => {});
+  r.fm.syncHeldTicketCard(ticket); await settle();
+  await r.fm.requestContactChange("general", { kind: "ticket-decision", ticket_id: ticket.id.slice(0, 9), decision: "approve-once" }, () => true);
+  const [held, proposal] = entries(r);
+  await click(r, proposal, "approve"); await settle();
+  expect([r.box.contactAuthorizations.get(ticket.id)!.state, entries(r).length]).toEqual(["approved", 0]);
+  expect(retired(r)).toEqual(["Continued by Demo admin."]);
+  expect(r.adapter.deleteMessage.mock.calls).toEqual([[held.chatId, held.messageId, held.threadId]]);
+  expect(r.adapter.deleteMessage.mock.calls[0][1]).not.toBe(proposal.messageId);
+});
+it("M-3820: decided on the web, every native card of the request is deleted", async () => {
+  const r = rig(), ticket = r.hold();
+  r.adapter.deleteMessage = vi.fn(async () => {});
+  r.fm.syncHeldTicketCard(ticket); await settle();
+  const [held] = entries(r);
+  r.cards.decide(ticket.id, { snapshot: r.cards.read(ticket.id, r.webActor()).snapshot, decision: "approve-once" }, r.webActor());
+  r.fm.syncHeldTicketCard(r.box.contactAuthorizations.get(ticket.id)); await settle();
+  expect([entries(r).length, retired(r), r.adapter.deleteMessage.mock.calls]).toEqual([0, [], [[held.chatId, held.messageId, held.threadId]]]);
+});
