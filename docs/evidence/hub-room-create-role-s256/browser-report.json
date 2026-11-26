@@ -1,0 +1,133 @@
+{
+  "head": "52b1932f2ce55d71592d1a2189643427d3ba1514",
+  "tree": "3070c5330407ad40b8756a7983ad340bec6c64f0",
+  "dirty": "",
+  "browser": "156.0.8078.4",
+  "scope": "Initialized production Hub runtime, HTTPS, SQLite and UI with synthetic directory identities only. No Fleet or provider process; Chromium headless under WSL.",
+  "checks": [
+    {
+      "label": "production Hub ready",
+      "pass": true
+    },
+    {
+      "label": "real HTTP saves a custom creation role and named assignment",
+      "pass": true
+    },
+    {
+      "label": "desk-dark-en granted role row",
+      "pass": true
+    },
+    {
+      "label": "desk-dark-en role no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "desk-dark-en Administration explains independent role grants",
+      "pass": true
+    },
+    {
+      "label": "desk-dark-en creators no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "desk-dark-zh-TW granted role row",
+      "pass": true
+    },
+    {
+      "label": "desk-dark-zh-TW role no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "desk-dark-zh-TW Administration explains independent role grants",
+      "pass": true
+    },
+    {
+      "label": "desk-dark-zh-TW creators no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "phone-dark-en granted role row",
+      "pass": true
+    },
+    {
+      "label": "phone-dark-en role no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "phone-dark-en Administration explains independent role grants",
+      "pass": true
+    },
+    {
+      "label": "phone-dark-en creators no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "phone-dark-zh-TW granted role row",
+      "pass": true
+    },
+    {
+      "label": "phone-dark-zh-TW role no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "phone-dark-zh-TW Administration explains independent role grants",
+      "pass": true
+    },
+    {
+      "label": "phone-dark-zh-TW creators no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "no page errors",
+      "pass": true
+    }
+  ],
+  "screens": [
+    {
+      "file": "desk-dark-en-role.png",
+      "sha256": "0d8e9a1cc71706acb047a1320d16bc537307029b1ded82ed7db1f5afb3c54f79"
+    },
+    {
+      "file": "desk-dark-en-creators.png",
+      "sha256": "cafa587272b9f6baf3adb7ac59ef4045eaf4065ff2e05e2fca7241b2e8e6b1a2"
+    },
+    {
+      "file": "desk-dark-zh-TW-role.png",
+      "sha256": "2eb9e48eac912d821bf580279e0590d617c36a71971da82991244ab24e730fdd"
+    },
+    {
+      "file": "desk-dark-zh-TW-creators.png",
+      "sha256": "bf8167ef82190c57f41670805e87f8faf992767e0e7c87018596112543aa0149"
+    },
+    {
+      "file": "phone-dark-en-role.png",
+      "sha256": "05d5e9675c22069dac336ec916bbdf263ccb0c0f7abf74eadddd0a2cf1b9df54"
+    },
+    {
+      "file": "phone-dark-en-creators.png",
+      "sha256": "98568c7787d5a0ca212cbe1ae3dec6128e8fff1f916f6b61111d8367454b3b70"
+    },
+    {
+      "file": "phone-dark-zh-TW-role.png",
+      "sha256": "4e5f9ade8953f9addda5488a33565da60a40cc5b4862bb708db876520154c20c"
+    },
+    {
+      "file": "phone-dark-zh-TW-creators.png",
+      "sha256": "67be38751ff1e3b573f7ebcd08c241af13c95522c01052b700d7d5476379a065"
+    }
+  ],
+  "errors": [],
+  "bindings": {
+    "src/hub/roles/model.ts": "139fef529c014cea3c7f0d91116e973c3bac434e6daad4c3b2bb2b69a2067031",
+    "src/hub/roles/admin-control.ts": "be877b9f6bbd8a78074b79d31a6c20d791e50773e33312dcd087a76f03d22b76",
+    "src/hub/roles/review.ts": "70b03164caab4013c8b057a8832767d7a5ee0b431c869d9562751ac1c43db4c5",
+    "src/hub/rooms/admin.ts": "dba3402a364d33589cec67368099b065273852689bc4bf323d3854d3a8a23056",
+    "src/hub/rooms/service.ts": "e044c2ce845c128df7e6338a5083696661300a722cd75dd8c093daa3a159f519",
+    "src/ui/hub-roles.js": "1959688e65c16898965d69ae72327df1a4d79910f149386ffadc5b1e4403a954",
+    "src/ui/hub-role-view.js": "bf82338bf7ada4fe1d97809c078ff908767194f8620bf5465b9783d6b6bde47a",
+    "src/ui/hub-roles-strings.js": "6dd103ac549ead670c139a34e51a16bc20009ed63de41c794e201fd701f6f97b",
+    "src/ui/hub-admin-rooms.js": "20b630453000d3efc36f5a57568f2a62646e81bc15ef1dede80e0d088bf385a7",
+    "src/ui/hub-admin-rooms-strings.js": "68e29277dce754647d7aa7350bfc21531e7914da0fb1ddde6bca762cfa4c91c3",
+    "scripts/manual/hub-room-create-role-s256/browser.mts": "c07b798e980a15601ab8fc249b3149af2f33549f55485e8c3d0ac778827bff14"
+  }
+}

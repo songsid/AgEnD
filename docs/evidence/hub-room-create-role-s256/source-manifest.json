@@ -1,0 +1,90 @@
+{
+  "testedSource": "52b1932f2ce55d71592d1a2189643427d3ba1514",
+  "base": "f9532de65c8fae8dfbf2ed262c287ddc9796eb34",
+  "paths": {
+    "changes/3828-room-create-role.md": {
+      "sha256": "feace5ace3dbe1635489e78bc840c3d0f887b7b319b470975c206aa638411424",
+      "gitBlob": "0262dbdca07f011e16e811d3c22f1675ff93b5ee"
+    },
+    "changes/3828-room-create-role.zh-TW.md": {
+      "sha256": "59d1f275318655507a2f967538b363ffb1ce69c656dfaf45de4ff1043fb3648a",
+      "gitBlob": "cfe3d96a4245c757d195364c3451cd85f4d4ef64"
+    },
+    "scripts/manual/hub-room-create-role-s256/browser.mts": {
+      "sha256": "c07b798e980a15601ab8fc249b3149af2f33549f55485e8c3d0ac778827bff14",
+      "gitBlob": "04337791fee7a069d681152054bf7c50d5dec5ef"
+    },
+    "src/hub/roles/admin-control.ts": {
+      "sha256": "be877b9f6bbd8a78074b79d31a6c20d791e50773e33312dcd087a76f03d22b76",
+      "gitBlob": "bba3eb6b72f2dbdc77487c2a9432538a3e39fd2d"
+    },
+    "src/hub/roles/audit-details.ts": {
+      "sha256": "c4860bd24ba25416eaf2fb710e4f45d9c612dd3a48442ec1a88c317d4f3f680e",
+      "gitBlob": "7586e0c6ae8e5f41d808bbae9fca37680130e197"
+    },
+    "src/hub/roles/model.ts": {
+      "sha256": "139fef529c014cea3c7f0d91116e973c3bac434e6daad4c3b2bb2b69a2067031",
+      "gitBlob": "01add81e730aec9e757279989b7a846087f17282"
+    },
+    "src/hub/roles/review.ts": {
+      "sha256": "70b03164caab4013c8b057a8832767d7a5ee0b431c869d9562751ac1c43db4c5",
+      "gitBlob": "47262966dc5f7e6b2214f77d833d1d2e324dea32"
+    },
+    "src/hub/rooms/admin.ts": {
+      "sha256": "dba3402a364d33589cec67368099b065273852689bc4bf323d3854d3a8a23056",
+      "gitBlob": "24fb29d46ef2def99f9648d19b58f5715b157476"
+    },
+    "src/hub/rooms/service.ts": {
+      "sha256": "e044c2ce845c128df7e6338a5083696661300a722cd75dd8c093daa3a159f519",
+      "gitBlob": "5770156e6b3a357a2e6712c9f60209410a67f7cf"
+    },
+    "src/ui/hub-admin-rooms-strings.js": {
+      "sha256": "68e29277dce754647d7aa7350bfc21531e7914da0fb1ddde6bca762cfa4c91c3",
+      "gitBlob": "13797357fe4224cc606696ac687e99f18394d1f2"
+    },
+    "src/ui/hub-admin-rooms.js": {
+      "sha256": "20b630453000d3efc36f5a57568f2a62646e81bc15ef1dede80e0d088bf385a7",
+      "gitBlob": "a54c33ebae47e9716c49baba50aec5bd54e2074a"
+    },
+    "src/ui/hub-role-view.js": {
+      "sha256": "bf82338bf7ada4fe1d97809c078ff908767194f8620bf5465b9783d6b6bde47a",
+      "gitBlob": "8366219ed0b8b2539f4e746c9781dbfa0489af42"
+    },
+    "src/ui/hub-roles-strings.js": {
+      "sha256": "6dd103ac549ead670c139a34e51a16bc20009ed63de41c794e201fd701f6f97b",
+      "gitBlob": "2d4bd8eed488313b2fe1b5418f09fc4ca2f5c6e7"
+    },
+    "src/ui/hub-roles.js": {
+      "sha256": "1959688e65c16898965d69ae72327df1a4d79910f149386ffadc5b1e4403a954",
+      "gitBlob": "4f5bdb9c50ba827184fc7bce65d0a011380c772d"
+    },
+    "tests/hub-admin-rooms.test.ts": {
+      "sha256": "79716a91077e071493990aa5eb561333f43d3c117796d3a82afabfd38137ad57",
+      "gitBlob": "fc1a9d3577ab9ef81ee23363fc7eb28c27fdb567"
+    },
+    "tests/hub-role-admin-3223.test.ts": {
+      "sha256": "7f7c16ca549d7469cb767ebc9c30cf82b0120162aab508f2101418a62139db59",
+      "gitBlob": "f5b6d474fe8bf8b7dc296b1861abe4c0c858c4c2"
+    },
+    "tests/hub-role-ui-3223.test.ts": {
+      "sha256": "07c95c56621ba0a82c62b39563ab7d0b952985bca032d97646284bb7478954aa",
+      "gitBlob": "904be43050658db8a9a40d37f7e52375f21b4c7c"
+    },
+    "tests/hub-roles-authority-s129.test.ts": {
+      "sha256": "9fc50e8c62308f304312e24a285a6d170bba4fafa9659eea1f7ece390c24f0c8",
+      "gitBlob": "ce8d19c43d35268993233148fbab5347136c1344"
+    },
+    "tests/hub-roles-evaluate-m3010.test.ts": {
+      "sha256": "a12833d1c4ba749119035d9240efb0f3b5d1be3d0006f3322b81324c32333f9a",
+      "gitBlob": "be8a6be5dd443adb84d342373d355886d56aa464"
+    },
+    "tests/hub-roles-model-m3010.test.ts": {
+      "sha256": "1e0bb91d7e03103642c2b4cea9a46a522f4657b7a85088d1d30d2de85163a48c",
+      "gitBlob": "e7b60ac7732ba6f07375db5c5cf958a6b15d77ae"
+    },
+    "tests/hub-room-create-role-s256.test.ts": {
+      "sha256": "16e771fc37e05a451650ed58a87ceba11cb2c52dcea389b2eb2b0ab5d02f758c",
+      "gitBlob": "79e52afb1c6998178f7704085bb308f3bf885e4b"
+    }
+  }
+}
