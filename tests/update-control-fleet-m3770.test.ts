@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { askFleet, type ControlRequest } from "../src/update-control.js";
+import { barrierHand } from "../src/update-hands.js";
 import { ackGeneration, advance, finish, listHandback, newAttemptId, openAttempt, planGeneration, readCurrent, substep, type AttemptRecord } from "../src/update-journal.js";
 import { acquireServiceLock, serviceLockSenderLive } from "../src/service-lock.js";
 
@@ -138,6 +139,24 @@ describe("M-3770 2.5 wiring part 2: the fleet answers its mailbox", () => {
     expect(fresh.createdSeq).toBeGreaterThan(copies[0]!.createdSeq);
     f.fm.updateControlTick();
     expect(listHandback(f.home, ID)).toHaveLength(after.length);                                    // the inbox didn't grow
+  });
+
+  it("the arm answered late (the updater's barrier hand timed out first): it abandons from opened; the fleet stays armed until the first walk, then the barrier comes down (Fable, part 5)", () => {
+    const f = fleet();
+    let t = 0;
+    // The driver waits 1 s and the fleet's pass doesn't run meanwhile: no answer → abandon (never success).
+    const r = barrierHand(f.home, SELF, { from: DRIVER, timeoutMs: 1000, pollMs: 250, now: () => t, sleep: ms => { t += ms; } })(f.attempt);
+    expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(/didn't answer request 1 \(barrier\.arm\) in time/) });
+    f.fm.updateControlTick();                                                                       // the late pass: armed, answered to nobody
+    expect(f.fm.updateBarrier?.barrier.armed()).toBe(true);
+    let a: AttemptRecord = advance(f.home, f.attempt, "abandoning", { note: r.ok ? "" : r.reason });
+    f.fm.updateControlTick();
+    expect(f.fm.updateBarrier?.barrier.armed()).toBe(true);                                         // not at the bare abandoning write
+    a = substep(f.home, a, "restart-old");                                                          // the fleet was never stopped: it is the old generation still
+    f.fm.updateControlTick();                                                                       // the first walk, armed, then down
+    expect(f.fm.updateBarrier).toBeNull();
+    expect(f.fm.quiescence).toBeNull();
+    expect(listHandback(f.home, ID).every(e => e.acked)).toBe(true);
   });
 
   it("a first walk that throws still takes the barrier down (later walks retry, unarmed)", () => {
