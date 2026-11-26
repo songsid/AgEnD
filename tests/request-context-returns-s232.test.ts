@@ -1,3 +1,4 @@
+import {makeRequestDeliveryInputResolver} from "../src/request-context-delivery-resolver.js";
 import {randomUUID} from "node:crypto";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
@@ -48,4 +49,23 @@ it("H return rows retire before B operations without an FK stall",()=>{
  f.db.prepare("UPDATE deliveries SET state='failed',finished_at=?,updated_at=? WHERE delivery_id=?").run("2000-01-01T00:00:00Z","2000-01-01T00:00:00Z",id);
  expect(requestContextReturnBlockers(f.db,root.ref.rootContextId)).toEqual([]);const gate=f.box.requestHubContactGate({current:()=>true,person:()=>null,adminOf:()=>false,canDecide:()=>true,canManage:()=>true,rootRetired:()=>true});
  gate.retireRoot(root.ref.rootContextId);expect(f.box.requestContext(root.ref.contextId)).toBeNull();expect(f.box.requestContextForDelivery(id)).toBeNull();expect(f.db.prepare(`SELECT COUNT(*) n FROM ${REQUEST_CONTEXT_RETURNS_TABLE}`).get()).toEqual({n:0});
+});
+it("final delivery resolver requires the actual current physical claim and B-owned peer, never display sender",()=>{
+ const f=fixture(),root=f.root(),request=f.admit(root,"b"),runtime=owner("b");let owned=true,consume=true;
+ const resolver=makeRequestDeliveryInputResolver(f.box,{instance:"b",managerBootId:"manager",current:()=>owned,runtimeOwner:()=>runtime,consumptionCurrent:()=>consume}),id=request.result.delivery.deliveryId,input=`delivery:${id}:1`;
+ expect(resolver.prepare("human:unrelated",wire,runtime)).toBeNull();expect(()=>resolver.prepare(input,wire,runtime)).toThrow(/current/);
+ const claimed=f.box.claimNext("manager",()=>runtime.daemonBootId,new Set())!;expect(claimed.deliveryId).toBe(id);
+ const prepared=resolver.prepare(input,wire,runtime)!;expect(prepared.proof).toMatchObject({kind:"admitted-delivery",sender:{instance:"a",incarnation:"v1"}});expect(prepared.context?.ref.rootContextId).toBe(root.ref.contextId);
+ expect(f.bind(prepared).turn.context).toEqual(prepared.context);expect(()=>resolver.prepare(`delivery:${id}:2`,wire,runtime)).toThrow(/current/);
+ consume=false;expect(()=>resolver.prepare(input,wire,runtime)).toThrow(/current/);consume=true;owned=false;expect(()=>resolver.prepare(input,wire,runtime)).toThrow(/current/);owned=true;
+ expect(()=>resolver.prepare(input,wire,{...runtime,daemonBootId:"another-boot"})).toThrow(/current/);
+ expect(f.box.begin(id,runtime.daemonBootId,1)).toBe("begun");expect(resolver.prepare(input,wire,runtime)?.context).toEqual(prepared.context);
+ f.box.complete(id,runtime.daemonBootId,1,"delivered");expect(()=>resolver.prepare(input,wire,runtime)).toThrow(/current/);
+});
+it("a foreign manager or a replacement during final delivery validation cannot retain a child",()=>{
+ const f=fixture(),request=f.admit(f.root(),"b"),runtime=owner("b"),id=request.result.delivery.deliveryId,input=`delivery:${id}:1`;f.box.claimNext("manager",()=>runtime.daemonBootId,new Set());
+ const before=f.db.prepare("SELECT COUNT(*) n FROM request_contexts_v1").get();
+ const wrong=makeRequestDeliveryInputResolver(f.box,{instance:"b",managerBootId:"another-manager",current:()=>true,runtimeOwner:()=>runtime,consumptionCurrent:()=>true});expect(()=>wrong.prepare(input,wire,runtime)).toThrow(/current/);
+ let calls=0;const replaced=makeRequestDeliveryInputResolver(f.box,{instance:"b",managerBootId:"manager",current:()=>++calls<4,runtimeOwner:()=>runtime,consumptionCurrent:()=>true});expect(()=>replaced.prepare(input,wire,runtime)).toThrow(/current/);
+ expect(f.db.prepare("SELECT COUNT(*) n FROM request_contexts_v1").get()).toEqual(before);
 });

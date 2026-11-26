@@ -1,3 +1,4 @@
+import {makeRequestDeliveryInputResolver} from "./request-context-delivery-resolver.js";
 import {makeRequestHumanInputResolver} from "./request-context-human-resolver.js";
 import type { RequestContextV1 } from "./request-context-protocol.js";
 import { markRetainedHumanControl, retainedHumanControl } from "./retained-human-control.js";
@@ -9635,6 +9636,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         daemon.noteHumanReceiptSettlement?.(result.receipt_id, accepted === true && result.proof !== null);
       } catch (err) { this.logger.error({ err, instanceName }, "Could not persist human delivery evidence"); }
     });
+  }
+
+  /** Physical B attempt resolver for the exact replacement daemon; no origin or correlation fallback. */
+  makeRequestContextDeliveryResolver(instance:string,daemon:Daemon,current:()=>boolean){
+    const box=this.deliveryOutbox;if(!box)throw Error("Request delivery input owner is unavailable");
+    return makeRequestDeliveryInputResolver(box,{instance,managerBootId:this.managerBootId,
+      current:()=>current()&&this.daemons.get(instance)===daemon,runtimeOwner:()=>daemon.captureRequestContextOwner(),
+      consumptionCurrent:delivery=>this.contactDeliveryCurrent(delivery)});
   }
 
   /** Pre-start owner factory; this neither installs a lifecycle nor publishes serving input. */
