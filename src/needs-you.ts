@@ -79,7 +79,7 @@ export type NeedsYouReason =
   | "host_health"
   | "contact_request" | "contact_restricted_suggestion"
   | "hang" | "exited" | "assist" | "question"                       // prompt
-  | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
+  | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input" | "codex_policy_recourse"   // awaiting_input
   | "general_windows_offline" | "general_location_hold"
   | "model_switch" | "auth_paused" | "stale_auth" | "crashed" | "usage_limit" | "native_pane_hold" | "backend_missing" | "mcp_missing"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
@@ -136,6 +136,8 @@ export interface InstanceInput {
   state?: string;
   interaction?: { kind?: string | null; owner?: string | null; episode?: number | null; since?: number | null } | null;
   interactionSummary?: string | null;
+  /** Only code/title metadata from the board, never terminal text or generated rewrites. */
+  policyTasks?: string[];
   /** The pause marker's reason, for a paused instance; and when it was paused. */
   pauseReason?: string | null;
   /** Process-local login hold, including General/busy agents before a pause completes. */
@@ -240,6 +242,7 @@ const INTERACTION_REASON: Record<string, NeedsYouReason> = {
   dialog: "dialog",
   kiro_choice: "dialog",
   safety_review: "dialog",
+  policy_recourse: "codex_policy_recourse",
   suspected_terminal_input: "terminal_input",
 };
 
@@ -283,7 +286,7 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
           id: `awaiting:${inst.name}:${owner ?? "-"}:${episode ?? "-"}`, type: "awaiting_input", instance: inst.name,
           reason: INTERACTION_REASON[inst.interaction.kind ?? ""] ?? "dialog",
           ...(inst.interaction.kind === "kiro_choice" ? { kiroChoice: true as const } : {}),
-          detail: inst.interaction.kind === "kiro_choice" ? inst.interactionSummary ?? "" : oneLine(inst.interactionSummary ?? ""), since: inst.interaction.since ?? 0,
+          detail: inst.interaction.kind === "policy_recourse" ? (inst.policyTasks ?? []).slice(0, 3).map(s => oneLine(s).slice(0, 160)).join(" · ") : inst.interaction.kind === "kiro_choice" ? inst.interactionSummary ?? "" : oneLine(inst.interactionSummary ?? ""), since: inst.interaction.since ?? 0,
         });
       }
     }

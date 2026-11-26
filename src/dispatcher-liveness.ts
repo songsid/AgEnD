@@ -60,7 +60,7 @@ export interface AssigneeFacts {
    */
   quietFloor?: number | null;
   /** A prompt or dialog waiting for a person at its terminal, and since when. */
-  prompt?: { since: number } | null;
+  prompt?: { since: number; reason?: "codex_policy_recourse" } | null;
   /** The instances it asked something and still waits on (an open request with a correlation id). */
   waitingOn?: string[];
   /** When it last sent a message to anyone (a reply, send_to_instance, report_result…). */
@@ -96,7 +96,7 @@ export function judgeAssignee(f: AssigneeFacts, card: CardTimes, s: LivenessSett
   if (reason === "error" || reason === "stale_auth") return { kind: "error", since: f.paused?.at ?? now, detail: "" };
   if (f.process === "stopped") return null;                          // stopped by a person (or a fleet stop): they know
   if (f.execution?.state === "stuck") return { kind: "hung", since: f.execution.since, detail: "" };
-  if (f.prompt && now - f.prompt.since >= s.promptMs) return { kind: "prompt", since: f.prompt.since, detail: "" };
+  if (f.prompt && now - f.prompt.since >= s.promptMs) return { kind: "prompt", since: f.prompt.since, detail: f.prompt.reason ?? "" };
   if (f.prompt || reason === "operator") return null;
   // Quiet: idle (or paused for being idle), nothing it asked still open, and no sign of progress for the threshold.
   const idlePaused = reason === "idle" || reason === "warm_cap";
@@ -141,8 +141,9 @@ export function spanText(ms: number): string {
 export function stoppedLine(card: { code: string; title: string }, assignee: string, v: StopVerdict, now: number): string {
   const title = card.title.replace(/\s+/g, " ").trim();
   const short = title.length > 60 ? `${title.slice(0, 59)}…` : title;
-  const what = t(`liveness.what_${v.kind}`, assignee, spanText(now - v.since), v.detail);
-  return `${card.code} "${short}" — ${what}${t("liveness.sep")}${t(`liveness.todo_${v.kind}`)}`;
+  const kind = v.kind === "prompt" && v.detail === "codex_policy_recourse" ? "policy_recourse" : v.kind;
+  const what = t(`liveness.what_${kind}`, assignee, spanText(now - v.since), v.detail);
+  return `${card.code} "${short}" — ${what}${t("liveness.sep")}${t(`liveness.todo_${kind}`)}`;
 }
 
 /** The dispatcher's notice for one sweep's new episodes (one or several cards). */

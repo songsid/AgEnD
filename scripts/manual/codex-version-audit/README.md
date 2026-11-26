@@ -195,3 +195,35 @@ Run every pass through `netns.sh <script> [args…]`. A bare `unshare -rn` leave
 mock: every turn shows `Reconnecting... waiting for network`, and the captures look plausible but contain no real
 error frames. `netns.sh` raises `lo` as mapped root, maps back to the caller's uid and refuses to run with a
 non-loopback route.
+
+## M-3804: policy recourse is not context exhaustion
+
+On Codex 0.169.0 the exact title “You can choose a rewrite to start a new chat with your earlier context” belongs to
+[the policy-recourse picker](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/tui/src/chatwidget/safety_recourse.rs).
+It requires matching policy-error and moderation metadata; it is not the context-limit/compaction branch.
+[Selecting a suggestion](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/tui/src/app/safety_recourse.rs)
+forks before the failed turn and submits generated text as a new user turn. That text is not a replacement agent role.
+Both Nov26 incidents record `cyber_policy`; the morning failed at 07:13 before the 07:21 fork.
+The afternoon’s 436,298 input tokens in a 475k window happened before its policy refusal,
+but that correlation does not make the menu a context-full prompt. No private rollout or generated suggestion is published.
+
+AgEnD holds this exact live picker for a person. It sends no keys, does not start a fresh thread, select a rewrite,
+enable Daybreak or retry the refused request. Needs you gives a plain reason, the agent and bounded claimed-task context.
+The dispatcher's existing liveness sweep reports the policy reason after the configured prompt threshold (default 10min),
+with its normal startup grace, persistent dedupe and recovery handling. No new timer or automatic recovery is added.
+
+Context management is separate. `model_auto_compact_token_limit` controls the token threshold, and
+`model_auto_compact_token_limit_scope` selects total active context or body after a carried prefix. The pinned
+[model implementation](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/protocol/src/openai_models.rs)
+clamps the limit to 90% of the context window. The
+[turn loop](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/core/src/session/turn.rs)
+can compact again when the threshold is reached; there is no demonstrated “one compaction then rewrite menu” rule.
+Leave model defaults in place; lowering the threshold is a context tradeoff, not a way to pre-answer a policy refusal.
+This fix changes no compaction configuration.
+
+Scratch reproduction: install `@openai/codex@0.169.0` into an owned `$AUDIT/codex-0.169.0` npm prefix, then run
+`AUDIT=<owned scratch root> bash scripts/manual/codex-policy-recourse/rig.sh`.
+It uses the existing production launch generator with an account-free loopback provider, scratch homes and private tmux
+in a network namespace; mock modes `cyber-recourse`/`bio-recourse` emit inert synthetic suggestions. No suggestion is selected.
+The [evidence README](../../../docs/evidence/codex-policy-recourse-m3804/README.md) distinguishes native terminal proof,
+injected real-dashboard captures and the prior generic-projection comparison.

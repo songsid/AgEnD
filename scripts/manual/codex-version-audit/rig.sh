@@ -3,7 +3,7 @@
 #   VERSION     codex version installed under $AUDIT/codex-$VERSION (npm --prefix), never the host install
 #   steps       mock | launch <name> [resume|fresh] [trust|untrusted] [nudge] [WxH] [workdir-name] [git|plain] | clone <name> <from>
 #               | raw <name> <inst> <workdir-name> <codex args…> | cap <scenario> <secs>
-#               | send <text> | key <tmux-key> | mode <ok|slow|near|usage|wscredits|wsspend|e401|e500|notfound|capacity> | kill | stop
+#               | send <text> | key <tmux-key> | mode <ok|slow|near|usage|wscredits|wsspend|e401|e500|notfound|capacity|cyber-recourse|bio-recourse> | kill | stop
 #               | paths (prints SOCK AH SH RUN for this run)
 # Env: AUDIT (scratch root, required), AUDIT_HOME_PARENT (short owned home root, default HOME),
 #      PORT (default 18762), WIN (tmux window target, default "a"), BODY_LOG (mock request bodies).

@@ -7082,7 +7082,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       turnEvidence: this.livenessTurnEvidence.has(name),
       // M-3239 (Fable F1): a restart forgets the transcript's progress; its quiet clock starts no earlier than the fleet.
       quietFloor: this.livenessTurnEvidence.has(name) ? this.startedAt : null,
-      prompt: p.state === "awaiting_input" && p.interaction?.since ? { since: p.interaction.since } : null,
+      prompt: p.state === "awaiting_input" && p.interaction?.since ? { since: p.interaction.since,
+        ...(p.interaction.kind === "policy_recourse" ? { reason: "codex_policy_recourse" as const } : {}) } : null,
       waitingOn,
       // Asked only when it could be quiet (one indexed read per idle assignee).
       lastMessageAt: idle && this.deliveryOutbox?.isOpen ? this.deliveryOutbox.latestSentAt(name) : null,
@@ -20911,6 +20912,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       out.push({
         name, state: p.state ?? undefined,
         interaction: p.interaction ? { kind: p.interaction.kind, owner: wait?.owner ?? null, episode: p.interaction.episode, since: p.interaction.since } : null,
+        policyTasks: p.state === "awaiting_input" && p.interaction?.kind === "policy_recourse"
+          ? (this.scheduler?.db.listTasks({ assignee: name, status: "claimed" }) ?? []).slice(0, 3)
+            .map(card => `${card.code} — ${card.title.replace(/\s+/g, " ").trim().slice(0, 120)}`) : undefined,
         interactionSummary: p.interaction?.kind === "kiro_choice" ? t("kiro3.running") : p.interaction_summary ?? null,
         kiroCompatibility: this.kiroCompatibilityHolds?.get(name),
         backendMissing: this.missingBinaryHold(name),

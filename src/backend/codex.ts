@@ -45,6 +45,7 @@ import { t } from "../locale.js";
 import { snapshotCodexQuotaHistory, snapshotCodexSessionQuotaHistory } from "./codex-quota-history.js";
 import { quotaLine, quotaLowLine, quotaPausedLine } from "../quota-notice.js";
 import { parse as parseToml } from "smol-toml";
+import { codexPolicyRecourseVisible, CODEX_POLICY_RECOURSE_TITLE } from "./codex-policy-recourse.js";
 import { codexPrecaution } from "./codex-precaution.js";
 import { selectionCard } from "../selection-card.js";
 /**
@@ -1562,6 +1563,7 @@ export class CodexPaneDetectors {
       this.updatePickerDialog(),
       this.rateSwitchPickerDialog(),
       ...this.sessionHoldDialogs(),
+      this.policyRecourseHoldDialog(),
       this.unknownSelectionHoldDialog(),
     ];
   }
@@ -1740,6 +1742,18 @@ export class CodexPaneDetectors {
     };
   }
 
+  private policyRecourseHoldDialog(): RuntimeDialog {
+    return {
+      pattern: /You can choose a rewrite to start a new chat/,
+      description: t("codex.policy_recourse.reason"),
+      keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true, humanOnly: true,
+      interactionKind: "policy_recourse",
+      isActive: codexPolicyRecourseVisible,
+      // Never retain or forward the provider's generated rewrite as an agent instruction.
+      requestIdentity: pane => codexPolicyRecourseVisible(pane) ? CODEX_POLICY_RECOURSE_TITLE : null,
+    };
+  }
+
   private unknownSelectionHoldDialog(): RuntimeDialog {
     return {
       pattern: /^\s*[›❯>]\s+\S/m,
@@ -1777,6 +1791,7 @@ export class CodexPaneDetectors {
       this.usageLimitLunaReserveDialog(),
       this.workspaceLimitPromptDialog(),
       ...this.sessionHoldDialogs(),
+      this.policyRecourseHoldDialog(),
       this.unknownSelectionHoldDialog(),
     ];
   }

@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 export type InstanceState = "idle" | "working" | "stuck";
 
 /** Interaction metadata is presentation only; execution/lifecycle gates remain three-valued. */
-export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "kiro_choice" | "suspected_terminal_input" | "safety_review";
+export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "kiro_choice" | "suspected_terminal_input" | "safety_review" | "policy_recourse";
 export interface InteractionOwner {
   bootId: string;
   spawnGeneration: number;

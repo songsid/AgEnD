@@ -1,0 +1,130 @@
+[
+  {
+    "stage": "before",
+    "case": "desk-light-en",
+    "file": "before-desk-light-en.png",
+    "text": "Waiting at a dialog\n12 min ago\nOpen chat",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "before",
+    "case": "desk-light-zh-TW",
+    "file": "before-desk-light-zh-TW.png",
+    "text": "停在對話框\n12 分鐘前\n開啟聊天",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "before",
+    "case": "desk-dark-en",
+    "file": "before-desk-dark-en.png",
+    "text": "Waiting at a dialog\n12 min ago\nOpen chat",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "before",
+    "case": "desk-dark-zh-TW",
+    "file": "before-desk-dark-zh-TW.png",
+    "text": "停在對話框\n12 分鐘前\n開啟聊天",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "before",
+    "case": "phone-light-en",
+    "file": "before-phone-light-en.png",
+    "text": "Waiting at a dialog\n12 min ago\nOpen chat",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "before",
+    "case": "phone-light-zh-TW",
+    "file": "before-phone-light-zh-TW.png",
+    "text": "停在對話框\n12 分鐘前\n開啟聊天",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "before",
+    "case": "phone-dark-en",
+    "file": "before-phone-dark-en.png",
+    "text": "Waiting at a dialog\n12 min ago\nOpen chat",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "before",
+    "case": "phone-dark-zh-TW",
+    "file": "before-phone-dark-zh-TW.png",
+    "text": "停在對話框\n12 分鐘前\n開啟聊天",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "after",
+    "case": "desk-light-en",
+    "file": "after-desk-light-en.png",
+    "text": "Codex’s safety check stopped this turn and suggests rewording it\n12 min ago\n\nM-100 — Review the proposed change\n\nOpen chat",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "after",
+    "case": "desk-light-zh-TW",
+    "file": "after-desk-light-zh-TW.png",
+    "text": "Codex 的安全檢查已停止這一輪，並建議改寫\n12 分鐘前\n\nM-100 — Review the proposed change\n\n開啟聊天",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "after",
+    "case": "desk-dark-en",
+    "file": "after-desk-dark-en.png",
+    "text": "Codex’s safety check stopped this turn and suggests rewording it\n12 min ago\n\nM-100 — Review the proposed change\n\nOpen chat",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "after",
+    "case": "desk-dark-zh-TW",
+    "file": "after-desk-dark-zh-TW.png",
+    "text": "Codex 的安全檢查已停止這一輪，並建議改寫\n12 分鐘前\n\nM-100 — Review the proposed change\n\n開啟聊天",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "after",
+    "case": "phone-light-en",
+    "file": "after-phone-light-en.png",
+    "text": "Codex’s safety check stopped this turn and suggests rewording it\n12 min ago\n\nM-100 — Review the proposed change\n\nOpen chat",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "after",
+    "case": "phone-light-zh-TW",
+    "file": "after-phone-light-zh-TW.png",
+    "text": "Codex 的安全檢查已停止這一輪，並建議改寫\n12 分鐘前\n\nM-100 — Review the proposed change\n\n開啟聊天",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "after",
+    "case": "phone-dark-en",
+    "file": "after-phone-dark-en.png",
+    "text": "Codex’s safety check stopped this turn and suggests rewording it\n12 min ago\n\nM-100 — Review the proposed change\n\nOpen chat",
+    "overflow": false,
+    "pageErrors": 0
+  },
+  {
+    "stage": "after",
+    "case": "phone-dark-zh-TW",
+    "file": "after-phone-dark-zh-TW.png",
+    "text": "Codex 的安全檢查已停止這一輪，並建議改寫\n12 分鐘前\n\nM-100 — Review the proposed change\n\n開啟聊天",
+    "overflow": false,
+    "pageErrors": 0
+  }
+]

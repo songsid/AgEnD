@@ -1,0 +1,27 @@
+
+  >_ OpenAI Codex (v0.169.0)
+     /scratch/audit/work
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› Inert local audit of the refusal menu.
+
+
+ⓘ This content can’t be shown
+  We take extra caution with requests that could enable cyber activities that pose security or safety risks. You can ask Codex for an overview of
+  cybersecurity fundamentals and defensive best practices. If you’re doing authorized security work, apply for Daybreak to get broader access.
+  Learn more: https://help.openai.com/en/articles/20001326
+  Apply for Daybreak: https://openai.com/form/enterprise-trusted-access-for-cyber/
+
+
+  You can choose a rewrite to start a new chat with your earlier context:
+
+
+› 1. Explain the topic
+  2. Describe safe practices
+  3. Explain the risks
+  4. Give feedback
+
+  enter select · esc back

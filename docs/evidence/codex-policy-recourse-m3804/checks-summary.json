@@ -1,0 +1,36 @@
+{
+  "cases": 135,
+  "files": 5,
+  "nativeFrames": 2,
+  "types": 0,
+  "testTypes": 0,
+  "build": 0,
+  "finalFocused": {
+    "cases": 6,
+    "exit": 0
+  },
+  "reversals": [
+    {
+      "name": "detector",
+      "inputSha256": "dab6cc1d411fccebc7ed382f30a779befc6b3e35bc1f246297ef74fa91aa7b23",
+      "exit": 1,
+      "restoredSha256": "80afcec21e097c14d87837a82e06dd2eb420b969107cffe1e463e6213687cfc9"
+    },
+    {
+      "name": "dispatcher-reason",
+      "inputSha256": "763ce75eb63c7c1702225ad527b2b5f66819ebe76d3ae61419437410628483c0",
+      "exit": 1,
+      "restoredSha256": "7278be34bee5b99e034ef83a99b6646102771b2c1ad671ca9723f55738b3bcab"
+    },
+    {
+      "name": "task-context",
+      "inputSha256": "67f021256bd8dffadf89b0008f946f94db2e351d46948ae09ee17935e48e503d",
+      "exit": 1,
+      "restoredSha256": "5cfe51c4624bf979a497afbca3c17352ed33ecc347b2519db8befe0387a9a9e0"
+    }
+  ],
+  "captureOriginals": 16,
+  "imagesIndividuallyInspected": true,
+  "ownedAuditProcessesAfterStop": 0,
+  "scope": "No native account/provider or full fleet daemon e2e. Native loopback CLI plus actual production methods/real ledger and real-dashboard fixture."
+}

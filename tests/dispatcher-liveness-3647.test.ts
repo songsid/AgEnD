@@ -454,3 +454,25 @@ it("a stale-process auth pause is a persistent error stop", () => {
   expect(judgeAssignee(f, card, S, T0)).toMatchObject({ kind: "error", since: T0 });
   expect(stillStopped({ kind: "error", since: T0 }, f, card)).toBe(true);
 });
+
+
+it("M-3804 policy wait tells the dispatcher once, survives restart, and withdraws on recovery", async () => {
+  const r = rig({ cards: [claimed("M-100", "reviewer")] });
+  const facts: AssigneeFacts = { process: "running", prompt: { since: T0, reason: "codex_policy_recourse" } };
+  r.facts.set("reviewer", facts);
+  r.at(T0 + 10 * MIN); await r.tick();
+  expect(r.sent()).toHaveLength(1);
+  expect(r.sent()[0]).toMatchObject({ to: "leader" });
+  expect(r.sent()[0]!.text).toContain("Codex’s safety check stopped reviewer’s turn");
+  r.at(T0 + 30 * MIN); await r.tick();
+  expect(r.sent()).toHaveLength(1);
+  const restarted = rig({ cards: r.cards, startedAt: T0 + 30 * MIN, ledger: r.ledger });
+  restarted.facts.set("reviewer", facts);
+  restarted.at(T0 + 40 * MIN); await restarted.tick();
+  expect(restarted.sent()).toHaveLength(0);
+  // A queued alert is withdrawn; there is no delayed notification after the wait is gone.
+  r.facts.set("reviewer", { process: "running", execution: { state: "working", since: T0 + 31 * MIN } });
+  r.at(T0 + 31 * MIN); await r.tick();
+  expect(r.sent()).toHaveLength(0);
+  expect(r.ledger.listOpen()).toHaveLength(0);
+});
