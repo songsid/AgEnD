@@ -58,3 +58,5 @@ Retained human controls: `human-control.json` binds the exact source and restore
 Accepted human ingress: `human-input.json` binds the atomic companion/facade, explicit guest facts, indexed durable references, retirement and pruning controls. It records the prior-source pane-fixture diagnostic and the isolated inert-executable run separately. Final-write and complete installation remain unfinished.
 
 Current request admission: `registered-access.json` binds the SDK registration evidence, native/web current-access checks, current room-mode behavior and seven mutation controls. Creation allowlists are kept separate from registered-room message admission. This is not full-mode or activation acceptance.
+
+Final human write: `human-resolver.json` binds the actual facade/formatter/C/pane-judge composition, stale-owner and anti-laundering controls. It is not a complete production installation or full-mode acceptance.
