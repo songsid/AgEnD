@@ -1458,8 +1458,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * happens here. Its readiness callbacks must come from the actual legacy drain and negotiated port inventories.
    */
   async prepareRequestContextFirstOnAssembly(durableDrained:()=>boolean,transportsReady:()=>boolean,
-    rootRetired:(drain:import("./request-context-drain.js").RequestContextDrain,root:string)=>boolean){
-    const {RequestContextPaneProofs}=await import("./request-context-pane.js");
+    rootRetired:(drain:import("./request-context-drain.js").RequestContextDrain,root:string)=>boolean,execution?:SettingsExecution){
+    const {RequestContextPaneProofs}=await import("./request-context-pane.js");execution?.assert();
     const first=this.prepareRequestContextFirstOn(),box=this.deliveryOutbox!,boot=first.boot;
     let connection:ReturnType<DeliveryOutbox["stageRequestContextConnection"]>;
     try{connection=box.stageRequestContextConnection({current:first.fence.owned});}catch(error){first.abandon();throw error;}
@@ -1491,16 +1491,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         inventory=await this.prepareRequestContextDrainOwners(drain,registration,factory,owned);
         return undoNative;
         }catch(error){await undoNative();throw error;}
-      });
-      factory!.adopt(relaunch.owners());
+      },execution);
+      execution?.assert();factory!.adopt(relaunch.owners());
       // Do not start deliberately stopped agents. Prepare only their future owned start/exec closures.
       const names=[...new Set([...Object.keys(this.fleetConfig!.instances),...(this.classicChannels?.getAll()??[]).map(room=>room.instanceName)])].sort();
       const configurations=names.map(name=>[name,this.hubAgentConfig(name)]as const),rosterImage=requestContextDigest(configurations);
-      for(const [name,config]of configurations){if(!config)throw Error("Request owner configuration unavailable");if(!this.daemons.has(name))await factory!.beforeStart(name,config);}
+      for(const [name,config]of configurations){if(!config)throw Error("Request owner configuration unavailable");if(!this.daemons.has(name))await factory!.beforeStart(name,config);execution?.assert();}
       const sameRoster=()=>requestContextDigest(names.map(name=>[name,this.hubAgentConfig(name)]))===rosterImage
         &&requestContextDigest([...new Set([...Object.keys(this.fleetConfig?.instances??{}),...(this.classicChannels?.getAll()??[]).map(room=>room.instanceName)])].sort())===requestContextDigest(names);
-      const ready=()=>owned()&&first.fence.current()&&connection.current()&&relaunch!.ready()&&factory!.current()&&inventory!.current()
+      const processReady=()=>owned()&&first.fence.current()&&connection.current()&&relaunch!.ready()&&factory!.current()&&inventory!.current()
         &&sameRoster()&&durableDrained()&&transportsReady();
+      const ready=()=>processReady()&&(!execution||execution.current());
       if(!ready())throw Error("Request-context owner or transport is not ready");
       const portsCurrent=()=>owned()&&factory!.current()&&inventory!.current();
       let serving:ReturnType<FleetManager["prepareRequestContextServingOwners"]>|undefined;
@@ -1510,7 +1511,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           serving=this.prepareRequestContextServingOwners(portsCurrent,root=>rootRetired(drain,root),factory!.hub,()=>boot.publication.installedMode());},
         /** Synchronous post-COMMIT publication. Failure stays capable and fenced for recovery. */
         publish:()=>{
-          const state=box.requestContextInstallation().read();if(!state||state.mode!=="active"||!serving||!ready())throw Error("Activation publication unavailable");
+          const state=box.requestContextInstallation().read();if(!state||state.mode!=="active"||!serving||!processReady())throw Error("Activation publication unavailable");
           committed=true;first.adoptCommitted(state.epoch);relaunch!.seal();factory!.seal();relaunch!.releaseStartHooks();factory!.attach();
           this.bindRequestContextServingPublication(boot);
           boot.publication.publish(state,{policy:serving.policy,serving},first.fence,portsCurrent,()=>box.requestContextInstallation().read(),portsCurrent);
@@ -1530,7 +1531,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The installer separately stages native factories and checks every transport before its one activation COMMIT.
    */
   async prepareRequestContextPersistentRelaunch(policy:RequestContextPolicyPort,registration:RequestContextRegistrationGate,
-    fence:{current():boolean;owned():boolean},durableDrained:()=>boolean,afterRetirement?:()=>Promise<()=>Promise<void>>){
+    fence:{current():boolean;owned():boolean},durableDrained:()=>boolean,afterRetirement?:()=>Promise<()=>Promise<void>>,execution?:SettingsExecution){
     const box=this.deliveryOutbox,admission=this.requestContextAdmission,lease=captureProcessFleetLease(this.dataDir),boot=this.managerBootId;
     if(!box||box.requestContextInstallation().read()!==null||!admission||admission.available()||!lease?.current()||!fence.current())throw Error("Request relaunch preparation unavailable");
     const inventory=await this.captureRequestContextOwnedLaunches();
@@ -1594,16 +1595,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try{
       for(const row of rows){
         if(!current()||!fence.current()||!durableDrained()||!row.idle.current())throw failed(row.name);
-        row.stopped=true;
-        if(!await this.lifecycle.stopIfCurrent(row.name,row.daemon))throw failed(row.name);
+        execution?.assert();row.stopped=true;
+        let stopped=false;const stop=async()=>{stopped=await this.lifecycle.stopIfCurrent(row.name,row.daemon);};
+        if(execution)await execution.stopTarget(row.name,stop);else await stop();
+        if(!stopped)throw failed(row.name);
         if(!current()||!await row.retirement.retired()||!current())throw failed(row.name);
       }
       if(afterRetirement){undoAfterRetirement=await afterRetirement();if(!current()||!fence.current()||!durableDrained())throw Error("Request relaunch preparation changed");}
       for(const row of rows){
         if(!current()||!fence.current()||!durableDrained())throw failed(row.name);
         row.prepared=this.prepareRequestContextDaemonOwner(row.name,row.spec.config,policy,registration,()=>committed?processOwned()&&this.contactGeneration(row.name)===row.incarnation&&this.daemons.get(row.name)===row.candidate:current());
-        await this.startInstance(row.name,row.spec.config,row.spec.topicMode,row.spec.kind);
-        row.published=true;
+        execution?.assert();await this.startInstance(row.name,row.spec.config,row.spec.topicMode,row.spec.kind,false,undefined,execution);
+        execution?.assert();row.published=true;
         if(!current())throw failed(row.name);row.prepared.sealRegistered();
       }
       const ready=()=>!rollingBack&&current()&&hooksOwned()&&fence.current()&&durableDrained()&&rows.every(row=>row.prepared?.bound());

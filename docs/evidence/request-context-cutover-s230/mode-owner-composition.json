@@ -1,0 +1,44 @@
+{
+  "scope": "Private-database and inert physical-port assembly checkpoint; not full-mode completion",
+  "sourceCore": "5e0c80165",
+  "liveOperations": false,
+  "visualChanges": false,
+  "checks": [
+    {
+      "files": [
+        "tests/request-context-off-owner-s230.test.ts",
+        "tests/request-context-installation-s230.test.ts"
+      ],
+      "passed": 28,
+      "failed": 0
+    },
+    {
+      "files": [
+        "tests/request-context-first-on-assembly-s230.test.ts",
+        "tests/request-context-relaunch-s230.test.ts",
+        "tests/request-context-retained-owners-s230.test.ts",
+        "tests/request-context-boot-s230.test.ts",
+        "tests/request-context-serving-owners-s230.test.ts",
+        "tests/request-context-off-owner-s230.test.ts"
+      ],
+      "passed": 61,
+      "failed": 0
+    },
+    {
+      "files": [
+        "tests/request-context-first-on-assembly-s230.test.ts",
+        "tests/request-context-relaunch-s230.test.ts"
+      ],
+      "passed": 14,
+      "failed": 0,
+      "note": "Includes Settings follow-stop, revoked confirmation and consumed-decision controls; overlaps previous run."
+    }
+  ],
+  "remaining": [
+    "Actual Settings controller and independently confirmed update/Go-back offer binding",
+    "Authoritative whole-Fleet owner and negotiated transport readiness",
+    "Capable startup reconstruction and independent failed-install Off",
+    "Explicit owned blocker-resolution actions",
+    "Full-mode matrix, mutations and final integration captures/user look"
+  ]
+}

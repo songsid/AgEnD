@@ -6,6 +6,7 @@ import {tmpdir} from "node:os";
 import {randomUUID} from "node:crypto";
 import {DeliveryOutbox} from "../src/delivery-outbox.js";
 import {FleetManager} from "../src/fleet-manager.js";
+import {SettingsExecution} from "../src/settings-transaction.js";
 import {RequestContextPreparedWork} from "../src/request-context-work.js";
 import {RequestContextPendingWork} from "../src/request-context-pending-work.js";
 import {setProcessFleetLock,releaseProcessFleetLock} from "../src/fleet-lock.js";
@@ -88,4 +89,17 @@ it("native/IPC staging runs only after old launches retire and unwinds before le
  const after=vi.fn(async()=>{expect(r.originals.every(value=>value.retired())).toBe(true);expect(r.map.size).toBe(0);staged=true;return async()=>{expect(r.created.every(value=>value.retired())).toBe(true);staged=false;r.events.push("native-stage-undone");};});
  await expect(r.m.prepareRequestContextPersistentRelaunch(r.policy,r.registration,r.fence,()=>true,after)).rejects.toThrow(/fixture startup failure/);
  expect(after).toHaveBeenCalledOnce();expect(staged).toBe(false);expect(r.events.indexOf("native-stage-undone")).toBeLessThan(r.events.indexOf("start:one:legacy:fleet-topic:true"));
+});
+
+
+it("a confirmed Settings restart follows each exact stopped route and carries its execution into candidate startup",async()=>{
+ const r=rig(),follow=vi.fn(async(_name:string,stop:()=>Promise<unknown>)=>{await stop();});
+ const execution=new SettingsExecution({current:()=>true,snapshot:()=>"same settings",followStop:follow});
+ try{
+  const stage=await r.m.prepareRequestContextPersistentRelaunch(r.policy,r.registration,r.fence,()=>true,undefined,execution);
+  expect(follow.mock.calls.map(call=>call[0])).toEqual(["one","two"]);
+  expect(r.m.startInstance.mock.calls.every((call:any[])=>call[6]===execution)).toBe(true);
+  execution.cancel();await stage.rollback(); // Cleanup does not depend on an expired decision.
+  expect(r.events).toContain("start:one:legacy:fleet-topic:true");
+ }finally{execution.close();}
 });

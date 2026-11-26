@@ -4,6 +4,7 @@ import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {FleetManager} from "../src/fleet-manager.js";
+import {SettingsExecution} from "../src/settings-transaction.js";
 import {DeliveryOutbox} from "../src/delivery-outbox.js";
 import {RequestContextReferenceMap} from "../src/request-context-fence.js";
 import {RequestContextPendingWork} from "../src/request-context-pending-work.js";
@@ -21,7 +22,7 @@ function rig(){
   prepareRequestContextServingOwners:vi.fn((current:()=>boolean)=>({current,policy:{assert:()=>({kind:"read",tool:"fixture",args:{}})},relay:{},cards:{},api:{},human:()=>({}),hub:()=>null})),
  });
  function native(){const registration=fm.requestContextNativeGraph.registration;return {drainRevision:"native",offRevision:"native",drainView:()=>({registration,revision:"native",references:[],unknown:false}),offView:()=>({registration,revision:"native",references:[],unknown:false}),requestContextPhysicallyIdle:()=>true};}
- return {fm,box,prepare:()=>fm.prepareRequestContextFirstOnAssembly(()=>legacy,()=>transports,()=>false),transports:(value:boolean)=>transports=value,legacy:(value:boolean)=>legacy=value};
+ return {fm,box,prepare:(execution?:SettingsExecution)=>fm.prepareRequestContextFirstOnAssembly(()=>legacy,()=>transports,()=>false,execution),transports:(value:boolean)=>transports=value,legacy:(value:boolean)=>legacy=value};
 }
 it("first On stages all owners while input is fenced, commits one floor and publishes the exact retained graph",async()=>{
  const r=rig(),stage=await r.prepare();expect(stage.ready()).toBe(true);expect(r.box.requestContextInstallation().read()).toBeNull();
@@ -42,4 +43,20 @@ it("an initialization failure rolls back every durable change and still permits 
  const r=rig(),stage=await r.prepare();
  expect(()=>r.box.requestContextInstallation().activate({epoch:"first",owner:stage.boot.owner.owner,activatedAt:1,invalidates:[],offeredLatestDeadline:null},stage.boot.owner,{current:()=>true,release(){}},stage.ready,0,()=>{stage.initialize();throw Error("fixture initializer failed");})).toThrow(/initializer failed/);
  expect(r.box.requestContextInstallation().read()).toBeNull();await stage.rollback();expect(r.fm.requestContextAdmission.available()).toBe(true);
+});
+
+it("confirmation currency gates COMMIT but the consumed decision cannot revoke already-committed process ownership",async()=>{
+ const r=rig(),execution=new SettingsExecution({current:()=>true,snapshot:()=>"unchanged settings"});
+ try{
+  const stage=await r.prepare(execution);
+  execution.commit(()=>r.box.requestContextInstallation().activate({epoch:"first",owner:stage.boot.owner.owner,activatedAt:1,invalidates:[],offeredLatestDeadline:null},stage.boot.owner,{current:()=>true,release(){}},stage.ready,0,stage.initialize));
+  expect(stage.ready()).toBe(false);expect(stage.publish().mode).toBe("active");expect(r.fm.requestContextAdmission.available()).toBe(true);
+ }finally{execution.close();}
+});
+it("revoking the confirmed actor during preparation prevents activation and still permits safety cleanup",async()=>{
+ const r=rig();let role=true;const execution=new SettingsExecution({current:()=>role,snapshot:()=>"unchanged settings"});
+ try{const stage=await r.prepare(execution);role=false;expect(stage.ready()).toBe(false);
+  expect(()=>r.box.requestContextInstallation().activate({epoch:"first",owner:stage.boot.owner.owner,activatedAt:1,invalidates:[],offeredLatestDeadline:null},stage.boot.owner,{current:()=>true,release(){}},stage.ready,0,stage.initialize)).toThrow(/changed/);
+  await stage.rollback();expect(r.box.requestContextInstallation().read()).toBeNull();expect(r.fm.requestContextAdmission.available()).toBe(true);
+ }finally{execution.close();}
 });
