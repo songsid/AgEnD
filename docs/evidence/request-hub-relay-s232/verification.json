@@ -576,5 +576,17 @@
     "S-249 supplies web interruption wording before L; native same-card reason presentation must also be checked."
   ],
   "previousSourceHead": "0d19a08df1cb80205e8f1a00792c5ef7e82f9431",
-  "mutationsCarry": "The initial 8 semantic reversals and redundant native-entry control are retained as baseline evidence. R1 adds the two explicit controls in r1.json."
+  "mutationsCarry": "The initial 8 semantic reversals and redundant native-entry control are retained as baseline evidence. R1 adds the two explicit controls in r1.json.",
+  "currentSourceHead": "a2d0a7a34fd8b8960eed25366f666778579ae637",
+  "captureUpdates": {
+    "manifest": "receipt.json",
+    "r2": "r2.json",
+    "updated": 6,
+    "carriedByteIdentical": 50
+  },
+  "latestFocusedTests": {
+    "files": 2,
+    "passed": 89,
+    "failed": 0
+  }
 }

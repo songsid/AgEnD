@@ -534,7 +534,8 @@
     },
     {
       "name": "desk-light-en-refusal.png",
-      "sha256": "e1d921cbc9d6c88e8d9c15bf4ba1c0edc64488ddafca995ba4617fbad5af0136"
+      "sha256": "f04963f5e257a9ec9d84eed3b4d4a3cd5985313a72b8f6b37f895473ab3e0764",
+      "sourceHead": "a2d0a7a34fd8b8960eed25366f666778579ae637"
     },
     {
       "name": "desk-light-en-fleet-refusal.png",
@@ -590,7 +591,8 @@
     },
     {
       "name": "desk-dark-en-refusal.png",
-      "sha256": "21898073db66751dcece9e4e4b8817d3070c886c81d062066fc08dc24a770dc1"
+      "sha256": "44c12f9c7f5ab3a3848f91cf19660251c889a6fa23484115a915b229d843d661",
+      "sourceHead": "a2d0a7a34fd8b8960eed25366f666778579ae637"
     },
     {
       "name": "desk-dark-en-fleet-refusal.png",
@@ -646,7 +648,8 @@
     },
     {
       "name": "phone-light-en-refusal.png",
-      "sha256": "ad58415521fbd5c552a3feefad28ee268758aaad16ef9d385f859699fcd955a5"
+      "sha256": "ca308323634e0e1c5c45613eea7e2a710cf9c1525445a4da17d35b8accb2d979",
+      "sourceHead": "a2d0a7a34fd8b8960eed25366f666778579ae637"
     },
     {
       "name": "phone-light-en-fleet-refusal.png",
@@ -682,7 +685,8 @@
     },
     {
       "name": "phone-light-zh-TW-details.png",
-      "sha256": "8c291344ac14e576106e6d3ad108ba3bd6987d588929060700b8bf94e9620cfa"
+      "sha256": "830fd1b4617ff127a758d1532a10d5337938a528374d308d6050bbc2d73a137b",
+      "sourceHead": "a2d0a7a34fd8b8960eed25366f666778579ae637"
     },
     {
       "name": "phone-dark-en-before.png",
@@ -702,7 +706,8 @@
     },
     {
       "name": "phone-dark-en-refusal.png",
-      "sha256": "36c7bfa3691fd54085c6fcd62e13541983a5eb193e5b35a0e6965d2ecf3a1914"
+      "sha256": "089bac7a092eaa9aee21abb6c76f4218a98ca63e569a8cc6dd054c3eae3fec58",
+      "sourceHead": "a2d0a7a34fd8b8960eed25366f666778579ae637"
     },
     {
       "name": "phone-dark-en-fleet-refusal.png",
@@ -738,7 +743,434 @@
     },
     {
       "name": "phone-dark-zh-TW-details.png",
-      "sha256": "4b49bd04eacd4a9ab71cd4b7dc8cb869ba07ca9a2aef28dd44785713ab25ddf9"
+      "sha256": "f2394d9cc5ca462b6fea6af125192f4ade73de6daaea843c530afb5602154337",
+      "sourceHead": "a2d0a7a34fd8b8960eed25366f666778579ae637"
+    }
+  ],
+  "updates": [
+    {
+      "sourceHead": "a2d0a7a34fd8b8960eed25366f666778579ae637",
+      "scope": "Four EN task-refusal wording frames and two neutral-pointer/focus zh phone details frames only. Other50 PNGs byte-identical to R1.",
+      "pictures": [
+        {
+          "name": "desk-light-en-refusal.png",
+          "sha256": "f04963f5e257a9ec9d84eed3b4d4a3cd5985313a72b8f6b37f895473ab3e0764"
+        },
+        {
+          "name": "desk-dark-en-refusal.png",
+          "sha256": "44c12f9c7f5ab3a3848f91cf19660251c889a6fa23484115a915b229d843d661"
+        },
+        {
+          "name": "phone-light-en-refusal.png",
+          "sha256": "ca308323634e0e1c5c45613eea7e2a710cf9c1525445a4da17d35b8accb2d979"
+        },
+        {
+          "name": "phone-light-zh-TW-details.png",
+          "sha256": "830fd1b4617ff127a758d1532a10d5337938a528374d308d6050bbc2d73a137b"
+        },
+        {
+          "name": "phone-dark-en-refusal.png",
+          "sha256": "089bac7a092eaa9aee21abb6c76f4218a98ca63e569a8cc6dd054c3eae3fec58"
+        },
+        {
+          "name": "phone-dark-zh-TW-details.png",
+          "sha256": "f2394d9cc5ca462b6fea6af125192f4ade73de6daaea843c530afb5602154337"
+        }
+      ],
+      "checks": [
+        {
+          "name": "desk-light-en: actual request admitted",
+          "ok": true
+        },
+        {
+          "name": "desk-light-en: exact return admitted",
+          "ok": true
+        },
+        {
+          "name": "desk-light-en: mutation refused",
+          "ok": true
+        },
+        {
+          "name": "desk-light-en-refusal: no overflow",
+          "ok": true
+        },
+        {
+          "name": "desk-light-en: refusal stays fully wrapped",
+          "ok": true
+        },
+        {
+          "name": "desk-light-en: Fleet read refused",
+          "ok": true
+        },
+        {
+          "name": "desk-light-en: neutral details Copy",
+          "ok": true
+        },
+        {
+          "name": "desk-light-en: refusal has requester header",
+          "ok": true
+        },
+        {
+          "name": "desk-light-en: disclosure arrow restored",
+          "ok": true
+        },
+        {
+          "name": "desk-light-en: copy only inside details",
+          "ok": true
+        },
+        {
+          "name": "desk-light-en: disclosure tap target",
+          "ok": true
+        },
+        {
+          "name": "desk-light-en: request warning fully visible",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en: actual request admitted",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en: exact return admitted",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en: mutation refused",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en-refusal: no overflow",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en: refusal stays fully wrapped",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en: Fleet read refused",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en: neutral details Copy",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en: refusal has requester header",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en: disclosure arrow restored",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en: copy only inside details",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en: disclosure tap target",
+          "ok": true
+        },
+        {
+          "name": "desk-dark-en: request warning fully visible",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en: actual request admitted",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en: exact return admitted",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en: mutation refused",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en-refusal: no overflow",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en: refusal stays fully wrapped",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en: Fleet read refused",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en: neutral details Copy",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en: refusal has requester header",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en: disclosure arrow restored",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en: copy only inside details",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en: disclosure tap target",
+          "ok": true
+        },
+        {
+          "name": "phone-light-en: request warning fully visible",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW: actual request admitted",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW: exact return admitted",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW: mutation refused",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW: refusal stays fully wrapped",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW: Fleet read refused",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW: neutral details Copy",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW-details: no overflow",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW: refusal has requester header",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW: disclosure arrow restored",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW: copy only inside details",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW: disclosure tap target",
+          "ok": true
+        },
+        {
+          "name": "phone-light-zh-TW: request warning fully visible",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en: actual request admitted",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en: exact return admitted",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en: mutation refused",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en-refusal: no overflow",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en: refusal stays fully wrapped",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en: Fleet read refused",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en: neutral details Copy",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en: refusal has requester header",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en: disclosure arrow restored",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en: copy only inside details",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en: disclosure tap target",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-en: request warning fully visible",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW: actual request admitted",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW: exact return admitted",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW: mutation refused",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW: refusal stays fully wrapped",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW: Fleet read refused",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW: neutral details Copy",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW-details: no overflow",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW: refusal has requester header",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW: disclosure arrow restored",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW: copy only inside details",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW: disclosure tap target",
+          "ok": true
+        },
+        {
+          "name": "phone-dark-zh-TW: request warning fully visible",
+          "ok": true
+        }
+      ],
+      "copyPresentation": [
+        {
+          "variant": "desk-light-en",
+          "before": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "after": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          }
+        },
+        {
+          "variant": "desk-dark-en",
+          "before": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "after": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          }
+        },
+        {
+          "variant": "phone-light-en",
+          "before": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "after": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          }
+        },
+        {
+          "variant": "phone-light-zh-TW",
+          "before": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "after": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          }
+        },
+        {
+          "variant": "phone-dark-en",
+          "before": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "after": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          }
+        },
+        {
+          "variant": "phone-dark-zh-TW",
+          "before": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "after": {
+            "hover": false,
+            "focus": false,
+            "focusVisible": false,
+            "active": false,
+            "background": "rgba(0, 0, 0, 0)"
+          }
+        }
+      ]
     }
   ]
 }

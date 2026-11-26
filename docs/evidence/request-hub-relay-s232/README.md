@@ -1,6 +1,6 @@
 # Hub request relay and returns — S-232 R1 evidence
 
-Final capture source: `6db323345037516eb435bf934b549918d7962178`, clean product/capture recipe. The R1 evidence commit changes no source or recipe. The prior48-frame set is superseded by these56 originals.
+R1 capture source: `6db323345037516eb435bf934b549918d7962178`. R2 updates only the six frames below from clean source `a2d0a7a34fd8b8960eed25366f666778579ae637`; the other50 originals remain byte-identical to R1. The56-frame set is retained with per-image hashes/source updates in receipt.json.
 
 Run: `REPO=$PWD PW_DIR=$PWD OUT=$PWD/docs/evidence MATRIX=full npx tsx scripts/manual/request-hub-relay-s232/capture.mts`. Real web HTTP/session/DOM, actual H/E/B and outbound posting path, synthetic owners and current-owner predicates. No Fleet start, native pane, CLI, provider, account or model request.
 
@@ -28,3 +28,26 @@ Copy fixes: header “Relayed for Demo person · Hub”; short audience sentence
 | phone-dark-zh-TW | [before](phone-dark-zh-TW-before.png) | [relay](phone-dark-zh-TW-relay.png) | [late-return](phone-dark-zh-TW-late-return.png) | [room](phone-dark-zh-TW-room.png) | [refusal](phone-dark-zh-TW-refusal.png) | [fleet-refusal](phone-dark-zh-TW-fleet-refusal.png) | [details](phone-dark-zh-TW-details.png) |
 
 [Capture receipt and hashes](receipt.json) · [R1 resolution](r1.json) · [Full source/test evidence](verification.json)
+
+
+## R2: six requested updates only
+
+EN task refusal now says **“Nothing changed: Hub requests can't assign tasks.”**
+The zh sentence is unchanged. The grey tile disappeared in neutral-pointer/focus
+details captures; Copy computes the same transparent background in EN and zh-TW.
+The old transient interaction state was not recorded, so no exact historical
+hover/focus claim is made. No stylesheet or policy change.
+
+Only four EN refusal and two zh phone details originals were regenerated. The
+other50 PNGs are byte-identical to R1. The two affected suites pass89/89; the
+selective capture passes72/72 checks. All six final originals were opened in
+author inspection. [R2 diagnostics and hashes](r2.json).
+
+| Updated frame | SHA-256 |
+|---|---|
+| [desk-dark-en-refusal.png](desk-dark-en-refusal.png) | `44c12f9c7f5ab3a3848f91cf19660251c889a6fa23484115a915b229d843d661` |
+| [desk-light-en-refusal.png](desk-light-en-refusal.png) | `f04963f5e257a9ec9d84eed3b4d4a3cd5985313a72b8f6b37f895473ab3e0764` |
+| [phone-dark-en-refusal.png](phone-dark-en-refusal.png) | `089bac7a092eaa9aee21abb6c76f4218a98ca63e569a8cc6dd054c3eae3fec58` |
+| [phone-dark-zh-TW-details.png](phone-dark-zh-TW-details.png) | `f2394d9cc5ca462b6fea6af125192f4ade73de6daaea843c530afb5602154337` |
+| [phone-light-en-refusal.png](phone-light-en-refusal.png) | `ca308323634e0e1c5c45613eea7e2a710cf9c1525445a4da17d35b8accb2d979` |
+| [phone-light-zh-TW-details.png](phone-light-zh-TW-details.png) | `830fd1b4617ff127a758d1532a10d5337938a528374d308d6050bbc2d73a137b` |
