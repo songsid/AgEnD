@@ -1,3 +1,4 @@
+import {randomUUID} from "node:crypto";
 import {afterEach,expect,it,vi} from "vitest";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
@@ -164,4 +165,10 @@ it("unknown web/recovery evidence cannot borrow a current Classic Free-mode over
  const m:any=Object.assign(Object.create(FleetManager.prototype),{deliveryOutbox:f.box,contactRoom:()=>({restrictedMode:false})});
  expect(m.requestContextSourceRoomRestricted(captured.context)).toBeUndefined();
  expect(m.requestContextSourceRoomRestricted({...captured.context,rootEvidenceRef:"unproved-recovery:fixture"})).toBeUndefined();
+});
+it("unknown Free recovery reaches one approval when its original source is current, never normal or a lifetime refusal",()=>{
+ const f=rig(),id=randomUUID(),context={ref:{version:1 as const,contextId:id,rootContextId:id},rootEvidenceRef:"unproved-recovery:fixture",initiatingActor:{kind:"unknown"as const,reason:"unproved-recovery"as const},ingress:"free-room"as const,source:{instance:"worker",incarnation:"agent-incarnation"},sourceAudience:{kind:"room"as const,ref:randomUUID()}};f.box.requestContextRecovery.retain(context);
+ const m:any=Object.assign(Object.create(FleetManager.prototype),{deliveryOutbox:f.box,contactRoom:()=>({restrictedMode:false}),contactGeneration:()=>"agent-incarnation",hubAgentConfig:()=>({working_directory:"private-fixture"}),fleetConfig:{instances:{worker:{}}},classicChannels:{getAll:()=>[]}});
+ expect(m.requestContextNativeAdmissionCurrent(context)).toBe(true);expect(m.requestContextSourceRoomRestricted(context)).toBeUndefined();
+ m.contactGeneration=()=>"replacement";expect(m.requestContextNativeAdmissionCurrent(context)).toBe(false);
 });

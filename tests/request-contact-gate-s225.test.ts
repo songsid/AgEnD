@@ -276,3 +276,7 @@ it("an unavailable current-room basis cannot turn an unknown restricted root int
  const f=rig(),g=f.gate(),root={...f.context("restricted-room"),initiatingActor:{kind:"unknown" as const,reason:"unproved-recovery" as const}};f.host.sourceRestricted=()=>undefined;
  expect(f.hold(g,f.input(root)).state).toBe("pending");expect(f.box.requestContext(root.ref.contextId)?.ingress).toBe("restricted-room");
 });
+it("unproved recovery cannot borrow Free ingress or a current Free-mode override",()=>{
+ const f=rig(),g=f.gate(),root={...f.context("free-room"),initiatingActor:{kind:"unknown"as const,reason:"unproved-recovery"as const}};f.host.sourceRestricted=()=>false;
+ expect(f.hold(g,f.input(root)).state).toBe("pending");expect(f.box.listPending()).toHaveLength(0);expect(f.box.requestContext(root.ref.contextId)?.ingress).toBe("free-room");
+});

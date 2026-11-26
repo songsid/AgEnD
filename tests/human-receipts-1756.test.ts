@@ -1,5 +1,4 @@
 import {randomUUID} from "node:crypto";
-import {RequestContextLocalTurns} from "../src/request-context-turns.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,9 +31,9 @@ function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepte
   vi.useFakeTimers();
   const root = mkdtempSync(join(tmpdir(), "agend-human-1756-"));
   process.env.HOME = root; process.env.AGEND_HOME = root; process.env.KIRO_HOME = join(root, "kiro"); process.env.CODEX_HOME = join(root, "codex");
-  const outbox = new DeliveryOutbox(join(root, "outbox.db"), "manager",scoped?{requestContextDispatchVersion:1}:{});
+  const outbox = new DeliveryOutbox(join(root, "outbox.db"), "manager",scoped?{requestContextDispatchVersion:1,requestContextRelayVersion:1}:{});
   if(scoped)outbox.activateRequestContextBarrier();
-  let fm:any,scopedResolver:ReturnType<FleetManager["makeRequestContextHumanResolver"]>|undefined;
+  let fm:any,binding:ReturnType<FleetManager["makeRequestContextDaemonBinding"]>|undefined;
   const dir = join(root, "instances/leader"); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, "window-id"), "@private");
   const backend = mode === "steer" ? new KiroBackend(dir, { version: "2.27.1", supportsLegacyUi: true, supportsTui: true,
     supportsV3: true, agentEngines: ["v1", "v2", "v3"], supportsEffortFlag: true, supportsInstanceAgent: false, source: "version" }) : new CodexBackend(dir);
@@ -42,11 +41,6 @@ function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepte
   const daemon: any = new Daemon("leader", { backend: mode === "steer" ? "kiro-cli" : "codex", working_directory: root,
     log_level: "silent", restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
     context_guardian: { max_age_hours: 0, grace_period_ms: 600000 } } as any, dir, false, backend as any, undefined, log);
-  if(scoped){
-    const workGeneration=randomUUID(),registration=outbox.requestContextDrain(()=>"fixture-owner").registration();
-    const ports=outbox.requestContextRecovery.ports("leader",(id,wire,owner)=>scopedResolver?.prepare(id,wire,owner)??null,()=>true);
-    daemon.setRequestContextLocalLifecycle(new RequestContextLocalTurns({...ports,registration}),()=>({incarnation:"fixture-incarnation",workGeneration}));
-  }
   const state = { pane: mode === "steer" ? BUSY : mode === "native" ? codexBusy : codexIdle, wire: "", epoch: 0, freeze: false };
   const tmux = {
     getWindowId: () => "@private", capturePane: vi.fn(async () => state.pane), getPaneInputMode: async () => "raw",
@@ -69,7 +63,6 @@ function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepte
     }),
     getLastPasteError: () => null, isLastPasteFailureRecoverable: () => false, getLastSendSpecialKeyError: () => null,
   };
-  daemon.tmux = tmux;
   daemon.controlClient = { isIdle: () => mode === "idle", waitUntilIdle: async () => true, hasOutputSince: () => behavior === "output",
     getLastOutputAt: () => 0, getObservationResetAt: () => 0 };
   vi.spyOn(daemon, "wake").mockResolvedValue(undefined);
@@ -95,10 +88,12 @@ function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepte
     Object.assign(fm,{ensureDeliveryOutbox:()=>{},contactRoom:()=>null,contactGeneration:()=>"fixture-incarnation",contactAdapter:()=>adapter,contactAdminOf:()=>true,
       adapters:new Map([["bot-one",adapter]]),worlds:new Map([["bot-one",{adapter,accessManager:{isAllowed:()=>true}}]]),fleetConfig:{instances:{leader:{}}},requestContextPolicy:{installedMode:()=>"active"}});
     fm.requestContextHumanAdmission=fm.makeRequestContextHumanAdmission();
-    scopedResolver=fm.makeRequestContextHumanResolver("leader",daemon,()=>true);
+    let workGeneration=randomUUID();const registration=outbox.requestContextDrain(()=>"fixture-owner").registration();
+    binding=fm.makeRequestContextDaemonBinding("leader",daemon,{current:()=>true,identity:()=>({incarnation:"fixture-incarnation",workGeneration}),fresh:()=>{workGeneration=randomUUID();}},registration,()=>true);
   }
+  daemon.tmux=tmux;
   roots.push({ root, outbox, daemon });
-  return { root, dir, outbox, fm, daemon, state, tmux };
+  return { root, dir, outbox, fm, daemon, state, tmux,binding };
 }
 async function deliver(h: ReturnType<typeof harness>, origin: HumanOrigin | null = person, kind = "fleet_inbound", body = "Reset only resource A", original = body) {
   const payload = { type: kind, content: body, meta: { message_id: "900", chat_id: "room", user: "person", user_id: "42", source: "telegram", adapter_id: "bot-one" } };
@@ -518,4 +513,18 @@ it.each([false,true])("S-230 actual facade, final formatter and pane judge bind 
  expect(turn).toMatchObject({inputId:`human:${r.row!.message_id}`,wireSha256:r.row!.wire_sha256,context:captured.context});
  expect(turn.context.initiatingActor).toEqual({kind:"person",platform:"telegram",userId:"42"});expect(turn.context.ingress).toBe("owner");
  expect(h.daemon.requestContextTurnCurrent(turn)).toBe(true);expect(h.daemon.captureRequestContextOwner()).toEqual(turn.owner);
+});
+it("the composite daemon owner rotates only on its real fresh boundary and loses currentness on source replacement",async()=>{
+ const h=harness("idle","accepted",true);const r=await deliver(h),turn=h.daemon.requestContextTurnSnapshot();expect(h.binding?.current()).toBe(true);
+ const before=h.daemon.captureRequestContextOwner();h.daemon.requestContextNewWork("fresh");const after=h.daemon.captureRequestContextOwner();
+ expect(after.workGeneration).not.toBe(before.workGeneration);expect(h.daemon.requestContextTurnCurrent(turn)).toBe(false);expect(h.binding?.current()).toBe(true);
+ expect(h.outbox.requestContextHumans.read(r.row!.receipt_id)?.context.ref.rootContextId).toBe(turn.context.ref.rootContextId);
+ expect(h.binding?.input("correlation:old-history",humanBodyHash("body"),after)).toBeNull();
+ h.fm.contactGeneration=()=>"replacement-incarnation";expect(h.binding?.current()).toBe(false);
+ expect(()=>h.binding?.input(`human:${r.row!.message_id}`,r.row!.wire_sha256!,after)).toThrow(/owner changed/);
+});
+it("the composite factory cannot hot-bind an already running legacy pane",()=>{
+ const h=harness(),work={current:()=>true,identity:()=>({incarnation:"fixture",workGeneration:randomUUID()}),fresh:()=>{}};
+ h.fm.contactGeneration=()=>"fixture";const registration={assertRegistration:()=>{}};
+ expect(()=>h.fm.makeRequestContextDaemonBinding("leader",h.daemon,work,registration,()=>true)).toThrow(/before.*startup/);expect(h.daemon.requestContextCallsRequired()).toBe(false);
 });

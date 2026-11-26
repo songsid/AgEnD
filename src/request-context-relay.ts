@@ -1,3 +1,4 @@
+import {labelUnprovedRequest} from "./request-context-unproved-label.js";
 /** Dormant H facade: one E/B admission path, never legacy origins or correlation releases. */
 import type {DeliveryOutbox,NewOutboxDelivery} from "./delivery-outbox.js";
 import type {RequestContactGateHost} from "./request-contact-gate.js";
@@ -7,9 +8,8 @@ import {assertRequestContextOperation,RequestContextPolicyError} from "./request
 import {labelOutsideRequest} from "./request-context-outside-label.js";
 import {labelHubRequest} from "./request-hub-context.js";
 import {requestContextDeliveryChildId} from "./request-context-returns.js";
-import {requestContextDigest,requestContextJson} from "./request-context-store.js";
+import {requestContextDigest} from "./request-context-store.js";
 import type {RequestContextV1} from "./request-context-protocol.js";
-import {formatCrossInstanceInboundMessage,MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES} from "./cross-instance-envelope.js";
 export type RequestRelayDelivery=Omit<NewOutboxDelivery,"sourceKey">;
 export interface RequestContextRelayPort {
  admit(input:RequestRelayDelivery,operation:RequestContextOperation,current:()=>boolean):{deliveryId:string;state:string;duplicate:boolean;kind:string};
@@ -36,11 +36,8 @@ export function makeRequestContextRelay(box:DeliveryOutbox,host:RequestContextRe
   if(input.forwards?.length&&context.initiatingActor.kind==="unknown")throw new RequestContextPolicyError("forwards");
   const routing=meta as Record<string,string>;
   if(permit.kind==="needs-approval")routing.request_context_uncovered_reason=operation.admission?.coverage==="not-covered"?operation.admission.reason:"unbound-input";
-  if(context.ingress==="hub")payload.content=labelHubRequest(context,payload.content,routing).content;
-  else if(context.initiatingActor.kind==="unknown"){
-   payload.content=`request_provenance=${requestContextJson({version:1,kind:"unproved-request",contextId:context.ref.contextId,rootContextId:context.ref.rootContextId,authority:"none"})}\nThe initiating person could not be proved. This request needs approval; approval never grants owner authority.\n\n${payload.content}`;
-   if(Math.max(...(["mcp","cli"]as const).map(mode=>Buffer.byteLength(formatCrossInstanceInboundMessage(String(payload.content),routing,mode))))>MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES)throw Error("request-context assembled message too large");
-  }
+  if(context.initiatingActor.kind==="unknown")payload.content=labelUnprovedRequest(context,payload.content,routing);
+  else if(context.ingress==="hub")payload.content=labelHubRequest(context,payload.content,routing).content;
   else if(["guest","restricted-room","free-room"].includes(context.ingress))payload.content=labelOutsideRequest(context,payload.content,routing);
   const delivery:NewOutboxDelivery={...input,sourceKey:`request-contact:${input.sourceInstance}:${input.operationId}`},binding={version:1 as const,operationId:input.operationId,contextId:context.ref.contextId,rootContextId:context.ref.rootContextId,source:context.source,target:{instance:input.targetInstance,incarnation:target},verb:permit.tool,payloadSha256:requestContextDigest(payload)};
   if(!current()||operation.admission?.coverage==="covered"&&!operation.admission.lease.current())throw new RequestContextPolicyError("stale");

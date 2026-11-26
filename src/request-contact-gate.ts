@@ -1,3 +1,4 @@
+import {unprovedRequestBody} from "./request-context-unproved-label.js";
 import {outsideRequestBody} from "./request-context-outside-label.js";
 import { assertRequestContextRootOpen } from "./request-context-fence.js";
 /** Dormant request-scoped contact policy. Only the outbox owns its transaction/admission ports. */
@@ -105,7 +106,7 @@ export class RequestContactGate {
     return { operationId: image.delivery.operationId, source: image.delivery.sourceInstance, target: image.delivery.targetInstance,
       sourceGeneration: image.binding.source.incarnation, targetGeneration: image.binding.target.incarnation,
       verb: image.binding.verb as ContactVerb, origin: { kind: person ? "human" : "unknown", people: person ? [person] : [], receiptIds: [], chain: [] },
-      message: typeof payload.content === "string" ? outsideRequestBody(image.context,payload.content) : requestContextJson(payload),
+      message: typeof payload.content === "string" ? unprovedRequestBody(image.context,outsideRequestBody(image.context,payload.content)) : requestContextJson(payload),
       correlationId: image.delivery.correlationId ?? image.delivery.operationId, correlationExplicit: true,
       resultRecipient: image.delivery.sourceInstance, payload, forwards: image.delivery.forwards, requestContext: image.context.ref };
   }
@@ -169,8 +170,8 @@ export class RequestContactGate {
       const roomIngress=context.ingress==="restricted-room"||context.ingress==="free-room";
       const currentRoomPolicy=roomIngress&&root?this.host.sourceRestricted?.(root):undefined;
       const currentlyRestricted=currentRoomPolicy??context.ingress==="restricted-room";
-      const normal = context.ingress === "owner" || roomIngress&&!currentlyRestricted
-        || roomIngress&&currentlyRestricted && !!root && !!person && this.host.adminOf(root.source.instance, person);
+      const normal = context.initiatingActor.kind!=="unknown"&&(context.ingress === "owner" || roomIngress&&!currentlyRestricted
+        || roomIngress&&currentlyRestricted && !!root && !!person && this.host.adminOf(root.source.instance, person));
       const hub=context.ingress==="hub"&&this.host.hubRelayAllowed?.(context,binding,delivery)===true;
       if (release || normal || hub) return { admitted: this.admitImage(image) };
       const request=this.request(image),ticket = this.tickets.hold(request);

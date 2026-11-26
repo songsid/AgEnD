@@ -1,3 +1,4 @@
+import {labelUnprovedRequest} from "./request-context-unproved-label.js";
 /** Dormant H operation policy. Installation belongs to L; arguments never supply a call admission. */
 import {expandCompositeCall} from "./channel/mcp-tools.js";
 import type {RequestContextCallAdmission} from "./request-context-call.js";
@@ -27,6 +28,7 @@ export interface RequestContextOperationPermit {
  readonly kind:"ordinary"|"read"|"needs-approval"|"relay"|"hub-answer"|"hub-react"|"hub-post";
  readonly tool:string;readonly args:Record<string,unknown>;readonly context?:RequestContextV1;
 }
+const localRecoveryAudience=(context:RequestContextV1):boolean=>context.sourceAudience.kind==="instance"&&context.returnAudience?.kind==="instance"&&context.returnAudience.ref===context.sourceAudience.ref;
 const hasForward=(args:Record<string,unknown>):boolean=>{
  const values=[args.forwards,(args.meta&&typeof args.meta==="object"?(args.meta as Record<string,unknown>).forwards:undefined),args.receiptId,args.receipt_id];
  return values.some(value=>value!==undefined&&value!==null&&(Array.isArray(value)?value.length>0:typeof value==="string"?value.length>0:true));
@@ -53,6 +55,18 @@ export function assertRequestContextOperation(input:RequestContextOperation,loca
  // Initial shared rollout cannot create durable outside derivatives without their parent contract.
  if(context.ingress!=="owner"&&(DERIVATIVES.has(tool)||tool==="task"&&!read))return refuse(hub?tool==="task"?"tasks":tool.endsWith("_schedule")?"schedules":["create_instance","deploy_template"].includes(tool)?"agents":tool==="create_team"?"teams":"decisions":"outside");
  if(context.initiatingActor.kind==="unknown"&&!read&&!CONTACTS.has(tool))return refuse("settings");
+ if(context.initiatingActor.kind==="unknown"){
+  if(hub&&!localRecoveryAudience(context))return refuse("uncovered");
+  if(hub&&HUB_PRIVATE_READS.has(tool))return refuse("fleet");
+  if(["send_to_instance","request_information","report_result"].includes(tool)&&(args.target_instance??args.instance_name)!=="agend-hub"){
+   if(hasForward(args))return refuse("forwards");
+   if(args.steer!==undefined&&args.steer!==false||args.requestedKind==="steer"||args.kind==="steer"||args.type==="steer")return refuse("steer");
+   if(args.request_kind==="task")return refuse("deferred");
+   return {kind:"needs-approval",tool,args,context};
+  }
+  if(hub&&read)return {kind:"read",tool,args,context};
+  if(hub)return refuse(tool==="broadcast"?"broadcast":"uncovered");
+ }
  if(!hub)return {kind:"ordinary",tool,args,context};
  return hubOperation(context,tool,args,read,locale);
 }
@@ -110,7 +124,19 @@ export function requireRequestContextPolicy(ctx:RequestContextPolicyContext,inst
 }
 /** Immutable persisted images have no live originating lease after a hold; only static constraints are revalidated here. */
 export function assertRequestHubContactImage(context:RequestContextV1,binding:RequestOperationBindingV1,delivery:NewOutboxDelivery):boolean {
- if(context.ingress!=="hub"||!("platform"in context.initiatingActor)||context.initiatingActor.platform!=="hub")return false;
+ if(context.ingress!=="hub")return false;
+ if(context.initiatingActor.kind==="unknown"){
+  if(!localRecoveryAudience(context))throw new RequestContextPolicyError("uncovered");
+  const payload=delivery.payload,meta=payload.meta;
+  if(!["send_to_instance","request_information","report_result"].includes(binding.verb)||binding.target.instance==="agend-hub"||delivery.kind!=="fleet_inbound"||delivery.requestedKind==="steer"||payload.type!=="fleet_inbound"||typeof payload.content!=="string"||!meta||typeof meta!=="object"||Array.isArray(meta)||Object.values(meta).some(value=>typeof value!=="string"))throw new RequestContextPolicyError("invalid");
+  if(hasForward({forwards:delivery.forwards,meta}))throw new RequestContextPolicyError("forwards");
+  if((meta as Record<string,string>).request_kind==="task")throw new RequestContextPolicyError("deferred");
+  const routing=meta as Record<string,string>,prefix=labelUnprovedRequest(context,"",routing);
+  if(!payload.content.startsWith(prefix))throw new RequestContextPolicyError("invalid");
+  labelUnprovedRequest(context,payload.content.slice(prefix.length),routing);
+  return false; // Unknown Hub recovery always needs its own decision; it is never M-3661 pass-through.
+ }
+ if(!("platform"in context.initiatingActor)||context.initiatingActor.platform!=="hub")return false;
  const payload=delivery.payload as Record<string,unknown>,meta=payload.meta;
  if(!meta||typeof meta!=="object"||Array.isArray(meta)||Object.values(meta).some(value=>typeof value!=="string")||typeof payload.content!=="string")throw new RequestContextPolicyError("invalid");
  const permit=hubOperation(context,binding.verb,{forwards:delivery.forwards,meta,steer:delivery.kind==="steer"||delivery.requestedKind==="steer"||payload.type==="steer",request_kind:(meta as Record<string,string>).request_kind,target_instance:binding.target.instance},false,getLocale());

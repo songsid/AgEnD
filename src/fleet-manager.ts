@@ -1,3 +1,4 @@
+import {RequestContextLocalTurns} from "./request-context-turns.js";
 import {RequestHubInputResolver} from "./request-context-hub-resolver.js";
 import {makeRequestDeliveryInputResolver} from "./request-context-delivery-resolver.js";
 import {makeRequestHumanInputResolver} from "./request-context-human-resolver.js";
@@ -6,7 +7,7 @@ import { markRetainedHumanControl, retainedHumanControl } from "./retained-human
 import type { RequestContextLaunchIdle, RequestContextLaunchRetirement } from "./request-context-retirement.js";
 import { requestContextDigest } from "./request-context-store.js";
 import { RequestContextBoot, readRequestContextBootState } from "./request-context-boot.js";
-import type { RequestContextStartPreparation } from "./request-context-start.js";
+import type { RequestContextStartPreparation, RequestContextDaemonWork } from "./request-context-start.js";
 import { requestContextSkillText, requestContextSteeringText, type RequestContextKnowledgeMode } from "./request-context-knowledge.js";
 import { runWithRequestContextAdmission, type RequestContextAdmissionPort } from "./request-context-admission.js";
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
@@ -6386,7 +6387,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const source=root.source.instance,room=this.contactRoom(source);
       if(!Object.hasOwn(this.fleetConfig?.instances??{},source)&&!room&&!this.daemons?.has(source))return false;
       if(this.contactGeneration(source)!==root.source.incarnation)return false;
-      if(root.initiatingActor.kind==="unknown")return root.ingress!=="owner"&&root.ingress!=="free-room";
+      if(root.initiatingActor.kind==="unknown")return root.ingress!=="owner";
       if(root.initiatingActor.kind!=="person")return false;
       const match=/^human:hmsg-([a-f0-9-]{36})$/.exec(root.rootEvidenceRef);if(!match)return false;
       const captured=this.deliveryOutbox!.requestContextHumans.read(match[1]!);
@@ -9649,6 +9650,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         daemon.noteHumanReceiptSettlement?.(result.receipt_id, accepted === true && result.proof !== null);
       } catch (err) { this.logger.error({ err, instanceName }, "Could not persist human delivery evidence"); }
     });
+  }
+
+  /** One replacement's C/D-local binding. It is constructed before startup, never hot-bound or published here. */
+  makeRequestContextDaemonBinding(instance:string,daemon:Daemon,work:RequestContextDaemonWork,registration:RequestContextRegistrationGate,current:()=>boolean){
+    const box=this.deliveryOutbox;if(!box)throw Error("Request input owner is unavailable");
+    const identity=()=>{
+      if(!work.current())throw Error("Request work identity is no longer current");
+      const value=work.identity();if(value.incarnation!==this.contactGeneration(instance))throw Error("Request source incarnation changed");
+      return Object.freeze({incarnation:value.incarnation,workGeneration:value.workGeneration});
+    };
+    identity();
+    const owned=()=>{try{identity();return current()&&work.current();}catch{return false;}};
+    const manage=(actor:RequestContextV1["initiatingActor"])=>{
+      if(actor.kind!=="person"||actor.platform==="hub")return false;
+      const adapter=actor.platform==="host"?"host":this.contactAdapter(instance)?.id;if(!adapter)return false;
+      return owned()&&this.contactAdminOf(instance,{platform:actor.platform,adapterId:adapter,userId:actor.userId,label:actor.userId});
+    };
+    const human=this.makeRequestContextHumanResolver(instance,daemon,owned),delivery=this.makeRequestContextDeliveryResolver(instance,daemon,owned),hub=this.makeRequestContextHubResolver(instance,daemon,owned,registration);
+    const input:import("./request-context-turns.js").RequestContextTurnPorts["input"]=(id,wire,owner)=>{
+      if(!owned()||this.daemons.get(instance)!==daemon)throw Error("Request input owner changed");
+      return human.prepare(id,wire,owner)??delivery.prepare(id,wire,owner)??hub.prepare(id,wire,owner);
+    };
+    const turns=new RequestContextLocalTurns({...box.requestContextRecovery.ports(instance,input,manage),registration});
+    daemon.setRequestContextLocalLifecycle(turns,identity,()=>{
+      if(!owned())throw Error("Request work identity is no longer current");
+      const before=identity();work.fresh();const after=identity();
+      if(!owned()||after.incarnation!==before.incarnation||after.workGeneration===before.workGeneration)throw Error("Fresh request work identity did not rotate");
+    });
+    return Object.freeze({turns,hub,input,current:()=>owned()&&this.daemons.get(instance)===daemon&&daemon.requestContextCallsRequired()});
   }
 
   /** Accepted Hub input owner; construction is pre-start and remains unpublished until the complete installer. */

@@ -171,6 +171,7 @@ export class RequestContextLocalTurns {
       const id = randomUUID(); diagnostic = previous.ref.contextId;
       context = { ...previous, ref: { version: 1, contextId: id, rootContextId: id },
         rootEvidenceRef: `unproved-recovery:${id}`, initiatingActor: { kind: "unknown", reason: "unproved-recovery" },
+        sourceAudience:{kind:"instance",ref:id},returnAudience:{kind:"instance",ref:id},
         source: { instance: owner.instance, incarnation: owner.incarnation } };
     } else {
       if (!context || context.ref.parentContextId || context.ref.contextId !== context.ref.rootContextId) throw Error("request-context independent input requires a new root");

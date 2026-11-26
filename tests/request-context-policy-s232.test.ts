@@ -1,8 +1,9 @@
+import {labelUnprovedRequest} from "../src/request-context-unproved-label.js";
 import {randomUUID} from "node:crypto";
 import {expect,it,vi} from "vitest";
 import {FleetManager} from "../src/fleet-manager.js";
 import {captureRequestContextCall,type RequestContextCallAdmission} from "../src/request-context-call.js";
-import {assertRequestContextOperation,REQUEST_CONTEXT_POLICY_COPY,RequestContextPolicyError} from "../src/request-context-policy.js";
+import {assertRequestContextOperation,assertRequestHubContactImage,REQUEST_CONTEXT_POLICY_COPY,RequestContextPolicyError} from "../src/request-context-policy.js";
 import {requestContextDigest} from "../src/request-context-store.js";
 import type {RequestContextV1} from "../src/request-context-protocol.js";
 function fixture(ingress:RequestContextV1["ingress"]="hub"){
@@ -66,4 +67,19 @@ it.each(["free-room","restricted-room","guest"] as const)("%s cannot borrow a ro
  const policy=m.makeRequestContextPolicy(),call=()=>policy.assert({instance:"demo-source",tool:"set_web_settings",args:{},admission:f.admission});
  expect(()=>call()).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.settings);admin=true;
  if(ingress==="guest")expect(()=>call()).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.settings);else expect(call().kind).toBe("ordinary");
+});
+it("unknown Hub recovery may request one peer approval, but keeps private-read, derivative, receipt and output refusals",()=>{
+ const f=fixture(),context={...f.context,initiatingActor:{kind:"unknown"as const,reason:"unproved-recovery"as const},sourceAudience:{kind:"instance"as const,ref:f.context.ref.rootContextId},returnAudience:{kind:"instance"as const,ref:f.context.ref.rootContextId}},lease=captureRequestContextCall({...f.admission.lease.snapshot,context},()=>true);
+ const call=(tool:string,args:Record<string,unknown>={})=>assertRequestContextOperation({instance:"demo-source",tool,args,admission:{coverage:"covered",lease}},"en");
+ expect(call("send_to_instance",{instance_name:"peer"}).kind).toBe("needs-approval");
+ const oldAudience=captureRequestContextCall({...lease.snapshot,context:{...context,sourceAudience:f.context.sourceAudience,returnAudience:f.context.sourceAudience}},()=>true);
+ expect(()=>assertRequestContextOperation({instance:"demo-source",tool:"send_to_instance",args:{instance_name:"peer"},admission:{coverage:"covered",lease:oldAudience}})).toThrow();
+ for(const tool of ["get_fleet_config","get_web_settings","get_instance_logs","get_usage","get_cache_report"])expect(()=>call(tool)).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.fleet);
+ for(const [tool,args]of [["create_schedule",{}],["task",{action:"create"}],["hub_room_post",{room:context.sourceAudience.ref}],["report_result",{instance_name:"agend-hub"}],["send_to_instance",{instance_name:"peer",forwards:["owner-receipt"]}],["send_to_instance",{instance_name:"peer",steer:true}]]as const)expect(()=>call(tool,args)).toThrow();
+});
+
+it("static Hub recovery admission refuses an earlier Hub audience even when its unknown label and payload are internally consistent",()=>{
+ const f=fixture(),context={...f.context,initiatingActor:{kind:"unknown"as const,reason:"unproved-recovery"as const},returnAudience:f.context.sourceAudience},meta={from_instance:"demo-source"},operationId=randomUUID(),payload={type:"fleet_inbound",content:labelUnprovedRequest(context,"body",meta),meta};
+ const delivery={sourceKey:operationId,operationId,sourceInstance:"demo-source",sourceDaemonBootId:"boot",targetInstance:"peer",kind:"fleet_inbound",payload},binding={version:1 as const,operationId,contextId:context.ref.contextId,rootContextId:context.ref.rootContextId,source:context.source,target:{instance:"peer",incarnation:"v1"},verb:"send_to_instance",payloadSha256:requestContextDigest(payload)};
+ expect(()=>assertRequestHubContactImage(context,binding,delivery)).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.uncovered);
 });
