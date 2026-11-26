@@ -205,7 +205,7 @@ describe("#1450 C1: the npm prefix is locked before npm runs; the token goes to 
     const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: prefix => { asked.push(prefix); return { ok: true, token: "7".repeat(32) }; } }, w.runner);
     expect(outcome.ok).toBe(true);
     expect(asked).toEqual([w.prefix]);
-    expect(w.callLog().filter(line => line.startsWith("token "))).toEqual([`token ${"7".repeat(32)} for npm install -g ${join(w.root, "src", "v220")}`]);
+    expect(w.callLog().filter(line => line.startsWith("token "))).toEqual([`token ${"7".repeat(32)} for npm install -g ${join(w.root, "src", "v220")} --allow-scripts=${join(w.root, "src", "v220")}`]);
   });
 
   // #1487: this updater never unlinks first; the install hooks must be able to tell it from AgEnD 2.1's updater.
@@ -215,7 +215,7 @@ describe("#1450 C1: the npm prefix is locked before npm runs; the token goes to 
       const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), ...(lock ? { lock } : {}) }, w.runner);
       expect(outcome.ok).toBe(true);
       const seen = existsSync(join(w.root, "env.log")) ? readFileSync(join(w.root, "env.log"), "utf8").trim().split("\n") : [];
-      expect(seen).toEqual([`keeps-previous for npm install -g ${join(w.root, "src", "v220")}`]);
+      expect(seen).toEqual([`keeps-previous for npm install -g ${join(w.root, "src", "v220")} --allow-scripts=${join(w.root, "src", "v220")}`]);
     }
   });
 
@@ -317,7 +317,7 @@ describe("P0: the current install is never removed before the new one has succee
     const before = w.callLog().length;
     w.env.NPM_FAIL = "1";
     expect(runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0")), w.runner)).toMatchObject({ ok: false, stage: "install" });
-    expect(w.callLog().slice(before)).toEqual(["npm root -g", `npm install -g ${join(w.root, "src", "v220")}`]);
+    expect(w.callLog().slice(before)).toEqual(["npm root -g", `npm install -g ${join(w.root, "src", "v220")} --allow-scripts=${join(w.root, "src", "v220")}`]);   // M-3805: a folder is allowed by its path
     expect(execFileSync(join(w.prefix, "bin", "agend"), ["--version"], { encoding: "utf8" }).trim()).toBe("2.1.12");
   });
 

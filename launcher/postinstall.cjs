@@ -15,6 +15,7 @@ var childProcess = require("child_process");
 var platform = require("./runtime-platform.cjs");
 var select = require("./runtime-select.cjs");
 var tmuxBundle = require("./tmux-bundle.cjs");
+var allowScripts = require("./npm-allow-scripts.cjs");
 
 /** Runs on the candidate Node with argv[1] = the package dir: version, N-API, and a real DB open in both threads. */
 var PROOF = [
@@ -59,7 +60,7 @@ function checkBundledTmux(pkg, host, log, d) {
     return;
   }
   var proved = tmuxBundle.verifyTmux(candidate, pin, d.tmuxDeps);
-  if (!proved.ok) refuse(proved.reason, "npm install -g @songsid/agend@" + pkg.manifest.version + " (if it fails again, report it: the tmux package did not pass its check here)");
+  if (!proved.ok) refuse(proved.reason, allowScripts.installCommand("@songsid/agend@" + pkg.manifest.version) + " (if it fails again, report it: the tmux package did not pass its check here)");
   try {
     tmuxBundle.writeReceipt(pkg.dir, pin, proved, host);
   } catch (e) {
@@ -71,14 +72,14 @@ function checkBundledTmux(pkg, host, log, d) {
 function main(deps) {
   var d = deps || {};
   var pkg = select.packageDir(d.launcherDir || __dirname);
-  if (!pkg) refuse("the installed package is not @songsid/agend", "npm install -g @songsid/agend");
+  if (!pkg) refuse("the installed package is not @songsid/agend", allowScripts.installCommand("@songsid/agend"));
   // A receipt describes THIS install's verification and nothing else: whatever is there now (one npm left behind, one
   // copied in) goes first, so selection and installation see the same state (runtime-select.cjs).
   [select.KEY, select.RECEIPT, tmuxBundle.RECEIPT].forEach(function (name) {
     var file = path.join(pkg.dir, name);
     if (select.absent(file)) return;
     try { fs.unlinkSync(file); } catch (e) { /* checked below */ }
-    if (!select.absent(file)) refuse("an old runtime receipt at " + file + " cannot be removed", "remove it, then: npm install -g @songsid/agend@" + pkg.manifest.version);
+    if (!select.absent(file)) refuse("an old runtime receipt at " + file + " cannot be removed", "remove it, then: " + allowScripts.installCommand("@songsid/agend@" + pkg.manifest.version));
   });
   // #2264: no install lock is consulted here. A manual `npm install -g` is never refused because of one (a lock that
   // could not be read used to block every install until removed by hand); only two installers exclude each other.
@@ -104,17 +105,17 @@ function main(deps) {
     var candidate = select.runtimeCandidate(pkg.dir, pin);
     if (candidate.exists) {
       if (!candidate.manifest || candidate.manifest.name !== pin.name || candidate.manifest.version !== pin.version) {
-        refuse("the bundled Node package is not " + pin.name + "@" + pin.version, "npm install -g @songsid/agend@" + pkg.manifest.version);
+        refuse("the bundled Node package is not " + pin.name + "@" + pin.version, allowScripts.installCommand("@songsid/agend@" + pkg.manifest.version));
       }
       var st;
       try { st = fs.lstatSync(candidate.node); } catch (e) { st = null; }
-      if (!st || !st.isFile()) refuse("the bundled Node binary is missing or not a regular file", "npm install -g @songsid/agend@" + pkg.manifest.version);
+      if (!st || !st.isFile()) refuse("the bundled Node binary is missing or not a regular file", allowScripts.installCommand("@songsid/agend@" + pkg.manifest.version));
       var r = childProcess.spawnSync(candidate.node, ["-e", PROOF, pkg.dir], { encoding: "utf8", timeout: 30000, stdio: ["ignore", "pipe", "pipe"] });
       var seen = null;
       try { seen = r.status === 0 ? JSON.parse(String(r.stdout).trim()) : null; } catch (e) { seen = null; }
       var wantNode = pin.version.replace(/-agend\.\d+$/, "");
       if (!seen || seen.node !== wantNode || !(seen.napi >= select.MIN_NAPI) || seen.platform !== host.platform || seen.arch !== host.arch) {
-        refuse("the bundled Node did not pass its check (" + (seen ? "Node " + seen.node + ", N-API " + seen.napi + ", " + seen.platform + "-" + seen.arch : "exit " + (r.status === null ? r.signal : r.status) + ": " + String(r.stderr || "").trim().split("\n").pop()) + ")", "npm install -g @songsid/agend@" + pkg.manifest.version);
+        refuse("the bundled Node did not pass its check (" + (seen ? "Node " + seen.node + ", N-API " + seen.napi + ", " + seen.platform + "-" + seen.arch : "exit " + (r.status === null ? r.signal : r.status) + ": " + String(r.stderr || "").trim().split("\n").pop()) + ")", allowScripts.installCommand("@songsid/agend@" + pkg.manifest.version));
       }
       var real = fs.realpathSync(candidate.node);
       // The receipt contract (runtime-select.cjs) keeps every string plain, so a shell can check it exactly too.
@@ -129,7 +130,7 @@ function main(deps) {
       fs.renameSync(tmp, path.join(pkg.dir, select.RECEIPT));
       // The admission key goes LAST: it binds the receipt just written (runtime-select.cjs).
       var key = select.runtimeKey(pkg.dir, candidate, host);
-      if (key === null) refuse("the bundled Node's admission key cannot be computed", "npm install -g @songsid/agend@" + pkg.manifest.version);
+      if (key === null) refuse("the bundled Node's admission key cannot be computed", allowScripts.installCommand("@songsid/agend@" + pkg.manifest.version));
       var keyTmp = path.join(pkg.dir, select.KEY + "." + process.pid + ".tmp");
       fs.writeFileSync(keyTmp, key);
       fs.renameSync(keyTmp, path.join(pkg.dir, select.KEY));
@@ -145,7 +146,7 @@ function main(deps) {
   }
   if (select.qualifies(running, engines)) return installed();
   refuse((pin ? support.reason : "this release bundles no Node") + ", and this Node " + running.node + " is older than AgEnD needs (" + engines + ")",
-    "Install Node " + engines + ", then: npm install -g @songsid/agend@" + pkg.manifest.version);
+    "Install Node " + engines + ", then: " + allowScripts.installCommand("@songsid/agend@" + pkg.manifest.version));
 }
 
 module.exports = { main: main, PROOF: PROOF, NEXT_STEP: NEXT_STEP };

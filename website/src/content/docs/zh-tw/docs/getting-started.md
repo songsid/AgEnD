@@ -33,8 +33,10 @@ Windows 全新安裝要試用 beta：先在同一個 PowerShell 視窗執行 `$e
 已經有 Node 和 tmux：
 
 ```bash
-npm install -g @songsid/agend
+npm install -g --allow-scripts=@songsid/agend @songsid/agend
 ```
+
+`--allow-scripts=@songsid/agend` 讓 npm 12 執行 AgEnD 的安裝步驟（檢查自帶的 Node）。npm 12 預設會略過套件的安裝腳本，略過後 AgEnD 無法啟動。舊版 npm 也接受這個參數，照常執行。
 
 在 WSL 上，安裝腳本會避開 PATH 裡的 Windows `node.exe`。如果指令還是指到 Windows 的執行檔，在 `/etc/wsl.conf` 加上這段。設定在這個 Linux 下次啟動時生效；只想重新啟動這一個，就在 PowerShell 執行 `wsl --terminate <發行版名稱>`（裡面的 AgEnD 也會停止，回到 Linux 後執行 `agend start`）：
 

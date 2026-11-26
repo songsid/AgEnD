@@ -26,6 +26,7 @@ var LOCK = ".agend-install.lock";
 var MARKER = "update-in-progress.json";
 var fleetServiceOwner = require("./fleet-service-owner.cjs");
 var ensurePrivateHome = require("./private-home.cjs").ensurePrivateHome;
+var allowScripts = require("./npm-allow-scripts.cjs");
 
 function defaultDeps() {
   return {
@@ -106,7 +107,7 @@ var NPM_BOOLEAN_FLAGS = /^(?:-g|-y|-f|-s|-q|-d|-dd|-ddd|-S|-D|-O|-E|-B|-P|-l|-a|
  * (src/update-npm-env.ts). They are for this install's npm only: what restarts or starts the fleet gets the environment
  * without them, so the long-running fleet follows the person's own npm settings again.
  */
-var UPDATE_NPM_KEYS = ["fetch-timeout", "fetch-retries", "fetch-retry-mintimeout", "fetch-retry-maxtimeout"];
+var UPDATE_NPM_KEYS = ["fetch-timeout", "fetch-retries", "fetch-retry-mintimeout", "fetch-retry-maxtimeout", "allow-scripts"];   // M-3805: allow-scripts too
 function withoutUpdateNpmBounds(env) {
   var copy = Object.assign({}, env);
   var ours = String(copy.AGEND_UPDATE_NPM_BOUNDS || "").split(",");
@@ -788,7 +789,8 @@ function main(argv, injected) {
     // #2286 review: the lock's token, for a release from before #2264 (its postinstall refuses any other install).
     var npmEnv = Object.assign({}, deps.env);
     npmEnv[lockReaders.TOKEN_ENV] = admitted.token;
-    var install = function () { return deps.run("npm", ["install", "-g", spec], { inherit: true, env: npmEnv }); };
+    // M-3805: npm 12 runs this package's postinstall (the bundled Node's proof) only when told to allow it.
+    var install = function () { return deps.run("npm", ["install", "-g", spec, allowScripts.flagFor(spec)], { inherit: true, env: npmEnv }); };
     waitForOtherNpm(deps, log, "installing AgEnD");
     var done = install();
     if (done.status !== 0) {
@@ -807,7 +809,8 @@ function main(argv, injected) {
       if (running && done.status !== 0) return fail("install", why + "; v" + running + " is still installed and runs — nothing was changed");
       if (previous && previous !== version) {
         repair(root, prefix, deps);
-        var back = deps.run("npm", ["install", "-g", previousAt >= 0 ? args[previousAt + 1] : "@songsid/agend@" + previous], { inherit: true, env: npmEnv });
+        var backSpec = previousAt >= 0 ? args[previousAt + 1] : "@songsid/agend@" + previous;
+        var back = deps.run("npm", ["install", "-g", backSpec, allowScripts.flagFor(backSpec)], { inherit: true, env: npmEnv });
         if (back.status === 0 && versionOf(bin, deps) === previous) return fail("install", why + "; v" + previous + " was reinstalled and runs");
       }
       return fail("install", why + (previous ? "; v" + previous + " could not be put back — run the installer again" : ""));
@@ -853,7 +856,7 @@ function main(argv, injected) {
         if (!stopped.known || !stopped.stopped) { keepPreimage = true; return fail(stage, why + ". " + name + " could not be stopped (" + (stopped.known ? stopped.state : "its state cannot be told") + "), so nothing was rolled back" + kept); }
       }
       var notBack = restorePreimage(root, prefix, preimage);
-      if (notBack) { keepPreimage = true; return fail(stage, why + ". " + notBack + " — reinstall it: npm install -g @songsid/agend@" + preimage.version); }
+      if (notBack) { keepPreimage = true; return fail(stage, why + ". " + notBack + " — reinstall it: " + allowScripts.installCommand("@songsid/agend@" + preimage.version)); }
       var restored = [];
       if (definition !== null && readText(svc.file) !== definition) {
         try { fs.writeFileSync(svc.file, definition); } catch (e) { return fail(stage, why + ". v" + preimage.version + " is back, but " + svc.file + " could not be restored (" + (e && e.code ? e.code : String(e)) + ") — run `agend install --no-activate`, then `agend start`"); }

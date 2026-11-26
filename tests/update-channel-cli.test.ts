@@ -131,13 +131,13 @@ describe("agend update stays on the installed channel (built CLI, stubbed npm)",
 
   it("a beta install with no flag updates from @beta — never @latest", () => {
     const { r, installs, out } = update("2.1.11-beta.2", { beta: "2.1.11-beta.3", latest: "2.1.10" }, []);
-    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.11-beta.3"]);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.11-beta.3 --allow-scripts=@songsid/agend"]);
     expect(r.status, out).toBe(0);
   });
 
   it("a stable install with no flag updates from @latest", () => {
     const { r, installs, out } = update("2.1.10", { beta: "2.1.11-beta.3", latest: "2.1.11" }, []);
-    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.11"]);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.11 --allow-scripts=@songsid/agend"]);
     expect(r.status, out).toBe(0);
   });
 
@@ -158,7 +158,7 @@ describe("agend update stays on the installed channel (built CLI, stubbed npm)",
 
   it("--stable moves a beta install to the stable release, even an older one", () => {
     const { r, installs, out } = update("2.1.11-beta.2", { beta: "2.1.11-beta.3", latest: "2.1.10" }, ["--stable"]);
-    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.10"]);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.10 --allow-scripts=@songsid/agend"]);
     expect(r.status, out).toBe(0);
   });
 
@@ -171,20 +171,20 @@ describe("agend update stays on the installed channel (built CLI, stubbed npm)",
   it("installs exactly the version it checked, not the moving tag (#1182 review)", () => {
     // The tag was looked up as beta.3; what npm is told to install is beta.3, whatever @beta points at later.
     const { installs, calls, out } = update("2.1.11-beta.2", { beta: "2.1.11-beta.3", latest: "2.1.10" }, []);
-    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.11-beta.3"]);
-    expect(calls.some(c => /install -g @songsid\/agend@(beta|latest)$/.test(c)), out).toBe(false);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.11-beta.3 --allow-scripts=@songsid/agend"]);
+    expect(calls.some(c => /install -g @songsid\/agend@(beta|latest)(?: |$)/.test(c)), out).toBe(false);
   });
 
   it("a registry answer that is not a version installs from the tag, as when the lookup fails", () => {
     const { installs, out } = update("2.1.11-beta.2", { beta: "not-a-version", latest: "2.1.10" }, []);
     // #2264: the installer is handed the tag (here it runs from this checkout, whose own version is not the tag's, so it
     // then puts the previous one back — under `npm exec` the installer IS the tag's release).
-    expect(installs[0], out).toBe("npm install -g @songsid/agend@beta");
+    expect(installs[0], out).toBe("npm install -g @songsid/agend@beta --allow-scripts=@songsid/agend");
   });
 
   it("`update --version` reaches the update command, and `agend --version` still prints the version (#1182 review)", () => {
     const pinned = update("2.1.11-beta.2", { beta: "2.1.11-beta.3", latest: "2.1.10" }, ["--version", "2.1.10"]);
-    expect(pinned.installs, pinned.out).toEqual(["npm install -g @songsid/agend@2.1.10"]);
+    expect(pinned.installs, pinned.out).toEqual(["npm install -g @songsid/agend@2.1.10 --allow-scripts=@songsid/agend"]);
     expect(pinned.r.status, pinned.out).toBe(0);
     const contradiction = update("2.1.11-beta.2", { beta: "2.1.11-beta.3", latest: "2.1.10" }, ["--beta", "--stable", "--version", "2.1.10"]);
     expect(contradiction.calls, contradiction.out).toEqual([]);

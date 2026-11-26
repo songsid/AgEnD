@@ -10,6 +10,12 @@
  * this (the version lookup, the preflight, the release's own installer and its `npm install -g`) inherits them through
  * the environment, so there is one place that says how long npm may try, not one per call.
  */
+import { createRequire } from "node:module";
+
+interface AllowScripts { FLAG: string; ENV: string; flagFor(spec: string): string; installCommand(spec?: string): string; covers(value: unknown): boolean; withPackage(value: unknown): string; scriptsIgnored(value: unknown): boolean }
+const require = createRequire(import.meta.url);
+/** M-3805: the one place that says how npm 12 is told to run AgEnD's install scripts (shared with the launcher). */
+export const npmAllowScripts = require("../launcher/npm-allow-scripts.cjs") as AllowScripts;
 
 /** What an update uses while the person has not set the key themselves (npm's own defaults: 300000 / 2 / 10000 / 60000). */
 export const UPDATE_NPM_BOUNDS = Object.freeze([
@@ -66,6 +72,46 @@ export function applyUpdateNpmBounds(env: NodeJS.ProcessEnv, explicit: Map<strin
   return set;
 }
 
+const ALLOW_SCRIPTS_KEY = "allow-scripts";
+
+/**
+ * M-3805: npm 12 runs a package's install scripts only when `allow-scripts` names it, and skipped, AgEnD's postinstall
+ * never proves the bundled Node: the new version then refuses to start. Every npm the update starts inherits this
+ * variable, also through `npm exec` (a flag does not reach the program it starts), so the release's own installer and
+ * its `npm install -g` run the scripts, whichever release that installer comes from. What the person allows in .npmrc
+ * is kept in the value; a variable the person set is theirs and is left alone (the installer passes its own flag).
+ * npm 8–11 accept the variable and run scripts anyway. Recorded in the marker, so it ends with the update like the bounds.
+ */
+export function applyUpdateAllowScripts(env: NodeJS.ProcessEnv, explicit: Map<string, string> | null): boolean {
+  const name = envName(ALLOW_SCRIPTS_KEY);
+  if (env[name] !== undefined || env[name.toUpperCase()] !== undefined) return false;
+  const theirs = explicit?.get(ALLOW_SCRIPTS_KEY);
+  if (npmAllowScripts.covers(theirs)) return false;
+  env[name] = npmAllowScripts.withPackage(theirs);
+  const ours = String(env[UPDATE_NPM_MARKER] ?? "").split(",").filter(Boolean);
+  if (!ours.includes(ALLOW_SCRIPTS_KEY)) ours.push(ALLOW_SCRIPTS_KEY);
+  env[UPDATE_NPM_MARKER] = ours.join(",");
+  return true;
+}
+
+/**
+ * M-3805: is npm set to skip every install script (`ignore-scripts`)? That overrides any allow list, on every npm, so the
+ * new version's install step would not run and it would not start. From what `npm config ls` listed (which includes an
+ * npm_config_* variable), or, when npm could not be asked, the variable itself.
+ */
+export function updateScriptsIgnored(env: NodeJS.ProcessEnv, explicit: Map<string, string> | null): boolean {
+  if (explicit) return npmAllowScripts.scriptsIgnored(explicit.get("ignore-scripts"));
+  const name = envName("ignore-scripts");
+  return npmAllowScripts.scriptsIgnored(env[name] ?? env[name.toUpperCase()]);
+}
+
+/** What `agend update` says and stops on when npm is set to skip install scripts. */
+export function scriptsIgnoredStop(): string {
+  return "  npm is set to skip install scripts (ignore-scripts), so the new version's install step would not run and AgEnD would\n"
+    + "  not start. Nothing was changed. Turn it off (and unset npm_config_ignore_scripts if it is set), then update again:\n"
+    + "    npm config delete ignore-scripts";
+}
+
 /**
  * Prism #3543: the registry AgEnD's own package comes from — the `@songsid` scope's registry when one is set, else the
  * registry, else npm's default — so the ping asks the registry the update will use, never an unrelated default. Null when
@@ -88,6 +134,7 @@ export const UPDATE_NPM_MARKER = "AGEND_UPDATE_NPM_BOUNDS";
 export function dropUpdateNpmBounds(env: NodeJS.ProcessEnv): void {
   const ours = String(env[UPDATE_NPM_MARKER] ?? "").split(",");
   for (const [key] of UPDATE_NPM_BOUNDS) if (ours.includes(key)) delete env[envName(key)];
+  if (ours.includes(ALLOW_SCRIPTS_KEY)) delete env[envName(ALLOW_SCRIPTS_KEY)];
   delete env[UPDATE_NPM_MARKER];
 }
 

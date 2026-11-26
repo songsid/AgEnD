@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 import { rmSync } from "node:fs";
 import { shellQuote } from "./backend/types.js";
 import { restorePackagePreimage, takePackagePreimage, type PackagePreimage } from "./package-preimage.js";
+import { npmAllowScripts } from "./update-npm-env.js";
 
 export interface CommandResult {
   status: number | null;
@@ -307,14 +308,14 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
       rollback = { root, prefix: where, preimage: taken.preimage };
     }
   }
-  const install = inInstallEnv(runner, plan, [npmBin, "install", "-g", plan.pkg], { inherit: true, env });
+  const install = inInstallEnv(runner, plan, [npmBin, "install", "-g", plan.pkg, npmAllowScripts.flagFor(plan.pkg)], { inherit: true, env });   // M-3805
   if (install.status !== 0) {
     // npm rolled its own install back: the copy is not needed.
     if (rollback?.preimage) rmSync(rollback.preimage.dir, { recursive: true, force: true });
     return {
       ok: false, stage: "install",
       message: plan.viaNvm ? "  Failed to install via nvm. The current install was not touched."
-        : `  Failed to update; the current install was not touched. Try: npm install -g ${plan.pkg}`,
+        : `  Failed to update; the current install was not touched. Try: ${npmAllowScripts.installCommand(plan.pkg)}`,
     };
   }
 
@@ -324,12 +325,12 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
     // C6 step 3: the new package does not verify — put the previous one back, and prove it is what is installed now.
     const previous = rollback.preimage;
     const restored = restorePackagePreimage(rollback.root, rollback.prefix, previous);
-    if (!restored.ok) return { ok: false, stage: "verify", message: `${verified.message}\n  ✗ ${restored.reason}. Reinstall it: npm install -g @songsid/agend@${previous.version}` };
+    if (!restored.ok) return { ok: false, stage: "verify", message: `${verified.message}\n  ✗ ${restored.reason}. Reinstall it: ${npmAllowScripts.installCommand(`@songsid/agend@${previous.version}`)}` };
     const back = verifyInstalledPackage({ ...plan, targetVersion: previous.version }, runner, npmBin);
     return {
       ok: false, stage: "verify",
       message: back.ok ? `${verified.message}\n  ↩ Rolled back to v${previous.version}, which verifies; the running fleet was not touched.`
-        : `${verified.message}\n  ✗ v${previous.version} was put back but does not verify either: ${back.message.trim()} Reinstall it: npm install -g @songsid/agend@${previous.version}`,
+        : `${verified.message}\n  ✗ v${previous.version} was put back but does not verify either: ${back.message.trim()} Reinstall it: ${npmAllowScripts.installCommand(`@songsid/agend@${previous.version}`)}`,
     };
   }
   if (rollback) Object.assign(verified, { rollback });
