@@ -88,7 +88,7 @@ import { answerRemoteCard, type RemoteCardAction, type RemoteCardOutcome } from 
 import type { Pane, PaneHost, PaneObservation, PaneOutputEvent, PaneOutputEventName } from "./pane-port.js";
 import { tmuxPaneHost } from "./tmux-pane-host.js";
 import { buildFleetInstructions, INBOUND_HEADER_RULE } from "./instructions.js";
-import { formatHumanInboundMessage, prepareDeliveryWire, steerInboundEnvelope, BTW_INBOUND_PREFIX,
+import { formatHumanInboundMessage, prepareDeliveryWire, steerInboundEnvelope, btwInboundEnvelope,
   humanBodyHash, humanOwnerObjectId, type HumanReceiptAttempt, type HumanWriteMode, type HumanPositiveTag } from "./human-delivery-receipts.js";
 import type { FleetInstructionsParams } from "./instructions.js";
 import {
@@ -8919,7 +8919,7 @@ export class Daemon extends EventEmitter {
           ? formatHumanInboundMessage(content, meta, this.agentMode(), presentation) : this.formatInboundMessage(content, meta);
     if (presentation?.compatibilityNotice) wire = withWhatsNew(wire, presentation.compatibilityNotice);
     if (kind === "steer") wire = Daemon.steerEnvelope(wire);
-    else if (kind === "btw") wire = BTW_INBOUND_PREFIX + wire;
+    else if (kind === "btw") wire = btwInboundEnvelope(wire, meta.delivery_id);
     return prepareDeliveryWire(wire, kind === "raw_paste");
   }
 
@@ -9139,28 +9139,67 @@ export class Daemon extends EventEmitter {
     this.pendingWork.recordInbound();
     this.recordRecentUserMessage(content, meta);
 
-    const formatted = BTW_INBOUND_PREFIX + this.formatInboundMessage(content, meta);
+    const formatted = btwInboundEnvelope(this.formatInboundMessage(content, meta), meta.delivery_id);
     const status = channelStatus(meta);
 
+    const durableAttempt = this.durableDeliveryAttempt(meta, content);
+    if (durableAttempt === false) {
+      this.deferDurableDelivery(meta, "invalid durable delivery attempt metadata");
+      return;
+    }
+
     this.steerLock = this.steerLock.then(async () => {
-      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); this.noteCancelledHuman(meta); return; }
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.deferDurableDelivery(meta, "delivery epoch changed before steer began");
+        this.noteCancelledHuman(meta);
+        return;
+      }
       await this.wake();
-      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); this.noteCancelledHuman(meta); return; }
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.deferDurableDelivery(meta, "delivery epoch changed while waking for steer");
+        this.noteCancelledHuman(meta);
+        return;
+      }
       const verdict: DeliveryVerdict = { reached: false, humanReceipt: this.humanReceiptAttempt(meta, formatted) };
       let delivered = false;
       try {
-        if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id,
-          ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}), verdict })) {
+        if (await this.deliverMessage(formatted, status, {
+          steer: true,
+          deliveryEpoch,
+          submissionId: meta.message_id,
+          ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}),
+          verdict,
+          durableAttempt: durableAttempt || undefined,
+        })) {
           delivered = true;
+          this.finishDurableSubmission(durableAttempt, verdict);
           this.markTurnStarted(meta, formatted, deliveryEpoch);
+        } else if (durableAttempt && verdict.paneWriteStarted) {
+          this.finishDurableDelivery(durableAttempt, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
+        } else if (durableAttempt && verdict.durableBeginCommitted) {
+          this.abortDurableDelivery(durableAttempt, `${verdict.phase ?? "delivery"}:${verdict.proof ?? "no-pane-write"}`);
+        } else if (durableAttempt) {
+          this.retryDurableDeliveryBeforeBegin(durableAttempt, `${verdict.phase ?? "delivery"}:${verdict.proof ?? "deferred"}`);
+        } else if (verdict.reached && this.isDeliveryEpochCurrent(deliveryEpoch)) {
+          // Legacy non-outbox path retains its existing failure surface.
+          this.reportCrossInstanceDeliveryFailure(meta, verdict);
         }
+      } catch (err) {
+        // The verdict goes along: a write that started and then threw is still a hand-off the CLI may consume (#1201).
+        if (durableAttempt && verdict.paneWriteStarted) this.finishDurableDelivery(durableAttempt, "uncertain", (err as Error).message, verdict);
+        else if (durableAttempt && verdict.durableBeginCommitted) this.abortDurableDelivery(durableAttempt, (err as Error).message);
+        else if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, (err as Error).message);
+        throw err;
       } finally {
         this.finishHumanReceipt(meta, verdict);
         if (!delivered && !verdict.paneWriteStarted && !this.isDeliveryEpochCurrent(deliveryEpoch)) this.noteCancelledHuman(meta);
       }
     }).catch(err => {
-      this.finishHumanReceipt(meta, { reached: false });
+      this.deferDurableDelivery(meta, `target wake/side-question failed before pane submission: ${(err as Error).message}`);
       this.logger.warn({ err: (err as Error).message }, "btw delivery error");
+      if (!durableAttempt && this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.reportCrossInstanceDeliveryFailure(meta, undefined, (err as Error).message);
+      }
     });
   }
 
@@ -11639,10 +11678,22 @@ export class Daemon extends EventEmitter {
     verdict.roomInputQueued = handingOffToNativeQueue || steer;
     const humanMode: HumanWriteMode = rawPaste ? "raw_paste" : steer ? "steer"
       : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
-    if (humanAttempt && signature.unique && signature.value === humanReceiptMarker(humanAttempt.verificationId, humanDialect).slice(1, -1)
+    // Retained controls lead with the delivery marker for strict transcript/restart proof. That marker is
+    // usable for a human receipt only through the outbox's exact control/receipt/owner/wire join, never text lookup.
+    const controlMarker = durableAttempt ? `[agend-delivery-id:${durableAttempt.deliveryId}]` : null;
+    const ownsControlReceipt = () => !!humanAttempt && !!durableAttempt && !rawPaste
+      && this.deliveryOutbox?.ownsHumanControlReceipt?.(durableAttempt.deliveryId, this.bootId, durableAttempt.attemptNo,
+        humanAttempt.receiptId, humanAttempt.ownerKey, humanAttempt.expectedWireHash) === true;
+    const controlAlias = !!controlMarker && !!humanAttempt
+      && [`${controlMarker}\n${humanAttempt.marker}\n`,
+        Daemon.steerEnvelope(`${controlMarker}\n${humanAttempt.marker}\n`),
+        btwInboundEnvelope(`${controlMarker}\n${humanAttempt.marker}\n`, durableAttempt!.deliveryId)].some(prefix => formatted.startsWith(prefix))
+      && ownsControlReceipt();
+    if (controlAlias) { signature.value = controlMarker!.slice(1, -1); signature.takenMarker = controlMarker!; }
+    if (humanAttempt && signature.unique && (controlAlias || signature.value === humanReceiptMarker(humanAttempt.verificationId, humanDialect).slice(1, -1))
       && humanBodyHash(formatted) === humanAttempt.expectedWireHash) {
       signature.humanPositive = tag => {
-        if (!humanAttempt.current() || (stillCurrent && !stillCurrent())) return;
+        if (!humanAttempt.current() || (stillCurrent && !stillCurrent()) || controlAlias && !ownsControlReceipt()) return;
         humanAttempt.proof = {
           receipt_id: humanAttempt.receiptId, verification_id: humanAttempt.verificationId,
           wire_sha256: humanBodyHash(formatted), owner_key: humanAttempt.ownerKey,
@@ -11898,7 +11949,7 @@ export class Daemon extends EventEmitter {
         if (before?.mode !== "text") return this.failDelivery(verdict, status, "steer-paste", before === null ? "box-unread" : `box-still-${before.mode}`);
         if (!this.steerPasteIsOurs(before.pane, formatted)) return this.failDelivery(verdict, status, "steer-paste", "box-not-this-paste");
         const shown = this.backend?.readSteerComposerText?.(before.pane)?.replace(/\s+/g, " ").trim();
-        humanComposerOwned = !!humanAttempt && shown === (humanAttempt.marker ?? "[agend-human-id:" + humanAttempt.verificationId + "]");
+        humanComposerOwned = !!humanAttempt && shown === (controlAlias ? controlMarker : humanAttempt.marker ?? "[agend-human-id:" + humanAttempt.verificationId + "]");
         // …and so is the Enter: the key is sent only while the reading is still within it.
         steerEnterDeadline = deadline;
       }
@@ -12638,6 +12689,7 @@ export class Daemon extends EventEmitter {
     //    Grok cuts an echo to three rows, so the trailing message_id never shows after Enter; the marker always does.
     //    Placed after the strand checks: text of ours still in the box (or its collapsed paste) outranks it.
     if (signature.takenMarker && after.inputReadable && this.backend?.readTakenMarkers?.(pane).includes(signature.takenMarker)) {
+      signature.humanPositive?.("unique-id-pane");
       return this.submittedProof();
     }
 

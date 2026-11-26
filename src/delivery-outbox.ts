@@ -1,3 +1,4 @@
+import type { RetainedHumanControl } from "./retained-human-control.js";
 import { RequestContextWorkStore } from "./request-context-work.js";
 import { RequestContextInstallationStore, readRequestContextInstallation } from "./request-context-installation.js";
 import {assertRequestHubContactImage} from "./request-context-policy.js";
@@ -25,7 +26,7 @@ import { RequestOperationBindingV1Schema, type RequestContextV1, type RequestOpe
 import { registerRequestContextDispatcher, assertRequestContextCompatibility, activateRequestContextBarrier, type RequestContextCompatibilityOptions, type RequestContextDispatchVersion } from "./request-context-compatibility.js";
 import { validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import { WorkingStateJournal, type WorkingStateSnapshot, type WorkingStateReference } from "./working-state-journal.js";
-import { initializeHumanReceipts, createHumanReceipt, getHumanReceipt, bindHumanReceipt, settleHumanReceipt, queryHumanReceipt, maxWebAuthorityEpoch, deliveredMessageHours, pruneMessageHours,
+import { steerInboundEnvelope, btwInboundEnvelope, initializeHumanReceipts, createHumanReceipt, getHumanReceipt, bindHumanReceipt, settleHumanReceipt, queryHumanReceipt, maxWebAuthorityEpoch, deliveredMessageHours, pruneMessageHours,
   type HumanOrigin, type HumanReceiptRow, type HumanReceiptProof } from "./human-delivery-receipts.js";
 
 export const DURABLE_DELIVERY_MAX_ATTEMPTS = 8;
@@ -39,6 +40,8 @@ export interface DaemonDeliveryPort {
   abort(deliveryId: string, targetBootId: string, attemptNo: number, reason: string): boolean;
   complete(deliveryId: string, targetBootId: string, attemptNo: number, outcome: "delivered" | "failed" | "uncertain", evidence?: string): boolean;
   retryBeforeBegin(deliveryId: string, targetBootId: string, attemptNo: number, reason: string, delayMs?: number): boolean;
+  /** Owned dual-marker control only: its leading delivery id names this exact bound human receipt/wire. */
+  ownsHumanControlReceipt?(deliveryId: string, targetBootId: string, attemptNo: number, receiptId: string, ownerKey: string, wireSha256: string): boolean;
   /**
    * #1209: read-side query so a restarted daemon can tell whether the
    * interrupted turn's delivery is still owned by the durable path.
@@ -1495,6 +1498,65 @@ export class DeliveryOutbox extends EventEmitter {
   bindHumanReceipt(id: string, target: string, ownerKey: string, wire: string, managerBootId: string): HumanReceiptRow {
     return bindHumanReceipt(this.db, id, target, ownerKey, wire, managerBootId);
   }
+  /** Read-only alias proof; neither body text nor a peer's copied hmsg can acquire human receipt authority. */
+  ownsHumanControlReceipt(deliveryId: string, targetBootId: string, attemptNo: number, receiptId: string, ownerKey: string, wireSha256: string): boolean {
+    return this.db.transaction(() => {
+      const delivery = this.get(deliveryId), receipt = getHumanReceipt(this.db, receiptId);
+      const meta = delivery?.payload.meta as Record<string, unknown> | undefined;
+      return !!delivery && !!receipt && ["delivering", "submission_started", "uncertain", "delivered"].includes(delivery.state)
+        && !delivery.reconciliationPending && delivery.managerBootId === this.managerBootId
+        && delivery.targetDaemonBootId === targetBootId && delivery.attemptNo === attemptNo
+        && delivery.kind === "human_control" && delivery.sourceInstance === "agend-system"
+        && delivery.sourceKey === `human-control:${receiptId}` && delivery.operationId === delivery.sourceKey
+        && meta?.human_receipt_id === receiptId && meta.verification_id === receipt.message_id
+        && receipt.message_id === `hmsg-${receiptId}` && receipt.target_instance === delivery.targetInstance
+        && receipt.input_kind === delivery.payload.type && receipt.manager_boot_id === this.managerBootId
+        && receipt.state !== "delivered" && receipt.owner_key === ownerKey && receipt.wire_body !== null && receipt.wire_sha256 === wireSha256
+        && (["hid", "agend-human-id"] as const).some(prefix => {
+          const pair = `[agend-delivery-id:${deliveryId}]\n[${prefix}:${receipt.message_id}]\n`;
+          const expected = receipt.input_kind === "steer" ? steerInboundEnvelope(pair)
+            : receipt.input_kind === "btw" ? btwInboundEnvelope(pair, deliveryId) : pair;
+          return receipt.wire_body!.startsWith(expected);
+        })
+        && deliveryContentDigest(receipt.wire_body) === wireSha256 && deliveryContentDigest(receipt.original_body) === receipt.original_sha256;
+    })();
+  }
+
+  /** Transfer only an untouched receipt for this exact never-begun retained control, then bind atomically. */
+  bindRetainedHumanControlReceipt(control: RetainedHumanControl, id: string, target: string, ownerKey: string,
+    wire: string, managerBootId: string, current: () => boolean): HumanReceiptRow {
+    return this.db.transaction(() => {
+      const checkDelivery = () => {
+        const delivery = this.get(control.deliveryId), meta = delivery?.payload.meta as Record<string, unknown> | undefined;
+        if (current() !== true || managerBootId !== this.managerBootId || !delivery || delivery.state !== "delivering"
+          || delivery.managerBootId !== managerBootId || delivery.targetInstance !== target
+          || delivery.targetSession && delivery.targetSession !== target || delivery.targetDaemonBootId !== control.targetDaemonBootId
+          || delivery.attemptNo !== control.attemptNo || delivery.reconciliationPending || delivery.responseDeliveredAt !== null
+          || delivery.kind !== "human_control" || delivery.sourceInstance !== "agend-system"
+          || delivery.sourceKey !== `human-control:${id}` || delivery.operationId !== delivery.sourceKey
+          || meta?.human_receipt_id !== id || meta.verification_id !== `hmsg-${id}`
+          || requestContextDigest(delivery.payload) !== control.payloadSha256) throw Error("Human delivery ownership changed");
+        return delivery;
+      };
+      const delivery = checkDelivery(), receipt = getHumanReceipt(this.db, id);
+      if (!receipt || receipt.target_instance !== target || receipt.message_id !== `hmsg-${id}`
+        || receipt.input_kind !== delivery.payload.type || receipt.state === "delivered"
+        || deliveryContentDigest(receipt.original_body) !== receipt.original_sha256) throw Error("Human verification binding changed");
+      if (receipt.manager_boot_id !== managerBootId) {
+        // Begin precedes the FIRST paste; absence of Enter alone is never evidence of no input.
+        if (typeof delivery.payload.content !== "string" || delivery.payload.content.startsWith("/raw ")
+          || receipt.owner_key !== null || receipt.wire_body !== null || receipt.wire_sha256 !== null
+          || receipt.proof_tag !== null || receipt.proof_mode !== null || receipt.delivered_at !== null
+          || this.db.prepare("SELECT 1 FROM delivery_attempts WHERE delivery_id=? LIMIT 1").get(delivery.deliveryId))
+          throw Object.assign(Error("Human verification owner is unavailable"), { code: "retained-human-reconciliation" });
+        if (this.db.prepare("UPDATE human_delivery_receipts SET manager_boot_id=?,updated_at=? WHERE receipt_id=? AND manager_boot_id=? AND owner_key IS NULL AND wire_body IS NULL AND wire_sha256 IS NULL AND state!='delivered'")
+          .run(managerBootId, new Date().toISOString(), id, receipt.manager_boot_id).changes !== 1) throw Error("Human delivery ownership changed");
+      }
+      const bound = bindHumanReceipt(this.db, id, target, ownerKey, wire, managerBootId);
+      checkDelivery(); return bound;
+    })();
+  }
+
   settleHumanReceipt(id: string, target: string, ownerKey: string, proof: unknown, currentOwnerKey: string | null): boolean {
     return settleHumanReceipt(this.db, id, target, ownerKey, proof, currentOwnerKey);
   }

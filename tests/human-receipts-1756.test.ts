@@ -471,3 +471,25 @@ describe("compact owned human presentation (#3074)", () => {
     expect(h.outbox.getHumanReceipt(before.receipt_id)?.wire_sha256).toBe(before.wire_sha256);
   });
 });
+
+it.each([{mode:"idle" as const,compact:false,tag:"unique-id-pane"},{mode:"idle" as const,compact:true,tag:"unique-id-pane"},
+  {mode:"steer" as const,compact:false,tag:"composer-empty-steer"},{mode:"steer" as const,compact:true,tag:"composer-empty-steer"},
+  {mode:"btw" as const,compact:false,tag:"unique-id-pane"},{mode:"btw" as const,compact:true,tag:"unique-id-pane"}])(
+  "S-230 retained control restart $mode/$compact crosses the real facade and owned judge once", async ({mode,compact,tag}) => {
+  const h=harness(mode==="btw"?"idle":mode);h.daemon.compactInboundInstructions=compact;const kind=mode==="steer"?"steer":mode==="btw"?"btw":"fleet_inbound",origin=webHumanOrigin(false,undefined,{platform:"telegram",adapter_id:"bot-one",user_id:"42",session_handle:"0123456789abcdef"});
+  const receipt=h.outbox.createHumanReceipt({targetInstance:"leader",originalBody:"retained synthetic control",origin,inputKind:kind,managerBootId:"old-manager"});
+  const key=`human-control:${receipt.receipt_id}`;
+  h.outbox.admit({sourceKey:key,operationId:key,sourceInstance:"agend-system",sourceDaemonBootId:"old-manager",targetInstance:"leader",kind:"human_control",
+    payload:{type:kind,content:receipt.original_body,meta:{source:"web",user:"person",message_id:"retained-native-id",human_receipt_id:receipt.receipt_id,verification_id:receipt.message_id}}});
+  h.outbox.recoverForBoot("manager");
+  h.daemon.setDeliveryOutboxPort(h.outbox);
+  h.fm.waitForDurableLaneRelease=async()=>{};h.fm.deliveryWorkerMode=()=>"off";
+  const claimed=h.outbox.claimNext("manager",()=>h.daemon.bootId,new Set())!;
+  const dispatch=h.fm.dispatchDurableDelivery(claimed);await vi.advanceTimersByTimeAsync(60000);await dispatch;
+  expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();expect(h.outbox.getHumanReceipt(receipt.receipt_id)).toMatchObject({state:"delivered",proof_tag:tag});
+  expect(h.outbox.get(claimed.deliveryId)).toMatchObject({state:"delivered",lastError:null});
+  expect(h.outbox.getHumanReceipt(receipt.receipt_id)).toMatchObject({message_id:receipt.message_id,state:"delivered",manager_boot_id:"manager",origin_json:receipt.origin_json,authority_json:receipt.authority_json});
+  const page=h.outbox.queryStatusForInstance("leader",{messageId:receipt.message_id});expect(page.items[0]?.authority?.kind).toBe("none");
+  const sent=h.fm.instanceIpcClients.get("leader").send.mock.calls.at(-1)[0];expect(sent.meta.from_instance).toBeUndefined();expect(sent.meta.human_receipt_id).toBe(receipt.receipt_id);
+  expect(h.outbox.claimNext("manager",()=>h.daemon.bootId,new Set())).toBeUndefined();
+});

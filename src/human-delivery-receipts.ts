@@ -303,6 +303,12 @@ export function steerInboundEnvelope(inbound: string): string {
 }
 
 export const BTW_INBOUND_PREFIX = "[BTW — side question from the user. Answer it separately without changing or interrupting the CURRENT work.]\n";
+/** A retained side question keeps its durable marker leading for strict restart proof. Ordinary BTW bytes stay unchanged. */
+export function btwInboundEnvelope(inbound: string, deliveryId?: string): string {
+  const lead = deliveryId ? `[agend-delivery-id:${deliveryId}]\n` : null;
+  return lead && inbound.startsWith(lead) ? lead + BTW_INBOUND_PREFIX + inbound.slice(lead.length) : BTW_INBOUND_PREFIX + inbound;
+}
+
 
 /** One formatter for human wire bytes and their immutable evidence snapshot. */
 export function formatHumanInboundMessage(content: string, meta: Record<string, string>, mode: AgentMode, presentation: HumanPresentation = {}): string {

@@ -1,3 +1,4 @@
+import { markRetainedHumanControl, retainedHumanControl } from "./retained-human-control.js";
 import type { RequestContextLaunchIdle, RequestContextLaunchRetirement } from "./request-context-retirement.js";
 import { requestContextDigest } from "./request-context-store.js";
 import { RequestContextBoot, readRequestContextBootState } from "./request-context-boot.js";
@@ -7384,7 +7385,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             ? rawMeta.from_instance : claimed.sourceInstance } : {}),
           correlation_id: claimed.correlationId ?? String(rawMeta.correlation_id ?? ""),
         };
-        if (humanControl) { payload.delivery_id = claimed.deliveryId; payload.delivery_attempt = String(claimed.attemptNo); }
+        if (humanControl) { payload.delivery_id = claimed.deliveryId; payload.delivery_attempt = String(claimed.attemptNo); markRetainedHumanControl(payload, claimed); }
         sent = await this.deliverToInstance(target, payload, {
           isCrossInstance: !humanControl,
           stillCurrent: () => this.contactDeliveryCurrent(claimed),
@@ -9613,6 +9614,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!meta?.human_receipt_id || !this.deliveryOutbox) return payload;
     const daemon = this.daemons.get(instanceName);
     const owner = this.humanReceiptOwner(instanceName, daemon);
+    const retained = retainedHumanControl(payload);
+    const bind = (wire: string) => retained
+      ? this.deliveryOutbox!.bindRetainedHumanControlReceipt(retained, meta.human_receipt_id, instanceName, owner!, wire, this.managerBootId,
+        () => daemon?.bootId === retained.targetDaemonBootId && this.humanReceiptOwner(instanceName, daemon) === owner
+          && (!this.requestContextAdmission || this.requestContextAdmission.available()))
+      : this.deliveryOutbox!.bindHumanReceipt(meta.human_receipt_id, instanceName, owner!, wire, this.managerBootId);
     if (!daemon || !owner) {
       this.deliveryOutbox.markHumanReceiptUncertain(meta.human_receipt_id, instanceName);
       return payload;
@@ -9627,7 +9634,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!daemonOwner || this.humanReceiptOwner(instanceName, daemon) !== owner) throw new Error("Human delivery ownership changed");
         const dialectMeta = { ...originalMeta, human_wire_dialect: presentation.dialect ?? "legacy" };
         const wire = daemon.humanReceiptWire(content, dialectMeta, kind, presentation);
-        const row = this.deliveryOutbox!.bindHumanReceipt(meta.human_receipt_id, instanceName, owner, wire, this.managerBootId);
+        const row = bind(wire);
         if (this.humanReceiptOwner(instanceName, daemon) !== owner) throw new Error("Human delivery ownership changed");
         return { wire, meta: { human_owner_key: owner, human_daemon_owner: daemonOwner,
           human_wire_sha256: row.wire_sha256!, human_wire_dialect: dialectMeta.human_wire_dialect } };
@@ -9635,7 +9642,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { ...payload, meta: { ...meta, human_prepare_token: token } };
     }
     const wire = daemon.humanReceiptWire(String(payload.content ?? ""), meta, String(payload.type));
-    const row = this.deliveryOutbox.bindHumanReceipt(meta.human_receipt_id, instanceName, owner, wire, this.managerBootId);
+    const row = bind(wire);
     if (!daemonOwner || this.humanReceiptOwner(instanceName, daemon) !== owner) throw new Error("Human delivery ownership changed");
     // /raw retains exact bytes and never acquires a positive verification capability.
     if (payload.type === "raw_paste" || String(payload.content ?? "").startsWith("/raw ")) {
