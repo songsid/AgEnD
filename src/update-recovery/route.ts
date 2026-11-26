@@ -21,7 +21,7 @@
  */
 import { closeSync, fchmodSync, fsyncSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { attemptDir, defaultJournalIo, mkdirDurable, readCurrent, type AttemptRecord, type JournalIo } from "../update-journal.js";
+import { attemptDir, defaultJournalIo, mkdirDurable, readAttemptRecord, readCurrent, TERMINAL, type AttemptRecord, type JournalIo } from "../update-journal.js";
 import { identityOf, type OwnedService } from "../install-ownership.js";
 import { handoffEnvPath, kitDir } from "./pre-start.js";
 
@@ -150,19 +150,30 @@ export function removeRecoveryRoute(home: string, attempt: AttemptRecord, io: Jo
 
 /**
  * The original arguments behind a recovery wrapper — only when the argument vector is EXACTLY this home's wrapper
- * (design §6.2): `/bin/sh -c WRAPPER_SCRIPT agend-update-recovery <kit>/node <kit>/recover.cjs <home> <id> …`, where
- * `<kit>` is this home's recovery directory for `<id>`, that kit verifies (`verifyKit`), and the attempt is terminal
- * (no longer open, unknown or manual). Anything else: null — the caller reads it as an unknown service.
+ * (design §6.2, "P3 accepts the wrapper only when it is exactly this"):
+ * - `/bin/sh -c WRAPPER_SCRIPT agend-update-recovery <kit>/node <kit>/recover.cjs <home> <id> …`, the script byte-for-byte;
+ * - `<kit>` is this home's recovery directory for `<id>`, and that kit verifies (`verifyKit`: kit.json and both hashes);
+ * - the attempt `<id>` itself is proven terminal from ITS OWN record (committed, rolled-back or abandoned — not
+ *   manual-recovery), and no attempt is in flight now (`current` none or closing);
+ * - the tail `…` is byte-for-byte the `ProgramArguments` of that attempt's `unit.preimage` (`plistArgs` parses it).
+ * Anything else, or anything that can't be read: null — the caller reads it as an unknown service.
  */
-export function unwrapRecoveryRoute(argv: string[], home: string, verifyKit: (attemptId: string) => boolean, io: JournalIo = defaultJournalIo): string[] | null {
+export function unwrapRecoveryRoute(argv: string[], home: string, deps: { verifyKit(attemptId: string): boolean; plistArgs(xml: string): string[] | null },
+  io: JournalIo = defaultJournalIo): string[] | null {
   if (argv.length < 9 || argv[0] !== "/bin/sh" || argv[1] !== "-c" || argv[2] !== WRAPPER_SCRIPT || argv[3] !== WRAPPER_ARG0) return null;
   const [kitNode, kitRecover, wrappedHome, id] = argv.slice(4, 8) as [string, string, string, string];
   if (wrappedHome !== home || !/^\d{8}T\d{6}Z-[0-9a-f]{8}$/.test(id)) return null;
   const kit = kitDir(home, id);
-  if (kitNode !== join(kit, "node") || kitRecover !== join(kit, "recover.cjs") || basename(dirname(kitNode)) !== id) return null;
-  if (!verifyKit(id)) return null;
-  // Only with no attempt in flight (none, or closing): an open, manual or unknown journal leaves it unproven.
+  if (kitNode !== join(kit, "node") || kitRecover !== join(kit, "recover.cjs")) return null;
+  if (!deps.verifyKit(id)) return null;
+  const own = readAttemptRecord(home, id, io);
+  if (!own || !TERMINAL.has(own.stage) || own.stage === "manual-recovery") return null;
   const read = readCurrent(home, io);
   if (read.state === "unknown" || read.state === "open" || read.state === "manual") return null;
-  return argv.slice(8);
+  let preimage: string;
+  try { preimage = readFileSync(unitPreimagePath(home, id), "utf8"); } catch { return null; }
+  const original = deps.plistArgs(preimage);
+  const tail = argv.slice(8);
+  if (!original || original.length !== tail.length || original.some((w, i) => w !== tail[i])) return null;
+  return tail;
 }

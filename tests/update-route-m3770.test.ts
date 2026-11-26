@@ -150,24 +150,56 @@ describe("M-3770 §6.2: launchd's wrapper", () => {
 });
 
 describe("M-3770 §6.2: the wrapper is recognised only EXACTLY", () => {
-  const wrapperFor = (home: string, id = ID) => ["/bin/sh", "-c", WRAPPER_SCRIPT, WRAPPER_ARG0, join(kitDir(home, id), "node"), join(kitDir(home, id), "recover.cjs"), home, id, "/usr/local/bin/agend", "fleet", "start"];
-
-  it("this home's wrapper for a verified kit of a finished attempt unwraps to the original; anything else doesn't", () => {
+  const plistArgs = (xml: string) => parsePlist(xml)?.argv ?? null;
+  const ORIGINAL = ["/usr/local/bin/agend", "fleet", "start"];
+  const wrapperFor = (home: string, id = ID, tail = ORIGINAL) => ["/bin/sh", "-c", WRAPPER_SCRIPT, WRAPPER_ARG0, join(kitDir(home, id), "node"), join(kitDir(home, id), "recover.cjs"), home, id, ...tail];
+  /** A launchd attempt with its route written (so its unit.preimage exists), then abandoned. */
+  const finished = () => {
     const { r, attempt } = rig("launchd");
-    const ok = () => true;
-    expect(unwrapRecoveryRoute(wrapperFor(r.home), r.home, ok)).toBeNull();                                   // the attempt is still open
+    expect(writeRecoveryRoute(r.home, attempt, { plistArgs }).ok).toBe(true);
+    return { r, attempt };
+  };
+  const deps = { verifyKit: () => true, plistArgs };
+
+  it("this home's wrapper, a verified kit, the attempt's OWN record terminal, and the tail exactly its preimage's arguments", () => {
+    const { r, attempt } = finished();
+    expect(unwrapRecoveryRoute(wrapperFor(r.home), r.home, deps)).toBeNull();                                // still open
     finish(r.home, advance(r.home, advance(r.home, attempt, "barrier"), "abandoning"), { kind: "abandoned" });
-    expect(unwrapRecoveryRoute(wrapperFor(r.home), r.home, ok)).toEqual(["/usr/local/bin/agend", "fleet", "start"]);
-    expect(unwrapRecoveryRoute(wrapperFor(r.home), r.home, () => false)).toBeNull();                          // kit doesn't verify
-    expect(unwrapRecoveryRoute(wrapperFor("/other/home"), r.home, ok)).toBeNull();
+    expect(unwrapRecoveryRoute(wrapperFor(r.home), r.home, deps)).toEqual(ORIGINAL);
+    expect(unwrapRecoveryRoute(wrapperFor(r.home), r.home, { ...deps, verifyKit: () => false })).toBeNull();
+    expect(unwrapRecoveryRoute(wrapperFor("/other/home"), r.home, deps)).toBeNull();
     const w = wrapperFor(r.home);
     for (const [i, v] of [[2, WRAPPER_SCRIPT + " "], [0, "/bin/bash"], [3, "x"], [4, "/tmp/node"], [5, "/tmp/recover.cjs"], [7, "../x"]] as const) {
       const bad = [...w]; bad[i] = v;
-      expect(unwrapRecoveryRoute(bad, r.home, ok)).toBeNull();
+      expect(unwrapRecoveryRoute(bad, r.home, deps)).toBeNull();
     }
-    expect(unwrapRecoveryRoute(w.slice(0, 8), r.home, ok)).toBeNull();                                        // no original arguments
     writeFileSync(join(r.home, ".update-journal", "current"), "nonsense\n");
-    expect(unwrapRecoveryRoute(w, r.home, ok)).toBeNull();                                                    // journal unknown
+    expect(unwrapRecoveryRoute(w, r.home, deps)).toBeNull();                                                  // journal unknown
+  });
+
+  it("an arbitrary tail is refused: only the preimage's own ProgramArguments (Prism, #4517)", () => {
+    const { r, attempt } = finished();
+    finish(r.home, advance(r.home, advance(r.home, attempt, "barrier"), "abandoning"), { kind: "abandoned" });
+    for (const tail of [["/tmp/evil"], [...ORIGINAL, "--extra"], ["/usr/local/bin/agend", "fleet"], ["/usr/local/bin/agend", "fleet", "Start"], []]) {
+      expect(unwrapRecoveryRoute(wrapperFor(r.home, ID, tail), r.home, deps)).toBeNull();
+    }
+    rmSync(unitPreimagePath(r.home, ID));
+    expect(unwrapRecoveryRoute(wrapperFor(r.home), r.home, deps)).toBeNull();                                // no preimage: unproven
+  });
+
+  it("the kit's own attempt must be proven terminal — not inferred from the current journal (Prism, #4517)", () => {
+    // An attempt left in manual-recovery whose `current` was then removed: the journal reads none, the record says manual.
+    const { r, attempt } = finished();
+    finish(r.home, advance(r.home, attempt, "barrier"), { kind: "manual-recovery", reason: "t" });
+    rmSync(join(r.home, ".update-journal", "current"));
+    expect(unwrapRecoveryRoute(wrapperFor(r.home), r.home, deps)).toBeNull();
+    // A kit whose attempt has no record at all.
+    const other = newAttemptId(new Date("2026-11-26T10:00:00Z"), "99999999");
+    expect(unwrapRecoveryRoute(wrapperFor(r.home, other), r.home, deps)).toBeNull();
+    // An open attempt's record (not terminal) with `current` gone.
+    const { r: r2 } = finished();
+    rmSync(join(r2.home, ".update-journal", "current"));
+    expect(unwrapRecoveryRoute(wrapperFor(r2.home), r2.home, deps)).toBeNull();
   });
 });
 
