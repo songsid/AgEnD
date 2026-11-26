@@ -110,6 +110,18 @@ describe("M-3770 §3.1: the package location is bound to its resolved ancestors 
     // The ancestor re-pointed at an empty directory: the bin links now dangle at lexical paths "under" the old destination.
     unlinkSync(join(lib, "node_modules")); symlinkSync(dirB, join(lib, "node_modules"));
     expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: "ownership changed (packagePath)" });
+    // Back to dirA, and npm removed the launcher mid-install: the bin link dangles at a LEXICAL path through the
+    // node_modules symlink — judged canonically, it is inside the destination (Prism #4502 R2).
+    unlinkSync(join(lib, "node_modules")); symlinkSync(dirA, join(lib, "node_modules"));
+    rmSync(join(dirA, "@songsid", "agend", "launcher", "agend"));
+    unlinkSync(join(r.prefix, "bin", "agend")); symlinkSync(join(lib, "node_modules", "@songsid", "agend", "launcher", "agend"), join(r.prefix, "bin", "agend"));
+    expect(checkStage(a, live(r))).toEqual({ ok: true, found: "partial" });
+    // A dangling target outside the destination is still refused, and so is one whose path crosses a dangling link.
+    unlinkSync(join(r.prefix, "bin", "agend")); symlinkSync(join(dirB, "elsewhere", "agend"), join(r.prefix, "bin", "agend"));
+    expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/outside the intent's destination/) });
+    symlinkSync(join(r.root, "void"), join(dirA, "@songsid", "agend", "hole"));
+    unlinkSync(join(r.prefix, "bin", "agend")); symlinkSync(join(dirA, "@songsid", "agend", "hole", "agend"), join(r.prefix, "bin", "agend"));
+    expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/outside the intent's destination/) });
   });
 
   it("node_modules itself resolved even with no scope directory yet, and a re-pointed bin directory changes the owned bin links", () => {

@@ -157,6 +157,24 @@ export type TupleRead =
   | { state: "complete"; tuple: ArtifactTuple }
   | { state: "partial"; reason: string; paths: string[]; interpreter: string | null; execStart: string[] | null };
 
+/**
+ * `path`, which may not exist, with its deepest existing ancestor resolved and the missing tail appended. null when a
+ * component on the way is a link that resolves to nothing (the traversal can't be proven).
+ */
+function canonicalMissing(path: string, deps: OwnershipDeps): string | null {
+  const tail: string[] = [];
+  let cur = path;
+  for (;;) {
+    const real = deps.realpath(cur);
+    if (real) return join(real, ...tail.reverse());
+    if (deps.lexists(cur)) return null;
+    const parent = dirname(cur);
+    if (parent === cur) return null;
+    tail.push(basename(cur));
+    cur = parent;
+  }
+}
+
 /** The installed package's integrity, from npm's hidden lockfile (`<root>/.package-lock.json`); null when it records none. */
 function integrityOf(ownership: Ownership, deps: OwnershipDeps): string | null {
   const text = deps.readFile(join(nodeModulesOf(ownership.prefix, deps.platform), ".package-lock.json"));
@@ -181,7 +199,9 @@ export function readArtifactTuple(ownership: Ownership, deps: OwnershipDeps): Tu
     else if (deps.lexists(link)) {
       dangling ??= link;
       const target = deps.linkTarget(link);
-      paths.push(target ?? link);                       // a dangling link's own target must stay inside the destination too
+      // A dangling link's own target must stay inside the destination too, judged canonically (Prism #4502 R2): its
+      // existing ancestors resolved, the missing tail kept. Unprovable: the link itself, never inside the package.
+      paths.push((target && canonicalMissing(target, deps)) ?? link);
     }
   }
   const entry = deps.realpath(join(ownership.packagePath, "dist", "cli.js"));
