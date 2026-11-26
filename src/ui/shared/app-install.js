@@ -37,7 +37,8 @@ const ti = (k) => t(`install.${k}`);
 /** "available" | "ios" | "untrusted" | "insecure" | "installed" | "none" (nothing to say). */
 export const installStore = createStore({ state: "none" });
 let offer = null;
-let started = false;
+/** The windows already started (the app's one, or a test's own fake). */
+const started = new WeakSet();
 
 const standalone = (env) => {
   try { return env.matchMedia?.("(display-mode: standalone)")?.matches === true || env.navigator?.standalone === true; } catch { return false; }
@@ -52,8 +53,9 @@ const set = (state) => installStore.set({ state });
 
 /** Once per page, from the app's start: listen for the offer, register the worker, decide what to say. */
 export function startInstall(env = globalThis) {
-  if (started) return;
-  started = true;
+  if (started.has(env)) return;
+  started.add(env);
+  set("none");
   if (standalone(env)) { set("installed"); return; }
   env.addEventListener?.("beforeinstallprompt", (event) => { event.preventDefault(); offer = event; set("available"); });
   env.addEventListener?.("appinstalled", () => { offer = null; set("installed"); });
