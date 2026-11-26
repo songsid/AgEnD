@@ -128,7 +128,10 @@ can therefore require approval after an admin speaks directly to that worker.
 Only a verified managing administrator can explicitly clear retained origin in
 the agent's web Permissions tab, accepting the current conversation as their own
 work without erasing its text. The agent and peers have no clear tool. New
-non-admin input is restricted again; other agents, tickets and grants are unchanged.
+non-admin input in a restricted ClassicBot room, or work inherited from one, is
+restricted again; other agents, tickets and grants are unchanged. People talking
+to a fleet agent in its own topic are not recorded as origin: who may talk there
+is that channel's access setting, so a cleared agent stays clear.
 There is no automatic reset. A first legacy-to-restricted switch
 treats earlier history as unknown; saving the same mode leaves the origin alone.
 Unknown origins never match standing grants, so new contacts need separate approval.
