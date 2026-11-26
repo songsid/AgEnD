@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  checkStage, fsOwnershipDeps, identityOf, openingIdentity, proveOwnership, readArtifactTuple, recordExpectedNew, recordInstallIntent, stopTarget,
+  checkStage, fsOwnershipDeps, identityOf, openingIdentity, ownershipDiff, proveOwnership, readArtifactTuple, recordExpectedNew, recordInstallIntent, stopTarget,
   type ArtifactTuple, type InstallIntent, type OwnedService, type OwnershipDeps,
 } from "../src/install-ownership.js";
 import { ackGeneration, advance, newAttemptId, openAttempt, planGeneration, readCurrent, type AttemptRecord, type Stage } from "../src/update-journal.js";
@@ -18,7 +18,7 @@ const NODE = "/opt/node22/bin/node";
 const EXEC = ["/usr/bin/agend", "fleet", "start"];
 const NONCE = "c".repeat(32), TRIAL = "f".repeat(32);
 
-interface Rig { root: string; home: string; prefix: string; pkg: string; unit: string; deps: OwnershipDeps; service: OwnedService; exec: { argv: string[] | null }; node: { path: string | null } }
+interface Rig { root: string; home: string; prefix: string; pkg: string; unit: string; deps: OwnershipDeps; service: OwnedService | null; exec: { argv: string[] | null }; node: { path: string | null } }
 
 function rig(): Rig {
   const root = mkdtempSync(join(tmpdir(), "own-")); dirs.push(root);
@@ -27,7 +27,7 @@ function rig(): Rig {
   const unit = join(root, "agend.service"); writeFileSync(unit, "[Service]\nExecStart=/usr/bin/agend fleet start\n");
   install(pkg, prefix, "2.4.0", "sha512-old");
   const exec = { argv: EXEC as string[] | null }, node = { path: NODE as string | null };
-  const deps = fsOwnershipDeps({ interpreterOf: () => node.path, execStart: () => exec.argv });
+  const deps = fsOwnershipDeps({ interpreterFor: () => node.path, execStart: () => exec.argv });
   return { root, home, prefix, pkg, unit, deps, service: { kind: "systemd", unit: "agend.service", fragmentPath: unit }, exec, node };
 }
 
@@ -42,6 +42,7 @@ function install(pkg: string, prefix: string, version: string, integrity: string
 }
 
 const prove = (r: Rig) => proveOwnership({ home: r.home, prefix: r.prefix, service: r.service }, r.deps);
+const binLinks = (r: Rig) => ({ agend: join(r.prefix, "bin", "agend"), "agend-agent": join(r.prefix, "bin", "agend-agent") });
 const tupleOf = (r: Rig): ArtifactTuple => {
   const own = prove(r); if (!own.ok) throw new Error(own.reason);
   const t = readArtifactTuple(own.value, r.deps); if (t.state !== "complete") throw new Error(t.reason);
@@ -49,8 +50,8 @@ const tupleOf = (r: Rig): ArtifactTuple => {
 };
 const live = (r: Rig) => { const ownership = prove(r); return { ownership, tuple: ownership.ok ? readArtifactTuple(ownership.value, r.deps) : { state: "partial" as const, reason: "-", paths: [], interpreter: null, execStart: null } }; };
 
-function opened(r: Rig, oldFleet: { pid: number; nonce: string } | null = { pid: 4100, nonce: NONCE }): AttemptRecord {
-  const own = prove(r); if (!own.ok) throw new Error(own.reason);
+function opened(r: Rig, oldFleet: { pid: number; nonce: string } | null = { pid: 4100, nonce: NONCE }, service: OwnedService | null = r.service): AttemptRecord {
+  const own = proveOwnership({ home: r.home, prefix: r.prefix, service }, r.deps); if (!own.ok) throw new Error(own.reason);
   const res = openAttempt(r.home, { id: ID, kind: "update", updater: { pid: 4242, start: { processStart: "x" } },
     from: { name: "@songsid/agend", version: "2.4.0", integrity: "sha512-old" }, to: { name: "@songsid/agend", version: "2.4.1", integrity: "sha512-new" },
     extra: openingIdentity(own.value, tupleOf(r), oldFleet, new Date()) });
@@ -66,7 +67,7 @@ describe("M-3770 §3.1: ownership", () => {
   it("is proven as realpaths: home, prefix, the package PATH (not its contents), the unit's fragment", () => {
     const r = rig();
     const own = prove(r);
-    expect(own).toEqual({ ok: true, value: { uid: process.getuid!(), home: r.home, prefix: r.prefix, packagePath: r.pkg, service: { kind: "systemd", unit: "agend.service", fragmentPath: r.unit } } });
+    expect(own).toEqual({ ok: true, value: { uid: process.getuid!(), home: r.home, prefix: r.prefix, packagePath: r.pkg, binLinks: binLinks(r), service: { kind: "systemd", unit: "agend.service", fragmentPath: r.unit } } });
     rmSync(r.pkg, { recursive: true });
     expect(prove(r).ok).toBe(true);                                                                   // contents are the tuple's question
   });
@@ -75,7 +76,7 @@ describe("M-3770 §3.1: ownership", () => {
     const r = rig();
     expect(proveOwnership({ home: join(r.root, "nope"), prefix: r.prefix, service: null }, r.deps)).toMatchObject({ ok: false, reason: expect.stringMatching(/home/) });
     expect(proveOwnership({ home: r.home, prefix: join(r.root, "nope"), service: null }, r.deps)).toMatchObject({ ok: false, reason: expect.stringMatching(/prefix/) });
-    expect(proveOwnership({ home: r.home, prefix: r.prefix, service: { ...r.service, fragmentPath: join(r.root, "gone.service") } }, r.deps)).toMatchObject({ ok: false, reason: expect.stringMatching(/definition/) });
+    expect(proveOwnership({ home: r.home, prefix: r.prefix, service: { kind: "systemd", unit: "agend.service", fragmentPath: join(r.root, "gone.service") } }, r.deps)).toMatchObject({ ok: false, reason: expect.stringMatching(/definition/) });
     const other = { ...r.deps, uid: () => 4321, ownerUid: () => 1234 };
     expect(proveOwnership({ home: r.home, prefix: r.prefix, service: null }, other)).toMatchObject({ ok: false, reason: expect.stringMatching(/belongs to uid 1234/) });
   });
@@ -89,6 +90,46 @@ describe("M-3770 §3.1: ownership", () => {
     a = walk(r, a, ["stopping", "snapshotted", "installing"]);
     expect(checkStage(a, { ownership: own, tuple: live(r).tuple })).toMatchObject({ ok: false, to: "manual-recovery" });
     expect(checkStage(a, { ownership: { ok: false, reason: "home gone" }, tuple: live(r).tuple })).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/can't be proven/) });
+  });
+});
+
+describe("M-3770 §3.1: the package location is bound to its resolved ancestors (Prism #4502)", () => {
+  it("a symlinked node_modules that is re-pointed changes the owned package path: manual-recovery while installing; unchanged, it passes", () => {
+    const r = rig();
+    // node_modules becomes a real symlink to dirA (holding the installed package), the way some prefixes are laid out.
+    const lib = join(r.prefix, "lib"), dirA = join(r.root, "nm-a"), dirB = join(r.root, "nm-b");
+    rmSync(join(lib, "node_modules"), { recursive: true }); mkdirSync(dirA); mkdirSync(dirB);
+    symlinkSync(dirA, join(lib, "node_modules"));
+    install(join(lib, "node_modules", "@songsid", "agend"), r.prefix, "2.4.0", "sha512-old");
+    const owned = prove(r);
+    expect(owned).toMatchObject({ ok: true, value: { packagePath: join(dirA, "@songsid", "agend") } });
+    let a = walk(r, opened(r), ["barrier", "stopping", "snapshotted", "installing"]);
+    a = recordInstallIntent(r.home, a, { ...intentOf(r), destination: { packagePath: join(dirA, "@songsid", "agend"), binLinks: Object.values(binLinks(r)) } });
+    rmSync(join(dirA, "@songsid", "agend", "dist"), { recursive: true });                          // npm interrupted
+    expect(checkStage(a, live(r))).toEqual({ ok: true, found: "partial" });                         // the control: same location
+    // The ancestor re-pointed at an empty directory: the bin links now dangle at lexical paths "under" the old destination.
+    unlinkSync(join(lib, "node_modules")); symlinkSync(dirB, join(lib, "node_modules"));
+    expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: "ownership changed (packagePath)" });
+  });
+
+  it("node_modules itself resolved even with no scope directory yet, and a re-pointed bin directory changes the owned bin links", () => {
+    const r = rig();
+    const lib = join(r.prefix, "lib"), empty = join(r.root, "nm-empty"), binA = join(r.root, "bin-a"), binB = join(r.root, "bin-b");
+    rmSync(join(lib, "node_modules"), { recursive: true }); mkdirSync(empty); symlinkSync(empty, join(lib, "node_modules"));
+    expect(prove(r)).toMatchObject({ ok: true, value: { packagePath: join(empty, "@songsid", "agend") } });
+    rmSync(join(r.prefix, "bin"), { recursive: true }); mkdirSync(binA); mkdirSync(binB); symlinkSync(binA, join(r.prefix, "bin"));
+    const before = prove(r);
+    unlinkSync(join(r.prefix, "bin")); symlinkSync(binB, join(r.prefix, "bin"));
+    const after = prove(r);
+    if (!before.ok || !after.ok) throw new Error("not proven");
+    expect(ownershipDiff(before.value, after.value)).toEqual(["binLinks.agend", "binLinks.agend-agent"]);
+  });
+
+  it("a scope directory that is a dangling link can't be proven", () => {
+    const r = rig();
+    const nm = join(r.prefix, "lib", "node_modules");
+    rmSync(join(nm, "@songsid"), { recursive: true }); symlinkSync(join(r.root, "gone"), join(nm, "@songsid"));
+    expect(prove(r)).toMatchObject({ ok: false, reason: expect.stringMatching(/resolves to nothing/) });
   });
 });
 
@@ -138,6 +179,14 @@ describe("M-3770 §3.2: expected tuples per stage", () => {
     r.exec.argv = EXEC; r.node.path = "/usr/bin/node";
     install(r.pkg, r.prefix, "2.4.1", "sha512-new");
     expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/Node changed/) });
+    // The Node is proven independently of the package (Prism #4502): with the entry gone, it is still checked.
+    rmSync(join(r.pkg, "dist"), { recursive: true });
+    r.node.path = NODE;
+    expect(checkStage(a, live(r))).toEqual({ ok: true, found: "partial" });                         // the control: unchanged
+    r.node.path = "/usr/bin/node";
+    expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/Node changed/) });
+    r.node.path = null;
+    expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/Node .* can't be proven/) });
   });
 
   it("rolling-back compares with what the restore says is current", () => {
@@ -193,13 +242,23 @@ describe("M-3770 §3.3: which fleet may be stopped", () => {
     const r = rig();
     const a = walk(r, opened(r), ["barrier", "stopping"]);
     expect(stopTarget(a, { pid: 4100, nonce: NONCE }, 4100)).toMatchObject({ ok: true, generation: { gen: "old", pid: 4100 } });
-    expect(stopTarget(a, { pid: 4100, nonce: NONCE }, null)).toMatchObject({ ok: true });            // detached: no manager
-    expect(stopTarget(a, { pid: 4999, nonce: NONCE }, null)).toMatchObject({ ok: false, reason: expect.stringMatching(/no recorded generation/) });
-    expect(stopTarget(a, { pid: 4100, nonce: "d".repeat(32) }, null)).toMatchObject({ ok: false });
+    expect(stopTarget(a, { pid: 4100, nonce: NONCE }, null)).toMatchObject({ ok: false, reason: expect.stringMatching(/agend.service's MainPID can't be read/) });   // a managed service: MainPID required
+    expect(stopTarget(a, { pid: 4999, nonce: NONCE }, 4999)).toMatchObject({ ok: false, reason: expect.stringMatching(/no recorded generation/) });
+    expect(stopTarget(a, { pid: 4100, nonce: "d".repeat(32) }, 4100)).toMatchObject({ ok: false });
     expect(stopTarget(a, { pid: 4100, nonce: NONCE }, 5000)).toMatchObject({ ok: false, reason: expect.stringMatching(/MainPID 5000/) });
     expect(stopTarget(a, null, null)).toMatchObject({ ok: false });
     const r2 = rig();
     expect(stopTarget(opened(r2, null), { pid: 1, nonce: NONCE }, null)).toMatchObject({ ok: false, reason: expect.stringMatching(/opened/) });
+    expect(stopTarget({ ...a, ownership: undefined }, { pid: 4100, nonce: NONCE }, 4100)).toMatchObject({ ok: false, reason: expect.stringMatching(/ownership/) });
+  });
+
+  it("a detached attempt (no service, proven at open) stops by fleet.lock alone; a MainPID offered for it is refused (Prism #4502)", () => {
+    const r = rig();
+    r.service = null; r.exec.argv = null;                                                            // no service: nothing to read
+    const a = walk(r, opened(r), ["barrier", "stopping"]);
+    expect(identityOf(a)?.ownership.service).toBeNull();
+    expect(stopTarget(a, { pid: 4100, nonce: NONCE }, null)).toMatchObject({ ok: true, generation: { gen: "old", pid: 4100 } });
+    expect(stopTarget(a, { pid: 4100, nonce: NONCE }, 4100)).toMatchObject({ ok: false, reason: expect.stringMatching(/detached/) });
   });
 
   it("rolling-back: only the acknowledged trial generation; the old one is not stopped there", () => {

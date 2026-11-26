@@ -15,7 +15,7 @@
  * shape, and a malformed one is "can't be proven" — never a pass. All I/O goes through `OwnershipDeps`.
  */
 import { lstatSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { substep, type Artifact, type AttemptRecord, type FleetGeneration, type JournalIo, defaultJournalIo, type Stage } from "./update-journal.js";
 
 export const PACKAGE_NAME = "@songsid/agend";
@@ -29,8 +29,13 @@ export interface Ownership {
   uid: number;
   home: string;
   prefix: string;
-  /** `<root>/@songsid/agend`: the path, not its contents (they change across the attempt). */
+  /**
+   * `<root>/@songsid/agend`: the path, not its contents (they change across the attempt). Its ancestors are resolved
+   * (Prism #4502 2): a symlinked `node_modules` or scope directory that moves changes this path, so re-proof sees it.
+   */
   packagePath: string;
+  /** Where the bin links live, their directory resolved the same way. */
+  binLinks: Record<BinName, string>;
   service: OwnedService | null;
 }
 
@@ -67,8 +72,12 @@ export interface OwnershipDeps {
   /** The uid owning `path` (followed), or null. */
   ownerUid(path: string): number | null;
   readFile(path: string): string | null;
-  /** The realpath of the Node `entry` runs on, or null. */
-  interpreterOf(entry: string): string | null;
+  /**
+   * The realpath of the Node this install runs on, proven independently of the package's own files (the service
+   * definition's PATH or explicit interpreter, as service-activation proves it), or null. A half-written package must
+   * not lose this proof (Prism #4502 3).
+   */
+  interpreterFor(ownership: Ownership): string | null;
   /** The service's effective ExecStart / ProgramArguments, or null when it can't be read. */
   execStart(service: OwnedService): string[] | null;
   platform: NodeJS.Platform;
@@ -77,10 +86,10 @@ export interface OwnershipDeps {
 const fsRealpath = (path: string): string | null => { try { return realpathSync(path); } catch { return null; } };
 
 /**
- * The filesystem half of the deps. `interpreterOf` and `execStart` come from the caller: the Node an install runs on
+ * The filesystem half of the deps. `interpreterFor` and `execStart` come from the caller: the Node an install runs on
  * and what the service manager has loaded are proven where the update already proves them (service-activation.ts).
  */
-export const fsOwnershipDeps = (rest: Pick<OwnershipDeps, "interpreterOf" | "execStart">): OwnershipDeps => ({
+export const fsOwnershipDeps = (rest: Pick<OwnershipDeps, "interpreterFor" | "execStart">): OwnershipDeps => ({
   uid: () => (typeof process.getuid === "function" ? process.getuid() : 0),
   realpath: fsRealpath,
   lexists: path => { try { lstatSync(path); return true; } catch { return false; } },
@@ -94,7 +103,6 @@ export const fsOwnershipDeps = (rest: Pick<OwnershipDeps, "interpreterOf" | "exe
 /** npm's global layout: POSIX `<prefix>/lib/node_modules`, Windows `<prefix>/node_modules`. */
 export const nodeModulesOf = (prefix: string, platform: NodeJS.Platform): string =>
   platform === "win32" ? join(prefix, "node_modules") : join(prefix, "lib", "node_modules");
-export const packagePathOf = (prefix: string, platform: NodeJS.Platform): string => join(nodeModulesOf(prefix, platform), PACKAGE_NAME);
 export const binLinkOf = (prefix: string, name: BinName, platform: NodeJS.Platform): string =>
   platform === "win32" ? join(prefix, name) : join(prefix, "bin", name);
 
@@ -112,21 +120,32 @@ export function proveOwnership(input: { home: string; prefix: string; service: O
     if (owner === null) return { ok: false, reason: `the ${what} ${path}'s owner can't be read` };
     if (uid !== 0 && owner !== uid) return { ok: false, reason: `the ${what} ${path} belongs to uid ${owner}, not this user (${uid})` };
   }
-  // The package path is a location under the prefix; whether its contents are there is the tuple's question.
-  const packagePath = packagePathOf(prefix, deps.platform);
+  // The package path is a location under the prefix; whether its contents are there is the tuple's question. Its
+  // ancestors are resolved: node_modules must exist; the scope directory may be absent (npm creates it), but never a
+  // dangling link.
+  const root = deps.realpath(nodeModulesOf(prefix, deps.platform));
+  if (!root) return { ok: false, reason: `the npm prefix's ${nodeModulesOf(prefix, deps.platform)} can't be resolved` };
+  const scopeLexical = join(root, PACKAGE_NAME.split("/")[0]!);
+  const scope = deps.realpath(scopeLexical) ?? (deps.lexists(scopeLexical) ? null : scopeLexical);
+  if (!scope) return { ok: false, reason: `${scopeLexical} is a link that resolves to nothing` };
+  const packagePath = join(scope, PACKAGE_NAME.split("/")[1]!);
+  const binDir = deps.realpath(dirname(binLinkOf(prefix, "agend", deps.platform)));
+  if (!binDir) return { ok: false, reason: `the npm prefix's bin directory ${dirname(binLinkOf(prefix, "agend", deps.platform))} can't be resolved` };
+  const binLinks = Object.fromEntries(BIN_NAMES.map(name => [name, join(binDir, basename(binLinkOf(prefix, name, deps.platform)))])) as Record<BinName, string>;
   let service: OwnedService | null = null;
   if (input.service) {
     const fragmentPath = deps.realpath(input.service.fragmentPath);
     if (!fragmentPath) return { ok: false, reason: `the service ${input.service.unit}'s definition ${input.service.fragmentPath} can't be resolved` };
     service = { kind: input.service.kind, unit: input.service.unit, fragmentPath };
   }
-  return { ok: true, value: { uid, home, prefix, packagePath, service } };
+  return { ok: true, value: { uid, home, prefix, packagePath, binLinks, service } };
 }
 
 /** The fields where two ownerships differ (empty: the same). */
 export function ownershipDiff(a: Ownership, b: Ownership): string[] {
   const diff: string[] = [];
   for (const key of ["uid", "home", "prefix", "packagePath"] as const) if (a[key] !== b[key]) diff.push(key);
+  for (const name of BIN_NAMES) if (a.binLinks[name] !== b.binLinks[name]) diff.push(`binLinks.${name}`);
   const sa = a.service, sb = b.service;
   if ((sa === null) !== (sb === null)) diff.push("service");
   else if (sa && sb) for (const key of ["kind", "unit", "fragmentPath"] as const) if (sa[key] !== sb[key]) diff.push(`service.${key}`);
@@ -155,7 +174,7 @@ export function readArtifactTuple(ownership: Ownership, deps: OwnershipDeps): Tu
   const bins = {} as Record<BinName, string | null>;
   let dangling: string | null = null;
   for (const name of BIN_NAMES) {
-    const link = binLinkOf(ownership.prefix, name, deps.platform);
+    const link = ownership.binLinks[name];
     const real = deps.realpath(link);
     bins[name] = real;
     if (real) paths.push(real);
@@ -167,7 +186,7 @@ export function readArtifactTuple(ownership: Ownership, deps: OwnershipDeps): Tu
   }
   const entry = deps.realpath(join(ownership.packagePath, "dist", "cli.js"));
   if (entry) paths.push(entry);
-  const interpreter = entry ? deps.interpreterOf(entry) : null;
+  const interpreter = deps.interpreterFor(ownership);
   const execStart = ownership.service ? deps.execStart(ownership.service) : null;
   const partial = (reason: string): TupleRead => ({ state: "partial", reason, paths, interpreter, execStart });
   if (ownership.service && !execStart) return partial(`the service ${ownership.service.unit}'s ExecStart can't be read`);
@@ -201,6 +220,8 @@ const argvOrNull = (v: unknown) => v === null || (Array.isArray(v) && v.length >
 
 function validOwnership(v: unknown): v is Ownership {
   if (!isObj(v) || !Number.isSafeInteger(v.uid) || (v.uid as number) < 0 || !nonEmpty(v.home) || !nonEmpty(v.prefix) || !nonEmpty(v.packagePath)) return false;
+  const links = v.binLinks;
+  if (!isObj(links) || !BIN_NAMES.every(name => nonEmpty(links[name])) || Object.keys(links).length !== BIN_NAMES.length) return false;
   if (v.service === null) return true;
   const s = v.service;
   return isObj(s) && (s.kind === "systemd" || s.kind === "launchd") && nonEmpty(s.unit) && nonEmpty(s.fragmentPath);
@@ -311,22 +332,20 @@ function partialWithinIntent(id: Identity, tuple: TupleRead): StageCheck | null 
   if (!id.intent) return fail("the install changed with no install intent journaled");
   const dest = id.intent.destination;
   if (dest.packagePath !== id.ownership.packagePath) return fail("the install intent's destination is not the owned package path");
-  const owned = BIN_NAMES.map(name => binLinkOf(id.ownership.prefix, name, platformOf(id))).sort();
+  const owned = BIN_NAMES.map(name => id.ownership.binLinks[name]).sort();
   const named = [...dest.binLinks].sort();
   if (owned.length !== named.length || owned.some((p, i) => p !== named[i])) return fail("the install intent's bin links are not the owned ones");
   const paths = tuple.state === "complete" ? [...Object.values(tuple.tuple.bins).filter((p): p is string => p !== null), tuple.tuple.entry] : tuple.paths;
   const outside = paths.find(p => !inside(p, dest.packagePath));
   if (outside) return fail(`the install reaches ${outside}, outside the intent's destination ${dest.packagePath}`);
   const interpreter = tuple.state === "complete" ? tuple.tuple.interpreter : tuple.interpreter;
-  if (interpreter !== null && interpreter !== id.expected.old.interpreter) return fail(`the Node changed (${interpreter})`);
+  if (interpreter === null) return fail("the Node the install runs on can't be proven");
+  if (interpreter !== id.expected.old.interpreter) return fail(`the Node changed (${interpreter})`);
   // The service definition must still be the attempt's own: an unreadable or changed ExecStart fails closed.
   const execStart = tuple.state === "complete" ? tuple.tuple.execStart : tuple.execStart;
   if (!sameArgv(execStart, id.expected.old.execStart)) return fail("the service's ExecStart changed or can't be read");
   return null;
 }
-
-/** The platform an identity's paths were laid out for (npm's layout differs on Windows). */
-const platformOf = (id: Identity): NodeJS.Platform => (id.ownership.packagePath === packagePathOf(id.ownership.prefix, "win32") ? "win32" : "linux");
 
 // ── §3.3: which fleet may be stopped ───────────────────────────────────────────────────────────────────────────
 
@@ -345,6 +364,13 @@ export function stopTarget(attempt: AttemptRecord, lock: { pid: number; nonce: s
   const gen = fleets.find(g => g.nonce === lock.nonce);
   if (!gen || gen.pid !== lock.pid) return { ok: false, reason: `fleet.lock's holder (pid ${lock.pid}) is no recorded generation` };
   if (gen.gen !== want) return { ok: false, reason: `fleet.lock's holder is generation ${gen.gen}, not ${want}` };
-  if (mainPid !== null && mainPid !== lock.pid) return { ok: false, reason: `the service's MainPID ${mainPid} matches no recorded generation` };
+  // A MainPID is required whenever the attempt owns a service; only a proven detached attempt (no service) has none
+  // (Prism #4502 1). An identity that can't be read proves neither.
+  const id = identityOf(attempt);
+  if (!id) return { ok: false, reason: "the attempt's recorded ownership is missing or malformed" };
+  if (id.ownership.service) {
+    if (mainPid === null) return { ok: false, reason: `the service ${id.ownership.service.unit}'s MainPID can't be read` };
+    if (mainPid !== lock.pid) return { ok: false, reason: `the service's MainPID ${mainPid} matches no recorded generation` };
+  } else if (mainPid !== null) return { ok: false, reason: `a detached attempt has no service, yet a MainPID ${mainPid} was given` };
   return { ok: true, generation: gen };
 }
