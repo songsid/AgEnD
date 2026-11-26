@@ -47,7 +47,7 @@ ARG AGEND_VERSION=latest
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tmux git curl ca-certificates procps xz-utils unzip less tini socat bash \
  && rm -rf /var/lib/apt/lists/*
-RUN npm install -g "@songsid/agend@${AGEND_VERSION}" && npm cache clean --force
+RUN npm install -g --allow-scripts=@songsid/agend "@songsid/agend@${AGEND_VERSION}" && npm cache clean --force
 # The base image's uid-1000 user, renamed: a bind mount owned by a typical host user matches it.
 RUN groupmod -n agend node \
  && usermod -l agend -d /home/agend -m -c AgEnD node \

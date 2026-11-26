@@ -21,7 +21,7 @@ The package's tmux is copied to `~/.agend/tmux/<version>-<hash>/`, and the serve
 
 **There is no fallback to the host's tmux.** If this platform has no package, or the package was left out (`npm install --omit=optional`, or a registry mirror without it), AgEnD refuses to start and says so. To run anyway on such a host, set `AGEND_TMUX_BIN` to the absolute path of a tmux 3.6a or newer.
 
-**Offline hosts.** On a connected machine, run `npm pack @songsid/agend @songsid/agend-tmux-<platform> @songsid/agend-node-<platform>`. Then, on the offline host, run `npm install -g ./*.tgz`.
+**Offline hosts.** On a connected machine, run `npm pack @songsid/agend @songsid/agend-tmux-<platform> @songsid/agend-node-<platform>`. Then, on the offline host, run `npm install -g --allow-scripts="$PWD/songsid-agend-<version>.tgz" ./*.tgz` (npm 12 allows a tarball's install scripts only by its absolute path).
 
 ## Upgrading from an earlier version
 
