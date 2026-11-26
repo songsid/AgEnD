@@ -152,7 +152,8 @@ function renameDurable(io: JournalIo, from: string, to: string): void {
  * finding it present can't tell, so it syncs again before going on). `exclusive`: the last component must be new (an
  * attempt's directory is never reused).
  */
-function mkdirDurable(io: JournalIo, base: string, path: string, exclusive = false): void {
+/** Create `path` below `base`, each new level made durable (its parent fsynced). `exclusive`: the last level must be new. */
+export function mkdirDurable(io: JournalIo, base: string, path: string, exclusive = false): void {
   const root = base.replace(/\/+$/, "");
   const rel = path.slice(root.length).split("/").filter(Boolean);
   if (!path.startsWith(root + "/") || rel.length === 0) throw new Error(`${path} is not below ${base}`);
@@ -531,7 +532,7 @@ export function recoveryPlan(read: JournalRead, updater: UpdaterState, ownStart 
 export function fleetStartGate(home: string, handoffNonce: string | null, liveness: LivenessDeps, io: JournalIo = defaultJournalIo): { ok: true } | { ok: false; reason: string } {
   const read = readCurrent(home, io);
   const own = read.state === "open" && !!handoffNonce && plannedGeneration(read.attempt, handoffNonce) !== null;
-  const plan = recoveryPlan(read, read.state === "open" ? updaterState(read.attempt, liveness) : "gone", own);
+  const plan = recoveryPlan(read, read.state === "open" ? ownerState(home, read.attempt, liveness, io) : "gone", own);
   if (plan.kind === "start" || plan.kind === "finish-closing") return { ok: true };
   if (read.state === "unknown") return { ok: false, reason: `This fleet start is refused: the update journal can't be read (${read.reason}: ${read.path}). Run \`agend update --resolve\`.` };
   const a = (read as { attempt: AttemptRecord }).attempt;
@@ -570,9 +571,9 @@ export function claimHandoff(home: string, attemptId: string, nonce: string, cla
   liveness: LivenessDeps, io: JournalIo = defaultJournalIo): boolean {
   const read = readCurrent(home, io);
   if (read.state !== "open" || read.attempt.id !== attemptId || !plannedGeneration(read.attempt, nonce)) return false;
-  // §2.7, §7: only while the attempt's owner lives. A gone or unknown updater's planned nonce hands nothing over —
-  // recovery owns that attempt (a start holding the nonce then refuses, and the pre-start step starts the runner).
-  if (updaterState(read.attempt, liveness) !== "live") return false;
+  // §2.7, §7: only while the attempt's owner (its updater, or the recovery runner acting for it) lives. A gone or
+  // unknown owner's planned nonce hands nothing over (a start holding it then refuses; pre-start starts the runner).
+  if (ownerState(home, read.attempt, liveness, io) !== "live") return false;
   const path = join(attemptDir(home, attemptId), `handoff-${nonce}.claim`);
   try { writeNew(io, path, JSON.stringify({ pid: claimant.pid, start: claimant.start }) + "\n"); }
   catch { return false; }
@@ -595,12 +596,47 @@ const startOf = (pid: number, start: ProcessStartRecord) => ({ pid, processStart
 
 /**
  * §2.7: the attempt's updater, by install-lock's `holderState` on its `{ pid, start }`. `gone` only on proof (no such
- * pid, or another start in this boot); `unknown` never authorizes anything. (The recovery runner's `attempt.runner`
- * joins this in 2.1c.)
+ * pid, or another start in this boot); `unknown` never authorizes anything. The attempt's owner — this, or the recovery
+ * runner — is `ownerState`.
  */
 export function updaterState(attempt: AttemptRecord, deps: LivenessDeps): UpdaterState {
   const state = holderState(startOf(attempt.updater.pid, attempt.updater.start), deps);
   return state === "stale" ? "gone" : state;
+}
+
+/** §6.2: the recovery runner's identity, written after it holds the three locks (the bootstrap handshake's answer). */
+export const RUNNER_FILE = "runner.json";
+export const runnerPath = (home: string, id: string) => join(attemptDir(home, id), RUNNER_FILE);
+
+export function writeRunnerRecord(home: string, attemptId: string, runner: { pid: number; start: ProcessStartRecord }, io: JournalIo = defaultJournalIo): void {
+  if (!isPid(runner.pid) || !isStart(runner.start)) throw new Error("a runner record needs a pid and a start");
+  writeAtomic(io, runnerPath(home, attemptId), JSON.stringify({ pid: runner.pid, start: runner.start }) + "\n");
+}
+
+/** The runner's record: absent (null), its identity, or "unreadable" (never taken as absent). */
+export function readRunnerRecord(home: string, attemptId: string, io: JournalIo = defaultJournalIo): { pid: number; start: ProcessStartRecord } | null | "unreadable" {
+  let text: string | null;
+  try { text = io.read(runnerPath(home, attemptId)); } catch { return "unreadable"; }
+  if (text === null) return null;
+  try {
+    const r = JSON.parse(text) as { pid?: unknown; start?: unknown };
+    return isObj(r) && isPid(r.pid) && isStart(r.start) ? { pid: r.pid as number, start: r.start as ProcessStartRecord } : "unreadable";
+  } catch { return "unreadable"; }
+}
+
+/**
+ * §2.7, §6.2: the attempt's owner — its updater, or the recovery runner acting for a gone one. Live when either is live;
+ * unknown when either can't be told (or the runner's record can't be read); gone only when both are proven gone (or no
+ * runner was ever recorded).
+ */
+export function ownerState(home: string, attempt: AttemptRecord, deps: LivenessDeps, io: JournalIo = defaultJournalIo): UpdaterState {
+  const updater = updaterState(attempt, deps);
+  const record = readRunnerRecord(home, attempt.id, io);
+  const runner: UpdaterState = record === null ? "gone" : record === "unreadable" ? "unknown"
+    : (s => (s === "stale" ? "gone" : s))(holderState(startOf(record.pid, record.start), deps));
+  if (updater === "live" || runner === "live") return "live";
+  if (updater === "unknown" || runner === "unknown") return "unknown";
+  return "gone";
 }
 
 export type RevokeResult = "revoked" | "claimed-live" | "claimant-gone" | "claimant-unknown";
