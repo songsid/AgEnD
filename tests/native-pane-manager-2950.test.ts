@@ -1,6 +1,6 @@
 /** Real metadata/profile/host/authority integration, inert native process only, no credentials or provider files. */
 import {afterEach,expect,it,vi} from "vitest";
-import {mkdtempSync,rmSync,readFileSync} from "node:fs";
+import {mkdtempSync,rmSync,readFileSync,writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {randomUUID} from "node:crypto";
@@ -182,4 +182,18 @@ it("S-230 keeps a native factory until the retained exact launch exits, and its 
  expect(()=>f.manager.retireForRequestContext()).toThrow("owned exit");const pinned=f.store.get(f.agent.id).threadId;
  await native.release("close");f.manager.retireForRequestContext();
  await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("manager is retired");expect(f.store.get(f.agent.id).threadId).toBe(pinned);expect(f.spawn).toHaveBeenCalledOnce();
+});
+
+it("an unclosed orphan manifest is unknown after its Windows reservation disappears; cold inventory never adopts it",async()=>{
+ const f=await fixture(),pane=await f.manager.prepare("native",f.config,()=>{});await pane.acquire(()=>{});await pane.release("detach");
+ const file=join(f.root,"windows-agents.json"),saved=JSON.parse(readFileSync(file,"utf8"));
+ for(const agent of saved.agents){delete agent.activeId;delete agent.paneLaunchId;}writeFileSync(file,JSON.stringify(saved),{mode:0o600});
+ const unavailable=()=>{throw Error("Cold inspection cannot execute");},store=new WindowsAgents(f.root,{start:unavailable,get:unavailable} as any),cold=new NativePaneManager({...f.options,store});
+ const before=readFileSync(join(f.root,"native-panes",f.agent.id,"active.json"));
+ expect(cold.drainView(randomUUID()).unknown).toBe(true);expect(cold.requestContextPhysicallyIdle()).toBe(false);expect(NativePaneManager.requestContextOrphanActivity(f.root).unknown).toBe(true);
+ expect(f.spawn).toHaveBeenCalledTimes(1);expect(readFileSync(join(f.root,"native-panes",f.agent.id,"active.json"))).toEqual(before);
+});
+it("a positively exited retained manifest is historical, not an orphan activity blocker",async()=>{
+ const f=await fixture(),pane=await f.manager.prepare("native",f.config,()=>{});await pane.acquire(()=>{});await pane.release("close");
+ const cold=new NativePaneManager(f.options);expect(cold.drainView(randomUUID()).unknown).toBe(false);expect(cold.requestContextPhysicallyIdle()).toBe(true);expect(NativePaneManager.requestContextOrphanActivity(f.root).unknown).toBe(false);
 });

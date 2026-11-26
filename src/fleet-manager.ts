@@ -1841,11 +1841,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private nativeMcpStore: NativeMcpSessions | null = null;
   readonly requestContextPendingWork = new RequestContextPendingWork();
   private readonly requestContextIpcCalls = new WeakMap<object, RequestContextLocalCall>();
-  private readonly requestContextFleetCalls=new RequestContextReferenceMap<string,{call:RequestContextLocalCall;instance:string;bootId:string;ipc:InstanceClient;responseKey:string}>(row=>row.call.admission.coverage==="covered"?row.call.admission.lease.snapshot.context.ref.rootContextId:null,row=>`fleet-call:${row.call.id}`);
+  private requestContextFleetCalls=new RequestContextReferenceMap<string,{call:RequestContextLocalCall;instance:string;bootId:string;ipc:InstanceClient;responseKey:string}>(row=>row.call.admission.coverage==="covered"?row.call.admission.lease.snapshot.context.ref.rootContextId:null,row=>`fleet-call:${row.call.id}`);
   setRequestContextDrainRegistration(registration:RequestContextRegistrationGate):void {
     if(this.instanceIpcClients.size)throw Error("Request context drain must bind before IPC starts");
     const calls=this.requestContextFleetCalls;if(!calls)throw Error("Request context drain registry unavailable");
     calls.installRegistration(registration);
+  }
+  /** Unpublished first-On registration. Only an empty, physically disconnected attempt can restore its prior map. */
+  stageRequestContextFleetRegistration(registration:RequestContextRegistrationGate,current:()=>boolean){
+    const box=this.deliveryOutbox,lease=captureProcessFleetLease(this.dataDir),original=this.requestContextFleetCalls;
+    if(!box||!lease?.current()||!current()||this.requestContextAdmission?.available()!==false||!original||original.size||original.registrationGate
+      ||this.instanceIpcClients.size||!this.requestContextPendingWork?.empty||box.requestContextInstallation().read()!==null)throw Error("Fleet call registration preparation unavailable");
+    const replacement=new RequestContextReferenceMap<string,{call:RequestContextLocalCall;instance:string;bootId:string;ipc:InstanceClient;responseKey:string}>(row=>row.call.admission.coverage==="covered"?row.call.admission.lease.snapshot.context.ref.rootContextId:null,row=>`fleet-call:${row.call.id}`);
+    replacement.installRegistration(registration);this.requestContextFleetCalls=replacement;
+    const owned=()=>{try{return !this.shuttingDown&&lease.current()&&current()&&this.deliveryOutbox===box&&this.requestContextFleetCalls===replacement;}catch{return false;}};
+    return Object.freeze({current:owned,restore:()=>{
+      if(!owned()||this.requestContextAdmission?.available()!==false||this.instanceIpcClients.size||replacement.size
+        ||!this.requestContextPendingWork.empty||box.requestContextInstallation().read()!==null)throw Error("Fleet call registration cannot revert");
+      this.requestContextFleetCalls=original;
+    }});
   }
   get requestContextFleetDrainRevision():string{return this.requestContextFleetCalls?.revision??"unavailable";}
   requestContextFleetDrainView(rootId:string){return this.requestContextFleetCalls?.view(rootId)??{registration:null,revision:"unavailable",references:[],unknown:true};}
@@ -1986,10 +2000,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async retireRequestContextNativeFactories(current:()=>boolean):Promise<void>{
     const lease=captureProcessFleetLease(this.dataDir),owned=()=>!!lease?.current()&&current()&&this.requestContextAdmission?.available()===false;
     if(!owned()||this.requestContextNativeRetiring)throw Error("Native factory retirement needs the owned admission fence");
-    const [{LocalPaneEndpoint},{localPaneScope}]=await Promise.all([import("./local-pane-endpoint.js"),import("./local-pane-launcher.js")]);
+    const [{LocalPaneEndpoint},{localPaneScope},{NativePaneManager}]=await Promise.all([import("./local-pane-endpoint.js"),import("./local-pane-launcher.js"),import("./native-pane-manager.js")]);
     const scope=localPaneScope(this.dataDir),hub=this.runtimeHub,panes=this.paneManager,mcp=this.nativeMcpStore,runtime=this.fleetWindowsRuntime,executor=this.runtimeExecutor,relay=this.localPaneRelay;
     const same=()=>this.runtimeHub===hub&&this.localPaneRelay===relay&&this.paneManager===panes&&this.nativeMcpStore===mcp&&this.fleetWindowsRuntime===runtime&&this.runtimeExecutor===executor&&!this.openingLocalPane&&!this.requestContextOpeningPaneManagers;
-    if(!owned()||!same()||runtime&&!runtime.requestContextPhysicallyIdle()||panes&&!panes.requestContextPhysicallyIdle()||mcp&&!mcp.requestContextPhysicallyIdle()||executor&&!executor.idleForRequestContext()||hub&&!hub.requestContextPhysicallyIdle()||!windowsBridgeRequestContextIdle(this)||WindowsAgents.requestContextOwnersOnDisk(this.dataDir).length!==0||!LocalPaneEndpoint.requestContextScopeIdle(scope))throw Error("Native factories still own work or an unconfirmed launch");
+    if(!owned()||!same()||runtime&&!runtime.requestContextPhysicallyIdle()||panes&&!panes.requestContextPhysicallyIdle()||mcp&&!mcp.requestContextPhysicallyIdle()||executor&&!executor.idleForRequestContext()||hub&&!hub.requestContextPhysicallyIdle()||!windowsBridgeRequestContextIdle(this)||WindowsAgents.requestContextOwnersOnDisk(this.dataDir).length!==0||!hub&&RuntimeCoordinator.requestContextPendingRunsOnDisk(this.dataDir).runs.length!==0||NativePaneManager.requestContextOrphanActivity(this.dataDir).unknown||!LocalPaneEndpoint.requestContextScopeIdle(scope))throw Error("Native factories still own work or an unconfirmed launch");
     this.requestContextNativeRetiring=true;
     try{
       runtime?.retireForRequestContext();panes?.retireForRequestContext();mcp?.retireForRequestContext();executor?.retireForRequestContext();retireWindowsBridgeForRequestContext(this);

@@ -64,3 +64,18 @@ it("a durable reference appearing after the first final check rolls back Off in 
  expect(()=>r.installation.finishOff(2,r.owner,raced)).toThrow(/work/);
  expect(r.installation.read()?.mode).toBe("draining");expect(r.box.requestContextRecovery.pointer("source")).toBeNull();
 });
+it("untouched queued human input is parked across Off without an ingress approval; bound or uncertain input is not guessed empty",async()=>{
+ const {nativeHumanOrigin}=await import("../src/human-delivery-receipts.js");
+ for(const state of ["untouched","bound","uncertain"] as const){
+  const r=rig();r.register();const origin=nativeHumanOrigin("discord","fixture","person","Demo",false,"message")!;
+  const input=r.box.createHumanReceiptWithRequestContext({targetInstance:"source",originalBody:"synthetic queued chat",origin,inputKind:"fleet_inbound",managerBootId:"manager"},
+    {incarnation:"source-current",room:null,web:null,route:{kind:"instance"},platform:()=>"discord"});
+  if(state==="bound")r.box.bindHumanReceipt(input.receipt.receipt_id,"source","owner","synthetic wire","manager");
+  if(state==="uncertain")r.box.markHumanReceiptUncertain(input.receipt.receipt_id,"source");
+  r.installation.beginOff(1,r.owner);
+  if(state==="untouched"){
+   expect([...r.installation.drainRoots()]).toEqual([]);expect(r.installation.finishOff(2,r.owner,r.drain.proveOff(r.installation,()=>true)).mode).toBe("off");
+   expect(r.box.getHumanReceipt(input.receipt.receipt_id)?.state).toBe("queued");expect(r.box.requestContextHumans.read(input.receipt.receipt_id)?.context).toEqual(input.context);
+  }else expect(()=>r.drain.proveOff(r.installation,()=>true)).toThrow(/human-input/);
+ }
+});

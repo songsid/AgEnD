@@ -113,3 +113,23 @@ export function requestHumanInputBlockers(db:Database.Database,rootId:string):st
   return receipt.state==="delivered"?[]:[`human-input:${receipt.message_id}`];
  });
 }
+
+/** Untouched ingress is parked input, not work already executing. Any other durable reference keeps its root. */
+export function requestUnstartedHumanRoots(db:Database.Database):ReadonlySet<string>{
+ if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(TABLE))return new Set();
+ const rows=db.prepare(`SELECT h.receipt_id,h.root_id,r.state,r.owner_key,r.wire_body,r.wire_sha256,r.proof_tag,r.proof_mode,r.delivered_at
+  FROM ${TABLE} h LEFT JOIN human_delivery_receipts r ON r.receipt_id=h.receipt_id`).all() as Array<{receipt_id:string;root_id:string;state:string;owner_key:string|null;wire_body:string|null;wire_sha256:string|null;proof_tag:string|null;proof_mode:string|null;delivered_at:string|null}>;
+ const store=new RequestHumanInputStore(db,()=>{throw Error("Read-only ingress inspection");}),roots=new Set<string>();
+ const exists=(table:string)=>!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
+ for(const row of rows){
+  const input=store.read(row.receipt_id);if(!input||input.context.ref.rootContextId!==row.root_id)throw Error("Unstarted ingress evidence unavailable");
+  if(row.state!=="queued"||[row.owner_key,row.wire_body,row.wire_sha256,row.proof_tag,row.proof_mode,row.delivered_at].some(value=>value!==null))continue;
+  const root=row.root_id,contexts="SELECT context_id FROM request_contexts_v1 WHERE json_extract(context_json,'$.ref.rootContextId')=?";
+  if(db.prepare("SELECT 1 FROM request_contexts_v1 WHERE json_extract(context_json,'$.ref.rootContextId')=? AND context_id!=? LIMIT 1").get(root,root))continue;
+  if(db.prepare(`SELECT 1 FROM request_context_operations_v1 WHERE context_id IN (${contexts}) LIMIT 1`).get(root))continue;
+  if(exists("request_context_contacts_v1")&&db.prepare("SELECT 1 FROM request_context_contacts_v1 WHERE root_id=? LIMIT 1").get(root))continue;
+  if(exists("request_context_recovery_v1")&&db.prepare(`SELECT 1 FROM request_context_recovery_v1 WHERE json_extract(pointer_json,'$.contextId') IN (${contexts}) LIMIT 1`).get(root))continue;
+  roots.add(root);
+ }
+ return roots;
+}

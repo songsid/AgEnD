@@ -4,9 +4,9 @@ import { loadGeneralKnowledge } from "./runtime-general-workspace.js";
 import { generalWorkspaceUpgrade, validateGeneralWorkspaceReceipt } from "./runtime-general-protocol.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 /** Fleet-owned native launch registry. No process IDs, credentials or provider paths cross this boundary. */
-import {lstatSync,readFileSync,mkdirSync} from "node:fs";
+import {lstatSync,readFileSync,mkdirSync,readdirSync} from "node:fs";
 import {join} from "node:path";
-import {randomUUID} from "node:crypto";
+import {randomUUID,createHash} from "node:crypto";
 import {atomicWriteFileSync} from "./atomic-write.js";
 import {runtimeJobDigest} from "./runtime-client-store.js";
 import {RuntimeNativePaneLifecycle} from "./native-pane-lifecycle.js";
@@ -45,7 +45,7 @@ interface Binding {native:RuntimeNativePaneLifecycle;lease:PaneMcpAuthorityLease
 export class NativePaneManager {
  private retired=false;
  private requireOpen():void{if(this.retired)throw Error("Native pane manager is retired");}
- requestContextPhysicallyIdle():boolean{return !this.preparing.size&&!this.bindings.size&&!this.drainLeases.size&&!!this.options.store.requestContextPaneLaunches&&this.options.store.requestContextPaneLaunches().length===0;}
+ requestContextPhysicallyIdle():boolean{return !this.preparing.size&&!this.bindings.size&&!this.drainLeases.size&&!!this.options.store.requestContextPaneLaunches&&this.options.store.requestContextPaneLaunches().length===0&&!this.retainedDrain().unknown;}
  retireForRequestContext():void {
   if(!this.requestContextPhysicallyIdle())throw Error("Native panes have not proven their owned exit");
   this.retired=true;
@@ -54,6 +54,25 @@ export class NativePaneManager {
  private drainLeases=new Map<string,PaneMcpAuthorityLease>();
  private drainSerial=0;
  private retainedDigests=new Map<string,string>();
+ /** A missing Windows reservation cannot hide an unclosed owned launch manifest. Read only; never adopt it. */
+ static requestContextOrphanActivity(home:string):Readonly<{unknown:boolean;digest:string}>{return Object.freeze(this.inspectOrphans(home,new Set()));}
+ private static inspectOrphans(home:string,known:ReadonlySet<string>):{unknown:boolean;digest:string}{
+  const images:Array<unknown>=[];let unknown=false;
+  const root=join(home,"native-panes");let present=false;
+  try{
+   const stat=lstatSync(root);present=true;if(!stat.isDirectory()||stat.isSymbolicLink()||process.getuid&&(stat.uid!==process.getuid()||stat.mode&0o077))throw Error("Unsafe retained pane registry");
+   const names=readdirSync(root).sort();if(names.length>4096)throw Error("Retained pane registry is too large");
+   for(const name of names){
+    if(!UUID.test(name))throw Error("Unexpected retained pane entry");if(known.has(name))continue;
+    const directory=join(root,name),entry=lstatSync(directory);
+    if(!entry.isDirectory()||entry.isSymbolicLink()||process.getuid&&(entry.uid!==process.getuid()||entry.mode&0o077))throw Error("Unsafe retained pane entry");
+    const manifest=NativePaneManager.loadManifest(join(directory,"active.json"));
+    if(manifest){images.push([name,manifest]);if(manifest.launch.agentId!==name||!manifest.exited)unknown=true;}
+    else{const files=readdirSync(directory).filter(file=>file.endsWith(".mcp.json"));images.push([name,files]);if(files.length)unknown=true;}
+   }
+  }catch(error){if(present||(error as NodeJS.ErrnoException).code!=="ENOENT"){unknown=true;images.push("unavailable");}}
+  return {unknown,digest:createHash("sha256").update(JSON.stringify(images)).digest("hex")};
+ }
  private retainedDrain(){
   const panes=this.options.store.requestContextPaneLaunches?.();
   let unknown=!panes||this.preparing.size>0;const roots:Array<{rootId:string;reference:string}>=[],seen=new Set<string>();
@@ -72,6 +91,8 @@ export class NativePaneManager {
    }catch{unknown=true;}
    if(this.retainedDigests.get(key)!==digest){this.retainedDigests.set(key,digest);this.drainSerial++;}
   }
+  const orphan=NativePaneManager.inspectOrphans(this.options.home,new Set((panes??[]).map(row=>row.agentId)));unknown ||= orphan.unknown;
+  seen.add("orphan-scan");if(this.retainedDigests.get("orphan-scan")!==orphan.digest){this.retainedDigests.set("orphan-scan",orphan.digest);this.drainSerial++;}
   for(const key of this.retainedDigests.keys())if(!seen.has(key)){this.retainedDigests.delete(key);this.drainSerial++;}
   return {unknown,roots};
  }
@@ -93,7 +114,8 @@ export class NativePaneManager {
   const directory=join(root,id);mkdirSync(directory,{recursive:true,mode:0o700});const own=lstatSync(directory);
   if(!own.isDirectory()||own.isSymbolicLink()||process.getuid&&(own.uid!==process.getuid()||!!(own.mode&0o077)))throw Error("Unsafe native pane registry");return directory;
  }
- private load(file:string):Manifest|null {
+ private load(file:string):Manifest|null{return NativePaneManager.loadManifest(file);}
+ private static loadManifest(file:string):Manifest|null {
   try{const stat=lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>128*1024||process.getuid&&(stat.uid!==process.getuid()||!!(stat.mode&0o077)))throw Error("Unsafe native launch manifest");
    const value=JSON.parse(readFileSync(file,"utf8")) as Manifest;
    if(value?.version!==1||!/^([a-f0-9]{64})$/.test(value.configuration)||Object.keys(value).some(key=>!["version","machineId","configuration","launch","exited","fresh"].includes(key))||value.machineId!=="local"&&!UUID.test(value.machineId))throw Error("Invalid native launch manifest");validateRuntimePaneLaunch(value.launch);if(!value.launch.launchId||!UUID.test(value.launch.launchId))throw Error("Native launch identity is missing");

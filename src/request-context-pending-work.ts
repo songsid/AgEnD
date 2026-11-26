@@ -3,6 +3,7 @@ export class RequestContextPendingWork {
   private readonly counts = new Map<string, number>();
   private version = 0;
   get revision(): number { return this.version; }
+  get empty():boolean{return this.counts.size===0;}
   count(instance: string): number { return this.counts.get(instance) ?? 0; }
   begin(instance: string): () => void {
     if (!instance) throw Error("Pending work requires an owned instance");

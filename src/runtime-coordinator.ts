@@ -218,6 +218,31 @@ export interface RuntimeCoordinatorOptions {
 export type { RuntimeMachine } from "./runtime-protocol.js";
 
 export class RuntimeCoordinator {
+  /** Passive cutover inventory: never construct the coordinator to inspect a cold journal.
+   * An unresolved run is activity evidence only; it never supplies request scope or execution authority.
+   */
+  static requestContextPendingRunsOnDisk(home:string):Readonly<{revision:string;runs:ReadonlyArray<{id:string;machineId:string}>}> {
+    const path=join(home,"runtime-machines.json");let stat;
+    try{stat=lstatSync(path);}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return Object.freeze({revision:"absent",runs:Object.freeze([])});throw error;}
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>MAX_STORE_BYTES)throw Error("Runtime activity journal unavailable");
+    const bytes=readFileSync(path),state=JSON.parse(bytes.toString("utf8"));
+    if(!record(state)||state.version!==1||!Array.isArray(state.commands)||!Array.isArray(state.machines)||!Array.isArray(state.pairings))throw Error("Runtime activity journal unavailable");
+    const runs:Array<{id:string;machineId:string}>=[],seen=new Set<string>();
+    for(const row of state.commands){
+      if(!record(row)||!text(row.id,128)||seen.has(row.id)||!UUID.test(String(row.machineId))||!/^[a-f0-9]{64}$/.test(String(row.digest))
+        ||!["probe","workspace","run","cancel","reconcile","recover"].includes(String(row.operation))||!["pending","accepted","failed","uncertain"].includes(String(row.state))
+        ||!Number.isSafeInteger(row.seq)||Number(row.seq)<0)throw Error("Runtime activity command unavailable");
+      seen.add(row.id);
+      if(row.task!==undefined&&(!record(row.task)||!["queued","starting","running","cancelling","completed","failed","cancelled"].includes(String(row.task.status))
+        ||row.task.finishedAt!==undefined&&(typeof row.task.finishedAt!=="number"||!Number.isFinite(row.task.finishedAt))
+        ||row.task.outcomeConfirmed!==undefined&&typeof row.task.outcomeConfirmed!=="boolean"))throw Error("Runtime activity outcome unavailable");
+      const task=row.task as WindowsCliTask|undefined;
+      if(row.operation==="run"&&row.state!=="failed"&&(!task||!terminal(task)||task.outcomeConfirmed===false))runs.push(Object.freeze({id:row.id,machineId:String(row.machineId)}));
+    }
+    const after=lstatSync(path);if(after.ino!==stat.ino||after.dev!==stat.dev||after.size!==stat.size||after.mtimeMs!==stat.mtimeMs)throw Error("Runtime activity journal changed");
+    return Object.freeze({revision:createHash("sha256").update(bytes).digest("hex"),runs:Object.freeze(runs)});
+  }
+
   private readonly paneEpoch = randomUUID();
   private readonly path: string;
   private state: State;

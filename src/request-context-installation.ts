@@ -1,5 +1,6 @@
 /** Durable installation intent. Runtime publication is separate: a committed row never means serving is installed. */
 import type Database from "better-sqlite3";
+import {requestUnstartedHumanRoots} from "./request-context-human.js";
 import { z } from "zod";
 import { commitRequestContextActivation, readRequestContextActivations, type RequestContextActivationRecord } from "./request-context-activation.js";
 import { assertRequestContextCompatibility, REQUEST_CONTEXT_VERSION_FUNCTION } from "./request-context-compatibility.js";
@@ -87,7 +88,8 @@ export class RequestContextInstallationStore {
       this.requireOwner(owner, state);
       if (state.mode !== "active") { if(state.mode==="draining")this.drainRoots(); return state; }
       const hasContexts=this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_contexts_v1'").get();
-      const roots=hasContexts?(this.db.prepare("SELECT context_id FROM request_contexts_v1 WHERE parent_id IS NULL ORDER BY context_id").all() as Array<{context_id:string}>).map(row=>z.uuid().parse(row.context_id)):[];
+      const unstarted=requestUnstartedHumanRoots(this.db);
+      const roots=hasContexts?(this.db.prepare("SELECT context_id FROM request_contexts_v1 WHERE parent_id IS NULL ORDER BY context_id").all() as Array<{context_id:string}>).map(row=>z.uuid().parse(row.context_id)).filter(id=>!unstarted.has(id)):[];
       this.db.exec(`CREATE TABLE IF NOT EXISTS ${DRAIN_ROOTS}(epoch TEXT NOT NULL,revision INTEGER NOT NULL,root_id TEXT NOT NULL,PRIMARY KEY(epoch,revision,root_id))`);
       const next = { ...state, revision: state.revision + 1, mode: "draining" as const,drainRootsSha256:requestContextDigest(roots) };
       this.db.exec(`DELETE FROM ${DRAIN_ROOTS}`); // Only the current drain snapshot is live evidence.

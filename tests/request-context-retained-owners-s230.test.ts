@@ -7,6 +7,8 @@ import {randomUUID} from "node:crypto";
 import {DeliveryOutbox} from "../src/delivery-outbox.js";
 import {FleetManager} from "../src/fleet-manager.js";
 import {Daemon} from "../src/daemon.js";
+import {RequestContextReferenceMap} from "../src/request-context-fence.js";
+import {RequestContextPendingWork} from "../src/request-context-pending-work.js";
 import {setProcessFleetLock,releaseProcessFleetLock} from "../src/fleet-lock.js";
 const clean:Array<()=>void>=[];afterEach(()=>{for(const f of clean.splice(0).reverse())f();});
 function rig(native=false,staging=false){
@@ -114,4 +116,22 @@ it("a root-retirement fence refuses queued recovery without throwing from the ti
  r.box.requestContextRecovery.retain(context);r.box.requestContextDrain(()=>"fleet").fence(root);
  d.workingTurnRequestContext={generation:42,snapshot:{context}};let refused=0;d.reportUnrecoveredReplyDrop=()=>{refused++;};
  expect(()=>d.queueReplyRecoveryPrompt({generation:42})).not.toThrow();expect(refused).toBe(1);expect(r.factory.inputView(root).references).toEqual([]);
+});
+
+it("failed first-On Fleet-call registration restores only an empty disconnected map and cannot revive an old stage",()=>{
+ const r=rig(false,true),original=new RequestContextReferenceMap<string,any>(()=>null,()=>"legacy");
+ Object.assign(r.fm,{requestContextFleetCalls:original,instanceIpcClients:new Map(),requestContextPendingWork:new RequestContextPendingWork()});
+ const stage=r.fm.stageRequestContextFleetRegistration(r.registration,()=>true);expect(stage.current()).toBe(true);
+ expect(r.fm.requestContextFleetDrainView(randomUUID()).registration).toBe(r.registration);
+ const finish=r.fm.requestContextPendingWork.begin("worker");expect(()=>stage.restore()).toThrow(/cannot revert/);finish();
+ r.fm.requestContextFleetCalls.set("active",{call:{id:"call",admission:{coverage:"not-covered"}}});expect(()=>stage.restore()).toThrow(/cannot revert/);r.fm.requestContextFleetCalls.clear();
+ stage.restore();expect(r.fm.requestContextFleetCalls).toBe(original);expect(stage.current()).toBe(false);
+ const fresh=r.fm.stageRequestContextFleetRegistration(r.connection!.drain(()=>"fleet").registration(),()=>true);expect(stage.current()).toBe(false);fresh.restore();
+});
+it("a committed floor forbids restoring the first-On Fleet-call map",()=>{
+ const r=rig(false,true),original=new RequestContextReferenceMap<string,any>(()=>null,()=>"legacy");
+ Object.assign(r.fm,{requestContextFleetCalls:original,instanceIpcClients:new Map(),requestContextPendingWork:new RequestContextPendingWork()});
+ const stage=r.fm.stageRequestContextFleetRegistration(r.registration,()=>true);
+ r.box.requestContextInstallation().activate({epoch:"first",owner:"fleet",activatedAt:1,invalidates:[],offeredLatestDeadline:null},{owner:"fleet",current:()=>true},{current:()=>true,release(){}},()=>true,0);
+ expect(()=>stage.restore()).toThrow(/cannot revert/);expect(r.fm.requestContextFleetCalls).not.toBe(original);expect(stage.current()).toBe(true);
 });
