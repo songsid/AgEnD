@@ -203,13 +203,21 @@ it("the actual Draining human-control facade passes an admitted old-parent steer
   requestContextPolicy:{installedMode:()=>"draining"},lifecycle:{daemons:new Map([["worker",daemon]])},instanceIpcClients:new Map([["worker",{connected:true,send}]]),
   adapters:new Map([["fixture",{id:"fixture",type:"discord"}]]),worlds:new Map(),fleetConfig:{instances:{}},contactRoom:()=>null,contactGeneration:()=>owner.incarnation,
   contactAdapter:()=>({id:"fixture",type:"discord"}),contactAdminOf:()=>true,requestContextNativeAdmissionCurrent:()=>true,humanReceiptOwner:()=>"physical-owner",
-  bindHumanReceiptPayload:(_instance:string,payload:unknown)=>payload,refuseHubPane:()=>false,holdPaneSend:()=>false,scheduleDeliveryOutboxPump:vi.fn()});
+  bindHumanReceiptPayload:(_instance:string,payload:unknown)=>payload,refuseHubPane:()=>false,holdPaneSend:()=>false,contactDeliveryCurrent:()=>true,scheduleDeliveryOutboxPump:vi.fn()});
  m.requestContextHumanAdmission=m.makeRequestContextHumanAdmission();
  expect(m.sendHumanControl("worker",{type:"steer",content:"synthetic finish instruction"},f.native,"synthetic finish instruction")).toBe(true);
  expect(send).toHaveBeenCalledTimes(1);expect(f.box.listPending()).toHaveLength(0);
  const receiptId=send.mock.calls[0]![0].meta.human_receipt_id;
  expect(f.box.requestContextHumans.read(receiptId)?.steer?.parentContextId).toBe(id);
+ const held=publication.fence();
+ expect(m.sendHumanControl("worker",{type:"steer",content:"synthetic retained steer"},f.native,"synthetic retained steer")).toBe(true);
+ expect(send).toHaveBeenCalledTimes(1);const retained=f.box.listPending()[0]!;
+ expect(held.owned()).toBe(true);
+ publication.publish(state,ports,publication.fence(),()=>true,()=>state,()=>true,root=>root===id);
+ const proof=m.requestContextDeliveryContinuation(retained);
+ expect(publication.admission.available(proof)).toBe(true);
+ expect(m.requestContextDeliveryContinuation({...retained,sourceKey:"forged"})).toBeNull();
  active=false;
  expect(m.sendHumanControl("worker",{type:"steer",content:"synthetic new independent work"},f.native,"synthetic new independent work")).toBe(true);
- expect(send).toHaveBeenCalledTimes(1);expect(f.box.listPending()).toHaveLength(1);
+ expect(send).toHaveBeenCalledTimes(1);expect(f.box.listPending()).toHaveLength(2);
 });

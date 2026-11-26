@@ -214,3 +214,13 @@ it("failed installation can snapshot empty durable families and complete Off wit
   expect([...r.store.drainRoots()]).toEqual([]);
   expect(r.store.finishOff(2,r.owner,{epoch:"epoch-1",revision:2,current:()=>true}).mode).toBe("off");
 });
+
+it("unrelated readiness loss during Draining preserves validated returns but actual execution-port loss stops them",()=>{
+ const r=rig(),state=r.activate(),ports={},p=new RequestContextPublication(r.owner,true);let ready=true,live=true;
+ p.publish(state,ports,p.fence(),()=>ready,()=>r.store.read(),()=>live);
+ const proof=p.continuation(OLD_ROOT,()=>true),draining=r.store.beginOff(1,r.owner);
+ p.publish(draining,ports,p.fence(),()=>ready,()=>r.store.read(),()=>live,root=>root===OLD_ROOT);
+ ready=false;expect(p.admission.available()).toBe(false);expect(p.admission.dispatchAvailable!()).toBe(true);
+ expect(p.admission.available(proof)).toBe(true);expect(p.capture(proof)?.state.mode).toBe("draining");
+ live=false;expect(p.admission.dispatchAvailable!()).toBe(false);expect(p.admission.available(proof)).toBe(false);
+});

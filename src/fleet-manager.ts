@@ -7750,7 +7750,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private requestContextDeliveryContinuation(row:OutboxDelivery):RequestContextContinuation|null {
     const boot=this.requestContextBoot,box=this.deliveryOutbox;
     if(!boot||!box)return null;
-    return requestDeliveryContinuation(box,boot.publication,row,()=>!this.shuttingDown&&this.deliveryOutbox===box&&this.requestContextBoot===boot&&this.contactDeliveryCurrent(row));
+    const owned=()=>!this.shuttingDown&&this.deliveryOutbox===box&&this.requestContextBoot===boot&&this.contactDeliveryCurrent(row);
+    const bound=requestDeliveryContinuation(box,boot.publication,row,owned);if(bound)return bound;
+    // An untouched queued human control uses its receipt's registered parent, never a legacy operation's speaker.
+    const meta=row.payload.meta as Record<string,unknown>|undefined,id=meta?.human_receipt_id;
+    if(row.kind!=="human_control"||row.sourceInstance!=="agend-system"||typeof id!=="string"||row.sourceKey!==`human-control:${id}`
+      ||row.operationId!==row.sourceKey||meta?.verification_id!==`hmsg-${id}`)return null;
+    const parent=this.requestContextHumanContinuation(row.targetInstance,id);if(!parent)return null;
+    const image=requestContextDigest(row),current=()=>{try{const actual=box.get(row.deliveryId);return owned()&&parent.current()&&!!actual
+      &&["queued","delivering"].includes(actual.state)&&requestContextDigest(actual)===image;}catch{return false;}};
+    if(!current())throw Error("Retained steer continuation changed");
+    return boot.publication.continuation(parent.rootContextId,current);
   }
   private requestContextDeliveryAdmissionAllowed(row:OutboxDelivery):boolean {
     try{return this.requestContextAdmission?.available(this.requestContextDeliveryContinuation(row)??undefined)!==false;}catch{return false;}
@@ -10499,7 +10509,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const bind = (wire: string) => retained
       ? this.deliveryOutbox!.bindRetainedHumanControlReceipt(retained, meta.human_receipt_id, instanceName, owner!, wire, this.managerBootId,
         () => daemon?.bootId === retained.targetDaemonBootId && this.humanReceiptOwner(instanceName, daemon) === owner
-          && (!this.requestContextAdmission || this.requestContextAdmission.available()))
+          && (!this.requestContextAdmission || this.requestContextAdmission.available(requestPayloadContinuations.get(payload))))
       : this.deliveryOutbox!.bindHumanReceipt(meta.human_receipt_id, instanceName, owner!, wire, this.managerBootId);
     if (!daemon || !owner) {
       this.deliveryOutbox.markHumanReceiptUncertain(meta.human_receipt_id, instanceName);

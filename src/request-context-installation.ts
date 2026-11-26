@@ -159,7 +159,11 @@ export class RequestContextPublication<T extends object> {
     this.continuations.set(proof,record);return proof;
   }
   private dispatchAvailable():boolean {
-    try{return this.owner.current()&&!this.fenced&&(!this.required||this.published?.current()===true);}catch{return false;}
+    try{
+      const installed=this.published;
+      // Existing work must not lose its return path because an unrelated runtime disconnected during drain.
+      return this.owner.current()&&!this.fenced&&(!this.required||!!installed&&(installed.state.mode==="draining"?installed.executionCurrent():installed.current()));
+    }catch{return false;}
   }
   private admissionAvailable(proof?:RequestContextContinuation): boolean {
     try {
