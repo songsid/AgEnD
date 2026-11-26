@@ -85,6 +85,8 @@ export interface RequestContextPolicyPort {
  /** L's one publication predicate. Staged ports are not an installed Fleet. Never read from model/config arguments. */
  installed?():boolean;
  installedMode?():"active"|"draining"|"off"|null;
+ /** Rendering only: an exact fenced replacement may stage its launch instructions before publication. Never serving authority. */
+ instructionMode?():"active"|"draining"|"off"|null;
 }
 /** Mode is required for serving decisions; a capable Off/Draining installation is not Active. */
 export function requestContextInstalledMode(policy:RequestContextPolicyPort|undefined):"active"|"draining"|"off"|null {
@@ -95,6 +97,13 @@ export function requestContextInstalledMode(policy:RequestContextPolicyPort|unde
  }catch{return null;}
 }
 export function requestContextPolicyInstalled(policy:RequestContextPolicyPort|undefined):boolean {return requestContextInstalledMode(policy)!==null;}
+/** Instructions/managed skills only. An explicit candidate mode never changes installedMode or admission. */
+export function requestContextInstructionMode(policy:RequestContextPolicyPort|undefined):"active"|"draining"|"off"|null {
+ try {
+  const mode=policy?.instructionMode?policy.instructionMode():requestContextInstalledMode(policy);
+  return mode==="active"||mode==="draining"||mode==="off"?mode:null;
+ }catch{return null;}
+}
 export interface RequestContextPolicyContext {requestContextPolicy?:RequestContextPolicyPort;readonly requestContextCallAdmission?:RequestContextCallAdmission}
 export function requireRequestContextPolicy(ctx:RequestContextPolicyContext,instance:string,tool:string,args:Record<string,unknown>,admission?:RequestContextCallAdmission):RequestContextOperationPermit|undefined {
  return ctx.requestContextPolicy?.assert({instance,tool,args,admission:admission??ctx.requestContextCallAdmission});

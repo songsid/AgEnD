@@ -217,6 +217,26 @@ describe("cross-backend skill publishing", () => {
     expect(readFileSync(skillPath, "utf-8")).toBe(first);
   });
 
+  it("S-230 captures one candidate policy for skills and daemon preparation; abort regenerates legacy skills", async () => {
+    const config: InstanceConfig = { ...DEFAULT_INSTANCE_CONFIG, working_directory: workDir, backend: "codex" };
+    (fm as any).fleetConfig = { defaults: {}, instances: { worker: config } };
+    let mode: "active" | null = "active";
+    const policy = { instructionMode: () => mode, installedMode: () => null, assert: () => { throw Error("candidate is not serving"); } };
+    const prepare = vi.fn(() => ({ policy, current: () => true })); (fm as any).prepareRequestContextStart = prepare;
+    const start = vi.spyOn((fm as any).lifecycle, "start").mockResolvedValue(undefined);
+    vi.spyOn(fm as any, "connectIpcToInstance").mockResolvedValue(undefined);
+    await fm.startInstance("worker", config, false, "fleet-topic");
+    const captured = start.mock.calls[0]![7] as { policy: unknown; current(): boolean };
+    expect(prepare).toHaveBeenCalledTimes(1); expect(captured.policy).toBe(policy); expect(captured.current()).toBe(true);
+    const skill = join(workDir, ".agents", "skills", "worker-collaboration", "SKILL.md");
+    expect(readFileSync(skill, "utf8")).toContain("## Hub request provenance");
+    mode = null; expect(captured.current()).toBe(false);
+    (fm as any).prepareRequestContextStart = undefined;
+    await fm.startInstance("worker", config, false, "fleet-topic");
+    expect(start.mock.calls[1]![7]).toBeUndefined();
+    expect(readFileSync(skill, "utf8")).toBe(readFileSync(join(process.cwd(), "src/general-knowledge/skills/worker-collaboration/SKILL.md"), "utf8"));
+  });
+
   it("worker startup publishes only shared and worker skills", async () => {
     const config: InstanceConfig = {
       ...DEFAULT_INSTANCE_CONFIG,

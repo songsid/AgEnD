@@ -2,7 +2,7 @@ import type { RequestContextAdmissionPort } from "./request-context-admission.js
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
 import { requestContextProcessGroupGone, type RequestContextLaunchRetirement } from "./request-context-retirement.js";
 import { ReplyDraft } from "./reply-draft.js";
-import {requireRequestContextPolicy,requestContextPolicyInstalled,type RequestContextPolicyPort} from "./request-context-policy.js";
+import {requireRequestContextPolicy,requestContextInstructionMode,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { RequestContextReferenceMap } from "./request-context-fence.js";
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { managedClaudeBinding } from "./claude-credential-launch.js";
@@ -13568,7 +13568,7 @@ export class Daemon extends EventEmitter {
         }
       } catch { /* fallback to empty */ }
       instructions = buildFleetInstructions({
-        ...(requestContextPolicyInstalled(this.requestContextPolicy) && this.requestContextLifecycle && (!this.nativePaneLifecycle || this.nativePaneLifecycle.requestContextAvailable?.() === true)
+        ...(requestContextInstructionMode(this.requestContextPolicy) !== null && this.requestContextLifecycle && (!this.nativePaneLifecycle || this.nativePaneLifecycle.requestContextAvailable?.() === true)
           ? { requestContextPolicyInstalled: true } : {}),
         instanceName: this.name,
         taskBoard: !dashboardOff.includes("task_board"),
@@ -13586,7 +13586,7 @@ export class Daemon extends EventEmitter {
       });
     } else {
       instructions = buildFleetInstructions({
-        ...(requestContextPolicyInstalled(this.requestContextPolicy) && this.requestContextLifecycle && (!this.nativePaneLifecycle || this.nativePaneLifecycle.requestContextAvailable?.() === true)
+        ...(requestContextInstructionMode(this.requestContextPolicy) !== null && this.requestContextLifecycle && (!this.nativePaneLifecycle || this.nativePaneLifecycle.requestContextAvailable?.() === true)
           ? { requestContextPolicyInstalled: true } : {}),
         instanceName: this.name,
         taskBoard: !dashboardOff.includes("task_board"),

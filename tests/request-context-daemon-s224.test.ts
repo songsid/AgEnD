@@ -172,3 +172,13 @@ it("S-232 actual local tool entry refuses Hub task writes before the Fleet frame
  f.daemon.handleOwnedToolCall({type:"tool_call",tool:"task",args:{action:"create",title:"must not write"},requestId:98},f.socket);
  expect(f.frames).toHaveLength(0);expect(f.daemon.ipcServer.send).toHaveBeenCalledWith(f.socket,expect.objectContaining({requestId:98,error:expect.stringContaining("task cards")}));expect(f.daemon.requestContextCalls.size).toBe(0);f.clearTimers();
 });
+
+
+it("S-230 candidate instruction staging does not publish a serving policy, and a legacy replacement drops the rules", async () => {
+  const { requestContextPolicyInstalled, requestContextInstalledMode } = await import("../src/request-context-policy.js");
+  const candidate = rig(), port = { assert: assertRequestContextOperation, installedMode: () => null, instructionMode: () => "active" as const };
+  candidate.daemon.bindRequestContextPolicy(port);
+  expect(candidate.daemon.buildBackendConfig(false).instructions.split("## Hub request provenance")).toHaveLength(2);
+  expect(requestContextInstalledMode(port)).toBeNull(); expect(requestContextPolicyInstalled(port)).toBe(false);
+  const legacy = rig(false); expect(legacy.daemon.buildBackendConfig(false).instructions).not.toContain("## Hub request provenance");
+});

@@ -1,3 +1,4 @@
+import type { RequestContextStartPreparation } from "./request-context-start.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import { addsSecondGeneral } from "./web-only-fleet.js";
 import { NativePaneCrashBudget } from "./native-pane-crash-budget.js";
@@ -340,7 +341,7 @@ export interface LifecycleContext {
   onDaemonReady?(name: string, daemonBootId: string): void;
   configureClassicRestriction?(name: string, daemon: Daemon): void;
   /** L supplies C/D while preparing a replacement, before native binding or any startup. */
-  configureRequestContextBeforeStart?(name: string, daemon: Daemon, config: InstanceConfig): void;
+  configureRequestContextBeforeStart?(name: string, daemon: Daemon, config: InstanceConfig, preparation?: RequestContextStartPreparation): void;
   inheritContactOrigin?(source: string, target: string): void;
   /** Test/integration seam for the non-LLM Codex quota second opinion. */
   verifyCodexQuota?(): Promise<CodexQuotaVerdict>;
@@ -1966,8 +1967,9 @@ export class InstanceLifecycle {
     transition?: TransitionHandle,
     execution?: SettingsExecution,
     published?: (daemon: Daemon) => void,
+    requestContextStart?: RequestContextStartPreparation,
   ): Promise<void> {
-    return this.runTransition(name, () => this.startInTransition(name, config, topicMode, runtimeIdentity, execution, published), transition);
+    return this.runTransition(name, () => this.startInTransition(name, config, topicMode, runtimeIdentity, execution, published, requestContextStart), transition);
   }
 
   private async startInTransition(
@@ -1977,12 +1979,13 @@ export class InstanceLifecycle {
     runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
     execution?: SettingsExecution,
     published?: (daemon: Daemon) => void,
+    requestContextStart?: RequestContextStartPreparation,
   ): Promise<void> {
     const epoch = this.epochOf(name);
     // M-3302 (Fable F1 on #4149): only THIS start's own binary check is evidence. An earlier start's record must never turn a
     // failure before this start's check (General binding, mkdir, instance dir, imports) into "binary missing".
     this.missingBinaries.delete(name);
-    const check = (): void => { execution?.assert(); if (this.epochOf(name) !== epoch) throw new SupersededStartError(name); };
+    const check = (): void => { execution?.assert(); if (this.epochOf(name) !== epoch || requestContextStart && !requestContextStart.current()) throw new SupersededStartError(name); };
     // AGEND-251 (#3771 review round 2, P2-6): what this start LAUNCHES as, read from the configuration it was handed (inherited defaults included) BEFORE the first await. Reconciliation, the spawn and the
     // readiness wait all yield, and a Settings save in that window changes the fleet configuration the incident handlers would read later; the cap of a running agent belongs to the launch, not to the save.
     const launchBinding = this.launchBindingOf(config);
@@ -2091,9 +2094,10 @@ export class InstanceLifecycle {
     );
     launched = daemon;
     if (this.ctx.configureRequestContextBeforeStart) {
-      this.ctx.configureRequestContextBeforeStart(name, daemon, config);
+      this.ctx.configureRequestContextBeforeStart(name, daemon, config, requestContextStart);
       check();
     }
+    if (requestContextStart) { check(); daemon.bindRequestContextPolicy(requestContextStart.policy); }
     this.ctx.configureClassicRestriction?.(name, daemon);
     if (native) { daemon.setNativePaneLifecycle(native); native.bindDaemon?.(daemon); }
     // Register before start: a pre-launch refusal has no published daemon or later incident handlers.

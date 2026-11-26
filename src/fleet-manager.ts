@@ -1,8 +1,10 @@
+import type { RequestContextStartPreparation } from "./request-context-start.js";
+import { requestContextSkillText, requestContextSteeringText, type RequestContextKnowledgeMode } from "./request-context-knowledge.js";
 import { runWithRequestContextAdmission, type RequestContextAdmissionPort } from "./request-context-admission.js";
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
 import {requestDeliveryView,requestContextDisplayView} from "./request-context-view.js";
 import {captureRequestHubOutput} from "./request-hub-output.js";
-import {assertRequestContextOperation,requireRequestContextPolicy,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
+import {assertRequestContextOperation,requireRequestContextPolicy,requestContextInstructionMode,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import type { RequestContactApiHost } from "./request-contact-api.js";
 import type { RequestContactPrincipal, RequestContactSnapshotV1 } from "./request-contact-types.js";
@@ -1344,7 +1346,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Test seam: inject a spy to verify saveFleetConfig calls fsync. Default: fsyncSync. */
   fsyncForTest: ((fd: number) => void) | undefined = undefined;
   private requestContextAdmission?: RequestContextAdmissionPort;
-  configureRequestContextBeforeStart?: (name: string, daemon: Daemon, config: InstanceConfig) => void;
+  prepareRequestContextStart?: (name: string, config: InstanceConfig) => RequestContextStartPreparation;
+  configureRequestContextBeforeStart?: (name: string, daemon: Daemon, config: InstanceConfig, preparation?: RequestContextStartPreparation) => void;
   /** Shared input gate only; C/D scope binding remains a separate pre-start preparation. */
   attachRequestContextAdmission(port: RequestContextAdmissionPort): void {
     if (this.requestContextAdmission === port) return;
@@ -1352,7 +1355,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.requestContextAdmission = port;
     for (const daemon of this.daemons.values()) daemon.setRequestContextAdmission(port);
     const prepare = this.configureRequestContextBeforeStart;
-    this.configureRequestContextBeforeStart = (name, daemon, config) => { daemon.setRequestContextAdmission(port); prepare?.(name, daemon, config); };
+    this.configureRequestContextBeforeStart = (name, daemon, config, preparation) => { daemon.setRequestContextAdmission(port); prepare?.(name, daemon, config, preparation); };
     port.subscribe(available => {
       if (available && !this.shuttingDown && this.deliveryOutbox?.isOpen) { this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); }
     });
@@ -10524,21 +10527,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         || (this.explicitStopGeneration.get(name) ?? 0) !== stopGen) {
         throw new SupersededStartError(name);
       }
+      const ownedStart = this.prepareRequestContextStart?.(name, config);
+      const instructionMode = requestContextInstructionMode(ownedStart?.policy);
+      const requestContextStart = ownedStart ? Object.freeze({ policy: ownedStart.policy,
+        current: () => ownedStart.current() && requestContextInstructionMode(ownedStart.policy) === instructionMode }) : undefined;
+      if (requestContextStart && !requestContextStart.current()) throw new SupersededStartError(name);
       const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
       if (binary && !windows) noteResolvedBinary(binary, resolved ?? binary);
       if (!windows && config.general_topic) {
-        this.ensureGeneralInstructions(config.working_directory, backend, name);
+        this.ensureGeneralInstructions(config.working_directory, backend, name, instructionMode);
       } else if (!isWindowsInstance(config) && kind === "fleet-topic") {
         // Workers get only role-eligible on-demand skills. Classic instances are
         // deliberately excluded: their workspace and conversation lifecycle are
         // managed independently from fleet-topic workers.
         try {
           const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
-          measureSyncWork("fleet.workerSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "worker"));
+          measureSyncWork("fleet.workerSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "worker", undefined, false, instructionMode));
         } catch (err) {
           // Skill publishing is additive. A read-only or temporarily unavailable
           // workspace must not turn an otherwise valid worker startup into a
           // fleet outage.
+          if (instructionMode !== null) throw err;
           this.logger.warn({ err, name, backend }, "Failed to sync worker skills — continuing startup");
         }
       } else if (!isWindowsInstance(config) && kind === "classic") {
@@ -10548,9 +10557,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // reads any bundled skill on demand.
         try {
           const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
-          if (insideManagedWorkspaces(skillsWorkDir)) measureSyncWork("fleet.classicSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "classic", undefined, this.classicContactRestricted(name)));
+          if (insideManagedWorkspaces(skillsWorkDir)) measureSyncWork("fleet.classicSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "classic", undefined, this.classicContactRestricted(name), instructionMode));
           else this.logger.debug({ name, skillsWorkDir }, "Classic workspace is not AgEnD-managed — no skills published");
         } catch (err) {
+          if (instructionMode !== null) throw err;
           this.logger.warn({ err, name, backend }, "Failed to sync classic skills — continuing startup");
         }
       }
@@ -10562,8 +10572,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await this.lifecycle.start(name, config, topicMode, identity, transition, execution, daemon => {
             // Only this transition's actual publication can acquire its replacement.
             receipt.daemon = daemon;
-          });
-        } else await this.lifecycle.start(name, config, topicMode, identity, transition, execution);
+          }, requestContextStart);
+        } else await this.lifecycle.start(name, config, topicMode, identity, transition, execution, undefined, requestContextStart);
       } catch (err) {
         if (err instanceof LegacyWindowHoldError) {
           this.legacyWindowHolds.set(name, { key: `legacy:${Date.now()}`, detail: err.message, since: Date.now() });
@@ -26494,10 +26504,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private static GENERAL_INSTRUCTIONS = GENERAL_ROLE_INSTRUCTIONS;
 
   /** Ensure the general instance has its project instructions file + knowledge */
-  private ensureGeneralInstructions(workDir: string, backendName?: string, instanceName?: string): void {
-    measureSyncWork("fleet.generalInstructions", () => this.ensureGeneralInstructionsSync(workDir, backendName, instanceName));
+  private ensureGeneralInstructions(workDir: string, backendName?: string, instanceName?: string, mode: RequestContextKnowledgeMode = requestContextInstructionMode(this.requestContextPolicy)): void {
+    measureSyncWork("fleet.generalInstructions", () => this.ensureGeneralInstructionsSync(workDir, backendName, instanceName, mode));
   }
-  private ensureGeneralInstructionsSync(workDir: string, backendName?: string, instanceName?: string): void {
+  private ensureGeneralInstructionsSync(workDir: string, backendName?: string, instanceName?: string, mode: RequestContextKnowledgeMode = requestContextInstructionMode(this.requestContextPolicy)): void {
     const backend = backendName ?? "claude-code";
     workDir = this.resolveKnowledgeWorkDir(workDir, backend, instanceName);
     // Board 0340ec89: General's file from before, under the lowercase name agy never read, becomes the one it reads.
@@ -26522,7 +26532,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
     // Sync bundled knowledge files to general's steering and skills directories.
-    this.syncGeneralKnowledge(workDir, backend);
+    this.syncGeneralKnowledge(workDir, backend, mode);
   }
 
   /** Resolve the workspace path a backend actually uses before publishing knowledge. */
@@ -26560,19 +26570,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   };
 
   /** Copy general-knowledge steering + all role-eligible skills to General. */
-  private syncGeneralKnowledge(workDir: string, backend: string): void {
+  private syncGeneralKnowledge(workDir: string, backend: string, mode: RequestContextKnowledgeMode = requestContextInstructionMode(this.requestContextPolicy)): void {
     const knowledgeDir = join(dirname(fileURLToPath(import.meta.url)), "general-knowledge");
     if (!existsSync(knowledgeDir)) return;
 
-    this.syncGeneralSteering(workDir, backend, join(knowledgeDir, "steering"));
+    this.syncGeneralSteering(workDir, backend, join(knowledgeDir, "steering"), mode);
 
-    this.syncRoleSkills(workDir, backend, "general", knowledgeDir);
+    this.syncRoleSkills(workDir, backend, "general", knowledgeDir, false, mode);
 
     this.logger.debug({ knowledgeDir, workDir, backend }, "Synced general knowledge files");
   }
 
   /** Publish only the bundled skills eligible for an instance role. */
-  private syncRoleSkills(workDir: string, backend: string, role: ManagedSkillRole, knowledgeDir?: string, restrictedClassic = false): void {
+  private syncRoleSkills(workDir: string, backend: string, role: ManagedSkillRole, knowledgeDir?: string, restrictedClassic = false, mode: RequestContextKnowledgeMode = requestContextInstructionMode(this.requestContextPolicy)): void {
     const skillSegments = FleetManager.SKILLS_DIR_SEGMENTS[backend];
     if (!skillSegments) return;
     const root = knowledgeDir ?? join(dirname(fileURLToPath(import.meta.url)), "general-knowledge");
@@ -26591,6 +26601,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // checked where it really lands, just before it is written.
       role === "classic" ? (path: string) => insideManagedWorkspaces(path) : undefined,
       role === "classic" && restrictedClassic ? new Set(["persona-emoji", "web-appearance"]) : undefined,
+      mode,
     );
     this.logger.debug({ workDir, backend, role }, "Synced role-based bundled skills");
   }
@@ -26604,7 +26615,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * sync, so rule updates reach EXISTING workspaces; everything the user
    * wrote outside the markers is preserved byte-for-byte.
    */
-  private syncGeneralSteering(workDir: string, backend: string, srcSteering: string): void {
+  private syncGeneralSteering(workDir: string, backend: string, srcSteering: string, mode: RequestContextKnowledgeMode = requestContextInstructionMode(this.requestContextPolicy)): void {
     if (!existsSync(srcSteering)) return;
     const files = readdirSync(srcSteering).filter(f => f.endsWith(".md")).sort();
     if (files.length === 0) return;
@@ -26614,7 +26625,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       mkdirSync(steeringDir, { recursive: true });
       for (const file of files) {
         const dest = join(steeringDir, file);
-        const newContent = readFileSync(join(srcSteering, file), "utf-8");
+        const newContent = requestContextSteeringText(readFileSync(join(srcSteering, file), "utf-8"), file === "core-rules.md" ? mode : null);
         try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch { /* rewrite */ }
         writeFileSync(dest, newContent);
       }
@@ -26624,7 +26635,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
     const instructionsPath = join(workDir, filename);
     if (backend === "antigravity" && danglingSymlink(instructionsPath)) return;   // kept, not followed (#1914 review; logged above)
-    const body = files.map(f => readFileSync(join(srcSteering, f), "utf-8").trim()).join("\n\n");
+    const body = files.map(f => requestContextSteeringText(readFileSync(join(srcSteering, f), "utf-8"), f === "core-rules.md" ? mode : null).trim()).join("\n\n");
     const block = `${FleetManager.STEERING_BLOCK_BEGIN}\n${body}\n${FleetManager.STEERING_BLOCK_END}`;
 
     let existing = "";
@@ -26708,6 +26719,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adoptLegacyUnmanaged = false,
     confined?: (path: string) => boolean,
     excluded?: ReadonlySet<string>,
+    mode: RequestContextKnowledgeMode = null,
   ): void {
     if (!existsSync(srcSkills)) return;
     const refuse = (path: string) => {
@@ -26771,7 +26783,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         continue;
       }
       managed.push(name);
-      const newContent = bundledSkillContents(join(srcSkills, name));
+      const newContent = requestContextSkillText(name, bundledSkillContents(join(srcSkills, name)), mode);
       if (refuse(dest)) continue;
       try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch { /* rewrite */ }
       mkdirSync(destDir, { recursive: true });
