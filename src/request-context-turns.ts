@@ -40,7 +40,7 @@ export interface RequestContextRecoveryPointer {
 export interface RequestContextTurnPorts {
   registration?: RequestContextRegistrationGate;
   /** Only server-owned admitted input/attempt or recovery-job keys; never a body, reply pointer or correlation string. */
-  input(inputId: string): PreparedRequestContextInput | null;
+  input(inputId: string, wireSha256: string, owner: Readonly<RequestContextRuntimeOwner>): PreparedRequestContextInput | null;
   context(contextId: string): RequestContextV1 | null;
   retain(context: RequestContextV1): void;
   canManage(actor: RequestContextActorV1): boolean;
@@ -86,7 +86,7 @@ export class RequestContextLocalTurns {
     return active !== null && same(active.owner, owner) && active.token === snapshot.token && same(active, snapshot);
   }
   beforeQueuedSteer(inputId: string | null, wireSha256: string, owner: RequestContextRuntimeOwner): RequestContextTurnSnapshot {
-    const input = inputId === null ? null : this.ports.input(inputId);
+    const input = inputId === null ? null : this.ports.input(inputId, wireSha256, owner);
     const active = this.current(owner);
     if (!input || input.inputId !== inputId || input.proof.kind !== "admin-steer" || !active) throw new RequestContextInputDeferred();
     // apply validates live canManage, exact actor, original parent/token and unchanged wire digest.
@@ -97,7 +97,7 @@ export class RequestContextLocalTurns {
   /** Called synchronously under the final pane-write lock, after every await/current-owner check. */
   beforeWrite(inputId: string | null, wireSha256: string, owner: RequestContextRuntimeOwner): RequestContextTurnSnapshot {
     const input: PreparedRequestContextInput | null = inputId === null
-      ? { inputId: `unmapped-system:${randomUUID()}`, wireSha256, owner, proof: { kind: "recovery" } } : this.ports.input(inputId);
+      ? { inputId: `unmapped-system:${randomUUID()}`, wireSha256, owner, proof: { kind: "recovery" } } : this.ports.input(inputId, wireSha256, owner);
     if (!input || inputId !== null && input.inputId !== inputId) throw Error("request-context admitted input unavailable");
     return this.apply(input, wireSha256, owner);
   }

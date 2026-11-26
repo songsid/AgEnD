@@ -1,8 +1,8 @@
 import { ensureAgendHome } from "./agend-home.js";
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { dirname, join } from "node:path";
+import { createHash, randomBytes } from "node:crypto";
+import { dirname, join, resolve } from "node:path";
 
 /**
  * What kind of process holds the lock.
@@ -244,6 +244,20 @@ let processFleetLock: FleetLockHandle | undefined;
 
 export function setProcessFleetLock(handle: FleetLockHandle): void {
   processFleetLock = handle;
+}
+
+/** Private coordinator currentness, not an authorization for a person or an agent. Never acquires/takes over a lock. */
+export function captureProcessFleetLease(dataDir: string): Readonly<{ id: string; current(): boolean }> | null {
+  const handle = processFleetLock;
+  if (!handle || resolve(handle.path) !== resolve(dataDir, "fleet.lock") || handle.record.pid !== process.pid
+    || (handle.record.role ?? "fleet") !== "fleet") return null;
+  const serialized = handle.serialized;
+  const current = (): boolean => {
+    try { return processFleetLock === handle && handle.serialized === serialized && readFileSync(handle.path, "utf8") === serialized; }
+    catch { return false; }
+  };
+  if (!current()) return null;
+  return Object.freeze({ id: createHash("sha256").update(serialized).digest("hex"), current });
 }
 
 export function releaseProcessFleetLock(): boolean {

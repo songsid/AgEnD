@@ -80,7 +80,14 @@ function hubOperation(context:RequestContextV1,tool:string,args:Record<string,un
  return refuse("settings");
 }
 
-export interface RequestContextPolicyPort {assert(input:RequestContextOperation):RequestContextOperationPermit}
+export interface RequestContextPolicyPort {
+ assert(input:RequestContextOperation):RequestContextOperationPermit;
+ /** L's one publication predicate. Staged ports are not an installed Fleet. Never read from model/config arguments. */
+ installed?():boolean;
+}
+export function requestContextPolicyInstalled(policy:RequestContextPolicyPort|undefined):boolean {
+ try{return policy?.installed?.()===true;}catch{return false;}
+}
 export interface RequestContextPolicyContext {requestContextPolicy?:RequestContextPolicyPort;readonly requestContextCallAdmission?:RequestContextCallAdmission}
 export function requireRequestContextPolicy(ctx:RequestContextPolicyContext,instance:string,tool:string,args:Record<string,unknown>,admission?:RequestContextCallAdmission):RequestContextOperationPermit|undefined {
  return ctx.requestContextPolicy?.assert({instance,tool,args,admission:admission??ctx.requestContextCallAdmission});

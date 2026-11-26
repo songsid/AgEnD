@@ -36,6 +36,27 @@ function rig(enabled = true, registration?:import("../src/request-context-fence.
   const clearTimers = () => { for (const cb of daemon.pendingIpcRequests.values()) cb({ result: { sent: false } }); daemon.pendingIpcRequests.clear(); };
   return { daemon, turns, bind, frames, call, fm, ipc, socket, clearTimers };
 }
+it("S-230 publishes instructions only with the actual policy, owned turn and supported transport", () => {
+  const f = rig();
+  const before = f.daemon.buildBackendConfig(false).instructions;
+  expect(before).not.toContain("## Hub request provenance");
+  let published = false;
+  f.daemon.bindRequestContextPolicy({ assert: assertRequestContextOperation, installed: () => published });
+  expect(f.daemon.buildBackendConfig(false).instructions).toBe(before);
+  published = true;
+  const installedText = f.daemon.buildBackendConfig(false).instructions;
+  expect(installedText.split("## Hub request provenance")).toHaveLength(2);
+  expect(installedText).toContain("Hub");
+  f.daemon.nativePaneLifecycle = { requestContextAvailable: () => false };
+  expect(f.daemon.buildBackendConfig(false).instructions).toBe(before);
+  f.daemon.nativePaneLifecycle = { requestContextAvailable: () => true };
+  expect(f.daemon.buildBackendConfig(false).instructions).toBe(installedText);
+  published = false;
+  expect(f.daemon.buildBackendConfig(false).instructions).toBe(before);
+  const off = rig(false);
+  expect(() => off.daemon.bindRequestContextPolicy({ assert: assertRequestContextOperation })).toThrow(/owned turn/);
+  expect(off.daemon.buildBackendConfig(false).instructions).not.toContain("## Hub request provenance");
+});
 it("first local hop mints only an opaque call id; delayed Fleet receipt cannot acquire B", () => {
   const f = rig(); const a = f.bind("a"), frame = f.call();
   const call = f.daemon.requestContextCall(frame.requestContextCallId); expect(call.admission.lease.snapshot).toEqual(a);

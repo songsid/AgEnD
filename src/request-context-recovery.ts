@@ -3,7 +3,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { RequestContextStore } from "./request-context-store.js";
 import type { RequestContextV1 } from "./request-context-protocol.js";
-import type { PreparedRequestContextInput, RequestContextRecoveryPointer, RequestContextTurnPorts } from "./request-context-turns.js";
+import type { RequestContextRecoveryPointer, RequestContextTurnPorts } from "./request-context-turns.js";
 const text = z.string().min(1).max(256);
 const pointerSchema = z.strictObject({ instance: text, incarnation: text, workGeneration: text, contextId: z.uuid() });
 /** Only the last conservative recovery pointer is durable. Active turn ownership is never restored from disk. */
@@ -39,7 +39,7 @@ export class RequestContextRecoveryStore {
     })();
   }
   /** Prepared input is resolved by trusted admission/attempt/job identity; no text or model argument resolver is supplied. */
-  ports(instance: string, input: (id: string) => PreparedRequestContextInput | null,
+  ports(instance: string, input: RequestContextTurnPorts["input"],
     canManage: RequestContextTurnPorts["canManage"]): RequestContextTurnPorts {
     return { input, canManage, context: id => new RequestContextStore(this.db).context(id),
       retain: context => this.retain(context), recovery: () => this.pointer(instance), saveRecovery: pointer => this.save(instance, pointer) };

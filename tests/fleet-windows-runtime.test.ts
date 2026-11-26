@@ -288,6 +288,39 @@ describe("Fleet native routing and durable lane",()=>{
 });
 
 describe("S-224 exec admitted-input capture", () => {
+  it("S-230 keeps each exec agent's C lane independent, including an unresolved run on another agent", async () => {
+    const close = vi.fn(), connection = { endpoint: "http://127.0.0.1:19280/agent", token: "a".repeat(64), tools: ["task"] };
+    const open = vi.fn<FleetWindowsRuntimeHost["openMcp"] & Function>(() => ({ connection, close, reportedCorrelations: () => [] }));
+    const f = fixture(open), first = await f.create();
+    const second = await f.runtime.create({ name: "Second Windows helper", cli: "codex", sandbox: "read-only", instructions: "Use native tools", tags: [] }, () => true);
+    const registration = { assertRegistration() {} };
+    const lanes = new Map<string, RequestContextLocalTurns>(), contexts = new Map<string, RequestContextV1>();
+    const ownerOf = (name: string): RequestContextRuntimeOwner => ({ instance: name, incarnation: `${name}-generation`,
+      workGeneration: "exec-lane", daemonBootId: "fixture-boot", spawnGeneration: 1, launchFenceEpoch: 0, deliveryEpoch: 0 });
+    for (const { name } of [first, second]) {
+      const owner = ownerOf(name), root = randomUUID();
+      const context: RequestContextV1 = { ref: { version: 1, contextId: root, rootContextId: root },
+        rootEvidenceRef: `fixture:${name}`, ingress: "guest", initiatingActor: { kind: "unknown", reason: "unidentified" },
+        source: { instance: name, incarnation: owner.incarnation }, sourceAudience: { kind: "web", ref: randomUUID() } };
+      lanes.set(name, new RequestContextLocalTurns({ registration,
+        input: (inputId, wireSha256, actualOwner) => ({ inputId, wireSha256, owner: actualOwner, context, proof: { kind: "independent" } }),
+        context: key => contexts.get(key) ?? null, retain: value => { contexts.set(value.ref.contextId, value); },
+        canManage: () => false, recovery: () => null, saveRecovery: () => {} }));
+    }
+    let misroute = false;
+    f.runtime.setRequestContextExecLifecycles(name => lanes.get(misroute ? first.name : name)!, ownerOf, registration);
+    await f.runtime.deliver(first.name, { requestId: id, content: "Question A" }, { requestContextInputId: "input-a" });
+    f.settle(id, { outcomeConfirmed: false });
+    const a = lanes.get(first.name)!.current(ownerOf(first.name)); expect(a?.inputId).toBe("input-a");
+    misroute = true;
+    await expect(f.runtime.deliver(second.name, { requestId: thread, content: "Question B" }, { requestContextInputId: "input-b" })).rejects.toThrow(/lane differs/);
+    expect(lanes.get(first.name)!.current(ownerOf(first.name))).toBe(a);
+    misroute = false;
+    await f.runtime.deliver(second.name, { requestId: thread, content: "Question B" }, { requestContextInputId: "input-b" });
+    expect(lanes.get(first.name)!.current(ownerOf(first.name))).toBe(a);
+    expect(lanes.get(second.name)!.current(ownerOf(second.name))?.inputId).toBe("input-b");
+    expect(open.mock.calls[1][4]?.snapshot.owner.instance).toBe(second.name); f.settle(thread);
+  });
   async function scoped(registration?:import("../src/request-context-fence.js").RequestContextRegistrationGate) {
     const close = vi.fn(), connection = { endpoint: "http://127.0.0.1:19280/agent", token: "a".repeat(64), tools: ["task"] };
     const open = vi.fn<FleetWindowsRuntimeHost["openMcp"] & Function>((_name, _id, _sandbox, _current, _scope) => ({ connection, close, reportedCorrelations: () => [] }));

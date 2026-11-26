@@ -1,4 +1,4 @@
-import { RequestContextReferenceMap } from "./request-context-fence.js";
+import { RequestContextReferenceMap, type RequestContextRegistrationGate } from "./request-context-fence.js";
 /** Windows execution adapter for the ordinary Fleet instance registry and delivery facade. */
 import { OPERATIONS_MAX_CHARS } from "./instructions.js";
 import { addsSecondGeneral } from "./web-only-fleet.js";
@@ -60,12 +60,25 @@ export type NativeExecutionResult = WindowsCliTask & {reportedCorrelationIds?: r
 export class FleetWindowsRuntime {
   private hasClaimed = false;
   private readonly requestContextRuns = new RequestContextReferenceMap<string, { requestId: string; rootContextId:string; retire(): void }>(run=>run.rootContextId,run=>`exec-run:${run.requestId}`);
-  private requestContextLifecycle?: { turns: RequestContextLocalTurns; owner(instance: string): RequestContextRuntimeOwner };
+  private requestContextLifecycle?: { turns(instance: string): RequestContextLocalTurns; owner(instance: string): RequestContextRuntimeOwner };
   /** Uninstalled in production until L. The lane owner is stable across exec claims, not the new run id. */
   setRequestContextExecLifecycle(turns: RequestContextLocalTurns, owner: (instance: string) => RequestContextRuntimeOwner): void {
     if (this.requestContextLifecycle || this.hasClaimed || this.mcpLeases.size) throw Error("Native request context must be installed before claims");
     this.requestContextRuns.installRegistration(turns.registrationGate??undefined);
-    this.requestContextLifecycle = { turns, owner };
+    this.requestContextLifecycle = { turns: () => turns, owner };
+  }
+  /** Whole-Fleet installation uses distinct C lanes per instance, all owned by the same drain registration. */
+  setRequestContextExecLifecycles(turnsOf: (instance: string) => RequestContextLocalTurns,
+    owner: (instance: string) => RequestContextRuntimeOwner, registration: RequestContextRegistrationGate): void {
+    if (this.requestContextLifecycle || this.hasClaimed || this.mcpLeases.size) throw Error("Native request context must be installed before claims");
+    this.requestContextRuns.installRegistration(registration);
+    const lanes = new Map<string, RequestContextLocalTurns>();
+    this.requestContextLifecycle = { owner, turns: instance => {
+      const turns = turnsOf(instance), previous = lanes.get(instance);
+      if (turns.registrationGate !== registration || previous && previous !== turns
+        || [...lanes].some(([other, lane]) => other !== instance && lane === turns)) throw Error("Native request context lane differs");
+      lanes.set(instance, turns); return turns;
+    } };
   }
   requestContextCallsRequired(name:string):boolean{return !!this.requestContextLifecycle&&isNativeExecInstance(this.config(name));}
   get drainRevision():string{return `${this.requestContextRuns.revision}:${this.store.requestContextDrainRevision}`;}
@@ -332,7 +345,7 @@ export class FleetWindowsRuntime {
     if (!existing && this.requestContextLifecycle) {
       // Even a valid return cannot replace a still-running exec grant. Queue it before touching C or the lease.
       if (agent.activeId) throw new RequestContextInputDeferred();
-      const { turns, owner: ownerOf } = this.requestContextLifecycle, owner = ownerOf(name);
+      const { owner: ownerOf } = this.requestContextLifecycle, owner = ownerOf(name), turns = this.requestContextLifecycle.turns(name);
       if (owner.instance !== name) throw Error("Native request context owner differs");
       const previous = turns.current(owner);
       // Resolve the admitted input with C's exact parent/actor/wire checks BEFORE retiring any old grant.

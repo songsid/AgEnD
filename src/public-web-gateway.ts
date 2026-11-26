@@ -120,6 +120,7 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // M-3680 (decision 7933bf90): contact permissions and held contact requests — Fleet › 授權, an agent's Permissions tab
   // and Needs you's Approve — were simply missing here, so the link answered 404 and the page said only "Couldn't load
   // permissions". The handler (contact-auth-api.ts) admits a verified admin only, asking the authority on every request.
+  if((method==="GET"||method==="POST")&&path==="/api/settings/request-context")return true;
   if(method==="GET"&&/^\/ui\/api\/request-contact-authorizations(?:\/R[a-f0-9-]{36})?$/.test(path))return true;
   if(method==="POST"&&/^\/ui\/api\/request-contact-authorizations\/R[a-f0-9-]{36}\/decision$/.test(path))return true;
   if (method === "GET" && /^\/ui\/api\/contact-authorizations(?:\/R[a-f0-9-]{36})?$/.test(path)) return true;

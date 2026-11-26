@@ -1,5 +1,5 @@
 import { ReplyDraft } from "./reply-draft.js";
-import {requireRequestContextPolicy,type RequestContextPolicyPort} from "./request-context-policy.js";
+import {requireRequestContextPolicy,requestContextPolicyInstalled,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { RequestContextReferenceMap } from "./request-context-fence.js";
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { managedClaudeBinding } from "./claude-credential-launch.js";
@@ -13484,6 +13484,8 @@ export class Daemon extends EventEmitter {
         }
       } catch { /* fallback to empty */ }
       instructions = buildFleetInstructions({
+        ...(requestContextPolicyInstalled(this.requestContextPolicy) && this.requestContextLifecycle && (!this.nativePaneLifecycle || this.nativePaneLifecycle.requestContextAvailable?.() === true)
+          ? { requestContextPolicyInstalled: true } : {}),
         instanceName: this.name,
         taskBoard: !dashboardOff.includes("task_board"),
         workingDirectory: this.config.working_directory,
@@ -13500,6 +13502,8 @@ export class Daemon extends EventEmitter {
       });
     } else {
       instructions = buildFleetInstructions({
+        ...(requestContextPolicyInstalled(this.requestContextPolicy) && this.requestContextLifecycle && (!this.nativePaneLifecycle || this.nativePaneLifecycle.requestContextAvailable?.() === true)
+          ? { requestContextPolicyInstalled: true } : {}),
         instanceName: this.name,
         taskBoard: !dashboardOff.includes("task_board"),
         workingDirectory: this.config.working_directory,
