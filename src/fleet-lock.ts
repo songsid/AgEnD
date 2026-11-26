@@ -2,7 +2,7 @@ import { ensureAgendHome } from "./agend-home.js";
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 /**
  * What kind of process holds the lock.
@@ -152,11 +152,12 @@ export function acquireFleetLock(dataDir: string, probe: FleetLockProbe = {}): F
         if (!claim || !claim(owner.attemptId!, nonce, pid)) throw new Error(`Another start has claimed this update's handoff (attempt ${owner.attemptId})`);
         const taken: FleetLockRecord = { ...record, nonce };
         const takenSerialized = JSON.stringify(taken) + "\n";
-        const tmp = `${lockPath}.handoff-${pid}`;
+        const tmp = `${lockPath}.handoff-${pid}-${randomBytes(4).toString("hex")}`;
         const fd = openSync(tmp, "wx", 0o600);
         try { writeSync(fd, takenSerialized); fsyncSync(fd); } finally { closeSync(fd); }
         if (readFileSync(lockPath, "utf8") !== observed) { unlinkSync(tmp); throw new Error(`The update's fence changed during the handoff (attempt ${owner.attemptId})`); }
         renameSync(tmp, lockPath);
+        fsyncDir(dataDir);
         return { path: lockPath, record: taken, serialized: takenSerialized };
       }
       if (isAlive(owner.pid)) {
@@ -227,6 +228,9 @@ export function fleetLockHeldByAnother(dataDir: string, probe: Pick<FleetLockPro
 /** Delete only the exact lock record acquired by this process. */
 export function releaseFleetLock(handle: FleetLockHandle | undefined): boolean {
   if (!handle || !existsSync(handle.path)) return false;
+  // M-3770 §4.3: an update fence with a planned handoff is never unlinked directly — the planned start may rename its
+  // record in between this compare and the unlink. Revoke first (setFleetLockHandoff(handle, null, revoke)).
+  if (handle.record.role === "update" && handle.record.handoff) return false;
   try {
     if (readFileSync(handle.path, "utf8") !== handle.serialized) return false;
     unlinkSync(handle.path);
@@ -249,22 +253,39 @@ export function releaseProcessFleetLock(): boolean {
   return released;
 }
 
+const fsyncDir = (dir: string): void => { const fd = openSync(dir, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } };
+
 /**
- * M-3770 §4.3: the updater writes the planned handoff into its own fence record (tmp, fsync, rename), only while the lock
- * is still exactly its record. Returns the new handle, or null when the lock is no longer its own.
+ * M-3770 §4.3: the updater writes the planned handoff into its own fence record (tmp, fsync, rename, directory fsync),
+ * only while the lock is still exactly its record. Returns the new handle, or null when the lock is no longer its own.
+ *
+ * Replacing or clearing a handoff already planned races the start that holds its nonce: that start may win the claim
+ * and rename its record over the lock between this function's compare and its rename, which would put the fence back
+ * over a live fleet. So the planned nonce is revoked first through `revoke` — the journal's `revokeHandoff`, which
+ * takes the SAME single-use claim file. Exactly one of the two wins it: when the start did, nothing is rewritten (null).
  */
-export function setFleetLockHandoff(handle: FleetLockHandle, handoff: { nonce: string; gen: "old" | "trial" | "rollback" } | null): FleetLockHandle | null {
+export function setFleetLockHandoff(
+  handle: FleetLockHandle,
+  handoff: { nonce: string; gen: "old" | "trial" | "rollback" } | null,
+  revoke?: (attemptId: string, nonce: string) => boolean,
+): FleetLockHandle | null {
   if (handle.record.role !== "update") throw new Error("only an update fence plans a handoff");
   if (handoff && !/^[0-9a-f]{32}$/.test(handoff.nonce)) throw new Error("a handoff nonce is 32 hex digits");
+  const planned = handle.record.handoff;
+  if (planned) {
+    if (!revoke) throw new Error("a planned handoff is replaced only after its nonce is revoked");
+    if (!revoke(handle.record.attemptId!, planned.nonce)) return null;          // the start won its claim: the lock is its
+  }
   let current: string;
   try { current = readFileSync(handle.path, "utf8"); } catch { return null; }
   if (current !== handle.serialized) return null;
   const record: FleetLockRecord = { ...handle.record, handoff };
   const serialized = JSON.stringify(record) + "\n";
-  const tmp = `${handle.path}.plan-${record.pid}`;
-  const fd = openSync(tmp, "w", 0o600);
+  const tmp = `${handle.path}.plan-${record.pid}-${randomBytes(4).toString("hex")}`;
+  const fd = openSync(tmp, "wx", 0o600);
   try { writeSync(fd, serialized); fsyncSync(fd); } finally { closeSync(fd); }
   renameSync(tmp, handle.path);
+  fsyncDir(dirname(handle.path));
   return { path: handle.path, record, serialized };
 }
 

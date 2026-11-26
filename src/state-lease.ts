@@ -12,7 +12,7 @@
  * The file is never snapshotted, restored or pruned (§5.1): its locks live on this inode.
  */
 import Database from "better-sqlite3";
-import { existsSync } from "node:fs";
+import { ensureAgendHome } from "./agend-home.js";
 import { join } from "node:path";
 import { readCurrent } from "./update-journal.js";
 
@@ -36,8 +36,10 @@ const busy = (err: unknown) => /SQLITE_BUSY|database is locked/i.test(String((er
  * for `busyMs` (2 s), or an open, unknown or manual attempt: refused, in words.
  */
 export function takeSharedLease(home: string, command: string, opts: { busyMs?: number } = {}): LeaseResult {
-  // No home yet: no update can be fencing it (the updater makes the home first); nothing to hold.
-  if (!existsSync(home)) return { ok: true, lease: { release: () => {} } };
+  // A missing home is created first (private, by the same checks as every start), then leased the normal way (Prism
+  // #4499): "no home" observed once is no proof an update won't create and fence it while this command still runs.
+  try { ensureAgendHome(home); }
+  catch (err) { return { ok: false, reason: `\`agend ${command}\` is refused: the AgEnD home ${home} can't be used (${(err as Error).message}).` }; }
   let db: Database.Database | null = null;
   try {
     db = open(home, opts.busyMs ?? 2000);
