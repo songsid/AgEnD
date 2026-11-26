@@ -239,12 +239,10 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     return { posted, views: [...registry.views], card };
   }
 
-  it("an rc install is on @beta: it hears about a newer rc, and the card records it", async () => {
+  it("an rc install is on @beta: the card records the newer rc (no daily post)", async () => {
     const { posted, views, card } = await notice("2.1.11-rc.1", { "@songsid/agend": "2.1.10", "@songsid/agend@beta": "2.1.11-rc.2" });
     expect(views).toContain("@songsid/agend@beta");
-    expect(posted).toHaveLength(1);
-    expect(posted[0]).toContain("v2.1.11-rc.2");
-    expect(posted[0]).toContain("Run: /update");
+    expect(posted).toEqual([]);   // M-3770 1.5: an installable offer is General's card (once), never the daily post
     expect(card).toMatchObject({ version: "2.1.11-rc.2", channel: "beta", installable: true });
   });
 
@@ -252,8 +250,7 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     const tags = { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.9", "@songsid/agend@alpha": "2.2.0-alpha.2" };
     const { posted, views, card } = await notice("2.2.0-alpha.1", tags);
     expect(views.sort()).toEqual(["@songsid/agend", "@songsid/agend@alpha"]);
-    expect(posted).toHaveLength(1);
-    expect(posted[0]).toContain("v2.2.0-alpha.2");
+    expect(posted).toEqual([]);   // M-3770 1.5: an installable offer is General's card (once), never the daily post
     expect(card).toMatchObject({ version: "2.2.0-alpha.2", channel: "alpha", installable: true });
   });
 
@@ -278,12 +275,9 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
   // as @latest and beta.17 as @beta, a beta.16 install used to be told nothing (2.2.0 became the target, and the
   // same-core guard dropped it).
   describe("a beta install hears about @beta only (#1926)", () => {
-    it("beta.16 with 2.2.0 out is told about beta.17, with the plain /update text", async () => {
+    it("beta.16 with 2.2.0 out gets beta.17 on the card (no daily post)", async () => {
       const { posted, card } = await notice("2.2.0-beta.16", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0-beta.17" });
-      expect(posted).toHaveLength(1);
-      expect(posted[0]).toContain("v2.2.0-beta.17");
-      expect(posted[0]).toContain("Run: /update");
-      expect(posted[0]).not.toContain("--stable");
+      expect(posted).toEqual([]);   // M-3770 1.5: an installable offer is General's card (once), never the daily post
       expect(card).toMatchObject({ version: "2.2.0-beta.17", channel: "beta", installable: true });
     });
     it("beta.17 (the newest beta) with 2.2.0 out is silent", async () => {
@@ -297,8 +291,7 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
       expect(quiet.posted).toEqual([]);
       expect(quiet.card).toBeNull();
       const next = await notice("2.3.2-beta.16", { "@songsid/agend": "2.3.3", "@songsid/agend@beta": "2.3.3-beta.1" });
-      expect(next.posted).toEqual([expect.stringContaining("v2.3.3-beta.1")]);
-      expect(next.posted[0]).not.toMatch(/--stable|stable/);
+      expect(next.posted).toEqual([]);   // M-3770 1.5: the card
       expect(next.card).toMatchObject({ version: "2.3.3-beta.1", channel: "beta", installable: true });
     });
     it("a stable of a higher core (2.2.1) does not reach a beta install either", async () => {
@@ -312,18 +305,15 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
   it.each([
     ["an alpha, after the release points @alpha at 2.2.0", "2.2.0-alpha.4", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0" }, "alpha"],
     ["a beta, if @beta is pointed at 2.2.0", "2.2.0-beta.17", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0" }, "beta"],
-  ] as const)("%s: told to run /update, not --stable, and the card is installable", async (_n, version, tags, channel) => {
+  ] as const)("%s: the card is installable (M-3770 1.5: never the daily /update post)", async (_n, version, tags, channel) => {
     const { posted, card } = await notice(version, tags);
-    expect(posted).toEqual([expect.stringContaining("v2.2.0")]);
-    expect(posted[0]).toContain("Run: /update");
-    expect(posted[0]).not.toContain("--stable");
+    expect(posted).toEqual([]);   // M-3770 1.5: an installable offer is General's card (once), never the daily post
     expect(card).toMatchObject({ version: "2.2.0", channel, installable: true });
   });
 
   it("an alpha install is not left silent by a same-core stable: it still hears about the newer alpha (#1926)", async () => {
     const { posted, card } = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0-alpha.4" });
-    expect(posted).toEqual([expect.stringContaining("v2.2.0-alpha.4")]);
-    expect(posted[0]).not.toContain("--stable");
+    expect(posted).toEqual([]);   // M-3770 1.5: an installable offer is General's card (once), never the daily post
     expect(card).toMatchObject({ version: "2.2.0-alpha.4", channel: "alpha", installable: true });
   });
 
@@ -331,14 +321,14 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     const tags = { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.5", "@songsid/agend@alpha": "2.2.0-alpha.1" };
     const { posted, views, card } = await notice("2.1.12-beta.4", tags);
     expect(views.sort()).toEqual(["@songsid/agend", "@songsid/agend@beta"]);
-    expect(posted[0]).toContain("v2.1.12-beta.5");
+    expect(posted).toEqual([]);   // M-3770 1.5: an installable offer is General's card (once), never the daily post
     expect(card).toMatchObject({ version: "2.1.12-beta.5", channel: "beta", installable: true });
   });
 
   it("a stable install looks at @latest only", async () => {
     const { posted, views, card } = await notice("2.1.10", { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.1" });
     expect(views).toEqual(["@songsid/agend"]);
-    expect(posted[0]).toContain("v2.1.11");
+    expect(posted).toEqual([]);   // M-3770 1.5: an installable offer is General's card (once), never the daily post
     expect(card).toMatchObject({ version: "2.1.11", channel: "stable", installable: true });
   });
 });

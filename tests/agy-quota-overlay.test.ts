@@ -84,11 +84,11 @@ describe("the agy error pattern that feeds the alert", () => {
     expect(message).toContain("Resets in 139h12m12s");
   });
 
-  it("is ordered before the generic quota pattern, which would lose the reset time", () => {
-    // The monitor fires the FIRST matching pattern; the generic /quota/i one
-    // reports a static "Quota exhausted" with nothing to parse.
+  it("is ordered before the RESOURCE_EXHAUSTED backstop, which would lose the reset time", () => {
+    // The monitor fires the FIRST matching pattern. The backstop reports a
+    // static "Quota exhausted" and matches the error code only (#4506).
     const idxSpecific = patterns.findIndex(p => p.pattern.source.includes("quota reached"));
-    const idxGeneric = patterns.findIndex(p => p.pattern.source === "RESOURCE_EXHAUSTED|quota");
+    const idxGeneric = patterns.findIndex(p => p.pattern.source === "\\bRESOURCE_EXHAUSTED\\b");
     expect(idxSpecific).toBeGreaterThanOrEqual(0);
     expect(idxSpecific).toBeLessThan(idxGeneric);
   });

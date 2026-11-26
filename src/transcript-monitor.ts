@@ -339,6 +339,8 @@ export class TranscriptMonitor extends EventEmitter {
     if (!history && entry.type === "system" && entry.subtype === "compact_boundary" && entry.isSidechain !== true) {
       this.emit("context_reset");
     }
+    // M-3791: private same-turn draft evidence; history is never a new answer.
+    if (!history && Number.isFinite(at)) this.emit("reply_draft_record", entry);
     this.processModelEntry(entry);
     if(!history)this.processCredentialEntry(entry);
     claudeTranscriptRecord(entry, (...event) => {
