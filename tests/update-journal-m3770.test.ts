@@ -154,7 +154,7 @@ describe("M-3770 2.1a: the fleet's files (§2.6)", () => {
     opened(h);
     writeInboxItem(h, ID1, 1, "outbox", { kind: "reference", deliveryId: "d-1", createdSeq: 41 });
     writeDeferred(h, ID1, 2, { scheduleId: "s-1", runId: "r-1" });
-    writeInboxItem(h, ID1, 3, "web", { kind: "copy", body: { text: "hi" } });
+    writeInboxItem(h, ID1, 3, "web", { kind: "copy", body: { text: "hi" }, target: "worker" });
     writeDeferred(h, ID1, 4, { scheduleId: "s-2", runId: "r-2" });
     let list = listHandback(h, ID1);
     expect(list.map(e => [e.seq, e.kind, handbackAction(e)])).toEqual([
@@ -171,7 +171,7 @@ describe("M-3770 2.1a: the fleet's files (§2.6)", () => {
   it("an item that can't be read, or two items with one sequence number, stop the walk (never skipped)", () => {
     const h = home();
     opened(h);
-    writeInboxItem(h, ID1, 1, "hub", { kind: "copy", body: 1 });
+    writeInboxItem(h, ID1, 1, "hub", { kind: "copy", body: 1, target: "worker" });
     writeDeferred(h, ID1, 1, { scheduleId: "s", runId: "r" });
     expect(() => listHandback(h, ID1)).toThrow(/share a sequence/);
     const g = home();
@@ -179,6 +179,11 @@ describe("M-3770 2.1a: the fleet's files (§2.6)", () => {
     mkdirSync(join(attemptDir(g, ID1), "inbox"), { recursive: true });
     writeFileSync(join(attemptDir(g, ID1), "inbox", "000000000005-adapter.json"), "{\"kind\":\"reference\"}");
     expect(() => listHandback(g, ID1)).toThrow(/isn't valid/);
+    const k = home();
+    opened(k);
+    mkdirSync(join(attemptDir(k, ID1), "inbox"), { recursive: true });
+    writeFileSync(join(attemptDir(k, ID1), "inbox", "000000000002-web.json"), JSON.stringify({ kind: "copy", body: { text: "no target" } }));
+    expect(() => listHandback(k, ID1)).toThrow(/000000000002-web\.json isn't valid/);                 // rev 15: a copy names its target
   });
 
   it("a cancel is honoured through stopping without a snapshot, and set aside as too late after it", () => {

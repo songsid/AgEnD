@@ -670,6 +670,18 @@ A retry recognises each effect by the path's presence and its hash against the p
 | **Ordering gate on the `agend update` wiring** (Fable #4536): an open `abandoning` attempt refuses every ordinary start and every new `agend update` until it ends, and it ends only when the old fleet acknowledges the hand-back. So nothing that can create held items (the barrier's holding of inbound and deferred jobs, 2.2) is wired into a live `agend update` before the **fleet-side hand-back ports and their acknowledgements** exist in the fleet start. The S-252 wiring part lands after them, or with them | §2.3, §2.6 |
 | The abandon procedure lives in its own module, bundled into `recover.cjs` (node built-ins only; the bundle-closure test covers it and `recover.ts`) | §6.1 |
 
+### Revision 15 (2.5, the fleet's side of the hand-back; Fable's design review)
+| Change | Where |
+|---|---|
+| **When the fleet walks:** on durable facts, never the latest substep. The attempt is `abandoning`, its history has `restart-old` and lacks `hand-back`, and this fleet (its handoff nonce and pid) is the consumed, not-dead `old` generation (`handbackDue`). A re-restart's new fleet walks; a dead or replaced one never does | §2.3, §2.6 |
+| **The first walk runs during the fleet start**, after the outbox and the scheduler and before the web chat, the adapters and the agents open any ingress, so a held copy keeps its place ahead of anything newer. It waits up to 15 s for `restart-old`. A walk every 10 s picks up stragglers until `hand-back` is journaled or the attempt closes | §2.6 |
+| **A copy records its target** (`{ kind: "copy", body, target }`). At hand-back a target that no longer exists is logged and acknowledged, with no row admitted | §2.6 |
+| **A reference is the pump's again:** a queued or retry_wait row (inside its backoff too) is reported claimed and the pump kicked, and nothing is claimed outside it. The restarted fleet runs unarmed, and its pump delivers per target in order | §2.6 |
+| **A copy is admitted as its own outbox kind** (`update_handback_copy`, source `update-handback`, idempotent by its hand-back source key). Its dispatch delivers the journaled turn as it was, adding only the fence's delivery id and attempt; it never stamps a `from_instance`, so a person's turn stays a person's. A failed or uncertain copy queues no outcome notice (no sending agent), and the person sees it in Needs you | §2.6 |
+| **A held human turn is replayed without its receipt** (fail-closed): every `human_*` meta key (by prefix) plus `verification_id` and `web_verified` is stripped, so the agent sees a plain, unverifiable `[user:…]` with no hid and no web:v, and the old receipt is marked uncertain. The old fleet's receipt can't be re-bound after the restart (manager boot and owner). **Precondition for the `agend update` wiring** on a Fleet with request-context On (S-230's reply-sink rule needs a human root): re-issue a receipt with the origin evidence journaled, or admit the replayed copy through request-context admission | §2.6 |
+| **Deferred jobs:** run with their own run id under the schedule's lock, unless the schedule is deleted, disabled, running, or its target instance is gone (skipped, logged in its run log). A job whose run had started is recorded as interrupted, never run twice | §2.6 |
+| `createUpdateFence` removes its own partial lock when the write or fsync fails after the O_EXCL create | §4.3 |
+
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
 - `update-journal.ts`: the layout, publication order, readers, stages and marks;

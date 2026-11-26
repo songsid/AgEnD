@@ -390,7 +390,9 @@ import { WebSettingsTools } from "./web-settings-tools.js";
 import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
-import { turnSource, type QuiescenceGate } from "./update-quiescence.js";
+import { QuiescenceBarrier, stripHumanReceipt, UPDATE_HANDBACK_COPY_KIND, UPDATE_HANDBACK_SOURCE, handbackDue, turnSource,
+  type HandbackPorts, type QuiescenceGate } from "./update-quiescence.js";
+import { readCurrent as readUpdateJournal, type AttemptRecord as UpdateAttemptRecord } from "./update-journal.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateAnswerLabel, updateOfferReply, type UpdateCardView } from "./update-card.js";
 import { preflightAllows } from "./update-readiness.js";
@@ -1344,6 +1346,84 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** S-244: the quiescence barrier. Unset, every pane write and admission proceeds as today. */
   private quiescence: QuiescenceGate | null = null;
   attachQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
+  private updateHandbackTimer: NodeJS.Timeout | null = null;
+
+  /**
+   * M-3770 §2.3/§2.6 (rev 15): this fleet was restarted by an abandon as the attempt's `old` generation (its handoff
+   * nonce): it takes the held inbox and deferred jobs back. The first walk runs during the start, before the web chat,
+   * the adapters and the agents open any ingress, so a held copy keeps its place ahead of anything newer (Fable #4536
+   * design 3b): it waits, bounded, for the abandon driver to journal `restart-old`. Later walks every 10 s pick up
+   * stragglers until `hand-back` is journaled or the attempt closes.
+   */
+  private async startUpdateHandback(nonce = process.env.AGEND_UPDATE_HANDOFF ?? "", waitMs = 15_000, sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))): Promise<void> {
+    if (!/^[0-9a-f]{32}$/.test(nonce)) return;
+    const own = { nonce, pid: process.pid };
+    const mine = (a: UpdateAttemptRecord) => a.stage === "abandoning"
+      && (a.fleets as { gen: string; nonce: string }[] | undefined)?.some(g => g.gen === "old" && g.nonce === nonce) === true;
+    const until = performance.now() + waitMs;
+    for (;;) {
+      const read = readUpdateJournal(this.dataDir);
+      if (read.state !== "open" || !mine(read.attempt)) return;
+      if (handbackDue(read.attempt, own)) { this.walkUpdateHandback(read.attempt, own); break; }
+      if (performance.now() >= until || this.shuttingDown) {
+        this.logger.warn({ attemptId: read.attempt.id }, "Update hand-back: restart-old isn't journaled yet; the held work is taken back by the next walk");
+        break;
+      }
+      await sleep(250);
+    }
+    const again = () => {
+      this.updateHandbackTimer = null;
+      if (this.shuttingDown) return;
+      const read = readUpdateJournal(this.dataDir);
+      if (read.state !== "open" || !mine(read.attempt)) return;
+      if (handbackDue(read.attempt, own)) this.walkUpdateHandback(read.attempt, own);
+      this.updateHandbackTimer = setTimeout(again, 10_000); this.updateHandbackTimer.unref?.();
+    };
+    this.updateHandbackTimer = setTimeout(again, 10_000); this.updateHandbackTimer.unref?.();
+  }
+
+  private walkUpdateHandback(attempt: UpdateAttemptRecord, own: { nonce: string; pid: number }): void {
+    try {
+      const r = new QuiescenceBarrier(this.dataDir).runHandback(attempt, this.updateHandbackPorts(), own);
+      if (r.walked) this.logger.info({ attemptId: attempt.id, acked: r.acked }, "Update hand-back walked");
+    } catch (err) {
+      this.logger.warn({ err, attemptId: attempt.id }, "Update hand-back walk failed; the next walk retries");
+    }
+  }
+
+  /** §2.6 ports, rev 15 (Fable #4536 design): the pump owns a handed-back row again; copies go in as their own kind. */
+  private updateHandbackPorts(): HandbackPorts {
+    const outbox = this.deliveryOutbox;
+    if (!outbox) throw new Error("the delivery outbox isn't open");
+    return {
+      log: (fields, message) => this.logger.warn(fields, `Update hand-back: ${message}`),
+      lookup: id => { const row = outbox.get(id); return row ? { state: row.state, target: row.targetInstance } : null; },
+      // Queued and retry_wait rows (inside a backoff too) are the restarted pump's again: it delivers them per target in
+      // order. Nothing is claimed here, so the pump's lane bookkeeping stays whole.
+      claim: id => {
+        const row = outbox.get(id);
+        if (!row) return "missing";
+        if (row.state !== "queued" && row.state !== "retry_wait") return "settled";
+        this.scheduleDeliveryOutboxPump();
+        return "claimed";
+      },
+      admitCopy: (sourceKey, body, target) => {
+        if (!this.fleetConfig?.instances[target]) return null;
+        const payload = { ...(body as Record<string, unknown>) };
+        const meta = payload.meta && typeof payload.meta === "object" ? payload.meta as Record<string, unknown> : undefined;
+        if (meta) {
+          const stripped = stripHumanReceipt(meta);
+          payload.meta = stripped.meta;
+          if (stripped.receiptId) outbox.markHumanReceiptUncertain(stripped.receiptId, target);
+        }
+        const admitted = outbox.admit({ operationId: sourceKey, sourceKey, sourceInstance: UPDATE_HANDBACK_SOURCE, sourceDaemonBootId: this.managerBootId,
+          targetInstance: target, kind: UPDATE_HANDBACK_COPY_KIND, payload });
+        return { deliveryId: admitted.delivery.deliveryId };
+      },
+      runDeferred: job => { this.scheduler?.runDeferredOccurrence(job.scheduleId, job.runId, name => !!this.fleetConfig?.instances[name]); },
+      recordInterrupted: job => { this.scheduler?.recordInterruptedOccurrence(job.scheduleId, job.runId); },
+    };
+  }
 
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
@@ -7304,6 +7384,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await daemon.deliverWorkingRecovery(payload.content, claimed, () => this.daemons.get(target) === daemon && this.recoveryDeliveryEligible(claimed, true));
         } finally { release(); }
         sent = true;
+      } else if (claimed.kind === UPDATE_HANDBACK_COPY_KIND) {
+        // M-3770 §2.6 (rev 15, Fable #4536 design 3a): a turn the update barrier held, delivered as journaled. A person's
+        // turn stays a person's — no from_instance is stamped — and only the fence's delivery id and attempt are added.
+        if (payload.type === "raw_paste") {
+          if (typeof payload.content !== "string") throw new Error("Durable hand-back copy has an invalid payload");
+          sent = await this.deliverToInstance(target, { ...payload, delivery_id: claimed.deliveryId, delivery_attempt: String(claimed.attemptNo) },
+            { waitForIdle: false, noInlineWake: this.deliveryWorkerMode(target) !== "off" });
+        } else {
+          payload.meta = { ...rawMeta, delivery_id: claimed.deliveryId, delivery_attempt: String(claimed.attemptNo) };
+          sent = await this.deliverToInstance(target, payload, { waitForIdle: true, noInlineWake: this.deliveryWorkerMode(target) !== "off" });
+        }
       } else if (claimed.kind === "raw_paste") {
         if (payload.type !== "raw_paste" || typeof payload.content !== "string") {
           throw new Error("Durable raw_paste row has an invalid payload");
@@ -9060,8 +9151,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * not sent. There is no await between this and `ipc.send`. Unarmed, or not an agent turn: false, and the send proceeds.
    * A Hub or room payload is not a copy: `refuseHubPane` refuses it before this, and the producer leaves the row queued.
    */
-  private holdPaneSend(payload: Record<string, unknown>): boolean {
-    return this.quiescence?.commitTurn(payload) === true;
+  private holdPaneSend(instanceName: string, payload: Record<string, unknown>): boolean {
+    return this.quiescence?.commitTurn(payload, instanceName) === true;
   }
 
   /** The fence is up and this payload belongs to a durable Hub or room row. Do not send it and do not copy it. */
@@ -9104,7 +9195,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
         const wire = this.bindHumanReceiptPayload(instanceName, payload);
         if (this.refuseHubPane(wire)) return false;
-        if (this.holdPaneSend(wire)) return true;
+        if (this.holdPaneSend(instanceName, wire)) return true;
         if (ipc.send(wire)) return true;
       }
     }
@@ -9142,7 +9233,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.refuseHubPane(payload)) return false;
     if (this.quiescence?.armed()) {
       const early = this.bindHumanReceiptPayload(instanceName, payload);
-      if (this.holdPaneSend(early)) return true;
+      if (this.holdPaneSend(instanceName, early)) return true;
     }
     if (!(await beforeInput())) return false;
     if (this.refuseHubPane(payload)) return false;
@@ -9152,7 +9243,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!ipc?.connected || (privateToken && this.classicPrivacy().read(instanceName)?.token !== privateToken)) return false;
     const wire = this.bindHumanReceiptPayload(instanceName, payload);
     if (this.refuseHubPane(wire)) return false;
-    if (this.holdPaneSend(wire)) return true;
+    if (this.holdPaneSend(instanceName, wire)) return true;
     const sent = ipc.send(wire);
     if (sent && privateToken) {
       try {
@@ -9189,7 +9280,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ipc?.connected) {
         const wire = this.bindHumanReceiptPayload(instanceName, payload);
         if (this.refuseHubPane(wire)) return false;
-        if (this.holdPaneSend(wire)) return true;
+        if (this.holdPaneSend(instanceName, wire)) return true;
         if (ipc.send(wire)) return true;
       }
       // #2484: while the instance waits for (or runs) its own start retry, the grace runs from now — so the message is
@@ -9604,7 +9695,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const wire = this.bindHumanReceiptPayload(instanceName, admitted);
       if (this.refuseHubPane(wire)) return false;
-      if (this.holdPaneSend(wire)) { sent = true; return true; }
+      if (this.holdPaneSend(instanceName, wire)) { sent = true; return true; }
       sent = ipc.send(wire);
       return sent;
     }
@@ -13464,6 +13555,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // rows can never crowd an instance's own out (#3421 review). Nothing unbounded goes into process.env.
       this.snapshotActiveDecisions();
     }
+
+    // M-3770 §2.6: a fleet an abandon restarted takes the held work back before any ingress opens (rev 15).
+    await this.startUpdateHandback();
 
     // Phase 1: Start general instances first and wait for them
     // M-2457: a held fleet starts no agent (the hold's Needs-you line says why and what to do).
