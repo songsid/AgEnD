@@ -27,10 +27,13 @@ export const HANDOFF_ENV = "handoff.env";
 export const handoffEnvPath = (home: string, attemptId: string) => join(attemptDir(home, attemptId), HANDOFF_ENV);
 export const kitDir = (home: string, attemptId: string) => join(journalDir(home), "recovery", attemptId);
 
-/** The operator's command for an attempt: the kit's own runner, from a shell, outside the service. */
+/** One shell word: as-is when it is plainly safe, else single-quoted (Prism #4511: homes with spaces or quotes). */
+export const shellWord = (word: string): string => (/^[A-Za-z0-9_./:=@%+,-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`);
+
+/** The operator's command for an attempt: the kit's own runner, from a shell, outside the service — pasteable. */
 export function operatorCommand(home: string, attemptId: string): string {
   const kit = kitDir(home, attemptId);
-  return `${join(kit, "node")} ${join(kit, "recover.cjs")} --home ${home} --run`;
+  return [join(kit, "node"), join(kit, "recover.cjs"), "--home", home, "--attempt", attemptId, "--run"].map(shellWord).join(" ");
 }
 
 /** The newest generation planned and not yet consumed or voided: the one a start may hand off to. */
@@ -43,14 +46,18 @@ function plannedForStart(attempt: AttemptRecord): FleetGeneration | null {
   return null;
 }
 
-/** §6.2's table, a pure function of the journal and its owner's liveness. */
-export function preStartDecision(home: string, read: JournalRead, owner: UpdaterState): PreStart {
+/**
+ * §6.2's table, a pure function of the journal, its owner's liveness, and the attempt the service's route names (the
+ * drop-in or wrapper passes `--attempt`): an open attempt that isn't the route's can't receive a handoff through it.
+ */
+export function preStartDecision(home: string, read: JournalRead, owner: UpdaterState, routeAttempt: string): PreStart {
   switch (read.state) {
     case "none": case "closing": return { kind: "start" };
     case "unknown": return { kind: "refuse", reason: `AgEnD's update journal can't be read (${read.reason}: ${read.path}). This start is refused; run \`agend update --resolve\`.` };
     case "manual": return { kind: "refuse", reason: `Update attempt ${read.attempt.id} needs manual recovery. This start is refused; run ${operatorCommand(home, read.attempt.id)}` };
   }
   const a = read.attempt;
+  if (a.id !== routeAttempt) return { kind: "refuse", reason: `AgEnD's update route on this service names attempt ${routeAttempt}, but attempt ${a.id} is open (${a.stage}). This start is refused; run ${operatorCommand(home, a.id)}` };
   if (owner === "unknown") return { kind: "refuse", reason: `Update attempt ${a.id} (${a.stage}): whether its updater still runs can't be told. This start is refused; if no update is running, run ${operatorCommand(home, a.id)}` };
   if (owner === "gone") return { kind: "start-runner", attemptId: a.id, stage: a.stage };
   const planned = plannedForStart(a);
@@ -60,10 +67,13 @@ export function preStartDecision(home: string, read: JournalRead, owner: Updater
 
 /**
  * The nonce reaches the service's main start through `EnvironmentFile=-<attempt>/handoff.env` (systemd reads it again
- * for each command). Written for a handoff; removed for every other decision, so a stale nonce never rides along.
+ * for each command). The file is the ROUTE's attempt's (Prism #4511): written for a handoff on that attempt, removed —
+ * durably — for every other decision, whatever the journal reads (none, unknown, closing, another attempt), so a stale
+ * nonce never rides along.
  */
-export function applyHandoffEnv(home: string, decision: PreStart, attemptId: string | null, io: JournalIo = defaultJournalIo): void {
+export function applyHandoffEnv(home: string, decision: PreStart, routeAttempt: string, io: JournalIo = defaultJournalIo): void {
   if (decision.kind === "handoff") {
+    if (decision.attemptId !== routeAttempt) throw new Error(`a handoff for attempt ${decision.attemptId} can't go through attempt ${routeAttempt}'s route`);
     const path = handoffEnvPath(home, decision.attemptId);
     const tmp = `${path}.tmp-${process.pid}`;
     try { io.unlink(tmp); } catch { /* none */ }
@@ -72,7 +82,11 @@ export function applyHandoffEnv(home: string, decision: PreStart, attemptId: str
     io.fsyncDir(attemptDir(home, decision.attemptId));
     return;
   }
-  if (!attemptId) return;
-  try { io.unlink(handoffEnvPath(home, attemptId)); }
-  catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
+  try { io.unlink(handoffEnvPath(home, routeAttempt)); }
+  catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return;           // nothing to remove (or no attempt directory at all)
+    throw err;
+  }
+  io.fsyncDir(attemptDir(home, routeAttempt));
 }

@@ -177,6 +177,8 @@ const recordPath = (home: string, id: string) => join(attemptDir(home, id), "att
 const marksPath = (home: string) => join(journalDir(home), "marks.json");
 
 const ID = /^\d{8}T\d{6}Z-[0-9a-f]{8}$/;
+/** An attempt id as `newAttemptId` makes it (and as `current` must name it). */
+export const isAttemptId = (v: string): boolean => ID.test(v);
 /** A time-sortable attempt id: `<UTC compact ISO>-<8 hex>`. */
 export function newAttemptId(now: Date, hex8: string): string {
   if (!/^[0-9a-f]{8}$/.test(hex8)) throw new Error("hex8 must be 8 lowercase hex digits");
@@ -625,17 +627,19 @@ export function readRunnerRecord(home: string, attemptId: string, io: JournalIo 
 }
 
 /**
- * §2.7, §6.2: the attempt's owner — its updater, or the recovery runner acting for a gone one. Live when either is live;
- * unknown when either can't be told (or the runner's record can't be read); gone only when both are proven gone (or no
- * runner was ever recorded).
+ * §2.7, §6.2: the attempt's owner — its updater, or the recovery runner acting for a gone one. Unknown when either
+ * can't be told (or the runner's record can't be read) — whatever the other is; otherwise live when either is live;
+ * gone only when both are proven gone (or no runner was ever recorded).
  */
 export function ownerState(home: string, attempt: AttemptRecord, deps: LivenessDeps, io: JournalIo = defaultJournalIo): UpdaterState {
   const updater = updaterState(attempt, deps);
   const record = readRunnerRecord(home, attempt.id, io);
   const runner: UpdaterState = record === null ? "gone" : record === "unreadable" ? "unknown"
     : (s => (s === "stale" ? "gone" : s))(holderState(startOf(record.pid, record.start), deps));
-  if (updater === "live" || runner === "live") return "live";
+  // Unknown evidence on either side is never outweighed (design §6.2's "liveness unknown" row; Prism #4511): a live
+  // updater beside a runner that can't be told — or the reverse — refuses, as does a record that can't be read.
   if (updater === "unknown" || runner === "unknown") return "unknown";
+  if (updater === "live" || runner === "live") return "live";
   return "gone";
 }
 

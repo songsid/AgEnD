@@ -2,12 +2,13 @@
 // file, the attempt's owner (updater or recovery runner), and the kit: built, verified, and its bundled recover.cjs run
 // on the kit's own Node from outside the repository, with nothing of the package to load.
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, afterEach, describe, expect, it } from "vitest";
-import { advance, ackGeneration, claimHandoff, fleetStartGate, finish, newAttemptId, openAttempt, ownerState, planGeneration, readCurrent, writeRunnerRecord, type AttemptRecord } from "../src/update-journal.js";
+import { advance, ackGeneration, claimHandoff, defaultJournalIo, fleetStartGate, finish, newAttemptId, openAttempt, ownerState, planGeneration, readCurrent, writeRunnerRecord, type AttemptRecord } from "../src/update-journal.js";
 import { applyHandoffEnv, handoffEnvPath, operatorCommand, preStartDecision } from "../src/update-recovery/pre-start.js";
+import { defaultRecoverDeps, main } from "../src/update-recovery/recover.js";
 import { buildRecoveryKit, verifyRecoveryKit } from "../src/update-recovery/kit.js";
 import { acquireServiceLock, admitServiceCommand, SERVICE_LOCK_TOKEN_ENV } from "../src/service-lock.js";
 import type { InstallLockDeps } from "../src/install-lock.js";
@@ -29,27 +30,27 @@ const open = (h: string, updater: { pid: number; start: { processStart: string }
 describe("M-3770 §6.2: the pre-start decision table", () => {
   it("none and closing start; unknown and manual refuse with the way out", () => {
     const h = home();
-    expect(preStartDecision(h, readCurrent(h), "gone")).toEqual({ kind: "start" });
+    expect(preStartDecision(h, readCurrent(h), "gone", ID)).toEqual({ kind: "start" });
     let a = advance(h, open(h), "barrier");
     a = finish(h, a, { kind: "manual-recovery", reason: "test" });
-    expect(preStartDecision(h, readCurrent(h), "live")).toMatchObject({ kind: "refuse", reason: expect.stringContaining(operatorCommand(h, ID)) });
+    expect(preStartDecision(h, readCurrent(h), "live", ID)).toMatchObject({ kind: "refuse", reason: expect.stringContaining(operatorCommand(h, ID)) });
     writeFileSync(join(h, ".update-journal", "current"), "nonsense\n");
-    expect(preStartDecision(h, readCurrent(h), "live")).toMatchObject({ kind: "refuse", reason: expect.stringMatching(/can't be read.*--resolve/) });
+    expect(preStartDecision(h, readCurrent(h), "live", ID)).toMatchObject({ kind: "refuse", reason: expect.stringMatching(/can't be read.*--resolve/) });
   });
 
   it("open: a live owner hands off its NEWEST planned, unconsumed generation, else refuses; gone starts the runner; unknown refuses", () => {
     const h = home();
     let a = advance(h, open(h), "barrier");
-    expect(preStartDecision(h, readCurrent(h), "live")).toMatchObject({ kind: "refuse", reason: expect.stringMatching(/AgEnD is updating \(attempt .*, barrier\)/) });
+    expect(preStartDecision(h, readCurrent(h), "live", ID)).toMatchObject({ kind: "refuse", reason: expect.stringMatching(/AgEnD is updating \(attempt .*, barrier\)/) });
     a = planGeneration(h, a, "trial", NONCE);
     a = planGeneration(h, a, "rollback", LATER);
-    expect(preStartDecision(h, readCurrent(h), "live")).toEqual({ kind: "handoff", attemptId: ID, nonce: LATER });
+    expect(preStartDecision(h, readCurrent(h), "live", ID)).toEqual({ kind: "handoff", attemptId: ID, nonce: LATER });
     a = ackGeneration(h, a, LATER, 300);
-    expect(preStartDecision(h, readCurrent(h), "live")).toEqual({ kind: "handoff", attemptId: ID, nonce: NONCE });   // the older, still unconsumed
+    expect(preStartDecision(h, readCurrent(h), "live", ID)).toEqual({ kind: "handoff", attemptId: ID, nonce: NONCE });   // the older, still unconsumed
     a = ackGeneration(h, a, NONCE, 301);
-    expect(preStartDecision(h, readCurrent(h), "live")).toMatchObject({ kind: "refuse" });
-    expect(preStartDecision(h, readCurrent(h), "gone")).toEqual({ kind: "start-runner", attemptId: ID, stage: "barrier" });
-    expect(preStartDecision(h, readCurrent(h), "unknown")).toMatchObject({ kind: "refuse", reason: expect.stringMatching(/can't be told/) });
+    expect(preStartDecision(h, readCurrent(h), "live", ID)).toMatchObject({ kind: "refuse" });
+    expect(preStartDecision(h, readCurrent(h), "gone", ID)).toEqual({ kind: "start-runner", attemptId: ID, stage: "barrier" });
+    expect(preStartDecision(h, readCurrent(h), "unknown", ID)).toMatchObject({ kind: "refuse", reason: expect.stringMatching(/can't be told/) });
   });
 
   it("handoff.env carries the nonce for a handoff and is removed for any other decision", () => {
@@ -63,7 +64,69 @@ describe("M-3770 §6.2: the pre-start decision table", () => {
   });
 });
 
+describe("M-3770 §6.2: the handoff file is the route's attempt's, cleared whatever the journal reads (Prism #4511)", () => {
+  const io = { err: () => {}, out: () => {} };
+  const pre = (h: string, route = ID) => main(["--home", h, "--attempt", route, "--pre-start"], { ...defaultRecoverDeps(), liveness: LIVE([UPDATER]), ...io });
+  const stale = (h: string, id = ID) => { mkdirSync(join(h, ".update-journal", "attempts", id), { recursive: true }); writeFileSync(handoffEnvPath(h, id), `AGEND_UPDATE_HANDOFF=${NONCE}\n`); };
+
+  it("journal none: the start goes on and a stale handoff.env is removed — durably (its directory fsynced after)", () => {
+    const h = home(); stale(h);
+    const trace: string[] = [];
+    const traced = { ...defaultJournalIo, unlink: (p: string) => { defaultJournalIo.unlink(p); trace.push(`unlink:${p}`); }, fsyncDir: (d: string) => { defaultJournalIo.fsyncDir(d); trace.push(`fsync:${d}`); } };
+    expect(main(["--home", h, "--attempt", ID, "--pre-start"], { ...defaultRecoverDeps(), liveness: LIVE([UPDATER]), io: traced, ...io })).toBe(0);
+    expect(existsSync(handoffEnvPath(h, ID))).toBe(false);
+    expect(trace).toEqual([`unlink:${handoffEnvPath(h, ID)}`, `fsync:${join(h, ".update-journal", "attempts", ID)}`]);
+  });
+
+  it("journal unknown: refused, and the stale file removed", () => {
+    const h = home(); stale(h);
+    mkdirSync(join(h, ".update-journal"), { recursive: true }); writeFileSync(join(h, ".update-journal", "current"), "nonsense\n");
+    expect(pre(h)).toBe(1);
+    expect(existsSync(handoffEnvPath(h, ID))).toBe(false);
+  });
+
+  it("journal closing: the start goes on, the file removed; and with no attempt directory at all, nothing breaks", () => {
+    const h = home();
+    let a = planGeneration(h, advance(h, open(h), "barrier"), "trial", NONCE);
+    applyHandoffEnv(h, { kind: "handoff", attemptId: ID, nonce: NONCE }, ID);
+    a = advance(h, a, "abandoning");
+    a = finish(h, a, { kind: "abandoned" });
+    expect(pre(h)).toBe(0);
+    expect(existsSync(handoffEnvPath(h, ID))).toBe(false);
+    expect(pre(home(), ID)).toBe(0);
+  });
+
+  it("another attempt open than the route names: refused (a handoff can't reach it), the route's file removed", () => {
+    const h = home();
+    const OTHER_ID = newAttemptId(new Date("2026-11-26T07:00:00Z"), "deadbeef");
+    stale(h, OTHER_ID);
+    planGeneration(h, advance(h, open(h), "barrier"), "trial", NONCE);
+    expect(pre(h, OTHER_ID)).toBe(1);
+    expect(existsSync(handoffEnvPath(h, OTHER_ID))).toBe(false);
+    expect(existsSync(handoffEnvPath(h, ID))).toBe(false);
+    expect(pre(h, ID)).toBe(0);                                                                       // the control: its own route
+    expect(readFileSync(handoffEnvPath(h, ID), "utf8")).toBe(`AGEND_UPDATE_HANDOFF=${NONCE}\n`);
+  });
+
+  it("a route argument that isn't an attempt id is a usage error", () => {
+    expect(main(["--home", home(), "--attempt", "../x", "--pre-start"], { ...defaultRecoverDeps(), ...io })).toBe(2);
+  });
+});
+
 describe("M-3770 §6.2: the attempt's owner is its updater or its recorded recovery runner", () => {
+  it("unknown evidence on either side is never outweighed by a live one (Prism #4511)", () => {
+    const h = home();
+    const a = planGeneration(h, advance(h, open(h), "barrier"), "rollback", NONCE);
+    writeRunnerRecord(h, ID, { pid: RUNNER, start: START });
+    const updaterLiveRunnerUnknown = { processStart: (p: number) => (p === UPDATER ? START.processStart : null), exists: (p: number) => p === UPDATER || p === RUNNER };
+    expect(ownerState(h, a, updaterLiveRunnerUnknown)).toBe("unknown");
+    expect(fleetStartGate(h, NONCE, updaterLiveRunnerUnknown)).toMatchObject({ ok: false });
+    expect(claimHandoff(h, ID, NONCE, { pid: 600, start: START }, updaterLiveRunnerUnknown)).toBe(false);
+    writeFileSync(join(h, ".update-journal", "attempts", ID, "runner.json"), "{broken");
+    expect(ownerState(h, a, LIVE([UPDATER]))).toBe("unknown");                                        // live updater, unreadable runner record
+    expect(claimHandoff(h, ID, NONCE, { pid: 600, start: START }, LIVE([UPDATER]))).toBe(false);
+  });
+
   it("live when either lives; unknown when either can't be told or the runner record can't be read; gone only when both are", () => {
     const h = home();
     const a = planGeneration(h, advance(h, open(h), "barrier"), "rollback", NONCE);
@@ -97,6 +160,15 @@ describe("M-3770 §6.2: the attempt's owner is its updater or its recorded recov
   });
 });
 
+describe("M-3770 §6.2: the operator command is pasteable (Prism #4511)", () => {
+  it("each word is shell-quoted: a home with spaces and quotes round-trips through sh", () => {
+    const h = "/tmp/a home/it's \"here\"";
+    const words = spawnSync("/bin/sh", ["-c", `printf '%s\\n' ${operatorCommand(h, ID)}`], { encoding: "utf8" }).stdout.trimEnd().split("\n");
+    expect(words.slice(2)).toEqual(["--home", h, "--attempt", ID, "--run"]);
+    expect(words[0]).toBe(join(h, ".update-journal", "recovery", ID, "node"));
+  });
+});
+
 describe("M-3770 §6.1: the kit", () => {
   let out: string, bundle: string;
   beforeAll(() => {
@@ -124,6 +196,10 @@ describe("M-3770 §6.1: the kit", () => {
     writeFileSync(join(built.dir, "recover.cjs"), "tampered");
     expect(verifyRecoveryKit(h, ID)).toMatchObject({ ok: false, reason: expect.stringMatching(/recover\.cjs doesn't match/) });
     expect(buildRecoveryKit(h, ID, { nodePath: process.execPath, bundlePath: bundle })).toMatchObject({ ok: false });   // never reused
+    for (const body of ["null", "[]", "7"]) {
+      writeFileSync(join(built.dir, "kit.json"), body);
+      expect(verifyRecoveryKit(h, ID)).toMatchObject({ ok: false, reason: expect.stringMatching(/isn't an object/) });   // a failed proof, never a throw
+    }
     const h2 = home();
     expect(buildRecoveryKit(h2, ID, { nodePath: process.execPath, bundlePath: bundle, runsAlone: () => false })).toMatchObject({ ok: false, reason: expect.stringMatching(/doesn't run alone/) });
     expect(existsSync(join(h2, ".update-journal", "recovery", ID, "kit.json"))).toBe(false);
@@ -139,11 +215,11 @@ describe("M-3770 §6.1: the kit", () => {
     a = advance(h, advance(h, a, "stopping"), "snapshotted");
     const built = buildRecoveryKit(h, ID, { nodePath: process.execPath, bundlePath: bundle });
     if (!built.ok) throw new Error(built.reason);
-    expect(run(["--home", h])).toMatchObject({ status: 2 });                                          // usage
-    const refused = run(["--home", h, "--pre-start"]);
+    expect(run(["--home", h, "--pre-start"])).toMatchObject({ status: 2 });                          // usage: no --attempt
+    const refused = run(["--home", h, "--attempt", ID, "--pre-start"]);
     expect(refused).toMatchObject({ status: 1, stderr: expect.stringMatching(/AgEnD is updating \(attempt .*, snapshotted\)/) });
     planGeneration(h, a, "trial", NONCE);
-    expect(run(["--home", h, "--pre-start"])).toMatchObject({ status: 0 });
+    expect(run(["--home", h, "--attempt", ID, "--pre-start"])).toMatchObject({ status: 0 });
     expect(readFileSync(handoffEnvPath(h, ID), "utf8")).toBe(`AGEND_UPDATE_HANDOFF=${NONCE}\n`);
   });
 
@@ -152,7 +228,7 @@ describe("M-3770 §6.1: the kit", () => {
     advance(h, open(h, { pid: 2 ** 22 - 3, start: START }), "barrier");                             // a pid that isn't running
     const built = buildRecoveryKit(h, ID, { nodePath: process.execPath, bundlePath: bundle });
     if (!built.ok) throw new Error(built.reason);
-    const r = spawnSync(join(built.dir, "node"), [join(built.dir, "recover.cjs"), "--home", h, "--pre-start"], { cwd: tmpdir(), env: {}, encoding: "utf8" });
+    const r = spawnSync(join(built.dir, "node"), [join(built.dir, "recover.cjs"), "--home", h, "--attempt", ID, "--pre-start"], { cwd: tmpdir(), env: {}, encoding: "utf8" });
     expect(r).toMatchObject({ status: 1, stderr: expect.stringContaining(operatorCommand(h, ID)) });
   });
 });

@@ -75,6 +75,7 @@ export function verifyRecoveryKit(home: string, attemptId: string): KitResult {
   let manifest: KitManifest;
   try { manifest = JSON.parse(readFileSync(join(dir, KIT_FILE), "utf8")) as KitManifest; }
   catch (err) { return { ok: false, reason: `the kit's manifest can't be read (${(err as Error).message})` }; }
+  if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) return { ok: false, reason: "the kit's manifest isn't an object" };
   if (manifest.schema !== 1 || manifest.attemptId !== attemptId || manifest.home !== home) return { ok: false, reason: "the kit's manifest names another attempt or home" };
   for (const [file, want] of [["node", manifest.node?.sha256], ["recover.cjs", manifest.recover?.sha256]] as const) {
     let got: string;
