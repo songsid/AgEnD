@@ -126,6 +126,12 @@ describe("M-3770 §3.2: expected tuples per stage", () => {
     // A bin link npm left pointing outside the destination: not a partial of this install.
     unlinkSync(join(r.prefix, "bin", "agend")); symlinkSync(join(r.root, "agend.service"), join(r.prefix, "bin", "agend"));
     expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/outside the intent's destination/) });
+    // A DANGLING bin link aimed outside the destination: it resolves to nothing, but its target is still checked.
+    unlinkSync(join(r.prefix, "bin", "agend")); symlinkSync(join(r.root, "nowhere", "agend"), join(r.prefix, "bin", "agend"));
+    expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/nowhere.*outside the intent's destination/) });
+    // Dangling INSIDE the destination (npm removed the launcher mid-install): still a partial of this install.
+    unlinkSync(join(r.prefix, "bin", "agend")); symlinkSync(join(r.pkg, "launcher", "gone"), join(r.prefix, "bin", "agend"));
+    expect(checkStage(a, live(r))).toEqual({ ok: true, found: "partial" });
     unlinkSync(join(r.prefix, "bin", "agend")); symlinkSync(join(r.pkg, "launcher", "agend"), join(r.prefix, "bin", "agend"));
     r.exec.argv = null;                                                                              // the service definition unreadable
     expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/ExecStart/) });
@@ -171,6 +177,14 @@ describe("M-3770 §3.2: the journaled identity", () => {
     expect(() => recordInstallIntent(r.home, a, intentOf(r))).toThrow(/already/);
     a = recordExpectedNew(r.home, a, tupleOf(r));
     expect(() => recordExpectedNew(r.home, a, tupleOf(r))).toThrow(/already/);
+  });
+
+  it("an intent whose bin links aren't the owned ones authorizes nothing", () => {
+    const r = rig();
+    let a = walk(r, opened(r), ["barrier", "stopping", "snapshotted", "installing"]);
+    a = recordInstallIntent(r.home, a, { ...intentOf(r), destination: { packagePath: r.pkg, binLinks: [join(r.root, "elsewhere", "agend")] } });
+    rmSync(join(r.pkg, "dist"), { recursive: true });
+    expect(checkStage(a, live(r))).toMatchObject({ ok: false, to: "manual-recovery", reason: expect.stringMatching(/bin links are not the owned ones/) });
   });
 });
 

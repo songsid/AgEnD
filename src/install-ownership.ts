@@ -14,8 +14,8 @@
  * These live in the attempt record's fields that update-journal.ts keeps opaque; every reader here validates their
  * shape, and a malformed one is "can't be proven" — never a pass. All I/O goes through `OwnershipDeps`.
  */
-import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { join, sep } from "node:path";
+import { lstatSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
 import { substep, type Artifact, type AttemptRecord, type FleetGeneration, type JournalIo, defaultJournalIo, type Stage } from "./update-journal.js";
 
 export const PACKAGE_NAME = "@songsid/agend";
@@ -62,6 +62,8 @@ export interface OwnershipDeps {
   realpath(path: string): string | null;
   /** Does `path` itself exist (a dangling link counts)? */
   lexists(path: string): boolean;
+  /** A symlink's target as an absolute path (resolved against the link's directory, not followed); null if not a link. */
+  linkTarget(path: string): string | null;
   /** The uid owning `path` (followed), or null. */
   ownerUid(path: string): number | null;
   readFile(path: string): string | null;
@@ -82,6 +84,7 @@ export const fsOwnershipDeps = (rest: Pick<OwnershipDeps, "interpreterOf" | "exe
   uid: () => (typeof process.getuid === "function" ? process.getuid() : 0),
   realpath: fsRealpath,
   lexists: path => { try { lstatSync(path); return true; } catch { return false; } },
+  linkTarget: path => { try { return resolve(dirname(path), readlinkSync(path)); } catch { return null; } },
   ownerUid: path => { try { return statSync(path).uid; } catch { return null; } },
   readFile: path => { try { return readFileSync(path, "utf8"); } catch { return null; } },
   platform: process.platform,
@@ -156,7 +159,11 @@ export function readArtifactTuple(ownership: Ownership, deps: OwnershipDeps): Tu
     const real = deps.realpath(link);
     bins[name] = real;
     if (real) paths.push(real);
-    else if (deps.lexists(link)) dangling ??= link;
+    else if (deps.lexists(link)) {
+      dangling ??= link;
+      const target = deps.linkTarget(link);
+      paths.push(target ?? link);                       // a dangling link's own target must stay inside the destination too
+    }
   }
   const entry = deps.realpath(join(ownership.packagePath, "dist", "cli.js"));
   if (entry) paths.push(entry);
@@ -304,6 +311,9 @@ function partialWithinIntent(id: Identity, tuple: TupleRead): StageCheck | null 
   if (!id.intent) return fail("the install changed with no install intent journaled");
   const dest = id.intent.destination;
   if (dest.packagePath !== id.ownership.packagePath) return fail("the install intent's destination is not the owned package path");
+  const owned = BIN_NAMES.map(name => binLinkOf(id.ownership.prefix, name, platformOf(id))).sort();
+  const named = [...dest.binLinks].sort();
+  if (owned.length !== named.length || owned.some((p, i) => p !== named[i])) return fail("the install intent's bin links are not the owned ones");
   const paths = tuple.state === "complete" ? [...Object.values(tuple.tuple.bins).filter((p): p is string => p !== null), tuple.tuple.entry] : tuple.paths;
   const outside = paths.find(p => !inside(p, dest.packagePath));
   if (outside) return fail(`the install reaches ${outside}, outside the intent's destination ${dest.packagePath}`);
@@ -314,6 +324,9 @@ function partialWithinIntent(id: Identity, tuple: TupleRead): StageCheck | null 
   if (!sameArgv(execStart, id.expected.old.execStart)) return fail("the service's ExecStart changed or can't be read");
   return null;
 }
+
+/** The platform an identity's paths were laid out for (npm's layout differs on Windows). */
+const platformOf = (id: Identity): NodeJS.Platform => (id.ownership.packagePath === packagePathOf(id.ownership.prefix, "win32") ? "win32" : "linux");
 
 // ── §3.3: which fleet may be stopped ───────────────────────────────────────────────────────────────────────────
 
