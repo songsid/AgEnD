@@ -127,7 +127,7 @@ describe("M-3770 2.5: the recovery runner resumes a rollback (recover.cjs --run,
     const code = runRecovery(w.home, ID, {
       pid: RUNNER, liveness: base.liveness, io: defaultJournalIo, out: l => out.push(l), err: l => err.push(l),
       lock: { ...base.liveness, newToken: () => "a".repeat(32), now: () => new Date(), log: () => {} },
-      hands: { manager: () => ({ ...base.manager, waitSettled: () => { settled++; return true; } }), waitTakeover: base.waitTakeover, proveWritersGone: () => ({ ok: true }) },
+      hands: { manager: () => ({ ...base.manager, waitSettled: () => { settled++; return true; } }), waitTakeover: base.waitTakeover, proveWritersGone: () => ({ ok: true }), waitHandedBack: done => done() },
     });
     expect(code, err.join("\n")).toBe(0);
     expect(settled).toBe(1);
@@ -145,7 +145,7 @@ describe("M-3770 2.5: the recovery runner resumes a rollback (recover.cjs --run,
     const code = runRecovery(w.home, ID, {
       pid: 7902, liveness: base.liveness, io: defaultJournalIo, out: l => out.push(l), err: l => err.push(l),
       lock: { ...base.liveness, newToken: () => "e".repeat(32), now: () => new Date(), log: () => {} },
-      hands: { manager: () => ({ ...base.manager, start: () => false, waitSettled: () => true }), waitTakeover: base.waitTakeover, proveWritersGone: () => ({ ok: true }) },
+      hands: { manager: () => ({ ...base.manager, start: () => false, waitSettled: () => true }), waitTakeover: base.waitTakeover, proveWritersGone: () => ({ ok: true }), waitHandedBack: done => done() },
     });
     expect(code).toBe(1);
     expect(out.join("\n")).not.toMatch(/is rolled back/);
@@ -162,7 +162,7 @@ describe("M-3770 2.5: the recovery runner resumes a rollback (recover.cjs --run,
     const code = runRecovery(w.home, ID, {
       pid: 7901, liveness: base.liveness, io: defaultJournalIo, out: () => {}, err: l => err.push(l),
       lock: { ...base.liveness, newToken: () => "b".repeat(32), now: () => new Date(), log: () => {} },
-      hands: { manager: () => ({ ...base.manager, waitSettled: () => false }), waitTakeover: base.waitTakeover, proveWritersGone: () => ({ ok: true }) },
+      hands: { manager: () => ({ ...base.manager, waitSettled: () => false }), waitTakeover: base.waitTakeover, proveWritersGone: () => ({ ok: true }), waitHandedBack: done => done() },
     });
     expect(code).toBe(1);
     expect(err.join("\n")).toMatch(/hasn't settled/);
