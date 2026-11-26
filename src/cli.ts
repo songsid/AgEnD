@@ -2045,7 +2045,36 @@ program
       const pidPath = join(DATA_DIR, "fleet.pid");
       try {
         if (isHub) activateService(svcPath, pidPath, { preservePidFile: true });
-        else activateService(svcPath, pidPath);
+        else {
+          // M-3770 S-246: a hand-started fleet hands over to the service — refused before any stop, stopped by its
+          // proof, and started again if the service can't start (service-install-handover.ts).
+          const [{ handOverToService }, stop, { prepareServiceActivation }] = await Promise.all([
+            import("./service-install-handover.js"), import("./detached-fleet-stop.js"), import("./service-installer.js")]);
+          const outcome = await handOverToService({
+            prepare: () => prepareServiceActivation(svcPath),
+            owner: () => stop.detachedFleetOwner(pidPath),
+            stop: owner => stop.stopProvenFleet(owner),
+            clear: owner => stop.clearStoppedPublication(pidPath, owner),
+            activate: () => activateService(svcPath, pidPath, { fleetStopped: true }),
+            restartHandStarted: () => {
+              const start = selfCommand(["fleet", "start"]);
+              spawn(start.command, start.args, { detached: true, stdio: "ignore", env: { ...process.env, [DIRECT_FLEET_START_ENV]: "1" } }).unref();
+            },
+            log: line => console.log(line),
+          });
+          if (!outcome.ok) {
+            if (outcome.stage === "stop" || (outcome.stage === "refused" && outcome.error === undefined)) console.error(`  ✗ ${outcome.message}`);
+            else {
+              console.error(t("install.start_failed", outcome.message));
+              const { installActivationHints } = await import("./install-user-systemd.js");
+              for (const line of installActivationHints(outcome.error ?? new Error(outcome.message), detectPlatform(), svcPath)) console.error(line);
+              if (outcome.stage === "refused") console.error("  Nothing was stopped: the fleet keeps running as it was.");
+              else if (outcome.restarted) console.error("  The fleet was started again as it ran before (not as a service).");
+            }
+            process.exitCode = 1;
+            return;
+          }
+        }
         if (isHub) { const { ht } = await import("./hub/init/text.js"); console.log(ht("service_ok")); }
         else console.log(t("install.running"));
       } catch (err) {

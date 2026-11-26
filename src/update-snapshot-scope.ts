@@ -95,6 +95,7 @@ export const WRITER_INVENTORY: readonly Writer[] = [
   home("fleet-fatal.log", "pre-commit", "fleet fatal handler"),
   home("daemon.log", "pre-commit", "daemon logger"),
   home("update.log", "pre-commit", "agend update"),
+  home("service-install.log", "pre-commit", "web Install as a service (the fleet, whenever an admin presses it; S-246)"),
   home("update-in-progress.json", "pre-commit", "agend update (marker)"),
   home("events.db", "pre-commit", "event log (opened at start)"),
   home("scheduler.db", "pre-commit", "scheduler (opened at start; CLI under the state lease)"),

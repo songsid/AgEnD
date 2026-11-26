@@ -234,7 +234,8 @@ describe("M-3770 1.6: update-fix.ts", () => {
   });
   it("only lingering off offers a fix; Install as a service is words for now", () => {
     expect(fixFor({ id: "P3", ok: false, code: "linger-off" })).toBe("linger");
-    for (const c of [{ id: "P3", ok: true }, { id: "P3", ok: false, code: "not-service" }, { id: "P4", ok: false, code: "no-write" }, null]) expect(fixFor(c as never)).toBeNull();
+    expect(fixFor({ id: "P3", ok: false, code: "not-service" })).toBe("service");           // S-246: Install as a service
+    for (const c of [{ id: "P3", ok: true }, { id: "P3", ok: false, code: "service-unknown" }, { id: "P4", ok: false, code: "no-write" }, null]) expect(fixFor(c as never)).toBeNull();
     expect(fixOffered(summarize(LINGER_OFF as never, 1), "linger")).toBe(true);
     expect(fixOffered(summarize(FIXED as never, 1), "linger")).toBe(false);
     expect(fixOffered(null, "linger")).toBe(false);

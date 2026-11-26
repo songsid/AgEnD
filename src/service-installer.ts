@@ -1144,19 +1144,32 @@ export function startSystemService(): boolean {
   }
 }
 
-export function activateService(plistPath: string, pidPath: string, options: { preservePidFile?: boolean } = {}): void {
+/**
+ * What activation must prove before anything is stopped: on Linux, the user's service manager is up and usable for this
+ * unit (lingering on, so it outlives a sign-out). Throws InstallUserManagerError when it isn't. No manager restart here.
+ */
+export function prepareServiceActivation(plistPath: string): void {
+  if (detectPlatform() !== "linux") return;
+  ensureUserSystemd(undefined, { linger: true });
+  const unit = plistPath.replace(/.*\//, "");
+  const problem = inspectInstallUserManager(unit, { uid: process.getuid?.() ?? 0, env: process.env, exists: existsSync,
+    state: (name, user) => getSystemdServiceState(name, user) });
+  if (problem) throw new InstallUserManagerError(problem);
+}
+
+/**
+ * `fleetStopped`: the caller proved the service manager (prepareServiceActivation) right before it stopped the
+ * hand-started fleet with its proven, guarded stop and cleared its publication (`agend install`, M-3770 S-246): nothing
+ * here proves it again or signals a process. A manager lost since then fails the start below, and the caller starts the
+ * fleet again.
+ */
+export function activateService(plistPath: string, pidPath: string, options: { preservePidFile?: boolean; fleetStopped?: boolean } = {}): void {
   const plat = detectPlatform();
-  if (plat === "linux") {
-    ensureUserSystemd(undefined, { linger: true });
-    const unit = plistPath.replace(/.*\//, "");
-    const problem = inspectInstallUserManager(unit, { uid: process.getuid?.() ?? 0, env: process.env, exists: existsSync,
-      state: (name, user) => getSystemdServiceState(name, user) });
-    // Refuse before stopping a hand-started Fleet or issuing daemon-reload/enable/start. No manager restart here.
-    if (problem) throw new InstallUserManagerError(problem);
-  }
+  // Refuse before stopping a hand-started Fleet or issuing daemon-reload/enable/start.
+  if (!options.fleetStopped) prepareServiceActivation(plistPath);
   // Kill manually-running fleet if present
   // Hub callers have verified it idle and preserve the old record for the replacement's read-only drain check.
-  if (!options.preservePidFile && existsSync(pidPath)) {
+  if (!options.preservePidFile && !options.fleetStopped && existsSync(pidPath)) {
     const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
     try {
       process.kill(pid, "SIGTERM");

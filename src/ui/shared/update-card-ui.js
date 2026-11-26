@@ -64,6 +64,11 @@ register("updatecard", {
     fixHint: "AgEnD turns it on for you; nothing restarts and your agents keep working. If this computer doesn't allow it, run the command yourself.",
     fixFailed: "AgEnD couldn't turn it on by itself. Run the command above in a terminal on the computer AgEnD runs on.", fixNotNeeded: "That's already fixed.",
     howToFix: "How to fix", serviceHow: "In a terminal on the computer AgEnD runs on, run `agend install` as the same user (no sudo). AgEnD restarts as a service: every agent stops briefly and comes back on its own.",
+    serviceIt: "Install as a service", serviceBusy: "Restarting…", serviceTitle: "Restart AgEnD as a service?",
+    serviceAsk: "AgEnD restarts as a service: every agent stops briefly and comes back on its own.\n\nAfter that, AgEnD can bring itself back after an update.",
+    serviceGo: "Restart as a service", serviceRestarting: "AgEnD is restarting as a service. This page reconnects when it's back.",
+    serviceBack: "AgEnD is back, running as a service.", serviceFailed: "AgEnD couldn't install the service: {0} AgEnD keeps running as before.",
+    serviceStill: "AgEnD isn't running as a service yet. What happened is in service-install.log in the AgEnD folder.",
   },
   "zh-TW": {
     ready: "AgEnD {0} 可以更新了。",
@@ -117,6 +122,11 @@ register("updatecard", {
     fixHint: "AgEnD 會替你開啟；不會重新啟動，Agent 照常工作。若這台電腦不允許，請自己執行上面的指令。",
     fixFailed: "AgEnD 無法自行開啟。請在執行 AgEnD 的那台電腦上，用終端機執行上面的指令。", fixNotNeeded: "這項已經修正了。",
     howToFix: "修正方式", serviceHow: "在執行 AgEnD 的那台電腦上，用同一個使用者在終端機執行 `agend install`（不需要 sudo）。AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。",
+    serviceIt: "安裝成服務", serviceBusy: "重新啟動中…", serviceTitle: "要讓 AgEnD 改以服務方式重新啟動嗎？",
+    serviceAsk: "AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。\n\n之後每次更新完，AgEnD 都能自己重新啟動。",
+    serviceGo: "改以服務方式重新啟動", serviceRestarting: "AgEnD 正在改以服務方式重新啟動，回來後這個頁面會自動重新連線。",
+    serviceBack: "AgEnD 回來了，現在以服務方式執行。", serviceFailed: "AgEnD 無法安裝服務：{0} AgEnD 仍照原本的方式執行。",
+    serviceStill: "AgEnD 還不是以服務方式執行。詳細情形記錄在 AgEnD 資料夾的 service-install.log。",
   },
 });
 const tc = (key, ...a) => t(`updatecard.${key}`, ...a);
@@ -136,23 +146,61 @@ export function checkText(check, version = "") { return checkSentence(check, ver
 export function checkRich(check, version = "") { return richText(checkSentence(check, version)); }
 const richText = (text) => String(text).split("`").map((part, i) => (i % 2 ? html`<code class="uc-cmd">${part}</code>` : part));
 
-/** M-3770 1.6: the fix a failing check offers here (the server's update-fix.ts `fixFor`): lingering off → "linger". */
+/**
+ * M-3770 1.6: the fix a failing check offers here (the server's update-fix.ts `fixFor`): lingering off → "linger";
+ * not a service → "service" (S-246: AgEnD restarts as a service, after the admin confirms).
+ */
 export function fixFor(check) {
-  return check && check.ok === false && check.id === "P3" && check.code === "linger-off" ? "linger" : null;
+  if (!check || check.ok !== false || check.id !== "P3") return null;
+  return check.code === "linger-off" ? "linger" : check.code === "not-service" ? "service" : null;
+}
+/** The body's `confirm` for "service" (update-fix.ts SERVICE_FIX_CONFIRM). */
+const SERVICE_CONFIRM = "restart-as-service";
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const stillNotService = (info) => failedChecks(info && info.preflight).some((c) => c.code === "not-service");
+/**
+ * S-246: the hand-over has begun. Wait for AgEnD to answer again after it was gone (every 3 s, up to 6 minutes), then
+ * have it look again and say whether it is a service now. A fleet that never went away is judged at the end.
+ */
+export async function waitForService(deps, { sleep = pause, tries = 120 } = {}) {
+  let gone = false;
+  for (let i = 0; i < tries; i++) {
+    await sleep(3000);
+    let r = null;
+    try { r = await fetch("/ui/update", { cache: "no-store" }); } catch { r = null; }
+    if (!r || !r.ok) { gone = true; continue; }
+    if (gone) break;
+  }
+  try { await fetch("/ui/update/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); } catch { /* judged on what it has */ }
+  const info = (await deps.refresh()) || deps.getInfo();
+  const still = !info || stillNotService(info);
+  toast(tc(still ? "serviceStill" : "serviceBack"), !still, { detail: true });
+  return { service: !still };
 }
 /**
  * POST /ui/update/fixes: the server runs its pre-flight again, makes the fix if it is still asked for, and answers with the
  * fresh pre-flight (which replaces the store's, so the line and its button go once the check passes).
  */
-export async function fixCheck(fix, check, { refresh, setInfo, getInfo }) {
+export async function fixCheck(fix, check, deps, opts = {}) {
+  const { refresh, setInfo, getInfo } = deps;
   const key = `fix-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   let res = null, out = null;
   try {
-    res = await fetch("/ui/update/fixes", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify({ fix }) });
+    const body = fix === "service" ? { fix, confirm: SERVICE_CONFIRM } : { fix };
+    res = await fetch("/ui/update/fixes", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify(body) });
     try { out = await res.json(); } catch { out = null; }
   } catch { res = null; }
   const info = getInfo();
   if (out && out.preflight && info) setInfo({ ...info, preflight: out.preflight });
+  if (fix === "service") {
+    // 202: the hand-over began. No answer at all: AgEnD stopped before it could answer — the same.
+    if (!res || res.status === 202) {
+      toast(tc("serviceRestarting"), true, { detail: true });
+      return { ok: (await waitForService(deps, opts)).service };
+    }
+    if (res.status === 422) { toast(tc("serviceFailed", (out && out.reason) || ""), false, { detail: true }); return { ok: false }; }
+    if (res.ok) return { ok: (await waitForService(deps, { ...opts, tries: 0 })).service };
+  }
   const user = check && check.detail && check.detail.user ? String(check.detail.user) : "";
   // Shown in full (a phone's toast is otherwise one line, cut): it names the user, and the failure says what to do.
   if (res && res.ok) toast(tc("fixedLinger", user), true, { detail: true });
@@ -162,18 +210,25 @@ export async function fixCheck(fix, check, { refresh, setInfo, getInfo }) {
   return { ok: !!(res && res.ok), refused: !!(res && res.status === 422) };
 }
 /**
- * One check that did not pass: its sentence, and its fix — a button where AgEnD can make it, with a line saying what it
- * does, else how to (not a service). Once the host refused the fix, the button goes and one line says to run the command.
+ * One check that did not pass: its sentence, and its fix — a button where AgEnD can make it (lingering: with a line saying
+ * what it does; once the host refused it, the button goes and one line says to run the command), and for not a service
+ * also how by hand.
  */
 function CheckItem({ check, version, deps }) {
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState(false);
   const fix = deps ? fixFor(check) : null;
-  const press = async () => { setBusy(true); try { if ((await fixCheck(fix, check, deps)).refused) setRefused(true); } finally { setBusy(false); } };
+  const press = async () => {
+    // S-246: every agent stops briefly — asked first; Cancel sends nothing.
+    if (fix === "service" && !(await confirmDialog({ title: tc("serviceTitle"), message: tc("serviceAsk"), confirmLabel: tc("serviceGo") }))) return;
+    setBusy(true);
+    try { if ((await fixCheck(fix, check, deps)).refused) setRefused(true); } finally { setBusy(false); }
+  };
+  const label = fix === "service" ? tc(busy ? "serviceBusy" : "serviceIt") : tc(busy ? "fixing" : "fixIt");
   return html`<li>${checkRich(check, version)}
     ${fix && refused ? html`<p class="uc-fix-refused" role="status">${tc("fixFailed")}</p>` : null}
-    ${fix && !refused ? html`<div class="uc-fix"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${press}>${busy ? tc("fixing") : tc("fixIt")}</button>
-      <span class="uc-fix-hint muted">${tc("fixHint")}</span></div>` : null}
+    ${fix && !refused ? html`<div class="uc-fix"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${press}>${label}</button>
+      ${fix === "linger" ? html`<span class="uc-fix-hint muted">${tc("fixHint")}</span>` : null}</div>` : null}
     ${check.code === "not-service" ? html`<details class="uc-how"><summary>${tc("howToFix")}</summary><p>${richText(tc("serviceHow"))}</p></details>` : null}
   </li>`;
 }
