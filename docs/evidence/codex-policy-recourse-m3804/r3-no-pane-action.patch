@@ -1,0 +1,4 @@
+--- a/src/fleet-manager.ts
++++ b/src/fleet-manager.ts
+@@ -23213,0 +23214 @@
++      await daemon?.answerRemoteCard?.(identity!, { kind: "option", n: 1 });

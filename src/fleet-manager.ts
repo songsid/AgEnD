@@ -1,3 +1,4 @@
+import { handoffPolicyRecourse, policyHandoffStatus } from "./codex-policy-handoff.js";
 import {requestDeliveryView,requestContextDisplayView} from "./request-context-view.js";
 import {captureRequestHubOutput} from "./request-hub-output.js";
 import {assertRequestContextOperation,requireRequestContextPolicy,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
@@ -1127,7 +1128,7 @@ interface PendingBackendSelect extends BackendMenuPlace {
 const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
 /** #2675: a card a CLI shows in place of its composer (kiro V3's Question / MCP input), posted with its answers. */
 const REMOTE_CARD_CALLBACK_PREFIX = "card-answer:";
-const REMOTE_CARD_CALLBACK_RE = /^card-answer:([0-9a-f]{32}):(opt-\d{1,2}|sub-all|sub-\d{1,2}|back|skip|decline|cancel|text)$/;
+const REMOTE_CARD_CALLBACK_RE = /^card-answer:([0-9a-f]{32}):(opt-\d{1,2}|sub-all|sub-\d{1,2}|back|skip|decline|cancel|text|handoff)$/;
 /** A posted card's buttons stay this long; the card itself waits in the pane for as long as it takes. */
 const REMOTE_CARD_TIMEOUT_MS = 12 * 60 * 60_000;
 /** A reply already taken as a card's answer is remembered this long, so another bot's copy of it is dropped (#2675). */
@@ -20912,6 +20913,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       out.push({
         name, state: p.state ?? undefined,
         interaction: p.interaction ? { kind: p.interaction.kind, owner: wait?.owner ?? null, episode: p.interaction.episode, since: p.interaction.since } : null,
+        policyHandoff: p.interaction?.kind === "policy_recourse" && this.scheduler?.db.liveness ? policyHandoffStatus(this.livenessCards(), this.scheduler.db.liveness, name, this.daemons.get(name)?.currentRemoteCardIdentity?.(), key => this.deliveryOutbox?.isOpen ? this.deliveryOutbox.noticeStateByKey(key) : null) : undefined,
         policyTasks: p.state === "awaiting_input" && p.interaction?.kind === "policy_recourse"
           ? (this.scheduler?.db.listTasks({ assignee: name, status: "claimed" }) ?? []).slice(0, 3)
             .map(card => `${card.code} — ${card.title.replace(/\s+/g, " ").trim().slice(0, 120)}`) : undefined,
@@ -21109,11 +21111,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private needsYouStalls(): import("./needs-you.js").TaskInput[] {
     const db = this.scheduler?.db;
     if (!db) return [];
-    return db.liveness.listOpen().filter((e) => (e.dispatcherKind === "person" || e.needsYou) && e.kind === "quiet").flatMap((e) => {
+    return db.liveness.listOpen().filter((e) => (e.dispatcherKind === "person" || e.needsYou) && (e.kind === "quiet" || !!e.policyHandoff)).flatMap((e) => {
       const card = db.board.findCard(e.cardUuid);
       if (!card || card.status !== "claimed") return [];
       return [{ uuid: card.uuid, code: card.code, title: card.title, status: "stalled" as const, version: card.version,
-        assignee: card.assignee, since: e.since, note: t("liveness.kind_quiet") }];
+        assignee: card.assignee, since: e.since, note: t(e.policyHandoff ? "codex.policy_recourse.handed" : "liveness.kind_quiet") }];
     });
   }
   private needsYouTasks(): import("./needs-you.js").TaskInput[] {
@@ -23134,7 +23136,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...card, title: redactSecrets(card.title), question: redactSecrets(card.question),
       options: card.options.map(o => ({ ...o, title: redactSecrets(o.title), description: o.description === null ? null : redactSecrets(o.description) })),
     } : card;
-    const prompt = remoteCardPrompt(instanceName, shown, this.shownInstanceName(instanceName));
+    const handed = shown.kind === "question" && shown.policyRecourse && this.scheduler?.db.liveness
+      ? policyHandoffStatus(this.livenessCards(), this.scheduler.db.liveness, instanceName, shown.identity, key => this.deliveryOutbox?.isOpen ? this.deliveryOutbox.noticeStateByKey(key) : null) : null;
+    const prompt = remoteCardPrompt(instanceName, shown, this.shownInstanceName(instanceName), !!handed && handed.total > 0 && handed.done === handed.total);
     const nonce = await this.postNonceButtonPrompt({
       prefix: REMOTE_CARD_CALLBACK_PREFIX, alertType: "interactive_prompt", instanceName, ...place,
       message: prompt.message, choices: prompt.choices, webInput: prompt.webInput, ...(prompt.view ? { view: prompt.view } : {}),
@@ -23183,6 +23187,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       undefined, (userId, entry) => this.mayAnswerRemoteCard(userId, entry));
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
+    if (claimed.action === "handoff") {
+      const entry = claimed.entry, daemon = this.daemons.get(entry.instanceName), identity = entry.remoteCard?.identity;
+      const current = () => !!entry.remoteCard?.policyRecourse && entry.lifecycleCurrent?.() === true
+        && entry.remoteCard.ownerAdapterId === this.getInstanceAdapterId(entry.instanceName)
+        && this.instancePresentation(entry.instanceName).state === "awaiting_input"
+        && this.instancePresentation(entry.instanceName).interaction?.kind === "policy_recourse"
+        && daemon?.currentRemoteCardIdentity?.() === identity;
+      let done = false, partial = false;
+      if (identity && this.scheduler?.db.liveness && current()) {
+        const result = handoffPolicyRecourse({ cards: () => this.livenessCards(), ledger: this.scheduler.db.liveness, current,
+          isInstance: name => this.fleetConfig?.instances?.[name] != null || this.isClassicInstance(name),
+          boardOff: name => taskBoardOffIn(this.fleetConfig, name),
+          noticeState: key => this.deliveryOutbox?.isOpen ? this.deliveryOutbox.noticeStateByKey(key) : null,
+          deliver: (target, message, key) => this.admitTaskBoardNotice(target, message, key),
+          withdraw: key => { this.deliveryOutbox?.withdrawWaitingNotices(key, candidate => candidate === key, "replaced by explicit human handoff"); },
+          message: card => t("codex.policy_recourse.handoff_notice", this.shownInstanceName(entry.instanceName), card.code, card.title.replace(/\s+/g, " ").slice(0, 160)),
+          now: Date.now }, entry.instanceName, identity, this.instancePresentation(entry.instanceName).interaction?.since ?? Date.now());
+        done = result.done.length > 0 && result.failed.length === 0;
+        partial = result.done.length > 0 && !done;
+      }
+      const text = t(done ? "codex.policy_recourse.handed" : partial ? "codex.policy_recourse.handoff_partial" : "codex.policy_recourse.handoff_failed");
+      if (!done) this.webPromptClaims.delete(data); // a failed handoff must return the error to the page, not look applied
+      await this.retireNonceButtons(entry, data.messageId, text, data.editClicked);
+      if (this.remoteCardPosts.get(entry.instanceName) === entry.nonce) this.remoteCardPosts.delete(entry.instanceName);
+      daemon?.repostRemoteCard?.(); // re-observe/repost only; never answers, keys or pastes into the pane
+      this.needsYou?.poke();
+      data.ack?.(text);
+      return true;
+    }
     const action = remoteCardAction(claimed.action, this.webPromptTexts.get(data));
     const who = this.webPromptClicks.has(data) ? t("card.someone_on_dashboard") : (data.username ?? data.userId ?? "?");
     await this.answerRemoteCardFor(claimed.entry, action, who, data.messageId, data.editClicked);

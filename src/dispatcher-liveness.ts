@@ -74,6 +74,7 @@ export type StopKind = "gone" | "crashed" | "auth" | "usage" | "error" | "hung" 
 /** Which episode wins when several hold: the most serious first ("will not come back" over "quiet"). */
 const RANK: Record<StopKind, number> = { gone: 8, crashed: 7, auth: 6, usage: 5, error: 4, hung: 3, prompt: 2, quiet: 1 };
 export const livenessRank = (k: StopKind): number => RANK[k] ?? 0;
+const manualPolicyHandoff = (e: LivenessEpisode): boolean => e.kind === "prompt" && e.detail === "codex_policy_recourse" && /^selection:[0-9a-f]{64}$/.test(e.policyHandoff ?? "");
 
 export interface StopVerdict { kind: StopKind; since: number; detail: string }
 
@@ -302,12 +303,13 @@ export class DispatcherLiveness {
   private async sweep(): Promise<void> {
     const d = this.deps, now = (d.now ?? Date.now)(), s = d.settings();
     if (d.plannedRestart() || now - d.startedAt() < LIVENESS_STARTUP_GRACE_MS) return;
-    const cards = s.enabled ? d.claimedCards() : [];
+    const manual = !s.enabled && d.ledger.listOpen().some(manualPolicyHandoff);
+    const cards = s.enabled || manual ? d.claimedCards() : [];
     const live = new Map(cards.map((c) => [c.uuid, c] as const));
     // Episodes whose card is no longer claimed by the same assignee for the same dispatcher end quietly.
     for (const ep of d.ledger.listOpen()) {
       const c = live.get(ep.cardUuid);
-      if (!c || c.assignee !== ep.assignee || (c.dispatcher?.name ?? null) !== ep.dispatcher) this.end(ep, false);
+      if (!c || c.assignee !== ep.assignee || (c.dispatcher?.name ?? null) !== ep.dispatcher || (!s.enabled && !manualPolicyHandoff(ep))) this.end(ep, false);
     }
     const told = new Map<string, Array<{ card: LivenessCard; v: StopVerdict }>>();
     for (const c of cards) {
@@ -317,6 +319,10 @@ export class DispatcherLiveness {
       if (!f) continue;
       const times = { claimedAt: c.claimedAt, updatedAt: c.updatedAt };
       const open = d.ledger.get(c.uuid);
+      // A person's reassignment request is not cancelled by a pane disappearing, a stop, or a restart.
+      // It stays until the card is settled/reassigned (the ownership cleanup above), even with automation off.
+      if (open && manualPolicyHandoff(open)) continue;
+      if (!s.enabled) continue;
       const v = judgeAssignee(f, times, s, now);
       if (open) {
         if (stillStopped(open, f, times)) {

@@ -220,7 +220,11 @@ clamps the limit to 90% of the context window. The
 [turn loop](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/core/src/session/turn.rs)
 can compact again when the threshold is reached; there is no demonstrated “one compaction then rewrite menu” rule.
 Leave model defaults in place; lowering the threshold is a context tradeoff, not a way to pre-answer a policy refusal.
-This fix changes no compaction configuration.
+This fix changes no compaction configuration. The localized picker help derives rewrite counts from the actual options and explains
+that a rewrite narrows the request in a new chat, while Give feedback does not continue work. A primary human-only
+handoff action queues an agent/task policy notice for the dispatcher (or local Needs-you for a person dispatcher),
+without answering the pane or reassigning the card. Durable liveness markers deduplicate repost/restart and the later
+10-minute sweep. A rejected notice is not marked handed off. The original native options remain separately selectable.
 
 Scratch reproduction: install `@openai/codex@0.169.0` into an owned `$AUDIT/codex-0.169.0` npm prefix, then run
 `AUDIT=<owned scratch root> bash scripts/manual/codex-policy-recourse/rig.sh`.

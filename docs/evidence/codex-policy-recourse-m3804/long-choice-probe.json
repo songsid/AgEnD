@@ -1,0 +1,18 @@
+{
+  "controlledNoWrap": {
+    "pageOverflow": false,
+    "buttonOverflow": true,
+    "whiteSpace": "nowrap",
+    "width": 296,
+    "height": 44,
+    "viewport": 390
+  },
+  "final": {
+    "pageOverflow": false,
+    "buttonOverflow": false,
+    "whiteSpace": "normal",
+    "width": 296,
+    "height": 74,
+    "viewport": 390
+  }
+}

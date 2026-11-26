@@ -2362,6 +2362,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .n-age { color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .n-detail, .n-notify-note { color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; white-space: pre-wrap; }
 .n-actions, .n-notify-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-1); }
+/* Keep the native policy choices complete on a phone; their wording is not clipped or translated. */
+.n-policy-recourse .n-actions > button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 /* M-3503: a text button in Needs you lines up with the text above it on every width (a phone already did, below). */
 .n-actions > .btn-ghost { padding-left: 0; padding-right: 0; margin-left: -1px; }
 /* M-3503 (the user): this device's notify setting is not an item waiting — a section of its own under the list, a rule

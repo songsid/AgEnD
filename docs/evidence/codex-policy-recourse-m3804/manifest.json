@@ -1,39 +1,39 @@
 [
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/README.md",
-    "sha256": "1a42c6cded43e39d97406fca112938ecb6358565951d2b14264162238924c586"
+    "sha256": "6f63b93379271121f40b0b7b7ae96140f8cb21adae8ac386830a159d1dfc9e02"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-dark-en.png",
-    "sha256": "a8439c975442df91330ffc5a54c704ff3c902682d737996cfe17c1bc3c8745ea"
+    "sha256": "51800413b5e8845c60db00e0166447f16903ac49e8bccaf34db3fff0a510b742"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-dark-zh-TW.png",
-    "sha256": "9d3621eda7e4e3b269152098340a0b9bdf449f9a2d88941d1a135b2c62531b97"
+    "sha256": "b257535f19f5ed88a732c8703ee4b0af7c10440ca80e5390b23f436a5cd3dbc8"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-light-en.png",
-    "sha256": "2ef8c39bfc2255d1725875ce5536924699cc8687e2520be2f59143b3ba1ce77f"
+    "sha256": "6d415cc960e1cf7b564086e3094cf6fb6260d41dc83d38eb923eafa303e1e3cb"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-light-zh-TW.png",
-    "sha256": "8b6f4fb3ef00de50dd32fa84c3f1c58e27a2283fd6766bf0a7752e506e4aba4a"
+    "sha256": "e410b590a314c2e37f91020017e9952c7bb19a5315dd124492527da76f293d6c"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-phone-dark-en.png",
-    "sha256": "9a5a7bf7379cfdf5d609b034a138cd882918d1f19ec7be959fb4285c37e552e0"
+    "sha256": "5ad847806db084b87294e3bc6fdc3621430a3b92cdca7d1f0e8d0b37bbb94b0b"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-phone-dark-zh-TW.png",
-    "sha256": "77107b891e0699a51b051188fb34724f19e1c1c3bfc35ea16ccf5627ee82eaac"
+    "sha256": "eaa27c4d3a5c3436851c4d0a595bf5df86daca35474b3a1b871b83b745fb493e"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-phone-light-en.png",
-    "sha256": "dc8c9e524153accb8163b995e5e1664a9f727f52aad07cc261dcf6d94210f98f"
+    "sha256": "471232df265dd445d3a71a1873d7f2a6f33c15459ab81a6c38694c0123693366"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-phone-light-zh-TW.png",
-    "sha256": "ac090328d6cb6ba0805b1fee47b0a704830731a5ef1266c753a3716f7794d0f2"
+    "sha256": "ac76e72e9b1d72d45cf7cfa2493bfd9d4d0a7b5d1377f38b97550fa2240d8b74"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/before-desk-dark-en.png",
@@ -69,7 +69,7 @@
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/capture-checks.json",
-    "sha256": "660ffb94f51626c7622cb3f68fa38bc276a80fb927a6081f5a1871da662b0d03"
+    "sha256": "f8ecf931977a1835c5da32e7f81237a758cdee0b98e46fedc9540ff3aa5c996c"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/checks-summary.json",
@@ -82,6 +82,18 @@
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/dispatcher-reason.patch",
     "sha256": "861b74b9077d5c52dffce830aebe9af7761f6505cbf0b8b5b9b440f2391c5af5"
+  },
+  {
+    "path": "docs/evidence/codex-policy-recourse-m3804/handed-desk-light-en.png",
+    "sha256": "e46ae01e78ee2de1d27a7c947e3f03adc3bb217e8b44d6353dea5b81e644cb7d"
+  },
+  {
+    "path": "docs/evidence/codex-policy-recourse-m3804/handed-phone-dark-zh-TW.png",
+    "sha256": "07e479e42a17fc530d7206ba54d37c671307b0097a07507771924e65e622e696"
+  },
+  {
+    "path": "docs/evidence/codex-policy-recourse-m3804/long-choice-probe.json",
+    "sha256": "1892902ec3e9cfde8f21c1b2c48ee0cbc803b81abccc4016ac17564bf6ad7fcb"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/native-request-summary.json",
@@ -104,12 +116,32 @@
     "sha256": "e6e46abfae432e7c98061ec82dcd4e94bc1b79b0a7a41b58a4d08f56ee87d626"
   },
   {
+    "path": "docs/evidence/codex-policy-recourse-m3804/r3-checks-summary.json",
+    "sha256": "240cdcbc1743ae61d83b80e5b315b0030f2f4dc0061b1fa66c8e3432d1b9f960"
+  },
+  {
+    "path": "docs/evidence/codex-policy-recourse-m3804/r3-durable-admission.patch",
+    "sha256": "9be10476ca6795466ddaae09d6a13d2168229fe06de8e5c42b99434629aa0842"
+  },
+  {
+    "path": "docs/evidence/codex-policy-recourse-m3804/r3-no-pane-action.patch",
+    "sha256": "249096a6672203ad86b6ab87eecf73acafd6a9c597437f1e4eabd9525e1af2ad"
+  },
+  {
+    "path": "docs/evidence/codex-policy-recourse-m3804/r3-restart-dedup.patch",
+    "sha256": "a508e41c8c47c84eb979a954520ce9947157d82a7337992b6c4a7f5c4145a77d"
+  },
+  {
+    "path": "docs/evidence/codex-policy-recourse-m3804/r3-reversals.json",
+    "sha256": "3ada33bf2d93a9d65327e1c39340e080bb40732b83a83d31f18e1257dad7575c"
+  },
+  {
     "path": "docs/evidence/codex-policy-recourse-m3804/task-context.patch",
     "sha256": "8a67168144280a3397c8d22870d32b6722c843f17927a566f6ecb89b4b8852b1"
   },
   {
     "path": "scripts/manual/codex-policy-recourse/capture.mts",
-    "sha256": "fd82efd7dfcb21ebbfa1ba08425212d0a388bdddf6db0e9819cdfeb1d60b1d88"
+    "sha256": "c9d209356110a684e7ca84c933514d93e998706f5937c4a6dc52a14d4bad45cc"
   },
   {
     "path": "scripts/manual/codex-policy-recourse/rig.sh",
@@ -117,7 +149,7 @@
   },
   {
     "path": "scripts/manual/codex-version-audit/README.md",
-    "sha256": "bb05f3b50409ee55a838f97b241379c59ada4645cd0b55980dfb954d9dc48739"
+    "sha256": "4cd4b9a06ba09e7584ce78d42bb11d83d049eddc7f76761e7a35477b09a687f1"
   },
   {
     "path": "scripts/manual/codex-version-audit/mock.mjs",
@@ -140,40 +172,64 @@
     "sha256": "6ba132e916e9ce010998a4fcf4483bf76e5a7971821570fff4d46000030a3528"
   },
   {
+    "path": "src/codex-policy-handoff.ts",
+    "sha256": "a7cb4aae34ba66bcad2a55c34b11e943055a954c4544173da7a815f06e00f47d"
+  },
+  {
+    "path": "src/codex-policy-recourse-copy.ts",
+    "sha256": "11cd5c22f9d8972604474f5e53a7831bac6170919834e6260bcf184fa6833485"
+  },
+  {
+    "path": "src/daemon.ts",
+    "sha256": "685e5f240b537b6e332ac0f912a15479e687431f118c49ec079e7c3ec90b6a8c"
+  },
+  {
     "path": "src/dispatcher-liveness.ts",
-    "sha256": "7278be34bee5b99e034ef83a99b6646102771b2c1ad671ca9723f55738b3bcab"
+    "sha256": "781115232f68c039852c2ba31c141926553b9320d60b5ab7ee1a829e039085f2"
   },
   {
     "path": "src/fleet-manager.ts",
-    "sha256": "7ed24a1b752c7eb3ae24e14ebf06fa20596315152c2532ae6221771074778348"
+    "sha256": "498a2d5622cd3e9c7635b1aabbe86896368265d9ea9055dff26294314a907689"
   },
   {
     "path": "src/locale.ts",
-    "sha256": "515f10bda457238b7ddc3e442897a469333787d732a1d557287d08549ce692e0"
+    "sha256": "fb421fc13d28214c8e1f383baf17dd7af0865a52e947da5812359189bcb5ae1c"
   },
   {
     "path": "src/needs-you.ts",
-    "sha256": "7912afc90df8b03c24381f3d6f02c848a9de744050465c378da009acd01ffbbb"
+    "sha256": "65d45df17d21efe16258db8d0c8ddf3decbf101640d091d89d9de4e9d4572079"
   },
   {
     "path": "src/remote-card-prompt.ts",
-    "sha256": "ce519db5546bc57297c0c101fd0d9fbc44640a4536e4f356973558641b88cb84"
+    "sha256": "c3e825714605911c3149aafe69d729b9bcf629b3b705a5112a2c2cb55685b838"
+  },
+  {
+    "path": "src/scheduler/task-liveness.ts",
+    "sha256": "2db0f52f0457db49d4760e6a2a774d5471fd97cb34fc4e76ba04fa23af18b0ff"
   },
   {
     "path": "src/ui/panel-needs.js",
-    "sha256": "e0c3438552f583c27d8079652af0a4a5114301caaebfd6ddfa0034ce59f940df"
+    "sha256": "8b25af33f40449bd56091c61c53bc08be3e1b3399be8c4e6a84830ae6abed566"
   },
   {
     "path": "src/ui/shared/app-i18n.js",
-    "sha256": "6884a9915c60800bff25d05ca930058fc219fd288a33cd1d87bdff8c603eae7a"
+    "sha256": "cba2ca4db6a9d8a6ab5d13d576ead40119962cbbc6b0707e93db8d139f605733"
+  },
+  {
+    "path": "src/ui/shared/app.css",
+    "sha256": "c5f0e1edba80eba2a32c46af7e77588017245a1cca3eebb6847279cabf19c83e"
+  },
+  {
+    "path": "tests/codex-policy-handoff-m3804.test.ts",
+    "sha256": "51762dc85f4202d6c47c0198b3a2e0b4ef09f7fb84b8e9e1e34f48bc4d0ad80f"
   },
   {
     "path": "tests/codex-policy-recourse-m3804.test.ts",
-    "sha256": "be75e1d11e0e61c44ec3b68b356b2d4e0620741264c8b0da45e545019d162bb6"
+    "sha256": "209cfdfbfab620bb1c7ce060bbbef788cdfcd4bbb909319f7ba9ecb1db19a010"
   },
   {
     "path": "tests/dispatcher-liveness-3647.test.ts",
-    "sha256": "f8c66694f839052ed49aa98335cc49b68ab26fcc180804af5292b68de42ee358"
+    "sha256": "5a874ff77f92d5d94d26d4cc5f7b303ca8ad23452df4f97de56e93bce5fab775"
   },
   {
     "path": "tests/fixtures/codex-policy-recourse-m3804/bio-recourse-narrow.pane.txt",

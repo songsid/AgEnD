@@ -1,3 +1,4 @@
+import { policyRecourseChoices } from "./codex-policy-recourse-copy.js";
 import type { ModelSwitch } from "./claude-model-observation.js";
 /**
  * #1386 "Needs you": one list of everything currently waiting on the person, derived — on demand, never stored —
@@ -23,6 +24,9 @@ export interface NeedsYouItem {
   /** Which kind of wait, for the title (localized by the renderer, not here). */
   reason: NeedsYouReason;
   modelSwitch?: ModelSwitch;
+  policyHandoff?: { done: number; total: number };
+  policyOptionCount?: number;
+  policyFeedback?: boolean;
   hostAlert?: import('./host-monitoring-alert-policy.js').HostAlertRecord;
   quiet?: true;
   /** One line, may be "": a prompt's text, an interaction summary, "source → target · kind". */
@@ -139,6 +143,7 @@ export interface InstanceInput {
   interactionSummary?: string | null;
   /** Only code/title metadata from the board, never terminal text or generated rewrites. */
   policyTasks?: string[];
+  policyHandoff?: { done: number; total: number };
   /** The pause marker's reason, for a paused instance; and when it was paused. */
   pauseReason?: string | null;
   /** Process-local login hold, including General/busy agents before a pause completes. */
@@ -263,6 +268,9 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     items.push({
       id: `prompt:${p.nonce}`, type: "prompt", instance: p.instance, reason: p.policyRecourse ? "codex_policy_recourse" : reason,
       ...(p.view ? { view: p.view } : {}),
+      ...(p.policyRecourse ? { policyHandoff: inputs.instances.find(i => i.name === p.instance)?.policyHandoff,
+        policyOptionCount: policyRecourseChoices(p.actions.filter(a => /^opt-/.test(a.id)).map(a => a.label)).count,
+        policyFeedback: policyRecourseChoices(p.actions.filter(a => /^opt-/.test(a.id)).map(a => a.label)).feedback } : {}),
       detail: p.policyRecourse ? (inputs.instances.find(i => i.name === p.instance)?.policyTasks ?? []).slice(0, 3).map(s => oneLine(s).slice(0, 160)).join(" · ") : oneLine(p.text), since: p.createdAt, nonce: p.nonce, actions: p.actions,
       promptAt: { adapterId: p.adapterId, chatId: p.chatId, ...(p.threadId !== undefined ? { threadId: p.threadId } : {}), ...(p.messageId ? { messageId: p.messageId } : {}) },
     });
@@ -286,6 +294,7 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
         items.push({
           id: `awaiting:${inst.name}:${owner ?? "-"}:${episode ?? "-"}`, type: "awaiting_input", instance: inst.name,
           reason: INTERACTION_REASON[inst.interaction.kind ?? ""] ?? "dialog",
+          ...(inst.interaction.kind === "policy_recourse" ? { policyHandoff: inst.policyHandoff } : {}),
           ...(inst.interaction.kind === "kiro_choice" ? { kiroChoice: true as const } : {}),
           detail: inst.interaction.kind === "policy_recourse" ? (inst.policyTasks ?? []).slice(0, 3).map(s => oneLine(s).slice(0, 160)).join(" · ") : inst.interaction.kind === "kiro_choice" ? inst.interactionSummary ?? "" : oneLine(inst.interactionSummary ?? ""), since: inst.interaction.since ?? 0,
         });

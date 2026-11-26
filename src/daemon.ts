@@ -10303,6 +10303,8 @@ export class Daemon extends EventEmitter {
   }
 
   /** #2675: the card's post was used up without answering it (refused, stopped part-way): post it again once it holds still. */
+  currentRemoteCardIdentity(): string | null { return this.remoteCardShown?.posted ? this.remoteCardShown.identity : null; }
+
   repostRemoteCard(): void {
     this.remoteCardShown = null;
   }

@@ -4,6 +4,9 @@ import { CodexPaneDetectors } from "../src/backend/codex.js";
 import { codexPolicyRecourseVisible, codexPolicyRecourseCard, CODEX_POLICY_RECOURSE_TITLE } from "../src/backend/codex-policy-recourse.js";
 import { deriveNeedsYou, type NeedsYouInputs } from "../src/needs-you.js";
 import { judgeAssignee, livenessSettings, stoppedLine } from "../src/dispatcher-liveness.js";
+import Database from "better-sqlite3";
+import { DeliveryOutbox } from "../src/delivery-outbox.js";
+import { LivenessLedger } from "../src/scheduler/task-liveness.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { remoteCardPrompt } from "../src/remote-card-prompt.js";
 import { answerRemoteCard, type RemoteCardKey } from "../src/remote-card-answer.js";
@@ -94,8 +97,8 @@ it("R1 binds every actual choice, not the cursor or a code-owned replacement see
       expect(prompt.message).toContain(locale === "en" ? "Codex's safety check blocked this turn" : "Codex 的安全檢查擋下了這一輪");
       expect(prompt.message).toContain(locale === "en" ? "Pick a suggested rewrite to continue, or hand this work to another agent." : "可以選一個建議的改寫繼續，或把這件工作交給別的 Agent。");
       expect(prompt.message).toContain("Review helper");
-      expect(prompt.choices.map(c => c.webLabel)).toEqual(card.options.map(o => `${o.n}. ${o.title}`));
-      expect(prompt.choices.map(c => c.action)).toEqual(["opt-1", "opt-2", "opt-3", "opt-4"]);
+      expect(prompt.choices.filter(c => /^opt-/.test(c.action)).map(c => c.webLabel)).toEqual(card.options.map(o => `${o.n}. ${o.title}`));
+      expect(prompt.choices.map(c => c.action)).toEqual(["handoff", "opt-1", "opt-2", "opt-3", "opt-4"]);
       expect(prompt.webInput).toBeNull();
     }
   } finally { setLocale("en"); }
@@ -118,8 +121,8 @@ it("R1 actual remote-card post retains full dashboard labels, one policy item, a
     await fm.postRemoteCard("reviewer", card);
     const [prompt] = fm.needsYouPrompts();
     expect(prompt.policyRecourse).toBe(true);
-    expect(prompt.actions[0].label).toBe("1. " + long);
-    expect(adapter.notifyAlert.mock.calls[0]![1].choices[0]!.label.length).toBeLessThanOrEqual(60);
+    expect(prompt.actions.find((a: any) => a.id === "opt-1").label).toBe("1. " + long);
+    expect(adapter.notifyAlert.mock.calls[0]![1].choices[1]!.label.length).toBeLessThanOrEqual(60);
     const all = deriveNeedsYou({ ...inputs({ name: "reviewer", state: "awaiting_input", interaction: { kind: "policy_recourse", since: 1 }, policyTasks: ["M-100 — Review change"] }), prompts: [prompt] });
     expect(all).toHaveLength(1);
     expect(all[0]).toMatchObject({ type: "prompt", reason: "codex_policy_recourse", detail: "M-100 — Review change" });
@@ -153,4 +156,44 @@ it("R1 keeps a native wrapped option as one exact button and one immutable reque
   expect(card.options[0]!.title).toBe("Explain the topic with a continued option label");
   expect(card.options).toHaveLength(4);
   expect(codexPolicyRecourseCard(pane + "\n› Ask Codex to do anything")).toBeNull();
+});
+
+
+it("R3 actual authorized handoff posts a durable notice and marks it without any CLI answer", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "policy-handoff-fleet-")), db = new Database(":memory:");
+  const fm = new FleetManager(dir) as any, ledger = new LivenessLedger(db), outbox = new DeliveryOutbox(join(dir, "outbox.db"));
+  const card = codexPolicyRecourseCard(frames[0]!)!;
+  const answer = vi.fn(), repost = vi.fn();
+  const adapter = { type: "telegram", notifyAlert: vi.fn(async () => ({ messageId: "m", chatId: "g" })), editMessage: vi.fn(async () => {}), editMessageRemoveButtons: vi.fn(async () => {}) };
+  fm.fleetConfig = { defaults: {}, channels: [{ id: "tg", type: "telegram", mode: "topic", group_id: "g", access: { allowed_users: ["alice"] } }], instances: { reviewer: { topic_id: "topic", working_directory: dir }, leader: { working_directory: dir } } };
+  fm.adapter = adapter; fm.worlds.set("tg", { id: "tg", adapter, groupId: "g", channelConfig: fm.fleetConfig.channels[0] });
+  fm.lifecycle.daemons.set("reviewer", { answerRemoteCard: answer, repostRemoteCard: repost, currentRemoteCardIdentity: () => card.identity });
+  fm.instancePresentation = () => ({ state: "awaiting_input", interaction: { kind: "policy_recourse", since: 1 } });
+  fm.livenessCards = () => [{ uuid: "one", code: "M-100", title: "Review change", assignee: "reviewer", dispatcher: { kind: "instance", name: "leader" }, claimedAt: 1, updatedAt: 1 }];
+  fm.scheduler = { db: { liveness: ledger } };
+  fm.deliveryOutbox = outbox;
+  const deliver = vi.fn((_to: string, _message: string, key: string) => { outbox.admitSystemNotice(_to, key, _message, new Date()); return true; });
+  fm.admitTaskBoardNotice = deliver;
+  try {
+    await fm.postRemoteCard("reviewer", card);
+    let [prompt] = fm.needsYouPrompts();
+    expect(prompt.actions[0].id).toBe("handoff");
+    expect((await fm.clickWebPrompt("reviewer", prompt.nonce, "handoff", undefined, false)).status).toBe(403);
+    expect(deliver).not.toHaveBeenCalled();
+    fm.admitTaskBoardNotice = () => false;
+    expect((await fm.clickWebPrompt("reviewer", prompt.nonce, "handoff", undefined, true)).status).toBe(409);
+    expect(ledger.get("one")).toBeNull(); expect(answer).not.toHaveBeenCalled();
+    await fm.postRemoteCard("reviewer", card); [prompt] = fm.needsYouPrompts(); fm.admitTaskBoardNotice = deliver;
+    expect((await fm.clickWebPrompt("reviewer", prompt.nonce, "handoff", undefined, true)).status).toBe(200);
+    expect((await fm.clickWebPrompt("reviewer", prompt.nonce, "handoff", undefined, true)).status).toBe(409);
+    expect(deliver).toHaveBeenCalledOnce(); expect(deliver.mock.calls[0]![0]).toBe("leader");
+    expect(outbox.noticeStateByKey(deliver.mock.calls[0]![2])).toBe("queued");
+    expect(deliver.mock.calls[0]![1]).toMatch(/M-100.*safety check blocked/);
+    expect(answer).not.toHaveBeenCalled(); expect(repost).toHaveBeenCalledTimes(2);
+    expect(ledger.get("one")!.policyHandoff).toBe(card.identity);
+    await fm.postRemoteCard("reviewer", card);
+    expect(fm.needsYouPrompts()[0].actions.some((a: any) => a.id === "handoff")).toBe(false);
+    expect(fm.needsYouPrompts()[0].actions.filter((a: any) => /^opt-/.test(a.id))).toHaveLength(4);
+    expect(deliver).toHaveBeenCalledOnce(); expect(answer).not.toHaveBeenCalled();
+  } finally { fm.retireRemoteCard("reviewer", null, "test closed"); outbox.close(); db.close(); rmSync(dir, { recursive: true, force: true }); }
 });

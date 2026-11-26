@@ -1,0 +1,5 @@
+--- a/src/codex-policy-handoff.ts
++++ b/src/codex-policy-handoff.ts
+@@ -39 +39 @@
+-    if (matching && old.kind === "prompt" && old.detail === "codex_policy_recourse" && old.policyHandoff === identity) {
++    if (false && matching && old.kind === "prompt" && old.detail === "codex_policy_recourse" && old.policyHandoff === identity) {

@@ -348,7 +348,7 @@ function NeedsItem({ item, nowMs, owner, agentName }) {
       </div>
     </div>
   </article>`;
-  return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
+  return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}${item.reason === "codex_policy_recourse" ? " n-policy-recourse" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
       <div class="n-title"><strong>${item.type==='host'?hostAlertName(item.hostAlert):itemReason(item)}</strong><span class="n-age">${item.type==='host'?hostAlertText('started')+age(item.since, nowMs):age(item.since, nowMs)}</span></div>
@@ -359,8 +359,14 @@ function NeedsItem({ item, nowMs, owner, agentName }) {
       ${item.type === "hub" && item.hubProposal ? html`<p class="n-detail">${item.hubProposal.action}</p><pre>${item.hubProposal.arguments}</pre><p class="n-detail">${item.hubProposal.consequences}</p>` : null}
       ${item.generalLocation ? html`<${GeneralLocation} name=${item.instance} attentionOnly=${true} />` : null}
       ${item.type==='host'?(item.hostAlert?html`<${HostAlertActions} record=${item.hostAlert}/>`:html`<a class="btn btn-sm" href=${fleetPath('host-health')}>${hostAlertText('open')}</a>`):null}
+      ${item.reason === "codex_policy_recourse" ? html`
+        ${item.policyOptionCount ? html`<p class="n-detail">${t("app.needs_policy_recourse_explain", item.policyOptionCount > 1 ? `1–${item.policyOptionCount}` : "1")}${item.policyFeedback ? " " + t("app.needs_policy_recourse_feedback") : ""}</p>` : null}
+        ${item.policyHandoff?.done ? html`<p class="n-detail" role="status">${t("app.needs_policy_recourse_handed")}${item.policyHandoff.done < item.policyHandoff.total ? ` (${item.policyHandoff.done}/${item.policyHandoff.total})` : ""}</p>` : null}
+        ${item.type === "prompt" && item.actions?.some(a => a.id === "handoff") && !(item.policyHandoff?.total > 0 && item.policyHandoff.done === item.policyHandoff.total) ? html`<div class="n-actions"><button type="button" class="btn btn-sm btn-primary" disabled=${promptBusy} onClick=${() => answer("handoff")}>${t("app.needs_policy_recourse_handoff")}</button></div>` : null}
+        ${item.actions?.some(a => /^opt-/.test(a.id)) ? html`<p class="muted">${t("app.needs_policy_recourse_suggestions")}</p>` : null}
+      ` : null}
       <div class="n-actions">
-        ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
+        ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input && !(item.reason === "codex_policy_recourse" && a.id === "handoff")).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy && !p.confirming : fallback === "busy") ? tn("answering") : a.label}${a.hint ? html`<span class="btn-hint">${a.hint}</span>` : null}</button>`) : null}
         ${item.type === "hub" && item.hubRetry ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!!hubAck || !!closeAck} onClick=${retryHub}>
             <${Icon} name="restart" size=${14} />${hubAck === "busy" ? tn("hubRetrying") : tn("hubRetry")}</button>` : null}

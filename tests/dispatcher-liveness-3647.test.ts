@@ -476,3 +476,26 @@ it("M-3804 policy wait tells the dispatcher once, survives restart, and withdraw
   expect(r.sent()).toHaveLength(0);
   expect(r.ledger.listOpen()).toHaveLength(0);
 });
+
+
+it("M-3804 explicit handoff suppresses the later automatic prompt notice", async () => {
+  const r = rig({ cards: [claimed("M-100", "reviewer")] });
+  r.facts.set("reviewer", { process: "running", prompt: { since: T0, reason: "codex_policy_recourse" } });
+  r.ledger.open({ cardUuid: "uuid-M-100", assignee: "reviewer", dispatcher: "leader", dispatcherKind: "instance", kind: "prompt", since: T0,
+    detail: "codex_policy_recourse", noticeKey: "human-policy-notice", notifiedAt: T0, policyHandoff: `selection:${"a".repeat(64)}` });
+  r.at(T0 + 10 * MIN); await r.tick(); r.at(T0 + 30 * MIN); await r.tick();
+  expect(r.sent()).toHaveLength(0);
+  expect(r.ledger.get("uuid-M-100")!.policyHandoff).toBeTruthy();
+});
+
+
+it("M-3804 disabling automatic liveness preserves an explicit handoff until the card moves on", async () => {
+  const r = rig({ cards: [claimed("M-100", "reviewer")] }); r.enabled = false;
+  r.facts.set("reviewer", { process: "running", prompt: { since: T0, reason: "codex_policy_recourse" } });
+  r.ledger.open({ cardUuid: "uuid-M-100", assignee: "reviewer", dispatcher: "leader", dispatcherKind: "instance", kind: "prompt", since: T0,
+    detail: "codex_policy_recourse", noticeKey: "manual", notifiedAt: T0, policyHandoff: `selection:${"a".repeat(64)}` });
+  r.at(T0 + 60 * MIN); await r.tick(); expect(r.ledger.get("uuid-M-100")!.policyHandoff).toBeTruthy(); expect(r.sent()).toHaveLength(0);
+  r.facts.set("reviewer", { process: "running", execution: { state: "working", since: T0 + 61 * MIN } });
+  r.at(T0 + 61 * MIN); await r.tick(); expect(r.ledger.get("uuid-M-100")!.policyHandoff).toBeTruthy();
+  r.cards.splice(0); r.at(T0 + 62 * MIN); await r.tick(); expect(r.ledger.get("uuid-M-100")).toBeNull(); expect(r.sent()).toHaveLength(0);
+});

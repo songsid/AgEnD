@@ -18,9 +18,9 @@ try {
   for (const stage of (process.env.STAGES ?? "before,after").split(",")) {
     fx.fm.needsYouItems = () => deriveNeedsYou({ prompts: stage === "after" ? fx.fm.needsYouPrompts() : [], instances: [{ name, state: "awaiting_input",
       interaction: { kind: stage === "after" ? "policy_recourse" : "dialog", owner: "fixture", episode: 1, since },
-      interactionSummary: "", policyTasks: ["M-100 — Review the proposed change"],
+      interactionSummary: "", ...(process.env.STATE === "handed" ? { policyHandoff: { done: 1, total: 1 } } : {}), policyTasks: ["M-100 — Review the proposed change"],
     }], deliveries: [], ownerOf: () => undefined });
-    for (const c of matrix("full")) {
+    for (const c of matrix(process.env.MATRIX ?? "full")) {
       setLocale(c.lang);
       if (stage === "after") {
         const pane = readFileSync(new URL("../../../tests/fixtures/codex-policy-recourse-m3804/cyber-recourse.pane.txt", import.meta.url), "utf8");
@@ -41,16 +41,50 @@ try {
         if (stage === "after") {
           if (!text.includes("M-100") || !text.includes("Review helper")) throw Error("task or in-item agent missing");
           const labels = await card.locator("button").allTextContents();
+          const handoff = c.lang === "en" ? "Hand to the dispatcher" : "交給派工的人處理";
+          if (process.env.STATE === "handed") {
+            if (labels.includes(handoff) || !text.includes(c.lang === "en" ? "Handed to the dispatcher" : "已交給派工的人處理")) throw Error("handoff status missing");
+          } else if (labels[0] !== handoff || !await card.locator("button").first().evaluate((el: Element) => el.classList.contains("btn-primary"))) throw Error("primary handoff action missing");
+          if (!text.includes(c.lang === "en" ? "1–3 are rewordings Codex suggests" : "範圍可能變小") || !text.includes(c.lang === "en" ? "doesn't continue the work" : "不會繼續工作")) throw Error("localized choice explanation missing");
           if (!["1. Explain the topic", "2. Describe safe practices", "3. Explain the risks", "4. Give feedback"].every(label => labels.includes(label))) throw Error("CLI choices missing: " + JSON.stringify(labels));
           if (!text.includes(c.lang === "en" ? "Pick a suggested rewrite to continue" : "可以選一個建議的改寫繼續")) throw Error("next step missing");
         }
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
         if (overflow || errors.length) throw Error(JSON.stringify({ overflow, errors }));
-        const file = `${stage}-${caseName(c)}.png`;
+        const file = `${process.env.STATE === "handed" ? "handed" : stage}-${caseName(c)}.png`;
         await page.screenshot({ path: join(out, file), fullPage: false });
         checks.push({ stage, case: caseName(c), file, text, overflow, pageErrors: errors.length });
       } finally { await ctx.close(); fx.fm.retireRemoteCard(name, null, "fixture closed"); }
     }
+  }
+  if (process.env.PROBE_LONG === "1") {
+    setLocale("en");
+    const pane = readFileSync(new URL("../../../tests/fixtures/codex-policy-recourse-m3804/cyber-recourse.pane.txt", import.meta.url), "utf8")
+      .replace("Explain the topic", "Explain the topic and its implications in detail without changing the scope of the existing task");
+    await fx.fm.postRemoteCard(name, codexPolicyRecourseCard(pane)!);
+    const { page, ctx } = await fx.page(matrix("phone-light-en")[0]!, { path: "/ui/needs" });
+    try {
+      fx.fm.emitSseEvent("needs", { items: fx.fm.needsYouItems() });
+      await page.getByText("1. Explain the topic and its implications", { exact: false }).first().waitFor();
+      const readGeometry = () => page.evaluate(() => {
+        const button = [...document.querySelectorAll(".n-policy-recourse button")].find(e => e.textContent?.includes("1. Explain the topic")) as HTMLElement;
+        return { pageOverflow: document.documentElement.scrollWidth > innerWidth + 1, buttonOverflow: button.scrollWidth > button.clientWidth + 1,
+          whiteSpace: getComputedStyle(button).whiteSpace, width: button.getBoundingClientRect().width, height: button.getBoundingClientRect().height, viewport: innerWidth };
+      });
+      // Use the already-loaded same-origin sheet for this temporary control; keep the real CSP intact.
+      const control = await page.evaluate(() => {
+        const sheet = [...document.styleSheets].find(s => s.href && new URL(s.href).origin === location.origin)!;
+        const index = sheet.cssRules.length;
+        sheet.insertRule(".n-policy-recourse .n-actions > button { white-space: nowrap !important; }", index);
+        return { href: sheet.href, index };
+      });
+      const noWrap = await readGeometry();
+      if (!noWrap.pageOverflow && !noWrap.buttonOverflow) throw Error("nowrap control was vacuous");
+      await page.evaluate((c: { href: string; index: number }) => [...document.styleSheets].find(s => s.href === c.href)!.deleteRule(c.index), control);
+      const geometry = await readGeometry();
+      if (geometry.pageOverflow || geometry.buttonOverflow || geometry.whiteSpace !== "normal" || geometry.width > geometry.viewport) throw Error(JSON.stringify(geometry));
+      writeFileSync(join(out, "long-choice-probe.json"), JSON.stringify({ controlledNoWrap: noWrap, final: geometry }, null, 2));
+    } finally { await ctx.close(); fx.fm.retireRemoteCard(name, null, "probe closed"); }
   }
 } finally { await fx.close(); }
 writeFileSync(join(out, "checks.json"), JSON.stringify(checks, null, 2));

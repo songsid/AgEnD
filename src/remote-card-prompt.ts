@@ -1,3 +1,4 @@
+import { policyRecourseChoices } from "./codex-policy-recourse-copy.js";
 /**
  * #2675: how a card a CLI shows in place of its composer is put to a person in the chat — the message, its buttons
  * (platform) and actions (dashboard), and the action a button id stands for. Pure: the fleet posts it and keys the
@@ -33,7 +34,7 @@ function usageCreditsConfirmation(agent: string, u: { model: string; picker: boo
 }
 
 /** The message and buttons for `card`, asked by `instance` (`agent`: the name people know it by, for words that name it). */
-export function remoteCardPrompt(instance: string, card: RemoteCard, agent = instance): RemoteCardPrompt {
+export function remoteCardPrompt(instance: string, card: RemoteCard, agent = instance, handedOff = false): RemoteCardPrompt {
   if (card.kind === "input") {
     return {
       message: [t("card.input_intro", card.server, instance), ...card.rows.map(row => `  ${row}`), t("card.input_hint")].join("\n"),
@@ -57,6 +58,8 @@ export function remoteCardPrompt(instance: string, card: RemoteCard, agent = ins
       webInput: null,
     };
   }
+  const policy = card.policyRecourse ? policyRecourseChoices(card.options.map(o => o.title)) : null;
+  const range = policy && policy.count > 1 ? `1–${policy.count}` : "1";
   const listed = card.options.map(o => {
     const title = `${o.n}. ${o.title}${o.recommended ? ` ${t("card.recommended")}` : ""}`;
     return o.description ? `${title} — ${o.description}` : title;
@@ -68,10 +71,10 @@ export function remoteCardPrompt(instance: string, card: RemoteCard, agent = ins
         ...(card.policyRecourse ? { webLabel: `${o.n}. ${o.title}` } : {}), ...(o.hint ? { hint: o.hint } : {}), ...(o.role ? { role: o.role } : {}), ...(confirmation ? { confirmation } : {}) };
     }) : [];
   return {
-    message: [...(card.policyRecourse ? [t("needs.reason.codex_policy_recourse"), t("codex.policy_recourse.next"), t("codex.policy_recourse.agent", agent)] : [t("card.question_intro", instance), card.question]), ...listed,
+    message: [...(card.policyRecourse ? [t("needs.reason.codex_policy_recourse"), t("codex.policy_recourse.next"), t("codex.policy_recourse.agent", agent), ...(handedOff ? [t("codex.policy_recourse.handed")] : []), t("codex.policy_recourse.explain", range) + (policy?.feedback ? " " + t("codex.policy_recourse.feedback") : ""), t("codex.policy_recourse.suggestions")] : [t("card.question_intro", instance), card.question]), ...listed,
       card.humanOnly && card.options.length === 0 ? "" : card.noSkip ? t("card.selection_hint") : card.freeText ? t("card.question_hint_text") : t("card.question_hint")].join("\n"),
     // #2910 D4: a dialog whose Esc is not a skip offers only its own options.
-    choices: [...buttons, ...(card.noSkip ? [] : [{ action: "skip", label: t("card.skip") }])],
+    choices: [...(card.policyRecourse && !handedOff ? [{ action: "handoff", label: t("codex.policy_recourse.handoff") }] : []), ...buttons, ...(card.noSkip ? [] : [{ action: "skip", label: t("card.skip") }])],
     webInput: card.freeText ? { action: "text", label: t("card.answer_in_words") } : null,
     ...(card.usageCreditsPrompt ? { view: { kind: "usage-credits" as const, agent, ...card.usageCreditsPrompt, raw: [card.question, ...card.options.map(o => o.title)].join("\n") } } : {}),
   };
