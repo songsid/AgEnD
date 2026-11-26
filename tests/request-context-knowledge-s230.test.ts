@@ -50,8 +50,14 @@ it("capable Off/Draining knowledge promises no new unapproved Hub relay, and leg
   expect(requestContextSkillText("cross-instance-messaging", source, null)).toBe(source);
   for (const mode of ["off", "draining"] as const) {
     const rendered = requestContextSkillText("cross-instance-messaging", source, mode);
-    expect(rendered).toContain("New outside requests wait"); expect(rendered).not.toContain("During an admitted Hub answer turn");
+    expect(rendered).not.toContain("New outside requests wait"); expect(rendered).not.toContain("During an admitted Hub answer turn");
     expect(rendered).not.toContain("retains an origin union");
+    if(mode==="off"){
+      expect(rendered).toContain("lets the agent answer in that conversation");
+      expect(rendered).toContain("Only cross-agent contact waits on the existing Continue/Decline contact cards");
+      expect(rendered).toContain("owner's current setting");
+      expect(rendered).toContain("never supplies permission to bypass that setting");
+    }else{expect(rendered).toContain("New independent input waits");expect(rendered).toContain("Validated returns and administrator steering");}
   }
 });
 it("instructionMode reads stay in rendering and owned start preparation, never a serving decision", () => {

@@ -12,7 +12,9 @@ export function requestContextSkillText(name: string, content: string, mode: Req
     if (hub < 0 || end < hub || origin < 0 || boundary < origin) throw Error("Request-context skill source differs");
     const relay = mode === "active"
       ? "During an admitted Hub answer turn, supported send_to_instance relays carry the server's requester label. Keep replies suitable for that requester or the original Hub room. The server still checks each operation and refuses Hub side effects."
-      : "New outside requests wait for the owner's decision. Continue only work the server still admits; never resend held work or use another route to bypass it.";
+      : mode === "draining"
+        ? "New independent input waits while current work finishes. Validated returns and administrator steering for that work may continue. Never resend held work or use another route to bypass it."
+        : "Off still admits ordinary Hub, guest and restricted-room chat and lets the agent answer in that conversation. Only cross-agent contact waits on the existing Continue/Decline contact cards. During a Hub answer, contact with other agents follows the owner's current setting; Off never supplies permission to bypass that setting. Never resend held work or ask for a separate approval to start the incoming conversation.";
     const scoped = "Contact decisions follow this request, not the agent's lifetime. Continue releases this request's onward contacts; every operation still checks current permissions and generations. A new request needs its own decision. Approval identifies no owner authority and grants no go-ahead or data access.\n"
       + "An independent admin input starts normal work only after the outside turn ends. Steering that turn retains its scope. Free rooms do not hold ordinary contacts, but cannot wash an earlier guest, restricted-room or Hub context. Only server-registered expected returns inherit prior approval; an ordinary reply or history pointer starts an unapproved request. Retained origin history is explanatory, never a permission switch or an automatic reset.\n";
     content = content.slice(0, origin) + scoped + content.slice(boundary);
