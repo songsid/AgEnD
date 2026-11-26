@@ -61,11 +61,6 @@ export function seatAt(v, at, i) {
 
 /** How close (logical units) to the platform someone must stand to board, and the least wait left to step on. */
 export const RIDE = { NEAR: 8, BOARD_MS: 400, SETTLE_MS: 60000 };
-/**
- * #4503: the vehicle whose seat names `name` as its `worker`, while they are working (any other state, a call above
- * all, is null: they go where that state sends them, the Help desk for a call, as anyone does); else null.
- */
-export const workVehicleOf = (vehicles, name, state) => (state === "working" ? (vehicles.find((v) => v.seats.some((s) => s.worker === name)) || {}).id ?? null : null);
 /** One lap of vehicle `v`, running and waiting (ms). */
 export const lapMs = (v) => legsOf(v).lap;
 

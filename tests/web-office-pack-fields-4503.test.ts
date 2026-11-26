@@ -10,11 +10,15 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as PK from "../src/ui/fleet-office-pack.js";
 // @ts-expect-error — a JS module of the app, with no types
-import { createRiders, workVehicleOf } from "../src/ui/fleet-office-vehicles.js";
+import { createRiders } from "../src/ui/fleet-office-vehicles.js";
 // @ts-expect-error — a JS module of the app, with no types
 import { zonesLayout } from "../src/ui/fleet-office-zones.js";
 import { OfficeActLimiter, OfficeActs } from "../src/web-office-acts.js";
 import { page, type AppPage } from "./helpers/app-harness.js";
+
+// workVehicleOf lives in fleet-office.js (a browser module): loaded once through the app harness.
+let workVehicleOf: (vehicles: any[], name: string, state: string) => string | null;
+beforeAll(async () => { const p = page(); workVehicleOf = (await import("/ui/js/fleet-office.js")).workVehicleOf; p.restore(); });
 
 const FIXTURE = join(process.cwd(), "tests", "fixtures", "office-skin-clinic");
 const MANIFEST = () => JSON.parse(readFileSync(join(FIXTURE, "manifest.json"), "utf8"));

@@ -72,7 +72,7 @@ import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
 import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, pixelSkin, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint, withCharacters } from "./fleet-office-skin.js";
-import { createRiders, facing, seatAt, vehicleAt, workVehicleOf } from "./fleet-office-vehicles.js";
+import { createRiders, facing, seatAt, vehicleAt } from "./fleet-office-vehicles.js";
 import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, routeStaysInArea, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
@@ -500,6 +500,13 @@ export function actLive(a, state, at = Date.now(), seen = null) {
  * (#4415: nothing keeps a caller from the Help desk; the ride resumes when the call is over). Working or a new turn do
  * not end it (it is where they choose to be); clearing it, a new office_set or its end do.
  */
+/**
+ * #4503: the vehicle whose seat names `name` as its `worker`, while they are working (any other state, a call above
+ * all, is null: they go where that state sends them, the Help desk for a call, as anyone does); else null. Here, not in
+ * fleet-office-vehicles.js: a tab opened before an upgrade may keep that module, and a named import it lacks would stop
+ * this one linking (#4505 review). The riders' `waitingFor` is optional for the same reason (`p.waitingFor ?`).
+ */
+export const workVehicleOf = (vehicles, name, state) => (state === "working" ? (vehicles.find((v) => v.seats.some((s) => s.worker === name)) || {}).id ?? null : null);
 export const rideLive = (a, state, at = Date.now()) => !!a && !!a.ride && at < a.until && !ASLEEP.has(state) && !CALLING.has(state);
 /** How far beside the person an agent going to them stands. */
 const ACT_BESIDE = 48;
