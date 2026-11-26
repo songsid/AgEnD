@@ -48,17 +48,21 @@ export const requestContextControlText = (key, ...args) => t(`requestContextCont
 export function requestContextBlockerText(blocker) {
   return requestContextControlText(blocker.kind, (blocker.labels || []).join(lang() === "zh-TW" ? "、" : ", "));
 }
-export function RequestContextBlocked({ state, onCheck, onResolve, busy = false }) {
+export function RequestContextBlocked({ state, onCheck, onResolve, busy = false, settingsLink = false }) {
   if (!state || !state.everActivated && !state.attempted) return null;
   return html`<div class="request-context-blocked">
     <p>${requestContextControlText(state.phase === "draining" ? "draining" : state.everActivated ? "recoveryBlocked" : "blocked")}</p>
-    ${(state.blockers || []).map(blocker => html`<div class="request-context-blocker" key=${blocker.id}><p>${requestContextBlockerText(blocker)}</p>
-      ${blocker.action === "inspect" ? html`<a class="btn btn-sm" href="/ui/fleet/authorizations">${requestContextControlText("inspect")}</a>` : null}
-      ${blocker.action === "stop-waiting" ? html`<p>${requestContextControlText("waitBody")}</p>` : null}
-      ${state.canChange && onResolve && blocker.action && blocker.action !== "inspect" ? html`<button type="button" class=${`btn btn-sm ${blocker.action === "stop-work" ? "btn-danger" : ""}`} disabled=${busy}
-        onClick=${() => onResolve(blocker)}>${requestContextControlText(blocker.action)}</button>` : null}</div>`)}
+    ${(state.blockers || []).map(blocker => html`<div key=${blocker.id}><p>${requestContextBlockerText(blocker)}</p>
+      ${blocker.action === "stop-waiting" ? html`<p>${requestContextControlText("waitBody")}</p>` : null}</div>`)}
     ${!state.everActivated ? html`<p class="note">${requestContextControlText("previous")}</p>` : null}
-    ${onCheck ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${onCheck}>${requestContextControlText("check")}</button>` : null}
+    <div class="request-context-actions">
+      ${(state.blockers || []).map(blocker => blocker.action === "inspect"
+        ? html`<a key=${blocker.id} class="btn btn-sm" href="/ui/fleet/authorizations">${requestContextControlText("inspect")}</a>`
+        : state.canChange && onResolve && blocker.action ? html`<button key=${blocker.id} type="button" class=${`btn btn-sm ${blocker.action === "stop-work" ? "btn-danger" : ""}`} disabled=${busy}
+          title=${requestContextBlockerText(blocker)} onClick=${() => onResolve(blocker)}>${requestContextControlText(blocker.action)}</button>` : null)}
+      ${onCheck ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${onCheck}>${requestContextControlText("check")}</button>` : null}
+      ${settingsLink ? html`<a class="btn btn-sm" href="/settings/access#request-context">${requestContextControlText("open")}</a>` : null}
+    </div>
   </div>`;
 }
 /** Passive Needs-you payload, from the same owner status as Settings. No background GET or timer. */
@@ -79,10 +83,10 @@ export function RequestContextNeed({ item }) {
     finally { writing.current = false; if (lease.current()) setBusy(false); }
   };
   return html`<article class="card request-context-need"><h3>${requestContextControlText("title")}</h3>
-    <${RequestContextBlocked} state=${state} busy=${busy || failed} onCheck=${() => change()} onResolve=${state?.canChange ? change : null} />
+    <${RequestContextBlocked} state=${state} settingsLink=${true} busy=${busy || failed} onCheck=${() => change()} onResolve=${state?.canChange ? change : null} />
     ${state && !state.canChange ? html`<${AuthorizeChip} />` : null}
     ${failed ? html`<p class="notice warn" role="alert">${requestContextControlText("failed")}</p>` : null}
-    <a class="btn btn-sm" href="/settings/access#request-context">${requestContextControlText("open")}</a></article>`;
+    </article>`;
 }
 async function confirmStopWork() { return confirmDialog({ title: requestContextControlText("stopTitle"), message: requestContextControlText("stopBody"), confirmLabel: requestContextControlText("stop-work"), danger: true }); }
 export function RequestContextSettings() {

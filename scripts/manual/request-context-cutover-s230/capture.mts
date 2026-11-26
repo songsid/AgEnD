@@ -66,6 +66,7 @@ try {
         check(`${tag}: concrete blocker`, ["legacy", "update"].includes(kind) || text.includes(kind === "peers" ? "Demo Windows computer" : "Demo worker"));
         check(`${tag}: no invented raw code`, !text.includes("request_context"));
         check(`${tag}: inline recheck`, await page.locator(".request-context-blocked button").last().isVisible());
+        if (variant.device === "desk") { const boxes = await page.locator(".request-context-actions > *").evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().top)); check(`${tag}: desktop actions share a row`, Math.max(...boxes) - Math.min(...boxes) < 2); }
         check(`${tag}: previous rules only before activation`, text.includes(dictionary.previous) === !view.everActivated);
         if (state === "stop-work-confirm") { const before = writes; await page.locator(".request-context-blocked").getByRole("button").first().click(); await page.getByRole("dialog").waitFor(); check(`${tag}: no destructive write before confirmation`, writes === before); }
       } else {
@@ -94,6 +95,8 @@ try {
           }
         }
       }
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(150);
       await page.mouse.move(1, 1); await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
       check(`${tag}: no horizontal page overflow`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       const file = join(out, `${tag}.png`); await page.screenshot({ path: file });
