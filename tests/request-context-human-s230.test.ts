@@ -188,3 +188,28 @@ it("private browser routes reject invalid or contradictory recognition without c
  const identity={platform:"discord"as const,adapter_id:"fixture",user_id:"demo-person",session_handle:"0123456789abcdef"};
  for(const handle of ["wrong","fedcba9876543210"]){const origin=webHumanOrigin(false,undefined,identity,false,handle);expect(admittedHumanWebIngress(origin)).toBeNull();expect(origin).toEqual(webHumanOrigin(false,undefined,identity));}
 });
+
+it("the actual Draining human-control facade passes an admitted old-parent steer and parks a new independent control",async()=>{
+ const f=rig(),{RequestContextPublication}=await import("../src/request-context-installation.js");
+ const id="00000000-0000-4000-8000-000000000001",owner={instance:"worker",incarnation:"agent-incarnation",workGeneration:"work",daemonBootId:"daemon",spawnGeneration:1,launchFenceEpoch:1,deliveryEpoch:1};
+ const context={ref:{version:1 as const,contextId:id,rootContextId:id},rootEvidenceRef:"outside",initiatingActor:{kind:"unknown" as const,reason:"unidentified" as const},ingress:"restricted-room" as const,source:{instance:"worker",incarnation:owner.incarnation},sourceAudience:{kind:"room" as const,ref:id}};
+ f.box.requestContextRecovery.retain(context);
+ const snapshot={token:id,inputId:"original",context,owner,wireSha256:"0".repeat(64)};
+ let active=true,state={revision:1,epoch:"epoch",owner:"fleet",mode:"active" as "active"|"draining"};
+ const publication=new RequestContextPublication({owner:"fleet",current:()=>true},true),ports={};publication.publish(state,ports,publication.fence(),()=>true,()=>state,()=>true);
+ state={...state,mode:"draining",revision:2};publication.publish(state,ports,publication.fence(),()=>true,()=>state,()=>true,root=>root===id);
+ const daemon={requestContextTurnSnapshot:()=>active?snapshot:null,requestContextTurnCurrent:()=>active,captureRequestContextOwner:()=>owner},send=vi.fn((_payload:any)=>true);
+ const m:any=Object.assign(Object.create(FleetManager.prototype),{deliveryOutbox:f.box,managerBootId:"boot",ensureDeliveryOutbox:()=>{},requestContextBoot:{publication},requestContextAdmission:publication.admission,
+  requestContextPolicy:{installedMode:()=>"draining"},lifecycle:{daemons:new Map([["worker",daemon]])},instanceIpcClients:new Map([["worker",{connected:true,send}]]),
+  adapters:new Map([["fixture",{id:"fixture",type:"discord"}]]),worlds:new Map(),fleetConfig:{instances:{}},contactRoom:()=>null,contactGeneration:()=>owner.incarnation,
+  contactAdapter:()=>({id:"fixture",type:"discord"}),contactAdminOf:()=>true,requestContextNativeAdmissionCurrent:()=>true,humanReceiptOwner:()=>"physical-owner",
+  bindHumanReceiptPayload:(_instance:string,payload:unknown)=>payload,refuseHubPane:()=>false,holdPaneSend:()=>false,scheduleDeliveryOutboxPump:vi.fn()});
+ m.requestContextHumanAdmission=m.makeRequestContextHumanAdmission();
+ expect(m.sendHumanControl("worker",{type:"steer",content:"synthetic finish instruction"},f.native,"synthetic finish instruction")).toBe(true);
+ expect(send).toHaveBeenCalledTimes(1);expect(f.box.listPending()).toHaveLength(0);
+ const receiptId=send.mock.calls[0]![0].meta.human_receipt_id;
+ expect(f.box.requestContextHumans.read(receiptId)?.steer?.parentContextId).toBe(id);
+ active=false;
+ expect(m.sendHumanControl("worker",{type:"steer",content:"synthetic new independent work"},f.native,"synthetic new independent work")).toBe(true);
+ expect(send).toHaveBeenCalledTimes(1);expect(f.box.listPending()).toHaveLength(1);
+});

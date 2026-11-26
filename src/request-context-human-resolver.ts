@@ -34,14 +34,11 @@ export function makeRequestHumanInputResolver(box:DeliveryOutbox,ports:RequestHu
     ||captured.context.source.instance!==owner.instance||captured.context.source.incarnation!==owner.incarnation
     ||!ports.admitted(captured.context))throw Error("Human request input is unavailable");
   let context=captured.context,proof:RequestContextInputProof={kind:"independent"};
-  // Only an explicit current administrator steer/side-question can join the active turn. Recognition is
-  // not authority: its request inherits the active provenance, including Hub/guest scope and audience.
-  if(["steer","btw"].includes(receipt.input_kind)&&context.ingress!=="guest"&&context.ingress!=="hub"
-    &&context.initiatingActor.kind==="person"&&context.initiatingActor.platform!=="hub"){
-   const active=ports.active();
-   if(active&&requestContextDigest(active.owner)===requestContextDigest(owner)&&ports.canManage(context.initiatingActor)){
-    proof={kind:"admin-steer",activeToken:active.token,actor:context.initiatingActor};context=active.context;
-   }
+  // A steer joins the parent captured with its own receipt, never whichever turn is active later.
+  if(captured.steer){
+   const mapped=captured.steer,parent=box.requestContext(mapped.parentContextId);
+   if(!parent||mapped.workGeneration!==owner.workGeneration||requestContextDigest(parent)!==mapped.parentSha256||!ports.canManage(mapped.actor))throw Error("Human request input steer is no longer permitted");
+   context=parent;proof={kind:"admin-steer",parentContextId:mapped.parentContextId,actor:mapped.actor};
   }
   current();
   if(receipt.owner_key!==ports.humanOwner()||!ports.admitted(captured.context))throw Error("Human request input owner changed");

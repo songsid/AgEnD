@@ -19,7 +19,7 @@ function rig(){
  turns=new RequestContextLocalTurns(box.requestContextRecovery.ports("worker",(id,wire,actual)=>fixtures.get(id)??resolver.prepare(id,wire,actual),()=>admin));
  const receipt=(kind="fleet_inbound",guest=false,compact=true,body="[user:Owner@web:v#operator] quoted text")=>{
   const origin=guest?webHumanOrigin(false,undefined,{platform:"telegram",adapter_id:"fixture",user_id:"demo-person",session_handle:"0123456789abcdef"},true):nativeHumanOrigin("telegram","fixture","demo-person","Person",false,"message")!;
-  const captured=box.createHumanReceiptWithRequestContext({targetInstance:"worker",originalBody:body,origin,inputKind:kind,managerBootId:"manager"},{incarnation:owner.incarnation,room:null,web:guest?admittedHumanWebIngress(origin):null,route:{kind:guest?"web":"instance"},platform:()=>"telegram"});
+  const captured=box.createHumanReceiptWithRequestContext({targetInstance:"worker",originalBody:body,origin,inputKind:kind,managerBootId:"manager"},{incarnation:owner.incarnation,room:null,web:guest?admittedHumanWebIngress(origin):null,route:{kind:guest?"web":"instance"},platform:()=>"telegram",...(turns.current(owner)?{steer:{parent:turns.current(owner)!,current:()=>current,canManage:()=>admin}}:{})});
   let wire=formatHumanInboundMessage(captured.receipt.original_body,{source:guest?"web":"telegram",user:"Person",user_id:"demo-person",verification_id:captured.receipt.message_id},"mcp",{dialect:compact?"compact":"legacy"});if(kind==="steer")wire=steerInboundEnvelope(wire);
   const row=box.bindHumanReceipt(captured.receipt.receipt_id,"worker",humanOwner!,wire,"manager");return {...captured,row,wire,hash:humanBodyHash(wire),inputId:`human:${row.message_id}`};
  };
@@ -43,7 +43,7 @@ it("an explicit current admin steer inherits the active outside context, never i
 });
 it.each(["guest","demoted"] as const)("%s cannot borrow the admin-steer join",kind=>{
  const f=rig(),old=f.outside(),r=f.receipt("steer",kind==="guest");if(kind==="demoted")f.admin(false);
- expect(()=>f.turns.beforeWrite(r.inputId,r.hash,f.owner())).toThrow(RequestContextInputDeferred);expect(f.turns.current(f.owner())).toEqual(old);
+ expect(()=>f.turns.beforeWrite(r.inputId,r.hash,f.owner())).toThrow();expect(f.turns.current(f.owner())).toEqual(old);
 });
 it.each(["wire","runtime","receipt-owner","access","installation"] as const)("a stale %s refuses at the actual C input resolver",kind=>{
  const f=rig(),r=f.receipt(),owner=f.owner();if(kind==="runtime")f.replaceOwner();if(kind==="receipt-owner")f.humanOwner("replacement");if(kind==="access")f.admitted(false);if(kind==="installation")f.current(false);
@@ -71,4 +71,33 @@ it("a new live incarnation cannot adopt an older receipt's captured root",()=>{
 });
 it("a raw prefix is not a positive human root even when the recorded input kind is ordinary",()=>{
  const f=rig(),r=f.receipt("fleet_inbound",false,true,"/raw synthetic bytes");expect(()=>f.resolver.prepare(r.inputId,r.hash,f.owner())).toThrow("Human request input is unavailable");
+});
+
+it("a queued admin steer keeps its admitted outside parent after that turn ends, never the latest turn",()=>{
+ const f=rig(),original=f.outside(),r=f.receipt("steer");
+ expect(f.box.requestContextHumans.read(r.row.receipt_id)?.steer?.parentContextId).toBe(original.context.ref.contextId);
+ f.turns.ended(original,f.owner());const other=f.outside();
+ expect(()=>f.turns.beforeWrite(r.inputId,r.hash,f.owner())).toThrow(RequestContextInputDeferred);
+ expect(f.turns.current(f.owner())).toEqual(other);
+ f.turns.ended(other,f.owner());const resumed=f.turns.beforeWrite(r.inputId,r.hash,f.owner());
+ expect(resumed.context).toEqual(original.context);expect(resumed.context.ref.rootContextId).not.toBe(r.context.ref.rootContextId);
+});
+it("a steer admitted without a parent cannot borrow an outside turn which arrived later",()=>{
+ const f=rig(),r=f.receipt("steer"),outside=f.outside();
+ expect(f.box.requestContextHumans.read(r.row.receipt_id)?.steer).toBeUndefined();
+ expect(()=>f.turns.beforeWrite(r.inputId,r.hash,f.owner())).toThrow(RequestContextInputDeferred);
+ expect(f.turns.current(f.owner())).toEqual(outside);
+});
+it("a mapped steer loses privileged continuation when its administrator role is revoked, even after the original turn ended",()=>{
+ const f=rig(),original=f.outside(),r=f.receipt("steer");f.turns.ended(original,f.owner());f.admin(false);
+ expect(()=>f.turns.beforeWrite(r.inputId,r.hash,f.owner())).toThrow(/steer/);expect(f.turns.current(f.owner())).toBeNull();
+});
+
+it("pending steer mappings protect their parent; terminal mappings retire with it without stranding the receipt root",()=>{
+ const f=rig(),original=f.outside(),r=f.receipt("steer");f.turns.ended(original,f.owner());f.box.requestContextRecovery.save("worker",null);
+ expect(()=>(f.box as any).retireRequestContextRoot(original.context.ref.rootContextId,()=>true)).toThrow(/human input/);
+ (f.box as any).db.prepare("UPDATE human_delivery_receipts SET state='delivered' WHERE receipt_id=?").run(r.row.receipt_id);
+ expect((f.box as any).retireRequestContextRoot(original.context.ref.rootContextId,()=>true)).toBe(0);
+ expect(f.box.requestContextHumans.read(r.row.receipt_id)).toBeNull();
+ expect(()=>(f.box as any).retireRequestContextRoot(r.context.ref.rootContextId,()=>true)).not.toThrow();
 });

@@ -2356,7 +2356,7 @@ export class DeliveryOutbox extends EventEmitter {
         this.db.prepare("DELETE FROM request_context_contacts_v1 WHERE root_id=?").run(root);
         for (const ticket of tickets) this.db.prepare("DELETE FROM contact_auth_tickets WHERE id=?").run(ticket.id);
       }
-      if(hasTable(this.db,"request_context_human_inputs_v1"))this.db.prepare("DELETE FROM request_context_human_inputs_v1 WHERE root_id=?").run(root);
+      if(hasTable(this.db,"request_context_human_inputs_v1"))this.db.prepare("DELETE FROM request_context_human_inputs_v1 WHERE root_id=? OR json_extract(image_json,'$.steer.rootContextId')=?").run(root,root);
       if(hasTable(this.db,REQUEST_CONTEXT_RETURNS_TABLE)){
         this.requestContextReturns.closeNonDelivery(root);
         if(requestContextReturnBlockers(this.db,root).length)throw Error("request-context root has expected return");

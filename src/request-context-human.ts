@@ -2,15 +2,20 @@
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { getHumanReceipt, humanBodyHash, isWebSessionIdentity, type HumanOrigin } from "./human-delivery-receipts.js";
-import { RequestContextV1Schema, type RequestContextV1 } from "./request-context-protocol.js";
+import { RequestContextV1Schema, RequestContextActorV1Schema, type RequestContextActorV1, type RequestContextV1 } from "./request-context-protocol.js";
 import { RequestContextStore, requestContextDigest, requestContextJson } from "./request-context-store.js";
 const TABLE="request_context_human_inputs_v1";
+const steerSchema=z.strictObject({parentContextId:z.uuid(),rootContextId:z.uuid(),parentSha256:z.string().regex(/^[a-f0-9]{64}$/),workGeneration:z.string().min(1).max(256),actor:RequestContextActorV1Schema});
+export type RequestHumanSteer=Readonly<z.infer<typeof steerSchema>>;
+type CapturedHuman=Readonly<{context:RequestContextV1;route:RequestHumanRoute;steer?:RequestHumanSteer}>;
 const routeSchema=z.strictObject({kind:z.enum(["room","web","instance"]),adapterId:z.string().max(256).optional(),chatId:z.string().max(256).optional(),threadId:z.string().max(256).optional(),messageId:z.string().max(256).optional(),sessionHandle:z.string().regex(/^[a-f0-9]{16}$/).optional()});
 const classicSchema=z.strictObject({adapterId:z.string().min(1).max(256),roomId:z.string().min(1).max(256),kind:z.enum(["guild","group","user"]),id:z.string().min(1).max(256),restrictedAtAdmission:z.boolean(),path:z.literal("registered-room")});
 export type RequestHumanClassicBasis=Readonly<z.infer<typeof classicSchema>>;
 export type RequestHumanRoute=Readonly<z.infer<typeof routeSchema>>;
 export interface RequestHumanAdmissionFacts {
  readonly incarnation:string;
+ /** Exact C parent captured at receipt admission. Never supplied by a body, history pointer or later lookup. */
+ readonly steer?:{parent:import("./request-context-turns.js").RequestContextTurnSnapshot;current():boolean;canManage(actor:RequestContextActorV1):boolean};
  /** Actual accepted room policy, not a field from the incoming body or agent metadata. Null is ordinary Fleet ingress. */
  readonly room:Readonly<{restricted:boolean}>|null;
  /** Required for web input, captured from the admitted SessionRecord by its producer. */
@@ -30,19 +35,26 @@ function evidence(row:NonNullable<ReturnType<typeof getHumanReceipt>>):string {
 }
 export class RequestHumanInputStore {
  constructor(private readonly db:Database.Database,private readonly writable:()=>void){}
- read(receiptId:string):Readonly<{context:RequestContextV1;route:RequestHumanRoute}>|null {
+ read(receiptId:string):CapturedHuman|null {
   z.uuid().parse(receiptId);
   if(!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(TABLE))return null;
   const saved=this.db.prepare(`SELECT root_id,image_json,image_sha256 FROM ${TABLE} WHERE receipt_id=?`).get(receiptId) as {root_id:string;image_json:string;image_sha256:string}|undefined;
   if(!saved)return null;
-  const receipt=getHumanReceipt(this.db,receiptId),image=z.strictObject({receiptEvidence:z.string(),context:RequestContextV1Schema,route:routeSchema,classic:classicSchema.nullable()}).parse(JSON.parse(saved.image_json));
+  const receipt=getHumanReceipt(this.db,receiptId),image=z.strictObject({receiptEvidence:z.string(),context:RequestContextV1Schema,route:routeSchema,classic:classicSchema.nullable(),steer:steerSchema.optional()}).parse(JSON.parse(saved.image_json));
   const retained=new RequestContextStore(this.db).context(image.context.ref.contextId);
   if(saved.root_id!==image.context.ref.rootContextId||!receipt||evidence(receipt)!==image.receiptEvidence||humanBodyHash(receipt.original_body)!==receipt.original_sha256
     ||requestContextDigest(image)!==saved.image_sha256||!retained||requestContextJson(retained)!==requestContextJson(image.context)
     ||image.context.rootEvidenceRef!==`human:${receipt.message_id}`||image.context.ref.contextId!==requestHumanContextId(receiptId)
     ||image.context.source.instance!==receipt.target_instance||image.context.sourceAudience.ref!==requestHumanContextId(receiptId,"audience")
     ||image.context.sourceAudience.kind!==image.route.kind)throw Error("Accepted human input evidence is unavailable");
-  return Object.freeze({context:retained,route:Object.freeze(image.route)});
+  if(image.steer){
+    const parent=new RequestContextStore(this.db).context(image.steer.parentContextId);
+    if(!parent||parent.ref.rootContextId!==image.steer.rootContextId||requestContextDigest(parent)!==image.steer.parentSha256
+      ||parent.source.instance!==retained.source.instance||parent.source.incarnation!==retained.source.incarnation
+      ||requestContextDigest(image.steer.actor)!==requestContextDigest(retained.initiatingActor)||!["steer","btw"].includes(receipt.input_kind)
+      ||retained.ingress==="guest"||retained.ingress==="hub")throw Error("Accepted steer evidence is unavailable");
+  }
+  return Object.freeze({context:retained,route:Object.freeze(image.route),...(image.steer?{steer:Object.freeze(image.steer)}:{})});
  }
  /** Historical SDK basis; like read(), this is evidence, never current membership or an active lease. */
  classicBasis(receiptId:string):RequestHumanClassicBasis|null {
@@ -51,7 +63,7 @@ export class RequestHumanInputStore {
   const classic=JSON.parse(row.image_json).classic;return classic===null?null:Object.freeze(classicSchema.parse(classic));
  }
  /** The owning outbox wraps receipt creation and this capture in one transaction. */
- record(receiptId:string,facts:RequestHumanAdmissionFacts):Readonly<{context:RequestContextV1;route:RequestHumanRoute}> {
+ record(receiptId:string,facts:RequestHumanAdmissionFacts):CapturedHuman {
   this.writable();
   return this.db.transaction(()=>{
    const receipt=getHumanReceipt(this.db,receiptId);if(!receipt)throw Error("Accepted human receipt is unavailable");
@@ -71,7 +83,15 @@ export class RequestHumanInputStore {
    const ingress:RequestContextV1["ingress"]=(facts.web?.guest||authority?.kind==="web-guest")?"guest":actor.kind==="unknown"?"restricted-room":facts.room?facts.room.restricted?"restricted-room":"free-room":"owner";
    const id=requestHumanContextId(receiptId),context=RequestContextV1Schema.parse({ref:{version:1,contextId:id,rootContextId:id},rootEvidenceRef:`human:${receipt.message_id}`,initiatingActor:actor,ingress,
     source:{instance:receipt.target_instance,incarnation:facts.incarnation},sourceAudience:{kind:route.kind,ref:requestHumanContextId(receiptId,"audience")}});
-   const image={receiptEvidence:evidence(receipt),context,route,classic},previous=this.read(receiptId);
+   let steer:RequestHumanSteer|undefined;
+   if(facts.steer&&["steer","btw"].includes(receipt.input_kind)&&ingress!=="guest"&&actor.kind==="person"&&facts.steer.canManage(actor)){
+    const captured=facts.steer,parent=captured.parent,stored=new RequestContextStore(this.db).context(parent.context.ref.contextId);
+    if(!captured.current()||!stored||requestContextDigest(stored)!==requestContextDigest(parent.context)||parent.owner.instance!==receipt.target_instance
+      ||parent.owner.incarnation!==facts.incarnation||parent.context.source.instance!==receipt.target_instance||parent.context.source.incarnation!==facts.incarnation)throw Error("Steer admission parent changed");
+    steer=steerSchema.parse({parentContextId:stored.ref.contextId,rootContextId:stored.ref.rootContextId,parentSha256:requestContextDigest(stored),workGeneration:parent.owner.workGeneration,actor});
+    if(!captured.current()||!captured.canManage(actor))throw Error("Steer admission parent changed");
+   }
+   const image={receiptEvidence:evidence(receipt),context,route,classic,...(steer?{steer}:{})},previous=this.read(receiptId);
    if(previous){const saved=this.db.prepare(`SELECT image_sha256 FROM ${TABLE} WHERE receipt_id=?`).get(receiptId) as {image_sha256:string};if(saved.image_sha256!==requestContextDigest(image))throw Error("Accepted human input changed");return previous;}
    if(receipt.state!=="queued"||receipt.owner_key!==null||receipt.wire_body!==null||receipt.proof_tag!==null)throw Error("Human ingress must be captured before input");
    new RequestContextStore(this.db).recordContext(context);
@@ -85,7 +105,7 @@ export class RequestHumanInputStore {
 /** An accepted but unproven human input is a durable work reference; an age timer never settles it. */
 export function requestHumanInputBlockers(db:Database.Database,rootId:string):string[]{
  if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(TABLE))return [];
- const rows=db.prepare(`SELECT receipt_id FROM ${TABLE} WHERE root_id=? LIMIT 65`).all(rootId) as Array<{receipt_id:string}>;
+ const rows=db.prepare(`SELECT receipt_id FROM ${TABLE} WHERE root_id=? OR json_extract(image_json,'$.steer.rootContextId')=? LIMIT 65`).all(rootId,rootId) as Array<{receipt_id:string}>;
  const store=new RequestHumanInputStore(db,()=>{throw Error("Read-only human input inspection");});
  return rows.flatMap(row=>{
   const input=store.read(row.receipt_id),receipt=getHumanReceipt(db,row.receipt_id);

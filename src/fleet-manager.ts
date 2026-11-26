@@ -6755,6 +6755,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }catch{return false;}
   }
 
+  /** Only the receipt's original registered C parent may cross the Draining gate. */
+  private requestContextHumanContinuation(instance:string,receiptId:string):RequestContextContinuation|undefined {
+    const boot=this.requestContextBoot,box=this.deliveryOutbox,daemon=this.daemons.get(instance);
+    if(!boot||!box||!daemon)return;
+    const accepted=box.requestContextHumans.read(receiptId),mapped=accepted?.steer,owner=daemon.captureRequestContextOwner();
+    if(!accepted||!mapped||!owner||owner.workGeneration!==mapped.workGeneration)return;
+    const actor=mapped.actor;if(actor.kind!=="person"||actor.platform==="hub")throw Error("Steer continuation actor unavailable");
+    const valid=()=>{try{
+      const live=box.getHumanReceipt(receiptId),actual=daemon.captureRequestContextOwner(),parent=box.requestContext(mapped.parentContextId);
+      const adapter=actor.platform==="host"?"host":this.contactAdapter(instance)?.id;
+      return this.requestContextBoot===boot&&this.deliveryOutbox===box&&this.daemons.get(instance)===daemon&&!this.shuttingDown
+        &&requestContextDigest(actual)===requestContextDigest(owner)&&!!parent&&requestContextDigest(parent)===mapped.parentSha256
+        &&!!live&&live.state==="queued"&&live.target_instance===instance&&live.manager_boot_id===this.managerBootId
+        &&(live.owner_key===null||live.owner_key===this.humanReceiptOwner(instance,daemon))
+        &&!!adapter&&this.contactAdminOf(instance,{platform:actor.platform,adapterId:adapter,userId:actor.userId,label:actor.userId})
+        &&this.requestContextNativeAdmissionCurrent(accepted.context);
+    }catch{return false;}};
+    if(!valid())throw Error("Steer continuation owner changed");
+    return boot.publication.continuation(mapped.rootContextId,valid);
+  }
+
   /** One installed gate host for direct sends and same-card decisions. No lifetime origin or return-release lookup.
    * Currentness belongs to the installation/process, not a browser, transport-readiness poll or old Hub timer.
    */
@@ -10352,14 +10373,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ||row.attemptNo!==Number(delivery[2])||!["delivering","submission_started"].includes(row.state))throw Error("Delivery continuation attempt changed");
         return this.requestContextDeliveryContinuation(row)??undefined;
       }
-      const human=/^human:hmsg-([a-f0-9-]{36})$/.exec(id??"");if(!human)return;
-      const receipt=box.getHumanReceipt(human[1]!),accepted=box.requestContextHumans.read(human[1]!),active=daemon.requestContextTurnSnapshot();
-      if(!receipt||!accepted||!active||!["steer","btw"].includes(receipt.input_kind)||accepted.context.ingress==="guest"||accepted.context.ingress==="hub")return;
-      const valid=()=>{const live=box.getHumanReceipt(human[1]!);return owned()&&daemon.requestContextTurnCurrent(active)&&manage(accepted.context.initiatingActor)
-        &&!!live&&live.owner_key===this.humanReceiptOwner(instance,daemon)&&live.state!=="delivered"
-        &&requestContextDigest(box.requestContextHumans.read(human[1]!))===requestContextDigest(accepted)&&this.requestContextNativeAdmissionCurrent(accepted.context);};
-      if(!valid())return;
-      return publication.continuation(active.context.ref.rootContextId,valid);
+      const human=/^human:hmsg-([a-f0-9-]{36})$/.exec(id??"");
+      return human?this.requestContextHumanContinuation(instance,human[1]!):undefined;
     });
     return Object.freeze({turns,hub,input,current:()=>owned()&&this.daemons.get(instance)===daemon&&daemon.requestContextCallsRequired()});
   }
@@ -10407,8 +10422,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const nativeBasis=admittedNativeHumanIngress(origin),webBasis=origin.platform==="web"?admittedHumanWebIngress(origin):null;
       if(origin.platform==="web"&&!webBasis?.sessionHandle)throw Error("Accepted web input route is unavailable");
       if(room&&origin.platform!=="web"&&(!nativeBasis||nativeBasis.roomId!==room.channelId||origin.adapter_id!==(room.adapterId??this.contactAdapter(instance)?.id)))throw Error("Accepted Classic admission basis is unavailable");
+      const daemon=["steer","btw"].includes(String(payload.type))?this.lifecycle?.daemons.get(instance):undefined,parent=daemon?.requestContextTurnSnapshot();
+      const steer=parent&&daemon?{parent,current:()=>this.daemons.get(instance)===daemon&&daemon.requestContextTurnCurrent(parent),canManage:(actor:RequestContextV1["initiatingActor"])=>{
+        if(actor.kind!=="person"||actor.platform==="hub")return false;const adapter=actor.platform==="host"?"host":this.contactAdapter(instance)?.id;
+        return !!adapter&&this.contactAdminOf(instance,{platform:actor.platform,adapterId:adapter,userId:actor.userId,label:actor.userId});}}:undefined;
       const captured=box.createHumanReceiptWithRequestContext({targetInstance:instance,originalBody:body,origin:{...origin},inputKind:String(payload.type),managerBootId:this.managerBootId},
-        {incarnation:this.contactGeneration(instance),room:room?{restricted:room.restrictedMode===true}:null,
+        {incarnation:this.contactGeneration(instance),steer,room:room?{restricted:room.restrictedMode===true}:null,
           web:webBasis,
           classic:room&&origin.platform!=="web"&&nativeBasis?{...nativeBasis,adapterId:origin.adapter_id!}:null,
           route:{kind:origin.platform==="web"?"web":"room",adapterId:origin.platform==="web"?meta?.adapter_id:origin.adapter_id??undefined,
@@ -10464,8 +10483,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } catch (err) { this.logger.warn({ err, instanceName }, "Could not record web authority"); }
     }
     const verified = origin.platform === "web" && authority?.kind === "web-verified";
-    return { ...payload, meta: { ...(payload.meta as Record<string, unknown> ?? {}),
+    const admitted={ ...payload, meta: { ...(payload.meta as Record<string, unknown> ?? {}),
       human_receipt_id: row.receipt_id, verification_id: row.message_id, ...(verified ? { web_verified: "1" } : {}) } };
+    if(this.requestContextBoot){const continuation=this.requestContextHumanContinuation(instanceName,row.receipt_id);if(continuation)requestPayloadContinuations.set(admitted,continuation);}
+    return admitted;
   }
 
   /** Register owned preparation at IPC; bind once at the final pane write. No human retry lane. */
@@ -10542,7 +10563,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.shuttingDown || this.requestContextAdmission?.available() !== false && !this.instanceIpcClients.get(instanceName)?.connected) return false;
     const admitted = this.humanReceiptPayload(instanceName, payload, origin, originalBody);
     const id = (admitted.meta as Record<string, string> | undefined)?.human_receipt_id;
-    if (this.requestContextAdmission && !this.requestContextAdmission.available()) {
+    if (this.requestContextAdmission && !this.requestContextAdmission.available(requestPayloadContinuations.get(admitted))) {
       try {
         if (!this.deliveryOutbox) throw Error("Held human control storage unavailable");
         const key = `human-control:${id ?? randomUUID()}`;
