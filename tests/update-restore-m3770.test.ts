@@ -108,12 +108,55 @@ describe("M-3770 §5.5: the restore", () => {
       let n = 0;
       const crashing: RestoreIo = { step: name => { if (++n === k) throw new Error(`crash at ${k} (${name})`); } };
       expect(() => restoreHome(s.home, s.attempt, { ...gone, io: crashing }), `step ${k}`).toThrow(/crash at/);
-      if (k % 3 === 0 && existsSync(join(s.attempt, RESTORE_LOG))) appendFileSync(join(s.attempt, RESTORE_LOG), "{\"u\":\"torn");   // a torn last line
       expect(restoreHome(s.home, s.attempt, gone), `retry after step ${k}`).toEqual({ ok: true });
       expect(state(s.home), `home after step ${k}`).toEqual(want.home);
       expect(state(join(s.attempt, REPLACED_DIR)), `replaced after step ${k}`).toEqual(want.replaced);
     }
   }, 120_000);
+
+  it("a torn last line, then a SECOND crash at later boundaries, then a retry: still the same end state (Fable #4525 F1)", () => {
+    const ref = scenario();
+    let steps = 0;
+    restoreHome(ref.home, ref.attempt, { ...gone, io: { step: () => { steps++; } } });
+    const want = { home: state(ref.home), replaced: state(join(ref.attempt, REPLACED_DIR)) };
+    const crashAt = (k: number): RestoreIo => { let n = 0; return { step: name => { if (++n === k) throw new Error(`crash at ${k} (${name})`); } }; };
+    for (let k = 1; k < steps; k++) {
+      for (const later of [1, 2, 3, 5, 8]) {
+        const s = scenario();
+        expect(() => restoreHome(s.home, s.attempt, { ...gone, io: crashAt(k) })).toThrow(/crash at/);
+        if (!existsSync(join(s.attempt, RESTORE_LOG))) continue;
+        appendFileSync(join(s.attempt, RESTORE_LOG), "{\"u\":\"tor");                                      // torn: no newline
+        try { restoreHome(s.home, s.attempt, { ...gone, io: crashAt(later) }); } catch { /* the second crash */ }
+        expect(readFileSync(join(s.attempt, RESTORE_LOG), "utf8")).not.toContain("{\"u\":\"tor{");             // nothing glued on
+        expect(restoreHome(s.home, s.attempt, gone), `crash ${k}, torn, crash +${later}`).toEqual({ ok: true });
+        expect(state(s.home)).toEqual(want.home);
+        expect(state(join(s.attempt, REPLACED_DIR))).toEqual(want.replaced);
+      }
+    }
+  }, 300_000);
+
+  it("a directory made after the snapshot that holds excluded state stays, its new included child set aside (Fable #4525 F2)", () => {
+    const s = scenario();
+    mkdirSync(join(s.home, "instances", "b", "muse-xdg"), { recursive: true }); writeFileSync(join(s.home, "instances", "b", "muse-xdg", "x"), "cli");
+    writeFileSync(join(s.home, "instances", "b", "session.jsonl"), "new agent");
+    expect(restoreHome(s.home, s.attempt, gone)).toEqual({ ok: true });
+    expect(readFileSync(join(s.home, "instances", "b", "muse-xdg", "x"), "utf8")).toBe("cli");                  // excluded: kept
+    expect(existsSync(join(s.home, "instances", "b", "session.jsonl"))).toBe(false);
+    expect(readFileSync(join(s.attempt, REPLACED_DIR, "instances", "b", "session.jsonl"), "utf8")).toBe("new agent");
+    // The variant with only excluded state in it.
+    const t = scenario();
+    mkdirSync(join(t.home, "instances", "c", "muse-xdg"), { recursive: true });
+    expect(restoreHome(t.home, t.attempt, gone)).toEqual({ ok: true });
+    expect(existsSync(join(t.home, "instances", "c", "muse-xdg"))).toBe(true);
+  });
+
+  it("a new container's included child that reappears before the check is still refused", () => {
+    const s = scenario();
+    mkdirSync(join(s.home, "instances", "b", "muse-xdg"), { recursive: true });
+    writeFileSync(join(s.home, "instances", "b", "session.jsonl"), "new agent");
+    expect(restoreHome(s.home, s.attempt, { ...gone, io: { step: name => { if (name === "log:containers") writeFileSync(join(s.home, "instances", "b", "late.json"), "x"); } } }))
+      .toMatchObject({ ok: false, manual: true, reason: expect.stringMatching(/instances\/b\/late\.json is in the home but not in the snapshot/) });
+  });
 });
 
 describe("M-3770 §5.5: the states the table doesn't cover go to manual-recovery", () => {

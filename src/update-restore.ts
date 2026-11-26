@@ -20,7 +20,7 @@
  */
 import { createHash } from "node:crypto";
 import { closeSync, constants as fsConstants, copyFileSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync,
-  renameSync, rmSync, chmodSync, symlinkSync, utimesSync, writeSync } from "node:fs";
+  renameSync, rmSync, chmodSync, symlinkSync, truncateSync, utimesSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { classify } from "./update-snapshot-scope.js";
 import { readManifest, SNAPSHOT_DIR, SNAPSHOT_MANIFEST, verifySnapshot, type EntryType, type ManifestEntry, type SnapshotManifest } from "./update-snapshot.js";
@@ -166,13 +166,23 @@ export function restoreHome(home: string, attemptDir: string, deps: RestoreDeps)
       renameSync(tmp, logPath); fsyncPath(attemptDir); io.step("header");
       logged = [];
     } else {
+      // Bytes after the last newline are a torn line — a write cut short, even if they happen to parse. They are cut
+      // off (and the truncation made durable) before anything is appended (Fable #4525 F1): otherwise the next line
+      // would glue onto them, and a second crash would find an unreadable line that is no longer the last.
+      const end = text.lastIndexOf("\n") + 1;
+      if (end < text.length) {
+        truncateSync(logPath, Buffer.byteLength(text.slice(0, end)));
+        fsyncPath(logPath); io.step("truncate-torn");
+        text = text.slice(0, end);
+      }
       const lines = text.split("\n").filter(Boolean);
+      if (lines.length === 0) throw new Manual("restore.log has no header");
       header = JSON.parse(lines[0]!) as Header;
       if (header.schema !== 1 || header.manifestSha256 !== manifestSha256) throw new Manual("restore.log's header doesn't match this snapshot");
       logged = [];
-      for (const [i, l] of lines.slice(1).entries()) {
+      for (const l of lines.slice(1)) {
         try { logged.push(JSON.parse(l) as LogLine); }
-        catch { if (i !== lines.length - 2) throw new Manual("restore.log has an unreadable line"); }   // a torn last line: never written
+        catch { throw new Manual("restore.log has an unreadable line"); }   // a complete line that doesn't parse: damaged, not torn
       }
     }
     const log = (line: LogLine) => {
@@ -239,7 +249,14 @@ export function restoreHome(home: string, attemptDir: string, deps: RestoreDeps)
     if (!logged.some(l => l.step === "verified")) {
       const now = currentScope(home).entries;
       const want = new Map(manifest.entries.map(e => [e.rel, e]));
-      for (const rel of now.keys()) if (!want.has(rel)) throw new Manual(`after the restore, ${rel} is in the home but not in the snapshot`);
+      // A container made after the snapshot (it holds excluded state, e.g. a new agent's instances/<name>/muse-xdg) is
+      // kept in place for that state (Fable #4525 F2): accepted, as long as nothing included is left under it — its
+      // included children were set aside as new units, and any that remain are caught below as not in the snapshot.
+      const newContainers = new Set(header.containers.filter(c => !want.has(c)));
+      for (const rel of now.keys()) {
+        if (want.has(rel) || newContainers.has(rel)) continue;
+        throw new Manual(`after the restore, ${rel} is in the home but not in the snapshot`);
+      }
       for (const e of manifest.entries) if (!now.has(e.rel)) throw new Manual(`after the restore, ${e.rel} is missing`);
       for (const u of header.units) if (want.has(u.rel) && !matchesManifest(home, u.rel, manifest)) throw new Manual(`after the restore, ${u.rel} doesn't match the snapshot`);
       const writers = deps.proveWritersGone();
