@@ -11,6 +11,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { DeliveryOutbox, SYSTEM_NOTICE_KIND } from "../src/delivery-outbox.js";
 import { type ContactRequest } from "../src/contact-auth-store.js";
 import { handleContactAuthorizationApi } from "../src/contact-auth-api.js";
+import { handleRequestContactApi } from "../src/request-contact-api.js";
 import { nativeDecisionFailure } from "../src/request-contact-native.js";
 import { updateTrialRefusal, type QuiescenceGate } from "../src/update-quiescence.js";
 
@@ -105,3 +106,37 @@ it("a paired runtime's finished result is not reconciled in the trial — its ro
   r.fm.reconcileRemoteDelivery("m1", { id: "d1", finishedAt: "2026-11-27T00:00:00Z", outcomeConfirmed: true, status: "completed" });
   expect(get).toHaveBeenCalledWith("d1");
 });
+
+it("the request-context card API answers 503 updating with Retry-After and the localized text", async () => {
+  const ended = new Promise<{ status: number; headers: Record<string, string>; set: Record<string, string>; body: string }>(resolve => {
+    let status = 0, headers: Record<string, string> = {};
+    const set: Record<string, string> = {};
+    const res: any = { destroyed: false, writableEnded: false, setHeader: (k: string, v: string) => { set[k] = v; },
+      writeHead: (s: number, h: Record<string, string>) => { status = s; headers = h; },
+      end: (b: string) => { res.writableEnded = true; resolve({ status, headers, set, body: b }); } };
+    const principal = { person: { platform: "host", adapterId: "host", userId: "operator", label: "Operator" }, binding: "b", verified: true, current: () => true };
+    const host: any = { principal: () => principal, permitContinuation: () => true, canRead: () => true, decide: async () => { throw updateTrialRefusal(); } };
+    const body = { snapshot: { ticketRevision: 1, policyRevision: 0, imageSha256: "a".repeat(64) }, decision: "approve-once" };
+    const req: any = Object.assign(Readable.from([Buffer.from(JSON.stringify(body))]), { method: "POST", headers: { "content-type": "application/json" } });
+    const id = "R" + "0".repeat(8) + "-0000-0000-0000-" + "0".repeat(12);
+    expect(handleRequestContactApi(req, res, new URL(`http://x/ui/api/request-contact-authorizations/${id}/decision`), host)).toBe(true);
+  });
+  const r = await ended;
+  expect(r.status).toBe(503);
+  expect(r.set["Retry-After"]).toBe("10");
+  expect(JSON.parse(r.body)).toEqual({ error: "updating", message: "AgEnD is updating. Nothing was recorded; try again in a moment." });
+});
+
+it("the native card's decision during the trial shows the updating text and keeps the request pending", async () => {
+  const fm: any = Object.create(FleetManager.prototype);
+  const retired: string[] = [];
+  const pending = { ticket: { state: "pending" } };
+  Object.assign(fm, { logger: { info: vi.fn(), warn: vi.fn() }, heldTicketCards: new Map(),
+    retireNonceButtons: async (_e: unknown, _m: unknown, text: string) => { retired.push(text); },
+    contactService: () => ({ host: { store: { get: () => null } } }) });
+  const port: any = { read: () => pending, decide: () => { throw updateTrialRefusal(); } };
+  const principal: any = { person: { platform: "discord", adapterId: "d", userId: "u", label: "U" } };
+  await fm.decideSameContactCard(port, principal, { contactTicketId: "R1", contactSnapshot: {}, messageId: "m" }, "approve", { messageId: "m" });
+  expect(retired).toEqual(["AgEnD is updating. Nothing was recorded; try again in a moment."]);
+});
+
