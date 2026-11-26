@@ -78,6 +78,24 @@ describe("M-3770 §6.2: the handoff file is the route's attempt's, cleared whate
     expect(trace).toEqual([`unlink:${handoffEnvPath(h, ID)}`, `fsync:${join(h, ".update-journal", "attempts", ID)}`]);
   });
 
+  it("a crash after the unlink, before the fsync: the retry (file already absent) still fsyncs the directory; no directory is a no-op; other errors refuse", () => {
+    const h = home(); stale(h);
+    const crashing = { ...defaultJournalIo, fsyncDir: () => { throw new Error("killed before the fsync"); } };
+    expect(() => applyHandoffEnv(h, { kind: "start" }, ID, crashing)).toThrow(/killed/);
+    expect(existsSync(handoffEnvPath(h, ID))).toBe(false);                                         // unlinked, not yet durable
+    const trace: string[] = [];
+    const traced = { ...defaultJournalIo, unlink: (p: string) => { trace.push(`unlink:${p}`); defaultJournalIo.unlink(p); }, fsyncDir: (d: string) => { defaultJournalIo.fsyncDir(d); trace.push(`fsync:${d}`); } };
+    expect(main(["--home", h, "--attempt", ID, "--pre-start"], { ...defaultRecoverDeps(), liveness: LIVE([UPDATER]), io: traced, ...io })).toBe(0);
+    expect(trace).toEqual([`unlink:${handoffEnvPath(h, ID)}`, `fsync:${join(h, ".update-journal", "attempts", ID)}`]);
+    // No attempt directory: nothing to fsync, no error.
+    const bare = home(), seen: string[] = [];
+    applyHandoffEnv(bare, { kind: "start" }, ID, { ...defaultJournalIo, fsyncDir: d => { seen.push(d); defaultJournalIo.fsyncDir(d); } });
+    expect(seen).toEqual([join(bare, ".update-journal", "attempts", ID)]);                         // tried; ENOENT is the no-op
+    // An fsync that fails for another reason refuses the start.
+    const eio = { ...defaultJournalIo, fsyncDir: () => { throw Object.assign(new Error("EIO"), { code: "EIO" }); } };
+    expect(main(["--home", h, "--attempt", ID, "--pre-start"], { ...defaultRecoverDeps(), liveness: LIVE([UPDATER]), io: eio, ...io })).toBe(1);
+  });
+
   it("journal unknown: refused, and the stale file removed", () => {
     const h = home(); stale(h);
     mkdirSync(join(h, ".update-journal"), { recursive: true }); writeFileSync(join(h, ".update-journal", "current"), "nonsense\n");

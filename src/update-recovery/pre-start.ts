@@ -82,11 +82,11 @@ export function applyHandoffEnv(home: string, decision: PreStart, routeAttempt: 
     io.fsyncDir(attemptDir(home, decision.attemptId));
     return;
   }
+  const absent = (err: unknown) => ["ENOENT", "ENOTDIR"].includes((err as NodeJS.ErrnoException).code ?? "");
   try { io.unlink(handoffEnvPath(home, routeAttempt)); }
-  catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || code === "ENOTDIR") return;           // nothing to remove (or no attempt directory at all)
-    throw err;
-  }
-  io.fsyncDir(attemptDir(home, routeAttempt));
+  catch (err) { if (!absent(err)) throw err; }                    // already gone: still make that durable (Prism #4511 R2)
+  // The directory is fsynced even when the file was already absent: a retry after a crash between an unlink and its
+  // fsync must not leave the removal undurable. No attempt directory at all: nothing to make durable.
+  try { io.fsyncDir(attemptDir(home, routeAttempt)); }
+  catch (err) { if (!absent(err)) throw err; }
 }
