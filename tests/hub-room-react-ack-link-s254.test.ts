@@ -35,7 +35,7 @@ it("negotiated real exchange stores a visible reaction, answers the Hub delivery
  await adapter.turnEnded("Notes",generation,"one");await adapter.turnEnded("Notes",generation,"two");expect(reminders).toEqual([]);expect(markers).toEqual([]);
  const messages=(await web.call(admin,"GET",`/hub/v1/rooms/${room}/messages`)).json.messages,question=messages.find((m:any)=>m.id===post.json.id);
  expect(question.ask).toEqual({total:1,answered:1,working:0,later:0});expect(question.reactions).toMatchObject([{emoji:"👍",count:1,members:[exposureId]}]);
- expect(messages.find((m:any)=>m.answerTo===question.id)).toMatchObject({stage:"working"});
+ expect(messages.find((m:any)=>m.answerTo===question.id)).toMatchObject({stage:"answered",acknowledgedByReaction:true});
  expect(db.prepare("SELECT COUNT(*) n FROM hub_room_reaction_acks").get()).toEqual({n:1});
 });
 it("older peer does not negotiate acknowledgement and a forged acknowledgement result cannot resolve its pending exchange",async()=>{

@@ -1,5 +1,11 @@
 {
   "scope": "Real Hub UI and actual stored room.react acknowledgement; synthetic people/agent/messages. No model/CLI/Fleet or live directory.",
+  "liveStatus": {
+    "beforeWorking": true,
+    "clearedWithoutReload": true,
+    "clearAfterReload": true,
+    "clearAfterHubServiceRestart": true
+  },
   "actualReadback": {
     "answered": 1,
     "working": 0,
@@ -13,7 +19,7 @@
       "lang": "en",
       "theme": "light",
       "file": "before-desk-light-en.png",
-      "sha256": "ef8bb0dd6accb16c49844cbdbac9214d57a09ec28c8764996dc3aff9efbfb355",
+      "sha256": "b7b2bb35a2592d0029416cc74aa831f7db4f859bc91fe6ff6c523b0bf73600cd",
       "reactionVisible": false,
       "pageErrors": 0,
       "overflow": false
@@ -24,7 +30,7 @@
       "lang": "zh-TW",
       "theme": "dark",
       "file": "before-phone-dark-zh-TW.png",
-      "sha256": "905c7041f54c694b10e9b48721f7803106b8f4fb025c56f4abfd1af6910e6568",
+      "sha256": "14caff029b75e38145b0f644ec3e6e4eaf26b967acd1bd51e12e5e518bf50aeb",
       "reactionVisible": false,
       "pageErrors": 0,
       "overflow": false
@@ -35,7 +41,7 @@
       "lang": "en",
       "theme": "light",
       "file": "after-desk-light-en.png",
-      "sha256": "89581f8f24019c87f7ff6e2d27edeb1bd0cb167cbad592f9cdbafee7e1f1737a",
+      "sha256": "73e41d9884e217df817e7d7c6f4e6b04f65657ed1c932ab47143626d78958318",
       "reactionVisible": true,
       "pageErrors": 0,
       "overflow": false
@@ -46,7 +52,7 @@
       "lang": "en",
       "theme": "dark",
       "file": "after-desk-dark-en.png",
-      "sha256": "14da285f3be46ce579dbed4fbc2fdc2762054ab3c23fee1a71beeeb701a444b7",
+      "sha256": "81ac0e5436fb363da032a0b546a5d49f05b46d435259deaaa8fa14232ceeba26",
       "reactionVisible": true,
       "pageErrors": 0,
       "overflow": false
@@ -57,7 +63,7 @@
       "lang": "zh-TW",
       "theme": "light",
       "file": "after-desk-light-zh-TW.png",
-      "sha256": "36ec4f7b665c38ab9224836aef6a572b40e81c11ba02abd8589cca4270d78a96",
+      "sha256": "0f8fb438af28ddd5cf02cb66c015182489b029dc2ddbf5803462117ec8299f3c",
       "reactionVisible": true,
       "pageErrors": 0,
       "overflow": false
@@ -68,7 +74,7 @@
       "lang": "zh-TW",
       "theme": "dark",
       "file": "after-desk-dark-zh-TW.png",
-      "sha256": "f61a39323d4e4294a8c7dd7a28d9b84c9aedac2f980d1534274e684add246ef2",
+      "sha256": "bba43c5216519fce381495739c8def376e0b757ffbe55d3fc4fc27f4d78ebae1",
       "reactionVisible": true,
       "pageErrors": 0,
       "overflow": false
@@ -79,7 +85,7 @@
       "lang": "en",
       "theme": "light",
       "file": "after-phone-light-en.png",
-      "sha256": "481fba179b9198ea257b7551a6fca177822c0bbdd8ff01eef901e7c2ff431498",
+      "sha256": "d6d12ffda20f6f3823507a4efb950d89ac4dad6d0036f42a642d84b113ec2e03",
       "reactionVisible": true,
       "pageErrors": 0,
       "overflow": false
@@ -90,7 +96,7 @@
       "lang": "en",
       "theme": "dark",
       "file": "after-phone-dark-en.png",
-      "sha256": "d40bf0422e58de2606a6da69287184d2819d08db3766a359aa2ec4bb909ad6db",
+      "sha256": "d592efb9600620b73fd00ba383277424fed7ef3bbb5a4418752171fa7ef2438b",
       "reactionVisible": true,
       "pageErrors": 0,
       "overflow": false
@@ -101,7 +107,7 @@
       "lang": "zh-TW",
       "theme": "light",
       "file": "after-phone-light-zh-TW.png",
-      "sha256": "d476e64c2197762adf2502dde6805815a1b240c3438f203a430e398b1c508bef",
+      "sha256": "f2b99395827c37e75c30d5c30bbecda0d122ec7c53a4191d53468450c1117cd6",
       "reactionVisible": true,
       "pageErrors": 0,
       "overflow": false
@@ -112,7 +118,7 @@
       "lang": "zh-TW",
       "theme": "dark",
       "file": "after-phone-dark-zh-TW.png",
-      "sha256": "9637d19730b126859a515cf3a63e1a5669d4eff73c397434874f5d12ec0bec29",
+      "sha256": "a53881d383c1a288e5432dc19d071ec0db5710eb5e108bc600e104ee967fb31d",
       "reactionVisible": true,
       "pageErrors": 0,
       "overflow": false

@@ -174,8 +174,18 @@ describe("the message menu's React", () => {
 
 it("S254 reaction acknowledgement uses the existing empty agent placeholder behavior and keeps the original reaction", () => {
   const question={id:"q",roomId:"r",at:1,author:{kind:"person",id:"p",name:"Reader"},text:"Thanks",mentions:[],reactions:[{emoji:"👍",count:1,members:["agent"]}],ask:{total:1,answered:1,working:0,later:0}};
-  const placeholder={id:"reply",roomId:"r",at:2,author:{kind:"agent",id:"agent",name:"Notes"},text:"",mentions:[],answerTo:"q",stage:"working"};
+  const placeholder={id:"reply",roomId:"r",at:2,author:{kind:"agent",id:"agent",name:"Notes"},text:"",mentions:[],answerTo:"q",stage:"answered",acknowledgedByReaction:true};
   const rows=thread.toThreadMessages([question,placeholder],{meId:"p",ids:new Map()});
   expect(rows).toHaveLength(1);expect(rows[0].reactionBar).toMatchObject([{emoji:"👍",count:1}]);
-  expect(thread.toThreadMessages([question,{...placeholder,stage:"not-answered"}],{meId:"p",ids:new Map()})).toHaveLength(2);
+  expect(thread.toThreadMessages([question,{...placeholder,acknowledgedByReaction:undefined,stage:"not-answered"}],{meId:"p",ids:new Map()})).toHaveLength(2);
+});
+
+it("S254 accepted reaction clears live workers and pending answers, and a fresh store stays clear", async()=>{
+ const room={id:"g1",kind:"group",name:"Weekly"},question={id:"q",roomId:"g1",at:1,author:{kind:"person",id:"me",name:"Reader"},text:"Thanks",mentions:[]},pending={...question,id:"pending",text:"",answerTo:question.id,stage:"working",author:{kind:"agent",id:"agent",name:"Notes"}};
+ let messages:any[]=[question,pending];const handlers:Record<string,(v:any)=>void>={};
+ const c={room:async()=>({ok:true,room,me:{id:"me",role:"member"},members:[],settings:{}}),roomMessages:async()=>({ok:true,messages,more:false}),subscribeRooms:(h:any)=>{Object.assign(handlers,h);return()=>{};},markRoomRead:async()=>({ok:true})};
+ const st=thread.createRoomStore("g1",{client:c});await until(()=>st.loaded());expect(st.workers()).toHaveLength(1);expect(st.pendingAnswers()).toHaveLength(1);
+ const done={...pending,stage:"answered",acknowledgedByReaction:true};handlers["message.updated"]({roomId:"g1",message:done,parent:{id:question.id,ask:{total:1,answered:1,working:0,later:0}}});
+ expect(st.workers()).toEqual([]);expect(st.pendingAnswers()).toEqual([]);expect(st.messages()).toHaveLength(1);st.stop();
+ messages=[question,done];const reopened=thread.createRoomStore("g1",{client:c});await until(()=>reopened.loaded());expect(reopened.workers()).toEqual([]);expect(reopened.pendingAnswers()).toEqual([]);expect(reopened.messages()).toHaveLength(1);reopened.stop();
 });

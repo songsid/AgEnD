@@ -1,0 +1,74 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-reactions-ui-m3127.test.ts (11 tests | 2 failed | 9 skipped) 7970ms
+   × S254 reaction acknowledgement uses the existing empty agent placeholder behavior and keeps the original reaction 28ms
+   × S254 accepted reaction clears live workers and pending answers, and a fresh store stays clear 27ms
+(node:34491) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-room-agent-react-m3127.test.ts (17 tests | 1 failed | 13 skipped) 869ms
+     × S254 stores a real report after the Hub commits acknowledgement but its result is lost 271ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-agent-react-m3127.test.ts > A. the Hub takes an agent's reaction (room.react) > S254 stores a real report after the Hub commits acknowledgement but its result is lost
+AssertionError: expected { …(11) } to match object { Object (text, stage) }
+(14 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "stage": "answered",
+-   "text": "The substantive answer",
++   "text": "",
+  }
+
+ ❯ tests/hub-room-agent-react-m3127.test.ts:116:59
+    114|       expect(await adapter.report({caller:"Notes",correlationId:cid,te…
+    115|       const messages=(await r!.call(w.a,"GET",`/hub/v1/rooms/${w.id}/m…
+    116|       expect(messages.find((m:any)=>m.answerTo===w.q.id)).toMatchObjec…
+       |                                                           ^
+    117|     }finally{adapter.close();db.close();}
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-room-reactions-ui-m3127.test.ts > S254 reaction acknowledgement uses the existing empty agent placeholder behavior and keeps the original reaction
+AssertionError: expected [ { boot: 'room', id: 2, …(8) }, …(1) ] to have a length of 1 but got 2
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/hub-room-reactions-ui-m3127.test.ts:179:16
+    177|   const placeholder={id:"reply",roomId:"r",at:2,author:{kind:"agent",i…
+    178|   const rows=thread.toThreadMessages([question,placeholder],{meId:"p",…
+    179|   expect(rows).toHaveLength(1);expect(rows[0].reactionBar).toMatchObje…
+       |                ^
+    180|   expect(thread.toThreadMessages([question,{...placeholder,acknowledge…
+    181| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-room-reactions-ui-m3127.test.ts > S254 accepted reaction clears live workers and pending answers, and a fresh store stays clear
+AssertionError: expected [ { boot: 'room', id: 2, …(7) }, …(1) ] to have a length of 1 but got 2
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/hub-room-reactions-ui-m3127.test.ts:189:97
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  3 failed | 3 passed | 22 skipped (28)
+   Start at  00:30:25
+   Duration  34.67s (transform 34.17s, setup 648ms, import 34.16s, tests 8.84s, environment 0ms)
