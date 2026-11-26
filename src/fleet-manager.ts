@@ -400,7 +400,7 @@ import { crossInstanceVisibility, runVisibilityCommand, xmsgVisibility } from ".
 import { SEARCH_RETENTION_DAYS, SearchIndex } from "./search/search-index.js";
 import { chatDoc, taskDoc, xmsgDoc, type CrossInstanceRecord, type XmsgVisibility } from "./search/search-docs.js";
 import { WebSettingsTools } from "./web-settings-tools.js";
-import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
+import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest, guestSeesMessage, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { turnSource, type QuiescenceGate } from "./update-quiescence.js";
@@ -1636,7 +1636,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!captured) return false;
     const tool = message.type === "fleet_outbound" ? String(message.tool ?? "") : toolForIpcType(message.type);
     const originalBoot = daemon.bootId;
-    const scoped = Object.freeze({ id: captured.id, admission: captured.admission,
+    const scoped = Object.freeze({ id: captured.id, admission: captured.admission, replyRoute:captured.replyRoute,
       current: () => captured.current() && this.instanceIpcClients.get(name) === ipc && this.getDaemonBootId(name) === originalBoot
         && !!tool && this.checkToolPermission("ipc-outbound", name, tool === "hub_room_status" ? "hub_room_list" : tool).allowed });
     const calls=this.requestContextFleetCalls;
@@ -9438,7 +9438,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The tool's errors: an emoji outside the web set or one of the instance's delivery marks (web-reactions.ts), or a
    * message the chat does not have. An emoji the message already has is a success that changes nothing.
    */
-  async reactToWebMessage(instance: string, messageId: string, raw: unknown): Promise<{ ok: true; mirrored: Promise<number> } | { ok: false; error: string }> {
+  async reactToWebMessage(instance: string, messageId: string, raw: unknown, replyRoute?:import("./turn-reply-guard.js").TurnReplyRouteLease): Promise<{ ok: true; mirrored: Promise<number> } | { ok: false; error: string }> {
+    if(replyRoute){
+      if(!replyRoute.current())return {ok:false,error:"Originating request context is no longer current"};
+      const handle=replyRoute.target.webRoute?.sessionHandle;
+      if(handle){
+        const session=this.webSessions?.findByHandle(handle),row=this.webChatHistory.findByReplyId(instance,messageId);
+        if(!session||!row)return {ok:false,error:`react: ${messageId} is not a message in ${instance}'s web chat now (it left the history, or it is from before AgEnD restarted) — answer with reply instead`};
+        if(session.tier==="guest"&&(!session.owner||!guestSeesMessage(row,{owner:session.owner,current:()=>replyRoute.current(),scope:()=>this.guestScope(session.owner!),ownRoom:name=>this.guestOwnRoom(session.owner!,name)},this.guestScope(session.owner))))return {ok:false,error:`react: ${messageId} is not a message in ${instance}'s web chat now (it left the history, or it is from before AgEnD restarted) — answer with reply instead`};
+      }
+    }
     const problem = webReactionProblem(raw, this.statusEmojiAvoidList(instance));
     if (problem) return { ok: false, error: problem };
     const emoji = webReactionEmoji(raw)!;
@@ -9446,13 +9455,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!r) return { ok: false, error: `react: ${messageId} is not a message in ${instance}'s web chat now (it left the history, or it is from before AgEnD restarted) — answer with reply instead` };
     if (!r.added) return { ok: true, mirrored: Promise.resolve(0) };
     this.emitSseEvent("reactions", { instance, boot: r.message.boot, id: r.message.id, reactions: r.message.reactions ?? [] });
+    const routeMatches=(copy:WebEchoCopy)=>!replyRoute||copy.chatId===replyRoute.target.chatId&&(copy.threadId??"")===(replyRoute.target.threadId??"")&&copy.adapterId===replyRoute.target.adapterId;
     const mirrorOne = (copy: WebEchoCopy): Promise<number> => {
+      if(!routeMatches(copy))return Promise.resolve(0);
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error(`no answer in ${WEB_MIRROR_TIMEOUT_MS} ms`)), WEB_MIRROR_TIMEOUT_MS);
         timer.unref?.();
       });
-      return Promise.race([Promise.resolve().then(() => copy.adapter.react(copy.chatId, copy.messageId, reactionForm(copy.adapter.type, emoji), copy.threadId)), timeout])
+      return Promise.race([Promise.resolve().then(() => {
+        if(replyRoute&&(!replyRoute.current()||!routeMatches(copy)))throw new RequestContextPolicyError("stale");
+        return copy.adapter.react(copy.chatId, copy.messageId, reactionForm(copy.adapter.type, emoji), copy.threadId);
+      }), timeout])
         .then(() => 1, (err: unknown) => {
           this.logger.warn({ err, instance, adapter: copy.adapter.type }, "Reaction on a web message's channel copy failed (shown on the web)");
           return 0;
@@ -9733,8 +9747,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         {incarnation:this.contactGeneration(instance),room:room?{restricted:room.restrictedMode===true}:null,
           web:webBasis,
           classic:room&&origin.platform!=="web"&&nativeBasis?{...nativeBasis,adapterId:origin.adapter_id!}:null,
-          route:origin.platform==="web"?{kind:"web",sessionHandle:webBasis!.sessionHandle}
-            :{kind:"room",adapterId:origin.adapter_id??undefined,chatId:meta?.chat_id??"",threadId:meta?.thread_id??""},platform});
+          route:{kind:origin.platform==="web"?"web":"room",adapterId:origin.platform==="web"?meta?.adapter_id:origin.adapter_id??undefined,
+            chatId:meta?.chat_id??"",threadId:meta?.thread_id??"",...(meta?.message_id?{messageId:meta.message_id}:{}),
+            ...(origin.platform==="web"?{sessionHandle:webBasis!.sessionHandle}:{})},platform});
       return captured.receipt;
     };
   }
@@ -16487,6 +16502,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // must never be read as a same-name replacement's (removed and re-registered meanwhile).
     const sentBy = tool === "reply" ? this.webChatIdentity(instanceName) : undefined;
     const args = (msg.args ?? {}) as Record<string, unknown>;
+    const ownedReplyRoute=this.requestContextPolicy&&["reply","react","edit_message"].includes(tool)?originatingCall?.replyRoute:undefined;
+    const ownedReplyTarget=ownedReplyRoute?.target;
     const requestId = msg.requestId as number | undefined;
     const fleetRequestId = msg.fleetRequestId as string | undefined;
     const senderSessionName = msg.senderSessionName as string | undefined;
@@ -16524,7 +16541,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,instanceName,tool==="hub_room_status"?"hub_room_list":tool,args,originatingCall?.admission);}catch(error){respond(null,(error as Error).message);return;}
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,instanceName,tool==="hub_room_status"?"hub_room_list":tool,args,originatingCall?.admission,originatingCall?.replyRoute);}catch(error){respond(null,(error as Error).message);return;}
 
     // Fleet tools resolve their own targets. A missing chat world must not prevent local
     // delivery, inspection or receipt lookup; only channel tools need reply routing below.
@@ -16567,14 +16584,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (tool === "react" && !this.classicChannels?.getAll?.().some(room => room.instanceName === instanceName && room.restrictedMode === true) && typeof args.message_id === "string" && isWebMessageId(args.message_id)) {
       // The socket's own instance, never a session name the caller wrote itself (as checkToolPermission: it was not
       // identified) — a channel tool's call from a daemon carries none anyway (#2310 review).
-      const r = await this.reactToWebMessage(instanceName, args.message_id, args.emoji);
+      const r = await this.reactToWebMessage(instanceName, args.message_id, args.emoji,ownedReplyRoute);
       if (r.ok) respond("ok"); else respond(null, r.error);
       return;
     }
 
     // A fleet with no chat platform at all is driven from the web dashboard alone: a reply has nowhere
     // else to go, and "retry shortly" would have the agent retry forever. It goes to the web chat.
-    const webOnlyReply = tool === "reply" && this.worlds.size === 0 && this.isWebOnlyFleet();
+    const webOnlyReply = tool === "reply" && (ownedReplyTarget?!ownedReplyTarget.chatId:this.worlds.size === 0 && this.isWebOnlyFleet());
     if (this.worlds.size === 0 && !webOnlyReply) {
       // #2910: on a web-only fleet there will never be an adapter — say so, so the agent does not retry forever.
       respond(null, this.isWebOnlyFleet()
@@ -16593,7 +16610,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       downloadAttachment: (id: string) => this.downloadRoomAttachment(instanceName, id) } : {}),
       replyFinished: () => replyBookkeeping,
       beforeSend: () => {
-        if (originatingCall && !originatingCall.current()) throw Error("Originating request context is no longer current");
+        if (originatingCall && !originatingCall.current() || ownedReplyRoute&&!ownedReplyRoute.current()) throw Error("Originating request context is no longer current");
+        if(ownedReplyTarget?.chatId&&ownedReplyTarget.adapterId&&(this.worlds.get(ownedReplyTarget.adapterId)!==contextWorld||contextWorld?.adapter!==outAdapter))throw new RequestContextPolicyError("stale");
         const current = this.restrictedClassicRouting(instanceName);
         if (restrictedRoute && (!current || current.adapterId !== restrictedRoute.adapterId || current.chatId !== restrictedRoute.chatId
           || current.threadId !== restrictedRoute.threadId || this.contactGeneration(instanceName) !== restrictedIncarnation
@@ -16602,7 +16620,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } : {};
     // Resolve threadId: use sender's topic_id if sender is a known fleet instance,
     // fall back to general topic if sender is unknown, or IPC owner if no sender.
-    const senderInstanceName = !restrictedRoute && senderSessionName && this.fleetConfig?.instances[senderSessionName]
+    const senderInstanceName = !ownedReplyRoute && !restrictedRoute && senderSessionName && this.fleetConfig?.instances[senderSessionName]
       ? senderSessionName
       : null;
     const routingConfig = senderInstanceName
@@ -16615,18 +16633,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ids are scoped to that bot/world; routing a secondary-world id through the
     // primary adapter produces a 404. Instance binding remains the compatibility
     // fallback for older daemons and calls without a live/persisted context.
-    const contextAdapterId = restrictedRoute?.adapterId ?? (typeof msg.adapterId === "string" && msg.adapterId
-      ? msg.adapterId
-      : undefined);
+    const contextAdapterId = ownedReplyTarget ? ownedReplyTarget.chatId?ownedReplyTarget.adapterId:undefined
+      : restrictedRoute?.adapterId ?? (typeof msg.adapterId === "string" && msg.adapterId ? msg.adapterId : undefined);
     const contextWorld = contextAdapterId ? this.worlds.get(contextAdapterId) : undefined;
     if (contextAdapterId && !contextWorld) {
       respond(null, `Adapter world unavailable: ${contextAdapterId}`);
       return;
     }
-    const outAdapter = contextWorld?.adapter
-      ?? this.getAdapterForInstance(senderInstanceName ?? instanceName)
-      ?? this.adapter
-      ?? (webOnlyReply ? WEB_ONLY_REPLY_SINK : null);
+    const outAdapter = ownedReplyTarget ? webOnlyReply?WEB_ONLY_REPLY_SINK:contextWorld?.adapter
+      : contextWorld?.adapter ?? this.getAdapterForInstance(senderInstanceName ?? instanceName) ?? this.adapter ?? (webOnlyReply ? WEB_ONLY_REPLY_SINK : null);
     if (!outAdapter) { respond(null, "No adapter available"); return; }
 
     // Only channel-addressing schemas receive ClassicBot routing metadata.
@@ -16652,6 +16667,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       args.chat_id = restrictedRoute.chatId;
       threadId = restrictedRoute.threadId;
       if (threadId) args.thread_id = threadId; else delete args.thread_id;
+    }
+
+    if(ownedReplyTarget){
+      if(!ownedReplyRoute!.current()){respond(null,"Originating request context is no longer current");return;}
+      args.chat_id=ownedReplyTarget.chatId;threadId=ownedReplyTarget.threadId;
+      if(threadId)args.thread_id=threadId;else delete args.thread_id;
     }
 
     // Reply dedup: retries land here when the agent was told a send failed

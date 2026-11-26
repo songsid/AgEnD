@@ -5,7 +5,7 @@ import { getHumanReceipt, humanBodyHash, isWebSessionIdentity, type HumanOrigin 
 import { RequestContextV1Schema, type RequestContextV1 } from "./request-context-protocol.js";
 import { RequestContextStore, requestContextDigest, requestContextJson } from "./request-context-store.js";
 const TABLE="request_context_human_inputs_v1";
-const routeSchema=z.strictObject({kind:z.enum(["room","web","instance"]),adapterId:z.string().max(256).optional(),chatId:z.string().max(256).optional(),threadId:z.string().max(256).optional(),sessionHandle:z.string().regex(/^[a-f0-9]{16}$/).optional()});
+const routeSchema=z.strictObject({kind:z.enum(["room","web","instance"]),adapterId:z.string().max(256).optional(),chatId:z.string().max(256).optional(),threadId:z.string().max(256).optional(),messageId:z.string().max(256).optional(),sessionHandle:z.string().regex(/^[a-f0-9]{16}$/).optional()});
 const classicSchema=z.strictObject({adapterId:z.string().min(1).max(256),roomId:z.string().min(1).max(256),kind:z.enum(["guild","group","user"]),id:z.string().min(1).max(256),restrictedAtAdmission:z.boolean(),path:z.literal("registered-room")});
 export type RequestHumanClassicBasis=Readonly<z.infer<typeof classicSchema>>;
 export type RequestHumanRoute=Readonly<z.infer<typeof routeSchema>>;

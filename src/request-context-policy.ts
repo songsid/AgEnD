@@ -1,6 +1,7 @@
 import {labelUnprovedRequest} from "./request-context-unproved-label.js";
 /** Dormant H operation policy. Installation belongs to L; arguments never supply a call admission. */
 import {expandCompositeCall} from "./channel/mcp-tools.js";
+import type {TurnReplyRouteLease} from "./turn-reply-guard.js";
 import type {RequestContextCallAdmission} from "./request-context-call.js";
 import {labelHubRequest} from "./request-hub-context.js";
 import type {NewOutboxDelivery} from "./delivery-outbox.js";
@@ -22,7 +23,7 @@ const TASK_READS=new Set(["list","get","mine","projects"]);
 const CONTACTS=new Set(["send_to_instance","request_information","report_result","delegate_task","broadcast"]);
 const DERIVATIVES=new Set(["post_decision","update_decision","create_schedule","update_schedule","delete_schedule","create_instance","deploy_template","create_team"]);
 export interface RequestContextOperation {
- instance:string;tool:string;args:Record<string,unknown>;admission?:RequestContextCallAdmission;
+ instance:string;tool:string;args:Record<string,unknown>;admission?:RequestContextCallAdmission;replyRoute?:TurnReplyRouteLease;
 }
 export interface RequestContextOperationPermit {
  readonly kind:"ordinary"|"read"|"needs-approval"|"relay"|"hub-answer"|"hub-react"|"hub-post";
@@ -52,6 +53,12 @@ export function assertRequestContextOperation(input:RequestContextOperation,loca
  const {lease}=admission;
  if(!lease.current()||lease.snapshot.owner.instance!==input.instance)return refuse("stale");
  const context=lease.snapshot.context,hub=context.ingress==="hub";
+ // A channel action is a response to an actually delivered human turn, never a latest-chat lookup.
+ if(["reply","edit_message","react"].includes(tool)){
+  if(hub)return refuse("settings");
+  if(!input.replyRoute||input.replyRoute.binding!==lease.snapshot.token||!input.replyRoute.current())return refuse("uncovered");
+  return {kind:"ordinary",tool,args,context};
+ }
  // Initial shared rollout cannot create durable outside derivatives without their parent contract.
  if(context.ingress!=="owner"&&(DERIVATIVES.has(tool)||tool==="task"&&!read))return refuse(hub?tool==="task"?"tasks":tool.endsWith("_schedule")?"schedules":["create_instance","deploy_template"].includes(tool)?"agents":tool==="create_team"?"teams":"decisions":"outside");
  if(context.initiatingActor.kind==="unknown"&&!read&&!CONTACTS.has(tool))return refuse("settings");
@@ -119,8 +126,8 @@ export function requestContextInstructionMode(policy:RequestContextPolicyPort|un
  }catch{return null;}
 }
 export interface RequestContextPolicyContext {requestContextPolicy?:RequestContextPolicyPort;readonly requestContextCallAdmission?:RequestContextCallAdmission}
-export function requireRequestContextPolicy(ctx:RequestContextPolicyContext,instance:string,tool:string,args:Record<string,unknown>,admission?:RequestContextCallAdmission):RequestContextOperationPermit|undefined {
- return ctx.requestContextPolicy?.assert({instance,tool,args,admission:admission??ctx.requestContextCallAdmission});
+export function requireRequestContextPolicy(ctx:RequestContextPolicyContext,instance:string,tool:string,args:Record<string,unknown>,admission?:RequestContextCallAdmission,replyRoute?:TurnReplyRouteLease):RequestContextOperationPermit|undefined {
+ return ctx.requestContextPolicy?.assert({instance,tool,args,admission:admission??ctx.requestContextCallAdmission,replyRoute});
 }
 /** Immutable persisted images have no live originating lease after a hold; only static constraints are revalidated here. */
 export function assertRequestHubContactImage(context:RequestContextV1,binding:RequestOperationBindingV1,delivery:NewOutboxDelivery):boolean {

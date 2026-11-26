@@ -63,7 +63,8 @@ export function requestHumanReplyTarget(box:DeliveryOutbox,snapshot:RequestConte
  let target:TurnReplyTarget;
  if(route.kind==="web"){
   if(!route.sessionHandle)return null;
-  target={chatId:"",webRoute:Object.freeze({sessionHandle:route.sessionHandle})};
+  target={chatId:route.chatId??"",...(route.adapterId?{adapterId:route.adapterId}:{}),...(route.threadId?{threadId:route.threadId}:{}),
+   ...(route.messageId?{messageId:route.messageId}:{}),webRoute:Object.freeze({sessionHandle:route.sessionHandle})};
  }else if(route.kind==="room"&&route.adapterId&&route.chatId){
   const origin=JSON.parse(receipt.origin_json) as import("./human-delivery-receipts.js").HumanOrigin;
   target={adapterId:route.adapterId,chatId:route.chatId,...(route.threadId?{threadId:route.threadId}:{}),

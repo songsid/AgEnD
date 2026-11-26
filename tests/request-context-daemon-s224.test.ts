@@ -182,3 +182,51 @@ it("S-230 candidate instruction staging does not publish a serving policy, and a
   expect(requestContextInstalledMode(port)).toBeNull(); expect(requestContextPolicyInstalled(port)).toBe(false);
   const legacy = rig(false); expect(legacy.daemon.buildBackendConfig(false).instructions).not.toContain("## Hub request provenance");
 });
+
+it("the local first hop captures the delivered route once and never retags it after another chat arrives",()=>{
+ const f=rig(),snapshot=f.bind("reply-route"),target={adapterId:"fixture",chatId:"guest-a",threadId:"thread-a",webRoute:{sessionHandle:"0123456789abcdef"}};
+ let admitted=true;f.daemon.requestContextLifecycle.replyTarget=()=>admitted?target:null;
+ f.daemon.requestContextPolicy={assert:assertRequestContextOperation};
+ // Binding C alone is not positive input delivery and supplies no route.
+ expect(f.daemon.captureRequestContextReplyRoute(snapshot)).toBeUndefined();
+ f.daemon.markTurnStarted({source:"web",chat_id:"guest-a",resumedContinuationOf:"fixture"},"owned question");
+ f.daemon.lastChatId="guest-b";f.daemon.lastThreadId="thread-b";f.daemon.lastAdapterId="other";
+ f.daemon.handleOwnedToolCall({type:"tool_call",tool:"reply",args:{text:"answer",chat_id:"forged"},requestId:21},f.socket);
+ const frame=f.frames.at(-1)!;expect(frame.args).toMatchObject({chat_id:"guest-a",thread_id:"thread-a"});expect(frame.adapterId).toBe("fixture");
+ const call=f.daemon.requestContextCall(frame.requestContextCallId)!;expect(f.fm.captureRequestContextIpcCall("worker",frame,f.ipc)).toBe(true);expect(f.fm.requestContextCallOf(frame).replyRoute).toBe(call.replyRoute);expect(call.replyRoute.target).toEqual(target);expect(call.replyRoute.current()).toBe(true);
+ admitted=false;expect(call.replyRoute.current()).toBe(false);admitted=true;f.daemon.turnReplyGuard.cancelByUser();expect(call.replyRoute.current()).toBe(false);
+ f.clearTimers();
+});
+it("a pane call uses its original stamped C snapshot to acquire the delivered route",async()=>{
+ const f=rig(),snapshot=f.bind("pane-reply"),target={adapterId:"fixture",chatId:"guest-a"};
+ f.daemon.requestContextLifecycle.replyTarget=()=>target;f.daemon.requestContextPolicy={assert:assertRequestContextOperation};
+ f.daemon.markTurnStarted({source:"web",chat_id:"guest-a",resumedContinuationOf:"fixture"},"owned question");
+ const lease=(await import("../src/request-context-call.js")).captureRequestContextCall(snapshot,captured=>f.daemon.requestContextTurnCurrent(captured));
+ const result=f.daemon.handlePaneToolCall({tool:"reply",args:{text:"pane answer"}},{current:()=>true,allowed:()=>true,requestContext:{coverage:"covered",lease}});
+ await vi.waitFor(()=>expect(f.frames.at(-1)?.args).toMatchObject({chat_id:"guest-a"}));
+ const call=f.daemon.requestContextCall(f.frames.at(-1)!.requestContextCallId)!;expect(call.replyRoute.binding).toBe(snapshot.token);
+ f.clearTimers();await result;
+});
+
+it.each([false,true])("system proxy text cannot borrow a current or last-chat destination when C is bound=%s",async enabled=>{
+ const f=rig(enabled);if(enabled)f.bind("unproved-proxy");const sendText=vi.fn(async()=>({chatId:"older-room",messageId:"reply"}));
+ vi.spyOn(f.daemon.messageBus,"getAllAdapters").mockReturnValue([{id:"fixture",type:"telegram",sendText}]);
+ vi.spyOn(f.daemon.messageBus,"getAdapter").mockReturnValue({id:"fixture",type:"telegram",sendText});
+ const sent=await f.daemon.deliverDaemonReply("unproved proxy","test-proxy","test proxy",{adapterId:"fixture",chatId:"older-room"});
+ expect(sent).toBe(!enabled);expect(sendText).toHaveBeenCalledTimes(enabled?0:1);
+});
+it("an owned threadless reply cannot inherit the last chat's thread",()=>{
+ const f=rig(),snapshot=f.bind("threadless"),target={adapterId:"fixture",chatId:"guest-a"};
+ f.daemon.requestContextLifecycle.replyTarget=()=>target;f.daemon.requestContextPolicy={assert:assertRequestContextOperation};
+ f.daemon.markTurnStarted({source:"web",chat_id:"guest-a",resumedContinuationOf:"fixture"},"owned question");f.daemon.lastThreadId="guest-b-thread";
+ f.daemon.handleOwnedToolCall({type:"tool_call",tool:"reply",args:{text:"answer"},requestId:23},f.socket);
+ expect(f.frames.at(-1)!.args).not.toHaveProperty("thread_id");expect(f.daemon.requestContextCall(f.frames.at(-1)!.requestContextCallId).replyRoute.binding).toBe(snapshot.token);f.clearTimers();
+});
+it("the direct daemon adapter sink keeps a threadless target even when lastChat names another thread",async()=>{
+ const f=rig(),snapshot=f.bind("local-threadless"),target={adapterId:"fixture",chatId:"guest-a"},sendText=vi.fn(async()=>({chatId:"guest-a",messageId:"reply-one"}));
+ const adapter={id:"fixture",type:"telegram",sendText};vi.spyOn(f.daemon.messageBus,"getAllAdapters").mockReturnValue([adapter]);vi.spyOn(f.daemon.messageBus,"getAdapter").mockReturnValue(adapter);
+ f.daemon.requestContextLifecycle.replyTarget=()=>target;f.daemon.requestContextPolicy={assert:assertRequestContextOperation};
+ f.daemon.markTurnStarted({source:"web",chat_id:"guest-a",resumedContinuationOf:"fixture"},"owned question");f.daemon.lastChatId="guest-b";f.daemon.lastThreadId="thread-b";
+ f.daemon.handleOwnedToolCall({type:"tool_call",tool:"reply",args:{text:"answer"},requestId:24},f.socket);
+ await vi.waitFor(()=>expect(sendText).toHaveBeenCalled());expect(sendText.mock.calls[0]).toMatchObject(["guest-a","answer",{threadId:undefined}]);expect(f.frames).toEqual([]);expect(f.daemon.requestContextTurnCurrent(snapshot)).toBe(true);f.clearTimers();
+});

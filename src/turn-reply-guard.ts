@@ -79,6 +79,7 @@ export interface TurnReplySnapshot {
 }
 
 export interface TurnReplyRouteLease {
+  readonly binding:string;
   readonly generation:number;
   readonly target:Readonly<TurnReplyTarget>;
   current():boolean;
@@ -186,7 +187,7 @@ export class TurnReplyGuard {
     const active=this.active,route=active?.scopedTarget;
     if(!active||active.cancelledByUser||!route||route.binding!==binding)return null;
     const generation=active.generation;
-    return Object.freeze({generation,target:route.target,current:()=>this.active===active
+    return Object.freeze({binding,generation,target:route.target,current:()=>this.active===active
       &&!active.cancelledByUser&&active.generation===generation&&active.scopedTarget===route});
   }
 

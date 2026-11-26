@@ -1,3 +1,4 @@
+import {requestContextDigest} from "./request-context-store.js";
 import type { RequestContextAdmissionPort } from "./request-context-admission.js";
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
 import { requestContextProcessGroupGone, type RequestContextLaunchRetirement, type RequestContextLaunchIdle } from "./request-context-retirement.js";
@@ -2686,9 +2687,19 @@ export class Daemon extends EventEmitter {
       ? { coverage: "covered" as const, lease: captureRequestContextCall(snapshot, captured => this.requestContextTurnCurrent(captured)) }
       : { coverage: "not-covered" as const, reason };
     const call: RequestContextLocalCall = Object.freeze({ id: randomUUID(), admission: Object.freeze(admission),
+      ...(admission.coverage==="covered"?{replyRoute:this.captureRequestContextReplyRoute(admission.lease.snapshot)}:{}),
       current: () => !this.deliveryWritesStopping && this.requestContextLaunch() === launch
         && (admission.coverage !== "covered" || admission.lease.current()) });
     this.requestContextCalls.set(call.id, call); return call;
+  }
+  /** Bind the original call to a delivered target, with the original human admission rechecked at commit. */
+  private captureRequestContextReplyRoute(snapshot:RequestContextTurnSnapshot):import("./turn-reply-guard.js").TurnReplyRouteLease|undefined {
+    const route=this.turnReplyGuard?.captureReplyRoute(snapshot.token);if(!route)return;
+    const current=()=>{
+      try{return route.current()&&this.requestContextTurnCurrent(snapshot)
+        &&requestContextDigest(this.requestContextLifecycle?.replyTarget?.(snapshot))===requestContextDigest(route.target);}catch{return false;}
+    };
+    return current()?Object.freeze({...route,current}):undefined;
   }
   /** Internal Fleet accessor, paired with the current daemon/IPC connection; returns original scope or nothing. */
   requestContextCall(callId: string): RequestContextLocalCall | null {
@@ -8003,6 +8014,9 @@ export class Daemon extends EventEmitter {
     logLabel: string,
     target?: TurnReplyTarget,
   ): Promise<boolean> {
+    // System proxy text has no originating call lease. Until its final-output generation proof is
+    // installed, it cannot borrow a live turn or lastChat; proven-parent model recovery uses C instead.
+    if(this.requestContextLifecycle)return Promise.resolve(false);
     const args: Record<string, unknown> = { text: body };
     const chatId = target?.chatId ?? this.lastChatId;
     const threadId = target?.threadId ?? this.lastThreadId;
@@ -13115,7 +13129,7 @@ export class Daemon extends EventEmitter {
       const timer = setTimeout(() => finish({ result: null, error: "Pane tool result is unconfirmed; inspect its operation before retrying" }), daemonBudgetMs(input.tool) + 1000);
       timer.unref?.();
       try {
-        call = lease.requestContext ? Object.freeze({ id: randomUUID(), admission: lease.requestContext, current }) : undefined;
+        call = lease.requestContext ? Object.freeze({ id: randomUUID(), admission: lease.requestContext, ...(lease.requestContext.coverage==="covered"?{replyRoute:this.captureRequestContextReplyRoute(lease.requestContext.lease.snapshot)}:{}), current }) : undefined;
         if (call) this.requestContextCalls.set(call.id, call);
         this.handleToolCall({ ...input, requestId: ++this.fleetRequestSeq }, undefined, {
           current,
@@ -13234,7 +13248,7 @@ export class Daemon extends EventEmitter {
       }
       this.broadcastFleetMessage(originatingCall ? { ...message, requestContextCallId: originatingCall.id, sourceDaemonBootId: this.bootId } : message);
     };
-    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,this.name,tool,args,originatingCall?.admission);}catch(error){respond(null,(error as Error).message);return;}
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,this.name,tool,args,originatingCall?.admission,originatingCall?.replyRoute);}catch(error){respond(null,(error as Error).message);return;}
     if (this.requestContextLifecycle && !peer && !originatingCall || originatingCall && !originatingCall.current()) {
       respond(null, "Originating request context is unavailable"); return;
     }
@@ -13467,7 +13481,13 @@ export class Daemon extends EventEmitter {
     // Context-bound routing: reply/react/edit_message always use the daemon's last known context.
     // chat_id and thread_id are not exposed in the tool schema — daemon is solely responsible for routing.
     // Must run before IPC forwarding so topic-mode (fleet manager) also receives the correct chat_id.
-    if (["reply", "react", "edit_message"].includes(tool)) {
+    const ownedReplyRoute=this.requestContextPolicy&&["reply","react","edit_message"].includes(tool)?originatingCall?.replyRoute:undefined;
+    if(ownedReplyRoute){
+      if(!ownedReplyRoute.current()){respond(null,"Originating request context is no longer current");return;}
+      args.chat_id=ownedReplyRoute.target.chatId;
+      if(ownedReplyRoute.target.threadId)args.thread_id=ownedReplyRoute.target.threadId;else delete args.thread_id;
+    }
+    if (!ownedReplyRoute && ["reply", "react", "edit_message"].includes(tool)) {
       const adapters = this.messageBus.getAllAdapters();
       const isTopicMode = adapters.length === 0;
       if (!this.lastChatId && !isTopicMode) {
@@ -13518,16 +13538,17 @@ export class Daemon extends EventEmitter {
         // Preserve the exact adapter world that supplied the chat context. An
         // instance binding is only a fallback: persisted/runtime context can be
         // from a secondary world, and message ids are not portable across bots.
-        adapterId: this.lastAdapterId,
+        adapterId: ownedReplyRoute?ownedReplyRoute.target.adapterId:this.lastAdapterId,
       });
       return;
     }
 
     // Same rule as deliverDaemonReply: one adapter is unambiguous, several with
     // no bound world is a routing failure rather than a first-wins guess.
-    const adapter = this.lastAdapterId
-      ? this.messageBus.getAdapter(this.lastAdapterId) ?? (adapters.length === 1 ? adapters[0] : undefined)
-      : (adapters.length === 1 ? adapters[0] : undefined);
+    const selectedAdapter=ownedReplyRoute?ownedReplyRoute.target.adapterId:this.lastAdapterId;
+    const adapter = selectedAdapter
+      ? this.messageBus.getAdapter(selectedAdapter) ?? (!ownedReplyRoute&&adapters.length === 1 ? adapters[0] : undefined)
+      : (!ownedReplyRoute&&adapters.length === 1 ? adapters[0] : undefined);
     if (!adapter) {
       respond(null, "No channel world bound to this chat context — awaiting an inbound message to establish it");
       return;
@@ -13542,7 +13563,7 @@ export class Daemon extends EventEmitter {
       if (args.poll !== undefined && args.poll !== null) { respond(null, "reply: a poll needs AgEnD's fleet; send the question without poll"); return; }
       if (buttons) { routed = { ...args, text: `${String(args.text)}\n\n${replyButtonsFallbackText(buttons.buttons)}` }; delete routed.buttons; }
     }
-    if (!routeToolCall(adapter, tool, routed, this.lastThreadId, respond)) {
+    if (!routeToolCall(adapter, tool, routed, ownedReplyRoute?ownedReplyRoute.target.threadId:this.lastThreadId, respond, ownedReplyRoute?{beforeSend:()=>{if(!originatingCall?.current()||!ownedReplyRoute.current()||!selectedAdapter||this.messageBus.getAdapter(selectedAdapter)!==adapter)throw Error("Originating request context is no longer current");}}:{})) {
       respond(null, `Unknown tool: ${tool}`);
     }
   }
