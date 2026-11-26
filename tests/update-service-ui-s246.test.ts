@@ -79,11 +79,13 @@ describe("S-246: Install as a service", () => {
   });
 
   it("the hand-over: restarting → AgEnD gone → back; it looks again and says it is a service now", async () => {
-    let phase: "up" | "down" | "back" = "up";
+    // AgEnD still answers once while it stops (its graceful shutdown), then is gone, then is back as a service.
+    let phase: "up" | "stopping" | "down" | "back" = "up";
     const preflights: unknown[] = [];
     answer = r => {
-      if (r.url === "/ui/update/fixes") { phase = "down"; return { status: 202, body: { restarting: true } }; }
+      if (r.url === "/ui/update/fixes") { phase = "stopping"; return { status: 202, body: { restarting: true } }; }
       if (r.url === "/ui/update") {
+        if (phase === "stopping") { phase = "down"; return { body: ADMIN(NOT_SERVICE) }; }
         if (phase === "down") { phase = "back"; return "down"; }
         const body = ADMIN(phase === "back" ? SERVICE : NOT_SERVICE); preflights.push(body.preflight); return { body };
       }
@@ -98,7 +100,7 @@ describe("S-246: Install as a service", () => {
     await settle(6);
     expect(out).toEqual({ ok: true });
     expect(sleeps.every(ms => ms === 3000)).toBe(true);
-    expect(reqs.map(r => `${r.method} ${r.url}`)).toEqual(["POST /ui/update/fixes", "GET /ui/update", "GET /ui/update", "POST /ui/update/check", "GET /ui/update"]);
+    expect(reqs.map(r => `${r.method} ${r.url}`)).toEqual(["POST /ui/update/fixes", "GET /ui/update", "GET /ui/update", "GET /ui/update", "POST /ui/update/check", "GET /ui/update"]);
     expect(shown().slice(before)).toEqual([["AgEnD is restarting as a service. This page reconnects when it's back.", true], ["AgEnD is back, running as a service.", true]]);
     expect(upd.updateStore.get().info.preflight).toEqual(SERVICE);
   });
