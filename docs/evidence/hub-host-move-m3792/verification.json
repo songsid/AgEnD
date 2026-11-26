@@ -43,16 +43,24 @@
     },
     {
       "path": "docs/design/hub-host-move-runbook.md",
-      "sha256": "e541f901ca39d6a9df230b46aba9ea0f6856835935522b4bceb76c26111b551f"
+      "sha256": "3b534a47940613e2061cc56306a01bfce55eeba937f04484912b7f07bc31f495"
     },
     {
       "path": "docs/design/hub-host-move-runbook.zh-TW.md",
-      "sha256": "e64c0d5dbe2094eab1a793b959db72c77d344facebd8b2e40fc5b8df484f1f4c"
+      "sha256": "f045770a0e058e0495d78a6e33b68f648c94ed1c7bf14ea121bf61f0aea4f453"
     }
   ],
   "reviewR1": {
     "priorHead": "7eb077e6037db6c4563430d302b8bf5d04438c3b",
     "delta": "EN/zh runbook only: general terminal TLS mismatch, credential-free destination-front-end SPKI/SAN preflight before DNS, refusal while backend down, and per-member move+return hop budget. Test and product code unchanged.",
     "bilingualChecks": "Both languages retain five-second ACK, five-minute confirmation, eight-hop cap and B-only after promotion; add two-hop round-trip and maximum-six pre-move for reserved return."
+  },
+  "reviewR2": {
+    "priorHead": "f4cb5813009b75e8d1e78dd4103986310c51570f",
+    "scope": "Generic both-origin bare-IP to DNS runbook; actual endpoints are private-task annex only. Product/test code unchanged.",
+    "sequence": "Source web address first, remount, required Fleets current again at old member endpoint; signed member move last; fence/copy; isolated destination supported listener-only edits; credential-free actual-ingress check before DNS/traffic.",
+    "tls": "Browser CA certificate distinct from intentionally self-signed pinned member certificate. Existing member key retained; member CA/key rotation outside this move. No CA-import in current member-address UI.",
+    "network": "Kernel443-to8443 redirect does not terminate TLS or make packets reach loopback. Destination Advanced listener uses actual local interface IP after source is fenced; no concrete firewall/routing command supplied.",
+    "riskList": "Private manual Connected fleets checklist plus capability/link/hop-budget evidence; final followed/reconnect result authoritative."
   }
 }
