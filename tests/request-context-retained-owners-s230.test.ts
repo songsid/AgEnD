@@ -76,3 +76,34 @@ it("abandoning a first-On native preparation disposes only its staged owners and
  const r=rig(true,true);await r.factory.beforeStart("worker",r.config);await r.factory.disposeStaged();expect(r.factory.current()).toBe(false);expect(r.fm.prepareRequestContextStart).toBeUndefined();expect(r.box.requestContextInstallation().read()).toBeNull();
  r.connection!.restore();expect(()=>r.box.activateRequestContextBarrier()).toThrow(/v1/);
 });
+
+it("whole-Fleet drain views include calls and Hub inputs and never silently omit a missing turn view",async()=>{
+ const r=rig(),d=await r.bind(),root=randomUUID();
+ expect(r.factory.callView(root)).toMatchObject({registration:r.registration,references:[],unknown:false});
+ expect(r.factory.inputView(root)).toMatchObject({registration:r.registration,references:[],unknown:false});
+ const revision=r.factory.revision();d.requestContextTurnDrainView=()=>null;
+ expect(r.factory.turnView(root).unknown).toBe(true);expect(r.factory.revision()).not.toBe(revision);
+});
+it("an unregistered live daemon makes every aggregate incomplete instead of disappearing from the drain proof",async()=>{
+ const r=rig();await r.bind();const root=randomUUID(),revision=r.factory.callRevision();
+ r.fm.daemons.set("unregistered",r.daemon());
+ expect(r.factory.turnView(root).unknown).toBe(true);expect(r.factory.callView(root).unknown).toBe(true);expect(r.factory.inputView(root).unknown).toBe(true);
+ expect(r.factory.callRevision()).not.toBe(revision);
+});
+
+it("queued reply recovery protects its captured root even before the paste queue runs, then releases that exact registration",async()=>{
+ const r=rig(),d=await r.bind(),root=randomUUID();let release!:()=>void;
+ d.pasteLock=new Promise<void>(resolve=>{release=resolve;});d.currentReplyRecovery=()=>null;
+ d.workingTurnRequestContext={generation:42,snapshot:{context:{ref:{rootContextId:root}}}};
+ const before=r.factory.inputRevision();d.queueReplyRecoveryPrompt({generation:42});
+ expect(r.factory.inputView(root).references).toHaveLength(1);expect(r.factory.inputRevision()).not.toBe(before);
+ expect(r.factory.inputView(randomUUID()).references).toEqual([]);
+ release();await d.pasteLock;expect(r.factory.inputView(root)).toMatchObject({references:[],unknown:false});
+});
+
+it("a missing retained work row invalidates aggregate revisions even when the turn is empty",async()=>{
+ const r=rig();await r.bind();const root=randomUUID(),before=r.factory.revision();
+ (r.box as any).db.prepare("DELETE FROM request_context_work_v1 WHERE instance='worker'").run();
+ expect(r.factory.turnView(root).unknown).toBe(true);expect(r.factory.callView(root).unknown).toBe(true);expect(r.factory.inputView(root).unknown).toBe(true);
+ expect(r.factory.revision()).not.toBe(before);
+});

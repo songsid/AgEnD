@@ -48,11 +48,17 @@ export class RequestContextBoot {
   readonly publication: RequestContextPublication<RequestContextBootPorts>;
   readonly owner: { readonly owner: string; current(): boolean };
   readonly policy: RequestContextPolicyPort;
-  constructor(readonly initial: RequestContextInstallationState, lease: RequestContextFleetLease) {
+  /** First On has no durable state yet. Its publication stays legacy until the owner explicitly fences preparation. */
+  static prepareFirstOn(owner:string,lease:RequestContextFleetLease):RequestContextBoot {
+    if(!owner||owner.length>256||/[\x00-\x1f\x7f]/.test(owner))throw Error("Request-context Fleet identity unavailable");
+    return new RequestContextBoot(null,lease,owner);
+  }
+  constructor(readonly initial: RequestContextInstallationState|null, lease: RequestContextFleetLease, firstOwner?:string) {
     if (!lease.current()) throw Error("Request-context Fleet lease unavailable");
     // Durable Fleet identity belongs to the retained installation; currentness belongs to this exact process lock.
-    this.owner = Object.freeze({ owner: initial.owner, current: () => lease.current() });
-    this.publication = new RequestContextPublication(this.owner, true);
+    const owner=initial?.owner??firstOwner;if(!owner)throw Error("Request-context Fleet identity unavailable");
+    this.owner = Object.freeze({ owner, current: () => lease.current() });
+    this.publication = new RequestContextPublication(this.owner, initial!==null);
     this.policy = Object.freeze({
       assert: (input: RequestContextOperation) => {
         const covered=input.admission?.coverage==="covered"?input.admission.lease:null;

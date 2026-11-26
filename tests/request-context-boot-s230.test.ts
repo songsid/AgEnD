@@ -180,3 +180,22 @@ it("an abandoned staged drain never borrows a successor connection preparation",
   {owner:"fleet",current:()=>true},{current:()=>true,release(){}},()=>second.current(),0);
  expect(()=>registration.assertRegistration("00000000-0000-4000-8000-000000000001")).toThrow(/not ready/);
 });
+
+it("first On owns a fenced preparation without inventing activation; abort and retry never revive the old attempt",()=>{
+ const h=home();lock(h);const m=manager(h);m.fleetConfig={instances:{}};m.ensureDeliveryOutbox();
+ const first=m.prepareRequestContextFirstOn();expect(first.boot.initial).toBeNull();expect(first.current()).toBe(true);
+ expect(m.deliveryOutbox.requestContextInstallation().read()).toBeNull();expect(m.requestContextAdmission.available()).toBe(false);
+ expect(()=>first.boot.publication.capture()).toThrow(/fenced/);expect(m.requestContextPolicy).toBeUndefined();
+ const db=new Database(join(h,"delivery-outbox.db"),{readonly:true});try{expect(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name LIKE 'request_context_%'").get()).toEqual({n:0});}finally{db.close();}
+ first.abandon();expect(first.current()).toBe(false);expect(m.requestContextBoot).toBeUndefined();expect(m.requestContextAdmission.available()).toBe(true);
+ const retry=m.prepareRequestContextFirstOn();expect(retry.boot).toBe(first.boot);expect(retry.current()).toBe(true);expect(first.current()).toBe(false);
+ expect(()=>first.abandon()).toThrow();retry.abandon();expect(m.requestContextAdmission.available()).toBe(true);
+});
+it("a durable first-On commit cannot abandon into legacy and adopted owner currency survives sealing",()=>{
+ const h=home();lock(h);const m=manager(h);m.fleetConfig={instances:{}};m.ensureDeliveryOutbox();
+ const first=m.prepareRequestContextFirstOn(),stage=m.deliveryOutbox.stageRequestContextConnection({current:()=>first.current()&&first.fence.owned()});
+ const state=m.deliveryOutbox.requestContextInstallation().activate({epoch:"first",owner:first.boot.owner.owner,activatedAt:1,invalidates:[],offeredLatestDeadline:null},first.boot.owner,{current:()=>true,release(){}},()=>first.current(),0);
+ expect(()=>first.adoptCommitted("other")).toThrow();expect(()=>first.abandon()).toThrow();
+ expect(first.adoptCommitted(state.epoch)).toEqual(state);expect(first.current()).toBe(true);expect(m.requestContextPolicy).toBe(first.boot.policy);
+ expect(m.requestContextAdmission.available()).toBe(false);expect(()=>stage.restore()).toThrow();
+});

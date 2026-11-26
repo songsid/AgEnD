@@ -1384,11 +1384,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   fsyncForTest: ((fd: number) => void) | undefined = undefined;
   private requestContextAdmission?: RequestContextAdmissionPort;
   private requestContextBoot?: RequestContextBoot;
+  private requestContextFirstOn?:{boot:RequestContextBoot;attempt?:object};
   prepareRequestContextOwnerRegistration?: (name:string,config:InstanceConfig)=>Promise<void>;
   requestContextOwnerStarted?: (name:string,daemon:Daemon)=>void;
   private requestContextRetainedFactory?:object;
   prepareRequestContextStart?: (name: string, config: InstanceConfig) => RequestContextStartPreparation;
   configureRequestContextBeforeStart?: (name: string, daemon: Daemon, config: InstanceConfig, preparation?: RequestContextStartPreparation) => void;
+  /** First-On owner attachment, not activation. Called only by the confirmed Settings controller.
+   * A failed attempt reuses this process-owned admission port; it never leaves a false capable boot installed.
+   */
+  prepareRequestContextFirstOn(){
+    const box=this.deliveryOutbox,lease=captureProcessFleetLease(this.dataDir),manager=this.managerBootId;
+    if(!box||!this.fleetConfig||!lease?.current()||this.requestContextBoot||box.requestContextInstallation().read()!==null)throw Error("First activation preparation unavailable");
+    const preparation:{boot:RequestContextBoot;attempt?:object}=this.requestContextFirstOn??{boot:RequestContextBoot.prepareFirstOn(randomUUID(),lease)};
+    const boot=preparation.boot;
+    if(!boot.owner.current()||this.requestContextAdmission&&this.requestContextAdmission!==boot.publication.admission)throw Error("First activation owner changed");
+    this.requestContextFirstOn=preparation;this.attachRequestContextAdmission(boot.publication.admission);
+    const fence=boot.publication.fence(),attempt={};preparation.attempt=attempt;let adopted=false;this.requestContextBoot=boot;
+    const current=()=>!this.shuttingDown&&this.managerBootId===manager&&lease.current()&&boot.owner.current()
+      &&this.deliveryOutbox===box&&this.requestContextBoot===boot&&(adopted||this.requestContextFirstOn===preparation&&preparation.attempt===attempt);
+    return Object.freeze({boot,fence,current,
+      /** The actual activation transaction already committed; only then publish capable policy ownership. */
+      adoptCommitted:(epoch:string)=>{
+        const state=box.requestContextInstallation().read();
+        if(!current()||!fence.owned()||!state||state.owner!==boot.owner.owner||state.epoch!==epoch||state.mode!=="active")throw Error("Activation commit owner changed");
+        adopted=true;this.requestContextPolicy=boot.policy;this.requestContextFirstOn=undefined;return state;
+      },
+      /** Physical candidates/ports and the staged connection must be undone first by their owning orchestration. */
+      abandon:()=>{
+        if(!current()||this.requestContextNativeGraph||box.requestContextInstallation().read()!==null)throw Error("Activation preparation cannot revert");
+        this.requestContextBoot=undefined;
+        try{boot.publication.abandon(fence,()=>box.requestContextInstallation().read());preparation.attempt=undefined;}
+        catch(error){this.requestContextBoot=boot;throw error;}
+      },
+    });
+  }
+
   /** Exact persistent roster for controlled On; exec owners and durable drain assessment are separate required participants. */
   private async captureRequestContextOwnedLaunches() {
     const admission = this.requestContextAdmission, lease = captureProcessFleetLease(this.dataDir);
@@ -10323,6 +10354,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }};
     adoptOwners(adopt);if(!options.deferStartHooks)attach();
     const exec=(name:string)=>{const entry=entries.get(name);if(!entry?.exec||!entryCurrent(entry))throw Error("Retained native owner unavailable");return entry.exec;};
+    const aggregate=(kind:"turns"|"calls"|"inputs",root:string)=>{
+      const views:import("./request-context-fence.js").RequestContextDrainView[]=[],image:Array<unknown>=[];
+      let unknown=!owned();
+      for(const [name,daemon]of this.daemons)if(entries.get(name)?.daemon!==daemon)unknown=true;
+      for(const [name,row]of [...entries].sort(([a],[b])=>a.localeCompare(b))){
+        const current=entryCurrent(row)&&row.work.current();if(!current)unknown=true;
+        image.push([name,row.incarnation,row.work.revision,row.daemon?.bootId??null,!!row.exec,current]);
+        try{
+          const view=kind==="turns"?(row.exec?.turns.drainView(root)??row.daemon?.requestContextTurnDrainView(root))
+            :kind==="calls"?row.daemon?.requestContextCallDrainView(root):row.prepared?.hub()?.drainView(root);
+          if(view){views.push(view);image.push([name,view.revision]);if(view.unknown||view.registration!==registration)unknown=true;}
+          else if(row.daemon)unknown=true;
+          if(kind==="inputs"&&row.daemon){
+            const pending=row.daemon.requestContextQueuedWorkDrainView(root);views.push(pending);image.push([name,"queued",pending.revision]);
+            if(pending.unknown||pending.registration!==registration)unknown=true;
+          } // A live/missing view cannot disappear from the whole-Fleet proof.
+        }catch{unknown=true;image.push([name,"unavailable"]);}
+      }
+      return {registration,revision:requestContextDigest([serial,kind,image,[...this.daemons].map(([name,daemon])=>[name,daemon.bootId])]),references:views.flatMap(view=>view.references),unknown};
+    };
     return Object.freeze({current:owned,beforeStart:prepare,attach,adopt:adoptOwners,
       retain:()=>{if(sealed||!owned()||!options.firstOnStage?.current())throw Error("Request owner staging changed");for(const entry of entries.values())entry.work.retainPrepared();},
       seal:()=>{if(!owned()||!box.requestContextInstallation().read())throw Error("Request owner staging has not committed");for(const entry of entries.values()){entry.work.sealRetained();this.sealRequestContextWorkRegistration(entry.name,owned);}sealed=true;},
@@ -10335,11 +10386,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       hub:(name:string)=>{const entry=entries.get(name);return entry&&entryCurrent(entry)?entry.prepared?.hub()??null:null;},
       execTurns:(name:string)=>exec(name).turns,execOwner:(name:string)=>exec(name).owner(),
       execInput:(name:string,...args:Parameters<RequestContextExecOwner["prepare"]>)=>exec(name).prepare(...args),
-      revision:()=>String(serial)+":"+[...entries.values()].map(row=>row.exec?.turns.drainRevision??row.daemon?.requestContextTurnDrainRevision??"unstarted").join(":"),
-      turnView:(root:string)=>{
-        const views=[...entries.values()].map(row=>row.exec?.turns.drainView(root)??row.daemon?.requestContextTurnDrainView(root)).filter((row):row is NonNullable<typeof row>=>!!row);
-        return {registration,revision:String(serial)+":"+[...entries.values()].map(row=>row.exec?.turns.drainRevision??row.daemon?.requestContextTurnDrainRevision??"unstarted").join(":"),references:views.flatMap(row=>row.references),unknown:views.some(row=>row.unknown||row.registration!==registration)};
-      },
+      revision:()=>aggregate("turns","").revision,turnView:(root:string)=>aggregate("turns",root),
+      callRevision:()=>aggregate("calls","").revision,callView:(root:string)=>aggregate("calls",root),
+      inputRevision:()=>aggregate("inputs","").revision,inputView:(root:string)=>aggregate("inputs",root),
     });
   }
 

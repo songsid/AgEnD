@@ -2676,6 +2676,9 @@ export class Daemon extends EventEmitter {
   requestContextPolicy?:RequestContextPolicyPort;
   bindRequestContextPolicy(policy:RequestContextPolicyPort):void {if(this.requestContextPolicy||!this.requestContextLifecycle)throw Error("request-context policy requires its owned turn binding");this.requestContextPolicy=policy;}
   private readonly requestContextCalls = new RequestContextReferenceMap<string, RequestContextLocalCall>(call=>call.admission.coverage==="covered"?call.admission.lease.snapshot.context.ref.rootContextId:null,call=>`local-call:${call.id}`);
+  private readonly requestContextQueuedWork = new RequestContextReferenceMap<string,{root:string}>(row=>row.root,(_row,id)=>`queued-recovery:${id}`);
+  get requestContextQueuedWorkDrainRevision():string{return this.requestContextQueuedWork.revision;}
+  requestContextQueuedWorkDrainView(rootId:string){return this.requestContextQueuedWork.view(rootId);}
   private requestContextInterruptedLaunch: string | undefined;
   private requestContextLaunch(): string { return JSON.stringify([this.bootId, this.spawnGeneration, this.nativePaneLifecycle?.snapshot?.()?.launchId ?? null]); }
   /** First local owned hop only. No lookup at a later Fleet receipt may retag this call. */
@@ -2840,6 +2843,7 @@ export class Daemon extends EventEmitter {
   setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }, newWork?: (reason: "fresh") => void, replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null,continuation?:NonNullable<Daemon["requestContextLifecycle"]>["continuation"]): void {
     if (this.tmux || this.ipcServer || this.requestContextLifecycle || this.nativePaneLifecycle && !this.nativePaneLifecycle.requestContextAvailable?.()) throw Error("Request context must be bound before a supported daemon startup");
     this.requestContextCalls.installRegistration(turns.registrationGate??undefined);
+    this.requestContextQueuedWork.installRegistration(turns.registrationGate??undefined);
     this.requestContextHelper=new RequestContextHelperAdmission();
     this.requestContextLifecycle = { turns, identity, newWork, replyTarget,continuation };
   }
@@ -7931,6 +7935,11 @@ export class Daemon extends EventEmitter {
     const deliveryEpoch = this.deliveryEpoch;
     const parent = this.workingTurnRequestContext?.generation === turn.generation ? this.workingTurnRequestContext.snapshot : null;
     const recoveryInputId = `reply-recovery:${this.bootId}:${turn.generation}:${deliveryEpoch}`;
+    const registered=parent&&this.requestContextLifecycle?{root:parent.context.ref.rootContextId}:null;
+    if(registered){
+      if(this.requestContextQueuedWork.has(recoveryInputId))return;
+      this.requestContextQueuedWork.set(recoveryInputId,registered);
+    }
     this.pasteQueueDepth++;
     this.pasteLock = this.pasteLock.then(async () => {
       try {
@@ -7967,7 +7976,7 @@ export class Daemon extends EventEmitter {
       if (!this.currentReplyRecovery(turn.generation, deliveryEpoch)) return;
       this.turnReplyGuard.complete(turn.generation);
       this.reportUnrecoveredReplyDrop(turn, "recovery_prompt_delivery_failed");
-    });
+    }).finally(()=>{if(registered&&this.requestContextQueuedWork.get(recoveryInputId)===registered)this.requestContextQueuedWork.delete(recoveryInputId);});
   }
 
   /** Recheck after queue waits and IO; cancellation must not become a failure notice. */
