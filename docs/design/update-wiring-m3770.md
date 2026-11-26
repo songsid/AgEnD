@@ -104,3 +104,19 @@ This note covers how the live `agend update` and the fleet use it. Design: `docs
 3. Trial mode keyed on the journal (the handoff nonce is the `trial` generation) rather than an env flag: agreed?
 4. Does adapters' inbound during the trial go through the same `commitTurn` copy path as the barrier (so `deliverInbox` reuses the hand-back admission), or need its own journal stream?
 5. Gate (b) as "no Phase 2 while request-context is On": acceptable until replays get receipts?
+
+---
+
+## 10. Review answers (Fable, 11-27) — adopted
+1. **D1, install-only, with a hard constraint.**
+   - Install-only is npm, the version check and runtime files only (bundled tmux, native postinstall). It makes **no unit or plist writes and no service-manager calls** (no `enable`, no `daemon-reload`). The transaction already took the unit preimage and wrote its route, and a regenerated unit would bypass the preimage, or on launchd erase the route. A scratch test asserts the unit file and drop-in are byte-equal across the install hand.
+   - **V_tx is bound to the exact artifact:** `npm view <name>@<exact version>`, never a dist-tag. Then the **installed** `package.json`'s `agend.updateTx` is re-read before trial; below 1 means roll back.
+2. **The control channel is a Unix-domain socket** inside the attempt's 0700 directory. The path is the scope and the file mode is the authentication. The fleet serves it only while an attempt is open. **Never the shared health port:** the public link and tunnel forward to the local listener, so loopback proves nothing there. It isn't the per-instance daemon IPC either.
+3. **Trial keyed on the journal:** agreed. A start whose nonce names a voided or dead generation, or a closed attempt, never silently becomes a normal fleet; the takeover's refusal of a revoked nonce stays, and is tested.
+4. **The trial reuses the copy path, with three refinements:**
+   - **non-durable ingress only:** durable outbox rows just stay queued, since the pump has no agents;
+   - **one ordered stream:** the trial continues the SAME inbox sequence, the next seq after the barrier's last file on disk, so `deliverInbox` walks the old fleet's held items first, then the trial's;
+   - **receipts and rollback:** the trial's copies keep their receipts when `deliverInbox` runs in the same fleet process, the normal commit. They are stripped (as #4541 does) only after a different boot (`resumeCommitting` after a crash) or on a rollback, where the trial's copies go to the old fleet through the existing hand-back. That narrows gate (b) for the forward path.
+5. **Gate (b) holds for the whole attempt:** selection refuses while request-context is On; the barrier arm refuses `held` while On; and **S-230's On action refuses while `readCurrent` isn't `none`**, because a Settings write takes no service lock (Sentinel to add).
+6. **The proof doesn't require adapters connected** (a Discord or Telegram outage mustn't roll back a healthy version). Adapter connection is informational. The proof is the outbox, the scheduler, the web listener and the fleet's own health, with nonce and pid matched.
+7. **The rig** (part 7) uses a scratch tmux socket under a short `TMUX_TMPDIR`, an `env -i` scratch HOME and never the host's `AGEND_HOME`, and it includes a launchd-shaped case as S-260's baseline. **Its fleets are stand-in processes** that take `fleet.lock` over by the handoff nonce exactly as `claimFleetSingleton` does, not `agend fleet start`: a scratch-HOME fleet start has killed live tmux windows on this host before (a standing rule: never start a test fleet). A real fleet process in the rig needs the leader's explicit go-ahead and an isolation proof first.
