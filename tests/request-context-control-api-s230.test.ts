@@ -89,6 +89,16 @@ it("unexpected installer/storage errors never expose their private text", async 
   const r = rig(); vi.mocked(r.host.read).mockImplementation(() => { throw Error("PRIVATE_SQL_OR_MACHINE_STATE"); });
   expect(await r.request().done()).toEqual({ status: 503, body: { error: "unavailable" } });
 });
+it("a result lost after the owner changed state is unavailable, never replayed; GET reveals the current revision", async () => {
+  const r = rig(); r.verify();
+  vi.mocked(r.host.change).mockImplementation(() => {
+    Object.assign(r.view, { revision: 3, enabled: false, phase: "draining" }); throw Error("unavailable");
+  });
+  expect(await r.request("POST", { revision: 2, action: "disable" }).done()).toEqual({ status: 503, body: { error: "unavailable" } });
+  expect(r.host.change).toHaveBeenCalledTimes(1);
+  expect((await r.request().done()).body).toMatchObject({ revision: 3, phase: "draining" });
+  expect(r.host.change).toHaveBeenCalledTimes(1);
+});
 it("both control methods are routed on quick and named links; the same owner gate still refuses nonowners", async () => {
   expect(isPublicWebRoute("GET", path)).toBe(true); expect(isPublicWebRoute("POST", path)).toBe(true);
   const r = rig(); r.revoke();

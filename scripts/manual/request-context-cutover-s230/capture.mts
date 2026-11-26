@@ -17,7 +17,7 @@ const fx = await bootFixture({ port: 0, classic: false, host: true, roster: [
 ] });
 const { permitWebContinuation } = await import(repo + "/src/web-continuation.ts");
 const { requestContextEnabledNotice } = await import(repo + "/src/request-context-control-copy.ts");
-let view: any, revision = 0, writes = 0;
+let view: any, revision = 0, writes = 0, failAfterWrite = false;
 const fm = fx.fm;
 // The real private-host session supplies the principal. This fixture exposes no CLI/model/lifecycle sink.
 fm.requestContextControl = {
@@ -30,16 +30,18 @@ fm.requestContextControl = {
     if (input.revision !== view.revision) throw Error("stale");
     writes++;
     if (input.action === "disable") view = { ...view, enabled: false, phase: "draining", revision: ++revision };
+    if (failAfterWrite) throw Error("unavailable");
     return structuredClone(view);
   },
 };
 fm.needsYouItems = () => view.phase === "blocked" ? [{ id: "cutover-fixture", type: "config", reason: "request_context_cutover", instance: "", detail: "", since: Date.now(), requestContextCutover: structuredClone(view) }] : [];
 const never = () => { throw Error("Capture fixture must never start, mutate or deliver to an agent"); };
 fm.deliverToInstance = never; fm.deliverHumanToInstance = never; fm.saveFleetConfig = never;
-const allStates = ["on", "off", "off-before", "draining", "blocked-legacy", "blocked-peers", "blocked-owners", "blocked-recovery", "off-confirm", "general-notice"];
+const allStates = ["on", "off", "off-before", "draining", "blocked-legacy", "blocked-peers", "blocked-owners", "blocked-recovery", "off-confirm", "unconfirmed-change", "general-notice"];
 const states = process.env.STATES ? allStates.filter(state => process.env.STATES!.split(",").includes(state)) : allStates;
 try {
   for (const variant of matrix()) for (const state of states) {
+    failAfterWrite = state === "unconfirmed-change";
     const blocked = state.startsWith("blocked-"), kind = state.slice(8), phase = blocked ? "blocked" : state.startsWith("off") && state !== "off-confirm" ? "off" : state === "draining" ? "draining" : "on";
     view = { revision: ++revision, enabled: !["off", "off-before", "draining"].includes(state), everActivated: state === "blocked-recovery" || !blocked && state !== "off-before", phase, canChange: true,
       blockers: blocked ? [{ id: "readiness-fixture", kind, labels: kind === "peers" ? ["Demo runtime"] : ["owners", "recovery"].includes(kind) ? ["Demo worker"] : [], ...(kind === "recovery" ? { action: "stop-work" } : {}) }]
@@ -51,7 +53,7 @@ try {
     try {
       const dictionary = await page.evaluate(async () => {
         const m = await import("/ui/js/request-context-control.js");
-        return { title: m.requestContextControlText("title"), off: m.requestContextControlText("off"), offBefore: m.requestContextControlText("offBefore"), notice: m.requestContextControlText("notice"), floor: m.requestContextControlText("floor"), floorBefore: m.requestContextControlText("floorBefore"), previous: m.requestContextControlText("previous") };
+        return { title: m.requestContextControlText("title"), off: m.requestContextControlText("off"), offBefore: m.requestContextControlText("offBefore"), notice: m.requestContextControlText("notice"), floor: m.requestContextControlText("floor"), floorBefore: m.requestContextControlText("floorBefore"), previous: m.requestContextControlText("previous"), failed: m.requestContextControlText("failed") };
       });
       check(`${tag}: General words match server`, dictionary.notice === requestContextEnabledNotice(variant.lang));
       if (state === "general-notice") {
@@ -69,11 +71,23 @@ try {
         if (state === "off") check(`${tag}: honest Off`, (await card.innerText()).includes(dictionary.off));
         if (state === "off-before") check(`${tag}: never-activated Off`, (await card.innerText()).includes(dictionary.offBefore));
         check(`${tag}: version warning`, (await card.innerText()).includes(view.everActivated ? dictionary.floor : dictionary.floorBefore));
-        if (state === "off-confirm") {
+        if (state === "on") {
+          const older = { ...view, revision: view.revision - 1, enabled: false, phase: "off" };
+          await page.evaluate(async value => { const { appStore } = await import("/assets/app-store.js"); appStore.set({ requestContextCutover: value }); }, older);
+          await page.waitForTimeout(50);
+          check(`${tag}: stale passive status cannot roll back the switch`, await card.locator("input").isChecked());
+        }
+        if (state === "off-confirm" || state === "unconfirmed-change") {
           const before = writes; await card.locator("label").click();
           await page.getByRole("dialog").waitFor();
           check(`${tag}: no write before confirmation`, writes === before);
           check(`${tag}: no old-rules promise`, !(await page.getByRole("dialog").innerText()).includes("previous"));
+          if (state === "unconfirmed-change") {
+            await page.locator('[data-confirm="yes"]').click();
+            await card.getByRole("alert").waitFor();
+            check(`${tag}: unconfirmed wording`, (await card.getByRole("alert").innerText()) === dictionary.failed);
+            check(`${tag}: no blind write retry`, writes === before + 1 && await card.locator("input").isDisabled());
+          }
         }
       }
       await page.mouse.move(1, 1); await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
@@ -83,7 +97,7 @@ try {
       receipt.pictures.push({ name: `${tag}.png`, sha256: createHash("sha256").update(readFileSync(file)).digest("hex") });
     } finally { await ctx.close(); }
   }
-  check("capture never confirmed a real transition", writes === 0);
+  check("only deliberate synthetic unknown-result writes occurred", writes === (states.includes("unconfirmed-change") ? matrix().length : 0));
   writeFileSync(join(out, "capture.json"), JSON.stringify(receipt, null, 2) + "\n");
   console.log(JSON.stringify({ sourceHead, pictures: receipt.pictures.length, checks: receipt.checks.length }));
 } finally { await fx.close(); }
