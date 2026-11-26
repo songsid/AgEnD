@@ -1,3 +1,4 @@
+import { RequestContextPendingWork } from "./request-context-pending-work.js";
 import {requestDeliveryView,requestContextDisplayView} from "./request-context-view.js";
 import {captureRequestHubOutput} from "./request-hub-output.js";
 import {assertRequestContextOperation,requireRequestContextPolicy,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
@@ -1536,6 +1537,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   fleetConfig: FleetConfig | null = null;
   private fleetWindowsRuntime: FleetWindowsRuntime | null = null;
   private nativeMcpStore: NativeMcpSessions | null = null;
+  readonly requestContextPendingWork = new RequestContextPendingWork();
   private readonly requestContextIpcCalls = new WeakMap<object, RequestContextLocalCall>();
   private readonly requestContextFleetCalls=new RequestContextReferenceMap<string,{call:RequestContextLocalCall;instance:string;bootId:string;ipc:InstanceClient;responseKey:string}>(row=>row.call.admission.coverage==="covered"?row.call.admission.lease.snapshot.context.ref.rootContextId:null,row=>`fleet-call:${row.call.id}`);
   setRequestContextDrainRegistration(registration:RequestContextRegistrationGate):void {
@@ -14679,13 +14681,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             this.sessionRegistry.set(sender, name);
             this.logger.info({ sessionName: sender, instanceName: name }, "Registered external session");
           }
-          try { await this.handleOutboundFromInstance(name, msg); } finally { this.finishRequestContextIpcCall(msg); }
+          try {
+            const run = () => this.handleOutboundFromInstance(name, msg);
+            await (this.requestContextPendingWork ? this.requestContextPendingWork.run(name, run) : run());
+          } finally { this.finishRequestContextIpcCall(msg); }
         } else if (toolForIpcType(msg.type) !== null) {
           // Sink 2 of 3. Each of these types IS a tool and reaches its own
           // handler without passing through the outbound path — which is how
           // `update_decision`, a coordinator-only tool, kept a way through.
           const typed = this.checkToolPermission("ipc-typed", name, toolForIpcType(msg.type)!);
-          if (typed.allowed) this.dispatchTypedIpc(name, msg);
+          if (typed.allowed) {
+            const run = () => this.dispatchTypedIpc(name, msg);
+            await (this.requestContextPendingWork ? this.requestContextPendingWork.run(name, run) : run());
+          }
           else this.refuseTypedIpc(name, msg, typed.message);
         } else if (msg.type === "instance_process_state") {
           this.cacheInstanceProcessStatus(name, msg.status);
@@ -16965,7 +16973,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     ipc.send({ type: responseType, fleetRequestId, error: message });
   }
 
-  private dispatchTypedIpc(name: string, msg: Record<string, unknown>): void {
+  private dispatchTypedIpc(name: string, msg: Record<string, unknown>): void | Promise<unknown> {
     const captured = this.requestContextCallOf(msg);
     if (captured && !captured.current()) { this.refuseTypedIpc(name, msg, "Originating request context is no longer current"); return; }
     const type = String(msg.type);
@@ -16976,7 +16984,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (type === "fleet_set_display_name") { this.handleSetDisplayName(name, msg); return; }
     if (type === "fleet_set_description") { this.handleSetDescription(name, msg); return; }
     if (type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" || type === "fleet_preview_emojis"
-      || type === "fleet_list_stickers" || type === "fleet_preview_stickers") { this.handlePersonaEmoji(name, msg); return; }
+      || type === "fleet_list_stickers" || type === "fleet_preview_stickers") { return this.handlePersonaEmoji(name, msg); }
     if (type === "fleet_get_web_theme" || type === "fleet_set_web_theme" || type === "fleet_set_web_theme_asset" || type === "fleet_reset_web_theme"
       || type === "fleet_get_web_appearance" || type === "fleet_preview_web_appearance"
       || type === "fleet_set_web_widget" || type === "fleet_remove_web_widget"
@@ -17015,7 +17023,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** `list_emojis` / `set_persona_emoji` / `preview_emojis` / `list_stickers` / `preview_stickers` over IPC; the agent endpoint calls the same methods. */
-  private handlePersonaEmoji(instanceName: string, msg: Record<string, unknown>): void {
+  private handlePersonaEmoji(instanceName: string, msg: Record<string, unknown>): void | Promise<unknown> {
     const fleetRequestId = msg.fleetRequestId as string;
     const payload = (msg.payload ?? {}) as Record<string, unknown>;
     const ipc = this.instanceIpcClients.get(instanceName);
@@ -17025,7 +17033,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       : msg.type === "fleet_list_stickers" ? this.listStickersFor(instanceName, payload)
       : msg.type === "fleet_preview_stickers" ? this.previewStickers(instanceName, payload)
       : this.setPersonaEmoji(instanceName, payload);
-    op.then(
+    return op.then(
       (r) => typeof r.error === "string"
         ? ipc.send({ type: "fleet_persona_emoji_response", fleetRequestId, error: r.error })
         : ipc.send({ type: "fleet_persona_emoji_response", fleetRequestId, result: r }),

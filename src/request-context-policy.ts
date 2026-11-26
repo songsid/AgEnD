@@ -84,10 +84,17 @@ export interface RequestContextPolicyPort {
  assert(input:RequestContextOperation):RequestContextOperationPermit;
  /** L's one publication predicate. Staged ports are not an installed Fleet. Never read from model/config arguments. */
  installed?():boolean;
+ installedMode?():"active"|"draining"|"off"|null;
 }
-export function requestContextPolicyInstalled(policy:RequestContextPolicyPort|undefined):boolean {
- try{return policy?.installed?.()===true;}catch{return false;}
+/** Mode is required for serving decisions; a capable Off/Draining installation is not Active. */
+export function requestContextInstalledMode(policy:RequestContextPolicyPort|undefined):"active"|"draining"|"off"|null {
+ try {
+  if(policy?.installedMode){const mode=policy.installedMode();return mode==="active"||mode==="draining"||mode==="off"?mode:null;}
+  // Compatibility for H's explicit trusted test/embedding port. L supplies the mode-aware publication.
+  return policy?.installed?.()===true?"active":null;
+ }catch{return null;}
 }
+export function requestContextPolicyInstalled(policy:RequestContextPolicyPort|undefined):boolean {return requestContextInstalledMode(policy)!==null;}
 export interface RequestContextPolicyContext {requestContextPolicy?:RequestContextPolicyPort;readonly requestContextCallAdmission?:RequestContextCallAdmission}
 export function requireRequestContextPolicy(ctx:RequestContextPolicyContext,instance:string,tool:string,args:Record<string,unknown>,admission?:RequestContextCallAdmission):RequestContextOperationPermit|undefined {
  return ctx.requestContextPolicy?.assert({instance,tool,args,admission:admission??ctx.requestContextCallAdmission});

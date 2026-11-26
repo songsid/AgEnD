@@ -1,3 +1,5 @@
+import { RequestContextPendingWork } from "./request-context-pending-work.js";
+import { requestContextProcessGroupGone, type RequestContextLaunchRetirement } from "./request-context-retirement.js";
 import { ReplyDraft } from "./reply-draft.js";
 import {requireRequestContextPolicy,requestContextPolicyInstalled,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { RequestContextReferenceMap } from "./request-context-fence.js";
@@ -1534,6 +1536,7 @@ export class Daemon extends EventEmitter {
   }
   private guardian: ContextGuardian | null = null;
   private adapter: ChannelAdapter | null = null;
+  readonly requestContextPendingWork = new RequestContextPendingWork();
   private pendingIpcRequests = new Map<string, (msg: Record<string, unknown>) => void>();
   /**
    * Daemon-global request sequence. MCP request ids are only process-local:
@@ -2698,6 +2701,48 @@ export class Daemon extends EventEmitter {
       if (call) this.requestContextCalls.delete(call.id);
       this.ipcServer?.send(socket, { requestId: message.requestId, result: null, error: "Request context call admission is unavailable" });
     }
+  }
+  /** New replacement only; an old launch never acquires C by reseeding its counters. */
+  seedRequestContextReplacement(previous: { spawnGeneration: number; launchFenceEpoch: number }): void {
+    if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle
+      || ![previous.spawnGeneration, previous.launchFenceEpoch].every(n => Number.isSafeInteger(n) && n >= 0 && n < Number.MAX_SAFE_INTEGER)) {
+      throw Error("Request-context replacement must be prepared before startup");
+    }
+    this.spawnGeneration = previous.spawnGeneration + 1;
+    this.launchFenceEpoch = previous.launchFenceEpoch + 1;
+  }
+  /** Read-only first-On inventory. Idle alone is never a legacy-work drain proof. */
+  requestContextLaunchObservation() {
+    return Object.freeze({ daemonBootId: this.bootId, spawnGeneration: this.spawnGeneration,
+      launchFenceEpoch: this.launchFenceEpoch, observation: this.getWorkingStateObservation(),
+      pendingCalls: this.requestContextPendingWork.count(this.name), responseWaiters: this.pendingIpcRequests.size,
+      paneWriteBusy: this.paneWriteLock.isBusy, queuedInputs: this.pasteQueueDepth,
+      transcriptOpen: this.transcriptTurns.openSince() !== null,
+      starting: this.spawning, stopping: this.deliveryWritesStopping || this.startupAborted,
+      replacementRequired: !this.requestContextLifecycle || this.requestContextInterruptedLaunch === this.requestContextLaunch() });
+  }
+  /** Capture the exact old resources BEFORE stop removes metadata; this proof never kills or signals anything. */
+  async captureRequestContextRetirement(): Promise<RequestContextLaunchRetirement> {
+    const tmux = this.tmux, windowId = tmux?.getWindowId(), native = this.nativePaneLifecycle, ipc = this.ipcServer;
+    const spawnGeneration = this.spawnGeneration, launchFenceEpoch = this.launchFenceEpoch, daemonBootId = this.bootId;
+    if (!tmux || !windowId) throw Error("Owned launch unavailable for retirement");
+    const owned = () => this.bootId === daemonBootId && this.spawnGeneration === spawnGeneration
+      && this.tmux === tmux && tmux.getWindowId() === windowId && this.nativePaneLifecycle === native && this.ipcServer === ipc;
+    const captured = native?.snapshot?.();
+    const panePid = native ? null : await this.paneHost.getPanePid(this.tmuxSessionName, windowId);
+    if (!owned() || !native && (!panePid || !Number.isSafeInteger(panePid) || panePid <= 1)
+      || native && (!captured || captured.instance !== this.name || captured.paneId !== windowId)) throw Error("Owned launch changed during retirement capture");
+    return Object.freeze({ daemonBootId, spawnGeneration, launchFenceEpoch, windowId, panePid, retired: async () => {
+      try {
+        if (!owned() || ipc && !ipc.retired()) return false;
+        if (native) {
+          const now = native.snapshot?.();
+          return !!now && now.state === "exited" && (["hostBootId", "paneId", "launchId", "agentId", "instance"] as const).every(k => now[k] === captured![k]) && owned();
+        }
+        const windows = await TmuxManager.listWindowsStrict(this.tmuxSessionName);
+        return owned() && (!ipc || ipc.retired()) && !windows.some(w => w.id === windowId) && requestContextProcessGroupGone(panePid!);
+      } catch { return false; }
+    } });
   }
   setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }): void {
     if (this.tmux || this.ipcServer || this.requestContextLifecycle || this.nativePaneLifecycle && !this.nativePaneLifecycle.requestContextAvailable?.()) throw Error("Request context must be bound before a supported daemon startup");
@@ -6128,6 +6173,7 @@ export class Daemon extends EventEmitter {
     if (this.nativePaneLifecycle) {
       this.healthCheckPaused = true; this.saveSessionId();
       await this.nativePaneLifecycle.release(options.nativePane ?? "detach");
+      await this.ipcServer?.close();
       try { unlinkSync(join(this.instanceDir, "daemon.pid")); } catch { /* metadata only */ }
       return;
     }
@@ -12957,6 +13003,12 @@ export class Daemon extends EventEmitter {
   }
 
   private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }, originatingCall?: RequestContextLocalCall): void {
+    const finish = this.requestContextPendingWork?.begin(this.name);
+    try { Daemon.prototype.handleTrackedToolCall.call(this, msg, socket, peer, originatingCall, finish); }
+    catch (error) { finish?.(); throw error; }
+  }
+  private handleTrackedToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }, originatingCall?: RequestContextLocalCall, finish?: () => void): void {
+    const runLocal = <T>(work: () => Promise<T>): Promise<T> => this.requestContextPendingWork ? this.requestContextPendingWork.run(this.name, work) : work();
     const tool = msg.tool as string;
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number;
@@ -12981,6 +13033,7 @@ export class Daemon extends EventEmitter {
 
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
     const respond = (result: unknown, error?: string, errorCode?: string | number) => {
+      try {
       if (originatingCall && !originatingCall.current()) { result = null; error = `Tool outcome is unconfirmed. ${operationId ? `Inspect operation ${operationId}` : "Inspect the tool operation status"}; do not repeat it.`; }
       if (originatingCall) this.requestContextCalls.delete(originatingCall.id);
       // A message that verifiably went out stands down the dead-MCP proxy reply
@@ -13030,6 +13083,7 @@ export class Daemon extends EventEmitter {
       } else if (operationId) {
         this.emit("mcp_tool_response_written", { operationId, daemonBootId: this.bootId });
       }
+      } finally { finish?.(); }
     };
 
     const sendFleet = (message: Record<string, unknown>): void => {
@@ -13056,11 +13110,11 @@ export class Daemon extends EventEmitter {
 
     // Repo checkout — handled locally in daemon (no fleet-manager)
     if (tool === "checkout_repo") {
-      this.handleCheckoutRepo(args, respond);
+      void runLocal(() => this.handleCheckoutRepo(args, respond));
       return;
     }
     if (tool === "release_repo") {
-      this.handleReleaseRepo(args, respond);
+      void runLocal(() => this.handleReleaseRepo(args, respond));
       return;
     }
 
@@ -13111,7 +13165,7 @@ export class Daemon extends EventEmitter {
         });
         sendFleet({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
       });
-      void (async () => {
+      void runLocal(async () => {
         if (tool === "preview_web_appearance") {
           // The fleet builds the SVGs (whole, or in parts); they are written here, in the working directory.
           const first = await ask({ ...(args.modes !== undefined ? { modes: args.modes } : {}) });
@@ -13149,7 +13203,7 @@ export class Daemon extends EventEmitter {
           return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
         });
         reply(failed ? null : answer, failed);
-      })().catch((err: unknown) => reply(null, `${tool} failed: ${err instanceof Error ? err.message : "error"}`));
+      }).catch((err: unknown) => reply(null, `${tool} failed: ${err instanceof Error ? err.message : "error"}`));
       return;
     }
 
@@ -13174,10 +13228,10 @@ export class Daemon extends EventEmitter {
       });
       // files named in `attach` are read HERE, on the agent's side (its working directory, no symlink, size-capped),
       // and staged on the fleet in parts; the write itself then carries their ids. The fleet never opens a workspace path.
-      void (async () => {
+      void runLocal(async () => {
         const sent = await sendTaskWrite(args, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name }, askTask);
         if (sent.staging) respond(null, sent.error); else respond(sent.answer.result, sent.answer.error);
-      })().catch((err: unknown) => respond(null, `task failed: ${err instanceof Error ? err.message : "error"}`));
+      }).catch((err: unknown) => respond(null, `task failed: ${err instanceof Error ? err.message : "error"}`));
       return;
     }
 

@@ -79,22 +79,22 @@ it("a capable bridge re-enables only from drained Off with a fresh atomic epoch"
 it("producer arrival and role/capability loss invalidate preparation; durable activation never falls back to legacy", () => {
   const r = rig(), publication = new RequestContextPublication(r.owner, false); expect(publication.capture()).toBeNull();
   const old = publication.fence(); expect(publication.ingressAvailable()).toBe(false); const state = r.activate();
-  expect(() => publication.publish(state, {}, old, () => true, () => r.store.read())).toThrow(/changed/);
+  expect(() => publication.publish(state, {}, old, () => true, () => r.store.read(), () => true)).toThrow(/changed/);
   expect(() => publication.abandon(old, () => r.store.read())).toThrow(); expect(() => publication.capture()).toThrow(/fenced/);
   const next = publication.fence(); let ready = true;
-  publication.publish(state, {}, next, () => ready, () => r.store.read()); expect(publication.capture()?.current()).toBe(true);
+  publication.publish(state, {}, next, () => ready, () => r.store.read(), () => true); expect(publication.capture()?.current()).toBe(true);
   ready = false; expect(publication.ingressAvailable()).toBe(false); expect(() => publication.capture()).toThrow(/fenced/);
 });
 it("draining stops new input but preserves exact execution; completed Off retires the old execution reference", () => {
   const r = rig(), state = r.activate(), ports = {}, publication = new RequestContextPublication(r.owner, true);
   expect(() => publication.capture()).toThrow(/fenced/); expect(publication.installed()).toBe(false);
-  publication.publish(state, ports, publication.fence(), () => true, () => r.store.read());
+  publication.publish(state, ports, publication.fence(), () => true, () => r.store.read(), () => true);
   const active = publication.capture()!; expect(publication.installed()).toBe(true); expect(Object.isFrozen(active.ports)).toBe(true); const fence = publication.fence();
-  expect(active.current()).toBe(false); expect(publication.installed()).toBe(false); expect(active.executionCurrent()).toBe(true);
-  const draining = r.store.beginOff(1, r.owner); publication.publish(draining, ports, fence, () => true, () => r.store.read());
+  expect(active.current()).toBe(false); expect(publication.installedMode()).toBe("active"); expect(active.executionCurrent()).toBe(true);
+  const draining = r.store.beginOff(1, r.owner); publication.publish(draining, ports, fence, () => true, () => r.store.read(), () => true);
   expect(active.current()).toBe(false); expect(active.executionCurrent()).toBe(true);
   const offFence = publication.fence(), off = r.store.finishOff(2, r.owner, { epoch: "epoch-1", revision: 2, current: () => true });
-  publication.publish(off, ports, offFence, () => true, () => r.store.read());
+  publication.publish(off, ports, offFence, () => true, () => r.store.read(), () => true);
   expect(active.executionCurrent()).toBe(false); expect(publication.capture()?.state.mode).toBe("off");
   r.revoke(); expect(() => publication.capture()).toThrow(/fenced/);
 });
@@ -126,4 +126,27 @@ it("losing the recovery fence at COMMIT does not reset any durable delivery", ()
   cleanup.push(() => fresh.close()); fail = true;
   expect(() => fresh.recoverForBoot("new-boot")).toThrow(/owned admission fence/);
   expect(fresh.get(delivery.deliveryId)).toMatchObject({ state: "delivering", managerBootId: "old-boot" });
+});
+
+it("global readiness loss during drain holds new input without invalidating unrelated tracked execution", () => {
+  const r = rig(), publication = new RequestContextPublication(r.owner, true), state = r.activate(), ports = {};
+  let ready = true, livePorts = true;
+  publication.publish(state, ports, publication.fence(), () => ready, () => r.store.read(), () => livePorts);
+  const active = publication.capture()!, fence = publication.fence(), draining = r.store.beginOff(1, r.owner);
+  publication.publish(draining, ports, fence, () => ready, () => r.store.read(), () => livePorts);
+  ready = false; expect(publication.ingressAvailable()).toBe(false); expect(() => publication.capture()).toThrow();
+  expect(publication.installedMode()).toBe("draining"); expect(active.executionCurrent()).toBe(true);
+  expect(r.store.read()?.mode).toBe("draining");
+  livePorts = false; expect(active.executionCurrent()).toBe(false); expect(publication.installedMode()).toBeNull();
+  expect(r.store.read()?.mode).toBe("draining"); // Never silently discard the outstanding drain.
+});
+it("mode-aware policy consumers never treat capable Off or Draining as Active", async () => {
+  const { requestContextInstalledMode, requestContextPolicyInstalled } = await import("../src/request-context-policy.js");
+  let mode: "active"|"draining"|"off"|null = "active";
+  const policy = { assert: () => { throw Error("not used"); }, installed: () => true, installedMode: () => mode };
+  for (const value of ["draining", "off"] as const) {
+    mode = value; expect(requestContextInstalledMode(policy)).toBe(value); expect(requestContextPolicyInstalled(policy)).toBe(true);
+    expect(requestContextInstalledMode(policy) === "active").toBe(false);
+  }
+  mode = null; expect(requestContextInstalledMode(policy)).toBeNull(); expect(requestContextPolicyInstalled(policy)).toBe(false);
 });

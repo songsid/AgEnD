@@ -104,7 +104,8 @@ export class RequestContextPublication<T extends object> {
   private arrivals = 0;
   constructor(private readonly owner: RequestContextInstallationOwner, previouslyActivated: boolean) { this.required = previouslyActivated; this.fenced = previouslyActivated; }
   /** The single installed predicate for policy/instruction consumers; admission still captures the serving reference. */
-  installed(): boolean { return !this.fenced && this.published?.current() === true; }
+  installedMode(): RequestContextInstallationState["mode"] | null { return this.published?.executionCurrent() ? this.published.state.mode : null; }
+  installed(): boolean { return this.installedMode() !== null; }
   /** Startup recovery can mutate only behind the current owner's held admission fence. */
   recoveryAvailable(): boolean { return this.fenced && this.owner.current(); }
   /** A remote/local producer arriving under preparation invalidates its exact proof, without starting input. */
@@ -120,14 +121,14 @@ export class RequestContextPublication<T extends object> {
   }
   /** Call only after durable state commits, all nine ports are staged, and readiness is revalidated. */
   publish(state: RequestContextInstallationState, ports: T, fence: { current(): boolean }, ready: () => boolean,
-    durable: () => RequestContextInstallationState | null): void {
+    durable: () => RequestContextInstallationState | null, executionPortsCurrent: () => boolean): void {
     if (state.owner !== this.owner.owner || !fence.current() || !ready() || requestContextJson(durable()) !== requestContextJson(state)) throw Error("Installation preparation changed");
     if (!fence.current()) throw Error("Installation preparation changed");
     const copy = Object.freeze(State.parse(state)), owner = this.owner;
     if (!(copy.mode === "draining" && this.published?.state.epoch === copy.epoch && this.published.ports === ports)) this.executions.clear();
-    const executionCurrent = () => this.executions.has(publication) && owner.current() && ready();
+    const executionCurrent = () => this.executions.has(publication) && owner.current() && executionPortsCurrent();
     const publication: RequestContextPublishedInstallation<T> = Object.freeze({ state: copy, ports: Object.freeze(ports), executionCurrent,
-      current: () => this.published === publication && !this.fenced && executionCurrent() });
+      current: () => this.published === publication && !this.fenced && ready() && executionCurrent() });
     this.executions.add(publication);
     this.published = publication; this.required = true; this.fenced = false;
   }

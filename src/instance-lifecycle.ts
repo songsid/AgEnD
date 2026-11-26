@@ -339,6 +339,8 @@ export interface LifecycleContext {
   /** Called after a replacement Daemon object is live, for generation fencing and post-resume notices. */
   onDaemonReady?(name: string, daemonBootId: string): void;
   configureClassicRestriction?(name: string, daemon: Daemon): void;
+  /** L supplies C/D while preparing a replacement, before native binding or any startup. */
+  configureRequestContextBeforeStart?(name: string, daemon: Daemon, config: InstanceConfig): void;
   inheritContactOrigin?(source: string, target: string): void;
   /** Test/integration seam for the non-LLM Codex quota second opinion. */
   verifyCodexQuota?(): Promise<CodexQuotaVerdict>;
@@ -2088,6 +2090,10 @@ export class InstanceLifecycle {
       this.ctx.backendOutage,
     );
     launched = daemon;
+    if (this.ctx.configureRequestContextBeforeStart) {
+      this.ctx.configureRequestContextBeforeStart(name, daemon, config);
+      check();
+    }
     this.ctx.configureClassicRestriction?.(name, daemon);
     if (native) { daemon.setNativePaneLifecycle(native); native.bindDaemon?.(daemon); }
     // Register before start: a pre-launch refusal has no published daemon or later incident handlers.
