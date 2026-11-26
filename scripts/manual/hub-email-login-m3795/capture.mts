@@ -17,13 +17,15 @@ const source=Object.fromEntries(inputs.map(n=>[n,{base:digest(baseline[n]!),cand
 await provisionHubIdentity({home,memberOrigin:'https://127.0.0.1:1'});
 let rig:Awaited<ReturnType<typeof s3bRig>>|undefined,browser:any;
 const server=createServer({key:readFileSync(join(home,'hub/keys/tls-key.pem')),cert:readFileSync(join(home,'hub/keys/tls-cert.pem'))},(req,res)=>{if(!rig?.http.handle(req,res)){res.writeHead(404);res.end();}});
-const views:any[]=[];
+const stages=process.env.STAGE==='after'?['after']:['before','after'];
+const previous=stages.length===1?JSON.parse(readFileSync(join(OUT,'capture-inputs.json'),'utf8')):null;
+const views:any[]=previous?.views.filter((v:any)=>v.stage==='before')??[];
 try{
  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
  const origin=`https://127.0.0.1:${(server.address() as any).port}`;
  rig=await s3bRig({webOrigin:origin});rig.httpDeps.config={...rig.config,loginWithEmail:true};await rig.restartHttp();
  const pw=createRequire(PW+'/')('playwright-core');browser=await pw.chromium.launch({executablePath:process.env.CHROME,args:['--no-sandbox']});
- for(const stage of ['before','after'])for(const device of ['desk','phone'])for(const lang of ['en','zh-TW'])for(const theme of ['light','dark']){
+ for(const stage of stages)for(const device of ['desk','phone'])for(const lang of ['en','zh-TW'])for(const theme of ['light','dark']){
   const context=await browser.newContext({viewport:{width:device==='desk'?1366:390,height:device==='desk'?900:844},deviceScaleFactor:1,ignoreHTTPSErrors:true,isMobile:device==='phone',hasTouch:device==='phone',colorScheme:theme});
   await context.addInitScript(({lang,theme}:any)=>{localStorage.setItem('agend_lang',lang);localStorage.setItem('agend_theme',theme);localStorage.setItem('agend_tour_done','1');},{lang,theme});
   const page=await context.newPage(),errors:string[]=[],delivered:any[]=[];page.on('pageerror',(e:any)=>errors.push(String(e)));
@@ -35,7 +37,7 @@ try{
   });
   await page.goto(origin+'/ui/hub');await page.waitForSelector('#hubLogin');await page.locator('#hubLogin').fill('alex@example.test');await page.waitForTimeout(150);
   const hint=await page.locator('.hub-signin-form').innerText();
-  if(stage==='after'&&!hint.includes(lang==='en'?'company email':'公司電子郵件'))throw Error('missing candidate hint');
+  if(stage==='after'&&!hint.includes(lang==='en'?'Sign in with your company email or AD account name.':'可以用公司 email 或 AD 帳號登入。'))throw Error('missing candidate hint');
   if(stage==='before'&&inputs.some(n=>delivered.filter(x=>x.file===n).length!==1))throw Error('baseline interception count');
   const file=`${stage}-${device}-${theme}-${lang}.png`;await page.screenshot({path:join(OUT,file),fullPage:true});
   views.push({file,stage,device,lang,theme,delivered,errors,autocomplete:await page.locator('#hubLogin').getAttribute('autocomplete'),overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)});

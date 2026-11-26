@@ -536,7 +536,7 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
       finally { clearTimeout(deadline); await service?.close(true); }
     },
 
-    async signIn(login: string, password: string): Promise<SignInResult> {
+    async signIn(login: string, password: string, beforePasswordBind?: (person: PersonKey) => boolean): Promise<SignInResult> {
       if (closed) return { ok: false, reason: "unavailable" };
       if (!validLogin(login) || !validPassword(password)) {
         report("sign-in", "bad-input");
@@ -552,6 +552,10 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
           return { ok: false, reason };
         }
         const { entry, objectId } = selected;
+        // Only the caller's private rate budget sees this unauthenticated selection; no identity is returned on failure.
+        if (beforePasswordBind && !beforePasswordBind(Object.freeze({ realm: cfg.realm, objectId }))) {
+          return { ok: false, reason: "backpressure" };
+        }
 
         // The password goes to the directory once, on its own connection, for the DN the service search found.
         const user = await Session.open(cfg, expectedServerFingerprint);

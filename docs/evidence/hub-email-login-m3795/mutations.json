@@ -20,5 +20,5 @@
       "assertionRed": true
     }
   ],
-  "scope": "Preceding error-module-load guard revision; alias escaping/profile/ambiguity predicates are byte-unchanged. Final restored tests cover the final guard."
+  "scope": "Initial pre-R1 throttle revision, before final error-module guard. Alias escaping/profile/ambiguity predicates remain unchanged; use mutation-baseline.patch to reconstruct that historical input."
 }

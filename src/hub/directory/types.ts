@@ -38,6 +38,7 @@ export interface DirectoryPerson {
 export type SignInRefusal =
   | "bad-input" // empty or malformed login/password (an empty password would be an unauthenticated bind)
   | "invalid-credentials" // unknown login, wrong password, or a lock the directory enforces on bind
+  | "backpressure" // server-owned resolved-account budget refused before a password bind
   | "not-eligible" // the account exists but is disabled or expired
   | "unavailable"; // the directory could not be reached or answered unexpectedly: fail closed
 
@@ -79,8 +80,10 @@ export interface HubDirectory {
   checkPolicyGroup?(key: PersonKey): Promise<import("./groups.js").PolicyGroupLookup>;
   readPolicyGroups?(key: PersonKey): Promise<import("./groups.js").PolicyGroupFacts>;
   readonly realm: string;
-  /** Verify a login and password with the directory. The password is used for one bind and never kept. */
-  signIn(login: string, password: string): Promise<SignInResult>;
+  /** Verify a login and password with the directory. The password is used for one bind and never kept.
+   * The optional server-owned gate reserves a password attempt for the resolved immutable account.
+   * It runs after enabled/unique selection, before binding; it is not authentication or an HTTP identity hint. */
+  signIn(login: string, password: string, beforePasswordBind?: (person: PersonKey) => boolean): Promise<SignInResult>;
   /** Narrow service-account lookup for local init, never exposed as a browser lookup endpoint. Missing = unavailable. */
   lookupForInitialization?(login: string): Promise<InitializationLookupResult>;
   /** Authenticated Hub-admin pairing selection only; not a public lookup, sign-in or grant. Missing keeps the existing known-person path. */
