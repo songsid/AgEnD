@@ -1,385 +1,233 @@
 {
-  "sourceHead": "5f1de4c0c672798786edb72dd76a8b2e967d3e45",
+  "sourceHead": "3930920b36d71ab7ccdfcd64a6b8b41b2ba3bf22",
   "fixture": "Real web server, settings/needs/chat renderers and control route; synthetic installer states, not activation or full-mode proof.",
   "pictures": [
     {
-      "name": "desk-light-en-on.png",
-      "sha256": "866c4d0fd8ff8c37cb8da6a33b78451ba7798a2c9b103c190ace4f0eca65ee80"
-    },
-    {
-      "name": "desk-light-en-off.png",
-      "sha256": "dcbeb3910e5768036cbcd3b022ffa07582c00d457bbd036d357cc0b237702d70"
-    },
-    {
-      "name": "desk-light-en-off-before.png",
-      "sha256": "fd4836022e6838d2ef2a2ffe459668d6935fa4ba843b671b65f2ae70019c20dc"
-    },
-    {
       "name": "desk-light-en-draining.png",
-      "sha256": "10a7e063f1c22865defc24bb6bb0a3218681a23c0dae2ef987048d89d65dca1d"
+      "sha256": "5effe00b574a6d4e02e65a1d95c9ff2708de1824ccf1e2b9a3f172114e0d6f79"
     },
     {
       "name": "desk-light-en-blocked-legacy.png",
-      "sha256": "9ae76a0f705788230c0d16075c878f32dcca84f44e235d4674581039368cf34c"
+      "sha256": "f06c486d04d2f819778d5308c2078004e082b3af09b9500c15e552cf328bf13c"
     },
     {
       "name": "desk-light-en-blocked-peers.png",
-      "sha256": "995ec374a830d24467821bd005554c3bda38fbfd4659547f90a2f55eddf2572c"
+      "sha256": "e68563032e5d81db4522b5a72bb7a36e28cdf352d6f738236e95ac9923525c55"
     },
     {
       "name": "desk-light-en-blocked-owners.png",
-      "sha256": "cf40ead9f3e4ef74237ca4d34dcec6869aa0143333a7a4a1f7595141910a4672"
+      "sha256": "fddf73ccc0145f7d26053f73d556d6334a176474c64303ec4457298c2f307436"
     },
     {
       "name": "desk-light-en-blocked-recovery.png",
-      "sha256": "47e6ddfb9278111ba45bc54365698dcb6822f3b40d12cae751cb3b7bf7e26d4a"
+      "sha256": "2f817939a51544441edc908a44f59910b1b8392c787557cab3d45fd19cb57061"
     },
     {
-      "name": "desk-light-en-off-confirm.png",
-      "sha256": "ea68e11aff7d9bc9c3a85bb766326f79ad2908694f94f010a6a930093147b336"
+      "name": "desk-light-en-stop-work-confirm.png",
+      "sha256": "930c379e1ab2f23520eebb5b0db9b1f585d42c426a2bd06badfcfc755085e6a3"
     },
     {
-      "name": "desk-light-en-general-notice.png",
-      "sha256": "efeac772cceed69604b177341e4ae20a07f9e3b8e7a6c86c52c3d5dd6b67bb7b"
-    },
-    {
-      "name": "desk-light-zh-TW-on.png",
-      "sha256": "20d6618fa8dd03aca682b030a54af3264b7bfec07db7b7f4fcf1554d85384616"
-    },
-    {
-      "name": "desk-light-zh-TW-off.png",
-      "sha256": "202c7670a69121d513bd532bde7314b4c81ea3d58d7aacc2ef3e26be39583d39"
-    },
-    {
-      "name": "desk-light-zh-TW-off-before.png",
-      "sha256": "c1944442a0f4ad7a3d1d769abac20614f0a4711f9255de718b3245e960282d67"
+      "name": "desk-light-en-blocked-update.png",
+      "sha256": "d371a930b2d4cb303a85d95056cffa01d608dd762485979f27a688ba7810ac12"
     },
     {
       "name": "desk-light-zh-TW-draining.png",
-      "sha256": "7e14cd2a496f610c7ba80f2126989a09812e768678160ebaf810952b4cba3e2e"
+      "sha256": "f40f2c0e6d366685a164533671bf965edc2e43610002235bc3eca7e91e5fb6d5"
     },
     {
       "name": "desk-light-zh-TW-blocked-legacy.png",
-      "sha256": "76bfd7492a4291a975d29630b1cc782a2341e52058333c3096bd5b649273d116"
+      "sha256": "ac28c71f75d18d4363cda143fd1e0c288caed5d72055ef5e332aa6cf49031dc8"
     },
     {
       "name": "desk-light-zh-TW-blocked-peers.png",
-      "sha256": "b26123d49b4176509197bbe855516f16e472249d5024d289d82a1447d340354c"
+      "sha256": "52e589ba11e01ceffaf64ae2ce3a2d928562bde289fb384bc39c642852545f45"
     },
     {
       "name": "desk-light-zh-TW-blocked-owners.png",
-      "sha256": "058ce0b683df831ede8389f207c3bebdddbba890144d4a45b383510eaddeb2fe"
+      "sha256": "7f18aec3c13f6e563d73e0a255ba656253d6a2808e00cbe0c8cb1a96667c6973"
     },
     {
       "name": "desk-light-zh-TW-blocked-recovery.png",
-      "sha256": "fbcde2b329ba75eb5afaeb4b281860364279bcb0e7ff89cabb78e93ac3690a26"
+      "sha256": "03fb46d23f76f06da480e5de94fe21567875f9f50ca6e231c843ac5c01f0addc"
     },
     {
-      "name": "desk-light-zh-TW-off-confirm.png",
-      "sha256": "2efbe079ecf28549dc9fd5d5f068ccfd4389c5cc79c2f1cf60a8924d4d69503b"
+      "name": "desk-light-zh-TW-stop-work-confirm.png",
+      "sha256": "0c3013692cc78736d488bb18d64530d2e3676e770bba6cffbd8ecc88b21310f2"
     },
     {
-      "name": "desk-light-zh-TW-general-notice.png",
-      "sha256": "83503c76bb3bb4695f2cc559a57b7ebbbea9047cc7769cb425f7d3faf5fd4cd1"
-    },
-    {
-      "name": "desk-dark-en-on.png",
-      "sha256": "4c924538fe36d4c65264a7e4d761df9ca9f5f32268d8d3468525bbe2c2225620"
-    },
-    {
-      "name": "desk-dark-en-off.png",
-      "sha256": "1ea030f4433a682dcf60a0fa816b0e9cbabbb9df685580761f39d781cc2cdcec"
-    },
-    {
-      "name": "desk-dark-en-off-before.png",
-      "sha256": "0f25284def968f5cbfeb90b860736a36d1cf8483919729085a5ca6d10d5ee580"
+      "name": "desk-light-zh-TW-blocked-update.png",
+      "sha256": "c62e33ae26ebdb7d7aa3493a6cfaa2826a5ffb2df38ab103aa43af2803c3452d"
     },
     {
       "name": "desk-dark-en-draining.png",
-      "sha256": "8113dce6c57f5b60338935745c4201b7ec4a55e587158ea94773d0080f0c2a49"
+      "sha256": "4d9cb305a628bf3308937be092a5e8cd3abf3a586877c7688b369c170395c8e1"
     },
     {
       "name": "desk-dark-en-blocked-legacy.png",
-      "sha256": "baa547434073d995826b2e919afe4558e435765fc16f5abb2636d437ea6968eb"
+      "sha256": "11ce5d6a98f7ce5e87bb698ba9235f84ea5329c2b9378748483694ea5ddbce69"
     },
     {
       "name": "desk-dark-en-blocked-peers.png",
-      "sha256": "550ba3a26e930207c4c381e16860de1e5b80a17aeb526eb98abf94a69d0a4f5c"
+      "sha256": "780637ca2c4b306fe4bd4a53592c3f8da38b76b8c377c979adcdc9245c7e8777"
     },
     {
       "name": "desk-dark-en-blocked-owners.png",
-      "sha256": "827938aa60f535d0b82499df6039f4e3c330e35964aae35d42601d584be130bf"
+      "sha256": "149bea9e44c20edd411a82d542da3f84d1d50dc13e5b6c117aa3a15c6acc1483"
     },
     {
       "name": "desk-dark-en-blocked-recovery.png",
-      "sha256": "ebd6726d16266b183b0a9772611160ce41a139bc44a35e184428acbdc3ee6e38"
+      "sha256": "191e262fd6c3722a43dceeb53784e4fe63b83f2f6c102deb6c23606865f3a1ba"
     },
     {
-      "name": "desk-dark-en-off-confirm.png",
-      "sha256": "ad007aff24248a74c2f7a1d2dd7df3cf4007a1dd4c98abeff069353760e53384"
+      "name": "desk-dark-en-stop-work-confirm.png",
+      "sha256": "db81df4943dbf191b7af6a725117de021427485122c21e5b5d1dd08772d91c89"
     },
     {
-      "name": "desk-dark-en-general-notice.png",
-      "sha256": "81ef0278d3b398efcf0d5194c069245b7f49ea026b884430bff8eb00090e5840"
-    },
-    {
-      "name": "desk-dark-zh-TW-on.png",
-      "sha256": "def218ae8045b10d5ad51cccf7876242f13c0f6e0e1b6e17e15c6aa3ca04067f"
-    },
-    {
-      "name": "desk-dark-zh-TW-off.png",
-      "sha256": "b5e3188e50507052c061fff05d713d668aac7678eaa856074c3fc59dd26a675b"
-    },
-    {
-      "name": "desk-dark-zh-TW-off-before.png",
-      "sha256": "b064c3e87c1719b589489add7a08e47a83fdf2e4c46002d64ba59e6f3a749fa3"
+      "name": "desk-dark-en-blocked-update.png",
+      "sha256": "5ed9f201358b7b6df47df5cea0791122357354e02f41ba24099d5e4d1382a884"
     },
     {
       "name": "desk-dark-zh-TW-draining.png",
-      "sha256": "1c88e7ed0f146cfc671044776327ebf662852f65a31d7f822c8fe81ebb8c6e34"
+      "sha256": "04afcf984f71be6d6e109af638cece069604cdef4512c4e08904fdbe4164f132"
     },
     {
       "name": "desk-dark-zh-TW-blocked-legacy.png",
-      "sha256": "6ea6ab662ebda97cb5a6b8f18c8490797fd923acfdb3ba26f27597368ced80b2"
+      "sha256": "212b71ff216feb16049df0a613a5eafaf13724d5458232790167e9f92017fe58"
     },
     {
       "name": "desk-dark-zh-TW-blocked-peers.png",
-      "sha256": "d87e225d00f321da50fa6218d5989d6a256b04df6e65f3556992eec2a3ee31f1"
+      "sha256": "201445debd8ed416ceffeecdcbd24b665955ad0d2c78de542337e5804d0730cf"
     },
     {
       "name": "desk-dark-zh-TW-blocked-owners.png",
-      "sha256": "28acc593a86f2f9af521960c9dda820ddd60480a1c7ffe15e14497706066d967"
+      "sha256": "e87c905fa8d90dbb25e30227b2d9bfa4927cbc9dacf97968fe4bd6b05282ce65"
     },
     {
       "name": "desk-dark-zh-TW-blocked-recovery.png",
-      "sha256": "77ebf042e0e8a79adeee6b0b4ed6923b59c5168862f6bd6515d79a453177efd1"
+      "sha256": "1b384d10b30ca2342e7dba52a344f83d31c96b510d6e7ca6d9dec2ae489c9369"
     },
     {
-      "name": "desk-dark-zh-TW-off-confirm.png",
-      "sha256": "4763e0be16c4a265313c992b122ad02ccd578b507846ccc78f3880f3138d9ae1"
+      "name": "desk-dark-zh-TW-stop-work-confirm.png",
+      "sha256": "f0af3820764e25aa016d7818bc436be13eaabc92e2fdfab3080d3de94d924391"
     },
     {
-      "name": "desk-dark-zh-TW-general-notice.png",
-      "sha256": "3e645faca02b75ddb7f7d872027b9a04adb8601be7140a4cebb9e8bd0372de80"
-    },
-    {
-      "name": "phone-light-en-on.png",
-      "sha256": "15139e8347a890c9c9463cb7c51cc46321eaee96f0d8fa526609655c10a13b3e"
-    },
-    {
-      "name": "phone-light-en-off.png",
-      "sha256": "aaa042cecacb335d71bba8af9607f2f722f259ec507e523511ed08b547e1b75e"
-    },
-    {
-      "name": "phone-light-en-off-before.png",
-      "sha256": "8753bc989c92da2301a68541f460caec7d6caa20db1a1ceb7424333654dc6b7b"
+      "name": "desk-dark-zh-TW-blocked-update.png",
+      "sha256": "e0de194aa824db84b88a14643d4a3a2cd661e7f3a6f249cc9ea64601c81856d5"
     },
     {
       "name": "phone-light-en-draining.png",
-      "sha256": "f060138c241c2bedbb5aef9f7055c883bdbe041dd05e3f1edfbb108a0ec56a05"
+      "sha256": "5ed1649089f64682d3c7e2f8e0921122bfa3ad368729d82daa02ecd8d4877232"
     },
     {
       "name": "phone-light-en-blocked-legacy.png",
-      "sha256": "6fcd2c077e66a8692354096d38595fbec59681c7f60b484fe42c758848ccaeef"
+      "sha256": "7f6b0e7d90e102faf55a45d9027385f3908d9f654cb94e59696c4de54604d214"
     },
     {
       "name": "phone-light-en-blocked-peers.png",
-      "sha256": "5f982952f894bda1592535c18bbb7e4d3f6cd7b17a8fe5a2734faa8fc5684778"
+      "sha256": "6f6221b06397931c96bb1521f8fd6f1f7fbe0e5c9fc2e1117edb355203cbd036"
     },
     {
       "name": "phone-light-en-blocked-owners.png",
-      "sha256": "c1d28240d026a7a42c72af8efdbb1d72f0015f42299625536d3ee624e288fdbf"
+      "sha256": "4de367efb45cbfa5f80e913acebe7de379361b2891a76cc9f140f9942855d885"
     },
     {
       "name": "phone-light-en-blocked-recovery.png",
-      "sha256": "9c0afa9ee846b1676be0774834df4c9cc338342e4f99f08f940a1879cd344e53"
+      "sha256": "8c249d29f8b5a28177235b9457e90039f3bc37b50aeb411c8d5454672c26f2db"
     },
     {
-      "name": "phone-light-en-off-confirm.png",
-      "sha256": "024dafcaf0767d20918c5fc14ee8ebf8c9e30250fce8eaa8d81db85ec2446d92"
+      "name": "phone-light-en-stop-work-confirm.png",
+      "sha256": "ef551f7160b0af3c41d1ef8618016f11888aa7e2b5e4f936b9a0e636845829cd"
     },
     {
-      "name": "phone-light-en-general-notice.png",
-      "sha256": "4f2ffa0ab5ce27e86c799cd646822044ff863517053b4a4021594c80a67dc5c3"
-    },
-    {
-      "name": "phone-light-zh-TW-on.png",
-      "sha256": "52d5dee3b817889eedef7b1d9cc07d78e1586c86948fc4db015e56a2ff418e20"
-    },
-    {
-      "name": "phone-light-zh-TW-off.png",
-      "sha256": "0a6c3cb1a410370a89578177811312059cab8150521580826ff7b5bdb1901671"
-    },
-    {
-      "name": "phone-light-zh-TW-off-before.png",
-      "sha256": "f55d875f217907b09447f1a661cf251e8b1e52a917659f8c738d7c0a91da2b72"
+      "name": "phone-light-en-blocked-update.png",
+      "sha256": "5f9a0b706174a295e2d2d353de9537aca026112fcc9a61cbe285a8d33ffd569b"
     },
     {
       "name": "phone-light-zh-TW-draining.png",
-      "sha256": "f35deb326d2434287de38c99479b37b1dee43043890aa26400bbf98e3d5ad61b"
+      "sha256": "16d9e739b41977573528714a21d38c1776054d0bed48decdca91e13130c08fae"
     },
     {
       "name": "phone-light-zh-TW-blocked-legacy.png",
-      "sha256": "c3b4319cd19634436615df167dceeaaafea646a47736129d83db429a575fec1f"
+      "sha256": "32389acededc82bedbfeafaf825acb9c559cde80691ca3bf2f0e0e0c7a59d8da"
     },
     {
       "name": "phone-light-zh-TW-blocked-peers.png",
-      "sha256": "f872022ca9fbdfea384b772876ce45a7b88e9998b9141c3e3e1c98a191ec8e0c"
+      "sha256": "67218c87310de55394aefdd57283e25389e42f276f462a623563dc23b6ada6f2"
     },
     {
       "name": "phone-light-zh-TW-blocked-owners.png",
-      "sha256": "ef4b8f011fe9172c1c52f54674fde6c641114fce9c7a43f552403df973ec8211"
+      "sha256": "530a7807fdaa7f940c91c84b703f9def38dd5dc42e1b6799cd500ddcad4da69e"
     },
     {
       "name": "phone-light-zh-TW-blocked-recovery.png",
-      "sha256": "1a279b6b9434e7d438d910e7f5ff77c53ec43e170e7deddc8416674dc57171ea"
+      "sha256": "6028143ebce13ee2f3cca6a177157f78cac1845f993a43fdb9bab4577fe9df7c"
     },
     {
-      "name": "phone-light-zh-TW-off-confirm.png",
-      "sha256": "bcd1382d70651193bec6c47c5c64bb999ee87655a94b02257090a9d3082df85a"
+      "name": "phone-light-zh-TW-stop-work-confirm.png",
+      "sha256": "72a9a1f71e50fcf71e9803884cff4a17e3a174a5a6b8a26bfadb0efdc2e5203c"
     },
     {
-      "name": "phone-light-zh-TW-general-notice.png",
-      "sha256": "9f83af46bd3987f0efe5101db5670240ab541f945e108692999ceca6c62bcac6"
-    },
-    {
-      "name": "phone-dark-en-on.png",
-      "sha256": "8ce12c81ed5ba83151bdbfe65241f15af5d6a08d221c32245d6d3d44f083fc70"
-    },
-    {
-      "name": "phone-dark-en-off.png",
-      "sha256": "43e9b39c175551df4f17b9590cd41d036a2d4b98171ea544c50dca8402505d82"
-    },
-    {
-      "name": "phone-dark-en-off-before.png",
-      "sha256": "2ee55abe8442c3cdf1833946f9ee787cb3a8e37e93ac3f54b2d1a8cda86fe244"
+      "name": "phone-light-zh-TW-blocked-update.png",
+      "sha256": "a77c795571ec199590ab757fc5176e7f8a64ea63bf8693c1d2fd57efa0577317"
     },
     {
       "name": "phone-dark-en-draining.png",
-      "sha256": "3a432f08fd7a8f5c6f70804828aeb563c885a64e903335619002b76163571ecc"
+      "sha256": "e5bdcdfb7b75b3cfd561260e2ada6c38b6a0f76f82a2239dda2e2efb142b9e31"
     },
     {
       "name": "phone-dark-en-blocked-legacy.png",
-      "sha256": "75bb0b46814534e3e549d921d60c71d13a8dcf3089397a7e90390dead4241bc2"
+      "sha256": "c99bfec442610587a990a65d87cadf8bf4621fb50322aa8f669634d462a36f8c"
     },
     {
       "name": "phone-dark-en-blocked-peers.png",
-      "sha256": "c7cb509c4c6386dc8bb0bc6fc828d72172fa817daf8994373e07e41805f94dfe"
+      "sha256": "2dbd5ba7e0bca854f32cd2bd281a7f4f21aede3022e11b40b41c171183a7a514"
     },
     {
       "name": "phone-dark-en-blocked-owners.png",
-      "sha256": "df2aca574ed8d512db85195d7ad82a55a1283de03f4ac084e5c48a59683bcf40"
+      "sha256": "7ccb8cfd5b9cdf6d6832ddc6c23c5d0a2d88a278c11984a626d701076d76e897"
     },
     {
       "name": "phone-dark-en-blocked-recovery.png",
-      "sha256": "4e89bf5f33a16636a8cf208957b44dfb00832a3cab10ad9787b30883969f85cb"
+      "sha256": "514582600491d06ddb06189b59bc3bd25ddc580076315dca9efef78c4bb7e08f"
     },
     {
-      "name": "phone-dark-en-off-confirm.png",
-      "sha256": "8037e933b899eccc8dfe2ce5e64c2edd7880fd08c91b7990a724943ecb2e9775"
+      "name": "phone-dark-en-stop-work-confirm.png",
+      "sha256": "23cb6fd81f9f6cf5821b70990b7029a598ff7b9e233c2c4fbe5703916d3ec722"
     },
     {
-      "name": "phone-dark-en-general-notice.png",
-      "sha256": "3e5c589906857b6c26a2500c59290a592503f32052a9f39ba5980ed7ebc4974f"
-    },
-    {
-      "name": "phone-dark-zh-TW-on.png",
-      "sha256": "37acf850fe496df76014b7c7a0da9cf53474e1eab8d5e3dd65e38f09b94a8666"
-    },
-    {
-      "name": "phone-dark-zh-TW-off.png",
-      "sha256": "81bea9a8cf49883aa29d1269db32bb770ca0b629c9e6c0a9efc6e9f65e24b25e"
-    },
-    {
-      "name": "phone-dark-zh-TW-off-before.png",
-      "sha256": "443e8705aa0423867a870c96b9d5d383b048b7e28a01a5bd9e0347051eb470f6"
+      "name": "phone-dark-en-blocked-update.png",
+      "sha256": "dceed25910144d7b4f0ae9635c798d812873d7e7bbe5dd147a7ebb681b746e85"
     },
     {
       "name": "phone-dark-zh-TW-draining.png",
-      "sha256": "f16e1cba416e3f1a2c2f3df63d1dd183337779d514676b9a37dfde58c1a2f30d"
+      "sha256": "0c486a642d49ab97aea7173704e6b94fbae43d8d90186a3e9a09438f466a240d"
     },
     {
       "name": "phone-dark-zh-TW-blocked-legacy.png",
-      "sha256": "06a75e809e6baf54950eebf0c2467aa17ed55edf89bbc3bfda2a81c91d2390bd"
+      "sha256": "38b87e4343dea0211de00967c02e310d54ad23db62b47e991b3eae3970b155d1"
     },
     {
       "name": "phone-dark-zh-TW-blocked-peers.png",
-      "sha256": "3b0535a1b3837f29e3f8ea9ea9f77aa2cfb9557713b84dede669acc0af9eb89e"
+      "sha256": "1856e0e3a46d1342e581eed8976f059deda66590c497693f52f1e9eeab12cac3"
     },
     {
       "name": "phone-dark-zh-TW-blocked-owners.png",
-      "sha256": "4c551987aaf0005b01612ed96e2a81eaba6c56a851ca2342b859fa769dfe047e"
+      "sha256": "22d333bb57292f7fc19931847306fd8b038c06dda5ac3a7121eb48442e654892"
     },
     {
       "name": "phone-dark-zh-TW-blocked-recovery.png",
-      "sha256": "c4b6eaf2e29f4a7625146e4c6359d578b9a22bf7d8f8b629d9fd1b88ef10ff78"
+      "sha256": "94065d80663b34aa2f7fe88bc06d6faffc1e0c0b2bcb6bbd9022b3f26e8a8e8c"
     },
     {
-      "name": "phone-dark-zh-TW-off-confirm.png",
-      "sha256": "2f2e70d3782bb7433b68e04bc8b1c0e22f6e489413b94a58915a0c3d16378727"
+      "name": "phone-dark-zh-TW-stop-work-confirm.png",
+      "sha256": "4859a07c2a3039ce3c3c82f51f8696a4b79dd405a1bb5473f0fb4a2b4ae6d547"
     },
     {
-      "name": "phone-dark-zh-TW-general-notice.png",
-      "sha256": "c50370396caf8c4bd61bb14bf267f824e0d973745c4fa8e087eda111cfdb3e74"
+      "name": "phone-dark-zh-TW-blocked-update.png",
+      "sha256": "03adbcd23639d19d00459adabf3dfab031d7ace1d5cb5a1761780a6f2ad7dd23"
     }
   ],
   "checks": [
-    {
-      "name": "desk-light-en-on: General words match server",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-on: version warning",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-on: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-on: CSP",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-off: General words match server",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-off: honest Off",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-off: version warning",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-off: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-off: CSP",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-off-before: General words match server",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-off-before: never-activated Off",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-off-before: version warning",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-off-before: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-off-before: CSP",
-      "ok": true
-    },
     {
       "name": "desk-light-en-draining: General words match server",
       "ok": true
@@ -413,6 +261,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-en-blocked-legacy: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-light-en-blocked-legacy: previous rules only before activation",
       "ok": true
     },
@@ -438,6 +290,10 @@
     },
     {
       "name": "desk-light-en-blocked-peers: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-peers: desktop actions share a row",
       "ok": true
     },
     {
@@ -469,6 +325,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-en-blocked-owners: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-light-en-blocked-owners: previous rules only before activation",
       "ok": true
     },
@@ -497,6 +357,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-en-blocked-recovery: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-light-en-blocked-recovery: previous rules only before activation",
       "ok": true
     },
@@ -509,95 +373,71 @@
       "ok": true
     },
     {
-      "name": "desk-light-en-off-confirm: General words match server",
+      "name": "desk-light-en-stop-work-confirm: General words match server",
       "ok": true
     },
     {
-      "name": "desk-light-en-off-confirm: version warning",
+      "name": "desk-light-en-stop-work-confirm: concrete blocker",
       "ok": true
     },
     {
-      "name": "desk-light-en-off-confirm: no write before confirmation",
+      "name": "desk-light-en-stop-work-confirm: no invented raw code",
       "ok": true
     },
     {
-      "name": "desk-light-en-off-confirm: no old-rules promise",
+      "name": "desk-light-en-stop-work-confirm: inline recheck",
       "ok": true
     },
     {
-      "name": "desk-light-en-off-confirm: no horizontal page overflow",
+      "name": "desk-light-en-stop-work-confirm: desktop actions share a row",
       "ok": true
     },
     {
-      "name": "desk-light-en-off-confirm: CSP",
+      "name": "desk-light-en-stop-work-confirm: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "desk-light-en-general-notice: General words match server",
+      "name": "desk-light-en-stop-work-confirm: no destructive write before confirmation",
       "ok": true
     },
     {
-      "name": "desk-light-en-general-notice: no horizontal page overflow",
+      "name": "desk-light-en-stop-work-confirm: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "desk-light-en-general-notice: CSP",
+      "name": "desk-light-en-stop-work-confirm: CSP",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-on: General words match server",
+      "name": "desk-light-en-blocked-update: General words match server",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-on: version warning",
+      "name": "desk-light-en-blocked-update: concrete blocker",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-on: no horizontal page overflow",
+      "name": "desk-light-en-blocked-update: no invented raw code",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-on: CSP",
+      "name": "desk-light-en-blocked-update: inline recheck",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-off: General words match server",
+      "name": "desk-light-en-blocked-update: desktop actions share a row",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-off: honest Off",
+      "name": "desk-light-en-blocked-update: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-off: version warning",
+      "name": "desk-light-en-blocked-update: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-off: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-light-zh-TW-off: CSP",
-      "ok": true
-    },
-    {
-      "name": "desk-light-zh-TW-off-before: General words match server",
-      "ok": true
-    },
-    {
-      "name": "desk-light-zh-TW-off-before: never-activated Off",
-      "ok": true
-    },
-    {
-      "name": "desk-light-zh-TW-off-before: version warning",
-      "ok": true
-    },
-    {
-      "name": "desk-light-zh-TW-off-before: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-light-zh-TW-off-before: CSP",
+      "name": "desk-light-en-blocked-update: CSP",
       "ok": true
     },
     {
@@ -633,6 +473,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-zh-TW-blocked-legacy: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-light-zh-TW-blocked-legacy: previous rules only before activation",
       "ok": true
     },
@@ -658,6 +502,10 @@
     },
     {
       "name": "desk-light-zh-TW-blocked-peers: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-blocked-peers: desktop actions share a row",
       "ok": true
     },
     {
@@ -689,6 +537,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-zh-TW-blocked-owners: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-light-zh-TW-blocked-owners: previous rules only before activation",
       "ok": true
     },
@@ -717,6 +569,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-zh-TW-blocked-recovery: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-light-zh-TW-blocked-recovery: previous rules only before activation",
       "ok": true
     },
@@ -729,95 +585,71 @@
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-off-confirm: General words match server",
+      "name": "desk-light-zh-TW-stop-work-confirm: General words match server",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-off-confirm: version warning",
+      "name": "desk-light-zh-TW-stop-work-confirm: concrete blocker",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-off-confirm: no write before confirmation",
+      "name": "desk-light-zh-TW-stop-work-confirm: no invented raw code",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-off-confirm: no old-rules promise",
+      "name": "desk-light-zh-TW-stop-work-confirm: inline recheck",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-off-confirm: no horizontal page overflow",
+      "name": "desk-light-zh-TW-stop-work-confirm: desktop actions share a row",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-off-confirm: CSP",
+      "name": "desk-light-zh-TW-stop-work-confirm: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-general-notice: General words match server",
+      "name": "desk-light-zh-TW-stop-work-confirm: no destructive write before confirmation",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-general-notice: no horizontal page overflow",
+      "name": "desk-light-zh-TW-stop-work-confirm: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "desk-light-zh-TW-general-notice: CSP",
+      "name": "desk-light-zh-TW-stop-work-confirm: CSP",
       "ok": true
     },
     {
-      "name": "desk-dark-en-on: General words match server",
+      "name": "desk-light-zh-TW-blocked-update: General words match server",
       "ok": true
     },
     {
-      "name": "desk-dark-en-on: version warning",
+      "name": "desk-light-zh-TW-blocked-update: concrete blocker",
       "ok": true
     },
     {
-      "name": "desk-dark-en-on: no horizontal page overflow",
+      "name": "desk-light-zh-TW-blocked-update: no invented raw code",
       "ok": true
     },
     {
-      "name": "desk-dark-en-on: CSP",
+      "name": "desk-light-zh-TW-blocked-update: inline recheck",
       "ok": true
     },
     {
-      "name": "desk-dark-en-off: General words match server",
+      "name": "desk-light-zh-TW-blocked-update: desktop actions share a row",
       "ok": true
     },
     {
-      "name": "desk-dark-en-off: honest Off",
+      "name": "desk-light-zh-TW-blocked-update: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "desk-dark-en-off: version warning",
+      "name": "desk-light-zh-TW-blocked-update: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "desk-dark-en-off: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-en-off: CSP",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-en-off-before: General words match server",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-en-off-before: never-activated Off",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-en-off-before: version warning",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-en-off-before: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-en-off-before: CSP",
+      "name": "desk-light-zh-TW-blocked-update: CSP",
       "ok": true
     },
     {
@@ -853,6 +685,10 @@
       "ok": true
     },
     {
+      "name": "desk-dark-en-blocked-legacy: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-dark-en-blocked-legacy: previous rules only before activation",
       "ok": true
     },
@@ -878,6 +714,10 @@
     },
     {
       "name": "desk-dark-en-blocked-peers: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-blocked-peers: desktop actions share a row",
       "ok": true
     },
     {
@@ -909,6 +749,10 @@
       "ok": true
     },
     {
+      "name": "desk-dark-en-blocked-owners: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-dark-en-blocked-owners: previous rules only before activation",
       "ok": true
     },
@@ -937,6 +781,10 @@
       "ok": true
     },
     {
+      "name": "desk-dark-en-blocked-recovery: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-dark-en-blocked-recovery: previous rules only before activation",
       "ok": true
     },
@@ -949,95 +797,71 @@
       "ok": true
     },
     {
-      "name": "desk-dark-en-off-confirm: General words match server",
+      "name": "desk-dark-en-stop-work-confirm: General words match server",
       "ok": true
     },
     {
-      "name": "desk-dark-en-off-confirm: version warning",
+      "name": "desk-dark-en-stop-work-confirm: concrete blocker",
       "ok": true
     },
     {
-      "name": "desk-dark-en-off-confirm: no write before confirmation",
+      "name": "desk-dark-en-stop-work-confirm: no invented raw code",
       "ok": true
     },
     {
-      "name": "desk-dark-en-off-confirm: no old-rules promise",
+      "name": "desk-dark-en-stop-work-confirm: inline recheck",
       "ok": true
     },
     {
-      "name": "desk-dark-en-off-confirm: no horizontal page overflow",
+      "name": "desk-dark-en-stop-work-confirm: desktop actions share a row",
       "ok": true
     },
     {
-      "name": "desk-dark-en-off-confirm: CSP",
+      "name": "desk-dark-en-stop-work-confirm: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "desk-dark-en-general-notice: General words match server",
+      "name": "desk-dark-en-stop-work-confirm: no destructive write before confirmation",
       "ok": true
     },
     {
-      "name": "desk-dark-en-general-notice: no horizontal page overflow",
+      "name": "desk-dark-en-stop-work-confirm: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "desk-dark-en-general-notice: CSP",
+      "name": "desk-dark-en-stop-work-confirm: CSP",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-on: General words match server",
+      "name": "desk-dark-en-blocked-update: General words match server",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-on: version warning",
+      "name": "desk-dark-en-blocked-update: concrete blocker",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-on: no horizontal page overflow",
+      "name": "desk-dark-en-blocked-update: no invented raw code",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-on: CSP",
+      "name": "desk-dark-en-blocked-update: inline recheck",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-off: General words match server",
+      "name": "desk-dark-en-blocked-update: desktop actions share a row",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-off: honest Off",
+      "name": "desk-dark-en-blocked-update: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-off: version warning",
+      "name": "desk-dark-en-blocked-update: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-off: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW-off: CSP",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW-off-before: General words match server",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW-off-before: never-activated Off",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW-off-before: version warning",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW-off-before: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW-off-before: CSP",
+      "name": "desk-dark-en-blocked-update: CSP",
       "ok": true
     },
     {
@@ -1073,6 +897,10 @@
       "ok": true
     },
     {
+      "name": "desk-dark-zh-TW-blocked-legacy: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-dark-zh-TW-blocked-legacy: previous rules only before activation",
       "ok": true
     },
@@ -1098,6 +926,10 @@
     },
     {
       "name": "desk-dark-zh-TW-blocked-peers: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-blocked-peers: desktop actions share a row",
       "ok": true
     },
     {
@@ -1129,6 +961,10 @@
       "ok": true
     },
     {
+      "name": "desk-dark-zh-TW-blocked-owners: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-dark-zh-TW-blocked-owners: previous rules only before activation",
       "ok": true
     },
@@ -1157,6 +993,10 @@
       "ok": true
     },
     {
+      "name": "desk-dark-zh-TW-blocked-recovery: desktop actions share a row",
+      "ok": true
+    },
+    {
       "name": "desk-dark-zh-TW-blocked-recovery: previous rules only before activation",
       "ok": true
     },
@@ -1169,95 +1009,71 @@
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-off-confirm: General words match server",
+      "name": "desk-dark-zh-TW-stop-work-confirm: General words match server",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-off-confirm: version warning",
+      "name": "desk-dark-zh-TW-stop-work-confirm: concrete blocker",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-off-confirm: no write before confirmation",
+      "name": "desk-dark-zh-TW-stop-work-confirm: no invented raw code",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-off-confirm: no old-rules promise",
+      "name": "desk-dark-zh-TW-stop-work-confirm: inline recheck",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-off-confirm: no horizontal page overflow",
+      "name": "desk-dark-zh-TW-stop-work-confirm: desktop actions share a row",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-off-confirm: CSP",
+      "name": "desk-dark-zh-TW-stop-work-confirm: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-general-notice: General words match server",
+      "name": "desk-dark-zh-TW-stop-work-confirm: no destructive write before confirmation",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-general-notice: no horizontal page overflow",
+      "name": "desk-dark-zh-TW-stop-work-confirm: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "desk-dark-zh-TW-general-notice: CSP",
+      "name": "desk-dark-zh-TW-stop-work-confirm: CSP",
       "ok": true
     },
     {
-      "name": "phone-light-en-on: General words match server",
+      "name": "desk-dark-zh-TW-blocked-update: General words match server",
       "ok": true
     },
     {
-      "name": "phone-light-en-on: version warning",
+      "name": "desk-dark-zh-TW-blocked-update: concrete blocker",
       "ok": true
     },
     {
-      "name": "phone-light-en-on: no horizontal page overflow",
+      "name": "desk-dark-zh-TW-blocked-update: no invented raw code",
       "ok": true
     },
     {
-      "name": "phone-light-en-on: CSP",
+      "name": "desk-dark-zh-TW-blocked-update: inline recheck",
       "ok": true
     },
     {
-      "name": "phone-light-en-off: General words match server",
+      "name": "desk-dark-zh-TW-blocked-update: desktop actions share a row",
       "ok": true
     },
     {
-      "name": "phone-light-en-off: honest Off",
+      "name": "desk-dark-zh-TW-blocked-update: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "phone-light-en-off: version warning",
+      "name": "desk-dark-zh-TW-blocked-update: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "phone-light-en-off: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-light-en-off: CSP",
-      "ok": true
-    },
-    {
-      "name": "phone-light-en-off-before: General words match server",
-      "ok": true
-    },
-    {
-      "name": "phone-light-en-off-before: never-activated Off",
-      "ok": true
-    },
-    {
-      "name": "phone-light-en-off-before: version warning",
-      "ok": true
-    },
-    {
-      "name": "phone-light-en-off-before: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-light-en-off-before: CSP",
+      "name": "desk-dark-zh-TW-blocked-update: CSP",
       "ok": true
     },
     {
@@ -1389,95 +1205,63 @@
       "ok": true
     },
     {
-      "name": "phone-light-en-off-confirm: General words match server",
+      "name": "phone-light-en-stop-work-confirm: General words match server",
       "ok": true
     },
     {
-      "name": "phone-light-en-off-confirm: version warning",
+      "name": "phone-light-en-stop-work-confirm: concrete blocker",
       "ok": true
     },
     {
-      "name": "phone-light-en-off-confirm: no write before confirmation",
+      "name": "phone-light-en-stop-work-confirm: no invented raw code",
       "ok": true
     },
     {
-      "name": "phone-light-en-off-confirm: no old-rules promise",
+      "name": "phone-light-en-stop-work-confirm: inline recheck",
       "ok": true
     },
     {
-      "name": "phone-light-en-off-confirm: no horizontal page overflow",
+      "name": "phone-light-en-stop-work-confirm: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "phone-light-en-off-confirm: CSP",
+      "name": "phone-light-en-stop-work-confirm: no destructive write before confirmation",
       "ok": true
     },
     {
-      "name": "phone-light-en-general-notice: General words match server",
+      "name": "phone-light-en-stop-work-confirm: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "phone-light-en-general-notice: no horizontal page overflow",
+      "name": "phone-light-en-stop-work-confirm: CSP",
       "ok": true
     },
     {
-      "name": "phone-light-en-general-notice: CSP",
+      "name": "phone-light-en-blocked-update: General words match server",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-on: General words match server",
+      "name": "phone-light-en-blocked-update: concrete blocker",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-on: version warning",
+      "name": "phone-light-en-blocked-update: no invented raw code",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-on: no horizontal page overflow",
+      "name": "phone-light-en-blocked-update: inline recheck",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-on: CSP",
+      "name": "phone-light-en-blocked-update: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-off: General words match server",
+      "name": "phone-light-en-blocked-update: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-off: honest Off",
-      "ok": true
-    },
-    {
-      "name": "phone-light-zh-TW-off: version warning",
-      "ok": true
-    },
-    {
-      "name": "phone-light-zh-TW-off: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-light-zh-TW-off: CSP",
-      "ok": true
-    },
-    {
-      "name": "phone-light-zh-TW-off-before: General words match server",
-      "ok": true
-    },
-    {
-      "name": "phone-light-zh-TW-off-before: never-activated Off",
-      "ok": true
-    },
-    {
-      "name": "phone-light-zh-TW-off-before: version warning",
-      "ok": true
-    },
-    {
-      "name": "phone-light-zh-TW-off-before: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-light-zh-TW-off-before: CSP",
+      "name": "phone-light-en-blocked-update: CSP",
       "ok": true
     },
     {
@@ -1609,95 +1393,63 @@
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-off-confirm: General words match server",
+      "name": "phone-light-zh-TW-stop-work-confirm: General words match server",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-off-confirm: version warning",
+      "name": "phone-light-zh-TW-stop-work-confirm: concrete blocker",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-off-confirm: no write before confirmation",
+      "name": "phone-light-zh-TW-stop-work-confirm: no invented raw code",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-off-confirm: no old-rules promise",
+      "name": "phone-light-zh-TW-stop-work-confirm: inline recheck",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-off-confirm: no horizontal page overflow",
+      "name": "phone-light-zh-TW-stop-work-confirm: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-off-confirm: CSP",
+      "name": "phone-light-zh-TW-stop-work-confirm: no destructive write before confirmation",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-general-notice: General words match server",
+      "name": "phone-light-zh-TW-stop-work-confirm: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-general-notice: no horizontal page overflow",
+      "name": "phone-light-zh-TW-stop-work-confirm: CSP",
       "ok": true
     },
     {
-      "name": "phone-light-zh-TW-general-notice: CSP",
+      "name": "phone-light-zh-TW-blocked-update: General words match server",
       "ok": true
     },
     {
-      "name": "phone-dark-en-on: General words match server",
+      "name": "phone-light-zh-TW-blocked-update: concrete blocker",
       "ok": true
     },
     {
-      "name": "phone-dark-en-on: version warning",
+      "name": "phone-light-zh-TW-blocked-update: no invented raw code",
       "ok": true
     },
     {
-      "name": "phone-dark-en-on: no horizontal page overflow",
+      "name": "phone-light-zh-TW-blocked-update: inline recheck",
       "ok": true
     },
     {
-      "name": "phone-dark-en-on: CSP",
+      "name": "phone-light-zh-TW-blocked-update: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "phone-dark-en-off: General words match server",
+      "name": "phone-light-zh-TW-blocked-update: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "phone-dark-en-off: honest Off",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-en-off: version warning",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-en-off: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-en-off: CSP",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-en-off-before: General words match server",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-en-off-before: never-activated Off",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-en-off-before: version warning",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-en-off-before: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-en-off-before: CSP",
+      "name": "phone-light-zh-TW-blocked-update: CSP",
       "ok": true
     },
     {
@@ -1829,95 +1581,63 @@
       "ok": true
     },
     {
-      "name": "phone-dark-en-off-confirm: General words match server",
+      "name": "phone-dark-en-stop-work-confirm: General words match server",
       "ok": true
     },
     {
-      "name": "phone-dark-en-off-confirm: version warning",
+      "name": "phone-dark-en-stop-work-confirm: concrete blocker",
       "ok": true
     },
     {
-      "name": "phone-dark-en-off-confirm: no write before confirmation",
+      "name": "phone-dark-en-stop-work-confirm: no invented raw code",
       "ok": true
     },
     {
-      "name": "phone-dark-en-off-confirm: no old-rules promise",
+      "name": "phone-dark-en-stop-work-confirm: inline recheck",
       "ok": true
     },
     {
-      "name": "phone-dark-en-off-confirm: no horizontal page overflow",
+      "name": "phone-dark-en-stop-work-confirm: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "phone-dark-en-off-confirm: CSP",
+      "name": "phone-dark-en-stop-work-confirm: no destructive write before confirmation",
       "ok": true
     },
     {
-      "name": "phone-dark-en-general-notice: General words match server",
+      "name": "phone-dark-en-stop-work-confirm: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "phone-dark-en-general-notice: no horizontal page overflow",
+      "name": "phone-dark-en-stop-work-confirm: CSP",
       "ok": true
     },
     {
-      "name": "phone-dark-en-general-notice: CSP",
+      "name": "phone-dark-en-blocked-update: General words match server",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-on: General words match server",
+      "name": "phone-dark-en-blocked-update: concrete blocker",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-on: version warning",
+      "name": "phone-dark-en-blocked-update: no invented raw code",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-on: no horizontal page overflow",
+      "name": "phone-dark-en-blocked-update: inline recheck",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-on: CSP",
+      "name": "phone-dark-en-blocked-update: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-off: General words match server",
+      "name": "phone-dark-en-blocked-update: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-off: honest Off",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW-off: version warning",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW-off: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW-off: CSP",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW-off-before: General words match server",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW-off-before: never-activated Off",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW-off-before: version warning",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW-off-before: no horizontal page overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW-off-before: CSP",
+      "name": "phone-dark-en-blocked-update: CSP",
       "ok": true
     },
     {
@@ -2049,43 +1769,67 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-off-confirm: General words match server",
+      "name": "phone-dark-zh-TW-stop-work-confirm: General words match server",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-off-confirm: version warning",
+      "name": "phone-dark-zh-TW-stop-work-confirm: concrete blocker",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-off-confirm: no write before confirmation",
+      "name": "phone-dark-zh-TW-stop-work-confirm: no invented raw code",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-off-confirm: no old-rules promise",
+      "name": "phone-dark-zh-TW-stop-work-confirm: inline recheck",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-off-confirm: no horizontal page overflow",
+      "name": "phone-dark-zh-TW-stop-work-confirm: previous rules only before activation",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-off-confirm: CSP",
+      "name": "phone-dark-zh-TW-stop-work-confirm: no destructive write before confirmation",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-general-notice: General words match server",
+      "name": "phone-dark-zh-TW-stop-work-confirm: no horizontal page overflow",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-general-notice: no horizontal page overflow",
+      "name": "phone-dark-zh-TW-stop-work-confirm: CSP",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-general-notice: CSP",
+      "name": "phone-dark-zh-TW-blocked-update: General words match server",
       "ok": true
     },
     {
-      "name": "capture never confirmed a real transition",
+      "name": "phone-dark-zh-TW-blocked-update: concrete blocker",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-update: no invented raw code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-update: inline recheck",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-update: previous rules only before activation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-update: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-update: CSP",
+      "ok": true
+    },
+    {
+      "name": "only deliberate synthetic unknown-result writes occurred",
       "ok": true
     }
   ]

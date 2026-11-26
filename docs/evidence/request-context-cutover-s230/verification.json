@@ -1,9 +1,9 @@
 {
-  "stage": "UI and dormant preparation checkpoint; no production activation/full-mode claim",
-  "sourceHead": "aa43054b8ed27ba2369fff5c2ef1c8b3686c44cf",
+  "stage": "Selected B UI and dormant safety checkpoint; no production activation/full-mode claim",
+  "sourceHead": "3930920b36d71ab7ccdfcd64a6b8b41b2ba3bf22",
   "focused": {
-    "files": 19,
-    "passed": 302,
+    "files": 21,
+    "passed": 315,
     "failed": 0
   },
   "typecheckTests": "pass",
@@ -26,18 +26,34 @@
     }
   ],
   "captures": {
-    "uniquePictures": 88,
-    "sources": 3,
+    "uniquePictures": 120,
+    "sources": 2,
     "checksByReceipt": [
-      441,
-      257,
-      161
+      737,
+      401,
+      4
     ],
-    "individualVisualInspection": "88/88 final originals; no visual blocker",
-    "galleryDecodedPngHashes": 88,
-    "galleryBytes": 8743202,
+    "individualVisualInspection": "120/120 final originals, no remaining visual exception",
+    "galleryDecodedPngHashes": 120,
+    "galleryBytes": [
+      8449436,
+      3650034
+    ],
     "localBrowserDecodeAndFilter": "pass"
   },
   "liveOperations": false,
-  "fullModeProof": "pending production owner assembly"
+  "fullModeProof": "pending production owner assembly",
+  "newSafetyMutations": [
+    {
+      "mutation": "update-settled",
+      "test": "tests/request-context-update-guard-s230.test.ts",
+      "result": "red"
+    },
+    {
+      "mutation": "go-back-refusal",
+      "test": "tests/request-context-activation-s230.test.ts",
+      "result": "red"
+    }
+  ],
+  "neighborLimit": "update-locks-m3770 missing-home cross-process case fails locally on this branch and untouched prior6daa35da; source unchanged and author notified"
 }

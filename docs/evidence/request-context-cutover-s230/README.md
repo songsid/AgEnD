@@ -1,37 +1,43 @@
-# S-230 selected A: owner-control UI checkpoint
+# S-230 selected B: owner-control UI checkpoint
 
-**DRAFT / USER LOOK HOLD. Production cutover assembly and full-mode proof are unfinished.** The user selected A (automatic after whole-Fleet readiness) on 11-26. Off means the capable bridge with fresh owner requests proceeding and outside requests awaiting explicit resolution; no rollback shadow, union propagation or old-rule restoration after activation.
+**DRAFT / USER LOOK HOLD. Production cutover assembly and full-mode proof remain unfinished.** The user chose B on 11-26, replacing A: default Off, explicit owner confirmation, readiness only at that attempt. No upgrade auto-enable or notice. Before an attempt, no blocked Needs-you item. Check again only checks. Off after activation retains the capable owner-only bridge, not lifetime origin permissions.
 
-[Selected plan and review mapping](../../design/request-context-cutover-s230.md) · [Picture hashes and individual source bindings](pictures.json) · [Verification](verification.json).
+[Plan and update/Go-back contract](../../design/request-context-cutover-s230.md) · [Original PNG hashes/source bindings](pictures.json) · [Verification](verification.json).
 
 ## Actual-app evidence
 
-88 original PNGs: 11 states × desktop/phone × EN/zh-TW × light/dark. The real scratch FleetManager web listener, real host-session admission, Settings router/control API, Settings component, Needs-you renderer, SSE/history and General chat render these views. Source state is a synthetic owner status adapter: it does not install or activate the engine. No text is injected into the DOM. No Fleet, CLI, pane, provider/model/account session or live home starts. Agent-delivery and configuration-write fixture ports throw if reached.
+120 originals: 15 states × desktop/phone × EN/zh-TW × light/dark. The real scratch FleetManager web listener, private host-session admission, Settings router/control API, Settings and Needs-you components, SSE/history and General chat render synthetic installer states. No text is injected into the DOM. No live Fleet, CLI, pane, provider/model/account or live home starts. Delivery and configuration-write fixture ports throw if reached. These are UI/status fixtures, not activation/full-mode proof.
 
-States: on; Off after activation; Off before first activation; draining with Stop waiting; three initial readiness blockers; recovery after activation with Stop this work; Off confirmation; unconfirmed change; General notice. The older-version floor is explicit. Only never-activated blockers say existing rules continue. The recovery header avoids saying activation never happened.
+States: on; Off after activation; default Off before first attempt; draining; legacy, Windows Runtime, agent, recovery and update blockers; On confirmation; On confirmation with an open Go back deadline; destructive stop-work confirmation; Off confirmation; unconfirmed change; General notice.
 
-The unconfirmed-result case deliberately changes only the fixture's status, then returns 503 through the actual API. The mounted UI shows that the result cannot be confirmed, disables another write, and offers a read to check. It sends no automatic repeat. The on case proves an older passive status cannot roll the switch back. The confirmation case sends no write before confirmation. New controls use a 44 px CSS minimum; screenshots alone are not hitbox measurements.
+On has one confirmation with the permanent downgrade warning, plus the Go back deadline when offered. An unconfirmed write renders an indeterminate switch and a read-only Check again, with no blind repeat. Desktop blocker buttons share a row, asserted from bounding rectangles; phone actions may wrap. Stop this work has a warning confirmation. Legacy blockers name the messages and link to the existing Authorizations page. The version badge is the source checkout's package version: SettingsBuildVersion reads /api/fleet, whose FleetManager.currentVersion returns readInstalledBuild().version. This is not the running host's beta version.
 
-The General notice is the actual server-owned text helper sent through the real status-message SSE/history renderer. This proves its visible words and wrapping, not the future installer's durable once-per-epoch notification.
+The General notice uses the actual server text helper and real status-message SSE/history renderer. This proves wording/wrapping, not the future installer's durable once-per-epoch post.
 
-## Source bindings and bounded recaptures
+## Sources and review
 
-- Full 80-frame matrix source: `5f1de4c0c672798786edb72dd76a8b2e967d3e45`; [receipt](capture-surfaces.json), 441 checks. (Ten states, eight variants.)
-- Changed draining/readiness actions: `d67538c00faa587ed8ee10a562c45bdb1756d36c`; [receipt](capture-actions.json), 257 checks, 40 frames.
-- Corrected recovery, on-state race and unknown-result cases: `aa43054b8ed27ba2369fff5c2ef1c8b3686c44cf`; [receipt](capture-unknown-result.json), 161 checks, 24 frames.
+- [Full B receipt](capture-B.json): `bba838fd65f499e51b34a2f5cec44fe497ef8590`, 120 originals / 737 checks.
+- [Action-row delta](capture-B-actions.json): `3930920b36d71ab7ccdfcd64a6b8b41b2ba3bf22`, 56 originals / 401 checks.
+- [Sidebar recapture](capture-B-sidebar.json): same `3930920b`, one original / four checks.
 
-The final unique set retains 32 unchanged frames from each of the first two sources and 24 from the last. `pictures.json` binds each original to its source and SHA-256. The later changes add actions only to blocker views and change the recovery/error paths; the retained on/off/confirmation/notice output is unchanged. All 88 final originals were individually inspected by read-only image reviewers; no visual blocker or visible private value was found. The downloadable gallery embeds these exact PNG bytes; all 88 decoded hashes and local-browser image/filter rendering were checked.
+Final set: 63 retained full-matrix originals and 57 replacements. Every final original was individually opened by read-only image reviewers. Desktop actions align; phone actions wrap without overflow. Full copy, confirmations, mixed switch state and warning contrast pass. No visual blocker, tofu or visible private value remained. The two finished offline galleries embed the exact PNG bytes, separated by screen size to meet the attachment limit; all decoded hashes, browser image rendering and language filters are checked. They supersede the selected-A attachment.
 
-Reproduce with private scratch homes only:
+Reproduce in private scratch homes only:
 
 ```sh
 REPO=$PWD PW_DIR=$PWD OUT=$PWD/.artifacts/s230/look MATRIX=full npx --no-install tsx scripts/manual/request-context-cutover-s230/capture.mts
 ```
 
-The final recipe supports `STATES=...` for bounded recaptures. It now includes all 11 states; the three retained receipts describe their exact earlier subsets.
+`STATES=...` supports bounded recaptures. Receipt sources bind each subset; later source changes only action arrangement/capture settling, leaving retained product views unchanged.
 
-## Implementation and limits
+## Dormant safety components and checks
 
-This checkpoint provides final-write input preparation, read-only whole-Fleet readiness proofs, current-process Fleet-lock capture, separate native execution lanes, staged-versus-installed daemon instruction checks, and owner-control API/UI boundaries with passive owner scoping. The production FleetManager still uses capability 0 and supplies no control/installation host. No automatic cutover can occur from this checkpoint.
+315 tests pass across 21 focused files; test typecheck and changelog checks pass. The preparation tests include whole-Fleet port/peer readiness, immutable final-write inputs, exact Fleet lease, identity-only reads/verified writes, CSRF, role/session rechecks, revision CAS, quiet default Off, separate read-only recheck, update exclusion and the atomic activation marker. Two new mutants remove update settlement or Go back refusal; both turn their negatives red and are restored. Earlier preparation mutants are retained evidence, not repeated campaign claims.
 
-Still required before formal completion: actual ingress/audience evidence adapters; all runtime/transport/drain owners; the atomic activation record and singleton publication; independent failed-install Off; concrete drain-resolution writers and outcome notices; conditional skill publication; full-mode, crash and rollback controls; prerequisite S-249/S-250 and final user lift. Never treat the status fixtures or this gallery as those proofs.
+The update guard holds the actual Fleet ownership plus home update lock and SHARED state lease, refusing open/recoverable journals and a live legacy updater even when its journal is absent. The dormant activation transaction writes the floor and append-only activation/Go-back history together. Real SQLite controls prove pre-COMMIT failure rolls both back; after COMMIT Go back is refused without any retained.json cache update; later updates remain eligible. No production updater/restoration path is invoked by these tests.
+
+An unchanged neighboring cross-process test, `update-locks-m3770`'s missing-home SHARED case, fails locally on this branch **and untouched prior `6daa35da`** (19/20 pass). It uses a 1500 ms child lifetime. This evidence does not claim that neighboring suite is green or replace its cross-process proof. Source was left unchanged and the update author was notified.
+
+## Remaining implementation
+
+Production FleetManager still supplies no cutover/control host and stays capability 0. No actual activation can occur from this checkpoint. Actual ingress/audience adapters, complete owner installation/publication, failed-install Off, concrete drain resolutions and outcomes, update Go-back consumer integration, conditional skills, once-only notice posting, full-mode/crash/rollback fixtures and prerequisite/user gates remain required. No completion or formal implementation approval is requested yet.
