@@ -2,7 +2,7 @@ import * as daemonModule from "../src/daemon.js";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TmuxManager } from "../src/tmux-manager.js";
@@ -20,7 +20,14 @@ function have(bin: string): boolean {
 // M-3823: kill-server returning is not a teardown barrier for an immediate new-session on that same socket.
 // A fresh socket per case keeps the next test from connecting to the previous server while it exits (26.04 CI).
 let SOCK = `agtkw${process.pid}-uninitialized`;
-beforeEach(() => { SOCK = `agtkw${process.pid}-${randomUUID()}`; });
+const ORIGINAL_TMUX_TMPDIR = process.env.TMUX_TMPDIR;
+let socketRoot: string;
+beforeEach(() => {
+  SOCK = `agtkw${process.pid}-${randomUUID()}`;
+  // Keep the Unix socket address short, and own its dead files as well as the live server.
+  socketRoot = realpathSync(mkdtempSync("/tmp/agtkw-"));
+  process.env.TMUX_TMPDIR = socketRoot;
+});
 const tmux = (...args: string[]) => execFileSync("tmux", ["-L", SOCK, ...args], { encoding: "utf8" });
 
 const ORIGINAL_PATH = process.env.PATH ?? "";
@@ -35,6 +42,9 @@ afterEach(() => {
   if (SYSTEM_TMUX) useTmux(SYSTEM_TMUX);
   try { tmux("kill-server"); } catch { /* gone */ }
   TmuxManager.setSocketName(null);
+  if (ORIGINAL_TMUX_TMPDIR === undefined) delete process.env.TMUX_TMPDIR;
+  else process.env.TMUX_TMPDIR = ORIGINAL_TMUX_TMPDIR;
+  rmSync(socketRoot, { recursive: true, force: true });
 });
 
 /** AgEnD's tmux becomes a wrapper that fails (exit 75) for the given subcommand and execs the real tmux otherwise. */
@@ -50,6 +60,7 @@ describe.skipIf(!have("tmux"))("TmuxManager.killWindowConfirmed", () => {
   it("kills a window known only by name and confirms it is gone", async () => {
     TmuxManager.setSocketName(SOCK);
     tmux("-f", "/dev/null", "new-session", "-d", "-s", "s", "-x", "80", "-y", "24", "sleep 100");
+    expect(tmux("display-message", "-p", "#{socket_path}")).toContain(`${socketRoot}/`);
     // `-a` (insert after current) as production createWindow does: a bare
     // `new-window -t s` right after a fresh `new-session -d` races tmux's
     // window indexing and fails with "index 0 in use" about 40% of the time.
