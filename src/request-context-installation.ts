@@ -73,9 +73,9 @@ export class RequestContextInstallationStore {
    */
   drainRoots():ReadonlySet<string> {
     const state=this.read();
-    if(state?.mode!=="draining")throw Error("Installation is not draining");
+    if(!state||!["draining","off"].includes(state.mode))throw Error("Installation is not draining");
     if(!state.drainRootsSha256||!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(DRAIN_ROOTS))throw Error("Drain root snapshot unavailable");
-    const rows=this.db.prepare(`SELECT root_id FROM ${DRAIN_ROOTS} WHERE epoch=? AND revision=? ORDER BY root_id`).all(state.epoch,state.revision) as Array<{root_id:string}>;
+    const rows=this.db.prepare(`SELECT root_id FROM ${DRAIN_ROOTS} WHERE epoch=? AND revision=? ORDER BY root_id`).all(state.epoch,state.mode==="off"?state.revision-1:state.revision) as Array<{root_id:string}>;
     const ids=rows.map(row=>z.uuid().parse(row.root_id));
     if(requestContextDigest(ids)!==state.drainRootsSha256)throw Error("Drain root snapshot differs");
     return new Set(ids);

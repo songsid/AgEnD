@@ -4,7 +4,8 @@ import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { assertRequestContextRootOpen, type RequestContextDrainView, type RequestContextRegistrationGate } from "./request-context-fence.js";
-import { RequestContextStore } from "./request-context-store.js";
+import type {RequestContextInstallationStore,RequestContextOffProof} from "./request-context-installation.js";
+import { RequestContextStore,requestContextDigest } from "./request-context-store.js";
 const ROOT=z.uuid();
 export const REQUEST_CONTEXT_DRAIN_FAMILIES=["turns","daemon-calls","fleet-calls","native-exec","native-grants","pane-proofs","pane-ledgers","registered-work"]as const;
 export type RequestContextDrainFamily=typeof REQUEST_CONTEXT_DRAIN_FAMILIES[number];
@@ -101,6 +102,43 @@ export class RequestContextDrain {
     const view=this.inspectWork(rootId),owner=this.owner();
     if(!owner||!this.fenced(rootId,epoch,owner))view.blockers.push("drain-owner-or-fence");
     return view;
+  }
+  /** Final installation Off, under the global input fence. It does not retire or relabel any root. */
+  proveOff(installation:RequestContextInstallationStore,globalFence:()=>boolean):RequestContextOffProof {
+    const state=installation.read(),owner=this.owner(),membership=this.membership;
+    if(!state||state.mode!=="draining"||state.owner!==owner||!globalFence())throw Error("Installation drain owner changed");
+    const roots=[...installation.drainRoots()].sort(),rootsImage=requestContextDigest(roots);
+    // Even an empty snapshot must prove the full family inventory; no missing registry is treated as empty.
+    let empty=randomUUID();while(roots.includes(empty))empty=randomUUID();
+    const inspect=()=>{
+      const revisions=new Map<string,string>(),blockers:string[]=[];
+      for(const root of roots.length?roots:[empty]){
+        const view=this.inspectWork(root);
+        for(const blocker of view.blockers){
+          if(blocker==="context-unavailable"&&(!roots.length||this.retiredForOff(root,owner!)))continue;
+          if(blocker==="context-store-unavailable"&&!roots.length&&!new RequestContextStore(this.db).context(root))continue;
+          blockers.push(`${root}:${blocker}`);
+        }
+        for(const [key,value]of view.revisions){if(revisions.has(key)&&revisions.get(key)!==value)blockers.push(`changed:${key}`);revisions.set(key,value);}
+      }
+      return {blockers,revisions};
+    };
+    const first=inspect();if(first.blockers.length)throw Error(`Installation work remains: ${first.blockers.join(", ").slice(0,2000)}`);
+    const current=()=>{try{
+      this.ready();const now=installation.read();
+      if(!globalFence()||this.owner()!==owner||this.membership!==membership||!now||now.owner!==state.owner||now.epoch!==state.epoch
+        ||!(now.mode==="draining"&&now.revision===state.revision||now.mode==="off"&&now.revision===state.revision+1)
+        ||requestContextDigest([...installation.drainRoots()].sort())!==rootsImage)return false;
+      const next=inspect();return next.blockers.length===0&&requestContextDigest([...next.revisions])===requestContextDigest([...first.revisions]);
+    }catch{return false;}};
+    if(!current())throw Error("Installation drain changed while proving");
+    return Object.freeze({epoch:state.epoch,revision:state.revision,current});
+  }
+  /** A snapshotted root collected by E keeps its owned F tombstone. An unexplained missing root refuses. */
+  private retiredForOff(root:string,owner:string):boolean {
+    if(!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_context_drain_v1'").get())return false;
+    const row=this.db.prepare("SELECT epoch,owner FROM request_context_drain_v1 WHERE root_id=?").get(root) as {epoch:string;owner:string}|undefined;
+    return !!row&&row.owner===owner&&z.uuid().safeParse(row.epoch).success&&!new RequestContextStore(this.db).context(root);
   }
   prove(rootId:string,epoch:string):RequestContextRetirementProof {
     const owner=this.owner(),membership=this.membership,inspected=this.inspect(rootId,epoch);
