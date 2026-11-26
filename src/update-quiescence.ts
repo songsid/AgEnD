@@ -22,6 +22,24 @@ import {
 
 export const DEFAULT_MAX_IDLE_WAIT_MS = DEFAULT_MAX_IDLE_WAIT_HOURS * 60 * 60 * 1000;
 
+/** §2.6 hand-back (rev 15): a held copy is admitted to the outbox as this kind, from this source; its dispatch delivers the
+ *  journaled turn as it was (a person's turn stays a person's: never stamped with a `from_instance`). */
+export const UPDATE_HANDBACK_COPY_KIND = "update_handback_copy";
+export const UPDATE_HANDBACK_SOURCE = "update-handback";
+/**
+ * The human receipt of a held turn belongs to the fleet that held it (its manager boot and owner): a replay in the
+ * restarted fleet can't re-bind it. So every `human_*` meta key is dropped — by prefix, so a receipt field added later
+ * can't ride along stale (Fable #4536 design A.1) — and the turn arrives as a plain, unverifiable `[user:…]`: no hid, no
+ * web:v. The old receipt is marked uncertain. Returns the stripped meta and the old receipt id, if any.
+ */
+export function stripHumanReceipt(meta: Record<string, unknown>): { meta: Record<string, unknown>; receiptId: string | null } {
+  const receiptId = typeof meta.human_receipt_id === "string" ? meta.human_receipt_id : null;
+  return { meta: Object.fromEntries(Object.entries(meta).filter(([key]) => !key.startsWith("human_") && !RECEIPT_DERIVED.has(key))), receiptId };
+}
+/** The two receipt-derived keys outside the `human_` prefix (FleetManager.humanReceiptPayload): the hid the agent is shown
+ *  (`verification_id`, an hmsg id) and the web:v tag (`web_verified`). `web_guest` is recognition only and stays. */
+const RECEIPT_DERIVED = new Set(["verification_id", "web_verified"]);
+
 /** What the card offers again after a honoured cancel or an honoured idle timeout (§3.3 step 2.4). */
 export const HONOURED_CANCEL_ACTIONS = ["Update now", "Keep waiting"] as const;
 /** What the card says when a cancel is consumed after the snapshot (#4491 §2.6). */
@@ -173,7 +191,21 @@ export interface QuiescenceGate {
    * True: an adapter or web turn was journaled as a copy and must not be sent.
    * A Hub or room payload is not a copy. The producer leaves that row queued, and the caller must not send it.
    */
-  commitTurn(payload: Record<string, unknown>): boolean;
+  commitTurn(payload: Record<string, unknown>, target: string): boolean;
+}
+
+/**
+ * §2.3 / §2.6 (rev 15, Fable #4536): when the fleet walks the hand-back — keyed on durable facts, never on the latest
+ * substep (a re-restart of the old fleet journals `start-planned`/`start-acknowledged` while the wait goes on): the
+ * attempt is `abandoning`, its history has `restart-old` and lacks `hand-back`, and this fleet (`own`: its handoff nonce
+ * and pid) is the attempt's consumed, not-dead `old` generation. A stale or replaced old fleet never walks.
+ */
+export function handbackDue(attempt: AttemptRecord, own: { nonce: string; pid: number }): boolean {
+  if (attempt.stage !== "abandoning") return false;
+  const steps = attempt.history.filter(h => h.stage === "abandoning").map(h => h.substep);
+  if (!steps.includes("restart-old") || steps.includes("hand-back")) return false;
+  const fleets = (Array.isArray(attempt.fleets) ? attempt.fleets : []) as { gen: string; nonce: string; pid?: number; consumed?: boolean; dead?: boolean }[];
+  return fleets.some(g => g.gen === "old" && g.nonce === own.nonce && g.consumed === true && !g.dead && g.pid === own.pid);
 }
 
 export interface HandbackPorts {
@@ -181,8 +213,9 @@ export interface HandbackPorts {
   lookup(deliveryId: string): { state: string; target: string } | null;
   /** Claim this delivery id only. `ineligible` holds later entries for that same target. */
   claim(deliveryId: string): "claimed" | "ineligible" | "settled" | "missing";
-  /** One insert under `sourceKey`. A replay returns the row the first insert created. */
-  admitCopy(sourceKey: string, body: unknown): { deliveryId: string };
+  /** One insert under `sourceKey` for `target`. A replay returns the row the first insert created. null: the target
+   *  instance no longer exists (logged and acknowledged by the walk; no row nobody can drain). */
+  admitCopy(sourceKey: string, body: unknown, target: string): { deliveryId: string } | null;
   runDeferred(job: { scheduleId: string; runId: string }): void;
   recordInterrupted(job: { scheduleId: string; runId: string }): void;
 }
@@ -299,13 +332,13 @@ export class QuiescenceBarrier implements QuiescenceGate {
     this.rememberReference(deliveryId, createdSeq);
   }
 
-  commitTurn(payload: Record<string, unknown>): boolean {
+  commitTurn(payload: Record<string, unknown>, target: string): boolean {
     if (!this.flag || !isAgentTurn(payload)) return false;
     // Hub and room text stays in the member journal, encrypted, and only while that row is queued.
     if (turnSource(payload) === "hub") return false;
     if (!this.attempt) throw new Error("no attempt is bound");
     const seq = this.seq + 1;
-    writeInboxItem(this.home, this.attempt.id, seq, turnSource(payload), { kind: "copy", body: payload }, this.io);
+    writeInboxItem(this.home, this.attempt.id, seq, turnSource(payload), { kind: "copy", body: payload, target }, this.io);
     this.seq = seq;
     return true;
   }
@@ -323,12 +356,13 @@ export class QuiescenceBarrier implements QuiescenceGate {
   }
 
   /**
-   * Hand-back, only at substep `hand-back`. Reconciles each entry with durable state before doing it again, and
-   * writes `.acked` only after that effect. A missing reference is logged, acknowledged, and the walk continues.
-   * An ineligible row holds later entries for the same target only.
+   * Hand-back, only while `handbackDue` (the abandon driver has restarted this fleet as the old generation and waits for
+   * its acks). Reconciles each entry with durable state before doing it again, and writes `.acked` only after that
+   * effect. A missing reference is logged, acknowledged, and the walk continues. An ineligible row holds later entries
+   * for the same target only.
    */
-  runHandback(attempt: AttemptRecord, ports: HandbackPorts): { walked: boolean; acked: number } {
-    if (attempt.substep !== "hand-back") return { walked: false, acked: 0 };
+  runHandback(attempt: AttemptRecord, ports: HandbackPorts, own: { nonce: string; pid: number }): { walked: boolean; acked: number } {
+    if (!handbackDue(attempt, own)) return { walked: false, acked: 0 };
     const entries = listHandback(this.home, attempt.id, this.io);
     const held = new Set<string>();
     let acked = 0;
@@ -343,9 +377,16 @@ export class QuiescenceBarrier implements QuiescenceGate {
         acknowledge(entry);
         continue;
       }
-      const deliveryId = action === "admit-then-claim"
-        ? ports.admitCopy(handbackSourceKey(attempt.id, entry.seq), entry.item.kind === "copy" ? entry.item.body : null).deliveryId
-        : entry.item.kind === "reference" ? entry.item.deliveryId : "";
+      let deliveryId = entry.item.kind === "reference" ? entry.item.deliveryId : "";
+      if (action === "admit-then-claim" && entry.item.kind === "copy") {
+        const admitted = ports.admitCopy(handbackSourceKey(attempt.id, entry.seq), entry.item.body, entry.item.target);
+        if (!admitted) {
+          ports.log({ deliveryId: "", seq: entry.seq }, `hand-back copy's target ${entry.item.target} no longer exists; acknowledging and continuing`);
+          acknowledge(entry);
+          continue;
+        }
+        deliveryId = admitted.deliveryId;
+      }
       if (!deliveryId) throw new Error(`hand-back entry ${entry.seq} has no delivery`);
       const row = ports.lookup(deliveryId);
       if (!row) {

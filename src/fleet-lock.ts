@@ -389,8 +389,14 @@ export function createUpdateFence(dataDir: string, fence: { pid: number; attempt
   let fd: number;
   try { fd = openSync(lockPath, "wx", 0o600); }
   catch (err) { return { ok: false, reason: (err as NodeJS.ErrnoException).code === "EEXIST" ? "fleet.lock appeared meanwhile" : `fleet.lock can't be created (${(err as Error).message})` }; }
-  try { writeSync(fd, serialized); fsyncSync(fd); } finally { closeSync(fd); }
-  fsyncDir(dataDir);
+  try {
+    try { writeSync(fd, serialized); fsyncSync(fd); } finally { closeSync(fd); }
+    fsyncDir(dataDir);
+  } catch (err) {
+    // A partial lock of our own would refuse every later pass as "appeared meanwhile" (Fable #4536 nit): removed.
+    try { unlinkSync(lockPath); fsyncDir(dataDir); } catch { /* gone already, or the directory went */ }
+    return { ok: false, reason: `fleet.lock can't be written (${(err as Error).message})` };
+  }
   return { ok: true, handle: { path: lockPath, record, serialized } };
 }
 
