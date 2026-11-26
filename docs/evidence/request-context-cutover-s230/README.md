@@ -68,3 +68,7 @@ Final human write: `human-resolver.json` binds the actual facade/formatter/C/pan
 ### Original-call reply sinks
 
 [Sink source and proof binding](reply-sinks.json): local/pane call capture and the Fleet IPC wrapper preserve the same delivered route lease. The actual reply/edit/react sinks force its original adapter/chat/thread and recheck it after awaits. Unknown non-Hub outputs work only on that proven path. Web reactions preserve existing visibility and mirror only that destination. Raw system proxy text has no originating tool lease and cannot borrow a chat under C. Restored542/21; nine guard mutants red; types/public/Gitleaks clean. Existing browser visibility and UI/image bytes are unchanged. Production installation/capable boot/full-mode assessment remain unfinished.
+
+### Controlled owner and transport components
+
+[Source and focused checks](prepared-owners.json): one candidate preparation binds the actual pre-start C/D hook and rendering policy; work retention joins the activation transaction, with a separate post-commit seal. Transport observations use actual negotiated connections/open ports, not advertisements or registry presence.85/6 focused tests plus one managed-factory case pass; types/public/leaks clean. This does not assemble or publish the complete installer. Physical retirement/reconstruction, exec/grant wiring, standard Settings confirmation, capable boot and full-mode proof remain unfinished. UI/images unchanged.
