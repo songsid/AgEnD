@@ -716,6 +716,8 @@ function main(argv, injected) {
   var deps = injected || defaultDeps();
   var args = argv || [];
   var upgrade = args.indexOf("--upgrade") >= 0;
+  // M-3770 2.5 D1 (Fable): the update transaction's install hand. See installOnlyUnderUpdate.
+  var installOnly = args.indexOf("--install-only") >= 0;
   var specAt = args.indexOf("--spec");
   var targetAt = args.indexOf("--target");
   // Where the previous version is reinstalled from when the new one does not prove itself (tests and mirrors).
@@ -745,8 +747,9 @@ function main(argv, injected) {
   try { ensurePrivateHome(home, { log: log }); }
   catch (error) { return fail("install", error.message); }
 
-  log("  AgEnD installer v" + version + (upgrade ? " (upgrade)" : ""));
-  var ownerRefusal = fleetServiceOwner.updateRefusal(home, { env: deps.env, uid: deps.uid, run: deps.run });
+  log("  AgEnD installer v" + version + (installOnly ? " (install only)" : upgrade ? " (upgrade)" : ""));
+  // The transaction proved the install's ownership and holds the service: the owner check is its, not this mode's.
+  var ownerRefusal = installOnly ? null : fleetServiceOwner.updateRefusal(home, { env: deps.env, uid: deps.uid, run: deps.run });
   if (ownerRefusal) return fail("install", ownerRefusal);
   // M-3806: npm 11/12 print `***` for a UUID in the path; then the prefix is asked the way npm tells a child.
   var rootOut = deps.run("npm", ["root", "-g"], { timeoutMs: 30000 }).stdout;
@@ -755,9 +758,10 @@ function main(argv, injected) {
   var root = where.root;
   var prefix = where.prefix;
   if (!root || !prefix) {
-    claimed = claimMarker(home, deps, { ownOnly: true });
+    if (!installOnly) claimed = claimMarker(home, deps, { ownOnly: true });
     return fail("install", "npm did not say where it installs global packages (npm root -g / npm prefix -g)");
   }
+  if (installOnly) return installOnlyUnderUpdate(root, prefix, spec, version, deps);
   var admitted = admit(prefix, deps, { spec: spec, home: home });
   admitted.notes && admitted.notes.forEach(function (n) { log("  ↺ " + n); });
   if (admitted.refuse) {
@@ -919,5 +923,53 @@ function main(argv, injected) {
   }
 }
 
-module.exports = { main: main, defaultDeps: defaultDeps, repair: repair, admit: admit, openedBy: openedBy, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmChangingFromProcessList: npmChangingFromProcessList, waitForOtherNpm: waitForOtherNpm, OTHER_NPM_WAIT_MS: OTHER_NPM_WAIT_MS, npmCommands: npmCommands, withoutUpdateNpmBounds: withoutUpdateNpmBounds, LOCK: LOCK };
+/**
+ * M-3770 2.5 D1 (design update-wiring-m3770.md §3, §10.1; Fable): `--install-only`, the update transaction's install
+ * hand. It runs under the `agend update` that holds the prefix lock — this installer never takes the lock: it must be
+ * handed that lock's own token (AGEND_INSTALL_TOKEN), which must be the live lock's — and it does npm, the version
+ * check and the package's own runtime files (npm's postinstall) only:
+ *   - no unit or plist write and no service-manager call (no `agend install`, no daemon-reload, no restart or start):
+ *     the transaction took the unit's preimage and wrote its route; a regenerated unit would bypass both;
+ *   - no update marker (the transaction owns progress), no preimage and no reinstall of the previous version: a version
+ *     that doesn't prove itself is the transaction's to roll back, from its own snapshot;
+ *   - no host-wide links (root under nvm): nothing outside the prefix the transaction snapshotted.
+ * Exit 0: this exact version is installed and runs. 1: it isn't (npm's own rollback may have left the previous one).
+ * 75: not admitted (no or a wrong token, or the lock's holder isn't live).
+ */
+function installOnlyUnderUpdate(root, prefix, spec, version, deps) {
+  var log = deps.log;
+  var token = deps.env[lockReaders.TOKEN_ENV];
+  if (typeof token !== "string" || !/^[0-9a-f]{32,}$/.test(token)) { log("  ✗ install-only runs under the update that holds the prefix lock (no install token was handed over) — nothing was changed"); return 75; }
+  var real = prefix;
+  try { real = fs.realpathSync(prefix); } catch (e) { /* the read below says */ }
+  var r = deps.lockReaders || lockReaders;
+  var held = r.parse(readText(path.join(real, LOCK)) || "");
+  if (!held || held.token !== token || r.holderState(held, r) !== "live") {
+    log("  ✗ install-only: " + path.join(real, LOCK) + " isn't held by the update that started this installer — nothing was changed");
+    return 75;
+  }
+  var fixed = repair(root, prefix, deps);
+  fixed.notes.forEach(function (n) { log("  ↺ " + n); });
+  var npmEnv = Object.assign({}, deps.env);
+  npmEnv[lockReaders.TOKEN_ENV] = token;
+  var install = function () { return deps.run("npm", ["install", "-g", spec, allowScripts.flagFor(spec)], { inherit: true, env: npmEnv }); };
+  waitForOtherNpm(deps, log, "installing AgEnD");
+  var done = install();
+  if (done.status !== 0) {
+    var again = repair(root, prefix, deps);
+    again.notes.forEach(function (n) { log("  ↺ " + n); });
+    if (again.changed) done = install();
+  }
+  var bin = path.join(prefix, "bin", "agend");
+  var got = done.status === 0 ? versionOf(bin, deps) : null;
+  if (got !== version) {
+    log("  ✗ " + (done.status !== 0 ? "npm install -g " + spec + " failed (exit " + (done.status === null ? done.signal : done.status) + ")"
+      : "after npm install, " + bin + " reports " + (got || "nothing") + ", not v" + version) + " — the update rolls back");
+    return 1;
+  }
+  log("  ✓ AgEnD v" + version + " is installed (" + bin + "); the update starts it");
+  return 0;
+}
+
+module.exports = { main: main, installOnlyUnderUpdate: installOnlyUnderUpdate, defaultDeps: defaultDeps, repair: repair, admit: admit, openedBy: openedBy, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmChangingFromProcessList: npmChangingFromProcessList, waitForOtherNpm: waitForOtherNpm, OTHER_NPM_WAIT_MS: OTHER_NPM_WAIT_MS, npmCommands: npmCommands, withoutUpdateNpmBounds: withoutUpdateNpmBounds, LOCK: LOCK };
 if (require.main === module) process.exit(main(process.argv.slice(2)));
