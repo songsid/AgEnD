@@ -81,25 +81,27 @@ export const INSTALLABLE_CLIS = Object.freeze({
     native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: { cn: "Anthropic, PBC", o: "Anthropic, PBC" } },
   },
   codex: {
-    id: "codex", kind: "npm", spec: "@openai/codex", version: "0.171.0",
+    id: "codex", kind: "npm", spec: "@openai/codex", version: "0.172.0",
     integrity: {
-      "node_modules/@openai/codex": "sha512-1IOFzL2Xg86tLdw6kDo3GoKbkQENgQi7TI6rlEvN132R7ngSw7SNOIQoTcnKzSZZ8kf9N9GynCweSoaFbqk2Eg==",
-      "node_modules/@openai/codex-win32-x64": "sha512-HKWBK25tLQxdEg6svw0CrBf+v0bQhRyF8EBVdNqeRxErqpfFa/dfSar6r3sJt6tyPqozOtgz2BH8B2G3n/+gnQ==",
+      "node_modules/@openai/codex": "sha512-yHf/6wbw4Zvha2M2ylDhDrU9FgfKLYgV6xSzSjlz3gxQNsiVLkXo+fPGwBqvP0A5geLtZs9wAbq+1v7+ZVWJ0g==",
+      "node_modules/@openai/codex-win32-x64": "sha512-48pULjlTwpBZ/TfbOnpnmloHaTQAYELbaiKHEX7qmrtLFIcnPigaNN3omyetPdAuvrRXrmNFRlKfvQme19ZmRA==",
     },
     native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
   },
-  // M-3176: Claude 2.1.325 (now 2.1.332, M-3753; 2.1.331 in M-3652, 2.1.330 in M-3501, 2.1.329 in M-3477, 2.1.327 in M-3336: the same two packages, no dependencies, claude.exe at the same path) and Codex 0.171.0 (M-3476, was 0.170.0 in M-3337: the same two packages, codex.exe at the same path; their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
+  // M-3176: Claude 2.1.325 (now 2.1.332, M-3753; 2.1.331 in M-3652, 2.1.330 in M-3501, 2.1.329 in M-3477, 2.1.327 in M-3336: the same two packages, no dependencies, claude.exe at the same path) and Codex 0.172.0 (M-3815, was 0.171.0 in M-3476: the same two packages, codex.exe at the same path; their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
   // downloaded tarball's own sha512, and the native path above is in that tarball; the signer is still verified at install. Antigravity 1.5.15 (M-3550, was 1.5.14 in M-3500):
-  // the windows_amd64 manifest read 2026-11-23 (version 1.5.15, this url, this sha512); the file downloaded is 239256728 bytes with that sha512, and Get-AuthenticodeSignature says Valid, CN=Google LLC, O=Google LLC. OpenCode 1.19.6 (M-3477):
+  // the former windows_amd64 manifest read 2026-11-23 (version 1.5.15); the file downloaded is 239256728 bytes with that sha512, and Get-AuthenticodeSignature says Valid, CN=Google LLC, O=Google LLC. OpenCode 1.19.6 (M-3477):
   // the same three packages, each integrity the registry's and checked against its downloaded tarball, opencode.exe at the same path in the baseline one.
   // AGEND-135 (#3521): Antigravity — no npm package (`agy` / `antigravity-cli` on npm are not Google's), so a pinned download: the vendor's own versioned file, named by its manifest
   // (https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json; first read 2026-11-09 for 1.5.3, now 1.5.9: M-3176 above). Measured on 1.5.3: the file is 225159320
   // bytes, its sha512 equals the manifest's, `Get-AuthenticodeSignature` says Valid with the subject CN=Google LLC, O=Google LLC, and `agy.exe --version` prints 1.5.3 without the vendor's
   // `install` step (which only edits PATH and shell aliases, and so is not run). Windows x64 only: no arm64 pin has been measured. The CLI updates itself afterwards; the pin governs the first install.
+  // M-3815: 1.5.18 Windows manifest read 2026-11-26; downloaded 245461240 bytes, sha512 matched.
+  // Signer policy remains Google LLC and is enforced at install; this ledger sync did not execute a Windows binary.
   antigravity: {
-    id: "antigravity", kind: "download", version: "1.5.15",
-    url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.15-5514532022517760/windows-x64/cli_windows_x64.exe", bytes: 239256728,
-    sha512: "f9b9d4ffe050c9b909df2afffc5dcca834cd97ed18c1a4cc1b686244c24cf53fd44b45c34c99c25b9892cb8057cbf35a27a376db0a62a5222e1cbf9e8e0bb47e",
+    id: "antigravity", kind: "download", version: "1.5.18",
+    url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.18-6386224290725888/windows-x64/cli_windows_x64.exe", bytes: 245461240,
+    sha512: "53605db7013dfed51e8c416d51e0c17a3b5ad0750c13da5669954ba4a281318746be0cf8cde2b256cfdb4bfbdade4badad1a0503931f8458416184549afa06b6",
     native: { path: "agy.exe", signer: { cn: "Google LLC", o: "Google LLC" } },
   },
   // AGEND-133 (#3521): OpenCode — npm `opencode-ai` (published from GitHub Actions by npm trusted publishing) and its per-platform packages. npm installs BOTH Windows x64
@@ -121,6 +123,8 @@ export const INSTALLABLE_CLIS = Object.freeze({
  * Nothing the server or the page sends is ever part of any of it. tests/runtime-cli-install-latest-153.test.ts pins that this table and the registry's `runtime.update` of kind `latest-unaudited` name the same CLIs.
  */
 export const LATEST_UNAUDITED = Object.freeze({
+  // M-3815: 1.5.18 Windows manifest read 2026-11-26; downloaded 245461240 bytes, sha512 matched.
+  // Signer policy remains Google LLC and is enforced at install; this ledger sync did not execute a Windows binary.
   antigravity: {
     manifest: "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json",
     file: /^https:\/\/storage\.googleapis\.com\/antigravity-public\/antigravity-cli\/(\d{1,6}\.\d{1,6}\.\d{1,6})-\d{1,20}\/windows-x64\/cli_windows_x64\.exe$/,
