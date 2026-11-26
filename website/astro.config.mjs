@@ -23,7 +23,8 @@ export default defineConfig({
         'zh-tw': { label: '繁體中文', lang: 'zh-TW' },
       },
       sidebar: [
-        { label: "What's new in 2.3", translations: { 'zh-TW': '2.3 更新重點' }, slug: 'docs/whats-new' },
+        { label: "What's new in 2.4", translations: { 'zh-TW': '2.4 更新重點' }, slug: 'docs/whats-new' },
+        { label: "What's new in 2.3", translations: { 'zh-TW': '2.3 更新重點' }, slug: 'docs/whats-new-2-3' },
         { label: "What's new in 2.2", translations: { 'zh-TW': '2.2 更新重點' }, slug: 'docs/whats-new-2-2' },
         { label: 'Getting Started', slug: 'docs/getting-started' },
         { label: 'Web Guide', translations: { 'zh-TW': '網頁使用說明' }, slug: 'docs/web-guide' },

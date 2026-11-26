@@ -1,0 +1,216 @@
+---
+title: "2.3 更新重點"
+description: "從 AgEnD 2.2.x 升級會注意到的變化：升級前要先做的事、指令改名，以及依功能區分的新功能：任務看板、全域搜尋、辦公室檢視、自己網域的公開連結，以及更穩的更新與重啟。"
+---
+
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-light.webp" width="880" alt="AgEnD 的網頁儀表板（示範資料）：側欄有六個 agent 和各自的狀態；與 agent Pixel 的對話裡有一張 bundle 大小的表格、一段程式碼、已選的「Ship it」回覆按鈕、一份附件報告，以及列出五個 AI 服務的用量面板。旁邊是一支手機，顯示同一段對話，附 Discord 與 Telegram 的標誌。">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-dark.webp" width="880" alt="AgEnD 的網頁儀表板（示範資料）：側欄有六個 agent 和各自的狀態；與 agent Pixel 的對話裡有一張 bundle 大小的表格、一段程式碼、已選的「Ship it」回覆按鈕、一份附件報告，以及列出五個 AI 服務的用量面板。旁邊是一支手機，顯示同一段對話，附 Discord 與 Telegram 的標誌。">
+</p>
+
+AgEnD 2.3 的最後一版是 2.3.5；目前的正式版系列是 2.4（見[2.4 更新重點](/AgEnD/zh-tw/docs/whats-new/)）。這一頁寫給從 2.2.x（尤其是 2.2.5 與 2.2.6）升級的人。先講升級時要做的事，再列指令的改名，最後依功能區分列出新功能。已經在用 2.3.4 或 2.3.5 beta？請從 [2.3.5 新增](#235-新增) 開始。還在 2.3.3？也請看 [2.3.4 新增](#234-新增)。還在 2.3.1 或 2.3.2？另請看 [2.3.2 新增](#232-新增)；2.3.3 的變更在 [CHANGELOG](https://github.com/songsid/AgEnD/blob/main/docs/CHANGELOG.zh-TW.md)。2.2 新增了什麼，請看[2.2 更新重點](/AgEnD/zh-tw/docs/whats-new-2-2/)。
+
+## 2.3.5 新增
+
+2.3.5 收錄 2.3.5-beta.1 到 beta.5 的所有內容，完整清單見[發佈說明](https://github.com/songsid/AgEnD/releases)。
+
+**從 2.3.4 升級：**
+
+- 在 General 傳 `/update`、在主機上執行 `agend update`，或在儀表板按 **立即更新**（這一版新增）。已經開著的儀表板分頁請重新整理（F5）。
+- **`/pair` 已移除**（`/pair` 與 `agend access pair`）。要讓別人使用 bot，請到「設定 → 聊天與連線 → 該 bot → **允許使用者**」新增。已經授權的人保留；設定裡舊的 `pairing` 模式仍照允許名單運作，並標示為等同 `locked`。Hub 與 Runtime 的配對不變。
+- **沒有網路時：** 更新約一分鐘內停下，顯示「連不上更新來源」，不做任何變更。
+- **用 nvm 安裝的：** 聊天 `/update` 不會再因為服務先找到系統的 npm 而拒絕。
+- **試過 2.4 alpha 又直接用 npm 裝回來？** 若 2.4 自己的 tmux 伺服器還在跑，2.3 不會在旁邊啟動任何 agent，並說明正確的回退方式（從 2.4 執行 `agend rollback`，或先關掉那個伺服器）。
+
+**新功能：**
+
+- **從網頁更新：** fleet 管理員在有新版時，每一頁頂端會出現一行，附 **立即更新** 與 **稍後**；每個開著的分頁都看得到步驟與經過時間，關掉頁面也不會中斷。「設定 → 進階 → **版本與更新**」有 **檢查更新**，網頁聊天輸入 `/update` 也會開同一個對話框。網頁更新只會留在這個安裝的版本線。
+- **用量不足提醒：** 「設定 → 通知」可設定全隊預設、各後端規則與個別 agent 覆寫。預設在每週額度剩 10% 時，向 General 發一則共用帳號提醒。
+- **網頁聊天：** 在訊息裡選取文字按 **引用**，就能一段一段回覆（手機上選取時鍵盤不會跳出來）；模型選單有 **重新整理模型**，聊天標題列（桌面）與輸入框（手機）有後端與模型入口；管理員的進度區有 **子 Agent** 列；編號清單之間有空行時編號正確。
+- **團隊與 General：** `post_decision` 可用 `scope: "team"` 送給團隊每位成員，不論他們在哪裡工作；General 能直接查 agent 的紀錄、fleet 設定、設定檢查與部署，也能直接設定其他 agent 的工具組，不必確認卡；`agend quickstart` →「Add another platform」會替新平台提供它自己的 General，`agend doctor` 會指出哪個平台還沒有。
+- **介面：** 桌面上 Fleet 頁的分頁移到標題列；載入中顯示灰色骨架，不會先顯示「沒有東西」；Claude 用量卡片重新顯示各模型的每週額度；繁體中文用詞統一（Agent、Fleet、管理員只用一個詞），登入相關一律說 **連接**；畫面與通知不再叫你到主機打指令，能在同一個地方完成的就指向那裡。
+- **修正：** Claude Code 的「Resume this conversation?」又會自動回答（含 2.1.319）；連接器送出一般檔案不再被當成危險指令拒絕；模型需要較新的 Claude Code 時會重啟一次，或清楚說要更新；Codex 0.167 的信任提示、Grok 1.0.77 的每週額度提示、Muse 1.4.15 的第三個核准選項都能處理；**喚醒** 會用暫停期間存的設定；ClassicBot 回覆時只打 @bot 也會回答；投票準時結束；關閉任務板的 agent 不會被指派卡片；系統時間跳動後排程不會漏掉第一次；`daemon.log` 不會再透過捷徑寫入。
+
+## 2.3.4 新增
+
+2.3.4 收錄 2.3.4-beta.1 到 beta.11 的所有內容，完整清單見[發佈說明](https://github.com/songsid/AgEnD/releases)。
+
+**從 2.3.3 升級：**
+
+- 在 General 傳 `/update`，或在主機上執行 `agend update`。已經開著的儀表板分頁請重新整理（F5）。
+- **第一次啟動時：** `~/.agend` 收緊為只有你能讀（資料夾 `0700`、log `0600`）；主目錄是捷徑或屬於別的帳號時會拒絕啟動。beta 期間記錄的 Claude 速度會清掉一次（token 數保留）。
+- **升級前還沒回答的權限確認卡**需要重新回答：現在以完整指令比對。
+- **Kiro：** kiro-cli 3.0 移除了 classic 介面。還在 classic 的 kiro agent 在 kiro-cli 3.x 上會被擋下並附說明；請留在 2.x，或趁還在 2.x 時用 `migrate_kiro_instance` 遷移。`kiro_engine_status` 會列出哪些還沒準備好。
+- **Windows 一鍵安裝**（網站上的安裝腳本，已上線）：新安裝改用 Ubuntu 26.04（24.04 為備援）；網路擋 `*.github.io` 時會改從 GitHub 下載。
+
+**新功能：**
+
+- **只用網頁：** `agend quickstart` 預設「只用網頁」，不需要 bot token；沒接聊天平台時排程、任務板、agent 互傳照常運作；在 AgEnD 電腦上登入的瀏覽器就是 **這台電腦的管理員**；**通知** 頁保留原本 General 會說的內容；CLI 的問題變成聊天與 **等你處理** 裡的按鈕。
+- **用量頁：** 每條週額度顯示「100% ≈ …」（實測容量）；**速度** 欄與 **各模型速度**（整段回應計時）；每週額度歷史；Codex 依帳號分列；表格更精簡。
+- **檢視、預覽與聊天：** 檢視可以往上捲（Codex、Kiro、Muse 看較早輸出；Claude Code 從對話紀錄接上先前的對話）；HTML 預覽有 **回覆這個頁面**、**指出位置**、錯誤小標籤、版本與差異、手機／平板寬度與全螢幕、**頁面（N）**、可選的 CDN 函式庫與單頁 **分享頁面** 連結；Markdown 檔可在側邊面板開啟；agent 之間的訊息收合成兩行；Log 可看提示框當時的文字。
+- **Agent 與後端：** Codex 每個 agent 可選 **速度**（快速／標準）；Codex 會接回清單裡找不到的舊對話；`/login` 安裝 CLI 時進度直接串流到聊天；刪除 agent 會一起刪它的 topic；General 是 AgEnD 的管理員，有完整管理工具；Office 新增冒險者公會、學校風格。
+- **訊息不遺失：** 送給忙碌 agent 的訊息要等 CLI 接走才打 ✅，重啟後會補送或標記；AgEnD 停止或重啟期間傳到 Telegram 的訊息之後只收一次（超過 2 小時的放進 **等你處理**）。
+- **安全：** 送訊息時遇到權限、危險指令或附檔送出的確認框，絕不按 Enter（改放進 **等你處理**）；權限確認卡顯示並比對完整指令；停在捲動模式的視窗會等待；`agend export` 檔案只有自己能讀，不會覆蓋。
+- **其他：** 新增 [AgEnD 名詞與定義](https://github.com/songsid/AgEnD/blob/main/docs/concepts.zh-TW.md)（agent 也讀得到）；Claude Code 2.1.318 與 kiro-cli 3.0.0 盤點完成；多項穩定性修正（登入不再卡住 fleet、放了好幾小時的分頁能補上、Claude `/exit` 不算當機、Muse 1.4.14 閒置不再跳動）。
+
+## 2.3.2 新增
+
+2.3.2 收齊 2.3.2-beta.1 到 beta.16 的所有內容。完整清單見 [CHANGELOG](https://github.com/songsid/AgEnD/blob/main/docs/CHANGELOG.zh-TW.md)。
+
+**從 2.3.1 升級：**
+
+- 在 General 傳 `/update`，或在主機上執行 `agend update`。
+- **用經典引擎的 kiro：** kiro-cli 3.0 拿掉了它（`kiro_ui: legacy`，也是沒設定 `kiro_ui` 的 instance 的預設）。AgEnD 現在不讓 kiro 自行更新，新的 kiro instance 用 TUI 啟動。既有的 instance 請用 `migrate_kiro_instance` 連同對話一起搬過去，要 fleet 管理員在 General 確認。搬移是單向的。
+- **設定改版：** Fleet → Config 移除了，舊網址會導到新區段。修改要按 **儲存** 才生效；需要重啟的變更會在每一頁頂端提醒，AgEnD 不會自己重啟。
+- **辦公室裡的 agent 是新功能：** 沒有人為某個 agent 設定 `office_access`，`office_view` 與 `office_set` 就維持關閉。降回 2.3.1 時每間辦公室都會保留（只是沒有編輯配置的修改）。
+- **ClassicBot 的原生回覆：** 只有開啟 `reply_triggers` 才會觸發 bot（預設關閉）；@ 提及照常觸發。
+
+**使用 2.3.2 beta：** `agend update` 會留在 beta 頻道，繼續收到 beta。beta 存下的私訊通知設定會視為開啟、發在 topic，並在留下備份後改寫。較早 beta 寫下的 `dashboard.office` 會搬到 `office_access`，並留備份。
+
+**新功能：**
+
+- **設定：** 依你會去找的位置分組（你自己；整個 Fleet：Agent、Agent 預設值、聊天與連線、網頁儀表板、存取與安全、進階），一套儲存方式，每個欄位都顯示生效中的值，可搜尋所有設定（`/` 或 Ctrl K），還有手機版面。
+- **[辦公室](/AgEnD/zh-tw/docs/office/)：** 畫師的外觀包、溫馨風格、編輯配置、所有辦公室、只放指定的人或沒有人的辦公室、任何人都能開的分享連結、等級與名片。
+- **訪客：** 管理員為每個人指定能看到的 agent（或 ClassicBot 聊天室），並可傳送登入碼；每次變更都有紀錄。
+- **用量報告：** 涵蓋 AgEnD 執行的每個 backend，新增推理欄；Kiro 的數字是估算值。
+- **kiro：** 搬到 TUI、在聊天裡回答 V3 的提問卡片、忙碌中的 kiro 幾秒內就收到訊息、不會把訊息打進佔用畫面的編輯器或 `!` 指令，以及重啟時會接上 `/compact` 之後的對話。
+- **Windows 安裝程式：** 用瀏覽器登入 Kiro、Claude Code 與 Codex，在 Windows Terminal 開啟，可選 WSL 磁碟，網路檢查會說明哪裡失敗，有安裝紀錄，會在裝到錯的帳號之前停下，並可選擇檢查與修復既有安裝。見 [Windows 安裝說明](/AgEnD/zh-tw/install-windows/)。
+- **[Docker](/AgEnD/zh-tw/docs/docker/)：** 一份讓 agent 照著在容器裡架設並維護 AgEnD 的操作手冊。
+- **其他：** 重啟後接續中斷的任務工作；agent 沒帶著對話重新開始時會通知你；設定頁的工作目錄可以留空，也有繁體中文；在聊天連線上設定的第一個 agent，若工作目錄留空，就是 fleet 的 General；「待你處理」只列真正等你的卡。
+
+
+## 從 2.2.x 升級
+
+依順序的步驟請看[升級指南](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.zh-TW.md)。重點如下：
+
+- **怎麼升級：** 在 General 傳 `/update`，或在主機上執行 `agend update`。更新會安裝 2.3、檢查它，然後重啟 fleet。聊天會顯示每一步，失敗時會說明是哪一步失敗。
+- **root 或 WSL 類主機（#2369）：** 如果你在沒有 `XDG_RUNTIME_DIR` 的 shell 裡執行 `agend update`（一般的 `wsl` shell、`docker exec`、cron，或 root），2.2.x 連不到 systemd 使用者服務，會自動退回 2.2.x。請改用這個指令：
+
+  ```bash
+  XDG_RUNTIME_DIR=/run/user/$(id -u) agend update
+  ```
+
+  或重跑官方安裝指令。升上 2.3 之後就不需要這一步了。
+- **更新失敗會自動退回（#2420）：** 新版的 service 起不來時，更新會試著裝回前一版：它的套件、service 設定，以及（如果原本在跑）它的 service。只有在能確認原本是什麼狀態時才會這麼做；否則它會保留復原用的副本，並告訴你要檢查什麼。訊息會說明前一版是否已重新在跑、這次更新沒有成功；如果復原不完整，照它印出的步驟處理。從 2.3 起，macOS（launchd）要等 fleet 真的跑起來，才算更新成功。從 2.2.x 升級的 Mac 是例外：2.2.x 自己的更新程式可能在 2.3 沒起來時也回報成功，而且不會退回，所以請確認 fleet 有起來；沒有的話，執行 `npm i -g @songsid/agend@2.2.6` 再 `agend restart`（[詳細說明](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.zh-TW.md#mac確認-fleet-有起來2481)，#2481）。
+- **磁碟空間：** 除了安裝本身需要的空間，請再多留約 235 MB。新版安裝期間，退回機制會保留你升級前那個版本的一份副本，連同它的 Node 約有這麼大。這份副本存不下來時，更新會在改動任何東西之前停下（#2420）；安裝本身需要的空間不會事先檢查。
+- **之後的更新改用新版本自己的安裝程式（#2264）：** `/update` 和 `agend update` 會執行目標版本的 `agend-install --upgrade`，安裝、升級、修復走同一條路。被打斷的安裝，再跑一次安裝指令就能修好。如果另一個安裝或更新還占著安裝鎖，新的這個會在改動任何東西之前停下並說明原因：等前一個完成，再執行一次。
+- **升級時會修好 service 設定：** 在 Linux 上，unit 會寫入 `NotifyAccess=all`（#2331）。沒有它，fleet 會每 15 分鐘被重啟一次。`OOMPolicy` 也會檢查（#2446）。更新會回報 systemd 實際載入的值。
+- **儀表板不用重新登入（#2403）：** 直接連到儀表板登入的瀏覽器會保持登入。例外：升級前，同一台主機上另一個 AgEnD 已經蓋掉這個瀏覽器的登入 cookie，這時要再登入一次。透過公開連結的登入不會保留：它只跟著那個連結存在，重新啟動後會是新的連結。
+- **升級後預設值會改變的地方：**
+  - **聊天裡的任務看板：** 需要你處理的卡片，要設 `needs_you.task_board: true` 才會出現在 General 的「等你處理」（#2425）。每日摘要要設 `defaults.task_board.summary_at` 才會發。
+  - **新建立的 fleet：** 新的 `fleet.yaml` 會帶 `defaults.dashboard.task_board: false`（#2391）。既有的設定檔不會被改寫，任務看板照常可用。
+  - **Canvas Worker 特效原為預設關閉的實驗功能**（#2275），之後已移除（#2793）。內建的環境效果（例如落花、點擊星星）不受影響。
+  - **CLI 的語言跟著 `defaults.locale`**（#2404）。沒設的話，時區為 UTC+8 的主機會用中文，給程式讀的那幾行固定保持英文。
+  - **有安裝 AgEnD 服務的主機**（#2356）：手動執行 `agend fleet start` 和 `agend fleet stop` 會改交給 `agend start` 和 `agend stop`，不會在服務旁邊多跑一個 fleet。
+- **已知問題：**
+  - WSL 上，`/login` 偶爾會讓主程式卡住，直到 watchdog 重啟它（#1880）。原因還在調查。
+  - Codex 的 silent 排程偶爾會顯示「無法確認送達」，其實已經送達，也不會重送（#2301）。
+
+## 指令變更
+
+| 2.2 的寫法 | 2.3 的寫法 |
+|---|---|
+| `agend fleet start`（整個 fleet） | `agend start`。`agend fleet start <name>` 仍可啟動單一 instance |
+| `agend fleet stop`（整個 fleet） | `agend stop`。`agend fleet stop <name>` 仍可停止單一 instance |
+| `agend fleet restart` | `agend restart`。舊寫法仍會執行它，但已淘汰，2.4 會移除 |
+| `agend fleet status` | `agend ls --resources`。`agend ls`（也就是 `agend status`）顯示 instance |
+| `agend fleet logs` | `agend logs`。舊寫法已移除 |
+| `agend schedule trigger` | 已移除。請用 `agend schedule enable`，或任務看板 |
+| 聊天裡的 `/install-cli` | 已移除。請用 `/login` |
+| `agend install --activate` | 已移除。啟用是預設行為；只想寫入 service 檔時用 `--no-activate` |
+| 聊天裡的 `/dashboard` | 仍可用，但已淘汰。請改用 `/web` |
+| Windows 桌面捷徑 | 在 WSL 裡執行 `agend shortcuts`，建立或更新捷徑 |
+
+輸入已移除的指令時，會顯示該改用哪個指令。
+
+## 新功能
+
+### fleet 與任務
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/task-board.webp" width="760" alt="任務看板（示範資料）：Leaderboard 專案，待辦、進行中、卡住各一張卡；卡住的那張顯示它的問題。">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/office.webp" width="760" alt="Office 檢視（示範資料）：有 Work、Lounge、Help desk、Nap corner 幾間房的像素風辦公室；桌子都空著，三個示範 agent 在 Lounge 等著。">
+</p>
+
+- **任務看板**（`Fleet → Tasks`）：以專案、主任務（M-n）和子任務（S-n）組成的看板。主任務會跟著子任務的進度走。卡片支援依賴關係、留言和歷史紀錄，可以拖拉與篩選。公開連結只能看。
+  - **agent 會依看板工作：** 卡片被指派、退回、回答、留言、確認或取消時，相關的 agent 會收到通知。10 秒內的變動會合成一則。每個 agent 同時只做一張卡。
+  - **誰確認：** 只有你派出去的卡片需要你確認（#2434）。agent 派出的卡片，由派出的那個 agent 確認。派出卡片的 agent 被刪掉時，卡片會改回給你（#2451）。
+  - **在聊天室處理：** 設定 `needs_you.task_board: true` 後，等你確認或卡住的卡片會出現在 General 的「等你處理」，你可以直接確認、退回或回覆。
+  - **每日摘要：** 設定 `defaults.task_board.summary_at`（例如 `"09:00"`，以 fleet 的時區計算）才會發送。沒設就是關閉。
+- **辦公室檢視**（`Fleet → 組織圖 → Office`，#2399）：把 fleet 畫成像素風的辦公室。每個團隊一間房，每個 agent 一張桌子。工作中的在打字，閒置的在喝茶，暫停的在睡覺，等你處理的會舉手，agent 之間的訊息會沿著走廊飛過去。有 Desks 和 Studio 兩種風格。管理員可以新增、改名、刪除辦公室，並布置成員與風格。唯讀 session 和公開連結只能看；訪客看不到組織圖和辦公室檢視。
+- **重啟與啟動：**
+  - `agend restart` 是唯一的完整重啟。它會透過實際管理 AgEnD 的對象重啟（systemd、launchd 或 detached 的 fleet）。`agend restart <name>` 會立即重啟那一個 instance（#2356）。
+  - 冷啟動或完整重啟時，網頁在 agent 還在啟動時就能打開，並顯示每個 agent 啟動的進度（#2398）。
+  - `startup.concurrency` 會真的同時啟動那麼多個 instance；記憶體吃緊時仍然一次一個（#2288）。
+  - 記憶體吃緊時，延後啟動不會再造成重啟循環（#2461）。
+  - 同一個 Claude Code session 連續兩次確定死於 OOM 時，該 agent 會停在 crashed 並通知你，不再一直重開（#2015、#2035）。
+  - 建立 agent，或改 fleet 層級的設定，不會再讓所有 agent 逐一重啟（#2317）。
+- **儀表板更快：** 狀態更新快約 4 倍；開多個分頁時快約 7 倍（#1956）。
+
+### 網頁儀表板
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/chat-sending.webp" width="460" alt="網頁聊天裡送出途中、標示「Sending…」的訊息。">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/usage-compact.webp" width="300" alt="精簡模式的用量面板（示範資料）：Claude、Codex、Kiro 共五個帳號。">
+</p>
+
+- **全域搜尋**（Ctrl+K，或 ⌘K）：搜尋聊天訊息、agent 之間的訊息和任務，依 agent 分組。點一下結果就會跳到原訊息。在聊天裡按 Ctrl+F，只搜那一個 agent。可以依 agent 或 team、時間、來源篩選，也可以只看自己說的。fleet 管理員可以搜尋，在本機或透過公開連結都行（`web.search.public_link: false` 會在公開連結上關閉）；訪客不能用（#2486）。從 2.3.1 起索引預設不限天數（`web.search.retention_days` 未設定或 0；上限 30 萬筆）；2.3.0 仍保留 90 天。
+- **聊天：**
+  - **回覆指定訊息：** 滑鼠移上去按 ↩、按右鍵、手機左滑、長按，或按 R。從網頁送出的回覆，在 Discord 和 Telegram 上也會是原生回覆（#2281）。
+  - **reaction：** agent 可以對網頁上的訊息加一個 emoji，例如只需要確認或道謝時（#2305）。
+  - **送出狀態：** 送出後訊息會立刻以灰色出現，agent 收到後才變成正常顏色。失敗時可以重試、把文字放回輸入框，或刪除。圖片和檔案各自顯示上傳進度。10 分鐘內的重試會被認出來，不會送出兩次；這份紀錄只存在記憶體裡，重新啟動後重試的訊息可能會再送一次。
+  - **圖片**可以縮放和拖曳（#2333）。**復原與重做**在每個文字欄位都能用（Ctrl/⌘+Z、Ctrl+Shift+Z）（#2342）。桌機上的輸入框少了一行高度（#2215）。
+- **外觀：**
+  - agent 的主題可以套用到整個頁面，包括左側欄、標題列和右側欄。可以在 **⋯ → 頁面配色** 覆蓋（#2196）。
+  - 身分卡集中在聊天標題列的一個按鈕（#2217）。
+  - **自訂 App 圖示：** **設定 → 網頁儀表板 → App 圖示**（#2308）。「加入主畫面」時會顯示你上傳的圖。
+- **用量面板：**
+  - 標題旁有 **完整／精簡** 切換。精簡檢視依供應商分組，每個帳號幾行：名稱、方案和重置時間，再加上較短和較長的時間窗（有的話）各一條長條和百分比（不到兩天的，例如 5 小時；兩天以上的，例如一週或一個月）。Antigravity 則是每個額度池一行。你的選擇會同步到每一台裝置。
+  - 每個 Claude 登入各一列，包括預設帳號和每個 profile（#2236）。額度用完會顯示 100% 和重置時間；被限流會顯示「Rate limited」。
+  - 讀不到數字時，面板會保留上次的數字並標示「已過期 · 快取於 HH:MM」，不會閃出「無法載入」（#2236、#2385）。
+  - Antigravity 會顯示方案名稱；付費方案會顯示正確的 Gemini 額度。Gemini 4 Argon 有自己的一行（#2240）。
+- **Canvas Worker 特效（實驗功能，預設關閉；之後已移除，#2793）：** 開啟 `web.experimental.canvas_worker` 後，原本可以上傳特效、放到聊天或個人區域，agent 也能用工具放置自己的特效（#1629）。特效在隔離的 worker 裡執行，接觸不到頁面內容和輸入框。
+
+### 遠端存取與安全
+
+- **自己網域的公開連結（具名 tunnel，#2307）：** 在 **設定** 裡填入 `web.public_link.hostname` 和 Cloudflare tunnel 的 token，公開連結每次都是同一個網址，手機主畫面上的捷徑就不會隔天失效。token 只能設定或清除，設定後讀不回來，也不會出現在 log 裡。格式不對會直接提示（#2344）。
+  - **有效時間：** 用自己的網域時，`ttl_minutes` 可以設 1 到 10080 分鐘（7 天），或設 `0` 代表不過期（#2448）。快速 tunnel 最多 480 分鐘。
+  - **重啟後自動重開：** `web.public_link.auto_open`（預設關）會在 fleet 重啟後，替最後開啟連結的管理員重新打開。只適用於自己的網域。
+- **自己網域的「授權此瀏覽器」（#2453）：** `web.verified_authority.named_link`（預設關）開啟後，你確認過的瀏覽器可以以你的帳號行事，但只限於你自己的網域。快速 tunnel 永遠不符合。
+- **從已驗證的網頁套用設定（#2170）：** 如果你的帳號是受影響連線的管理員，被擋下的設定變更會直接生效。
+- **同一個瀏覽器開兩個 AgEnD 不再互相登出**（#2396）。
+- **相依套件與安全：** 內建的 Node 更新到 22.23.4（#2405）。production 和開發用套件的 `npm audit` 都是 0（#2408）。修掉兩個 ReDoS（#2416）。`~/.agend` 一律建成 0700，之前被建成群組可寫的，下次啟動時會自動收緊（#2435）。
+
+### 設定與每個 agent 的限制
+
+- **每個 agent 可以個別關閉儀表板功能（#2391）：** `dashboard: { appearance, task_board, web_settings }`，可以設在單一 agent，或設在 `defaults`。關掉的那一項，agent 就不能用對應的工具。設在 agent 上，只影響那一個 agent。
+- **從儀表板登入 backend（#2233）：** 在設定的登入區、`/backend` 選單、「等你處理」，以及每頁的提示列都可以登入。
+- **只用網頁也能開始：** 設定頁可以建立第一個 agent，不需要連接聊天平台。
+
+### 後端
+
+- **Codex：**
+  - 429 重試失敗、放棄這一輪後，AgEnD 會在 30、60、120 秒後請它接著做，最多三次（#2282）。「Quota exceeded」會被判為額度用完，agent 會暫停。
+  - `agend doctor` 多了「Codex package」一列，安裝缺件時會提醒（#2357）。
+- **Claude Code：** 閒置冷啟時的提示會自動回答，agent 不會再卡住（#2268）。
+- **kiro-cli 2.33：** 在 `--trust-all-tools` 下，「Trust this workspace?」會自動回答。
+- **Grok：** 程式碼或聊天裡提到 quota 或 rate limit，不再被誤判成額度用完（#2324）。開著背景 watcher 時，訊息不會再一直排隊（#2334）。
+
+### 語言
+
+- **介面與 bot 訊息：** 設定變更的確認卡片和按鈕、網頁上伺服器回的訊息，以及 `/login` 的網頁終端機頁面，在語言為 `zh-TW` 時都會顯示中文（#2390）。
+- **CLI：** `agend` 的訊息跟著 `defaults.locale`（見上方的升級說明）。
+
+### 其他修正
+
+- **回報問題：** 可以產生已去除機密的回報檔，並附上預填的 GitHub 連結（#2258）。
+- **設定檔共用錨點：** 連線之間用 YAML anchor 和 alias 共用設定時，在設定頁只改你編輯的那一個連線（#2208）。連線沒寫 `mode` 時，確認的範圍不會擴大到每個連線（#2211）。
+- **斷網時重啟：** 斷網時重啟或更新，「Fleet 就緒」會在連線恢復後補送一次（#2213）。
+- **`agend ls` 與 attach 選單**的中文欄位已對齊。
+
+## 2.2 起仍然成立
+
+- `gemini-cli` backend 已移除（自 2.1.12 起）。請改用 `backend: antigravity`。
+- 不支援 musl Linux（例如 Alpine）、沒有 systemd 的 Linux，以及原生 Windows。Windows 請改用開啟 systemd 的 WSL。見[快速開始](/AgEnD/zh-tw/docs/getting-started/#安裝)。
+
+所有變更請見[變更紀錄](https://github.com/songsid/AgEnD/blob/main/docs/CHANGELOG.zh-TW.md)。
