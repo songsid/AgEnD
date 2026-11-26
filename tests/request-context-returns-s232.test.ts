@@ -87,3 +87,15 @@ it("an exec peer consumes only its exact B attempt after the owned main-child in
  // Provider completion and positive input consumption are distinct; failure cannot erase the input proof.
  expect(f.box.complete(id,"manager",1,"failed")).toBe(false);frame.finish();expect(stable.turns.current(stable.owner())?.token).toBe(snapshot.token);
 });
+
+it("explicit stop-waiting atomically closes the exact obligation and admits one provenance-bound requester outcome",()=>{
+ const f=fixture(),root=f.root(),request=f.admit(root,"b","request_information"),id=request.result.delivery.deliveryId,row=f.box.requestContextReturns.get(id)!;
+ const before=f.box.listPending().length;let checks=0;
+ expect(()=>f.box.closeRequestContextReturn(id,requestContextDigest(row),"Stopped waiting",()=>++checks<3)).toThrow();
+ expect(f.box.requestContextReturns.get(id)?.state).toBe("open");expect(f.box.listPending()).toHaveLength(before);
+ const noticeId=f.box.closeRequestContextReturn(id,requestContextDigest(row),"Stopped waiting",()=>true),notice=f.box.get(noticeId)!;
+ expect(f.box.requestContextReturns.get(id)?.state).toBe("closed");expect(notice).toMatchObject({sourceInstance:"a",targetInstance:"a",payload:{meta:{source:"agend-system",requires_reply:"false"}}});
+ expect(f.box.requestContextForDelivery(noticeId)?.binding.rootContextId).toBe(root.ref.rootContextId);expect(notice.payload.content).toContain("Stopped waiting");
+ expect(()=>f.box.closeRequestContextReturn(id,requestContextDigest(row),"duplicate",()=>true)).toThrow(/stale/);expect(f.box.listPending()).toHaveLength(before+1);
+ const input=f.box.prepareRequestContextDeliveryInput(noticeId,1,owner("a"),wire,()=>true);expect(input.context?.initiatingActor).toEqual(root.initiatingActor);expect(input.proof.kind).toBe("admitted-delivery");
+});

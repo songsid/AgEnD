@@ -6685,8 +6685,9 @@ export class Daemon extends EventEmitter {
       const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
       void this.wake().then(() => {
         if (!current()) { this.deferDurableDelivery(meta, "native channel owner changed before pane submission"); return; }
-        this.pushChannelMessage(msg.content as string, meta, targetSession, deliveryEpoch,
-          this.requestContextLifecycle&&isHubQuestionMeta(meta)&&typeof msg.request_context_input_id==="string"?msg.request_context_input_id:undefined);
+        const inputId=this.requestContextLifecycle&&isHubQuestionMeta(meta)&&typeof msg.request_context_input_id==="string"?msg.request_context_input_id:undefined;
+        if(inputId)this.pushChannelMessage(msg.content as string,meta,targetSession,deliveryEpoch,inputId);
+        else this.pushChannelMessage(msg.content as string,meta,targetSession,deliveryEpoch);
       }).catch(err => {
         this.deferDurableDelivery(meta, `target wake failed before pane submission: ${(err as Error).message}`);
         this.logger.error({ err: (err as Error).message }, "Wake failed for inbound delivery");

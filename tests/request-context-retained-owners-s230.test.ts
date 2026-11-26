@@ -135,3 +135,12 @@ it("a committed floor forbids restoring the first-On Fleet-call map",()=>{
  r.box.requestContextInstallation().activate({epoch:"first",owner:"fleet",activatedAt:1,invalidates:[],offeredLatestDeadline:null},{owner:"fleet",current:()=>true},{current:()=>true,release(){}},()=>true,0);
  expect(()=>stage.restore()).toThrow(/cannot revert/);expect(r.fm.requestContextFleetCalls).not.toBe(original);expect(stage.current()).toBe(true);
 });
+
+it("ordinary positive Stop retirement removes only the exact live registry owner, preserving its work and recovery history",async()=>{
+ const r=rig(),old=await r.bind(),before=r.box.requestContextWork.read("worker"),launch=old.captureRequestContextOwner();r.retire(old);
+ expect(r.factory.turnView(randomUUID()).unknown).toBe(true);
+ await r.fm.requestContextOwnerStopped("worker",old,async()=>false);expect(r.factory.turnView(randomUUID()).unknown).toBe(true);
+ await r.fm.requestContextOwnerStopped("worker",old,async()=>true);
+ expect(r.factory.turnView(randomUUID())).toMatchObject({references:[],unknown:false});expect(r.box.requestContextWork.read("worker")).toEqual(before);
+ const next=await r.bind();expect(next).not.toBe(old);expect(next.captureRequestContextOwner().workGeneration).toBe(before!.generation);expect(next.captureRequestContextOwner().spawnGeneration).toBeGreaterThan(launch.spawnGeneration);expect(next.captureRequestContextOwner().launchFenceEpoch).toBeGreaterThan(launch.launchFenceEpoch);
+});

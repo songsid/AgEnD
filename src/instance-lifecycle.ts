@@ -255,6 +255,8 @@ export interface LifecycleContext {
    * other. Fleet-owned; the lifecycle falls back to stopIfCurrent without it.
    */
   handOffToStartupRetry?(name: string, daemon: unknown): Promise<void>;
+  /** Retained request owners leave the drain inventory only after positive launch and IPC retirement. */
+  requestContextOwnerStopped?(name:string,daemon:Daemon,retired:()=>Promise<boolean>):Promise<void>;
   saveFleetConfig(): void;
   /** Full stop+start. freshStart forces the respawn to skip session resume. */
   restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
@@ -2473,6 +2475,8 @@ export class InstanceLifecycle {
 
     const daemon = this.daemons.get(name);
     if (daemon) {
+      const requestRetirement = this.ctx.requestContextOwnerStopped && daemon.requestContextCallsRequired?.()
+        ? await daemon.captureRequestContextRetirement() : null;
       let captured: Awaited<ReturnType<typeof capturePendingTargetReconciliation>> | undefined;
       if (this.ctx.deliveryOutbox) {
         daemon.fenceDeliveryWritesForStop();
@@ -2523,6 +2527,7 @@ export class InstanceLifecycle {
       // registered a FRESH daemon under this name — deleting by name alone
       // would drop it from supervision while its CLI keeps running.
       if (this.daemons.get(name) === daemon) this.daemons.delete(name);
+      if (requestRetirement) await this.ctx.requestContextOwnerStopped!(name,daemon,requestRetirement.retired);
     } else if (isNativePaneInstance(this.ctx.fleetConfig?.instances[name])) {
       if (!this.ctx.closeRetainedNativePane) throw Error("Retained native pane owner is unavailable; no local PID was signalled");
       await this.ctx.closeRetainedNativePane(name);

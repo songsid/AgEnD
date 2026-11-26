@@ -1,3 +1,5 @@
+import {getLocale} from "./locale.js";
+import {requestContextGoBackUnavailable} from "./request-context-go-back-view.js";
 /**
  * M-3770 slice 2.5 (design update-transaction §5.7, rev 16; Fable's Go back review, Sentinel's S-230 read contract):
  * **Go back** — an update in reverse, through the same transaction. A new attempt `kind: "go-back"`, `goBackOf` the
@@ -91,11 +93,14 @@ export function readGoBackOffer(home: string, now: number = Date.now(), io: Jour
   const byCommit = [...read.entries].sort((a, b) => Date.parse(b.committedAt) - Date.parse(a.committedAt));
   const candidate = byCommit.find(e => !e.used && e.version === installed) ?? null;
   for (const e of read.entries) {
-    const why = installed === null ? "the installed AgEnD version can't be read"
+    let contextReason:string|null=null;
+    try{if(requestContextGoBackUnavailable(home,e.attemptId))contextReason=getLocale()==="zh-TW"?"已無法退回上一版：已開啟依請求核准聯絡。":"Go back is no longer available: request-based contact approvals were enabled";}
+    catch{contextReason=getLocale()==="zh-TW"?"無法確認依請求核准聯絡的開啟記錄。":"Request-based contact approval history can't be checked";}
+    const why = contextReason ?? (installed === null ? "the installed AgEnD version can't be read"
       : e !== candidate ? (e.used ? `Go back to ${e.from} was already used (${e.used.by})`
         : e.version === installed ? `a later update (${candidate!.attemptId}) made ${installed} current again: Go back only returns one step`
           : `AgEnD ${installed} is installed now, not ${e.version}: Go back only returns one step`)
-        : unavailableReason(home, e, now, io);
+        : unavailableReason(home, e, now, io));
     if (why) unavailable.push({ attemptId: e.attemptId, reason: why });
     else eligible.push({ attemptId: e.attemptId, committedAt: Date.parse(e.committedAt), expiresAt: Date.parse(e.expiresAt), from: e.from, version: e.version });
   }

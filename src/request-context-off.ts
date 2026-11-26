@@ -4,21 +4,28 @@ import {RequestContextInstallationStore,RequestContextPublication,type RequestCo
 
 export class RequestContextOffOwner<T extends object> {
  constructor(private readonly installation:RequestContextInstallationStore,private readonly drain:RequestContextDrain,
-  private readonly publication:RequestContextPublication<T>,private readonly owner:RequestContextInstallationOwner){}
+  private readonly publication:RequestContextPublication<T>,private readonly owner:RequestContextInstallationOwner,
+  private readonly prepared?:{readonly ports:Readonly<T>;current():boolean}){}
  /** Called only for the independently confirmed Settings decision. Role/session currency joins the DB checks. */
  begin(expectedRevision:number,decisionCurrent:()=>boolean):RequestContextInstallationState {
-  const execution=this.publication.captureExecution(),previous=this.installation.read();
-  if(!previous||previous.revision!==expectedRevision||previous.mode!=="active"||execution.state.revision!==previous.revision
-    ||execution.state.epoch!==previous.epoch||!decisionCurrent())throw Error("stale");
+  const previous=this.installation.read();
+  if(!previous||previous.revision!==expectedRevision||previous.mode!=="active"||decisionCurrent()!==true)throw Error("stale");
+  const unpublished=this.publication.heldUnpublished();
+  // This is an actual prepared bridge, never a manufactured execution lease. Cold boot remains fenced
+  // until this mode owner publishes its real ports; all durable/memory families still participate in drain.
+  const execution=unpublished?null:this.publication.captureExecution();
+  if(execution&&(execution.state.revision!==previous.revision||execution.state.epoch!==previous.epoch)
+    ||unpublished&&(!this.prepared||this.prepared.current()!==true))throw Error("unavailable");
+  const ports=execution?.ports??this.prepared!.ports,portsCurrent=execution?.portsCurrent??(()=>this.prepared?.current()===true);
   const fence=this.publication.fence();
   let committed=false;
   try{
    const state=this.installation.beginOff(expectedRevision,{owner:this.owner.owner,current:()=>this.owner.current()&&decisionCurrent()});committed=true;
-   this.publishDraining(state,execution.ports,execution.portsCurrent,fence);
+   this.publishDraining(state,ports,portsCurrent,fence);
    return state;
   }catch(error){
    // A failed role/CAS check grants nothing, but must not revoke the existing executions or strand their input.
-   if(!committed)this.publication.resume(fence,()=>this.installation.read());
+   if(!committed&&!unpublished)this.publication.resume(fence,()=>this.installation.read());
    throw error;
   }
  }

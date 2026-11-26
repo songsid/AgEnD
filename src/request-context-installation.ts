@@ -158,6 +158,8 @@ export class RequestContextPublication<T extends object> {
    */
   installedMode(): RequestContextInstallationState["mode"] | null { return this.published?.executionCurrent() ? this.published.state.mode : null; }
   installed(): boolean { return this.installedMode() !== null; }
+  /** No execution has ever been published in this process; only a real staged capable bridge may use this. */
+  heldUnpublished():boolean{return this.published===null&&this.fenced&&this.owner.current();}
   /** Startup recovery can mutate only behind the current owner's held admission fence. */
   recoveryAvailable(): boolean { return this.fenced && this.owner.current(); }
   /** A valid B/C owner supplies the proof callback; a root id, reply pointer or body cannot construct this lease. */

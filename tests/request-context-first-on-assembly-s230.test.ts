@@ -64,7 +64,7 @@ it("revoking the confirmed actor during preparation prevents activation and stil
 });
 
 it("the assembled On owner drains to capable Off through the same eight registries and keeps ordinary ingress open",async()=>{
- const r=rig(),stage=await r.prepare();expect(()=>stage.off.begin(0,()=>true)).toThrow(/unavailable/);
+ const r=rig(),stage=await r.prepare();expect(()=>stage.off.begin(0,()=>true)).toThrow(/stale|unavailable/);
  r.box.requestContextInstallation().activate({epoch:"first",owner:stage.boot.owner.owner,activatedAt:1,invalidates:[],offeredLatestDeadline:null},stage.boot.owner,{current:()=>true,release(){}},stage.ready,0,stage.initialize);
  stage.publish();const original=stage.boot.publication.captureExecution();
  expect(stage.off.begin(1,()=>true).mode).toBe("draining");expect(r.fm.requestContextAdmission.available()).toBe(false);expect(original.executionCurrent()).toBe(true);

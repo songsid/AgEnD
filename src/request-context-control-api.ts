@@ -26,6 +26,7 @@ export interface RequestContextControlPrincipal {
   /** Exact admitted session/account binding, not a browser-provided key. */
   readonly binding: string;
   readonly verified: boolean;
+  readonly person?:import("./contact-auth-types.js").ContactPerson;
   /** Present only on the server-created, independently confirmed Settings replay. */
   readonly execution?: SettingsExecution;
   current(): boolean;
@@ -82,7 +83,7 @@ export function prepareRequestContextControlReplay(req: IncomingMessage, url: UR
     const execution = settingsRequestExecution(replay);
     if (!isSettingsReplay(replay) || !execution || !current() || !confirmedCurrent()) throw Error("verification-required");
     execution.assert();
-    confirmedPrincipals.set(replay, { host, principal: Object.freeze({ binding: first.binding, verified: true, execution,
+    confirmedPrincipals.set(replay, { host, principal: Object.freeze({ binding: first.binding, verified: true, execution,...(first.person?{person:first.person}:{}),
       current: () => current() && confirmedCurrent() }) });
   };
 }

@@ -1,3 +1,6 @@
+import {labelHubRequest} from "./request-hub-context.js";
+import {labelUnprovedRequest} from "./request-context-unproved-label.js";
+import {labelOutsideRequest} from "./request-context-outside-label.js";
 import {prepareRequestNativeHumanInput} from "./request-context-native-human.js";
 import { RequestHumanInputStore, type RequestHumanAdmissionFacts, requestHumanInputBlockers } from "./request-context-human.js";
 import type { RetainedHumanControl } from "./retained-human-control.js";
@@ -1246,6 +1249,75 @@ export class DeliveryOutbox extends EventEmitter {
   /** L owns activation and drain intent on this same connection; constructing it installs no schema. */
   requestContextInstallation(): RequestContextInstallationStore { return new RequestContextInstallationStore(this.db); }
 
+  /** Bounded read-only controller inventory. These rows are evidence, never input/approval authority. */
+  requestContextControlInventory(roots?:ReadonlySet<string>){
+    const has=(name:string)=>hasTable(this.db,name),limit=10001;
+    const scoped=has("request_context_operations_v1");new RequestContextStore(this.db).context("00000000-0000-4000-8000-000000000000");
+    const deliveries=this.db.prepare(`SELECT d.delivery_id id,d.source_instance source,d.target_instance target,d.state,${scoped?"o.context_id":"NULL"} root
+      FROM deliveries d ${scoped?"LEFT JOIN request_context_operations_v1 o ON o.delivery_id=d.delivery_id":""}
+      WHERE d.state IN ('queued','delivering','submission_started','retry_wait','uncertain') ORDER BY d.created_seq LIMIT ?`).all(limit)as Array<{id:string;source:string;target:string;state:string;root:string|null}>;
+    const recoveries:Array<{instance:string;pointer:import("./request-context-turns.js").RequestContextRecoveryPointer;root:string}>=[];
+    if(has("request_context_recovery_v1"))for(const row of this.db.prepare("SELECT instance FROM request_context_recovery_v1 ORDER BY instance LIMIT ?").all(limit)as Array<{instance:string}>){
+      const pointer=this.requestContextRecovery.pointer(row.instance);if(!pointer)throw Error("Recovery inventory changed");
+      const context=this.requestContext(pointer.contextId);if(!context)throw Error("Recovery context unavailable");
+      recoveries.push({instance:row.instance,pointer,root:context.ref.rootContextId});
+    }
+    const returns:Array<import("./request-context-returns.js").RequestContextReturnRecord>=[];
+    if(has(REQUEST_CONTEXT_RETURNS_TABLE))for(const row of this.db.prepare(`SELECT request_delivery_id id FROM ${REQUEST_CONTEXT_RETURNS_TABLE} WHERE state='open' ORDER BY request_delivery_id LIMIT ?`).all(limit)as Array<{id:string}>){
+      const value=this.requestContextReturns.get(row.id);if(!value)throw Error("Return inventory changed");returns.push(value);
+    }
+    const tickets:Array<{id:string;source:string;target:string;root:string|null;revision:number}>=[];
+    if(has("contact_auth_tickets")){
+      const companion=has("request_context_contacts_v1");
+      const rows=this.db.prepare(`SELECT t.id,t.ticket_json,${companion?"c.root_id":"NULL"} root FROM contact_auth_tickets t ${companion?"LEFT JOIN request_context_contacts_v1 c ON c.ticket_id=t.id":""} WHERE json_extract(t.ticket_json,'$.state')='pending' ORDER BY t.id LIMIT ?`).all(limit)as Array<{id:string;ticket_json:string;root:string|null}>;
+      if(rows.length>=limit)throw Error("Controller ticket inventory incomplete");
+      for(const row of rows){const ticket=JSON.parse(row.ticket_json);if(ticket.id!==row.id||typeof ticket.source!=="string"||typeof ticket.target!=="string"||row.root&&!Number.isSafeInteger(ticket.revision)||!Number.isFinite(Date.parse(ticket.expiresAt)))throw Error("Controller ticket unavailable");
+        if(ticket.state==="pending"&&Date.parse(ticket.expiresAt)>Date.now())tickets.push({id:row.id,source:ticket.source,target:ticket.target,revision:ticket.revision??0,root:row.root});}
+    }
+    if(deliveries.length>=limit||recoveries.length>=limit||returns.length>=limit)throw Error("Controller inventory incomplete");
+    for(const row of deliveries)if(row.root){const operation=this.requestContextForDelivery(row.id);if(!operation)throw Error("Delivery inventory companion unavailable");row.root=operation.binding.rootContextId;}
+    return {deliveries:deliveries.filter(row=>!roots||row.root&&roots.has(row.root)),recoveries:recoveries.filter(row=>!roots||roots.has(row.root)),returns:returns.filter(row=>!roots||roots.has(row.rootContextId)),tickets:tickets.filter(row=>!roots||row.root&&roots.has(row.root))};
+  }
+
+  /** Server-owned outcome for an exact retained request. It preserves scope and has no receipt or approval. */
+  admitRequestContextOutcome(contextId:string,key:string,text:string,current:()=>boolean):string {
+    return this.db.transaction(()=>{
+      if(current()!==true)throw Error("owner-required");const context=this.requestContext(contextId);
+      if(!context)throw Error("Outcome request unavailable");
+      const operationId=`request-outcome:${key}`,meta:Record<string,string>={source:"agend-system",user:"AgEnD",user_id:"agend-system",requires_reply:"false"};
+      let content=text;
+      if(context.initiatingActor.kind==="unknown")content=labelUnprovedRequest(context,content,meta);
+      else if(context.ingress==="hub")content=labelHubRequest(context,content,meta).content;
+      else if(["guest","restricted-room","free-room"].includes(context.ingress))content=labelOutsideRequest(context,content,meta);
+      const input:NewOutboxDelivery={operationId,sourceKey:operationId,sourceInstance:context.source.instance,sourceDaemonBootId:this.managerBootId,
+        targetInstance:context.source.instance,targetSession:context.source.instance,kind:"fleet_inbound",payload:{type:"fleet_inbound",content,meta}};
+      const notice=this.admitWithRequestContext(input,context,{version:1,operationId,contextId:context.ref.contextId,rootContextId:context.ref.rootContextId,
+        source:context.source,target:context.source,verb:"send_to_instance",payloadSha256:requestContextDigest(input.payload)}).delivery;
+      if(current()!==true)throw Error("owner-required");return notice.deliveryId;
+    })();
+  }
+  /** The owner's exact return closure and its once-only scoped outcome commit together. */
+  closeRequestContextReturn(id:string,imageSha256:string,text:string,current:()=>boolean):string {
+    return this.db.transaction(()=>{
+      const row=this.requestContextReturns.get(id);
+      if(!row||requestContextDigest(row)!==imageSha256||row.state!=="open"||current()!==true)throw Error("stale");
+      const context=this.requestContext(row.requesterContextId);
+      if(!context||requestContextDigest(context.source)!==requestContextDigest(row.requester))throw Error("Return requester unavailable");
+      const notice=this.admitRequestContextOutcome(context.ref.contextId,`return-closed:${id}`,text,current);
+      this.requestContextReturns.close(id,"work-closed",value=>current()===true&&requestContextDigest(value)===imageSha256);
+      this.db.prepare("UPDATE reply_obligations SET state='expired',expired_at=? WHERE request_delivery_id=? AND state='open'").run(new Date().toISOString(),id);
+      if(current()!==true)throw Error("owner-required");return notice;
+    })();
+  }
+
+  /** Withdraw only a confirmed, still-unconsumed delivery. Uncertain/submission-started effects need reconciliation. */
+  withdrawRequestContextDelivery(id:string,imageSha256:string,current:()=>boolean):void {
+    this.db.transaction(()=>{const row=this.get(id);if(!row||requestContextDigest(row)!==imageSha256||!["queued","retry_wait"].includes(row.state)||current()!==true)throw Error("stale");
+      if(this.db.prepare("UPDATE deliveries SET state='cancelled',finished_at=?,updated_at=?,last_error='withdrawn by owner' WHERE delivery_id=? AND state IN ('queued','retry_wait')").run(new Date().toISOString(),new Date().toISOString(),id).changes!==1)throw Error("stale");
+      if(current()!==true)throw Error("owner-required");const operation=this.requestContextForDelivery(id);if(operation)this.requestContextReturns.closeNonDelivery(operation.binding.rootContextId);
+    })();
+  }
+
   /** Read-only shadow is safe before activation; never initializes contact/context artifacts. */
   requestContextMigrationShadow(host: RequestMigrationHost): RequestContextMigrationShadow {
     return new RequestContextMigrationShadow(this.db, host);
@@ -2329,6 +2401,17 @@ export class DeliveryOutbox extends EventEmitter {
         this.db.prepare(`DELETE FROM failure_notices WHERE parent_delivery_id IN (${placeholders}) OR notice_delivery_id IN (${placeholders})`).run(...ids, ...ids);
         this.db.prepare(`DELETE FROM delivery_forward_edges WHERE reference_kind='delivery' AND reference_id IN (${placeholders})`).run(...ids);
         this.db.prepare(`DELETE FROM deliveries WHERE delivery_id IN (${placeholders})`).run(...ids);
+  }
+
+  /** Bounded collection candidates only; F's current proof and E's transaction decide retirement. */
+  requestContextRetirementCandidates():Array<{root:string;epoch:string|null}> {
+    if(!hasTable(this.db,"request_context_operations_v1"))return [];
+    const cutoff=new Date(Date.now()-30*24*60*60_000).toISOString(),fenced=hasTable(this.db,"request_context_drain_v1");
+    return this.db.prepare(`SELECT json_extract(c.context_json,'$.ref.rootContextId') root,${fenced?"f.epoch":"NULL"} epoch
+      FROM request_contexts_v1 c JOIN request_context_operations_v1 o ON o.context_id=c.context_id JOIN deliveries d ON d.delivery_id=o.delivery_id
+      ${fenced?"LEFT JOIN request_context_drain_v1 f ON f.root_id=json_extract(c.context_json,'$.ref.rootContextId')":""}
+      GROUP BY root HAVING COUNT(*)>0 AND MAX(CASE WHEN d.state NOT IN ('delivered','failed','cancelled') OR julianday(COALESCE(d.finished_at,d.updated_at)) IS NULL OR COALESCE(d.finished_at,d.updated_at)>=? THEN 1 ELSE 0 END)=0
+      ORDER BY MAX(COALESCE(d.finished_at,d.updated_at)),root LIMIT 64`).all(cutoff)as Array<{root:string;epoch:string|null}>;
   }
 
   /** Dormant lifecycle port: only drained, terminal roots older than 30 days may retire atomically. */

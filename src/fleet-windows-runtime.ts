@@ -325,6 +325,21 @@ export class FleetWindowsRuntime {
     if (paused) { this.closeMcp(name);this.store.cancel(this.id(name)); }
     this.changed(name);
   }
+  /** Captured, exact-root exec cancellations. A request to stop is never completion evidence. */
+  requestContextStops(rootId:string):ReadonlyArray<{instance:string;stop(current:()=>boolean):void;retired():boolean}> {
+    return [...this.requestContextRuns].filter(([,run])=>run.rootContextId===rootId).map(([name,run])=>{
+      const agentId=this.id(name),lifecycle=this.requestContextLifecycle;
+      const owned=()=>!this.retired&&this.requestContextLifecycle===lifecycle&&this.id(name)===agentId;
+      return Object.freeze({instance:name,stop:(current:()=>boolean)=>{
+        if(!owned()||current()!==true||this.requestContextRuns.get(name)!==run||this.store.get(agentId).activeId!==run.requestId)throw Error("Native work changed before stop");
+        this.closeMcp(name);this.store.cancel(agentId);this.changed(name);
+      },retired:()=>{
+        if(!owned())return false;
+        const agent=this.store.get(agentId);this.retireRecoveredRequestContext(name,agent);
+        return this.requestContextRuns.get(name)!==run&&agent.activeId!==run.requestId&&!this.store.requestContextActiveExecutions().some(row=>row.requestId===run.requestId);
+      }});
+    });
+  }
   cancel(name: string): WindowsCliTask | null { this.enabled();this.closeMcp(name);const result=this.store.cancel(this.id(name));this.changed(name);return result; }
   recover(name: string, confirmedStopped: unknown): WindowsAgent & {blocked:boolean} {
     this.enabled();const result=this.store.recover(this.id(name),confirmedStopped);this.changed(name);return result;
