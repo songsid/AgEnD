@@ -65,7 +65,9 @@ function ensureFence(home: string, attempt: AttemptRecord, d: RollbackDeps): { o
     if (rec.role === "update") {
       if (rec.attemptId !== a.id) return { ok: false, reason: `fleet.lock fences another attempt (${rec.attemptId})`, attempt: a };
       const adopted = adoptUpdateFence(home, { pid: d.self.pid, attemptId: a.id }, { isProcessAlive: d.isProcessAlive });
-      return adopted.ok ? { ok: true, handle: adopted.handle, attempt: a } : { ok: false, reason: adopted.reason, attempt: a };
+      if (adopted.ok) return { ok: true, handle: adopted.handle, attempt: a };
+      if (/changed during/.test(adopted.reason)) continue;                    // lost a race (Fable #4531 F2): look again
+      return { ok: false, reason: adopted.reason, attempt: a };
     }
     // A fleet holds it: only a recorded generation, identified by pid + nonce (and the service's MainPID).
     const gen = generationsOf(a).find(g => g.nonce === rec.nonce);
@@ -162,6 +164,12 @@ export function rollBack(home: string, attempt: AttemptRecord, d: RollbackDeps):
       const nonce = d.newNonce?.() ?? randomBytes(16).toString("hex");
       a = planGeneration(home, a, "rollback", nonce, io);
       if (!handle) return fail("no fence to hand the rollback generation over from");
+      // The route's pre-start step runs the kit: a kit that doesn't verify would fail every start as if it were transient
+      // (Fable #4531 N1) — manual, with the kit's reason, before anything is started.
+      if (id.ownership.service) {
+        const kit = verifyRecoveryKit(home, a.id);
+        if (!kit.ok) return fail(`the rollback generation can't start through the recovery route: ${kit.reason}`);
+      }
       const planned = setFleetLockHandoff(handle, { nonce, gen: "rollback" }, (attemptId, n) => {
         const r = revokeHandoff(home, attemptId, n, d.self, d.liveness, io);
         return r === "revoked" || r === "claimant-gone";

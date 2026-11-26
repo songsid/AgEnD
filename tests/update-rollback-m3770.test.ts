@@ -14,6 +14,7 @@ import { takeSnapshot } from "../src/update-snapshot.js";
 import { takeAttemptPreimage } from "../src/update-package-restore.js";
 import { dropInPath, writeRecoveryRoute } from "../src/update-recovery/route.js";
 import { rollBack, type RollbackDeps } from "../src/update-rollback.js";
+import { buildRecoveryKit } from "../src/update-recovery/kit.js";
 import { parsePlist } from "../src/service-activation.js";
 
 const dirs: string[] = [];
@@ -60,6 +61,11 @@ function world(): World {
   const snap = takeSnapshot(home, attemptDir(home, ID), { proveWritersGone: () => ({ ok: true }) });
   if (!snap.ok) throw new Error(snap.reason);
   a = advance(home, a, "snapshotted");
+  // The kit (a small stand-in for the Node binary: verified by its hashes, its run-alone check stubbed).
+  const fakeNode = join(root, "node-stand-in"); writeFileSync(fakeNode, "#!/bin/sh\n");
+  const bundle = join(root, "recover-stand-in.cjs"); writeFileSync(bundle, "// recover\n");
+  const kit = buildRecoveryKit(home, ID, { nodePath: fakeNode, bundlePath: bundle, runsAlone: () => true });
+  if (!kit.ok) throw new Error(kit.reason);
   expect(writeRecoveryRoute(home, a, { plistArgs }).ok).toBe(true);
   a = advance(home, a, "installing");
   const pre = takeAttemptPreimage(o, ID); if (!pre.ok) throw new Error(pre.reason);
@@ -203,12 +209,69 @@ describe("M-3770 2.5: the rollback, end to end on a scratch world", () => {
     const adopted = adoptUpdateFence(home, { pid: 7700, attemptId: ID }, { isProcessAlive: () => false });
     expect(adopted).toMatchObject({ ok: true, handle: { record: { pid: 7700, role: "update", attemptId: ID } } });
     expect(adoptUpdateFence(home, { pid: 7700, attemptId: ID }, { isProcessAlive: () => true })).toMatchObject({ ok: true, handle: { record: { pid: 7700 } } });   // its own
+    // Its own, with a marker it left itself (an exception mid-reclaim): returned, and the marker cleared.
+    writeFileSync(join(home, "fleet.lock.reclaim"), JSON.stringify({ pid: 7700, nonce: "9".repeat(32), createdAt: "2026-11-26T00:00:00Z", role: "update", attemptId: ID, handoff: null }) + "\n");
+    expect(adoptUpdateFence(home, { pid: 7700, attemptId: ID }, { isProcessAlive: () => true })).toMatchObject({ ok: true });
+    expect(existsSync(join(home, "fleet.lock.reclaim"))).toBe(false);
   });
 
   it("no route yet (a crash early in snapshotted) and no kit to run it: manual, naming the kit", () => {
     const w = world();
     rmSync(join(attemptDir(w.home, ID), "unit.preimage")); rmSync(dropInPath(w.o.service!));
+    rmSync(join(w.home, ".update-journal", "recovery", ID), { recursive: true });
     expect(rollBack(w.home, current(w.home), w.deps())).toMatchObject({ ok: false, manual: true, reason: expect.stringMatching(/recovery route can't be made: the kit/) });
+  });
+
+  it("the route kept but its kit pruned or damaged: manual before any start, not a forever-retryable start (Fable #4531 N1)", () => {
+    const w = world();
+    writeFileSync(join(w.home, ".update-journal", "recovery", ID, "recover.cjs"), "damaged");
+    let started = false;
+    const d = w.deps(); d.manager.start = () => { started = true; return true; };
+    expect(rollBack(w.home, current(w.home), d)).toMatchObject({ ok: false, manual: true, reason: expect.stringMatching(/can't start through the recovery route: the kit's recover\.cjs/) });
+    expect(started).toBe(false);
+  });
+
+  it("a crash inside the fence's re-take (marker made, no rename yet; or rename landed, marker left) heals on the retry (Fable #4531 F1)", () => {
+    // The runner's adoption crashed after its marker, before the rename: the lock is still the dead updater's.
+    const w = world();
+    writeFileSync(join(w.home, "fleet.lock"), JSON.stringify({ pid: UPDATER, nonce: "d".repeat(32), createdAt: new Date().toISOString(), role: "update", attemptId: ID, handoff: null }) + "\n");
+    writeFileSync(join(w.home, "fleet.lock.reclaim"), JSON.stringify({ pid: 7600, nonce: "9".repeat(32), createdAt: new Date().toISOString(), role: "update", attemptId: ID, handoff: null }) + "\n");
+    w.alive.delete(TRIAL); w.alive.delete(UPDATER);
+    const d = w.deps(); d.self = { pid: 7700, start: START }; w.alive.add(7700);
+    expect(rollBack(w.home, current(w.home), d)).toMatchObject({ ok: true });
+    expect(existsSync(join(w.home, "fleet.lock.reclaim"))).toBe(false);
+    // The rename landed and the marker stayed: the lock is the crashed runner's (pid gone); the new runner adopts it.
+    const v = world();
+    const crashed = { pid: 7600, nonce: "9".repeat(32), createdAt: new Date().toISOString(), role: "update", attemptId: ID, handoff: null };
+    writeFileSync(join(v.home, "fleet.lock"), JSON.stringify(crashed) + "\n"); writeFileSync(join(v.home, "fleet.lock.reclaim"), JSON.stringify(crashed) + "\n");
+    v.alive.delete(TRIAL); v.alive.delete(UPDATER);
+    const e = v.deps(); e.self = { pid: 7701, start: START }; v.alive.add(7701);
+    expect(rollBack(v.home, current(v.home), e)).toMatchObject({ ok: true });
+    expect(existsSync(join(v.home, "fleet.lock.reclaim"))).toBe(false);
+    // A marker whose taker still lives, or of another attempt, still refuses.
+    const u = world();
+    writeFileSync(join(u.home, "fleet.lock"), JSON.stringify({ pid: UPDATER, nonce: "d".repeat(32), createdAt: new Date().toISOString(), role: "update", attemptId: ID, handoff: null }) + "\n");
+    writeFileSync(join(u.home, "fleet.lock.reclaim"), JSON.stringify({ ...crashed, pid: 7800 }) + "\n");
+    u.alive.delete(TRIAL); u.alive.delete(UPDATER); u.alive.add(7800);
+    const f = u.deps(); f.self = { pid: 7702, start: START }; u.alive.add(7702);
+    expect(rollBack(u.home, current(u.home), f)).toMatchObject({ ok: false, manual: true, reason: expect.stringMatching(/reclaim marker/) });
+  });
+
+  it("a race lost during the fence's adoption (the lock changed under it) is looked at again, not manual (Fable #4531 F2)", () => {
+    const w = world();
+    // The dead updater's fence; while the runner adopts it, the recorded trial's record lands (dead, so it is re-taken next round).
+    const fenceRec = { pid: UPDATER, nonce: "d".repeat(32), createdAt: new Date().toISOString(), role: "update", attemptId: ID, handoff: null };
+    writeFileSync(join(w.home, "fleet.lock"), JSON.stringify(fenceRec) + "\n");
+    w.alive.delete(TRIAL); w.alive.delete(UPDATER);
+    const d = w.deps(); d.self = { pid: 7700, start: START }; w.alive.add(7700);
+    let raced = false;
+    const alive = d.isProcessAlive;
+    d.isProcessAlive = p => {
+      if (!raced && p === UPDATER) { raced = true; writeFileSync(join(w.home, "fleet.lock"), JSON.stringify({ pid: TRIAL, nonce: TRIAL_NONCE, createdAt: new Date().toISOString(), role: "fleet" }) + "\n"); }
+      return alive(p);
+    };
+    expect(rollBack(w.home, current(w.home), d)).toMatchObject({ ok: true });
+    expect(raced).toBe(true);
   });
 
   it("a start that fails, or a takeover that never comes, is retryable; the retry plans afresh and completes", () => {

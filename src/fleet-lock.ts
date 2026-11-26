@@ -313,8 +313,26 @@ export function adoptUpdateFence(dataDir: string, fence: { pid?: number; attempt
   let current: string;
   try { current = readFileSync(join(dataDir, "fleet.lock"), "utf8"); } catch (err) { return { ok: false, reason: `fleet.lock can't be read (${(err as Error).message})` }; }
   const owner = parseRecord(current);
-  if (owner && owner.role === "update" && owner.attemptId === fence.attemptId && owner.pid === pid) return { ok: true, handle: { path: join(dataDir, "fleet.lock"), record: owner, serialized: current } };
+  if (owner && owner.role === "update" && owner.attemptId === fence.attemptId && owner.pid === pid) {
+    clearCrashedReclaim(dataDir, fence.attemptId, pid, probe);                  // a marker our own crashed run left behind
+    return { ok: true, handle: { path: join(dataDir, "fleet.lock"), record: owner, serialized: current } };
+  }
   return replaceDeadHolder(dataDir, { pid, attemptId: fence.attemptId }, o => (o.role === "update" && o.attemptId === fence.attemptId ? null : "fleet.lock isn't this attempt's fence"), probe);
+}
+
+/**
+ * A reclaim marker left by a crash (Fable #4531 F1): the marker holds the record its taker meant to write. When that is
+ * THIS attempt's update record and its pid is proven gone, it is our own crashed reclaim — removed (the directory
+ * fsynced) so the replacement can run again. Any other marker (another attempt, a live pid, unreadable) stays.
+ */
+function clearCrashedReclaim(dataDir: string, attemptId: string, selfPid: number, probe: Pick<FleetLockProbe, "isProcessAlive">): boolean {
+  const marker = join(dataDir, "fleet.lock.reclaim");
+  let text: string;
+  try { text = readFileSync(marker, "utf8"); } catch { return false; }
+  const rec = parseRecord(text);
+  // Ours: this attempt's record, and its taker gone — or this very process (an exception mid-reclaim, not a crash).
+  if (!rec || rec.role !== "update" || rec.attemptId !== attemptId || (rec.pid !== selfPid && (probe.isProcessAlive ?? processAlive)(rec.pid))) return false;
+  try { unlinkSync(marker); fsyncDir(dataDir); return true; } catch { return false; }
 }
 
 /** The owned replacement of a dead holder's record by a fresh update fence (no handoff). `accept` returns why not, or null. */
@@ -331,9 +349,13 @@ function replaceDeadHolder(dataDir: string, fence: { pid?: number; attemptId: st
   const pid = fence.pid ?? process.pid;
   const record: FleetLockRecord = { pid, nonce: randomBytes(16).toString("hex"), createdAt: new Date().toISOString(), role: "update", attemptId: fence.attemptId, handoff: null };
   const serialized = JSON.stringify(record) + "\n";
-  try { writeFileSync(marker, serialized, { flag: "wx", mode: 0o600 }); }
+  const takeMarker = () => writeFileSync(marker, serialized, { flag: "wx", mode: 0o600 });
+  try { takeMarker(); }
   catch (err) {
-    return { ok: false, reason: (err as NodeJS.ErrnoException).code === "EEXIST" ? `a reclaim marker ${marker} is present (another reclaim, or one left by a crash); nothing is taken` : `the reclaim marker can't be created (${(err as Error).message})` };
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") return { ok: false, reason: `the reclaim marker can't be created (${(err as Error).message})` };
+    // Our own crashed reclaim's marker (this attempt, its taker gone): cleared, then taken once more.
+    if (!clearCrashedReclaim(dataDir, fence.attemptId, fence.pid ?? process.pid, probe)) return { ok: false, reason: `a reclaim marker ${marker} is present (another reclaim, or one left by a crash); nothing is taken` };
+    try { takeMarker(); } catch (again) { return { ok: false, reason: `the reclaim marker can't be taken (${(again as Error).message})` }; }
   }
   try {
     if (readFileSync(lockPath, "utf8") !== observed) return { ok: false, reason: "fleet.lock changed during the reclaim" };
