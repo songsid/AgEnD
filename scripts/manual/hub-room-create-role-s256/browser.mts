@@ -74,7 +74,7 @@ try{
    const capture=async(stage:string)=>{check(tag+" "+stage+" no horizontal overflow",await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth<=1));const file=`${tag}-${stage}.png`;await page.screenshot({path:join(out,file),fullPage:true});receipt.screens.push({file,sha256:hash(readFileSync(join(out,file)))});};
    if(wanted("role"))await capture("role");
    if(wanted("assign")){
-    await page.getByRole("tab",{name:new RegExp("^"+(zh?"人員":"People"))}).click();
+    await page.getByRole("tab",{name:new RegExp("^"+(zh?"人員":"People")+" ·")}).click();
     await page.getByRole("button",{name:zh?"指派人員或 AD 群組":"Assign people or AD groups",exact:true}).click();
     const panel=page.locator(".hub-role-panel"),subject=panel.locator("select").nth(1);
     check(tag+" room role permits AD-group recipients",await subject.locator('option[value="group"]').isEnabled());
