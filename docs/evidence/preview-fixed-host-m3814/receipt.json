@@ -1,5 +1,5 @@
 {
-  "sourceHead": "56a87bfbec0109ac3ab960040175a39a0791e786",
+  "sourceHead": "6104d3eed08829785a049734e882ffde6063c3de",
   "dirty": [],
   "checks": [
     {
@@ -226,19 +226,19 @@
   "pictures": [
     {
       "path": "m3814-desk-light-en-1-notice.png",
-      "sha256": "036aa2d26567476c281a75d2fc650c430b0d321b8d6ac17a6028ebba0c589b65"
+      "sha256": "167634b8d9a908d18cde9bc88bed0eeea221bfdcf6207eb016e050e162a299da"
     },
     {
       "path": "m3814-desk-light-en-2-settings-landed.png",
-      "sha256": "dbe2357bce8200cead5039a7e7935e8793cc7333cc62743b51c767722be40ef3"
+      "sha256": "424122e8b68f54a58bfa81d48ffbd4c32c21590b8812ddde20cfb46e4c9b107f"
     },
     {
       "path": "m3814-desk-light-en-2b-route-step.png",
-      "sha256": "69b1aaebd694bf6429a56d32a3b20611143c05b73bea95ebe326360f5397b554"
+      "sha256": "7c70704f5c880e67e61580af07a71da00c68a351638cbaddee05fa40f833d3ce"
     },
     {
       "path": "m3814-desk-light-en-2c-no-fixed-hostname.png",
-      "sha256": "ae3870fcf6f37fa0b7556868cafe7a462153d1a25948e1daa26fa064cc77e382"
+      "sha256": "e71ccd54ca12b2a71e4a6a124bbb372b3838386d33b1b28fb00883a1321b8baa"
     },
     {
       "path": "m3814-desk-light-en-3-saved.png",
@@ -250,7 +250,7 @@
     },
     {
       "path": "m3814-phone-dark-zh-TW-1-notice.png",
-      "sha256": "e7e0bf061e60b2429f69dbd877c10e24d0d85d6115db1ddc7a1e77817d2b1f4b"
+      "sha256": "c5ad1bb1c29ccbd62af44387c9d5a0a7be9700bcfff7e9afe6048b43cdc830e9"
     },
     {
       "path": "m3814-phone-dark-zh-TW-2-settings-landed.png",
