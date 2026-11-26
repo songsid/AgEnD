@@ -1,0 +1,474 @@
+{
+  "sourceHead": "3d5bbe139f19ecf916201cbc9ba7845143e79897",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "dark-default-en: 🆕 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: 🆗 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: 🆓 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: 🈶 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: ☕ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: ⚡ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: ♈ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: ✅ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: ⚠️ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: 👍 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: 🏳️‍🌈 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: 1️⃣ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: the bullet \"🆕 The update card…\": its 🆕 in Segoe UI Emoji",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: the text line uses no emoji font",
+      "ok": true
+    },
+    {
+      "name": "dark-default-en: 🆕︎ (text style) keeps a text glyph",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: 🆕 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: 🆗 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: 🆓 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: 🈶 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: ☕ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: ⚡ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: ♈ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: ✅ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: ⚠️ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: 👍 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: 🏳️‍🌈 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: 1️⃣ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: the bullet \"🆕 The update card…\": its 🆕 in Segoe UI Emoji",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: the text line uses no emoji font",
+      "ok": true
+    },
+    {
+      "name": "light-default-en: 🆕︎ (text style) keeps a text glyph",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: the agent's theme font is on the chat",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: 🆕 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: 🆗 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: 🆓 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: 🈶 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: ☕ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: ⚡ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: ♈ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: ✅ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: ⚠️ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: 👍 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: 🏳️‍🌈 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: 1️⃣ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: the bullet \"🆕 The update card…\": its 🆕 in Segoe UI Emoji",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: the text line uses no emoji font",
+      "ok": true
+    },
+    {
+      "name": "dark-system-en: 🆕︎ (text style) keeps a text glyph",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: the agent's theme font is on the chat",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: 🆕 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: 🆗 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: 🆓 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: 🈶 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: ☕ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: ⚡ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: ♈ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: ✅ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: ⚠️ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: 👍 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: 🏳️‍🌈 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: 1️⃣ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: the bullet \"🆕 The update card…\": its 🆕 in Segoe UI Emoji",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: the text line uses no emoji font",
+      "ok": true
+    },
+    {
+      "name": "dark-mono-en: 🆕︎ (text style) keeps a text glyph",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: 🆕 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: 🆗 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: 🆓 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: 🈶 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: ☕ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: ⚡ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: ♈ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: ✅ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: ⚠️ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: 👍 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: 🏳️‍🌈 drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: 1️⃣ drawn by the colour emoji font (no other font draws it)",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: the bullet \"🆕 The update card…\": its 🆕 in Segoe UI Emoji",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: the text line uses no emoji font",
+      "ok": true
+    },
+    {
+      "name": "dark-default-zh-TW: 🆕︎ (text style) keeps a text glyph",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3796-win-edge-dark-default-en.png",
+      "sha256": "0431f41a11e02e6cdc6b8912db6b1a18e7f1f1ff4cc58c4717f7b88a3f5234cb"
+    },
+    {
+      "path": "m3796-win-edge-light-default-en.png",
+      "sha256": "59e1fd8d62e5c13498015a4d5b3c7c2591629952e8469fb066ec80919e9cc157"
+    },
+    {
+      "path": "m3796-win-edge-dark-system-en.png",
+      "sha256": "3dd720970f6eb68571f4a2df32e180c20a7d101406fdb037885513f9934e0fb8"
+    },
+    {
+      "path": "m3796-win-edge-dark-mono-en.png",
+      "sha256": "d11b78fcd0bc44e39816ea79b014c73c2b631cb45c2fb376c0e9f576510c1707"
+    },
+    {
+      "path": "m3796-win-edge-dark-default-zh-TW.png",
+      "sha256": "0431f41a11e02e6cdc6b8912db6b1a18e7f1f1ff4cc58c4717f7b88a3f5234cb"
+    }
+  ],
+  "fonts": {
+    "dark-default-en": {
+      "🆕 The update card in General's chat": "Inter Variable(36), Segoe UI Emoji(1)",
+      "🆕 Pick a time on the web": "Inter Variable(25), Segoe UI Emoji(1)",
+      "✅ Pre-flight words": "Inter Variable(19), Segoe UI Emoji(1)",
+      "🆕": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🆗": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🆓": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🈶": "Inter Variable(2), Segoe UI Emoji(1)",
+      "☕": "Inter Variable(2), Segoe UI Emoji(1)",
+      "⚡": "Inter Variable(2), Segoe UI Emoji(1)",
+      "♈": "Inter Variable(2), Segoe UI Emoji(1)",
+      "✅": "Inter Variable(2), Segoe UI Emoji(1)",
+      "⚠️": "Inter Variable(2), Segoe UI Emoji(1)",
+      "👍": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🏳️‍🌈": "Inter Variable(2), Segoe UI Emoji(1)",
+      "1️⃣": "Inter Variable(2), Segoe UI Emoji(1)",
+      "1 # * © ™ ★ ♥ → 中文 text": "Noto Sans TC(4), Inter Variable(21)",
+      "Ready: 🆕︎ (text style)": "Noto Sans TC(1), Inter Variable(22)",
+      "code: 🆕 ☕ 1 #": "Segoe UI Emoji(2), Menlo(11)"
+    },
+    "dark-default-en:text": [
+      "1 # * © ™ ★ ♥ → 中文 text → Noto Sans TC(4), Inter Variable(21)",
+      "Ready: 🆕︎ (text style) → Noto Sans TC(1), Inter Variable(22)"
+    ],
+    "light-default-en": {
+      "🆕 The update card in General's chat": "Inter Variable(36), Segoe UI Emoji(1)",
+      "🆕 Pick a time on the web": "Inter Variable(25), Segoe UI Emoji(1)",
+      "✅ Pre-flight words": "Inter Variable(19), Segoe UI Emoji(1)",
+      "🆕": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🆗": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🆓": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🈶": "Inter Variable(2), Segoe UI Emoji(1)",
+      "☕": "Inter Variable(2), Segoe UI Emoji(1)",
+      "⚡": "Inter Variable(2), Segoe UI Emoji(1)",
+      "♈": "Inter Variable(2), Segoe UI Emoji(1)",
+      "✅": "Inter Variable(2), Segoe UI Emoji(1)",
+      "⚠️": "Inter Variable(2), Segoe UI Emoji(1)",
+      "👍": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🏳️‍🌈": "Inter Variable(2), Segoe UI Emoji(1)",
+      "1️⃣": "Inter Variable(2), Segoe UI Emoji(1)",
+      "1 # * © ™ ★ ♥ → 中文 text": "Noto Sans TC(4), Inter Variable(21)",
+      "Ready: 🆕︎ (text style)": "Noto Sans TC(1), Inter Variable(22)",
+      "code: 🆕 ☕ 1 #": "Segoe UI Emoji(2), Menlo(11)"
+    },
+    "light-default-en:text": [
+      "1 # * © ™ ★ ♥ → 中文 text → Noto Sans TC(4), Inter Variable(21)",
+      "Ready: 🆕︎ (text style) → Noto Sans TC(1), Inter Variable(22)"
+    ],
+    "dark-system-en": {
+      "🆕 The update card in General's chat": "Segoe UI Emoji(1), Microsoft JhengHei UI(36)",
+      "🆕 Pick a time on the web": "Segoe UI Emoji(1), Microsoft JhengHei UI(25)",
+      "✅ Pre-flight words": "Segoe UI Emoji(1), Microsoft JhengHei UI(19)",
+      "🆕": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "🆗": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "🆓": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "🈶": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "☕": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "⚡": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "♈": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "✅": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "⚠️": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "👍": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "🏳️‍🌈": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "1️⃣": "Segoe UI Emoji(1), Microsoft JhengHei UI(2)",
+      "1 # * © ™ ★ ♥ → 中文 text": "Segoe UI(1), Microsoft JhengHei UI(24)",
+      "Ready: 🆕︎ (text style)": "Segoe UI Symbol(1), Microsoft JhengHei UI(22)",
+      "code: 🆕 ☕ 1 #": "Segoe UI Emoji(2), Menlo(11)"
+    },
+    "dark-system-en:text": [
+      "1 # * © ™ ★ ♥ → 中文 text → Segoe UI(1), Microsoft JhengHei UI(24)",
+      "Ready: 🆕︎ (text style) → Segoe UI Symbol(1), Microsoft JhengHei UI(22)"
+    ],
+    "dark-mono-en": {
+      "🆕 The update card in General's chat": "Segoe UI Emoji(1), Menlo(36)",
+      "🆕 Pick a time on the web": "Segoe UI Emoji(1), Menlo(25)",
+      "✅ Pre-flight words": "Segoe UI Emoji(1), Menlo(19)",
+      "🆕": "Segoe UI Emoji(1), Menlo(2)",
+      "🆗": "Segoe UI Emoji(1), Menlo(2)",
+      "🆓": "Segoe UI Emoji(1), Menlo(2)",
+      "🈶": "Segoe UI Emoji(1), Menlo(2)",
+      "☕": "Segoe UI Emoji(1), Menlo(2)",
+      "⚡": "Segoe UI Emoji(1), Menlo(2)",
+      "♈": "Segoe UI Emoji(1), Menlo(2)",
+      "✅": "Segoe UI Emoji(1), Menlo(2)",
+      "⚠️": "Segoe UI Emoji(1), Menlo(2)",
+      "👍": "Segoe UI Emoji(1), Menlo(2)",
+      "🏳️‍🌈": "Segoe UI Emoji(1), Menlo(2)",
+      "1️⃣": "Segoe UI Emoji(1), Menlo(2)",
+      "1 # * © ™ ★ ♥ → 中文 text": "Noto Sans TC(2), Menlo(23)",
+      "Ready: 🆕︎ (text style)": "Segoe UI Symbol(1), Menlo(22)",
+      "code: 🆕 ☕ 1 #": "Segoe UI Emoji(2), Menlo(11)"
+    },
+    "dark-mono-en:text": [
+      "1 # * © ™ ★ ♥ → 中文 text → Noto Sans TC(2), Menlo(23)",
+      "Ready: 🆕︎ (text style) → Segoe UI Symbol(1), Menlo(22)"
+    ],
+    "dark-default-zh-TW": {
+      "🆕 The update card in General's chat": "Inter Variable(36), Segoe UI Emoji(1)",
+      "🆕 Pick a time on the web": "Inter Variable(25), Segoe UI Emoji(1)",
+      "✅ Pre-flight words": "Inter Variable(19), Segoe UI Emoji(1)",
+      "🆕": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🆗": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🆓": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🈶": "Inter Variable(2), Segoe UI Emoji(1)",
+      "☕": "Inter Variable(2), Segoe UI Emoji(1)",
+      "⚡": "Inter Variable(2), Segoe UI Emoji(1)",
+      "♈": "Inter Variable(2), Segoe UI Emoji(1)",
+      "✅": "Inter Variable(2), Segoe UI Emoji(1)",
+      "⚠️": "Inter Variable(2), Segoe UI Emoji(1)",
+      "👍": "Inter Variable(2), Segoe UI Emoji(1)",
+      "🏳️‍🌈": "Inter Variable(2), Segoe UI Emoji(1)",
+      "1️⃣": "Inter Variable(2), Segoe UI Emoji(1)",
+      "1 # * © ™ ★ ♥ → 中文 text": "Noto Sans TC(4), Inter Variable(21)",
+      "Ready: 🆕︎ (text style)": "Noto Sans TC(1), Inter Variable(22)",
+      "code: 🆕 ☕ 1 #": "Segoe UI Emoji(2), Menlo(11)"
+    },
+    "dark-default-zh-TW:text": [
+      "1 # * © ™ ★ ♥ → 中文 text → Noto Sans TC(4), Inter Variable(21)",
+      "Ready: 🆕︎ (text style) → Noto Sans TC(1), Inter Variable(22)"
+    ]
+  },
+  "browser": "158.0.4370.33",
+  "chatClass": {
+    "dark-default-en": "panel p-chat",
+    "light-default-en": "panel p-chat",
+    "dark-system-en": "panel p-chat th th-font-system",
+    "dark-mono-en": "panel p-chat th th-font-mono",
+    "dark-default-zh-TW": "panel p-chat"
+  },
+  "latinFont": {
+    "dark-default-en": "Inter Variable",
+    "light-default-en": "Inter Variable",
+    "dark-system-en": "Microsoft JhengHei UI",
+    "dark-mono-en": "Menlo",
+    "dark-default-zh-TW": "Inter Variable"
+  },
+  "summary": "77/77"
+}
