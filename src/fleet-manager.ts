@@ -11624,7 +11624,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * M-3814: Settings → Access → the fixed preview address's Check — the saved `web.public_link.preview_hostname`,
    * through the open fixed link's tunnel, to this preview listener (its boot id is the proof). One at a time; starts
-   * nothing. Admin only, never over the public link (settings-api.ts).
+   * nothing. An admin session only, over the public link too (M-3278; settings-api.ts).
    */
   async testPreviewRoute(input: { hostname?: unknown } = {}): Promise<PreviewRouteResult | { busy: true }> {
     if (this.previewRouteTestRunning) return { busy: true };

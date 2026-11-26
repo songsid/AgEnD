@@ -885,7 +885,7 @@ export function handleSettingsRequest(
   }
 
   // M-3814: Settings → Access → the fixed preview address's Check, on the saved address (what the preview listener
-  // answers to). Admin only and never over the public link, like Test connection. Starts nothing.
+  // answers to). An admin session only, like Test connection (over the public link too, M-3278). Starts nothing.
   if (method === "POST" && path === "/api/settings/public-link/preview-test") {
     const caller = guestSettingsCaller(req, url, ctx);
     if (!caller) { json(res, 403, { error: "An admin sign-in is required" }, true); return true; }
