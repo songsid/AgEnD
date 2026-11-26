@@ -252,6 +252,9 @@ function openCliSchedulerDb(): SchedulerDb {
   return new SchedulerDb(join(DATA_DIR, "scheduler.db"));
 }
 
+/** M-3770 part 4: the interrupted commit `fleetStartGate` admitted this start to finish (handed to the FleetManager). */
+let commitResumeAtStart: string | null = null;
+
 function claimFleetSingleton(): boolean {
   const home = admitAgainstHomeUpdate();
   if (!home.ok) return false;
@@ -263,10 +266,10 @@ function claimFleetSingleton(): boolean {
     const liveness = { processStart: admission.processStart, startTicks: admission.startTicks, bootId: admission.bootId };
     const gate = fleetStartGate(DATA_DIR, process.env.AGEND_UPDATE_HANDOFF ?? null, liveness);
     if (!gate.ok) throw new Error(gate.reason);
-    // §7 (rev 13; Fable #4533): an interrupted commit is this start's to finish with the fleet's commit hands
-    // (`resumeCommitting`). Until those hands exist, it is refused, never admitted as a plain start that leaves the attempt
-    // committing for good. The `agend update` wiring replaces this refusal with the resumeCommitting(...) call.
-    if (gate.resumeCommitting) throw new Error(`This fleet start is refused: update attempt ${gate.resumeCommitting} is committing, and this build can't finish it yet. Run \`agend update --resolve\`.`);
+    // §7 (rev 13; Fable #4533): an interrupted commit is this start's to finish with the fleet's own commit hands
+    // (M-3770 part 4): the fleet starts held, as its trial did, and its control pass drives resumeCommitting(...) — never
+    // a plain start that leaves the attempt committing for good.
+    if (gate.resumeCommitting) commitResumeAtStart = gate.resumeCommitting;
     setProcessFleetLock(acquireFleetLock(DATA_DIR, {
       claimHandoff: (attemptId, nonce, pid) => {
         const processStart = admission.processStart(pid);
@@ -445,6 +448,7 @@ fleet
     if (!claimFleetSingleton()) return;
 
     const { FleetManager } = await import("./fleet-manager.js");
+    FleetManager.commitResumeAtStart = commitResumeAtStart;
     const fm = new FleetManager(DATA_DIR);
     let cpuProfile: CpuProfile | null = null;
 

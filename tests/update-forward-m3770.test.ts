@@ -231,13 +231,15 @@ describe("M-3770 2.5: an interrupted commit is finished by the new version's own
     expect(resumeCommitting(other.home, ID, other.deps())).toBeNull();                             // open, but not committing
   });
 
-  it("cli.ts's fleet start acts on an admitted commit resume: refused until the fleet's commit hands exist, never let through as a plain start", () => {
-    // Source pin (Fable #4533): the gate's widened `ok` must not be read as a plain start. The `agend update` wiring
-    // replaces the refusal with the resumeCommitting(...) call; dropping both fails here.
+  it("cli.ts's fleet start acts on an admitted commit resume: it hands it to the FleetManager, never lets it through as a plain start", () => {
+    // Source pin (Fable #4533): the gate's widened `ok` must not be read as a plain start. Part 4: the start resumes the
+    // commit with the fleet's own hands (FleetManager.commitResumeAtStart → a held start whose control pass drives
+    // resumeCommitting; tests/update-commit-m3770.test.ts); dropping the hand-over fails here.
     const cli = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
     const afterGate = cli.slice(cli.indexOf("const gate = fleetStartGate("), cli.indexOf("setProcessFleetLock(acquireFleetLock(DATA_DIR"));
     expect(afterGate).toMatch(/if \(!gate\.ok\) throw new Error\(gate\.reason\);/);
-    expect(afterGate).toMatch(/if \(gate\.resumeCommitting\) (?:throw new Error\(`This fleet start is refused: update attempt \$\{gate\.resumeCommitting\} is committing|[^\n]*\bresumeCommitting\()/);
+    expect(afterGate).toMatch(/if \(gate\.resumeCommitting\) commitResumeAtStart = gate\.resumeCommitting;/);
+    expect(cli).toMatch(/FleetManager\.commitResumeAtStart = commitResumeAtStart;\n\s*const fm = new FleetManager\(DATA_DIR\);/);
   });
 });
 

@@ -392,7 +392,9 @@ import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoo
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { QuiescenceBarrier, stripHumanReceipt, UPDATE_HANDBACK_COPY_KIND, UPDATE_HANDBACK_SOURCE, handbackDue, turnSource,
   type BarrierAgent, type BarrierSnapshot, type HandbackPorts, type QuiescenceGate, UPDATE_TRIAL_REFUSAL, UPDATE_TRIAL_RETRY_SECONDS } from "./update-quiescence.js";
-import { serveControl, type ControlResult, type TrialProof } from "./update-control.js";
+import { COMMIT_OPS, serveControl, type CommitStep, type ControlResult, type TrialProof } from "./update-control.js";
+import { resumeCommitting, type UpdateDeps } from "./update-forward.js";
+import type { OwnedService } from "./install-ownership.js";
 import { serviceLockSenderLive } from "./service-lock.js";
 import { processFleetLockRecord } from "./fleet-lock.js";
 import { createRequire as createRequireForUpdate } from "node:module";
@@ -1386,18 +1388,124 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.updateHandbackTimer = setTimeout(again, 10_000); this.updateHandbackTimer.unref?.();
   }
 
+  // ── The fleet's tmux at its start (factored for M-3770 part 4: a trial skips it; leaving the trial runs it) ─────────
+  /**
+   * 2.3's window ids, AgEnD's own tmux server (M-2457 §6) and the session. A trial does none of it: it runs no agents
+   * and leaves tmux alone until the commit leaves the trial (`leaveUpdateTrial`).
+   */
+  private async setUpFleetTmuxServer(fleet: FleetConfig): Promise<void> {
+    const { tmuxSocket, resolveTmux } = await import("./tmux-binary.js");
+    // M-2457 §6 rule 3: 2.3's window ids (untagged window-id files) move into the migration journal before anything —
+    // a stop, a pane check, a restart — can read one as a window on AgEnD's own server.
+    if (!this.updateTrial) try {
+      const { sweepLegacyWindowIds } = await import("./tmux-legacy.js");
+      const moved = sweepLegacyWindowIds(getAgendHome(), Object.keys(fleet.instances ?? {}).map(name => ({ name, dir: this.getInstanceDir(name) })), tmuxSocket());
+      if (moved.length) this.logger.info({ instances: moved }, "2.3 tmux window ids moved to the migration journal");
+    } catch (err) { this.logger.warn({ err }, "Could not move 2.3 tmux window ids to the migration journal; each instance does it as it starts"); }
+    // M-2457 §6 rule 2: a server from another pin still on the socket is ended by its own recorded
+    // client, positively, before ours starts; one AgEnD cannot prove its own holds the whole fleet (nothing is killed).
+    const bundled = this.updateTrial ? null : await (async () => {
+      const srv = await import("./tmux-server.js");
+      const binary = resolveTmux().binary;
+      return { srv, socket: tmuxSocket(), current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
+    })();
+    // M-2457 §5 (Fable #3312 N3): an upgraded home — agents ran here before (their output or session ids are on disk
+    // from an earlier start) and no AgEnD tmux server was ever recorded — gets the one own-tmux notice. A cleanly stopped
+    // 2.3 fleet leaves no window ids (no migration journal), so this, not the journal, is the evidence. Read before any
+    // agent of this start writes its own.
+    // Persisted before this start records server.json (see ownTmuxStartDecision).
+    if (bundled) this.ownTmuxUpgradedHome = FleetManager.ownTmuxStartDecision(getAgendHome(), bundled.previous, this.logger);
+    this.tmuxHold = null;
+    TmuxManager.setHold(this.updateTrial?.detail ?? null);   // a trial's sign-in windows and daemons are refused too
+    if (bundled) {
+      const reason = await bundled.srv.reconcileServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current,
+        log: (msg, data) => this.logger.info(data ?? {}, msg) });
+      if (reason) {
+        this.tmuxHold = { key: `server:${Date.now()}`, detail: reason, since: Date.now() };
+        TmuxManager.setHold(reason);   // every other way in (sign-in/install windows, a daemon) is refused too
+        this.logger.error({ reason }, "Fleet held: AgEnD's previous tmux server can't be verified; no agent starts");
+      }
+    }
+
+    if (!this.startHold()) {
+      await TmuxManager.ensureSession(getTmuxSession());
+      this.tmuxSessionEnsured = true;
+      if (bundled) {
+        await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
+          log: (msg, data) => this.logger.warn(data ?? {}, msg) });
+        // A server AgEnD starts later (the session re-created after the server crashed) is recorded the same way, so
+        // server.json always names the server that runs (leg M: an unrecorded server made `agend rollback` refuse).
+        TmuxManager.onSessionCreated(async () => {
+          const r = await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
+            log: (msg, data) => this.logger.warn(data ?? {}, msg) });
+          if (r) this.logger.info({ serverPid: r.serverPid }, "tmux server recorded (session created)");
+        });
+        // The current copy and the one the previous server ran (kept for a handover/rollback); older ones go.
+        const removed = bundled.srv.pruneCopies(getAgendHome(), [bundled.current.binary, ...(bundled.previous ? [bundled.previous.binary] : [])]);
+        if (removed.length) this.logger.info({ removed }, "Pruned old bundled tmux copies");
+      }
+    }
+  }
+
+  private startTmuxControlClient(): void {
+    if (!this.controlClient && !this.startHold()) {
+      this.controlClient = new TmuxControlClient(getTmuxSession(), 2000, this.logger);
+      this.controlClient.start();
+    }
+  }
+
+  private async cleanUpFleetTmuxWindows(fleet: FleetConfig): Promise<void> {
+    // Then kill all remaining agend instance windows to prevent orphans.
+    // Kill both known instance windows (stale from previous run) and orphaned
+    // windows from deleted instances that are no longer in fleet.yaml.
+    const agendNames = new Set(Object.keys(fleet.instances));
+    agendNames.add("general");
+    if (!this.startHold()) try {
+      const existingWindows = await TmuxManager.listWindows(getTmuxSession());
+      for (const w of existingWindows) {
+        // Kill known instance windows (will be recreated)
+        // Also kill orphaned windows: any window with a topic ID suffix (name-tNNNNN)
+        // that isn't in the current config — these are leftovers from deleted instances
+        const isKnownInstance = agendNames.has(w.name);
+        const isOrphanedInstance = !isKnownInstance && isOrphanInstanceWindowName(w.name);
+        if (isKnownInstance || isOrphanedInstance) {
+          if (isOrphanedInstance) this.logger.info({ window: w.name }, "Cleaning up orphaned tmux window");
+          const tm = new TmuxManager(getTmuxSession(), w.id);
+          await tm.killWindow();
+        }
+      }
+    } catch (err) {
+      this.logger.debug({ err }, "Startup tmux window cleanup failed (best effort)");
+    }
+
+  }
+
   // ── M-3770 wiring part 3 (design update-wiring-m3770.md §5, §10.3–§10.6): trial mode and its proof ────────────────
   /** Set at the start when this fleet is the open attempt's `trial` generation: no agents, the hold armed, its proof answered. */
-  private updateTrial: { attemptId: string; nonce: string; detail: string } | null = null;
+  private updateTrial: { attemptId: string; nonce: string; detail: string; resume?: true } | null = null;
+  /**
+   * M-3770 part 4 (§7): `claimFleetSingleton` admitted this start to finish an interrupted commit (`fleetStartGate`'s
+   * `resumeCommitting`). Set by cli.ts before the FleetManager is made; read once, at the start.
+   */
+  static commitResumeAtStart: string | null = null;
 
   /**
    * Trial mode is chosen by the journal, not a flag: this start's handoff nonce names the open attempt's planned `trial`
    * generation (not voided), and the attempt is in trial or proving. Anything else starts as it would have: the takeover
    * already refused a revoked nonce, and an `old` generation is the hand-back's.
    */
-  private detectUpdateTrial(nonce = process.env.AGEND_UPDATE_HANDOFF ?? ""): { attemptId: string; nonce: string; detail: string } | null {
-    if (!/^[0-9a-f]{32}$/.test(nonce)) return null;
+  private detectUpdateTrial(nonce = process.env.AGEND_UPDATE_HANDOFF ?? "", resume = FleetManager.commitResumeAtStart): { attemptId: string; nonce: string; detail: string; resume?: true } | null {
     let read: ReturnType<typeof readUpdateJournal>;
+    // Part 4: a start admitted to resume a commit holds as the trial did — no agents, nothing in tmux, ingress held —
+    // until its own commit hands leave the trial and deliver the inbox.
+    if (resume) {
+      try { read = readUpdateJournal(this.dataDir); } catch { return null; }
+      if (read.state === "open" && read.attempt.id === resume && read.attempt.stage === "committing") {
+        return { attemptId: resume, nonce: "", detail: "Updating: finishing the update", resume: true };
+      }
+      return null;
+    }
+    if (!/^[0-9a-f]{32}$/.test(nonce)) return null;
     try { read = readUpdateJournal(this.dataDir); } catch { return null; }
     if (read.state !== "open" || (read.attempt.stage !== "trial" && read.attempt.stage !== "proving")) return null;
     const gens = (read.attempt.fleets as { gen: string; nonce: string; dead?: boolean }[] | undefined) ?? [];
@@ -1431,9 +1539,200 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const barrier = new QuiescenceBarrier(this.dataDir);
-    barrier.armTrial(read.attempt);
+    if (this.updateTrial.resume) barrier.armCommit(read.attempt); else barrier.armTrial(read.attempt);
     this.setUpdateBarrier({ attemptId: read.attempt.id, barrier });
-    this.logger.info({ attemptId: read.attempt.id }, "Update trial: this fleet starts no agents and holds its ingress until the update commits or rolls back");
+    this.updateHoldAttemptId = read.attempt.id;
+    this.logger.info({ attemptId: read.attempt.id, resume: !!this.updateTrial.resume },
+      "Update trial: this fleet starts no agents and holds its ingress until the update commits or rolls back");
+  }
+
+  // ── M-3770 wiring part 4 (design update-wiring-m3770.md §5, §7, §13): the commit hands ─────────────────────────────
+  /** The fleet's commit steps and the substeps `commitAttempt` journals for them, in order. */
+  private static readonly COMMIT_SUBSTEPS: readonly (readonly [CommitStep, string])[] = [
+    ["leaveTrial", "left-trial"], ["startAgents", "agents-started"], ["deliverInbox", "inbox-delivered"], ["runDeferred", "deferred-run"]];
+  /** Each step once per process: an async step is started by its first ask and answered `pending` until it settles. */
+  private updateCommitRuns = new Map<CommitStep, { state: "pending" | "done" } | { state: "failed"; why: string }>();
+
+  /**
+   * One commit step (§5), idempotent: `done` once it has run in this process (or there was nothing to do), `pending`
+   * while its async work runs, a refusal when it failed (the next ask runs it again). Only in committing, and only for
+   * the attempt this fleet holds for (its trial, or the commit it resumes).
+   */
+  private updateCommitStep(name: CommitStep, attempt: UpdateAttemptRecord): ControlResult {
+    if (attempt.stage !== "committing") return { status: "refused", why: `the attempt is ${attempt.stage}, not committing` };
+    if (this.updateHoldAttemptId !== attempt.id) return { status: "refused", why: "this fleet isn't holding for this attempt" };
+    const run = this.updateCommitRuns.get(name);
+    if (run?.state === "done") return { status: "ok", value: "done" };
+    if (run?.state === "pending") return { status: "ok", value: "pending" };
+    const settle = (work: () => Promise<void> | void): ControlResult => {
+      let result: Promise<void> | void;
+      try { result = work(); }
+      catch (err) { return this.failCommitStep(name, err); }
+      if (!(result instanceof Promise)) { this.updateCommitRuns.set(name, { state: "done" }); return { status: "ok", value: "done" }; }
+      this.updateCommitRuns.set(name, { state: "pending" });
+      result.then(() => { this.updateCommitRuns.set(name, { state: "done" }); }, err => { this.failCommitStep(name, err); });
+      return { status: "ok", value: "pending" };
+    };
+    if (run?.state === "failed") this.updateCommitRuns.delete(name);
+    switch (name) {
+      case "leaveTrial": return settle(() => this.leaveUpdateTrial());
+      case "startAgents": return settle(() => this.startAgentsAfterTrial());
+      case "deliverInbox": return settle(() => this.deliverUpdateInbox(attempt));
+      case "runDeferred": return settle(() => this.runUpdateDeferred(attempt));
+    }
+  }
+
+  private failCommitStep(name: CommitStep, err: unknown): ControlResult {
+    const why = (err as Error)?.message ?? String(err);
+    this.updateCommitRuns.set(name, { state: "failed", why });
+    this.logger.warn({ err, step: name }, "Update commit step failed; the next ask runs it again");
+    return { status: "refused", why: `${name} failed: ${why}` };
+  }
+
+  /** A mailbox op for the trial generation: this fleet is it — its nonce, and the pid the updater acknowledged. */
+  private updateTrialGenerationIs(attempt: UpdateAttemptRecord, self: { nonce: string; pid: number }): ControlResult | null {
+    const gen = ((attempt.fleets as { gen: string; nonce: string; pid?: number; dead?: boolean }[] | undefined) ?? [])
+      .find(g => g.gen === "trial" && g.nonce === self.nonce && !g.dead);
+    if (!gen) return { status: "refused", why: "this fleet isn't the attempt's trial" };
+    if (gen.pid !== self.pid) return { status: "refused", why: `the trial was acknowledged as pid ${gen.pid ?? "none"}, not ${self.pid}` };
+    return null;
+  }
+
+  /** The attempt this fleet holds for: its trial's, or the commit it resumes (cleared once the commit is done). */
+  private updateHoldAttemptId: string | null = null;
+  /** §7: the interrupted commit this start finishes with its own hands, from the control pass (null: none). */
+  private updateResume: { attemptId: string; deps: Pick<UpdateDeps, "commit" | "manager" | "plistArgs"> } | null = null;
+
+  /**
+   * §7 (rev 13): a start admitted to finish an interrupted commit gets its deps — its own commit hands, and the
+   * attempt's service manager (the route's removal reloads it) — before the control pass drives `resumeCommitting`.
+   */
+  private async prepareUpdateResume(): Promise<void> {
+    if (!this.updateTrial?.resume) return;
+    const read = readUpdateJournal(this.dataDir);
+    if (read.state !== "open" || read.attempt.id !== this.updateTrial.attemptId) return;
+    const [{ realHands }, { plistProgramArguments }] = await Promise.all([import("./update-recovery/recover.js"), import("./plist-args.js")]);
+    const service = (read.attempt.ownership as { service?: OwnedService | null } | undefined)?.service ?? null;
+    const manager = service ? realHands(this.dataDir).manager(service) : null;
+    const hand = (step: CommitStep) => (): boolean => {
+      const now = readUpdateJournal(this.dataDir);
+      if (now.state !== "open" || now.attempt.id !== read.attempt.id) return false;
+      const r = this.updateCommitStep(step, now.attempt);
+      return r.status === "ok" && r.value === "done";
+    };
+    this.updateResume = { attemptId: read.attempt.id, deps: {
+      commit: { leaveTrial: hand("leaveTrial"), startAgents: hand("startAgents"), deliverInbox: hand("deliverInbox"), runDeferred: hand("runDeferred") },
+      plistArgs: plistProgramArguments,
+      // Only the route's removal reaches the manager here (a reload); nothing stops or starts a fleet from inside one.
+      manager: { mainPid: () => manager?.mainPid() ?? null, stop: () => false, reload: () => manager?.reload() ?? true, start: () => false },
+    } };
+    this.logger.warn({ attemptId: read.attempt.id }, "Update commit: this start finishes the interrupted commit");
+  }
+
+  /** One pass of the resumed commit: each step runs once; an async one is asked again on later passes until done. */
+  private resumeUpdateCommitTick(attempt: UpdateAttemptRecord): void {
+    if (!this.updateResume || this.updateResume.attemptId !== attempt.id || attempt.stage !== "committing") return;
+    // The fleet's own steps journaled before the crash were done by the process that died: this one holds again from
+    // its start, so it does them again here, in order (each is idempotent against the journal: the inbox walk skips
+    // acknowledged entries), before `resumeCommitting` takes the rest — whose hands then find them done.
+    for (const [step, mark] of FleetManager.COMMIT_SUBSTEPS) {
+      if (!attempt.history.some(h => h.stage === "committing" && h.substep === mark)) break;
+      const r = this.updateCommitStep(step, attempt);
+      if (r.status !== "ok") { this.logger.warn({ attemptId: attempt.id, step, why: r.why }, "Update commit: a resumed step failed; the next pass retries"); return; }
+      if (r.value !== "done") return;
+    }
+    const r = resumeCommitting(this.dataDir, attempt.id, this.updateResume.deps);
+    if (r?.ok) { this.logger.info({ attemptId: attempt.id }, "Update commit: the interrupted commit finished"); this.updateResume = null; }
+    else if (r && r.outcome !== "retry") { this.logger.error({ attemptId: attempt.id, outcome: r.outcome, reason: r.reason }, "Update commit: the resumed commit stopped"); this.updateResume = null; }
+  }
+
+  /**
+   * `leaveTrial` (§5): admissions open again (the hold itself stays until the inbox is delivered), then everything the
+   * trial skipped — AgEnD's tmux server and session (M-2457), 2.3's window ids, the window cleanup, the Hub — and one
+   * reconcile of paired runtimes' finished results. Done at once when this fleet was never a trial (or has left it).
+   */
+  private leaveUpdateTrial(): Promise<void> | void {
+    const fleet = this.fleetConfig;
+    if (!fleet) throw new Error("the fleet configuration isn't loaded");
+    if (this.updateTrial) {
+      this.updateBarrier?.barrier.endTrial();
+      this.updateTrial = null;
+      this.updateTrialLeaving = true;
+    }
+    if (!this.updateTrialLeaving) return;
+    // A failure leaves `updateTrialLeaving` set: the next ask does the whole of it again.
+    return (async () => {
+      await this.setUpFleetTmuxServer(fleet);
+      this.startTmuxControlClient();
+      await this.cleanUpFleetTmuxWindows(fleet);
+      this.observeHubSwitches();
+      for (const snapshot of this.runtimeHub?.tasks() ?? []) this.reconcileRemoteDelivery(snapshot.machineId, snapshot.task);
+      this.updateTrialLeaving = false;
+      this.logger.info("Update commit: left the trial (tmux set up, admissions open)");
+    })();
+  }
+  /** Set between leaving the trial and finishing what it skipped (tmux, the Hub); agents start only after. */
+  private updateTrialLeaving = false;
+
+  /**
+   * `startAgents` (§5): the agents a normal start brings up — the General first, then the rest and the ClassicBot rooms,
+   * with the same concurrency — and the fleet's ready line. A fleet still held (its tmux server unproven) starts none,
+   * as at any start; that is not a commit failure.
+   */
+  private startAgentsAfterTrial(): Promise<void> | void {
+    if (this.updateTrial || this.updateTrialLeaving) throw new Error("the fleet hasn't left the trial");
+    const fleet = this.fleetConfig;
+    if (!fleet) throw new Error("the fleet configuration isn't loaded");
+    if (this.startHold()) { this.logger.warn({ hold: this.startHold()?.detail }, "Update commit: the fleet is held; no agent starts"); return; }
+    const topicMode = daemonTopicMode(fleet);
+    const entries = Object.entries(fleet.instances).filter(([, config]) => !isNativeExecInstance(config));
+    const generals = entries.filter(([, cfg]) => cfg.general_topic), others = entries.filter(([, cfg]) => !cfg.general_topic);
+    return (async () => {
+      for (const [name, cfg] of generals) {
+        try { await this.startInstance(name, cfg, topicMode); }
+        catch (err) { this.logger.error({ err, name }, "Failed to start general instance"); this.scheduleStartupRetry(name, 0); }
+      }
+      const classic = topicMode && (fleet.channel || fleet.channels?.length) ? this.classicChannels?.getAll() ?? [] : [];
+      if (others.length > 0 || classic.length > 0) await this.startInstancesWithConcurrency(others, topicMode, () => {}, classic);
+      await this.announceUpdateCommitted(fleet, topicMode);
+    })();
+  }
+
+  /** The ready line a normal start posts (`fleet.ready`), now that the updated fleet's agents are up. */
+  private async announceUpdateCommitted(fleet: FleetConfig, topicMode: boolean): Promise<void> {
+    if (!topicMode || !fleet.channel?.group_id) return;
+    const names = this.configuredStartupInstanceNames(fleet, topicMode);
+    const started = names.filter(name => this.daemons.has(name)).length;
+    const failed = names.filter(name => !this.daemons.has(name) && !this.lifecycle.isPaused(name));
+    const version = (createRequireForUpdate(import.meta.url)("../package.json") as { version?: string }).version ?? "unknown";
+    const text = failed.length ? t("fleet.ready_with_failed", started, names.length, version, failed.join(", ")) : t("fleet.ready", started, names.length, version);
+    const general = this.findGeneralInstance();
+    const thread = general ? fleet.instances[general]?.topic_id : undefined;
+    try { await this.sendFleetStartCompletionFallback(String(fleet.channel.group_id), text, thread != null ? String(thread) : undefined); }
+    catch (err) { this.logger.warn({ err }, "Update commit: the ready line wasn't posted"); }
+  }
+
+  /**
+   * `deliverInbox` (§5, §10.4): the attempt's one inbox, in order — the old fleet's held items, then the trial's and
+   * anything held since — admitted as hand-back copies and references; the hold comes down in this same turn, so
+   * nothing newer interleaves (Fable #4554's rule). Copies this process journaled keep their receipts.
+   */
+  private deliverUpdateInbox(attempt: UpdateAttemptRecord): void {
+    if (this.updateTrial || this.updateTrialLeaving) throw new Error("the fleet hasn't left the trial");
+    const held = this.updateBarrier?.attemptId === attempt.id ? this.updateBarrier.barrier : null;
+    try {
+      const r = new QuiescenceBarrier(this.dataDir).runCommitInbox(attempt, this.updateHandbackPorts(), seq => held?.ownCopy(seq) === true);
+      this.logger.info({ attemptId: attempt.id, acked: r.acked }, "Update commit: the held inbox was delivered");
+    } finally {
+      if (held) this.setUpdateBarrier(null);
+    }
+  }
+
+  /** `runDeferred` (§5): the occurrences the update held, once each, after the inbox. */
+  private runUpdateDeferred(attempt: UpdateAttemptRecord): void {
+    if (this.updateBarrier?.attemptId === attempt.id) throw new Error("the inbox hasn't been delivered");
+    const r = new QuiescenceBarrier(this.dataDir).runCommitDeferred(attempt, this.updateHandbackPorts());
+    this.logger.info({ attemptId: attempt.id, acked: r.acked }, "Update commit: the held occurrences ran");
   }
 
   /**
@@ -1442,10 +1741,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * rolls back a healthy version.
    */
   private proveUpdateTrial(attempt: UpdateAttemptRecord, self: { nonce: string; pid: number }): ControlResult {
-    const gen = ((attempt.fleets as { gen: string; nonce: string; pid?: number; dead?: boolean }[] | undefined) ?? [])
-      .find(g => g.gen === "trial" && g.nonce === self.nonce && !g.dead);
-    if (!gen || this.updateTrial?.attemptId !== attempt.id || this.updateTrial.nonce !== self.nonce) return { status: "refused", why: "this fleet isn't the attempt's trial" };
-    if (gen.pid !== self.pid) return { status: "refused", why: `the trial was acknowledged as pid ${gen.pid ?? "none"}, not ${self.pid}` };
+    if (this.updateTrial?.attemptId !== attempt.id || this.updateTrial.nonce !== self.nonce) return { status: "refused", why: "this fleet isn't the attempt's trial" };
+    const refused = this.updateTrialGenerationIs(attempt, self);
+    if (refused) return refused;
     const problems: string[] = [];
     if (!this.deliveryOutbox) problems.push("the delivery outbox isn't open");
     if (daemonTopicMode(this.fleetConfig) && !this.scheduler) problems.push("the scheduler isn't running");
@@ -1503,6 +1801,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (read.state !== "open") {
       // The attempt ended (abandoned, a busy close, any terminal): a barrier it armed comes down.
       if (this.updateBarrier) this.setUpdateBarrier(null);
+      this.updateHoldAttemptId = null; this.updateResume = null; this.updateCommitRuns.clear();
       return;
     }
     if (this.updateBarrier && this.updateBarrier.attemptId !== read.attempt.id) this.setUpdateBarrier(null);
@@ -1516,10 +1815,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           "status": (_req, attempt) => ({ status: "ok", value: { pid: self.pid, nonce: self.nonce, stage: attempt.stage } }),
           "barrier.arm": (_req, attempt) => this.armUpdateBarrier(attempt),
           "trial.prove": (_req, attempt) => this.proveUpdateTrial(attempt, self),
+          ...Object.fromEntries((Object.keys(COMMIT_OPS) as CommitStep[]).map(step => [COMMIT_OPS[step], (_req: unknown, attempt: UpdateAttemptRecord) =>
+            this.updateTrialGenerationIs(attempt, self) ?? this.updateCommitStep(step, attempt)])),
         },
       });
     } catch (err) {
       this.logger.warn({ err, attemptId: read.attempt.id }, "Update control mailbox pass failed; the next pass retries");
+    }
+    // Part 4 (§7): a start that resumes an interrupted commit drives its own commit hands from this pass.
+    if (this.updateResume) {
+      try { this.resumeUpdateCommitTick(read.attempt); }
+      catch (err) { this.logger.warn({ err, attemptId: read.attempt.id }, "Update commit: the resume pass failed; the next pass retries"); }
     }
     // An old fleet an abandon never stopped (the barrier said busy, or an early failure) takes its held work back here;
     // a restarted one does it at its start (startUpdateHandback).
@@ -1621,11 +1927,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.scheduleDeliveryOutboxPump();
         return "claimed";
       },
-      admitCopy: (sourceKey, body, target) => {
+      admitCopy: (sourceKey, body, target, keepReceipt) => {
         if (!this.fleetConfig?.instances[target]) return null;
         const payload = { ...(body as Record<string, unknown>) };
         const meta = payload.meta && typeof payload.meta === "object" ? payload.meta as Record<string, unknown> : undefined;
-        if (meta) {
+        // M-3770 §10.4: a copy this process journaled (the commit in the trial's own boot) keeps its receipt.
+        if (meta && !keepReceipt) {
           const stripped = stripHumanReceipt(meta);
           payload.meta = stripped.meta;
           if (stripped.receiptId) outbox.markHumanReceiptUncertain(stripped.receiptId, target);
@@ -13453,61 +13760,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Set tmux socket isolation for custom AGEND_HOME
     // M-2457: AgEnD's own tmux socket (`agend` for the real home).
-    const { tmuxSocket, resolveTmux } = await import("./tmux-binary.js");
+    const { tmuxSocket } = await import("./tmux-binary.js");
     TmuxManager.setSocketName(tmuxSocket());
     // M-3770 wiring part 3: an update's trial runs no agents, so it leaves tmux alone — the server, the session, every
     // window and 2.3's window ids — until the commit leaves the trial.
     this.updateTrial = this.detectUpdateTrial();
-    // M-2457 §6 rule 3: 2.3's window ids (untagged window-id files) move into the migration journal before anything —
-    // a stop, a pane check, a restart — can read one as a window on AgEnD's own server.
-    if (!this.updateTrial) try {
-      const { sweepLegacyWindowIds } = await import("./tmux-legacy.js");
-      const moved = sweepLegacyWindowIds(getAgendHome(), Object.keys(fleet.instances ?? {}).map(name => ({ name, dir: this.getInstanceDir(name) })), tmuxSocket());
-      if (moved.length) this.logger.info({ instances: moved }, "2.3 tmux window ids moved to the migration journal");
-    } catch (err) { this.logger.warn({ err }, "Could not move 2.3 tmux window ids to the migration journal; each instance does it as it starts"); }
-    // M-2457 §6 rule 2: a server from another pin still on the socket is ended by its own recorded
-    // client, positively, before ours starts; one AgEnD cannot prove its own holds the whole fleet (nothing is killed).
-    const bundled = this.updateTrial ? null : await (async () => {
-      const srv = await import("./tmux-server.js");
-      const binary = resolveTmux().binary;
-      return { srv, socket: tmuxSocket(), current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
-    })();
-    // M-2457 §5 (Fable #3312 N3): an upgraded home — agents ran here before (their output or session ids are on disk
-    // from an earlier start) and no AgEnD tmux server was ever recorded — gets the one own-tmux notice. A cleanly stopped
-    // 2.3 fleet leaves no window ids (no migration journal), so this, not the journal, is the evidence. Read before any
-    // agent of this start writes its own.
-    // Persisted before this start records server.json (see ownTmuxStartDecision).
-    if (bundled) this.ownTmuxUpgradedHome = FleetManager.ownTmuxStartDecision(getAgendHome(), bundled.previous, this.logger);
-    this.tmuxHold = null;
-    TmuxManager.setHold(this.updateTrial?.detail ?? null);   // a trial's sign-in windows and daemons are refused too
-    if (bundled) {
-      const reason = await bundled.srv.reconcileServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current,
-        log: (msg, data) => this.logger.info(data ?? {}, msg) });
-      if (reason) {
-        this.tmuxHold = { key: `server:${Date.now()}`, detail: reason, since: Date.now() };
-        TmuxManager.setHold(reason);   // every other way in (sign-in/install windows, a daemon) is refused too
-        this.logger.error({ reason }, "Fleet held: AgEnD's previous tmux server can't be verified; no agent starts");
-      }
-    }
-
-    if (!this.startHold()) {
-      await TmuxManager.ensureSession(getTmuxSession());
-      this.tmuxSessionEnsured = true;
-      if (bundled) {
-        await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
-          log: (msg, data) => this.logger.warn(data ?? {}, msg) });
-        // A server AgEnD starts later (the session re-created after the server crashed) is recorded the same way, so
-        // server.json always names the server that runs (leg M: an unrecorded server made `agend rollback` refuse).
-        TmuxManager.onSessionCreated(async () => {
-          const r = await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
-            log: (msg, data) => this.logger.warn(data ?? {}, msg) });
-          if (r) this.logger.info({ serverPid: r.serverPid }, "tmux server recorded (session created)");
-        });
-        // The current copy and the one the previous server ran (kept for a handover/rollback); older ones go.
-        const removed = bundled.srv.pruneCopies(getAgendHome(), [bundled.current.binary, ...(bundled.previous ? [bundled.previous.binary] : [])]);
-        if (removed.length) this.logger.info({ removed }, "Pruned old bundled tmux copies");
-      }
-    }
+    await this.prepareUpdateResume();
+    await this.setUpFleetTmuxServer(fleet);
 
     // #2072: what this host can run — probed in the background, published for every picker.
     this.startAvailabilityRefresh();
@@ -13524,37 +13783,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     );
 
     // Start tmux control mode client for idle detection
-    if (!this.controlClient && !this.startHold()) {
-      this.controlClient = new TmuxControlClient(getTmuxSession(), 2000, this.logger);
-      this.controlClient.start();
-    }
+    this.startTmuxControlClient();
     // Stop any running daemons first (their health checks would respawn killed windows)
     for (const [name] of this.daemons) {
       await this.stopInstance(name);
     }
 
-    // Then kill all remaining agend instance windows to prevent orphans.
-    // Kill both known instance windows (stale from previous run) and orphaned
-    // windows from deleted instances that are no longer in fleet.yaml.
-    const agendNames = new Set(Object.keys(fleet.instances));
-    agendNames.add("general");
-    if (!this.startHold()) try {
-      const existingWindows = await TmuxManager.listWindows(getTmuxSession());
-      for (const w of existingWindows) {
-        // Kill known instance windows (will be recreated)
-        // Also kill orphaned windows: any window with a topic ID suffix (name-tNNNNN)
-        // that isn't in the current config — these are leftovers from deleted instances
-        const isKnownInstance = agendNames.has(w.name);
-        const isOrphanedInstance = !isKnownInstance && isOrphanInstanceWindowName(w.name);
-        if (isKnownInstance || isOrphanedInstance) {
-          if (isOrphanedInstance) this.logger.info({ window: w.name }, "Cleaning up orphaned tmux window");
-          const tm = new TmuxManager(getTmuxSession(), w.id);
-          await tm.killWindow();
-        }
-      }
-    } catch (err) {
-      this.logger.debug({ err }, "Startup tmux window cleanup failed (best effort)");
-    }
+    await this.cleanUpFleetTmuxWindows(fleet);
 
     const pidPath = join(this.dataDir, "fleet.pid");
     writeFileSync(pidPath, String(process.pid), "utf-8");
@@ -13862,7 +14097,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // before the adapter existed meant the operator heard nothing at all.
         this.reportClassicUnrecoverableIds();
       })();
-      progressStart = adapterStartup.then(() => {
+      // M-3770 part 4: a trial posts no restart progress or ready line; its commit posts the ready line (startAgents).
+      if (!this.updateTrial) progressStart = adapterStartup.then(() => {
         // M-2738: a web-started update's target is a web surface too (src/web-update.ts): no chat message to adopt.
         if (pendingUpdateProgress && pendingUpdateProgress.progress.target.surface !== "web") {
           const saved = pendingUpdateProgress.progress.target;
@@ -14018,7 +14254,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const progressCompleted = await startupProgress.finish(completionSummary);
       // Armed only after the completion posted: an append racing ahead of it would be overwritten by it.
       if (cleanupOutcome && "watch" in cleanupOutcome) this.armCleanupWatch(cleanupOutcome.watch, completionSummary);
-      if (!progressCompleted && fleet.channel?.group_id) {
+      if (!progressCompleted && fleet.channel?.group_id && !this.updateTrial) {
         let text: string;
         if (pendingProgressOperation === "full-restart") {
           text = formatRestartProgressCompletion("reload", {

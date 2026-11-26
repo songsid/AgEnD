@@ -178,3 +178,37 @@ An old fleet that an abandon never stopped walks its hand-back from the same pas
 - the trial's hold is up.
 
 Adapters are informational, as counts only (§10.6). The updater's side is `proveTrial`: it asks with a new seq each time until the trial answers healthy or 90 s pass. It checks the answer's nonce and pid, and fails at once on a refusal or a stale answer.
+
+## 13. The commit hands (part 4)
+**Over the mailbox.** The updater's `commit` hands are `commitHandsOverMailbox`: `commit.leaveTrial`, `commit.startAgents`, `commit.deliverInbox` and `commit.runDeferred`.
+- They are valid only in `committing`, and answered only by the attempt's trial generation: its nonce and its acknowledged pid.
+- Each step runs once per process and is answered `done`, or `pending` while its async work runs. The updater asks again with a new seq each time, up to the step's bound: 2 min, 15 min for the agents, 1 min, 1 min.
+- A failed async step runs again, whole, on the next ask. Out of order is refused: no agents before the trial is left, no occurrences before the inbox.
+- False (refused, stale, mismatched or out of time) leaves the attempt in committing, and a fleet start resumes it.
+
+**leaveTrial.**
+- Admissions open again. `QuiescenceBarrier.endTrial` keeps the hold: turns are still copied, claims still held, occurrences still deferred.
+- Then everything the trial skipped:
+  - AgEnD's tmux server, the record and the session (`setUpFleetTmuxServer`, factored out of the start);
+  - 2.3's window ids;
+  - the control client;
+  - the window cleanup;
+  - the Hub (`observeHubSwitches`);
+  - one reconcile of paired runtimes' finished results.
+
+**startAgents** is what a normal start does: the General first, then the rest and the ClassicBot rooms with the same concurrency. It then posts the fleet's ready line.
+- The trial itself posts no restart progress and no ready line.
+- A fleet still held (its tmux server unproven, M-2457) starts no agent, as at any start. That isn't a commit failure.
+- Adopting the update's own progress message (`pendingUpdateProgress`) is left to the progress-marker stages.
+
+**deliverInbox** walks the attempt's ONE inbox in order: the old fleet's held items, then the trial's, then anything held since. It admits them as hand-back copies (claims for references).
+- The hold comes down in the same turn, even when the walk throws (Fable #4554's rule), so nothing newer interleaves.
+- Copies this process journaled keep their human receipts (§10.4). Every other copy is stripped (#4541): the old fleet's, and any from before a crash.
+
+**runDeferred** runs the held occurrences once each, after the inbox (`runCommitDeferred`).
+
+**Resume after a crash in committing (§7).** cli.ts no longer refuses: `fleetStartGate`'s `resumeCommitting` is handed to the FleetManager (`commitResumeAtStart`).
+- The start holds as a trial would: no agents and nothing in tmux. Its hold is `armCommit`, which refuses no admission, because the commit is decided.
+- Its control pass first does again, in order, the fleet steps the dead process had journaled (this process holds again from its start; each step is idempotent against the journal).
+- Then `resumeCommitting` runs with the fleet's own hands for the rest.
+- The route's removal reaches the attempt's service manager for a reload only; nothing stops or starts a fleet from inside one.

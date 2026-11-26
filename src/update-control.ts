@@ -25,11 +25,15 @@ export const CONTROL_DIR = "control";
 export const MAX_CONTROL_BYTES = 4096;
 export const controlDir = (home: string, attemptId: string) => join(attemptDir(home, attemptId), CONTROL_DIR);
 
-/** Each op and the stages it is valid in (Fable rule 1). A later part adds the commit steps. */
+/** Each op and the stages it is valid in (Fable rule 1). */
 export const CONTROL_OPS: Readonly<Record<string, readonly Stage[]>> = {
   "status": ["opened", "barrier", "stopping", "snapshotted", "installing", "trial", "proving", "committing", "abandoning", "rolling-back"],
   "barrier.arm": ["opened"],
   "trial.prove": ["proving"],
+  "commit.leaveTrial": ["committing"],
+  "commit.startAgents": ["committing"],
+  "commit.deliverInbox": ["committing"],
+  "commit.runDeferred": ["committing"],
 };
 
 export interface ControlRequest {
@@ -137,6 +141,39 @@ export function proveTrial(home: string, attempt: AttemptRecord, trial: { nonce:
     } else last = asked.reason;
     d.sleep(d.pollMs ?? 250);
   }
+}
+
+/** The fleet's commit steps (part 4), by op: each answers `done` or `pending` (an async step under way). */
+export const COMMIT_OPS = { leaveTrial: "commit.leaveTrial", startAgents: "commit.startAgents", deliverInbox: "commit.deliverInbox", runDeferred: "commit.runDeferred" } as const;
+export type CommitStep = keyof typeof COMMIT_OPS;
+/** How long the updater waits for each step: starting the agents is a fleet's whole startup. */
+export const COMMIT_STEP_MS: Readonly<Record<CommitStep, number>> = { leaveTrial: 120_000, startAgents: 15 * 60_000, deliverInbox: 60_000, runDeferred: 60_000 };
+
+export interface CommitAskDeps { from: { pid: number; token: string }; askMs?: number; pollMs?: number; boundsMs?: Partial<Record<CommitStep, number>>; sleep(ms: number): void; now(): number; log?(line: string): void }
+
+/**
+ * The updater's commit hands (`runUpdate`'s `commit`, §5): each asks the new fleet — the trial generation, by its nonce
+ * and pid — to do its step, and asks again (a new seq each time) while it answers `pending`, up to the step's bound.
+ * False (refused, stale, mismatched, or out of time) leaves the attempt in committing; a fleet start resumes it.
+ */
+export function commitHandsOverMailbox(home: string, attemptId: string, fleet: { nonce: string; pid: number }, d: CommitAskDeps): Record<CommitStep, () => boolean> {
+  const step = (name: CommitStep) => (): boolean => {
+    const until = d.now() + (d.boundsMs?.[name] ?? COMMIT_STEP_MS[name]);
+    for (;;) {
+      const left = until - d.now();
+      if (left <= 0) { d.log?.(`commit step ${name}: the fleet didn't finish it in time`); return false; }
+      const asked = askFleet(home, { seq: nextControlSeq(home, attemptId), op: COMMIT_OPS[name], attemptId, stage: "committing", to: { nonce: fleet.nonce }, from: d.from },
+        { timeoutMs: Math.min(d.askMs ?? 10_000, left), pollMs: d.pollMs, sleep: d.sleep, now: d.now });
+      if (asked.ok) {
+        const { response } = asked;
+        if (response.by.pid !== fleet.pid) { d.log?.(`commit step ${name}: answered by pid ${response.by.pid}, not ${fleet.pid}`); return false; }
+        if (response.result.status !== "ok") { d.log?.(`commit step ${name}: ${response.result.status}: ${response.result.why}`); return false; }
+        if (response.result.value === "done") return true;
+      }
+      d.sleep(d.pollMs ?? 250);
+    }
+  };
+  return { leaveTrial: step("leaveTrial"), startAgents: step("startAgents"), deliverInbox: step("deliverInbox"), runDeferred: step("runDeferred") };
 }
 
 // ── The fleet's side ───────────────────────────────────────────────────────────────────────────────────────────────

@@ -227,7 +227,7 @@ export interface HandbackPorts {
   claim(deliveryId: string): "claimed" | "ineligible" | "settled" | "missing";
   /** One insert under `sourceKey` for `target`. A replay returns the row the first insert created. null: the target
    *  instance no longer exists (logged and acknowledged by the walk; no row nobody can drain). */
-  admitCopy(sourceKey: string, body: unknown, target: string): { deliveryId: string } | null;
+  admitCopy(sourceKey: string, body: unknown, target: string, keepReceipt?: boolean): { deliveryId: string } | null;
   runDeferred(job: { scheduleId: string; runId: string }): void;
   recordInterrupted(job: { scheduleId: string; runId: string }): void;
 }
@@ -263,6 +263,11 @@ export class QuiescenceBarrier implements QuiescenceGate {
   private flag = false;
   /** Armed by `armTrial`: the trial fleet's hold. */
   private trial = false;
+  /**
+   * The copies this barrier (this process, this boot) journaled: at the commit they keep their human receipts (§10.4)
+   * — every other copy (the old fleet's, or any from before a crash) is admitted stripped.
+   */
+  private ownCopies = new Set<number>();
   private seq = 0;
   private seen = new Set<string>();
   /** Deferred occurrences already on this attempt, so a re-offered run is not written twice. */
@@ -335,6 +340,24 @@ export class QuiescenceBarrier implements QuiescenceGate {
     this.flag = true;
   }
 
+  /**
+   * Part 4's resume after a crash in committing (§7): the restarted fleet holds as the trial did — turns copied,
+   * occurrences deferred, claims held — until its commit delivers the inbox. Admissions are not refused: the commit
+   * is decided, nothing rolls back.
+   */
+  armCommit(attempt: AttemptRecord): void {
+    if (attempt.stage !== "committing") throw new Error(`a resumed commit holds in committing, not ${attempt.stage}`);
+    if (this.flag) throw new Error("the fence is already up");
+    this.bind(attempt);
+    this.flag = true;
+  }
+
+  /** `leaveTrial` (part 4): admissions open again; the hold itself stays until the inbox is delivered. */
+  endTrial(): void { this.trial = false; }
+
+  /** Is `seq` a copy this barrier journaled (its receipt is this boot's)? */
+  ownCopy(seq: number): boolean { return this.ownCopies.has(seq); }
+
   holdOutboxClaim(deliveryId: string, createdSeq: number): boolean {
     if (!this.flag) return false;
     if (this.trial) return true;                                     // stays queued; it was admitted before the trial
@@ -371,6 +394,7 @@ export class QuiescenceBarrier implements QuiescenceGate {
     const seq = this.seq + 1;
     writeInboxItem(this.home, this.attempt.id, seq, turnSource(payload), { kind: "copy", body: payload, target }, this.io);
     this.seq = seq;
+    this.ownCopies.add(seq);
     return true;
   }
 
@@ -394,7 +418,27 @@ export class QuiescenceBarrier implements QuiescenceGate {
    */
   runHandback(attempt: AttemptRecord, ports: HandbackPorts, own: { nonce: string; pid: number }): { walked: boolean; acked: number } {
     if (!handbackDue(attempt, own)) return { walked: false, acked: 0 };
-    const entries = listHandback(this.home, attempt.id, this.io);
+    return this.walk(attempt, ports, "all", () => false);
+  }
+
+  /**
+   * Part 4's `deliverInbox` (§5): in committing, the new fleet admits the attempt's ONE inbox in order — the old fleet's
+   * held items, then the trial's — as hand-back copies and references; deferred occurrences are `runDeferred`'s. A copy
+   * keeps its receipt only when `keep(seq)` (this process journaled it in its trial); the rest are stripped (#4541).
+   */
+  runCommitInbox(attempt: AttemptRecord, ports: HandbackPorts, keep: (seq: number) => boolean): { walked: boolean; acked: number } {
+    if (attempt.stage !== "committing") return { walked: false, acked: 0 };
+    return this.walk(attempt, ports, "inbox", keep);
+  }
+
+  /** Part 4's `runDeferred`: the held occurrences, once each, after the inbox. */
+  runCommitDeferred(attempt: AttemptRecord, ports: HandbackPorts): { walked: boolean; acked: number } {
+    if (attempt.stage !== "committing") return { walked: false, acked: 0 };
+    return this.walk(attempt, ports, "deferred", () => false);
+  }
+
+  private walk(attempt: AttemptRecord, ports: HandbackPorts, which: "all" | "inbox" | "deferred", keep: (seq: number) => boolean): { walked: boolean; acked: number } {
+    const entries = listHandback(this.home, attempt.id, this.io).filter(e => which === "all" || (which === "inbox" ? e.kind === "inbox" : e.kind === "deferred"));
     const held = new Set<string>();
     let acked = 0;
     const acknowledge = (entry: HandbackEntry) => { markHandback(entry, "acked", this.io); acked += 1; };
@@ -410,7 +454,7 @@ export class QuiescenceBarrier implements QuiescenceGate {
       }
       let deliveryId = entry.item.kind === "reference" ? entry.item.deliveryId : "";
       if (action === "admit-then-claim" && entry.item.kind === "copy") {
-        const admitted = ports.admitCopy(handbackSourceKey(attempt.id, entry.seq), entry.item.body, entry.item.target);
+        const admitted = ports.admitCopy(handbackSourceKey(attempt.id, entry.seq), entry.item.body, entry.item.target, keep(entry.seq));
         if (!admitted) {
           ports.log({ deliveryId: "", seq: entry.seq }, `hand-back copy's target ${entry.item.target} no longer exists; acknowledging and continuing`);
           acknowledge(entry);
