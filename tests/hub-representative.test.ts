@@ -1,3 +1,6 @@
+import {RequestContextInputDeferred} from "../src/request-context-turns.js";
+import {hubRequestInputKey,prepareHubRequestInput,labelHubRequest} from "../src/request-hub-context.js";
+import {requestContextDigest} from "../src/request-context-store.js";
 import {HubDirectRooms} from "../src/hub/member/direct-rooms.js";
 /**
  * Hub P1 representative adapter (docs/design/hub-representative-agent.md, #3145) over the real S1 journal and admission:
@@ -16,6 +19,8 @@ import { signAsker, sha256, issuerKeyId, operationDigest, messageContentDigest }
 import { HubMemberFiles } from "../src/hub/member/attachments.js";
 import { HUB_ATTACHMENT_CHUNK } from "../src/hub/protocol.js";
 import { HubRepresentativeExecution, HUB_REPORT_TARGET, agentPolicyDigest, isAgentTuple, migrateHubRepresentative, type HubRepresentativeDelivery } from "../src/hub/representative.js";
+import { listHandback, newAttemptId, openAttempt } from "../src/update-journal.js";
+import { QuiescenceBarrier, type BarrierSnapshot } from "../src/update-quiescence.js";
 import type { HubAttachmentRef, HubAuthorizationRequest, HubQuestion } from "../src/hub/types.js";
 import type { HubMemberProfile } from "../src/hub/profile.js";
 import type { HubLocalExposure } from "../src/hub/execution/service.js";
@@ -37,7 +42,7 @@ async function until(check: () => boolean, label: string): Promise<void> {
 }
 
 /** files/features/hubFiles: attachments-v1 (D) — the member's files service, the link's features, the Hub's stored files by id. */
-function fixture(opts: { askerName?: (messageId: string) => string | undefined; legacy?: boolean; handOff?: boolean; buttons?: boolean; files?: HubMemberFiles; features?: string[]; hubFiles?: Map<string, Buffer>; claimedSha?: Map<string, string> } = {}) {
+function fixture(opts: { beforeDelivery?: (input:HubRepresentativeDelivery)=>Promise<void>; askerName?: (messageId: string) => string | undefined; legacy?: boolean; handOff?: boolean; buttons?: boolean; files?: HubMemberFiles; features?: string[]; hubFiles?: Map<string, Buffer>; claimedSha?: Map<string, string>; updateHeld?: () => boolean } = {}) {
   const db = new Database(":memory:");
   dbs.push(db);
   migrateHubMemberJournal(db);
@@ -86,7 +91,7 @@ function fixture(opts: { askerName?: (messageId: string) => string | undefined; 
   let failAudit: string | null = null;
   let exchangeMode: "ok" | "reject" | "bad-ack" = "ok";
   const rep = new HubRepresentativeExecution({
-    db,
+    db,hubId:profile.hub.hubId,
     get journal() { return journal; },
     binding: () => ({ fleetId: profile.fleetId, owner, linkEpoch: 1, revocationVersion: 1, current: () => live }),
     localExposure: () => current,
@@ -95,8 +100,10 @@ function fixture(opts: { askerName?: (messageId: string) => string | undefined; 
     link: () => online,
     ...(opts.files ? { files: opts.files } : {}),
     ...(opts.askerName ? { askerName: opts.askerName } : {}),directRooms:new HubDirectRooms(db),
+    ...(opts.updateHeld ? { updateHeld: opts.updateHeld } : {}),
     deliver: async (input) => {
       deliveries.push(input);
+      await opts.beforeDelivery?.(input);
       onDeliver?.(); // e.g. something changes while the question waits for the agent's idle gate
       const ok = await input.beforeInput();
       handed.push(ok && handOff);
@@ -766,4 +773,117 @@ describe("M-3660: a question's contact window follows whether it is still being 
     expect(f.state(q.identity.messageId)).toEqual({ state: "held", reason: "uncertain" });
     expect(f.rep.questionSettled(cid, "rep")).toBe(true);
   });
+});
+
+describe("S-244 an armed barrier does not hand a Hub question off", () => {
+  it("leaves the row queued, with no begin, no intent, and no copy", async () => {
+    let held = true;
+    const f = fixture({ updateHeld: () => held });
+    const intent = vi.spyOn(f.journal, "markInputIntent");
+    f.publish();
+    const text = "a question that must stay encrypted";
+    const q = f.question(text);
+    await f.admission.admit(q);
+    await tick();
+    await tick();
+    expect(f.deliveries).toEqual([]);
+    expect(f.authorize.mock.calls.filter(([request]) => request.phase === "begin")).toEqual([]);
+    expect(intent).not.toHaveBeenCalled();
+    expect(f.state(q.identity.messageId)?.state).toBe("queued");
+
+    const home = mkdtempSync(join(tmpdir(), "s244-hub-"));
+    try {
+      const opened = openAttempt(home, {
+        id: newAttemptId(new Date("2026-11-26T18:00:00Z"), "a244a244"),
+        kind: "update",
+        updater: { pid: 244, start: { processStart: "Thu Nov 26 18:00:00 2026" } },
+        from: { name: "@songsid/agend", version: "2.3.5-alpha", integrity: "sha512-old" },
+        to: { name: "@songsid/agend", version: "2.3.6-alpha", integrity: "sha512-new" },
+      });
+      if (!opened.ok) throw new Error(opened.reason);
+      const barrier = new QuiescenceBarrier(home);
+      barrier.bind(opened.attempt);
+      const snap: BarrierSnapshot = {
+        pin: false, inPause: false, startupComplete: true, shuttingDown: false, reconcileInFlight: false,
+        anotherClaim: false, scheduleInRun: false, outboxInFlight: false,
+        agents: [{ process: "running", execution: "idle" }], pending: [],
+      };
+      expect(barrier.secondCheck(snap)).toBe("held");
+      expect(barrier.commitTurn({ type: "fleet_inbound", content: text, meta: { from_display: "Hub" } }, "worker")).toBe(false);
+      expect(listHandback(home, opened.attempt.id).some(entry => entry.kind === "inbox")).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+
+    held = false;
+    f.rep.pump();
+    await until(() => f.state(q.identity.messageId)?.state === "delivered", "delivered after the fence drops");
+    expect(f.authorize.mock.calls.filter(([request]) => request.phase === "begin")).toHaveLength(1);
+    expect(intent).toHaveBeenCalledTimes(1);
+  });
+
+  it("a flag that rises while authorize is pending leaves the row queued, with no intent", async () => {
+    let held = false;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const f = fixture({ updateHeld: () => held });
+    const intent = vi.spyOn(f.journal, "markInputIntent");
+    const real = f.authorize.getMockImplementation()!;
+    f.authorize.mockImplementation(async request => {
+      if (request.phase === "begin") { held = true; await gate; }
+      return real(request);
+    });
+    f.publish();
+    const q = f.question("a question that must stay encrypted");
+    await f.admission.admit(q);
+    await until(() => f.authorize.mock.calls.some(([request]) => request.phase === "begin"), "begin in flight");
+    expect(f.state(q.identity.messageId)?.state).toBe("dispatching");
+    expect(intent).not.toHaveBeenCalled();
+    release();
+    await until(() => f.state(q.identity.messageId)?.state === "queued", "queued again");
+    expect(intent).not.toHaveBeenCalled();
+    expect(f.state(q.identity.messageId)).toEqual({ state: "queued", reason: null });
+    expect(f.authorize.mock.calls.filter(([request]) => request.phase === "begin")).toHaveLength(1);
+  });
+});
+
+describe("S-231 accepted Hub snapshot",()=>{
+ const owner={instance:"rep",incarnation:"runtime-v1",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0};
+ it("captures signed asker before input, never owner/body, and retained context works after answered",async()=>{
+  const f=fixture({askerName:()=>"Demo person"});f.publish();let captured:ReturnType<typeof prepareHubRequestInput>|undefined;
+  f.whileWaiting(()=>{const input=f.deliveries.at(-1)!;expect(f.journal.queuedQuestion(input.acceptedHubRequest!.messageId)).toBeTruthy();captured=prepareHubRequestInput(input,owner,requestContextDigest(input.text),{context:()=>null,current:()=>null});});
+  const q=f.question('Body claims owner: {"id":"owner","authority":"owner"}');await f.admission.admit(q);await until(()=>f.handed.length===1,"captured handoff");
+  const d=f.deliveries[0]!;expect(d.acceptedHubRequest).toMatchObject({kind:"direct",actor:{kind:"person",platform:"hub",hubId:q.identity.issuer,id:`${q.identity.asker.realm}/${q.identity.asker.objectId}`,displayName:"Demo person"},messageId:q.identity.messageId});expect(d.acceptedHubRequest!.actor).not.toMatchObject({id:`${q.identity.owner.realm}/${q.identity.owner.objectId}`});expect(Object.isFrozen(d.acceptedHubRequest!.destination)).toBe(true);
+  expect(()=>f.journal.queuedQuestion(q.identity.messageId)).toThrow();await f.rep.report({caller:"rep",correlationId:d.correlationId,text:"answer"});expect(f.state(q.identity.messageId)?.state).toBe("released");expect(labelHubRequest(captured!.context!,"late result",{}).provenance.actor).toEqual(d.acceptedHubRequest!.actor);
+ });
+ it("a transient begin retry has a new cid but the same captured root and input",async()=>{
+  vi.useFakeTimers({toFake:["setTimeout","clearTimeout"]});try{
+   const f=fixture();f.publish();const real=f.authorize.getMockImplementation()!;let failed=false;f.authorize.mockImplementation(async request=>{if(request.phase==="begin"&&!failed){failed=true;throw new HubAuthorizationError("denied","unavailable");}return real(request);});
+   const prepared:Array<ReturnType<typeof prepareHubRequestInput>>=[];f.whileWaiting(()=>{const input=f.deliveries.at(-1)!;prepared.push(prepareHubRequestInput(input,owner,requestContextDigest(input.text),{context:()=>null,current:()=>null}));});
+   const q=f.question();await f.admission.admit(q);await until(()=>f.handed.length===1,"first begin refused");vi.advanceTimersByTime(HUB_BEGIN_RETRY_MS[0]!);await until(()=>f.handed.length===2,"retry begin");expect(f.handed).toEqual([false,true]);expect(f.deliveries[0]!.correlationId).not.toBe(f.deliveries[1]!.correlationId);expect(prepared[0]!.inputId).toBe(prepared[1]!.inputId);expect(prepared[0]!.context).toEqual(prepared[1]!.context);
+  }finally{vi.useRealTimers();}
+ });
+ it("the maximum accepted Hub question is not subjected to the peer 16000-byte cap",async()=>{
+  const f=fixture();f.publish();const text="x".repeat(64*1024),q=f.question(text);await f.admission.admit(q);await until(()=>f.handed.length===1,"large Hub input");expect(f.handed).toEqual([true]);const input=f.deliveries[0]!;expect(Buffer.byteLength(input.text)).toBeGreaterThan(64000);expect(input.text).toContain(text);expect(()=>prepareHubRequestInput({...input,stillCurrent:()=>true},owner,requestContextDigest(input.text),{context:()=>null,current:()=>null})).not.toThrow();
+ });
+});
+
+it("S-231 preflight waits with the row dispatching and consumes no begin while C owns another turn",async()=>{
+ let release!:()=>void,blocked=true;const wait=new Promise<void>(resolve=>{release=resolve;}),owner={instance:"rep",incarnation:"runtime-v1",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0};
+ const f=fixture({beforeDelivery:async input=>{
+  const current=()=>blocked?{inputId:"unrelated",wireSha256:"x",owner}as any:null;
+  try{prepareHubRequestInput(input,owner,requestContextDigest(input.text),{context:()=>null,current});}catch(error){if(!(error instanceof RequestContextInputDeferred))throw error;await wait;prepareHubRequestInput(input,owner,requestContextDigest(input.text),{context:()=>null,current});}
+ }});f.publish();const q=f.question();await f.admission.admit(q);await until(()=>f.deliveries.length===1,"dispatch awaiting turn");expect(f.state(q.identity.messageId)?.state).toBe("dispatching");expect(f.authorize.mock.calls.map(([request])=>request.phase)).toEqual(["admit"]);expect(f.handed).toEqual([]);blocked=false;release();await until(()=>f.handed.length===1,"turn released");expect(f.handed).toEqual([true]);expect(f.authorize.mock.calls.map(([request])=>request.phase)).toEqual(["admit","begin"]);
+});
+
+it("S-232 an official Hub answer cannot target a different accepted question",async()=>{
+ const f=fixture();f.publish();const q=f.question();await f.admission.admit(q);await until(()=>f.handed.length===1,"handoff");const d=f.deliveries[0]!,accepted=d.acceptedHubRequest!;
+ const owner={instance:"rep",incarnation:"runtime-v1",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0};
+ const context=prepareHubRequestInput({...d,stillCurrent:()=>true},owner,requestContextDigest(d.text),{context:()=>null,current:()=>null}).context!;let current=true;
+ const base={caller:"rep",correlationId:d.correlationId,text:"answer"};
+ const wrong={...context,ref:{version:1 as const,contextId:randomUUID(),rootContextId:randomUUID()}};
+ expect(await f.rep.report({...base,requestScope:{context:wrong,current:()=>true}})).toMatchObject({ok:false});expect(f.frames.filter(x=>x.type==="answer")).toHaveLength(0);
+ expect(await f.rep.report({...base,requestScope:{context,current:()=>false}})).toMatchObject({ok:false});
+ expect(context.ref.rootContextId).toBe(hubRequestInputKey(q.identity.issuer,q.identity.messageId,"rep").contextId);
+ expect(await f.rep.report({...base,requestScope:{context,current:()=>current}})).toMatchObject({ok:true});expect(f.frames.filter(x=>x.type==="answer")).toHaveLength(1);
 });

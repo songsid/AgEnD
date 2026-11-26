@@ -1,0 +1,147 @@
+{
+  "priorHead": "c1723de4acb6c5a1fa72e466c8d0d7a9d4917c17",
+  "sourceHead": "a2d0a7a34fd8b8960eed25366f666778579ae637",
+  "productDelta": "EN refusal only: delegate tasks \u2192 assign tasks; zh and all policy gates/layout/CSS unchanged.",
+  "captures": {
+    "updated": [
+      {
+        "name": "desk-light-en-refusal.png",
+        "sha256": "f04963f5e257a9ec9d84eed3b4d4a3cd5985313a72b8f6b37f895473ab3e0764"
+      },
+      {
+        "name": "desk-dark-en-refusal.png",
+        "sha256": "44c12f9c7f5ab3a3848f91cf19660251c889a6fa23484115a915b229d843d661"
+      },
+      {
+        "name": "phone-light-en-refusal.png",
+        "sha256": "ca308323634e0e1c5c45613eea7e2a710cf9c1525445a4da17d35b8accb2d979"
+      },
+      {
+        "name": "phone-light-zh-TW-details.png",
+        "sha256": "830fd1b4617ff127a758d1532a10d5337938a528374d308d6050bbc2d73a137b"
+      },
+      {
+        "name": "phone-dark-en-refusal.png",
+        "sha256": "089bac7a092eaa9aee21abb6c76f4218a98ca63e569a8cc6dd054c3eae3fec58"
+      },
+      {
+        "name": "phone-dark-zh-TW-details.png",
+        "sha256": "f2394d9cc5ca462b6fea6af125192f4ade73de6daaea843c530afb5602154337"
+      }
+    ],
+    "retainedUnchanged": 50,
+    "checks": 72,
+    "failed": 0
+  },
+  "copyPresentation": [
+    {
+      "variant": "desk-light-en",
+      "before": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "after": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      }
+    },
+    {
+      "variant": "desk-dark-en",
+      "before": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "after": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      }
+    },
+    {
+      "variant": "phone-light-en",
+      "before": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "after": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      }
+    },
+    {
+      "variant": "phone-light-zh-TW",
+      "before": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "after": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      }
+    },
+    {
+      "variant": "phone-dark-en",
+      "before": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "after": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      }
+    },
+    {
+      "variant": "phone-dark-zh-TW",
+      "before": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "after": {
+        "hover": false,
+        "focus": false,
+        "focusVisible": false,
+        "active": false,
+        "background": "rgba(0, 0, 0, 0)"
+      }
+    }
+  ],
+  "diagnosis": "Neutral pointer/focus captures have identical transparent Copy backgrounds in EN and zh-TW. The old transient interaction state was not retained; no locale-specific stylesheet change was needed.",
+  "tests": {
+    "files": 2,
+    "passed": 89,
+    "failed": 0
+  },
+  "authorInspection": "All six final originals opened individually; full assign-tasks sentence and bare zh Copy icon confirmed. No reviewer/user approval inferred."
+}

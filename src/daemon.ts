@@ -1,3 +1,5 @@
+import { ReplyDraft } from "./reply-draft.js";
+import {requireRequestContextPolicy,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { RequestContextReferenceMap } from "./request-context-fence.js";
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { managedClaudeBinding } from "./claude-credential-launch.js";
@@ -2658,6 +2660,8 @@ export class Daemon extends EventEmitter {
   /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
   private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string } };
   private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean };
+  requestContextPolicy?:RequestContextPolicyPort;
+  bindRequestContextPolicy(policy:RequestContextPolicyPort):void {if(this.requestContextPolicy||!this.requestContextLifecycle)throw Error("request-context policy requires its owned turn binding");this.requestContextPolicy=policy;}
   private readonly requestContextCalls = new RequestContextReferenceMap<string, RequestContextLocalCall>(call=>call.admission.coverage==="covered"?call.admission.lease.snapshot.context.ref.rootContextId:null,call=>`local-call:${call.id}`);
   private requestContextInterruptedLaunch: string | undefined;
   private requestContextLaunch(): string { return JSON.stringify([this.bootId, this.spawnGeneration, this.nativePaneLifecycle?.snapshot?.()?.launchId ?? null]); }
@@ -2801,6 +2805,7 @@ export class Daemon extends EventEmitter {
     // deliberately NOT hooked: stop/spawn abandon the in-memory turn while
     // the on-disk interruption must survive for the resume gate.
     this.turnReplyGuard.onComplete = () => {
+      this.replyDraft.reset();
       clearInFlightTurnMarker(this.instanceDir);
       this.publishWorkingState("turn_closed");
     };
@@ -2875,6 +2880,7 @@ export class Daemon extends EventEmitter {
     if (this.deliveryWritesStopping) return;
     this.deliveryWritesStopping = true;
     this.deliveryEpoch++;
+    this.replyDraft.reset();
     this.requestContextLifecycle?.turns.fence();
     this.requestContextCalls.clear();
   }
@@ -5430,6 +5436,7 @@ export class Daemon extends EventEmitter {
     // current human turn; leave already-forwarded tool requests to settle.
     this.recoveryCancelled = true;
     this.turnReplyGuard.cancelByUser();
+    this.replyDraft.reset();
     // #1241: a cancelled turn never confirms — its next edge completes it as
     // intentional. Drop a pending confirmation so it cannot promote afterwards.
     this.clearReplyGuardConfirm();
@@ -7030,6 +7037,9 @@ export class Daemon extends EventEmitter {
     // Cancel may have interrupted an in-flight paste before its promise settled.
     // Its late success must not re-arm the turn that the user just cancelled.
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+    // New input, including a peer/system input, cannot inherit an earlier draft.
+    // If its transcript was already polled before paste confirmation, prefer a generic recovery.
+    this.replyDraft.reset();
     // Channel turns started by a person. Cross-instance, schedules (silent or
     // not), and AgEnD system notices must not expect a reply to a person (#2544):
     // a proxy or recovery notice would land in the last USER topic, or flag a
@@ -7568,6 +7578,7 @@ export class Daemon extends EventEmitter {
 
   private buildTranscriptMonitor(source: TranscriptSource | null): TranscriptMonitor {
     this.followLog.reset();
+    this.replyDraft.reset();
     const modelLaunch = this.backend?.modelObservationLaunch?.();
     const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source, () => modelLaunch);
     let savedModel: unknown;
@@ -7610,6 +7621,16 @@ export class Daemon extends EventEmitter {
         writeFileSync(temp, JSON.stringify(modelObserver.checkpoint()), { mode: 0o600 }); renameSync(temp, path);
       } catch { /* Observation remains visible in memory. */ }
       if (changed) this.emit("model_observation");
+    });
+    monitor.on("reply_draft_record", (entry: unknown) => {
+      if (this.transcriptMonitor === monitor && owner === launchIdentity(this.interactionOwner())) {
+        const turn = this.turnReplyGuard?.snapshot();
+        if (turn) this.replyDraft.observe(entry, turn.generation);
+        else this.replyDraft.reset();
+      }
+    });
+    for (const event of ["reset", "workspace_reset", "context_reset"] as const) monitor.on(event, () => {
+      if (this.transcriptMonitor === monitor) this.replyDraft.reset();
     });
     this.transcriptTurns.reset();
     this.transcriptActivityAt = 0;
@@ -7728,6 +7749,10 @@ export class Daemon extends EventEmitter {
     });
   }
 
+  private _replyDraft?: ReplyDraft;
+  /** Also supports existing prototype-based lifecycle harnesses without constructor state. */
+  private get replyDraft(): ReplyDraft { return this._replyDraft ??= new ReplyDraft(); }
+
   private queueReplyRecoveryPrompt(turn: TurnReplySnapshot): void {
     const deliveryEpoch = this.deliveryEpoch;
     const parent = this.workingTurnRequestContext?.generation === turn.generation ? this.workingTurnRequestContext.snapshot : null;
@@ -7746,7 +7771,10 @@ export class Daemon extends EventEmitter {
           });
           return;
         }
-        const recoveryText = parent && this.requestContextLifecycle ? `[agend-request-input:${recoveryInputId}]\n${REPLY_RECOVERY_PROMPT}` : REPLY_RECOVERY_PROMPT;
+        let prompt = REPLY_RECOVERY_PROMPT;
+        try { prompt = this.replyDraft.recoveryPrompt(current, REPLY_RECOVERY_PROMPT); }
+        catch { /* Draft evidence is best-effort; keep the existing generic recovery. */ }
+        const recoveryText = parent && this.requestContextLifecycle ? `[agend-request-input:${recoveryInputId}]\n${prompt}` : prompt;
         const delivered = await this.deliverMessage(recoveryText, undefined, {
           deliveryEpoch,
           ...(parent ? { requestContextRecovery: { inputId: recoveryInputId, parent,
@@ -13014,6 +13042,7 @@ export class Daemon extends EventEmitter {
       }
       this.broadcastFleetMessage(originatingCall ? { ...message, requestContextCallId: originatingCall.id, sourceDaemonBootId: this.bootId } : message);
     };
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,this.name,tool,args,originatingCall?.admission);}catch(error){respond(null,(error as Error).message);return;}
     if (this.requestContextLifecycle && !peer && !originatingCall || originatingCall && !originatingCall.current()) {
       respond(null, "Originating request context is unavailable"); return;
     }

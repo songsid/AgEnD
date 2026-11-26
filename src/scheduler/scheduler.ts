@@ -1,5 +1,6 @@
 import { Cron } from "croner";
 import { randomUUID } from "node:crypto";
+import type { QuiescenceGate } from "../update-quiescence.js";
 import { SchedulerDb } from "./db.js";
 import type { Schedule, CreateScheduleParams, UpdateScheduleParams, SchedulerConfig, ScheduleRun, ScheduleRetry, ScheduleRetryDrop } from "./types.js";
 import { validateTimezone } from "../config.js";
@@ -65,6 +66,11 @@ export class Scheduler {
   /** IDs of schedules whose onTrigger is currently in flight; guards against
    * a manual trigger and a cron firing (or two cron fires) overlapping. */
   private executing = new Set<string>();
+  /** S-244: while the barrier flag is up, a due occurrence is journaled and not started. Unset: today's run. */
+  private quiescence: QuiescenceGate | null = null;
+  setQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
+  /** True while some schedule is inside `runWithLock`. The barrier's idle check does not treat that as busy. */
+  scheduleInRun(): boolean { return this.executing.size > 0; }
   private log: SchedulerLog;
   /**
    * #1995: the exact occurrences (run id → instant) this process has dealt with, per schedule — started a run of, or
@@ -244,6 +250,29 @@ export class Scheduler {
     this.runWithLock(schedule);
   }
 
+  /**
+   * M-3770 §2.6 hand-back: run an occurrence the update barrier deferred, under the per-schedule lock, with its own run
+   * id — unless the schedule was deleted or disabled, its target instance is gone, or it is running right now. A skip is
+   * recorded in its run log. The caller journals `.started` before and `.acked` after, so a crash between them is
+   * recorded as interrupted on the next walk, never run twice.
+   */
+  runDeferredOccurrence(scheduleId: string, runId: string, targetExists: (name: string) => boolean): "ran" | "skipped" {
+    const schedule = this.db.get(scheduleId);
+    if (!schedule) return "skipped";
+    const skip = (why: string) => { this.db.recordRun(scheduleId, "skipped", `deferred run ${runId} not run after the update: ${why}`); return "skipped" as const; };
+    if (!schedule.enabled) return skip("the schedule is disabled");
+    if (!targetExists(schedule.target)) return skip(`its target ${schedule.target} no longer exists`);
+    if (this.executing.has(scheduleId)) return skip("the schedule is running");
+    this.runWithLock(schedule, runId);
+    return "ran";
+  }
+
+  /** M-3770 §2.6: a deferred occurrence whose run had started when the update interrupted it — recorded, not run again. */
+  recordInterruptedOccurrence(scheduleId: string, runId: string): void {
+    if (!this.db.get(scheduleId)) return;
+    this.db.recordRun(scheduleId, "interrupted", `run ${runId} was interrupted by an update and is not run again`);
+  }
+
   /** Invoke onTrigger while holding the per-schedule lock. Cleans up when
    * the callback returns synchronously, throws, or settles a returned Promise. */
   private runWithLock(schedule: Schedule, runId: string = randomUUID(), retry?: ScheduleRetry): void {
@@ -256,8 +285,16 @@ export class Scheduler {
         this.log.info({ scheduleId: schedule.id, runId, reason: "owned_by_retry" }, "Schedule run not started");
         return;
       }
-      this.supersedeRetry(schedule, runId);
     }
+    // S-244: the lock is held, then the flag. A hit returns before markHandled, so a one-shot row is not deleted.
+    const gate = this.quiescence;
+    if (gate?.armed()) {
+      this.executing.add(schedule.id);
+      try { gate.holdSchedule(schedule.id, runId); }
+      finally { this.executing.delete(schedule.id); }
+      return;
+    }
+    if (!retry) this.supersedeRetry(schedule, runId);
     // #1995: an occurrence instant (not a manual trigger's UUID) runs at most once per process, whoever starts it.
     if (!retry) this.markHandled(schedule.id, runId);
     this.executing.add(schedule.id);

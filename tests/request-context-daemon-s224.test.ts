@@ -1,3 +1,4 @@
+import {assertRequestContextOperation} from "../src/request-context-policy.js";
 import { afterEach, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,11 +23,11 @@ function rig(enabled = true, registration?:import("../src/request-context-fence.
   const frames: Record<string, unknown>[] = []; vi.spyOn(daemon, "broadcastFleetMessage").mockImplementation((frame: any) => { frames.push(frame); });
   vi.spyOn(daemon, "fleetTransportAvailable").mockReturnValue(true);
   const socket = {} as any; daemon.socketSessionNames.set(socket, "worker");
-  const bind = (id: string, ingress: "owner" | "guest" = "guest") => {
+  const bind = (id: string, ingress: "owner" | "guest" | "hub" = "guest") => {
     const contextId = randomUUID(), text = `[agend-request-input:${id}]\nSynthetic question`;
     inputs.set(id, { inputId: id, wireSha256: deliveryContentDigest(text), owner: daemon.requestContextOwner(), proof: { kind: "independent" },
       context: { ref: { version: 1, contextId, rootContextId: contextId }, rootEvidenceRef: "accepted-fixture", ingress,
-        initiatingActor: { kind: "person", platform: "discord", userId: ingress === "owner" ? "demo-admin" : "demo-person" },
+        initiatingActor: ingress==="hub"?{kind:"person",platform:"hub",hubId:"demo-hub",id:"directory/demo-person"}:{ kind: "person", platform: "discord", userId: ingress === "owner" ? "demo-admin" : "demo-person" },
         source: { instance: "worker", incarnation: "incarnation" }, sourceAudience: { kind: "web", ref: randomUUID() } } });
     daemon.bindRequestContextWrite(id, text, false); return daemon.requestContextTurnSnapshot();
   };
@@ -143,4 +144,10 @@ it("R1 actual IPC replacement and disconnect retire only that connection's call 
  await f.fm.connectIpcToInstanceInternal("worker");const current=f.fm.instanceIpcClients.get("worker");expect(current).toBeDefined();expect(current).not.toBe(f.ipc);expect(f.fm.requestContextFleetDrainView(a.context.ref.rootContextId).references).toEqual([]);
  f.clearTimers();f.turns.fence();f.daemon.bootId="restarted-boot";f.daemon.fleetRequestSeq=0;const b=f.bind("b"),next=f.call();expect(f.fm.captureRequestContextIpcCall("worker",next,current)).toBe(true);
  vi.spyOn(f.fm,"ipcReconnect").mockResolvedValue(undefined);current.emit("disconnect");expect(f.fm.requestContextFleetDrainView(b.context.ref.rootContextId).references).toEqual([]);expect(f.fm.instanceIpcClients.has("worker")).toBe(false);await current.close();f.clearTimers();
+});
+
+it("S-232 actual local tool entry refuses Hub task writes before the Fleet frame",()=>{
+ const f=rig();f.bind("hub","hub");f.daemon.bindRequestContextPolicy({assert:assertRequestContextOperation});
+ f.daemon.handleOwnedToolCall({type:"tool_call",tool:"task",args:{action:"create",title:"must not write"},requestId:98},f.socket);
+ expect(f.frames).toHaveLength(0);expect(f.daemon.ipcServer.send).toHaveBeenCalledWith(f.socket,expect.objectContaining({requestId:98,error:expect.stringContaining("task cards")}));expect(f.daemon.requestContextCalls.size).toBe(0);f.clearTimers();
 });

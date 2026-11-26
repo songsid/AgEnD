@@ -1,3 +1,4 @@
+import {requestHubRoomMatches,type RequestHubOutputScope} from "../../request-hub-output.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY,type RoomMemberOptions} from "../room-members-model.js";
 import type Database from "better-sqlite3";
 import {HUB_DIRECT_POST_CAPABILITY} from "../direct-posts-model.js";
@@ -11,7 +12,7 @@ import type {RoomFeedbackSource} from "./room-mention-feedback.js";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { ROOM_HUMAN_RECEIPT, type RoomReceiptProof } from "./room-post-receipt.js";
 import { HubRoomPostAnswers, verifyRoomPostAnswers, type RoomPostAnswerLink, type RoomPostNotification, type RoomPostSource } from "./room-post-answers.js";
-export interface RoomCaller { agent: string; current(): boolean }
+export interface RoomCaller { agent: string; current(): boolean; requestScope?:RequestHubOutputScope }
 export interface RoomIdentity { exposureId: string; revision: number; consentId: string; token: string }
 /**
  * M-3543: the agent is shared, but its share's consent no longer matches it — its backend or folder changed (#3147: consent
@@ -48,6 +49,7 @@ export interface AgentRoomPort {
   post(caller: RoomCaller, value: { room: string; text: string; operationId: string; receiptId?: string; files?:string[] }): Promise<RoomPostResult>;
 }
 export interface RoomPostOptions {
+  hubId?:string;
   db: Database.Database; binding: string; encryptionKey: Buffer;
   files?:HubMemberFiles;directRoom?(room:string,local:RoomIdentity):boolean;rememberDirectRoom?(room:string,local:RoomIdentity):void;
   current(): boolean; local(agent: string): RoomIdentity | null;
@@ -55,6 +57,8 @@ export interface RoomPostOptions {
   lapsed?(agent: string): boolean;
   receipt?(caller: RoomCaller, receiptId: string): RoomReceiptProof | null;
   notify?(input: RoomPostNotification): Promise<boolean>;
+  /** S-244: while an update barrier is up, a queued room reply stays queued. */
+  updateHeld?: () => boolean;
   held?(id: string): void;
   changed?(): void;
   feedback?(value:HubRoomMentionFeedback,source:RoomFeedbackSource,operation:string):boolean;
@@ -181,6 +185,7 @@ export class HubRoomPostAdapter implements AgentRoomPort {
     this.options.db.prepare("INSERT INTO hub_room_posts VALUES(?,?,?) ON CONFLICT(operation_id) DO UPDATE SET value=excluded.value").run(id, this.options.binding, value);
   }
   async post(caller: RoomCaller, input: { room: string; text: string; operationId: string; receiptId?: string; files?:string[] }): Promise<RoomPostResult> {
+    if(!requestHubRoomMatches(caller.requestScope,this.options.hubId,input.room)||caller.requestScope&&input.receiptId)return {ok:false,code:"denied",reason:"Not sent: this reply must stay in its original Hub conversation."};
     const lapsed = this.lapse(caller); if (lapsed) return lapsed;
     const link = this.link, local = this.local(caller.agent), id = input.operationId;
     const direct=!!local&&(this.options.directRoom?.(input.room,local)||this.directRooms.has(`${local.exposureId}:${local.token}:${input.room}`));
@@ -193,7 +198,7 @@ export class HubRoomPostAdapter implements AgentRoomPort {
     try {
       const proof = input.receiptId ? this.options.receipt?.(caller, input.receiptId) : undefined;
       if (input.receiptId && (!proof || proof.receiptId !== input.receiptId || !proof.current())) return {ok:false,code:"denied"};
-      const authorized = () => this.current(caller, local, link) && (!proof || proof.current());
+      const authorized = () => requestHubRoomMatches(caller.requestScope,this.options.hubId,input.room) && this.current(caller, local, link) && (!proof || proof.current());
       const row = this.options.db.prepare("SELECT binding,value FROM hub_room_posts WHERE operation_id=?").get(id) as { binding:string; value: string } | undefined;
       if (row && row.binding !== this.options.binding) return {ok:false,code:"uncertain"};
       const saved: Saved = row ? read(this.options, id, row.value) : { agent: caller.agent, local, room: input.room, text: input.text,...(direct?{direct:true as const}:{}),...(input.files?.length?{files:input.files}:{}), ...(input.receiptId ? {receiptId:input.receiptId} : {}) };

@@ -120,6 +120,8 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // M-3680 (decision 7933bf90): contact permissions and held contact requests — Fleet › 授權, an agent's Permissions tab
   // and Needs you's Approve — were simply missing here, so the link answered 404 and the page said only "Couldn't load
   // permissions". The handler (contact-auth-api.ts) admits a verified admin only, asking the authority on every request.
+  if(method==="GET"&&/^\/ui\/api\/request-contact-authorizations(?:\/R[a-f0-9-]{36})?$/.test(path))return true;
+  if(method==="POST"&&/^\/ui\/api\/request-contact-authorizations\/R[a-f0-9-]{36}\/decision$/.test(path))return true;
   if (method === "GET" && /^\/ui\/api\/contact-authorizations(?:\/R[a-f0-9-]{36})?$/.test(path)) return true;
   if (method === "POST" && /^\/ui\/api\/contact-authorizations\/R[a-f0-9-]{36}\/decision$/.test(path)) return true;
   if ((method === "GET" || method === "PUT") && /^\/ui\/api\/instances\/[^/]+\/contact-permissions$/.test(path)) return true;
@@ -183,9 +185,10 @@ function isPublicSettingsRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)) return true;
   if (method === "DELETE" && /^\/api\/settings\/pending\/[0-9a-f]{32}$/.test(path)) return true;
   // M-3278 (decision 7933bf90, part 3): Access & security's Guests and Web authority, Look's limits, "Retry now" and the
-  // fixed address's test — an admin session's over the link as anywhere (the handlers admit an admin only).
+  // fixed address's test and (M-3814) its preview address's check — an admin session's over the link as anywhere (the
+  // handlers admit an admin only).
   if (method === "GET" && /^\/api\/settings\/(?:guests|guests\/people|web-authority|fleet\/appearance|chat-archive)$/.test(path)) return true;   // M-3281: chat-archive
-  if (method === "POST" && /^\/api\/settings\/(?:guests\/send-code|guests\/revoke|web-authority\/revoke|public-link\/test|connections\/[^/]+\/retry)$/.test(path)) return true;
+  if (method === "POST" && /^\/api\/settings\/(?:guests\/send-code|guests\/revoke|web-authority\/revoke|public-link\/test|public-link\/preview-test|connections\/[^/]+\/retry)$/.test(path)) return true;
   if (method === "PUT" && path === "/api/settings/fleet/appearance") return true;
   // M-3278 (decision 7933bf90): "Apply now" and the authenticator's confirmation of one's own pending change. The fleet
   // decides who may (settingsSelfConfirmation / settingsCodeSession, by web authority); before, this list refused them

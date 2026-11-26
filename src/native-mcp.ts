@@ -1,3 +1,4 @@
+import {requireRequestContextPolicy} from "./request-context-policy.js";
 import { RequestContextReferenceMap, type RequestContextRegistrationGate } from "./request-context-fence.js";
 /** Per-turn, instance-bound MCP capabilities for native Windows CLI children. */
 import { agentCredentialPolicy } from "./agent-credentials.js";
@@ -165,7 +166,7 @@ export class NativeMcpSessions {
    */
   private dispatcherContext(session:Session,name:string,args:Record<string,unknown>):AgentEndpointContext {
     return nativeAgentAdmissionContext(this.ctx, {
-      instance: session.instance,
+      instance: session.instance, operation:{tool:name,args},
       current: () => this.current(session) && this.canCall(session, name, args),
       taskAllowed: value => this.canCall(session, "task", value),
       ...(session.requestContext?{requestContext:session.requestContext}:{}),
@@ -235,6 +236,7 @@ export class NativeMcpSessions {
       const call=old ?? {operationId,digest,result:Promise.resolve().then(async()=>{
         if(!this.current(session) || !this.canCall(session,name,args))return toolError("Native MCP capability or tool access was revoked");
         try {
+          if(this.ctx.requestContextPolicy)requireRequestContextPolicy(this.ctx,session.instance,name,args,session.requestContext?{coverage:"covered",lease:session.requestContext}:undefined);
           const value=await dispatchAgentOperation(this.dispatcherContext(session,name,args),session.instance,OPS[name]!,args,operationId,()=>this.current(session) && this.canCall(session,name,args));
           if(name==="report_result" && !failed(value) && value!==undefined && typeof args.target_instance==="string" && args.target_instance
             && typeof args.correlation_id==="string" && args.correlation_id) {

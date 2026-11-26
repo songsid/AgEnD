@@ -208,17 +208,17 @@ describe("#2481 what the person reads", () => {
   it("the exact version and command to go back, the kept copy's path, and where the error is (en)", () => {
     expect(startFailureLines(failure, "/h")).toEqual([
       "⚠ AgEnD v2.3.0 is installed, but the fleet fails to start (launchd: exit 1, started 6 times).",
-      "  To go back to v2.2.6: npm install -g @songsid/agend@2.2.6 && agend restart",
+      "  To go back to v2.2.6: npm install -g --allow-scripts=@songsid/agend @songsid/agend@2.2.6 && agend restart",
       "  The updater kept a copy of v2.2.6: /p/.agend-rollback/2.2.6-t/agend (nothing is restored automatically).",
       "  The error is at the end of /h/fleet.log. Please report it (agend doctor shows what to include): https://github.com/songsid/AgEnD/issues/new",
     ]);
-    expect(startFailureLines({ ...failure, previous: null }, "/h")[1]).toBe("  To go back: npm install -g @songsid/agend@<the version you had before> && agend restart");
+    expect(startFailureLines({ ...failure, previous: null }, "/h")[1]).toBe("  To go back: npm install -g --allow-scripts=@songsid/agend @songsid/agend@<the version you had before> && agend restart");
   });
   it("zh-TW, with the command untouched", () => {
     setLocale("zh-TW");
     const lines = startFailureLines(failure, "/h");
     expect(lines[0]).toBe("⚠ AgEnD v2.3.0 已安裝，但 fleet 無法啟動（launchd: exit 1, started 6 times）。");
-    expect(lines[1]).toContain("npm install -g @songsid/agend@2.2.6 && agend restart");
+    expect(lines[1]).toContain("npm install -g --allow-scripts=@songsid/agend @songsid/agend@2.2.6 && agend restart");
   });
 });
 
@@ -268,7 +268,7 @@ describe("#2481 agend doctor: a FAIL row first in Service, with the way back and
     expect(row).toMatchObject({ section: "Service", status: "error" });
     expect(row!.detail.split("\n")).toEqual([
       "AgEnD v2.3.0 is installed, but the fleet fails to start (launchd: exit 1, started 6 times).",
-      "  To go back to v2.2.6: npm install -g @songsid/agend@2.2.6 && agend restart",
+      "  To go back to v2.2.6: npm install -g --allow-scripts=@songsid/agend @songsid/agend@2.2.6 && agend restart",
       "  The updater kept a copy of v2.2.6: /p/c (nothing is restored automatically).",
       `  The error is at the end of ${join(home, "fleet.log")}. Please report it (agend doctor shows what to include): https://github.com/songsid/AgEnD/issues/new`,
       "    | starting", "    | Error: Cannot find module './x.js'", "    |     at boot",

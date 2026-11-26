@@ -30,8 +30,11 @@ type Opts = {
   /** /proc can't be listed; `missing`: paths whose realpath fails (no such file). */
   pidsUnlisted?: boolean; missing?: string[];
   free?: number | null; duKb?: number | null; locks?: Record<string, { state: "live" | "stale" | "unknown"; pid: number }>; inProgress?: boolean;
+  journal?: "none" | "open" | "unknown" | "manual" | "closing";
   /** This process's fleet.lock pid (default: this process, 4321). */
   fleetLockPid?: number | null;
+  /** What `npm config ls` lists (default: a user .npmrc with nothing set). */
+  npmConfig?: string;
 };
 
 function rig(o: Opts = {}) {
@@ -86,7 +89,7 @@ function rig(o: Opts = {}) {
       runs.push([cmd, ...args].join(" "));
       if (cmd === "systemctl") return { ...(o.unit ?? { status: 0, stdout: `LoadState=loaded\nActiveState=active\nNeedDaemonReload=${o.reload ?? "no"}\n` }), stderr: "" };
       if (cmd === "launchctl") return { ...(o.launchd ?? { status: 0, stdout: "gui/501/com.agend.fleet = {\n\tstate = running\n\tpid = 812\n}\n" }), stderr: "" };
-      if (cmd === "npm" && args[0] === "config") return o.registry === false ? { status: 1, stdout: "", stderr: "" } : { status: 0, stdout: "; \"user\" config from /home/u/.npmrc\n", stderr: "" };
+      if (cmd === "npm" && args[0] === "config") return o.registry === false ? { status: 1, stdout: "", stderr: "" } : { status: 0, stdout: o.npmConfig ?? "; \"user\" config from /home/u/.npmrc\n", stderr: "" };
       if (cmd === "npm" && args[0] === "ping") { pingEnv.push(env); if (o.pingGate) await o.pingGate; return { ...(o.ping ?? { status: 0, stderr: "" }), stdout: "" }; }
       if (cmd === "npm" && args[0] === "view") return o.view === null ? { status: 1, stdout: "", stderr: "E404" } : { status: 0, stdout: o.view ?? JSON.stringify({ version: "2.5.0", engines: { node: ">=22.14.0" }, optionalDependencies: {} }), stderr: "" };
       if (cmd === "ps") return { status: 0, stdout: "", stderr: "" };                      // macOS: no other fleet
@@ -105,6 +108,7 @@ function rig(o: Opts = {}) {
     freeBytes: async () => (o.free === undefined ? 50e9 : o.free),
     lockHolder: path => { const l = o.locks?.[path]; return l ? { state: l.state, record: { pid: l.pid } } : { state: "free" }; },
     updateInProgress: () => !!o.inProgress,
+    journalState: () => o.journal ?? "none",
   };
   return { d, runs, pingEnv };
 }
@@ -277,6 +281,17 @@ describe("M-3770 P7, P9, P10", () => {
     expect(byId(await runUpdatePreflight({}, rig({ ping: { status: null, stderr: "" } }).d), "P7")).toBeUndefined();
   });
 
+  it("M-3805 P7: npm set to skip install scripts is scripts-off (stop), before any ping; worded with the fix", async () => {
+    const off = rig({ npmConfig: "; \"user\" config from /home/u/.npmrc\n\nignore-scripts = true\n" });
+    const p = await runUpdatePreflight({}, off.d);
+    expect(byId(p, "P7")).toEqual({ id: "P7", ok: false, code: "scripts-off" });
+    expect(p.class).toBe("stop");
+    expect(off.pingEnv).toEqual([]);
+    expect(byId(await runUpdatePreflight({}, rig({ npmConfig: "ignore-scripts = false\n" }).d), "P7")).toEqual({ id: "P7", ok: true });
+    const tr = (key: string, ...args: string[]) => t(key, ...args);
+    expect(preflightRefusal(p, "press", tr)).toContain("npm config delete ignore-scripts");
+  });
+
   it("P9: a container or Windows is stop", async () => {
     expect(byId(await runUpdatePreflight({}, rig({ files: ["/.dockerenv"] }).d), "P9")).toEqual({ id: "P9", ok: false, code: "container" });
     expect(byId(await runUpdatePreflight({}, rig({ initCgroup: "0::/kubepods/besteffort/pod1/abc\n" }).d), "P9")).toMatchObject({ code: "container" });
@@ -320,7 +335,7 @@ describe("M-3770: the launch's refusal, in words", () => {
   it("zh-TW words every code (no key falls back to its name)", () => {
     setLocale("zh-TW");
     try {
-      const codes = ["checkout", "other-copy", "path-shadow", "unreadable", "not-service", "linger-off", "system-unit-not-root", "unit-reload-pending", "no-write", "linked", "vendored", "npm-unreachable", "container", "windows-runtime", "node-too-old"];
+      const codes = ["checkout", "other-copy", "path-shadow", "unreadable", "not-service", "linger-off", "system-unit-not-root", "unit-reload-pending", "no-write", "linked", "vendored", "npm-unreachable", "scripts-off", "container", "windows-runtime", "node-too-old"];
       for (const code of codes) expect(t(`update.preflight.code.${code}`, "x", "y")).not.toContain("update.preflight");
       expect(preflightRefusal(summarize([{ id: "P9", ok: false, code: "container" }], 1), "press", tr)).toBe("這台電腦無法從這裡更新：AgEnD 在容器裡執行；請更新映像檔。 沒有做任何變更。");
     } finally { setLocale("en"); }
@@ -591,5 +606,14 @@ describe("M-3770 1.3 review R2: a process's owner, proven or unknown", () => {
     expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ texts: OTHER_PKG, procs: [{ pid: 96, argv: fleetArgv(OTHER), env: { HOME: "/home/u" }, uid: "gone" }] }).d), "P2")).toEqual({ id: "P2", ok: true });
     expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ texts: OTHER_PKG, procs: [{ pid: 97, argv: fleetArgv(OTHER), env: { HOME: "/home/v" }, uid: 1001 }] }).d), "P2")).toEqual({ id: "P2", ok: true });
     expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ procs: [{ pid: 98, argv: null, env: null, uid: "gone" }] }).d), "P2")).toEqual({ id: "P2", ok: true });
+  });
+});
+
+describe("M-3770 2.1a: P8 reads the update attempt journal", () => {
+  it("an open, unknown or manual-recovery attempt is update-running, in a launch's re-proof too; none or closing is not", async () => {
+    for (const journal of ["open", "unknown", "manual"] as const) {
+      expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ journal }).d), "P8")).toEqual({ id: "P8", ok: false, code: "update-running", detail: { path: "/home/u/.agend/.update-journal/current" } });
+    }
+    for (const journal of ["none", "closing"] as const) expect(byId(await runUpdatePreflight({ localOnly: true }, rig({ journal }).d), "P8")).toEqual({ id: "P8", ok: true });
   });
 });

@@ -428,7 +428,9 @@ export interface WebConfig {
    * with a fixed `hostname` (named tunnel) 1..10080, or 0 = no expiry. `auto_open` (named only, default false): reopen
    * the link after the fleet starts, for the admin who last opened it — no sign-in code is sent by that.
    */
-  public_link?: { allow_public?: boolean; ttl_minutes?: number; protocol?: "http2" | "quic" | "auto"; hostname?: string; tunnel_token_env?: string; origin_port?: number; auto_open?: boolean };
+  public_link?: { allow_public?: boolean; ttl_minutes?: number; protocol?: "http2" | "quic" | "auto"; hostname?: string; tunnel_token_env?: string; origin_port?: number; auto_open?: boolean;
+    /** M-3814: a second hostname on the same named tunnel, routed to the preview port: the fixed link's previews. */
+    preview_hostname?: string };
   /** Echo web chat to the owning fleet topic (default true); never ClassicBot rooms. */
   echo_to_channel?: boolean;
   /** Show the AI subscription usage panel on /view and serve /api/ai-usage (default true). */

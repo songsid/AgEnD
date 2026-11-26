@@ -7,7 +7,7 @@ import type { ContactPermissionsWrite, ContactPerson, ContactTicket, ContactTick
 import { t, getLocale } from "./locale.js";
 const name = z.string().min(1).max(160).regex(/^[^\x00-\x1f\x7f]+$/);
 const revision = z.number().int().nonnegative().optional();
-const ContactChangeSchema = z.discriminatedUnion("kind", [
+export const ContactChangeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("mode"), target: name, revision, mode: z.enum(["legacy", "restricted"]) }),
   z.strictObject({ kind: z.literal("ticket-decision"), ticket_id: name, revision,
     decision: z.enum(["approve-once", "decline"]), grant: ContactDecisionSchema.shape.grant }),

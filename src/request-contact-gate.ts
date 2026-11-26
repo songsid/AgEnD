@@ -22,6 +22,8 @@ export interface RequestContactGateHost {
   canManage(target: string, person: ContactPerson): boolean;
   /** F/I lifecycle must prove no live turn, input, derivative work or native call ledger references. Uninstalled before cutover. */
   rootRetired?(rootId: string): boolean;
+  /** H static constraints and unendorsed Hub exception; absent keeps the existing hold policy. */
+  hubRelayAllowed?(context:RequestContextV1,binding:RequestOperationBindingV1,delivery:NewOutboxDelivery):boolean;
 }
 export interface RequestContactGatePorts {
   ready(): void;
@@ -50,13 +52,13 @@ export class RequestContactGate {
       || binding.payloadSha256 !== requestContextDigest(delivery.payload)) throw Error("request-context contact binding conflict");
     return image;
   }
-  private read(source: string, operation: string): Saved | null {
+  private read(source: string, operation: string,readOnly=false): Saved | null {
     const row = this.db.prepare(`SELECT * FROM ${TABLE} WHERE source_instance=? AND operation_id=?`).get(source, operation) as
       { source_instance: string; operation_id: string; source_key: string; root_id: string; ticket_id: string; image_json: string; image_sha256: string; request_sha256:string } | undefined;
     if (!row) return null;
     const parsed = JSON.parse(row.image_json) as Image, image = this.checked(parsed.delivery, parsed.context, parsed.binding);
     const stored = this.contexts.context(image.context.ref.contextId);
-    const ticket = this.tickets.get(row.ticket_id);
+    const ticket = readOnly?this.tickets.peek(row.ticket_id):this.tickets.get(row.ticket_id);
     const request=this.db.prepare("SELECT request_json FROM contact_auth_tickets WHERE id=?").get(row.ticket_id) as {request_json:string}|undefined;
     if (!request || row.request_sha256!==requestContextDigest(JSON.parse(request.request_json)) || row.image_sha256 !== requestContextDigest(image) || image.delivery.sourceKey !== row.source_key
       || image.delivery.sourceInstance !== row.source_instance || image.delivery.operationId !== row.operation_id
@@ -67,6 +69,17 @@ export class RequestContactGate {
       || ticket.verb !== image.binding.verb) throw Error("request-context contact companion unavailable");
     return { image, ticketId: row.ticket_id };
   }
+  /** Validated immutable companion, never rebuilt by a card renderer and never mutating expiry. */
+  snapshot(id:string):{image:Image;imageSha256:string;ticket:ContactTicket;person:ContactPerson|null} {
+    this.ports.ready();
+    return this.db.transaction(()=>{
+      const row=this.db.prepare(`SELECT source_instance,operation_id,image_sha256 FROM ${TABLE} WHERE ticket_id=?`).get(id) as {source_instance:string;operation_id:string;image_sha256:string}|undefined;
+      if(!row)throw Error("request-context scoped ticket required");
+      const saved=this.read(row.source_instance,row.operation_id,true),ticket=this.tickets.peek(id);
+      if(!saved||!ticket)throw Error("request-context contact companion unavailable");
+      return structuredClone({image:saved.image,imageSha256:row.image_sha256,ticket,person:this.person(saved.image.context)});
+    })();
+  }
   private person(context: RequestContextV1): ContactPerson | null {
     const actor = context.initiatingActor;
     if (actor.kind !== "person" || actor.platform === "hub") return null;
@@ -76,6 +89,7 @@ export class RequestContactGate {
   }
   private requireCurrent(image: Image): void {
     assertRequestContextRootOpen(this.db,image.context.ref.rootContextId);
+    if(image.context.ingress==="hub")this.host.hubRelayAllowed?.(image.context,image.binding,image.delivery);
     if (!this.host.current(image.context, image.binding, image.delivery)) throw Error("request-context contact is no longer current");
   }
   private admitImage(image: Image): {delivery:OutboxDelivery;inserted:boolean} {
@@ -151,7 +165,8 @@ export class RequestContactGate {
       const person = root ? this.person(root) : null;
       const normal = context.ingress === "owner" || context.ingress === "free-room"
         || context.ingress === "restricted-room" && !!root && !!person && this.host.adminOf(root.source.instance, person);
-      if (release || normal) return { admitted: this.admitImage(image) };
+      const hub=context.ingress==="hub"&&this.host.hubRelayAllowed?.(context,binding,delivery)===true;
+      if (release || normal || hub) return { admitted: this.admitImage(image) };
       const request=this.request(image),ticket = this.tickets.hold(request);
       this.db.prepare(`INSERT INTO ${TABLE} (source_instance,operation_id,source_key,root_id,ticket_id,image_json,image_sha256,request_sha256) VALUES (?,?,?,?,?,?,?,?)`).run(delivery.sourceInstance, delivery.operationId, delivery.sourceKey,
         context.ref.rootContextId, ticket.id, requestContextJson(image), requestContextDigest(image),requestContextDigest(request));
@@ -165,13 +180,14 @@ export class RequestContactGate {
       : ticket.state==="expired" ? t("contact.noticeExpired",ticket.id,ticket.target) : t("contact.updated");
     throw new ContactHeldError({ sent: false, held: true, authorization_id: ticket.id, authorization_state: ticket.state, message });
   }
-  decide(id: string, decision: ContactTicketDecision, actor: ContactPerson, policyRevision: number): ContactTicket {
+  decide(id: string, decision: ContactTicketDecision, actor: ContactPerson, policyRevision: number,expectedImageSha256:string): ContactTicket {
     this.ports.ready(); this.tickets.get(id); // Persist expiry even when the decision refuses.
     return this.db.transaction(() => {
       const ticket = this.tickets.get(id);
       if (!ticket?.requestContext) throw Error("request-context scoped ticket required");
-      const row = this.db.prepare(`SELECT source_instance,operation_id FROM ${TABLE} WHERE ticket_id=?`).get(id) as { source_instance: string; operation_id: string } | undefined;
+      const row = this.db.prepare(`SELECT source_instance,operation_id,image_sha256 FROM ${TABLE} WHERE ticket_id=?`).get(id) as { source_instance: string; operation_id: string; image_sha256:string } | undefined;
       if (!row || !this.read(row.source_instance, row.operation_id)) throw Error("request-context contact companion unavailable");
+      if(row.image_sha256!==expectedImageSha256)throw Error("operation-conflict");
       if (this.tickets.policy(ticket.target, ticket.targetGeneration).revision !== policyRevision) throw Error("policy-conflict");
       return this.tickets.decide(id, decision, actor, this.authority());
     })();

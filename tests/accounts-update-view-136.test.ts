@@ -18,13 +18,13 @@ const hostRow = (view: ReturnType<typeof buildAccountsView>, backend: string) =>
 
 describe("the version of an installed CLI against the audited release", () => {
   const view = buildAccountsView(input({
-    "claude-code": "2.1.316 (Claude Code)", codex: "codex-cli 0.171.0", "kiro-cli": "kiro-cli 3.6.0", antigravity: "1.3.5", grok: "grok 1.0.99 (abc)", muse: "1.4.12-R6909.1", opencode: null,
+    "claude-code": "2.1.316 (Claude Code)", codex: "codex-cli 0.172.0", "kiro-cli": "kiro-cli 3.6.2", antigravity: "1.3.5", grok: "grok 1.0.99 (abc)", muse: "1.4.12-R6909.1", opencode: null,
   }));
   it("behind, and the registry has an update: a dashboard Update to the audited release", () => {
     expect(hostRow(view, "claude-code")).toMatchObject({ version: "2.1.316", cliUpdate: { state: "behind", installed: "2.1.316", audited: "2.1.332", button: true, via: "dashboard" } });
   });
   it("at the audited release: current, no button", () => {
-    expect(hostRow(view, "codex")).toMatchObject({ version: "0.171.0", cliUpdate: { state: "current", audited: "0.171.0", button: false, via: "dashboard" } });
+    expect(hostRow(view, "codex")).toMatchObject({ version: "0.172.0", cliUpdate: { state: "current", audited: "0.172.0", button: false, via: "dashboard" } });
     expect(hostRow(view, "kiro-cli")).toMatchObject({ cliUpdate: { state: "current", button: false } });
   });
   it("newer than anything audited: newer (not verified by AgEnD yet), never a button", () => {
@@ -34,8 +34,8 @@ describe("the version of an installed CLI against the audited release", () => {
     expect(hostRow(view, "muse")).toMatchObject({ version: "1.4.12-R6909.1", cliUpdate: { state: "behind", installed: "1.4.12-R6909.1", audited: "1.4.25-R9361.1", button: false, via: "self", latest: false } });
   });
   it("AGEND-153: Antigravity is the named exception — the button is there behind, at and above the audited release, and the reading says it goes to the latest (not audited)", () => {
-    expect(hostRow(view, "antigravity")).toMatchObject({ cliUpdate: { state: "behind", installed: "1.3.5", audited: "1.5.15", button: true, via: "dashboard", latest: true } });
-    for (const [printed, state] of [["1.5.15", "current"], ["1.5.16", "newer"]] as const) {
+    expect(hostRow(view, "antigravity")).toMatchObject({ cliUpdate: { state: "behind", installed: "1.3.5", audited: "1.5.18", button: true, via: "dashboard", latest: true } });
+    for (const [printed, state] of [["1.5.18", "current"], ["1.5.19", "newer"]] as const) {
       expect(hostRow(buildAccountsView(input({ antigravity: printed })), "antigravity")).toMatchObject({ cliUpdate: { state, button: true, latest: true } });
     }
     expect(hostRow(buildAccountsView(input({ antigravity: "no idea" })), "antigravity")?.cliUpdate).toMatchObject({ state: "unknown", button: false, latest: true });

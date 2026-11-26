@@ -1,0 +1,23 @@
+{
+  "priorHead": "756284f10a932b8c8aa1616dd75e0535b25cc3a4",
+  "cause": "JavaScript evaluated policy call arguments before the no-op helper; direct legacy handlers could read unavailable admission methods while the port was absent.",
+  "fix": "Every H policy call checks the installed port before evaluating policy arguments, including Fleet tasks/schedules/theme/config and outbound/daemon/HTTP/native sinks. Existing installed-port assertions remain.",
+  "validation": {
+    "handlerSelection": "handleOutboundFromInstance|dispatchTypedIpc|handleTaskCrud|handleScheduleCrud|handleTaskCrudHttp|requireRequestContextPolicy|prototype.handle",
+    "handlerFiles": 54,
+    "handlerTestsPassed": 1692,
+    "additionalFocusedFiles": 5,
+    "additionalFocusedTestsPassed": 100,
+    "typecheck": "pass",
+    "typecheckTests": "pass",
+    "taskGuardReversal": "fails the actual task pagination regression; original guard restored"
+  },
+  "regression": "The actual MCP/HTTP task pagination fixture has a throwing admission getter; it succeeds with policy OFF. Removing the task-handler installation guard fails this regression.",
+  "captureCarry": {
+    "unchangedPngBlobs": 56,
+    "unchanged": "UI, policy copy and capture recipe",
+    "recapture": "none"
+  },
+  "pending": "Exact-head CI, Fable formal review and USER LOOK HOLD. Production flow remains OFF until L.",
+  "rollback": "Before activation revert this bounded repair. After activation retain the startup barrier and approved drain-before-downgrade contract."
+}

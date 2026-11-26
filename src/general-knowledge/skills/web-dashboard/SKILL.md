@@ -82,7 +82,11 @@ updating AgEnD, an agent's Files & changes, custom CSS, the app icon, mods, `/ra
 **Open beside** (split chat; its layout is kept as on the dashboard reached directly), the **Subagents** row and the chat's
 activity steps (and **Show thinking** when it is on). Two technical limits stay: no live stream on a temporary link (the
 page polls; the fixed address streams for an admin session, at most 8 at once) and 95 MB a file. Guests and read-only sessions are unchanged. HTML previews work over it through a second tunnel
-of their own (`web.preview_on_public_link`, default on).
+of their own (`web.preview_on_public_link`, default on). With a fixed hostname, **Preview address**
+(`web.public_link.preview_hostname`, M-3814) puts them on a second route of the same tunnel instead: Cloudflare → the
+tunnel's Routes → Add route → Published application, that name → `http://127.0.0.1:<preview port>` (web port + 1). It
+must differ from the dashboard's name. **Check preview address** proves it while the link is open. Then no temporary
+preview address is opened, so Cloudflare's 429 limit no longer applies to previews.
 HTML previews cannot load from the network; Settings → Web dashboard → **HTML previews may load libraries from cdnjs /
 jsDelivr** (`web.preview_cdn`, default off) allows scripts, styles and fonts from cdnjs `/ajax/libs/` and jsDelivr `/npm/`
 only — those requests leave the machine. The preview panel steps between a page's versions (‹ v2/3 ›, **Changes**),
@@ -511,7 +515,7 @@ desk to desk along the corridors in the Key's colours; a delegation in progress 
 desk. Hover a desk for its name, state and backend; a click or tap (or Enter in the desk list) opens the
 person's profile card (#2661: a 320 px popover beside them, following them; Esc, a press elsewhere or the same person
 again closes it; on a phone a bottom sheet; #4256: a skin pack's optional `card` key can pick a preset — `default`, `rpg`, `compact`, `dossier` — plus WCAG-checked `#rrggbb` colours, `backgroundImage`, 9-slice `frame`, and section/row layout while keeping share-link field stripping intact): level and XP, office and area, model, backend, today, first seen, the
-activity line, **Find in office** and **Chat**. A double-click opens the chat directly. Each name tag has a level badge
+activity line, **Find in office** and **Chat** (#4504: in a skin pack's office, **Preview pose** plays a picked strip on that person in place, from its first frame, with **Replay**; viewer-only, and a caller is always drawn calling). A double-click opens the chat directly. Each name tag has a level badge
 (lifetime work, docs/office.md § Levels; **Settings → Web dashboard → Office levels**, `web.office_levels`; #3679: the
 fleet's own titles for every office in **Settings → Web dashboard → Level titles for every office**, a pack's `levels`
 JSON shape, admin only, kept in `web-offices.json` — a pack's own titles still win in its offices, its pinned titles
@@ -1088,7 +1092,8 @@ off).
 **Public link fails at once.** Read the step list the bot posts and daemon.log's "Public web link … startup failed":
 - "another tunnel is still running" — a `/login` link or an unconfirmed old tunnel; wait for it to end, or close it;
 - "Cloudflare is limiting new temporary links from this machine" (HTTP 429) — try later; the local dashboard still
-  works;
+  works. On a preview, the notice links to **Set up a fixed preview address** (Settings → Access, at the fixed
+  address); Download still opens the file;
 - "cloudflared stopped before it gave a public address" / "could not be started" / "the download did not complete"
   — the tunnel program failed or couldn't be fetched (network, proxy);
 - "Cloudflare gave no public address in time" — only after a real 60 s wait;

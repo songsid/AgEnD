@@ -16,7 +16,14 @@
  * Emoji (#1918 follow-up, the user's tofu boxes): every stack ends with the platforms' colour emoji fonts and the
  * `emoji` generic (--font-emoji), so an emoji the text fonts lack is drawn by Windows' Segoe UI Emoji, macOS's Apple
  * Color Emoji or Linux's Noto Color Emoji rather than as a box — for the stock stacks and each theme font
- * (app.css: .th-font-system, .th-font-mono). A browser tries the families in order for each character. */
+ * (app.css: .th-font-system, .th-font-mono). A browser tries the families in order for each character.
+ *
+ * M-3796 (the user's grey 🆕 on Win11 Edge): a text font earlier in a stack can carry its own black-and-white glyph for an
+ * emoji, and the browser takes it — on Windows, Noto Sans TC draws 🆕 🆗 🆓 🈶, and the font named Menlo there draws ☕ ⚡ ♈.
+ * So each stack starts with "AgEnD Emoji": the platform's colour emoji font (local(), nothing downloaded), for emoji
+ * only (unicode-range: the emoji planes, the emoji-by-default symbols of the BMP, and the joiners that build sequences).
+ * Text keeps its fonts — digits, #, *, ©, ™, ★, ♥, arrows and CJK are outside the range — and a text-style request
+ * (U+FE0E) still gets the text glyph. A machine without any of the three fonts skips the face. */
 
 @font-face {
   font-family: "Inter";
@@ -27,11 +34,19 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+@font-face {
+  font-family: "AgEnD Emoji";
+  src: local("Segoe UI Emoji"), local("SegoeUIEmoji"), local("Apple Color Emoji"), local("AppleColorEmoji"), local("Noto Color Emoji"), local("NotoColorEmoji");
+  unicode-range: U+1F000-1FAFF, U+200D, U+FE0F, U+20E3, U+231A-231B, U+23E9-23EC, U+23F0, U+23F3, U+25FD-25FE, U+2614-2615, U+2648-2653, U+267F,
+    U+2693, U+26A1, U+26AA-26AB, U+26BD-26BE, U+26C4-26C5, U+26CE, U+26D4, U+26EA, U+26F2-26F3, U+26F5, U+26FA, U+26FD, U+2705, U+270A-270B,
+    U+2728, U+274C, U+274E, U+2753-2755, U+2757, U+2795-2797, U+27B0, U+27BF, U+2B1B-2B1C, U+2B50, U+2B55;
+}
+
 :root {
   /* ── Type ── */
   --font-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji;
-  --font-ui: Inter, "PingFang TC", "PingFang SC", "Noto Sans TC", "Noto Sans SC", "Noto Sans CJK TC", "Noto Sans CJK SC", "Microsoft JhengHei", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif, var(--font-emoji);
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace, var(--font-emoji);
+  --font-ui: "AgEnD Emoji", Inter, "PingFang TC", "PingFang SC", "Noto Sans TC", "Noto Sans SC", "Noto Sans CJK TC", "Noto Sans CJK SC", "Microsoft JhengHei", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif, var(--font-emoji);
+  --font-mono: "AgEnD Emoji", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace, var(--font-emoji);
   /* M-3216: the two small sizes come from a base the phone layout raises one step; the text-size scopes in app.css
      (the chat, Details, Fleet, Log, the drawer's agents) scale the same base, so they follow it too. */
   --fs-3xs-base: 10px;  /* M-3226: the two smallest steps (chart labels, badges, counts); font size only */
