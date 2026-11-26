@@ -119,18 +119,31 @@ describe("M-3814: the preview address in Settings → Access", () => {
 
 describe("M-3814: Check", () => {
   const answer = (list: Array<[string, boolean, string]>) => ({ status: 200, body: { hostname: "preview.agend.example.net", port: 19281, steps: list.map(([step, ok, code]) => ({ step, ok, code })) } });
-  it("an unsaved address: says to save first, asks nothing", async () => {
+  it("an unsaved address: the page sends the address it shows; the server's \"not saved\" says to save first", async () => {
+    checkAnswer = answer([["values", false, "not-saved"]]);
+    const w = await open(named());
+    await w.type(w.$("publicWebPreviewHostname"), " https://Preview.agend.example.net/ ");
+    fire(w.$("previewAddressCheck"), "click"); await settle(10);
+    expect(sent.filter(s => s.path.endsWith("/preview-test")).map(s => s.body)).toEqual([{ hostname: "preview.agend.example.net" }]);
+    expect(w.checks()[0]).toBe("✗ The preview address — Save first: Check uses the saved address.");
+  });
+  it("typed, then saved in the same visit: Check uses it at once (no stale \"Save first\")", async () => {
+    checkAnswer = answer([["values", true, "ok"], ["link", true, "ok"], ["dns", true, "ok"], ["reach", true, "ok"]]);
     const w = await open(named());
     await w.type(w.$("publicWebPreviewHostname"), "preview.agend.example.net");
-    fire(w.$("previewAddressCheck"), "click"); await settle(6);
-    expect(sent.filter(s => s.path.endsWith("/preview-test"))).toEqual([]);
-    expect(p.root.querySelector(".fixed-preview")!.textContent).toContain("Save first: Check uses the saved address.");
+    fleet.web.public_link.preview_hostname = "preview.agend.example.net";   // what the server holds once saved
+    await w.apply(); await settle(12);
+    expect(w.webWrites()).toEqual([{ public_link: { preview_hostname: "preview.agend.example.net" } }]);
+    fire(w.$("previewAddressCheck"), "click"); await settle(10);
+    expect(p.root.querySelector(".fixed-preview")!.textContent).not.toContain("Save first");
+    expect(sent.filter(s => s.path.endsWith("/preview-test")).length).toBe(1);
+    expect(w.checks()).toHaveLength(4);
   });
   it("the saved address: one POST; every step ✓ (en)", async () => {
     checkAnswer = answer([["values", true, "ok"], ["link", true, "ok"], ["dns", true, "ok"], ["reach", true, "ok"]]);
     const w = await open(named({ preview_hostname: "preview.agend.example.net" }));
     fire(w.$("previewAddressCheck"), "click"); await settle(10);
-    expect(sent.filter(s => s.path.endsWith("/preview-test")).map(s => [s.method, s.body])).toEqual([["POST", {}]]);
+    expect(sent.filter(s => s.path.endsWith("/preview-test")).map(s => [s.method, s.body])).toEqual([["POST", { hostname: "preview.agend.example.net" }]]);
     expect(w.checks()).toEqual([
       "✓ The preview address — Saved.",
       "✓ The fixed link is open — Open.",
@@ -153,7 +166,7 @@ describe("M-3814: Check", () => {
   it("every server step and code has words in both languages, the same keys in each", async () => {
     const { t, setLang } = i18n;
     await import("/ui/js/settings-preview-address.js");
-    const codes: Record<string, PreviewRouteCode[]> = { values: ["ok", "not-set"], link: ["ok", "link-closed", "no-listener"], dns: ["ok", "dns-missing", "dns-failed"],
+    const codes: Record<string, PreviewRouteCode[]> = { values: ["ok", "not-set", "not-saved"], link: ["ok", "link-closed", "no-listener"], dns: ["ok", "dns-missing", "dns-failed"],
       reach: ["ok", "wrong-service", "other-page", "route-missing", "self-unreachable", "reach-failed"] };
     expect(Object.keys(codes)).toEqual([...PREVIEW_ROUTE_STEPS]);
     for (const lang of ["en", "zh-TW"]) {
@@ -162,7 +175,7 @@ describe("M-3814: Check", () => {
         const key = `settings.pva_${step}_${code}`;
         expect(t(key), `${lang} ${key}`).not.toBe(key);
       }
-      for (const k of ["pvaTimeout", "pvaNotRun", "pvaSaveFirst", "pvaBusy", "pvaFailed", "previewHostname", "previewHostSame", "previewHostNeedsHostname"]) expect(t(`settings.${k}`), `${lang} ${k}`).not.toBe(`settings.${k}`);
+      for (const k of ["pvaTimeout", "pvaNotRun", "pvaBusy", "pvaFailed", "previewHostname", "previewHostSame", "previewHostNeedsHostname"]) expect(t(`settings.${k}`), `${lang} ${k}`).not.toBe(`settings.${k}`);
     }
     setLang("en");
   });

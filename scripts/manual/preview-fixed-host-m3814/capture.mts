@@ -30,7 +30,7 @@ const shot = async (page: any, name: string) => {
 };
 
 const HOST = "agend.example.net", PREVIEW = "preview.agend.example.net";
-const fx = await bootFixture({ port: 0, classic: false, host: true,
+const fx = await bootFixture({ port: Number(process.env.HP ?? 48614), classic: false, host: true,
   webYaml: `  public_link:\n    hostname: ${HOST}\n    tunnel_token_env: AGEND_CLOUDFLARE_TUNNEL_TOKEN`,
   roster: [
     { name: "general", general: true, backend: "claude-code", displayName: "General", status: "running" },
@@ -62,6 +62,9 @@ async function walk(c: any) {
   const tag = caseName(c), zh = c.lang === "zh-TW", phone = c.device === "phone";
   const { page, ctx, csp } = await fx.page(c, { path: "/ui/chat/dev", prefs: { "preview.optIn": true } as any });
   const errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
+  const checks: Array<number | string> = []; page.on("request", (r: any) => { if (r.url().endsWith("/api/settings/public-link/preview-test")) checks.push("sent"); });
+  page.on("response", (r: any) => { if (r.url().endsWith("/api/settings/public-link/preview-test")) checks.push(r.status()); });
+  page.on("console", (m: any) => { if (m.type() === "error") errors.push("console: " + m.text().slice(0, 200)); });
   try {
     // 1 the notice
     await page.waitForSelector(".msg.agent .html-card .pv-note", { timeout: 20000 });
@@ -85,7 +88,7 @@ async function walk(c: any) {
     await page.waitForTimeout(1200);
     const at = await page.evaluate(`({ path: location.pathname + location.hash, tab: (document.querySelector("[data-settings-tab=sharing]") || {}).hidden === false,
       host: (document.querySelector("#publicWebHostname") || {}).value, preview: !!document.querySelector("#publicWebPreviewHostname"),
-      steps: [...document.querySelectorAll(".fixed-preview-steps li")].map((l) => l.innerText.trim()) })`) as any;
+      steps: [...document.querySelectorAll(".fixed-preview-steps li")].map((l) => l.textContent.trim()) })`) as any;
     check(`${tag} 2: landed on Settings → Access → Sharing (the fixed address's tab)`, at.path === "/settings/access#publicWebHostname" && at.tab, at);
     check(`${tag} 2: the fixed hostname is in view`, await inView(page, "#publicWebHostname") === true, await inView(page, "#publicWebHostname"));
     check(`${tag} 2: the preview address field is right below it, with the route step and this fleet's preview port`,
@@ -117,12 +120,17 @@ async function walk(c: any) {
     }
 
     // 4 Check
+    await page.evaluate(`document.querySelector("#previewAddressCheck").scrollIntoView({ block: "center" })`);
+    await page.waitForTimeout(300);
+    const hit = await page.evaluate(`(() => { const b = document.querySelector("#previewAddressCheck").getBoundingClientRect(); const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!e && !!e.closest("#previewAddressCheck"); })()`);
+    check(`${tag} 4: Check is on screen, nothing over it`, hit === true, hit);
     await page.click("#previewAddressCheck");
     await waitFor(page, `document.querySelectorAll(".fixed-preview .named-test-steps li").length === 4`, 15000);
     await page.waitForTimeout(300);
     const rows = await page.evaluate(`[...document.querySelectorAll(".fixed-preview .named-test-steps li")].map((l) => l.innerText.trim())`) as string[];
     check(`${tag} 4: every step ✓, the last says it works`, rows.length === 4 && rows.every((r) => r.startsWith("✓"))
-      && rows[3].includes(W(zh, `It works: previews over the fixed address use ${PREVIEW}.`, `正常：透過固定網址的預覽會使用 ${PREVIEW}。`)), rows);
+      && rows[3].includes(W(zh, `It works: previews over the fixed address use ${PREVIEW}.`, `正常：透過固定網址的預覽會使用 ${PREVIEW}。`)),
+      { rows, block: await page.evaluate(`(document.querySelector(".fixed-preview") || {}).innerText`), disabled: await page.evaluate(`document.querySelector("#previewAddressCheck").disabled`), checks, dialog: await page.evaluate(`(document.querySelector("dialog[open]") || {}).innerText || null`), url: page.url() });
     check(`${tag} 4: it asked https://${PREVIEW}/frame`, asked.at(-1) === `https://${PREVIEW}/frame`, asked);
     if (phone) {
       const b = await page.evaluate(`Math.round(document.querySelector("#previewAddressCheck").getBoundingClientRect().height)`);

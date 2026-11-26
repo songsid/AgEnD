@@ -299,8 +299,8 @@ export type PreviewRouteStep = "values" | "link" | "dns" | "reach";
 export const PREVIEW_ROUTE_STEPS: readonly PreviewRouteStep[] = ["values", "link", "dns", "reach"];
 export type PreviewRouteCode =
   | "ok" | "timeout"
-  // values: no saved preview address (or not a usable one beside the fixed hostname)
-  | "not-set"
+  // values: no saved preview address (or not a usable one beside the fixed hostname); the page shows another one
+  | "not-set" | "not-saved"
   // link: the fixed link is not open (the preview route only answers while it is); previews are off or not listening
   | "link-closed" | "no-listener"
   // dns, reach: as the fixed address's test
@@ -318,12 +318,15 @@ export interface PreviewRouteResult {
  * then), so a closed link is its own answer. Proof is the listener's boot id in the page — another service, another
  * tunnel or another AgEnD never has it. Closed step codes only.
  */
-export async function runPreviewRouteTest(input: { hostname: string | null; linkOpen: boolean; bootId: string | null; port: number | null },
+export async function runPreviewRouteTest(input: { hostname: string | null; linkOpen: boolean; bootId: string | null; port: number | null;
+  /** The address the page shows (typed, maybe unsaved): checked only when it is the saved one. Absent: the saved one. */
+  shown?: unknown },
   deps: Pick<NamedLinkTestDeps, "resolve4" | "systemLookup" | "fetchPage" | "reachMs" | "retryMs" | "hardMs"> = {}): Promise<PreviewRouteResult> {
   const steps: PreviewRouteResult["steps"] = [];
   const { hostname, port } = input;
   const done = (step: PreviewRouteStep, code: PreviewRouteCode): PreviewRouteResult => { steps.push({ step, ok: code === "ok", code }); return { steps, hostname, port }; };
   if (!hostname) return done("values", "not-set");
+  if (input.shown !== undefined && publicTunnelHostname(typeof input.shown === "string" ? input.shown.trim() : input.shown) !== hostname) return done("values", "not-saved");
   steps.push({ step: "values", ok: true, code: "ok" });
   if (!input.bootId || port === null) return done("link", "no-listener");
   if (!input.linkOpen) return done("link", "link-closed");

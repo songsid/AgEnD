@@ -219,6 +219,7 @@ describe("M-3814: Check — the saved address, through the open fixed link, to t
     ["nothing saved", { hostname: null, linkOpen: true, bootId: boot, port: 19281 }, ["values:not-set"]],
     ["the link is closed", { hostname: PREV, linkOpen: false, bootId: boot, port: 19281 }, ["values:ok", "link:link-closed"]],
     ["no preview listener", { hostname: PREV, linkOpen: true, bootId: null, port: null }, ["values:ok", "link:no-listener"]],
+    ["the page shows another (unsaved) address", { hostname: PREV, linkOpen: true, bootId: boot, port: 19281, shown: "other.example.net" }, ["values:not-saved"]],
   ])("%s: starts nothing, asks nothing", async (_l, input, want) => {
     const fetchPage = vi.fn(), resolve4 = vi.fn();
     const r = await runPreviewRouteTest(input, { fetchPage, resolve4 } as never);
@@ -246,6 +247,8 @@ describe("M-3814: Check — the saved address, through the open fixed link, to t
     f.previewListening = true; f.previewListener = { bootId: boot, settings: { port: 19281 } };
     f.publicWebLink = { fixedPreviewHost: () => null };
     expect(codes(await f.testPreviewRoute())).toEqual(["values:ok", "link:link-closed"]);
+    expect(codes(await f.testPreviewRoute({ hostname: `https://${PREV.toUpperCase()}/` })), "the saved one, as the page writes it").toEqual(["values:ok", "link:link-closed"]);
+    expect(codes(await f.testPreviewRoute({ hostname: "other.example.net" }))).toEqual(["values:not-saved"]);
     f.fleetConfig = { web: { public_link: { preview_hostname: PREV } } };
     expect(codes(await f.testPreviewRoute()), "no fixed hostname: not in force").toEqual(["values:not-set"]);
     f.previewRouteTestRunning = true;

@@ -11626,14 +11626,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * through the open fixed link's tunnel, to this preview listener (its boot id is the proof). One at a time; starts
    * nothing. Admin only, never over the public link (settings-api.ts).
    */
-  async testPreviewRoute(): Promise<PreviewRouteResult | { busy: true }> {
+  async testPreviewRoute(input: { hostname?: unknown } = {}): Promise<PreviewRouteResult | { busy: true }> {
     if (this.previewRouteTestRunning) return { busy: true };
     this.previewRouteTestRunning = true;
     try {
       const listener = this.previewListening ? this.previewListener : null;
       const hostname = publicLinkPreviewHostname(this.fleetConfig?.web);
       const result = await runPreviewRouteTest({ hostname, linkOpen: !!hostname && this.publicWebLink?.fixedPreviewHost() === hostname,
-        bootId: listener?.bootId ?? null, port: listener?.settings.port ?? null });
+        bootId: listener?.bootId ?? null, port: listener?.settings.port ?? null, ...(input.hostname !== undefined ? { shown: input.hostname } : {}) });
       this.logger.info({ steps: result.steps.map(s => `${s.step}:${s.code}`) }, "Fixed preview address check");
       return result;
     } finally { this.previewRouteTestRunning = false; }

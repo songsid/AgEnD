@@ -23,7 +23,6 @@ register("settings", {
     pvaStep5: "Fill in the address here, save, then press Check with the fixed link open.",
     pvaCheck: "Check preview address",
     pvaChecking: "Checking… (up to about a minute)",
-    pvaSaveFirst: "Save first: Check uses the saved address.",
     pvaBusy: "A check is already running. Try again when it ends.",
     pvaFailed: "The check could not run. Try again.",
     pvaNotRun: "Not checked (an earlier step failed).",
@@ -33,6 +32,7 @@ register("settings", {
     pvaStep_reach: "{0} reaches this AgEnD's previews",
     pva_values_ok: "Saved.",
     "pva_values_not-set": "No preview address is saved.",
+    "pva_values_not-saved": "Save first: Check uses the saved address.",
     pva_link_ok: "Open.",
     "pva_link_link-closed": "Open the fixed link (/web), then check again: the preview address only answers while the link is open.",
     "pva_link_no-listener": "Previews are off or not running on this AgEnD.",
@@ -61,7 +61,6 @@ register("settings", {
     pvaStep5: "在這裡填上網址並儲存，再於固定連結開著時按「檢查」。",
     pvaCheck: "檢查預覽網址",
     pvaChecking: "檢查中…（最多約 1 分鐘）",
-    pvaSaveFirst: "請先儲存：檢查用的是已儲存的網址。",
     pvaBusy: "已經有一個檢查在進行，請等它結束再試。",
     pvaFailed: "檢查沒有執行成功，請再試一次。",
     pvaNotRun: "未檢查（前面的步驟失敗）。",
@@ -71,6 +70,7 @@ register("settings", {
     pvaStep_reach: "{0} 連得到這台 AgEnD 的預覽",
     pva_values_ok: "已儲存。",
     "pva_values_not-set": "還沒有儲存預覽網址。",
+    "pva_values_not-saved": "請先儲存：檢查用的是已儲存的網址。",
     pva_link_ok: "已開啟。",
     "pva_link_link-closed": "請先開啟固定連結（/web）再檢查：預覽網址只在連結開著時回應。",
     "pva_link_no-listener": "這台 AgEnD 的預覽已關閉或沒有在執行。",
@@ -116,10 +116,10 @@ export function FixedPreviewAddress({ field, hostname, saved, port }) {
   const host = bareHost(hostname);
   const run = async () => {
     if (running.current) return;
-    if (!saved) { setResult(null); setNote(tn("pvaSaveFirst")); return; }
     running.current = true; setBusy(true); setNote(""); setResult(null);
     try {
-      const r = await api("/api/settings/public-link/preview-test", { method: "POST", body: "{}" });
+      // The server knows what is saved (this page's copy may be from before a save): it answers "not-saved" for another.
+      const r = await api("/api/settings/public-link/preview-test", { method: "POST", body: JSON.stringify({ hostname: host }) });
       if (!lease.current()) return;
       if (r.status === 409) setNote(tn("pvaBusy"));
       else if (!r.ok || !Array.isArray(r.body?.steps)) setNote(tn("pvaFailed"));
