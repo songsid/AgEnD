@@ -9,7 +9,7 @@
  * scripts/manual/npm12-allow-scripts-m3805/repro.sh (evidence in docs/evidence/npm12-allow-scripts-m3805/).
  */
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -144,10 +144,15 @@ describe("the launcher names the cause and the command that works on npm 12", ()
   });
 
   it("every repair line the launcher, postinstall and preinstall print allows the scripts", () => {
-    for (const file of ["launcher/runtime-select.cjs", "launcher/postinstall.cjs", "launcher/agend", "launcher/agend-agent", "scripts/preinstall-guard.cjs", "launcher/agend-install.cjs"]) {
+    // Fable F1: the go-back lines after a failed start, the tmux refusal and the update's fix hint too, in both locales.
+    const files = ["launcher/runtime-select.cjs", "launcher/postinstall.cjs", "launcher/agend", "launcher/agend-agent", "scripts/preinstall-guard.cjs",
+      "launcher/agend-install.cjs", "src/locale.ts", "src/tmux-binary.ts", "src/update-launch.ts", "src/update-install.ts", "src/cli.ts", "install.sh"];
+    for (const file of files) {
+      if (!existsSync(join(REPO, file))) continue;
       const text = readFileSync(join(REPO, file), "utf8").split("\n").filter(l => !/^\s*(?:\/\/|\*|#)/.test(l)).join("\n");
-      expect(text, file).not.toMatch(/"npm install -g @songsid\/agend|npm install -g @songsid\/agend"/);
+      expect(text, file).not.toMatch(/npm (?:i|install) -g ["'`]?@songsid\/agend(?![-\w])/);
     }
+    expect(readFileSync(join(REPO, "src", "locale.ts"), "utf8")).toContain('"startfail.back": "  To go back to v{0}: npm install -g --allow-scripts=@songsid/agend @songsid/agend@{0} && agend restart"');
   });
 });
 
