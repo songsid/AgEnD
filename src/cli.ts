@@ -22,7 +22,7 @@ import { Command, Option } from "commander";
 import { registerBuildInfoCommand } from "./build-provenance-cli.js";
 import { launchdServiceDomain } from "./launchd-service-domain.js";
 import { registerBugReportCommand } from "./bug-report-cli.js";
-import { join, dirname, parse } from "node:path";
+import { basename, join, dirname, parse } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
 import { Cron } from "croner";
 import {
@@ -250,6 +250,18 @@ function holdStateLease(command: string): void {
 function openCliSchedulerDb(): SchedulerDb {
   holdStateLease("schedule");
   return new SchedulerDb(join(DATA_DIR, "scheduler.db"));
+}
+
+/**
+ * M-3770 2.5: the service a Phase 2 update drives — a systemd unit (the user's, else the system's) as the transaction
+ * records it, a launchd job (kind only: launchd keeps Phase 1 until S-260), or none (a detached fleet).
+ */
+async function transactionServiceOf(): Promise<{ kind: "systemd" | "launchd" | null; owned: import("./install-ownership.js").OwnedService | null }> {
+  const { getServicePath, getSystemServicePath, detectPlatform } = await import("./service-installer.js");
+  const path = getServicePath() ?? getSystemServicePath();
+  if (!path) return { kind: null, owned: null };
+  if (detectPlatform() === "macos") return { kind: "launchd", owned: null };
+  return { kind: "systemd", owned: { kind: "systemd", unit: basename(path), fragmentPath: path } };
 }
 
 /** M-3770 part 4: the interrupted commit `fleetStartGate` admitted this start to finish (handed to the FleetManager). */
@@ -1753,6 +1765,7 @@ program
 
     // ── Check if npm global needs sudo (read-only; decides the nvm path the preflight judges) ──
     let needsSudo = false;
+    let npmPrefixFound: string | null = null;                                                      // M-3770 Phase 2's prefix
     try {
       // M-3806: for a UUID in the path, `npm config get prefix` refuses (npm 10–12): read `npm prefix -g`, which npm
       // 11/12 print with `***`; that is asked the way npm tells a child, from the filesystem root (Fable #4526 F2).
@@ -1764,6 +1777,7 @@ program
       const prefix = npmGlobalPrefix.resolve(configured, undefined,
         () => said(`npm ${npmGlobalPrefix.ASK.slice(0, 2).join(" ")} "${npmGlobalPrefix.ASK[2]}"`, npmGlobalPrefix.neutralCwd())).prefix;
       if (!prefix) throw new Error("npm did not say where it installs global packages");
+      npmPrefixFound = prefix;
       const { accessSync, constants } = await import("node:fs");
       try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
     } catch { /* assume no sudo needed */ }
@@ -1789,6 +1803,65 @@ program
         return;
       }
       if (verdict.kind === "unknown") console.log(verdict.note);
+    }
+
+    // ── M-3770 2.5: the update transaction (Phase 2), only where selection says so; Phase 1 below otherwise, unchanged ──
+    // The journal comes first (Fable #4551 F1): an open or unresolved attempt refuses either updater. Until the flip
+    // (S-261) the switch is off and nothing more is asked — no registry read, no readiness run.
+    {
+      const phase = await import("./update-phase.js");
+      const { readCurrent } = await import("./update-journal.js");
+      const journal = readCurrent(DATA_DIR);
+      const service = await transactionServiceOf();
+      const switchedOn = process.env.AGEND_UPDATE_TX === "1";
+      const runQuiet = (command: string, args: string[]) => { const r = spawnSync(command, args, { encoding: "utf-8", timeout: 60_000, stdio: ["ignore", "pipe", "ignore"] }); return { status: r.status, stdout: r.stdout ?? "" }; };
+      const choice = phase.selectUpdatePhase({
+        switchedOn,
+        preflightClass: switchedOn && targetVersion ? (await (await import("./update-readiness.js")).runUpdatePreflight({ target: targetVersion }, { ...(await import("./update-readiness.js")).defaultReadinessDeps(), home: DATA_DIR })).class : "stop",
+        runningTx: phase.updateTxOf((() => { try { return JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")); } catch { return null; } })()),
+        targetTx: switchedOn && targetVersion ? phase.targetUpdateTx(runQuiet, "npm", "@songsid/agend", targetVersion) : 0,
+        service: service.kind,
+        // S-230's request-context isn't on this line until #4519; its state replaces this then (gate (b)).
+        requestContext: "off",
+        journal: journal.state,
+        ...(journal.state === "open" || journal.state === "manual" ? { attempt: { id: journal.attempt.id, stage: journal.attempt.stage } } : {}),
+      });
+      if ("refuse" in choice) {
+        console.error(`\n  ✗ Not updated: ${choice.why}\n`);
+        setUpdateProgressStage(DATA_DIR, "failed", { error: `Not updated: ${choice.why}` });
+        process.exitCode = 1;
+        return;
+      }
+      if (choice.phase === 2 && targetVersion && npmPrefixFound && !needsSudo) {
+        const [{ runTransactionUpdate, phase2Words }, { realHostEnv }, { realHands }, { randomBytes }, { createRequire }] = await Promise.all([
+          import("./update-phase2.js"), import("./update-host.js"), import("./update-recovery/recover.js"), import("node:crypto"), import("node:module")]);
+        const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null; exists(pid: number): boolean };
+        const processStart = admission.processStart(process.pid);
+        if (!processStart) { console.error("\n  ✗ Not updated: this process's own start time can't be read. Nothing was changed.\n"); process.exitCode = 1; return; }
+        const ticks = admission.startTicks(process.pid), boot = admission.bootId();
+        const self = { pid: process.pid, start: { processStart, ...(ticks !== null && boot !== null ? { startTicks: ticks, bootId: boot } : {}) } };
+        const liveness = { processStart: admission.processStart, startTicks: admission.startTicks, bootId: admission.bootId, exists: admission.exists };
+        const hands = realHands(DATA_DIR);
+        let installPrefix = npmPrefixFound;
+        try { installPrefix = realpathSync(npmPrefixFound); } catch { /* the prefix lock says so */ }
+        markUpdateInProgress(DATA_DIR);
+        setUpdateProgressStage(DATA_DIR, "downloading", { version: targetVersion });
+        const r = runTransactionUpdate({ home: DATA_DIR, target: { name: "@songsid/agend", version: targetVersion }, prefix: installPrefix, service: service.owned, cliEntry: canonicalCliEntry() }, {
+          host: realHostEnv(), liveness, self, hex8: () => randomBytes(4).toString("hex"), date: () => new Date(),
+          lockDeps: { ...liveness, pid: process.pid, newToken: () => randomBytes(16).toString("hex"), now: () => new Date(), log: (message: string) => console.log(message) },
+          installEnv: { run: (command, args, o) => { const x = spawnSync(command, args, { stdio: "inherit", env: o.env, cwd: o.cwd }); return { status: x.status, signal: x.signal }; } },
+          proveWritersGone: () => hands.proveWritersGone({ updater: { pid: self.pid, start: self.start }, runner: null, helpers: [] }),
+          waitHandedBack: done => hands.waitHandedBack(done),
+          log: line => console.log(line),
+        });
+        const words = phase2Words(r, targetVersion);
+        for (const line of words.lines) (words.exitCode ? console.error : console.log)(line);
+        // A refresh warning travels with the completion (the chat's and the web's update receipt), with its command.
+        setUpdateProgressStage(DATA_DIR, words.exitCode ? "failed" : "complete", words.exitCode ? { error: words.lines.join(" ").trim() }
+          : { version: targetVersion, ...(words.notice ? { warning: words.notice, ...(words.command ? { cleanupCommand: words.command } : {}) } : {}) });
+        process.exitCode = words.exitCode;
+        return;
+      }
     }
 
     // ── #2264: the target release installs itself ──

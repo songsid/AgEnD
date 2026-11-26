@@ -245,3 +245,14 @@ It takes the home update lock first, as the recovery runner would, then drives t
   - Only `held` from that fleet's pid is ok. Busy, refused, stale or no answer (30 s) abandons.
   - With no old fleet there is nothing to fence.
 - **Prove / commit** (`proveHand`, `commitHands`): addressed to the trial generation the journal acknowledged at that moment (nonce and pid).
+- **`agend update` selects first** (cli.ts, before today's installer branch).
+  - The journal refuses either updater on an open or unresolved attempt.
+  - With the switch off (`AGEND_UPDATE_TX` isn't "1"), nothing more is asked: no readiness run, no registry read, and Phase 1 is unchanged.
+  - Phase 2 (systemd or detached, not the nvm/sudo route) runs `runTransactionUpdate` (update-phase2.ts):
+    - the three locks in order;
+    - the install and its tuple proven, else nothing opens;
+    - `openAttempt` with the running fleet as `old`;
+    - `runUpdate` with the real hands;
+    - when committed, the definition refresh under the locks still held;
+    - the lease and the locks released in reverse.
+  - The result is printed. A refresh warning travels with the completion (the update receipt's `warning` and `cleanupCommand`) and is never a failure.
