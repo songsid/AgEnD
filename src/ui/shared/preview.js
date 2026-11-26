@@ -30,12 +30,15 @@
   var BANNER_ACK_KEY = "agend_html_preview_banner_ack";
   var BANNER = "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.";
 
+  /** M-3814: Settings → Access, at the fixed address (its preview address is set up just below it). */
+  var FIX_HREF = "/settings/access#publicWebHostname";
   var cfg = { dashboardOrigin: "", previewOrigin: "", boot: "", reason: "", reasonCode: "", detail: "" };
   // Why it failed, in English when the app's dictionary has no word for it (chat-strings.js pvFail_*).
   var FAIL_EN = { exited: "its address closed unexpectedly", "spawn-failed": "cloudflared could not start for it", "no-address": "no address was given for it",
     unreachable: "its address could not be reached", "lease-held": "an earlier preview tunnel is still being cleaned up", "gateway-failed": "its local listener could not start",
     // #1767: what cloudflared's exit before an address really was.
-    "rate-limited": "Cloudflare is limiting new temporary links from this machine — try again in a while",
+    // M-3814: the card's Download (or the file's link) still opens it; the notice also links to the fixed preview address.
+    "rate-limited": "Cloudflare is limiting new temporary links from this machine — try again in a while, or download the file to open it",
     "provisioning-failed": "Cloudflare refused to create its address right now", "process-exited": "cloudflared stopped before it gave an address",
     "bad-address": "Cloudflare gave an address that could not be used" };
   // #1554: the page's words. `say(key, english, …values)` asks the app's dictionary (init's opts.text) and keeps the
@@ -53,6 +56,8 @@
   var live = new Map();   // cardKey → { key, iframe, ch, holder, state, … }   (at most one: one running preview per page)
   var listening = false;
 
+  /** A guest's page (the server marks <body data-tier="guest">): Settings is not theirs, so no link there. */
+  function guestPage() { try { return root.document.body.getAttribute("data-tier") === "guest"; } catch (e) { return false; } }
   function now() { return root.performance && typeof root.performance.now === "function" ? root.performance.now() : Date.now(); }
   function store(kind) { try { return root[kind] || null; } catch (e) { return null; } }
   function utf8Bytes(s) { try { return new root.TextEncoder().encode(s).length; } catch (e) { return String(s).length * 3; } }
@@ -200,7 +205,11 @@
       var english = cfg.reasonCode === "publicLinkPreviewFailed" ? "Previews are unavailable on this public link: {0}. The link itself keeps working."
         : cfg.reason || "Previews are not available here.";
       var server = cfg.reasonCode ? say("pvServer_" + cfg.reasonCode, english, arg) : "";
-      return { ok: false, why: "server", reason: server || cfg.reason || say("pvWhyServer", "Previews are not available here.") };
+      var out = { ok: false, why: "server", reason: server || cfg.reason || say("pvWhyServer", "Previews are not available here.") };
+      // M-3814 (the user's decision): Cloudflare's limit on temporary links (429) — a link to Settings → Access, the
+      // fixed address's section, where a fixed preview address (no temporary link at all) is set up.
+      if (cfg.reasonCode === "publicLinkPreviewFailed" && cfg.detail === "rate-limited" && !guestPage()) out.fix = { href: FIX_HREF, label: say("pvFixAddress", "Set up a fixed preview address") };
+      return out;
     }
     var at = root.location && root.location.origin;
     if (!cfg.dashboardOrigin || at !== cfg.dashboardOrigin) {

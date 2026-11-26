@@ -292,3 +292,54 @@ export function namedTestLane(lane: TunnelPurposeLane, opts: { registerMs?: numb
     };
   };
 }
+
+// ── M-3814: the fixed preview address's check ───────────────────────────────────────────────────────────────
+
+export type PreviewRouteStep = "values" | "link" | "dns" | "reach";
+export const PREVIEW_ROUTE_STEPS: readonly PreviewRouteStep[] = ["values", "link", "dns", "reach"];
+export type PreviewRouteCode =
+  | "ok" | "timeout"
+  // values: no saved preview address (or not a usable one beside the fixed hostname)
+  | "not-set"
+  // link: the fixed link is not open (the preview route only answers while it is); previews are off or not listening
+  | "link-closed" | "no-listener"
+  // dns, reach: as the fixed address's test
+  | "dns-missing" | "dns-failed" | "wrong-service" | "other-page" | "route-missing" | "self-unreachable" | "reach-failed";
+export interface PreviewRouteResult {
+  steps: { step: PreviewRouteStep; ok: boolean; code: PreviewRouteCode }[];
+  hostname: string | null;
+  /** The preview port the route's service must name (http://127.0.0.1:<port>); null when previews have none. */
+  port: number | null;
+}
+
+/**
+ * M-3814: does `https://<preview_hostname>/frame` reach THIS AgEnD's preview listener through the open fixed link's
+ * tunnel? Starts nothing: the route only answers while the fixed link is open (the listener takes the preview Host only
+ * then), so a closed link is its own answer. Proof is the listener's boot id in the page — another service, another
+ * tunnel or another AgEnD never has it. Closed step codes only.
+ */
+export async function runPreviewRouteTest(input: { hostname: string | null; linkOpen: boolean; bootId: string | null; port: number | null },
+  deps: Pick<NamedLinkTestDeps, "resolve4" | "systemLookup" | "fetchPage" | "reachMs" | "retryMs" | "hardMs"> = {}): Promise<PreviewRouteResult> {
+  const steps: PreviewRouteResult["steps"] = [];
+  const { hostname, port } = input;
+  const done = (step: PreviewRouteStep, code: PreviewRouteCode): PreviewRouteResult => { steps.push({ step, ok: code === "ok", code }); return { steps, hostname, port }; };
+  if (!hostname) return done("values", "not-set");
+  steps.push({ step: "values", ok: true, code: "ok" });
+  if (!input.bootId || port === null) return done("link", "no-listener");
+  if (!input.linkOpen) return done("link", "link-closed");
+  steps.push({ step: "link", ok: true, code: "ok" });
+  const abort = new AbortController();
+  const hard = setTimeout(() => abort.abort(), deps.hardMs ?? NAMED_TEST_HARD_MS);
+  const full: NamedLinkTestDeps = { healthPort: 0, ensureBinary: async () => "", liveMarker: () => null, reserve: () => ({ busy: "other" }), ...deps };
+  let step: PreviewRouteStep = "dns";
+  try {
+    const dns = await within(resolveStep(hostname, full), abort.signal);
+    if (dns !== "ok") return done("dns", dns as PreviewRouteCode);
+    steps.push({ step: "dns", ok: true, code: "ok" });
+    step = "reach";
+    const reach = await within(reachStep(`https://${hostname}/frame`, JSON.stringify(input.bootId), false, full, abort.signal), abort.signal);
+    return done("reach", reach as PreviewRouteCode);
+  } catch (err) {
+    return done(step, err === DEADLINE ? "timeout" : step === "dns" ? "dns-failed" : "reach-failed");
+  } finally { clearTimeout(hard); }
+}
