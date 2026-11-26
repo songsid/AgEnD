@@ -1,3 +1,5 @@
+import {validateNativeExecInputProof} from "./native-exec-input.js";
+import {admitRequestContextNativeResult} from "./request-context-native-result.js";
 import {RequestContextLocalTurns} from "./request-context-turns.js";
 import {RequestHubInputResolver} from "./request-context-hub-resolver.js";
 import {makeRequestDeliveryInputResolver} from "./request-context-delivery-resolver.js";
@@ -7613,6 +7615,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       });
       const outcome=task.outcomeConfirmed === false ? "uncertain" : task.status === "completed" ? "delivered" : "failed";
       outbox.complete(deliveryId,targetDaemonBootId,attemptNo,outcome,task.error || task.status);
+      if(this.requestContextPolicy){
+        if(!this.requestContextRelay)throw Error("Native scoped return admission is unavailable");
+        const completion=this.nativeInstanceRuntime().requestContextCompletion(target,deliveryId,`delivery:${deliveryId}:${attemptNo}`);
+        admitRequestContextNativeResult(outbox,this.requestContextRelay,{deliveryId,task,...completion});
+        this.scheduleDeliveryOutboxPump();return;
+      }
       // Return a requested peer report when the provider did not explicitly report it through scoped MCP.
       if (meta.requires_reply === "true" && claimed.correlationId && !task.reportedCorrelationIds?.includes(claimed.correlationId) && this.fleetConfig?.instances[claimed.sourceInstance]) {
         const text=(task.status === "completed" ? task.output : `Windows task ${task.status}: ${task.error || task.output}`).slice(0,8000);
@@ -7640,6 +7648,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const row=outbox.get(task.id);
     if(!row || !isNativeExecInstance(this.fleetConfig?.instances[row.targetInstance]) || this.fleetConfig?.instances[row.targetInstance]?.machine_id!==machineId
       || !row.targetDaemonBootId || this.activeDurableTargets.has(row.targetInstance))return;
+    if(this.requestContextPolicy){
+      if(!this.requestContextRelay)throw Error("Native scoped return admission is unavailable");
+      const completion=this.nativeInstanceRuntime().requestContextCompletion(row.targetInstance,row.deliveryId,`delivery:${row.deliveryId}:${row.attemptNo}`);
+      if(!task.execInputProof)throw Error("Native scoped completion has no input proof");
+      // Never let terminal status replace the worker's actual input boundary on a scoped run.
+      validateNativeExecInputProof(task.execInputProof,completion.claim);
+      if(row.state==="submission_started"||row.state==="reconciliation_pending"){
+        if(!outbox.complete(row.deliveryId,row.targetDaemonBootId,row.attemptNo,"delivered","Owned native input proof recovered"))return;
+      }else if(!["delivered","uncertain"].includes(row.state))return;
+      if(outbox.markConsumed(row.deliveryId,row.targetDaemonBootId,row.attemptNo,"turn","Owned native input proof recovered")==="ignored")return;
+      admitRequestContextNativeResult(outbox,this.requestContextRelay,{deliveryId:row.deliveryId,task,...completion});
+      this.reconciledRemoteResults.add(key);this.scheduleDeliveryOutboxPump();return;
+    }
     if(row.state==="submission_started" || row.state==="reconciliation_pending") {
       if(!outbox.complete(row.deliveryId,row.targetDaemonBootId,row.attemptNo,task.status==="completed"?"delivered":"failed",task.error || "Runtime completion recovered after reconnect"))return;
     } else if(row.state==="uncertain" && task.status==="completed") {
@@ -9961,7 +9982,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     originalBody: string, options?: DeliveryOptions): Promise<boolean | void> {
     const admitted = this.humanReceiptPayload(instanceName, payload, origin, originalBody);
     const id = (admitted.meta as Record<string, string> | undefined)?.human_receipt_id;
-    if(id&&requestContextPolicyInstalled(this.requestContextPolicy))nativeHumanInputs.set(admitted,{instance:instanceName,inputId:`human:hmsg-${id}`});
+    if(origin&&id&&requestContextPolicyInstalled(this.requestContextPolicy))nativeHumanInputs.set(admitted,{instance:instanceName,inputId:`human:hmsg-${id}`});
     let sent = false;
     try {
       const result = options ? await this.deliverToInstance(instanceName, admitted, options) : await this.deliverToInstance(instanceName, admitted);

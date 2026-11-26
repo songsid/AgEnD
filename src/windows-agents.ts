@@ -39,8 +39,8 @@ export class MachineSlotLimitError extends Error {
   }
 }
 export interface WindowsAgentPatch { name?: string; cwd?: string; description?: string; instructions?: string; sandbox?: WindowsAgent["sandbox"]; cli?: NativeProviderId; model?: string }
-export interface WindowsAgentSendOptions extends Pick<WindowsRunOptions,"execInput"|"onInputWritten"> { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; credentialProfile?: string }
-interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<string, { agentId: string; digest: string; execInput?:Readonly<NativeExecInputClaim>;execOptionsSha256?:string }> }
+export interface WindowsAgentSendOptions extends Pick<WindowsRunOptions,"execInput"|"onInputWritten"> { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; credentialProfile?: string; requestContextInputKey?:string }
+interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<string, { agentId: string; digest: string; execInput?:Readonly<NativeExecInputClaim>;execOptionsSha256?:string;requestContextInputKey?:string }> }
 /** The preview and actual bridge invocation share one formatter; no second instruction/context composition. */
 export function windowsAgentExecutionTask(agent:Pick<WindowsAgent,"cli"|"cwd"|"sandbox"|"model"|"instructions">,requestId:string,prompt:string):NativeTaskInput {
  return {requestId,cli:agent.cli,...(agent.model?{model:agent.model}:{}),cwd:agent.cwd,sandbox:agent.sandbox,
@@ -66,7 +66,7 @@ export class WindowsAgents {
       if (value.version !== 1 || !Array.isArray(value.agents) || !value.requests || typeof value.requests !== "object") throw new Error("Invalid Windows agent store");
       this.data = value;
       for(const [id,request]of Object.entries(this.data.requests))if(request.execInput!==undefined){
-        if(validateNativeExecInputClaim(request.execInput).requestId!==id||typeof request.execOptionsSha256!=="string"||!/^[a-f0-9]{64}$/.test(request.execOptionsSha256))throw Error("Invalid native exec input identity");
+        if(validateNativeExecInputClaim(request.execInput).requestId!==id||typeof request.execOptionsSha256!=="string"||!/^[a-f0-9]{64}$/.test(request.execOptionsSha256)||request.requestContextInputKey!==undefined&&!/^[a-f0-9]{64}$/.test(request.requestContextInputKey))throw Error("Invalid native exec input identity");
       }
       // Version 1 profiles created before provider selection were all Codex conversations.
       for (const agent of this.data.agents) { agent.cli ??= "codex"; if (!isNativeProviderId(agent.cli)) throw new Error("Invalid Windows agent CLI"); }
@@ -92,9 +92,10 @@ export class WindowsAgents {
   }
   useExecutor(executor: WindowsCliExecutor): void { this.bridge = executor; }
   /** Read only this conversation's immutable claim; a retry never mints or adopts another scope. */
-  requestExecInput(id:string,requestId:string):Readonly<NativeExecInputClaim>|null {
+  requestExecInput(id:string,requestId:string,expectedInputKey?:string):Readonly<NativeExecInputClaim>|null {
     this.find(id);const row=Object.hasOwn(this.data.requests,requestId)?this.data.requests[requestId]:null;
     if(!row||row.agentId!==id||!row.execInput)return null;
+    if(expectedInputKey!==undefined&&row.requestContextInputKey!==expectedInputKey)throw Error("Native run belongs to another admitted input");
     return validateNativeExecInputClaim(row.execInput);
   }
   get(id: string): WindowsAgent & { blocked: boolean } {
@@ -317,10 +318,11 @@ export class WindowsAgents {
     const requestId = v.requestId, prompt = v.prompt;
     const digest = createHash("sha256").update(prompt).digest("hex");
     const execInput=options.execInput===undefined?undefined:validateNativeExecInputClaim(options.execInput);
+    if(options.requestContextInputKey!==undefined&&(!execInput||!/^[a-f0-9]{64}$/.test(options.requestContextInputKey)))throw Error("Native admitted input key is invalid");
     if(execInput&&!options.onInputWritten||!execInput&&options.onInputWritten)throw Error("Native exec input claim is unavailable");
     const old = Object.hasOwn(this.data.requests, requestId) ? this.data.requests[requestId] : null;
     if (old) {
-      if(JSON.stringify(old.execInput??null)!==JSON.stringify(execInput??null)||execInput&&old.execOptionsSha256!==execOptionsDigest(options))throw Error("requestId belongs to a different native input claim");
+      if(JSON.stringify(old.execInput??null)!==JSON.stringify(execInput??null)||execInput&&(old.execOptionsSha256!==execOptionsDigest(options)||old.requestContextInputKey!==options.requestContextInputKey))throw Error("requestId belongs to a different native input claim");
       if (old.agentId !== id || old.digest !== digest) throw new Error("requestId belongs to a different message");
       const turn = this.get(id).turns.find(t => t.id === requestId);
       if (!turn) throw new Error("This message was already sent; its visible history has expired");
@@ -338,7 +340,7 @@ export class WindowsAgents {
       agent.activeId = requestId;
       agent.turns.push({ id: requestId, prompt, output: "", status: "starting", startedAt: Date.now() });
       if (agent.turns.length > 10) agent.turns.shift();
-      this.data.requests[requestId] = { agentId: id, digest,...(execInput?{execInput,execOptionsSha256:execOptionsDigest(options)}:{}) };
+      this.data.requests[requestId] = { agentId: id, digest,...(execInput?{execInput,execOptionsSha256:execOptionsDigest(options),...(options.requestContextInputKey?{requestContextInputKey:options.requestContextInputKey}:{})}:{}) };
     }); } catch(error) { this.launching.delete(requestId); throw error; }
     let inputWritten=false;
     try {

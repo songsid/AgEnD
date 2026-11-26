@@ -23,6 +23,7 @@ import type { NativeMcpLease } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import type { AgentRuntimeTarget, PreparedAgentRuntime } from "./agent-runtime-change.js";
 import { captureRequestContextCall, type RequestContextCallLease } from "./request-context-call.js";
+import {requestContextDigest} from "./request-context-store.js";
 import { deliveryContentDigest } from "./delivery-outbox.js";
 import { RequestContextInputDeferred, type RequestContextLocalTurns, type RequestContextRuntimeOwner } from "./request-context-turns.js";
 
@@ -86,6 +87,16 @@ export class FleetWindowsRuntime {
     } };
   }
   requestContextCallsRequired(name:string):boolean{return !!this.requestContextLifecycle&&isNativeExecInstance(this.config(name));}
+  /** Exact server-owned completion evidence remains readable after its C turn ended. */
+  requestContextCompletion(name:string,requestId:string,inputId:string){
+    const lifecycle=this.requestContextLifecycle;
+    if(!lifecycle?.prepare||this.host.stopping()||!isNativeExecInstance(this.config(name)))throw Error("Native scoped completion is unavailable");
+    const agentId=this.id(name),owner=Object.freeze(structuredClone(lifecycle.owner(name))),inputKey=requestContextDigest([name,owner.incarnation,inputId]),claim=this.store.requestExecInput(agentId,requestId,inputKey);
+    if(!claim||owner.instance!==name)throw Error("Native scoped completion is unavailable");
+    const image=requestContextDigest({claim,owner});
+    const current=()=>{try{return !this.host.stopping()&&this.requestContextLifecycle===lifecycle&&this.id(name)===agentId&&requestContextDigest({claim:this.store.requestExecInput(agentId,requestId,inputKey),owner:lifecycle.owner(name)})===image;}catch{return false;}};
+    return Object.freeze({claim,owner,current});
+  }
   get drainRevision():string{return `${this.requestContextRuns.revision}:${this.store.requestContextDrainRevision}`;}
   drainView(rootId:string){
     const view=this.requestContextRuns.view(rootId),runs=[...this.requestContextRuns.values()];
@@ -351,10 +362,11 @@ export class FleetWindowsRuntime {
       ...(typeof meta.from_instance === "string" ? [`Incoming Fleet context: ${JSON.stringify({from_instance:meta.from_instance.slice(0,128),correlation_id:typeof meta.correlation_id === "string" ? meta.correlation_id.slice(0,256) : undefined,requires_reply:meta.requires_reply === "true"})}`] : []),
     ].join("\n");
     const preparedLifecycle=this.requestContextLifecycle?.prepare;
-    let inputFrame:RequestContextExecInput|undefined,execInput:Readonly<NativeExecInputClaim>|undefined;
+    let inputFrame:RequestContextExecInput|undefined,execInput:Readonly<NativeExecInputClaim>|undefined,inputKey:string|undefined;
     if(preparedLifecycle){
       if(!nativeProviderMcpSupported(agent.cli)||!this.host.openMcp)throw Error("Native request tools are unavailable");
-      if(existing){execInput=this.store.requestExecInput(agent.id,requestId)??undefined;if(!execInput)throw Error("Native legacy turn cannot acquire request scope");}
+      inputKey=requestContextDigest([name,this.requestContextLifecycle!.owner(name).incarnation,options.requestContextInputId??null]);
+      if(existing){execInput=this.store.requestExecInput(agent.id,requestId,inputKey)??undefined;if(!execInput)throw Error("Native legacy turn cannot acquire request scope");}
       else{
         if(agent.activeId)throw new RequestContextInputDeferred();
         const task=windowsAgentExecutionTask(agent,requestId,prompt),inputOptions={context:contextText,resumeSessionId:agent.threadId};
@@ -403,7 +415,7 @@ export class FleetWindowsRuntime {
     const closeLease=()=>{if(lease){lease.close();if(this.mcpLeases.get(name)?.lease===lease)this.mcpLeases.delete(name);}};
     const context=lease ? contextText : existing&&execInput?contextText:undefined;
     let task:ReturnType<WindowsAgents["send"]>;
-    try { task=this.store.send(agent.id,{requestId,prompt},()=>!this.host.stopping() && authority?.() !== false,{...(lease ? {mcp:lease.connection} : {}),...(context?{context}:{}),...(credentialProfile ? {credentialProfile} : {}),...(execInput?{execInput,onInputWritten:inputFrame?inputFrame.written:()=>{throw Error("Retired native input cannot be written again");}}:{}),onSettled:task=>{
+    try { task=this.store.send(agent.id,{requestId,prompt},()=>!this.host.stopping() && authority?.() !== false,{...(lease ? {mcp:lease.connection} : {}),...(context?{context}:{}),...(credentialProfile ? {credentialProfile} : {}),...(execInput?{execInput,...(inputKey?{requestContextInputKey:inputKey}:{}),onInputWritten:inputFrame?inputFrame.written:()=>{throw Error("Retired native input cannot be written again");}}:{}),onSettled:task=>{
       const reportedCorrelationIds=lease?.reportedCorrelations(typeof meta.from_instance === "string" ? meta.from_instance : undefined) ?? [];
       closeLease();inputFrame?.finish();
       // A confirmed run end is terminal. An uncertain native outcome is not proof that work ended.

@@ -460,6 +460,8 @@ describe("S-230 actual exec claim and accepted human input",()=>{
   expect(f.box.getHumanReceipt(f.receipt.receipt_id)?.state).toBe("delivered");expect(scope.current()).toBe(true);
   await f.runtime.deliver(f.name,{requestId:id,content:f.content},f.options);expect(f.start).toHaveBeenCalledOnce();expect(f.open).toHaveBeenCalledOnce();
   f.settle();await pending;expect(scope.current()).toBe(false);expect(f.owner.turns.current(f.owner.owner())).toBeNull();
+  expect(f.runtime.requestContextCompletion(f.name,id,f.options.requestContextInputId).current()).toBe(true);
+  expect(()=>f.runtime.requestContextCompletion(f.name,id,`delivery:${id}:2`)).toThrow("another admitted input");
  });
  it("a missing actual MCP endpoint aborts before provider start and leaves the exact receipt uncertain",async()=>{
   const f=await prepared();f.open.mockReturnValueOnce(null);
