@@ -22,10 +22,12 @@
         "select": 20,
         "replay": 30,
         "action": 30,
-        "selectFont": "13px"
+        "selectFont": "13px",
+        "sameRow": true
       },
       "replayEnabled": true,
       "crashedState": "Crashed · Novice",
+      "pickerAtCall": "pat",
       "errors": [],
       "csp": []
     },
@@ -50,10 +52,12 @@
         "select": 20,
         "replay": 30,
         "action": 30,
-        "selectFont": "13px"
+        "selectFont": "13px",
+        "sameRow": true
       },
       "replayEnabled": true,
       "crashedState": "已當掉 · 新手",
+      "pickerAtCall": "pat",
       "errors": [],
       "csp": []
     },
@@ -78,10 +82,12 @@
         "select": 20,
         "replay": 30,
         "action": 30,
-        "selectFont": "13px"
+        "selectFont": "13px",
+        "sameRow": true
       },
       "replayEnabled": true,
       "crashedState": "Crashed · Novice",
+      "pickerAtCall": "pat",
       "errors": [],
       "csp": []
     },
@@ -106,10 +112,12 @@
         "select": 20,
         "replay": 30,
         "action": 30,
-        "selectFont": "13px"
+        "selectFont": "13px",
+        "sameRow": true
       },
       "replayEnabled": true,
       "crashedState": "已當掉 · 新手",
+      "pickerAtCall": "pat",
       "errors": [],
       "csp": []
     }

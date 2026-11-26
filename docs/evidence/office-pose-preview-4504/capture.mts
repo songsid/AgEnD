@@ -1,7 +1,8 @@
 // #4504 captures. A synthetic pack and fixture agents only (Alpha … Echo): no real names, self-drawn pictures.
 // Each strip is drawn so it is told apart at a glance: idle (face), working (laptop), walkUp (back of the head),
 // walkSide (profile), pat (pink, hearts), needs (red, "!"). For each case: Alpha's card with the picker (Off); walkUp
-// picked; pat picked; Replay; then Alpha crashes with a preview on: drawn calling at the Help desk, not in the preview.
+// picked; pat picked; Replay (pat shows its frame as hearts); then Alpha crashes while previewing pat: drawn calling,
+// walking to the Help desk, not in the preview.
 // REPO=<checkout> PW_DIR=<dir with playwright-core> CHROME=<chrome> OUT=<dir> DEV=desk|phone [PW_DPR=3]  npx tsx capture-4504.mts
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -35,8 +36,15 @@ const pack = await draw.evaluate(`(() => {
     }
     return s; };
   const kinds = ["idle", "work", "side", "up", "pat", "needs"], pics = Object.fromEntries(kinds.map((k) => [k, pose(k)]));
+  // pat: 4 frames, frame k with k + 1 hearts above the head, so a Replay (back to frame 0, one heart) shows.
+  pics.pat = (() => { const s = mk(4 * 32, 48);
+    for (let f = 0; f < 4; f++) { const c = s.c, o = f * 32;
+      c.fillStyle = "#e868a8"; c.fillRect(o + 8, 22, 16, 22); c.fillStyle = "#2a2a2a"; c.fillRect(o + 10, 44, 5, 4); c.fillRect(o + 17, 44, 5, 4);
+      c.fillStyle = "#f2c9a3"; c.fillRect(o + 9, 8, 14, 13); c.fillStyle = "#2a2a2a"; c.fillRect(o + 9, 6, 14, 5); c.fillRect(o + 12, 13, 2, 2); c.fillRect(o + 18, 13, 2, 2);
+      c.fillStyle = "#ff3d7f"; for (let k = 0; k <= f; k++) c.fillRect(o + 2 + k * 7, 0, 5, 5); }
+    return s; })();
   const st = (src) => ({ src, frames: 2, w: 32, h: 48, fps: 2, dw: 32, dh: 48, ax: 16, ay: 46 });
-  const person = { idle: st("idle.png"), working: st("work.png"), walkSide: st("side.png"), walkUp: st("up.png"), walkDown: st("idle.png"), pat: st("pat.png"), needs: st("needs.png") };
+  const person = { idle: st("idle.png"), working: st("work.png"), walkSide: st("side.png"), walkUp: st("up.png"), walkDown: st("idle.png"), pat: { ...st("pat.png"), frames: 4 }, needs: st("needs.png") };
   const bg = mk(1280, 720), g = bg.c;
   g.fillStyle = "#e9e4d8"; g.fillRect(0, 0, 1280, 720);
   const room = (x, y, w, h, f, t) => { g.fillStyle = f; g.fillRect(x, y, w, h); g.strokeStyle = "#5b6475"; g.lineWidth = 4; g.strokeRect(x, y, w, h); g.fillStyle = "#222"; g.font = "700 22px sans-serif"; g.fillText(t, x + 12, y + 30); };
@@ -46,9 +54,9 @@ const pack = await draw.evaluate(`(() => {
     areas: {
       desks: { rect: [80, 30, 500, 300], seats: [[200, 240], [330, 240], [460, 240]] },
       lounge: { rect: [700, 30, 500, 300], seats: [{ x: 820, y: 240, for: ["bot-alpha"] }, [950, 240], [1080, 240]] },
-      help: { rect: [80, 390, 500, 300], seats: [[200, 600], [330, 600]] },
+      alert: { rect: [80, 390, 500, 300], seats: [[200, 600], [330, 600]] },
       nap: { rect: [700, 390, 500, 300], seats: [[820, 600], [950, 600]] } },
-    stateZones: { working: "desks", needs: "help", crashed: "help", stuck: "help", paused: "nap", stopped: "nap", default: "lounge" },
+    stateZones: { working: "desks", needs: "alert", crashed: "alert", stuck: "alert", paused: "nap", stopped: "nap", default: "lounge" },
     characters: { default: person } };
   const files = { "bg.png": b64(bg.cv) };
   for (const [k, v] of Object.entries(pics)) files[k + ".png"] = b64(v.cv);
@@ -83,19 +91,25 @@ try {
     // #4508 review: the picker's and Replay's height (CSS px) and the select's font size, beside an action button's.
     r.sizes = await page.evaluate(`(() => { const h = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().height) : null; };
       const sel = document.querySelector(".oo-card-preview select");
-      return { select: h(".oo-card-preview select"), replay: h(".oo-card-replay"), action: h(".oo-card-actions .btn"), selectFont: sel ? getComputedStyle(sel).fontSize : null }; })()`);
+      return { select: h(".oo-card-preview select"), replay: h(".oo-card-replay"), action: h(".oo-card-actions .btn"), selectFont: sel ? getComputedStyle(sel).fontSize : null,
+        sameRow: (() => { const a = document.querySelector(".oo-card-preview select"), b = document.querySelector(".oo-card-replay"); return !!a && !!b && Math.abs(a.getBoundingClientRect().top + a.getBoundingClientRect().height / 2 - b.getBoundingClientRect().top - b.getBoundingClientRect().height / 2) < 4; })() }; })()`);
     await sleep(600); await shot("1-card-picker-off");
     await sel.selectOption("walkUp"); await sleep(1200); await shot("2-walkUp");
+    // pat at 2 fps: 1.2 s in, frame 2 (three hearts).
     await sel.selectOption("pat"); await sleep(1200); await shot("3-pat");
     r.replayEnabled = await page.locator(".oo-card-replay").isEnabled();
-    await page.locator(".oo-card-replay").click(); await sleep(300); await shot("4-replay");
-    // A preview on (idle), then Alpha crashes: drawn calling at the Help desk, not in the preview.
-    await sel.selectOption("idle"); await sleep(500);
+    // Replay: back to frame 0 (one heart), then on again (frame 2, three hearts, 1.1 s later).
+    await page.locator(".oo-card-replay").click(); await sleep(120); await shot("4a-replay-restarts");
+    await sleep(1100); await shot("4b-replay-plays-on");
+    // The previewed person calls: with pat still picked, Alpha crashes. The preview must give way: Alpha drawn calling,
+    // walking to the Help desk (5a), there with the call bubble (5b).
     const was = (await page.locator(".oo-card-state").innerText()).trim();
     status.set("bot-alpha", "crashed");
     await page.waitForFunction((w: string) => { const s = (document.querySelector(".oo-card-state")?.textContent || "").trim(); return !!s && s !== w; }, was, { timeout: 30000 }).catch(() => errors.push("crash not seen"));
     r.crashedState = (await page.locator(".oo-card-state").innerText().catch(() => "")).trim();
-    await sleep(12000); await shot("5-caller-with-preview-on");
+    r.pickerAtCall = await sel.inputValue();
+    await sleep(1500); await shot("5a-previewed-agent-calls");
+    await sleep(10500); await shot("5b-previewed-agent-at-help-desk");
     report.cases[key] = { ...r, errors, csp: await csp() };
     await ctx.close();
   }
