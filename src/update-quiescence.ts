@@ -192,6 +192,18 @@ export interface QuiescenceGate {
    * A Hub or room payload is not a copy. The producer leaves that row queued, and the caller must not send it.
    */
   commitTurn(payload: Record<string, unknown>, target: string): boolean;
+  /**
+   * True (the trial's hold only, Fable part 3 (a)): nothing durable is admitted — a rollback restores the outbox from the
+   * snapshot and would lose a row taken now after its sender was told "accepted". The source is answered "retry".
+   */
+  refusesAdmission?(): boolean;
+}
+
+/** The trial refuses a durable admission; every source turns it into its own retryable answer (HTTP: 503 + Retry-After). */
+export const UPDATE_TRIAL_REFUSAL = "update-trial";
+export const UPDATE_TRIAL_RETRY_SECONDS = 10;
+export function updateTrialRefusal(): Error & { code: string; retryAfterMs: number } {
+  return Object.assign(new Error("AgEnD is updating; try again shortly"), { code: UPDATE_TRIAL_REFUSAL, retryAfterMs: UPDATE_TRIAL_RETRY_SECONDS * 1000 });
 }
 
 /**
@@ -325,7 +337,7 @@ export class QuiescenceBarrier implements QuiescenceGate {
 
   holdOutboxClaim(deliveryId: string, createdSeq: number): boolean {
     if (!this.flag) return false;
-    if (this.trial) return true;                                     // stays queued; it is in the outbox already
+    if (this.trial) return true;                                     // stays queued; it was admitted before the trial
     this.rememberReference(deliveryId, createdSeq);
     return true;
   }
@@ -343,6 +355,8 @@ export class QuiescenceBarrier implements QuiescenceGate {
   }
 
   holdTaskClaim(): boolean { return this.flag; }
+
+  refusesAdmission(): boolean { return this.flag && this.trial; }
 
   noteAdmission(deliveryId: string, createdSeq: number): void {
     if (!this.flag || this.trial) return;

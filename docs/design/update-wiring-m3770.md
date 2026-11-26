@@ -147,12 +147,19 @@ An old fleet that an abandon never stopped walks its hand-back from the same pas
 **No agents, nothing in tmux.**
 - The trial is the start's hold (`startHold()`, beside the M-2457 `tmuxHold`). No agent starts, and `startInstance` refuses with the hold's reason ("Updating: checking the new version").
 - `TmuxManager.setHold` refuses sign-in windows and daemons.
-- The trial leaves the tmux server, the session and every window alone: no reconcile, no `server.json` record, no window cleanup. Leaving the trial (part 4's `leaveTrial`) does those steps then.
+- The trial leaves the tmux server, the session and every window alone: no reconcile, no `server.json` record, no window cleanup, no window-id move. Leaving the trial (part 4's `leaveTrial`) does those steps then.
 
 **The hold** is armed at the start, right after the hand-back and the mailbox, before the web listener, the adapters or any agent. It's `QuiescenceBarrier.armTrial`: bound to the attempt, it continues the ONE inbox sequence after the old fleet's last file, with no second check.
 - Adapter and web turns for an agent are journaled as copies (`commitTurn`).
 - Occurrences are deferred, and task claims are held.
-- Durable outbox rows just stay queued (§10.4): the claim is held and no reference is journaled, for rows from before or new ones.
+- Durable outbox rows from before the trial just stay queued (§10.4): the claim is held, and no reference is journaled.
+- **Nothing durable is admitted during the trial** (Fable, part 3 (a)). A rollback restores the outbox from the snapshot, so a row taken in the trial would be lost after its sender was told "accepted". A reference to it would point at nothing, and a Hub ask is acked at admission. So:
+  - The outbox itself refuses every admission while the trial's hold is up (`refusesAdmission`). It throws a retryable `update-trial` error, and the source answers in its own retryable way; HTTP answers 503 with `Retry-After: 10`.
+  - Nothing of the Hub starts (`applyHubSwitches` returns in a trial). The Hub keeps its deliveries and retries after the commit.
+  - Agents can't send (none run), and occurrences and board claims are already held.
+  - The commit opens these sources in `leaveTrial` (part 4). It also lifts the hold before `deliverInbox` admits the held copies.
+- **A trial whose hold couldn't be armed** (its attempt closed first) starts no adapters, so it takes no inbound at all (Fable (b)). It logs once at error level and is never proven.
+- **2.3's window ids are left alone** in a trial too (Fable (c)); `leaveTrial` moves them with the tmux reconcile.
 - The hold comes down by the same rules as the old fleet's: the attempt ending, or (part 4) the commit.
 
 **`trial.prove`** is valid only in `proving`. The fleet answers only as the attempt's trial: its nonce, and the pid the updater acknowledged. Its answer is `{ nonce, pid, healthy, problems, adapters }`, and healthy means all of these hold:

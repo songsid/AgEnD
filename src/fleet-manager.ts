@@ -391,7 +391,7 @@ import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { QuiescenceBarrier, stripHumanReceipt, UPDATE_HANDBACK_COPY_KIND, UPDATE_HANDBACK_SOURCE, handbackDue, turnSource,
-  type BarrierAgent, type BarrierSnapshot, type HandbackPorts, type QuiescenceGate } from "./update-quiescence.js";
+  type BarrierAgent, type BarrierSnapshot, type HandbackPorts, type QuiescenceGate, UPDATE_TRIAL_REFUSAL, UPDATE_TRIAL_RETRY_SECONDS } from "./update-quiescence.js";
 import { serveControl, type ControlResult, type TrialProof } from "./update-control.js";
 import { serviceLockSenderLive } from "./service-lock.js";
 import { processFleetLockRecord } from "./fleet-lock.js";
@@ -1403,6 +1403,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const gens = (read.attempt.fleets as { gen: string; nonce: string; dead?: boolean }[] | undefined) ?? [];
     if (!gens.some(g => g.gen === "trial" && g.nonce === nonce && !g.dead)) return null;
     return { attemptId: read.attempt.id, nonce, detail: "Updating: checking the new version" };
+  }
+
+  /** A trial whose hold couldn't be armed (its attempt closed first): it takes no inbound at all (Fable part 3 (b)). */
+  private updateTrialUnheld(): boolean {
+    return !!this.updateTrial && (this.updateBarrier?.attemptId !== this.updateTrial.attemptId || !this.updateBarrier.barrier.armed());
+  }
+
+  /** The trial's refusal of a durable admission, as HTTP: 503 with Retry-After — the caller retries; nothing is lost. */
+  static answerUpdateTrialRefusal(err: unknown, res: import("node:http").ServerResponse): boolean {
+    if ((err as { code?: unknown } | null)?.code !== UPDATE_TRIAL_REFUSAL || res.headersSent) return false;
+    res.writeHead(503, { "Retry-After": String(UPDATE_TRIAL_RETRY_SECONDS) });
+    res.end(JSON.stringify({ error: "updating", detail: (err as Error).message }));
+    return true;
   }
 
   /** What holds this start's agents back: a tmux server AgEnD can't prove its own, or an update's trial. */
@@ -3225,6 +3238,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Reads the raw configuration at run time (the newest wins); off and never started: returns before any import. */
   private async applyHubSwitches(): Promise<void> {
     if (this.shuttingDown || !this.hubEffectsReady) return;
+    // M-3770 part 3 (Fable (a)): nothing of the Hub starts in an update's trial — the Hub keeps its deliveries and
+    // retries after the commit opens it (leaveTrial), so a rollback loses nothing the Hub was told was accepted.
+    if (this.updateTrial) return;
     const raw = this.rawFleetConfig as { hub?: { enabled?: unknown }; hub_member?: { enabled?: unknown } };
     const on = raw?.hub?.enabled === true || raw?.hub_member?.enabled === true;
     if (!on && !this.hubRuntime && !this.hubRuntimeInit) return;
@@ -13434,18 +13450,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // M-2457: AgEnD's own tmux socket (`agend` for the real home).
     const { tmuxSocket, resolveTmux } = await import("./tmux-binary.js");
     TmuxManager.setSocketName(tmuxSocket());
+    // M-3770 wiring part 3: an update's trial runs no agents, so it leaves tmux alone — the server, the session, every
+    // window and 2.3's window ids — until the commit leaves the trial.
+    this.updateTrial = this.detectUpdateTrial();
     // M-2457 §6 rule 3: 2.3's window ids (untagged window-id files) move into the migration journal before anything —
     // a stop, a pane check, a restart — can read one as a window on AgEnD's own server.
-    try {
+    if (!this.updateTrial) try {
       const { sweepLegacyWindowIds } = await import("./tmux-legacy.js");
       const moved = sweepLegacyWindowIds(getAgendHome(), Object.keys(fleet.instances ?? {}).map(name => ({ name, dir: this.getInstanceDir(name) })), tmuxSocket());
       if (moved.length) this.logger.info({ instances: moved }, "2.3 tmux window ids moved to the migration journal");
     } catch (err) { this.logger.warn({ err }, "Could not move 2.3 tmux window ids to the migration journal; each instance does it as it starts"); }
     // M-2457 §6 rule 2: a server from another pin still on the socket is ended by its own recorded
     // client, positively, before ours starts; one AgEnD cannot prove its own holds the whole fleet (nothing is killed).
-    // M-3770 wiring part 3: an update's trial runs no agents, so it leaves tmux alone — the server, the session and
-    // every window — until the commit leaves the trial.
-    this.updateTrial = this.detectUpdateTrial();
     const bundled = this.updateTrial ? null : await (async () => {
       const srv = await import("./tmux-server.js");
       const binary = resolveTmux().binary;
@@ -13824,7 +13840,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // progress is visible without adding adapter startup time to the critical path.
     let adapterStartup: Promise<void> | null = null;
     let progressStart: Promise<boolean> = Promise.resolve(false);
-    if (topicMode && (fleet.channel || fleet.channels?.length)) {
+    // M-3770 part 3 (Fable (b)): a trial whose hold couldn't be armed takes no inbound at all (no hold, no agents).
+    if (topicMode && (fleet.channel || fleet.channels?.length) && !this.updateTrialUnheld()) {
       // An adapter becoming reachable during startup can receive messages; make
       // all existing topic ids routable before opening that inbound path.
       this.routing.rebuild(fleet);
@@ -33448,6 +33465,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (this.settingsGate().handle(req, res, url, settingsNext)) return;
         if (settingsNext(req, res, url)) return;
       } catch (err) {
+        // M-3770 part 3 (Fable (a)): the update's trial refused a durable admission — the caller retries, nothing is lost.
+        if (FleetManager.answerUpdateTrialRefusal(err, res)) return;
         this.logger.error({ err: (err as Error)?.message, path: url.pathname }, "Web request handler threw");
         if (!res.headersSent) { res.writeHead(500); res.end(JSON.stringify({ error: "internal error" })); }
         else res.destroy();

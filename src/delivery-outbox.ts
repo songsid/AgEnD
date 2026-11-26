@@ -1,7 +1,7 @@
 import {assertRequestHubContactImage} from "./request-context-policy.js";
 import {RequestContextReturns,requestContextDeliveryChildId,requestContextReturnBlockers,registerRequestContextReturnDispatcher,assertRequestContextReturnsCompatibility,REQUEST_CONTEXT_RETURNS_TABLE} from "./request-context-returns.js";
 import type {PreparedRequestContextInput,RequestContextRuntimeOwner} from "./request-context-turns.js";
-import type { QuiescenceGate } from "./update-quiescence.js";
+import { updateTrialRefusal, type QuiescenceGate } from "./update-quiescence.js";
 import { RequestContactCards, type RequestContactCardsHost } from "./request-contact-card.js";
 import { RequestContextDrain } from "./request-context-drain.js";
 import { RequestContextMigrationShadow, type RequestMigrationHost } from "./request-context-migration.js";
@@ -1285,6 +1285,8 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   private admitInternal(input: NewOutboxDelivery, scoped: boolean): { delivery: OutboxDelivery; inserted: boolean } {
+    // M-3770 part 3 (Fable (a)): the update's trial admits nothing durable; the source retries after the commit.
+    if (this.quiescence?.refusesAdmission?.()) throw updateTrialRefusal();
     const now = new Date().toISOString();
     const deliveryId = randomUUID();
     const insert = this.db.prepare(`

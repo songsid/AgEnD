@@ -115,12 +115,12 @@ describe("M-3770 2.5 wiring part 3: the trial's hold", () => {
     expect(entries[2]!.kind === "inbox" && entries[2]!.item.kind === "copy" && (entries[2]!.item.body as { content: string }).content).toBe("arrived in trial");
   });
 
-  it("durable outbox rows just stay queued: claims are held and no reference is journaled, for old rows or new ones", () => {
+  it("durable outbox rows from before the trial just stay queued: claims are held and no reference is journaled", () => {
     const f = trialFleet();
-    startTrial(f);
-    const barrier = f.fm.updateBarrier.barrier;
     const row = f.outbox.admit({ operationId: "o", sourceKey: "k", sourceInstance: "peer", sourceDaemonBootId: "b", targetInstance: "worker",
       kind: "fleet_inbound", payload: { type: "fleet_inbound", content: "durable", meta: {} } }).delivery;
+    startTrial(f);
+    const barrier = f.fm.updateBarrier.barrier;
     expect(barrier.holdOutboxClaim(row.deliveryId, row.createdSeq)).toBe(true);
     barrier.noteAdmission(row.deliveryId, row.createdSeq);
     expect(listHandback(f.home, ID)).toEqual([]);
@@ -217,3 +217,67 @@ describe("M-3770 2.5 wiring part 3: trial.prove", () => {
     expect(prove(f, { nonce: TRIAL.nonce, pid: 7777 })).toEqual({ ok: false, reason: `the trial's answer came from pid ${TRIAL.pid}, not 7777` });
   });
 });
+
+describe("M-3770 2.5 wiring part 3: the trial admits nothing durable (Fable (a))", () => {
+  const row = (key: string) => ({ operationId: key, sourceKey: key, sourceInstance: "peer", sourceDaemonBootId: "b", targetInstance: "worker",
+    kind: "fleet_inbound", payload: { type: "fleet_inbound", content: key, meta: {} } });
+
+  it("the outbox refuses an admission with a retryable error while the trial holds, writes nothing, and admits it once the hold is down", () => {
+    const f = trialFleet();
+    startTrial(f);
+    let caught: unknown;
+    try { f.outbox.admit(row("during-trial")); } catch (err) { caught = err; }
+    expect(caught).toMatchObject({ code: "update-trial", retryAfterMs: 10_000, message: "AgEnD is updating; try again shortly" });
+    expect(f.outbox.listPending()).toEqual([]);
+    expect(listHandback(f.home, ID)).toEqual([]);
+    f.fm.setUpdateBarrier(null);                                                                     // leaveTrial's hold coming down
+    expect(f.outbox.admit(row("during-trial")).inserted).toBe(true);
+  });
+
+  it("an old fleet's barrier still admits (and journals a reference): only the trial refuses", () => {
+    const { home, attempt } = attemptAt("trial");
+    const outbox = new DeliveryOutbox(join(home, "delivery-outbox.db"), "mgr"); outboxes.push(outbox);
+    const old = new QuiescenceBarrier(home);
+    old.bind({ ...attempt, stage: "opened" });
+    expect(old.secondCheck({ pin: false, inPause: false, startupComplete: true, shuttingDown: false, reconcileInFlight: false, anotherClaim: false,
+      scheduleInRun: false, outboxInFlight: false, agents: [], pending: [] })).toBe("held");
+    outbox.setQuiescence(old);
+    expect(old.refusesAdmission()).toBe(false);
+    expect(outbox.admit(row("old")).inserted).toBe(true);
+  });
+
+  it("an HTTP caller gets 503 with Retry-After; any other error is not answered here", () => {
+    const res = { headersSent: false, writeHead: vi.fn(), end: vi.fn() };
+    const f = trialFleet();
+    startTrial(f);
+    let caught: unknown;
+    try { f.outbox.admit(row("http")); } catch (err) { caught = err; }
+    expect(FleetManager.answerUpdateTrialRefusal(caught, res as never)).toBe(true);
+    expect(res.writeHead).toHaveBeenCalledWith(503, { "Retry-After": "10" });
+    expect(JSON.parse(res.end.mock.calls[0]![0])).toEqual({ error: "updating", detail: "AgEnD is updating; try again shortly" });
+    expect(FleetManager.answerUpdateTrialRefusal(new Error("other"), { ...res, writeHead: vi.fn() } as never)).toBe(false);
+  });
+
+  it("nothing of the Hub starts in a trial (it keeps its deliveries and retries after the commit)", async () => {
+    const f = trialFleet();
+    startTrial(f);
+    const created = vi.fn(async () => { throw new Error("must not start"); });
+    Object.assign(f.fm, { hubEffectsReady: true, rawFleetConfig: { hub_member: { enabled: true } }, hubRuntime: null, hubRuntimeInit: null, hubRuntimeCreated: created });
+    await f.fm.applyHubSwitches();
+    expect(created).not.toHaveBeenCalled();
+    f.fm.updateTrial = null;                                                                        // after leaveTrial
+    await f.fm.applyHubSwitches().catch(() => undefined);
+    expect(created).toHaveBeenCalled();
+  });
+
+  it("a trial without its hold takes no inbound (Fable (b)); with it, or outside a trial, adapters start", () => {
+    const f = trialFleet("proving");
+    f.fm.updateTrial = f.fm.detectUpdateTrial(TRIAL.nonce);
+    expect(f.fm.updateTrialUnheld()).toBe(true);
+    f.fm.armUpdateTrial();
+    expect(f.fm.updateTrialUnheld()).toBe(false);
+    f.fm.updateTrial = null;
+    expect(f.fm.updateTrialUnheld()).toBe(false);
+  });
+});
+
