@@ -17,6 +17,7 @@ register("install", {
     title: "Install as an app",
     available: "Opens in its own window, from your Start menu, Dock or home screen.",
     install: "Install",
+    short: "Install",
     ios: "In Safari, tap Share, then Add to Home Screen.",
     untrusted: "Can't be installed here: your browser doesn't trust this address's certificate. Ask your administrator for a trusted certificate, then open this page again.",
     insecure: "Can't be installed from a plain http:// address. Open it through localhost or an https:// address.",
@@ -26,6 +27,7 @@ register("install", {
     title: "安裝成應用程式",
     available: "在自己的視窗開啟，可從開始選單、Dock 或主畫面啟動。",
     install: "安裝",
+    short: "安裝",
     ios: "在 Safari 點「分享」，再點「加入主畫面」。",
     untrusted: "這裡無法安裝：你的瀏覽器不信任這個網址的憑證。請管理員改用受信任的憑證後，再重新開啟這個頁面。",
     insecure: "一般 http:// 網址無法安裝。請改用 localhost 或 https:// 網址開啟。",
@@ -60,9 +62,10 @@ export function startInstall(env = globalThis) {
   env.addEventListener?.("beforeinstallprompt", (event) => { event.preventDefault(); offer = event; set("available"); });
   env.addEventListener?.("appinstalled", () => { offer = null; set("installed"); });
   if (iosSafari(env)) set("ios");
+  // A plain-http address is not a secure context, and browsers hide the worker API there: say why before looking for it.
+  if (env.isSecureContext === false) { if (installStore.get().state === "none") set("insecure"); return; }
   const sw = env.navigator?.serviceWorker;
   if (!sw) return;
-  if (env.isSecureContext === false) { if (installStore.get().state === "none") set("insecure"); return; }
   sw.register("/sw.js", { scope: "/" }).catch((error) => {
     // A certificate the browser doesn't trust: registration is refused as a SecurityError.
     if (error && error.name === "SecurityError" && installStore.get().state === "none") set("untrusted");
@@ -84,18 +87,26 @@ export async function promptInstall() {
 }
 
 const SAYS = new Set(["available", "ios", "untrusted", "insecure"]);
+/** Whether there is anything to offer or say (a menu item or button shows only then). */
+export const installOffered = (state) => SAYS.has(state);
+export const installLabel = () => ti("title");
+/** The one action, wherever it is offered: the browser's dialog where it can install; otherwise the reason, in a notice. */
+export function runInstall(state = installStore.get().state) {
+  if (state === "available") { void promptInstall(); return; }
+  if (SAYS.has(state)) void confirmDialog({ title: ti("title"), message: ti(state), confirmLabel: ti("ok"), notice: true });
+}
 
 /** The Fleet's Needs you settings row, drawn like the notification row beside it. Nothing when there's nothing to say. */
 export function InstallAppSection() {
   const { state } = useStore(installStore);
   if (!SAYS.has(state)) return null;
   return html`<article class="n-notify n-install" data-install=${state}>
-    <span class="n-notify-icon"><${Icon} name="download" size=${18} /></span>
+    <span class="n-notify-icon"><${Icon} name="install" size=${18} /></span>
     <div class="n-notify-body">
       <div class="n-notify-title"><strong>${ti("title")}</strong></div>
       <p class="n-notify-note note">${ti(state)}</p>
       ${state === "available" ? html`<div class="n-notify-actions"><button type="button" class="btn btn-sm btn-primary" onClick=${() => { void promptInstall(); }}>
-        <${Icon} name="download" size=${14} />${ti("install")}</button></div>` : null}
+        <${Icon} name="install" size=${14} />${ti("install")}</button></div>` : null}
     </div>
   </article>`;
 }
@@ -104,11 +115,9 @@ export function InstallAppSection() {
 export function InstallAppButton() {
   const { state } = useStore(installStore);
   if (!SAYS.has(state)) return null;
-  const label = ti("title"), title = state === "available" ? `${label} — ${ti("available")}` : `${label} — ${ti(state)}`;
-  const click = () => {
-    if (state === "available") { void promptInstall(); return; }
-    void confirmDialog({ title: label, message: ti(state), confirmLabel: ti("ok"), notice: true });
-  };
-  return html`<button type="button" class="icon-btn hub-install" data-install=${state} aria-label=${label} title=${title} onClick=${click}>
-    <${Icon} name="download" size=${16} /></button>`;
+  // Its name and tooltip are what it does (the leader's capture check: a bare arrow by the bell read as "download notices").
+  const label = ti("title");
+  const click = () => runInstall(state);
+  return html`<button type="button" class="icon-btn hub-install" data-install=${state} aria-label=${label} title=${label} onClick=${click}>
+    <${Icon} name="install" size=${16} /><span class="hub-install-label" aria-hidden="true">${ti("short")}</span></button>`;
 }

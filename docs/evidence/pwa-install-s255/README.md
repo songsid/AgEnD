@@ -14,7 +14,12 @@ Base: release/2.3.5-alpha (b9663fb3e).
   - Already running as the app, or a browser that offers nothing: no hint.
 - **Where it shows:**
   - Fleet: Needs you → "This device", under the notification row.
-  - Hub: a download-arrow button beside the bell in the Hub's header tools.
+  - Hub: an install button, a screen with an arrow into it, named and titled "Install as an app". It is in the headers of the chats list, Notices and each room, beside the bell. On a phone it shows the short word 安裝 / Install, and inside a room it moves into the ⋯ menu with Notify.
+  - Review fixes (Prism #4544, leader capture check):
+    - A plain-http page, where browsers hide the worker API, now says why. Before, it returned early and said nothing.
+    - The Hub's ordinary pages carry the button, not only Notices.
+    - The web-dashboard and hub skills describe both controls.
+    - The bare download arrow is replaced by the install icon with its name.
 
 **Evidence** (`scripts/manual/pwa-install-s255/capture.mts`, `result.json`). Owned rigs, headless Chromium, synthetic people; no Fleet, CLI or model.
 
@@ -37,7 +42,7 @@ Base: release/2.3.5-alpha (b9663fb3e).
 - A Hub with a trusted certificate wasn't captured: that needs a CA the browser trusts. There the browser makes the real offer, and the button is the dashboard's Install path.
 - Real Safari on iPhone wasn't tried. The words come from the iOS Safari user-agent case in the tests.
 
-Tests: `tests/web-install-app-s255.test.ts`, 10 cases:
+Tests: `tests/web-install-app-s255.test.ts` (10 cases) and `tests/web-install-app-hub-s255.test.ts` (3 cases: the chats home, a room's header beside the bell, and a phone room's ⋯ menu). Removing the room button fails 2; restoring the old insecure order fails 1. The s255 cases:
 - the worker: served pre-auth, `no-cache`, no fetch or cache code;
 - the offer and install, a dismissed offer, a certificate error giving `untrusted`, plain http giving `insecure`, iOS Safari, an installed window;
 - the Fleet row in both locales and the Hub dialog.

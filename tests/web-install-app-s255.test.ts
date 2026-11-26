@@ -72,8 +72,9 @@ describe("what the page says", () => {
   });
   it("a plain-http LAN address: no registration attempt, it says why; a missing worker API says nothing", async () => {
     const m = await import("/assets/app-install.js") as any;
-    const w = fakeWindow({ secure: false }); m.startInstall(w.env); await flush();
-    expect([w.register.mock.calls.length, m.installStore.get().state]).toEqual([0, "insecure"]);
+    // A plain-http page has no worker API at all (browsers hide it outside a secure context): still says why.
+    const w = fakeWindow({ secure: false, noWorker: true }); m.startInstall(w.env); await flush();
+    expect(m.installStore.get().state).toBe("insecure");
     const old = fakeWindow({ noWorker: true }); m.startInstall(old.env); await flush();
     expect(m.installStore.get().state).toBe("none");
   });
@@ -110,6 +111,12 @@ describe("the hint", () => {
   it("the Hub header button: says why in the app's own dialog when it can't install — one button, no Cancel", async () => {
     const { pg } = await mount("untrusted", "button");
     const confirm = await import("/assets/ui-confirm.js") as any;
+    const button = pg.root.querySelector(".hub-install") as any;
+    // Named and titled by what it does, with the install icon (a bare download arrow by the bell read as "download notices").
+    expect([button.getAttribute("aria-label"), button.getAttribute("title")]).toEqual(["Install as an app", "Install as an app"]);
+    expect(button.querySelector(".hub-install-label")?.textContent).toBe("Install");
+    const icons = await import("/assets/ui-icons.js") as any;
+    expect(icons.ICON_NAMES).toContain("install");
     const asked: string[] = []; (globalThis as any).confirm = (msg: string) => { asked.push(msg); return true; };
     try {
       fire(pg.root.querySelector(".hub-install"), "click"); await settle(4);

@@ -670,7 +670,7 @@ function HubChats() {
   if (opening && (!rs.loaded || recentRoom(rs.rooms))) return html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><div class="hub-home-pick center"><${Skeleton} variant="rows" lines=${4} /></div></div>`;
   // On a phone the launcher takes the page on 新對話 and when there is nothing to list; otherwise the list does.
   const alone = launch || (rs.loaded && !rs.error && !rs.rooms.length);
-  return html`<${PanelHeader} title=${launch ? hc("newChat") : hc("chats")} />
+  return html`<${PanelHeader} title=${launch ? hc("newChat") : hc("chats")}><span class="hub-head-tools"><${InstallAppButton} /></span></${PanelHeader}>
   ${/* M-3137 (versions spec §2.3): the signed-in person whose own Fleet is behind is told here, once per sign-in. */ ""}
   <${OlderFleetBanner} client=${hubClient()} signIn=${s?.csrf || ""} />
   <div class=${`hub-home${alone ? " is-launch" : ""}`}>
