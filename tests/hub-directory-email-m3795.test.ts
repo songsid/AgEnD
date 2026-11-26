@@ -21,6 +21,7 @@ import { createHubDirectory } from "../src/hub/directory/index.js";
 const config = { realm: "demo", url: "ldaps://directory.example.test", baseDn: "dc=example,dc=test", bindDn: "cn=reader,dc=example,dc=test", profile: "ad" };
 const guid = Buffer.from("ff19966f868b11d0b42d00c04fc964ff", "hex");
 const entry = { dn: "cn=Alex,dc=example,dc=test", objectGUID: guid, sAMAccountName: "alex", userAccountControl: "512", mail: "alex@example.test" };
+const other = { ...entry, dn: "cn=Other,dc=example,dc=test", objectGUID: Buffer.alloc(16, 3) };
 const secret = "Dummy-service-only", pw = "Dummy-person-only";
 const dir = (profile = "ad") => createHubDirectory({ ...config, profile }, { bindPassword: secret });
 beforeEach(() => { f.searches.length = f.binds.length = f.tls.length = f.responses.length = 0; f.close = 0; f.afterSearch = undefined; });
@@ -38,11 +39,11 @@ describe("AD sign-in exact email and UPN resolution M3795", () => {
     f.responses.push([entry], [entry]); expect(await dir().signIn("alex", pw)).toMatchObject({ ok: true });
     expect(f.searches).toHaveLength(2); expect(f.searches[0].filter).toContain("(sAMAccountName=alex)"); expect(f.binds).toHaveLength(2);
   });
-  it.each([[[], "invalid-credentials"], [[entry, entry], "invalid-credentials"], [[{ ...entry, userAccountControl: "514" }], "not-eligible"]])("refuses missing, ambiguous or disabled alias before a personal bind", async (found, reason) => {
+  it.each([[[], "invalid-credentials"], [[entry, other], "invalid-credentials"], [[{ ...entry, userAccountControl: "514" }], "not-eligible"]])("refuses missing, ambiguous or disabled alias before a personal bind", async (found, reason) => {
     f.responses.push([], found); expect(await dir().signIn("alex@example.test", pw)).toEqual({ ok: false, reason }); expect(f.binds).toHaveLength(1);
   });
   it("does not fallback after an ambiguous or disabled primary match", async () => {
-    for (const found of [[entry, entry], [{ ...entry, userAccountControl: "514" }]]) {
+    for (const found of [[entry, other], [{ ...entry, userAccountControl: "514" }]]) {
       f.responses.push(found); const before = f.searches.length;
       expect((await dir().signIn("alex", pw)).ok).toBe(false); expect(f.searches.length - before).toBe(1);
     }
@@ -75,7 +76,7 @@ it("HTTP failures are generic and five attempts still consume the existing limit
   const { s3bRig } = await import("./helpers/hub-s3b-rig.js"); const r = await s3bRig({ directory: dir() });
   try {
     for (let i = 0; i < 5; i++) {
-      f.responses.push([], i % 2 ? [entry, entry] : []);
+      f.responses.push([], i % 2 ? [entry, other] : []);
       const result = await r.signIn("alex@example.test"); expect(result.status).toBe(403); expect(result.body).toMatchObject({ code: "denied" });
     }
     const before = f.searches.length; expect((await r.signIn("alex@example.test")).status).toBe(429); expect(f.searches).toHaveLength(before);
@@ -94,5 +95,5 @@ it("account name, UPN and mail produce one real Hub person row", async () => {
 });
 
 it("OpenLDAP ambiguity keeps its existing unavailable outcome", async () => {
-  f.responses.push([entry, entry]); expect(await dir("openldap").signIn("alex", pw)).toEqual({ ok: false, reason: "unavailable" }); expect(f.searches).toHaveLength(1);
+  f.responses.push([entry, other]); expect(await dir("openldap").signIn("alex", pw)).toEqual({ ok: false, reason: "unavailable" }); expect(f.searches).toHaveLength(1);
 });

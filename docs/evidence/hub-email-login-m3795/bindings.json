@@ -35,7 +35,7 @@
     },
     {
       "path": "tests/hub-directory-email-m3795.test.ts",
-      "sha256": "7cc422db4ed882dcd14b5794bf04a6034f4116742c640128739361602380e490"
+      "sha256": "e174d0efc09deb12ee1e72669d8bf795584ce0595ac73bb1f024e7322859682b"
     },
     {
       "path": "tests/hub-compose.test.ts",
