@@ -1,0 +1,146 @@
+{
+  "sourceCommit": "4a003be8a4c4c347cfae3e459d5f83dacd452608",
+  "scope": "Composed pre-start daemon input owner and isolated unknown recovery approval, without restoring history as authority.",
+  "checks": {
+    "restored": {
+      "files": 9,
+      "passed": 283,
+      "failed": 0
+    },
+    "mutants": [
+      {
+        "mutation": "unknown-free-normal",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "unknown-free-dead-end",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "old-audience-borrowed",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "hub-recovery-dead-end",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "unknown-hub-impersonates",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "delayed-forward-bypass",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "owner-human-routing",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "fresh-work-not-rotated",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "source-incarnation-ignored",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "local-audience-operation-check",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "local-audience-static-check",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "unproved-label-cap",
+        "red": true,
+        "exit": 1
+      }
+    ],
+    "typecheckTests": "passed",
+    "gitleaks": "passed; no leaks",
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "The real human facade, formatter and pane judge use one pre-start composite C owner for exact human, physical peer and accepted Hub resolvers. Hot binding refuses; fresh work rotates; source replacement invalidates it.",
+    "An unknown Free-history recovery never takes Normal. Current source/incarnation permits a distinct approval card, not a lifetime refusal.",
+    "Unknown Hub recovery preserves all Hub limits while its result and return audience stay local. It uses an unknown label, never the earlier person.",
+    "Continue endorses only the distinct recovery root and onward contacts. Old Hub pending tickets and approvals remain separate.",
+    "Static B/E checks repeat local audience, label, target, verb and forwarding restrictions after delayed approval. Both header dialects count the unproved label in the assembled cap.",
+    "Production installer, owner/transport relaunch and full mode remain unfinished. No live activation."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "20d510389c1377b20e6e1355c1f3e8faed6307ffa3108fec67dbf02512fbd5e4"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "2623f2fc5d039437495ec6e615f64e5176ee9b5206fbed235cda4899edfba0f2"
+    },
+    {
+      "path": "src/request-contact-gate.ts",
+      "sha256": "4ee0d8b3b89e03e9a198072404c7a486b50aaf30e1492d566f706d44cce36742"
+    },
+    {
+      "path": "src/request-context-policy.ts",
+      "sha256": "7a09f69301711f40bd331f31e39f4956202aa25163b50fe9930158f7dda3f9e9"
+    },
+    {
+      "path": "src/request-context-relay.ts",
+      "sha256": "83a45245ecfc55add4caa2761ae0788c9d8f841979a20b9cb0d1e201da4b7bb8"
+    },
+    {
+      "path": "src/request-context-start.ts",
+      "sha256": "92002b6d8193d1090e248b6c9514ef798429522ab0c591fbae9af370cd40730e"
+    },
+    {
+      "path": "src/request-context-turns.ts",
+      "sha256": "9af1ad8d86caf44f0e8816a57fc2a9ab9497e3752db745c0a4646074f8211e1a"
+    },
+    {
+      "path": "src/request-context-unproved-label.ts",
+      "sha256": "1e5f68ebcffe2400b84ed860b93e04d87f103bc4c5b6cf5261031f8da30e100a"
+    },
+    {
+      "path": "tests/human-receipts-1756.test.ts",
+      "sha256": "8f6c8e0eec9dc0972e9bc0f77d9039ee27372d9ededd2efd56d71563d29d757d"
+    },
+    {
+      "path": "tests/request-contact-gate-s225.test.ts",
+      "sha256": "3f5b92c9c69fa91a671a70fdffe022ed73eeac188338421310b867fabb49171f"
+    },
+    {
+      "path": "tests/request-context-human-s230.test.ts",
+      "sha256": "089a759c443e6d217789ca7103c04116a2d47cff2c7ba7e1ba2789cedf552dea"
+    },
+    {
+      "path": "tests/request-context-outside-label-s230.test.ts",
+      "sha256": "b27eedd394b5bff56ecf88351553bcb2a30d44d159efe91db5c9383c633dc1bd"
+    },
+    {
+      "path": "tests/request-context-policy-s232.test.ts",
+      "sha256": "77a8c0f800124a3ce26d551a723b431e528a3c10a317813b2e1e31c2399a82bd"
+    },
+    {
+      "path": "tests/request-context-relay-s232.test.ts",
+      "sha256": "c91ecd077f4d8efdd3af074274458e5bb511aa539729d6da1563a82626c5462f"
+    },
+    {
+      "path": "tests/request-context-turns-s223.test.ts",
+      "sha256": "184db5f3a34eb5782a162bcc60770ba1315277218bdb8db0250f32dbc60e471b"
+    }
+  ]
+}
