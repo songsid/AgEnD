@@ -486,6 +486,12 @@ describe("S-230 actual exec claim and accepted human input",()=>{
   writeFileSync(path,saved);
 
  });
+ it("a failure after C binds but before the frame seal retires only that unstarted snapshot",async()=>{
+  const f=await prepared(),lifecycle=(f.runtime as any).requestContextLifecycle,prepare=lifecycle.prepare;
+  lifecycle.prepare=(...args:any[])=>{const frame=prepare(...args);return {...frame,bind:(snapshot:any)=>{frame.bind(snapshot);throw Error("Fixture final binding failed");}};};
+  await expect(f.runtime.execute(f.name,{requestId:id,content:f.content},f.options)).rejects.toThrow("final binding failed");
+  expect(f.owner.turns.current(f.owner.owner())).toBeNull();expect(f.start).not.toHaveBeenCalled();expect(f.box.getHumanReceipt(f.receipt.receipt_id)?.state).toBe("uncertain");
+ });
  it("a missing actual MCP endpoint aborts before provider start and leaves the exact receipt uncertain",async()=>{
   const f=await prepared();f.open.mockReturnValueOnce(null);
   await expect(f.runtime.execute(f.name,{requestId:id,content:f.content},f.options)).rejects.toThrow("tools are unavailable");

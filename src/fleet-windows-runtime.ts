@@ -417,9 +417,9 @@ export class FleetWindowsRuntime {
       if (owner.instance !== name) throw Error("Native request context owner differs");
       const previous = turns.current(owner);
       // Resolve the admitted input with C's exact parent/actor/wire checks BEFORE retiring any old grant.
-      let snapshot:import("./request-context-turns.js").RequestContextTurnSnapshot;
+      let snapshot!:import("./request-context-turns.js").RequestContextTurnSnapshot;
       try{snapshot = turns.beforeWrite(inputFrame?.inputId ?? options.requestContextInputId ?? null, inputFrame?.wireSha256??deliveryContentDigest(prompt), owner);inputFrame?.bind(snapshot);}
-      catch(error){inputFrame?.finish();throw error;}
+      catch(error){if(snapshot&&snapshot!==previous)turns.ended(snapshot,owner);inputFrame?.finish();throw error;}
       if(inputFrame)contextReference=Object.freeze({version:1,inputId:options.requestContextInputId??null,instance:name,incarnation:owner.incarnation,contextId:snapshot.context.ref.contextId,rootContextId:snapshot.context.ref.rootContextId});
       retireContext = () => {
         inputFrame?.finish();
