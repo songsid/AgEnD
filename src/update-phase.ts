@@ -36,17 +36,29 @@ export interface PhaseInputs {
   service: "systemd" | "launchd" | null;
   /** S-230's request-context mode; "unknown" (unreadable) refuses like On. */
   requestContext: "off" | "on" | "unknown";
-  /** `readCurrent(home).state`. */
+  /** `readCurrent(home).state`, with the attempt when there is one. */
   journal: "none" | "closing" | "open" | "manual" | "unknown";
+  attempt?: { id: string; stage: string };
 }
 
-export type PhaseChoice = { phase: 1 | 2; why: string };
+/** Phase 1 or 2 — or refused: an attempt is open or unresolved, and neither updater may run under it (Fable #4551 F1). */
+export type PhaseChoice = { phase: 1 | 2; why: string } | { refuse: true; why: string };
 
 /** The lowest V_tx this updater drives (§1). */
 export const MIN_UPDATE_TX = 1;
 
-/** §1: Phase 2 iff every condition holds; the first that fails says why Phase 1 runs. */
+/**
+ * §1: Phase 2 iff every condition holds; the first that fails says why Phase 1 runs. The journal comes FIRST, before the
+ * switch: Phase 1 never reads the journal, so running it under an open or unresolved attempt would reinstall and restart
+ * under that attempt's fence and recovery route — refused, even with the switch off again (Fable #4551 F1).
+ */
 export function selectUpdatePhase(i: PhaseInputs): PhaseChoice {
+  const at = i.attempt ? `${i.attempt.id}, ${i.attempt.stage}` : "";
+  if (i.journal === "open") return { refuse: true, why: `an update is already in progress${at ? ` (${at})` : ""}` };
+  if (i.journal === "closing") return { refuse: true, why: "the previous update is still finishing; try again shortly" };
+  if (i.journal === "manual" || i.journal === "unknown") {
+    return { refuse: true, why: `${i.journal === "manual" ? `update attempt ${at || "?"} needs manual recovery` : "the update journal can't be read"}. Run \`agend update --resolve\`.` };
+  }
   const one = (why: string): PhaseChoice => ({ phase: 1, why });
   if (!i.switchedOn) return one("the update transaction isn't switched on yet");
   if (i.preflightClass !== "self") return one(`the readiness check says ${i.preflightClass}, not self`);
@@ -56,6 +68,5 @@ export function selectUpdatePhase(i: PhaseInputs): PhaseChoice {
   if (i.requestContext !== "off") return one(i.requestContext === "on"
     ? "request-based contact approvals are on: a held message couldn't be replayed with its verification"
     : "whether request-based contact approvals are on can't be read");
-  if (i.journal !== "none") return one(`the update journal reads ${i.journal}`);
   return { phase: 2, why: "both versions speak the update transaction" };
 }

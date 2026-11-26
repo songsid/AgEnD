@@ -19,16 +19,27 @@ describe("M-3770 2.5 wiring part 1: which update path", () => {
       [{ service: "launchd" }, /S-260/],
       [{ requestContext: "on" }, /request-based contact approvals are on/],
       [{ requestContext: "unknown" }, /can't be read/],
-      [{ journal: "open" }, /journal reads open/],
-      [{ journal: "closing" }, /journal reads closing/],
-      [{ journal: "manual" }, /journal reads manual/],
-      [{ journal: "unknown" }, /journal reads unknown/],
     ];
     for (const [over, why] of cases) {
       const r = selectUpdatePhase({ ...all, ...over });
-      expect(r.phase, JSON.stringify(over)).toBe(1);
-      expect(r.why, JSON.stringify(over)).toMatch(why);
+      expect(r, JSON.stringify(over)).toMatchObject({ phase: 1, why: expect.stringMatching(why) });
     }
+  });
+
+  it("an open or unresolved attempt refuses BOTH updaters — with the switch on or off (Fable #4551 F1)", () => {
+    const attempt = { id: "20261127T100000Z-0a0a0a0a", stage: "trial" };
+    const cases: [PhaseInputs["journal"], RegExp][] = [
+      ["open", /an update is already in progress \(20261127T100000Z-0a0a0a0a, trial\)/],
+      ["closing", /still finishing; try again shortly/],
+      ["manual", /20261127T100000Z-0a0a0a0a, trial needs manual recovery\. Run `agend update --resolve`/],
+      ["unknown", /journal can't be read\. Run `agend update --resolve`/],
+    ];
+    for (const switchedOn of [true, false]) for (const [journal, why] of cases) {
+      expect(selectUpdatePhase({ ...all, switchedOn, journal, attempt }), `${journal} ${switchedOn}`).toEqual({ refuse: true, why: expect.stringMatching(why) });
+    }
+    // none keeps the outcomes: Phase 2 switched on, Phase 1 switched off.
+    expect(selectUpdatePhase({ ...all, journal: "none" })).toMatchObject({ phase: 2 });
+    expect(selectUpdatePhase({ ...all, journal: "none", switchedOn: false })).toMatchObject({ phase: 1 });
   });
 
   it("updateTx is declared in package.json; absent, zero, negative, fractional or a string is 0", () => {
