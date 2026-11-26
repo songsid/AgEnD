@@ -1,0 +1,115 @@
+{
+  "sourceCommit": "cd45ec9d6a0417b12a137fac938cef3a9abbe432",
+  "scope": "Original-call routing at local, persistent-pane and Fleet reply/edit/react sinks. Destination binding follows the review clarification; no browser visibility policy is added.",
+  "checks": {
+    "restored": {
+      "files": 21,
+      "passed": 542,
+      "failed": 0
+    },
+    "mutants": [
+      {
+        "mutation": "reply-binding-ignored",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "fleet-keeps-newer-room",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "fleet-route-cancel-ignored",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "fleet-world-replaced",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "ipc-drops-original-route",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "root-session-recheck-dropped",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "local-last-thread-fallback",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "unproved-system-proxy-sends",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      },
+      {
+        "mutation": "reaction-mirrors-other-room",
+        "red": true,
+        "exit": 1,
+        "assertion": true
+      }
+    ],
+    "typecheck": "NODE_OPTIONS=--max-old-space-size=8192 npm run typecheck:tests: passed",
+    "public": "source patch: clean",
+    "gitleaks": "Pinned 8.24.3, range 9c943c619..cd45ec9d6: no leaks"
+  },
+  "sourceAndTestSha256": [
+    {
+      "path": "src/daemon.ts",
+      "sha256": "98cba7b7952aaa8166b3b5c091d1981f74d0579f15cb50ea13858e4afa785ba4"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "1d70d4cb22bc06d72d64031c3b3ad8aef7861baadb3772fbc5bc5a4715cadada"
+    },
+    {
+      "path": "src/request-context-call.ts",
+      "sha256": "7a4964d2dcf3e3523daf3566b3e94309ee681a1b528abe0a21401d81f8e43fd4"
+    },
+    {
+      "path": "src/request-context-human-resolver.ts",
+      "sha256": "6ba0e8848030cc351bcfd96d5286ba0018fa92550d9e3b78bff1d44f328a09c7"
+    },
+    {
+      "path": "src/request-context-human.ts",
+      "sha256": "04ff22baccbebc19ae420bcfffffe8c631f8663286dfbdec132ca2f218e850d6"
+    },
+    {
+      "path": "src/request-context-policy.ts",
+      "sha256": "039092fed068fd8cdaddd71dc43778340642c75ae6c1a61cceccf4571209134c"
+    },
+    {
+      "path": "src/turn-reply-guard.ts",
+      "sha256": "29b699a2b0e7dc12367778b9ed85dcddb68a16534aa5a2bbbe1c3876a1201bbd"
+    },
+    {
+      "path": "tests/request-context-daemon-s224.test.ts",
+      "sha256": "e316875d2992d8fc5afccb27f7bc50a0fa1d468478ccd6a68552ae9483ffa109"
+    },
+    {
+      "path": "tests/request-context-reply-route-s230.test.ts",
+      "sha256": "9def9460581f867fc5686130dbaaf35adea104e7c23f3da7d1fbbb0eaa81f5a5"
+    }
+  ],
+  "limits": [
+    "No live Fleet, pane, runtime, CLI or provider starts; all sends use recording adapters and private databases.",
+    "Existing channel/same-account/own-room/admin visibility is unchanged; no private recipient schema or history/SSE/files/search policy is introduced.",
+    "A system-generated direct proxy has no originating tool lease and refuses with C bound. Proven-parent model recovery uses the normal captured route. This conservative system-output seam is explicit for review.",
+    "Native exec MCP does not expose these channel tools. Unstamped file-token HTTP calls cannot borrow a current route.",
+    "No UI, CSS, locale or PNG patch changed. Actual owner/transport installer, capable boot and full-mode proof remain unfinished."
+  ]
+}

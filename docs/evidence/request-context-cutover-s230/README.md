@@ -64,3 +64,7 @@ Final human write: `human-resolver.json` binds the actual facade/formatter/C/pan
 ### Delivered reply-route checkpoint
 
 [Source and proof binding](reply-route.json): all four real web producers capture their admitted browser independently of account recognition. The original human companion supplies the post-paste guard’s immutable destination, bound to the C token and generation. Registered returns can use the original source’s route; other peers and unknown recovery cannot. Restored:391/14; eight guard mutants red; types clean. This prepares the route only: unknown outputs stay refused until the actual sinks preserve and enforce the captured audience. Production assembly/full-mode proof remains unfinished. No UI or captured image changed.
+
+### Original-call reply sinks
+
+[Sink source and proof binding](reply-sinks.json): local/pane call capture and the Fleet IPC wrapper preserve the same delivered route lease. The actual reply/edit/react sinks force its original adapter/chat/thread and recheck it after awaits. Unknown non-Hub outputs work only on that proven path. Web reactions preserve existing visibility and mirror only that destination. Raw system proxy text has no originating tool lease and cannot borrow a chat under C. Restored542/21; nine guard mutants red; types/public/Gitleaks clean. Existing browser visibility and UI/image bytes are unchanged. Production installation/capable boot/full-mode assessment remain unfinished.
