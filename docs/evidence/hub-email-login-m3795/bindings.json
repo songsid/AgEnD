@@ -23,7 +23,7 @@
     },
     {
       "path": "src/ui/panel-hub.js",
-      "sha256": "c6a9fd6943b93ecc70b43cdb048c129e280e3146cc1671651f8b82b524c15ee1"
+      "sha256": "c5aa58e15809a260c63dcfc89b703cb3d7e01840474742bc62956e429669cd83"
     },
     {
       "path": "src/ui/hub-strings.js",
@@ -47,7 +47,7 @@
     },
     {
       "path": "tests/hub-ui-s3.test.ts",
-      "sha256": "35deacd2d161eb9120f72c905023349d915add413a621e939f1eb9647059d19a"
+      "sha256": "197c0fbc10e67b434964d15b6a84dc328c1b090a9ebfc8b002be16981ddaa87e"
     },
     {
       "path": "scripts/manual/hub-email-login-m3795/capture.mts",
@@ -156,8 +156,20 @@
       "sha256": "8c41ceb15b6786dd8f104a54a5ae27f76f0c4ade7a7c786ce723b0169214a045"
     },
     {
+      "path": "docs/evidence/hub-email-login-m3795/r2-dom-baseline.patch",
+      "sha256": "b606261b4cfbcf2a46494b0a9467841c72d9925d6305ea8b4e9da12a57fdcd35"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/r2-inputs.json",
+      "sha256": "38d376cfbda16e3f423b5c7d1cdff26b04f281b206da0692fe2e5acff8000a28"
+    },
+    {
       "path": "docs/evidence/hub-email-login-m3795/review-r1.md",
       "sha256": "a91d391d7cc54955a38204611e71df417860beae9c6403b16bac0984b60191ee"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/review-r2.md",
+      "sha256": "beece2b957c95b797dfa108ddbdcca566ef5091c2a245f2144b63e640f1d5e48"
     }
   ]
 }

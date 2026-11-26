@@ -297,9 +297,8 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
   });
 
   // M-3563 (the user, 11-24): Chrome / Edge offered the email address from their saved personal info for 帳號. The fields
-  // are a named login form; a login that works is handed to the browser's password manager as typed; an account typed
-  // as an email address (the directory's has no "@") is told what to type instead.
-  it("M-3563: a named login form; a refused 'user@domain' says to type the part before the @; a login that works is saved as typed", async () => {
+  // are a named login form; a login that works is handed to the browser's password manager as typed.
+  it("M-3563: a named login form; refusal is generic and successful input is offered to the browser as typed", async () => {
     let tries = 0;
     hubApi({
       "GET /hub/v1/session": () => [200, { signedIn: false, hub: { name: "Team Hub" } }],
@@ -328,10 +327,39 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
       input(pg, "#hubLogin", " alex "); input(pg, "#hubPassword", "pw"); await settle(5);
       fire(pg.root.querySelector(".hub-signin form")!, "submit");
       await until(() => pg.root.querySelector(".hub-home"));
-      expect(stored).toEqual([{ id: "alex", password: "pw" }]);
+      expect(stored).toEqual([{ id: " alex ", password: "pw" }]);
     } finally {
       if (oldCred === undefined) delete nav.credentials; else Object.defineProperty(nav, "credentials", { configurable: true, value: oldCred });
       if (hadPC) g.PasswordCredential = oldPC; else delete g.PasswordCredential;
+    }
+  });
+  it("M-3795 DOM: submits browser-filled fields and removes the successful form with the exact typed credential", async () => {
+    const { calls } = hubApi({
+      "GET /hub/v1/session": () => [200, { signedIn: false, hub: { name: "Team Hub" } }],
+      "POST /hub/v1/session": () => [200, { ...SIGNED, login: "alex" }],
+      "GET /hub/v1/exposures": () => [200, { mine: [], askable: [] }],
+      "GET /hub/v1/rooms": () => [200, { rooms: [] }],
+    });
+    const pg = await mountTab("ask"); await until(() => pg.root.querySelector(".hub-signin form"));
+    const form = pg.root.querySelector(".hub-signin form") as any;
+    const login = form.querySelector("#hubLogin"), password = form.querySelector("#hubPassword");
+    expect(form.tagName.toLowerCase()).toBe("form");
+    expect([login.id, login.getAttribute("name"), login.getAttribute("autocomplete"), password.id, password.getAttribute("name"), password.getAttribute("autocomplete")])
+      .toEqual(["hubLogin", "username", "username", "hubPassword", "password", "current-password"]);
+    const oldPC = g.PasswordCredential, nav = g.navigator, oldCred = nav.credentials, stored: any[] = [];
+    g.PasswordCredential = class { constructor(o: any) { Object.assign(this, o); } };
+    Object.defineProperty(nav, "credentials", { configurable: true, value: { store: async (c: any) => { stored.push({ id: c.id, password: c.password, fieldLogin: login.value, fieldPassword: password.value, mounted: !!pg.root.querySelector(".hub-signin form") }); return c; } } });
+    try {
+      // Model a password manager filling native DOM values without framework input events.
+      login.value = " alex@example.test "; password.value = "pw";
+      fire(form, "submit"); await until(() => pg.root.querySelector(".hub-home"));
+      expect(calls.filter(x => x.method === "POST").map(x => x.body)).toEqual([{ login: "alex@example.test", password: "pw" }]);
+      expect(stored).toEqual([{ id: " alex@example.test ", password: "pw", fieldLogin: " alex@example.test ", fieldPassword: "pw", mounted: true }]);
+      expect(pg.root.querySelector(".hub-signin form")).toBeNull();
+      expect(pg.root.querySelector("#hubLogin")).toBeNull(); expect(pg.root.querySelector("#hubPassword")).toBeNull();
+    } finally {
+      if (oldPC === undefined) delete g.PasswordCredential; else g.PasswordCredential = oldPC;
+      if (oldCred === undefined) delete nav.credentials; else Object.defineProperty(nav, "credentials", { configurable: true, value: oldCred });
     }
   });
   // #4386 review: a Hub may sign in by an account that holds an "@" (userPrincipalName, mail): no mark, no such advice.

@@ -291,20 +291,24 @@ function HubSignIn() {
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
+    // Password managers can fill DOM values without a framework input event. Snapshot the real fields at submit.
+    const submittedLogin = e.currentTarget?.querySelector("#hubLogin")?.value ?? form.login;
+    const submittedPassword = e.currentTarget?.querySelector("#hubPassword")?.value ?? form.password;
     // The button is always ready (a disabled one reads as grey, "broken"): an empty field just takes the focus.
-    if (!form.login.trim() || !form.password) {
+    if (!submittedLogin.trim() || !submittedPassword) {
       const doc = typeof document !== "undefined" ? document : null;
-      doc?.getElementById(!form.login.trim() ? "hubLogin" : "hubPassword")?.focus();
+      doc?.getElementById(!submittedLogin.trim() ? "hubLogin" : "hubPassword")?.focus();
       return;
     }
     const mine = ++generation.current, requestId = company.requestId;
+    setForm({ login: submittedLogin, password: submittedPassword });
     setBusy(true); setMsg(null);
-    const r = await hubClient().signIn(form.login.trim(), form.password);
+    const r = await hubClient().signIn(submittedLogin.trim(), submittedPassword);
     if (mine !== generation.current || joinRequest() !== requestId) return;
     if (r.ok) {
       // Keep the successful identifier as typed (account name, UPN or email), so the browser offers it next time.
       // The fields keep their values until the form goes away; browsers judge a sign-in by them.
-      rememberLogin(form.login.trim(), form.password);
+      rememberLogin(submittedLogin, submittedPassword);
       if (company.requestId) {
         const joined = await approval.run(r.csrf);
         if (mine !== generation.current || joined.code === "retired") return;
