@@ -236,7 +236,7 @@ export class NativeMcpSessions {
       const call=old ?? {operationId,digest,result:Promise.resolve().then(async()=>{
         if(!this.current(session) || !this.canCall(session,name,args))return toolError("Native MCP capability or tool access was revoked");
         try {
-          requireRequestContextPolicy(this.ctx,session.instance,name,args,session.requestContext?{coverage:"covered",lease:session.requestContext}:undefined);
+          if(this.ctx.requestContextPolicy)requireRequestContextPolicy(this.ctx,session.instance,name,args,session.requestContext?{coverage:"covered",lease:session.requestContext}:undefined);
           const value=await dispatchAgentOperation(this.dispatcherContext(session,name,args),session.instance,OPS[name]!,args,operationId,()=>this.current(session) && this.canCall(session,name,args));
           if(name==="report_result" && !failed(value) && value!==undefined && typeof args.target_instance==="string" && args.target_instance
             && typeof args.correlation_id==="string" && args.correlation_id) {

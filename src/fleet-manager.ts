@@ -16016,7 +16016,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    try{requireRequestContextPolicy(this,instanceName,tool==="hub_room_status"?"hub_room_list":tool,args,originatingCall?.admission);}catch(error){respond(null,(error as Error).message);return;}
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,instanceName,tool==="hub_room_status"?"hub_room_list":tool,args,originatingCall?.admission);}catch(error){respond(null,(error as Error).message);return;}
 
     // Fleet tools resolve their own targets. A missing chat world must not prevent local
     // delivery, inspection or receipt lookup; only channel tools need reply routing below.
@@ -16773,7 +16773,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const captured = this.requestContextCallOf(msg);
     if (captured && !captured.current()) { this.refuseTypedIpc(name, msg, "Originating request context is no longer current"); return; }
     const type = String(msg.type);
-    try{requireRequestContextPolicy(this,name,toolForIpcType(type)??type,(msg.payload??{})as Record<string,unknown>,captured?.admission);}catch(error){this.refuseTypedIpc(name,msg,(error as Error).message);return;}
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,name,toolForIpcType(type)??type,(msg.payload??{})as Record<string,unknown>,captured?.admission);}catch(error){this.refuseTypedIpc(name,msg,(error as Error).message);return;}
     if (type.startsWith("fleet_schedule_")) { this.handleScheduleCrud(name, msg); return; }
     if (type.startsWith("fleet_decision_")) { this.handleDecisionCrud(name, msg); return; }
     if (type === "fleet_task") { this.handleTaskCrud(name, msg); return; }
@@ -16806,7 +16806,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const tool = String(msg.type).replace(/^fleet_/, "");
     try {
       const args = (msg.payload ?? {}) as Record<string, unknown>;
-      requireRequestContextPolicy(this,instanceName,tool,args,this.requestContextCallOf(msg)?.admission);
+      if(this.requestContextPolicy)requireRequestContextPolicy(this,instanceName,tool,args,this.requestContextCallOf(msg)?.admission);
       const result = tool === "get_web_appearance" || tool === "preview_web_appearance"
         ? this.appearanceTools.handle(instanceName, tool, args)
         : tool === "office_view" || tool === "office_set" ? this.officeActs.handle(instanceName, tool, args)
@@ -17052,7 +17052,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     args: Record<string, unknown>,
     reply: { chatId: string; threadId: string | null; adapterId?: string | null; silent?: boolean; requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission },
   ): unknown {
-    requireRequestContextPolicy(this,caller,op==="list"?"list_schedules":`${op}_schedule`,args,reply.requestContextAdmission);
+    if(this.requestContextPolicy)requireRequestContextPolicy(this,caller,op==="list"?"list_schedules":`${op}_schedule`,args,reply.requestContextAdmission);
     const scheduler = this.scheduler!;
     // Shape first, so the value the permission decision reads is the value the
     // scheduler gets. `target` used to be filtered through typeof for the
@@ -17244,7 +17244,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async handleTaskCrudHttp(instance: string, args: Record<string, unknown>,_snapshot?:unknown,requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
-    requireRequestContextPolicy(this,instance,"task",args,requestContextAdmission);
+    if(this.requestContextPolicy)requireRequestContextPolicy(this,instance,"task",args,requestContextAdmission);
     const action = args.action as string;
     const asStr = (v: unknown): string | undefined => typeof v === "string" ? v : undefined;
     const asStrArr = (v: unknown): string[] | undefined =>
@@ -17355,7 +17355,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1629: `agend-agent theme …` — the same service as the tools; `instance` is the token's. */
   async handleWebThemeHttp(instance: string, tool: string, args: Record<string, unknown>,requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission): Promise<unknown> {
-    requireRequestContextPolicy(this,instance,tool,args,requestContextAdmission);
+    if(this.requestContextPolicy)requireRequestContextPolicy(this,instance,tool,args,requestContextAdmission);
     if (isCanvasWorkerTool(tool)) return { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };   // #2799: removed
     if (tool === "get_web_appearance" || tool === "preview_web_appearance") return this.appearanceTools.handle(instance, tool, args);
     if (tool === "office_view" || tool === "office_set") return this.officeActs.handle(instance, tool, args);   // #2578
@@ -17410,7 +17410,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const db = this.scheduler.db;
-    try{requireRequestContextPolicy(this,instanceName,"task",payload,this.requestContextCallOf(msg)?.admission);}catch(error){ipc.send({type:"fleet_task_response",fleetRequestId,error:(error as Error).message});return;}
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,instanceName,"task",payload,this.requestContextCallOf(msg)?.admission);}catch(error){ipc.send({type:"fleet_task_response",fleetRequestId,error:(error as Error).message});return;}
     const action = payload.action as string;
     // #1336 P2: use the shared normalizer — trims whitespace AND drops empties,
     // so " \t " / [" ","\t"] are treated identically to undefined.
@@ -17915,7 +17915,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * non-identity instance leaves are canonicalized to inheritance afterward.
    */
   saveFleetConfig(explicitPatches: RawConfigPatch[] = [],requestContextAdmission?:import("./request-context-call.js").RequestContextCallAdmission): void {
-    if(requestContextAdmission)requireRequestContextPolicy(this,requestContextAdmission.coverage==="covered"?requestContextAdmission.lease.snapshot.owner.instance:"", "update_instance_config",{},requestContextAdmission);
+    if(this.requestContextPolicy&&requestContextAdmission)requireRequestContextPolicy(this,requestContextAdmission.coverage==="covered"?requestContextAdmission.lease.snapshot.owner.instance:"", "update_instance_config",{},requestContextAdmission);
     if (!this.companyMembershipWrite && explicitPatches.some(p => p.path[0] === "hub_member"
       && (p.path[1] === "enabled" ? p.value !== true || p.remove : p.path.length === 1))) this.invalidateHubCompanyJoin();
     this.publicWebLink?.refresh();

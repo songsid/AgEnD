@@ -17,7 +17,7 @@ export function nativeAgentAdmissionContext(ctx: AgentEndpointContext, input: {
   const assert = (): void => { if (!input.current() || input.requestContext && !input.requestContext.current()) throw Error("Native MCP capability or tool access was revoked before admission"); };
   const admission:RequestContextCallAdmission|undefined=input.requestContext?{coverage:"covered",lease:input.requestContext}:input.notCoveredReason?{coverage:"not-covered",reason:input.notCoveredReason}:undefined;
   const operation=input.operation?structuredClone(input.operation):undefined;
-  const policy=(tool:string,args:Record<string,unknown>):void=>{requireRequestContextPolicy(ctx,input.instance,tool,args,admission);};
+  const policy=(tool:string,args:Record<string,unknown>):void=>{if(ctx.requestContextPolicy)requireRequestContextPolicy(ctx,input.instance,tool,args,admission);};
   return new Proxy(ctx, {
     get: (target, key) => {
       if(key==="requestContextCallAdmission")return admission;

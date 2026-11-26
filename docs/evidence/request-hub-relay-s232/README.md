@@ -53,3 +53,5 @@ author inspection. [R2 diagnostics and hashes](r2.json).
 | [phone-light-zh-TW-details.png](phone-light-zh-TW-details.png) | `830fd1b4617ff127a758d1532a10d5337938a528374d308d6050bbc2d73a137b` |
 
 R3 CI repair: OFF dispatch now avoids the launch-owner lookup and admission proxy entirely. All34 suites exercising Fleet outbound/typed dispatch pass1235/1235; the additional policy/OFF regression run passes93/93, and both typechecks pass. Restoring the old unconditional lookup fails the new regression. All56 PNG blobs, UI files and capture recipe are unchanged from377990d1; no new capture is claimed. See r3.json. Exact-head CI and USER LOOK HOLD remain.
+
+R4 CI repair extends the OFF gate to every H policy call: policy arguments are evaluated only with an installed port. All54 suites selected by direct Fleet/typed/task/schedule/HTTP/prototype handlers pass1692/1692; five additional focused suites pass100/100. Both typechecks pass. The actual task pagination fixture rejects any OFF admission lookup. All56 PNGs, UI files, policy copy and capture recipe remain unchanged; no recapture. See r4.json; exact-head CI and USER LOOK HOLD remain.

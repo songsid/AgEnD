@@ -2752,6 +2752,6 @@ export const outboundHandlers = new Map<string, Handler>([
 
 // Canonical map ownership survives composite/wrapper arguments and applies to direct handler consumers too.
 for(const [tool,handler]of outboundHandlers){outboundHandlers.set(tool,(ctx,args,respond,meta)=>{
- try{requireRequestContextPolicy(ctx,meta.instanceName,tool,args,meta.requestContextAdmission);}catch(error){respond(null,(error as Error).message);return;}
+ try{if(ctx.requestContextPolicy)requireRequestContextPolicy(ctx,meta.instanceName,tool,args,meta.requestContextAdmission);}catch(error){respond(null,(error as Error).message);return;}
  return handler(ctx,args,respond,meta);
 });}

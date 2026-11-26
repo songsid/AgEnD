@@ -404,7 +404,7 @@ export async function dispatchAgentOperation(
     if(!callerCurrent)throw Error("Request-context caller fence unavailable");
     ctx=(await import("./native-agent-admission.js")).nativeAgentAdmissionContext(ctx,{instance,current:callerCurrent,taskAllowed:()=>true,notCoveredReason:"unbound-input",operation:{tool:requestedTool??op,args}});
   }
-  requireRequestContextPolicy(ctx,instance,requestedTool??op,args);
+  if(ctx.requestContextPolicy)requireRequestContextPolicy(ctx,instance,requestedTool??op,args);
 
   // HTTP/CLI agents do not pass through mcp-server.ts, so assign the same
   // durable-operation identity at this ingress before invoking an outbound

@@ -13017,7 +13017,7 @@ export class Daemon extends EventEmitter {
       }
       this.broadcastFleetMessage(originatingCall ? { ...message, requestContextCallId: originatingCall.id, sourceDaemonBootId: this.bootId } : message);
     };
-    try{requireRequestContextPolicy(this,this.name,tool,args,originatingCall?.admission);}catch(error){respond(null,(error as Error).message);return;}
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,this.name,tool,args,originatingCall?.admission);}catch(error){respond(null,(error as Error).message);return;}
     if (this.requestContextLifecycle && !peer && !originatingCall || originatingCall && !originatingCall.current()) {
       respond(null, "Originating request context is unavailable"); return;
     }
