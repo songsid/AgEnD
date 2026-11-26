@@ -29,3 +29,9 @@ it("changed incarnation or work-generation evidence does not erase the retained 
   expect(()=>r.store.clear({...r.first,...patch},()=>true)).toThrow(/changed/);expect(r.store.pointer("worker")).toEqual(r.first);
  }
 });
+
+it("a promise or truthy placeholder is not synchronous retirement evidence",()=>{
+ const r=rig();for(const value of [Promise.resolve(true),"yes",{}]){
+  expect(()=>r.store.clear(r.first,()=>value as any)).toThrow(/unproved/);expect(r.store.pointer("worker")).toEqual(r.first);
+ }
+});
