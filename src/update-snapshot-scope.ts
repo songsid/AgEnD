@@ -6,9 +6,10 @@
  * - **The writer inventory** lists every name the code writes under the home or outside it, with its **phase**:
  *   `pre-commit` (fleet startup in trial mode, migrations, the update and rollback themselves) or `post-commit` (agent
  *   launch, CLI activity, ordinary operation). A test scans the code's path literals and fails when one isn't listed.
- * - **Eligibility** for the transaction's automatic rollback: no pre-commit writer may touch excluded user state or a
- *   path outside the home that the transaction doesn't restore itself (the unit and package preimages, §6.3). Runtime
- *   files, logs and caches are excluded on purpose — rebuilt or meaningless after a restore — and don't count.
+ * - **Eligibility** for the transaction's automatic rollback (§5.1 rev 8): no pre-commit writer may touch excluded user
+ *   state, a path outside the home that the transaction doesn't restore itself (the unit and package preimages, §6.3),
+ *   or an excluded cache that an older build would refuse rather than rebuild (`olderBuildRebuilds`). Runtime files and
+ *   logs are meaningless after a restore and don't count.
  */
 
 /** Why a path is left out of the snapshot. */
@@ -65,13 +66,19 @@ export interface Writer {
   by: string;
   /** Outside paths the transaction restores itself (§6.3). */
   restoredBy?: "unit-preimage" | "package-preimage";
+  /**
+   * An excluded cache written before commit: an older build that finds it rebuilds or ignores it (a schema it doesn't
+   * know, an unknown shape) rather than refusing to start. Required for any pre-commit cache writer (§5.1 rev 8).
+   */
+  olderBuildRebuilds?: true;
 }
 
-const home = (path: string, phase: Phase, by: string): Writer => ({ path, where: "home", phase, by });
+const home = (path: string, phase: Phase, by: string, extra: Pick<Writer, "olderBuildRebuilds"> = {}): Writer => ({ path, where: "home", phase, by, ...extra });
 const outside = (path: string, phase: Phase, by: string, restoredBy?: Writer["restoredBy"]): Writer => ({ path, where: "outside", phase, by, ...(restoredBy ? { restoredBy } : {}) });
 
 /**
- * The writer inventory (§5.1). Home names are top-level entries under the home. The test
+ * The writer inventory (§5.1). Home names are top-level entries under the home. Names reached only through a helper
+ * that takes the home as a parameter (no literal join over a home root) are listed by hand, marked "via <helper>". The test
  * `update-snapshot-scope-m3770` scans the code's `join` calls over a home root (or over the user's home directory) with a
  * literal name, and fails when a name is missing here: a new path is classified before it ships.
  */
@@ -104,16 +111,22 @@ export const WRITER_INVENTORY: readonly Writer[] = [
   home("kiro-engine-ledger.json", "pre-commit", "kiro engine at start"),
   home("kiro-identity", "pre-commit", "kiro engine identity"),
   home(".update-journal", "pre-commit", "the update transaction"),
+  home("host-monitoring.sqlite", "pre-commit", "host monitoring (a SQLite database opened at fleet start; §5.3 treats it as one)"),
+  home("rollback.json", "pre-commit", "tmux migration rollback (tmux-rollback)"),
+  home("kiro-classic-archives", "pre-commit", "kiro classic migration (kiro-classic-archive, kiro-migration-verify)"),
+  home("kiro-reconciliations", "pre-commit", "kiro reconcile store"),
+  home("search.db", "pre-commit", "search index (startSearchIndex at fleet start); another schema → rebuilt (search-store meta.schema)", { olderBuildRebuilds: true }),
+  home("cache-codex-rollouts.json", "pre-commit", "cache service's codex rollout metadata; unknown entries are skipped (cache-service)", { olderBuildRebuilds: true }),
+  home("usage-last-good.json", "pre-commit", "usage last-good rows; another version or shape is ignored (usage-api loadLastGood)", { olderBuildRebuilds: true }),
   // ── Ordinary operation (post-commit) ──
   home("workspaces", "post-commit", "agent launch (the agents' working directories)"),
   home("credential-profiles", "post-commit", "agent launch (the CLIs' homes, each profile's .claude.json)"),
   home("cx", "post-commit", "codex backend at agent launch"),
   home("cache", "post-commit", "caches"),
-  home("cache-codex-rollouts.json", "post-commit", "codex rollout cache"),
-  home("usage-last-good.json", "post-commit", "usage"),
+
   home("usage-quota-history.jsonl", "post-commit", "usage"),
   home("quota-notices.json", "post-commit", "usage notices"),
-  home("search.db", "post-commit", "search index"),
+
   home("profiles", "post-commit", "CPU profiles"),
   home("access", "post-commit", "channel access lists"),
   home("inbox", "post-commit", "attachments inbox"),
@@ -146,6 +159,10 @@ export const WRITER_INVENTORY: readonly Writer[] = [
   home("web-sessions.json", "post-commit", "web sessions"),
   home("web-themes", "post-commit", "web themes"),
   home("web-themes.json", "post-commit", "web themes"),
+  home("needs-you-message.json", "post-commit", "Needs-you hub"),
+  home("agy-statusline.sh", "post-commit", "antigravity backend at agent launch"),
+  home("shared", "post-commit", "web office packs (web-office-pack-read; its stateDir is the home)"),
+  home("signin-launch", "post-commit", "web sign-in links — via web-signin-link's join over the home it is passed (cli.ts passes DATA_DIR)"),
   // ── Outside the home ──
   outside(".claude.json", "post-commit", "claude-code backend at agent launch (trust, onboarding); $CLAUDE_CONFIG_DIR/.claude.json when set"),
   outside(".claude", "post-commit", "claude-code backend and usage at agent launch"),
@@ -165,15 +182,18 @@ export const WRITER_INVENTORY: readonly Writer[] = [
 export type Eligibility = { ok: true } | { ok: false; offenders: Writer[] };
 
 /**
- * §5.1 eligibility: no pre-commit writer touches excluded user state, or an outside path the transaction doesn't
- * restore itself. (The default home under `~/.agend` is the home, so it's judged as a home path.)
+ * §5.1 eligibility (rev 8): no pre-commit writer touches excluded user state, an outside path the transaction doesn't
+ * restore itself, or an excluded cache an older build wouldn't rebuild. Runtime files and logs don't count. (The
+ * default home under `~/.agend` is the home, so it's judged as a home path.)
  */
 export function rollbackEligible(inventory: readonly Writer[] = WRITER_INVENTORY): Eligibility {
   const offenders = inventory.filter(w => {
     if (w.phase !== "pre-commit") return false;
     if (w.where === "outside") return w.path !== ".agend" && !w.restoredBy;
     const c = classify(w.path);
-    return !c.included && c.kind === "user-state";
+    if (c.included) return false;
+    if (c.kind === "user-state") return true;
+    return c.kind === "cache" && !w.olderBuildRebuilds;          // an older build must rebuild it, never refuse it
   });
   return offenders.length ? { ok: false, offenders } : { ok: true };
 }
