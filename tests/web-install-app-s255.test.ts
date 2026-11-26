@@ -107,13 +107,27 @@ describe("the hint", () => {
       for (const state of ["none", "installed"]) { m.installStore.set({ state }); await settle(2); expect(pg.root.querySelector(".n-install")).toBeNull(); }
     } finally { i18n.setLang("en", { store: false }); }
   });
-  it("the Hub header button: says why in the app's own dialog when it can't install", async () => {
+  it("the Hub header button: says why in the app's own dialog when it can't install — one button, no Cancel", async () => {
     const { pg } = await mount("untrusted", "button");
+    const confirm = await import("/assets/ui-confirm.js") as any;
     const asked: string[] = []; (globalThis as any).confirm = (msg: string) => { asked.push(msg); return true; };
     try {
       fire(pg.root.querySelector(".hub-install"), "click"); await settle(4);
       expect(asked).toHaveLength(1);
       expect(asked[0]).toContain("Ask your administrator for a trusted certificate");
+      expect(confirm.confirmStore.get().queue).toEqual([]);
     } finally { (globalThis as any).confirm = undefined; }
   });
+});
+it("a notice dialog has one button and no Cancel; a question keeps both", async () => {
+  const pg = page(); pages.push(pg);
+  const c = await import("/assets/ui-confirm.js") as any;
+  (globalThis as any).confirm = undefined;
+  await pg.mount(h(c.ConfirmHost, {}));
+  const notice = c.confirmDialog({ title: "T", message: "Words to read.", confirmLabel: "OK", notice: true }); await settle(2);
+  expect([...pg.root.querySelectorAll("dialog button.btn")].map((b: any) => b.textContent.trim())).toEqual(["OK"]);
+  fire(pg.root.querySelector('[data-confirm="yes"]'), "click"); await expect(notice).resolves.toBe(true); await settle(2);
+  const question = c.confirmDialog({ message: "Sure?", confirmLabel: "Go" }); await settle(2);
+  expect([...pg.root.querySelectorAll("dialog button.btn")].map((b: any) => b.textContent.trim())).toEqual(["Cancel", "Go"]);
+  fire(pg.root.querySelector('[data-confirm="yes"]'), "click"); await question;
 });

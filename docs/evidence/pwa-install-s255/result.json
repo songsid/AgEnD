@@ -25,12 +25,12 @@
   "hub-desk-light-en-observed-registrations": 0,
   "hub-desk-light-en-shown": {
     "simulated": false,
-    "dialog": "Install as an app Can't be installed here: your browser doesn't trust this address's certificate. Ask your administrator for a trusted certificate, then open this page again. Cancel OK"
+    "dialog": "Install as an app Can't be installed here: your browser doesn't trust this address's certificate. Ask your administrator for a trusted certificate, then open this page again. OK"
   },
   "hub-phone-dark-zh-TW-observed": "untrusted",
   "hub-phone-dark-zh-TW-observed-registrations": 0,
   "hub-phone-dark-zh-TW-shown": {
     "simulated": false,
-    "dialog": "安裝成應用程式 這裡無法安裝：你的瀏覽器不信任這個網址的憑證。請管理員改用受信任的憑證後，再重新開啟這個頁面。 取消 知道了"
+    "dialog": "安裝成應用程式 這裡無法安裝：你的瀏覽器不信任這個網址的憑證。請管理員改用受信任的憑證後，再重新開啟這個頁面。 知道了"
   }
 }

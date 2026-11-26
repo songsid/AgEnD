@@ -107,7 +107,7 @@ export function InstallAppButton() {
   const label = ti("title"), title = state === "available" ? `${label} — ${ti("available")}` : `${label} — ${ti(state)}`;
   const click = () => {
     if (state === "available") { void promptInstall(); return; }
-    void confirmDialog({ title: label, message: ti(state), confirmLabel: ti("ok") });
+    void confirmDialog({ title: label, message: ti(state), confirmLabel: ti("ok"), notice: true });
   };
   return html`<button type="button" class="icon-btn hub-install" data-install=${state} aria-label=${label} title=${title} onClick=${click}>
     <${Icon} name="download" size=${16} /></button>`;
