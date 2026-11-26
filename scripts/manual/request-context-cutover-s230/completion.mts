@@ -14,7 +14,7 @@ const {setLocale}=await import(repo+"/src/locale.ts"),{prepareSettingsEffect}=aw
 const view:any={revision:1,enabled:false,everActivated:false,attempted:false,phase:"off",canChange:true,blockers:[],restartCount:2,
  goBack:{attemptIds:["20261126T010203Z-0a1b2c3d"],availableUntil:"2026-12-03T02:30:00Z",timeZone:"Asia/Taipei"}};
 const never=()=>{throw Error("Capture cannot activate, deliver or launch");};
-fx.fm.requestContextControl={principal:()=>null,permitContinuation:()=>false,read:()=>view,snapshot:()=>view,recheck:()=>view,change:never};
+fx.fm.requestContextControl={principal:(req:any)=>{const owner=fx.fm.liveOwner(req,{hostOnly:false});return owner&&{binding:owner.handle,verified:true,current:owner.current};},permitContinuation:()=>false,read:()=>view,snapshot:()=>view,recheck:()=>view,change:never};
 fx.fm.deliverToInstance=never;fx.fm.deliverHumanToInstance=never;fx.fm.saveFleetConfig=never;
 try{
  for(const c of matrix()){
@@ -22,9 +22,14 @@ try{
   const shot=async(state:string)=>{check(`${tag}-${state}: no overflow`,await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));check(`${tag}-${state}: CSP`,!(await csp()).length);const name=`${tag}-${state}.png`,path=join(out,name);await page.screenshot({path});receipt.pictures.push({name,sha256:createHash("sha256").update(readFileSync(path)).digest("hex")});};
   try{
    const diff=prepareSettingsEffect("POST","/api/settings/request-context",{revision:1,action:"enable"},{config:fx.fm.fleetConfig,requestContextControl:()=>view}as any).diff!;
-   const id="0123456789abcdef0123456789abcdef",pending={id,state:"pending",section:"access",requested_at:Date.now(),requested_by:"Demo admin",expires_at:Date.now()+300000,remaining_ms:287000,source:"public_link",summary:diff.summary,summary_i18n:diff.summary_i18n,can_withdraw:true,can_self_confirm:true,confirmation:{kind:"web"},outcome:null};
+   const id="0123456789abcdef0123456789abcdef",pending={id,state:"pending",section:"access",requested_at:Date.now(),requested_by:"Demo admin",expires_at:Date.now()+300000,remaining_ms:287000,source:"public_link",summary:diff.summary,summary_i18n:diff.summary_i18n,can_withdraw:true,can_self_confirm:true,confirmation:{kind:"chat",where:[{platform:"discord",connection:"Demo connection"}]},outcome:null};
    await page.route(`**/api/settings/pending/${id}`,r=>r.fulfill({status:200,contentType:"application/json",body:JSON.stringify(pending)}));
-   await page.evaluate(async value=>{const m:any=await import("/ui/js/settings-confirm.js" as string);m.track(value,"Access & security");},pending);
+   await page.locator("#request-context").waitFor();
+   await page.evaluate(async value=>{
+     const loaded=performance.getEntriesByType("resource").map(row=>row.name).filter(name=>/\/ui\/js\/(?:v-[^/]+\/)?settings-confirm\.js(?:[?#]|$)/.test(name));
+     const path=loaded.find(name=>name.includes("/v-"))??loaded[0]??"/ui/js/settings-confirm.js";
+     const m:any=await import(path);void m.track(value,"Access & security");
+   },pending);
    await page.locator(".pending-card").waitFor();await page.locator(".pending-card").scrollIntoViewIfNeeded();await page.waitForTimeout(120);
    check(`${tag}: pending summary carries irreversible effect`,(await page.locator(".pending-card").innerText()).includes(c.lang==="en"?"older AgEnD":"舊版 AgEnD"));await shot("settings-pending");
    await page.goto(`${fx.base}/ui/chat/worker`);await page.waitForTimeout(200);
