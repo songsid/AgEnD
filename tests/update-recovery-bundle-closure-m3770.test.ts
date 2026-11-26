@@ -13,7 +13,7 @@ const out = mkdtempSync(join(tmpdir(), "closure-"));
 afterAll(() => rmSync(out, { recursive: true, force: true }));
 
 describe("M-3770 2.5: the runner's modules bundle closed and load alone", () => {
-  it("update-restore, fleet-lock, update-writers and the rollback driver: built-ins only, and the bundle loads and runs from a temp dir", async () => {
+  it("update-restore, fleet-lock, update-writers, the rollback and abandon drivers, and recover.ts with its runner: built-ins only, and the bundle loads and runs from a temp dir", async () => {
     const src = join(process.cwd(), "src");
     const entry = join(out, "entry.ts");
     writeFileSync(entry, [
@@ -21,6 +21,8 @@ describe("M-3770 2.5: the runner's modules bundle closed and load alone", () => 
       `export { readFleetLockRecord, retakeDeadFleetLock, setFleetLockHandoff } from ${JSON.stringify(join(src, "fleet-lock.ts"))};`,
       `export { proveWritersGone } from ${JSON.stringify(join(src, "update-writers.ts"))};`,
       `export { rollBack } from ${JSON.stringify(join(src, "update-rollback.ts"))};`,
+      `export { abandonAttempt } from ${JSON.stringify(join(src, "update-abandon.ts"))};`,
+      `export { realHands } from ${JSON.stringify(join(src, "update-recovery", "recover.ts"))};`,
     ].join("\n"));
     const bundle = join(out, "bundle.cjs");
     await build({ entryPoints: [entry], outfile: bundle, bundle: true, platform: "node", format: "cjs", target: "node22",

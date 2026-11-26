@@ -12,6 +12,8 @@ import { defaultJournalIo, finishClosing, newAttemptId, openAttempt, readCurrent
 import { abandonAttempt, commitAttempt, resumeCommitting, runUpdate, type UpdateDeps } from "../src/update-forward.js";
 import { fleetStartGate, ownerState } from "../src/update-journal.js";
 import { preStartDecision } from "../src/update-recovery/pre-start.js";
+import { runRecovery, type RecoveryHands } from "../src/update-recovery/runner.js";
+import { listHandback, markHandback, writeInboxItem } from "../src/update-journal.js";
 import { readRetained } from "../src/update-retained.js";
 import { dropInPath } from "../src/update-recovery/route.js";
 import { parsePlist } from "../src/service-activation.js";
@@ -312,6 +314,96 @@ describe("M-3770 2.5: abandon before the snapshot", () => {
     expect(r.ok === false && r.reason).toMatch(/fleet\.lock is gone, but the old fleet was recorded running/);
     expect(w.calls).not.toContain("stop");
     expect(w.alive.has(OLD)).toBe(true);
+  });
+});
+
+describe("M-3770 2.5: the recovery runner resumes an abandon (S-252 part 4)", () => {
+  /** The updater dies in stopping — the route written, the old fleet stopped and fenced — then the runner takes over. */
+  function diedInStopping(w: World) {
+    try { runUpdate(w.home, w.attempt, PLAN, w.deps({ drain: () => { throw new Error("the updater died"); } })); } catch { /* the process died */ }
+    w.alive.delete(UPDATER);
+    const read = readCurrent(w.home);
+    expect(read.state === "open" && read.attempt.stage).toBe("stopping");
+    expect(readFleetLockRecord(w.home)).toMatchObject({ role: "update", attemptId: ID });
+  }
+  const runner = (w: World, pid: number, hands: Partial<RecoveryHands> = {}) => {
+    const base = w.deps();
+    w.alive.add(pid);
+    const out: string[] = [], err: string[] = [];
+    const code = runRecovery(w.home, ID, {
+      pid, liveness: base.liveness, io: defaultJournalIo, out: l => out.push(l), err: l => err.push(l),
+      lock: { ...base.liveness, newToken: () => "d".repeat(32), now: () => new Date(), log: () => {} },
+      hands: { manager: () => ({ ...base.manager, waitSettled: () => true }), waitTakeover: base.waitTakeover, proveWritersGone: () => ({ ok: true }),
+        waitHandedBack: done => done(), ...hands },
+    });
+    w.alive.delete(pid);
+    return { code, out, err };
+  };
+
+  it("adopts the dead updater's fence, restarts the old generation, sees the hand-back acknowledged, takes the route off: abandoned", () => {
+    const w = world();
+    diedInStopping(w);
+    const r = runner(w, 7950);
+    expect(r.code, r.err.join("\n")).toBe(0);
+    expect(r.out.join("\n")).toMatch(/is abandoned; the previous version runs again/);
+    expect(endState(w)).toEqual(ROLLED_BACK);
+    expect(w.calls.filter(c => c === "start:old")).toHaveLength(1);
+    expect([".update.lock", ".service.lock"].filter(f => existsSync(join(w.home, f)))).toEqual([]);   // released
+  });
+
+  it("an item the old fleet hasn't acknowledged yet: retryable, and the next run finishes once it is, without a second restart", () => {
+    const w = world();
+    writeInboxItem(w.home, ID, 1, "adapter", { kind: "copy", body: { text: "held during the barrier" } });
+    diedInStopping(w);
+    const first = runner(w, 7951, { waitHandedBack: done => done() });
+    expect(first.code).toBe(1);
+    expect(first.err.join("\n")).toMatch(/didn't take the held messages and jobs back.*Run the recovery again/);
+    const read = readCurrent(w.home);
+    expect(read.state === "open" && read.attempt.stage).toBe("abandoning");
+    for (const e of listHandback(w.home, ID)) markHandback(e, "acked");                              // the old fleet acknowledges it
+    const second = runner(w, 7952);
+    expect(second.code, second.err.join("\n")).toBe(0);
+    expect(w.calls.filter(c => c === "start:old")).toHaveLength(1);
+    expect(endState(w)).toEqual(ROLLED_BACK);
+  });
+
+  it("the updater died before stopping the old fleet, which then crashed: its record is journaled dead and re-taken, and the old generation restarted", () => {
+    const w = world();
+    const base = w.deps();
+    try { runUpdate(w.home, w.attempt, PLAN, w.deps({ manager: { ...base.manager, stop: () => { throw new Error("the updater died"); } } })); } catch { /* the process died */ }
+    w.alive.delete(UPDATER); w.alive.delete(OLD);
+    expect(readFleetLockRecord(w.home)).toMatchObject({ role: "fleet", pid: OLD, nonce: OLD_NONCE });
+    const r = runner(w, 7955);
+    expect(r.code, r.err.join("\n")).toBe(0);
+    const read = readCurrent(w.home);
+    expect(read.state).toBe("none");
+    expect(endState(w)).toEqual(ROLLED_BACK);
+    expect(w.calls.filter(c => c === "start:old")).toHaveLength(1);
+  });
+
+  it("no service manager given: refused, nothing changed", () => {
+    const w = world();
+    diedInStopping(w);
+    const base = w.deps();
+    const err: string[] = [];
+    w.alive.add(7953);
+    const code = runRecovery(w.home, ID, { pid: 7953, liveness: base.liveness, io: defaultJournalIo, out: () => {}, err: l => err.push(l),
+      lock: { ...base.liveness, newToken: () => "e".repeat(32), now: () => new Date(), log: () => {} } });
+    expect(code).toBe(1);
+    expect(err.at(-1)).toMatch(/can't drive an abandon/);
+    const read = readCurrent(w.home);
+    expect(read.state === "open" && read.attempt.stage).toBe("stopping");
+  });
+
+  it("a refused start that never settles: refused before anything is changed", () => {
+    const w = world();
+    diedInStopping(w);
+    const base = w.deps();
+    const r = runner(w, 7954, { manager: () => ({ ...base.manager, waitSettled: () => false }) });
+    expect(r.code).toBe(1);
+    expect(r.err.at(-1)).toMatch(/hasn't settled/);
+    const read = readCurrent(w.home);
+    expect(read.state === "open" && read.attempt.stage).toBe("stopping");
   });
 });
 

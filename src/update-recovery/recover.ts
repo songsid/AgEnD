@@ -53,6 +53,14 @@ export function realHands(home: string, takeoverMs = 60_000): RecoveryHands {
         sleepSync(250);
       }
     },
+    waitHandedBack: done => {
+      const until = performance.now() + takeoverMs;
+      for (;;) {
+        if (done()) return true;
+        if (performance.now() >= until) return false;
+        sleepSync(250);
+      }
+    },
     proveWritersGone: exempt => {
       const res = proveWritersGone(home, exempt, procWritersDeps((pid, s) => processStart(pid) === s.processStart, pid => processStart(pid)));
       return res.ok ? { ok: true } : { ok: false, reason: res.reason };

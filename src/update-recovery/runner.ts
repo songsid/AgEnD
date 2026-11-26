@@ -9,8 +9,9 @@
  * 3. under the locks it checks everything again from fresh reads (the journal, the updater, any other runner, the
  *    recorded prefix — still the one it locked) and refuses, writing nothing, if any changed; only then does it record
  *    itself (`runner.json`: the bootstrap handshake's answer);
- * 4. it acts on `recoveryPlan(…, "gone")`: a closing attempt is finished (`current` cleared); resuming an abandon, a
- *    rollback or a commit needs the restores of slice 2.3, so this kit refuses those and changes nothing;
+ * 4. it acts on `recoveryPlan(…, "gone")`: a closing attempt is finished (`current` cleared); an abandon (S-252 part 4)
+ *    and a rollback (part 2) are resumed through their drivers, the refused start settled first; a commit is the new
+ *    version's own fleet start's to finish (§7, rev 13), so this kit refuses it and changes nothing;
  * 5. it releases the locks in reverse.
  *
  * The pre-start step, finding the owner gone, starts the runner OUTSIDE the service's cgroup and job (systemd-run's
@@ -24,6 +25,8 @@ import { finishClosing, readCurrent, readRunnerRecord, recoveryPlan, updaterStat
   type JournalRead, type LivenessDeps } from "../update-journal.js";
 import { kitDir, operatorCommand } from "./pre-start.js";
 import { rollBack } from "../update-rollback.js";
+import { abandonAttempt } from "../update-abandon.js";
+import { handbackAction, listHandback } from "../update-journal.js";
 import { plistProgramArguments } from "../plist-args.js";
 import type { OwnedService } from "../install-ownership.js";
 import type { Exempt } from "../update-writers.js";
@@ -50,6 +53,13 @@ export interface RecoveryHands {
   waitTakeover(nonce: string): number | null;
   /** §4.4 with the attempt's exempt set (its updater, this runner). */
   proveWritersGone(exempt: Exempt): { ok: true } | { ok: false; reason: string };
+  /** Abandon's hand-back: wait (bounded) until `done()` — the restarted old fleet acknowledged every held item. */
+  waitHandedBack(done: () => boolean): boolean;
+}
+
+/** §2.6: every inbox item and deferred job of the attempt acknowledged by the old fleet (an unreadable list is not). */
+export function handedBack(home: string, attemptId: string, io: JournalIo): boolean {
+  try { return listHandback(home, attemptId, io).every(e => handbackAction(e) === "skip"); } catch { return false; }
 }
 
 const startOf = (pid: number, d: RunnerDeps) => {
@@ -126,6 +136,24 @@ export function runRecovery(home: string, attemptId: string, d: RunnerDeps): num
         return 0;
       case "start": return 0;
       case "refuse": return refuse(plan.reason === "manual" ? "it needs manual recovery. Run `agend update --resolve`." : `the journal reads ${plan.reason}.`);
+      case "resume-abandoning": {
+        // §2.3 through the abandon procedure (S-252 part 4): the refused start settled first; the old generation started
+        // from the adopted fence; the hand-back awaited in the journal; the route off.
+        const service = identityOf(read.attempt)?.ownership.service ?? null;
+        if (!d.hands) return refuse("this kit can't drive an abandon (no service manager given).");
+        if (!service) return refuse("the attempt records no service to restart the previous version through; start it yourself, then run `agend update --resolve`.");
+        const manager = d.hands.manager(service);
+        if (!manager.waitSettled()) return refuse("the service's refused start hasn't settled; run the recovery again.");
+        const hands = d.hands;
+        const res = abandonAttempt(home, read.attempt, {
+          self: { pid: d.pid, start }, liveness: d.liveness, isProcessAlive: pid => (d.liveness.exists ?? (() => true))(pid),
+          plistArgs: plistProgramArguments, manager, waitTakeover: nonce => hands.waitTakeover(nonce), io: d.io,
+          handBack: a => hands.waitHandedBack(() => handedBack(home, a.id, d.io)),
+        }, "the update stopped before its snapshot was taken");
+        if (res.ok === false && res.outcome === "abandoned") { d.out(`AgEnD update attempt ${attemptId} is abandoned; the previous version runs again.`); return 0; }
+        const why = res.ok ? "" : res.reason;
+        return refuse(`${why}${!res.ok && res.outcome === "manual" ? " Run `agend update --resolve`." : " Run the recovery again."}`);
+      }
       case "resume-rolling-back": {
         // §6.2 runner steps 1–6 through the rollback driver (S-252): the refused start settled first.
         const service = identityOf(read.attempt)?.ownership.service ?? null;
@@ -145,9 +173,6 @@ export function runRecovery(home: string, attemptId: string, d: RunnerDeps): num
       case "resume-committing":
         // §7 (rev 13): the new version's own fleet start finishes a commit; the old kit never does.
         return refuse(`it is committing ${read.attempt.to.version}, which only the new version's own fleet start finishes, never this recovery kit. Nothing was changed; if the fleet's start can't finish it, run \`agend update --resolve\`.`);
-      default:
-        // resume-abandoning: wired by a later S-252 part.
-        return refuse(`it needs ${plan.kind.replace("resume-", "resuming ")} from ${read.attempt.stage}${plan.substep ? ` (${plan.substep})` : ""}, which this recovery kit can't do yet. Nothing was changed.`);
     }
   } finally {
     releaseAll();

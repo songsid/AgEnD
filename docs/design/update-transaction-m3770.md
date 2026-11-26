@@ -657,6 +657,15 @@ A retry recognises each effect by the path's presence and its hash against the p
 | Committing's substeps, in this order: `retained` (§5.6), `route-removed` (+ reload), then the fleet's own: `left-trial`, `agents-started`, `inbox-delivered`, `deferred-run`; then `committed`. The route comes off before the fleet leaves trial, so a crash after that point is resumed by the new version's own fleet start (§7), never refused by the old kit | §2.3, §5.6, §7 |
 | `retained.json` (`.update-journal/`): one entry per committed attempt, the first record kept on a retry, with its snapshot directory, package preimage, unit preimage and kit, and `expiresAt` = commit + 7 days | §5.6, §5.7 |
 | An identity check that fails after the install is `manual-recovery`, journaled by the live updater; a failed rollback is `manual-recovery` when it needs a person, and otherwise leaves the attempt open for the runner | §3.2, §7 |
+
+### Revision 14 (2.5 part 4, the runner resumes an abandon)
+| Change | Where |
+|---|---|
+| `recover.cjs --run` resumes `abandoning` (and `stopping`, which the route makes reachable) through the same abandon procedure as the updater: the refused start settled first, the dead updater's fence adopted, the old generation started from it, the hand-back awaited, the route off, `abandoned`. No service manager or no recorded service refuses with nothing changed | §2.3, §6.2 |
+| The runner's hand-back is the journal's: every inbox item and deferred job of the attempt acknowledged by the restarted old fleet (`.acked`), awaited up to 60 s. Unacknowledged, or a list that can't be read, is retryable: the next run finds `restart-old` done and doesn't start the old fleet again | §2.3, §2.6 |
+| Abandon's `restart-old` with a **dead** fleet's record on `fleet.lock` (the old fleet crashed before the updater stopped it): journaled dead and re-taken (`ensureFence`, §4.3 rev 5), then the old generation started. Only a live holder is taken as the running old fleet | §2.3, §4.3 |
+| The abandon procedure lives in its own module, bundled into `recover.cjs` (node built-ins only; the bundle-closure test covers it and `recover.ts`) | §6.1 |
+
 ## 10. What 2.1 and 2.3 ship, and their tests
 **2.1** ships:
 - `update-journal.ts`: the layout, publication order, readers, stages and marks;
