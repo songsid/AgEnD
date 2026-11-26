@@ -2740,6 +2740,39 @@ export class Daemon extends EventEmitter {
       starting: this.spawning, stopping: this.deliveryWritesStopping || this.startupAborted,
       replacementRequired: !this.requestContextLifecycle || this.requestContextInterruptedLaunch === this.requestContextLaunch() });
   }
+  private requestContextStartupResources?: {
+    pending:number; unknown:boolean;
+    windows:Array<{session:string;window:string;pid:number}>;
+    ipc:Set<IpcServer>;
+    native:Array<{owner:NativePaneLifecycle;identity:string}>;
+  };
+  /** Candidate-only physical resource receipt, installed before startup. Used even when startup rejects.
+   * No stop result, timeout, removed metadata or empty supervisor map proves retirement.
+   */
+  prepareRequestContextStartupRetirement():{retired():Promise<boolean>}{
+    if(this.tmux||this.ipcServer||this.nativePaneLifecycle||this.requestContextStartupResources)throw Error("Request startup retirement must precede launch");
+    const resources={pending:0,unknown:false,windows:[] as Array<{session:string;window:string;pid:number}>,ipc:new Set<IpcServer>(),native:[] as Array<{owner:NativePaneLifecycle;identity:string}>};
+    this.requestContextStartupResources=resources;
+    return Object.freeze({retired:async()=>{
+      try{
+        if(this.requestContextStartupResources!==resources||!this.startupAborted&&!this.deliveryWritesStopping||this.spawning
+          ||resources.pending||resources.unknown||[...resources.ipc].some(ipc=>!ipc.retired()))return false;
+        for(const row of resources.native){const snapshot=row.owner.snapshot?.();
+          if(!snapshot||snapshot.state!=="exited"||JSON.stringify([snapshot.hostBootId,snapshot.paneId,snapshot.launchId,snapshot.agentId,snapshot.instance])!==row.identity)return false;
+        }
+        for(const row of resources.windows){
+          const windows=await TmuxManager.listWindowsStrict(row.session);
+          if(resources.pending||resources.unknown||windows.some(window=>window.id===row.window)||!requestContextProcessGroupGone(row.pid))return false;
+        }
+        return this.requestContextStartupResources===resources&&!resources.pending&&!resources.unknown&&[...resources.ipc].every(ipc=>ipc.retired());
+      }catch{return false;}
+    }});
+  }
+  getRequestContextLaunchSpec():Readonly<{config:InstanceConfig;topicMode:boolean;kind:"fleet-topic"|"classic"}>{
+    const kind=this.runtimeIdentity?.kind;
+    if(kind!=="classic"&&kind!=="fleet-topic")throw Error("Request launch kind unavailable");
+    return Object.freeze({config:this.getConfigSnapshot(),topicMode:this.topicMode,kind});
+  }
   /** First-On uses a real bounded pane read, not the cached idle badge; admission must already be fenced. */
   async captureRequestContextIdle(): Promise<RequestContextLaunchIdle | null> {
     const admission = this.requestContextAdmission;
@@ -2866,6 +2899,11 @@ export class Daemon extends EventEmitter {
   setNativePaneLifecycle(native: NativePaneLifecycle): void {
     if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle && !native.requestContextAvailable?.()) throw Error("Native pane adapter must be bound before daemon startup with a supported request-context producer");
     this.nativePaneLifecycle = native; this.backend = native.backend; this.paneTransport = native.host; this.controlClient = native.observation;
+    if(this.requestContextStartupResources){
+      const snapshot=native.snapshot?.();
+      if(!snapshot)this.requestContextStartupResources.unknown=true;
+      else this.requestContextStartupResources.native.push({owner:native,identity:JSON.stringify([snapshot.hostBootId,snapshot.paneId,snapshot.launchId,snapshot.agentId,snapshot.instance])});
+    }
   }
 
   constructor(
@@ -3688,6 +3726,7 @@ export class Daemon extends EventEmitter {
     // 1. IPC server — bridge between MCP server (Claude's child) and daemon
     const sockPath = join(this.instanceDir, "channel.sock");
     this.ipcServer = new IpcServer(sockPath, this.logger);
+    this.requestContextStartupResources?.ipc.add(this.ipcServer);
     // Forward IPC server errors as daemon events (prevents unhandled 'error' crash).
     // Guard: only forward post-listen errors — startup errors are handled by listen() rejection.
     let ipcListening = false;
@@ -15054,6 +15093,9 @@ export class Daemon extends EventEmitter {
     admit();
     let windowId: string;
     this.assertSessionOomAdmission();
+    const retirementResources=this.requestContextStartupResources;
+    if(retirementResources)retirementResources.pending++;
+    try {
     if (reuseWindow) {
       this.controlClient?.unregisterWindow(this.tmux!.getWindowId());
       await this.tmux!.respawnWindow(cmd, resolvedCwd, repairAdmission ? admit : undefined);
@@ -15065,6 +15107,13 @@ export class Daemon extends EventEmitter {
       windowId = await this.tmux!.createWindow(cmd, resolvedCwd, this.name);
       if (retired && retired !== windowId) this.controlClient?.unregisterWindow(retired);
     }
+    if(retirementResources){
+      const pid=await this.paneHost.getPanePid(this.tmuxSessionName,windowId);
+      if(!pid||!Number.isSafeInteger(pid)||pid<=1)throw Error("Request startup process identity unavailable");
+      retirementResources.windows.push({session:this.tmuxSessionName,window:windowId,pid});
+    }
+    }catch(error){if(retirementResources)retirementResources.unknown=true;throw error;}
+    finally{if(retirementResources)retirementResources.pending--;}
     admit();
     this.writeWindowId(windowId);
 

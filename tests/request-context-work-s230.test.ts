@@ -90,3 +90,16 @@ it.each(["retain","rotate"] as const)("the explicit %s owner guard runs inside t
  expect(()=>op==="retain"?r.store.retain(input,guard):r.store.rotate(input,guard)).toThrow(/owner changed/);
  expect(r.store.read("worker")).toEqual(op==="retain"?null:input);
 });
+it("explicit successor registration CAS retains the predecessor without deleting its contexts",()=>{
+ const r=rig();r.box.activateRequestContextBarrier();const old=r.store.retain({instance:"worker",incarnation:"old",generation:randomUUID()});
+ const next={...old,incarnation:"new",generation:randomUUID()};expect(r.store.register(next,old,()=>true)).toEqual(next);
+ const db=new Database(r.path,{readonly:true});try{expect(db.prepare("SELECT * FROM request_context_retired_work_v1").all()).toEqual([old]);}finally{db.close();}
+ expect(()=>r.store.register({...next,incarnation:"other"},old,()=>true)).toThrow(/changed/);
+ expect(()=>r.store.register({...next,generation:randomUUID()},next,()=>true)).toThrow(/successor/);
+ expect(r.store.read("worker")).toEqual(next);
+});
+it("a lost registration guard rolls back both the successor and its retired predecessor",()=>{
+ const r=rig();r.box.activateRequestContextBarrier();const old=r.store.retain({instance:"worker",incarnation:"old",generation:randomUUID()});let checks=0;
+ expect(()=>r.store.register({...old,incarnation:"new",generation:randomUUID()},old,()=>++checks===1)).toThrow(/changed/);
+ expect(r.store.read("worker")).toEqual(old);const db=new Database(r.path,{readonly:true});try{expect(db.prepare("SELECT 1 FROM sqlite_master WHERE name='request_context_retired_work_v1'").get()).toBeUndefined();}finally{db.close();}
+});

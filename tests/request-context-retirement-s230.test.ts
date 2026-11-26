@@ -98,3 +98,22 @@ it("cached idle cannot hide a busy pane, queued work, unknown background work or
   const pending = d.captureRequestContextIdle(); await vi.waitFor(() => expect(release).toBeTypeOf("function"));
   d.spawnGeneration++; release("synthetic idle"); expect(await pending).toBeNull();
 });
+
+it("a candidate retirement receipt keeps physical resources after startup rejection removes its public fields",async()=>{
+ const d=daemon(),receipt=d.prepareRequestContextStartupRetirement(),resources=d.requestContextStartupResources;
+ expect(await receipt.retired()).toBe(false);d.startupAborted=true;expect(await receipt.retired()).toBe(true);
+ let closed=false;const ipc={retired:()=>closed};resources.ipc.add(ipc);expect(await receipt.retired()).toBe(false);
+ closed=true;resources.windows.push({session:"fixture",window:"%owned",pid:777123});
+ const windows=vi.spyOn(TmuxManager,"listWindowsStrict").mockResolvedValue([]);
+ const probe=vi.spyOn(process,"kill").mockImplementation((()=>{throw Object.assign(Error("gone"),{code:"ESRCH"});}) as any);
+ expect(await receipt.retired()).toBe(true);expect(probe.mock.calls).toEqual([[777123,0],[-777123,0]]);
+ resources.pending++;expect(await receipt.retired()).toBe(false);resources.pending--;
+ windows.mockResolvedValue([{id:"%owned"}] as any);expect(await receipt.retired()).toBe(false);
+ windows.mockResolvedValue([]);resources.unknown=true;expect(await receipt.retired()).toBe(false);
+});
+it("a candidate native retirement receipt needs the original exited launch, never a detached or replacement snapshot",async()=>{
+ const d=daemon(),receipt=d.prepareRequestContextStartupRetirement();let state="running",launchId="original";
+ const native:any={backend:{},host:{},observation:{},snapshot:()=>({state,launchId,hostBootId:"host",paneId:"pane",agentId:"agent",instance:"worker"})};
+ d.setNativePaneLifecycle(native);d.startupAborted=true;expect(await receipt.retired()).toBe(false);
+ state="exited";expect(await receipt.retired()).toBe(true);launchId="new";expect(await receipt.retired()).toBe(false);
+});

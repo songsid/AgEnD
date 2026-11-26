@@ -1,3 +1,4 @@
+import {rotateHubAgentIncarnation,forgetHubAgentIncarnation,requestWorkRegistrationEvidence, type HubAgentIncarnationRecord} from "./hub-agent-incarnation-record.js";
 import {projectRequestContextNativeOutput} from "./request-context-native-output.js";
 import {validateNativeExecInputProof} from "./native-exec-input.js";
 import {admitRequestContextNativeResult} from "./request-context-native-result.js";
@@ -1408,6 +1409,103 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const current = () => { try { return owned() && records.every(row => row.idle.current()); } catch { return false; } };
     if (!current()) throw Error("Request-context owner preparation changed");
     return Object.freeze({ records: Object.freeze(records), current });
+  }
+
+  /** First-On persistent replacements. This does not activate, publish, open admission or construct a native factory.
+   * The installer separately stages native factories and checks every transport before its one activation COMMIT.
+   */
+  async prepareRequestContextPersistentRelaunch(policy:RequestContextPolicyPort,registration:RequestContextRegistrationGate,
+    fence:{current():boolean;owned():boolean},durableDrained:()=>boolean){
+    const box=this.deliveryOutbox,admission=this.requestContextAdmission,lease=captureProcessFleetLease(this.dataDir),boot=this.managerBootId;
+    if(!box||box.requestContextInstallation().read()!==null||!admission||admission.available()||!lease?.current()||!fence.current())throw Error("Request relaunch preparation unavailable");
+    const inventory=await this.captureRequestContextOwnedLaunches();
+    const rows=inventory.records.map(row=>({...row,spec:row.daemon.getRequestContextLaunchSpec(),incarnation:this.contactGeneration(row.name),
+      target:requestContextDigest(this.hubAgentConfig(row.name)),stopped:false,published:false,candidate:null as Daemon|null,
+      startup:null as ReturnType<Daemon["prepareRequestContextStartupRetirement"]>|null,
+      prepared:null as ReturnType<FleetManager["prepareRequestContextDaemonOwner"]>|null}));
+    const originalPrepare=this.prepareRequestContextStart,originalConfigure=this.configureRequestContextBeforeStart;
+    let alive=true,committed=false,rollingBack=false;
+    const processOwned=()=>{try{return alive&&!this.shuttingDown&&this.managerBootId===boot&&lease.current()
+      &&this.requestContextAdmission===admission&&(committed||fence.owned()&&!admission.available());}catch{return false;}};
+    const configured=(row:typeof rows[number])=>{try{return this.contactGeneration(row.name)===row.incarnation
+      &&requestContextDigest(this.hubAgentConfig(row.name))===row.target;}catch{return false;}};
+    const rosterOwned=()=>processOwned()&&[...this.daemons.keys()].every(name=>rows.some(row=>row.name===name))
+      &&rows.every(row=>{const now=this.daemons.get(row.name);return row.candidate?now===row.candidate||!row.published&&!now:row.stopped?!now:now===row.daemon;});
+    const current=()=>rosterOwned()&&rows.every(configured);
+    const prepare=(name:string,actual:InstanceConfig):RequestContextStartPreparation=>{
+      const row=rows.find(item=>item.name===name);
+      if(rollingBack||!row?.prepared||!row.stopped||row.candidate||!current()||requestContextDigest(actual)!==requestContextDigest(row.spec.config))throw Error("Request relaunch start differs");
+      return row.prepared.preparation;
+    };
+    const configure=(name:string,daemon:Daemon,actual:InstanceConfig,offered?:RequestContextStartPreparation)=>{
+      const row=rows.find(item=>item.name===name);
+      if(rollingBack||!row?.prepared||row.candidate||!current()||offered!==undefined&&offered.policy!==policy)throw Error("Request relaunch owner differs");
+      // Capture the object before any pre-start callback can fail. Even a startup rejection must retire it exactly.
+      row.candidate=daemon;daemon.seedRequestContextReplacement(row.retirement);row.startup=daemon.prepareRequestContextStartupRetirement();
+      originalConfigure?.(name,daemon,actual,offered);row.prepared.configure(daemon,actual,offered);
+    };
+    const hooksOwned=()=>this.prepareRequestContextStart===prepare&&this.configureRequestContextBeforeStart===configure;
+    const restoreHooks=()=>{if(!hooksOwned())throw Error("Request relaunch start hooks changed");this.prepareRequestContextStart=originalPrepare;this.configureRequestContextBeforeStart=originalConfigure;};
+    const failed=(name:string)=>Object.assign(Error("Request-context owner is not ready"),{code:"request-context-owner-not-ready",agent:name});
+    const rollback=async()=>{
+      if(committed||box.requestContextInstallation().read()!==null)throw Error("Activated owners cannot revert to legacy");
+      if(!processOwned()||!hooksOwned())throw Error("Request relaunch rollback owner changed");
+      rollingBack=true;
+      // Stop/prove every candidate before regenerating legacy instructions or creating a legacy replacement.
+      for(const row of rows.slice().reverse()){
+        if(!row.candidate)continue;
+        const now=this.daemons.get(row.name);if(now&&now!==row.candidate)throw failed(row.name);
+        if(now===row.candidate)await this.lifecycle.stopIfCurrent(row.name,row.candidate);
+        else await row.candidate.stop({nativePane:"close"});
+        if(!processOwned()||!row.startup||!await row.startup.retired())throw failed(row.name);
+        row.candidate=null;row.prepared?.dispose();
+      }
+      restoreHooks();
+      for(const row of rows){
+        row.prepared?.dispose();
+        if(!row.stopped)continue;
+        if(!processOwned())throw failed(row.name);
+        if(this.daemons.get(row.name)===row.daemon)await this.lifecycle.stopIfCurrent(row.name,row.daemon);
+        // A deleted, re-targeted or externally replaced owner is never resurrected from this captured config.
+        if(!configured(row)||this.daemons.has(row.name))continue;
+        if(!await row.retirement.retired()||!processOwned())throw failed(row.name);
+        await this.startInstance(row.name,row.spec.config,row.spec.topicMode,row.spec.kind);
+      }
+      alive=false;
+    };
+    if(!inventory.current()||!current()||!durableDrained()||!fence.current())throw Error("Request relaunch preparation changed");
+    this.prepareRequestContextStart=prepare;this.configureRequestContextBeforeStart=configure;
+    try{
+      for(const row of rows){
+        if(!current()||!fence.current()||!durableDrained()||!row.idle.current())throw failed(row.name);
+        row.stopped=true;
+        if(!await this.lifecycle.stopIfCurrent(row.name,row.daemon))throw failed(row.name);
+        if(!current()||!await row.retirement.retired()||!current())throw failed(row.name);
+      }
+      for(const row of rows){
+        if(!current()||!fence.current()||!durableDrained())throw failed(row.name);
+        row.prepared=this.prepareRequestContextDaemonOwner(row.name,row.spec.config,policy,registration,()=>committed?processOwned()&&configured(row)&&this.daemons.get(row.name)===row.candidate:current());
+        await this.startInstance(row.name,row.spec.config,row.spec.topicMode,row.spec.kind);
+        row.published=true;
+        if(!current())throw failed(row.name);row.prepared.sealRegistered();
+      }
+      const ready=()=>!rollingBack&&current()&&hooksOwned()&&fence.current()&&durableDrained()&&rows.every(row=>row.prepared?.bound());
+      if(!ready())throw Error("Request relaunch preparation changed");
+      return Object.freeze({
+        ready,
+        /** Synchronous initializer inside activation's outer SQLite transaction. */
+        retain:()=>{if(!ready())throw Error("Request relaunch preparation changed");for(const row of rows)row.prepared!.work.retainPrepared();if(!ready())throw Error("Request relaunch preparation changed");},
+        /** Post-COMMIT only. The installer replaces the start hooks with its capable owner factory before releasing admission. */
+        seal:()=>{if(!ready()||box.requestContextInstallation().read()===null)throw Error("Request relaunch has not committed");
+          for(const row of rows)row.prepared!.work.sealRetained();committed=true;},
+        executionCurrent:()=>committed&&processOwned(),
+        releaseStartHooks:()=>{if(!committed||!current())throw Error("Request relaunch has not committed");restoreHooks();},
+        rollback,
+      });
+    }catch(error){
+      try{await rollback();}catch(rollbackError){throw new AggregateError([error,rollbackError],"Request relaunch could not restore every owned agent; admission stays fenced");}
+      throw error;
+    }
   }
 
   /** Shared input gate only; C/D scope binding remains a separate pre-start preparation. */
@@ -3523,7 +3621,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * controls (a config save, a removal) are refused instead of applied.
    */
   private hubIncarnationsBroken = false;
-  private readHubIncarnations(): Record<string, { id: string; fp: string; classic?: boolean }> {
+  private readHubIncarnations(): Record<string, HubAgentIncarnationRecord> {
     try {
       const value = JSON.parse(readFileSync(this.hubIncarnationsPath(), "utf8")) as unknown;
       return value && typeof value === "object" && !Array.isArray(value) ? Object.assign(Object.create(null), value) : Object.create(null);
@@ -3534,7 +3632,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * durably invalidates EVERY earlier incarnation (all consent then needs a republish; never a revival). Throws (and
    * marks the process broken) only when neither is possible.
    */
-  private writeHubIncarnations(map: Record<string, { id: string; fp: string; classic?: boolean }>): "written" | "cleared" {
+  private writeHubIncarnations(map: Record<string, HubAgentIncarnationRecord>): "written" | "cleared" {
     const path = this.hubIncarnationsPath(), tmp = `${path}.${process.pid}.tmp`;
     try {
       mkdirSync(join(this.dataDir, "hub-member"), { recursive: true, mode: 0o700 });
@@ -3563,9 +3661,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const map = this.readHubIncarnations(), entry = Object.prototype.hasOwnProperty.call(map, agent) ? map[agent] : undefined;
     if (entry && entry.fp === fp && typeof entry.id === "string") return entry.id;
     if (!entry && !create) return null;
-    map[agent] = { id: randomUUID(), fp, ...(cfg.hubClassicIdentity ? {classic:true} : {}) };
+    map[agent] = rotateHubAgentIncarnation(entry, fp, !!cfg.hubClassicIdentity);
     // A rotation that could only clear the file still invalidated the old id durably; the new one is made next time.
-    return this.writeHubIncarnations(map) === "written" ? map[agent]!.id : null;
+    return this.writeHubIncarnations(map) === "written" ? map[agent]!.id ?? null : null;
   }
   /**
    * Every configuration in force: rotate a recorded agent's incarnation when its backend/folder/runtime changed; drop
@@ -3597,7 +3695,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!this.dataDir || !existsSync(this.hubIncarnationsPath())) return;
       const map = this.readHubIncarnations();
       if (!Object.prototype.hasOwnProperty.call(map, agent)) return;
-      delete map[agent];
+      if (!map[agent]?.id) return;
+      map[agent] = forgetHubAgentIncarnation(map[agent]);
       this.writeHubIncarnations(map);
     } catch (err) {
       this.logger.warn({ err: (err as Error)?.message, agent }, "Hub agent incarnation could not be dropped");
@@ -9831,6 +9930,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       bound:()=>registered&&preparation.current()&&binding?.current()===true,
       dispose:()=>work.dispose(),
     });
+  }
+
+  /** Installer-owned new-registration lane. Never called by a tool or inferred from an absent work row.
+   * retirement is captured by the controlled relaunch before the old launch/IPC is stopped.
+   */
+  async registerRequestContextWork(instance:string,retirement:{current():boolean;retired():Promise<boolean>}){
+    const box=this.deliveryOutbox,admission=this.requestContextAdmission,lease=captureProcessFleetLease(this.dataDir);
+    if(!box||!box.requestContextInstallation().read()||!admission||admission.available()||!lease?.current()
+      ||this.hubIncarnationsBroken||!retirement.current())throw Error("Request work registration unavailable");
+    const incarnation=this.contactGeneration(instance),path=this.hubIncarnationsPath(),image=readFileSync(path,"utf8");
+    const raw=JSON.parse(image),entry=Object.hasOwn(raw,instance)?raw[instance]:undefined,previous=box.requestContextWork.read(instance);
+    const mode=requestWorkRegistrationEvidence(instance,entry,incarnation,previous?.incarnation??null);
+    const current=()=>{try{return !this.shuttingDown&&lease.current()&&this.requestContextAdmission===admission&&!admission.available()
+      &&!this.hubIncarnationsBroken&&retirement.current()&&this.contactGeneration(instance)===incarnation&&readFileSync(path,"utf8")===image;}catch{return false;}};
+    if(!current()||!await retirement.retired()||!current())throw Error("Request work predecessor is not retired");
+    const value=mode==="resume"?previous!:box.requestContextWork.register({instance,incarnation,generation:randomUUID()},previous,current);
+    if(!current())throw Error("Request work registration changed");
+    // Commit precedes marker consumption. A crash in between resumes the exact row and finishes this write;
+    // a consumed marker with a missing row can never recreate a birth.
+    raw[instance]={...entry,requestWork:"registered"};
+    if(this.writeHubIncarnations(raw)!=="written")throw Error("Request work registration evidence unavailable");
+    if(!lease.current()||!retirement.current()||this.contactGeneration(instance)!==incarnation)throw Error("Request work registration changed");
+    return value;
   }
 
   /** One replacement's C/D-local binding. It is constructed before startup, never hot-bound or published here. */

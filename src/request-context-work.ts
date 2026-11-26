@@ -32,6 +32,25 @@ export class RequestContextWorkStore {
    this.writable();if(!current())throw Error("Request-context work owner changed");return this.read(input.instance)!;
   })();
  }
+ /** Explicit new-registration CAS, after the owner proves durable lifecycle evidence and old launch/IPC retirement.
+  * Old contexts and recovery pointers remain intact. A missing row alone never authorizes this method.
+  */
+ register(value: RequestContextWorkIdentity, expected: RequestContextWorkIdentity | null, current: () => boolean): RequestContextWorkIdentity {
+  const input=row.parse(value),before=expected===null?null:row.parse(expected);
+  if(before&&(before.instance!==input.instance||before.incarnation===input.incarnation))throw Error("Request work successor differs");
+  this.writable();if(!current())throw Error("Request work registration changed");
+  return this.db.transaction(()=>{
+   const stored=this.read(input.instance);
+   if(JSON.stringify(stored)!==JSON.stringify(before))throw Error("Request work registration changed");
+   if(before){
+    this.db.exec("CREATE TABLE IF NOT EXISTS request_context_retired_work_v1(instance TEXT NOT NULL,incarnation TEXT NOT NULL,generation TEXT NOT NULL,PRIMARY KEY(instance,incarnation,generation))");
+    this.db.prepare("INSERT INTO request_context_retired_work_v1 VALUES (?,?,?)").run(before.instance,before.incarnation,before.generation);
+    if(this.db.prepare(`UPDATE ${TABLE} SET incarnation=?,generation=? WHERE instance=? AND incarnation=? AND generation=?`)
+      .run(input.incarnation,input.generation,before.instance,before.incarnation,before.generation).changes!==1)throw Error("Request work registration changed");
+   }else this.retain(input,current);
+   this.writable();if(!current())throw Error("Request work registration changed");return this.read(input.instance)!;
+  })();
+ }
  /** Only a proven fresh lifecycle boundary calls this. A written Clear, compact and session discovery do not prove one. */
  rotate(expected: RequestContextWorkIdentity, current:()=>boolean=()=>true): RequestContextWorkIdentity {
   const before = row.parse(expected); this.writable();if(!current())throw Error("Request-context work owner changed");
