@@ -22,8 +22,6 @@ export interface RequestContactGateHost {
   adminOf(instance: string, person: ContactPerson): boolean;
   /** Current policy only for a proven accepted room basis; undefined retains the original rule. Never relabel provenance. */
   sourceRestricted?(root:RequestContextV1):boolean|undefined;
-  /** Capable Off admits only proven fresh owner work normally; default retains E's Active matrix. */
-  normalAllowed?(root:RequestContextV1):boolean;
   canDecide(target: string, person: ContactPerson): boolean;
   canManage(target: string, person: ContactPerson): boolean;
   /** F/I lifecycle must prove no live turn, input, derivative work or native call ledger references. Uninstalled before cutover. */
@@ -175,7 +173,7 @@ export class RequestContactGate {
       const normal = context.initiatingActor.kind!=="unknown"&&(context.ingress === "owner" || roomIngress&&!currentlyRestricted
         || roomIngress&&currentlyRestricted && !!root && !!person && this.host.adminOf(root.source.instance, person));
       const hub=context.ingress==="hub"&&this.host.hubRelayAllowed?.(context,binding,delivery)===true;
-      if (release || normal&&!!root&&(this.host.normalAllowed?.(root)??true) || hub) return { admitted: this.admitImage(image) };
+      if (release || normal || hub) return { admitted: this.admitImage(image) };
       const request=this.request(image),ticket = this.tickets.hold(request);
       this.db.prepare(`INSERT INTO ${TABLE} (source_instance,operation_id,source_key,root_id,ticket_id,image_json,image_sha256,request_sha256) VALUES (?,?,?,?,?,?,?,?)`).run(delivery.sourceInstance, delivery.operationId, delivery.sourceKey,
         context.ref.rootContextId, ticket.id, requestContextJson(image), requestContextDigest(image),requestContextDigest(request));

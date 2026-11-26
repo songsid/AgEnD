@@ -1,6 +1,6 @@
 import { RequestContextHelperAdmission } from "./request-context-helper.js";
 import {requestContextDigest} from "./request-context-store.js";
-import type { RequestContextAdmissionPort } from "./request-context-admission.js";
+import type { RequestContextAdmissionPort,RequestContextContinuation } from "./request-context-admission.js";
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
 import { requestContextProcessGroupGone, type RequestContextLaunchRetirement, type RequestContextLaunchIdle } from "./request-context-retirement.js";
 import { ReplyDraft } from "./reply-draft.js";
@@ -2671,7 +2671,7 @@ export class Daemon extends EventEmitter {
   }
 
   /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
-  private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string }; newWork?: (reason: "fresh") => void; replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null };
+  private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string }; newWork?: (reason: "fresh") => void; replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null; continuation?:(inputId:string|null,recovery?:{inputId:string;parent:RequestContextTurnSnapshot;current:()=>boolean})=>RequestContextContinuation|undefined };
   private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean };
   requestContextPolicy?:RequestContextPolicyPort;
   bindRequestContextPolicy(policy:RequestContextPolicyPort):void {if(this.requestContextPolicy||!this.requestContextLifecycle)throw Error("request-context policy requires its owned turn binding");this.requestContextPolicy=policy;}
@@ -2837,11 +2837,11 @@ export class Daemon extends EventEmitter {
       } catch { return false; }
     } });
   }
-  setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }, newWork?: (reason: "fresh") => void, replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null): void {
+  setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }, newWork?: (reason: "fresh") => void, replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null,continuation?:NonNullable<Daemon["requestContextLifecycle"]>["continuation"]): void {
     if (this.tmux || this.ipcServer || this.requestContextLifecycle || this.nativePaneLifecycle && !this.nativePaneLifecycle.requestContextAvailable?.()) throw Error("Request context must be bound before a supported daemon startup");
     this.requestContextCalls.installRegistration(turns.registrationGate??undefined);
     this.requestContextHelper=new RequestContextHelperAdmission();
-    this.requestContextLifecycle = { turns, identity, newWork, replyTarget };
+    this.requestContextLifecycle = { turns, identity, newWork, replyTarget,continuation };
   }
   /** Authoritative fresh-launch boundary only; session discovery and a merely written clear command do not prove it. */
   private requestContextNewWork(reason: "fresh"): void {
@@ -9524,13 +9524,17 @@ export class Daemon extends EventEmitter {
     const cancelled = () => (opts?.deliveryEpoch !== undefined && !this.isDeliveryEpochCurrent(opts.deliveryEpoch))
       || (!!opts?.roomContextGeneration && opts.roomContextGeneration !== this.roomConversationGeneration());
     if (cancelled() || this.stormWindow?.isStopped()) return false;
+    const admittedReceiptId=opts?.humanMeta?.verification_id??opts?.humanVerificationId;
+    const admittedInputId=opts?.requestContextInputId??(admittedReceiptId?`human:${admittedReceiptId}`:opts?.durableAttempt?`delivery:${opts.durableAttempt.deliveryId}:${opts.durableAttempt.attemptNo}`:null);
+    // Captured once for this input, before waiting. An ended steer never turns into a fresh owner root.
+    const continuation=this.requestContextLifecycle?.continuation?.(admittedInputId,opts?.requestContextRecovery);
     let heldOwner: string | undefined;
     const admissionCurrent = () => !cancelled() && !this.deliveryWritesStopping && !this.startupAborted
       && (heldOwner === undefined || heldOwner === JSON.stringify(this.interactionOwner()));
     const waitAdmission = async () => {
       const port = this.requestContextAdmission!;
-      if (!port.available()) heldOwner ??= JSON.stringify(this.interactionOwner());
-      return await port.wait(admissionCurrent) && admissionCurrent();
+      if (!port.available(continuation)) heldOwner ??= JSON.stringify(this.interactionOwner());
+      return await port.wait(admissionCurrent,continuation) && admissionCurrent();
     };
     if (this.requestContextAdmission && !await waitAdmission()) return false;
     formatted = prepareDeliveryWire(formatted, opts?.preserveExactBytes);
@@ -9688,7 +9692,7 @@ export class Daemon extends EventEmitter {
     for (let round = 0; ; round++) {
       const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog" | "spawn-started" | "request-context-held" | KiroPendingDelivery> => {
         if (cancelled()) return false;
-        if (this.requestContextAdmission && !this.requestContextAdmission.available() && !verdict.paneWriteStarted && !verdict.durableBeginCommitted) return "request-context-held";
+        if (this.requestContextAdmission && !this.requestContextAdmission.available(continuation) && !verdict.paneWriteStarted && !verdict.durableBeginCommitted) return "request-context-held";
         // A spawn that started after the settle wait above invalidates the
         // window id and every readiness verdict since: the pane about to be
         // written may already belong to a replacement process. The same holds
@@ -9726,14 +9730,14 @@ export class Daemon extends EventEmitter {
         // same process, a pause/stop/respawn is not (launchFenceEpoch moves even
         // when a failed pause resumes the monitors).
         const writeCurrent = () => !cancelled()
-          && (!this.requestContextAdmission || admissionCurrent() && (this.requestContextAdmission.available() || !!verdict.paneWriteStarted || !!verdict.durableBeginCommitted))
+          && (!this.requestContextAdmission || admissionCurrent() && (this.requestContextAdmission.available(continuation) || !!verdict.paneWriteStarted || !!verdict.durableBeginCommitted))
           && !this.staleAuthIssue()
           && !this.deliveryWritesStopping
           && !this.runtimeMonitorsFrozen
           && !this.spawning
           && settleGeneration === this.spawnGeneration
           && settleFence === this.launchFenceEpoch;
-        const stale = () => this.requestContextAdmission && !this.requestContextAdmission.available() && !verdict.paneWriteStarted && !verdict.durableBeginCommitted
+        const stale = () => this.requestContextAdmission && !this.requestContextAdmission.available(continuation) && !verdict.paneWriteStarted && !verdict.durableBeginCommitted
           ? "request-context-held" as const : this.spawning || settleGeneration !== this.spawnGeneration ? "spawn-started" as const : false;
         const residue = await this.clearRestoredInputDraft(handingOffToNativeQueue, writeCurrent);
         if (residue === "stale") return stale();
@@ -9776,7 +9780,7 @@ export class Daemon extends EventEmitter {
         // M-2267: the pane is in a tmux mode: nothing written — wait for readiness (it holds while the mode lasts), retry.
         if (written === "pane-in-mode") return "dialog";
         // A publication fence before input keeps this attempt at its producer; never turn the wait into failure.
-        if (written === false && this.requestContextAdmission && !this.requestContextAdmission.available() && !verdict.paneWriteStarted && !verdict.durableBeginCommitted) return "request-context-held";
+        if (written === false && this.requestContextAdmission && !this.requestContextAdmission.available(continuation) && !verdict.paneWriteStarted && !verdict.durableBeginCommitted) return "request-context-held";
         // Fenced before its first write: not attempted — redo after a spawn, else drop without a ❌.
         return written === false && verdict.fenced ? stale() : written;
       });

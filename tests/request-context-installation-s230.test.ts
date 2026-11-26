@@ -172,3 +172,45 @@ it("a failed first-On initializer cannot leave a cached returns owner bound to r
  store.activate(record,owner,lease,()=>true,0,()=>{next=box.requestContextReturns;});expect(next).not.toBe(prior);
  const db=new Database(path,{readonly:true});try{expect(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name='request_context_returns_v1'").get()).toEqual({n:1});}finally{db.close();}
 });
+
+const OLD_ROOT="00000000-0000-4000-8000-000000000001", NEW_ROOT="00000000-0000-4000-8000-000000000002";
+it("Draining admits only owned, current continuations of the captured old roots; Off opens ordinary input",async()=>{
+  const r=rig(),state=r.activate(),ports={},p=new RequestContextPublication(r.owner,true);
+  p.publish(state,ports,p.fence(),()=>true,()=>r.store.read(),()=>true);
+  let owned=true;
+  const old=p.continuation(OLD_ROOT,()=>owned),next=p.continuation(NEW_ROOT,()=>true);
+  const draining=r.store.beginOff(1,r.owner);
+  p.publish(draining,ports,p.fence(),()=>true,()=>r.store.read(),()=>true,id=>id===OLD_ROOT);
+  expect(p.admission.dispatchAvailable!()).toBe(true);
+  expect(p.admission.available()).toBe(false);expect(()=>p.capture()).toThrow(/fenced/);
+  expect(p.capture(old)?.state.mode).toBe("draining");expect(p.admission.available(next)).toBe(false);
+  expect(p.admission.available({...old})).toBe(false); // A serialized/root-only copy is not a lease.
+  const other=new RequestContextPublication(r.owner,true);
+  other.publish(draining,ports,other.fence(),()=>true,()=>r.store.read(),()=>true,()=>true);
+  expect(other.admission.available(old)).toBe(false);
+  const waiting=p.admission.wait(()=>true);const staleWaiting=p.admission.wait(()=>true,next);owned=false;p.admission.changed();
+  expect(p.admission.available(old)).toBe(false);
+  expect(await p.admission.wait(()=>true,old)).toBe(false);
+  const off=r.store.finishOff(2,r.owner,{epoch:state.epoch,revision:2,current:()=>true});
+  p.publish(off,ports,p.fence(),()=>true,()=>r.store.read(),()=>true);
+  expect(await waiting).toBe(true);expect(await staleWaiting).toBe(false);expect(p.admission.available(next)).toBe(false);expect(p.capture()?.state.mode).toBe("off");
+});
+it("the drain root snapshot survives restart, excludes later roots, and refuses a deleted member",()=>{
+  const r=rig();r.activate();
+  const root=(id:string)=>({ref:{version:1 as const,contextId:id,rootContextId:id},rootEvidenceRef:"synthetic",
+    initiatingActor:{kind:"unknown" as const,reason:"unidentified" as const},sourceAudience:{kind:"room" as const,ref:OLD_ROOT},ingress:"restricted-room" as const,
+    source:{instance:"worker",incarnation:"current"}});
+  r.box.requestContextRecovery.retain(root(OLD_ROOT));
+  const draining=r.store.beginOff(1,r.owner);
+  r.box.requestContextRecovery.retain(root(NEW_ROOT));
+  expect([...r.box.requestContextInstallation().drainRoots()]).toEqual([OLD_ROOT]);
+  const db=new Database(r.path);try{db.prepare("DELETE FROM request_context_drain_roots_v1 WHERE root_id=?").run(OLD_ROOT);}finally{db.close();}
+  expect(()=>r.store.drainRoots()).toThrow(/differs/);
+  expect(()=>r.store.finishOff(draining.revision,r.owner,{epoch:draining.epoch,revision:draining.revision,current:()=>true})).toThrow(/differs/);
+  expect(r.store.read()?.mode).toBe("draining");
+});
+it("failed installation can snapshot empty durable families and complete Off without an installed registry",()=>{
+  const r=rig();r.activate();r.store.beginOff(1,r.owner);
+  expect([...r.store.drainRoots()]).toEqual([]);
+  expect(r.store.finishOff(2,r.owner,{epoch:"epoch-1",revision:2,current:()=>true}).mode).toBe("off");
+});

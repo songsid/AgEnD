@@ -200,3 +200,24 @@ it("both actual pump owners leave work unclaimed while held; eligibility polling
   p.abandon(fence, () => null); (FleetManager.prototype as any).runDeliveryOutboxPump.call(ctx);
   expect(claimNext).toHaveBeenCalledTimes(1);
 });
+
+it("a captured continuation passes the actual daemon final-write gate while independent input remains parked",async()=>{
+  const d=daemon(),{p}=publication(),ports={};
+  let state={revision:1,epoch:"epoch",owner:"fixture-fleet",mode:"active" as "active"|"draining"};
+  p.publish(state,ports,p.fence(),()=>true,()=>state,()=>true);
+  const root="00000000-0000-4000-8000-000000000001",proof=p.continuation(root,()=>true);
+  state={...state,revision:2,mode:"draining"};p.publish(state,ports,p.fence(),()=>true,()=>state,()=>true,id=>id===root);
+  d.setRequestContextAdmission(p.admission);
+  // Only the gate is under test; every physical pane/backend port is synthetic and writes no process input.
+  d.requestContextLifecycle={continuation:(id:string)=>id==="owned-delivery"?proof:undefined};
+  d.tmux={getWindowId:()=>"@fixture"};d.controlClient={};d.runtimeMonitorsFrozen=false;
+  d.waitForSpawnToSettle=async()=>true;d.paneReadinessForDelivery=async()=>"ready";
+  d.submitStrandedInputIfAny=async()=>"idle";d.refuseBlockedDelivery=()=>false;
+  d.waitForInputTransientToClear=async()=>true;d.deliveryBlockingDialogs=()=>[];d.hasPositiveDeliveryInput=async()=>true;
+  d.clearRestoredInputDraft=async()=>"clear";
+  const physicalWrite=vi.fn();d.writeMessageToPane=vi.fn(async(...args:any[])=>{if(!args[8]())return false;physicalWrite();return true;});
+  expect(await d.deliverMessage("synthetic return",undefined,{requestContextInputId:"owned-delivery"})).toBe(true);
+  expect(physicalWrite).toHaveBeenCalledTimes(1);
+  const fresh=d.deliverMessage("synthetic new root");await Promise.resolve();expect(physicalWrite).toHaveBeenCalledTimes(1);
+  d.deliveryWritesStopping=true;p.admission.changed();expect(await fresh).toBe(false);
+});

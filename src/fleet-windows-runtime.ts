@@ -1,7 +1,7 @@
 import {nativeExecContextInputKey,type NativeExecContextReference} from "./native-exec-context.js";
 import {claimNativeExecInput,validateNativeExecInputProof,type NativeExecInputClaim} from "./native-exec-input.js";
 import type {RequestContextExecOwner,RequestContextExecInput} from "./request-context-exec-owner.js";
-import { runWithRequestContextAdmission, type RequestContextAdmissionPort } from "./request-context-admission.js";
+import { runWithRequestContextAdmission, type RequestContextAdmissionPort, type RequestContextContinuation } from "./request-context-admission.js";
 import { RequestContextReferenceMap, type RequestContextRegistrationGate } from "./request-context-fence.js";
 /** Windows execution adapter for the ordinary Fleet instance registry and delivery facade. */
 import { OPERATIONS_MAX_CHARS } from "./instructions.js";
@@ -35,6 +35,7 @@ export interface FleetWindowsRuntimeHost {
   emit(event: string, data: unknown): void;
   stopping(): boolean;
   requestContextAdmission?(): RequestContextAdmissionPort | undefined;
+  requestContextContinuation?(instance:string,inputId:string|null):RequestContextContinuation|undefined;
   history?: Pick<WebChatHistory,"findByMessageId"> & Partial<Pick<WebChatHistory,"reconcileNativeMessages" | "findByNativeHistoryId">>;
   openMcp?(instance: string, requestId: string, sandbox: WindowsAgent["sandbox"], stillCurrent: () => boolean, requestContext?: RequestContextCallLease, inputReady?:()=>Promise<boolean>): NativeMcpLease | null;
   /** One projector for live completion and history import. No latest-chat or current-speaker fallback. */
@@ -370,7 +371,7 @@ export class FleetWindowsRuntime {
   }
   private claim(name: string, payload: Record<string,unknown>, options: NativeRuntimeDeliveryOptions, settled: (task:NativeExecutionResult)=>void): WindowsCliTask | import("./windows-agents.js").WindowsTurn {
     this.enabled();
-    if (this.host.requestContextAdmission?.()?.available() === false) throw new RequestContextInputDeferred();
+    if (this.host.requestContextAdmission?.()?.available(this.host.requestContextContinuation?.(name,options.requestContextInputId??null)) === false) throw new RequestContextInputDeferred();
     this.hasClaimed = true;
     if (this.host.stopping() || options.stillCurrent?.() === false) throw new Error("Windows delivery is no longer current");
     const config=this.config(name);
@@ -474,7 +475,7 @@ export class FleetWindowsRuntime {
   async deliver(name: string, payload: Record<string,unknown>, options: NativeRuntimeDeliveryOptions = {}): Promise<boolean> {
     const port = this.host.requestContextAdmission?.();
     if (port) return runWithRequestContextAdmission(port, () => !this.host.stopping() && options.stillCurrent?.() !== false,
-      () => this.deliverAdmitted(name, payload, options));
+      () => this.deliverAdmitted(name, payload, options),this.host.requestContextContinuation?.(name,options.requestContextInputId??null));
     return this.deliverAdmitted(name, payload, options);
   }
   private async deliverAdmitted(name: string, payload: Record<string,unknown>, options: NativeRuntimeDeliveryOptions): Promise<boolean> {
@@ -487,7 +488,7 @@ export class FleetWindowsRuntime {
   execute(name: string, payload: Record<string,unknown>, options: NativeRuntimeDeliveryOptions = {}): Promise<NativeExecutionResult> {
     const port = this.host.requestContextAdmission?.();
     if (port) return runWithRequestContextAdmission(port, () => !this.host.stopping() && options.stillCurrent?.() !== false,
-      () => this.executeAdmitted(name, payload, options));
+      () => this.executeAdmitted(name, payload, options),this.host.requestContextContinuation?.(name,options.requestContextInputId??null));
     return this.executeAdmitted(name, payload, options);
   }
   private executeAdmitted(name: string, payload: Record<string,unknown>, options: NativeRuntimeDeliveryOptions): Promise<NativeExecutionResult> {

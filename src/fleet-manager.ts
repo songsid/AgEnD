@@ -18,7 +18,8 @@ import type {RequestContextControlHost,RequestContextControlPrincipal} from "./r
 import {RequestContextPreparedWork} from "./request-context-work.js";
 import type { RequestContextStartPreparation, RequestContextDaemonWork } from "./request-context-start.js";
 import { requestContextSkillText, requestContextSteeringText, type RequestContextKnowledgeMode } from "./request-context-knowledge.js";
-import { runWithRequestContextAdmission, type RequestContextAdmissionPort } from "./request-context-admission.js";
+import {requestDeliveryContinuation} from "./request-context-continuation.js";
+import { runWithRequestContextAdmission, type RequestContextContinuation, type RequestContextAdmissionPort } from "./request-context-admission.js";
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
 import {requestDeliveryView,requestContextDisplayView} from "./request-context-view.js";
 import {captureRequestHubOutput} from "./request-hub-output.js";
@@ -1091,6 +1092,7 @@ interface PendingClassicStart {
 
 // Exact server-admitted payload objects only; metadata never chooses an exec input key.
 const nativeHumanInputs=new WeakMap<object,{instance:string;inputId:string}>();
+const requestPayloadContinuations=new WeakMap<object,RequestContextContinuation>();
 
 export interface DeliveryOptions {
   /**
@@ -1530,7 +1532,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const prepare = this.configureRequestContextBeforeStart;
     this.configureRequestContextBeforeStart = (name, daemon, config, preparation) => { daemon.setRequestContextAdmission(port); prepare?.(name, daemon, config, preparation); };
     port.subscribe(available => {
-      if (available && !this.shuttingDown && this.deliveryOutbox?.isOpen) { this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); }
+      if ((available || port.dispatchAvailable?.()) && !this.shuttingDown && this.deliveryOutbox?.isOpen) { this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); }
     });
   }
   /** S-244: the quiescence barrier. Unset, every pane write and admission proceeds as today. */
@@ -2057,6 +2059,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const runtime=new FleetWindowsRuntime({
       owner:this,fleet:()=>this.fleetConfig,save:()=>this.saveFleetConfig(),stopping:()=>this.shuttingDown,history:this.webChatHistory,
       requestContextAdmission:()=>this.requestContextAdmission,
+      requestContextContinuation:(instance,inputId)=>{
+        if(!this.requestContextBoot)return;
+        const match=/^delivery:([a-f0-9-]{36}):([1-9][0-9]*)$/.exec(inputId??"");if(!match)return;
+        const row=this.deliveryOutbox?.get(match[1]!);
+        if(!row||row.targetInstance!==instance||row.managerBootId!==this.managerBootId||row.attemptNo!==Number(match[2])
+          ||row.targetDaemonBootId!==this.managerBootId||!["delivering","submission_started"].includes(row.state))throw Error("Native continuation attempt changed");
+        return this.requestContextDeliveryContinuation(row)??undefined;
+      },
       openMcp:(instance,requestId,sandbox,stillCurrent,requestContext,inputReady)=>this.healthServerListening
         ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,...(requestContext?{requestContext}:{}),...(inputReady?{inputReady}:{}),endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
       projectRequestContextOutput:(instance,task,completion)=>this.deliveryOutbox?projectRequestContextNativeOutput(this.deliveryOutbox,instance,task,completion,{
@@ -6734,6 +6744,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }catch{return false;}
   }
 
+  /** Off preserves the owner's current Hub contact setting. Elapsed contact-window time grants nothing. */
+  requestContextHubOwnerAllowsContact(context:RequestContextV1):boolean {
+    try{
+      const root=this.deliveryOutbox?.requestContext(context.ref.rootContextId),actor=root?.initiatingActor;
+      if(!root||root.ingress!=="hub"||!actor||!("platform"in actor)||actor.platform!=="hub"||this.contactGeneration(root.source.instance)!==root.source.incarnation
+        ||this.hubMemberPairingApi?.boundHub()?.hubId!==actor.hubId)return false;
+      const view=this.hubMemberExposureApi?.list().find(row=>row.agent===root.source.instance);
+      return view?.state==="published"&&view.enforceable&&!view.reason&&view.contactLimit===false;
+    }catch{return false;}
+  }
+
   /** One installed gate host for direct sends and same-card decisions. No lifetime origin or return-release lookup.
    * Currentness belongs to the installation/process, not a browser, transport-readiness poll or old Hub timer.
    */
@@ -6758,13 +6779,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       current:(context,binding)=>current()&&incarnation(binding.source.instance)===binding.source.incarnation
         &&incarnation(binding.target.instance)===binding.target.incarnation&&this.requestContextNativeAdmissionCurrent(context),
       sourceRestricted:root=>this.requestContextSourceRoomRestricted(root),
-      normalAllowed:root=>{
-        const installed=mode();if(installed==="active"||installed==="draining")return true;
-        if(installed!=="off"||root.ingress==="hub"||root.ingress==="guest"||!/^human:hmsg-[a-f0-9-]{36}$/.test(root.rootEvidenceRef))return false;
-        const actor=person(root.initiatingActor);return !!actor&&manage(root.source.instance,actor);
-      },
       rootRetired:root=>current()&&rootRetired(root),
-      hubRelayAllowed:(context,binding,delivery)=>current()&&(mode()==="active"||mode()==="draining")&&assertRequestHubContactImage(context,binding,delivery),
+      hubRelayAllowed:(context,binding,delivery)=>{
+        if(!current()||!assertRequestHubContactImage(context,binding,delivery))return false;
+        const installed=mode();return installed==="active"||installed==="draining"||installed==="off"&&this.requestContextHubOwnerAllowsContact(context);
+      },
       accepted:()=>{this.scheduleDeliveryOutboxPump();this.needsYou?.poke();},
     };
   }
@@ -6780,7 +6799,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     this.requestContextPolicy=boot.policy;
     this.requestContextRelay={admit:(input,operation,current)=>serving(operation.admission?.coverage==="covered").relay.admit(input,operation,current)};
-    this.requestContextHumanAdmission=(...args)=>serving().human(...args);
+    // Record-only identity admission is not a pane write. New input still waits at the shared gate.
+    this.requestContextHumanAdmission=(...args)=>serving(true).human(...args);
     this.requestContextHubAdmission=input=>serving().hub(input);
     this.requestContactApi={
       principal:(req,url)=>this.requestContactPrincipal(req,url),permitContinuation:(req,res)=>permitWebContinuation(req,res,{webToken:this.webToken,webSessions:this.webSessions}),
@@ -7705,12 +7725,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.deliveryPumpTimer.unref?.();
   }
 
+  /** Only B-validated deliveries can pass Draining; a legacy row or a body root id cannot. */
+  private requestContextDeliveryContinuation(row:OutboxDelivery):RequestContextContinuation|null {
+    const boot=this.requestContextBoot,box=this.deliveryOutbox;
+    if(!boot||!box)return null;
+    return requestDeliveryContinuation(box,boot.publication,row,()=>!this.shuttingDown&&this.deliveryOutbox===box&&this.requestContextBoot===boot&&this.contactDeliveryCurrent(row));
+  }
+  private requestContextDeliveryAdmissionAllowed(row:OutboxDelivery):boolean {
+    try{return this.requestContextAdmission?.available(this.requestContextDeliveryContinuation(row)??undefined)!==false;}catch{return false;}
+  }
+
   private async runDeliveryOutboxPump(): Promise<void> {
     const outbox = this.deliveryOutbox;
     // A closed database is never queried: this runs from timers, where a throw
     // is an unhandled rejection. Checking here covers the finally block too:
     // the body below never awaits, so the database cannot close in between.
-    if (!outbox || this.shuttingDown || this.deliveryPumpRunning || !outbox.isOpen || this.requestContextAdmission?.available() === false) return;
+    if (!outbox || this.shuttingDown || this.deliveryPumpRunning || !outbox.isOpen || (this.requestContextAdmission?.dispatchAvailable?.() ?? this.requestContextAdmission?.available()) === false) return;
     this.deliveryPumpRunning = true;
     this.deliveryPumpScheduled = false;
     try {
@@ -7737,7 +7767,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             ? null
             : this.deliveryBootId(target),
           this.activeDurableTargets,
-          row => this.recoveryDeliveryEligible(row),
+          row => this.recoveryDeliveryEligible(row) && (this.requestContextAdmission?.available() !== false || this.requestContextDeliveryAdmissionAllowed(row)),
         );
         if (!claimed) break;
         this.activeDurableTargets.add(claimed.targetInstance);
@@ -7791,14 +7821,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const worker: TargetQueueWorker = new TargetQueueWorker(target, {
       owns: () => this.queueWorkers.get(target) === worker,
       wanted: () => this.deliveryWorkerMode(target) === "on",
-      available: () => !this.shuttingDown && this.deliveryOutbox?.isOpen === true && this.requestContextAdmission?.available() !== false,
+      available: () => !this.shuttingDown && this.deliveryOutbox?.isOpen === true && (this.requestContextAdmission?.dispatchAvailable?.() ?? this.requestContextAdmission?.available()) !== false,
       blocked: () => this.isInstanceRestarting(target) || this.wakeCoordinator?.blocksClaim(target) === true,
       daemonBootId: () => this.deliveryBootId(target),
-      claim: bootId => this.requestContextAdmission?.available() === false ? undefined : this.deliveryOutbox?.claimNext(
+      claim: bootId => (this.requestContextAdmission?.dispatchAvailable?.() ?? this.requestContextAdmission?.available()) === false ? undefined : this.deliveryOutbox?.claimNext(
         this.managerBootId,
         candidate => candidate === target ? bootId : null,
         new Set(),
-        row => this.recoveryDeliveryEligible(row),
+        row => this.recoveryDeliveryEligible(row) && (this.requestContextAdmission?.available() !== false || this.requestContextDeliveryAdmissionAllowed(row)),
       ),
       tryAcquireBudget: () => {
         if (this.activeDurableTargets.size >= 8) return false;
@@ -7898,6 +7928,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           correlation_id: claimed.correlationId ?? String(rawMeta.correlation_id ?? ""),
         };
         if (humanControl) { payload.delivery_id = claimed.deliveryId; payload.delivery_attempt = String(claimed.attemptNo); markRetainedHumanControl(payload, claimed); }
+        if(this.requestContextBoot){const proof=this.requestContextDeliveryContinuation(outbox.get(claimed.deliveryId)!);if(proof)requestPayloadContinuations.set(payload,proof);}
         sent = await this.deliverToInstance(target, payload, {
           isCrossInstance: !humanControl,
           stillCurrent: () => this.contactDeliveryCurrent(claimed),
@@ -9687,14 +9718,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     onStartRetryHold?: () => void,
     beforeInput?: () => Promise<boolean>,
   ): Promise<boolean> {
-    if (this.requestContextAdmission && !await this.requestContextAdmission.wait(() => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent))) return false;
+    if (this.requestContextAdmission && !await this.requestContextAdmission.wait(() => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent),requestPayloadContinuations.get(payload))) return false;
     if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const queued = this.ipcWaitTails.get(instanceName);
     if (!queued) {
       const ipc = this.instanceIpcClients.get(instanceName);
       if (ipc?.connected) {
         if (beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
-        if (this.requestContextAdmission?.available() === false) return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold, beforeInput);
+        if (this.requestContextAdmission?.available(requestPayloadContinuations.get(payload)) === false) return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold, beforeInput);
         const wire = this.bindHumanReceiptPayload(instanceName, payload);
         if (this.refuseHubPane(wire)) return false;
         if (this.holdPaneSend(instanceName, wire)) return true;
@@ -9730,7 +9761,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async handOffAfterBeforeInput(instanceName: string, payload: Record<string, unknown>, deliveryEpoch: number,
     stillCurrent: (() => boolean) | undefined, beforeInput: () => Promise<boolean>): Promise<boolean> {
-    if (this.requestContextAdmission && !await this.requestContextAdmission.wait(() => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent))) return false;
+    if (this.requestContextAdmission && !await this.requestContextAdmission.wait(() => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent),requestPayloadContinuations.get(payload))) return false;
     // The flag is read before beforeInput and before prepareClassicForPerson. A Hub or room row stays
     // queued at its producer: no begin lease, no input intent, and no plaintext copy of the question.
     if (this.refuseHubPane(payload)) return false;
@@ -9739,7 +9770,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (this.holdPaneSend(instanceName, early)) return true;
     }
     const begin = this.requestContextAdmission
-      ? await runWithRequestContextAdmission(this.requestContextAdmission, () => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent), beforeInput)
+      ? await runWithRequestContextAdmission(this.requestContextAdmission, () => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent), beforeInput,requestPayloadContinuations.get(payload))
       : await beforeInput();
     if (!begin) return false;
     if (this.refuseHubPane(payload)) return false;
@@ -9767,7 +9798,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return sent;
     };
     return this.requestContextAdmission
-      ? runWithRequestContextAdmission(this.requestContextAdmission, () => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent), send)
+      ? runWithRequestContextAdmission(this.requestContextAdmission, () => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent), send,requestPayloadContinuations.get(payload))
       : send();
   }
 
@@ -9784,8 +9815,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let warned = false;
     let held = false;
     for (;;) {
-      if (this.requestContextAdmission && !this.requestContextAdmission.available()) {
-        if (!await this.requestContextAdmission.wait(() => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent))) return false;
+      if (this.requestContextAdmission && !this.requestContextAdmission.available(requestPayloadContinuations.get(payload))) {
+        if (!await this.requestContextAdmission.wait(() => this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent),requestPayloadContinuations.get(payload))) return false;
         deadline = Date.now() + IPC_RECONNECT_GRACE_MS; // Cutover waiting is not an IPC reconnect timeout.
         continue;
       }
@@ -10306,7 +10337,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if(!owned())throw Error("Request work identity is no longer current");
       const before=identity();work.fresh();const after=identity();
       if(!owned()||after.incarnation!==before.incarnation||after.workGeneration===before.workGeneration)throw Error("Fresh request work identity did not rotate");
-    },snapshot=>requestHumanReplyTarget(box,snapshot,()=>owned()&&daemon.requestContextTurnCurrent(snapshot),root=>this.requestContextNativeAdmissionCurrent(root)));
+    },snapshot=>requestHumanReplyTarget(box,snapshot,()=>owned()&&daemon.requestContextTurnCurrent(snapshot),root=>this.requestContextNativeAdmissionCurrent(root)),(id,recovery)=>{
+      const publication=this.requestContextBoot?.publication;if(!publication)return;
+      if(recovery){
+        const parent=recovery.parent,owner=daemon.captureRequestContextOwner(),stored=box.requestContext(parent.context.ref.contextId);
+        if(!owner||!stored||requestContextDigest(stored)!==requestContextDigest(parent.context)||parent.owner.instance!==owner.instance
+          ||parent.owner.incarnation!==owner.incarnation||parent.owner.workGeneration!==owner.workGeneration)throw Error("Recovery continuation owner changed");
+        return publication.continuation(parent.context.ref.rootContextId,()=>owned()&&recovery.current());
+      }
+      const delivery=/^delivery:([a-f0-9-]{36}):([1-9][0-9]*)$/.exec(id??"");
+      if(delivery){
+        const row=box.get(delivery[1]!),owner=daemon.captureRequestContextOwner();
+        if(!row||!owner||row.targetInstance!==instance||row.managerBootId!==this.managerBootId||row.targetDaemonBootId!==owner.daemonBootId
+          ||row.attemptNo!==Number(delivery[2])||!["delivering","submission_started"].includes(row.state))throw Error("Delivery continuation attempt changed");
+        return this.requestContextDeliveryContinuation(row)??undefined;
+      }
+      const human=/^human:hmsg-([a-f0-9-]{36})$/.exec(id??"");if(!human)return;
+      const receipt=box.getHumanReceipt(human[1]!),accepted=box.requestContextHumans.read(human[1]!),active=daemon.requestContextTurnSnapshot();
+      if(!receipt||!accepted||!active||!["steer","btw"].includes(receipt.input_kind)||accepted.context.ingress==="guest"||accepted.context.ingress==="hub")return;
+      const valid=()=>{const live=box.getHumanReceipt(human[1]!);return owned()&&daemon.requestContextTurnCurrent(active)&&manage(accepted.context.initiatingActor)
+        &&!!live&&live.owner_key===this.humanReceiptOwner(instance,daemon)&&live.state!=="delivered"
+        &&requestContextDigest(box.requestContextHumans.read(human[1]!))===requestContextDigest(accepted)&&this.requestContextNativeAdmissionCurrent(accepted.context);};
+      if(!valid())return;
+      return publication.continuation(active.context.ref.rootContextId,valid);
+    });
     return Object.freeze({turns,hub,input,current:()=>owned()&&this.daemons.get(instance)===daemon&&daemon.requestContextCallsRequired()});
   }
 
@@ -10525,7 +10579,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     payload: Record<string, unknown>,
     options: DeliveryOptions = {},
   ): Promise<boolean | void> {
-    if (this.requestContextAdmission && !await this.requestContextAdmission.wait(() => !this.shuttingDown && options.stillCurrent?.() !== false)) return false;
+    if (this.requestContextAdmission && !await this.requestContextAdmission.wait(() => !this.shuttingDown && options.stillCurrent?.() !== false,requestPayloadContinuations.get(payload))) return false;
     if (this.generalLocationDeliveryHold(instanceName)) return false;
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       if (options.beforeInput) return false; // no pre-input hook on the Windows runtime
@@ -10536,6 +10590,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const deliveryEpoch = this.getDeliveryEpoch(instanceName);
     const deliveryPayload = { ...payload, delivery_epoch: deliveryEpoch };
+    const continuation=requestPayloadContinuations.get(payload);if(continuation)requestPayloadContinuations.set(deliveryPayload,continuation);
     const meta = payload.meta && typeof payload.meta === "object"
       ? payload.meta as Record<string, unknown>
       : undefined;

@@ -48,7 +48,7 @@ it("the published facade reads one object per ingress and keeps tracked decision
  const {RequestContextBoot}=await import("../src/request-context-boot.js");const r=rig(),state={revision:1,epoch:"fixture-publication",owner:"fleet",mode:"active" as const};
  let owner=true,ports=true;const boot=new RequestContextBoot(state,{id:"process",current:()=>owner}),fence=boot.publication.fence();
  r.m.requestContextBoot=boot;r.m.requestContextAdmission=boot.publication.admission;r.m.bindRequestContextServingPublication(boot);
- expect(()=>r.m.requestContextHumanAdmission("a",{},{} as any,"text")).toThrow(/fenced/);expect(()=>r.m.requestContactApi.needs(r.actor)).toThrow(/unavailable/);
+ expect(()=>r.m.requestContextHumanAdmission("a",{},{} as any,"text")).toThrow(/fenced|unavailable/);expect(()=>r.m.requestContactApi.needs(r.actor)).toThrow(/unavailable/);
  const human=vi.fn(()=>({receipt_id:"fixture"})),hub=vi.fn(()=>({inputId:"fixture"})),serving={...r.graph,human,hub,current:()=>ports};
  boot.publication.publish(state,{policy:r.graph.policy,serving:serving as any},fence,()=>true,()=>state,()=>ports);
  expect(r.m.requestContextHumanAdmission("a",{},{} as any,"text")).toEqual({receipt_id:"fixture"});expect(human).toHaveBeenCalledOnce();
@@ -63,9 +63,16 @@ it("the actual root-access helper checks the original Hub source incarnation bef
 });
 
 it("capable Off keeps fresh owner contact, holds outside work, and never restores changed lifetime origins",()=>{
- const r=rig(),outside=r.context("owner");expect(r.send(outside).state).toBe("queued");
+ const r=rig(),ordinary=r.context("owner");expect(r.send(ordinary).state).toBe("queued");
  r.box.contactAuthorizations.inheritOrigin("a",{kind:"unknown",people:[],receiptIds:[],chain:["a"]});r.mode("off");
- expect(()=>r.send(outside)).toThrow(ContactHeldError);expect(()=>r.send(r.context("hub"))).toThrow(ContactHeldError);
+ expect(r.send(ordinary).state).toBe("queued");expect(()=>r.send(r.context("restricted-room"))).toThrow(ContactHeldError);expect(()=>r.send(r.context("hub"))).toThrow(ContactHeldError);
  const fresh={...r.context("owner"),rootEvidenceRef:`human:hmsg-${randomUUID()}`,initiatingActor:{kind:"person" as const,platform:"discord" as const,userId:"admin"}};
  expect(r.send(fresh).state).toBe("queued");expect(r.forbidden).not.toHaveBeenCalled();
+});
+
+it("Off respects the original Hub agent's current allow-contact setting without a timer or ingress approval",()=>{
+ const r=rig(),context=r.context("hub"),actor=context.initiatingActor;if(!("hubId"in actor))throw Error("fixture");
+ r.mode("off");r.m.hubMemberPairingApi={boundHub:()=>({hubId:actor.hubId})};let allowed=true;
+ r.m.hubMemberExposureApi={list:()=>[{agent:"a",state:"published",enforceable:true,contactLimit:!allowed}]};
+ expect(r.send(context).state).toBe("queued");allowed=false;expect(()=>r.send(context)).toThrow(ContactHeldError);expect(r.forbidden).not.toHaveBeenCalled();
 });
