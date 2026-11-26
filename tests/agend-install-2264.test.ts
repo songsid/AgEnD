@@ -369,9 +369,9 @@ function oldLock(pid: number, processStart = FAKE_START): string {
  * on disk, npm and the new `agend` as recorded stubs. `onInstall` runs inside each `npm install -g`; `live` are the pids
  * that count as running.
  */
-function unitRig(opts: { onInstall?: (n: number) => void; installStatus?: number[]; live?: number[]; onStep?: (step: string) => void } = {}) {
+function unitRig(opts: { onInstall?: (n: number) => void; installStatus?: number[]; live?: number[]; onStep?: (step: string) => void; prefixName?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), "agend-2264-unit-")); roots.push(root);
-  const prefix = join(root, "prefix"), nodeModules = join(prefix, "lib", "node_modules"), home = join(root, "agend-home"), userHome = join(root, "user-home");
+  const prefix = join(root, opts.prefixName ?? "prefix"), nodeModules = join(prefix, "lib", "node_modules"), home = join(root, "agend-home"), userHome = join(root, "user-home");
   for (const d of [nodeModules, home, userHome, join(prefix, "bin")]) mkdirSync(d, { recursive: true });
   const calls: string[] = [], log: string[] = [];
   const live = new Set([...(opts.live ?? []), 4242]);
@@ -968,34 +968,46 @@ describe("M-3302 (#4146): the installer waits, bounded, while another npm change
 
 describe("M-3806: npm 11/12 print `***` for a UUID in the global prefix", () => {
   const ASK = "npm exec -c node -p process.env.npm_config_global_prefix";
-  /** npm redacts the prefix's folder in what it prints; a child it starts is told the real path (when `asks` allows). */
-  const masking = (r: ReturnType<typeof unitRig>, asks: boolean) => {
+  const helper = createRequire(import.meta.url)("../launcher/npm-global-prefix.cjs") as { neutralCwd(): string; redact(t: string): string };
+  const neutral = helper.neutralCwd();
+  const PFX = "prefix-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab";
+  /**
+   * npm redacts the prefix's folder in what it prints. A child it starts is told `answer` (default: the real path) —
+   * but only from the filesystem root: run anywhere else, a project's own `node` answers (Fable #4526 F2).
+   */
+  const masking = (r: ReturnType<typeof unitRig>, answer: string | null = r.prefix) => {
     const inner = r.deps.run; const seen: string[] = [];
-    r.deps.run = (cmd: string, args: string[]) => {
+    r.deps.run = ((cmd: string, args: string[], opts?: { cwd?: string }) => {
       const line = `${cmd} ${args.join(" ")}`;
-      if (line === "npm root -g" || line === "npm prefix -g") { seen.push(line); const out = inner(cmd, args); return { ...out, stdout: out.stdout.replace(r.prefix, join(r.root, "***")) }; }
-      if (line === ASK) { seen.push(line); return asks ? { status: 0, stdout: `npm notice run\n${r.prefix}\n`, stderr: "" } : { status: 1, stdout: "", stderr: "" }; }
+      if (line === "npm root -g" || line === "npm prefix -g") { seen.push(line); const out = inner(cmd, args); return { ...out, stdout: helper.redact(out.stdout) }; }
+      if (line === ASK) {
+        seen.push(`${line} (in ${opts?.cwd ?? "here"})`);
+        if (opts?.cwd !== neutral) return { status: 0, stdout: "/from-project-local-node\n", stderr: "" };
+        return answer !== null ? { status: 0, stdout: `npm notice run\n${answer}\n`, stderr: "" } : { status: 1, stdout: "", stderr: "" };
+      }
       return inner(cmd, args);
-    };
+    }) as typeof r.deps.run;
     return seen;
   };
 
-  it("the installer asks the way npm tells a child, and locks, installs and links in the real prefix", () => {
+  it("the installer asks from the filesystem root, the way npm tells a child, and locks, installs and links in the real prefix", () => {
     const locks: boolean[] = [];
-    const r = unitRig({ onInstall: () => { locks.push(existsSync(r.lock)); } });
-    const seen = masking(r, true);
+    const r = unitRig({ prefixName: PFX, onInstall: () => { locks.push(existsSync(r.lock)); } });
+    const seen = masking(r);
     expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(0);
-    expect(seen).toContain(ASK);
+    expect(seen).toContain(`${ASK} (in ${neutral})`);
     expect(locks, "the lock is in the real prefix while npm installs").toEqual([true]);
-    expect(existsSync(join(r.root, "***")), "no redacted folder").toBe(false);
+    expect(existsSync(join(r.root, "prefix-***")), "no redacted folder").toBe(false);
   });
 
-  it("npm can't be asked again: it stops before anything, saying npm did not say where it installs", () => {
-    const r = unitRig();
-    masking(r, false);
-    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(1);
-    expect(r.log.join("\n")).toContain("npm did not say where it installs global packages");
-    expect(r.calls.filter(c => c.startsWith("npm install")), "no install").toEqual([]);
-    expect(existsSync(join(r.root, "***"))).toBe(false);
+  it("npm can't be asked again, or answers a path it would not have printed that way: it stops before anything, saying npm did not say where it installs", () => {
+    for (const answer of [null, "/from-project-local-node", `/elsewhere/${PFX}`]) {
+      const r = unitRig({ prefixName: PFX });
+      masking(r, answer);
+      expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps), String(answer)).toBe(1);
+      expect(r.log.join("\n")).toContain("npm did not say where it installs global packages");
+      expect(r.calls.filter(c => c.startsWith("npm install")), "no install").toEqual([]);
+      expect(existsSync(join(r.root, "prefix-***"))).toBe(false);
+    }
   });
 });

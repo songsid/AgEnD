@@ -16,8 +16,8 @@ interface AllowScripts { FLAG: string; ENV: string; flagFor(spec: string): strin
 const require = createRequire(import.meta.url);
 /** M-3805: the one place that says how npm 12 is told to run AgEnD's install scripts (shared with the launcher). */
 export const npmAllowScripts = require("../launcher/npm-allow-scripts.cjs") as AllowScripts;
-interface GlobalPrefix { MASK: string; ASK: string[]; masked(text: unknown): boolean; lastLine(text: unknown): string; rootOf(prefix: string, platform?: string): string; resolve(prefixOut: string, rootOut: string | undefined, ask: () => string, platform?: string): { prefix: string; root?: string } }
-/** M-3806: npm 11/12 print `***` for a UUID in the global prefix; this asks again the way npm tells a child. */
+interface GlobalPrefix { MASK: string; ASK: string[]; masked(text: unknown): boolean; redact(text: string): string; neutralCwd(): string; confirmed(seen: string, real: string, platform?: string): string; lastLine(text: unknown): string; rootOf(prefix: string, platform?: string): string; resolve(prefixOut: string, rootOut: string | undefined, ask: () => string, platform?: string): { prefix: string; root?: string } }
+/** M-3806: npm 11/12 print `***` for a UUID in the global prefix; this asks again the way npm tells a child, from the filesystem root, and confirms the answer. */
 export const npmGlobalPrefix = require("../launcher/npm-global-prefix.cjs") as GlobalPrefix;
 
 /** What an update uses while the person has not set the key themselves (npm's own defaults: 300000 / 2 / 10000 / 60000). */

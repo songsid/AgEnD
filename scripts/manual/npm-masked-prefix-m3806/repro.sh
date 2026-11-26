@@ -82,4 +82,21 @@ echo \"  NPM_PREFIX=\$NPM_PREFIX  SUDO=\${SUDO:-<none>}\"" 2>&1
     echo "  created: $(ls -d "$R/home/.npm-$UUID/lib" 2>/dev/null || echo nothing)"
   done
 done
+step "5. Started from inside a project with its own node_modules/.bin/node (what the npm package \`node\` installs): npm 12"
+mkdir -p "$R/proj/node_modules/.bin"
+printf '{"name":"some-project","version":"1.0.0"}\n' > "$R/proj/package.json"
+printf '#!/bin/sh\necho /from-project-local-node\n' > "$R/proj/node_modules/.bin/node"; chmod +x "$R/proj/node_modules/.bin/node"
+P="$R/p-proj-$UUID"
+echo "--- what a child of npm exec says there: $(cd "$R/proj" && with 12.2.3 "$P" npm exec -c 'node -p process.env.npm_config_global_prefix' 2>/dev/null | tail -1)"
+echo "--- the candidate's installer, started there (out of scope, noted: npm exec runs the installer itself on the project's node):"
+rm -rf "$R/home/.agend"
+(cd "$R/proj" && with 12.2.3 "$P" npm exec --yes --package "$CAND" -- agend-install --spec "$CAND" 2>&1 | grep -E "✓|✗|AgEnD v|npm error|from-project" | head -6)
+agend_version "$P"
+echo "--- install.sh's prefix step (after), run there:"
+rm -rf "$R/home/.npm-$UUID"
+(cd "$R/proj" && with 12.2.3 "$R/home/.npm-$UUID" bash -c "set -euo pipefail
+error() { echo \"  error: \$1\"; exit 1; }
+SUDO=sudo
+$(prefix_step "$SH_AFTER")
+echo \"  NPM_PREFIX=\$NPM_PREFIX  SUDO=\${SUDO:-<none>}\"" 2>&1)
 } 2>&1 | redact

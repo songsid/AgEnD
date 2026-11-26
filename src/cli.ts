@@ -1568,7 +1568,7 @@ program
           { pkg: `@songsid/agend@${pkgVersion}`, targetVersion: pkgVersion, viaNvm: false, nvmSh },
           {
             run: (command, args, options = {}) => {
-              const result = spawnSync(command, args, { encoding: "utf-8", timeout: options.timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
+              const result = spawnSync(command, args, { encoding: "utf-8", timeout: options.timeoutMs, stdio: ["ignore", "pipe", "pipe"], ...(options.cwd ? { cwd: options.cwd } : {}) });
               return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
             },
             log: message => console.log(message),
@@ -1631,13 +1631,15 @@ program
     // ── Check if npm global needs sudo (read-only; decides the nvm path the preflight judges) ──
     let needsSudo = false;
     try {
-      // M-3806: for a UUID in the path, `npm config get prefix` refuses (npm 10–12) and `npm prefix -g` prints `***`
-      // (npm 11/12); then the prefix is asked the way npm tells a child. No answer at all: as before, assume no sudo.
-      const quiet = { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] } as const;
-      let configured = "";
-      try { configured = execSync("npm config get prefix", quiet); } catch { /* refused: asked below */ }
+      // M-3806: for a UUID in the path, `npm config get prefix` refuses (npm 10–12): read `npm prefix -g`, which npm
+      // 11/12 print with `***`; that is asked the way npm tells a child, from the filesystem root (Fable #4526 F2).
+      // No answer at all: as before, assume no sudo.
+      const quiet: ExecSyncOptionsWithStringEncoding = { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] };
+      const said = (command: string, cwd?: string) => { try { return execSync(command, cwd ? { ...quiet, cwd } : quiet); } catch { return ""; } };
+      let configured = said("npm config get prefix");
+      if (!npmGlobalPrefix.lastLine(configured) || npmGlobalPrefix.masked(configured)) configured = said("npm prefix -g");
       const prefix = npmGlobalPrefix.resolve(configured, undefined,
-        () => execSync(`npm ${npmGlobalPrefix.ASK.slice(0, 2).join(" ")} "${npmGlobalPrefix.ASK[2]}"`, quiet)).prefix;
+        () => said(`npm ${npmGlobalPrefix.ASK.slice(0, 2).join(" ")} "${npmGlobalPrefix.ASK[2]}"`, npmGlobalPrefix.neutralCwd())).prefix;
       if (!prefix) throw new Error("npm did not say where it installs global packages");
       const { accessSync, constants } = await import("node:fs");
       try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
@@ -1778,6 +1780,7 @@ program
             timeout: options.timeoutMs,
             stdio: options.inherit ? "inherit" : ["ignore", "pipe", "pipe"],
             ...(options.env ? { env: { ...process.env, ...options.env } } : {}),
+            ...(options.cwd ? { cwd: options.cwd } : {}),
           });
           return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
         },

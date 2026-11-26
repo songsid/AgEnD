@@ -23,7 +23,7 @@ import { npmGlobalPrefix } from "./update-npm-env.js";
 
 export interface DispatchDeps {
   /** `env.PATH` (#3440) replaces PATH for that one program: an npm is asked in the PATH the update will run with. */
-  run(command: string, args: string[], timeoutMs: number, env?: { PATH: string }): Promise<{ status: number | null; stdout: string }>;
+  run(command: string, args: string[], timeoutMs: number, env?: { PATH: string }, /** M-3806: where it runs (default: here). */ cwd?: string): Promise<{ status: number | null; stdout: string }>;
   readFile(path: string): Promise<string>;
   realpath(path: string): Promise<string>;
   /** An executable file there (#3440). */
@@ -41,9 +41,9 @@ export interface DispatchDeps {
 }
 
 export const defaultDispatchDeps: DispatchDeps = {
-  run: async (command, args, timeoutMs, env) => {
+  run: async (command, args, timeoutMs, env, cwd) => {
     try {
-      const { stdout } = await promisify(execFile)(command, args, { encoding: "utf8", timeout: timeoutMs, ...(env ? { env: { ...process.env, ...env } } : {}) });
+      const { stdout } = await promisify(execFile)(command, args, { encoding: "utf8", timeout: timeoutMs, ...(env ? { env: { ...process.env, ...env } } : {}), ...(cwd ? { cwd } : {}) });
       return { status: 0, stdout: String(stdout) };
     } catch (err) {
       const code = (err as { code?: unknown }).code;
@@ -125,7 +125,7 @@ async function askNpm(deps: DispatchDeps, env?: { PATH: string }): Promise<NpmAn
   if (root.status !== 0 || prefix.status !== 0 || !last(root.stdout) || !last(prefix.stdout)) return null;
   // M-3806: npm 11/12 print `***` for a UUID in the path; then the prefix is asked the way npm tells a child.
   if (!npmGlobalPrefix.masked(root.stdout) && !npmGlobalPrefix.masked(prefix.stdout)) return { root: last(root.stdout), prefix: last(prefix.stdout) };
-  const real = await deps.run("npm", npmGlobalPrefix.ASK, 15_000, env);
+  const real = await deps.run("npm", npmGlobalPrefix.ASK, 15_000, env, npmGlobalPrefix.neutralCwd());   // never a project's own `node` (Fable #4526 F2)
   const where = npmGlobalPrefix.resolve(prefix.stdout, root.stdout, () => real.status === 0 ? real.stdout : "");
   return where.prefix && where.root ? { root: where.root, prefix: where.prefix } : null;
 }

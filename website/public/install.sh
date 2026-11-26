@@ -248,20 +248,27 @@ fi
 # sudo from whether lib/node_modules or lib is writable. A writable prefix must
 # not override an existing unwritable lib (mkdir -p does not chmod it).
 # M-3806: for a UUID in the path, npm config get prefix refuses ("protected", npm
-# 10-12) and npm 11/12 print *** in its place. A program npm starts still gets
-# the real one (npm_config_global_prefix), so ask that way. Never create or judge
-# a folder from a redacted or missing answer.
+# 10-12); then npm prefix -g is read, which npm 11/12 print with *** in its place.
+# A program npm starts still gets the real path (npm_config_global_prefix): ask
+# from / (inside a project npm would run its own node_modules/.bin/node) and take
+# the answer only if npm, redacting it, prints exactly what it printed. Never
+# create or judge a folder from a redacted, unconfirmed or missing answer.
 NPM_PREFIX=$(npm config get prefix </dev/null 2>/dev/null) || NPM_PREFIX=""
 case "$NPM_PREFIX" in
-  "" | *'***'*)
-    NPM_PREFIX=$(npm exec -c 'node -p process.env.npm_config_global_prefix' </dev/null 2>/dev/null | tail -n 1 || true)
-    case "$NPM_PREFIX" in
-      *'***'*) NPM_PREFIX="" ;;
-      /*) ;;
-      *) NPM_PREFIX="" ;;
-    esac
-    [ -n "$NPM_PREFIX" ] || error "npm did not say where it installs global packages (npm config get prefix / npm prefix -g)."
+  "" | *'***'*) NPM_PREFIX=$(npm prefix -g </dev/null 2>/dev/null | tail -n 1 || true) ;;
+esac
+case "$NPM_PREFIX" in
+  *'***'*)
+    npm_prefix_seen=$NPM_PREFIX
+    NPM_PREFIX=$( (cd / && npm exec -c 'node -p process.env.npm_config_global_prefix') </dev/null 2>/dev/null | tail -n 1 || true)
+    npm_prefix_redacted=$(printf '%s\n' "$NPM_PREFIX" | sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/***/g')
+    case "$NPM_PREFIX" in *'***'*) NPM_PREFIX="" ;; esac
+    [ "$npm_prefix_redacted" = "$npm_prefix_seen" ] || NPM_PREFIX=""
     ;;
+esac
+case "$NPM_PREFIX" in
+  /*) ;;
+  *) error "npm did not say where it installs global packages. Run: npm prefix -g" ;;
 esac
 npm_prefix_existing="$NPM_PREFIX"
 while [ ! -e "$npm_prefix_existing" ]; do
