@@ -49,27 +49,28 @@ const pack = await draw.evaluate(`(() => {
   g.fillStyle = "#8b6b4a"; g.fillRect(200, 150, 18, 60); g.fillRect(286, 130, 40, 16);   // a counter (right of Beta), a board (above Gamma)
   g.fillStyle = "#fff"; g.fillRect(288, 112, 36, 18);
   g.fillStyle = "#8b6b4a"; g.fillRect(400, 205, 40, 14); g.fillRect(520, 205, 40, 14);   // plain desks
-  g.fillStyle = "#b9b2a3"; g.fillRect(60, 312, 1160, 56);
-  g.strokeStyle = "#6b6252"; g.lineWidth = 3; for (const y of [322, 342, 358]) { g.beginPath(); g.moveTo(60, y); g.lineTo(1220, y); g.stroke(); }
-  g.fillStyle = "#8a8170"; g.fillRect(80, 280, 80, 26); g.fillRect(1120, 372, 80, 26);
-  g.fillStyle = "#f4d03f"; g.fillRect(314, 290, 32, 12);                                // the queue mark
-  g.fillStyle = "#222"; g.font = "600 14px sans-serif"; g.fillText("Platform A", 84, 276); g.fillText("Queue", 350, 300); g.fillText("Platform B", 1124, 412);
+  g.fillStyle = "#b9b2a3"; g.fillRect(20, 312, 1240, 56);   // the track bed, past the car at both ends
+  g.strokeStyle = "#6b6252"; g.lineWidth = 3; for (const y of [322, 342, 358]) { g.beginPath(); g.moveTo(20, y); g.lineTo(1260, y); g.stroke(); }
+  g.fillStyle = "#8a8170"; g.fillRect(100, 372, 80, 26); g.fillRect(1120, 372, 80, 26);   // both platforms on the near side
+  g.fillStyle = "#f4d03f"; g.fillRect(334, 386, 32, 12);                                // the queue mark
+  g.fillStyle = "#222"; g.font = "600 14px sans-serif"; g.fillText("Platform A", 104, 418); g.fillText("Queue", 374, 397); g.fillText("Platform B", 1124, 418);   // under the platforms, clear of feet
   const car = mk(2 * 200, 90), front = mk(200, 90);
   for (let f = 0; f < 2; f++) { const c = car.c, o = f * 200; c.fillStyle = "#c0392b"; c.fillRect(o + 4, 20, 192, 62); c.fillStyle = "#fbe7c6"; for (let i = 0; i < 4; i++) c.fillRect(o + 16 + i * 46, 28, 34, 22); c.fillStyle = "#333"; c.fillRect(o + 20 + f * 4, 80, 24, 8); c.fillRect(o + 156 - f * 4, 80, 24, 8); }
-  front.c.fillStyle = "#a93226"; front.c.fillRect(4, 56, 192, 26); front.c.fillStyle = "#f4d03f"; front.c.fillRect(4, 56, 192, 4);
+  front.c.fillStyle = "#a93226"; front.c.fillRect(4, 50, 192, 36); front.c.fillStyle = "#f4d03f"; front.c.fillRect(4, 50, 192, 4);   // up to the windows' sill
   const strip = (src, frames) => ({ src, frames, w: 200, h: 90, fps: 4, dw: 200, dh: 90, ax: 100, ay: 80 });
   const manifest = { format: 1, id: "synth-fields", background: "bg.png",
     areas: {
       desks: { rect: [80, 30, 500, 230], seats: [{ x: 180, y: 200, for: ["bot-beta"], standFacing: "right" }, { x: 306, y: 200, for: ["bot-gamma"], standFacing: "up" }, { x: 420, y: 200, for: ["bot-delta"] }, [540, 200]] },
       lounge: { rect: [700, 30, 500, 230], seats: [[800, 200], [920, 200], [1040, 200], [1160, 200]] },
-      help: { rect: [80, 450, 500, 240], seats: [[200, 620], [320, 620], [440, 620]] },
+      alert: { rect: [80, 450, 500, 240], seats: [[200, 620], [320, 620], [440, 620]] },
       nap: { rect: [700, 450, 500, 240], seats: [[800, 620], [920, 620], [1040, 620]] } },
-    stateZones: { working: "desks", needs: "help", crashed: "help", stuck: "help", paused: "nap", stopped: "nap", default: "lounge" },
+    stateZones: { working: "desks", needs: "alert", crashed: "alert", stuck: "alert", paused: "nap", stopped: "nap", default: "lounge" },
     characters: { default: person },
     vehicles: [{ id: "loop-line", label: "Loop line", sprites: { right: strip("car.png", 2) }, fronts: { right: strip("front.png", 1) },
       path: [[160, 336], [1160, 336], [1160, 352], [160, 352]], speed: 60,
-      stops: [{ at: 3, seconds: 8, platform: [120, 300], queue: [[330, 300]] }, { at: 1, seconds: 8, platform: [1160, 392] }],
-      seats: [{ dx: -46, dy: 4, worker: "bot-alpha" }, { dx: 0, dy: 4 }, { dx: 46, dy: 4 }] }] };
+      stops: [{ at: 3, seconds: 8, platform: [140, 392], queue: [[350, 392]] }, { at: 1, seconds: 8, platform: [1160, 392] }],
+      // dy 1: a rider is drawn over the car body (its y below the car's) with the front edge, up to the sill, over all but the head: seated in the window
+      seats: [{ dx: -46, dy: 1, worker: "bot-alpha" }, { dx: 0, dy: 1 }, { dx: 46, dy: 1 }] }] };
   const files = { "bg.png": b64(bg.cv), "car.png": b64(car.cv), "front.png": b64(front.cv) };
   for (const [k, v] of Object.entries(pics)) files[k + ".png"] = b64(v.cv);
   return { manifest, files };
@@ -113,7 +114,7 @@ try {
     working.delete("bot-alpha");
     status.set("bot-alpha", "crashed");
     const word = c.lang === "en" ? "Crashed" : "已當掉";
-    await page.waitForFunction((w: string) => document.body.innerText.includes(w) || /\bHelp\s*1\b/i.test(document.body.innerText), word, { timeout: 30000 }).catch(() => errors.push("crash not seen"));
+    await page.waitForFunction((w: string) => document.body.innerText.includes(w) || /(Help desk|求救區)\s*1\b/.test(document.body.innerText), word, { timeout: 30000 }).catch(() => errors.push("crash not seen"));
     await sleep(800); await shot("5-worker-calls-gets-off");
     await sleep(10000); await shot("6-caller-at-help-desk");
     report.cases[key] = { errors, csp: await csp() };
