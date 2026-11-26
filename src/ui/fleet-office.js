@@ -84,7 +84,7 @@ import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
 import { ShareButton } from "./office-share-dialog.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { DLG, boxColours, boxLayout, createDialogue, createFaces, drawBox, fitBox, messageOf, onBox, pickFront, portraitSrc, stageOf, talkOf, wrap } from "./fleet-office-dialogue.js";
-import { PREVIEW_POSES, previewLook, applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, snackLabel, stripBox, stripDurationMs } from "./fleet-office-pack.js";
+import { applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, snackLabel, stripBox, stripDurationMs } from "./fleet-office-pack.js";
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { CAROUSEL_ID, INTERVALS, carouselHeld, carouselIdsOk, carouselKey, carouselOk, intervalOk, nextIndex, prevIndex } from "./fleet-office-carousel.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
@@ -498,6 +498,18 @@ export function actLive(a, state, at = Date.now(), seen = null) {
  * (#4415: nothing keeps a caller from the Help desk; the ride resumes when the call is over). Working or a new turn do
  * not end it (it is where they choose to be); clearing it, a new office_set or its end do.
  */
+/**
+ * #4504: what the card's pose preview offers — every pose a character set may draw, walking by direction. Here, not in
+ * fleet-office-pack.js: a tab opened before an upgrade may keep that module, and a named import it lacks would stop this
+ * one linking (#4505/#4508 review).
+ */
+export const PREVIEW_POSES = ["idle", "working", "paused", "needs", "walkDown", "walkUp", "walkSide", "walkLeft", "eat", "pat", "dragged", "stand"];
+const PREVIEW_HEADINGS = { walkDown: { dx: 0, dy: 1 }, walkUp: { dx: 0, dy: -1 }, walkSide: { dx: 1, dy: 0 }, walkLeft: { dx: -1, dy: 0 } };
+/** A look showing `pose` in place (a walking direction walks on the spot); a set without that strip shows its own pose. */
+export function previewLook(look, pose) {
+  const heading = PREVIEW_HEADINGS[pose];
+  return heading ? { ...look, pose: "walk", heading } : { ...look, pose, basePose: look.pose };
+}
 export const rideLive = (a, state, at = Date.now()) => !!a && !!a.ride && at < a.until && !ASLEEP.has(state) && !CALLING.has(state);
 /** How far beside the person an agent going to them stands. */
 const ACT_BESIDE = 48;
