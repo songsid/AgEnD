@@ -342,6 +342,12 @@ ensurePrivateHome(process.env.AGEND_HOME || path.join(require("os").homedir(), "
 AGEND_PRIVATE_HOME
 # <<< private-home bootstrap
 AGEND_SPEC="@songsid/agend@${AGEND_VERSION:-latest}"
+# M-3812: the installer is launched from / (below), so a relative file: version is made absolute here, against the
+# folder this script was started in.
+case "${AGEND_VERSION:-}" in
+  file:/* | file:~*) ;;
+  file:*) AGEND_SPEC="@songsid/agend@file:$PWD/${AGEND_VERSION#file:}" ;;
+esac
 # M-3805: npm 12 runs a package's install scripts only when allowed, and without AgEnD's postinstall the bundled Node is
 # never verified (AgEnD then refuses to start). The variable, unlike a flag, reaches the installer `npm exec` starts and
 # its `npm install -g`, whichever release that installer comes from; npm 8-11 accept it. It carries everything the person
@@ -360,7 +366,9 @@ else
 fi
 if npm view "$AGEND_SPEC" bin --json </dev/null 2>/dev/null | grep -q '"agend-install"'; then
   installer_rc=0
-  $SUDO env "${allow_env[@]}" "AGEND_UPDATE_NPM_BOUNDS=$allow_mark" npm exec --yes --package "$AGEND_SPEC" -- agend-install </dev/null || installer_rc=$?
+  # M-3812: from /, never the folder this was started in. Inside a project npm exec puts its node_modules/.bin first on
+  # PATH, and the installer would run on that project's own `node` (and every npm and node it starts after it).
+  (cd / && $SUDO env "${allow_env[@]}" "AGEND_UPDATE_NPM_BOUNDS=$allow_mark" npm exec --yes --package "$AGEND_SPEC" -- agend-install </dev/null) || installer_rc=$?
   if [ "$installer_rc" -eq 75 ]; then
     # #2284: the installer could not take the install lock and said why above — most often another AgEnD install that
     # is still running (then: let it finish), sometimes something left behind that it names. Not a failed install.
