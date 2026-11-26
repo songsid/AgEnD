@@ -7,6 +7,7 @@ import { markRetainedHumanControl, retainedHumanControl } from "./retained-human
 import type { RequestContextLaunchIdle, RequestContextLaunchRetirement } from "./request-context-retirement.js";
 import { requestContextDigest } from "./request-context-store.js";
 import { RequestContextBoot, readRequestContextBootState } from "./request-context-boot.js";
+import {RequestContextPreparedWork} from "./request-context-work.js";
 import type { RequestContextStartPreparation, RequestContextDaemonWork } from "./request-context-start.js";
 import { requestContextSkillText, requestContextSteeringText, type RequestContextKnowledgeMode } from "./request-context-knowledge.js";
 import { runWithRequestContextAdmission, type RequestContextAdmissionPort } from "./request-context-admission.js";
@@ -9668,6 +9669,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           result.proof, this.humanReceiptOwner(instanceName, daemon));
         daemon.noteHumanReceiptSettlement?.(result.receipt_id, accepted === true && result.proof !== null);
       } catch (err) { this.logger.error({ err, instanceName }, "Could not persist human delivery evidence"); }
+    });
+  }
+
+  /** One controlled candidate, shared by instruction rendering and the lifecycle's actual pre-start hook. */
+  prepareRequestContextDaemonOwner(instance:string,config:InstanceConfig,policy:RequestContextPolicyPort,
+    registration:RequestContextRegistrationGate,current:()=>boolean){
+    const box=this.deliveryOutbox;if(!box)throw Error("Request input owner is unavailable");
+    const firstActivation=box.requestContextInstallation().read()===null;
+    const image=requestContextDigest(config),incarnation=this.contactGeneration(instance);
+    let registered=false,daemon:Daemon|null=null,binding:ReturnType<FleetManager["makeRequestContextDaemonBinding"]>|null=null;
+    const ownerCurrent=()=>{try{return current()&&this.contactGeneration(instance)===incarnation
+      &&(!registered||!!daemon&&this.daemons.get(instance)===daemon);}catch{return false;}};
+    const work=new RequestContextPreparedWork(box.requestContextWork,instance,incarnation,ownerCurrent,firstActivation);
+    const preparation:RequestContextStartPreparation=Object.freeze({policy,current:()=>work.current()&&ownerCurrent()});
+    return Object.freeze({preparation,work,
+      configure:(candidate:Daemon,actual:InstanceConfig,offered:RequestContextStartPreparation|undefined)=>{
+        if(daemon||!preparation.current()||!offered?.current()||offered.policy!==policy
+          ||requestContextDigest(actual)!==image||requestContextDigest(candidate.getConfigSnapshot())!==image)throw Error("Request owner preparation changed");
+        daemon=candidate;
+        try{binding=this.makeRequestContextDaemonBinding(instance,candidate,work,registration,ownerCurrent);
+          if(candidate.captureRequestContextOwner()?.instance!==instance)throw Error("Request owner preparation changed");}
+        catch(error){work.dispose();throw error;}
+      },
+      /** Ownership only, not readiness: the installer must independently prove all real transport ports. */
+      sealRegistered:()=>{
+        if(!daemon||this.daemons.get(instance)!==daemon||daemon.requestContextPolicy!==policy||!binding?.current()||!preparation.current())throw Error("Request owner is not bound");
+        registered=true;
+      },
+      bound:()=>registered&&preparation.current()&&binding?.current()===true,
+      dispose:()=>work.dispose(),
     });
   }
 

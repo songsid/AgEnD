@@ -122,7 +122,10 @@ it("S-224 retains the stamp through negotiated stdio and refuses an older host",
  const f=await fixture(true),stamp={version:1 as const,coverage:"covered" as const,proof:"d".repeat(64)};
  const body={op:"pane-mcp" as const,owner:{hostBootId:f.hostBootId,paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),instance:"native"},helperId:randomUUID(),method:"tools/list" as const,params:{}};
  await f.settings.mcp!(body,()=>true,stamp);expect(f.mcp).toHaveBeenCalledWith(body,expect.any(Function),stamp);
- const old=await fixture(true,false);
+ expect(f.endpoint.requestContextReadiness()).toMatchObject({id:"local",connected:true,requestContextVersion:1});
+ f.setAllowed(false);expect(f.endpoint.requestContextReadiness()).toBeNull();f.setAllowed(true);
+ const old=await fixture(true,false);expect(old.endpoint.requestContextReadiness()?.requestContextVersion).toBe(0);
  await expect(old.endpoint.call({action:"input",paneId:randomUUID(),launchId:randomUUID(),operationId:randomUUID(),sequence:1,expectedSeq:0,kind:"paste",text:"do not write",requestContext:stamp})).rejects.toThrow(/not negotiated/);
  expect(old.request).not.toHaveBeenCalled();
+ f.endpoint.beginCleanup();expect(f.endpoint.requestContextReadiness()).toBeNull();
 });

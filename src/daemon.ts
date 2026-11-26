@@ -2570,6 +2570,7 @@ export class Daemon extends EventEmitter {
       guardGeneration: turn?.generation ?? null, guardPhase: turn?.phase ?? null }, "Native pane tool operation failed");
   }
   nativePaneCurrent(): boolean { return this.nativePaneLifecycle?.current() ?? false; }
+  nativePaneRequestContextTransportCurrent():boolean{return this.nativePaneLifecycle?.requestContextTransportCurrent?.()===true;}
   private nativeEnterHold: { key: string; since: number; spawn: number; fence: number } | null = null;
   /** Per-launch attention for a native delivery whose bounded input attempts were refused or uncertain, including non-outbox input. */
   nativeDeliveryHold(): { key: string; since: number } | null {

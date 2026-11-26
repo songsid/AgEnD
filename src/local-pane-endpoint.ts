@@ -28,6 +28,11 @@ export class LocalPaneEndpoint implements NativeMachineEndpoint {
  /** Irreversible transport drain: only exact snapshot/close RPC remains; no new helper work or input. */
  beginCleanup():void{this.cleanupOnly=true;}
  epoch():string|null{return this.online()?this.attachment:null;}
+ /** Read-only negotiation from this attachment. Cleanup ownership can never count as serving readiness. */
+ requestContextReadiness(){
+  if(this.cleanupOnly||!this.online())return null;
+  return Object.freeze({id:this.machineId,generation:this.attachment,connected:true as const,requestContextVersion:this.requestContextProtocol?1:0});
+ }
  version(provider:string):string|null{return this.options.version(provider);}
  subscribe(listener:(event:RuntimeCoordinatorEvent)=>void):()=>void{this.listeners.add(listener);return()=>this.listeners.delete(listener);}
  private send(value:PaneStdioInput):void{

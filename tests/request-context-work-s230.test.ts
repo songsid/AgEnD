@@ -7,7 +7,7 @@ import Database from "better-sqlite3";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { Daemon } from "../src/daemon.js";
 import { RequestContextLocalTurns, type RequestContextRuntimeOwner } from "../src/request-context-turns.js";
-import { RequestContextWorkStore } from "../src/request-context-work.js";
+import { RequestContextWorkStore,RequestContextPreparedWork } from "../src/request-context-work.js";
 import type { RequestContextV1 } from "../src/request-context-protocol.js";
 const cleanup: Array<() => void> = [];
 afterEach(() => { vi.restoreAllMocks(); for (const fn of cleanup.splice(0).reverse()) fn(); });
@@ -58,4 +58,35 @@ it("fresh-work hooks are restricted to authoritative spawn/native-start boundari
   ts.forEachChild(node,child=>visit(child,scope));
  }
  visit(source);expect(scopes.sort()).toEqual(["startAdmitted","spawnClaudeWindow"].sort());
+});
+
+it("first-On work stages before pane start without creating artifacts or pretending a backend session is a generation",()=>{
+ const r=rig(),work=new RequestContextPreparedWork(r.store,"worker","inc",()=>true,true),first=work.identity();
+ expect(work.current()).toBe(true);expect(r.store.read("worker")).toBeNull();expect(()=>work.retainPrepared()).toThrow(/ready/);expect(()=>work.requireRetained()).toThrow(/unavailable/);
+ work.fresh();expect(work.identity().workGeneration).not.toBe(first.workGeneration);expect(work.revision).toBe(1);expect(r.store.read("worker")).toBeNull();
+ work.dispose();expect(work.current()).toBe(false);expect(()=>work.identity()).toThrow(/owner changed/);expect(()=>work.fresh()).toThrow(/owner changed/);
+});
+it("work initialization rollback preserves the same prepared identity for a clean retry",()=>{
+ const r=rig();r.box.activateRequestContextBarrier();const work=new RequestContextPreparedWork(r.store,"worker","inc",()=>true,true),first=work.identity(),db=(r.box as any).db;
+ expect(()=>db.transaction(()=>{work.retainPrepared();expect(()=>work.sealRetained()).toThrow(/not committed/);throw Error("failed install");})()).toThrow(/failed install/);
+ expect(work.current()).toBe(true);expect(work.identity()).toEqual(first);expect(r.store.read("worker")).toBeNull();
+ db.transaction(()=>work.retainPrepared())();work.sealRetained();expect(work.current()).toBe(true);expect(r.store.read("worker")?.generation).toBe(first.workGeneration);
+ db.prepare("DELETE FROM request_context_work_v1 WHERE instance=?").run("worker");expect(work.current()).toBe(false);expect(()=>work.identity()).toThrow(/owner changed/);
+});
+it("capable restart requires retained work and preserves the conversation across the switch being Off",()=>{
+ const r=rig();r.box.activateRequestContextBarrier();expect(()=>new RequestContextPreparedWork(r.store,"worker","inc",()=>true,false)).toThrow(/unavailable/);
+ const first=r.store.retain({instance:"worker",incarnation:"inc",generation:randomUUID()}),work=new RequestContextPreparedWork(r.store,"worker","inc",()=>true,false);
+ expect(work.identity()).toEqual({incarnation:"inc",workGeneration:first.generation});work.fresh();expect(work.identity().workGeneration).toBe(r.store.read("worker")?.generation);expect(work.identity().workGeneration).not.toBe(first.generation);
+ expect(()=>new RequestContextPreparedWork(r.store,"worker","replacement",()=>true,false)).toThrow(/incarnation differs/);
+});
+it("a stale prepared owner cannot overwrite another owner's work or retain after owner loss",()=>{
+ const r=rig();r.box.activateRequestContextBarrier();let live=true;const work=new RequestContextPreparedWork(r.store,"worker","inc",()=>live,true),identity=work.identity();
+ const competing=r.store.retain({instance:"worker",incarnation:"inc",generation:randomUUID()});expect(work.current()).toBe(false);expect(()=>work.retainPrepared()).toThrow(/owner changed/);expect(r.store.read("worker")).toEqual(competing);
+ const other=new RequestContextPreparedWork(r.store,"other","inc",()=>live,true);live=false;expect(()=>other.retainPrepared()).toThrow(/owner changed/);expect(r.store.read("other")).toBeNull();expect(identity.workGeneration).not.toBe(competing.generation);
+});
+it.each(["retain","rotate"] as const)("the explicit %s owner guard runs inside the database transaction and rolls back on final loss",op=>{
+ const r=rig();r.box.activateRequestContextBarrier();const input={instance:"worker",incarnation:"inc",generation:randomUUID()};if(op==="rotate")r.store.retain(input);
+ let reads=0;const guard=()=>++reads===1;
+ expect(()=>op==="retain"?r.store.retain(input,guard):r.store.rotate(input,guard)).toThrow(/owner changed/);
+ expect(r.store.read("worker")).toEqual(op==="retain"?null:input);
 });

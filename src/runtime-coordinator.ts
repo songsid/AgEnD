@@ -937,6 +937,12 @@ export class RuntimeCoordinator {
     const connection = this.connections.get(machineId);
     return connection && this.admitting(connection) ? `${this.paneEpoch}:${machineId}:${connection.generation}` : null;
   }
+  /** Actual connection negotiation, captured synchronously for cutover; an advertisement alone is not readiness. */
+  requestContextReadiness(machineId:string){
+    const connection=this.connections.get(machineId),generation=this.paneTransportEpoch(machineId);
+    if(this.closed||!connection||!generation||connection.hello?.paneProtocol!==1)return null;
+    return Object.freeze({id:machineId,generation,connected:true as const,requestContextVersion:connection.requestContextProtocol?1:0});
+  }
   /** Pane input replay/sequence authority lives in its pane ledger; reads never fill the exec-task journal. */
   async callPane(machineId: string, raw: RuntimePaneRequest, maxAgents = 4): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
