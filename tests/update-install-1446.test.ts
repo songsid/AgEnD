@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, parse } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { systemdRestartOutcome } from "../src/service-installer.js";
 import {
@@ -106,10 +106,10 @@ module.exports = class Database {
  * A scratch world: `npm` stub on PATH that "installs" a fixture package directory (the spec) into the prefix the way
  * npm does (package dir + bin symlink), or fails without touching anything when NPM_FAIL is set.
  */
-function world() {
+function world(prefixName = "prefix") {
   const root = mkdtempSync(join(tmpdir(), "agend-1446-"));
   roots.push(root);
-  const prefix = join(root, "prefix"), tools = join(root, "tools");
+  const prefix = join(root, prefixName), tools = join(root, "tools");
   mkdirSync(join(prefix, "bin"), { recursive: true });
   mkdirSync(join(prefix, "lib", "node_modules", "@songsid"), { recursive: true });
   mkdirSync(tools, { recursive: true });
@@ -141,7 +141,7 @@ exit 0
     run: (command, args, options = {}) => {
       // cwd = the scratch root: a spliced `$(touch pwned)` would land where the tests look for it.
       const r = spawnSync(command, args, {
-        encoding: "utf8", cwd: root,
+        encoding: "utf8", cwd: options.cwd ?? root,
         env: { PATH: [...extraPath, tools, join(prefix, "bin"), "/usr/bin", "/bin"].join(":"), HOME: root, ...env, ...options.env },
       });
       return { status: r.status, signal: r.signal, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
@@ -578,3 +578,64 @@ describe("real npm (scratch prefix, local tarballs): a failed install leaves the
   }, 120_000);
 });
 
+
+describe("M-3806: npm 11/12 print `***` for a UUID in the global prefix", () => {
+  const PFX = "prefix-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab";
+  const UUID_RE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  /**
+   * npm redacts UUIDs in what it prints (`npm root -g`, `npm prefix -g`); `exec -c` runs the command with the real path
+   * (or `answer`) in npm_config_global_prefix and the cwd's node_modules/.bin first on PATH, as npm does. The scratch
+   * root (the runner's default cwd) is a project with its own `node`, which answers when the ask runs there (Fable F2).
+   */
+  const masked = (w: ReturnType<typeof world>, opts: { execWorks?: boolean; answer?: string; root?: string } = {}) => {
+    mkdirSync(join(w.root, "node_modules", ".bin"), { recursive: true });
+    writeFileSync(join(w.root, "node_modules", ".bin", "node"), "#!/bin/sh\necho /from-project-local-node\n");
+    chmodSync(join(w.root, "node_modules", ".bin", "node"), 0o755);
+    writeFileSync(join(w.tools, "npm-real"), w.npmStub(w.prefix));
+    writeFileSync(join(w.tools, "npm"), `#!/bin/sh
+case "$1 $2" in
+  ${opts.root ? `"root -g") echo ${sq(opts.root)}; exit 0;;` : ""}
+  "root -g"|"prefix -g") ${sq(join(w.tools, "npm-real"))} "$@" | sed -E 's/${UUID_RE}/***/g'; exit 0;;
+  "exec -c") echo "npm exec -c $3 (in $PWD)" >> ${sq(join(w.root, "calls.log"))}; ${opts.execWorks === false ? "exit 1;" : ""} npm_config_global_prefix=${sq(opts.answer ?? w.prefix)} PATH="$PWD/node_modules/.bin:$PATH" sh -c "$3"; exit $?;;
+esac
+exec ${sq(join(w.tools, "npm-real"))} "$@"
+`);
+    for (const f of ["npm", "npm-real"]) chmodSync(join(w.tools, f), 0o755);
+  };
+  const neutral = parse(process.cwd()).root;
+
+  it("the lock, the preimage and the verification use the real prefix, asked from the filesystem root; nothing redacted is created", () => {
+    const w = world(PFX);
+    runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
+    masked(w);
+    const asked: string[] = [];
+    const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: prefix => { asked.push(prefix); return { ok: true, token: "7".repeat(32) }; }, rollback: true, now: () => new Date("2026-11-26T01:02:03Z") }, w.runner);
+    expect(outcome, JSON.stringify(outcome)).toMatchObject({ ok: true, agendPath: join(w.prefix, "bin", "agend"), version: "2.2.0" });
+    expect(asked).toEqual([w.prefix]);
+    expect(outcome.ok && outcome.rollback).toMatchObject({ prefix: w.prefix, root: join(w.prefix, "lib", "node_modules"), preimage: { version: "2.1.12" } });
+    const asks = w.callLog().filter(l => l.startsWith("npm exec -c"));
+    expect(asks.length).toBeGreaterThan(0);
+    expect(asks.every(l => l.endsWith(`(in ${neutral})`)), asks.join("\n")).toBe(true);
+    expect(existsSync(join(w.root, "prefix-***"))).toBe(false);
+  });
+
+  it("npm's redacted root is not the real prefix's layout: the preimage is not taken there, nothing is installed", () => {
+    const w = world(PFX);
+    masked(w, { root: `/elsewhere/***/lib/node_modules` });
+    const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: () => ({ ok: true, token: "7".repeat(32) }), rollback: true }, w.runner);
+    expect(outcome).toMatchObject({ ok: false, stage: "lock", message: expect.stringContaining("where it installs packages") });
+    expect(w.callLog().filter(l => l.startsWith("npm install"))).toEqual([]);
+  });
+
+  it("npm can't be asked again, or answers a path it would not have printed that way: nothing is locked or installed", () => {
+    for (const opts of [{ execWorks: false }, { answer: "/from-project-local-node" }, { answer: `/elsewhere/${PFX}` }]) {
+      const w = world(PFX);
+      masked(w, opts);
+      const asked: string[] = [];
+      const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: prefix => { asked.push(prefix); return { ok: true, token: "7".repeat(32) }; } }, w.runner);
+      expect(outcome, JSON.stringify(opts)).toMatchObject({ ok: false, stage: "lock" });
+      expect(asked).toEqual([]);
+      expect(w.callLog().filter(l => l.startsWith("npm install"))).toEqual([]);
+    }
+  });
+});

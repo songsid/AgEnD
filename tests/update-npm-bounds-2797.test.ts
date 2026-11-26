@@ -76,7 +76,7 @@ describe("M-2797: npm is bounded for the update, for every key nobody set", () =
     const action = cli.slice(cli.indexOf('.command("update")'));
     const bounds = action.indexOf("applyUpdateNpmBounds(process.env");
     expect(bounds).toBeGreaterThan(0);
-    for (const npmCall of ["lookupTargetVersion(tag)", 'execSync("npm config get prefix"', "preflightUpdate(", 'spawnSync("npm", ["view", pkg', 'spawnSync("npm", ["exec"', "runUpdateInstall("]) {
+    for (const npmCall of ["lookupTargetVersion(tag)", 'said("npm config get prefix")', 'said("npm prefix -g")', 'said(`npm ${npmGlobalPrefix.ASK', "preflightUpdate(", 'spawnSync("npm", ["view", pkg', 'spawnSync("npm", ["exec"', "runUpdateInstall("]) {
       const at = action.indexOf(npmCall);
       expect(at, npmCall).toBeGreaterThan(bounds);
     }

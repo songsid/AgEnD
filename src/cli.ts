@@ -72,7 +72,7 @@ import {
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, readUpdateProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
 import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
-import { dropUpdateNpmBounds, npmAllowScripts, withoutUpdateNpmBounds } from "./update-npm-env.js";
+import { dropUpdateNpmBounds, npmAllowScripts, npmGlobalPrefix, withoutUpdateNpmBounds } from "./update-npm-env.js";
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { fleetServiceOwner } from "./fleet-service-owner.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
@@ -1683,7 +1683,7 @@ program
           { pkg: `@songsid/agend@${pkgVersion}`, targetVersion: pkgVersion, viaNvm: false, nvmSh },
           {
             run: (command, args, options = {}) => {
-              const result = spawnSync(command, args, { encoding: "utf-8", timeout: options.timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
+              const result = spawnSync(command, args, { encoding: "utf-8", timeout: options.timeoutMs, stdio: ["ignore", "pipe", "pipe"], ...(options.cwd ? { cwd: options.cwd } : {}) });
               return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
             },
             log: message => console.log(message),
@@ -1746,7 +1746,16 @@ program
     // ── Check if npm global needs sudo (read-only; decides the nvm path the preflight judges) ──
     let needsSudo = false;
     try {
-      const prefix = execSync("npm config get prefix", { encoding: "utf-8" }).trim();
+      // M-3806: for a UUID in the path, `npm config get prefix` refuses (npm 10–12): read `npm prefix -g`, which npm
+      // 11/12 print with `***`; that is asked the way npm tells a child, from the filesystem root (Fable #4526 F2).
+      // No answer at all: as before, assume no sudo.
+      const quiet = { encoding: "utf-8" as const, stdio: ["ignore", "pipe", "ignore"] as Array<"ignore" | "pipe"> };
+      const said = (command: string, cwd?: string) => { try { return execSync(command, cwd ? { ...quiet, cwd } : quiet); } catch { return ""; } };
+      let configured = said("npm config get prefix");
+      if (!npmGlobalPrefix.lastLine(configured) || npmGlobalPrefix.masked(configured)) configured = said("npm prefix -g");
+      const prefix = npmGlobalPrefix.resolve(configured, undefined,
+        () => said(`npm ${npmGlobalPrefix.ASK.slice(0, 2).join(" ")} "${npmGlobalPrefix.ASK[2]}"`, npmGlobalPrefix.neutralCwd())).prefix;
+      if (!prefix) throw new Error("npm did not say where it installs global packages");
       const { accessSync, constants } = await import("node:fs");
       try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
     } catch { /* assume no sudo needed */ }
@@ -1896,6 +1905,7 @@ program
             timeout: options.timeoutMs,
             stdio: options.inherit ? "inherit" : ["ignore", "pipe", "pipe"],
             ...(options.env ? { env: { ...process.env, ...options.env } } : {}),
+            ...(options.cwd ? { cwd: options.cwd } : {}),
           });
           return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
         },
