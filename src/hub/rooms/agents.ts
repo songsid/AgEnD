@@ -1,3 +1,4 @@
+import { HUB_ROOM_REACT_ACK_CAPABILITY } from "../room-react-ack-model.js";
 import {roomDeliveryAsker} from "./asker-identity.js";
 import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY,ROOM_ASKER_FRESH_MS,ROOM_ASKER_RETENTION_MS} from "../room-asker-identity-model.js";
 import {roomAskIdentityDigest} from "../room-asker-identity.js";
@@ -422,6 +423,32 @@ export class HubRoomAgents {
     }
     return true;
   }
+  /** Commit the visible reaction and its acknowledgement as one permission-fenced operation. */
+  async acknowledgeReaction<T>(body: import("../types.js").HubRoomReact, link: HubLinkContext, apply: (db: DB) => T): Promise<T> {
+    if (!this.supports(link) || !link.features.has(HUB_ROOM_REACT_ACK_CAPABILITY) || !body.emoji) throw new HubProtocolError("incompatible");
+    const d = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(body.messageId) as Delivery | undefined);
+    if (!d || d.fleet_id !== link.fleetId || d.owner !== personKeyString(link.owner) || d.room_id !== body.roomId || d.exposure_id !== body.exposureId || !d.sent_epoch) throw new HubProtocolError("denied");
+    const permit = await this.permission(d, link);
+    if (!await this.core.eligible(personFromString(d.asker)) || !await this.core.eligible(link.owner)) throw new HubProtocolError("unavailable");
+    const result = this.core.atomic((db, tx) => {
+      const now = db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(d.id) as Delivery;
+      if (!link.current() || !this.valid(db, now)) throw new HubProtocolError("revoked");
+      const already = now.state === "answered" && now.reason_code === "acknowledged-by-reaction" && !now.answer_id;
+      if (!already && (!pending(now) || now.answer_id || this.core.now() >= now.expires_at)) throw new HubProtocolError("not-found");
+      const e = readExposure(db, now.exposure_id);
+      if (!e || exposureOf(e).state !== "published" || !this.sourcePublished(db, now)) throw new HubProtocolError("revoked");
+      const value = apply(db);
+      if (!already) {
+        db.prepare("UPDATE hub_room_deliveries SET state='answered',reason_code='acknowledged-by-reaction',answered_at=COALESCE(answered_at,?) WHERE id=?").run(this.core.now(), now.id);
+        // The existing thread renderer hides this empty working placeholder; no text answer is invented.
+        db.prepare("UPDATE hub_room_posts SET stage='working' WHERE id=?").run(now.reply_id);
+        this.core.audit(tx, { requestId: now.id, actor: { kind: "person", person: link.owner }, action: "room.react-ack", result: "completed", roomId: now.room_id, messageId: now.parent_id, exposureId: now.exposure_id, fleetId: link.fleetId });
+      }
+      return value;
+    }, permit);
+    this.update(d);
+    return result;
+  }
   async answer(input: HubRoomAnswer, link: HubLinkContext): Promise<HubRoomAnswerAck> {
     const body = validated(roomAnswerSchema, input),{mentionFeedback:_feedback,...answer}=body,hash = digest(JSON.stringify(answer));
     if (!this.supports(link) || body.buttons && !link.features.has(HUB_ROOM_BUTTONS_CAPABILITY) || body.attachments && !roomFilesNegotiated(link.features)) throw new HubProtocolError("incompatible");
@@ -432,6 +459,8 @@ export class HubRoomAgents {
       const value=body.mentionFeedback&&link.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY)?personalMentionRefusals(this.core,d.reply_id,d.exposure_id):undefined;
       return {messageId:d.id,answerId:body.answerId,...(value?{mentionRefusals:value}:{})};
     };
+    // An accepted reaction already completed this ask; late reminders or answers must not retire it.
+    if (d.state === "answered" && d.reason_code === "acknowledged-by-reaction" && !d.answer_id) return ack();
     if(body.notAnswered){
       if(!link.features.has(HUB_ROOM_ANSWER_STATUS_CAPABILITY))throw new HubProtocolError("incompatible");
       if(d.answer_id||!pending(d)||!this.core.atomic(db=>this.valid(db,d))||this.core.now()>=d.expires_at)return ack();

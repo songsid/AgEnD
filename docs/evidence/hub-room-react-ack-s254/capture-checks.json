@@ -1,0 +1,121 @@
+{
+  "scope": "Real Hub UI and actual stored room.react acknowledgement; synthetic people/agent/messages. No model/CLI/Fleet or live directory.",
+  "actualReadback": {
+    "answered": 1,
+    "working": 0,
+    "later": 0,
+    "reaction": "👍"
+  },
+  "records": [
+    {
+      "stage": "before",
+      "device": "desk",
+      "lang": "en",
+      "theme": "light",
+      "file": "before-desk-light-en.png",
+      "sha256": "ef8bb0dd6accb16c49844cbdbac9214d57a09ec28c8764996dc3aff9efbfb355",
+      "reactionVisible": false,
+      "pageErrors": 0,
+      "overflow": false
+    },
+    {
+      "stage": "before",
+      "device": "phone",
+      "lang": "zh-TW",
+      "theme": "dark",
+      "file": "before-phone-dark-zh-TW.png",
+      "sha256": "905c7041f54c694b10e9b48721f7803106b8f4fb025c56f4abfd1af6910e6568",
+      "reactionVisible": false,
+      "pageErrors": 0,
+      "overflow": false
+    },
+    {
+      "stage": "after",
+      "device": "desk",
+      "lang": "en",
+      "theme": "light",
+      "file": "after-desk-light-en.png",
+      "sha256": "89581f8f24019c87f7ff6e2d27edeb1bd0cb167cbad592f9cdbafee7e1f1737a",
+      "reactionVisible": true,
+      "pageErrors": 0,
+      "overflow": false
+    },
+    {
+      "stage": "after",
+      "device": "desk",
+      "lang": "en",
+      "theme": "dark",
+      "file": "after-desk-dark-en.png",
+      "sha256": "14da285f3be46ce579dbed4fbc2fdc2762054ab3c23fee1a71beeeb701a444b7",
+      "reactionVisible": true,
+      "pageErrors": 0,
+      "overflow": false
+    },
+    {
+      "stage": "after",
+      "device": "desk",
+      "lang": "zh-TW",
+      "theme": "light",
+      "file": "after-desk-light-zh-TW.png",
+      "sha256": "36ec4f7b665c38ab9224836aef6a572b40e81c11ba02abd8589cca4270d78a96",
+      "reactionVisible": true,
+      "pageErrors": 0,
+      "overflow": false
+    },
+    {
+      "stage": "after",
+      "device": "desk",
+      "lang": "zh-TW",
+      "theme": "dark",
+      "file": "after-desk-dark-zh-TW.png",
+      "sha256": "f61a39323d4e4294a8c7dd7a28d9b84c9aedac2f980d1534274e684add246ef2",
+      "reactionVisible": true,
+      "pageErrors": 0,
+      "overflow": false
+    },
+    {
+      "stage": "after",
+      "device": "phone",
+      "lang": "en",
+      "theme": "light",
+      "file": "after-phone-light-en.png",
+      "sha256": "481fba179b9198ea257b7551a6fca177822c0bbdd8ff01eef901e7c2ff431498",
+      "reactionVisible": true,
+      "pageErrors": 0,
+      "overflow": false
+    },
+    {
+      "stage": "after",
+      "device": "phone",
+      "lang": "en",
+      "theme": "dark",
+      "file": "after-phone-dark-en.png",
+      "sha256": "d40bf0422e58de2606a6da69287184d2819d08db3766a359aa2ec4bb909ad6db",
+      "reactionVisible": true,
+      "pageErrors": 0,
+      "overflow": false
+    },
+    {
+      "stage": "after",
+      "device": "phone",
+      "lang": "zh-TW",
+      "theme": "light",
+      "file": "after-phone-light-zh-TW.png",
+      "sha256": "d476e64c2197762adf2502dde6805815a1b240c3438f203a430e398b1c508bef",
+      "reactionVisible": true,
+      "pageErrors": 0,
+      "overflow": false
+    },
+    {
+      "stage": "after",
+      "device": "phone",
+      "lang": "zh-TW",
+      "theme": "dark",
+      "file": "after-phone-dark-zh-TW.png",
+      "sha256": "9637d19730b126859a515cf3a63e1a5669d4eff73c397434874f5d12ec0bec29",
+      "reactionVisible": true,
+      "pageErrors": 0,
+      "overflow": false
+    }
+  ]
+}

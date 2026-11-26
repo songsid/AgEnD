@@ -1073,7 +1073,7 @@ export class HubGroupRooms {
     const body = validated(roomReactSchema, input);
     if (body.emoji !== "" && !validRoomEmoji(body.emoji)) throw new HubProtocolError("invalid");
     if (!link.current() || !link.features.has(HUB_ROOM_REACT_CAPABILITY)) throw new HubProtocolError("revoked");
-    const done = this.core.atomic(db => {
+    const apply = (db: Database.Database) => {
       const d = db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(body.messageId) as { room_id: string; parent_id: string; exposure_id: string; fleet_id: string; owner: string; agent_member: string } | undefined;
       if (!d || d.fleet_id !== link.fleetId || d.owner !== personKeyString(link.owner) || d.room_id !== body.roomId || d.exposure_id !== body.exposureId) throw new HubProtocolError("denied");
       const room = this.room(db, d.room_id);
@@ -1091,10 +1091,11 @@ export class HubGroupRooms {
       db.prepare("DELETE FROM hub_room_reactions WHERE post_id=? AND member_id=?").run(post.id, who);
       if (body.emoji) db.prepare("INSERT INTO hub_room_reactions(room_id,post_id,member_id,emoji,created_at) VALUES(?,?,?,?,?)").run(d.room_id, post.id, who, body.emoji, this.core.now());
       return { post, changed: true };
-    });
+    };
+    const done = body.acknowledge ? await this.agents.acknowledgeReaction(body, link, apply) : this.core.atomic(apply);
     if ("archived" in done) return { messageId: body.messageId, ok: false, code: "archived" };
     if (done.changed && done.post) this.emit({ type: "message.updated", roomId: done.post.room_id, data: { roomId: done.post.room_id, message: this.projection(done.post) }, sequence: done.post.sequence });
-    return { messageId: body.messageId, ok: true };
+    return { messageId: body.messageId, ok: true, ...(body.acknowledge ? { acknowledged: true as const } : {}) };
   }
   /** A read or a press first closes what is already due (a suspended host's timer may be late): never a stale open poll. */
   private settleButtons(): void {

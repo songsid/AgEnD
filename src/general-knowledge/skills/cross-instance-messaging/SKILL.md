@@ -97,6 +97,8 @@ An error or unknown acknowledgement retains `operation_id` for exact recovery ev
 
 When a shared agent answers a Hub question with its contact limit on, contacting other Fleet agents (including broadcast) is refused. Answer `agend-hub` first, then retry your own work. The limit ends on accepted answer or after 30 minutes; `hub_room_post` has its separate limits.
 
+For a Hub group-room ask that only acknowledges or thanks, `react` with its `hub-room-…` correlation id as `message_id` can complete it on a compatible connection. A successful Hub acknowledgement ends that ask's obligation and reminders; a refused or unconfirmed reaction does not. Work needing a conclusion still uses `report_result`. Older Hub connections keep reaction-as-gesture behavior and say so in the room prompt.
+
 A shared ClassicBot room can also receive private Hub questions. Use the supplied `report_result` target and correlation;
 never use `reply`, `react` or `edit_message` to send that question or answer into Discord or Telegram. Room history is not
 copied to the Hub. The room agent still has one conversation and may use what it learned on either side; sharing does

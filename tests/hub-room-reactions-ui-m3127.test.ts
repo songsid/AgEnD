@@ -171,3 +171,11 @@ describe("the message menu's React", () => {
     void picked;
   });
 });
+
+it("S254 reaction acknowledgement uses the existing empty agent placeholder behavior and keeps the original reaction", () => {
+  const question={id:"q",roomId:"r",at:1,author:{kind:"person",id:"p",name:"Reader"},text:"Thanks",mentions:[],reactions:[{emoji:"👍",count:1,members:["agent"]}],ask:{total:1,answered:1,working:0,later:0}};
+  const placeholder={id:"reply",roomId:"r",at:2,author:{kind:"agent",id:"agent",name:"Notes"},text:"",mentions:[],answerTo:"q",stage:"working"};
+  const rows=thread.toThreadMessages([question,placeholder],{meId:"p",ids:new Map()});
+  expect(rows).toHaveLength(1);expect(rows[0].reactionBar).toMatchObject([{emoji:"👍",count:1}]);
+  expect(thread.toThreadMessages([question,{...placeholder,stage:"not-answered"}],{meId:"p",ids:new Map()})).toHaveLength(2);
+});

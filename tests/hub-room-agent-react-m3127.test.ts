@@ -81,6 +81,36 @@ describe("A. the Hub takes an agent's reaction (room.react)", () => {
     const w = await world(["welcome-caps-v1", "room-ask-v1"]);
     expect(await w.react("👍")).toMatchObject({ payload: { ok: false, code: "revoked" } });
   });
+  it("S254 an accepted reaction answers the exact delivery and clears missing-answer presentation without a text post", async () => {
+    const w = await world([...CAPS, "room-react-ack-v1", "room-answer-status-v1"]);
+    const delivery = r!.db.prepare("SELECT * FROM hub_room_deliveries").get() as any;
+
+    // Exercise recovery from an already displayed no-answer marker without manufacturing another answer.
+    r!.db.prepare("UPDATE hub_room_deliveries SET reason_code='finished-without-answer' WHERE id=?").run(delivery.id);
+    r!.db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(delivery.reply_id);
+    const count = (r!.db.prepare("SELECT COUNT(*) n FROM hub_room_posts").get() as any).n;
+    expect(await w.react("👍", {acknowledge:true})).toMatchObject({type:"room.react-result",payload:{ok:true,acknowledged:true}});
+    expect((await w.question()).reactions).toEqual([{emoji:"👍",count:1,members:[w.agentMember]}]);
+    expect((await w.question()).ask).toEqual({total:1,answered:1,working:0,later:0});
+    expect(r!.db.prepare("SELECT state,reason_code,answer_id FROM hub_room_deliveries WHERE id=?").get(delivery.id)).toEqual({state:"answered",reason_code:"acknowledged-by-reaction",answer_id:null});
+    const messages=(await r!.call(w.a,"GET",`/hub/v1/rooms/${w.id}/messages`)).json.messages;
+    expect(messages.find((m:any)=>m.id===delivery.reply_id)).toMatchObject({stage:"working"});
+    expect((r!.db.prepare("SELECT COUNT(*) n FROM hub_room_posts").get() as any).n).toBe(count);
+    expect(await w.react("👍", {acknowledge:true})).toMatchObject({payload:{ok:true,acknowledged:true}});
+    expect((await w.question()).ask.answered).toBe(1);
+  });
+  it("S254 a gesture without the new acknowledgement flag keeps the delivery owed", async () => {
+    const w=await world([...CAPS,"room-react-ack-v1"]);
+    expect(await w.react("👍")).toMatchObject({payload:{ok:true}});
+    expect((await w.question()).ask.answered).toBe(0);
+  });
+  it("S254 refuses expired acknowledgements atomically without adding the reaction", async () => {
+    const w=await world([...CAPS,"room-react-ack-v1"]);
+    r!.db.prepare("UPDATE hub_room_deliveries SET expires_at=1").run();
+    expect(await w.react("👍",{acknowledge:true})).toMatchObject({payload:{ok:false}});
+    expect(await w.question()).not.toHaveProperty("reactions");
+    expect((r!.db.prepare("SELECT state FROM hub_room_deliveries").get() as any).state).not.toBe("answered");
+  });
 });
 
 describe("the member hello's capability list (Fable #3935 info)", () => {
@@ -98,6 +128,7 @@ describe("the member hello's capability list (Fable #3935 info)", () => {
     expect(memberFrameSchema.safeParse(future).success).toBe(true);
     expect(() => encodeMemberFrame(future)).not.toThrow(); // phase3 has a bounded legacy retry for older Hubs
   });
+
 });
 
 describe("B. the Fleet member's room adapter", () => {

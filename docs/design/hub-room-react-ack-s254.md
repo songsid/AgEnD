@@ -1,0 +1,13 @@
+# Acknowledging Hub room asks with reactions
+
+A reaction may finish a message that only acknowledges or thanks. Work needing a conclusion still needs `report_result`. The agent makes that choice using the room prompt; the Hub does not classify natural-language questions.
+
+`room-react-ack-v1` is a Hub receiver offer layered on the existing room-ask and reaction capabilities. A modern member explicitly sends `acknowledge: true` on `room.react`; older links keep gesture-only reactions. The result carries `acknowledged: true` only after the Hub accepts the exact delivery and commits its reaction and settlement together. The client checks negotiation before resolving the correlated exchange. A socket send, refusal, stale caller or missing result never completes the member obligation.
+
+The Hub uses the delivery's current Fleet/owner/exposure, membership, sharing permission, eligibility and deadline fences. A same-emoji retry still settles an unacknowledged delivery. The original message keeps the existing Fleet-style reaction chip; its progress becomes answered. The empty agent placeholder uses the existing hidden working state, and a previous finished-without-answer reason is cleared. No text answer is invented. A late missing-answer marker cannot undo the acknowledgement.
+
+The Fleet stores a bound, encrypted completion receipt in an additive companion table beside its unchanged strict ask journal. Its binding covers the exact accepted ask and destination incarnation. Completion survives a member restart and retires reminders, missing-answer escalation and open-question checks. Pending reaction acknowledgements serialize against competing text answers; an in-flight reminder rechecks settlement before input. Corrupt or mismatched receipts fail closed. There is at most one receipt per retained ask, removed with that ask; no new timer, directory call, CLI or model request is introduced.
+
+Rollback reverts the feature. The legacy encrypted ask row remains readable and older code ignores the companion table; an older Fleet may resume reminders for a previously reacted ask. Old Hubs and old Fleet peers keep their existing behavior because acknowledgement fields are negotiated and explicitly requested. Existing private-Hub output and contact restrictions are unchanged; the existing settled-question accessor observes a successful acknowledgement.
+
+Verification uses synthetic member inputs and owned HTTP/SQLite plus pinned TLS fixtures. Real-app screenshots show synthetic messages and actual stored reactions, with no live directory, Fleet CLI or model. UI pieces retain the user-look hold before merge.
