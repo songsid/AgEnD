@@ -24,6 +24,7 @@ fm.requestContextControl = {
   principal(req: any) { const owner = fm.liveOwner(req, { hostOnly: false }); return owner && { binding: owner.handle, verified: true, current: owner.current }; },
   permitContinuation: (req: any, res: any) => permitWebContinuation(req, res, fm),
   read: () => structuredClone(view),
+  recheck: () => structuredClone(view),
   snapshot: () => view ? structuredClone(view) : null,
   change(input: any, actor: any) {
     if (!actor.current() || !actor.verified) throw Error("owner-required");
@@ -37,15 +38,16 @@ fm.requestContextControl = {
 fm.needsYouItems = () => view.phase === "blocked" ? [{ id: "cutover-fixture", type: "config", reason: "request_context_cutover", instance: "", detail: "", since: Date.now(), requestContextCutover: structuredClone(view) }] : [];
 const never = () => { throw Error("Capture fixture must never start, mutate or deliver to an agent"); };
 fm.deliverToInstance = never; fm.deliverHumanToInstance = never; fm.saveFleetConfig = never;
-const allStates = ["on", "off", "off-before", "draining", "blocked-legacy", "blocked-peers", "blocked-owners", "blocked-recovery", "off-confirm", "unconfirmed-change", "general-notice"];
+const allStates = ["on", "off", "off-before", "draining", "blocked-legacy", "blocked-peers", "blocked-owners", "blocked-recovery", "on-confirm", "on-confirm-go-back", "stop-work-confirm", "blocked-update", "off-confirm", "unconfirmed-change", "general-notice"];
 const states = process.env.STATES ? allStates.filter(state => process.env.STATES!.split(",").includes(state)) : allStates;
 try {
   for (const variant of matrix()) for (const state of states) {
     failAfterWrite = state === "unconfirmed-change";
-    const blocked = state.startsWith("blocked-"), kind = state.slice(8), phase = blocked ? "blocked" : state.startsWith("off") && state !== "off-confirm" ? "off" : state === "draining" ? "draining" : "on";
-    view = { revision: ++revision, enabled: !["off", "off-before", "draining"].includes(state), everActivated: state === "blocked-recovery" || !blocked && state !== "off-before", phase, canChange: true,
-      blockers: blocked ? [{ id: "readiness-fixture", kind, labels: kind === "peers" ? ["Demo runtime"] : ["owners", "recovery"].includes(kind) ? ["Demo worker"] : [], ...(kind === "recovery" ? { action: "stop-work" } : {}) }]
+    const blocked = state.startsWith("blocked-") || state === "stop-work-confirm", kind = state === "stop-work-confirm" ? "recovery" : state.slice(8), phase = blocked ? "blocked" : (state.startsWith("off") && state !== "off-confirm" || state.startsWith("on-confirm")) ? "off" : state === "draining" ? "draining" : "on";
+    view = { revision: ++revision, enabled: !["off", "off-before", "draining", "on-confirm", "on-confirm-go-back"].includes(state), attempted: state !== "off-before", everActivated: state === "blocked-recovery" || state === "stop-work-confirm" || !blocked && !["off-before", "on-confirm", "on-confirm-go-back"].includes(state), phase, canChange: true,
+      blockers: blocked ? [{ id: "readiness-fixture", kind, labels: kind === "peers" ? ["Demo Windows computer"] : kind === "legacy" ? ["Demo worker → Demo helper #R1234"] : ["owners", "recovery"].includes(kind) ? ["Demo worker"] : [], ...(kind === "recovery" ? { action: "stop-work" } : kind === "legacy" ? { action: "inspect" } : {}) }]
         : state === "draining" ? [{ id: "return-fixture", kind: "returns", labels: ["Demo worker"], action: "stop-waiting" }] : [] };
+    if (state === "on-confirm-go-back") view.goBack = { attemptIds: ["20261126T010203Z-0a1b2c3d"], availableUntil: "2026-12-03T02:30:00Z", timeZone: "Asia/Taipei" };
     const tag = `${caseName(variant)}-${state}`, path = blocked ? "/ui/needs" : state === "general-notice" ? "/ui/chat/general" : "/settings/access#request-context";
     fm.webChatHistory.forget("general");
     if (state === "general-notice") fm.emitSseEvent("message", { instance: "general", sender: "AgEnD", role: "status", text: requestContextEnabledNotice(variant.lang), ts: new Date().toISOString(), wrap: true });
@@ -61,10 +63,11 @@ try {
       } else if (blocked) {
         await page.getByRole("heading", { name: dictionary.title, exact: true }).waitFor();
         const text = await page.locator(".request-context-blocked").innerText();
-        check(`${tag}: concrete blocker`, kind === "legacy" || text.includes(kind === "peers" ? "Demo runtime" : "Demo worker"));
+        check(`${tag}: concrete blocker`, ["legacy", "update"].includes(kind) || text.includes(kind === "peers" ? "Demo Windows computer" : "Demo worker"));
         check(`${tag}: no invented raw code`, !text.includes("request_context"));
         check(`${tag}: inline recheck`, await page.locator(".request-context-blocked button").last().isVisible());
         check(`${tag}: previous rules only before activation`, text.includes(dictionary.previous) === !view.everActivated);
+        if (state === "stop-work-confirm") { const before = writes; await page.locator(".request-context-blocked").getByRole("button").first().click(); await page.getByRole("dialog").waitFor(); check(`${tag}: no destructive write before confirmation`, writes === before); }
       } else {
         const card = page.locator("#request-context"); await card.waitFor();
         await card.locator("input").waitFor(); await card.scrollIntoViewIfNeeded();
@@ -77,7 +80,7 @@ try {
           await page.waitForTimeout(50);
           check(`${tag}: stale passive status cannot roll back the switch`, await card.locator("input").isChecked());
         }
-        if (state === "off-confirm" || state === "unconfirmed-change") {
+        if (["on-confirm", "on-confirm-go-back", "off-confirm", "unconfirmed-change"].includes(state)) {
           const before = writes; await card.locator("label").click();
           await page.getByRole("dialog").waitFor();
           check(`${tag}: no write before confirmation`, writes === before);
@@ -86,6 +89,7 @@ try {
             await page.locator('[data-confirm="yes"]').click();
             await card.getByRole("alert").waitFor();
             check(`${tag}: unconfirmed wording`, (await card.getByRole("alert").innerText()) === dictionary.failed);
+            check(`${tag}: unknown switch`, await card.locator("input").getAttribute("aria-checked") === "mixed" && !await card.locator("input").isChecked());
             check(`${tag}: no blind write retry`, writes === before + 1 && await card.locator("input").isDisabled());
           }
         }

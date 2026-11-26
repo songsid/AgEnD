@@ -15,7 +15,7 @@ function rig() {
   let owner: string | null = "fleet-fixture";
   const shadow = box.requestContextMigrationShadow({ owner: () => owner, policyEpoch: () => "policy-fixture",
     generation: id => `${id}-generation`, canManage: () => true });
-  const raw: RequestContextReadinessSnapshot = { owner, lease: "exclusive-lease", revision: "owners-1", shadow: shadow.inspect(),
+  const raw: RequestContextReadinessSnapshot = { owner, lease: "exclusive-lease", revision: "owners-1", shadow: shadow.inspect(), update: { settled: true, revision: "update-offer-1" },
     requiredOwners: ["daemon:worker"], owners: [{ id: "daemon:worker", generation: "worker-generation", revision: "runtime-1",
       ports: Object.fromEntries(REQUIRED_PORTS.map(port => [port, true])) }],
     requiredPeers: ["runtime:fixture"], peers: [{ id: "runtime:fixture", generation: "peer-1", connected: true, requestContextVersion: 1 }] };
@@ -83,3 +83,5 @@ it("a partial or forged shadow cannot supply a readiness proof", () => {
     expect(bad.inspect().blocked).toContain("legacy");
   }
 });
+
+it("an open update blocks readiness, and a changed confirmed Go back offer invalidates its proof", () => { const r = rig(), proof = r.readiness.prove(); r.raw.update.revision = "another-offer"; expect(proof.current()).toBe(false); r.raw.update.settled = false; expect(r.readiness.inspect()).toMatchObject({ ready: false, blocked: ["update"] }); });

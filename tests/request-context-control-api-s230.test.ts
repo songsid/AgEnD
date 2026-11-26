@@ -7,12 +7,12 @@ import { handleSettingsRequest } from "../src/settings-api.js";
 const path = "/api/settings/request-context";
 function rig() {
   let verified = false, allowed = true, binding = "fixture-session", continued = true;
-  const view: RequestContextControlView = { revision: 2, enabled: true, everActivated: false, phase: "blocked", canChange: true,
+  const view: RequestContextControlView = { revision: 2, enabled: true, everActivated: false, attempted: true, phase: "blocked", canChange: true,
     blockers: [{ id: "owner-fixture", kind: "owners", labels: ["Demo worker"] }] };
   const host: RequestContextControlHost = { principal: () => ({ binding, verified, current: () => allowed }),
     snapshot: () => view,
     permitContinuation: (_req, res) => { if (continued) return true; res.writeHead(403); res.end(JSON.stringify({ error: "csrf" })); return false; },
-    read: vi.fn(() => view), change: vi.fn((input, actor): RequestContextControlView => {
+    read: vi.fn(() => view), recheck: vi.fn(() => view), change: vi.fn((input, actor): RequestContextControlView => {
       if (!actor.current() || !actor.verified) throw Error("owner-required");
       if (input.revision !== view.revision) throw Error("stale");
       if (input.action === "resolve") {
@@ -122,4 +122,13 @@ it("passive poll/reconnect snapshots neither run readiness nor leak a revoked ow
   r.revoke(); expect(requestContextControlSnapshot(req, url, r.host)).toBeNull();
   r.host.snapshot = () => { throw Error("PRIVATE_FLEET_STATE"); };
   expect(requestContextControlSnapshot(req, url, r.host)).toBeNull();
+});
+
+it("B stays quiet before an owner enable attempt; a read-only check cannot activate", async () => {
+  const r = rig(); Object.assign(r.view, { attempted: false, enabled: false, phase: "off", blockers: [] });
+  const item = { id: "cutover", reason: "request_context_cutover", requestContextCutover: r.view };
+  expect(projectRequestContextNeeds({} as any, new URL("http://localhost/ui/needs"), r.host, [item])).toEqual([]);
+  expect((await r.request("POST", { revision: 2, action: "check" }).done()).body).toMatchObject({ enabled: false, attempted: false });
+  expect(r.host.recheck).toHaveBeenCalledOnce(); expect(r.host.change).not.toHaveBeenCalled();
+  expect(r.view.phase).toBe("off");
 });

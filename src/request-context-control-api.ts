@@ -5,9 +5,10 @@ import { readBoundedWebBody } from "./web-body.js";
 
 const label = z.string().min(1).max(256);
 export const RequestContextControlViewSchema = z.strictObject({
-  revision: z.number().int().nonnegative(), enabled: z.boolean(), everActivated: z.boolean(),
+  revision: z.number().int().nonnegative(), enabled: z.boolean(), everActivated: z.boolean(), attempted: z.boolean(),
+  goBack: z.strictObject({ attemptIds: z.array(z.string().regex(/^\d{8}T\d{6}Z-[a-f0-9]{8}$/)).min(1).max(1024), availableUntil: z.iso.datetime(), timeZone: label }).optional(),
   phase: z.enum(["on", "off", "draining", "blocked"]), canChange: z.boolean(),
-  blockers: z.array(z.strictObject({ id: label, kind: z.enum(["legacy", "peers", "owners", "recovery", "returns", "tickets", "work"]),
+  blockers: z.array(z.strictObject({ id: label, kind: z.enum(["legacy", "peers", "owners", "recovery", "update", "returns", "tickets", "work"]),
     labels: z.array(label).max(64), action: z.enum(["inspect", "stop-waiting", "decline", "withdraw", "stop-work"]).optional() })).max(128),
 });
 export type RequestContextControlView = z.infer<typeof RequestContextControlViewSchema>;
@@ -29,6 +30,8 @@ export interface RequestContextControlHost {
   read(actor: RequestContextControlPrincipal): RequestContextControlView | Promise<RequestContextControlView>;
   /** Already-derived state for passive channels; never runs readiness or any installer mutation. */
   snapshot(): RequestContextControlView | null;
+  /** Read-only readiness refresh. Must never activate, resolve work or emit the enable notice. */
+  recheck(actor: RequestContextControlPrincipal): RequestContextControlView | Promise<RequestContextControlView>;
   change(input: Readonly<RequestContextControlDecision>, actor: RequestContextControlPrincipal): RequestContextControlView | Promise<RequestContextControlView>;
 }
 export function projectRequestContextControl(req: IncomingMessage, url: URL, host: RequestContextControlHost | undefined,
@@ -46,7 +49,7 @@ export function projectRequestContextNeeds(req: IncomingMessage, url: URL, host:
   return items.flatMap(item => {
     if (!item || typeof item !== "object" || (item as { reason?: string }).reason !== "request_context_cutover") return [item];
     const view = projectRequestContextControl(req, url, host, (item as { requestContextCutover?: unknown }).requestContextCutover);
-    return view ? [{ ...item, requestContextCutover: view }] : [];
+    return view && (view.everActivated || view.attempted) ? [{ ...item, requestContextCutover: view }] : [];
   });
 }
 export function requestContextControlSnapshot(req: IncomingMessage, url: URL, host: RequestContextControlHost | undefined): RequestContextControlView | null | undefined {
@@ -77,20 +80,20 @@ export function handleRequestContextControlApi(req: IncomingMessage, res: Server
   };
   void (async () => {
     try {
-      let value: RequestContextControlView;
+      let value: RequestContextControlView, mutated = false;
       if (req.method === "POST") {
-        if (!first.verified) throw Error("verification-required");
         if (!host.permitContinuation(req, res)) return;
         let input: RequestContextControlDecision;
         try { const body = await readBoundedWebBody(req, 4096); input = RequestContextControlDecisionSchema.parse(JSON.parse(body.toString("utf8"))); }
         catch { throw Error("invalid-request"); }
         const admitted = current();
-        if (!admitted.verified) throw Error("verification-required");
+        if (input.action !== "check" && (!first.verified || !admitted.verified)) throw Error("verification-required");
         // Revision/host role/installation epoch and the offered blocker/action must also match inside the owning transaction.
-        value = await host.change(input, admitted);
+        mutated = input.action !== "check";
+        value = input.action === "check" ? await host.recheck(admitted) : await host.change(input, admitted);
       } else value = await host.read(first);
       const after = current();
-      if (req.method === "POST" && !after.verified) throw Error("verification-required");
+      if (mutated && !after.verified) throw Error("verification-required");
       const view = RequestContextControlViewSchema.parse(value);
       answer(res, 200, { ...view, canChange: view.canChange && after.verified });
     } catch (error) {

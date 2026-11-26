@@ -23,12 +23,14 @@ export interface RequestContextReadinessSnapshot {
   lease: string | null;
   revision: string;
   shadow: RequestMigrationSnapshot;
+  /** Captured under the activation update locks; no current/recoverable attempt and exact offered Go back set. */
+  update: { settled: boolean; revision: string };
   requiredOwners: readonly string[];
   owners: readonly RequestContextOwnerReadiness[];
   requiredPeers: readonly string[];
   peers: readonly RequestContextPeerReadiness[];
 }
-export type RequestContextReadinessBlock = "legacy" | "peers" | "owners";
+export type RequestContextReadinessBlock = "legacy" | "peers" | "owners" | "update";
 export interface RequestContextReadinessStatus {
   readonly ready: boolean;
   readonly blocked: readonly RequestContextReadinessBlock[];
@@ -41,6 +43,7 @@ export interface RequestContextReadinessProof {
 const key = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 512 && !/[\x00-\x1f\x7f]/.test(value);
 function status(raw: RequestContextReadinessSnapshot): RequestContextReadinessStatus {
   const blocked = new Set<RequestContextReadinessBlock>();
+  if (raw.update?.settled !== true || !key(raw.update.revision)) blocked.add("update");
   const unique = (values: readonly string[]) => values.every(key) && new Set(values).size === values.length;
   if (!key(raw.owner) || !key(raw.lease) || !key(raw.revision)) blocked.add("owners");
   const shadow = raw.shadow;
