@@ -71,5 +71,20 @@
       "test": "tests/request-context-activation-s230.test.ts",
       "result": "red"
     }
-  ]
+  ],
+  "restartDisclosure": {
+    "sourceHead": "c0319e5be7049b9da5339b01cf415867b91c82bc",
+    "pictures": 16,
+    "checks": 113,
+    "individualVisualInspection": "16/16 originals, no exception",
+    "galleryDecodedPngHashes": 16,
+    "galleryBytes": 2126885,
+    "browserDecode": "pass",
+    "affectedTests": {
+      "files": 2,
+      "passed": 36,
+      "failed": 0
+    },
+    "physicalRelaunchProof": "pending production owner preparation"
+  }
 }
