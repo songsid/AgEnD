@@ -1,6 +1,6 @@
 /** Current role authority and real room writes; no network/provider or migration grants. */
 import { afterEach, expect, it, vi } from "vitest";
-import { HubGroupRooms } from "../src/hub/rooms/service.js";
+import { HubGroupRooms, ROOM_CREATION_HINT_MS } from "../src/hub/rooms/service.js";
 import { roleAuthorityWorld } from "./support/hub-role-authority-rig.js";
 import { personKeyString } from "../src/hub/identity.js";
 import { builtinRoles, parseRolePolicy } from "../src/hub/roles/model.js";
@@ -28,8 +28,10 @@ it("grants custom-role creation and picker access; revocation stops new rooms, n
   const made = await w.rooms.create(w.ctx, { name: "Example room" });
   expect(made.room.id).toBeTruthy();
   w.policy.roles.find(r => r.id === "room-creators")!.permissions = []; w.save(w.policy);
-  expect((await w.rooms.list(w.ctx)).me.canCreateRooms).toBe(false);
+  // The hint may stay visible briefly; the write must refuse immediately.
+  expect((await w.rooms.list(w.ctx)).me.canCreateRooms).toBe(true);
   await expect(w.rooms.create(w.ctx, { name: "Another room" })).rejects.toMatchObject({ code: "denied" });
+  w.time(ROOM_CREATION_HINT_MS + 1); expect((await w.rooms.list(w.ctx)).me.canCreateRooms).toBe(false);
   expect((await w.rooms.detail(w.ctx, made.room.id)).me.role).toBe("manager");
   await expect(w.rooms.candidates(w.ctx, "", "person")).resolves.toEqual(expect.any(Array));
 });
@@ -156,4 +158,30 @@ it("the prior strict reader accepts unchanged defaults and fails closed on a new
  const w = await world(), before = { ...w.policy, roles: builtinRoles(), assignments: [] };
  expect(olderReader(before)).toEqual(before); expect(() => olderReader(w.policy)).toThrow(HubProtocolError);
  expect(parseRolePolicy(w.policy)).toEqual(w.policy);
+});
+it("does not repeat AD membership reads for the same session's 30-second list poll", async () => {
+ const w = await groupWorld();
+ expect((await w.rooms.list(w.ctx)).me.canCreateRooms).toBe(true); w.time(30_000);
+ expect((await w.rooms.list(w.ctx)).me.canCreateRooms).toBe(true);
+ expect(w.groups).toHaveBeenCalledTimes(1);
+});
+
+it("shares an in-flight hint, but strict writes and candidate reads never reuse it", async () => {
+ const w = await groupWorld(); let entered!: () => void, release!: () => void;
+ const started = new Promise<void>(r => { entered = r; }), held = new Promise<void>(r => { release = r; });
+ w.groups.mockImplementation(async person => { entered(); await held; return {kind:"complete",person,groups:[w.group.objectId],observedAt:w.options.now()}; });
+ const first = w.rooms.list(w.ctx); await started; const second = w.rooms.list(w.ctx); release();
+ expect((await first).me.canCreateRooms).toBe(true); expect((await second).me.canCreateRooms).toBe(true); expect(w.groups).toHaveBeenCalledTimes(1);
+ w.groups.mockImplementation(async person => ({kind:"complete",person,groups:[],observedAt:w.options.now()}));
+ expect((await w.rooms.list(w.ctx)).me.canCreateRooms).toBe(true);
+ await expect(w.rooms.create(w.ctx,{name:"No cached authority"})).rejects.toMatchObject({code:"denied"});
+ await expect(w.rooms.candidates(w.ctx,"","person")).rejects.toMatchObject({code:"denied"});
+ w.time(ROOM_CREATION_HINT_MS + 1); expect((await w.rooms.list(w.ctx)).me.canCreateRooms).toBe(false);
+});
+it("does not share a hint between sessions or actors", async () => {
+ const w = await groupWorld(); expect((await w.rooms.list(w.ctx)).me.canCreateRooms).toBe(true);
+ w.groups.mockImplementation(async person => ({kind:"complete",person,groups:[],observedAt:w.options.now()}));
+ const otherSession = (await w.browser(w.admin)).ctx, otherActor = (await w.browser(w.other)).ctx;
+ expect((await w.rooms.list(otherSession)).me.canCreateRooms).toBe(false);
+ expect((await w.rooms.list(otherActor)).me.canCreateRooms).toBe(false); expect(w.groups).toHaveBeenCalledTimes(3);
 });

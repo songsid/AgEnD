@@ -15,13 +15,13 @@ export const groupSearchV1 = true;
 export const groupSearchIdV1 = true;
 register("hubGroupSearch", {
   en: {
-    label: "Find a group", placeholder: "Start of the group's name, e.g. eng", hint: "Type at least 2 characters.",
+    label: "Find an AD group", placeholder: "Start of the AD group's name, e.g. eng", hint: "Type at least 2 characters.",
     searching: "Searching…", none: "No group starts with “{0}”.", more: "More groups match. Type more of the name.",
     limited: "Too many searches. Try again in {0} seconds.", unknown: "The directory could not be searched just now. Try again, or add the group by its distinguished name.",
     invalid: "Use 2 to 64 characters.", add: "Add {0}", addShort: "Add", added: "Added",
   },
   "zh-TW": {
-    label: "尋找群組", placeholder: "群組名稱的開頭，例如 eng", hint: "請至少輸入 2 個字。",
+    label: "尋找 AD 群組", placeholder: "AD 群組名稱的開頭，例如 eng", hint: "請至少輸入 2 個字。",
     searching: "搜尋中…", none: "沒有以「{0}」開頭的群組。", more: "還有更多群組符合。請多輸入幾個字。",
     limited: "搜尋太多次了。請 {0} 秒後再試。", unknown: "目前無法搜尋目錄。請再試一次，或用辨別名稱新增群組。",
     invalid: "請輸入 2 到 64 個字。", add: "新增 {0}", addShort: "新增", added: "已新增",

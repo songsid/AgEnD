@@ -17,6 +17,10 @@ const receipt:any={mode,head:git("rev-parse","HEAD"),tree:git("rev-parse","HEAD^
 const check=(label:string,value:unknown)=>{receipt.checks.push({label,pass:!!value});if(!value)throw Error(label);};
 const port=async()=>{const server=createServer();await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));const value=(server.address() as any).port;await new Promise<void>(resolve=>server.close(()=>resolve()));return value;};
 const requested=process.env.STAGES?.split(","),wanted=(stage:string)=>!requested||requested.includes(stage);receipt.stages=requested??["role","assign","creators","flows"];
+const knownStages=["role","assign","creators","flows"],knownCases=["desk-dark-en","desk-dark-zh-TW","phone-dark-en","phone-dark-zh-TW"];
+if(requested?.some(stage=>!knownStages.includes(stage))||requested&&!requested.some(stage=>stage!=="flows"))throw Error("Choose at least one known capture stage");
+if(process.env.CASE&&!knownCases.includes(process.env.CASE))throw Error("Unknown capture case");
+const expectedScreens=(process.env.CASE?1:4)*((wanted("role")?1:0)+(wanted("assign")?3:0)+(wanted("creators")?1:0));
 let runtime:any,browser:any,certs:any;
 try{
  const [{createHubInitializer},{hubIdentityProvider},{makeTestCerts,ADMIN},{HubRuntime},{default:yaml}]=await Promise.all([load("src/hub/init/initializer.ts"),load("src/hub/init/identity.ts"),load("tests/support/hub-init-fixtures.ts"),load("src/hub/runtime.ts"),import("js-yaml")]);
@@ -42,7 +46,7 @@ try{
   const session=await(await fetch("/hub/v1/session")).json();
   const request=async(path:string,body?:any)=>{const r=await fetch("/hub/v1/roles"+path,{method:body===undefined?"GET":"POST",headers:body===undefined?{}:{"Content-Type":"application/json","X-AgEnD-Hub-CSRF":session.csrf},...(body===undefined?{}:{body:JSON.stringify(body)})});const out=await r.json();if(!r.ok||out.ok===false)throw Error(path+" "+out.code);return out;};
   await request("/search?kind=person&q=Example");const {view}=await request("");view.policy.rolesActive=true;
-  view.policy.roles.push({id:"custom:room-creators",kind:"custom",name:"Example room creators",description:"Start group rooms for shared work.",permissions:["rooms.create"],defaultMaxFleets:0});
+  view.policy.roles.push({id:"custom:room-creators",kind:"custom",name:"Example room creators",description:"Create group rooms for shared work.",permissions:["rooms.create"],defaultMaxFleets:0});
   view.policy.assignments.push({id:"example-creator",roleId:"custom:room-creators",subject:{kind:"group",group:{realm:"corp",objectId:product.objectId},dn:product.dn},scope:{kind:"hub"},startsAt:0,expiresAt:null,maxFleets:null,assignedBy:view.actor,assignedAt:0});
   const preview=await request("/preview",{policy:view.policy});await request("/apply",{policy:view.policy,previewDigest:preview.previewDigest});
  },{product});
@@ -58,29 +62,45 @@ try{
  }
  await seedContext.close();
  for(const device of ["desk","phone"])for(const lang of ["en","zh-TW"]){
-  const tag=`${device}-dark-${lang}`,zh=lang==="zh-TW",context=await browser.newContext({ignoreHTTPSErrors:true,viewport:device==="phone"?{width:390,height:844}:{width:1366,height:1000},isMobile:device==="phone",hasTouch:device==="phone",locale:lang});
+  const tag=`${device}-dark-${lang}`;if(process.env.CASE&&process.env.CASE!==tag)continue;
+  const zh=lang==="zh-TW",context=await browser.newContext({ignoreHTTPSErrors:true,viewport:device==="phone"?{width:390,height:844}:{width:1366,height:1000},isMobile:device==="phone",hasTouch:device==="phone",locale:lang});
   try{
    await context.addInitScript("window.__name=fn=>fn;");
    await context.addInitScript(({lang}:any)=>{localStorage.setItem("agend_theme","dark");localStorage.setItem("agend_lang",lang);localStorage.setItem("agend_tour_done","1");localStorage.setItem("agend_firstrun_dismissed","1");},{lang});
    const page=await context.newPage();page.on("pageerror",(error:any)=>receipt.errors.push({tag,error:error.message}));
    await context.route("**/*",(route:any)=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
    await page.goto(origin+"/ui/hub/admin?view=roles");await page.locator("#hubLogin").fill(ADMIN.login);await page.locator("#hubPassword").fill("Synthetic-browser-only");await page.locator("#hubPassword").press("Enter");await page.locator(".hub-role-list").first().waitFor();
+   // This field is admin-authored content, not a translated UI string. Seed it in the capture locale.
+   await page.evaluate(async({zh}:any)=>{const session=await(await fetch("/hub/v1/session")).json();const request=async(path:string,body?:any)=>{const response=await fetch("/hub/v1/roles"+path,{method:body===undefined?"GET":"POST",headers:body===undefined?{}:{"Content-Type":"application/json","X-AgEnD-Hub-CSRF":session.csrf},...(body===undefined?{}:{body:JSON.stringify(body)})});const value=await response.json();if(!response.ok||value.ok===false)throw Error("fixture role description "+path);return value;};const {view}=await request("");view.policy.roles.find((role:any)=>role.id==="custom:room-creators").description=zh?"開群組房間，共同完成工作。":"Create group rooms for shared work.";const preview=await request("/preview",{policy:view.policy});await request("/apply",{policy:view.policy,previewDigest:preview.previewDigest});},{zh});
+   await page.reload();await page.locator(".hub-role-list").first().waitFor();
    await page.getByRole("button",{name:"Example room creators",exact:true}).click();
    await page.getByRole("tab",{name:new RegExp("^"+(zh?"權限":"Permissions"))}).click();
    const row=page.locator(".hub-role-permission").filter({has:page.locator("strong",{hasText:zh?"開房間":"Create rooms"})});
    const section=row.locator("xpath=ancestor::details[1]");if(!await section.evaluate((el:any)=>el.open))await section.locator(":scope > summary").click();
    await row.scrollIntoViewIfNeeded();check(tag+" granted role row",(await row.innerText()).includes("✓"));
    await page.evaluate(()=>document.fonts.ready);
-   const capture=async(stage:string)=>{check(tag+" "+stage+" no horizontal overflow",await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth<=1));const file=`${tag}-${stage}.png`;await page.screenshot({path:join(out,file),fullPage:true});receipt.screens.push({file,sha256:hash(readFileSync(join(out,file)))});};
+   const capture=async(stage:string)=>{check(tag+" "+stage+" no horizontal overflow",await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth<=1));const file=`${tag}-${stage}.png`;await page.screenshot({path:join(out,file),fullPage:!stage.endsWith("-open")});receipt.screens.push({file,sha256:hash(readFileSync(join(out,file)))});};
    if(wanted("role"))await capture("role");
    if(wanted("assign")){
     await page.getByRole("tab",{name:new RegExp("^"+(zh?"人員":"People")+" ·")}).click();
-    await page.getByRole("button",{name:zh?"指派人員或 AD 群組":"Assign people or AD groups",exact:true}).click();
+    const assign=page.getByRole("button",{name:zh?"指派人員或 AD 群組":"Assign people or AD groups",exact:true});
+    await assign.scrollIntoViewIfNeeded();check(tag+" page assignment action visible",await assign.isVisible());await capture("people");
+    await assign.click();
     const panel=page.locator(".hub-role-panel"),subject=panel.locator("select").nth(1);
     check(tag+" room role permits AD-group recipients",await subject.locator('option[value="group"]').isEnabled());
     await subject.selectOption("group");
+    const input=panel.locator("#hubRoleSubject");await input.fill("Pro");
+    await panel.getByRole("button",{name:zh?"新增 Product":"Add Product",exact:true}).click();await input.fill("");
+    const review=panel.getByRole("button",{name:zh?"檢查變更":"Review",exact:true});await review.click({trial:true});
+    await panel.evaluate(async(el:any)=>{await document.fonts.ready;await Promise.all(el.getAnimations({subtree:true}).filter((a:any)=>a.effect?.getComputedTiming().iterations!==Infinity).map((a:any)=>a.finished.catch(()=>undefined)));await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
+    const settled=await panel.evaluate((el:any)=>({opacity:getComputedStyle(el).opacity,transform:getComputedStyle(el).transform}));
+    check(tag+" drawer transition fully settled",settled.opacity==="1"&&settled.transform==="none");
+    check(tag+" selected group enables visible primary",await review.isEnabled()&&await review.isVisible());
     check(tag+" AD-group wording explicit",(await panel.innerText()).includes(zh?"管理這個 AD 群組":"manages this AD group"));
+    check(tag+" shared AD search copy",await input.getAttribute("placeholder")=== (zh?"AD 群組名稱的開頭，例如 eng":"Start of the AD group's name, e.g. eng"));
     await capture("assign");
+    await subject.click();check(tag+" native recipient dropdown opened",await subject.evaluate((el:any)=>el.matches(":open")));
+    await capture("assign-open");await page.keyboard.press("Escape");
    }
    if(wanted("creators")){
    await page.goto(origin+"/ui/hub/admin?view=manage");await page.locator(".hub-admin-creators").waitFor();await page.locator(".hub-admin-creators").scrollIntoViewIfNeeded();
@@ -90,8 +110,9 @@ try{
    }
   }finally{await context.close();}
  }
+ check("positive exact capture count",expectedScreens>0&&receipt.screens.length===expectedScreens);
  check("no page errors",receipt.errors.length===0);
- receipt.bindings=Object.fromEntries(["src/hub/roles/model.ts","src/hub/roles/authority.ts","src/hub/roles/delegation.ts","src/hub/compose/server.ts","src/hub/http/deps.ts","src/hub/roles/admin-control.ts","src/hub/roles/review.ts","src/hub/rooms/admin.ts","src/hub/rooms/service.ts","src/ui/hub-roles.js","src/ui/hub-role-view.js","src/ui/hub-roles-strings.js","src/ui/hub-admin-rooms.js","src/ui/hub-admin-rooms-strings.js","src/ui/hub-room-strings.js","scripts/manual/hub-room-create-role-s256/browser.mts"].map(file=>[file,hash(readFileSync(join(repo,file)))]));
+ receipt.bindings=Object.fromEntries(["src/hub/roles/model.ts","src/hub/roles/authority.ts","src/hub/roles/delegation.ts","src/hub/compose/server.ts","src/hub/http/deps.ts","src/hub/roles/admin-control.ts","src/hub/roles/review.ts","src/hub/rooms/admin.ts","src/hub/rooms/service.ts","src/ui/hub-roles.js","src/ui/hub-role-view.js","src/ui/hub-roles-strings.js","src/ui/hub-admin-rooms.js","src/ui/hub-admin-rooms-strings.js","src/ui/hub-room-strings.js","src/ui/hub-group-search.js","scripts/manual/hub-room-create-role-s256/browser.mts"].map(file=>[file,hash(readFileSync(join(repo,file)))]));
 }finally{
  writeFileSync(join(out,"report.json"),JSON.stringify(receipt,null,2));await browser?.close();await runtime?.close?.();if(certs)rmSync(certs.dir,{recursive:true,force:true});rmSync(home,{recursive:true,force:true});
 }

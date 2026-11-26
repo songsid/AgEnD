@@ -4,6 +4,7 @@ import {normalizeRoomPurpose} from "./purpose.js";
 import { ROOM_OFFICE_STYLES, newRoomOffice, officeAgent, officeOn, roomOfficeView, withLook, memberLook, type RoomOfficeLook, type RoomPresence } from "./office.js";
 import { agentIntro } from "../agent-intro.js";
 import { countChainStop } from "../admin-dashboard.js";
+import { performance } from "node:perf_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -35,6 +36,9 @@ import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-mod
 import {personalMentionRefusals,recordPersonalMentionRefusals} from "../personal/refusals.js";
 
 type DB = Database.Database;
+export const ROOM_CREATION_HINT_MS = 60_000;
+const ROOM_CREATION_HINT_LIMIT = 256;
+interface RoomCreationHint { wall: number; elapsed: number; provider: HubCore["deps"]["roomCreation"]; value: Promise<boolean> }
 interface RoomRow { id: string; name: string; purpose:string; created_by: string; created_at: number; archived: number; all_mention: number; history_for_new: "since-join" | "all"; assistant_for: string | null; office_enabled: number | null; office_style: string }
 interface MemberRow { id: string; room_id: string; kind: "person" | "agent" | "assistant"; subject: string; role: "manager" | "member"; joined_sequence: number; read_sequence: number; owner_at_join: string | null }
 type PostRow = RoomPostRow;
@@ -94,6 +98,8 @@ export class HubRoomRefusal extends Error {
 /** People chat first; direct agent conversations remain in HubRoomsService. No timers or I/O on import. */
 export class HubGroupRooms {
   private readonly appPosts: boolean;
+  /** Display hints only: never retain or reuse an operation permit. */
+  private readonly creationHints = new Map<string, RoomCreationHint>();
   private listeners = new Set<(event: RoomEvent) => void>();
   readonly agents: HubRoomAgents;
   readonly assistant: HubRoomAssistant;
@@ -173,7 +179,7 @@ export class HubGroupRooms {
     if (event.removedPerson) return event.removedPerson === person;
     return this.core.atomic(db => !!db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(event.roomId, person));
   }
-  async close(): Promise<void> { this.buttonsClosed = true; if (this.buttonsTimer) clearTimeout(this.buttonsTimer); this.buttonsTimer = null; this.listeners.clear(); this.directory.close(); this.agentSearch.close(); this.agentReadBuckets.clear(); this.assistant.close(); await this.agents.close(); await this.postReplies.close(); }
+  async close(): Promise<void> { this.buttonsClosed = true; if (this.buttonsTimer) clearTimeout(this.buttonsTimer); this.buttonsTimer = null; this.listeners.clear(); this.creationHints.clear(); this.directory.close(); this.agentSearch.close(); this.agentReadBuckets.clear(); this.assistant.close(); await this.agents.close(); await this.postReplies.close(); }
   /** The direct-chat receiver shares this stream without changing its grant-backed delivery path. */
   publish(event: RoomEvent): void { this.emit(event); }
   /** C owns invitation checks; these synchronous effects remain on its current SQL transaction. */
@@ -539,16 +545,43 @@ export class HubGroupRooms {
     db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence) VALUES(?,?,'person',?,'member',0)").run(randomUUID(), id, me);
     this.addAssistant(db, id);
   }
+  private async creationHint(ctx: HubRequestContext, me: string): Promise<boolean> {
+    const provider = this.core.deps.roomCreation;
+    if (!provider || this.core.atomic(db => canCreateRoom(this.core, db, me))) return false;
+    const actor = await ctx.current();
+    if (actor.kind !== "directory" || personKeyString(actor.person) !== me) return false;
+    const assertSession = () => {
+      this.fence(ctx).assertCurrent();
+      if (ctx.isIdentityCurrent?.(actor.person, actor.sessionId) !== true) throw new HubProtocolError("revoked");
+    };
+    assertSession();
+    const wall = this.core.now(), elapsed = performance.now();
+    const valid = (hint: RoomCreationHint) => hint.provider === provider && wall >= hint.wall && wall < hint.wall + ROOM_CREATION_HINT_MS
+      && elapsed >= hint.elapsed && elapsed < hint.elapsed + ROOM_CREATION_HINT_MS;
+    for (const [key, hint] of this.creationHints) if (!valid(hint)) this.creationHints.delete(key);
+    const key = JSON.stringify([me, actor.sessionId, ctx.application?.id ?? null]);
+    let hint = this.creationHints.get(key);
+    if (!hint) {
+      const value = (async () => {
+        try { const access = await prepareRoomCreation(this.core, ctx, me); return this.core.atomic(db => access.allows(db)); }
+        catch { return false; } // An unavailable display hint never narrows membership reads.
+      })();
+      hint = { wall, elapsed, provider, value };
+      if (this.creationHints.size >= ROOM_CREATION_HINT_LIMIT) this.creationHints.delete(this.creationHints.keys().next().value!);
+      this.creationHints.set(key, hint);
+    }
+    const result = await hint.value;
+    assertSession(); return result;
+  }
   async list(ctx: HubRequestContext) {
     const me = await this.who(ctx);
-    let access: Awaited<ReturnType<typeof prepareRoomCreation>> | undefined;
-    // A creation hint never becomes a new dependency of membership-based room reads.
-    try { access = await prepareRoomCreation(this.core, ctx, me); } catch { /* Strict writes obtain a separate proof. */ }
+    let roleHint = false;
+    try { roleHint = await this.creationHint(ctx, me); } catch { /* Membership/session read retains its own fence. */ }
     this.agents.sweep();
     return this.core.atomic(db => {
       if(!ctx.application)this.assistantRoom(db, me);
       let canCreateRooms = canCreateRoom(this.core, db, me);
-      try { canCreateRooms ||= access?.allows(db) === true; } catch { /* Expired/changed hint: keep rooms readable. */ }
+      canCreateRooms ||= roleHint;
       return { rooms: (db.prepare("SELECT * FROM hub_room_members WHERE kind='person' AND subject=?").all(me) as MemberRow[])
         .map(m => this.summary(db, this.room(db, m.room_id), m)).sort((a, b) => b.lastAt - a.lastAt),
         me: { canCreateRooms, assistant: this.assistant.availability()?.enabled === true }, invitations: 0 };
