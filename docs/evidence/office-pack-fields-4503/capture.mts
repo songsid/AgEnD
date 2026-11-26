@@ -16,6 +16,9 @@ const fx = await bootFixture({ port: 0, oldPort: 49158, roster: ROSTER, classic:
 const fm = fx.fm;
 const status = new Map<string, string>(ROSTER.map((r) => [r.name, "running"]));
 fm.getInstanceStatus = (n: string) => status.get(n) ?? "running";
+// Working, as the server reports it (a page-store override raced the status pushes: a worker flickered to idle).
+const working = new Set(WORKING);
+fm.getInstanceExecutionState = (n: string) => (working.has(n) ? "working" : "idle");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const draw = await fx.browser.newPage();
@@ -49,8 +52,8 @@ const pack = await draw.evaluate(`(() => {
   g.fillStyle = "#b9b2a3"; g.fillRect(60, 312, 1160, 56);
   g.strokeStyle = "#6b6252"; g.lineWidth = 3; for (const y of [322, 342, 358]) { g.beginPath(); g.moveTo(60, y); g.lineTo(1220, y); g.stroke(); }
   g.fillStyle = "#8a8170"; g.fillRect(80, 280, 80, 26); g.fillRect(1120, 372, 80, 26);
-  g.fillStyle = "#f4d03f"; g.fillRect(214, 290, 32, 12);                                // the queue mark
-  g.fillStyle = "#222"; g.font = "600 14px sans-serif"; g.fillText("Platform A", 84, 276); g.fillText("Queue", 250, 300); g.fillText("Platform B", 1124, 412);
+  g.fillStyle = "#f4d03f"; g.fillRect(314, 290, 32, 12);                                // the queue mark
+  g.fillStyle = "#222"; g.font = "600 14px sans-serif"; g.fillText("Platform A", 84, 276); g.fillText("Queue", 350, 300); g.fillText("Platform B", 1124, 412);
   const car = mk(2 * 200, 90), front = mk(200, 90);
   for (let f = 0; f < 2; f++) { const c = car.c, o = f * 200; c.fillStyle = "#c0392b"; c.fillRect(o + 4, 20, 192, 62); c.fillStyle = "#fbe7c6"; for (let i = 0; i < 4; i++) c.fillRect(o + 16 + i * 46, 28, 34, 22); c.fillStyle = "#333"; c.fillRect(o + 20 + f * 4, 80, 24, 8); c.fillRect(o + 156 - f * 4, 80, 24, 8); }
   front.c.fillStyle = "#a93226"; front.c.fillRect(4, 56, 192, 26); front.c.fillStyle = "#f4d03f"; front.c.fillRect(4, 56, 192, 4);
@@ -65,7 +68,7 @@ const pack = await draw.evaluate(`(() => {
     characters: { default: person },
     vehicles: [{ id: "loop-line", label: "Loop line", sprites: { right: strip("car.png", 2) }, fronts: { right: strip("front.png", 1) },
       path: [[160, 336], [1160, 336], [1160, 352], [160, 352]], speed: 60,
-      stops: [{ at: 3, seconds: 8, platform: [120, 300], queue: [[230, 300]] }, { at: 1, seconds: 8, platform: [1160, 392] }],
+      stops: [{ at: 3, seconds: 8, platform: [120, 300], queue: [[330, 300]] }, { at: 1, seconds: 8, platform: [1160, 392] }],
       seats: [{ dx: -46, dy: 4, worker: "bot-alpha" }, { dx: 0, dy: 4 }, { dx: 46, dy: 4 }] }] };
   const files = { "bg.png": b64(bg.cv), "car.png": b64(car.cv), "front.png": b64(front.cv) };
   for (const [k, v] of Object.entries(pics)) files[k + ".png"] = b64(v.cv);
@@ -88,6 +91,7 @@ try {
   for (const c of cases) {
     const key = `${c.device}-${c.theme}-${c.lang}`, errors: string[] = [];
     status.set("bot-alpha", "running");
+    working.add("bot-alpha");
     const r = fm.officeActs.handle("bot-echo", "office_set", { ride: "loop-line", seconds: 3600 });
     if (!r.act) throw new Error(`ride echo: ${JSON.stringify(r)}`);
     const { ctx, page, csp } = await fx.page(c as any, { storage: { agend_org_office: "hq" } });
@@ -96,19 +100,17 @@ try {
     await page.goto(`${fx.base}/ui/fleet/org`);
     await page.locator(".oc-tools .seg-inline button", { hasText: c.lang === "en" ? "Office" : "辦公室" }).click();
     await page.waitForSelector(".oo-canvas", { timeout: 15000 });
-    // Working: set in the page's store (as smoke-2861 does), kept so; Alpha stops working once crashed.
-    await page.evaluate(`(async (names) => { const m = await import("/assets/app-store.js");
-      window.__work = names; const put = () => m.appStore.set((s) => ({ ...s, exec: { ...s.exec, ...Object.fromEntries(window.__work.map((n) => [n, "working"])) } }));
-      put(); setInterval(put, 500); })(${JSON.stringify(WORKING)})`);
     const shot = async (name: string) => { await page.screenshot({ path: join(OUT, `${key}-${name}.png`) }); };
     // Wait for the train to be well away from A, so everyone has walked to their place and stands waiting.
     while (phase() < AT_A - 14000 || phase() > AT_A - 3000) await sleep(200);
     await sleep(2500);
     await shot("1-standing-desks-and-queue");
-    await until(AT_A + 1200); await shot("2-train-in-worker-steps-on");
+    // A burst from the stop: the worker leaves the queue, crosses to the platform, boards (when, within a 1 s tick).
+    await until(AT_A + 200);
+    for (const k of ["a", "b", "c", "d", "e"]) { await shot(`2${k}-train-in`); await sleep(500); }
     await until(AT_A + 6500); await shot("3-on-board");
     await until((AT_A + 8000 + turn + 5000) % LAP); await shot("4-riding");
-    await page.evaluate(`window.__work = window.__work.filter((n) => n !== "bot-alpha")`);
+    working.delete("bot-alpha");
     status.set("bot-alpha", "crashed");
     const word = c.lang === "en" ? "Crashed" : "已當掉";
     await page.waitForFunction((w: string) => document.body.innerText.includes(w) || /\bHelp\s*1\b/i.test(document.body.innerText), word, { timeout: 30000 }).catch(() => errors.push("crash not seen"));
