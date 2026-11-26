@@ -15,7 +15,7 @@ export type HubRequestSnapshotV1=Readonly<z.infer<typeof snapshotSchema>>;
 function frozen<T>(value:T):T {if(value&&typeof value==="object"){for(const child of Object.values(value))frozen(child);Object.freeze(value);}return value;}
 /** Shape checks are not authentication. Only accepted Hub owners may call this capture seam. */
 export function freezeHubRequestSnapshot(value:unknown):HubRequestSnapshotV1 {return frozen(snapshotSchema.parse(value));}
-export interface OwnedHubRequestDelivery {agent:string;acceptedHubRequest?:HubRequestSnapshotV1;stillCurrent():boolean}
+export interface OwnedHubRequestDelivery {agent:string;acceptedHubRequest?:HubRequestSnapshotV1;stillCurrent():boolean;inputCurrent?():boolean}
 /** One stable root/input per accepted message; a transient begin retry's new cid is deliberately absent. */
 export function hubRequestInputIdentity(accepted:HubRequestSnapshotV1):Readonly<{contextId:string;inputId:string}> {
  const actor=accepted.actor;if(!("platform" in actor)||actor.platform!=="hub")throw Error("request-hub actor unavailable");

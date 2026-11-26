@@ -887,3 +887,32 @@ it("S-232 an official Hub answer cannot target a different accepted question",as
  expect(context.ref.rootContextId).toBe(hubRequestInputKey(q.identity.issuer,q.identity.messageId,"rep").contextId);
  expect(await f.rep.report({...base,requestScope:{context,current:()=>current}})).toMatchObject({ok:true});expect(f.frames.filter(x=>x.type==="answer")).toHaveLength(1);
 });
+describe("S-230 the final owned input survives asynchronous daemon handoff",()=>{
+ it.each(["link","token","binding"]as const)("post-IPC input is current until its exact %s is lost",async reason=>{
+  const f=fixture();f.publish();const q=f.question();await f.admission.admit(q);await until(()=>f.state(q.identity.messageId)?.state==="delivered","IPC accepted");
+  const input=f.deliveries[0]!;expect(input.stillCurrent()).toBe(false);expect(input.inputCurrent?.()).toBe(true);
+  if(reason==="link")f.offline();else if(reason==="token")f.setToken("replacement");else f.stop();expect(input.inputCurrent?.()).toBe(false);
+ });
+ it("an answered question no longer authorizes a delayed first input",async()=>{
+  const f=fixture();f.publish();const q=f.question();await f.admission.admit(q);await until(()=>f.state(q.identity.messageId)?.state==="delivered","IPC accepted");
+  const input=f.deliveries[0]!;expect(input.inputCurrent?.()).toBe(true);await f.rep.report({correlationId:input.correlationId,caller:"rep",text:"A complete answer"});expect(input.inputCurrent?.()).toBe(false);
+ });
+});
+it("S-230 the real representative's delivered state still resolves its captured Hub input into C",async()=>{
+ const {DeliveryOutbox}=await import("../src/delivery-outbox.js"),{RequestHubInputResolver}=await import("../src/request-context-hub-resolver.js"),{RequestContextLocalTurns}=await import("../src/request-context-turns.js");
+ const home=mkdtempSync(join(tmpdir(),"hub-final-input-")),box=new DeliveryOutbox(join(home,"outbox.db"),"fixture",{requestContextDispatchVersion:1});box.activateRequestContextBarrier();
+ try{
+  const owner={instance:"rep",incarnation:"owned-agent",workGeneration:randomUUID(),daemonBootId:randomUUID(),spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0},registration=box.requestContextDrain(()=>"fixture").registration();
+  const resolver=new RequestHubInputResolver(box,{instance:"rep",current:()=>true,runtimeOwner:()=>owner,active:()=>null,registration});let captured:{inputId:string}|undefined;
+  const f=fixture({beforeDelivery:async input=>{captured=resolver.capture(input);}});f.publish();const q=f.question();await f.admission.admit(q);await until(()=>f.state(q.identity.messageId)?.state==="delivered","IPC accepted before pane write");
+  const delivery=f.deliveries[0]!;expect(delivery.stillCurrent()).toBe(false);const wire=requestContextDigest(delivery.text),turns=new RequestContextLocalTurns({...box.requestContextRecovery.ports("rep",(...args)=>resolver.prepare(...args),()=>false),registration});
+  const turn=turns.beforeWrite(captured!.inputId,wire,owner);expect(turn.context.initiatingActor).toEqual(delivery.acceptedHubRequest?.actor);expect(box.requestContext(turn.context.ref.contextId)).toEqual(turn.context);
+  f.offline();expect(()=>resolver.prepare(captured!.inputId,wire,owner)).toThrow(/unavailable/);
+  await f.rep.close();f.db.close();dbs.splice(dbs.indexOf(f.db),1);expect(delivery.stillCurrent()).toBe(false);expect(delivery.inputCurrent?.()).toBe(false);expect(resolver.drainView(turn.context.ref.rootContextId).references).toHaveLength(0);
+ }finally{box.close();rmSync(home,{recursive:true,force:true});}
+});
+
+it("S-230 replacing the dispatch selector cannot lend its delivered-row input authority to an old callback",async()=>{
+ const f=fixture();f.publish();const q=f.question();await f.admission.admit(q);await until(()=>f.state(q.identity.messageId)?.state==="delivered","IPC accepted");const input=f.deliveries[0]!;expect(input.inputCurrent?.()).toBe(true);
+ f.db.prepare("UPDATE hub_representative_questions SET cid=? WHERE message_id=?").run(`hub-${randomUUID()}`,q.identity.messageId);expect(input.inputCurrent?.()).toBe(false);
+});

@@ -2835,6 +2835,7 @@ export class Daemon extends EventEmitter {
       const endAnchor = !!humanId && /^[A-Za-z0-9_-]+$/.test(humanId) && text.split("\n").some(line =>
         line.startsWith(`[hid:${humanId}]`) || line.startsWith(`[agend-human-id:${humanId}]`))
         || !!deliveryId && text.startsWith(`[agend-delivery-id:${deliveryId}]\n`)
+        || /^hub-input:[a-f0-9-]{36}$/.test(id) && /^\[agend-room-input:hub-room-[a-f0-9-]{36}\]\n/.test(text)
         || /^[A-Za-z0-9:_-]+$/.test(id) && text.startsWith(`[agend-request-input:${id}]\n`);
       this.requestContextWrite = { snapshot, text, at: Date.now(), ledger: new TranscriptTurnLedger(), endAnchor };
     }
@@ -9306,7 +9307,7 @@ export class Daemon extends EventEmitter {
         const body = whatsNew ? withWhatsNew(formatted, whatsNew.notice) : formatted;
         const roomMarker = roomContextInputMarker(meta);
         const unmarked = roomMarker ? `${roomMarker}\n${body}` : body;
-        const pasted = requestContextInputId?`[agend-request-input:${requestContextInputId}]\n${unmarked}`:unmarked;
+        const pasted = requestContextInputId&&!roomMarker?`[agend-request-input:${requestContextInputId}]\n${unmarked}`:unmarked;
         const status = channelStatus(meta);
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.

@@ -4,7 +4,7 @@ import {freezeHubRequestSnapshot,hubRequestInputIdentity,prepareHubRequestInput,
 import {RequestContextReferenceMap,type RequestContextRegistrationGate} from "./request-context-fence.js";
 import {RequestContextInputDeferred,type RequestContextRuntimeOwner,type RequestContextTurnSnapshot,type PreparedRequestContextInput} from "./request-context-turns.js";
 import {requestContextDigest} from "./request-context-store.js";
-interface Captured {root:string;delivery:OwnedHubRequestDelivery;image:string;wire:string|null;owner:string|null}
+interface Captured {root:string;delivery:OwnedHubRequestDelivery;image:string;wire:string|null;owner:string|null;alive():boolean}
 export interface RequestHubResolverPorts {
  readonly instance:string;
  current():boolean;
@@ -15,7 +15,7 @@ export interface RequestHubResolverPorts {
 export class RequestHubInputResolver {
  private readonly inputs=new RequestContextReferenceMap<string,Captured>(row=>row.root,(_row,key)=>`hub-input:${key}`);
  constructor(private readonly box:DeliveryOutbox,private readonly ports:RequestHubResolverPorts){this.inputs.installRegistration(ports.registration);}
- private prune():void {for(const [key,row]of this.inputs)if(!row.delivery.stillCurrent())this.inputs.delete(key);}
+ private prune():void {for(const [key,row]of this.inputs)if(!row.alive())this.inputs.delete(key);}
  get drainRevision():string{this.prune();return this.inputs.revision;}
  drainView(root:string){this.prune();return this.inputs.view(root);}
  private current(owner:Readonly<RequestContextRuntimeOwner>):void {
@@ -24,18 +24,18 @@ export class RequestHubInputResolver {
  /** Called by the accepted Hub delivery owner; never exposed as a tool or a metadata parser. */
  capture(input:OwnedHubRequestDelivery):Readonly<{inputId:string;beforeInput():void;waitBeforeInput():Promise<boolean>}> {
   const owner=this.ports.runtimeOwner();if(!owner)throw Error("Hub request input owner is unavailable");this.current(owner);
-  if(input.agent!==this.ports.instance||!input.stillCurrent()||!input.acceptedHubRequest)throw Error("Hub accepted request is unavailable");
+  if(input.agent!==this.ports.instance||!input.stillCurrent()||!input.acceptedHubRequest||typeof input.inputCurrent!=="function")throw Error("Hub accepted request is unavailable");
   const accepted=freezeHubRequestSnapshot(input.acceptedHubRequest),identity=hubRequestInputIdentity(accepted),actor={...accepted.actor};
   if("displayName"in actor)delete actor.displayName;
   const image=requestContextDigest({...accepted,actor});this.prune();
   const previous=this.inputs.get(identity.inputId);
   if(previous&&previous.image!==image)throw Error("Hub accepted request changed");
   if(!previous&&this.inputs.size>=16_384)throw Error("Hub request input capacity reached");
-  const delivery={agent:input.agent,acceptedHubRequest:previous?.delivery.acceptedHubRequest??accepted,stillCurrent:()=>input.stillCurrent()&&this.ports.current()};
-  this.inputs.set(identity.inputId,{root:identity.contextId,delivery,image,wire:previous?.wire??null,owner:previous?.owner??null});
+  const delivery={agent:input.agent,acceptedHubRequest:previous?.delivery.acceptedHubRequest??accepted,stillCurrent:()=>input.inputCurrent!()&&this.ports.current()};
+  this.inputs.set(identity.inputId,{root:identity.contextId,delivery,image,wire:previous?.wire??null,owner:previous?.owner??null,alive:()=>this.ports.current()&&(input.stillCurrent()||input.inputCurrent!())});
   const beforeInput=()=>{
    this.current(owner);const row=this.inputs.get(identity.inputId);
-   if(!row||row.image!==image||!row.delivery.stillCurrent())throw Error("Hub accepted request is no longer current");
+   if(!row||row.image!==image||!input.stillCurrent())throw Error("Hub accepted request is no longer current");
    // Test before consuming the Hub's begin lease. Idle is not a permission to join another turn.
    if(this.ports.active())throw new RequestContextInputDeferred();
    this.ports.registration.assertRegistration(identity.contextId);this.current(owner);

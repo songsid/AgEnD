@@ -369,3 +369,8 @@ it("S-232 room report and react refuse another Hub root before sending",async()=
  expect(await f.adapter.report({...input,text:"wrong",requestScope:bad})).toMatchObject({ok:false});expect(await f.adapter.react({...input,emoji:"x",requestScope:bad})).toMatchObject({ok:false});expect(f.sent).toHaveLength(0);
  expect(await f.adapter.report({...input,text:"right",requestScope:{context,current:()=>true}})).toMatchObject({ok:true});expect(f.sent).toHaveLength(1);
 });
+it("S-230 room final input survives dispatch cleanup but not a link or question transition",async()=>{
+ const f=member();f.adapter.accept(f.ask,f.link);await f.adapter.settled();const input=f.inputs[0]!;
+ expect(input.stillCurrent()).toBe(false);expect(input.inputCurrent?.()).toBe(true);await f.report();expect(input.inputCurrent?.()).toBe(false);f.adapter.close();f.db.close();expect(input.inputCurrent?.()).toBe(false);expect(input.stillCurrent()).toBe(false);
+ const g=member();g.adapter.accept(g.ask,g.link);await g.adapter.settled();const pending=g.inputs[0]!;expect(pending.inputCurrent?.()).toBe(true);g.adapter.connected({...g.link});expect(pending.inputCurrent?.()).toBe(false);g.adapter.connected(g.link);expect(pending.inputCurrent?.()).toBe(true);g.retire();expect(pending.inputCurrent?.()).toBe(false);g.adapter.close();
+});

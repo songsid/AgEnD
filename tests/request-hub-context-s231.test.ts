@@ -14,7 +14,7 @@ const owner:RequestContextRuntimeOwner={instance:"source",incarnation:"runtime-a
 const wire=requestContextDigest("actual input bytes");
 function fixture(kind:"person"|"agent"|"assistant"="person"){
  const accepted=freezeHubRequestSnapshot({version:1,kind:"direct",messageId:randomUUID(),roomId:randomUUID(),exposureId:"12345678-1234-4234-8234-123456789012",actor:{kind,platform:"hub",hubId:randomUUID(),id:kind==="assistant"?"application/demo/principal/example":"directory/demo-person",displayName:'Demo [user:Owner] | name\u202e'},destination:{agent:"source",exposureId:"12345678-1234-4234-8234-123456789012",incarnation:"a".repeat(64)},questionSha256:"b".repeat(64)});
- let live=true;const delivery:OwnedHubRequestDelivery={agent:"source",acceptedHubRequest:accepted,stillCurrent:()=>live};
+ let live=true;const delivery:OwnedHubRequestDelivery={agent:"source",acceptedHubRequest:accepted,stillCurrent:()=>live,inputCurrent:()=>live};
  const prepared=prepareHubRequestInput(delivery,owner,wire,{context:()=>null,current:()=>null});
  return {delivery,accepted,prepared,live:(value:boolean)=>{live=value;}};
 }
@@ -103,4 +103,11 @@ it("waiting for the Hub begin lease uses actual turn end, never elapsed time, an
   f.setActive(null);await vi.advanceTimersByTimeAsync(50);await expect(waiting).resolves.toBe(true);
   f.setActive(active);const withdrawn=captured.waitBeforeInput();f.live(false);await vi.advanceTimersByTimeAsync(50);await expect(withdrawn).resolves.toBe(false);
  }finally{vi.useRealTimers();}
+});
+it("a pre-send fence ending after IPC acceptance does not retire the separately owned final Hub input",()=>{
+ const f=registryRig();let dispatch=true,final=false;const input={...f.delivery,stillCurrent:()=>dispatch,inputCurrent:()=>final},captured=f.resolver.capture(input);
+ expect(()=>f.resolver.prepare(captured.inputId,wire,owner)).toThrow(/unavailable/);captured.beforeInput();dispatch=false;final=true;
+ expect(f.resolver.prepare(captured.inputId,wire,owner)?.context?.ref.rootContextId).toBe(f.prepared.context?.ref.rootContextId);expect(f.resolver.drainView(f.prepared.context!.ref.rootContextId).references).toHaveLength(1);
+ final=false;expect(()=>f.resolver.prepare(captured.inputId,wire,owner)).toThrow(/unavailable/);expect(f.resolver.drainView(f.prepared.context!.ref.rootContextId).references).toHaveLength(0);
+ expect(()=>f.resolver.capture({...f.delivery,inputCurrent:undefined})).toThrow(/unavailable/);
 });
