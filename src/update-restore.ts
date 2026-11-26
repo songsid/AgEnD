@@ -23,7 +23,7 @@ import { closeSync, constants as fsConstants, copyFileSync, fsyncSync, lstatSync
   renameSync, rmSync, chmodSync, symlinkSync, truncateSync, utimesSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { classify } from "./update-snapshot-scope.js";
-import { readManifest, SNAPSHOT_DIR, SNAPSHOT_MANIFEST, verifySnapshot, type EntryType, type ManifestEntry, type SnapshotManifest } from "./update-snapshot.js";
+import { readManifest, SNAPSHOT_DIR, SNAPSHOT_MANIFEST, verifySnapshot, type EntryType, type ManifestEntry, type SnapshotManifest } from "./update-snapshot-manifest.js";
 
 export const RESTORE_LOG = "restore.log";
 export const REPLACED_DIR = "replaced";

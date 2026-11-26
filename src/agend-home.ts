@@ -2,16 +2,18 @@ import { createRequire } from "node:module";
 import { Worker } from "node:worker_threads";
 
 // The installer and runtime enforce the same root policy before writing credentials or operator sockets.
-const { ensurePrivateHome } = createRequire(import.meta.url)("../launcher/private-home.cjs") as {
-  ensurePrivateHome(dir: string, options?: { create?: boolean; label?: string; log?: (line: string) => void }): void;
-};
+// Loaded on first use, not at module load (M-3770 2.5): a bundle that imports this module transitively (the update
+// recovery kit's recover.cjs, through fleet-lock) has no `import.meta.url` and no launcher beside it, and never calls it.
+type PrivateHome = { ensurePrivateHome(dir: string, options?: { create?: boolean; label?: string; log?: (line: string) => void }): void };
+let privateHome: PrivateHome | null = null;
 export function ensureAgendHome(dir: string, options?: { create?: boolean; label?: string; log?: (line: string) => void }): void {
-  ensurePrivateHome(dir, options);
+  privateHome ??= createRequire(import.meta.url)("../launcher/private-home.cjs") as PrivateHome;
+  privateHome.ensurePrivateHome(dir, options);
 }
 
 /** #3009: how long the off-thread home check may take before the caller is told it could not be done. */
 export const AGEND_HOME_CHECK_MS = 10_000;
-const privateHomeModule = createRequire(import.meta.url).resolve("../launcher/private-home.cjs");
+const privateHomeModule = (): string => createRequire(import.meta.url).resolve("../launcher/private-home.cjs");
 
 /**
  * #3009 (#3017 review, Prism P1): ensureAgendHome — the very same checks (ownership, symlink and descriptor fences) —
@@ -29,7 +31,7 @@ export function ensureAgendHomeOffThread(dir: string, options: { create?: boolea
       worker = new Worker(`const { parentPort, workerData } = require("node:worker_threads");
 try { require(workerData.module).ensurePrivateHome(workerData.dir, workerData.options); parentPort.postMessage({ ok: true }); }
 catch (e) { parentPort.postMessage({ ok: false, message: e && e.message ? String(e.message) : String(e), code: e && e.code }); }`,
-        { eval: true, workerData: { module: privateHomeModule, dir, options } });
+        { eval: true, workerData: { module: privateHomeModule(), dir, options } });
     } catch (err) {
       reject(err as Error);
       return;
