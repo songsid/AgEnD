@@ -46,6 +46,7 @@ exit 0
   cpSync(join(REPO, "launcher", "agend-install.cjs"), join(pkg, "launcher", "agend-install.cjs"));
   cpSync(join(REPO, "launcher", "private-home.cjs"), join(pkg, "launcher", "private-home.cjs"));
   cpSync(join(REPO, "launcher", "npm-allow-scripts.cjs"), join(pkg, "launcher", "npm-allow-scripts.cjs"));   // M-3805
+  cpSync(join(REPO, "launcher", "npm-global-prefix.cjs"), join(pkg, "launcher", "npm-global-prefix.cjs"));   // M-3806
   cpSync(join(REPO, "launcher", "install-admission.cjs"), join(pkg, "launcher", "install-admission.cjs"));   // the lock's process readers
   chmodSync(join(pkg, "launcher", "agend-install.cjs"), 0o755);
   const packed = spawnSync("npm", ["pack", "--silent", "--pack-destination", dir], { cwd: pkg, encoding: "utf8", env: npmEnv(dir) });
@@ -962,5 +963,39 @@ describe("M-3302 (#4146): the installer waits, bounded, while another npm change
     expect(npmChangingFromProcessList(`300 1 node x\n${CLAUDE_NPM}\n401 1 npm exec mcp-remote\n402 1 npm ls -g\n`, 300)!.map(r => r.pid)).toEqual([7777]);
     expect(npmChangingFromProcessList("300 1 node x\n", 300)).toEqual([]);
     expect(npmChangingFromProcessList("garbage", 300)).toBeNull();
+  });
+});
+
+describe("M-3806: npm 11/12 print `***` for a UUID in the global prefix", () => {
+  const ASK = "npm exec -c node -p process.env.npm_config_global_prefix";
+  /** npm redacts the prefix's folder in what it prints; a child it starts is told the real path (when `asks` allows). */
+  const masking = (r: ReturnType<typeof unitRig>, asks: boolean) => {
+    const inner = r.deps.run; const seen: string[] = [];
+    r.deps.run = (cmd: string, args: string[]) => {
+      const line = `${cmd} ${args.join(" ")}`;
+      if (line === "npm root -g" || line === "npm prefix -g") { seen.push(line); const out = inner(cmd, args); return { ...out, stdout: out.stdout.replace(r.prefix, join(r.root, "***")) }; }
+      if (line === ASK) { seen.push(line); return asks ? { status: 0, stdout: `npm notice run\n${r.prefix}\n`, stderr: "" } : { status: 1, stdout: "", stderr: "" }; }
+      return inner(cmd, args);
+    };
+    return seen;
+  };
+
+  it("the installer asks the way npm tells a child, and locks, installs and links in the real prefix", () => {
+    const locks: boolean[] = [];
+    const r = unitRig({ onInstall: () => { locks.push(existsSync(r.lock)); } });
+    const seen = masking(r, true);
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(0);
+    expect(seen).toContain(ASK);
+    expect(locks, "the lock is in the real prefix while npm installs").toEqual([true]);
+    expect(existsSync(join(r.root, "***")), "no redacted folder").toBe(false);
+  });
+
+  it("npm can't be asked again: it stops before anything, saying npm did not say where it installs", () => {
+    const r = unitRig();
+    masking(r, false);
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(1);
+    expect(r.log.join("\n")).toContain("npm did not say where it installs global packages");
+    expect(r.calls.filter(c => c.startsWith("npm install")), "no install").toEqual([]);
+    expect(existsSync(join(r.root, "***"))).toBe(false);
   });
 });

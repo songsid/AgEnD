@@ -548,3 +548,41 @@ describe("real npm (scratch prefix, local tarballs): a failed install leaves the
   }, 120_000);
 });
 
+
+describe("M-3806: npm 11/12 print `***` for a UUID in the global prefix", () => {
+  /** npm redacts the prefix's folder in what it prints (`npm root -g`, `npm prefix -g`); a child it starts gets the real path. */
+  const masked = (w: ReturnType<typeof world>, execWorks = true) => {
+    writeFileSync(join(w.tools, "npm-real"), w.npmStub(w.prefix));
+    writeFileSync(join(w.tools, "npm"), `#!/bin/sh
+case "$1 $2" in
+  "root -g"|"prefix -g") ${sq(join(w.tools, "npm-real"))} "$@" | sed "s#${w.prefix}#${join(w.root, "***")}#"; exit 0;;
+  "exec -c") echo "npm exec -c $3" >> ${sq(join(w.root, "calls.log"))}; ${execWorks ? "" : "exit 1;"} npm_config_global_prefix=${sq(w.prefix)} sh -c "$3"; exit $?;;
+esac
+exec ${sq(join(w.tools, "npm-real"))} "$@"
+`);
+    for (const f of ["npm", "npm-real"]) chmodSync(join(w.tools, f), 0o755);
+  };
+
+  it("the lock, the preimage and the verification use the real prefix; nothing redacted is created", () => {
+    const w = world();
+    runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
+    masked(w);
+    const asked: string[] = [];
+    const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: prefix => { asked.push(prefix); return { ok: true, token: "7".repeat(32) }; }, rollback: true, now: () => new Date("2026-11-26T01:02:03Z") }, w.runner);
+    expect(outcome, JSON.stringify(outcome)).toMatchObject({ ok: true, agendPath: join(w.prefix, "bin", "agend"), version: "2.2.0" });
+    expect(asked).toEqual([w.prefix]);
+    expect(outcome.ok && outcome.rollback).toMatchObject({ prefix: w.prefix, root: join(w.prefix, "lib", "node_modules"), preimage: { version: "2.1.12" } });
+    expect(w.callLog().filter(l => l.startsWith("npm exec -c")).length).toBeGreaterThan(0);
+    expect(existsSync(join(w.root, "***"))).toBe(false);
+  });
+
+  it("npm can't be asked again: nothing is locked or installed", () => {
+    const w = world();
+    masked(w, false);
+    const asked: string[] = [];
+    const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: prefix => { asked.push(prefix); return { ok: true, token: "7".repeat(32) }; } }, w.runner);
+    expect(outcome).toMatchObject({ ok: false, stage: "lock" });
+    expect(asked).toEqual([]);
+    expect(w.callLog().filter(l => l.startsWith("npm install"))).toEqual([]);
+  });
+});

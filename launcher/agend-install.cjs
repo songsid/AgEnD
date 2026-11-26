@@ -27,6 +27,7 @@ var MARKER = "update-in-progress.json";
 var fleetServiceOwner = require("./fleet-service-owner.cjs");
 var ensurePrivateHome = require("./private-home.cjs").ensurePrivateHome;
 var allowScripts = require("./npm-allow-scripts.cjs");
+var npmGlobal = require("./npm-global-prefix.cjs");   // M-3806
 
 function defaultDeps() {
   return {
@@ -740,8 +741,12 @@ function main(argv, injected) {
   log("  AgEnD installer v" + version + (upgrade ? " (upgrade)" : ""));
   var ownerRefusal = fleetServiceOwner.updateRefusal(home, { env: deps.env, uid: deps.uid, run: deps.run });
   if (ownerRefusal) return fail("install", ownerRefusal);
-  var root = last(deps.run("npm", ["root", "-g"], { timeoutMs: 30000 }).stdout);
-  var prefix = last(deps.run("npm", ["prefix", "-g"], { timeoutMs: 30000 }).stdout);
+  // M-3806: npm 11/12 print `***` for a UUID in the path; then the prefix is asked the way npm tells a child.
+  var rootOut = deps.run("npm", ["root", "-g"], { timeoutMs: 30000 }).stdout;
+  var where = npmGlobal.resolve(deps.run("npm", ["prefix", "-g"], { timeoutMs: 30000 }).stdout, rootOut,
+    function () { return deps.run("npm", npmGlobal.ASK, { timeoutMs: 30000 }).stdout; });
+  var root = where.root;
+  var prefix = where.prefix;
   if (!root || !prefix) {
     claimed = claimMarker(home, deps, { ownOnly: true });
     return fail("install", "npm did not say where it installs global packages (npm root -g / npm prefix -g)");

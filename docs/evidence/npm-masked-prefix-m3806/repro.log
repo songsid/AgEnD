@@ -1,0 +1,61 @@
+
+=== versions
+npm 10.9.7 on node v22.22.2
+npm 11.21.3 on node v22.22.2
+npm 12.2.3 on node v22.22.2
+
+=== 1. What npm says about a global prefix with a UUID in its path (<scratch>/p-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab, from the user's .npmrc)
+--- npm 10.9.7
+npm prefix -g        → <scratch>/p-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab
+npm root -g          → <scratch>/p-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/lib/node_modules
+npm config get prefix → (exit 1) npm error The prefix option is protected, and can not be retrieved in this way
+npm exec -c (child)  → <scratch>/p-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab
+--- npm 11.21.3
+npm prefix -g        → <scratch>/p-***
+npm root -g          → <scratch>/p-***/lib/node_modules
+npm config get prefix → (exit 1) npm error The prefix option is protected, and cannot be retrieved in this way
+npm exec -c (child)  → <scratch>/p-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab
+--- npm 12.2.3
+npm prefix -g        → <scratch>/p-***
+npm root -g          → <scratch>/p-***/lib/node_modules
+npm config get prefix → (exit 1) npm error The prefix option is protected, and cannot be retrieved in this way
+npm exec -c (child)  → <scratch>/p-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab
+
+=== 2. BEFORE: the published 2.4.0-beta.24 installer into a UUID prefix, npm 12.2.3 (scripts allowed, so M-3805 is not the cause)
+  ✗ after npm install, <scratch>/p-before-12.2.3-***/bin/agend reports nothing, not v2.4.0-beta.24
+2.4.0-beta.24
+(exit 0)
+
+=== 2. BEFORE: the published 2.4.0-beta.24 installer into a UUID prefix, npm 11.21.3 (scripts allowed, so M-3805 is not the cause)
+  ✗ after npm install, <scratch>/p-before-11.21.3-***/bin/agend reports nothing, not v2.4.0-beta.24
+2.4.0-beta.24
+(exit 0)
+
+=== 3. AFTER: the candidate's installer into a UUID prefix, npm 12.2.3
+  ✓ AgEnD v2.4.0-m3806.1 is installed (<scratch>/p-after-12.2.3-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/bin/agend)
+2.4.0-m3806.1
+(exit 0)
+
+=== 3. AFTER: the candidate's installer into a UUID prefix, npm 11.21.3
+  ✓ AgEnD v2.4.0-m3806.1 is installed (<scratch>/p-after-11.21.3-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/bin/agend)
+2.4.0-m3806.1
+(exit 0)
+
+=== 3. AFTER: the candidate's installer into a UUID prefix, npm 10.9.7
+  ✓ AgEnD v2.4.0-m3806.1 is installed (<scratch>/p-after-10.9.7-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/bin/agend)
+2.4.0-m3806.1
+(exit 0)
+
+=== 4. install.sh's prefix/sudo step with real npm, prefix <scratch>/home/.npm-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab (does not exist yet)
+--- npm 12.2.3, before:
+  NPM_PREFIX=/usr/local  SUDO=sudo
+  created: nothing
+--- npm 12.2.3, after:
+  NPM_PREFIX=<scratch>/home/.npm-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab  SUDO=<none>
+  created: <scratch>/home/.npm-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/lib
+--- npm 10.9.7, before:
+  NPM_PREFIX=/usr/local  SUDO=sudo
+  created: nothing
+--- npm 10.9.7, after:
+  NPM_PREFIX=<scratch>/home/.npm-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab  SUDO=<none>
+  created: <scratch>/home/.npm-0b7e5a2c-3f1d-4c6e-9a8b-1234567890ab/lib
