@@ -398,7 +398,9 @@ import type { OwnedService } from "./install-ownership.js";
 import { serviceLockSenderLive } from "./service-lock.js";
 import { processFleetLockRecord } from "./fleet-lock.js";
 import { createRequire as createRequireForUpdate } from "node:module";
-import { readCurrent as readUpdateJournal, type AttemptRecord as UpdateAttemptRecord } from "./update-journal.js";
+import { ownerState, readCurrent as readUpdateJournal, type AttemptRecord as UpdateAttemptRecord, type LivenessDeps } from "./update-journal.js";
+import { acquireInstallLock, type InstallLockDeps } from "./install-lock.js";
+import { HOME_UPDATE_LOCK_FILE } from "./home-update-lock.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateAnswerLabel, updateOfferReply, type UpdateCardView } from "./update-card.js";
 import { preflightAllows } from "./update-readiness.js";
@@ -1542,6 +1544,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.updateTrial.resume) barrier.armCommit(read.attempt); else barrier.armTrial(read.attempt);
     this.setUpdateBarrier({ attemptId: read.attempt.id, barrier });
     this.updateHoldAttemptId = read.attempt.id;
+    this.updateHoldSince = Date.now();
     this.logger.info({ attemptId: read.attempt.id, resume: !!this.updateTrial.resume },
       "Update trial: this fleet starts no agents and holds its ingress until the update commits or rolls back");
   }
@@ -1609,8 +1612,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async prepareUpdateResume(): Promise<void> {
     if (!this.updateTrial?.resume) return;
+    await this.buildUpdateResume(this.updateTrial.attemptId);
+  }
+
+  private async buildUpdateResume(attemptId: string): Promise<void> {
     const read = readUpdateJournal(this.dataDir);
-    if (read.state !== "open" || read.attempt.id !== this.updateTrial.attemptId) return;
+    if (read.state !== "open" || read.attempt.id !== attemptId) return;
     const [{ realHands }, { plistProgramArguments }] = await Promise.all([import("./update-recovery/recover.js"), import("./plist-args.js")]);
     const service = (read.attempt.ownership as { service?: OwnedService | null } | undefined)?.service ?? null;
     const manager = service ? realHands(this.dataDir).manager(service) : null;
@@ -1626,7 +1633,51 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Only the route's removal reaches the manager here (a reload); nothing stops or starts a fleet from inside one.
       manager: { mainPid: () => manager?.mainPid() ?? null, stop: () => false, reload: () => manager?.reload() ?? true, start: () => false },
     } };
-    this.logger.warn({ attemptId: read.attempt.id }, "Update commit: this start finishes the interrupted commit");
+    this.logger.warn({ attemptId: read.attempt.id }, "Update commit: this fleet finishes the interrupted commit");
+  }
+
+  /**
+   * Fable part 4 F1: the live fleet whose commit driver is gone (the updater crashed, was killed, or gave up at a step's
+   * bound) finishes the commit itself — it is decided, and the hold must not wait for a restart. Only the attempt's trial
+   * generation, in committing, holding for it, and only once the attempt's owner (its updater, or a recorded runner) is
+   * PROVEN gone (unknown never adopts). It takes the home update lock first, as the recovery runner would, so no other
+   * driver can race it; the lock is released when the commit ends. Looked at every 5 s.
+   */
+  private adoptUpdateCommitIfOrphaned(attempt: UpdateAttemptRecord, self: { nonce: string; pid: number }): void {
+    if (this.updateResume || this.updateAdopting || attempt.stage !== "committing" || this.updateHoldAttemptId !== attempt.id) return;
+    if (this.updateTrialGenerationIs(attempt, self)) return;
+    if (performance.now() - this.updateAdoptCheckedAt < 5_000) return;
+    this.updateAdoptCheckedAt = performance.now();
+    const liveness = this.updateLiveness() as unknown as LivenessDeps;
+    if (ownerState(this.dataDir, attempt, liveness) !== "gone") return;
+    const lock = acquireInstallLock(this.dataDir, { spec: `adopt:${attempt.id}`, agendHome: this.dataDir },
+      { ...liveness, pid: process.pid, newToken: () => randomBytes(16).toString("hex"), now: () => new Date(),
+        log: (message: string) => this.logger.info({ attemptId: attempt.id }, message) } as InstallLockDeps, { file: HOME_UPDATE_LOCK_FILE, name: "home update lock" });
+    if (!lock.ok) { this.logger.warn({ attemptId: attempt.id, reason: lock.reason }, "Update commit: its driver is gone, but the home update lock can't be taken; trying again"); return; }
+    this.updateAdopting = true;
+    this.logger.warn({ attemptId: attempt.id }, "Update commit: the updater is gone; this fleet finishes the commit itself");
+    void this.buildUpdateResume(attempt.id).then(() => {
+      if (this.updateResume?.attemptId === attempt.id) this.updateResumeLock = lock; else lock.release();
+    }, err => { lock.release(); this.logger.warn({ err, attemptId: attempt.id }, "Update commit: adopting the commit failed; trying again"); })
+      .finally(() => { this.updateAdopting = false; });
+  }
+  private updateAdopting = false;
+  private updateAdoptCheckedAt = -Infinity;
+  /** The home update lock an adopted commit holds while the fleet drives it. */
+  private updateResumeLock: { release(): void } | null = null;
+  private endUpdateResume(): void {
+    this.updateResume = null;
+    this.updateResumeLock?.release(); this.updateResumeLock = null;
+  }
+
+  /** While the update holds this fleet, the web says why nothing answers (Fable part 4 (a)). */
+  private updateHoldSince = 0;
+  private updateHoldNotice(): { instance: null; key: string; detail: string; since: number }[] {
+    const id = this.updateHoldAttemptId;
+    if (!id) return [];
+    const detail = this.updateTrial ? this.updateTrial.detail
+      : this.updateBarrier?.attemptId === id ? "Updating: starting agents" : null;
+    return detail ? [{ instance: null, key: `update:${id}`, detail, since: this.updateHoldSince }] : [];
   }
 
   /** One pass of the resumed commit: each step runs once; an async one is asked again on later passes until done. */
@@ -1641,10 +1692,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (r.status !== "ok") { this.logger.warn({ attemptId: attempt.id, step, why: r.why }, "Update commit: a resumed step failed; the next pass retries"); return; }
       if (r.value !== "done") return;
     }
+    if (performance.now() < this.updateResumeNextAt) return;
     const r = resumeCommitting(this.dataDir, attempt.id, this.updateResume.deps);
-    if (r?.ok) { this.logger.info({ attemptId: attempt.id }, "Update commit: the interrupted commit finished"); this.updateResume = null; }
-    else if (r && r.outcome !== "retry") { this.logger.error({ attemptId: attempt.id, outcome: r.outcome, reason: r.reason }, "Update commit: the resumed commit stopped"); this.updateResume = null; }
+    if (r?.ok) { this.logger.info({ attemptId: attempt.id }, "Update commit: the interrupted commit finished"); this.endUpdateResume(); return; }
+    if (r && r.outcome !== "retry") { this.logger.error({ attemptId: attempt.id, outcome: r.outcome, reason: r.reason }, "Update commit: the resumed commit stopped"); this.endUpdateResume(); return; }
+    // Stuck before the fleet's own steps (the route's removal: a system unit this fleet's user can't reload — Fable
+    // part 4 (b)): the hold must not wait for it. The fleet's steps run here anyway (each idempotent; the commit
+    // journals them when it gets there), the error is said once, and the commit is tried again only every minute.
+    const read = readUpdateJournal(this.dataDir);
+    const now = read.state === "open" && read.attempt.id === attempt.id ? read.attempt : attempt;
+    if (!now.history.some(h => h.stage === "committing" && h.substep === "route-removed")) {
+      if (!this.updateResumeStuckSaid) {
+        this.updateResumeStuckSaid = true;
+        this.logger.error({ attemptId: attempt.id, reason: r?.reason }, "Update commit: the recovery route can't be removed from here; the fleet comes up anyway — run `agend update --resolve` to finish the update");
+      }
+      this.updateResumeNextAt = performance.now() + 60_000;
+      for (const [step] of FleetManager.COMMIT_SUBSTEPS) {
+        const s = this.updateCommitStep(step, now);
+        if (s.status !== "ok" || s.value !== "done") break;
+      }
+    }
   }
+  private updateResumeNextAt = -Infinity;
+  private updateResumeStuckSaid = false;
 
   /**
    * `leaveTrial` (§5): admissions open again (the hold itself stays until the inbox is delivered), then everything the
@@ -1805,7 +1875,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (read.state !== "open") {
       // The attempt ended (abandoned, a busy close, any terminal): a barrier it armed comes down.
       if (this.updateBarrier) this.setUpdateBarrier(null);
-      this.updateHoldAttemptId = null; this.updateResume = null; this.updateCommitRuns.clear();
+      this.updateHoldAttemptId = null; this.endUpdateResume(); this.updateCommitRuns.clear();
       return;
     }
     if (this.updateBarrier && this.updateBarrier.attemptId !== read.attempt.id) this.setUpdateBarrier(null);
@@ -1826,7 +1896,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.warn({ err, attemptId: read.attempt.id }, "Update control mailbox pass failed; the next pass retries");
     }
-    // Part 4 (§7): a start that resumes an interrupted commit drives its own commit hands from this pass.
+    // Part 4 (§7): a start that resumes an interrupted commit drives its own commit hands from this pass; so does a live
+    // fleet whose commit driver is gone (F1).
+    try { this.adoptUpdateCommitIfOrphaned(read.attempt, self); }
+    catch (err) { this.logger.warn({ err, attemptId: read.attempt.id }, "Update commit: checking the commit's driver failed; the next pass retries"); }
     if (this.updateResume) {
       try { this.resumeUpdateCommitTick(read.attempt); }
       catch (err) { this.logger.warn({ err, attemptId: read.attempt.id }, "Update commit: the resume pass failed; the next pass retries"); }
@@ -21628,7 +21701,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const guidance = h.reason ? t(`hub.provider.${h.reason}`) : "";
         return { side: h.side, code: h.code, since: h.since, detail: guidance && guidance !== `hub.provider.${h.reason}` ? guidance : t(`hub.hold.${h.code}`) };
       }),
-      tmuxHolds: () => [...(this.tmuxHold ? [{ instance: null, ...this.tmuxHold }] : []),
+      tmuxHolds: () => [...(this.tmuxHold ? [{ instance: null, ...this.tmuxHold }] : []), ...this.updateHoldNotice(),
         ...[...this.legacyWindowHolds].map(([instance, h]) => ({ instance, ...h }))],
       configIssues: () => (this.configHistory?.currentIssues() ?? []).map(issue => ({
         ...issue, detail: configIssueText(issue, t), owner: this.worlds.keys().next().value,

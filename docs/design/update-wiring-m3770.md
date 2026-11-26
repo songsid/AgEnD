@@ -213,3 +213,18 @@ Adapters are informational, as counts only (§10.6). The updater's side is `prov
 - Its control pass first does again, in order, the fleet steps the dead process had journaled (this process holds again from its start; each step is idempotent against the journal).
 - Then `resumeCommitting` runs with the fleet's own hands for the rest.
 - The route's removal reaches the attempt's service manager for a reload only; nothing stops or starts a fleet from inside one.
+
+**A commit whose driver is gone (Fable, part 4 F1).** The live fleet finishes the commit itself, because the hold must never wait for a restart. Its control pass adopts the commit when all of these hold:
+- the attempt is `committing`;
+- this fleet is its trial generation, holding for it;
+- the attempt's owner (its updater, or a recorded runner) is PROVEN gone. An unknown owner never adopts.
+
+It takes the home update lock first, as the recovery runner would, then drives the remaining steps with its own hands as a resume does. It releases the lock when the commit ends.
+
+**Stuck before the fleet's own steps.** The typical case is the route's removal on a system unit, whose reload this fleet's user can't do. The updater (run as root for a system unit) or the runner can do that reload; the fleet can't. So:
+- the fleet's own steps still run (each is idempotent, and the commit journals them when it gets there), so the hold comes down;
+- the error is logged once, naming `agend update --resolve`;
+- the commit is retried every minute;
+- the reload runs with a 30 s timeout (`realHands`).
+
+**While the hold is up,** Needs you says why nothing answers: "Updating: checking the new version" (trial), then "Updating: starting agents". One agent's failed start never blocks the commit: it is logged and retried, and `startAgents` counts as attempted.

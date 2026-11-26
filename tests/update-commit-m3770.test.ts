@@ -3,7 +3,7 @@
 // leaves the trial (admissions open, tmux set up, the Hub), starts the agents, delivers the attempt's ONE inbox in order
 // (the hold comes down in the same turn; its own copies keep their receipts, the rest are stripped) and runs the held
 // occurrences. The fleet is a FleetManager prototype with only the state these paths read; nothing is started.
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,9 +24,10 @@ const turn = (text: string, receipt?: string) => ({ type: "fleet_inbound", conte
   meta: { chat_id: "c1", message_id: text, user: "u", ...(receipt ? { human_receipt_id: receipt } : {}) } });
 
 /** An attempt walked to `stage` (its trial acknowledged from trial on), with an ownership `identityOf` accepts. */
-function attemptAt(stage: Stage) {
+function attemptAt(stage: Stage, opts: { service?: boolean } = {}) {
   const home = mkdtempSync(join(tmpdir(), "commit-")); dirs.push(home);
-  const o = { uid: 1000, home, prefix: join(home, "p"), packagePath: join(home, "p", "pkg"), service: null,
+  const o = { uid: 1000, home, prefix: join(home, "p"), packagePath: join(home, "p", "pkg"),
+    service: opts.service ? { kind: "systemd", unit: "agend.service", fragmentPath: join(home, "agend.service") } : null,
     binLinks: { agend: join(home, "p", "bin", "agend"), "agend-agent": join(home, "p", "bin", "agend-agent") } };
   const tuple = { version: "2.5.0", integrity: null, bins: { agend: null, "agend-agent": null }, entry: "/e", interpreter: "/n", execStart: null };
   const opened = openAttempt(home, { id: ID, kind: "update", updater: { pid: DRIVER.pid, start: { processStart: "x" } },
@@ -54,6 +55,8 @@ function newFleet(home: string) {
     healthServerListening: true, updateBarrier: null, updateHandbackWalkedAt: -Infinity, updateTrial: null, updateHoldAttemptId: null,
     updateCommitRuns: new Map(), updateResume: null, updateTrialLeaving: false, managerBootId: "mgr", scheduleDeliveryOutboxPump: vi.fn(),
     updateControlSelf: () => TRIAL, updateSenderLive: () => true,
+    // The updater (pid 4343) lives unless a test says otherwise: a fleet whose driver is gone adopts the commit (F1).
+    updateLiveness: () => ({ exists: () => true, processStart: (pid: number) => (pid === 4343 ? "x" : "self"), startTicks: () => null, bootId: () => null }),
     // What leaving the trial and starting the agents do, as stand-ins (no tmux, no agents).
     setUpFleetTmuxServer: async () => { calls.push("tmux-server"); }, startTmuxControlClient: () => { calls.push("control-client"); },
     cleanUpFleetTmuxWindows: async () => { calls.push("tmux-windows"); }, observeHubSwitches: () => { calls.push("hub"); },
@@ -245,3 +248,72 @@ describe("M-3770 2.5 wiring part 4: a start that resumes an interrupted commit (
     expect(f.fm.detectUpdateTrial("", newAttemptId(new Date(), "d2d2d2d2"))).toBeNull();
   });
 });
+
+describe("M-3770 2.5 wiring part 4 (Fable F1): a live fleet whose commit driver is gone finishes the commit itself", () => {
+  /** The updater (pid 4343) alive or not, by process identity; "unknown" when its start can't be read. */
+  const liveness = (updater: "live" | "gone" | "unknown") => ({
+    exists: (pid: number) => pid !== 4343 || updater !== "gone",
+    processStart: (pid: number) => (pid === 4343 ? (updater === "live" ? "x" : updater === "unknown" ? null : null) : pid === process.pid ? "self" : null),
+    startTicks: () => null, bootId: () => null,
+  });
+
+  async function orphaned(updater: "gone" | "unknown" | "live", notTheTrial = false) {
+    const f = trialAtCommit();
+    let a = substep(f.home, f.attempt, "retained"); a = substep(f.home, a, "route-removed");
+    let state: "live" | "gone" | "unknown" = "live";
+    f.fm.updateLiveness = () => liveness(state);
+    expect(f.fm.holdPaneSend("worker", turn("held in trial", "hr-1"))).toBe(true);
+    const { run } = await hands(f);
+    expect(await run("leaveTrial")).toBe(true);
+    substep(f.home, a, "left-trial");                                                                 // as commitAttempt journals it
+    expect(f.fm.updateHoldNotice()).toEqual([{ instance: null, key: `update:${ID}`, detail: "Updating: starting agents", since: expect.any(Number) }]);
+    state = updater;                                                                                  // the updater dies (or can't be told)
+    if (notTheTrial) f.fm.updateControlSelf = () => ({ nonce: TRIAL.nonce, pid: 9999 });             // another process on its nonce
+    f.fm.updateAdoptCheckedAt = -Infinity;
+    for (let i = 0; i < 30 && readCurrent(f.home).state === "open"; i++) { f.fm.updateControlTick(); for (let k = 0; k < 3; k++) await new Promise(r => setTimeout(r, 0)); }
+    return f;
+  }
+
+  it("the updater dies after leaveTrial: within a few passes the fleet starts the agents, delivers the inbox, runs the occurrences, commits; the hold comes down and the lock is released", async () => {
+    const f = await orphaned("gone");
+    expect(readCurrent(f.home).state).toBe("none");
+    expect(f.calls).toEqual(expect.arrayContaining(["start:general", "start-rest:worker", "ready-line"]));
+    expect(f.fm.updateBarrier).toBeNull();
+    expect(f.fm.updateHoldNotice()).toEqual([]);
+    // This process's own trial copy kept its receipt (the same boot).
+    expect(f.outbox.listPending().map(row => [row.payload.content, (row.payload.meta as Record<string, unknown>).human_receipt_id ?? null])).toEqual([["held in trial", "hr-1"]]);
+    expect(f.fm.updateResumeLock).toBeNull();
+    expect(existsSync(join(f.home, ".update.lock"))).toBe(false);
+  });
+
+  it("never adopted while the updater lives, or while its liveness can't be told, or by a fleet that isn't the trial generation", async () => {
+    for (const [who, notTrial] of [["live", false], ["unknown", false], ["gone", true]] as const) {
+      const f = await orphaned(who, notTrial);
+      expect(readCurrent(f.home).state, who).toBe("open");
+      expect(f.fm.updateResume, who).toBeNull();
+      expect(f.fm.updateBarrier?.barrier.armed(), who).toBe(true);
+    }
+  });
+
+  it("the trial says why nothing answers: checking the new version, then starting agents, then nothing", async () => {
+    const f = trialAtCommit();
+    expect(f.fm.updateHoldNotice()).toEqual([{ instance: null, key: `update:${ID}`, detail: "Updating: checking the new version", since: expect.any(Number) }]);
+  });
+
+  it("stuck on the route's removal (a reload this fleet can't do): its own steps run anyway — the hold comes down — and the error is said once; the attempt stays for --resolve", async () => {
+    const c = attemptAt("committing", { service: true });
+    const a = substep(c.home, c.attempt, "retained");
+    const f = newFleet(c.home);
+    f.fm.updateTrial = f.fm.detectUpdateTrial("", ID);
+    f.fm.armUpdateTrial();
+    await f.fm.prepareUpdateResume();
+    f.fm.updateResume.deps.manager.reload = () => false;
+    for (let i = 0; i < 20; i++) { f.fm.updateControlTick(); f.fm.updateResumeNextAt = -Infinity; for (let k = 0; k < 3; k++) await new Promise(r => setTimeout(r, 0)); }
+    expect(readCurrent(c.home).state).toBe("open");
+    expect(f.fm.updateBarrier).toBeNull();
+    expect(f.calls).toEqual(expect.arrayContaining(["start:general", "start-rest:worker"]));
+    expect(f.fm.logger.error.mock.calls.filter((call: unknown[]) => String(call[1]).includes("--resolve"))).toHaveLength(1);
+    expect(a.history.at(-1)?.substep).toBe("retained");
+  });
+});
+
