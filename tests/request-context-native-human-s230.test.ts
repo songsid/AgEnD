@@ -1,3 +1,6 @@
+import {projectRequestContextNativeOutput} from "../src/request-context-native-output.js";
+import {WebChatHistory} from "../src/web-chat-history.js";
+import type {NativeExecutionResult,FleetWindowsRuntime} from "../src/fleet-windows-runtime.js";
 /** Private outbox fixtures only; no daemon, CLI, worker or live Fleet. */
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
@@ -17,7 +20,7 @@ function rig(active=true,guest=false,body="Exact accepted human question"){
  const owner:RequestContextRuntimeOwner={instance:"worker",incarnation:"agent-v1",daemonBootId:"manager",workGeneration:randomUUID(),spawnGeneration:0,launchFenceEpoch:0,deliveryEpoch:0};
  const origin=guest?webHumanOrigin():nativeHumanOrigin("telegram","fixture","demo-person","Demo person",false,"message")!;
  const receiptInput={targetInstance:"worker",originalBody:body,origin,inputKind:"fleet_inbound",managerBootId:"manager"};
- const receipt=active?box.createHumanReceiptWithRequestContext(receiptInput,{incarnation:owner.incarnation,room:null,web:guest?{guest:true}:null,route:guest?{kind:"web",sessionHandle:"0123456789abcdef"}:{kind:"instance"},platform:()=>"telegram"}).receipt:box.createHumanReceipt(receiptInput);
+ const receipt=active?box.createHumanReceiptWithRequestContext(receiptInput,{incarnation:owner.incarnation,room:null,web:guest?{guest:true}:null,route:guest?{kind:"web",sessionHandle:"0123456789abcdef",messageId:"web-question-a"}:{kind:"instance"},platform:()=>"telegram"}).receipt:box.createHumanReceipt(receiptInput);
  const human=formatHumanInboundMessage(body,{source:guest?"web":"telegram",user:"Demo person",user_id:"demo-person",...(guest?{web_guest:"1"}:{}),verification_id:receipt.message_id},"mcp",{dialect:"compact",replyHint:false});
  const task={requestId:randomUUID(),cli:"codex",cwd:"C:\\Fixture",sandbox:"read-only",prompt:`Agent instructions:\nWorker scope\n\nUser task:\n${human}`}as const,options={context:"Exact admitted execution"};
  const claim=claimNativeExecInput(task,options),wire=nativeExecInputBytes(task,options).toString("utf8");let alive=true,checks=0,limit=Infinity;
@@ -98,4 +101,18 @@ it("native preparation refuses a forged accepted-input key and changed composed 
  expect(()=>o.prepare("hub:body-selected",r.task,r.options,r.claim)).toThrow("unsupported");
  expect(()=>o.prepare(`human:${r.receipt.message_id}`,r.task,{context:"changed"},r.claim)).toThrow("composition changed");
  expect(r.box.getHumanReceipt(r.receipt.receipt_id)?.owner_key).toBeNull();
+});
+
+
+it("native output and history projection keep guest A's admitted destination after B arrives, with existing account visibility",()=>{
+ const r=rig(true,true),p=r.prepare(),resolver=makeRequestHumanInputResolver(r.box,{instance:"worker",managerBootId:"manager",current:p.current,runtimeOwner:()=>r.owner,humanOwner:()=>p.ownerKey,active:()=>null,canManage:()=>false,admitted:()=>true}),turns=new RequestContextLocalTurns(r.box.requestContextRecovery.ports("worker",resolver.prepare,()=>false)),snapshot=turns.beforeWrite(p.inputId,p.wireSha256,r.owner);
+ const proof=r.proof();p.written(proof);turns.ended(snapshot,r.owner);
+ const history=new WebChatHistory();history.record({instance:"worker",role:"user",sender:"Guest A",text:"A's question",ts:new Date().toISOString(),messageId:"web-question-a",from:"fixture:person-a"});
+ history.record({instance:"worker",role:"user",sender:"Guest B",text:"B's later question",ts:new Date().toISOString(),messageId:"web-question-b",from:"fixture:person-b"});
+ const completion={claim:r.claim,owner:r.owner,reference:{version:1 as const,inputId:p.inputId,instance:"worker",incarnation:r.owner.incarnation,contextId:snapshot.context.ref.contextId,rootContextId:snapshot.context.ref.rootContextId},current:()=>true} as ReturnType<FleetWindowsRuntime["requestContextCompletion"]>;
+ const task={id:r.task.requestId,finishedAt:2,outcomeConfirmed:true,status:"completed",output:"A's answer",execInputProof:proof} as NativeExecutionResult;
+ const projection=projectRequestContextNativeOutput(r.box,"worker",task,completion,{admitted:()=>true,history,session:handle=>{expect(handle).toBe("0123456789abcdef");return {owner:{adapterId:"fixture",userId:"person-a"}};}})!;
+ expect(projection).not.toHaveProperty("from");expect(projection.replyTo?.sender).toBe("Guest A");expect(projection).not.toHaveProperty("channel");expect(history.list("worker")).toHaveLength(2); // Admin history visibility has not changed.
+ expect(projectRequestContextNativeOutput(r.box,"worker",task,{...completion,current:()=>false},{admitted:()=>true,history,session:()=>null})).toBeNull();
+ expect(projectRequestContextNativeOutput(r.box,"worker",{...task,execInputProof:undefined},completion,{admitted:()=>true,history,session:()=>null})).toBeNull();
 });

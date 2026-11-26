@@ -1,4 +1,5 @@
-import {claimNativeExecInput,type NativeExecInputClaim} from "./native-exec-input.js";
+import {nativeExecContextInputKey,type NativeExecContextReference} from "./native-exec-context.js";
+import {claimNativeExecInput,validateNativeExecInputProof,type NativeExecInputClaim} from "./native-exec-input.js";
 import type {RequestContextExecOwner,RequestContextExecInput} from "./request-context-exec-owner.js";
 import { runWithRequestContextAdmission, type RequestContextAdmissionPort } from "./request-context-admission.js";
 import { RequestContextReferenceMap, type RequestContextRegistrationGate } from "./request-context-fence.js";
@@ -36,6 +37,8 @@ export interface FleetWindowsRuntimeHost {
   requestContextAdmission?(): RequestContextAdmissionPort | undefined;
   history?: Pick<WebChatHistory,"findByMessageId"> & Partial<Pick<WebChatHistory,"reconcileNativeMessages" | "findByNativeHistoryId">>;
   openMcp?(instance: string, requestId: string, sandbox: WindowsAgent["sandbox"], stillCurrent: () => boolean, requestContext?: RequestContextCallLease, inputReady?:()=>Promise<boolean>): NativeMcpLease | null;
+  /** One projector for live completion and history import. No latest-chat or current-speaker fallback. */
+  projectRequestContextOutput?(instance:string,task:NativeExecutionResult,completion:ReturnType<FleetWindowsRuntime["requestContextCompletion"]>):Pick<NativeHistoryMessage,"replyTo"|"requestProvenance">|null;
   warn?(message: string,error: unknown): void;
   removed?(name: string,config: InstanceConfig): void;
   machineAvailable?(machineId: string): boolean;
@@ -88,14 +91,16 @@ export class FleetWindowsRuntime {
   }
   requestContextCallsRequired(name:string):boolean{return !!this.requestContextLifecycle&&isNativeExecInstance(this.config(name));}
   /** Exact server-owned completion evidence remains readable after its C turn ended. */
-  requestContextCompletion(name:string,requestId:string,inputId:string){
+  requestContextCompletion(name:string,requestId:string,inputId?:string){
     const lifecycle=this.requestContextLifecycle;
     if(!lifecycle?.prepare||this.host.stopping()||!isNativeExecInstance(this.config(name)))throw Error("Native scoped completion is unavailable");
-    const agentId=this.id(name),owner=Object.freeze(structuredClone(lifecycle.owner(name))),inputKey=requestContextDigest([name,owner.incarnation,inputId]),claim=this.store.requestExecInput(agentId,requestId,inputKey);
+    const agentId=this.id(name),owner=Object.freeze(structuredClone(lifecycle.owner(name))),reference=this.store.requestExecContext(agentId,requestId);
+    if(!reference||reference.instance!==name||reference.incarnation!==owner.incarnation||inputId!==undefined&&reference.inputId!==inputId)throw Error("Native run belongs to another admitted input");
+    const inputKey=nativeExecContextInputKey(reference),claim=this.store.requestExecInput(agentId,requestId,inputKey);
     if(!claim||owner.instance!==name)throw Error("Native scoped completion is unavailable");
-    const image=requestContextDigest({claim,owner});
-    const current=()=>{try{return !this.host.stopping()&&this.requestContextLifecycle===lifecycle&&this.id(name)===agentId&&requestContextDigest({claim:this.store.requestExecInput(agentId,requestId,inputKey),owner:lifecycle.owner(name)})===image;}catch{return false;}};
-    return Object.freeze({claim,owner,current});
+    const image=requestContextDigest({claim,owner,reference});
+    const current=()=>{try{return !this.host.stopping()&&this.requestContextLifecycle===lifecycle&&this.id(name)===agentId&&requestContextDigest({claim:this.store.requestExecInput(agentId,requestId,inputKey),owner:lifecycle.owner(name),reference:this.store.requestExecContext(agentId,requestId)})===image;}catch{return false;}};
+    return Object.freeze({claim,owner,reference,current});
   }
   get drainRevision():string{return `${this.requestContextRuns.revision}:${this.store.requestContextDrainRevision}`;}
   drainView(rootId:string){
@@ -317,6 +322,15 @@ export class FleetWindowsRuntime {
     await bridge.recoverRemote(agent.machineId,agent.activeId);
     const result=this.get(name)!;this.changed(name);return result;
   }
+  private scopedOutput(name:string,agent:Pick<WindowsAgent,"id"|"name">,task:NativeExecutionResult):NativeHistoryMessage|null {
+    if(!task.finishedAt||task.outcomeConfirmed!==true||!task.execInputProof)return null;
+    const completion=this.requestContextCompletion(name,task.id);
+    validateNativeExecInputProof(task.execInputProof,completion.claim);
+    const projection=this.host.projectRequestContextOutput?.(name,task,completion);
+    if(!projection||!completion.current())return null;
+    return {messageId:`native:${task.id}:reply`,role:task.status==="completed"?"agent":"status",sender:this.config(name)?.display_name||agent.name,
+      text:task.status==="completed"?task.output||"(No text output)":[task.output,task.error||task.status].filter(Boolean).join("\n"),ts:new Date(task.finishedAt).toISOString(),...projection};
+  }
   /** Idempotently bring existing native conversations into shared chat history and search. */
   importHistory(instance?:string): void {
     if (!this.host.history) return;
@@ -326,6 +340,10 @@ export class FleetWindowsRuntime {
       const agent=this.store.get(this.id(name));
       const expected: NativeHistoryMessage[]=[];
       for (const turn of agent.turns) {
+        if(this.store.requestExecInput(agent.id,turn.id)){
+          try{const task=this.store.requestExecCompletion(agent.id,turn.id)??this.bridge.get(turn.id),projected=task&&this.scopedOutput(name,agent,task);if(projected)expected.push(projected);}catch(error){this.host.warn?.("Native scoped output remains unresolved",error);}
+          continue; // Its accepted input already owns the original human/peer history row.
+        }
         const userId=`native:${turn.id}:user`, replyId=`native:${turn.id}:reply`;
         expected.push({role:"user",sender:"You",text:turn.prompt,ts:new Date(turn.startedAt).toISOString(),messageId:userId});
         if (turn.finishedAt) expected.push({role:turn.status === "completed" ? "agent" : "status",sender:agent.name,text:turn.output || turn.error || turn.status,ts:new Date(turn.finishedAt).toISOString(),messageId:replyId});
@@ -362,11 +380,11 @@ export class FleetWindowsRuntime {
       ...(typeof meta.from_instance === "string" ? [`Incoming Fleet context: ${JSON.stringify({from_instance:meta.from_instance.slice(0,128),correlation_id:typeof meta.correlation_id === "string" ? meta.correlation_id.slice(0,256) : undefined,requires_reply:meta.requires_reply === "true"})}`] : []),
     ].join("\n");
     const preparedLifecycle=this.requestContextLifecycle?.prepare;
-    let inputFrame:RequestContextExecInput|undefined,execInput:Readonly<NativeExecInputClaim>|undefined,inputKey:string|undefined;
+    let inputFrame:RequestContextExecInput|undefined,execInput:Readonly<NativeExecInputClaim>|undefined,inputKey:string|undefined,contextReference:Readonly<NativeExecContextReference>|undefined;
     if(preparedLifecycle){
       if(!nativeProviderMcpSupported(agent.cli)||!this.host.openMcp)throw Error("Native request tools are unavailable");
       inputKey=requestContextDigest([name,this.requestContextLifecycle!.owner(name).incarnation,options.requestContextInputId??null]);
-      if(existing){execInput=this.store.requestExecInput(agent.id,requestId,inputKey)??undefined;if(!execInput)throw Error("Native legacy turn cannot acquire request scope");}
+      if(existing){contextReference=this.store.requestExecContext(agent.id,requestId)??undefined;execInput=this.store.requestExecInput(agent.id,requestId,inputKey)??undefined;if(!execInput)throw Error("Native legacy turn cannot acquire request scope");}
       else{
         if(agent.activeId)throw new RequestContextInputDeferred();
         const task=windowsAgentExecutionTask(agent,requestId,prompt),inputOptions={context:contextText,resumeSessionId:agent.threadId};
@@ -386,6 +404,7 @@ export class FleetWindowsRuntime {
       let snapshot:import("./request-context-turns.js").RequestContextTurnSnapshot;
       try{snapshot = turns.beforeWrite(inputFrame?.inputId ?? options.requestContextInputId ?? null, inputFrame?.wireSha256??deliveryContentDigest(prompt), owner);inputFrame?.bind(snapshot);}
       catch(error){inputFrame?.finish();throw error;}
+      if(inputFrame)contextReference=Object.freeze({version:1,inputId:options.requestContextInputId??null,instance:name,incarnation:owner.incarnation,contextId:snapshot.context.ref.contextId,rootContextId:snapshot.context.ref.rootContextId});
       retireContext = () => {
         inputFrame?.finish();
         if (snapshot !== previous) turns.ended(snapshot, owner);
@@ -415,17 +434,20 @@ export class FleetWindowsRuntime {
     const closeLease=()=>{if(lease){lease.close();if(this.mcpLeases.get(name)?.lease===lease)this.mcpLeases.delete(name);}};
     const context=lease ? contextText : existing&&execInput?contextText:undefined;
     let task:ReturnType<WindowsAgents["send"]>;
-    try { task=this.store.send(agent.id,{requestId,prompt},()=>!this.host.stopping() && authority?.() !== false,{...(lease ? {mcp:lease.connection} : {}),...(context?{context}:{}),...(credentialProfile ? {credentialProfile} : {}),...(execInput?{execInput,...(inputKey?{requestContextInputKey:inputKey}:{}),onInputWritten:inputFrame?inputFrame.written:()=>{throw Error("Retired native input cannot be written again");}}:{}),onSettled:task=>{
+    try { task=this.store.send(agent.id,{requestId,prompt},()=>!this.host.stopping() && authority?.() !== false,{...(lease ? {mcp:lease.connection} : {}),...(context?{context}:{}),...(credentialProfile ? {credentialProfile} : {}),...(execInput?{execInput,...(inputKey?{requestContextInputKey:inputKey}:{}),...(contextReference?{requestContextReference:contextReference}:{}),onInputWritten:inputFrame?inputFrame.written:()=>{throw Error("Retired native input cannot be written again");}}:{}),onSettled:task=>{
       const reportedCorrelationIds=lease?.reportedCorrelations(typeof meta.from_instance === "string" ? meta.from_instance : undefined) ?? [];
       closeLease();inputFrame?.finish();
       // A confirmed run end is terminal. An uncertain native outcome is not proof that work ended.
       if (task.outcomeConfirmed) retireContext();
       const replyId=`native:${task.id}:reply`;
-      if (!this.host.history?.findByMessageId(name,replyId)) this.host.emit("message",{instance:name,role:task.status === "completed" ? "agent" : "status",sender:this.config(name)?.display_name || agent.name,text:task.status === "completed" ? task.output || "(No text output)" : [task.output,task.error || task.status].filter(Boolean).join("\n"),ts:new Date(task.finishedAt ?? Date.now()).toISOString(),messageId:replyId});
+      if (!this.host.history?.findByMessageId(name,replyId)) {
+        if(execInput){try{const projected=this.scopedOutput(name,agent,task);if(projected)this.host.emit("message",{instance:name,...projected});}catch(error){this.host.warn?.("Native scoped output remains unresolved",error);}}
+        else this.host.emit("message",{instance:name,role:task.status === "completed" ? "agent" : "status",sender:this.config(name)?.display_name || agent.name,text:task.status === "completed" ? task.output || "(No text output)" : [task.output,task.error || task.status].filter(Boolean).join("\n"),ts:new Date(task.finishedAt ?? Date.now()).toISOString(),messageId:replyId});
+      }
       this.changed(name);settled({...task,reportedCorrelationIds});
     }}); } catch(error) { closeLease();retireContext();throw error; }
     if (task.finishedAt) closeLease();
-    if (meta.source !== "web" && meta.source !== "app") {
+    if (!execInput && meta.source !== "web" && meta.source !== "app") {
       const userId=`native:${requestId}:user`;
       if (!this.host.history?.findByMessageId(name,userId)) this.host.emit("message",{instance:name,role:"user",sender:String(meta.from_instance || meta.user || "Fleet"),text:raw,ts:new Date().toISOString(),messageId:userId});
     }

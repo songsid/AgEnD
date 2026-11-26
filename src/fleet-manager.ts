@@ -1,3 +1,4 @@
+import {projectRequestContextNativeOutput} from "./request-context-native-output.js";
 import {validateNativeExecInputProof} from "./native-exec-input.js";
 import {admitRequestContextNativeResult} from "./request-context-native-result.js";
 import {RequestContextLocalTurns} from "./request-context-turns.js";
@@ -1847,6 +1848,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       requestContextAdmission:()=>this.requestContextAdmission,
       openMcp:(instance,requestId,sandbox,stillCurrent,requestContext,inputReady)=>this.healthServerListening
         ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,...(requestContext?{requestContext}:{}),...(inputReady?{inputReady}:{}),endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
+      projectRequestContextOutput:(instance,task,completion)=>this.deliveryOutbox?projectRequestContextNativeOutput(this.deliveryOutbox,instance,task,completion,{
+        admitted:root=>this.requestContextNativeAdmissionCurrent(root),history:this.webChatHistory,session:handle=>this.webSessions?.findByHandle(handle),
+      }):null,
       warn:(message,error)=>this.logger.warn({err:error},message),
       removed:name=>this.nativeInstanceRemoved(name),
       paneCurrent:name=>this.daemons.get(name)?.nativePaneCurrent?.() === true,

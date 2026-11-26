@@ -4,10 +4,10 @@ import {nativeHumanOrigin,formatHumanInboundMessage as formatNativeHuman} from "
 import {NativeExecInputWitness,nativeExecInputBytes,type NativeExecInputProof} from "../src/native-exec-input.js";
 import { RequestContextPublication } from "../src/request-context-installation.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FleetWindowsRuntime, type FleetWindowsRuntimeHost } from "../src/fleet-windows-runtime.js";
+import { FleetWindowsRuntime, type FleetWindowsRuntimeHost,type NativeExecutionResult } from "../src/fleet-windows-runtime.js";
 import { WindowsAgents } from "../src/windows-agents.js";
 import { nativeInstanceName } from "../src/native-instance-registry.js";
 import { WebChatHistory } from "../src/web-chat-history.js";
@@ -462,6 +462,29 @@ describe("S-230 actual exec claim and accepted human input",()=>{
   f.settle();await pending;expect(scope.current()).toBe(false);expect(f.owner.turns.current(f.owner.owner())).toBeNull();
   expect(f.runtime.requestContextCompletion(f.name,id,f.options.requestContextInputId).current()).toBe(true);
   expect(()=>f.runtime.requestContextCompletion(f.name,id,`delivery:${id}:2`)).toThrow("another admitted input");
+ });
+ it("live output and restart import use the same original projection and positively proven journal completion",async()=>{
+  const f=await prepared(),project=vi.fn((_name:string,_task:NativeExecutionResult,completion:ReturnType<FleetWindowsRuntime["requestContextCompletion"]>)=>{expect(completion.reference.inputId).toBe(f.options.requestContextInputId);return {replyTo:{boot:"a",id:1,sender:"Original person",text:"Original question"}};});
+  (f.runtime as any).host.projectRequestContextOutput=project;
+  const pending=f.runtime.execute(f.name,{requestId:id,content:f.content},f.options),[task,,options]=f.start.mock.calls[0];let proof!:NativeExecInputProof;
+  const witness=new NativeExecInputWitness(options.execInput!,task,options,"stdin-text",nativeExecInputBytes(task,options),p=>{proof=p;options.onInputWritten!(p);});witness.spawnedMain();witness.stdinFinished();
+  f.settle(id,{execInputProof:proof});await pending;
+  expect(f.history.findByMessageId(f.name,`native:${id}:reply`)?.replyTo?.sender).toBe("Original person");
+  const reopened=new WindowsAgents(f.home,{...f.bridge,get:()=>null} as any),history=new WebChatHistory(),events:any[]=[];
+  expect(reopened.requestExecCompletion(f.agent.id,id)).toMatchObject({outcomeConfirmed:true,execInputProof:proof});
+  const runtime=new FleetWindowsRuntime({owner:{dataDir:f.home},fleet:()=>f.fleet,save:()=>{},stopping:()=>false,history,projectRequestContextOutput:project,emit:(event,data)=>{events.push({event,data});if(event==="message")history.record(data as any);}}, {store:reopened,bridge:{...f.bridge,get:()=>null} as any});
+  runtime.setRequestContextExecLifecycles(()=>f.owner.turns,()=>f.owner.owner(),f.owner.turns.registrationGate!,(_name,...args)=>f.owner.prepare(...args));
+  runtime.importHistory();runtime.importHistory();expect(history.list(f.name)).toHaveLength(1);expect(history.list(f.name)[0]?.replyTo?.sender).toBe("Original person");expect(history.list(f.name)[0]?.messageId).toBe(`native:${id}:reply`);
+  expect(events.filter(e=>e.event==="message")).toHaveLength(1);expect(project).toHaveBeenCalledTimes(3);
+  const path=join(f.home,"windows-agents.json"),saved=readFileSync(path,"utf8");
+  for(const kind of ["context","proof","output"]){const data=JSON.parse(saved);
+    if(kind==="context")data.requests[id].requestContextReference.rootContextId=randomUUID();
+    else if(kind==="proof")data.requests[id].execCompletion.proof.token=randomUUID();
+    else data.agents.find((a:any)=>a.id===f.agent.id).turns[0].output="Altered stored output";
+    writeFileSync(path,JSON.stringify(data));expect(()=>new WindowsAgents(f.home,{...f.bridge,get:()=>null} as any)).toThrow();
+  }
+  writeFileSync(path,saved);
+
  });
  it("a missing actual MCP endpoint aborts before provider start and leaves the exact receipt uncertain",async()=>{
   const f=await prepared();f.open.mockReturnValueOnce(null);
