@@ -1,133 +1,293 @@
 {
-  "head": "52b1932f2ce55d71592d1a2189643427d3ba1514",
-  "tree": "3070c5330407ad40b8756a7983ad340bec6c64f0",
-  "dirty": "",
-  "browser": "156.0.8078.4",
-  "scope": "Initialized production Hub runtime, HTTPS, SQLite and UI with synthetic directory identities only. No Fleet or provider process; Chromium headless under WSL.",
-  "checks": [
+  "runs": [
     {
-      "label": "production Hub ready",
-      "pass": true
+      "head": "7a9d2b3e9c0d39eca41994861aa75269ef27ee53",
+      "tree": "946ba96e1cccfb01383da30ad3bb4b168663bf5c",
+      "dirty": "",
+      "browser": "156.0.8078.4",
+      "scope": "Initialized production Hub runtime, HTTPS, SQLite and UI with synthetic directory identities only. No Fleet or provider process; Chromium headless under WSL.",
+      "checks": [
+        {
+          "label": "production Hub ready",
+          "pass": true
+        },
+        {
+          "label": "real HTTP saves a custom creation role and eligible AD-group assignment",
+          "pass": true
+        },
+        {
+          "label": "real HTTP AD-group member creates a room",
+          "pass": true
+        },
+        {
+          "label": "fresh AD membership removal refuses new creation",
+          "pass": true
+        },
+        {
+          "label": "AD membership removal preserves existing room manager",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en granted role row",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en role no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en Administration explains independent role grants",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en list and role grants remain independent",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en creators no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW granted role row",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW role no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW Administration explains independent role grants",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW list and role grants remain independent",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW creators no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en granted role row",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en role no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en Administration explains independent role grants",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en list and role grants remain independent",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en creators no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW granted role row",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW role no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW Administration explains independent role grants",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW list and role grants remain independent",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW creators no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "no page errors",
+          "pass": true
+        }
+      ],
+      "screens": [
+        {
+          "file": "desk-dark-en-role.png",
+          "sha256": "e91b1f795df902f6969f76ca7d9c2276331ebd0c5f3c1f8bfcdfefe97740c2a0"
+        },
+        {
+          "file": "desk-dark-en-creators.png",
+          "sha256": "d501b2495ca6a3df528ba3960795a43f28dff7dd937b442692cbb4200eea8aac"
+        },
+        {
+          "file": "desk-dark-zh-TW-role.png",
+          "sha256": "c4e7b5dd45638d63706bbf31a3fd06a2bdb1d982d06648062342d11aa23b8d45"
+        },
+        {
+          "file": "desk-dark-zh-TW-creators.png",
+          "sha256": "48229fd4e828fe33ef7811582f49d07559cf7d2b9b41abd3d080b99a9fd53bce"
+        },
+        {
+          "file": "phone-dark-en-role.png",
+          "sha256": "4d36a27958e14faebbb626d3b35f83a62460fbe538840f4ce055aa2e902482b3"
+        },
+        {
+          "file": "phone-dark-en-creators.png",
+          "sha256": "ef20d29c6492af189cb341d83bea0586838861fff72a1d9b0600789346edb405"
+        },
+        {
+          "file": "phone-dark-zh-TW-role.png",
+          "sha256": "f27de005818fbc200244cde5018d4177688db6d144f769b86b51ec878cf1b187"
+        },
+        {
+          "file": "phone-dark-zh-TW-creators.png",
+          "sha256": "840b0a1cc2d80ca91eeb1acb468494f1dcf9cc9c74a013c09c86c394255575c3"
+        }
+      ],
+      "errors": [],
+      "bindings": {
+        "src/hub/roles/model.ts": "dce1aef1b74b9f9c23c349e89d6e59bed46445d85b6e1b5053ca356e495569e4",
+        "src/hub/roles/authority.ts": "86df2fa2e2acc8dd8d4b7075adb75f44f5717d1656e8c23d0a8a3b2357579401",
+        "src/hub/roles/delegation.ts": "2405e5b0ae71e43d6469000486917f499b4d48aae04ae71c44ded8d4c5337e07",
+        "src/hub/compose/server.ts": "1979970420b814a8e62ddfa14049a2129501c62d8fd6f3039703de7eecf5b341",
+        "src/hub/http/deps.ts": "9d8239e0bb528c05a384ea980c57dc17721fb56f6990deea01a7b7bf79d4f320",
+        "src/hub/roles/admin-control.ts": "d172c9f60f851aa9cc148f700764a12d3fa10a36287139083ac13360fc40270b",
+        "src/hub/roles/review.ts": "0dcc0ff06acd14bf3b77e8d658f57844bfa139a440b73abe1c3faadd6aec4608",
+        "src/hub/rooms/admin.ts": "5aa341a521a50ee4795e7619b9945e2314dd3febb72da7cb92932ae69477606e",
+        "src/hub/rooms/service.ts": "10e8ed6ccf64053a1379c11aa7dad0fcbbde5bb2d38565f5886fca30b299f9bb",
+        "src/ui/hub-roles.js": "1959688e65c16898965d69ae72327df1a4d79910f149386ffadc5b1e4403a954",
+        "src/ui/hub-role-view.js": "28c6dd908c298eb00c35b6d421cae1570b067781010f1666320a8727ea9167aa",
+        "src/ui/hub-roles-strings.js": "ecfc1250876eec03e1e607a7d2e826d46bb016c5faf65ce838ddeb4a46988e56",
+        "src/ui/hub-admin-rooms.js": "891d54c3950dfc4ea4419cc0398676416bfe6dc1a528c5e5efcb18f6386932b2",
+        "src/ui/hub-admin-rooms-strings.js": "154b421a63a1932cc85732b45c536d612d24327b6559fa93e82fb61a8d7dc761",
+        "src/ui/hub-room-strings.js": "6bf70b6378b04172fe40f92580234cce29af79cae29f7beb7c0226fbbfd57f02",
+        "scripts/manual/hub-room-create-role-s256/browser.mts": "5c0f008de57b3499d8aae7fdb8e33968b948489776bba363abb3801624cbf33e"
+      }
     },
     {
-      "label": "real HTTP saves a custom creation role and named assignment",
-      "pass": true
-    },
-    {
-      "label": "desk-dark-en granted role row",
-      "pass": true
-    },
-    {
-      "label": "desk-dark-en role no horizontal overflow",
-      "pass": true
-    },
-    {
-      "label": "desk-dark-en Administration explains independent role grants",
-      "pass": true
-    },
-    {
-      "label": "desk-dark-en creators no horizontal overflow",
-      "pass": true
-    },
-    {
-      "label": "desk-dark-zh-TW granted role row",
-      "pass": true
-    },
-    {
-      "label": "desk-dark-zh-TW role no horizontal overflow",
-      "pass": true
-    },
-    {
-      "label": "desk-dark-zh-TW Administration explains independent role grants",
-      "pass": true
-    },
-    {
-      "label": "desk-dark-zh-TW creators no horizontal overflow",
-      "pass": true
-    },
-    {
-      "label": "phone-dark-en granted role row",
-      "pass": true
-    },
-    {
-      "label": "phone-dark-en role no horizontal overflow",
-      "pass": true
-    },
-    {
-      "label": "phone-dark-en Administration explains independent role grants",
-      "pass": true
-    },
-    {
-      "label": "phone-dark-en creators no horizontal overflow",
-      "pass": true
-    },
-    {
-      "label": "phone-dark-zh-TW granted role row",
-      "pass": true
-    },
-    {
-      "label": "phone-dark-zh-TW role no horizontal overflow",
-      "pass": true
-    },
-    {
-      "label": "phone-dark-zh-TW Administration explains independent role grants",
-      "pass": true
-    },
-    {
-      "label": "phone-dark-zh-TW creators no horizontal overflow",
-      "pass": true
-    },
-    {
-      "label": "no page errors",
-      "pass": true
+      "head": "aaa9cf41b79e1de21c9569266c1c30b5733aacf2",
+      "tree": "7071a4ead1d88329e82044b0dc7274665a543aae",
+      "dirty": "",
+      "browser": "156.0.8078.4",
+      "scope": "Initialized production Hub runtime, HTTPS, SQLite and UI with synthetic directory identities only. No Fleet or provider process; Chromium headless under WSL.",
+      "checks": [
+        {
+          "label": "production Hub ready",
+          "pass": true
+        },
+        {
+          "label": "real HTTP saves a custom creation role and eligible AD-group assignment",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en granted role row",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en room role permits AD-group recipients",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en AD-group wording explicit",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-en assign no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW granted role row",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW room role permits AD-group recipients",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW AD-group wording explicit",
+          "pass": true
+        },
+        {
+          "label": "desk-dark-zh-TW assign no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en granted role row",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en room role permits AD-group recipients",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en AD-group wording explicit",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-en assign no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW granted role row",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW room role permits AD-group recipients",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW AD-group wording explicit",
+          "pass": true
+        },
+        {
+          "label": "phone-dark-zh-TW assign no horizontal overflow",
+          "pass": true
+        },
+        {
+          "label": "no page errors",
+          "pass": true
+        }
+      ],
+      "screens": [
+        {
+          "file": "desk-dark-en-assign.png",
+          "sha256": "f0829a887d78556f6de630a26030ea611e69c27a43020fddbbe8a715cc4d12a4"
+        },
+        {
+          "file": "desk-dark-zh-TW-assign.png",
+          "sha256": "2ba2e5eaa7ebce58b38a4dab3a0935d3ba971b8a1d41e0273266b52e18df3014"
+        },
+        {
+          "file": "phone-dark-en-assign.png",
+          "sha256": "135559120bf919e1bc7749a7550f859c3060a4ae1706e847828bd360ed8a1842"
+        },
+        {
+          "file": "phone-dark-zh-TW-assign.png",
+          "sha256": "97801caf1625db5b0754cbd03a683f61e8ded9bfec0a1d1ba67ccf9b229f2ef2"
+        }
+      ],
+      "errors": [],
+      "bindings": {
+        "src/hub/roles/model.ts": "dce1aef1b74b9f9c23c349e89d6e59bed46445d85b6e1b5053ca356e495569e4",
+        "src/hub/roles/authority.ts": "86df2fa2e2acc8dd8d4b7075adb75f44f5717d1656e8c23d0a8a3b2357579401",
+        "src/hub/roles/delegation.ts": "2405e5b0ae71e43d6469000486917f499b4d48aae04ae71c44ded8d4c5337e07",
+        "src/hub/compose/server.ts": "1979970420b814a8e62ddfa14049a2129501c62d8fd6f3039703de7eecf5b341",
+        "src/hub/http/deps.ts": "9d8239e0bb528c05a384ea980c57dc17721fb56f6990deea01a7b7bf79d4f320",
+        "src/hub/roles/admin-control.ts": "d172c9f60f851aa9cc148f700764a12d3fa10a36287139083ac13360fc40270b",
+        "src/hub/roles/review.ts": "0dcc0ff06acd14bf3b77e8d658f57844bfa139a440b73abe1c3faadd6aec4608",
+        "src/hub/rooms/admin.ts": "5aa341a521a50ee4795e7619b9945e2314dd3febb72da7cb92932ae69477606e",
+        "src/hub/rooms/service.ts": "10e8ed6ccf64053a1379c11aa7dad0fcbbde5bb2d38565f5886fca30b299f9bb",
+        "src/ui/hub-roles.js": "1959688e65c16898965d69ae72327df1a4d79910f149386ffadc5b1e4403a954",
+        "src/ui/hub-role-view.js": "28c6dd908c298eb00c35b6d421cae1570b067781010f1666320a8727ea9167aa",
+        "src/ui/hub-roles-strings.js": "ecfc1250876eec03e1e607a7d2e826d46bb016c5faf65ce838ddeb4a46988e56",
+        "src/ui/hub-admin-rooms.js": "891d54c3950dfc4ea4419cc0398676416bfe6dc1a528c5e5efcb18f6386932b2",
+        "src/ui/hub-admin-rooms-strings.js": "154b421a63a1932cc85732b45c536d612d24327b6559fa93e82fb61a8d7dc761",
+        "src/ui/hub-room-strings.js": "6bf70b6378b04172fe40f92580234cce29af79cae29f7beb7c0226fbbfd57f02",
+        "scripts/manual/hub-room-create-role-s256/browser.mts": "6a298ffeff777462397debe27ae3120fd357bec1fb67248f07c91f9987140d02"
+      }
     }
   ],
-  "screens": [
-    {
-      "file": "desk-dark-en-role.png",
-      "sha256": "0d8e9a1cc71706acb047a1320d16bc537307029b1ded82ed7db1f5afb3c54f79"
-    },
-    {
-      "file": "desk-dark-en-creators.png",
-      "sha256": "cafa587272b9f6baf3adb7ac59ef4045eaf4065ff2e05e2fca7241b2e8e6b1a2"
-    },
-    {
-      "file": "desk-dark-zh-TW-role.png",
-      "sha256": "2eb9e48eac912d821bf580279e0590d617c36a71971da82991244ab24e730fdd"
-    },
-    {
-      "file": "desk-dark-zh-TW-creators.png",
-      "sha256": "bf8167ef82190c57f41670805e87f8faf992767e0e7c87018596112543aa0149"
-    },
-    {
-      "file": "phone-dark-en-role.png",
-      "sha256": "05d5e9675c22069dac336ec916bbdf263ccb0c0f7abf74eadddd0a2cf1b9df54"
-    },
-    {
-      "file": "phone-dark-en-creators.png",
-      "sha256": "98568c7787d5a0ca212cbe1ae3dec6128e8fff1f916f6b61111d8367454b3b70"
-    },
-    {
-      "file": "phone-dark-zh-TW-role.png",
-      "sha256": "4e5f9ade8953f9addda5488a33565da60a40cc5b4862bb708db876520154c20c"
-    },
-    {
-      "file": "phone-dark-zh-TW-creators.png",
-      "sha256": "67be38751ff1e3b573f7ebcd08c241af13c95522c01052b700d7d5476379a065"
-    }
-  ],
-  "errors": [],
-  "bindings": {
-    "src/hub/roles/model.ts": "139fef529c014cea3c7f0d91116e973c3bac434e6daad4c3b2bb2b69a2067031",
-    "src/hub/roles/admin-control.ts": "be877b9f6bbd8a78074b79d31a6c20d791e50773e33312dcd087a76f03d22b76",
-    "src/hub/roles/review.ts": "70b03164caab4013c8b057a8832767d7a5ee0b431c869d9562751ac1c43db4c5",
-    "src/hub/rooms/admin.ts": "dba3402a364d33589cec67368099b065273852689bc4bf323d3854d3a8a23056",
-    "src/hub/rooms/service.ts": "e044c2ce845c128df7e6338a5083696661300a722cd75dd8c093daa3a159f519",
-    "src/ui/hub-roles.js": "1959688e65c16898965d69ae72327df1a4d79910f149386ffadc5b1e4403a954",
-    "src/ui/hub-role-view.js": "bf82338bf7ada4fe1d97809c078ff908767194f8620bf5465b9783d6b6bde47a",
-    "src/ui/hub-roles-strings.js": "6dd103ac549ead670c139a34e51a16bc20009ed63de41c794e201fd701f6f97b",
-    "src/ui/hub-admin-rooms.js": "20b630453000d3efc36f5a57568f2a62646e81bc15ef1dede80e0d088bf385a7",
-    "src/ui/hub-admin-rooms-strings.js": "68e29277dce754647d7aa7350bfc21531e7914da0fb1ddde6bca762cfa4c91c3",
-    "scripts/manual/hub-room-create-role-s256/browser.mts": "c07b798e980a15601ab8fc249b3149af2f33549f55485e8c3d0ac778827bff14"
-  }
+  "scope": "Primary eight changed frames plus a separate four-frame AD-recipient drawer pass; all production blobs match between runs. Checks overlap; do not sum as distinct cases."
 }
