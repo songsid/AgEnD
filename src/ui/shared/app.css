@@ -2250,6 +2250,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .update-text { display: flex; align-items: flex-start; gap: var(--s-2); min-width: 0; }
 .update-icon { display: inline-flex; flex: none; margin-top: 1px; }
 .update-words { min-width: 0; }
+/* M-3770 1.4 (capture check): zh banner words break at spaces and punctuation, never inside a word (「閒置時」), as the credits card's. */
+.update-words :is(.update-title, .update-sub) { word-break: keep-all; overflow-wrap: anywhere; text-wrap: balance; }
 .update-title { font-weight: 600; }
 .update-sub { font-size: var(--fs-xs); color: var(--text-2); }
 .update-line.bad .update-sub, .update-line.ok .update-sub { color: var(--text-2); }
@@ -2272,6 +2274,47 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
   .update-actions.indent { margin-left: 26px; }
 }
 /* M-2738: Settings → Advanced → Version and update */
+/* M-3770 1.4: the update card's Settings part — its state, "Updates on this machine", and the controls (pause windows;
+   Advanced: pin, longest wait). Phone: every control a 44 px box, the day ticks wrap. */
+.uc-settings { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-3); border-top: 1px solid var(--border); padding-top: var(--s-3); }
+.uc-status { margin: 0; font-size: var(--fs-sm); }
+.uc-machine { font-size: var(--fs-sm); }
+.uc-machine .uc-mark { font-weight: var(--fw-semibold); margin: 0 2px; }
+.uc-self .uc-mark { color: var(--ok); } .uc-admin-only .uc-mark { color: var(--warn); } .uc-stop .uc-mark { color: var(--danger); }
+.uc-checks { margin: var(--s-1) 0 0; padding-left: var(--s-4); color: var(--text-2); }
+.uc-controls { display: flex; flex-direction: column; gap: var(--s-3); }
+.uc-pause { border: 0; padding: 0; margin: 0; min-width: 0; }
+.uc-pause legend { font-weight: var(--fw-semibold); font-size: var(--fs-sm); padding: 0; }
+.uc-hint { margin: 2px 0 var(--s-2); font-size: var(--fs-xs); }
+.uc-pause-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding: var(--s-2) 0; border-bottom: 1px solid var(--border); }
+.uc-days { display: flex; flex-wrap: wrap; gap: 2px var(--s-2); }
+.uc-day { font-size: var(--fs-sm); }
+.uc-time { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-sm); color: var(--text-2); }
+.uc-time .input { width: auto; }
+.uc-row-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+.uc-advanced .field { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--s-2); max-width: 320px; }
+.uc-pick { display: flex; flex-direction: column; gap: var(--s-2); }
+.uc-pick-row { font-size: var(--fs-sm); }
+.uc-pick-frame { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.uc-pick-frame { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); }
+.uc-pick-field { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-2); }
+.uc-pick-field .input { width: auto; min-width: 7em; }
+.uc-how { margin-top: 2px; font-size: var(--fs-md); }
+.uc-how summary { cursor: pointer; color: var(--accent); }
+.uc-how p { margin: var(--s-1) 0 0; color: var(--text); overflow-wrap: anywhere; }
+/* #4487 UX look: a command in a check's sentence is code to copy (one tap selects it all); the banner's secondary buttons
+   keep a visible outline on any banner colour (先不要 on the phone's dark press-only banner). */
+.uc-cmd { font-family: var(--font-mono); font-size: 0.92em; padding: 1px 5px; border-radius: var(--r-sm); background: var(--surface);
+  border: 1px solid var(--border); user-select: all; display: inline-block; max-width: 100%; white-space: nowrap; overflow-x: auto;
+  vertical-align: bottom; }   /* a command stays on one line (never "sudo agen / d update"); a long one scrolls in its box */
+.update-actions .btn:not(.btn-primary):not(.update-x) { border-color: var(--border-strong); }
+.uc-needs .n-item { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
+@media (max-width: 899px), (pointer: coarse) {
+  .uc-settings :is(.btn, .input, .uc-day, .uc-pick-row), .uc-needs .btn, .update-line .update-actions .btn { min-height: var(--tap); }
+  .uc-day, .uc-pick-row { display: inline-flex; align-items: center; }
+  .uc-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); width: 100%; }   /* the week on one row */
+  .uc-day { justify-content: center; gap: 2px; }
+}
 .s-update dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px var(--s-4); margin: 0 0 var(--s-3); font-size: var(--fs-sm); }
 .s-update dt { color: var(--text-2); }
 .s-update dd { margin: 0; }
