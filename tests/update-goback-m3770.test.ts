@@ -220,11 +220,11 @@ describe("M-3770 2.5: Go back, end to end on a scratch world", () => {
     const w = committed();
     const { guard } = guardOf([false]);
     const r = runGoBack(w.home, ID, goBackInit(w), { ...w.deps(noNpm), guard });
-    expect(r).toMatchObject({ ok: false, outcome: "refused", reason: expect.stringMatching(/turned on after this update/) });
+    expect(r).toMatchObject({ ok: false, outcome: "refused", reason: expect.stringMatching(/a contact-approval change after this update \(turning on request-based approvals, stopping saved work, or retiring an earlier request\) ended its Go back/) });
     expect(readCurrent(w.home).state).toBe("none");
     expect(existsSync(attemptDir(w.home, GB))).toBe(false);
     expect(readFileSync(join(w.home, "fleet.yaml"), "utf8")).toBe("version: new\nedited: later\n");
-    expect(readGoBackOffer(w.home).unavailable).toEqual([{ attemptId: ID, reason: expect.stringMatching(/turned on after this update/) }]);
+    expect(readGoBackOffer(w.home).unavailable).toEqual([{ attemptId: ID, reason: expect.stringMatching(/a contact-approval change after this update \(turning on request-based approvals, stopping saved work, or retiring an earlier request\) ended its Go back/) }]);
   });
 
   it("a committed snapshot's outbox DB that doesn't match its manifest is never handed to the guard: refused", () => {
