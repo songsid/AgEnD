@@ -281,15 +281,16 @@ describe("3. in a FleetManager: the open pages are told to read again", () => {
   it("a person's comment: sending, then — once the waker hands it over — queued in the real outbox; then delivered and read as its row changes", async () => {
     const f = await fleet();
     const c = f.board.createCards(ANN, { cards: [{ title: "Leaderboard", assignee: "dev-a" }] }).cards[0]!;
-    await vi.advanceTimersByTimeAsync(10_000);                                // the assignment's notice
+    await vi.advanceTimersByTimeAsync(10_000);                                // the assignment's notice (its handoff moves too: one ping for the card)
+    const afterAssignment = f.wakeEvents().length;
     f.board.updateCard(ANN, c.code, { comment: "weekly, not daily?" });
     const id = f.board.detail(c.code).comments.at(-1)!.id;
     const stateNow = () => wakeViews(f.board.entryWakes(c.code).get(id)!, f.fm.taskWakeProgress(f.board.entryWakes(c.code).get(id)!.flatMap((w) => (w.key ? [w.key] : []))), Date.now())[0]!;
     expect(stateNow().state).toBe("sending");
-    expect(f.wakeEvents()).toEqual([]);
+    expect(f.wakeEvents().slice(afterAssignment)).toEqual([]);
     await vi.advanceTimersByTimeAsync(10_000);
     expect(stateNow().state).toBe("queued");                                  // admitted to the outbox, no daemon takes it
-    expect(f.wakeEvents()).toEqual([{ ids: [c.code] }]);                      // the card number and nothing else
+    expect(f.wakeEvents().slice(afterAssignment)).toEqual([{ ids: [c.code] }]);   // the card number and nothing else
     // The row moves: delivered, then the transcript shows it consumed.
     const key = f.board.entryWakes(c.code).get(id)![0]!.key!;
     const raw = new Database(join(f.d, "delivery-outbox.db"));

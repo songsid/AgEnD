@@ -141,6 +141,44 @@ export interface EntryWake {
   at: string;
 }
 
+/**
+ * A card handed to the instance that works it next (docs/design/task-board.md, "Handoffs"): `ready` — everything it waited for is done, so
+ * its assignee can start — or `assigned` — it was given to the instance while it could already start. The board keeps that the instance was
+ * told (`HandoffRow`), the delivery outbox says how far the notice got.
+ */
+export type HandoffWhy = "ready" | "assigned";
+
+/**
+ * One handoff as the board stored it (`task_handoffs`): the card, the instance it was handed to, why, the card whose finish readied it
+ * (a sub task's predecessor), when the board decided to tell the instance, and — once the fleet's waker has gathered the 10 s of news —
+ * the key of the delivery that carried it, or why none was sent (`skip`, the comment status's reasons).
+ */
+export interface Handoff {
+  id: number;
+  /** The card handed over (its number). */
+  card: string;
+  to: string;
+  why: HandoffWhy;
+  /** The card whose finishing made it startable (its number), for `ready`. */
+  after: string | null;
+  at: string;
+  /** The delivery outbox's key of the notice that carried it. Never sent to a page. */
+  key?: string;
+  skip?: WakeSkip;
+}
+
+/** A sub task's move, as its main task's page lists it (the card read of a main task): who moved which sub task from where to where. */
+export interface SubEvent {
+  id: number;
+  at: string;
+  actor: string;
+  actorKind: Actor["kind"];
+  /** The sub task's number and title. */
+  card: string;
+  title: string;
+  data: { from?: string; to?: string; auto?: boolean; reason?: string };
+}
+
 /** What the fleet tells the board for routing a comment; read at every comment, so a fleet.yaml edit applies to the next. */
 export interface CommentRouting {
   /** The fleet's instance names (an `@name` is only ever one of them). */
@@ -321,6 +359,12 @@ export interface CardView {
   /** Comments by others its assignee has not acted on yet. */
   newCommentCount: number;
   lastComment: { author: string; authorKind: Actor["kind"]; at: string } | null;
+  /**
+   * An open card only, and only when the board handed it to its current assignee (a `task_handoffs` row, "Handoffs"): when it did (ISO, the newest).
+   * What lets a page say an assignee that is working is probably on this card (docs/design/task-board.md, "Working before the claim"): a card the
+   * board never told it about is not evidence. Present only with a value.
+   */
+  handedAt?: string;
 }
 
 export type EntryKind = "log" | "comment" | "reject" | "approve";
@@ -496,6 +540,8 @@ export interface CardDetail {
   comments: Entry[];
   logs: Entry[];
   history: CardEvent[];
+  /** A main task's: the moves of its sub tasks (newest 80, oldest first) — the main task's page shows them as its own activity. Empty for any other card. */
+  subEvents: SubEvent[];
   /** The files on this card, oldest first; each hangs under the comment `entryId` names. */
   attachments: Attachment[];
   /** The instances that watch this card (its own list: a sub task's main task's watchers follow it too). */
@@ -993,6 +1039,17 @@ export class TaskBoard {
         at          TEXT NOT NULL,
         PRIMARY KEY (person, task_id)
       );
+      CREATE TABLE IF NOT EXISTS task_handoffs (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id     TEXT NOT NULL,
+        instance    TEXT NOT NULL,
+        why         TEXT NOT NULL,
+        after_id    TEXT,
+        at          TEXT NOT NULL,
+        notice_key  TEXT,
+        skip        TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_handoffs_task ON task_handoffs(task_id, id);
       CREATE TABLE IF NOT EXISTS task_reads_floor (
         person      TEXT PRIMARY KEY,
         entry_floor INTEGER NOT NULL,
@@ -1372,6 +1429,10 @@ export class TaskBoard {
          ON e.task_id = t.id AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.deleted_at IS NULL AND e.author IS NOT t.assignee${eBy.sql}
        GROUP BY t.id`,
     ).all(...eBy.args) as Array<{ id: string; n: number }>).map((r) => [r.id, r.n]));
+    // `handedAt`: for the open cards among these, when the board last told their current assignee the card could start (one statement for all).
+    const handed = new Map((this.db.prepare(
+      `SELECT h.task_id AS id, MAX(h.at) AS at FROM task_handoffs h JOIN tasks t ON t.id = h.task_id AND t.assignee = h.instance WHERE t.status = 'open' GROUP BY h.task_id`,
+    ).all() as Array<{ id: string; at: string }>).map((r) => [r.id, r.at]));
     const code = (uuid: string) => all.get(uuid)?.code ?? uuid.slice(0, 8);
     /** unmetDeps(), on the light rows: own dependencies not done, then the main task's, each once. */
     const unmet = (deps: string[], parent: string | null, seen = new Set<string>()): string[] => {
@@ -1419,6 +1480,7 @@ export class TaskBoard {
         attachmentCount: files.get(card.uuid) ?? 0,
         newCommentCount: unseen.get(card.uuid) ?? 0,
         lastComment: c ? { author: c.author, authorKind: c.author_kind, at: c.at } : null,
+        ...(card.status === "open" && handed.has(card.uuid) ? { handedAt: handed.get(card.uuid)! } : {}),
       };
     });
   }
@@ -1433,6 +1495,7 @@ export class TaskBoard {
       comments: this.entries(card.uuid, ["comment", "reject", "approve"], 200),
       logs: this.entries(card.uuid, ["log"], 200),
       history: this.events(card.uuid, 200).filter((e) => e.type !== "reordered"),
+      subEvents: card.kind === "main" ? this.subEvents(card.uuid) : [],
       attachments: this.attachments(card.uuid, scope),
       watchers: this.watchersOf(card.uuid),
       inheritedWatchers: card.parent ? this.watchersOf(card.parent) : [],
@@ -3024,6 +3087,8 @@ export class TaskBoard {
       if (WORD_REASONS.includes(reason) && !isPerson(by) && by.kind !== "system" && !(w.principals ??= []).includes(by.name)) w.principals.push(by.name);
       out.set(key, w);
     };
+    // `ready`: which card's finishing readied which (by instance and card), kept with the handoff.
+    const readied = new Map<string, string>();
     // The answer to a blocked question is the comment that came with it (#2801: a comment alone wakes nobody).
     const comments = new Map<string, { text: string; entry?: number }>();
     const entryOf = (e: TaskBoard["pending"][number]) => (typeof e.data.entry === "number" ? e.data.entry : undefined);
@@ -3041,7 +3106,7 @@ export class TaskBoard {
       if (e.type === "created") { if (this.isOnBoard(card)) add(card, d.assignee ?? null, "assigned", e.actor); }
       else if (e.type === "assigned") { if (this.isOnBoard(card)) add(card, (d.to as string | null) ?? null, "assigned", e.actor); }
       else if (e.type === "moved") {
-        if (d.to === "done") this.wakeReady(card, e.actor, add);
+        if (d.to === "done") this.wakeReady(card, e.actor, (c, instance, reason, by) => { if (instance) readied.set(`${instance}\u0000${c.uuid}`, card.uuid); add(c, instance, reason, by); });
         if (d.to === "cancelled") {
           // Taken down with its main task: why the main task was cancelled.
           const main = d.cascade ? events.find((x) => x.code === d.cascade && x.type === "moved" && x.data.to === "cancelled") : undefined;
@@ -3085,10 +3150,85 @@ export class TaskBoard {
     this.settleProgress(events, add);
     const wakes = [...out.values()].map((w) => this.wakeHolds(w)).filter((w): w is Wake => w !== null);
     this.settleEntryAudience(events, wakes);
+    this.recordHandoffs(wakes, readied);
     // Said to the writer, so an agent knows the followers are told and need no message of its own.
     const told = wakes.filter((w) => w.reasons.includes("progress") && w.news).map((w) => `${w.instance} (${w.news!.as})`);
     if (told.length) this.say("progress_wakes", [told.join(", ")], `how this changed the card is told to ${told.join(", ")} as a [Task board] notice: no need to message them about it`);
     return wakes;
+  }
+
+  /**
+   * Keeps that a card was handed to an instance (docs/design/task-board.md, "Handoffs"): each wake of this write that tells an instance its
+   * card can be started — everything it waited for is done (`ready`), or it was given to it while it could start (`assigned`) — is one
+   * row of `task_handoffs`, with the card whose finishing readied it. The fleet's waker settles it when the notice goes out (`handoffHanded`
+   * / `handoffDropped`) and the delivery outbox says how far it got, so the card's page can show "S-1 done → handed to dev → dev read it".
+   * Not an event, not a revision of its own: the write that caused it carries it. An assignee that is no instance of the fleet is never
+   * told, so nothing is kept for it. Never read by a release without the table.
+   */
+  private recordHandoffs(wakes: readonly Wake[], readied: ReadonlyMap<string, string>): void {
+    const fleet = new Set(this.routing.instances());
+    const at = this.nowIso();
+    for (const w of wakes) {
+      const why: HandoffWhy | null = w.reasons.includes("assigned") ? "assigned" : w.reasons.includes("ready") ? "ready" : null;
+      if (!why || !fleet.has(w.instance)) continue;
+      const after = why === "ready" ? readied.get(`${w.instance}\u0000${w.uuid}`) ?? null : null;
+      this.db.prepare("INSERT INTO task_handoffs (task_id, instance, why, after_id, at) VALUES (?, ?, ?, ?, ?)").run(w.uuid, w.instance, why, after, at);
+    }
+  }
+
+  /** The newest handoffs of these cards (the caller names a main task's sub tasks too), oldest first. */
+  handoffsOf(uuids: readonly string[], limit = 60): Handoff[] {
+    if (!uuids.length) return [];
+    const marks = uuids.map(() => "?").join(",");
+    const rows = this.db.prepare(`SELECT * FROM task_handoffs WHERE task_id IN (${marks}) ORDER BY id DESC LIMIT ?`).all(...uuids, limit) as Row[];
+    return rows.reverse().flatMap((r): Handoff[] => {
+      const card = this.codeOf(r.task_id as string);
+      if (!card || (r.why !== "ready" && r.why !== "assigned")) return [];
+      const skip = typeof r.skip === "string" && (WAKE_SKIPS as readonly string[]).includes(r.skip) ? (r.skip as WakeSkip) : undefined;
+      return [{ id: Number(r.id), card, to: r.instance as string, why: r.why, after: typeof r.after_id === "string" ? this.codeOf(r.after_id) ?? null : null, at: r.at as string,
+        ...(typeof r.notice_key === "string" && r.notice_key ? { key: r.notice_key } : {}), ...(skip ? { skip } : {}) }];
+    });
+  }
+
+  /**
+   * The fleet's waker took the news about `uuid` for `instance` (its notice has the outbox's `key`): the handoffs still waiting to be told
+   * to it are carried by it. Not a board write. Returns the card numbers a page showing it reads again: the card, and its main task
+   * (whose page lists the handoffs of its sub tasks).
+   */
+  handoffHanded(uuid: string, instance: string, key: string, replaces?: readonly string[]): string[] {
+    return this.settleHandoffs(uuid, instance, "notice_key = ?", key, replaces);
+  }
+
+  /** The news about `uuid` for `instance` was not sent (`skip` says why): the handoffs waiting to be told to it say so. */
+  handoffDropped(uuid: string, instance: string, skip: WakeSkip): string[] {
+    return this.settleHandoffs(uuid, instance, "skip = ?", skip);
+  }
+
+  /** `replaces`: notices that were withdrawn and told anew (a comment they quoted was edited or deleted): what they carried now has the new key. */
+  private settleHandoffs(uuid: string, instance: string, set: string, value: string, replaces: readonly string[] = []): string[] {
+    const was = replaces.length ? ` OR notice_key IN (${replaces.map(() => "?").join(",")})` : "";
+    const r = this.db.prepare(`UPDATE task_handoffs SET ${set} WHERE task_id = ? AND instance = ? AND ((notice_key IS NULL AND skip IS NULL)${was})`).run(value, uuid, instance, ...replaces);
+    if (!r.changes) return [];
+    const card = this.byUuid(uuid);
+    const main = card?.parent ? this.codeOf(card.parent) : null;
+    return [...(card ? [card.code] : []), ...(main ? [main] : [])];
+  }
+
+  /** The moves of a main task's sub tasks, newest 80, oldest first — its page lists them with its own activity. */
+  subEvents(main: string, limit = 80): SubEvent[] {
+    const rows = this.db.prepare(
+      `SELECT e.id, e.at, e.actor, e.actor_kind, e.data, t.code, t.title FROM task_events e JOIN tasks t ON t.id = e.task_id
+       WHERE t.parent_id = ? AND e.type = 'moved' ORDER BY e.id DESC LIMIT ?`).all(main, limit) as Row[];
+    return rows.reverse().flatMap((r): SubEvent[] => {
+      let d: Record<string, unknown> = {};
+      try { d = JSON.parse(r.data as string) as Record<string, unknown>; } catch { /* a hand-edited row reads as no data */ }
+      const keep: SubEvent["data"] = {};
+      if (typeof d.from === "string") keep.from = d.from;
+      if (typeof d.to === "string") keep.to = d.to;
+      if (d.auto === true) keep.auto = true;
+      if (typeof d.reason === "string" && d.reason) keep.reason = d.reason;
+      return [{ id: Number(r.id), at: r.at as string, actor: r.actor as string, actorKind: r.actor_kind as Actor["kind"], card: r.code as string, title: r.title as string, data: keep }];
+    });
   }
 
   /**

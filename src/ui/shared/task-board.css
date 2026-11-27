@@ -442,6 +442,7 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tl-wake.wk-ok, .tl-wake.wk-done { color: var(--ok); }
 .tl-wake.wk-busy { color: var(--accent); }
 .tl-wake.wk-bad { color: var(--danger); }
+.tl-wake.wk-warn { color: var(--warn); }
 .tl-wake.wk-muted { color: var(--text-3); }
 @media (prefers-reduced-motion: no-preference) { .wk-spin { animation: pulse 1.4s ease-in-out infinite; } }
 /* The comment the page was opened at (#c42): lit for a moment. */
@@ -644,6 +645,9 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tr-state { padding: 2px var(--s-2); font-size: var(--fs-xs); }
 .tr-mark.s-working .tr-dot, .tr-state.s-working .tr-dot { animation: pulse 1.2s ease-in-out infinite; }
 .tr-mark.shared { background: var(--surface-2); color: var(--text-2); }
+/* Running on a card it was given but has not claimed: the same mark with a dashed edge — it is an inference, and not what the board says yet. */
+.tr-mark.unclaimed { outline: 1px dashed color-mix(in srgb, currentColor 60%, transparent); outline-offset: -1px; }
+.tr-note.tr-unclaimed { color: var(--warn); }
 .tr-mark.s-needs, .tr-state.s-needs { background: var(--warn-bg); color: var(--warn); }
 .tr-mark.s-stuck, .tr-state.s-stuck { background: var(--danger-bg); color: var(--danger); }
 .tr-state.s-idle { background: var(--surface-2); color: var(--text-2); }
@@ -689,6 +693,52 @@ button.tb-owner-btn:hover { border-color: var(--border); background: var(--surfa
 }
 @media (prefers-reduced-motion: reduce) {
   .tr-mark.s-working .tr-dot, .tr-state.s-working .tr-dot { animation: none; }
+}
+
+/* ── live state and handoffs on a main task (fleet-task-flow.js) ───────────────────────────────────────── */
+/* A sub task in the list says what is going on in its own row, with no second line (the row is one button: it opens the card). Its agent is running it: the row is
+   tinted as a running board row is and, while motion is allowed, a light sweeps over the title (the page's text colour and accent; nothing moves with reduced motion).
+   Any other state is a short label beside the title (`.tf-chip`, the tones below); the whole sentence, with the step, is the row's tooltip. */
+.tp-subs .tc-children button.is-running { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tp-subs .tc-children button.is-running:hover { background: var(--accent-dim); }
+@keyframes tf-shimmer { to { background-position: 0 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    .tf-shimmer {
+      background: linear-gradient(100deg, var(--text) 0%, var(--text) 38%, var(--accent) 50%, var(--text) 62%, var(--text) 100%) 100% 0 / 260% 100% no-repeat;
+      -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; animation: tf-shimmer 2.4s linear infinite;
+    }
+  }
+}
+.tf-chip { display: inline-block; margin-left: var(--s-2); padding: 0 var(--s-2); border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: var(--r-full); background: color-mix(in srgb, currentColor 8%, transparent); font-size: var(--fs-xs); line-height: var(--lh-xs); font-weight: var(--fw-semibold); white-space: nowrap; vertical-align: baseline; }
+.tf-item > svg { flex: none; }
+.tf-item { display: flex; align-items: center; gap: var(--s-2); min-width: 0; font-size: var(--fs-sm); line-height: var(--lh-sm); color: var(--text-2); }
+.tf-says { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-spin { flex: none; }
+.tf-busy { color: var(--accent); }
+.tf-ok, .tf-done { color: var(--ok); }
+.tf-bad { color: var(--danger); }
+.tf-warn { color: var(--warn); }
+.tf-muted { color: var(--text-3); }
+.tf-wait { color: var(--text-2); }
+/* The main task's "Agent activity": one line per sub task that has something going on, its number at the end (it opens that sub task). */
+.tf-lines { display: flex; flex-direction: column; gap: var(--s-1); margin: 0; padding: 0; list-style: none; }
+.tf-item .tf-says { flex: 0 1 auto; }
+.tf-item .tf-card { flex: none; margin-left: auto; }
+.tf-item.tf-k-running .tf-says { font-weight: var(--fw-semibold); }
+.tf-extra { font-size: var(--fs-xs); }
+/* A handoff in the activity stream: a thin row like the history's, but never folded away, its sentence in the text colour, where it stands under it. */
+.tl-baton { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.tl-baton > .tl-line { color: var(--text); }
+.tl-baton > .tl-line .tl-mark { color: var(--accent); }
+.tl-baton .tf-wakes { margin-top: 2px; padding-left: calc(var(--s-4) + 20px + var(--s-2)); }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  /* No tooltip on a phone: the block's line wraps instead of being cut. */
+  .tf-item { align-items: flex-start; }
+  .tf-item > .tf-spin, .tf-item > svg { margin-top: 4px; }
+  .tf-item .tf-says { white-space: normal; overflow-wrap: anywhere; }
+  .tl-wake > .tf-spin { margin-top: 3px; }
+  .tl-baton .tf-wakes { padding-left: calc(var(--s-3) + 20px + var(--s-2)); }
 }
 
 /* M-3668: the Done column's "Show 20 more" under its newest cards; this week's count beside its title; the Archive's filter. */

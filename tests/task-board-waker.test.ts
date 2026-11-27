@@ -78,7 +78,7 @@ describe("gathering an instance's news", () => {
     fire();
     expect(sent.map(({ instance, message }) => ({ instance, message }))).toEqual([
       { instance: "dev-a", message: '[Task board] S-1 "Build the API": cancelled by Bob: "a duplicate" — stop working on it; sent back by Ann: "ties share a rank". Read it with: task get S-1' },
-      { instance: "dev-b", message: '[Task board] S-2 "Build the API": everything it waited for is done — you can start it. Read it with: task get S-2' },
+      { instance: "dev-b", message: '[Task board] S-2 "Build the API": everything it waited for is done — you can start it: claim it first (task claim S-2), then start. Read it with: task get S-2' },
     ]);
   });
 
@@ -87,7 +87,7 @@ describe("gathering an instance's news", () => {
     const { w, sent, fire } = waker({ holds: (x) => (gone.has(x.uuid) ? null : x) });
     w.note([wake({}), wake({ uuid: "u2", code: "S-2" })]);
     fire();
-    expect(sent.map((s) => s.message)).toEqual(['[Task board] S-1 "Build the API": everything it waited for is done — you can start it. Read it with: task get S-1']);
+    expect(sent.map((s) => s.message)).toEqual(['[Task board] S-1 "Build the API": everything it waited for is done — you can start it: claim it first (task claim S-1), then start. Read it with: task get S-1']);
     w.note([wake({ uuid: "u2", code: "S-2" })]);
     fire();
     expect(sent).toHaveLength(1);                                      // nothing left: nothing sent
@@ -108,15 +108,15 @@ describe("the message", () => {
     const main = (n: number) => wake({ uuid: `m${n}`, code: `M-${n}`, title: `Feature ${n}`, parent: null, reasons: ["assigned"], who: "lead" } as Partial<Wake>);
     const sub = (n: number, of: number) => wake({ uuid: `s${n}`, code: `S-${n}`, title: `Step ${n}`, parent: `M-${of}`, reasons: ["assigned"], who: "lead" } as Partial<Wake>);
     expect(wakeMessage([main(11), sub(1, 11), sub(2, 11)]))
-      .toBe('[Task board] M-11 "Feature 11" (with 2 sub tasks): assigned to you by lead. Read it with: task get M-11');
+      .toBe('[Task board] M-11 "Feature 11" (with 2 sub tasks): assigned to you by lead — claim it first (task claim M-11), then start. Read it with: task get M-11');
     expect(wakeMessage([main(11), main(12), main(13), main(14), sub(1, 11), sub(9, 20), wake({ uuid: "x", code: "S-30", reasons: ["sent_back"], texts: { sent_back: "redo" } })]))
       .toBe([
         "[Task board] You were assigned 4 main tasks (M-11–M-14) and 2 sub tasks.",
         '- S-30 "Build the API": sent back by Ann: "redo".',
-        "Read task mine for the order and work through them one at a time, by priority.",
+        "Read task mine for the order and work through them one at a time, by priority; claim a card (task claim ID) before you start on it.",
       ].join("\n"));
     expect(wakeMessage([wake({}), wake({ uuid: "u2", code: "S-2", reasons: ["cancelled"] })]))
-      .toBe('[Task board] 2 things on your cards:\n- S-1 "Build the API": everything it waited for is done — you can start it.\n- S-2 "Build the API": cancelled by Ann — stop working on it.\nYour work: task mine');
+      .toBe('[Task board] 2 things on your cards:\n- S-1 "Build the API": everything it waited for is done — you can start it: claim it first (task claim S-1), then start.\n- S-2 "Build the API": cancelled by Ann — stop working on it.\nYour work: task mine');
   });
 
   it("#2434: the dispatcher is told a card it handed out is ready for its own confirmation, and what it lacks", () => {
@@ -178,7 +178,7 @@ describe("in the fleet: a write's wakes reach the delivery outbox as AgEnD's not
     expect(more).toEqual([]);
     expect(row!.target_instance).toBe("dev-a");
     const payload = JSON.parse(row!.payload_json);
-    expect(payload.content).toBe('[Task board] M-1 "Leaderboard": assigned to you by lead; new comment from Ann: "weekly, not daily" — reply on the card (task update, with a comment) only if it asks or needs something from you (a person reads the card; no @ needed). Read it with: task get M-1');
+    expect(payload.content).toBe('[Task board] M-1 "Leaderboard": assigned to you by lead — claim it first (task claim M-1), then start; new comment from Ann: "weekly, not daily" — reply on the card (task update, with a comment) only if it asks or needs something from you (a person reads the card; no @ needed). Read it with: task get M-1');
     expect(payload.meta).toMatchObject({ user: "AgEnD", user_id: "agend-system", source: "agend-system" });
     fm.taskBoardWaker.stop();
     fm.deliveryOutbox?.close?.();

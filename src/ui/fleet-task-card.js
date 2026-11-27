@@ -21,7 +21,8 @@ import { Checklist, EditableText, InlineTitle, PropChip, QuickAdd } from "./flee
 import { Composer, Timeline } from "./fleet-task-activity.js";
 import { defaultRecipient, holdsRecipient, recipientGroups } from "./fleet-task-thread.js";
 import { FilesField } from "./fleet-task-files.js";
-import { AgentRun } from "./fleet-task-run.js";
+import { AgentRun, RunMark, instanceStates, runOf } from "./fleet-task-run.js";
+import { FlowLines, SubRows, flowContext, handoffsMoving, hasFlow, subLine } from "./fleet-task-flow.js";
 import { wakesMoving } from "./fleet-task-wake.js";
 import { openedCard } from "./task-unread.js";
 import { LeaderRow, WatchersRow } from "./fleet-task-follow.js";
@@ -109,7 +110,7 @@ export function describeEvent(ev) {
   const d = ev.data || {};
   switch (ev.type) {
     case "created": return t("taskcard.evCreated");
-    case "moved": return `${t("taskcard.evMoved", t(`tasks.${d.from}`), t(`tasks.${d.to}`))}${d.auto ? t("taskcard.evAuto") : ""}${d.reason ? `: ${d.reason}` : ""}`;
+    case "moved": return `${ev.sub ? `${ev.sub.id} · ` : ""}${t("taskcard.evMoved", t(`tasks.${d.from}`), t(`tasks.${d.to}`))}${d.auto ? t("taskcard.evAuto") : ""}${d.reason ? `: ${d.reason}` : ""}`;
     case "assigned": return t("taskcard.evAssigned", d.from || "—", d.to || "—");
     case "updated": return t("taskcard.evUpdated", Object.keys(d.changes || {}).map((k) => fieldName(k)).join(", "));
     case "commented": return t("taskcard.evCommented");
@@ -123,7 +124,8 @@ export function describeEvent(ev) {
  */
 export function describeRow(ev) {
   const d = ev.data || {};
-  if (ev.type === "moved") return `${t("taskcard.rowMoved", t(`tasks.${d.from}`), t(`tasks.${d.to}`))}${d.auto ? t("taskcard.evAuto") : ""}${d.reason ? `: ${d.reason}` : ""}`;
+  // A move of one of a main task's sub tasks (`ev.sub`, from the card read's `subEvents`) names it: "S-2 · changed status from To do to In progress".
+  if (ev.type === "moved") return `${ev.sub ? `${ev.sub.id} · ` : ""}${t("taskcard.rowMoved", t(`tasks.${d.from}`), t(`tasks.${d.to}`))}${d.auto ? t("taskcard.evAuto") : ""}${d.reason ? `: ${d.reason}` : ""}`;
   if (ev.type === "assigned") return t("taskcard.rowAssigned", d.from || "—", d.to || "—");
   return describeEvent(ev);
 }
@@ -194,9 +196,9 @@ const radioItems = (list, current, label, act) => list.map((v) => ({ key: String
  * `writable`: false over a read-only link (the card is shown, nothing on it changes). `place`: up and down in its column,
  * for touch and keyboard (null when it cannot move). `steps`: the previous and next card the page showed, and where this
  * one is among them (null: nowhere to step). `where`: the project's name for the breadcrumb (null: none). `back`: what
- * Back says. `onBack` returns to the board or list. `doing`: how many cards each instance has in progress (fleet-task-run.js).
+ * Back says. `onBack` returns to the board or list. `doing`: how many cards each instance has in progress, `ready`: the open cards it could start (fleet-task-run.js).
  */
-export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing = new Map(), writable = true, place = null, steps = null, where = null, back, onBack, onOpen, onStep, reloadBoard }) {
+export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing = new Map(), ready = new Map(), writable = true, place = null, steps = null, where = null, back, onBack, onOpen, onStep, reloadBoard }) {
   const { instances, taskUnread } = useStore(appStore);
   const [detail, setDetail] = useState(null);
   const [missing, setMissing] = useState(false);
@@ -235,7 +237,7 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
     return () => { off(); if (timer) clearTimeout(timer); };
   }, [id]);
   // …and, while a notice is still on its way, now and then on its own: a page that polls, or one that missed the ping, still moves.
-  const onTheWay = detail ? wakesMoving(detail) : false;
+  const onTheWay = detail ? wakesMoving(detail) || handoffsMoving(detail) : false;
   useEffect(() => {
     if (!onTheWay) return undefined;
     const timer = setInterval(() => { if (!document.hidden) void load(); }, WAKE_POLL_MS);
@@ -420,17 +422,23 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
     <h3>${t("taskcard.subs")}</h3>
     <div class="tc-field-body">
       ${prog ? html`<div class="tp-subs-head"><span class="tp-subs-count" title=${t("taskcard.subsDone", prog.done, prog.total)}>${prog.done} / ${prog.total}</span><${ProgressBar} progress=${prog} wide /></div>` : null}
-      ${children.length ? html`<ul class="tc-children">${children.map((c) => html`<li key=${c.id}><button type="button" onClick=${() => onOpen(c.id)}>
-        <${StatusPill} status=${c.status} card=${c} /><span class="tb-code">${c.id}</span><span class="tc-child-title">${c.title}</span><span class="tb-who">${c.assignee || ""}</span></button></li>`)}</ul>` : null}
+      ${children.length ? html`<${SubRows} children=${children} handoffs=${detail.handoffs} doing=${doing} ready=${ready} onOpen=${onOpen} />` : null}
       ${finished || !can ? null : html`<${QuickAdd} placeholder=${t("taskcard.quickAdd")} limit=${LIMIT.title} onAdd=${(title) => run(() => boardApi.create({ parent: card.id, title }))} />`}
     </div>
   </section>` : null;
 
+  // What the agents are doing on this card (fleet-task-flow.js): a card in progress whose assignee is working — or, for a main task, whose sub
+  // task's is — is "Running" beside its status; a main task's "Agent activity" lists what each sub task is doing, and a sub task waiting to
+  // start says where its hand-over stands.
+  const runNow = runOf(card, { states: instanceStates(appStore.get(), [card.assignee, ...children.map((c) => c.assignee)].filter(Boolean)), doing, ready }, children);
+  const flowOn = derived && !finished && hasFlow(children, detail.handoffs, doing, ready);
+  const flow = flowOn ? html`<${FlowLines} subs=${children} handoffs=${detail.handoffs} doing=${doing} ready=${ready} onOpen=${onOpen} />` : null;
+  const batonLine = !isMain && card.status === "open" ? subLine(card, flowContext([card], detail.handoffs, doing, ready)) : null;
   return html`<div class="tp" ref=${root} data-card=${card.id}>
     ${bar({ parent, actions: html`${copyBtn}${blockBtn}${more}` })}
     <div class="tp-grid">
       <div class="tp-head">
-        <div class="tp-idrow"><span class="tb-code tp-code">${card.id}</span><${StatusPill} status=${card.status} card=${card} />${detail.archived ? html`<span class="tb-tag" title=${t("tasksArchive.tagTip", detail.archiveAfterDays ?? "")}>${t("tasksArchive.tag")}</span>` : null}
+        <div class="tp-idrow"><span class="tb-code tp-code">${card.id}</span><${StatusPill} status=${card.status} card=${card} /><${RunMark} run=${runNow} />${detail.archived ? html`<span class="tb-tag" title=${t("tasksArchive.tagTip", detail.archiveAfterDays ?? "")}>${t("tasksArchive.tag")}</span>` : null}
           ${derived && !finished ? html`<span class="tp-derived">${t("taskcard.followsSubs")}</span>` : null}</div>
         <div class="tc-head" ref=${head} tabindex="-1" role="heading" aria-level="2">
           ${can ? html`<${InlineTitle} value=${card.title} version=${card.version} limit=${LIMIT.title} onSave=${(title, base) => save({ title }, base)} />` : html`<h2 class="tc-title">${card.title}</h2>`}
@@ -450,7 +458,7 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
           <${EditableText} readOnly=${!can} value=${card.blockedReason} limit=${LIMIT.blockedReason} version=${card.version} onSave=${(v, base) => save({ blockedReason: v }, base)} /></${Field}>` : null}
         ${spec.shown.length ? html`<div class="tp-spec">${spec.shown}</div>` : null}
         ${spec.adders.length ? html`<div class="tp-adders">${spec.adders}</div>` : null}
-        <${AgentRun} card=${card} detail=${detail} doing=${doing} derived=${derived} shown=${handoff.shown} adders=${handoff.adders} />
+        <${AgentRun} card=${card} detail=${detail} doing=${doing} ready=${ready} derived=${derived} shown=${handoff.shown} adders=${handoff.adders} flow=${flow} flowOn=${flowOn} baton=${batonLine ? batonLine.text : ""} />
         <${FilesField} files=${(detail && detail.attachments) || []} />
         ${subs}
       </div>

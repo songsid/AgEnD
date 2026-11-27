@@ -18,8 +18,9 @@ import "/assets/chat-render.js";
 import "/assets/chat-strings.js";
 import { Icon } from "/assets/ui-icons.js";
 import { BoardOffNote, boardOffTargets, relTime } from "./fleet-task-common.js";
-import { AgentTag, instanceStates } from "./fleet-task-run.js";
+import { AgentTag, inProgressBy, instanceStates, readyOpenBy } from "./fleet-task-run.js";
 import { WakeStatus, wakeNames } from "./fleet-task-wake.js";
+import { BatonEntry, batonRun, handoffNames, startedAfter } from "./fleet-task-flow.js";
 import { appStore } from "/assets/app-store.js";
 import { WhoCard } from "./fleet-task-owner.js";
 import { insertAtTrigger, triggerAt, withoutCode } from "./trigger-complete.js";
@@ -34,7 +35,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 export { MdBody, commentHtml, decorateCode };
 
 export const TIMELINE_FILTERS = ["all", "comments", "log", "history"];
-const RANK = { event: 0, log: 1, comment: 2 };   // at one instant: the move first, then the words that came with it
+const RANK = { event: 0, baton: 0, log: 1, comment: 2 };   // at one instant: the move first, then the words that came with it
 
 const when = (iso) => { const n = Date.parse(iso); return Number.isFinite(n) ? n : 0; };
 
@@ -57,12 +58,17 @@ export function timelineOf(detail) {
     if (ev.type === "logged" && !(ev.data && ev.data.watchers)) continue;   // a log entry is shown as itself; a watcher change has none (the board writes the event only)
     out.push({ key: `h${ev.id}`, type: "event", at: ev.at, who: ev.actor, by: ev.actorKind || "", ev });
   }
+  // A main task's activity also holds what happened to its sub tasks: each move of one (a history line with the sub task's number) and
+  // each handoff — "S-1 done → handed to dev to start S-2" and how far it got (fleet-task-flow.js; the handoffs only for a session that can write).
+  for (const e of (detail && detail.subEvents) || []) out.push({ key: `s${e.id}`, type: "event", at: e.at, who: e.actor, by: e.actorKind || "", ev: { type: "moved", data: e.data || {}, sub: { id: e.card, title: e.title } } });
+  for (const h of (detail && detail.handoffs) || []) out.push({ key: `b${h.id !== undefined ? h.id : `${h.card}-${h.to}-${h.at}`}`, type: "baton", at: h.at, who: h.to, by: "", h, started: startedAfter(h, detail) });
   return out.map((e, i) => ({ e, i })).sort((a, b) => when(a.e.at) - when(b.e.at) || RANK[a.e.type] - RANK[b.e.type] || a.i - b.i).map((x) => x.e);
 }
 
 /** The entries a filter shows: everything, or one kind of them. */
 export function timelineShown(entries, filter) {
-  const type = { comments: "comment", log: "log", history: "event" }[filter];
+  if (filter === "history") return entries.filter((e) => e.type === "event" || e.type === "baton");
+  const type = { comments: "comment", log: "log" }[filter];
   return type ? entries.filter((e) => e.type === type) : entries;
 }
 
@@ -267,6 +273,11 @@ export function Timeline({ detail, describe, cards = [], lead = null, thread = n
   // Where each comment written for an instance stands (fleet-task-wake.js): the instance's state is the page's own (the card's "Running" inference);
   // read at each draw — the card page draws again with the store.
   const wakeStates = thread && card ? instanceStates(appStore.get(), wakeNames(detail)) : null;
+  // …and where a handoff stands: the same, for the instances it was made to (the page's own inference: offline, paused, working).
+  const flowStates = card ? instanceStates(appStore.get(), handoffNames(detail)) : null;
+  // …and, for a hand-over whose card is still open but whose agent is running on it, the running line the sub task's row says (not claimed).
+  const board = { doing: inProgressBy(cards), ready: readyOpenBy(cards) };
+  const batonRunOf = (entry) => (entry.started || !card ? null : batonRun(entry.h, detail, board.doing, board.ready));
   const jump = (id) => { setFlash(id); setTimeout(() => setFlash((cur) => (cur === id ? null : cur)), 2400); };
   const ctx = thread && card ? {
     writable: !!thread.writable, viewer, picking: ui.picking, editing: ui.editing, flash, fresh: fresh.length ? new Set(fresh) : null,
@@ -320,7 +331,9 @@ export function Timeline({ detail, describe, cards = [], lead = null, thread = n
   for (const part of parts) {
     if (part.day) rows.push(html`<li key=${`d${dayKey(part.day)}`} class="tl-day" role="presentation"><span>${dayLabel(part.day)}</span></li>`);
     for (const item of streamOf(part.entries, filter === "all")) {
-      if (item.kind === "card") rows.push(item.entry.type === "comment" ? commentRow(item.entry) : html`<${Entry} key=${item.entry.key} entry=${item.entry} describe=${describe} who=${who} />`);
+      if (item.kind === "card") rows.push(item.entry.type === "comment" ? commentRow(item.entry)
+        : item.entry.type === "baton" ? html`<${BatonEntry} key=${item.entry.key} entry=${item.entry} states=${flowStates} runFor=${batonRunOf} />`
+        : html`<${Entry} key=${item.entry.key} entry=${item.entry} describe=${describe} who=${who} />`);
       else {
         const open = item.fold ? toggled[item.key] === true : true;
         rows.push(html`<${Run} key=${item.key} run=${item} describe=${describe} open=${open} onToggle=${() => setToggled((cur) => ({ ...cur, [item.key]: !open }))} />`);

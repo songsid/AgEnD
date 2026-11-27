@@ -25,7 +25,7 @@ import { CardMenu, cardAt, cardMenuItems, pageOrder, stepsOf } from "./fleet-tas
 import { ListView, NO_REACH, SubList, TaskToolbar, doneShown, formatFilters, keepFilters, listRows, mainMatches, readDisplay, scrollReach, startFilters, writeDisplay } from "./fleet-task-view.js";
 import { CreateMainDialog } from "./fleet-task-create.js";
 import { InstancesDrawer } from "./fleet-task-work.js";
-import { RunMark, inProgressBy, runOf, useRunContext } from "./fleet-task-run.js";
+import { RunMark, inProgressBy, readyOpenBy, runOf, useRunContext } from "./fleet-task-run.js";
 import { OwnerChip, otherWorkers, quietInfo } from "./fleet-task-owner.js";
 import { InsightsDialog } from "./fleet-task-stats.js";
 import { ToSort, sortCount } from "./fleet-task-sort.js";
@@ -302,7 +302,7 @@ export function TaskBoardTab({ lease }) {
   return html`<div class="tb" onContextMenu=${onMenu}>
     ${writable ? null : html`<p class="tb-readonly" role="note"><${Icon} name="eye" size=${16} />${t("tasks.readOnly")}</p>`}
     ${writable && !openId ? html`<${BoardOffNote} names=${boardOff} />` : null}
-    ${openId ? html`<${CardPage} key=${openId} id=${openId} tick=${tick} projects=${projects} cards=${cards} boardOff=${boardOff} doing=${inProgressBy(cards)} writable=${writable} place=${writable ? placeOf(cards, openId, reload) : null}
+    ${openId ? html`<${CardPage} key=${openId} id=${openId} tick=${tick} projects=${projects} cards=${cards} boardOff=${boardOff} doing=${inProgressBy(cards)} ready=${readyOpenBy(cards)} writable=${writable} place=${writable ? placeOf(cards, openId, reload) : null}
       steps=${stepsOf(trail, openId, cards)} where=${where} back=${t(display.view === "list" ? "taskcard.backList" : "taskcard.backBoard")}
       onBack=${closeCard} onOpen=${openCard} onStep=${stepToCard} reloadBoard=${reload} />` : body}
     ${menuCard ? html`<${CardMenu} at=${{ x: menu.x, y: menu.y }} label=${t("taskmenu.label", menuCard.id)} onClose=${closeMenu}
