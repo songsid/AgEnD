@@ -14,15 +14,19 @@ import type { HubMountedService } from "../src/hub/mount.js";
 import type { HubQuestion } from "../src/hub/types.js";
 
 it("#3878: reopens an alpha.3 held question, reconnects, and answers new work once without replaying the hold", async () => {
-  const r = await hubRig(); let service: HubMountedService | undefined;
+  // M-3636: the server marks a link ready only after its reconcile reply has been written, and the member may report the
+  // link up (and start() return) before that. A question sent in that gap is refused ("unavailable"), so every send waits
+  // for the server's own ready signal and uses that link's epoch.
+  let ready: { epoch: number } | null = null, onReady: (() => void) | null = null;
+  const r = await hubRig({ serverReady: link => { ready = { epoch: link.linkEpoch }; onReady?.(); } }); let service: HubMountedService | undefined;
+  const readyEpoch = async () => { if (!ready) await new Promise<void>(resolve => { onReady = resolve; }); onReady = null; return ready!.epoch; };
   const attempts: HubRepresentativeDelivery[] = [], inputs: HubRepresentativeDelivery[] = [], answers: string[] = [];
-  let api: HubMemberExposureApi | null = null, refuseBegin = true, epoch = 0;
+  let api: HubMemberExposureApi | null = null, refuseBegin = true;
   const links: string[] = [];
   let settled: ((agent: string, correlationId: string) => boolean) | null = null;
   try {
     const profile = await r.pair();
     r.setReceive(async (frame, link) => {
-      epoch = link.linkEpoch;
       const common = { v: 1 as const, requestId: frame.requestId, linkEpoch: link.linkEpoch };
       if (frame.type === "reconcile") return { ...common, type: "reconcile", payload: { receipts: [], nextReceiptSequence: 0, more: false } };
       if (frame.type === "receipt") return { ...common, type: "receipt", payload: frame.payload };
@@ -54,7 +58,7 @@ it("#3878: reopens an alpha.3 held question, reconnects, and answers new work on
       revocationVersion: r.store.read().revocationVersion, contentDigest: sha256("Owned upgrade fixture"), issuedAt: now,
       expiresAt: now + 120_000, nonce: randomBytes(32).toString("hex") }, key) }; };
     const held = question();
-    await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: randomUUID(), linkEpoch: epoch, payload: held });
+    await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: randomUUID(), linkEpoch: await readyEpoch(), payload: held });
     const path = join(r.memberHome, memberSet(r.identity.hubId).database);
     const readState = () => { const db = new Database(path, { readonly: true });
       try { return db.prepare("SELECT state FROM hub_representative_questions WHERE message_id=?").get(held.identity.messageId); } finally { db.close(); } };
@@ -70,7 +74,7 @@ it("#3878: reopens an alpha.3 held question, reconnects, and answers new work on
     const message = old.prepare("SELECT * FROM hub_member_messages").all();
     old.exec("ALTER TABLE hub_member_meta DROP COLUMN binding");
     old.prepare("UPDATE hub_schema SET version=1 WHERE component='s1-member-journal'").run(); old.close();
-    links.length = 0; refuseBegin = false;
+    links.length = 0; refuseBegin = false; ready = null;
     service = await create({}, () => true); await service.start();
     await vi.waitFor(() => expect(links).toContain("online"));
     const upgraded = new Database(path, { readonly: true });
@@ -80,13 +84,13 @@ it("#3878: reopens an alpha.3 held question, reconnects, and answers new work on
     } finally { upgraded.close(); }
     expect(attempts).toHaveLength(1); expect(inputs).toHaveLength(0);
     const next = question();
-    await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: randomUUID(), linkEpoch: epoch, payload: next });
+    await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: randomUUID(), linkEpoch: await readyEpoch(), payload: next });
     await vi.waitFor(() => expect(inputs).toHaveLength(1));
     const rep = (service as unknown as { representative: HubRepresentativeExecution }).representative;
     expect(settled!("probe", inputs[0]!.correlationId)).toBe(false);   // M-3660: being answered: the window keeps restricting
     expect(await rep.report({ correlationId: inputs[0]!.correlationId, caller: "probe", text: "Owned answer" })!).toMatchObject({ ok: true });
     const replayId = randomUUID();
-    await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: replayId, linkEpoch: epoch, payload: next });
+    await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: replayId, linkEpoch: await readyEpoch(), payload: next });
     await vi.waitFor(() => expect(r.received.some(frame => frame.type === "receipt" && frame.requestId === replayId && frame.payload.messageId === next.identity.messageId)).toBe(true));
     expect(inputs).toHaveLength(1); expect(answers).toEqual([next.identity.messageId]); expect(readState()).toEqual({ state: "held" });
     expect(settled!("probe", inputs[0]!.correlationId)).toBe(true);   // M-3660: answered and released
