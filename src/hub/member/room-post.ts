@@ -1,5 +1,5 @@
 import {HUB_ROOM_HISTORY_CAPABILITY,roomHistorySchema,roomHistoryResultSchema,type RoomHistoryOptions,type HubRoomHistoryResult} from "../room-history-model.js";
-import {requestHubRoomMatches,type RequestHubOutputScope} from "../../request-hub-output.js";
+import {requestHubHistoryMatches,requestHubRoomMatches,type RequestHubOutputScope} from "../../request-hub-output.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY,type RoomMemberOptions} from "../room-members-model.js";
 import type Database from "better-sqlite3";
 import {HUB_DIRECT_POST_CAPABILITY} from "../direct-posts-model.js";
@@ -163,12 +163,13 @@ export class HubRoomPostAdapter implements AgentRoomPort {
   }
   async history(caller:RoomCaller,room:string,options:RoomHistoryOptions={}):Promise<HubRoomHistoryResult|ShareLapsed>{
     const lapsed=this.lapse(caller);if(lapsed)return lapsed;
+    if(!requestHubHistoryMatches(caller.requestScope,this.options.hubId,room))return {ok:false,code:"denied"};
     const link=this.link,local=this.local(caller.agent);
     if(!link?.history||!link.features.has(HUB_ROOM_HISTORY_CAPABILITY)||!local||!this.current(caller,local,link))return {ok:false,code:"unavailable"};
     if(!roomHistorySchema.safeParse({exposureId:local.exposureId,room,...options}).success)return {ok:false,code:"invalid"};
     try{
       const result=roomHistoryResultSchema.parse(await link.history(local.exposureId,room,options));
-      if(!this.current(caller,local,link))return {ok:false,code:"stale"};
+      if(!this.current(caller,local,link)||!requestHubHistoryMatches(caller.requestScope,this.options.hubId,room))return {ok:false,code:"stale"};
       // IDs are authoritative; a name selection is resolved and membership checked by the Hub.
       if(result.ok&&UUID.test(room)&&result.roomId!==room)return {ok:false,code:"stale"};
       return result;

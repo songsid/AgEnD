@@ -4,9 +4,9 @@ import {captureRequestContextCall,type RequestContextCallAdmission} from "../src
 import {assertRequestContextOperation,REQUEST_CONTEXT_POLICY_COPY,RequestContextPolicyError} from "../src/request-context-policy.js";
 import {requestContextDigest} from "../src/request-context-store.js";
 import type {RequestContextV1} from "../src/request-context-protocol.js";
-function fixture(ingress:RequestContextV1["ingress"]="hub"){
+function fixture(ingress:RequestContextV1["ingress"]="hub",audience:"hub"|"room"="hub"){
  const id=randomUUID(),room=randomUUID();let live=true;
- const context:RequestContextV1={ref:{version:1,contextId:id,rootContextId:id},rootEvidenceRef:"fixture",ingress,initiatingActor:ingress==="hub"?{kind:"person",platform:"hub",hubId:"demo-hub",id:"directory/demo-person"}:{kind:"person",platform:"discord",userId:"demo-person"},source:{instance:"demo-source",incarnation:"v1"},sourceAudience:{kind:"hub",ref:room}};
+ const context:RequestContextV1={ref:{version:1,contextId:id,rootContextId:id},rootEvidenceRef:"fixture",ingress,initiatingActor:ingress==="hub"?{kind:"person",platform:"hub",hubId:"demo-hub",id:"directory/demo-person"}:{kind:"person",platform:"discord",userId:"demo-person"},source:{instance:"demo-source",incarnation:"v1"},sourceAudience:{kind:audience,ref:room}};
  const lease=captureRequestContextCall({token:randomUUID(),inputId:"admitted",context,wireSha256:requestContextDigest("input"),owner:{instance:"demo-source",incarnation:"v1",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0}},()=>live);
  const admission:RequestContextCallAdmission={coverage:"covered",lease};
  return {context,room,admission,live:(value:boolean)=>{live=value;},call:(tool:string,args:Record<string,unknown>={})=>assertRequestContextOperation({instance:"demo-source",tool,args,admission})};
@@ -41,4 +41,13 @@ it.each(["get_fleet_config","get_web_settings","get_instance_logs","get_usage","
 });
 it("other supported Hub reads keep their existing role-checked route",()=>{
  for(const tool of ["list_instances","get_fleet_status","hub_room_members","list_schedules"])expect(fixture().call(tool).kind).toBe("read");
+});
+
+it('room history under Hub ingress stays in the original group room; owner reads remain available',()=>{
+ const room=fixture('hub','room');expect(room.call('hub_room_history',{room:room.room}).kind).toBe('read');
+ expect(()=>room.call('hub_room_history',{room:randomUUID()})).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.room);
+ expect(()=>room.call('hub_room_history',{room:'same-room-name'})).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.room);
+ expect(()=>fixture('hub').call('hub_room_history',{room:room.room})).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.room);
+ expect(fixture('owner').call('hub_room_history',{room:randomUUID()}).kind).toBe('ordinary');
+ expect(()=>assertRequestContextOperation({instance:'demo-source',tool:'hub_room_history',args:{room:room.room}})).toThrow(REQUEST_CONTEXT_POLICY_COPY.en.uncovered);
 });
