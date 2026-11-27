@@ -1,5 +1,5 @@
 {
-  "sourceHead": "e270f2ff3357181d21bb812e51e354f4b487944a",
+  "sourceHead": "5d499df845bf51be2512f86aaca87a5d8445d02b",
   "dirty": [],
   "checks": [
     {
@@ -68,6 +68,10 @@
     },
     {
       "name": "desk-light-en 5: the card's other buttons are off meanwhile",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: no How to fix while its agend install runs",
       "ok": true
     },
     {
@@ -183,6 +187,10 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW 5: no How to fix while its agend install runs",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 5: no toast over the page",
       "ok": true
     },
@@ -226,44 +234,44 @@
   "pictures": [
     {
       "path": "s246-desk-light-en-1-not-service.png",
-      "sha256": "80d0a8da3ec9afe1fece2e840172332411801400d0c37f0432ef402c5be24a63"
+      "sha256": "d09b3a22c82f8f7efe360cc58353d41e248de3a9da6580bd7e3eaae69d39f3c0"
     },
     {
       "path": "s246-desk-light-en-2-confirm.png",
-      "sha256": "c1d43a8a6133544ec1b78b48c477e46efbc15ca9dd8eff736aa398ef62929af1"
+      "sha256": "d5c2ba3280d27b909d2f7baab11c854d8a2c08aba3ca38ab30fd29b25ebcc82b"
     },
     {
       "path": "s246-desk-light-en-4-refused.png",
-      "sha256": "35502e3968cacc955c83b76761ef045e5a2d245b412c8690a62dee9859e69a01"
+      "sha256": "441e98da6d27757803925c09ad34587bcfb01ec70c88b4d70a025c1e75286eb8"
     },
     {
       "path": "s246-desk-light-en-5-restarting.png",
-      "sha256": "ec3dfc49d0e110405005823ece330114f4e5230f034cf41d4bd9d7dae3b40295"
+      "sha256": "0589a69677438c738e33c3fb93384a3a1ca5f0ac9d51db6ea045a20b40cacdef"
     },
     {
       "path": "s246-desk-light-en-5b-back.png",
-      "sha256": "206702fa4eeb0bd53fb0e2de358e1d184a2362053d00a0baa7f80312e66fb17d"
+      "sha256": "052ac87b76b8815f62154428d939793c42a5f4ae9df4768670e4cca1c64bd40f"
     },
     {
       "path": "s246-phone-dark-zh-TW-1-not-service.png",
-      "sha256": "ad92515a780f7f5a591fdb60ac73ee1fc96d8fd123f960327a8d030f9ae1f022"
+      "sha256": "91fcce73f7a4e13698ae46252c866327ae042f2d5847a02694c9b59942e54bf2"
     },
     {
       "path": "s246-phone-dark-zh-TW-2-confirm.png",
-      "sha256": "ca5ee560a38c632d56c118c513b93eac07da4a0c714f9371b0ae528bfb92165b"
+      "sha256": "830baa831c32470f11b86af926be706102c02159b795f0afc4b730be7d99ccc7"
     },
     {
       "path": "s246-phone-dark-zh-TW-4-refused.png",
-      "sha256": "1d72b53bc85262f118927387c885fe1769b9868d5e3dcb4dc6b330694e24427c"
+      "sha256": "5d86e7c0a806a14c91aa408c83c26e4791900d69765cd5745eb6c013d8012846"
     },
     {
       "path": "s246-phone-dark-zh-TW-5-restarting.png",
-      "sha256": "549d73e1aec2dbf7e3c402d1aa781e7b79eb91f98c5fce9fe095edacde4eb10c"
+      "sha256": "d28c3c4b0a25ec62bfeb577c4dc8d695d92defa96cfff0c8e5417694d6e32b03"
     },
     {
       "path": "s246-phone-dark-zh-TW-5b-back.png",
-      "sha256": "e0f549db08c15bc77bc74903e2e4d93ce7949605463e2eb0aa64af4e5a63e962"
+      "sha256": "183bb7aef0f657b2f3ad1ffa5e66b736e5e55167b5ce31579eb63a8eb47e5f8e"
     }
   ],
-  "summary": "55/55"
+  "summary": "57/57"
 }
