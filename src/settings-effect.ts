@@ -1,6 +1,7 @@
 import { getLocale, t } from "./locale.js";
 import { RequestContextControlDecisionSchema, RequestContextControlViewSchema, type RequestContextControlView } from "./request-context-control-api.js";
 import {parseHostAlertSettings,type HostAlertSettings} from './host-monitoring-alert-settings.js';
+import { applyUpdatesPatch } from "./update-settings.js";
 import { monitoringConfig, parseMonitoringSettings } from "./host-monitoring-config.js";
 import { parseHubPageSharing } from "./hub-page-sharing-settings.js";
 import { officeInputPatch } from "./dashboard-permissions.js";
@@ -95,7 +96,7 @@ export function isSettingsMutation(method: string, path: string): boolean {
   // AGEND-148: and on a paired Windows computer (Install, and the Runtime's Update which is that install over an older copy). The computer's owner's own switch is asked there, separately.
   if (method === "POST" && isRuntimeCliInstallPath(path)) return true;
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
-  return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|appearance|runtimes|monitoring|host-alerts|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
+  return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|appearance|runtimes|monitoring|updates|host-alerts|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
     || path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path);
 }
 function record(body: unknown): Record<string, any> {
@@ -441,6 +442,12 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const monitoring = { ...before.fleet.monitoring, ...parsed.patch };
     if (monitoring.enabled && context.hostMonitoringAvailable?.() !== true) throw new SettingsConfirmationError(409, "monitoring_unavailable");
     after.fleet.monitoring = monitoring;
+  } else if (path === "/api/settings/fleet/updates") {
+    // M-3770 1.4 (#4487 review P1): one parser with the handler; each key judged by direction (updatesLoosened, settings-change.ts).
+    if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
+    const applied = applyUpdatesPatch(cfg.updates, body);
+    if (!applied.ok) throw new SettingsConfirmationError(400, applied.error === "invalid_updates" ? "invalid_updates" : "invalid_updates_body");
+    after.fleet.updates = applied.next;
   } else if (path === "/api/settings/fleet/runtimes") {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
     // M-2255: one parser with the handler; each switch is judged by direction (settings-change.ts).

@@ -11,6 +11,10 @@ register("hubRoomSettings", {
     rowMenu: "More for {0}",
     save: "Save",
     saveFailed: "That was not saved. Try again.",
+    membersOwnAgents: "Members can add their own agents",
+    membersOwnAgentsHint: "Members can add agents they own and have shared on this Hub. Room managers can remove them. For another owner’s agent, ask a room manager to use Ask its owner.",
+    noAgentsMember: "No agents yet. Add an agent you own, or ask a room manager to add or invite one.",
+    addOwnAgents: "Add your agents", ownAgentsHint: "Choose an agent you own and have shared on this Hub. Everyone in this room can ask it here.",
     assistantSwitch: "Room assistant",
   },
   "zh-TW": {
@@ -20,6 +24,10 @@ register("hubRoomSettings", {
     rowMenu: "{0} 的更多動作",
     save: "儲存",
     saveFailed: "沒有儲存，請再試一次。",
+    membersOwnAgents: "成員可以加入自己擁有的 Agent",
+    membersOwnAgentsHint: "成員可以加入自己擁有、且已分享到這個 Hub 的 Agent。房間管理員可以移除。其他人擁有的 Agent，請房間管理員使用「請擁有者加入」。",
+    noAgentsMember: "還沒有 Agent。可以加入自己擁有的 Agent，或請房間管理員加入或邀請。",
+    addOwnAgents: "加入自己的 Agent", ownAgentsHint: "選擇自己擁有、且已分享到這個 Hub 的 Agent。房間裡的每個人都能在這裡向它提問。",
     assistantSwitch: "房間助理",
   },
 });

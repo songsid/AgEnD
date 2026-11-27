@@ -1,0 +1,277 @@
+{
+  "sourceHead": "5a69baa2a0aa9980773942d1fccb620355a0552f",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en 1: not a service: the line, How to fix, and one button, Install as a service",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-1-not-service: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: asks first: the title, what happens to every Agent, and after",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: Install and restart, and Cancel",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: nothing sent yet",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-2-confirm: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: Cancel sends nothing and runs nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: one POST, with the page's confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the block says the cause in the product's words, the command's own words as a detail, and that AgEnD keeps running",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the next step: the WSL fix, and when the button comes back",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the raw words' chip stays inside the block (it wraps)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: no toast over the page",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the line stays; the button and How to fix (its agend install just failed) are gone",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-4-refused: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the block says AgEnD is installing and restarting; the button says Installing… and can't be pressed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the card's other buttons are off meanwhile",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: no How to fix while its agend install runs",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: no toast over the page",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-5-restarting: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5b: back: says so, in full; the line is ✓ and its button gone",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5b: the restarting line is gone",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-5b-back: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: not a service: the line, How to fix, and one button, Install as a service",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the button is 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-1-not-service: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: asks first: the title, what happens to every Agent, and after",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: Install and restart, and Cancel",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: nothing sent yet",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「短暫停止」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「重新連線」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「重新啟動」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: a bottom sheet with 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-2-confirm: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: Cancel sends nothing and runs nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: one POST, with the page's confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the block says the cause in the product's words, the command's own words as a detail, and that AgEnD keeps running",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the next step: the WSL fix, and when the button comes back",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the raw words' chip stays inside the block (it wraps)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: no toast over the page",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the line stays; the button and How to fix (its agend install just failed) are gone",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-4-refused: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the block says AgEnD is installing and restarting; the button says Installing… and can't be pressed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the card's other buttons are off meanwhile",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: no How to fix while its agend install runs",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: no toast over the page",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-5-restarting: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5b: back: says so, in full; the line is ✓ and its button gone",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5b: the restarting line is gone",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5b: the toast has gone before the frame",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-5b-back: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "nothing was installed: no launch reached",
+      "ok": true
+    },
+    {
+      "name": "the look again after the hand-over was answered locally (no registry)",
+      "ok": true
+    },
+    {
+      "name": "the command ran only once confirmed: refused, then the hand-over, per case",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "s246-desk-light-en-1-not-service.png",
+      "sha256": "b9978e92d7e2c1f41e603e61365db0443cf6700c3c8eb649ba12e046081a3fa3"
+    },
+    {
+      "path": "s246-desk-light-en-2-confirm.png",
+      "sha256": "7f6492fed6183a6510ce22f3584b0dfe931a65bc101c112754a77cffb260ef53"
+    },
+    {
+      "path": "s246-desk-light-en-4-refused.png",
+      "sha256": "44238aa19115083d189a4144fbe37791e16430eb63616b1b5e3afecd67695f2b"
+    },
+    {
+      "path": "s246-desk-light-en-5-restarting.png",
+      "sha256": "7670c29e3d21a8cffcf1c8e6b4b628d57b024617e97545bdb6e74003f3ee9193"
+    },
+    {
+      "path": "s246-desk-light-en-5b-back.png",
+      "sha256": "05e1b841e6351450e4c6e03377e3b994141cce2320bf3915ee7ff53596b88dcf"
+    },
+    {
+      "path": "s246-phone-dark-zh-TW-1-not-service.png",
+      "sha256": "092ba9e4f339d8d078a9d71a77ec9568bb93184ea2fee21bd764bfd6c482fb60"
+    },
+    {
+      "path": "s246-phone-dark-zh-TW-2-confirm.png",
+      "sha256": "ab53ec544da40f31a3db14215a48696a932a71ca9af4027b036c2cbe9c2da56f"
+    },
+    {
+      "path": "s246-phone-dark-zh-TW-4-refused.png",
+      "sha256": "74d14d4b7904ae7bf35d10464bfe2a3237ee238c4ec5b608e0a0e9137188f9d1"
+    },
+    {
+      "path": "s246-phone-dark-zh-TW-5-restarting.png",
+      "sha256": "bc0ea52e34ef946927fed86605eb95042eedba0aad0b3b46a1a3cec48aee6a78"
+    },
+    {
+      "path": "s246-phone-dark-zh-TW-5b-back.png",
+      "sha256": "bdaf8e8919dae6167c1ed4e01f37b6d5a9a73b8cbb56ba204e102c3bdd60607b"
+    }
+  ],
+  "summary": "57/57"
+}

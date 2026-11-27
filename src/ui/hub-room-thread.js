@@ -1,3 +1,4 @@
+import { hs as roomSettingsText } from "./hub-room-settings-strings.js";
 import {RoomPurposeCard} from "./hub-room-purpose.js";
 import { hi } from "./hub-agent-intro.js";
 import {hp} from "./hub-personal-agent-strings.js";
@@ -27,8 +28,9 @@ import {ha} from "./hub-ai-apps-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
 import { TextSizeButton, TEXT_SIZES, setTextSize, textSizeStore } from "/assets/header-tools.js";
 import { useStore } from "/assets/app-store.js";
-import { notifyStore, notifySupport, setNotify } from "/assets/app-needs.js";
+import { notifyStore, notifySupport } from "/assets/app-needs.js";
 import { HubNotifyToggle } from "./hub-room-notify.js";
+import { setHubNotify } from "./hub-notify-keep.js";
 import { InstallAppButton, installLabel, installOffered, installStore, runInstall } from "/assets/app-install.js";
 import { createHubButtonActions } from "./hub-button-actions.js";
 import { linkRoomsU2Css } from "./hub-room-new-strings.js";
@@ -183,6 +185,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
   const num = (id) => { if (!ids.has(id)) ids.set(id, ids.size * 2 + 2); return ids.get(id); };
   for (const m of ordered) {
     if (!m || typeof m.id !== "string") continue;
+    if (m.answerTo && m.acknowledgedByReaction === true) continue;
     const author = m.author || {}, kind = author.kind;
     // An answer still to come (queued, or being worked on: the working bar says who) is never an empty bubble.
     if (m.answerTo && !m.text && (m.stage === "queued" || m.stage === "working")) continue;
@@ -455,6 +458,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   }, [store]);
   // dev-claude2's room settings (hub-room-settings.js), opened from the header or the members panel.
   const [settings, setSettings] = useState(null);
+  const [ownAgents, setOwnAgents] = useState(null);
+  useEffect(() => setOwnAgents(null), [roomId]);
+  const openOwnAgents = () => { import("./hub-room-settings.js").then(m => setOwnAgents(() => m.OwnRoomAgents), () => {}); };
   const openSettings = () => { import("./hub-room-settings.js").then((m) => { if (typeof m.RoomSettings === "function") setSettings(() => m.RoomSettings); }, () => {}); };
   // Lumen (spec §3, §7): 「離開房間」 for everyone in a group room, through U2's leaveRoom (the last manager is told why not).
   const [leaveError, setLeaveError] = useState("");
@@ -617,6 +623,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     narrow && officeOn && !inOffice ? { key: "office", label: hroom("tabOffice"), icon: "org", onSelect: () => onView("office") } : null,
     // In the office a phone's options (hide paused, bedtime, dialogue, key, fit, fill) are one sheet, not rows over the scene.
     narrow && inOffice ? { key: "officeMore", label: hroom("officeOptions"), icon: "settings", onSelect: () => setOfficeMore(true) } : null,
+    group && detail?.me?.role === "member" && detail?.settings?.membersCanAddOwnAgents === true && room.archived !== true && typeof client.roomOwnAgentCandidates === "function" ? { key: "ownAgents", label: roomSettingsText("addOwnAgents"), icon: "plus", onSelect: openOwnAgents } : null,
     group && detail?.me?.role === "manager" ? { key: "settings", label: hroom("roomSettings"), icon: "settings", onSelect: openSettings } : null,
     group && detail?.me ? { key: "leave", label: hroom("leaveRoom"), icon: "close", onSelect: () => { void leave(); } } : null,
     pinCount ? { key: "pins", label: `${t("chat.pinsTitle")} · ${pinCount}`, icon: "pin", onSelect: () => setPinsOpen(true) } : null,
@@ -625,7 +632,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     // move into ⋯ there (hub-chat.css hides the two buttons at the same width).
     ...(narrow ? [
       { key: "textSize", label: t("app.textSize", t(`app.textSize_${textSize.size}`)), icon: "type", onSelect: () => setTextSize(TEXT_SIZES[(TEXT_SIZES.indexOf(textSize.size) + 1) % TEXT_SIZES.length]) },
-      ...(notifySupport() === "ok" ? [{ key: "notify", checkbox: true, checked: notify.state === "on", disabled: notify.asking, label: hroom("notifyTitle"), onSelect: () => { void setNotify(notify.state !== "on"); } }] : []),
+      ...(notifySupport() === "ok" ? [{ key: "notify", checkbox: true, checked: notify.state === "on", disabled: notify.asking, label: hroom("notifyTitle"), onSelect: () => { void setHubNotify(notify.state !== "on"); } }] : []),
       // S-255: Install as an app sits by the bell, so on a phone it moves into ⋯ with it.
       ...(installOffered(install.state) ? [{ key: "install", label: installLabel(), icon: "install", onSelect: () => runInstall(install.state) }] : []),
     ] : []),
@@ -664,7 +671,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const panel = Panel && detail ? html`<${Panel} client=${client} roomId=${roomId} detail=${detail}
         onMention=${(m) => { setSheet(false); insertMention(m); }}
         onOpenChat=${chatWith} focus=${focus}
-        onSettings=${() => { setSheet(false); openSettings(); }} />` : null;
+        onSettings=${() => { setSheet(false); openSettings(); }} onAddAgents=${() => { setSheet(false); openOwnAgents(); }} />` : null;
   return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId} data-width=${fullWidth ? "full" : undefined} ref=${split}>
     <${LightboxHost} />
     ${pinsOpen ? html`<${RoomPinsDialog} pins=${store.pins()} onClose=${() => setPinsOpen(false)} onJump=${(p) => void showPin(p)} onUnpin=${(p) => void togglePin(p.messageId)} />` : null}
@@ -712,6 +719,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
       keyOf=${msgKey} reveal=${(k) => threadRef.current && threadRef.current.reveal(k)} download=${downloadHtml} allow=${(commit) => setHubPreviewOptIn(true, commit)} />`}
     ${showRail ? html`<${RailFrame} trust="hub-context" label=${hroom("members")} title=${hroom("members")} closeLabel=${hroom("cancel")} onClose=${() => setRail(false)}>${panel}</${RailFrame}>` : null}
     ${!wide && sheet && panel && group ? html`<${Dialog} title=${hroom("members")} label=${hroom("members")} onClose=${() => setSheet(false)}><div class="hub-rail-sheet">${panel}</div></${Dialog}>` : null}
+    ${ownAgents && detail ? html`<${ownAgents} key=${roomId} client=${client} roomId=${roomId} detail=${detail} onClose=${() => setOwnAgents(null)} onChanged=${() => { void store.refresh(); }} />` : null}
     ${settings && detail ? html`<${settings} client=${client} roomId=${roomId} detail=${detail} assistant=${hasAssistant}
       onClose=${() => setSettings(null)} onChanged=${() => { void store.refresh(); }} />` : null}
   </div>`;

@@ -94,6 +94,7 @@ import type { WebSessionStore, SessionRecord, WebDeviceRow } from "./web-session
 import { OPERATOR, isOwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
 import { WEB_NAME_FALLBACK, type WebAccount, webPersonKey } from "./web-profile.js";
 import { updateAnswerLabel } from "./update-card.js";
+import { isUpdateFix, SERVICE_FIX_CONFIRM } from "./update-fix.js";
 import { commitTeamCreate, commitTeamUpdate } from "./outbound-handlers.js";
 import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-mentions.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
@@ -897,6 +898,8 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
  *   POST /ui/update/check  look now (one a minute) → the GET's answer
  *   POST /ui/update/start  { confirm: "update-agend" } + Idempotency-Key → 202 { started } (the progress is the GET's)
  *   POST /ui/update/answer { action } + Idempotency-Key → 200 { card } (the one update offer)
+ *   POST /ui/update/fixes    { fix: "linger" } + Idempotency-Key → 200 { preflight } (M-3770 1.6: a pre-flight fix button);
+ *                            { fix: "service", confirm: "restart-as-service" } → 202 { restarting } (S-246), or 422 { reason }
  *   GET  /ui/update/log    { text, error } — the updater's own words, for the failure's "full log"
  * Signed-in sessions only (never the CLI's token or a guest; M-3278: the public link's sessions too, as locally); an
  * admin's for all but the version. Asked again once a body is in.
@@ -904,7 +907,7 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
 function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   const host = ctx.webUpdate;
   if (!host) { json(res, 404, { error: "not found" }); return true; }
-  const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/answer": "POST", "/ui/update/log": "GET" };
+  const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/answer": "POST", "/ui/update/fixes": "POST", "/ui/update/log": "GET" };
   if (!routes[path]) { json(res, 404, { error: "not found" }); return true; }
   if (routes[path] !== method) { res.setHeader("Allow", routes[path]!); json(res, 405, { error: "method not allowed" }); return true; }
   res.setHeader("Cache-Control", "no-store");
@@ -928,7 +931,7 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
   if (path === "/ui/update/log") { const l = host.updateLog(); json(res, 200, { text: l.text, error: l.error }); return true; }
   (async () => {
     let body: Record<string, unknown> = {};
-    try { body = await parseBody(req); } catch { if (path === "/ui/update/start" || path === "/ui/update/answer") { json(res, 400, { error: "Invalid JSON" }); return; } }
+    try { body = await parseBody(req); } catch { if (path === "/ui/update/start" || path === "/ui/update/answer" || path === "/ui/update/fixes") { json(res, 400, { error: "Invalid JSON" }); return; } }
     if (!permitWebContinuation(req, res, ctx) || res.destroyed) return;
     const now = who();
     if ("status" in now) { json(res, now.status, { error: now.error }); return; }
@@ -948,6 +951,18 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
       if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
       const answered = await host.answerUpdate(key, updateAnswerLabel(now.label), body, stillAllowed);
       json(res, answered.status, answered.ok ? { card: answered.card } : answered.body);
+      return;
+    }
+    if (path === "/ui/update/fixes") {
+      if (!host.fixUpdate) { json(res, 404, { error: "unavailable" }); return; }
+      const header = req.headers["idempotency-key"];
+      const key = typeof header === "string" ? header : "";
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
+      if (!isUpdateFix(body.fix)) { json(res, 400, { error: "fix must be one of: linger, service" }); return; }
+      // S-246: every Agent stops briefly — only once the page has asked.
+      if (body.fix === "service" && body.confirm !== SERVICE_FIX_CONFIRM) { json(res, 400, { error: `confirm must be "${SERVICE_FIX_CONFIRM}"` }); return; }
+      const fixed = await host.fixUpdate(key, now.person, body.fix, stillAllowed);
+      json(res, fixed.status, fixed.body);
       return;
     }
     const header = req.headers["idempotency-key"];

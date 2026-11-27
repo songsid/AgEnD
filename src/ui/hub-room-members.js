@@ -1,3 +1,4 @@
+import { hs } from "./hub-room-settings-strings.js";
 import {rp} from "./hub-room-purpose.js";
 import { hi } from "./hub-agent-intro.js";
 // Hub rooms, the right-hand members panel (docs/design/hub-rooms-ux.md section 5): the people, the agents in presence
@@ -119,7 +120,7 @@ export function ownerAgent(name) {
  * - onSettings();
  * - compact (M1): true / false for that list whatever the size; absent, a room over COMPACT_OVER gets the compact one.
  */
-export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMention, onOpenChat, onSettings, compact: force = undefined, focus = null } = {}) {
+export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMention, onOpenChat, onSettings, onAddAgents, compact: force = undefined, focus = null } = {}) {
   const [presence, setPresence] = useState({}), [open, setOpen] = useState(null), [expanded, setExpanded] = useState(false);
   // M-3565: `focus` ({ id, n }: a message's agent name pressed): that agent's card open, its owner's group unfolded, in view.
   useEffect(() => {
@@ -206,13 +207,14 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     ${compact ? compactList() : html`<section><h4>${heads.member}</h4>
       <ul>${people.map(person)}</ul>
     </section>
-    ${agents.length ? null : html`<section class="hub-room-no-agents"><h4>${hm("agents")}</h4><p class="note">${hm("noAgents")}</p></section>`}
+    ${agents.length ? null : html`<section class="hub-room-no-agents"><h4>${hm("agents")}</h4><p class="note">${!manager && detail.settings?.membersCanAddOwnAgents === true ? hs("noAgentsMember") : hm("noAgents")}</p></section>`}
     ${agents.length ? html`<section><h4>${heads.agent}</h4>
       <ul>${shown.map(agentItem)}</ul>
       ${fold.rest ? html`<button type="button" class="btn btn-link hub-members-more" onClick=${() => setExpanded(!expanded)}>${expanded ? hm("fewer") : hroom("moreN", fold.rest)}</button>` : null}
     </section>` : null}`}
     ${assistant ? html`<section><ul><li class="hub-member hub-member-assistant">${row({ ...assistant, name: hroom("roomAssistant") })}</li></ul></section>` : null}
     <section class="hub-room-who"><h4>${hroom("whoSees")}</h4><p class="note">${hroom("whoSeesRoom")}</p></section>
+    ${!manager && detail.settings?.membersCanAddOwnAgents === true && detail.room?.archived !== true && typeof client.roomOwnAgentCandidates === "function" ? html`<button type="button" class="btn btn-link hub-room-own-agents-link" onClick=${() => onAddAgents?.()}>${hs("addOwnAgents")}</button>` : null}
     ${manager ? html`<button type="button" class="btn btn-link hub-room-settings-link" onClick=${() => onSettings?.()}>${hroom("roomSettings")}</button>` : null}
   </aside>`;
 }
