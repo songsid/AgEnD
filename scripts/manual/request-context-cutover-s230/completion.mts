@@ -33,7 +33,7 @@ try{
      const m:any=await import(path),control:any=await import(path.replace(/settings-confirm\.js(?:[?#].*)?$/,"request-context-control.js"));void m.track(value,control.requestContextControlText("title"));
    },pending);
    await page.locator(".pending-card").waitFor();await page.locator(".pending-card .pending-details > summary").click();await page.locator(".pending-card").scrollIntoViewIfNeeded();await page.waitForTimeout(120);
-   check(`${tag}: irreversible lead before details`,await page.locator(".pending-card .notice.warn").innerText() === (c.lang==="en"?"Once on, AgEnD can't go back to an older version.":"開啟後無法退回舊版 AgEnD。"));
+   check(`${tag}: irreversible lead before details`,await page.locator(".pending-card .notice.warn").innerText() === (c.lang==="en"?"Once on, AgEnD can't go back to an older version.":"開啟後就不能再降回舊版 AgEnD。"));
    check(`${tag}: Apply now has no conflicting General direction`,!(await page.locator(".pending-card").innerText()).includes(c.lang==="en"?"press Confirm on the card in General":"請到 Discord"));
    check(`${tag}: fixture badge uses 2.4`,await page.getByText("v2.4.0-beta.25",{exact:true}).count()===1);
    check(`${tag}: pending summary carries irreversible effect`,(await page.locator(".pending-card").innerText()).includes(c.lang==="en"?"older AgEnD":"舊版 AgEnD"));await shot("settings-pending");

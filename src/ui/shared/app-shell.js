@@ -970,7 +970,7 @@ register("pendingHost", {
     moreHost: "On the computer running AgEnD, open AgEnD in its own browser and press Apply now on this card.",
   },
   "zh-TW": {
-    requestContextFloor: "開啟後無法退回舊版 AgEnD。",
+    requestContextFloor: "開啟後就不能再降回舊版 AgEnD。",
     no_chat: "這個 Fleet 沒有連接聊天平台，所以沒有 General 可以接收確認卡。",
     no_chat_do: "若要改從 Discord 或 Telegram 確認，請到「設定 → 聊天與連線」連接其中一個。",
     cross_platform: "這項變更涉及多個聊天平台，沒有單一的 General 可以確認。",

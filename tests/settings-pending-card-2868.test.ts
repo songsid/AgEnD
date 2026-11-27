@@ -500,7 +500,7 @@ describe("the irreversible request-context On consequence", () => {
   it.each(["en", "zh-TW"])("keeps its plain warning above the collapsed details in %s", async lang => {
     const c = await card(enable({ can_self_confirm: true }), { state: "verified", until: Date.now() + 3600_000 }, lang);
     const warning=c.p.root.querySelector(".pending-card .notice.warn")!;
-    expect(warning?.textContent).toBe(lang === "en" ? "Once on, AgEnD can't go back to an older version." : "開啟後無法退回舊版 AgEnD。");
+    expect(warning?.textContent).toBe(lang === "en" ? "Once on, AgEnD can't go back to an older version." : "開啟後就不能再降回舊版 AgEnD。");
     const details=c.p.root.querySelector("details.pending-details")!;expect(details.contains(warning)).toBe(false);
     expect(c.text().indexOf(warning.textContent!)).toBeLessThan(c.text().indexOf(lang === "en" ? "Change details" : "變更明細"));
     expect(c.text()).not.toContain(lang === "en" ? "press Confirm on the card in General" : "請到 Discord");
