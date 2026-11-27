@@ -38,7 +38,7 @@ vi.mock("node:child_process", async importOriginal => {
 
 const { FleetManager } = await import("../src/fleet-manager.js");
 const { csrfTokenFor, tokenEpoch } = await import("../src/web-session.js");
-const { watchServiceInstall, serviceInstallReason, SERVICE_FIX_CONFIRM, isUpdateFix } = await import("../src/update-fix.js");
+const { watchServiceInstall, serviceInstallReason, serviceInstallCause, SERVICE_FIX_CONFIRM, isUpdateFix } = await import("../src/update-fix.js");
 
 const dirs: string[] = [];
 afterEach(() => { preflight.checks = null; preflight.calls.length = 0; spawned.calls.length = 0; spawned.behave = null; vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -114,7 +114,7 @@ describe("S-246: POST /ui/update/fixes { fix: service }", () => {
     const f = await fleet(async () => ({ kind: "failed", reason: "the user's service manager isn't running" }));
     try {
       const r = await f.post(f.session(), "svc-key-0020");
-      expect([r.status, r.body.error, r.body.reason]).toEqual([422, "fix_failed", "the user's service manager isn't running"]);
+      expect([r.status, r.body.error, r.body.reason, r.body.cause]).toEqual([422, "fix_failed", "the user's service manager isn't running", "other"]);
       expect(r.body.preflight.checks.find((c: any) => c.id === "P3")).toMatchObject({ ok: false, code: "not-service" });
     } finally { await f.stop(); }
   });
@@ -172,6 +172,11 @@ describe("S-246: watchServiceInstall", () => {
     expect(await watch({ exitCode: () => 0 })).toEqual({ kind: "done" });
     expect(await watch({ shuttingDown: () => true, exitCode: () => 1 })).toEqual({ kind: "restarting" });
     expect(await watch({})).toEqual({ kind: "pending" });
+  });
+  it("the cause: the user's service manager (either language, systemd's or agend install's words), else other (#4564 look)", () => {
+    for (const r of ["The user's service manager can't be reached (Failed to connect to bus: No medium found).", "Failed to connect to bus: No such file or directory",
+      "user@1000.service is not running", "/run/user/1000/bus is missing", "這台電腦的使用者服務管理員無法連線"]) expect(serviceInstallCause(r), r).toBe("user-manager");
+    for (const r of ["agend install failed", "the user's service manager isn't running", "Permission denied"]) expect(serviceInstallCause(r), r).toBe("other");
   });
   it("the reason: the ✗/❌ lines, else the last line; never empty", () => {
     expect(serviceInstallReason("a\nb\n")).toBe("b");

@@ -32455,7 +32455,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await local();
       if (result.kind === "pending") return { status: 202, body: { pending: true, preflight: this.updatePreflight } };
       if (result.kind !== "failed") return { status: 200, body: { preflight: this.updatePreflight } };
-      return { status: 422, body: { error: "fix_failed", reason: result.reason, preflight: this.updatePreflight } };
+      const { serviceInstallCause } = await import("./update-fix.js");
+      return { status: 422, body: { error: "fix_failed", reason: result.reason, cause: serviceInstallCause(result.reason), preflight: this.updatePreflight } };
     }
     let ok = false;
     try { ok = (await this.runUpdateFix(fix)).ok; } catch (err) { this.logger.warn({ err, fix }, "Update pre-flight fix failed"); }

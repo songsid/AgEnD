@@ -5,7 +5,7 @@
  * (`startServiceInstall`, which would run `agend install`) is stubbed before the first press, and every update launch too.
  *   1 not a service: the line, Install as a service, and How to fix · 2 pressed: the confirmation (what happens to the
  *   Agents) · 3 Cancel: nothing sent · 4 confirmed, refused: says why, and that AgEnD keeps running · 5 confirmed, the
- *   hand-over: Restarting… (said in the check's block), AgEnD gone for a moment (the browser's own requests fail), back as a
+ *   hand-over: Installing… (said in the check's block; the card's other buttons off), AgEnD gone for a moment (the browser's own requests fail), back as a
  *   service: ✓ and its toast. A refusal and the restart are said in the block, never a toast over the page (#4557 look).
  * Desk light en and phone dark zh-TW.
  *   CHROME=<chromium> PW_DIR=<playwright-core> REPO=<checkout> OUT=<dir> npx tsx scripts/manual/update-service-button-s246/capture.mts
@@ -88,7 +88,7 @@ const press = async (page: any, label: string) => { await page.locator("#setting
 
 async function walk(c: any) {
   const tag = caseName(c), zh = c.lang === "zh-TW", phone = c.device === "phone";
-  const IT = W(zh, "Install as a service", "安裝成服務"), GO = W(zh, "Restart as a service", "改以服務方式重新啟動"), CANCEL = W(zh, "Cancel", "取消");
+  const IT = W(zh, "Install as a service", "安裝成服務"), GO = W(zh, "Install and restart", "安裝並重新啟動"), CANCEL = W(zh, "Cancel", "取消");
   const { page, ctx } = await fx.page(c, { path: "/settings/advanced" });
   const errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
   page.on("request", (r: any) => { if (r.url().endsWith("/ui/update/fixes")) posts.push({ tag, body: r.postDataJSON() }); });
@@ -109,7 +109,7 @@ async function walk(c: any) {
     check(`${tag} 2: asks first: the title, what happens to every Agent, and after`, !!d && d.text.includes(W(zh, "Restart AgEnD as a service?", "要讓 AgEnD 改以服務方式重新啟動嗎？"))
       && d.text.includes(W(zh, "every agent stops briefly and comes back on its own.", "每個 Agent 會短暫停止，之後自動回來。"))
       && d.text.includes(W(zh, "AgEnD can bring itself back after an update.", "AgEnD 都能自己重新啟動。")), d);
-    check(`${tag} 2: Restart as a service and Cancel`, !!d && [GO, CANCEL].every((t) => d.buttons.some((x: any) => x.t === t)), d);
+    check(`${tag} 2: Install and restart, and Cancel`, !!d && [GO, CANCEL].every((t) => d.buttons.some((x: any) => x.t === t)), d);
     check(`${tag} 2: nothing sent yet`, posts.length === sent, posts);
     if (zh) for (const w of ["短暫停止", "自動回來", "重新啟動"]) check(`${tag} 2: 「${w}」 kept whole`, await unsplit(page, w, "dialog.dlg[open]") === true, await unsplit(page, w, "dialog.dlg[open]"));
     if (phone) check(`${tag} 2: a bottom sheet with 44 px buttons`, !!d && d.bottom <= 1 && d.left <= 1 && d.right <= 1 && d.buttons.every((x: any) => x.h >= 44), d);
@@ -125,10 +125,13 @@ async function walk(c: any) {
     await page.waitForTimeout(300);
     check(`${tag} 4: one POST, with the page's confirmation`, posts.length === sent + 1 && JSON.stringify(posts.at(-1).body) === JSON.stringify({ fix: "service", confirm: "restart-as-service" }), posts);
     m = await machine(page);
-    check(`${tag} 4: the block says why, and that AgEnD keeps running`, m.includes(W(zh, `AgEnD couldn't install the service: ${REFUSAL} AgEnD keeps running as before.`, `AgEnD 無法安裝服務：${REFUSAL} AgEnD 仍照原本的方式執行。`)), m);
+    check(`${tag} 4: the block says the cause in the product's words, the command's own words as a detail, and that AgEnD keeps running`,
+      m.includes(W(zh, "AgEnD couldn't install the service: this computer's user service manager can't be reached. AgEnD keeps running as before. Details:", "AgEnD 無法安裝服務：這台電腦的使用者服務管理員無法連線。AgEnD 仍照原本的方式執行。詳細訊息："))
+      && m.includes("Failed to connect to bus: No medium found"), m);
+    check(`${tag} 4: the next step: the WSL fix, and when the button comes back`, m.includes(W(zh, "run wsl --update in Windows", "在 Windows 執行 wsl --update")) && m.includes(W(zh, "Check for updates", "檢查更新")), m);
     check(`${tag} 4: no toast over the page`, (await toasts(page)).length === 0, await toasts(page));
     b = await buttons(page);
-    check(`${tag} 4: the line stays with How to fix; the button is gone (pressing again is not the next step)`, m.includes("◐") && b.length === 0 && m.includes(W(zh, "How to fix", "修正方式")), { m, b });
+    check(`${tag} 4: the line stays; the button and How to fix (its agend install just failed) are gone`, m.includes("◐") && b.length === 0 && !m.includes(W(zh, "How to fix", "修正方式")), { m, b });
     await shot(page, `${tag}-4-refused`);
     // 5 confirmed, the hand-over: AgEnD answers, then is gone for a moment (two requests fail), then is back as a service
     await openSettings(page);
@@ -141,8 +144,10 @@ async function walk(c: any) {
     await waitFor(page, `!!document.querySelector("#settings-update .uc-fix-refused")`);
     await page.waitForTimeout(300);
     b = await buttons(page); m = await machine(page);
-    check(`${tag} 5: the block says AgEnD is restarting; the button says Restarting… and can't be pressed`, m.includes(W(zh, "AgEnD is restarting as a service. This page reconnects when it's back.", "AgEnD 正在改以服務方式重新啟動，回來後這個頁面會自動重新連線。"))
-      && b.length === 1 && b[0]!.t === W(zh, "Restarting…", "重新啟動中…") && b[0]!.disabled, { b, m });
+    check(`${tag} 5: the block says AgEnD is installing and restarting; the button says Installing… and can't be pressed`, m.includes(W(zh, "AgEnD is installing the service and restarting. This page reconnects when it's back.", "AgEnD 正在安裝服務並重新啟動，回來後這個頁面會自動重新連線。"))
+      && b.length === 1 && b[0]!.t === W(zh, "Installing…", "安裝中…") && b[0]!.disabled, { b, m });
+    const rowOn = await page.evaluate(`[...document.querySelectorAll("#settings-update button")].filter((x) => !x.closest(".uc-machine") && !x.disabled && /${W(zh, "Update when idle|Check for updates|Pick a time|Not now", "閒置時更新|檢查更新|選個時間|先不要")}/.test(x.innerText)).map((x) => x.innerText.trim())`) as string[];
+    check(`${tag} 5: the card's other buttons are off meanwhile`, rowOn.length === 0, rowOn);
     check(`${tag} 5: no toast over the page`, (await toasts(page)).length === 0, await toasts(page));
     await shot(page, `${tag}-5-restarting`);
     goneUntil = Date.now() + 4000; setPreflight(SERVICE);                     // the new fleet: a service now
@@ -151,7 +156,7 @@ async function walk(c: any) {
     m = await machine(page);
     check(`${tag} 5b: back: says so, in full; the line is ✓ and its button gone`, back && await toastWhole(page, W(zh, "AgEnD is back, running as a service.", "AgEnD 回來了，現在以服務方式執行。"))
       && m.includes("✓") && (await buttons(page)).length === 0, { m, t: await toasts(page) });
-    check(`${tag} 5b: the restarting line is gone`, !m.includes(W(zh, "restarting as a service", "重新啟動，回來後")), m);
+    check(`${tag} 5b: the restarting line is gone`, !m.includes(W(zh, "installing the service and restarting", "安裝服務並重新啟動")), m);
     await page.unroute("**/ui/update");
     // A phone's toast sits over the page's top: the frame is taken once it has gone (its words are checked above).
     if (phone) { const gone = await waitFor(page, `document.querySelectorAll(".toasts .toast").length === 0`, 20000); check(`${tag} 5b: the toast has gone before the frame`, gone, await toasts(page)); }

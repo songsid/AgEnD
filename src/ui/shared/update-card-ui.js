@@ -64,10 +64,15 @@ register("updatecard", {
     fixHint: "AgEnD turns it on for you; nothing restarts and your agents keep working. If this computer doesn't allow it, run the command yourself.",
     fixFailed: "AgEnD couldn't turn it on by itself. Run the command above in a terminal on the computer AgEnD runs on.", fixNotNeeded: "That's already fixed.",
     howToFix: "How to fix", serviceHow: "In a terminal on the computer AgEnD runs on, run `agend install` as the same user (no sudo). AgEnD restarts as a service: every agent stops briefly and comes back on its own.",
-    serviceIt: "Install as a service", serviceBusy: "Restarting…", serviceTitle: "Restart AgEnD as a service?",
-    serviceAsk: "AgEnD restarts as a service: every agent stops briefly and comes back on its own.\n\nAfter that, AgEnD can bring itself back after an update.",
-    serviceGo: "Restart as a service", serviceRestarting: "AgEnD is restarting as a service. This page reconnects when it's back.",
-    serviceBack: "AgEnD is back, running as a service.", serviceFailed: "AgEnD couldn't install the service: {0} AgEnD keeps running as before.",
+    serviceIt: "Install as a service", serviceBusy: "Installing…", serviceTitle: "Install AgEnD as a service?",
+    serviceAsk: "AgEnD restarts as a service: every agent stops briefly and comes back on its own.\n\nAfter that, AgEnD can bring itself back after an update. To go back, run agend uninstall.",
+    serviceGo: "Install and restart", serviceRestarting: "AgEnD is installing the service and restarting. This page reconnects when it's back.",
+    serviceBack: "AgEnD is back, running as a service.",
+    "serviceFailed_user-manager": "AgEnD couldn't install the service: this computer's user service manager can't be reached. AgEnD keeps running as before.",
+    serviceFailed_other: "AgEnD couldn't install the service. AgEnD keeps running as before.",
+    serviceDetails: "Details: `{0}`",
+    "serviceNext_user-manager": "On WSL this is a known issue before version 2.6.0: run `wsl --update` in Windows, then reopen WSL. Then press Check for updates; the button comes back once the check finds the service manager.",
+    serviceNext_other: "What happened is in service-install.log in the AgEnD folder. Press Check for updates to try again.",
     servicePending: "AgEnD is still setting up the service. Check again in a minute: once it has gone through, this line turns ✓.",
     serviceStill: "AgEnD isn't running as a service yet. What happened is in service-install.log in the AgEnD folder.",
   },
@@ -123,10 +128,15 @@ register("updatecard", {
     fixHint: "AgEnD 會替你開啟；不會重新啟動，Agent 照常工作。若這台電腦不允許，請自己執行上面的指令。",
     fixFailed: "AgEnD 無法自行開啟。請在執行 AgEnD 的那台電腦上，用終端機執行上面的指令。", fixNotNeeded: "這項已經修正了。",
     howToFix: "修正方式", serviceHow: "在執行 AgEnD 的那台電腦上，用同一個使用者在終端機執行 `agend install`（不需要 sudo）。AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。",
-    serviceIt: "安裝成服務", serviceBusy: "重新啟動中…", serviceTitle: "要讓 AgEnD 改以服務方式重新啟動嗎？",
-    serviceAsk: "AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。\n\n之後每次更新完，AgEnD 都能自己重新啟動。",
-    serviceGo: "改以服務方式重新啟動", serviceRestarting: "AgEnD 正在改以服務方式重新啟動，回來後這個頁面會自動重新連線。",
-    serviceBack: "AgEnD 回來了，現在以服務方式執行。", serviceFailed: "AgEnD 無法安裝服務：{0} AgEnD 仍照原本的方式執行。",
+    serviceIt: "安裝成服務", serviceBusy: "安裝中…", serviceTitle: "要把 AgEnD 安裝成服務嗎？",
+    serviceAsk: "AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。\n\n之後每次更新完，AgEnD 都能自己重新啟動。要改回來，執行 agend uninstall。",
+    serviceGo: "安裝並重新啟動", serviceRestarting: "AgEnD 正在安裝服務並重新啟動，回來後這個頁面會自動重新連線。",
+    serviceBack: "AgEnD 回來了，現在以服務方式執行。",
+    "serviceFailed_user-manager": "AgEnD 無法安裝服務：這台電腦的使用者服務管理員無法連線。AgEnD 仍照原本的方式執行。",
+    serviceFailed_other: "AgEnD 無法安裝服務。AgEnD 仍照原本的方式執行。",
+    serviceDetails: "詳細訊息：`{0}`",
+    "serviceNext_user-manager": "在 WSL 上，這是 2.6.0 以前版本的已知問題：在 Windows 執行 `wsl --update`，再重新開啟 WSL。之後按「檢查更新」，檢查找到服務管理員後，按鈕就會回來。",
+    serviceNext_other: "詳細情形記錄在 AgEnD 資料夾的 service-install.log。按「檢查更新」可以再試一次。",
     servicePending: "AgEnD 還在設定服務。過一分鐘再檢查一次：完成後，這一行會變成 ✓。",
     serviceStill: "AgEnD 還不是以服務方式執行。詳細情形記錄在 AgEnD 資料夾的 service-install.log。",
   },
@@ -203,13 +213,19 @@ export async function fixCheck(fix, check, deps, opts = {}) {
     if (res && res.status === 202 && out && out.pending) { say(tc("servicePending")); return { ok: false, refused: true }; }
     if (!res || res.status === 202) {
       say(tc("serviceRestarting"));
-      const { service } = await waitForService(deps, opts);
+      // The card's other buttons are off while AgEnD goes away and comes back (#4564 look); an older app-update.js has no setter.
+      const starting = typeof deps.setStarting === "function" ? deps.setStarting : () => {};
+      starting(true);
+      let service = false;
+      try { ({ service } = await waitForService(deps, opts)); } finally { starting(false); }
       if (!service) say(tc("serviceStill"));
       return { ok: service, refused: !service };
     }
     if (res.status === 422) {
-      const reason = String((out && out.reason) || "").trim();
-      say(tc("serviceFailed", reason && !/[.!?。！？]$/.test(reason) ? `${reason}.` : reason));
+      // The cause in the product's words, the command's own words after it as a detail, then the next step (#4564 look).
+      const cause = out && out.cause === "user-manager" ? "user-manager" : "other";
+      const raw = String((out && out.reason) || "").replace(/`/g, "").trim();
+      say([`${tc(`serviceFailed_${cause}`)}${raw ? ` ${tc("serviceDetails", raw)}` : ""}`, tc(`serviceNext_${cause}`)]);
       return { ok: false, refused: true };
     }
     if (res.ok) { const { service } = await waitForService(deps, { ...opts, tries: 0 }); if (!service) say(tc("serviceStill")); return { ok: service, refused: !service }; }
@@ -227,24 +243,31 @@ export async function fixCheck(fix, check, deps, opts = {}) {
  * what it does; once the host refused it, the button goes and one line says to run the command), and for not a service
  * also how by hand.
  */
-function CheckItem({ check, version, deps }) {
+function CheckItem({ check, version, deps, checkedAt = null }) {
   const [busy, setBusy] = useState(false);
-  const [refused, setRefused] = useState(false);
-  const [note, setNote] = useState("");
+  // What a press left behind (refused / still working), kept for the check it answered: a later check (Check for updates)
+  // has a newer `checkedAt`, so the button comes back then (#4564 look).
+  const [mark, setMark] = useState(null);
+  const [note, setNote] = useState([]);
   const fix = deps ? fixFor(check) : null;
   const press = async () => {
     // S-246: every agent stops briefly — asked first; Cancel sends nothing.
     if (fix === "service" && !(await confirmDialog({ title: tc("serviceTitle"), message: tc("serviceAsk"), confirmLabel: tc("serviceGo") }))) return;
-    setBusy(true); setNote("");
-    try { if ((await fixCheck(fix, check, deps, { onStatus: setNote })).refused) setRefused(true); } finally { setBusy(false); }
+    setBusy(true); setNote([]); setMark(null);
+    try {
+      const r = await fixCheck(fix, check, deps, { onStatus: (t) => setNote(Array.isArray(t) ? t : [t]) });
+      const info = deps.getInfo && deps.getInfo();
+      if (r.refused) setMark({ at: info && info.preflight ? info.preflight.checkedAt : checkedAt });
+    } finally { setBusy(false); }
   };
+  const refused = !!mark && mark.at === checkedAt;
+  const lines = busy ? note : refused ? (note.length ? note : fix === "linger" ? [tc("fixFailed")] : []) : [];
   const label = fix === "service" ? tc(busy ? "serviceBusy" : "serviceIt") : tc(busy ? "fixing" : "fixIt");
-  const line = note || (refused && fix === "linger" ? tc("fixFailed") : "");
   return html`<li>${checkRich(check, version)}
-    ${fix && line ? html`<p class="uc-fix-refused" role="status">${line}</p>` : null}
+    ${fix && lines.length ? lines.map((l, i) => html`<p class=${i ? "uc-fix-next" : "uc-fix-refused"} role=${i ? undefined : "status"}>${richText(l)}</p>`) : null}
     ${fix && !refused ? html`<div class="uc-fix"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${press}>${label}</button>
       ${fix === "linger" ? html`<span class="uc-fix-hint muted">${tc("fixHint")}</span>` : null}</div>` : null}
-    ${check.code === "not-service" ? html`<details class="uc-how"><summary>${tc("howToFix")}</summary><p>${richText(tc("serviceHow"))}</p></details>` : null}
+    ${check.code === "not-service" && !(fix === "service" && refused) ? html`<details class="uc-how"><summary>${tc("howToFix")}</summary><p>${richText(tc("serviceHow"))}</p></details>` : null}
   </li>`;
 }
 /** The checks that did not pass, in P-order (absent checks are not failures: they were not run). */
@@ -435,7 +458,7 @@ export function MachineLine({ info, deps }) {
   const fails = failedChecks(pf);
   return html`<div class=${`uc-machine uc-${cls}`}>
     <div><strong>${tc("machine")}</strong> <span class="uc-mark" aria-hidden="true">${mark}</span> <span>${tc(cls === "self" ? "self" : cls === "admin-only" ? "adminOnly" : "stop")}</span></div>
-    ${fails.length ? html`<ul class="uc-checks">${fails.map((f) => html`<${CheckItem} key=${f.id} check=${f} version=${info.card ? info.card.version : ""} deps=${deps} />`)}</ul>`
+    ${fails.length ? html`<ul class="uc-checks">${fails.map((f) => html`<${CheckItem} key=${f.id} check=${f} version=${info.card ? info.card.version : ""} deps=${deps} checkedAt=${pf.checkedAt} />`)}</ul>`
       : cls !== "self" ? html`<p class="muted uc-checks">${tc("notAllChecked")}</p>` : null}
   </div>`;
 }

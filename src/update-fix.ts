@@ -86,6 +86,16 @@ export function serviceInstallReason(output: string): string {
   return text || "agend install failed";
 }
 
+/**
+ * Which known cause a refusal is, so the page can say it in the product's words (#4564 look), with the command's own words
+ * after it as a detail: `user-manager` — the user's service manager can't be reached (systemd's "Failed to connect to bus",
+ * agend install's own user@N.service lines, either language); anything else is `other`.
+ */
+export type ServiceInstallCause = "user-manager" | "other";
+export function serviceInstallCause(reason: string): ServiceInstallCause {
+  return /Failed to connect to bus|user@\d+\.service|\/run\/user\/\d+\/bus|service manager can't be reached|使用者服務管理員/i.test(reason) ? "user-manager" : "other";
+}
+
 export async function watchServiceInstall(w: ServiceInstallWatch): Promise<ServiceInstallResult> {
   const deadline = w.now() + w.waitMs;
   for (;;) {

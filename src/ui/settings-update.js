@@ -66,7 +66,7 @@ export function UpdateSection() {
       ${need ? html`<button type="button" class="btn btn-primary" disabled=${starting || updateActive(info)} onClick=${() => { void openHubUpdateDialog(); }}>${t("update.now")}</button>`
         : info.card !== undefined ? cardButtons(info, starting)
         : offer && offer.installable ? html`<button type="button" class="btn btn-primary" disabled=${starting || updateActive(info)} onClick=${openUpdateDialog}>${t("update.now")}</button>` : null}
-      <button type="button" class="btn" disabled=${checking || updateActive(info)} onClick=${check}>${checking ? t("supdate.checking") : t("supdate.check")}</button>
+      <button type="button" class="btn" disabled=${checking || starting || updateActive(info)} onClick=${check}>${checking ? t("supdate.checking") : t("supdate.check")}</button>
     </div>
     ${info.card !== undefined ? html`<${UpdateCardSettings} info=${info} deps=${CARD_DEPS} />` : null}
   </section>`;

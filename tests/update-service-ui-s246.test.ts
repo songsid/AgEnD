@@ -59,15 +59,15 @@ describe("S-246: Install as a service", () => {
     expect(serviceButton()).toBeDefined();
     serviceButton().click(); await settle(6);
     expect(asked()).toHaveLength(1);
-    expect(asked()[0]).toMatchObject({ title: "Restart AgEnD as a service?", confirmLabel: "Restart as a service",
-      message: "AgEnD restarts as a service: every agent stops briefly and comes back on its own.\n\nAfter that, AgEnD can bring itself back after an update." });
+    expect(asked()[0]).toMatchObject({ title: "Install AgEnD as a service?", confirmLabel: "Install and restart",
+      message: "AgEnD restarts as a service: every agent stops briefly and comes back on its own.\n\nAfter that, AgEnD can bring itself back after an update. To go back, run agend uninstall." });
     confirm.answerConfirm(asked()[0].id, false); await settle(6);
     expect(fixes()).toEqual([]);
     expect(serviceButton().disabled).toBe(false);
   });
 
   it("confirmed: one POST with the confirmation and a key; a refusal says why in the check's block (no toast), and that AgEnD keeps running", async () => {
-    await mount(() => ({ status: 422, body: { error: "fix_failed", reason: "the user's service manager isn't running", preflight: NOT_SERVICE } }));
+    await mount(() => ({ status: 422, body: { error: "fix_failed", reason: "Failed to connect to bus: No medium found", cause: "user-manager", preflight: NOT_SERVICE } }));
     const before = shown().length;
     serviceButton().click(); await settle(6);
     confirm.answerConfirm(asked()[0].id, true);
@@ -75,9 +75,17 @@ describe("S-246: Install as a service", () => {
     expect(fixes()[0]).toMatchObject({ method: "POST", body: { fix: "service", confirm: "restart-as-service" } });
     expect(fixes()[0]!.key).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
     expect(shown().slice(before)).toEqual([]);
-    expect(machine()!.querySelector(".uc-fix-refused")?.textContent).toBe("AgEnD couldn't install the service: the user's service manager isn't running. AgEnD keeps running as before.");
+    // The cause in the product's words, the raw words as a code detail, then the next step (#4564 look).
+    expect(machine()!.querySelector(".uc-fix-refused")?.textContent).toBe("AgEnD couldn't install the service: this computer's user service manager can't be reached. AgEnD keeps running as before. Details: Failed to connect to bus: No medium found");
+    expect(machine()!.querySelector(".uc-fix-refused code")?.textContent).toBe("Failed to connect to bus: No medium found");
+    expect(machine()!.querySelector(".uc-fix-next")?.textContent).toContain("run wsl --update in Windows");
     expect(serviceButton()).toBeUndefined();                                                          // pressing again is not the next step
-    expect(machine()!.querySelector("details.uc-how")).not.toBeNull();                               // How to fix stays
+    expect(machine()!.querySelector("details.uc-how")).toBeNull();                                   // its agend install is what just failed
+    // A later check (Check for updates: a newer checkedAt) brings the button back.
+    const info = upd.updateStore.get().info;
+    upd.updateStore.set({ info: { ...info, preflight: { ...info.preflight, checkedAt: (info.preflight.checkedAt || 0) + 1000 } } }); await settle(6);
+    expect(serviceButton()).toBeDefined();
+    expect(machine()!.querySelector(".uc-fix-refused")).toBeNull();
   });
 
   it("the hand-over: restarting → AgEnD gone → back; it looks again and says it is a service now", async () => {
@@ -98,15 +106,16 @@ describe("S-246: Install as a service", () => {
     upd.updateStore.set({ info: ADMIN(NOT_SERVICE) });
     const deps = upd.cardDeps, before = shown().length;
     const sleeps: number[] = [];
-    let during: unknown[] = [];
+    let during: unknown[] = [], startingDuring: unknown = null;
     const said: string[] = [];
-    const out = await uc.fixCheck("service", { id: "P3", ok: false, code: "not-service" }, deps, { onStatus: (t: string) => said.push(t), sleep: async (ms: number) => { if (!sleeps.length) { await settle(2); during = shown().slice(before); } sleeps.push(ms); }, tries: 10 });
+    const out = await uc.fixCheck("service", { id: "P3", ok: false, code: "not-service" }, deps, { onStatus: (t: string) => said.push(t), sleep: async (ms: number) => { if (!sleeps.length) { await settle(2); during = shown().slice(before); startingDuring = upd.updateStore.get().starting; } sleeps.push(ms); }, tries: 10 });
     await settle(6);
     expect(out).toEqual({ ok: true, refused: false });
-    expect(said).toEqual(["AgEnD is restarting as a service. This page reconnects when it's back."]);   // in the check's block
+    expect(said).toEqual(["AgEnD is installing the service and restarting. This page reconnects when it's back."]);   // in the check's block
     expect(sleeps.every(ms => ms === 3000)).toBe(true);
     expect(reqs.map(r => `${r.method} ${r.url}`)).toEqual(["POST /ui/update/fixes", "GET /ui/update", "GET /ui/update", "GET /ui/update", "POST /ui/update/check", "GET /ui/update"]);
-    expect(during).toEqual([]);                                                                      // no toast over the page while it restarts
+    expect(during).toEqual([]);
+    expect([startingDuring, upd.updateStore.get().starting]).toEqual([true, false]);              // the card's other buttons off meanwhile (#4564 look)                                                                      // no toast over the page while it restarts
     expect(shown().slice(before)).toEqual([["AgEnD is back, running as a service.", true]]);
     expect(upd.updateStore.get().info.preflight).toEqual(SERVICE);
   });
@@ -120,7 +129,7 @@ describe("S-246: Install as a service", () => {
     const out = await uc.fixCheck("service", { id: "P3", ok: false, code: "not-service" }, upd.cardDeps, { onStatus: (t: string) => said.push(t), sleep: async () => {}, tries: 3 });
     await settle(6);
     expect(out).toEqual({ ok: false, refused: true });
-    expect(said).toEqual(["AgEnD is restarting as a service. This page reconnects when it's back.", "AgEnD isn't running as a service yet. What happened is in service-install.log in the AgEnD folder."]);
+    expect(said).toEqual(["AgEnD is installing the service and restarting. This page reconnects when it's back.", "AgEnD isn't running as a service yet. What happened is in service-install.log in the AgEnD folder."]);
     expect(shown().slice(before)).toEqual([]);
   });
 
@@ -131,14 +140,14 @@ describe("S-246: Install as a service", () => {
     confirm.answerConfirm(asked()[0].id, true);
     await vi.waitFor(() => expect(fixes().length).toBe(1)); await settle(10);
     expect(machine()!.querySelector(".uc-fix-refused")?.textContent).toBe("AgEnD is still setting up the service. Check again in a minute: once it has gone through, this line turns ✓.");
-    expect(machine()!.textContent).not.toContain("restarting as a service");
+    expect(machine()!.textContent).not.toContain("restarting.");
     expect(shown().slice(before)).toEqual([]);
     expect(serviceButton()).toBeUndefined();
     expect(reqs.filter(r => r.url === "/ui/update").length).toBeLessThanOrEqual(2);                    // no restart wait loop
   });
   it("the words in English and zh-TW: every key, the same placeholders; zh says 「Agent」", async () => {
     const i18n = await import("/assets/app-i18n.js");
-    const keys = ["serviceIt", "serviceBusy", "serviceTitle", "serviceAsk", "serviceGo", "serviceRestarting", "serviceBack", "serviceFailed", "serviceStill", "servicePending"];
+    const keys = ["serviceIt", "serviceBusy", "serviceTitle", "serviceAsk", "serviceGo", "serviceRestarting", "serviceBack", "serviceFailed_user-manager", "serviceFailed_other", "serviceDetails", "serviceNext_user-manager", "serviceNext_other", "serviceStill", "servicePending"];
     for (const k of keys) {
       const en = i18n.tIn("en", `updatecard.${k}`), zh = i18n.tIn("zh-TW", `updatecard.${k}`);
       expect(en, k).not.toBe(`updatecard.${k}`);
