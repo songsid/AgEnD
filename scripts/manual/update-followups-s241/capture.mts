@@ -36,7 +36,7 @@ fm.launchInstalledUpdate = async (origin: string) => { launches.push(origin); re
 fm.startWebUpdate = async () => { launches.push("web"); return { ok: false, status: 503, error: "capture_no_install" }; };
 fm.getInstanceExecutionState = (name: string) => (name === "general" ? "idle" : "working");
 const { summarize } = await import(REPO + "/src/update-readiness.ts");
-const SELF = summarize([{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P5", ok: true }, { id: "P9", ok: true }], Date.now());
+const SELF = summarize([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P5", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }], Date.now());
 fm.updatePreflight = SELF; fm.probeUpdatePreflight = async () => SELF;
 const current = fm.runningAgendVersion();
 const NEXT = current.replace(/(\d+)$/, (n: string) => String(Number(n) + 1));
