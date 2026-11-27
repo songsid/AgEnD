@@ -70,9 +70,12 @@ const commentsOfKey = (key: string): number[] => {
   const m = /:comments=([\d,]*):cards=/.exec(key);
   return m ? m[1]!.split(",").filter(Boolean).map(Number) : [];
 };
-/** The notices handed over whose wakes are kept for a replacement (one that quotes a comment), at most this many, for this long. */
-const KEPT_NOTICES = 200;
-const KEPT_MS = 60 * 60_000;
+/**
+ * The delivery states after which a notice can no longer be withdrawn, and so needs no replacement: the instance has it
+ * (delivered), or it will never be sent (failed, cancelled), or it may have reached the instance (uncertain). Any other
+ * state — queued, retry_wait, and an attempt under way that may yet fall back to retry_wait — can still be withdrawn.
+ */
+const SPENT_STATES = new Set(["delivered", "failed", "uncertain", "cancelled"]);
 
 /** More assignments than this in one message are told as a count, not a line each. */
 const MANY_ASSIGNED = 3;
@@ -241,8 +244,12 @@ function mergePerson(had: Wake, w: Wake): Partial<Record<WakeReason, true>> {
 
 export class TaskBoardWaker {
   private readonly gathering = new Map<string, { wakes: Map<string, Wake>; timer: unknown }>();
-  /** The wakes of each notice handed over that quotes a comment, by its key: what replaces it if the comment is edited or deleted while it waits. */
-  private readonly kept = new Map<string, { at: number; wakes: Wake[] }>();
+  /**
+   * The wakes of each notice handed over that quotes a comment, by its key: what replaces it if the comment is edited or deleted while it
+   * waits. Kept as long as the notice may still be withdrawn (its delivery has not settled), whatever the time or the number of notices
+   * waiting: the notices an offline or paused instance has waiting are held by the delivery outbox too, which is what bounds them.
+   */
+  private readonly kept = new Map<string, Wake[]>();
   private stopped = false;
   private seq = 0;
   private readonly timers: NonNullable<TaskBoardWakerDeps["timers"]>;
@@ -294,9 +301,9 @@ export class TaskBoardWaker {
 
   /**
    * These comments were edited or deleted. News still gathering reads the comment again as it goes out (holds), so it says the new
-   * words, or leaves a deleted one out. A notice already handed over and still waiting is withdrawn, and — when this waker still has its
-   * wakes (not after a restart) — what of it still stands is told anew, so the instance gets one notice with the words as they are now.
-   * One already delivered cannot be called back.
+   * words, or leaves a deleted one out. A notice already handed over and still waiting is withdrawn, however long it has waited, and —
+   * when this waker still has its wakes (not after a restart) — what of it still stands is told anew, so the instance gets one notice
+   * with the words as they are now. One already delivered cannot be called back.
    */
   recalled(items: ReadonlyArray<{ uuid: string; entry: number; deleted: boolean }>): void {
     if (this.stopped || !items.length || !this.deps.withdraw) return;
@@ -312,10 +319,10 @@ export class TaskBoardWaker {
       if (!n) return;
       this.deps.log("info", "Task board notices withdrawn: a comment they quote was edited or deleted", { count: n });
       for (const key of picked) {
-        if (this.deps.noticeState && this.deps.noticeState(key) !== "cancelled") continue;
+        if (this.deps.noticeState?.(key) !== "cancelled") continue;
         const had = this.kept.get(key);
         this.kept.delete(key);
-        if (had) this.note(had.wakes.map((w) => structuredClone(w)));
+        if (had) this.note(had.map((w) => structuredClone(w)));
       }
     } catch (err) {
       this.deps.log("warn", "Task board could not withdraw notices that quote a changed comment", { err: (err as Error).message });
@@ -351,12 +358,20 @@ export class TaskBoardWaker {
     return out;
   }
 
-  /** Remembers the wakes of a notice that quotes a comment, for a replacement (bounded: the newest, an hour). */
+  /**
+   * Remembers the wakes of a notice that quotes a comment, for a replacement, and lets go of those of the notices whose delivery has
+   * settled (delivered, failed, cancelled, or gone from the outbox): not by age or number, so a notice that waits for an offline
+   * instance keeps its wakes for as long as it waits. Without the outbox's help (no withdraw, no state) nothing is withdrawn, so nothing is kept.
+   */
   private keep(key: string, wakes: readonly Wake[]): void {
-    const now = (this.deps.now ?? Date.now)();
-    for (const [k, v] of this.kept) if (now - v.at > KEPT_MS) this.kept.delete(k);
-    this.kept.set(key, { at: now, wakes: wakes.map((w) => structuredClone(w)) });
-    while (this.kept.size > KEPT_NOTICES) { const oldest = this.kept.keys().next().value; if (oldest === undefined) break; this.kept.delete(oldest); }
+    const state = this.deps.noticeState;
+    if (!this.deps.withdraw || !state) return;
+    this.kept.set(key, wakes.map((w) => structuredClone(w)));
+    for (const k of [...this.kept.keys()]) {
+      let now: string | null;
+      try { now = state(k); } catch { continue; }                       // cannot tell: keep it
+      if (now === null || SPENT_STATES.has(now)) this.kept.delete(k);
+    }
   }
 
   private flush(instance: string): void {

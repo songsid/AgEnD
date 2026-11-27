@@ -20,21 +20,21 @@ const wake = (over: Partial<Wake>): Wake => {
   return { instance: "dev-a", uuid: "u1", code: "S-1", title: "Build the API", parent: "M-1", reasons, texts: {}, ...over, by: Object.fromEntries(reasons.map((r) => [r, (over as { who?: string }).who ?? "Ann"])) };
 };
 
-/** The delivery outbox as the waker sees it: each notice by its key and state, withdrawn only while it still waits (queued). */
+/** The delivery outbox as the waker sees it: each notice by its key and state, withdrawn only while it still waits (queued or retry_wait). */
 function fakeOutbox() {
   const rows: Array<{ key: string; state: string; createdAt: string }> = [];
   return {
     rows,
     withdraw: (prefix: string, stale: (key: string, createdAt: string) => boolean) => {
       let n = 0;
-      for (const r of rows) if (r.state === "queued" && r.key.startsWith(prefix) && stale(r.key, r.createdAt)) { r.state = "cancelled"; n++; }
+      for (const r of rows) if ((r.state === "queued" || r.state === "retry_wait") && r.key.startsWith(prefix) && stale(r.key, r.createdAt)) { r.state = "cancelled"; n++; }
       return n;
     },
     noticeState: (key: string) => rows.find((r) => r.key === key)?.state ?? null,
   };
 }
 
-function waker(opts: { instances?: string[]; holds?: (w: Wake) => Wake | null; buttonsHere?: (instance: string, uuid: string) => boolean; outbox?: ReturnType<typeof fakeOutbox> } = {}) {
+function waker(opts: { instances?: string[]; holds?: (w: Wake) => Wake | null; buttonsHere?: (instance: string, uuid: string) => boolean; outbox?: ReturnType<typeof fakeOutbox>; clock?: { at: number } } = {}) {
   const sent: Array<{ instance: string; message: string; key: string }> = [];
   const timers: Array<{ fn: () => void; ms: number; live: boolean }> = [];
   const w = new TaskBoardWaker({
@@ -45,6 +45,7 @@ function waker(opts: { instances?: string[]; holds?: (w: Wake) => Wake | null; b
     card: () => undefined,
     ...(opts.buttonsHere ? { buttonsHere: opts.buttonsHere } : {}),
     log: () => {},
+    ...(opts.clock ? { now: () => opts.clock!.at } : {}),
     timers: { set: (fn, ms) => { const t = { fn, ms, live: true }; timers.push(t); return t; }, clear: (h) => { (h as { live: boolean }).live = false; } },
   });
   const fire = () => { for (const t of timers.splice(0)) if (t.live) t.fn(); };
@@ -225,6 +226,43 @@ describe("in the fleet: a write's wakes reach the delivery outbox as AgEnD's not
     scheduler.db.close();
   });
 
+  it("the instance has been unable to take its notice for more than an hour: an edit still withdraws it, and the replacement still carries the assignment", async () => {
+    vi.useFakeTimers();
+    const d = mkdtempSync(join(tmpdir(), "task-board-waker-")); dirs.push(d);
+    writeFileSync(join(d, "fleet.yaml"), "defaults: {}\ninstances: {}\n");
+    const fm = new FleetManager(d) as unknown as Record<string, any>;
+    fm.fleetConfig = { defaults: {}, instances: { "dev-a": {} } };
+    const scheduler = new Scheduler(join(d, "scheduler.db"), () => {}, { max_schedules: 100, default_timezone: "UTC", retry_count: 3, retry_interval_ms: 1000 }, () => false);
+    fm.attachTaskBoard(scheduler.db);
+    const board = scheduler.db.board;
+    const ann = { kind: "person" as const, name: "Ann" };
+    const card = board.createCards({ kind: "instance", name: "lead" }, { cards: [{ title: "Leaderboard", assignee: "dev-a" }] }).cards[0]!;
+    board.updateCard(ann, card.code, { comment: "use the old endpoint" });
+    const first = board.detail(card.code).comments.at(-1)!;
+    await vi.advanceTimersByTimeAsync(10_000);                                    // one notice: the assignment and the comment
+    const rows = () => {
+      const db = new Database(join(d, "delivery-outbox.db"), { readonly: true });
+      try { return db.prepare("SELECT state, source_key, payload_json FROM deliveries ORDER BY created_seq").all() as Array<{ state: string; source_key: string; payload_json: string }>; } finally { db.close(); }
+    };
+    const words = (r: { payload_json: string }) => JSON.parse(r.payload_json).content as string;
+    expect(rows().map((r) => r.state)).toEqual(["queued"]);
+    expect(words(rows()[0]!)).toContain("assigned to you");
+    await vi.advanceTimersByTimeAsync(61 * 60_000);                               // dev-a is offline for more than an hour
+    board.updateCard(ann, card.code, { comment: "and mind the cache" });          // another notice that quotes a comment is handed over
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(rows().map((r) => r.state)).toEqual(["queued", "queued"]);
+    board.editComment(ann, card.code, first.id, "use the new endpoint");
+    await vi.advanceTimersByTimeAsync(10_000);
+    const after = rows();
+    expect(after.map((r) => r.state), "the first notice is withdrawn; the other, about another comment, is not; a replacement is queued").toEqual(["cancelled", "queued", "queued"]);
+    expect(words(after[2]!)).toContain("assigned to you");
+    expect(words(after[2]!)).toContain("use the new endpoint");
+    expect(words(after[2]!)).not.toContain("old endpoint");
+    fm.taskBoardWaker.stop();
+    fm.deliveryOutbox?.close?.();
+    scheduler.db.close();
+  });
+
   it("the board's cards-at-once limit is each instance's board_cards_at_once, read at every claim (#2303)", () => {
     const d = mkdtempSync(join(tmpdir(), "task-board-waker-")); dirs.push(d);
     writeFileSync(join(d, "fleet.yaml"), "defaults: {}\ninstances: {}\n");
@@ -332,6 +370,76 @@ describe("a notice that quotes a comment which is then edited or deleted", () =>
     expect(outbox.rows.map((r) => r.state)).toEqual(["cancelled", "delivered"]);
     after.fire();
     expect(after.sent, "withdrawn, not replaced").toEqual([]);
+  });
+
+  it("a notice that has waited longer than an hour is still withdrawn and replaced, with what else it carried: the wakes are kept while it waits, not for a time", () => {
+    const outbox = fakeOutbox();
+    const clock = { at: Date.parse("2030-01-01T10:00:00Z") };
+    const { w, sent, fire } = waker({ outbox, holds: holdsNow, clock });
+    comments.set(12, "the old words"); comments.set(15, "another comment");
+    w.note([{ ...said("the old words"), reasons: ["assigned", "comment"], texts: { comment: "the old words" }, by: { assigned: "Ann", comment: "Ann" } }]);
+    fire();
+    clock.at += 61 * 60_000;                                          // dev-a has been offline for 61 minutes
+    w.note([said("another comment", 15)]); fire();                    // another notice that quotes a comment is handed over
+    expect(outbox.rows.map((r) => r.state)).toEqual(["queued", "queued"]);
+    comments.set(12, "the new words");
+    w.recalled([{ uuid: "u1", entry: 12, deleted: false }]);
+    expect(outbox.rows.map((r) => r.state), "only the notice that quotes comment 12 is withdrawn").toEqual(["cancelled", "queued"]);
+    fire();
+    expect(sent, "and it is replaced").toHaveLength(3);
+    expect(sent[2]!.message).toContain("the new words");
+    expect(sent[2]!.message).toContain("assigned to you");
+    expect(sent[2]!.message).not.toContain("the old words");
+    clock.at += 24 * 60 * 60_000;                                     // a day later, a delete: the assignment still stands
+    comments.set(12, null);
+    w.recalled([{ uuid: "u1", entry: 12, deleted: true }]);
+    expect(outbox.rows.map((r) => r.state)).toEqual(["cancelled", "queued", "cancelled"]);
+    fire();
+    expect(sent).toHaveLength(4);
+    expect(sent[3]!.message).toContain("assigned to you");
+    expect(sent[3]!.message).not.toContain("new words");
+  });
+
+  it("more than 200 notices waiting: the oldest is replaced as well as the newest", () => {
+    const outbox = fakeOutbox();
+    const { w, sent, fire } = waker({ outbox, holds: holdsNow });
+    for (let i = 0; i < 250; i++) {
+      comments.set(1000 + i, `words ${i}`);
+      w.note([{ ...said(`words ${i}`, 1000 + i), uuid: `u${i}`, code: `S-${i}`, reasons: ["assigned", "comment"], texts: { comment: `words ${i}` }, by: { assigned: "Ann", comment: "Ann" } }]);
+      fire();
+    }
+    expect(outbox.rows.filter((r) => r.state === "queued")).toHaveLength(250);
+    for (const i of [0, 249]) {
+      comments.set(1000 + i, `edited ${i}`);
+      w.recalled([{ uuid: `u${i}`, entry: 1000 + i, deleted: false }]);
+    }
+    fire();
+    expect(outbox.rows.filter((r) => r.state === "cancelled")).toHaveLength(2);
+    expect(sent).toHaveLength(251);                                   // both edits are one notice: the two cards' news gathered in one window
+    expect(sent[250]!.message).toContain("edited 0");
+    expect(sent[250]!.message).toContain("edited 249");
+    expect(sent[250]!.message).toMatch(/assigned to you[\s\S]*assigned to you/);
+  });
+
+  it("a notice under way that goes back to waiting is still replaced; one whose delivery has settled lets go of its wakes", () => {
+    const outbox = fakeOutbox();
+    const { w, sent, fire } = waker({ outbox, holds: holdsNow });
+    const kept = () => (w as unknown as { kept: Map<string, unknown> }).kept.size;
+    comments.set(12, "one"); comments.set(15, "two"); comments.set(16, "three");
+    w.note([said("one", 12)]); fire();
+    outbox.rows[0]!.state = "delivering";                             // an attempt is under way: it may yet fall back to waiting
+    w.note([said("two", 15)]); fire();
+    expect(kept(), "neither has settled").toBe(2);
+    outbox.rows[0]!.state = "retry_wait";                             // the attempt aborted
+    comments.set(12, "one, edited");
+    w.recalled([{ uuid: "u1", entry: 12, deleted: false }]);
+    expect(outbox.rows[0]!.state).toBe("cancelled");
+    fire();
+    expect(sent[sent.length - 1]!.message).toContain("one, edited");
+    outbox.rows[1]!.state = "delivered";                              // the second is taken; the replacement of the first fails
+    outbox.rows[2]!.state = "failed";
+    w.note([said("three", 16)]); fire();
+    expect(kept(), "the notices that settled are let go; the ones waiting are kept").toBe(1);
   });
 
   it("without the delivery outbox's help nothing is withdrawn and nothing breaks", () => {
