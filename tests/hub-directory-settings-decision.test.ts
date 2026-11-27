@@ -75,6 +75,33 @@ function rig(options: { home?: string; hubId?: string } = {}) {
 afterEach(() => { for (const close of cleanup.splice(0)) close(); });
 
 describe("one durable directory decision", () => {
+  it("M3878 inspect validates changed malformed bytes after a good memo", () => {
+    const r = rig(); r.decision.inspect();
+    r.db.prepare("UPDATE hub_group_policy SET body=?").run('{"v":1,"v":1}');
+    expect(() => r.decision.inspect()).toThrow("invalid");
+  });
+  it("M3878 inspect hashes fresh equal-length raw changes and refuses the old expected image", () => {
+    const r = rig(), input = r.request();
+    const raw = (r.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body;
+    const changed = raw.replace("generation-old", "generation-new"); expect(changed.length).toBe(raw.length); expect(changed).not.toBe(raw);
+    r.db.prepare("UPDATE hub_group_policy SET body=?").run(changed);
+    expect(r.decision.inspect().policySha).not.toBe(input.expected.policySha);
+    const proof = vi.fn(); expect(() => r.decision.decide(input, proof)).toThrow("conflict"); expect(proof).not.toHaveBeenCalled();
+  });
+  it("M3878 inspect refuses a foreign SQL Hub owner even with a valid memo", () => {
+    const r = rig(); r.decision.inspect();
+    r.db.prepare("UPDATE hub_group_policy SET hub_id=?").run(randomUUID());
+    expect(() => r.decision.inspect()).toThrow("uncertain");
+  });
+  it("M3878 inspect validates fresh metadata without cloning policy or transport graphs", () => {
+    const r = rig(); r.decision.inspect();
+    const clone = vi.spyOn(globalThis, "structuredClone");
+    try {
+      const result = r.decision.inspect();
+      expect(result).toMatchObject({ transportRevision: 0, authorizationVersion: 0 });
+      expect(clone).not.toHaveBeenCalled();
+    } finally { clone.mockRestore(); }
+  });
   it("rebinds a complete roles graph through the existing decision and compensation without restoring old assignments", () => {
     const r = rig(), roles = convertGroupPolicy(r.policy(), { root: admin, now: 1000, rolesActive: true });
     roles.rolesActive = false;
