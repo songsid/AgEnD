@@ -753,7 +753,7 @@ describe("the card page's activity is a stream: a card for what is said, a thin 
     expect(box.querySelector("textarea").getAttribute("placeholder")).toBe("Comment to alpha — @ names an instance (Ctrl+Enter sends)");
     const ta = box.querySelector("textarea"); ta.value = "hello"; fire(ta, "input"); await settle(3);
     fire(ta, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(10);
-    expect(posts().map((c) => c.body)).toEqual([{ comment: "hello" }]);
+    expect(posts().map((c) => c.body)).toEqual([{ comment: "hello", to: ["alpha"] }]);   // the recipient chip starts as the assignee
   });
   it("it names nothing the viewer does not see: an instance not shown has no state dot and no title but the entry's own", async () => {
     withActivity({ comments: [{ id: 1, author: "ghost", authorKind: "instance", text: "From an instance this viewer does not see", at: AT(50) }, { id: 2, author: "alpha", authorKind: "instance", text: "Seen", at: AT(40) }], logs: [], history: [ev(10, "ghost", 60, "updated", { changes: { goal: ["a", "b"] } }, "instance")] });

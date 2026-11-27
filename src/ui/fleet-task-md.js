@@ -14,7 +14,7 @@ export const commentHtml = (text) => {
 };
 
 /** The chat's copy: the clipboard, else a hidden text area (a plain-http page has no clipboard API). */
-async function copyText(text) {
+export async function copyText(text) {
   try { if (navigator.clipboard && globalThis.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch { /* fall back */ }
   const ta = document.createElement("textarea"); ta.value = text; ta.setAttribute("readonly", ""); ta.className = "offscreen";
   document.body.appendChild(ta); ta.select();

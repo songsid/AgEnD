@@ -71,7 +71,7 @@ import { CreateInstanceArgs, CreateScheduleArgs, UpdateScheduleArgs, validateArg
 import { scheduleView } from "./web-schedules.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { Schedule, ScheduleRetry } from "./scheduler/types.js";
-import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, archiveAfterDays, cardCode, type Actor as BoardActor, type TaskBoard } from "./scheduler/task-board.js";
+import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, MAX_RECIPIENTS, TaskBoardError, archiveAfterDays, cardCode, type Actor as BoardActor, type Entry as BoardEntry, type MutationResult, type TaskBoard } from "./scheduler/task-board.js";
 import { TASK_REF_SEPARATOR, cardsForRefs, taskReadWay, taskRefBlock, taskRefCodes, taskRefView } from "./chat-task-refs.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
@@ -185,7 +185,35 @@ const CardPatchSchema = z.object({
   projectId: z.number().int().nullable().optional(),
   log: z.string().max(BOARD_TEXT).optional(),
   comment: z.string().max(MAX_TEXT).optional(),
+  // Comment threads (docs/design/task-board.md): the comment this one answers, and whom it is for (the recipient chip).
+  replyTo: z.number().int().positive().optional(),
+  to: z.array(z.string().min(1).max(256)).max(MAX_RECIPIENTS).optional(),
 }).strict();
+
+/**
+ * A card's comments as the public link may read them (docs/design/task-board.md, "Comment threads"): a reply to a comment kept
+ * out of sight reads as a comment of its own (nothing says what it answers), and an instance kept out of sight is not named as
+ * the one who reacted, resolved or deleted.
+ */
+function threadsShown(comments: BoardEntry[], hiddenName: (name: string) => boolean): BoardEntry[] {
+  const ids = new Set(comments.map((e) => e.id));
+  return comments.map((e) => {
+    const { parentId, reactions, resolved, deleted, ...rest } = e;
+    const out: BoardEntry = { ...rest };
+    if (parentId !== undefined && ids.has(parentId)) out.parentId = parentId;
+    const kept = (reactions ?? []).map((r) => ({ ...r, by: r.by.filter((b) => !hiddenName(b.name)) })).filter((r) => r.by.length);
+    if (kept.length) out.reactions = kept;
+    if (resolved) out.resolved = hiddenName(resolved.by) ? { at: resolved.at, by: "" } : resolved;
+    if (deleted) out.deleted = hiddenName(deleted.by) ? { at: deleted.at, by: "" } : deleted;
+    return out;
+  });
+}
+
+/** A change to one comment of a card (docs/design/task-board.md, "Comment threads"), by the verb in the address. */
+const CommentEditSchema = z.object({ text: z.string().max(MAX_TEXT) }).strict();
+const CommentReactSchema = z.object({ emoji: z.string().min(1).max(64), on: z.boolean().optional() }).strict();
+const CommentResolveSchema = z.object({ resolved: z.boolean().optional() }).strict();
+const CommentDeleteSchema = z.object({}).strict();
 
 const CardMoveSchema = z.object({
   to: z.enum(CARD_STATUSES),
@@ -2142,7 +2170,7 @@ function webPersonOr401(req: IncomingMessage, res: ServerResponse, url: URL, ctx
  */
 function boardActor(req: IncomingMessage, url: URL, ctx: WebApiContext, p: WebPerson): BoardActor {
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-  return v.kind === "allow" && v.via === "session" ? { kind: "person", name: p.name } : { kind: "script", name: "web-token" };
+  return v.kind === "allow" && v.via === "session" ? { kind: "person", name: p.name, key: p.key } : { kind: "script", name: "web-token" };
 }
 
 /**
@@ -4225,11 +4253,12 @@ export function handleWebRequest(
       // A main task kept out of sight is not named here either: its watchers go with it (the `parent` above reads as none).
       inheritedWatchers: d.card.parentId && hiddenRef(d.card.parentId) ? [] : d.inheritedWatchers.filter((n) => !hiddenName(n)),
       leader: d.leader && hiddenName(d.leader.name) ? null : d.leader,       // as a project's hidden lead: read as none
-      comments: d.comments.filter((e) => !hiddenName(e.author)),
+      comments: threadsShown(d.comments.filter((e) => !hiddenName(e.author)), hiddenName),
       logs: d.logs.filter((e) => !hiddenName(e.author)),
       history: d.history.filter((e) => !hiddenName(e.actor) && !mentionsHidden(e.data)).flatMap((e) => unnumberedEvent(e) ?? []),
     };
     const card = /^\/ui\/tasks\/cards\/([^/]+)(?:\/(move|reorder|watchers))?$/.exec(path);
+    const comment = /^\/ui\/tasks\/cards\/([^/]+)\/comments\/(\d{1,12})\/(edit|react|resolve|delete)$/.exec(path);
     const project = /^\/ui\/tasks\/projects\/(\d+)$/.exec(path);
     try {
       const ref = card ? decodeURIComponent(card[1]!) : "";
@@ -4334,7 +4363,15 @@ export function handleWebRequest(
       if (method === "GET" && card && !card[2]) {
         const found = board.getCard(ref);
         if (hidden(found)) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
-        json(res, 200, { ...shown(board.detail(ref, scope, ctx.dispatcherGone)), ...(board.isArchived(found, archiveDays) ? { archived: true, archiveAfterDays: archiveDays } : {}) });
+        // `viewer`: who this request writes as — an admin session's person — so the page knows which comments are theirs to edit
+        // (and that it may react, resolve and delete); none for a read-only session, the CLI's token or a guest.
+        const viewerPerson = adminAdmissionOf(req, url, ctx) ? webPersonOf(req, url, ctx) : null;
+        const viewer = viewerPerson ? boardActor(req, url, ctx, viewerPerson) : null;
+        const read = shown(board.detail(ref, scope, ctx.dispatcherGone));
+        // Each comment says whether it is the viewer's (two people who are both "web-user" are told apart by their key, not their name).
+        const mine = viewer && viewer.kind === "person" ? board.commentsWrittenBy(ref, viewer) : null;
+        json(res, 200, { ...read, ...(mine ? { comments: read.comments.map((e) => ({ ...e, mine: mine.has(e.id) })), viewer: { name: viewer!.name, kind: viewer!.kind } } : {}),
+          ...(board.isArchived(found, archiveDays) ? { archived: true, archiveAfterDays: archiveDays } : {}) });
         return true;
       }
       if (method === "GET" && path === "/ui/tasks/archive") {
@@ -4356,6 +4393,21 @@ export function handleWebRequest(
           const { cards, said } = board.createCards(person, { cards: [spec] });
           return { card: board.view(cards[0]!, {}, ctx.dispatcherGone), notes: said };
         });
+        return true;
+      }
+      if (method === "POST" && comment) {
+        // One comment of a card: edit, react, resolve, delete. A card kept out of sight is "no such card"; over the link only an
+        // admin session gets here (above), and it sees the board whole.
+        const cardRef = decodeURIComponent(comment[1]!), entryId = Number(comment[2]);
+        const found = board.getCard(cardRef);
+        if (hidden(found)) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
+        const answer = (done: MutationResult & { entry: BoardEntry }) => ({ card: board.view(done.card, {}, ctx.dispatcherGone), comment: done.entry, notes: done.said });
+        switch (comment[3]) {
+          case "edit": boardWrite(req, res, url, ctx, board, CommentEditSchema, ({ text }, person) => answer(board.editComment(person, cardRef, entryId, text))); break;
+          case "react": boardWrite(req, res, url, ctx, board, CommentReactSchema, ({ emoji, on }, person) => answer(board.react(person, cardRef, entryId, emoji, on !== false))); break;
+          case "resolve": boardWrite(req, res, url, ctx, board, CommentResolveSchema, ({ resolved }, person) => answer(board.resolveThread(person, cardRef, entryId, resolved !== false))); break;
+          default: boardWrite(req, res, url, ctx, board, CommentDeleteSchema, (_body, person) => answer(board.deleteComment(person, cardRef, entryId)));
+        }
         return true;
       }
       if (method === "POST" && card) {

@@ -19,6 +19,7 @@ import { ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, errorTe
 import { StepButtons, movesFor } from "./fleet-task-menu.js";
 import { Checklist, EditableText, InlineTitle, PropChip, QuickAdd } from "./fleet-task-edit.js";
 import { Composer, Timeline } from "./fleet-task-activity.js";
+import { defaultRecipient, recipientGroups } from "./fleet-task-thread.js";
 import { FilesField } from "./fleet-task-files.js";
 import { AgentRun } from "./fleet-task-run.js";
 import { LeaderRow, WatchersRow } from "./fleet-task-follow.js";
@@ -296,6 +297,17 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
   const fleet = instances.map((i) => i.name);
   const mentionNames = [...(fleet.includes(card.assignee) ? [card.assignee] : []), ...fleet.filter((n) => n !== card.assignee)].map((name) => ({ name, off: boardOff.includes(name) }));
 
+  // Comment threads: each is one write on one comment (the board's rules say who may), then the card and the board read again; a
+  // refusal is said in the page's words. `viewer` (the card read): who this page writes as — their own comments are theirs to edit.
+  const thread = {
+    writable, viewer: detail.viewer || null,
+    send: (text, extra) => run(() => boardApi.update(card.id, { comment: text, ...extra })),
+    edit: (entry, text) => run(() => boardApi.commentEdit(card.id, entry.id, text)),
+    react: (entry, emoji, on) => run(() => boardApi.commentReact(card.id, entry.id, emoji, on)),
+    resolve: (entry, resolved) => run(() => boardApi.commentResolve(card.id, entry.id, resolved)),
+    remove: (entry) => run(() => boardApi.commentDelete(card.id, entry.id)),
+  };
+
   /** Who watches the card: no version (a watch is not an edit of the card), the card and the board read again after. */
   const follow = (change) => run(() => boardApi.watchers(card.id, change));
 
@@ -431,9 +443,10 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
       </aside>
 
       <div class="tp-activity">
-        <${Timeline} detail=${detail} describe=${describeRow} cards=${cards} lead=${((projects || []).find((x) => x.id === card.projectId) || {}).leadInstance || null} />
+        <${Timeline} detail=${detail} describe=${describeRow} cards=${cards} lead=${((projects || []).find((x) => x.id === card.projectId) || {}).leadInstance || null} names=${mentionNames} thread=${thread} />
         ${can ? html`<${Composer} names=${mentionNames} assignee=${card.assignee} placeholder=${card.assignee ? t("taskcard.commentTo", card.assignee) : t("taskcard.commentHint")}
-          onSend=${(text) => run(() => boardApi.update(card.id, { comment: text }))} />` : null}
+          recipients=${{ groups: recipientGroups({ card, detail, fleet: mentionNames }), initial: defaultRecipient({ card, fleet: mentionNames }) }}
+          onSend=${(text, to) => run(() => boardApi.update(card.id, { comment: text, to: to ? [to] : [] }))} />` : null}
       </div>
     </div>
   </div>`;

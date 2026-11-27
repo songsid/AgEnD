@@ -24,7 +24,7 @@ import { t } from "./locale.js";
 /** A `create` naming one of these opens a board card; without them it is the tool's plain task. */
 const BOARD_CREATE = ["project", "parent", "scope", "acceptance", "context", "needs_review", "size", "dispatcher"] as const;
 /** An `update` naming one of these edits the card on the board's terms; without them it is the tool's plain update. */
-const BOARD_UPDATE = ["title", "description", "scope", "context", "state", "acceptance", "check", "uncheck", "log", "comment", "needs_review", "size", "depends_on", "version", "dispatcher", "project", "uploads"] as const;
+const BOARD_UPDATE = ["title", "description", "scope", "context", "state", "acceptance", "check", "uncheck", "log", "comment", "reply_to", "needs_review", "size", "depends_on", "version", "dispatcher", "project", "uploads"] as const;
 /**
  * The fields each action reads, through either door (this file and the plain task in fleet-manager.ts). Anything else
  * is refused by name before anything is written (#3195): a field the tool would ignore must never look like a saved
@@ -32,7 +32,9 @@ const BOARD_UPDATE = ["title", "description", "scope", "context", "state", "acce
  */
 export const ACTION_FIELDS: Readonly<Record<string, readonly string[]>> = {
   create: ["title", "description", "priority", "assignee", "depends_on", "project", "parent", "scope", "acceptance", "context", "needs_review", "size", "dispatcher"],
-  update: ["id", "title", "description", "priority", "assignee", "depends_on", "result", "status", "scope", "acceptance", "check", "uncheck", "context", "state", "log", "comment", "needs_review", "size", "dispatcher", "version", "project", "attach"],
+  update: ["id", "title", "description", "priority", "assignee", "depends_on", "result", "status", "scope", "acceptance", "check", "uncheck", "context", "state", "log", "comment", "reply_to", "needs_review", "size", "dispatcher", "version", "project", "attach"],
+  // Comment threads (docs/design/task-board.md): change the words of a comment of your own (its number is the `c12` `get` shows).
+  edit_comment: ["id", "comment_id", "comment"],
   move: ["id", "to", "status", "reason", "result", "comment", "version", "attach"],
   // files on a card. `attach` (paths) is read on the agent's side (task-attach-client.ts); the fleet takes `uploads`.
   attach: ["id", "attach", "comment", "version"],
@@ -91,6 +93,13 @@ const strs = (v: unknown): string[] | undefined => (Array.isArray(v) && v.every(
 const nums = (v: unknown): number[] | undefined => (Array.isArray(v) && v.every((x) => typeof x === "number") ? (v as number[]) : undefined);
 const int = (v: unknown): number | undefined => (typeof v === "number" && Number.isInteger(v) ? v : undefined);
 const bool = (v: unknown): boolean | undefined => (typeof v === "boolean" ? v : undefined);
+/** A comment's number as an agent writes it: 12, "12", "c12" or "#12" (what `get` shows is `c12`); anything else is refused by name. */
+function commentNo(v: unknown, field: string): number | undefined {
+  if (v === undefined || v === null) return undefined;
+  const m = typeof v === "number" ? /^(\d+)$/.exec(String(v)) : typeof v === "string" ? /^\s*[c#]?(\d{1,12})\s*$/i.exec(v) : null;
+  if (!m || !Number(m[1])) throw new TaskBoardError("invalid", `"${field}" is a comment's number — the c12 that task get shows beside each comment; got ${JSON.stringify(v)}. Nothing was changed.`);
+  return Number(m[1]);
+}
 // A dispatcher or project of null is a value (nobody / no project), not an absent field.
 const has = (args: Record<string, unknown>, keys: readonly string[]) => keys.some((k) => args[k] !== undefined && (args[k] !== null || k === "dispatcher" || k === "project"));
 
@@ -173,7 +182,7 @@ function createdText(board: Pick<TaskBoard, "getProject" | "listProjects">, card
 }
 
 /** The writes whose words the person reads on the card (a path in them is one they cannot open). */
-const WORDS_ACTIONS = new Set(["create", "update", "move", "attach", "done"]);
+const WORDS_ACTIONS = new Set(["create", "update", "move", "attach", "done", "edit_comment"]);
 
 /**
  * The board's own actions and fields; the answer to a write carries one more line when the words it wrote name a path on
@@ -269,6 +278,14 @@ function onBoardAction(db: SchedulerDb, instance: string, args: Record<string, u
       const files = board.attachments(card.uuid).slice(-uploads.length);
       return [writeText(card, notes.filter((n) => n !== "no change")), `attached to ${card.code}: ${files.map((f) => `${f.name} (${sizeText(f.size)})`).join(", ")}`].join("\n");
     }
+    case "edit_comment": {
+      // Comment threads: the author changes its comment's words — an agent edits its own, never another's. Nobody is woken for the
+      // edit, except an instance the new words `@`-name that the old ones did not.
+      const no = commentNo(args.comment_id, "comment_id");
+      if (no === undefined) throw new TaskBoardError("invalid", "edit_comment: comment_id is the comment's number (the c12 that task get shows)");
+      const { card, notes, entry } = board.editComment(actor, need(args.id, "id"), no, need(args.comment, "comment"));
+      return [`ok ${card.code} c${entry.id} edited`, ...notes.filter((n) => n !== "no change"), ...(notes.includes("no change") ? ["(no change: the words are the same)"] : [])].join("\n");
+    }
     case "watch":
     case "unwatch": {
       // Following a card (docs/design/task-board.md): a watcher hears when the card is finished, waits for confirmation,
@@ -328,6 +345,7 @@ function onBoardAction(db: SchedulerDb, instance: string, args: Record<string, u
         uncheck: nums(args.uncheck),
         log: str(args.log),
         comment: str(args.comment),
+        replyTo: commentNo(args.reply_to, "reply_to"),
         attach: strs(args.uploads),
         needsReview: bool(args.needs_review),
         dispatcher: dispatcher(args.dispatcher),

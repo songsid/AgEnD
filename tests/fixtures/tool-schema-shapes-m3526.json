@@ -32,7 +32,8 @@
      "move_project",
      "watch",
      "unwatch",
-     "attach"
+     "attach",
+     "edit_comment"
     ]
    },
    "title": {
@@ -180,6 +181,12 @@
     "type": "string"
    },
    "comment": {
+    "type": "string"
+   },
+   "reply_to": {
+    "type": "string"
+   },
+   "comment_id": {
     "type": "string"
    },
    "attach": {

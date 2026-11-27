@@ -193,6 +193,17 @@ if (phase === 'create') {
     const raw = new Database(schedulerPath);
     try { raw.prepare("UPDATE tasks SET updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?").run(aged.uuid); } finally { raw.close(); }
     state.board = { main: main.uuid, sub: sub.uuid, aged: aged.uuid };
+    // Comment threads (docs/design/task-board.md): a reply, a reaction, an edit and a deletion on the sub task — columns and a table
+    // a previous release neither reads nor writes.
+    board.updateCard(person, sub.code, { comment: 'thread root' });
+    const rootId = board.detail(sub.code).comments.at(-1).id;
+    board.updateCard(person, sub.code, { comment: 'thread reply', replyTo: rootId });
+    board.react(person, sub.code, rootId, '👍', true);
+    board.updateCard(person, sub.code, { comment: 'edited later' });
+    board.editComment(person, sub.code, board.detail(sub.code).comments.at(-1).id, 'edited words');
+    board.updateCard(person, sub.code, { comment: 'secret to delete' });
+    board.deleteComment(person, sub.code, board.detail(sub.code).comments.at(-1).id);
+    state.board.thread = { code: sub.code, rootId };
   });
   checked('event log and reaction queue', () => {
     events.insert('scratch', 'new-event', { sentinel: 42 });
@@ -368,6 +379,16 @@ if (phase === 'create') {
     assert.deepEqual(board.detail(main.code).comments.map(e => e.text), ['kept across the downgrade']);
     assert.equal(board.getCard(state.board.sub).assignee, 'scratch-old');
     assert.match(board.getCard(state.oldTask).code, /^M-\d+$/);
+  });
+  checked('comment threads written before the downgrade read again: reply, reaction, edit, and the deleted placeholder with no words', () => {
+    const { code, rootId } = state.board.thread;
+    const comments = scheduler.board.detail(code).comments;
+    assert.deepEqual(comments.map(e => e.text), ['thread root', 'thread reply', 'edited words', '']);
+    assert.equal(comments[1].parentId, rootId);
+    assert.deepEqual(comments[0].reactions, [{ emoji: '👍', by: [{ name: 'scratch-person', kind: 'person' }] }]);
+    assert.ok(comments[2].editedAt);
+    assert.equal(comments[3].deleted.by, 'scratch-person');
+    assert.equal(JSON.stringify(scheduler.board.detail(code)).includes('secret to delete'), false);
   });
   assert.ok(boardLeftovers(state.board.aged) > 0);
   assert.equal(await scheduler.pruneOldTasks(30), 0);

@@ -418,6 +418,8 @@ export class SchedulerDb {
     const remove = (ids: string[]) => {
       const marks = ids.map(() => "?").join(",");
       this.db.prepare(`DELETE FROM tasks WHERE id IN (${marks})`).run(...ids);
+      // Reactions hang from the comments (no task id of their own): go first, while the entries still say which are the cards'.
+      this.db.prepare(`DELETE FROM task_entry_reactions WHERE entry_id IN (SELECT id FROM task_entries WHERE task_id IN (${marks}))`).run(...ids);
       this.db.prepare(`DELETE FROM task_entries WHERE task_id IN (${marks})`).run(...ids);
       this.db.prepare(`DELETE FROM task_events WHERE task_id IN (${marks})`).run(...ids);
       this.db.prepare(`DELETE FROM task_watchers WHERE task_id IN (${marks})`).run(...ids);
@@ -440,6 +442,9 @@ export class SchedulerDb {
       }
     }
     this.db.transaction(() => {
+      // Reactions of entries about to go — and of those a release without them left behind when it pruned the card.
+      this.db.exec("DELETE FROM task_entry_reactions WHERE entry_id IN (SELECT id FROM task_entries WHERE task_id NOT IN (SELECT id FROM tasks))");
+      this.db.exec("DELETE FROM task_entry_reactions WHERE entry_id NOT IN (SELECT id FROM task_entries)");
       this.db.exec("DELETE FROM task_entries WHERE task_id NOT IN (SELECT id FROM tasks)");
       this.db.exec("DELETE FROM task_events WHERE task_id NOT IN (SELECT id FROM tasks)");
       this.db.exec("DELETE FROM task_watchers WHERE task_id NOT IN (SELECT id FROM tasks)");

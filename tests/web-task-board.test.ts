@@ -953,7 +953,7 @@ describe("6. the agent learns why its work came back", () => {
     expect(await tool({ action: "claim", id: "M-1" })).toMatchObject({ status: "claimed" });
     expect(await tool({ action: "done", id: "M-1", result: "shipped" })).toMatchObject({ status: "review" });
     await web(h, "/ui/tasks/cards/M-1/move", "POST", me, { to: "claimed", reason: "the changelog entry is missing", version: h.db.board.getCard("M-1").version });
-    expect(await tool({ action: "get", detail:true, id: "M-1" })).toMatch(/comments \(1 new\):\n admin .* \(sent back\) \[new\]: the changelog entry is missing/);
+    expect(await tool({ action: "get", detail:true, id: "M-1" })).toMatch(/comments \(1 new\):\n c\d+ admin .* \(sent back\) \[new\]: the changelog entry is missing/);
     expect(await tool({ action: "mine" })).toContain("sent back to you:\n M-1 Ship it — admin: the changelog entry is missing");
     // Its next write on the card hands the reason over with the answer, and then it has seen it.
     const next = await tool({ action: "update", id: card.uuid, result: "added the changelog entry" }) as { status: string; notes?: string[] };
