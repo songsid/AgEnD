@@ -9,8 +9,10 @@ const git=(...args:string[])=>execFileSync("git",["-C",repo,...args],{encoding:"
 if(git("status","--porcelain","--","src","scripts/manual/request-context-cutover-s230"))throw Error("Commit capture source first");
 const receipt:any={sourceHead:git("rev-parse","HEAD"),scope:"Real Settings pending and chat/refusal renderers; synthetic session/turn, no activation or provider",pictures:[],checks:[]};
 const check=(name:string,ok:unknown)=>{receipt.checks.push({name,ok:!!ok});if(!ok)throw Error(name);};
+const selected=new Set((process.env.STATES??"settings-pending,destination-refusal,stop-waiting-outcome").split(","));
 const fx=await bootFixture({port:0,classic:false,host:true,roster:[{name:"general",displayName:"General",backend:"claude-code",general:true},{name:"worker",displayName:"Demo worker",backend:"codex"}]});
 const {setLocale}=await import(repo+"/src/locale.ts"),{prepareSettingsEffect}=await import(repo+"/src/settings-effect.ts"),{captureRequestContextCall}=await import(repo+"/src/request-context-call.ts");
+fx.fm.currentVersion="2.4.0-beta.25";fx.fm.currentBuild=null;
 const view:any={revision:1,enabled:false,everActivated:false,attempted:false,phase:"off",canChange:true,blockers:[],restartCount:2,
  goBack:{attemptIds:["20261126T010203Z-0a1b2c3d"],availableUntil:"2026-12-03T02:30:00Z",timeZone:"Asia/Taipei"}};
 const never=()=>{throw Error("Capture cannot activate, deliver or launch");};
@@ -19,7 +21,7 @@ fx.fm.deliverToInstance=never;fx.fm.deliverHumanToInstance=never;fx.fm.saveFleet
 try{
  for(const c of matrix()){
   setLocale(c.lang);const tag=caseName(c),{ctx,page,csp}=await fx.page(c,{path:"/settings/access#request-context",host:true});
-  const shot=async(state:string)=>{check(`${tag}-${state}: no overflow`,await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));check(`${tag}-${state}: CSP`,!(await csp()).length);const name=`${tag}-${state}.png`,path=join(out,name);await page.screenshot({path});receipt.pictures.push({name,sha256:createHash("sha256").update(readFileSync(path)).digest("hex")});};
+  const shot=async(state:string)=>{if(!selected.has(state))return;check(`${tag}-${state}: no overflow`,await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));check(`${tag}-${state}: CSP`,!(await csp()).length);const name=`${tag}-${state}.png`,path=join(out,name);await page.screenshot({path});receipt.pictures.push({name,sha256:createHash("sha256").update(readFileSync(path)).digest("hex")});};
   try{
    const diff=prepareSettingsEffect("POST","/api/settings/request-context",{revision:1,action:"enable"},{config:fx.fm.fleetConfig,requestContextControl:()=>view}as any).diff!;
    const id="0123456789abcdef0123456789abcdef",pending={id,state:"pending",section:"access",requested_at:Date.now(),requested_by:"Demo admin",expires_at:Date.now()+300000,remaining_ms:287000,source:"public_link",summary:diff.summary,summary_i18n:diff.summary_i18n,can_withdraw:true,can_self_confirm:true,confirmation:{kind:"chat",where:[{platform:"discord",connection:"Demo connection"}]},outcome:null};
@@ -31,7 +33,11 @@ try{
      const m:any=await import(path),control:any=await import(path.replace(/settings-confirm\.js(?:[?#].*)?$/,"request-context-control.js"));void m.track(value,control.requestContextControlText("title"));
    },pending);
    await page.locator(".pending-card").waitFor();await page.locator(".pending-card .pending-details > summary").click();await page.locator(".pending-card").scrollIntoViewIfNeeded();await page.waitForTimeout(120);
+   check(`${tag}: irreversible lead before details`,await page.locator(".pending-card .notice.warn").innerText() === (c.lang==="en"?"Once on, AgEnD can't go back to an older version.":"開啟後無法退回舊版 AgEnD。"));
+   check(`${tag}: Apply now has no conflicting General direction`,!(await page.locator(".pending-card").innerText()).includes(c.lang==="en"?"press Confirm on the card in General":"請到 Discord"));
+   check(`${tag}: fixture badge uses 2.4`,await page.getByText("v2.4.0-beta.25",{exact:true}).count()===1);
    check(`${tag}: pending summary carries irreversible effect`,(await page.locator(".pending-card").innerText()).includes(c.lang==="en"?"older AgEnD":"舊版 AgEnD"));await shot("settings-pending");
+   if(!selected.has("destination-refusal")&&!selected.has("stop-waiting-outcome"))continue;
    await page.goto(`${fx.base}/ui/chat/worker`);await page.waitForTimeout(200);
    const root=randomUUID(),context:any={ref:{version:1,contextId:randomUUID(),rootContextId:root,parentContextId:root},rootEvidenceRef:"synthetic-delegation",ingress:"owner",source:{instance:"worker",incarnation:"fixture"},initiatingActor:{kind:"person",platform:"discord",userId:"demo-person",displayName:"Demo person"},sourceAudience:{kind:"instance",ref:randomUUID()}};
    const lease=captureRequestContextCall({token:randomUUID(),inputId:"synthetic-delivered-child",context,wireSha256:"a".repeat(64),owner:{instance:"worker",incarnation:"fixture",workGeneration:"fixture",daemonBootId:"fixture",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0}},()=>true);
