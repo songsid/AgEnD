@@ -1,3 +1,4 @@
+import { readHubSqlRow } from "./read-statement.js";
 /** Member-address SQL participant. Transport revocation, audit, durable notices and the operation share one root COMMIT. */
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -86,7 +87,7 @@ function readOperation(db: Database.Database, id: string): HubMemberAddressOpera
 }
 export function readHubMemberAddressHead(db: Database.Database): z.infer<typeof headSchema> {
   try {
-    const r = db.prepare("SELECT revision,operation_id FROM hub_member_address_head WHERE singleton=1").get() as { revision: number; operation_id: string | null } | undefined;
+    const r = readHubSqlRow(db, "SELECT revision,operation_id FROM hub_member_address_head WHERE singleton=1") as { revision: number; operation_id: string | null } | undefined;
     if (!r) return refuse();
     const h = headSchema.parse({ revision: r.revision, operationId: r.operation_id });
     if (h.revision === 0 ? h.operationId !== null : h.operationId === null || readOperation(db, h.operationId).revision !== h.revision) return refuse();

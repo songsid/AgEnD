@@ -1,3 +1,4 @@
+import { readHubSqlRow } from "../read-statement.js";
 /** Exact canonical policy image. Reading supplies no directory facts or operation authority. */
 import type Database from "better-sqlite3";
 import { initialGroupPolicy, parseGroupPolicy, type HubGroupPolicy } from "../group-policy/model.js";
@@ -67,7 +68,7 @@ function createReader(options: PolicyReaderOptions, legacyRepair: boolean): () =
   let decoded: HubCanonicalPolicy | undefined;
   return () => {
     if (current() !== true) throw new HubProtocolError("unavailable");
-    const row = options.db.prepare("SELECT hub_id,body FROM hub_group_policy WHERE singleton=1").get() as { hub_id: string; body: string } | undefined;
+    const row = readHubSqlRow(options.db, "SELECT hub_id,body FROM hub_group_policy WHERE singleton=1") as { hub_id: string; body: string } | undefined;
     if (!row || row.hub_id !== hubId) throw new HubProtocolError("unavailable");
     const known = decoded?.raw === row.body;
     const result = known ? copyPolicy(decoded!) : parseCanonicalPolicy(row.body);
