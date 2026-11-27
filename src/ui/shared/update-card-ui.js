@@ -298,8 +298,8 @@ export function cardLine(info, { Line, busy, deps }) {
 /**
  * S-241 (Lumen's point 8): once the admin has answered (waiting for idle, scheduled), a phone shows the banner as one line —
  * the short words and Change, which opens the full line (its words, who it waits for, and the buttons). The desk is
- * unchanged: the short words and Change are never shown there (app.css: the shell's phone condition, max-width 899px or a
- * landscape touch screen). A new state starts closed.
+ * unchanged: the short words and Change are never shown there (app.css: the shell's own phone query, as app-shell.js
+ * narrow() asks it, which includes a landscape touch screen). A new state starts closed.
  * The wrapper is `display: contents`, so the line lays out exactly as before.
  */
 function AnsweredLine({ Line, spinner, icon, title, short, sub = [], buttons }) {
