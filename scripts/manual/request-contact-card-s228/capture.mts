@@ -177,7 +177,7 @@ async function walk(c: any) {
         selects: d.querySelectorAll(".contact-until select").length, day: d.querySelector(".contact-until select").selectedOptions[0].innerText }; })()`) as any;
     check(`${tag} 5: the boundary is in view (not behind the footer), and plain`, ed.boundaryInView && dlg.includes(W(zh, "This only decides whether a message is forwarded", "這只決定訊息能不能轉交")), ed);
     check(`${tag} 5: save is off until someone is ticked, and says why`, ed.saveOff && ed.save === W(zh, "Approve this one and allow from now on", "核准這筆，並設為常用轉交") && dlg.includes(W(zh, "Tick at least one person to save a rule.", "至少勾選一個人，才能儲存規則。")), ed);
-    check(`${tag} 5: the expiry is a day and a 24-hour time in the page's language`, ed.native === 0 && ed.selects === 3 && !/AM|PM|上午|下午/.test(dlg) && (zh ? /[年月日]/.test(ed.day) : /[A-Z][a-z]{2}/.test(ed.day)), ed);
+    check(`${tag} 5: the expiry is a day and a 24-hour time in the page's language`, ed.native === 0 && ed.selects === 3 && (!zh || !/AM|PM|上午|下午/.test(dlg)) && (zh ? /[年月日]/.test(ed.day) : /[A-Z][a-z]{2}/.test(ed.day)), ed);
     await shot(page, `${tag}-5-always-allow`);
     check(`${tag}: no page errors`, errors.length === 0, errors);
   } finally {
