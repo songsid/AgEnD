@@ -82,9 +82,10 @@ Split by role while keeping one writer:
 | Timers | Core only. |
 
 **Security** keeps one key holder and one writer.
-- Web workers need read access to `hub.sqlite`, the browser TLS key and the session secret derivation. They do **not** need the issuer key, the member key, `content.key` or write access to the floors.
-- Readers must still verify the transport floor against the database revision on every read, and a reader that sees a mismatch refuses (`uncertain`), as today.
-- One new risk: a reader can see a revision that core has committed but whose floor file it read earlier. The read order must stay database-then-floor, with an equality check, as the transport store does now.
+- **What web workers get.** Read access to `hub.sqlite`, **read-only** access to the floor files (they check them; they never raise them), the browser TLS key and the session secret derivation.
+- **What they don't get.** The issuer key, the member key, `content.key`, and write access to the floors.
+- **Encrypted content.** Room questions, answers and attachments are encrypted with `content.key` (the audit and attachment stores both take it). Web workers therefore cannot decrypt them. Core decrypts and projects content for an authorised request over the RPC, and web never holds the key.
+- **Floor checks.** Readers verify the transport floor against the database revision on every read, and a mismatch refuses (`uncertain`), as today. One new risk: a reader can see a revision that core has committed but whose floor file it read earlier. The read order must stay database-then-floor, with an equality check, as the transport store does now.
 
 **Cost:** medium. It needs an RPC layer, an event bus and request admission in core. **Ceiling:** writes stay single-threaded, which is fine for a team Hub. Reads and SSE scale with cores.
 
@@ -107,8 +108,8 @@ Run web, worker and realtime services over Postgres (state) and Redis (pub/sub, 
 | Mechanism | Rule that must hold | Option 1 | Option 2 | Option 3 |
 |---|---|---|---|---|
 | Member identity and pin | One holder of the member key; member TLS never terminated by a proxy | core | core | realtime/member service only |
-| Issuer and content keys | Only the writer holds them | process | core only | writer service only |
-| Transport floor | Raised before the commit by the only writer; every reader checks floor = revision | as today | core writes, web reads and checks | sequencer + external floor |
+| Issuer and content keys | Only the writer holds them | process | core only; core decrypts content for web over RPC | writer service only |
+| Transport floor | Raised before the commit by the only writer; every reader checks floor = revision | as today | core writes; web has read-only floor access and checks | sequencer + external floor |
 | Session epoch, revocation version | In the database, read fresh per request | as today | readers read fresh | as today |
 | Sealed settings | Digest rechecked at mount; journal atomic | as today | core only; web refuses while unmounted | lease with an epoch |
 | Permits | `assertCurrent` before and after each transaction | as today | in core, for every mutation RPC | in the writer |
@@ -126,7 +127,8 @@ Two rules apply to every option:
 `agend-hub:<version>` is one official image per release, built from the same release as the npm package.
 - **Contents:** Node at a pinned version, the AgEnD build, and the ca-certificates package.
 - **Runtime user:** a fixed non-root uid/gid (`10001:10001`). No shell login and no sudo.
-- **Entrypoint:** it runs the existing daemon in **Hub-only mode**: a Fleet with `hub.enabled`, no agent instances and no chat adapters. That mode already exists for health reporting (`hubOnly`). It does not use tmux.
+- **Entrypoint:** it runs the daemon in a **Hub-only mode**: a Fleet with `hub.enabled`, no agent instances and no chat adapters. This mode is **packaging work, not something that exists today**. `FleetManager.startAll` resolves tmux unconditionally, and `hubOnly` is currently only a health classification. The first build slice adds a supported zero-agent start branch that never resolves tmux.
+- **Optional Hub features with native dependencies.** The room-assistant CLI and sandboxed execution are not in the base image. The package declares them explicitly: either an `agend-hub:<version>-assistant` variant with the assistant CLI and the execution runtime, or a documented "not available in the container" state. The importer reads whether the native Hub uses them. It refuses to import silently into an image that lacks them, and asks the operator to pick the variant or confirm turning the feature off.
 - **Tags:** one per release (`2.4.0`, `2.4.1`, …), plus `2.4` and `stable` channel tags. Compose files pin an exact version tag; an image digest is recorded at install.
 
 ### Compose services and volumes
@@ -140,12 +142,15 @@ services:
     ports:
       - "443:8443"                  # browser HTTPS (replaces the firewall redirect)
       - "9443:9443"                 # Fleet member link, TLS passes straight through
+    environment:
+      AGEND_HOME: /var/lib/agend
     volumes:
-      - hub-data:/var/lib/agend-hub/data     # hub.sqlite (+wal/shm), settings journal, receipts, init evidence
-      - hub-keys:/var/lib/agend-hub/keys     # identity, issuer, member TLS key, content.key, secrets/
-      - hub-floors:/var/lib/agend-hub/floors # anti-rollback floors (separate volume, see below)
-      - ./tls:/etc/agend-hub/tls:ro          # browser certificate chain + key, operator-owned
-      - ./ldaps-ca:/etc/agend-hub/ldaps-ca:ro
+      # Nested mounts reproduce today's fixed layout under AGEND_HOME (compose/storage.ts, init/layout.ts):
+      - hub-home:/var/lib/agend                # fleet.yaml (Hub block), hub/hub.sqlite(+wal/shm), hub/settings-*,
+                                               # hub/init*, hub/install-inventory.json, hub/web-tls/, hub/member-address/,
+                                               # hub/web-address/, hub/secrets/, hub-assistant/
+      - hub-keys:/var/lib/agend/hub/keys       # identity.json, issuer, member TLS key/cert, content.key
+      - hub-floors:/var/lib/agend/hub/floors   # anti-rollback floors (separate volume, see below)
     dns: ["<directory DNS 1>", "<directory DNS 2>"]
     dns_search: ["<directory domain>"]
     healthcheck:
@@ -153,16 +158,31 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-volumes: { hub-data: {}, hub-keys: {}, hub-floors: {} }
+volumes: { hub-home: {}, hub-keys: {}, hub-floors: {} }
 ```
 
-**Ownership and permissions.** Named volumes, not bind mounts, hold data, keys and floors. A one-shot `init` step in the entrypoint creates the directories as `0700` and the files as `0600`, owned by `10001`, and refuses to start if any path is a symlink or has group/other bits. These are the same private-file checks as today, run at start. Bind mounts are used only for the operator-supplied certificate and LDAPS CA, read-only. On macOS, bind-mount ownership is translated, which would fail the uid checks; named volumes avoid that.
+**Paths.** The Hub keeps its current fixed paths under `AGEND_HOME`. No storage-path adapter is needed, and symlinks can't bridge paths anyway, since `privatePath` refuses them. The keys and floors volumes are mounted *inside* the home volume at exactly `hub/keys` and `hub/floors`. A nested mount is a real directory, not a symlink, so the existing private-file walk accepts it as long as its root is owned by the Hub uid with mode `0700`.
+
+**Ownership.**
+- **The image prepares ownership.** It contains `/var/lib/agend`, `/var/lib/agend/hub`, `/var/lib/agend/hub/keys` and `/var/lib/agend/hub/floors` as `10001:10001`, mode `0700`. A *fresh* named volume takes the ownership and mode of the image directory it is first mounted on, so a new install needs no chown and no root.
+- **A volume with any other owner is refused.** The entrypoint runs as `10001` and never chowns: it refuses to start when a volume root has the wrong owner, has group/other bits or is a symlink. These are the same private-file checks as today, run at start.
+- **The one privileged repair is bounded.** `agend-hub fix-ownership`, run by the installer through `docker compose run --rm --user 0`, chowns only the three volume roots and their contents to `10001`, then exits. It never runs at service start.
+- **No state bind mounts.** On macOS, bind-mount ownership is translated, which would fail the uid checks, so data, keys and floors are always named volumes.
+
+**Certificate and CA inputs** are not live-mounted. Today's `privatePath` rejects absolute and out-of-home paths, and operator-owned `0600` files wouldn't be readable by uid `10001` anyway.
+- **The browser certificate** is *imported*: the installer streams the chain and key on stdin to `agend-hub cert import`, which runs the existing validation and writes them as private files into `hub/web-tls/`. Renewal is the same command, then the live `setSecureContext` swap.
+- **The LDAPS CA** becomes the sealed `directory.caPem` at initialisation, as the CA bootstrap does today, so it needs no mount at all.
 
 **Healthcheck.** `agend-hub health` asks the running daemon's loopback health endpoint for its mount state: mounted, listeners up, store not `uncertain`. It needs no credentials and prints no state.
 
-**Where floors and keys live, and why.** The floors sit in their own volume so that restoring only the data volume from an older backup is caught: the database revision is below the floor, so the store refuses as `uncertain` instead of reviving revoked Fleets or old sessions. Keys are separate so a data restore never carries a different identity. Each backup records the three volumes as one **matched set**, with a manifest of the Hub id, revisions, floor values and image tag. Restore takes only complete matched sets (see §5). Like today, the floor protects against partial or mistaken restores. It cannot stop someone with host root who restores every volume. That case is handled by the sanctioned restore procedure and its audit record.
+**Where floors and keys live, and why.** The floors sit in their own volume so that restoring only the data volume from an older backup is caught: the database revision is below the floor, so the store refuses as `uncertain` instead of reviving revoked Fleets or old sessions. Keys are separate so a data restore never carries a different identity. Each backup records the three volumes as one **matched set**, with a manifest of the Hub id, revisions, floor values and image tag. Restore takes only complete matched sets (see §5). The tests pin three cases:
+- old data with the current floor refuses;
+- a missing companion (keys or floors absent) refuses without creating replacement keys or floors;
+- a complete matched set opens.
 
-**Directory `.local` DNS.** Inside a container, the host's local resolver stub (`127.0.0.53`) is not reachable. A `.local` domain also clashes with mDNS conventions. Compose therefore sets `dns:` to the directory's DNS servers and `dns_search:` to its domain. The installer verifies, from inside the container, that the directory host resolves and that LDAPS answers with a certificate chaining to the mounted CA. `extra_hosts` is a documented fallback for a fixed domain controller address.
+Like today, the floor protects against partial or mistaken restores. It cannot stop someone with host root who restores every volume. That case is handled by the sanctioned restore procedure and its audit record.
+
+**Directory `.local` DNS.** Inside a container, the host's local resolver stub (`127.0.0.53`) is not reachable. A `.local` domain also clashes with mDNS conventions. Compose therefore sets `dns:` to the directory's DNS servers and `dns_search:` to its domain. The host's resolver drop-in is not inherited. The installer runs its probes with `docker compose run --rm hub agend-hub probe …`, in the service's own network namespace and as the service uid. The probes check that the directory host resolves and that LDAPS answers with a certificate chaining to the sealed `directory.caPem`. `extra_hosts` is a documented fallback for a fixed domain controller address.
 
 **Fleets stay native.** They connect to the member port exactly as now, with the same pinned SPKI. Nothing changes on the Fleet side.
 
@@ -170,34 +190,59 @@ volumes: { hub-data: {}, hub-keys: {}, hub-floors: {} }
 
 ### Option 2 inside the container
 
-When option 2 is built, it stays **one image**. Compose gains a `web` service with replicas from the same image, run in `--role web`, sharing read access to `hub-data`. Mounting `hub-keys` read-only would expose the private keys, so the web role gets its own **web-keys** volume holding only the browser TLS key. The core↔web socket is a named volume of type `tmpfs`, mounted by both, mode `0700`. Floors and the writer stay in the `hub` (core) service only.
+When option 2 is built, it stays **one image**. Compose gains a `web` service with replicas from the same image, run in `--role web`:
+- **Mounts.** `hub-home` is mounted read-only. `hub-floors` is mounted **read-only**: web checks the floors and never raises them.
+- **No `hub-keys`.** Mounting it read-only would still expose the issuer, member and content keys, so the browser TLS key is mounted for web from its own `web-tls` volume.
+- **The core↔web socket** lives on a **shared named volume** that both services mount, with a directory of mode `0700` owned by the Hub uid. A per-container `tmpfs` mount cannot be shared between containers.
+- **Core owns** the writer, `content.key` and the decrypting projections.
 
 ## 5. Upgrade, rollback, backup and migration
 
 **Upgrade = pull a newer tag.** The installer (`agend-hub upgrade 2.4.1`) runs these steps:
 1. Check that the target tag exists and its digest matches the release notes.
 2. Stop the service cleanly: checkpoint WAL, close the database.
-3. Take a matched-set backup of `hub-data`, `hub-keys` and `hub-floors`, with its manifest.
+3. Take a matched-set backup of `hub-home`, `hub-keys` and `hub-floors`, with its manifest.
 4. Rewrite the compose tag and `up -d`.
 5. Wait for the healthcheck.
 
 Database migrations run at mount, exactly as today. This answers the Hub-update question of M-3887.
 
-**Rollback = the previous tag, and its matched set when the database moved.** A newer build's migration makes an older build refuse the database (`hub-state-newer`). That refusal is correct and stays. So `agend-hub rollback` restores the pre-upgrade matched set taken in step 3 together with the previous tag. It is a sanctioned restore:
-- it requires the operator at the host;
-- it records the restore in the audit log after start;
-- it lists every revocation, session-epoch advance and setting change made since the backup, which must be re-applied. Those changes are lost by the restore, and the floors are restored with the set, so nothing flags them.
+**Rollback has three distinct cases, and only the first one is "just go back":**
 
-If the new build did not migrate anything, rolling back is just the old tag.
+1. **Pre-use rollback.** If no write has been accepted since the upgrade or import (listeners never opened, or opened and refused), going back to the previous tag, or to the untouched native home, is safe.
+2. **Machine rollback after use.** Once the new copy has accepted writes, the old copy is stale. Starting it would revive revoked Fleets, old sessions and settings, and the pre-relocation state. The latest state must move back instead:
+   - stop the container;
+   - `agend-hub export --to <new native home>` writes the current matched set;
+   - start the native service on that home, as the move runbook's rollback already requires.
 
-**Backup and restore.** `agend-hub backup` and `agend-hub restore` operate on matched sets only. A restore refuses a set whose manifest, Hub id or floors don't match its database. This also replaces the hand-run move runbook: moving a Hub means backup on the old host, restore on the new one, and route A or B for the Fleet address exactly as the runbook describes.
+   An older build that can't read a migrated database refuses (`hub-state-newer`). That case needs case 3, not a silent downgrade.
+3. **Intentional pre-upgrade restore (data-loss recovery).** This replaces the current database with an older matched set. `agend-hub rollback --restore` then:
+   1. **before** replacing anything, reads the current database and records the list to re-apply: revocations, session-epoch advances and settings changes made since the backup. These are lost by the restore, and the restored floors won't flag them.
+   2. replaces the set and starts with **listeners fenced**: no member or web listener serves.
+   3. re-applies or explicitly reconciles every item on that list.
+   4. only then opens the listeners, and writes an audit record of the restore.
 
-**Migration from today's native install** (the pilot Hub host):
-1. Install Docker on the host, through the operator's package source, with sudo. That is the only privileged step.
-2. Stop the native `com.agend.fleet` service and leave its home untouched as the rollback.
-3. Run `agend-hub import --from <native AgEnD home>` once. It copies the state set, keys, secrets, `web-tls`, member certificates, settings journal and receipts, init manifest and `fleet.yaml` Hub block into the three volumes. It fixes ownership to `10001`, re-runs the state-set and floor checks, and verifies that the sealed plan digest still matches. Listener addresses change to the container's internal ones, so the importer reseals the plan with the supported settings writer, under the same issuer key, rather than editing the manifest.
-4. Start the container. The same Hub id, issuer and member key mean every Fleet keeps its pairing (route A).
-5. To roll back, stop the container and start the native service; its home was never modified. Run only one of the two at a time: there is no cross-host lock, as today.
+   An audit entry written after start alone would leave a serving window, so the fence comes first. This case requires the operator at the host.
+
+**Backup and restore.** `agend-hub backup` and `agend-hub restore` operate on matched sets only. A restore refuses a set whose manifest, Hub id or floors don't match its database. A backup is the data half of a move; it doesn't replace the move's acceptance. Moving a Hub still follows the runbook's single-writer cold move, with route A or route B for the Fleet address and the runbook's acceptance checks.
+
+**Migration from today's native install** (the pilot Hub host). These steps need sudo: installing Docker, disabling the native autostart, and retiring the owned port redirect.
+1. **Install Docker** on the host through the operator's package source.
+2. **Fence the native Hub.** Stop the native `com.agend.fleet` service **and disable its autostart**, with a record of what was disabled. A reboot must never start the native Hub while Docker's restart policy starts the container, because the two would publish the same Hub.
+3. **Retire the owned port redirect.** The native host has a persistent firewall 443→8443 redirect. The importer detects exactly that rule (the one the runbook installed) and removes it before Compose publishes 443. It records the rule so a pre-use rollback can restore it, and never touches other rules.
+4. **Import.** `agend-hub import --from <native AgEnD home>` runs once and copies the full inventory into the volumes:
+   - the state set and every key;
+   - all of `hub/secrets/`, including the private directory-bind file behind `bindPasswordRef`;
+   - `web-tls/`, member and web address certificates and selectors;
+   - the settings journal, staged files and receipts;
+   - init evidence and the sealed manifest;
+   - `hub-assistant/` state;
+   - the `fleet.yaml` Hub block with its sealed `directory.caPem`.
+
+   It preserves the sealed CA and bind reference instead of bootstrapping or rotating them. It fixes ownership to `10001` and re-runs the state-set, floor and private-file checks.
+5. **Reseal the listeners.** The old host-IP listener can't bind inside a bridge container, so the internal listener addresses change. The importer reseals them with the supported settings writer, under the same issuer key, and keeps **both** public origins, the member key and a browser certificate valid for those DNS names. With the same Hub id, issuer, member key and origins, Fleets keep their pairing (route A). If a public origin has to change, that is the signed route-B relocation, not an implicit route A.
+6. **Start the container and run the acceptance in §6, steps 10–11.**
+7. **Roll back by case.** Before any write has been accepted, roll back by stopping the container, restoring the redirect and re-enabling the native autostart on the untouched home: case 1. After writes, use case 2. Only one copy ever runs; there is no cross-host lock, as today.
 
 ## 6. From a blank VM to a running Hub
 
@@ -209,13 +254,13 @@ One command, `curl …/install-hub.sh | sh` or the same script from the release 
 | 2. Docker | Present and running; if not, prints the one sudo command for the distro (or runs it when allowed) | service account + linger; Node in a private prefix |
 | 3. Image | Pulls the exact tag; verifies the digest | Node prefix |
 | 4. Names | Hub name and public URLs. Fleet member URL resolves to this host from outside | — |
-| 5. Browser certificate | Mounted chain + key: key matches, chain complete, name matches the URL, not expired; or generates a self-signed one for tests | wildcard cert import |
-| 6. Ports | Publishes 443→8443 and 9443; checks no host firewall blocks them | firewall 443→8443 redirect |
-| 7. Directory DNS | From inside the container: the directory host resolves with the configured `dns`/`dns_search` | resolver drop-in for `.local` |
-| 8. LDAPS | From inside the container: TLS to the directory verifies against the mounted CA (or the existing fetch + fingerprint bootstrap); a test bind with the supplied bind account | LDAPS CA |
-| 9. Initialise | Runs the existing `hub init` non-interactively from the collected answers (same validation, same seal), administrator and retention | interactive wizard |
-| 10. Start | `compose up -d`; waits for the healthcheck; prints the handoff record (URLs, member pin fingerprint, how to pair a Fleet) | `agend hub handoff` |
-| 11. Backup | Takes the first matched-set backup and prints where it is | move runbook |
+| 5. Browser certificate | Streams the chain and key to `agend-hub cert import`: key matches, chain complete, name matches the URLs, not expired; writes private files in `hub/web-tls/`. Or generates a self-signed one for tests | wildcard cert import |
+| 6. Ports | Publishes 443→8443 and 9443; checks no host firewall blocks them; on a migrated host, the owned redirect was retired first (§5) | firewall 443→8443 redirect |
+| 7. Directory DNS | `docker compose run --rm hub agend-hub probe dns` in the service network namespace, as the service uid: the directory host resolves with the configured `dns`/`dns_search`. The host drop-in is not inherited | resolver drop-in for `.local` |
+| 8. LDAPS | The same probe for LDAPS: TLS verifies against the CA (fetch + fingerprint bootstrap on a new install; the preserved sealed `directory.caPem` on import, never re-bootstrapped); a test bind with the bind account (on import, the preserved private `bindPasswordRef`, not rotated) | LDAPS CA |
+| 9. Initialise | New installs only: runs the existing `hub init` non-interactively from the collected answers (same validation, same seal), administrator and retention. Imports skip this and keep their seal | interactive wizard |
+| 10. Start and accept | `compose up -d`; waits for the healthcheck (loopback mount state only). Then three acceptance checks from outside the container. (a) Inert TLS checks through the **published** endpoints: the member port presents the expected pinned SPKI with the right SAN and validity, separately from the browser chain. Member TLS stays self-signed and pinned and never uses the browser wildcard key. A front end whose backend is down must refuse, never answer with another certificate, which a Fleet would treat as a changed key. (b) The handoff record: URLs, member pin fingerprint, how to pair a Fleet. (c) Acceptance: a company sign-in, the rooms and shares visible, and one connected Fleet as a canary | `agend hub handoff` |
+| 11. Backup | Takes the first matched-set backup and prints where it is. A backup does not replace route-A/B move acceptance | — |
 
 ## 7. Recommendation
 
@@ -266,11 +311,11 @@ The load tester's profile-based estimates (not measured):
 ### Build slices after 2.4.0
 
 Each slice is its own reviewed PR:
-1. Hub-only image, compose file and `agend-hub health`.
-2. The volume init and private-file start checks.
+1. A supported zero-agent, no-tmux Hub start branch; the Hub-only image, compose file and `agend-hub health`; and the declared assistant/execution variant.
+2. The nested-volume layout, image-prepared ownership, `fix-ownership`, the start checks, and `cert import` over stdin.
 3. `install-hub.sh` with steps 1–11 and the in-container DNS and LDAPS checks.
-4. Matched-set `backup` and `restore`, plus `upgrade` and `rollback`.
-5. `import` from a native home, with a rehearsal on a copy of the pilot Hub.
+4. Matched-set `backup` and `restore`; `upgrade`; the three rollback cases, including `export` and the fenced `rollback --restore`.
+5. `import` from a native home: autostart fencing, retiring the owned redirect, resealing, and preserving the CA and bind reference. Rehearsed on a copy of the pilot Hub, with the §6 step-10 acceptance.
 6. The Mac test Hub on the same image.
 7. The check-once frame, measured against page p95 on the M-3901 fixture.
 8. Further per-request batching, measured the same way.
