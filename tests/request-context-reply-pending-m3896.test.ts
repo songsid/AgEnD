@@ -40,3 +40,8 @@ it("restart-style clear refuses every waiter and retains no old owner",async()=>
  const registry=new RequestContextPendingReplies(),a=snapshot(),row=registry.stage(a,a.inputId,a.wireSha256,()=>true),waiting=row.wait(100);
  registry.clear();expect(await waiting).toBeUndefined();expect(registry.capture(a)).toBeUndefined();
 });
+it("the same input and bytes on a replacement token cannot capture the old waiter",()=>{
+ const registry=new RequestContextPendingReplies(),a=snapshot();registry.stage(a,a.inputId,a.wireSha256,()=>true);
+ expect(registry.capture({...a,token:"replacement-token"})).toBeUndefined();
+ registry.clear();
+});

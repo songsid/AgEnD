@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import {randomUUID} from "node:crypto";
-import {mkdtempSync,rmSync} from "node:fs";
+import {mkdtempSync,rmSync,readFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {afterEach,expect,it} from "vitest";
@@ -8,6 +8,9 @@ import {activateRequestContextBarrier,assertRequestContextCompatibility,register
 import {decodeRequestContextResolution,readRequestContextResolution,writeRequestContextResolution,type RequestContextResolution} from "../src/request-context-resolution.js";
 import {requestContextDigest} from "../src/request-context-store.js";
 const cleanup:Array<()=>void>=[];
+// Native data-module import executes the exact published bytes, without asking
+// Vite to remap the published build's absent source tree.
+const publishedReader=()=>import(`data:text/javascript;base64,${readFileSync(new URL("./fixtures/request-context-resolution-m3896/beta27-reader.mjs",import.meta.url)).toString("base64")}`);
 afterEach(()=>{for(const fn of cleanup.splice(0).reverse())fn();});
 function rig(){
  const home=mkdtempSync(join(tmpdir(),"resolution-m3896-")),path=join(home,"box.db"),db=new Database(path);
@@ -21,8 +24,7 @@ function rig(){
  return {home,path,db,value,write};
 }
 it("the published beta.27 reader opens never-abandoned v1 and refuses the eighth guard",async()=>{
- const f=rig(),fixture=new URL("./fixtures/request-context-resolution-m3896/beta27-reader.mjs",import.meta.url).href;
- const legacy=await import(fixture);
+ const f=rig(),legacy=await publishedReader();
  expect(legacy.assertRequestContextCompatibility(f.db,1)).toBe("active");
  expect(readRequestContextResolution(f.db,f.value.rootId)).toBeNull();
  f.write();expect(()=>legacy.assertRequestContextCompatibility(f.db,1)).toThrow(/guard set/);
@@ -38,7 +40,7 @@ it("functionless connections still read, back up and write unrelated tables",asy
 });
 it("the guard remains after collection of every resolution, so old binaries never reopen the home",async()=>{
  const f=rig();f.write();f.db.prepare("DELETE FROM request_context_drain_v1").run();
- const fixture=new URL("./fixtures/request-context-resolution-m3896/beta27-reader.mjs",import.meta.url).href,legacy=await import(fixture);
+ const legacy=await publishedReader();
  expect(()=>legacy.assertRequestContextCompatibility(f.db,1)).toThrow(/guard set/);
  expect(assertRequestContextCompatibility(f.db,1)).toBe("active");
 });

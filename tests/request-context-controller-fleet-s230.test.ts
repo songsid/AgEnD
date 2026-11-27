@@ -26,7 +26,7 @@ function manager(home:string){
   retireRequestContextNativeFactories:vi.fn(async()=>{m.requestContextNativeGraph=undefined;m.nativeMcpStore=null;m.fleetWindowsRuntime=null;m.paneManager=null;}),
   nativeInstanceRuntime:()=>m.fleetWindowsRuntime??=native(),nativePanes:async()=>m.paneManager??=native(),
   adapters:new Map(),worlds:new Map(),contactDefaultApprovers:()=>[],getDeliveryEpoch:()=>0});
- function native(){const registration=m.requestContextNativeGraph.registration;return {drainRevision:"native",offRevision:"native",drainView:()=>({registration,revision:"native",references:[],unknown:false}),offView:()=>({registration,revision:"native",references:[],unknown:false}),requestContextPhysicallyIdle:()=>true};}
+ function native(){const registration=m.requestContextNativeGraph.registration;return {drainRevision:"native",offRevision:"native",drainView:()=>({registration,revision:"native",references:[],unknown:false}),offView:()=>({registration,revision:"native",references:[],unknown:false}),requestContextPhysicallyIdle:()=>true,requestContextStops:()=>[]};}
  m.ensureDeliveryOutbox();clean.push(()=>{clearTimeout(m.requestContextDrainTimer);clearInterval(m.requestContextCollectionTimer);clearInterval(m.replyObligationTimer);m.deliveryOutbox?.close();});return m;
 }
 function rig(allowSyntheticEnable=true){const h=mkdtempSync(join(tmpdir(),"controller-fleet-"));clean.push(()=>rmSync(h,{recursive:true,force:true}));setProcessFleetLock(acquireFleetLock(h));clean.push(()=>releaseProcessFleetLock());const m=manager(h);
@@ -155,4 +155,30 @@ it("S-274: the production release guard refuses On before relaunch, activation o
  await expect(r.m.requestContextControl.change({revision:view.revision,action:"enable"},actor)).rejects.toThrow("request-context-enable-unavailable");
  expect(stage).not.toHaveBeenCalled();expect(r.m.deliveryOutbox.requestContextInstallation().read()).toBeNull();
  expect(r.m.postFleetSecurityNotice).not.toHaveBeenCalled();expect(r.m.requestContextAdmission).toBeUndefined();
+});
+
+it("M-3896 the verified owner settles an exact uncertain input through the real draining controller",async()=>{
+ const {nativeHumanOrigin}=await import("../src/human-delivery-receipts.js");
+ const {readRequestContextResolution}=await import("../src/request-context-resolution.js");
+ const r=rig(),host=r.m.requestContextControl,owner=()=>({...r.actor(),binding:"a".repeat(64)}),onOwner=owner();
+ await host.change({revision:host.read(onOwner).revision,action:"enable"},onOwner);
+ const box=r.m.deliveryOutbox,saved=box.createHumanReceiptWithRequestContext({targetInstance:"worker",originalBody:"Synthetic waiting input",origin:nativeHumanOrigin("discord","fixture","person","Person",false,"synthetic-message")!,inputKind:"fleet_inbound",managerBootId:r.m.managerBootId},
+  {incarnation:"current",room:null,web:null,route:{kind:"room",adapterId:"fixture",chatId:"synthetic-room"},platform:()=>"discord"});
+ const db=(box as any).db,root=saved.context.ref.rootContextId;
+ db.prepare("UPDATE human_delivery_receipts SET state='uncertain' WHERE receipt_id=?").run(saved.receipt.receipt_id);
+ const offOwner=owner();await host.change({revision:host.read(offOwner).revision,action:"disable"},offOwner);
+ let actor=owner(),view=host.read(actor),blocker=view.blockers.find((row:any)=>row.id.startsWith(`work:${root}:`));
+ expect(blocker).toMatchObject({kind:"work",labels:["worker"],families:["human-input"],action:"stop-work"});
+ const before=box.getHumanReceipt(saved.receipt.receipt_id);
+ // A crash/failure after fencing cannot turn an uncertain receipt into delivery.
+ const stop=vi.spyOn(r.m,"stopRequestContextWork").mockRejectedValueOnce(Error("retirement unavailable"));
+ await expect(host.change({revision:view.revision,action:"resolve",blockerId:blocker.id,resolution:"stop-work"},actor)).rejects.toThrow(/retirement/);
+ stop.mockRestore();const firstEpoch=r.m.requestContextModes.drain.retainedEpoch(root);expect(firstEpoch).toBeTruthy();expect(readRequestContextResolution(db,root)).toBeNull();
+ actor=owner();view=host.read(actor);blocker=view.blockers.find((row:any)=>row.id.startsWith(`work:${root}:`));
+ await host.change({revision:view.revision,action:"resolve",blockerId:blocker.id,resolution:"stop-work"},actor);
+ expect(r.m.requestContextModes.drain.retainedEpoch(root)).not.toBe(firstEpoch);
+ expect(box.getHumanReceipt(saved.receipt.receipt_id)).toEqual(before);
+ expect(readRequestContextResolution(db,root)?.receipts[0].receiptId).toBe(saved.receipt.receipt_id);
+ const state=box.requestContextInstallation().read();r.m.requestContextModes.off.advance(state.revision);
+ expect(host.read(owner())).toMatchObject({phase:"off",everActivated:true});
 });

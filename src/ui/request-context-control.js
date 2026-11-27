@@ -31,6 +31,10 @@ register("requestContextControl", {
     check: "Check again", error: "Couldn't read the current state. Try again.", failed: "Couldn't confirm whether anything changed. Press Check again.",
     notice: "Request-based contact approvals are on: approval applies only to this request. Earlier conversations won't block an administrator's new request. The switch is in Settings → Access & security. Warning: you can no longer downgrade to older AgEnD versions.",
     open: "Open settings", loading: "Checking the current state…",
+    workFamilies: "Waiting on {0}: {1}.", unknownEnd: "The conversation's end isn't confirmed.",
+    "family-turns": "an active conversation", "family-daemon-calls": "agent tool calls", "family-fleet-calls": "pending tool results",
+    "family-native-exec": "work on a connected computer", "family-native-grants": "active tool connections", "family-pane-proofs": "an agent window still in use",
+    "family-pane-ledgers": "an agent window awaiting confirmation", "family-registered-work": "queued or scheduled input", "family-human-input": "a message whose delivery isn't confirmed", "family-unknown": "work that needs inspection",
     "stop-waiting": "End this wait", decline: "Decline", withdraw: "Withdraw", "stop-work": "Stop this work",
   },
   "zh-TW": {
@@ -54,6 +58,10 @@ register("requestContextControl", {
     check: "重新檢查", error: "無法讀取目前狀態，請再試一次。", failed: "無法確認是否已變更，請按「重新檢查」。",
     notice: "依請求核准聯絡已開啟：核准只對這一次請求有效，先前的對話不會再擋住管理員的新請求。開關在「設定」→「存取與安全」。注意：已不能再降回舊版 AgEnD。",
     open: "開啟設定", loading: "正在確認目前狀態…",
+    workFamilies: "正在等候 {0}：{1}。", unknownEnd: "無法確認這次對話是否已結束。",
+    "family-turns": "尚未結束的對話", "family-daemon-calls": "Agent 的工具操作", "family-fleet-calls": "尚未回傳的操作結果",
+    "family-native-exec": "連線電腦上執行的工作", "family-native-grants": "仍在使用的工具連線", "family-pane-proofs": "仍在使用的 Agent 視窗",
+    "family-pane-ledgers": "等待確認的 Agent 視窗", "family-registered-work": "等待執行或排程的訊息", "family-human-input": "無法確認是否送達的訊息", "family-unknown": "需要檢查的工作",
     "stop-waiting": "結束這次等候", decline: "拒絕", withdraw: "撤回", "stop-work": "結束這項工作",
   },
 });
@@ -62,13 +70,18 @@ const LEGACY_KEYS = { "legacy-pending": "legacyPending", "legacy-inflight": "leg
 export function requestContextBlockerText(blocker) {
   // S-272: an earlier ticket says what settles it (its own sentence by blocker id); an older server's "legacy" keeps its line.
   const legacyKey = blocker.kind === "legacy" && LEGACY_KEYS[blocker.id];
+  if(blocker.kind === "work" && blocker.families?.length){
+    const separator=lang()==="zh-TW"?"、":", ";
+    const text=requestContextControlText("workFamilies",(blocker.labels||[]).join(separator),blocker.families.map(family=>requestContextControlText(`family-${family}`)).join(separator));
+    return blocker.unknownEnd?`${text} ${requestContextControlText("unknownEnd")}`:text;
+  }
   return requestContextControlText(legacyKey || (blocker.kind === "owners" && blocker.ownerCause ? blocker.ownerCause === "work" ? "ownersWork" : "ownersUpdate" : blocker.kind), (blocker.labels || []).join(lang() === "zh-TW" ? "、" : ", "));
 }
 export function RequestContextBlocked({ state, onCheck, onResolve, busy = false, settingsLink = false }) {
   // S-272: before the first attempt it shows what an On would wait for (Check runs the same inspection as the attempt).
   const before = !state?.everActivated && !state?.attempted;
   if (!state || before && !(state.blockers || []).length) return null;
-  const ownerAgents = [...new Map((state.blockers || []).filter(b => b.kind === "owners").flatMap(b => b.agents || []).map(a => [a.id, a])).values()];
+  const ownerAgents = [...new Map((state.blockers || []).filter(b => b.kind === "owners" || b.kind === "work").flatMap(b => b.agents || []).map(a => [a.id, a])).values()];
   return html`<div class="request-context-blocked">
     <p>${requestContextControlText(state.phase === "draining" ? "draining" : state.everActivated ? "recoveryBlocked" : before ? "blockedBefore" : "blocked")}</p>
     ${state.enableFailed ? html`<p class="notice warn" role="alert">${requestContextControlText("failed")}</p>` : null}
@@ -80,7 +93,7 @@ export function RequestContextBlocked({ state, onCheck, onResolve, busy = false,
       ${(state.blockers || []).map(blocker => blocker.action === "inspect"
         ? null   // S-272: one Authorizations link, for earlier held requests only; agents and the update have their own links below
         : state.canChange && onResolve && blocker.action ? html`<button key=${blocker.id} type="button" class=${`btn btn-sm ${["stop-work", "stop-waiting"].includes(blocker.action) ? "btn-danger" : ""}`} disabled=${busy}
-          title=${requestContextBlockerText(blocker)} onClick=${() => onResolve(blocker)}>${requestContextControlText(blocker.action)}</button>` : null)}
+          title=${requestContextBlockerText(blocker)} onClick=${() => onResolve(blocker)}>${requestContextControlText(blocker.action)}${blocker.kind === "work" && blocker.families?.length && blocker.labels?.length ? ` · ${blocker.labels.join(lang() === "zh-TW" ? "、" : ", ")}` : ""}</button>` : null)}
       ${(state.blockers || []).some(b => b.kind === "update") ? html`<a class="btn btn-sm" href=${settingsPath("advanced") + "#settings-update"}>${requestContextControlText("viewUpdate")}</a>` : null}
       ${ownerAgents.map(agent => html`<a class="btn btn-sm" key=${agent.id} href=${detailsPath(agent.id)}>${requestContextControlText("viewOwners")}${ownerAgents.length > 1 ? ` · ${agent.label}` : ""}</a>`)}
       ${onCheck ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${onCheck}>${requestContextControlText("check")}</button>` : null}

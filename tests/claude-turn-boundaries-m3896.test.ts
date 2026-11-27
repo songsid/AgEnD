@@ -66,3 +66,16 @@ it("a previous turn's duration cannot close a resent prompt",()=>{
  expect(w.observe(w.duration)).toEqual([]);
  const ledger=new TranscriptTurnLedger();ledger.observe([start,...w.observe(next)]);expect(ledger.openSince()).not.toBeNull();
 });
+
+it("a duration attached to an observed user rather than its main assistant cannot end the turn",()=>{
+ const w=world();w.observe(w.user);w.observe(w.assistant);
+ expect(w.observe({...w.duration,parentUuid:w.user.uuid})).toEqual([]);
+});
+
+it("the recorded resent-turn fragment does not borrow its earlier duration",()=>{
+ const rows=fixture("claude-2.1.325-queued-merged-into-resent-turn.transcript.jsonl"),user=rows.find(row=>row.type==="user");
+ const parser=new ClaudeTurnBoundaries(),binding={launchId:"recorded-resend",sessionId:user.sessionId,startedAt:0,transcriptPath:`/private/${user.sessionId}.jsonl`};
+ const events=rows.flatMap(row=>parser.observe(row,binding,Date.now()));
+ expect(events.map(event=>event.kind)).toEqual(["start","user","user"]);
+ expect(parser.observe(rows[0],binding,Date.now())).toEqual([]);
+});

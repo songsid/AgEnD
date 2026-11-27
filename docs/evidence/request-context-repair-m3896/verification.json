@@ -1,0 +1,64 @@
+{
+  "scope": "Implementation checkpoint; release enable guard retained; fresh full-mode rig and visible-copy review pending",
+  "focusedTests": {
+    "files": 15,
+    "passed": 292,
+    "maxWorkers": 2,
+    "log": "m3896-final-focused.log"
+  },
+  "typecheck": {
+    "command": "NODE_OPTIONS=--max-old-space-size=8192 npm run typecheck:tests",
+    "result": "passed",
+    "dependencies": "Private worktree npm ci from package-lock.json; shared dependency tree unchanged"
+  },
+  "mutationControls": [
+    {
+      "mutant": "pending-confirm",
+      "killed": true,
+      "exit": 1
+    },
+    {
+      "mutant": "pending-key-token",
+      "killed": true,
+      "exit": 1
+    },
+    {
+      "mutant": "native-parent",
+      "killed": true,
+      "exit": 1
+    },
+    {
+      "mutant": "native-session",
+      "killed": true,
+      "exit": 1
+    },
+    {
+      "mutant": "native-launch",
+      "killed": true,
+      "exit": 1
+    },
+    {
+      "mutant": "positive-retirement",
+      "killed": true,
+      "exit": 1
+    },
+    {
+      "mutant": "final-revisions",
+      "killed": true,
+      "exit": 1
+    },
+    {
+      "mutant": "receipt-images",
+      "killed": true,
+      "exit": 1
+    }
+  ],
+  "oldReaderProof": {
+    "package": "@songsid/agend@2.4.0-beta.27",
+    "fixture": "tests/fixtures/request-context-resolution-m3896/beta27-reader.mjs",
+    "neverAbandoned": "opens unchanged seven-artifact v1",
+    "abandoned": "refuses eighth guard"
+  },
+  "productionChanges": false,
+  "enableGuardRemoved": false
+}
