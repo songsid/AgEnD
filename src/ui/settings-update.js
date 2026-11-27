@@ -72,7 +72,8 @@ export function UpdateSection() {
   </section>`;
 }
 /** M-3770 1.4: what update-card-ui.js needs from app-update.js, passed in. */
-const CARD_DEPS = { refresh: () => refreshUpdate(), setInfo: (i) => updateStore.set({ info: i }), getInfo: () => updateStore.get().info };
+const CARD_DEPS = { refresh: () => refreshUpdate(), setInfo: (i) => updateStore.set({ info: i }), getInfo: () => updateStore.get().info,
+  setStarting: (starting) => updateStore.set({ starting }) };   // #4564: the row is off while Install as a service restarts AgEnD
 /** M-3770 1.4: with the card, the banner's answers in every state (#4487 review P2: the banner is hidden on this page, so
  *  waiting and scheduled keep Cancel and Update now here; Pick a time only where a schedule is taken). One policy: cardActions. */
 function cardButtons(info, starting) {

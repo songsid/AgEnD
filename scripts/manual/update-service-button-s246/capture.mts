@@ -106,9 +106,9 @@ async function walk(c: any) {
     const sent = posts.length;
     await press(page, IT);
     const d = await dialog(page);
-    check(`${tag} 2: asks first: the title, what happens to every Agent, and after`, !!d && d.text.includes(W(zh, "Restart AgEnD as a service?", "要讓 AgEnD 改以服務方式重新啟動嗎？"))
+    check(`${tag} 2: asks first: the title, what happens to every Agent, and after`, !!d && d.text.includes(W(zh, "Install AgEnD as a service?", "要把 AgEnD 安裝成服務嗎？"))
       && d.text.includes(W(zh, "every agent stops briefly and comes back on its own.", "每個 Agent 會短暫停止，之後自動回來。"))
-      && d.text.includes(W(zh, "AgEnD can bring itself back after an update.", "AgEnD 都能自己重新啟動。")), d);
+      && d.text.includes(W(zh, "AgEnD can bring itself back after an update.", "AgEnD 都能自己重新啟動。")) && d.text.includes("agend uninstall"), d);
     check(`${tag} 2: Install and restart, and Cancel`, !!d && [GO, CANCEL].every((t) => d.buttons.some((x: any) => x.t === t)), d);
     check(`${tag} 2: nothing sent yet`, posts.length === sent, posts);
     if (zh) for (const w of ["短暫停止", "自動回來", "重新啟動"]) check(`${tag} 2: 「${w}」 kept whole`, await unsplit(page, w, "dialog.dlg[open]") === true, await unsplit(page, w, "dialog.dlg[open]"));

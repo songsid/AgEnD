@@ -225,7 +225,8 @@ export async function fixCheck(fix, check, deps, opts = {}) {
       // The cause in the product's words, the command's own words after it as a detail, then the next step (#4564 look).
       const cause = out && out.cause === "user-manager" ? "user-manager" : "other";
       const raw = String((out && out.reason) || "").replace(/`/g, "").trim();
-      say([`${tc(`serviceFailed_${cause}`)}${raw ? ` ${tc("serviceDetails", raw)}` : ""}`, tc(`serviceNext_${cause}`)]);
+      const failed = tc(`serviceFailed_${cause}`), sep = /[。！？]$/.test(failed) ? "" : " ";   // no space after a zh full stop
+      say([`${failed}${raw ? `${sep}${tc("serviceDetails", raw)}` : ""}`, tc(`serviceNext_${cause}`)]);
       return { ok: false, refused: true };
     }
     if (res.ok) { const { service } = await waitForService(deps, { ...opts, tries: 0 }); if (!service) say(tc("serviceStill")); return { ok: service, refused: !service }; }
