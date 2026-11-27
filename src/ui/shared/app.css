@@ -35,12 +35,15 @@ a { color: inherit; text-decoration: none; }
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
 .btn:hover:not(:disabled) { background: var(--surface); }
-.btn:disabled { opacity: 0.45; cursor: default; }
+/* M-3842 (style guide §4, disabled controls): an off button stays readable (text ≥ 3:1 on the page and on a card, in every
+   theme and palette) and reads as off: no fill, muted text, a dashed edge. Never opacity, which washed it out on dark. */
+.btn:disabled { opacity: 1; cursor: default; color: color-mix(in srgb, var(--text-3) 75%, var(--bg)); background: transparent; border-color: var(--border); border-style: dashed; }
 .btn-primary { background: var(--accent-fill); color: var(--on-accent); border-color: transparent; }
 .btn-primary:hover:not(:disabled) { background: var(--accent-fill); opacity: 0.88; }
 .btn-danger { background: var(--danger-fill); color: var(--on-danger); border-color: transparent; }
 .btn-danger:hover:not(:disabled) { background: var(--danger-fill); opacity: 0.9; }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.btn-ghost:disabled { border-color: transparent; }   /* a link-like button keeps no edge when off (M-3842) */
 .btn-ghost:hover:not(:disabled) { color: var(--text); background: var(--surface); }
 .btn.danger, .btn-ghost.danger { color: var(--danger); }
 .btn-sm { min-height: 30px; padding: 0 var(--s-3); font-size: var(--fs-xs); }
@@ -1403,6 +1406,7 @@ img.amb-p { object-fit: contain; }
   font-size: var(--fs-md); line-height: var(--lh-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .composer-field textarea:not(:placeholder-shown) + .composer-ph { display: none; }   /* text in the box, composing text too */
 .btn-send { width: 36px; padding: 0; }
+.btn-send:disabled { background: var(--surface); border-color: transparent; border-style: solid; }   /* M-3842: an empty composer's Send is a quiet filled circle, its icon ≥ 3:1 */
 .btn-send .send-label { display: none; }
 /* A narrow phone: Stop reply beside Send leaves the message box no room — the label is for screen readers there. */
 @media (max-width: 479px) { .btn-stop .stop-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; } }
@@ -5610,7 +5614,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* Scoped grant metadata wraps as whole phrases; disabled decisions stay readable. */
 .contact-grant-meta { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
-.contact-grant-dialog .btn-primary:disabled { opacity: 1; background: var(--surface-2); color: var(--text-2); border-color: var(--border); }
 /* #4497: the expiry as a day and a 24-hour time from selects; they wrap as a group on a narrow sheet. */
 .contact-grant-when { display: flex; flex-direction: column; gap: var(--s-2); }
 .contact-until { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); }

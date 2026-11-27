@@ -104,6 +104,11 @@ Do: `color: var(--text-3); padding: var(--s-3) var(--s-4);`
 
 Don't: `color: #888; padding: 13px;`
 
+**Disabled controls** (M-3842). WCAG exempts disabled controls from contrast, but AgEnD keeps them readable: an off
+button's text is at least 3:1 against the page and a card, in light and dark and every palette, and it reads as off by
+its shape, not by fading: no accent or danger fill, muted text, a dashed edge (a ghost button keeps no edge; the chat's
+round Send button is a quiet filled circle). It is one shared rule, `.btn:disabled` in `app.css`; don't dim a button with `opacity`, and don't restyle it per page.
+
 Checked by: **CI**. `tests/web-tokens-1408.test.ts` checks the tokens themselves (light and dark define the same names,
 text meets 4.5:1 and focus/borders 3:1). `tests/ui-css-literals-ratchet.test.ts` is a ratchet on their use: the literal
 colours (`#hex`, `rgb()`, `rgba()`, `hsl()`) and px font sizes that older rules still have are listed in
@@ -286,7 +291,7 @@ A PR that adds or changes UI includes (decision 3536dae9):
 | 1. Shared components | — | yes |
 | 2. One card frame per Settings section | UI gate `:frame` (within a section) | across sections, other pages |
 | 3. Straight left bar | `web-left-bar-2330`, UI gate `:left-accent` (Settings) | pages outside Settings |
-| 4. Tokens, light and dark | `web-tokens-1408` (token set, contrast), `ui-css-literals-ratchet` (no new literal colour or px font size) | literal spacing and radius |
+| 4. Tokens, light and dark | `web-tokens-1408` (token set, contrast), `ui-css-literals-ratchet` (no new literal colour or px font size), `disabled-contrast-m3842` (an off button ≥ 3:1, no opacity) | literal spacing and radius |
 | 5. No inline styles | `web-csp-1300` | — |
 | 6. Loading / empty / failed | `skeleton-loading-3290` | new pages |
 | 7. Phone and desktop | UI gate `:overflow` and `:tap` (Settings, Hub pages), `web-input-zoom-1611` | other pages |
