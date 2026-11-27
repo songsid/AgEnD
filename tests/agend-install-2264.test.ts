@@ -26,6 +26,9 @@ import { acquireInstallLock, type InstallLock } from "../src/install-lock.js";
 const REPO = join(import.meta.dirname, "..");
 const lockReaders = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null; parse(t: string): unknown; holderState(l: unknown, d: unknown): string };
 const roots: string[] = [];
+// Liveness is simulated through deps.alive. Stay outside Linux's allocatable
+// PID range so the independent native ownership probe cannot find a host process.
+const MOCK_FLEET_PID = 2_000_000_001;
 /** M-3805: every install the installer runs allows its own scripts (npm 12 skips them otherwise). */
 const ALLOW = "--allow-scripts=@songsid/agend";
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
@@ -551,9 +554,9 @@ describe("#2264 review (Prism r1 P1): the service stays under the manager it has
     ["the launchd job", r => { mkdirSync(join(r.userHome, "Library", "LaunchAgents"), { recursive: true }); writeFileSync(join(r.userHome, "Library", "LaunchAgents", "com.agend.fleet.plist"), "<plist/>"); }],
   ];
   it.each(cases)("%s, fleet running: `install --no-activate`, then `restart --yes` — never a plain `install` that writes and starts a user unit", (_name, setup) => {
-    const r = unitRig({ live: [9191] });
+    const r = unitRig({ live: [MOCK_FLEET_PID] });
     setup(r);
-    writeFileSync(join(r.home, "fleet.pid"), "9191");
+    writeFileSync(join(r.home, "fleet.pid"), String(MOCK_FLEET_PID));
     expect(installer.main(spec(), r.deps)).toBe(0);
     expect(r.calls.filter(c => c.startsWith("agend"))).toEqual(["agend install --no-activate", "agend restart --yes", "agend shortcuts --hint"]);
   });
@@ -925,8 +928,8 @@ describe("M-3302 (#4146): the installer waits, bounded, while another npm change
 
   it("an npm that starts during AgEnD's install is waited for again before the fleet is restarted", () => {
     let after = 0;
-    const { r, order } = rig((_poll, installed) => installed && ++after <= 2, { live: [9191] });
-    writeFileSync(join(r.home, "fleet.pid"), "9191");
+    const { r, order } = rig((_poll, installed) => installed && ++after <= 2, { live: [MOCK_FLEET_PID] });
+    writeFileSync(join(r.home, "fleet.pid"), String(MOCK_FLEET_PID));
     mkdirSync(join(r.userHome, ".config", "systemd", "user"), { recursive: true });
     writeFileSync(join(r.userHome, ".config", "systemd", "user", "com.agend.fleet.service"), "[Service]\n");
     expect(installer.main(spec(true), r.deps)).toBe(0);
