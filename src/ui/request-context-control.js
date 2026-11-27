@@ -15,6 +15,10 @@ register("requestContextControl", {
     off: "Off. Your own messages go through as usual; requests that came from outside wait for your decision.",
     offBefore: "Not enabled. Contacts haven't changed.",
     draining: "Turning off. Waiting for current work to finish.", blocked: "Request-based approvals are waiting.", blockedBefore: "Turning this on has to wait for these first:",
+    legacyPending: "Decide these earlier contact requests first, in Fleet → Authorizations: {0}.",
+    legacyInflight: "These earlier approved messages are still being delivered: {0}. This clears by itself once each is delivered or fails.",
+    legacyUnsettled: "These earlier requests have no readable delivery record, so AgEnD can't tell whether they happened: {0}. They can't be settled from this page yet; leave request-based approvals off for now.",
+    legacyDeliveries: "These earlier messages are still waiting to be delivered: {0}. This clears by itself once they are delivered or fail.",
     recoveryBlocked: "Request-based approvals need your attention.",
     confirmTitle: "Turn off request-based approvals?", confirm: "Confirm turn off",
     confirmBody: "New outside requests will wait while current work finishes. Then your own messages go through as usual; outside requests wait for your decision.",
@@ -33,6 +37,10 @@ register("requestContextControl", {
     off: "已關閉。你自己的訊息照常；從外部來的請求會等你決定。",
     offBefore: "尚未開啟，聯絡方式沒有變更。",
     draining: "正在關閉，等目前的工作結束。", blocked: "依請求核准聯絡尚未開啟。", blockedBefore: "開啟前需要先處理這些項目：",
+    legacyPending: "請先在「Fleet → 授權」決定這些先前的聯絡申請：{0}。",
+    legacyInflight: "這些先前已核准的訊息仍在送出中：{0}。每則送達或失敗後就會自動解除。",
+    legacyUnsettled: "這些先前的申請沒有可讀取的送出紀錄，AgEnD 無法判斷是否已經發生：{0}。目前還無法在這一頁處理；請暫時不要開啟依請求核准聯絡。",
+    legacyDeliveries: "這些先前的訊息仍在等候送出：{0}。送達或失敗後就會自動解除。",
     recoveryBlocked: "依請求核准聯絡需要你處理。",
     confirmTitle: "關閉依請求核准聯絡？", confirm: "確認關閉",
     confirmBody: "新的外部請求會先等候，直到目前的工作結束。之後，你自己的訊息照常；從外部來的請求會等你決定。",
@@ -48,8 +56,11 @@ register("requestContextControl", {
   },
 });
 export const requestContextControlText = (key, ...args) => t(`requestContextControl.${key}`, ...args);
+const LEGACY_KEYS = { "legacy-pending": "legacyPending", "legacy-inflight": "legacyInflight", "legacy-unsettled": "legacyUnsettled", "legacy-deliveries": "legacyDeliveries" };
 export function requestContextBlockerText(blocker) {
-  return requestContextControlText(blocker.kind === "owners" && blocker.ownerCause ? blocker.ownerCause === "work" ? "ownersWork" : "ownersUpdate" : blocker.kind, (blocker.labels || []).join(lang() === "zh-TW" ? "、" : ", "));
+  // S-272: an earlier ticket says what settles it (its own sentence by blocker id); an older server's "legacy" keeps its line.
+  const legacyKey = blocker.kind === "legacy" && LEGACY_KEYS[blocker.id];
+  return requestContextControlText(legacyKey || (blocker.kind === "owners" && blocker.ownerCause ? blocker.ownerCause === "work" ? "ownersWork" : "ownersUpdate" : blocker.kind), (blocker.labels || []).join(lang() === "zh-TW" ? "、" : ", "));
 }
 export function RequestContextBlocked({ state, onCheck, onResolve, busy = false, settingsLink = false }) {
   // S-272: before the first attempt it shows what an On would wait for (Check runs the same inspection as the attempt).
@@ -63,8 +74,9 @@ export function RequestContextBlocked({ state, onCheck, onResolve, busy = false,
       ${blocker.action === "stop-waiting" ? html`<p>${requestContextControlText("waitBody")}</p>` : null}</div>`)}
     ${!state.everActivated ? html`<p class="note">${requestContextControlText("previous")}</p>` : null}
     <div class="request-context-actions">
+      ${(state.blockers || []).some(b => b.action === "inspect" && b.kind === "legacy") ? html`<a class="btn btn-sm" href="/ui/fleet/authorizations">${requestContextControlText("inspect")}</a>` : null}
       ${(state.blockers || []).map(blocker => blocker.action === "inspect"
-        ? html`<a key=${blocker.id} class="btn btn-sm" href="/ui/fleet/authorizations">${requestContextControlText("inspect")}</a>`
+        ? null   // S-272: one Authorizations link, for earlier held requests only; agents and the update have their own links below
         : state.canChange && onResolve && blocker.action ? html`<button key=${blocker.id} type="button" class=${`btn btn-sm ${["stop-work", "stop-waiting"].includes(blocker.action) ? "btn-danger" : ""}`} disabled=${busy}
           title=${requestContextBlockerText(blocker)} onClick=${() => onResolve(blocker)}>${requestContextControlText(blocker.action)}</button>` : null)}
       ${(state.blockers || []).some(b => b.kind === "update") ? html`<a class="btn btn-sm" href=${settingsPath("advanced") + "#settings-update"}>${requestContextControlText("viewUpdate")}</a>` : null}

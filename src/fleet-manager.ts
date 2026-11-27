@@ -6971,9 +6971,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if(!requestContextUpdateSettled(this.dataDir))out.push({id:"update",kind:"update",labels:[],action:"inspect"});
     if(state&&(!this.requestContextModes?.current()||!this.requestContextBoot?.publication.installed())&&state.mode!=="draining")out.push({id:"installation",kind:"owners",labels:[],ownerCause:"update",action:"inspect"});
     if(!state){
-      const shadow=this.requestContextShadow();if(!shadow.complete||shadow.blockers.length)out.push({id:"legacy",kind:"legacy",labels:shadow.blockers.map(row=>row.id).slice(0,64),action:"inspect"});
+      const shadow=this.requestContextShadow();
+      // S-272 (Sentinel's settlement split): each earlier ticket by what settles it. Pending: decided on Authorizations.
+      // Approved and still being delivered: waits for that delivery's own outcome. Approved with no or a mismatched delivery
+      // record, or unreadable: nothing here can settle it (absence is never a proof of delivery), so it is named as such.
+      const ids=(...dispositions:string[])=>shadow.tickets.filter(row=>dispositions.includes(row.disposition)).map(row=>row.id);
+      const pending=ids("preserve-legacy-pending"),inflight=ids("legacy-inflight","legacy-unconfirmed"),unsettled=ids("missing-receipt","malformed"),named=new Set([...pending,...inflight,...unsettled]);
+      if(pending.length)out.push({id:"legacy-pending",kind:"legacy",labels:pending.slice(0,64),action:"inspect"});
+      if(inflight.length)out.push({id:"legacy-inflight",kind:"legacy",labels:inflight.slice(0,64)});
+      if(unsettled.length)out.push({id:"legacy-unsettled",kind:"legacy",labels:unsettled.slice(0,64)});
+      const rest=shadow.blockers.map(row=>row.id).filter(id=>!named.has(id));
+      if(rest.length||!shadow.complete&&!named.size)out.push({id:"legacy",kind:"legacy",labels:rest.slice(0,64),action:"inspect"});
       const inventory=box.requestContextControlInventory(),legacy=inventory.deliveries.filter(row=>!row.root);
-      if(legacy.length)out.push({id:"legacy-deliveries",kind:"legacy",labels:legacy.map(row=>`${label(row.source)} → ${label(row.target)}`).slice(0,64),action:"inspect"});
+      if(legacy.length)out.push({id:"legacy-deliveries",kind:"legacy",labels:legacy.map(row=>`${label(row.source)} → ${label(row.target)}`).slice(0,64)});
       const busy=[...this.daemons].filter(([name,daemon])=>{const row=daemon.requestContextLaunchObservation();return row.observation.processStatus!=="running"||row.observation.executionState!=="idle"||row.pendingCalls||row.responseWaiters||row.queuedInputs||row.transcriptOpen||row.starting||row.stopping||this.requestContextPendingWork.count(name);}).map(([name])=>name);
       for(const row of WindowsAgents.requestContextOwnersOnDisk(this.dataDir)){
         const daemon=row.instance?this.daemons.get(row.instance):undefined;
