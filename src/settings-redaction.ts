@@ -56,6 +56,8 @@ export function restoreRedactedSecrets<T>(next: T, previous: unknown): { value: 
 }
 
 const REDACTED = "[redacted]";
+/** A key that names a credential anywhere in it (an agent's read only; Settings keeps its exact-name list). */
+const AGENT_SECRET_WORD = /token|secret|password|passwd|api_?key|signing_?key|private_?key|credential|cookie/i;
 /** A URL's secret parts gone: its userinfo and query, and — for a webhook, whose path is its secret — everything after the host. */
 function redactUrl(text: string, wholePath: boolean): string {
   let url: URL;
@@ -73,6 +75,9 @@ function redactUrl(text: string, wholePath: boolean): string {
  */
 export function redactForAgent<T>(value: T): T {
   const walk = (v: unknown, key: string | undefined, inWebhook: boolean): unknown => {
+    // Fable #4561 follow-up: a credential word inside a compound key (client_secret, signing_key, smtp_password) too —
+    // a plain-string secret there has no URL shape to catch.
+    if (typeof v === "string" && v !== "" && v !== REDACTED_SECRET && key !== undefined && AGENT_SECRET_WORD.test(key)) return REDACTED;
     if (typeof v === "string") return /^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? redactUrl(v, inWebhook && key === "url") : v;
     if (Array.isArray(v)) return v.map(item => walk(item, undefined, inWebhook || key === "webhooks"));
     if (!record(v)) return v;
