@@ -1406,7 +1406,7 @@ img.amb-p { object-fit: contain; }
   font-size: var(--fs-md); line-height: var(--lh-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .composer-field textarea:not(:placeholder-shown) + .composer-ph { display: none; }   /* text in the box, composing text too */
 .btn-send { width: 36px; padding: 0; }
-.btn-send:disabled { background: var(--surface); border-color: transparent; border-style: solid; }   /* M-3842: an empty composer's Send is a quiet filled circle, its icon ≥ 3:1 */
+.btn-send:disabled { background: var(--surface-2); color: var(--text-3); border-color: transparent; border-style: solid; }   /* M-3842: an empty composer's Send is a quiet filled circle a step off the composer, its icon ≥ 3:1 */
 .btn-send .send-label { display: none; }
 /* A narrow phone: Stop reply beside Send leaves the message box no room — the label is for screen readers there. */
 @media (max-width: 479px) { .btn-stop .stop-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; } }

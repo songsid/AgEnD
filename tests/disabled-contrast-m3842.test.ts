@@ -36,7 +36,7 @@ describe("M-3842: disabled buttons", () => {
     expect(rule).toContain("background: transparent");
     expect(rule).toContain("border-style: dashed");
     expect(APP).toMatch(/\n\.btn-ghost:disabled \{ border-color: transparent; \}/);
-    expect(APP).toMatch(/\n\.btn-send:disabled \{ background: var\(--surface\); border-color: transparent; border-style: solid; \}/);   // its icon: the --surface check below
+    expect(APP).toMatch(/\n\.btn-send:disabled \{ background: var\(--surface-2\); color: var\(--text-3\); border-color: transparent; border-style: solid; \}/);
     expect(APP).not.toMatch(/\.btn(-[a-z]+)?:disabled \{[^}]*opacity: 0\./);           // no button faded by opacity
     expect(APP).not.toContain(".contact-grant-dialog .btn-primary:disabled");           // no per-page override left
   });
@@ -47,6 +47,7 @@ describe("M-3842: disabled buttons", () => {
       const off = mix(hex(t["text-3"]!), hex(t.bg!));
       expect(contrast(off, hex(t.bg!)), `${name} on --bg`).toBeGreaterThanOrEqual(3);
       expect(contrast(off, hex(t.surface!)), `${name} on --surface`).toBeGreaterThanOrEqual(3);
+      if (t["surface-2"]) expect(contrast(hex(t["text-3"]!), hex(t["surface-2"]!)), `${name} Send's icon on --surface-2`).toBeGreaterThanOrEqual(3);
     }
   });
   it("the style guide states the rule", () => {
