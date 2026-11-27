@@ -3,7 +3,7 @@
  * pre-flight's fix buttons in Settings → Version and update → "Updates on this machine", through the REAL route
  * (POST /ui/update/fixes) and the real FleetManager method behind it. Nothing changes on this host: the fix itself
  * (`runUpdateFix`, which would run `loginctl enable-linger`) is stubbed before the first press, and every update launch too.
- *   1 lingering off: the line, its command, and Turn it on for me · 2 after the press: the fresh pre-flight (✓) and its toast ·
+ *   1 lingering off: the line, its command, and Keep AgEnD running after sign-out · 2 after the press: the fresh pre-flight (✓) and its toast ·
  *   3 a fix that doesn't take: the block says so in place of the button (no toast), the line and its command stay ·
  *   4 not a service: How to fix folds out
  *   `agend install` as code, with no button.
@@ -77,7 +77,7 @@ const openSettings = async (page: any) => {
 
 async function walk(c: any) {
   const tag = caseName(c), zh = c.lang === "zh-TW", phone = c.device === "phone";
-  const FIX = W(zh, "Turn it on for me", "替我開啟");
+  const FIX = W(zh, "Keep AgEnD running after sign-out", "登出後讓 AgEnD 繼續執行");
   const { page, ctx } = await fx.page(c, { path: "/settings/advanced" });
   const errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
   try {
@@ -86,7 +86,7 @@ async function walk(c: any) {
     await openSettings(page);
     let m = await machine(page), b = await fixButtons(page);
     check(`${tag} 1: lingering off: the line names the user, with its command as code`, m.includes("◐") && m.includes("example") && (await cmds(page)).join("|") === "sudo loginctl enable-linger example", m);
-    check(`${tag} 1: one fix button, Turn it on for me`, b.length === 1 && b[0]!.t === FIX, b);
+    check(`${tag} 1: one fix button, Keep AgEnD running after sign-out`, b.length === 1 && b[0]!.t === FIX, b);
     check(`${tag} 1: the button's line says what it does`, m.includes(W(zh, "AgEnD turns it on for you; nothing restarts and your agents keep working. If this computer doesn't allow it, run the command yourself.", "AgEnD 會替你開啟；不會重新啟動，Agent 照常工作。若這台電腦不允許，請自己執行上面的指令。")), m);
     if (phone) check(`${tag} 1: the button is 44 px`, b.every((x) => x.h >= 44), b);
     check(`${tag} 1: the command on one line`, (await oneLine(page)).every((n) => n === 1), await oneLine(page));
