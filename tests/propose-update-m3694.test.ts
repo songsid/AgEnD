@@ -59,6 +59,27 @@ describe("M-3694 S-265: propose_update", () => {
     expect(r.answer).toHaveBeenCalledWith(expect.any(String), "Demo admin", { action: "pick-time", at: at.getTime() });
   });
 
+  it("#4560 F1: a person's answer since the proposal (a time picked on the web) stands; the admin's Confirm of General's card answers nothing", async () => {
+    const r = rig();
+    await r.propose();
+    r.setOffer({ version: "2.5.1", state: "scheduled", scheduledAt: Date.now() + 3600_000, channel: "beta", installable: true, lastAnswer: { action: "pick-time", at: Date.now(), by: "Demo person" } });
+    await r.click(r.card());
+    expect(r.answer).not.toHaveBeenCalled();
+    expect(r.fm.retireNonceButtons).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), "Not applied: the update offer changed since this proposal (someone answered it, or a newer version came). Nothing was changed.");
+    // Moved on with no answer recorded (the Hub's queue took it to waiting): voided by its state alone.
+    const q = rig();
+    await q.propose();
+    q.setOffer({ version: "2.5.1", state: "waiting-idle", channel: "beta", installable: true });
+    await q.click(q.card());
+    expect(q.answer).not.toHaveBeenCalled();
+    // Same state but answered again since (Not now → offered by a later answer): voided too.
+    const s = rig({ state: "not-now" });
+    await s.propose();
+    s.setOffer({ version: "2.5.1", state: "not-now", channel: "beta", installable: true, lastAnswer: { action: "not-now", at: Date.now() + 1, by: "Demo person" } });
+    await s.click(s.card());
+    expect(s.answer).not.toHaveBeenCalled();
+  });
+
   it("a newer offer since the card voids it; Cancel answers nothing", async () => {
     const r = rig();
     await r.propose();

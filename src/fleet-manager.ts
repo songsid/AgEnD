@@ -5627,7 +5627,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Confirm answers the fleet's one update card (UpdateOfferCard.answer, as its own buttons and the web do), so pin,
    * pause, preflight and the idle wait apply unchanged. Only the offer the card showed: a newer one voids it.
    */
-  private pendingUpdateAsks = new Map<string, { version: string; body: { action: "when-idle" } | { action: "pick-time"; at: number }; requester: string }>();
+  private pendingUpdateAsks = new Map<string, { version: string; state: string; lastAnswerAt: number | null; body: { action: "when-idle" } | { action: "pick-time"; at: number }; requester: string }>();
   async requestUpdateProposal(requester: string, at?: number): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
     if (this.fleetConfig?.instances[requester]?.general_topic !== true) return { ok: false, error: t("update.ask.general_only") };
     if (resolveUpdates(this.fleetConfig?.updates).pin) return { ok: false, error: t("update.offer.pinned") };
@@ -5648,7 +5648,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         choices: [{ action: "confirm", label: t("update.ask.confirm") }, { action: "cancel", label: t("update.ask.cancel") }],
         expiredText: t("update.ask.expired"), timeoutMs: UPDATE_ASK_TIMEOUT_MS,
       });
-      this.pendingUpdateAsks.set(nonce, { version: view.version, requester, body: at === undefined ? { action: "when-idle" } : { action: "pick-time", at } });
+      this.pendingUpdateAsks.set(nonce, { version: view.version, state: view.state, lastAnswerAt: view.lastAnswer?.at ?? null, requester, body: at === undefined ? { action: "when-idle" } : { action: "pick-time", at } });
       const expiry = setTimeout(() => this.pendingUpdateAsks.delete(nonce), UPDATE_ASK_TIMEOUT_MS + 60_000);
       expiry.unref?.();
     } catch (err) {
@@ -5668,9 +5668,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.pendingUpdateAsks.delete(nonce);
     const messageId = entry.messageId ?? data.messageId;
     if (action === "cancel" || !ask) { await this.retireNonceButtons(entry, messageId, t(ask ? "update.ask.cancelled" : "update.ask.expired")); return true; }
-    // The offer the card showed, and no other: a newer version since voids the proposal (#4485 review 2's rule).
+    // The offer the card showed, and no other (#4485 review 2's rule): the same version, still in the state the proposal
+    // was allowed in, and no answer since (#4560 F1: a person who picked a time on the web, or pressed Update now, in the
+    // card's 15 minutes keeps their choice — General's older proposal never replaces it).
     const now = this.updateOfferView();
-    if (!now || now.version !== ask.version) { await this.retireNonceButtons(entry, messageId, t("update.ask.expired")); return true; }
+    if (!now || now.version !== ask.version || now.state !== ask.state || (now.lastAnswer?.at ?? null) !== ask.lastAnswerAt) {
+      await this.retireNonceButtons(entry, messageId, t("update.ask.changed")); return true;
+    }
     const by = updateAnswerLabel(data.username ?? "");
     let text: string;
     try {
