@@ -1,6 +1,6 @@
 /**
  * M-3770 S-246: Settings → Version and update → "Updates on this machine", a fleet that isn't a service: the
- * Install as a service button asks first (every Agent stops briefly; Cancel sends nothing), then POSTs the fix with
+ * Install as a service button asks first (every agent stops briefly; Cancel sends nothing), then POSTs the fix with
  * the page's confirmation. A refusal says why and that AgEnD keeps running; the hand-over says AgEnD is restarting,
  * waits for it to come back, and says whether it is a service now.
  */
@@ -60,7 +60,7 @@ describe("S-246: Install as a service", () => {
     serviceButton().click(); await settle(6);
     expect(asked()).toHaveLength(1);
     expect(asked()[0]).toMatchObject({ title: "Restart AgEnD as a service?", confirmLabel: "Restart as a service",
-      message: "AgEnD restarts as a service: every Agent stops briefly and comes back on its own.\n\nAfter that, AgEnD can bring itself back after an update." });
+      message: "AgEnD restarts as a service: every agent stops briefly and comes back on its own.\n\nAfter that, AgEnD can bring itself back after an update." });
     confirm.answerConfirm(asked()[0].id, false); await settle(6);
     expect(fixes()).toEqual([]);
     expect(serviceButton().disabled).toBe(false);

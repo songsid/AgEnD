@@ -23,7 +23,10 @@ const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.
 const shot = async (page: any, name: string) => {
   await page.waitForTimeout(400);
   const path = `s246-${name}.png`;
-  await page.screenshot({ path: join(OUT, path) });
+  // The fleet.yaml preview shows the fixture's temporary folder (a path on the capturing host): masked in every frame.
+  const leaks = await page.evaluate(`(() => { const t = document.body.innerText; const y = [...document.querySelectorAll(".s-yaml")].map((e) => e.innerText).join("\\n"); return [...t.matchAll(/\\/tmp\\/[^\\s]*/g)].map((m) => m[0]).filter((x) => !y.includes(x)); })()`) as string[];
+  check(`${name}: no host path outside the masked fleet.yaml`, leaks.length === 0, leaks);
+  await page.screenshot({ path: join(OUT, path), mask: [page.locator(".s-yaml")], maskColor: "#888888" });
   receipt.pictures.push({ path, sha256: createHash("sha256").update(readFileSync(join(OUT, path))).digest("hex") });
 };
 
@@ -103,7 +106,7 @@ async function walk(c: any) {
     await press(page, IT);
     const d = await dialog(page);
     check(`${tag} 2: asks first: the title, what happens to every Agent, and after`, !!d && d.text.includes(W(zh, "Restart AgEnD as a service?", "要讓 AgEnD 改以服務方式重新啟動嗎？"))
-      && d.text.includes(W(zh, "every Agent stops briefly and comes back on its own.", "每個 Agent 會短暫停止，之後自動回來。"))
+      && d.text.includes(W(zh, "every agent stops briefly and comes back on its own.", "每個 Agent 會短暫停止，之後自動回來。"))
       && d.text.includes(W(zh, "AgEnD can bring itself back after an update.", "AgEnD 都能自己重新啟動。")), d);
     check(`${tag} 2: Restart as a service and Cancel`, !!d && [GO, CANCEL].every((t) => d.buttons.some((x: any) => x.t === t)), d);
     check(`${tag} 2: nothing sent yet`, posts.length === sent, posts);
