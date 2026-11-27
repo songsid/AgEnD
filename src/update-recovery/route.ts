@@ -159,9 +159,18 @@ export function removeRecoveryRoute(home: string, attempt: AttemptRecord, deps: 
   try { current = readFileSync(service.fragmentPath, "utf8"); }
   catch (err) { return { ok: false, reason: `${service.fragmentPath} can't be read (${(err as Error).message}); the wrapper stays` }; }
   // Only this route's own wrapper is taken off (Fable #4517 F3); the preimage already in place is done.
-  if (current === kept.toString("utf8")) return { ok: true, path: service.fragmentPath };
-  const wrapped = wrappedFromPreimage(home, attempt.id, kept.toString("utf8"), deps.plistArgs);
-  if (!wrapped.ok || current !== wrapped.xml) return { ok: false, reason: `${service.fragmentPath} isn't this route's wrapper any more; it is left as it is` };
+  // S-260: a Go back's restore wrote the COMMITTED attempt's definition inside this attempt's wrapper (restoreUnit's
+  // preimageOf): that wrapper comes off to the committed definition. Before its restore (an abandon), it is this
+  // attempt's own wrapper and comes off to its own preimage. Exactly one of the two, or nothing.
+  const candidates: Buffer[] = [kept];
+  if (attempt.kind === "go-back" && attempt.goBackOf) {
+    try { candidates.unshift(readFileSync(unitPreimagePath(home, attempt.goBackOf))); }
+    catch (err) { return { ok: false, reason: `the definition Go back returns to can't be read (${(err as Error).message}); the wrapper stays` }; }
+  }
+  if (candidates.some(c => current === c.toString("utf8"))) return { ok: true, path: service.fragmentPath };
+  const target = candidates.find(c => { const w = wrappedFromPreimage(home, attempt.id, c.toString("utf8"), deps.plistArgs); return w.ok && current === w.xml; });
+  if (!target) return { ok: false, reason: `${service.fragmentPath} isn't this route's wrapper any more; it is left as it is` };
+  kept = target;
   try { writeDurable(service.fragmentPath, kept, io, "keep"); }
   catch (err) { return { ok: false, reason: `${service.fragmentPath} can't be written back (${(err as Error).message})` }; }
   return { ok: true, path: service.fragmentPath };
@@ -187,10 +196,13 @@ export function unwrapRecoveryRoute(argv: string[], home: string, deps: { verify
   if (!deps.verifyKit(id)) return null;
   const own = readAttemptRecord(home, id, io);
   if (!own || !TERMINAL.has(own.stage) || own.stage === "manual-recovery") return null;
+  // S-260: a COMMITTED Go back's job wraps the definition it returned to (the committed attempt's preimage); any other
+  // attempt's wraps its own preimage.
+  const preimageId = own.kind === "go-back" && own.stage === "committed" && own.goBackOf ? own.goBackOf : id;
   const read = readCurrent(home, io);
   if (read.state === "unknown" || read.state === "open" || read.state === "manual") return null;
   let preimage: string;
-  try { preimage = readFileSync(unitPreimagePath(home, id), "utf8"); } catch { return null; }
+  try { preimage = readFileSync(unitPreimagePath(home, preimageId), "utf8"); } catch { return null; }
   const original = deps.plistArgs(preimage);
   const tail = argv.slice(8);
   if (!original || original.length !== tail.length || original.some((w, i) => w !== tail[i])) return null;

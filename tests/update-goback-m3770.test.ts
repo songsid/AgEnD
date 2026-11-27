@@ -16,7 +16,7 @@ import { attemptDir, defaultJournalIo, journalDir, newAttemptId, openAttempt, re
 import { runUpdate, type UpdateDeps } from "../src/update-forward.js";
 import { goBackChanges, readGoBackOffer, runGoBack, type GoBackGuard } from "../src/update-goback.js";
 import { readRetained } from "../src/update-retained.js";
-import { dropInPath } from "../src/update-recovery/route.js";
+import { dropInPath, unwrapRecoveryRoute, wrapPlist } from "../src/update-recovery/route.js";
 import { parsePlist } from "../src/service-activation.js";
 
 
@@ -45,7 +45,11 @@ const tupleOf = (o: Ownership, version: string): ArtifactTuple => ({ version, in
   bins: { agend: join(o.packagePath, "launcher", "agend"), "agend-agent": join(o.packagePath, "launcher", "agend-agent") },
   entry: join(o.packagePath, "dist", `cli-${version}.js`), interpreter: "/n", execStart: null });
 
-interface Opts { noFleet?: boolean; noService?: boolean }
+interface Opts { noFleet?: boolean; noService?: boolean; launchd?: boolean }
+/** S-260: a launchd job's plist (ProgramArguments: the version's own launcher). */
+const plistOf = (args: string[]) => `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>com.agend.fleet</string><key>ProgramArguments</key><array>${args.map(a => `<string>${a}</string>`).join("")}</array></dict></plist>\n`;
+const PLIST_240 = plistOf(["/usr/local/bin/agend", "fleet", "start"]);
+const PLIST_241 = plistOf(["/usr/local/bin/agend", "fleet", "start", "--since-2.4.1"]);
 /** Crash injection: the `crashAt`-th journal step counted once `crashFrom` says so; `onCrash` hears it (a crash inside a
  *  step that catches I/O errors would otherwise read as a failed step, not a dead process). */
 interface Crash { crashFrom?: () => boolean; crashAt?: number; onCrash?: () => void }
@@ -58,10 +62,11 @@ interface World {
 function world(opts: Opts = {}): World {
   const root = tmp(), home = join(root, "home"), prefix = join(root, "prefix");
   mkdirSync(home); mkdirSync(join(prefix, "bin"), { recursive: true }); mkdirSync(join(prefix, "lib", "node_modules", "@songsid"), { recursive: true });
-  const fragment = join(root, "agend.service"); writeFileSync(fragment, UNIT);
+  const fragment = opts.launchd ? join(root, "com.agend.fleet.plist") : join(root, "agend.service");
+  writeFileSync(fragment, opts.launchd ? PLIST_240 : UNIT);
   const o: Ownership = { uid: 1000, home, prefix, packagePath: join(prefix, "lib", "node_modules", "@songsid", "agend"),
     binLinks: { agend: join(prefix, "bin", "agend"), "agend-agent": join(prefix, "bin", "agend-agent") },
-    service: opts.noService ? null : { kind: "systemd", unit: "agend.service", fragmentPath: fragment } };
+    service: opts.noService ? null : opts.launchd ? { kind: "launchd", unit: "com.agend.fleet", fragmentPath: fragment } : { kind: "systemd", unit: "agend.service", fragmentPath: fragment } };
   installPackage(o, "2.4.0");
   writeFileSync(join(home, "fleet.yaml"), "version: old\n");
   const alive = new Set<number>([UPDATER]);
@@ -157,7 +162,7 @@ function committed(opts: Opts = {}) {
   if (!r.ok) throw new Error(r.reason);
   writeFileSync(join(w.home, "after-commit.json"), "{\"new\":true}");                             // written by 2.4.1 after its commit
   writeFileSync(join(w.home, "fleet.yaml"), "version: new\nedited: later\n");
-  if (w.o.service) writeFileSync(w.fragment, UNIT_241);                                              // 2.4.1 rewrote its unit
+  if (w.o.service) writeFileSync(w.fragment, opts.launchd ? PLIST_241 : UNIT_241);                // 2.4.1 rewrote its unit
   return w;
 }
 const goBackInit = (w: World) => {
@@ -252,7 +257,7 @@ describe("M-3770 2.5: Go back, end to end on a scratch world", () => {
     expect(readGoBackOffer(w.home).eligible.map(e => e.attemptId)).toEqual([ID]);                   // not used
   });
 
-  it("the offer refuses: expired, an old-protocol from-version, a launchd install, a missing snapshot, a used entry", () => {
+  it("the offer refuses: expired, an old-protocol from-version, a missing snapshot, a used entry", () => {
     const w = committed();
     const offer = readGoBackOffer(w.home);
     expect(readGoBackOffer(w.home, offer.eligible[0]!.expiresAt + 1).unavailable[0]!.reason).toMatch(/window to 2\.4\.0 ended/);
@@ -264,14 +269,54 @@ describe("M-3770 2.5: Go back, end to end on a scratch world", () => {
     expect(readGoBackOffer(w.home).unavailable[0]!.reason).toMatch(/already used/);
     writeFileSync(path, original);
     const recordPath = join(attemptDir(w.home, ID), "attempt.json"), record = readFileSync(recordPath, "utf8");
-    const rec = JSON.parse(record); rec.ownership.service.kind = "launchd"; writeFileSync(recordPath, JSON.stringify(rec));
-    expect(readGoBackOffer(w.home).unavailable[0]!.reason).toMatch(/macOS service installs/);
-    writeFileSync(recordPath, record);
     rmSync(join(attemptDir(w.home, ID), "snapshot.json"), { force: true });
     rmSync(join(attemptDir(w.home, ID), "manifest.json"), { force: true });
     const missing = readGoBackOffer(w.home);
     expect(missing.eligible).toEqual([]);
     expect(missing.unavailable[0]!.reason).toMatch(/snapshot from before the update/);
+  });
+
+  it("S-260: a launchd install goes back too — the job's plist returns to 2.4.0's through this attempt's wrapper, and the wrapper comes off at the commit", () => {
+    const w = committed({ launchd: true });
+    expect(readGoBackOffer(w.home).eligible.map(e => e.attemptId)).toEqual([ID]);                   // offered on launchd now
+    const seen: string[] = [];
+    const { guard } = guardOf([true, true]);
+    const base = w.deps(noNpm);
+    // What the plist says at each start (the pre-start step must guard every one of them: wrapped in THIS attempt's route).
+    const r = runGoBack(w.home, ID, goBackInit(w), { ...base, guard, manager: { ...base.manager, start: handoff => { seen.push(readFileSync(w.fragment, "utf8")); return base.manager.start(handoff); } } });
+    expect(r.ok, r.ok ? "" : r.reason).toBe(true);
+    expect(readFileSync(w.fragment, "utf8")).toBe(PLIST_240);                                       // 2.4.0's plist, route off
+    expect(JSON.parse(readFileSync(join(w.o.packagePath, "package.json"), "utf8")).version).toBe("2.4.0");
+    expect(seen.length).toBeGreaterThan(0);
+    const trialStart = seen.at(-1)!;
+    expect(trialStart).toContain("agend-update-recovery");
+    expect(trialStart).toContain(GB);                                                               // this Go back's route
+    expect(plistArgs(trialStart)!.slice(-3)).toEqual(["/usr/local/bin/agend", "fleet", "start"]);   // around 2.4.0's arguments
+    expect(readAttemptRecord(w.home, GB)).toMatchObject({ kind: "go-back", stage: "committed" });
+  });
+
+  it("S-260: a committed Go back's still-loaded job (its wrapper around 2.4.0's arguments) reads as the fleet; anything else stays unknown", () => {
+    const w = committed({ launchd: true });
+    const { guard } = guardOf([true, true]);
+    expect(runGoBack(w.home, ID, goBackInit(w), { ...w.deps(noNpm), guard }).ok).toBe(true);
+    const deps = { verifyKit: () => true, plistArgs };
+    const wrapperOf = (id: string, args: string[]) => plistArgs(wrapPlist(plistOf(args), w.home, id, args)!)!;
+    expect(unwrapRecoveryRoute(wrapperOf(GB, ["/usr/local/bin/agend", "fleet", "start"]), w.home, deps)).toEqual(["/usr/local/bin/agend", "fleet", "start"]);
+    expect(unwrapRecoveryRoute(wrapperOf(GB, ["/usr/local/bin/agend", "fleet", "start", "--since-2.4.1"]), w.home, deps)).toBeNull();   // its own preimage's: not what it returned to
+    expect(unwrapRecoveryRoute(wrapperOf(GB, ["/usr/local/bin/other", "fleet", "start"]), w.home, deps)).toBeNull();
+  });
+
+  it("S-260: a launchd Go back refused at its second check rolls back to now: the plist is 2.4.1's again, route off", () => {
+    const w = committed({ launchd: true });
+    const { guard } = guardOf([true, false]);
+    const r = runGoBack(w.home, ID, goBackInit(w), { ...w.deps(noNpm), guard });
+    expect(r).toMatchObject({ ok: false, outcome: "rolled-back" });
+    expect(readFileSync(w.fragment, "utf8")).toBe(PLIST_241);
+    // A Go back that didn't commit wraps its own preimage (2.4.1's): only that reads as the fleet, never 2.4.0's.
+    const deps = { verifyKit: () => true, plistArgs };
+    const wrapperOf = (args: string[]) => plistArgs(wrapPlist(plistOf(args), w.home, GB, args)!)!;
+    expect(unwrapRecoveryRoute(wrapperOf(["/usr/local/bin/agend", "fleet", "start", "--since-2.4.1"]), w.home, deps)).toEqual(["/usr/local/bin/agend", "fleet", "start", "--since-2.4.1"]);
+    expect(unwrapRecoveryRoute(wrapperOf(["/usr/local/bin/agend", "fleet", "start"]), w.home, deps)).toBeNull();
   });
 
   it("a detached install (no service) goes back too: no unit is touched", () => {
