@@ -38,6 +38,7 @@ const realLaunch = await vi.importActual<typeof import("../src/update-launch.js"
 const { readUpdateProgress } = await import("../src/update-marker.js");
 const { hubNoticeDue, hubNoticeKey, HUB_UPDATE_REMIND_MS } = await import("../src/hub-update-notice.js");
 const { setLocale } = await import("../src/locale.js");
+const { updateTonightAt } = await import("../src/fleet-manager.js");
 
 const dirs: string[] = [];
 afterEach(() => { spawned.length = 0; installed.gate = null; vi.useRealTimers(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -321,6 +322,36 @@ describe("M-3770 1.5: the update card in General's chat", () => {
       f.fm.recordUpdateCheck("2.4.0-alpha.3", { target: "2.5.0", fromChannel: false });
       await settle(); await f.fm.syncUpdateChatCard();
       expect(g.alerts).toEqual([]);
+    } finally { await f.stop(); }
+  });
+});
+
+describe("M-3864 R2: the chat card says and picks times in the fleet's zone, not the machine's clock", () => {
+  it("Tonight is 22:00 where the fleet is: today's when 30 min or more ahead, else tomorrow's; an unknown zone falls back to UTC", () => {
+    const now = Date.parse("2026-11-27T06:00:00Z");                                   // 14:00 in Taipei
+    expect(new Date(updateTonightAt(now, "Asia/Taipei")).toISOString()).toBe("2026-11-27T14:00:00.000Z");
+    expect(new Date(updateTonightAt(now, "UTC")).toISOString()).toBe("2026-11-27T22:00:00.000Z");
+    expect(new Date(updateTonightAt(now, "America/New_York")).toISOString()).toBe("2026-11-28T03:00:00.000Z");
+    expect(new Date(updateTonightAt(Date.parse("2026-11-27T13:45:00Z"), "Asia/Taipei")).toISOString()).toBe("2026-11-28T14:00:00.000Z");
+    expect(new Date(updateTonightAt(Date.parse("2026-11-27T13:29:00Z"), "Asia/Taipei")).toISOString()).toBe("2026-11-27T14:00:00.000Z");
+    expect(new Date(updateTonightAt(now, "Not/AZone")).toISOString()).toBe("2026-11-27T22:00:00.000Z");
+  });
+  it("with defaults.scheduler.default_timezone set: Tonight schedules its 22:00, and the card and /update say the time with its offset", async () => {
+    setLocale("en");
+    const f = await fleet();
+    try {
+      const g = await general(f);
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone === "Pacific/Kiritimati" ? "Pacific/Pago_Pago" : "Pacific/Kiritimati";   // never the machine's
+      f.fm.fleetConfig.defaults = { scheduler: { default_timezone: zone } };
+      offer(f); await vi.waitFor(() => expect(g.alerts).toHaveLength(1));
+      expect(await press(f, g, "tonight").run).toBe(true);
+      const v = f.fm.updateOfferView();
+      expect(v.scheduledAt).toBe(updateTonightAt(v.scheduledAt - 31 * 60_000 >= Date.now() ? Date.now() : Date.now(), zone));
+      expect(new Date(v.scheduledAt).toLocaleString("sv-SE", { timeZone: zone, hour12: false }).slice(11, 16)).toBe("22:00");
+      const offset = zone === "Pacific/Kiritimati" ? "UTC+14" : "UTC-11";
+      expect(g.retired.at(-1)).toMatch(new RegExp(`at \\d{4}-\\d{2}-\\d{2} 22:00 \\(${offset.replace("+", "\\+")}\\), when your agents are idle`));
+      expect(f.fm.updateChatCardText(v, "2.3.5-beta.2")).toContain(`22:00 (${offset})`);
+      expect(f.fm.describeUpdateOffer()).toContain(`22:00 (${offset})`);                  // /update's reply
     } finally { await f.stop(); }
   });
 });

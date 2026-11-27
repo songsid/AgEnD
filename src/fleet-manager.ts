@@ -221,7 +221,7 @@ import { NativeDaemonClient } from "./native-daemon-client.js";
 import { usesChannelAddress, TOOLS } from "./channel/mcp-tools.js";
 import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, SendOpts, SentMessage, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
 import { ParkedNotices, PARKED_NOTICE_LEDGER_FILE } from "./parked-notices.js";
-import { formatFleetTime } from "./tz-utils.js";
+import { formatFleetTime, localWallToUtcDb } from "./tz-utils.js";
 import { createAdapter } from "./channel/factory.js";
 import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter, type MissedOfflineInbound } from "./channel/adapters/telegram.js";
@@ -1183,6 +1183,19 @@ const UPDATE_CARD_CALLBACK_PREFIX = "update-card:";
 const UPDATE_CHAT_CARD_FILE = "update-chat-card.json";
 /** The chat card's buttons live a week (Not now's own length); a newer card replaces them sooner. */
 const UPDATE_CHAT_CARD_MS = 7 * 24 * 60 * 60_000;
+/**
+ * M-3864 R2: the chat card's Tonight: 22:00 in the fleet's zone (`defaults.scheduler.default_timezone`, else the machine's),
+ * the next one when today's is under 30 min away. Before, 22:00 on the machine's clock: on a UTC server for a Taipei fleet
+ * that was 06:00 the next morning.
+ */
+export function updateTonightAt(now: number, tz: string): number {
+  let day: string;
+  try { day = new Date(now).toLocaleString("sv-SE", { timeZone: tz, hour12: false }).slice(0, 10); }
+  catch { tz = "UTC"; day = new Date(now).toISOString().slice(0, 10); }
+  const at = (date: string) => Date.parse(localWallToUtcDb(`${date} 22:00:00`, tz).replace(" ", "T") + "Z");
+  const today = at(day);
+  return today - now >= 30 * 60_000 ? today : at(new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10));
+}
 interface UpdateChatCardRecord { version: string; state: string; nonce: string | null; messageId: string; chatId: string; threadId?: string; adapterId: string; at: number }
 const HUB_SHARING_CALLBACK_PREFIX = "hub-share:";
 /** M-3680: a held contact request's card in General ("contact-ticket:" + 32 hex + ":approve" = 55 bytes, under Telegram's 64). */
@@ -2929,14 +2942,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return `${t("update.chatcard.offer", view.version)}\n${line}`;
     }
     // The card's own short lines, as on the web (the leader's copy pass); anything else in /update's words.
-    const at = (ms?: number) => { if (!ms) return ""; const d = new Date(ms), p2 = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+    // M-3864 R2: the fleet's zone with its offset, as schedules say times (the web shows the person's own zone).
+    const at = (ms?: number) => (ms ? formatFleetTime(ms, this.usageZone()) : "");
     if (view?.state === "waiting-idle") return t("update.chatcard.state_waiting", view.version);
     if (view?.state === "scheduled") return t("update.chatcard.state_scheduled", view.version, at(view.scheduledAt));
     if (view?.state === "not-now") return t("update.chatcard.state_not_now", view.version, at(view.notNowUntil));
     if (view?.state === "updating") return t("update.chatcard.state_updating", view.version);
     if (view?.state === "done") return t("update.chatcard.state_done", view.version);
     if (view?.state === "failed") return t("update.chatcard.state_failed", view.version, current ?? "?");
-    const reply = updateOfferReply(view, current, !!resolveUpdates(this.fleetConfig?.updates).pin);
+    const reply = updateOfferReply(view, current, !!resolveUpdates(this.fleetConfig?.updates).pin, this.usageZone());
     return t(reply.key, ...reply.args);
   }
   /** General's chat place for the card, or null (no General, no chat: a web-only fleet's banner says it). */
@@ -3058,7 +3072,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.retireNonceButtons(entry, messageId, shownVersion && before && before.version !== shownVersion ? t("update.chatcard.replaced", before.version) : t("update.chatcard.expired"));
       return true;
     }
-    const tonight = (() => { const d = new Date(); d.setHours(22, 0, 0, 0); if (d.getTime() - Date.now() < 30 * 60_000) d.setDate(d.getDate() + 1); return d.getTime(); })();
+    const tonight = updateTonightAt(Date.now(), this.usageZone());
     const body = action === "tonight" ? { action: "pick-time" as const, at: tonight } : { action: action as "when-idle" | "not-now" };
     const by = updateAnswerLabel(data.username ?? "");
     let text: string;
@@ -34028,7 +34042,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let current: string | null = null;
     try { current = this.runningAgendVersion(); } catch { /* unknown */ }
     const pinned = !!resolveUpdates(this.fleetConfig?.updates).pin;
-    const reply = updateOfferReply(this.updateOfferView(), current, pinned);
+    const reply = updateOfferReply(this.updateOfferView(), current, pinned, this.usageZone());
     return t(reply.key, ...reply.args);
   }
 
