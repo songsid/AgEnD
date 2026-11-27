@@ -36,6 +36,7 @@ register("rcard", {
     "reason_guest-request": "This was sent while {0} was working on a request from {1}, a guest.",
     "reason_hub-request": "This was sent while {0} was working on {1}'s request from the Hub.",
     "reason_unproved-recovery": "{0} resumed work whose requester couldn't be proven, so this contact needs approval.",
+    "reason_interrupted-launch": "This agent was interrupted; this contact needs one approval.",
     reason_other: "This contact needs an admin's approval.", someone: "someone",
     grantView: "View allowed contacts in Permissions",
     waiting: "Waiting for your Confirm in Discord or Telegram ({0})",
@@ -63,6 +64,7 @@ register("rcard", {
     "reason_guest-request": "這是 {0} 處理訪客 {1} 的請求時送出的。",
     "reason_hub-request": "這是 {0} 處理 {1} 從 Hub 提出的請求時送出的。",
     "reason_unproved-recovery": "{0} 接續的工作無法證明是誰提出的，因此這次聯絡需要核准。",
+    "reason_interrupted-launch": "這個 Agent 曾中斷；這次聯絡需要核准一次。",
     reason_other: "這次聯絡需要管理員核准。", someone: "某人",
     grantView: "在「權限」查看允許的聯絡",
     waiting: "等你在 Discord 或 Telegram 按下確認（{0}）",
@@ -103,6 +105,8 @@ export function reasonText(card) {
   const hubName = code === "hub-request" && card.requester && card.requester.platform === "hub" ? card.requester.displayName || card.requester.id : null;
   if (["restricted-room-request", "guest-request", "hub-request"].includes(code)) return tr(`reason_${code}`, card.sourceLabel, hubName || requesterName(card.requester));
   if (code === "unproved-recovery") return tr("reason_unproved-recovery", card.sourceLabel);
+  // S-249 (Sentinel H, #4500): a launch cut off mid-request; its requester stays unknown and it offers no grant (canGrant).
+  if (code === "interrupted-launch") return tr("reason_interrupted-launch");
   return tr("reason_other");
 }
 /**
