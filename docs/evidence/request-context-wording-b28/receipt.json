@@ -1,5 +1,5 @@
 {
-  "sourceHead": "766537d7f5f0529b063ff18774644bc8e32767cf",
+  "sourceHead": "4715aec3700387fbc20fa67cceb3ad0c3e7865eb",
   "dirty": [],
   "checks": [
     {
@@ -11,11 +11,19 @@
       "ok": true
     },
     {
+      "name": "desk-light-en-off-unavailable: the card keeps zh words whole",
+      "ok": true
+    },
+    {
       "name": "desk-light-en-blocked-work: blocked says it isn't on yet",
       "ok": true
     },
     {
       "name": "desk-light-en-blocked-work: the agents' work line asks to wait, not to end it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-work: the card keeps zh words whole",
       "ok": true
     },
     {
@@ -27,18 +35,26 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW-off-unavailable: the card keeps zh words whole",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW-blocked-work: blocked says it isn't on yet",
       "ok": true
     },
     {
       "name": "phone-dark-zh-TW-blocked-work: the agents' work line asks to wait, not to end it",
       "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-work: the card keeps zh words whole",
+      "ok": true
     }
   ],
   "pictures": [
     {
       "path": "b28-desk-light-en-off-unavailable.png",
-      "sha256": "e37d1354512b36d79938f165129fb8687f20ec72ee0fd1a18a6dee97ae328c7c"
+      "sha256": "b90da24cf7ee0d69422f731aa664478f7a7e4c038c5d52e3418cac49de6f6222"
     },
     {
       "path": "b28-desk-light-en-blocked-work.png",
@@ -50,8 +66,8 @@
     },
     {
       "path": "b28-phone-dark-zh-TW-blocked-work.png",
-      "sha256": "bc7ad2b53fd4d8cdcf1811314882ede2065f90c5ca684f0e5b077069b99a7ccd"
+      "sha256": "fde104a7b73afbb043b4e2acb5bc82c2e5621cd70d4af77a4484035720bfc126"
     }
   ],
-  "summary": "8/8"
+  "summary": "12/12"
 }

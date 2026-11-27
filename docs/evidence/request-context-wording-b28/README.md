@@ -1,6 +1,6 @@
 # Beta.28 wording pass: request-based approvals (real app)
 
-These frames show Settings → Access and security → Request-based approvals, using the S-230 fixture's control stub (no Fleet start, no activation). Script: `scripts/manual/request-context-wording-b28/capture.mts`. `receipt.json` has the commit, the checks (8/8) and each PNG's sha256.
+These frames show Settings → Access and security → Request-based approvals, using the S-230 fixture's control stub (no Fleet start, no activation). Script: `scripts/manual/request-context-wording-b28/capture.mts`. `receipt.json` has the commit, the checks (12/12) and each PNG's sha256. The card keeps zh words whole (`word-break: keep-all`), so 「關閉」 no longer breaks mid-word.
 
 | Frame | What it shows |
 |---|---|
