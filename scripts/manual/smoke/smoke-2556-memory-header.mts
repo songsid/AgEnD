@@ -21,7 +21,12 @@ const top = [
 let pressured = false;
 const status = fx.fm.getUiStatusSync.bind(fx.fm);
 fx.fm.getUiStatusSync = () => ({...status(),host_memory:pressured?"critical":null,host_memory_top:pressured?top:[]});
-const pressure = `(async()=>{const{appStore}=await import('/assets/app-store.js');const fixed={hostMemory:'critical',hostMemoryTop:${JSON.stringify(top)}};window.__unpinMemory=appStore.subscribe(s=>{if(s.hostMemory!=='critical'||s.hostMemoryTop?.length!==3)appStore.set(fixed);});appStore.set(fixed);})()`;
+const pressure = async (processes: typeof top) => {
+ const {appStore}=await import('/assets/app-store.js');
+ const fixed={hostMemory:'critical',hostMemoryTop:processes};
+ window.__unpinMemory=appStore.subscribe(s=>{if(s.hostMemory!=='critical'||s.hostMemoryTop?.length!==3)appStore.set(fixed);});
+ appStore.set(fixed);
+};
 const read = `(()=>{
 const root=document.querySelector('.p-fleet'), head=root.querySelector('.panel-head'), top=head.querySelector('.host-mem-top'), status=head.querySelector('.host-mem');
 const rect=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom}};
@@ -45,7 +50,7 @@ try {
   });
   if(mode==="before"||mode==="old-panel") await p.page.route("**/ui/js/panel-fleet.js*", (route: any) => route.fulfill({contentType:"text/javascript",body:oldPanel}));
   await p.page.goto(new URL("/ui/fleet/usage",p.page.url()).href); await mounted(p.page,30000); await p.page.locator(".p-fleet").waitFor();
-  pressured = true; await p.page.evaluate(pressure); await p.page.waitForTimeout(600);
+  pressured = true; await p.page.evaluate(pressure, top); await p.page.waitForTimeout(600);
   const result = await p.page.evaluate(read);
   console.log(JSON.stringify({mode,lang,width,...result}));
   if(mode!=="before") {

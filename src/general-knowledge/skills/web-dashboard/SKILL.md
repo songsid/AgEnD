@@ -386,6 +386,13 @@ tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `n
 `needs_you.dm` (default off), `needs_you.task_board` (default off: the task board's cards waiting
 for you — set `true` to list them).
 
+**Install as an app** (安裝成應用程式), under **This device** below the notification row: in Chrome or Edge on the
+AgEnD computer (localhost) or an https address the browser trusts, **Install** opens the browser's own install dialog,
+and AgEnD then opens in its own window from the Start menu, Dock or home screen. Safari on iPhone/iPad says "In Safari,
+tap Share, then Add to Home Screen". A plain `http://` LAN address says to open it through localhost or `https://`.
+Already running as the app, or a browser that offers no install: the row isn't shown. Nothing is stored for offline use
+(the app's service worker caches nothing; signing out works as before).
+
 Held Hub one-to-one questions offer **Close this question** (不處理這題), including an uncertain hold
 without **Try again**. A verified administrator who manages that Agent confirms in the dashboard; the Hub then
 marks it not answered for the asker and the item clears only after acknowledgement. An existing Hub answer is

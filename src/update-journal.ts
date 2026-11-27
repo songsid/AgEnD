@@ -275,13 +275,20 @@ export interface AttemptInit {
   extra?: Record<string, unknown>;
 }
 
+/**
+ * §5.7 (rev 16, Fable Go back design): the update transaction's protocol, stamped into every attempt at open by the code
+ * that drives it — the OLD install's updater — so a later Go back knows what the version it would return to speaks
+ * (handoff takeover, the fleet's hand-back). Bump it when a version can't take part in a transaction an older one could.
+ */
+export const UPDATE_TX_PROTOCOL = 1;
+
 export function openAttempt(home: string, init: AttemptInit, io: JournalIo = defaultJournalIo): OpenResult {
   if (!ID.test(init.id)) return { ok: false, reason: "not an attempt id" };
   let read = readCurrent(home, io);
   if (read.state === "closing") { finishClosing(home, read.attempt, io); read = readCurrent(home, io); }
   if (read.state !== "none") return { ok: false, reason: read.state === "unknown" ? `the update journal is unknown: ${read.reason} (${read.path})` : `attempt ${read.attempt.id} is ${read.attempt.stage}` };
   const at = io.now().toISOString();
-  const attempt: AttemptRecord = { ...(init.extra ?? {}), schema: 1, id: init.id, kind: init.kind, createdAt: at, updater: init.updater, from: init.from, to: init.to,
+  const attempt: AttemptRecord = { ...(init.extra ?? {}), txProtocol: UPDATE_TX_PROTOCOL, schema: 1, id: init.id, kind: init.kind, createdAt: at, updater: init.updater, from: init.from, to: init.to,
     ...(init.goBackOf ? { goBackOf: init.goBackOf } : {}), stage: "opened", history: [{ stage: "opened", at }] };
   // The chain .update-journal/attempts/<id> made durable first; the attempt's directory must be new (never rebound).
   mkdirDurable(io, home, attemptDir(home, init.id), true);
@@ -380,7 +387,8 @@ export function isMarked(home: string, artifact: { version: string; integrity: s
 // ── §2.6: the fleet's files ─────────────────────────────────────────────────────────────────────────────────────────
 
 export type InboxSource = "outbox" | "adapter" | "web" | "hub";
-export type InboxItem = { kind: "reference"; deliveryId: string; createdSeq: number } | { kind: "copy"; body: unknown };
+/** A copy names the instance it was going to (rev 15, Fable #4536 design 1): hand-back admits it there. */
+export type InboxItem = { kind: "reference"; deliveryId: string; createdSeq: number } | { kind: "copy"; body: unknown; target: string };
 export const SEQ_WIDTH = 12;
 const pad = (seq: number) => { if (!Number.isSafeInteger(seq) || seq < 0) throw new Error("seq must be a non-negative integer"); return String(seq).padStart(SEQ_WIDTH, "0"); };
 export const inboxName = (seq: number, source: InboxSource) => `${pad(seq)}-${source}.json`;
@@ -420,7 +428,7 @@ export function listHandback(home: string, attemptId: string, io: JournalIo = de
     const text = io.read(join(inbox, f));
     if (text === null) throw new Error(`inbox item ${f} vanished`);
     const item = JSON.parse(text) as InboxItem;
-    if (!(item.kind === "reference" && typeof item.deliveryId === "string" && Number.isSafeInteger(item.createdSeq)) && !(item.kind === "copy" && "body" in item)) throw new Error(`inbox item ${f} isn't valid`);
+    if (!(item.kind === "reference" && typeof item.deliveryId === "string" && Number.isSafeInteger(item.createdSeq)) && !(item.kind === "copy" && "body" in item && typeof item.target === "string" && item.target !== "")) throw new Error(`inbox item ${f} isn't valid`);
     out.push({ seq: Number(m[1]), kind: "inbox", source: m[2] as InboxSource, file: join(inbox, f), item, acked: inboxFiles.includes(`${f}.acked`) });
   }
   for (const f of deferredFiles) {

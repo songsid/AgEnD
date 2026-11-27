@@ -118,18 +118,27 @@ export interface Substeps { done(name: string): boolean; record(name: string): v
 export type StepResult = { ok: true } | { ok: false; manual: boolean; reason: string };
 class Manual extends Error {}
 
-/** §6.3: put the preimage's package and bin links back. */
-export function restorePackage(ownership: Ownership, attemptId: string, manifestSha256: string, steps: Substeps): StepResult {
+/**
+ * §6.3: put the preimage's package and bin links back.
+ * §5.7 Go back (rev 16): `opts.work` names the restoring attempt when the preimage is ANOTHER (committed) attempt's: its
+ * staging directory and the package set aside go under `<prefix>/.agend-rollback/attempt-<work>/`, never under the
+ * committed preimage, which is only read.
+ */
+export function restorePackage(ownership: Ownership, attemptId: string, manifestSha256: string, steps: Substeps, opts: { work?: string } = {}): StepResult {
   const dir = attemptPreimageDir(ownership.prefix, attemptId);
   const pre = readAttemptPreimage(dir, manifestSha256);
   if (!pre.ok) return { ok: false, manual: true, reason: pre.reason };
   const { manifest } = pre;
-  const pkg = ownership.packagePath, scope = dirname(pkg), staged = join(scope, `.agend-restore-${attemptId}`), replaced = join(dir, "replaced-package");
+  const work = opts.work ?? attemptId, workDir = attemptPreimageDir(ownership.prefix, work);
+  if (opts.work) mkdirSync(workDir, { recursive: true, mode: 0o700 });
+  // A go-back stages apart from its own rollback's `.agend-restore-<id>` (the same attempt id restores twice then).
+  const pkg = ownership.packagePath, scope = dirname(pkg), staged = join(scope, opts.work ? `.agend-goback-${work}` : `.agend-restore-${attemptId}`),
+    replaced = join(workDir, opts.work ? "go-back-replaced-package" : "replaced-package");
   try {
     if (pkg !== manifest.packagePath) throw new Manual(`the preimage was taken for ${manifest.packagePath}, not ${pkg}`);
     if (!steps.done("pkg-aside")) {
       const here = existsSync(pkg) || isLink(pkg), there = existsSync(replaced) || isLink(replaced);
-      if (here && !there) { renameSync(pkg, replaced); fsyncPath(scope); fsyncPath(dir); }
+      if (here && !there) { renameSync(pkg, replaced); fsyncPath(scope); fsyncPath(workDir); }
       else if (here && there) throw new Manual(`${pkg} and ${replaced} both exist`);
       steps.record("pkg-aside");                                     // moved now, moved before (only replaced/), or nothing was installed
     }
@@ -179,11 +188,14 @@ function isLink(p: string): boolean { try { return lstatSync(p).isSymbolicLink()
  * gets its wrapper around the ORIGINAL arguments. Otherwise the route goes too. Then `reload()` (daemon-reload, or the
  * plist reload with no start job in progress — the caller's).
  */
-export function restoreUnit(home: string, attempt: AttemptRecord, opts: { keepRoute: boolean; plistArgs(xml: string): string[] | null; reload(): boolean }, steps: Substeps): StepResult {
+export function restoreUnit(home: string, attempt: AttemptRecord, opts: { keepRoute: boolean; plistArgs(xml: string): string[] | null; reload(): boolean;
+  /** §5.7 Go back (rev 16): the committed attempt whose unit preimage is written (read only); the route stays this attempt's. systemd only. */
+  preimageOf?: string }, steps: Substeps): StepResult {
   const service = identityOf(attempt)?.ownership.service;
   if (!service) return { ok: false, manual: true, reason: "the attempt records no service" };
+  if (opts.preimageOf && service.kind !== "systemd") return { ok: false, manual: true, reason: "Go back restores a systemd unit only" };
   let preimage: Buffer;
-  try { preimage = readFileSync(unitPreimagePath(home, attempt.id)); }
+  try { preimage = readFileSync(unitPreimagePath(home, opts.preimageOf ?? attempt.id)); }
   catch (err) { return { ok: false, manual: true, reason: `the unit's preimage can't be read (${(err as Error).message})` }; }
   let want = preimage;
   if (service.kind === "launchd" && opts.keepRoute) {

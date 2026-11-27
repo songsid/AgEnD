@@ -142,7 +142,7 @@ export function ContactPermissionsPanel({ name }) {
   const clearRetainedOrigin = async () => {
     if (busy || !p.originState?.canClear) return;
     setBusy(true);
-    const confirmed = await confirmDialog({ title: ca("originClear"), message: ca("originClearConfirm"),
+    const confirmed = await confirmDialog({ title: ca("originClear"), message: ca(p.classicRoom ? "originClearConfirm" : "originClearConfirmAgent"),
       confirmLabel: ca("originClear"), danger: true });
     if (!confirmed) { setBusy(false); return; }
     const r = await clearOrigin(name, { revision: p.revision, originRevision: p.originState.revision, generation: p.originState.generation });
