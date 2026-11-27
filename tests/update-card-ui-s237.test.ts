@@ -221,7 +221,7 @@ describe("M-3770 1.4: Settings → Version and update", () => {
     expect(card()).toContain("You chose Not now. The card comes back on");
     expect(card()).toContain("Updates on this machine");
     expect(card()).toContain("Updates here need you:");
-    expect(card()).toContain("AgEnD stops when the user example signs out, so it can't restart itself. To fix it, run sudo loginctl enable-linger example.");
+    expect(card()).toContain("AgEnD stops when the example account signs out, so it can't restart itself. To fix it, run sudo loginctl enable-linger example.");
     expect([...p.root.querySelectorAll(".s-update .uc-cmd")].map((e: any) => e.textContent)).toEqual(["sudo loginctl enable-linger example"]);
     expect(card()).not.toContain("lingering");
     expect(card()).toContain("Don't update during");

@@ -3,7 +3,7 @@
  * pre-flight's fix buttons in Settings → Version and update → "Updates on this machine", through the REAL route
  * (POST /ui/update/fixes) and the real FleetManager method behind it. Nothing changes on this host: the fix itself
  * (`runUpdateFix`, which would run `loginctl enable-linger`) is stubbed before the first press, and every update launch too.
- *   1 lingering off: the line, its command, and Fix it for me · 2 after the press: the fresh pre-flight (✓) and its toast ·
+ *   1 lingering off: the line, its command, and Turn it on for me · 2 after the press: the fresh pre-flight (✓) and its toast ·
  *   3 a fix that doesn't take: the block says so in place of the button (no toast), the line and its command stay ·
  *   4 not a service: How to fix folds out
  *   `agend install` as code, with no button.
@@ -24,7 +24,10 @@ const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.
 const shot = async (page: any, name: string) => {
   await page.waitForTimeout(400);
   const path = `s238-${name}.png`;
-  await page.screenshot({ path: join(OUT, path) });
+  // The fleet.yaml preview shows the fixture's temporary folder (a path on the capturing host): masked in every frame.
+  const leaks = await page.evaluate(`(() => { const t = document.body.innerText; const y = [...document.querySelectorAll(".s-yaml")].map((e) => e.innerText).join("\\n"); return [...t.matchAll(/\\/tmp\\/[^\\s]*/g)].map((m) => m[0]).filter((x) => !y.includes(x)); })()`) as string[];
+  check(`${name}: no host path outside the masked fleet.yaml`, leaks.length === 0, leaks);
+  await page.screenshot({ path: join(OUT, path), mask: [page.locator(".s-yaml")], maskColor: "#8888" });
   receipt.pictures.push({ path, sha256: createHash("sha256").update(readFileSync(join(OUT, path))).digest("hex") });
 };
 
@@ -74,7 +77,7 @@ const openSettings = async (page: any) => {
 
 async function walk(c: any) {
   const tag = caseName(c), zh = c.lang === "zh-TW", phone = c.device === "phone";
-  const FIX = W(zh, "Fix it for me", "幫我修正");
+  const FIX = W(zh, "Turn it on for me", "替我開啟");
   const { page, ctx } = await fx.page(c, { path: "/settings/advanced" });
   const errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
   try {
@@ -83,7 +86,7 @@ async function walk(c: any) {
     await openSettings(page);
     let m = await machine(page), b = await fixButtons(page);
     check(`${tag} 1: lingering off: the line names the user, with its command as code`, m.includes("◐") && m.includes("example") && (await cmds(page)).join("|") === "sudo loginctl enable-linger example", m);
-    check(`${tag} 1: one fix button, Fix it for me`, b.length === 1 && b[0]!.t === FIX, b);
+    check(`${tag} 1: one fix button, Turn it on for me`, b.length === 1 && b[0]!.t === FIX, b);
     check(`${tag} 1: the button's line says what it does`, m.includes(W(zh, "AgEnD turns it on for you; nothing restarts and your agents keep working. If this computer doesn't allow it, run the command yourself.", "AgEnD 會替你開啟；不會重新啟動，Agent 照常工作。若這台電腦不允許，請自己執行上面的指令。")), m);
     if (phone) check(`${tag} 1: the button is 44 px`, b.every((x) => x.h >= 44), b);
     check(`${tag} 1: the command on one line`, (await oneLine(page)).every((n) => n === 1), await oneLine(page));
@@ -97,8 +100,10 @@ async function walk(c: any) {
     m = await machine(page);
     check(`${tag} 2: the fix ran once`, fixes.length === before + 1 && fixes[fixes.length - 1] === "linger", fixes);
     check(`${tag} 2: ✓ AgEnD can update itself here; the line and its button are gone`, m.includes(W(zh, "AgEnD can update itself here.", "AgEnD 可以在這裡自行更新。")) && !m.includes("example") && (await fixButtons(page)).length === 0, m);
-    check(`${tag} 2: says it's done, in full`, await toastWhole(page, W(zh, "Done: AgEnD keeps running after example signs out.", "完成：使用者 example 登出後，AgEnD 仍會繼續執行。")), await toasts(page));
+    check(`${tag} 2: says it's done, in full`, await toastWhole(page, W(zh, "Done: AgEnD keeps running after the example account signs out.", "完成：example 這個帳號登出後，AgEnD 仍會繼續執行。")), await toasts(page));
     if (zh) check(`${tag} 2: the toast keeps 「執行」 whole`, await unsplit(page, "執行", ".toasts") === true, await unsplit(page, "執行", ".toasts"));
+    // A phone's toast sits over the page's top (the 版本與更新 heading): the frame is taken once it has gone.
+    if (phone) { const gone = await waitFor(page, `document.querySelectorAll(".toasts .toast").length === 0`, 20000); check(`${tag} 2: the toast has gone before the frame`, gone, await toasts(page)); }
     await shot(page, `${tag}-2-fixed`);
     // 3 a fix that doesn't take
     setPreflight(LINGER_OFF); fixTakes = false;
