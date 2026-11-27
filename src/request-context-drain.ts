@@ -119,7 +119,7 @@ export class RequestContextDrain {
   }
   /** The caller already owns the confirmed blocker image and positive stop proof.
    * The root fence remains: no new input can resurrect explicitly abandoned work. */
-  abandonHumanInputs(rootId:string,epoch:string,confirmed:Readonly<{ownerBinding:string;blockerSha256:string;receipts:RequestContextResolution["receipts"]}>,retired:()=>boolean,current:()=>boolean):void {
+  recordStoppedWork(rootId:string,epoch:string,confirmed:Readonly<{ownerBinding:string;blockerSha256:string;receipts:RequestContextResolution["receipts"]}>,retired:()=>boolean,current:()=>boolean):void {
     ROOT.parse(rootId);ROOT.parse(epoch);this.ready();
     this.db.transaction(()=>{
       const owner=this.owner();
@@ -127,7 +127,7 @@ export class RequestContextDrain {
       assertOwner();
       if(requestContextDigest(requestUncertainHumanImages(this.db,rootId))!==requestContextDigest(confirmed.receipts))throw Error("Human abandonment images changed");
       const before=this.inspect(rootId,epoch),selected=new Set(confirmed.receipts.map(row=>`human-input:hmsg-${row.receiptId}`));
-      if(!selected.size||before.blockers.some(value=>!selected.has(value)))throw Error("Other request-context work still blocks abandonment");
+      if(before.blockers.some(value=>!selected.has(value)))throw Error("Other request-context work still blocks abandonment");
       const existing=readRequestContextResolution(this.db,rootId);
       if(existing && (existing.ownerBinding!==confirmed.ownerBinding||existing.blockerSha256!==confirmed.blockerSha256
         ||requestContextDigest(existing.receipts)!==requestContextDigest(confirmed.receipts)))throw Error("Human abandonment confirmation changed");

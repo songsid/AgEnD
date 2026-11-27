@@ -298,7 +298,11 @@ export class TranscriptMonitor extends EventEmitter {
         this.byteOffset = read.newOffset;
         // An assistant line over the line limit (a long reply, a Write of a big file) is read whole (bounded):
         // its text and tool calls matter. A long tool result is known by its head.
-        const resolved = await resolveLongLines(this.transcriptPath, read, this.pendingLong, isClaudeAssistantHead);
+        // C also needs the complete admitted user image to join its native terminal record. Keep the
+        // existing whole-line byte bound, and leave legacy launches' long-tool-result behaviour alone.
+        const resolved = await resolveLongLines(this.transcriptPath, read, this.pendingLong, head =>
+          isClaudeAssistantHead(head) || this.requestContextTurnEvents &&
+          (head.includes('"type":"user"') || /"message":\{[^{}]{0,400}?"role":"user"/.test(head)));
         if (generation !== this.generation) return;
         this.pendingLong = resolved.pending;
         for (const record of resolved.records) {

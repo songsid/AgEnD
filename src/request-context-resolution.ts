@@ -13,7 +13,7 @@ END`;
 const sha=z.string().regex(/^[a-f0-9]{64}$/);
 const receipt=z.strictObject({receiptId:z.uuid(),inputSha256:sha,receiptSha256:sha});
 const schema=z.strictObject({version:z.literal(1),rootId:z.uuid(),fenceEpoch:z.uuid(),owner:z.string().min(1).max(256),
-  ownerBinding:sha,blockerSha256:sha,closedAt:z.number().int().nonnegative().safe(),receipts:z.array(receipt).min(1).max(64)});
+  ownerBinding:sha,blockerSha256:sha,closedAt:z.number().int().nonnegative().safe(),receipts:z.array(receipt).max(64)});
 export type RequestContextResolution=Readonly<z.infer<typeof schema>>;
 const MAX_BYTES=32768;
 const normalize=(sql:string)=>sql.replace(/\s+/g," ").trim().replace(/;$/,"");
@@ -22,7 +22,7 @@ export function decodeRequestContextResolution(raw:string,digest:string):Request
   if(new Set(value.receipts.map(row=>row.receiptId)).size!==value.receipts.length||requestContextDigest(value)!==digest)throw Error("Invalid request-context resolution image");
   return value;
 }
-/** The guard is permanent, even when all resolved roots have been collected. */
+/** The guard is permanent. E collection retains the F resolution tombstones. */
 export function assertRequestContextResolutionGuard(db:Database.Database):boolean {
   const guard=db.prepare("SELECT type,tbl_name,sql FROM sqlite_master WHERE name=?").get(REQUEST_CONTEXT_RESOLUTION_GUARD) as {type:string;tbl_name:string;sql:string}|undefined;
   const columns=db.pragma("table_info(request_context_drain_v1)") as Array<{name:string}>;
@@ -56,4 +56,17 @@ export function writeRequestContextResolution(db:Database.Database,value:Request
   }
   if(db.prepare("UPDATE request_context_drain_v1 SET resolution_json=?,resolution_sha256=? WHERE root_id=? AND epoch=? AND owner=? AND resolution_json IS NULL AND resolution_sha256 IS NULL")
     .run(raw,digest,value.rootId,value.fenceEpoch,value.owner).changes!==1)throw Error("Request-context resolution fence changed");
+}
+
+/** Audit state for a manifest-verified Go back snapshot. No clock ordering and no subset adoption. */
+export function readRequestContextResolutionHistory(db:Database.Database):Readonly<{guard:boolean;history:readonly RequestContextResolution[]}> {
+ const guard=assertRequestContextResolutionGuard(db);if(!guard)return {guard:false,history:[]};
+ const rows=db.prepare("SELECT root_id FROM request_context_drain_v1 WHERE resolution_json IS NOT NULL OR resolution_sha256 IS NOT NULL ORDER BY root_id LIMIT 10001").all() as Array<{root_id:string}>;
+ if(rows.length>10000)throw Error("Request-context resolution history exceeds its bound");
+ return {guard:true,history:rows.map(row=>{const value=readRequestContextResolution(db,row.root_id);if(!value)throw Error("Resolution history unavailable");return value;})};
+}
+/** Shared by activation's guard and the updater port; callers hold the restore fence. */
+export function requestContextResolutionHistoriesEqual(live:Database.Database,snapshot:Database.Database):boolean {
+ const left=readRequestContextResolutionHistory(live),right=readRequestContextResolutionHistory(snapshot);
+ return left.guard===right.guard&&JSON.stringify(left.history)===JSON.stringify(right.history);
 }

@@ -31,6 +31,9 @@ register("requestContextControl", {
     check: "Check again", error: "Couldn't read the current state. Try again.", failed: "Couldn't confirm whether anything changed. Press Check again.",
     notice: "Request-based contact approvals are on: approval applies only to this request. Earlier conversations won't block an administrator's new request. The switch is in Settings → Access & security. Warning: you can no longer downgrade to older AgEnD versions.",
     open: "Open settings", loading: "Checking the current state…",
+    acknowledge: "Acknowledge", ackTitle: "Acknowledge this message?", ackBody: "The result is still unknown. This marks the message as reviewed; it won't send it again.",
+    legacyUncertain: "These earlier messages have an unknown result: {0}. Please acknowledge them first.",
+    stopGoBack: "Stopping this work also ends Go back for this update.",
     workFamilies: "Waiting on {0}: {1}.", unknownEnd: "The conversation's end isn't confirmed.",
     "family-turns": "an active conversation", "family-daemon-calls": "agent tool calls", "family-fleet-calls": "pending tool results",
     "family-native-exec": "work on a connected computer", "family-native-grants": "active tool connections", "family-pane-proofs": "an agent window still in use",
@@ -58,6 +61,9 @@ register("requestContextControl", {
     check: "重新檢查", error: "無法讀取目前狀態，請再試一次。", failed: "無法確認是否已變更，請按「重新檢查」。",
     notice: "依請求核准聯絡已開啟：核准只對這一次請求有效，先前的對話不會再擋住管理員的新請求。開關在「設定」→「存取與安全」。注意：已不能再降回舊版 AgEnD。",
     open: "開啟設定", loading: "正在確認目前狀態…",
+    acknowledge: "確認", ackTitle: "確認已看過這則訊息？", ackBody: "結果仍不明。這只會記錄你已看過，不會再次傳送。",
+    legacyUncertain: "這些先前的訊息結果不明：{0}。請先確認已看過。",
+    stopGoBack: "停止這項工作後，這次更新就不能再退回。",
     workFamilies: "正在等候 {0}：{1}。", unknownEnd: "無法確認這次對話是否已結束。",
     "family-turns": "尚未結束的對話", "family-daemon-calls": "Agent 的工具操作", "family-fleet-calls": "尚未回傳的操作結果",
     "family-native-exec": "連線電腦上執行的工作", "family-native-grants": "仍在使用的工具連線", "family-pane-proofs": "仍在使用的 Agent 視窗",
@@ -69,7 +75,7 @@ export const requestContextControlText = (key, ...args) => t(`requestContextCont
 const LEGACY_KEYS = { "legacy-pending": "legacyPending", "legacy-inflight": "legacyInflight", "legacy-unsettled": "legacyUnsettled", "legacy-deliveries": "legacyDeliveries" };
 export function requestContextBlockerText(blocker) {
   // S-272: an earlier ticket says what settles it (its own sentence by blocker id); an older server's "legacy" keeps its line.
-  const legacyKey = blocker.kind === "legacy" && LEGACY_KEYS[blocker.id];
+  const legacyKey = blocker.kind === "legacy" && (blocker.id.startsWith("legacy-uncertain:")?"legacyUncertain":LEGACY_KEYS[blocker.id]);
   if(blocker.kind === "work" && blocker.families?.length){
     const separator=lang()==="zh-TW"?"、":", ";
     const text=requestContextControlText("workFamilies",(blocker.labels||[]).join(separator),blocker.families.map(family=>requestContextControlText(`family-${family}`)).join(separator));
@@ -115,7 +121,8 @@ export function RequestContextNeed({ item }) {
     if (writing.current || failed || !state || blocker && !state.canChange) return;
     writing.current = true; setBusy(true); setFailed(false);
     try {
-      if (["stop-work", "stop-waiting"].includes(blocker?.action) && !await confirmStopWork(blocker.action)) return;
+      if(blocker?.action==="acknowledge" && !await confirmDialog({title:requestContextControlText("ackTitle"),message:requestContextControlText("ackBody"),confirmLabel:requestContextControlText("acknowledge"),danger:false}))return;
+      if (["stop-work", "stop-waiting"].includes(blocker?.action) && !await confirmStopWork(blocker.action, state.goBack)) return;
       const input = blocker ? { revision: state.revision, action: "resolve", blockerId: blocker.id, resolution: blocker.action } : { revision: state.revision, action: "check" };
       const response = await writeControl(lease, input);
       if (!lease.current()) return;
@@ -129,7 +136,7 @@ export function RequestContextNeed({ item }) {
     ${failed ? html`<p class="notice warn" role="alert">${requestContextControlText("failed")}</p>` : null}
     </article>`;
 }
-async function confirmStopWork(action) { return confirmDialog({ title: requestContextControlText(action === "stop-waiting" ? "waitTitle" : "stopTitle"), message: requestContextControlText(action === "stop-waiting" ? "waitBody" : "stopBody"), confirmLabel: requestContextControlText(action), danger: true }); }
+async function confirmStopWork(action, goBack) { return confirmDialog({ title: requestContextControlText(action === "stop-waiting" ? "waitTitle" : "stopTitle"), message: requestContextControlText(action === "stop-waiting" ? "waitBody" : "stopBody") + (action === "stop-work" && goBack ? "\n\n" + requestContextControlText("stopGoBack") : ""), confirmLabel: requestContextControlText(action), danger: true }); }
 export function RequestContextSettings() {
   const lease = useLease("request-context-control"), [state, setState] = useState(undefined), [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
   const toggle = useRef(null);
@@ -158,7 +165,8 @@ export function RequestContextSettings() {
     writing.current = true; setBusy(true); setFailed(false);
     try {
       if (action === "enable" && !await confirmDialog({ title: requestContextControlText("enableTitle"), message: requestContextControlText("floorBefore") + (state.goBack ? "\n\n" + requestContextControlText("goBack", clockFormat({ dateStyle: "medium", timeStyle: "short", timeZone: state.goBack.timeZone }, "en").format(new Date(state.goBack.availableUntil))) : "") + (state.restartCount ? "\n\n" + requestContextControlText("restart", state.restartCount) : ""), confirmLabel: requestContextControlText("enable"), danger: true })) return;
-      if (["stop-work", "stop-waiting"].includes(blocker?.action) && !await confirmStopWork(blocker.action)) return;
+      if(blocker?.action==="acknowledge" && !await confirmDialog({title:requestContextControlText("ackTitle"),message:requestContextControlText("ackBody"),confirmLabel:requestContextControlText("acknowledge"),danger:false}))return;
+      if (["stop-work", "stop-waiting"].includes(blocker?.action) && !await confirmStopWork(blocker.action, state.goBack)) return;
       if (action === "disable" && !await confirmDialog({ title: requestContextControlText("confirmTitle"), message: requestContextControlText("confirmBody"), confirmLabel: requestContextControlText("confirm"), danger: false })) return;
       if (!lease.current()) return;
       const response = await writeControl(lease, blocker ? { revision: state.revision, action: "resolve", blockerId: blocker.id, resolution: blocker.action } : { revision: state.revision, action });

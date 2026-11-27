@@ -1,3 +1,4 @@
+import {readRequestContextResolutionHistory,requestContextResolutionHistoriesEqual} from "./request-context-resolution.js";
 /** The activation transaction is authoritative for Go back; retained.json is only a projection. */
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -38,10 +39,10 @@ export function requestContextGoBackAllowed(db: Database.Database, id: string, c
   attemptId.parse(id); time.parse(committedAt); // Audit metadata only; never evidence for permission.
   const live = readRequestContextActivations(db);
   if (live.some(r => r.invalidates.includes(id))) return false;
-  if (!live.length) return true;
+  if (!live.length) {if(readRequestContextResolutionHistory(db).guard)throw Error("Resolution without activation history");return true;}
   if (!snapshotDb || snapshotDb === db || !snapshotDb.readonly) return false;
   const snapshot = readRequestContextActivations(snapshotDb);
-  return JSON.stringify(live) === JSON.stringify(snapshot);
+  return JSON.stringify(live) === JSON.stringify(snapshot) && requestContextResolutionHistoriesEqual(db,snapshotDb);
 }
 /**
  * Dormant assembly primitive. The caller stages every owner before this, and supplies freshly rechecked readiness

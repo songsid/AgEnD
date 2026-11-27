@@ -42,3 +42,10 @@ it("a partial terminal line is not completion evidence",async()=>{
  appendFileSync(r.path,JSON.stringify(end));await r.monitor.pollIncrement();expect(r.events.some(row=>row.kind==="end")).toBe(false);
  appendFileSync(r.path,"\n");await r.monitor.pollIncrement();expect(r.events.at(-1)?.kind).toBe("end");
 });
+it("a long admitted prompt retains its exact native user image and terminal boundary",async()=>{
+ const r=rig(),prompt="long admitted input "+"x".repeat(2*1024*1024);
+ for(const row of r.rows)r.append(row.type==="user"?{...row,message:{...row.message,content:prompt}}:row);
+ for(let look=0;look<10;look++)await r.monitor.pollIncrement();
+ expect(r.events.map(row=>row.kind)).toEqual(["start","user","end"]);
+ expect(r.events.find(row=>row.kind==="user")).toMatchObject({text:prompt});
+});

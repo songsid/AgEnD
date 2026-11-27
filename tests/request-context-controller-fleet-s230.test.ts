@@ -161,6 +161,11 @@ it("M-3896 the verified owner settles an exact uncertain input through the real 
  const {nativeHumanOrigin}=await import("../src/human-delivery-receipts.js");
  const {readRequestContextResolution}=await import("../src/request-context-resolution.js");
  const r=rig(),host=r.m.requestContextControl,owner=()=>({...r.actor(),binding:"a".repeat(64)}),onOwner=owner();
+ const {acquireRequestContextActivationLease}=await import("../src/request-context-update-guard.js");
+ const {acquireHomeUpdateLock}=await import("../src/home-update-lock.js");
+ const {takeExclusiveLease}=await import("../src/state-lease.js");
+ let sequence=0;const lockDeps={pid:process.pid,processStart:()=>"Thu Nov 26 01:00:00 2026",exists:()=>true,newToken:()=>String(++sequence).padStart(32,"0"),now:()=>new Date(),log:()=>{}};
+
  await host.change({revision:host.read(onOwner).revision,action:"enable"},onOwner);
  const box=r.m.deliveryOutbox,saved=box.createHumanReceiptWithRequestContext({targetInstance:"worker",originalBody:"Synthetic waiting input",origin:nativeHumanOrigin("discord","fixture","person","Person",false,"synthetic-message")!,inputKind:"fleet_inbound",managerBootId:r.m.managerBootId},
   {incarnation:"current",room:null,web:null,route:{kind:"room",adapterId:"fixture",chatId:"synthetic-room"},platform:()=>"discord"});
@@ -170,15 +175,38 @@ it("M-3896 the verified owner settles an exact uncertain input through the real 
  let actor=owner(),view=host.read(actor),blocker=view.blockers.find((row:any)=>row.id.startsWith(`work:${root}:`));
  expect(blocker).toMatchObject({kind:"work",labels:["worker"],families:["human-input"],action:"stop-work"});
  const before=box.getHumanReceipt(saved.receipt.receipt_id);
+ r.m.requestContextActivationLease=()=>acquireRequestContextActivationLease(r.h,"/fixture/install",lockDeps,{current:()=>true});
  // A crash/failure after fencing cannot turn an uncertain receipt into delivery.
  const stop=vi.spyOn(r.m,"stopRequestContextWork").mockRejectedValueOnce(Error("retirement unavailable"));
  await expect(host.change({revision:view.revision,action:"resolve",blockerId:blocker.id,resolution:"stop-work"},actor)).rejects.toThrow(/retirement/);
  stop.mockRestore();const firstEpoch=r.m.requestContextModes.drain.retainedEpoch(root);expect(firstEpoch).toBeTruthy();expect(readRequestContextResolution(db,root)).toBeNull();
  actor=owner();view=host.read(actor);blocker=view.blockers.find((row:any)=>row.id.startsWith(`work:${root}:`));
+ const originalStop=r.m.stopRequestContextWork.bind(r.m);
+ const guardedStop=vi.spyOn(r.m,"stopRequestContextWork").mockImplementation(async(...args:any[])=>{
+  // The attempted restore cannot acquire either exclusion anywhere between the
+  // durable root fence and its resolution COMMIT.
+  expect(acquireHomeUpdateLock(r.h,{spec:"go-back",installPrefix:"/fixture/previous"},lockDeps).ok).toBe(false);
+  expect(takeExclusiveLease(r.h,0).ok).toBe(false);
+  return originalStop(...args);
+ });
  await host.change({revision:view.revision,action:"resolve",blockerId:blocker.id,resolution:"stop-work"},actor);
+ guardedStop.mockRestore();
+ const released=takeExclusiveLease(r.h,0);expect(released.ok).toBe(true);if(released.ok)released.lease.release();
  expect(r.m.requestContextModes.drain.retainedEpoch(root)).not.toBe(firstEpoch);
  expect(box.getHumanReceipt(saved.receipt.receipt_id)).toEqual(before);
  expect(readRequestContextResolution(db,root)?.receipts[0].receiptId).toBe(saved.receipt.receipt_id);
  const state=box.requestContextInstallation().read();r.m.requestContextModes.off.advance(state.revision);
  expect(host.read(owner())).toMatchObject({phase:"off",everActivated:true});
+});
+
+it("M-3896 the owner can acknowledge a plain terminal legacy result before first On",async()=>{
+ const r=rig(),box=r.m.deliveryOutbox,operationId=randomUUID();
+ const row=box.admit({operationId,sourceKey:operationId,sourceInstance:"source",sourceDaemonBootId:"old-boot",targetInstance:"target",kind:"fleet_inbound",payload:{content:"Synthetic legacy message"}}).delivery;
+ const db=(box as any).db;db.prepare("UPDATE deliveries SET state='uncertain',finished_at='2026-11-26T00:00:00Z' WHERE delivery_id=?").run(row.deliveryId);
+ const host=r.m.requestContextControl,actor=r.actor(),view=host.read(actor),blocker=view.blockers.find((value:any)=>value.id.startsWith("legacy-uncertain:"));
+ expect(blocker).toMatchObject({kind:"legacy",labels:["source → target"],action:"acknowledge"});
+ const resolved=await host.change({revision:view.revision,action:"resolve",blockerId:blocker.id,resolution:"acknowledge"},actor);
+ expect(resolved.blockers).toEqual([]);expect(box.get(row.deliveryId).state).toBe("uncertain");
+ expect(db.prepare("SELECT acknowledged_at FROM deliveries WHERE delivery_id=?").get(row.deliveryId).acknowledged_at).toBeTruthy();
+ expect(box.requestContextInstallation().read()).toBeNull();
 });

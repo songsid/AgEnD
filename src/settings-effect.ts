@@ -134,7 +134,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       throw new SettingsConfirmationError(409, "stale");
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     const suffix = input.action === "resolve" ? input.resolution : input.action;
-    const keys = { enable: "enableTitle", disable: "confirmTitle", "stop-waiting": "waitTitle", "stop-work": "stopTitle", decline: "decline", withdraw: "withdraw" } as const;
+    const keys = { enable: "enableTitle", disable: "confirmTitle", "stop-waiting": "waitTitle", "stop-work": "stopTitle", decline: "decline", withdraw: "withdraw", acknowledge:"ackTitle" } as const;
     const line = (backend: string, ui: string, ...args: (string | number)[]) => summaryLine(t(`request_context_control.${backend}`, ...args), summaryMessage(`requestContextControl.${ui}`, ...args));
     const summary = [line(suffix, keys[suffix])];
     if (input.action === "enable") {
@@ -147,8 +147,12 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       }
       if (view.data.restartCount) summary.push(line("restart", "restart", view.data.restartCount));
     } else if (input.action === "disable") summary.push(line("offBody", "confirmBody"));
-    else if (input.action === "resolve" && input.resolution === "stop-work") summary.push(line("stopBody", "stopBody"));
+    else if (input.action === "resolve" && input.resolution === "stop-work") {
+      summary.push(line("stopBody", "stopBody"));
+      if(view.data.goBack)summary.push(line("stopGoBack","stopGoBack"));
+    }
     else if (input.action === "resolve" && input.resolution === "stop-waiting") summary.push(line("waitBody", "waitBody"));
+    else if (input.action === "resolve" && input.resolution === "acknowledge")summary.push(line("ackBody","ackBody"));
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input, view.data]),
       ...settingsSummary(summary), affectedConnections: [], authority: HUB_AUTHORITY } };
   }

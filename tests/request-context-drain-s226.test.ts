@@ -161,13 +161,13 @@ it("M-3896 abandonment keeps uncertain receipts intact and refuses a racing root
  const confirmed={ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),receipts};
  const before=f.db.prepare("SELECT * FROM human_delivery_receipts").all();
  expect(()=>p.maps.get("turns")!.set("late-owner",root)).toThrow(/draining/);
- expect(()=>d.abandonHumanInputs(root,epoch,confirmed,()=>false,()=>true)).toThrow(/retirement/);
+ expect(()=>d.recordStoppedWork(root,epoch,confirmed,()=>false,()=>true)).toThrow(/retirement/);
  expect(readRequestContextResolution(f.db,root)).toBeNull();
- d.abandonHumanInputs(root,epoch,confirmed,()=>true,()=>true);
+ d.recordStoppedWork(root,epoch,confirmed,()=>true,()=>true);
  expect(f.db.prepare("SELECT * FROM human_delivery_receipts").all()).toEqual(before);
  expect(d.inspect(root,epoch).blockers).toEqual([]);
  expect(readRequestContextResolution(f.db,root)?.receipts).toEqual(receipts);
- d.abandonHumanInputs(root,epoch,confirmed,()=>true,()=>true);
+ d.recordStoppedWork(root,epoch,confirmed,()=>true,()=>true);
  expect(()=>d.release(root,epoch)).toThrow(/cannot reopen/);
  const restarted=f.drain();participants(restarted);const nextEpoch=restarted.resume(root,epoch);
  expect(restarted.inspect(root,nextEpoch).blockers).toEqual([]);
@@ -182,17 +182,30 @@ it("M-3896 abandonment rechecks every runtime family and rolls back a currency c
  const root=saved.context.ref.rootContextId;f.db.prepare("UPDATE human_delivery_receipts SET state='uncertain' WHERE receipt_id=?").run(saved.receipt.receipt_id);
  const d=f.drain(),p=participants(d);p.maps.get("native-exec")!.set("live-run",root);const epoch=d.fence(root);
  const confirmed={ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),receipts:requestUncertainHumanImages(f.db,root)};
- expect(()=>d.abandonHumanInputs(root,epoch,confirmed,()=>true,()=>true)).toThrow(/Other/);
+ expect(()=>d.recordStoppedWork(root,epoch,confirmed,()=>true,()=>true)).toThrow(/Other/);
  p.maps.get("native-exec")!.delete("live-run");
- expect(()=>d.abandonHumanInputs(root,epoch,{...confirmed,receipts:confirmed.receipts.map(row=>({...row,receiptSha256:"f".repeat(64)}))},()=>true,()=>true)).toThrow(/images changed/);
+ expect(()=>d.recordStoppedWork(root,epoch,{...confirmed,receipts:confirmed.receipts.map(row=>({...row,receiptSha256:"f".repeat(64)}))},()=>true,()=>true)).toThrow(/images changed/);
  let checks=0;
- expect(()=>d.abandonHumanInputs(root,epoch,confirmed,()=>true,()=>++checks===1)).toThrow(/owner/);
+ expect(()=>d.recordStoppedWork(root,epoch,confirmed,()=>true,()=>++checks===1)).toThrow(/owner/);
  expect(readRequestContextResolution(f.db,root)).toBeNull();
  expect(d.inspect(root,epoch).blockers).toContain(`human-input:${saved.receipt.message_id}`);
  let revisions=0;
- expect(()=>d.abandonHumanInputs(root,epoch,confirmed,()=>true,()=>{
+ expect(()=>d.recordStoppedWork(root,epoch,confirmed,()=>true,()=>{
   if(++revisions===2)p.maps.get("fleet-calls")!.set("other-root-call",randomUUID());
   return true;
  })).toThrow(/participants changed/);
  expect(readRequestContextResolution(f.db,root)).toBeNull();
+});
+
+it("M-3896 an empty-list root stop changes no human receipt or history",()=>{
+ const f=rig(),i=f.admit();f.terminal(i.result.delivery.deliveryId);
+ const d=f.drain();participants(d);const root=i.c.ref.rootContextId,epoch=d.fence(root);
+ const before=f.db.prepare("SELECT * FROM human_delivery_receipts").all();
+ f.box.resolveRequestContextStoppedWork(root,epoch,{ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),receipts:[],pointers:[]},d,()=>true,()=>true);
+ expect(f.db.prepare("SELECT * FROM human_delivery_receipts").all()).toEqual(before);
+ expect(d.inspect(root,epoch).blockers).toEqual([]);
+ expect(()=>d.release(root,epoch)).toThrow(/cannot reopen/);
+ const certificate=d.prove(root,epoch),gate=f.box.requestContactGate({current:()=>true,canDecide:()=>true,canManage:()=>true,adminOf:()=>false,person:()=>null,rootRetired:()=>certificate.current()});
+ expect(gate.retireRoot(root)).toBe(1);
+ expect(f.db.prepare("SELECT resolution_json FROM request_context_drain_v1 WHERE root_id=?").get(root)).toBeTruthy();
 });

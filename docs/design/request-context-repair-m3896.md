@@ -161,3 +161,50 @@ between stop and write, and between write and fence release, as idempotent
 retries of the same confirmed image. Empty runtime families after restart count
 only behind the held capable recovery fence; a registration racing the root
 fence refuses. All other uncertain effects and deliveries remain blockers.
+
+
+## Go back preserves a committed Stop
+
+The Leader chose to preserve explicit Stop decisions. The Stop confirmation adds
+“Stopping this work also ends Go back for this update.” / 「停止這項工作後，這次更新就不能再退回。」 when an update window is offered. Both the web dialog and native/shared
+Settings summary disclose it before the decision; the new line gets a user look.
+
+Every root Stop, including one with no uncertain receipt, writes the same F-row
+resolution after positive retirement. An empty receipt list abandons no receipt;
+it records only the explicit root stop. Receipt state and history do not change.
+Stop holds the existing home update exclusion and SHARED state lease from root
+fencing through positive owner retirement and the SQLite COMMIT. Go back holds
+the home lock and EXCLUSIVE lease while checking and restoring, so it cannot
+restore between Stop's check and write. The updater's existing four-argument
+path port continues to use the same database predicate.
+
+`requestContextGoBackAllowed` additionally compares the permanent guard and the
+ordered, strictly validated resolution history of the live store and verified
+read-only snapshot. Exact equality is required in both directions; there is no
+subset or clock fallback. Missing/partial columns, changed guards and malformed
+or unknown-version rows refuse. Guard plus a valid empty history on both sides
+is equal; different guards or an empty/nonempty mismatch refuse. If collection
+removes a retained resolution after an update snapshot, that difference also
+conservatively refuses Go back. A later update whose snapshot already contains
+the same Stop can remain eligible.
+
+## Earlier unscoped uncertain sends
+
+Reuse the existing delivery acknowledgement; do not add another outcome or
+retirement journal. An acknowledged terminal uncertain delivery with no scoped
+operation no longer blocks first On. A scoped uncertain delivery keeps blocking,
+even when acknowledged. Acknowledgement never proves delivery, changes the
+outcome, grants permission or replays input.
+
+Existing acknowledgements also count. Today the platform Needs-you callback
+requires a current Fleet administrator and its bound message/adapter/nonce;
+the web Needs-you route uses its existing admitted session and continuation
+checks, rather than a new per-change owner verification. This change does not
+retroactively strengthen that historical evidence. First On still requires the
+current verified Settings owner and all readiness checks.
+
+The new Settings action binds the complete delivery row image, including its
+source, target, operation, terminal state and finished time, and rechecks the
+current owner inside the acknowledgement transaction. A changed row refuses.
+A ticket retirement acknowledges exactly its own matching unscoped uncertain
+delivery in the same transaction, so one owner decision settles both blockers.

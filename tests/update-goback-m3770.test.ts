@@ -1,3 +1,8 @@
+import {RequestContextInstallationStore} from "../src/request-context-installation.js";
+import {requestContextGoBackAllowed} from "../src/request-context-activation.js";
+import {registerRequestContextDispatcher} from "../src/request-context-compatibility.js";
+import {writeRequestContextResolution} from "../src/request-context-resolution.js";
+import {randomUUID} from "node:crypto";
 // M-3770 slice 2.5 (S-252, Go back; design rev 16, Fable's Go back review, Sentinel's S-230 read contract): on a scratch
 // home, prefix and systemd unit, an update 2.4.0 → 2.4.1 is committed, then Go back returns to 2.4.0 through the same
 // transaction — the current fleet stopped and fenced, the current home snapshotted, the committed attempt's home, package
@@ -150,9 +155,9 @@ const treeHash = (dir: string): Record<string, string> => {
 };
 
 /** 2.4.0 → 2.4.1 committed on a world whose home has a real outbox DB; then 2.4.1 runs and changes things. */
-function committed(opts: Opts = {}) {
+function committed(opts: Opts = {}, prepareOutbox?: (db:Database.Database)=>void) {
   const w = world(opts);
-  const db = new Database(join(w.home, "delivery-outbox.db")); db.exec("CREATE TABLE marker(v TEXT); INSERT INTO marker VALUES ('before the update')"); db.close();
+  const db = new Database(join(w.home, "delivery-outbox.db")); db.exec("CREATE TABLE marker(v TEXT); INSERT INTO marker VALUES ('before the update')"); prepareOutbox?.(db); db.close();
   const r = runUpdate(w.home, w.attempt, PLAN, w.deps());
   if (!r.ok) throw new Error(r.reason);
   writeFileSync(join(w.home, "after-commit.json"), "{\"new\":true}");                             // written by 2.4.1 after its commit
@@ -358,4 +363,27 @@ describe("M-3770 2.5: Go back review (Fable #4547)", () => {
       { attemptId: later.attemptId, reason: "the update to 2.4.1 isn't recorded as committed" },
     ]);
   });
+});
+
+it("M-3896 the updater's real guard port cannot restore a snapshot from before an explicit Stop",()=>{
+ const w=committed({},db=>{
+  db.exec("CREATE TABLE deliveries(id TEXT);CREATE TABLE delivery_attempts(id TEXT)");registerRequestContextDispatcher(db,1);
+  new RequestContextInstallationStore(db).activate({epoch:"already-active",owner:"fleet",activatedAt:1,invalidates:[],offeredLatestDeadline:null},{owner:"fleet",current:()=>true},{current:()=>true,release(){}},()=>true,0);
+ });
+ const path=join(w.home,"delivery-outbox.db"),live=new Database(path);registerRequestContextDispatcher(live,1);
+ const rootId=randomUUID(),fenceEpoch=randomUUID();live.exec("CREATE TABLE request_context_drain_v1(root_id TEXT PRIMARY KEY,epoch TEXT NOT NULL,owner TEXT NOT NULL)");
+ live.prepare("INSERT INTO request_context_drain_v1 VALUES (?,?,?)").run(rootId,fenceEpoch,"fleet");
+ live.transaction(()=>writeRequestContextResolution(live,{version:1,rootId,fenceEpoch,owner:"fleet",ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),closedAt:2,receipts:[]}))();live.close();
+ const offer=readGoBackOffer(w.home);expect(offer.eligible.map(entry=>entry.attemptId),JSON.stringify(offer.unavailable)).toContain(ID);
+ let guardCalls=0;
+ const guard:GoBackGuard=(livePath,id,at,snapshotPath)=>{
+  guardCalls++;
+  const current=new Database(livePath,{readonly:true,fileMustExist:true}),snapshot=snapshotPath?new Database(snapshotPath,{readonly:true,fileMustExist:true}):undefined;
+  try{return requestContextGoBackAllowed(current,id,at,snapshot);}finally{snapshot?.close();current.close();}
+ };
+ const result=runGoBack(w.home,ID,goBackInit(w),{...w.deps(noNpm),guard});
+ expect(result).toMatchObject({ok:false,outcome:"refused"});expect(guardCalls).toBe(1);
+ if(!result.ok)expect(result.reason).toMatch(/request-based contact approvals/);
+ expect(readCurrent(w.home).state).toBe("none");
+ const after=new Database(path,{readonly:true});try{expect(after.prepare("SELECT count(*) n FROM request_context_drain_v1 WHERE resolution_json IS NOT NULL").get()).toEqual({n:1});}finally{after.close();}
 });

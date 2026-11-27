@@ -1,3 +1,4 @@
+import {cacheRetainedUnavailable} from "./update-retained.js";
 import {projectRequestContextWork} from "./request-context-drain-projection.js";
 import {createRequire} from "node:module";
 import {RequestContextController,type RequestContextBlocker} from "./request-context-controller.js";
@@ -7036,8 +7037,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if(unsettled.length)out.push({id:"legacy-unsettled",kind:"legacy",labels:unsettled.slice(0,64)});
       const rest=shadow.blockers.map(row=>row.id).filter(id=>!named.has(id));
       if(rest.length||!shadow.complete&&!named.size)out.push({id:"legacy",kind:"legacy",labels:rest.slice(0,64),action:"inspect"});
-      const inventory=box.requestContextControlInventory(),legacy=inventory.deliveries.filter(row=>!row.root);
-      if(legacy.length)out.push({id:"legacy-deliveries",kind:"legacy",labels:legacy.map(row=>`${label(row.source)} → ${label(row.target)}`).slice(0,64)});
+      const inventory=box.requestContextControlInventory(),legacy=inventory.deliveries.filter(row=>!row.root),waiting=legacy.filter(row=>row.state!=="uncertain");
+      if(waiting.length)out.push({id:"legacy-deliveries",kind:"legacy",labels:waiting.map(row=>`${label(row.source)} → ${label(row.target)}`).slice(0,64)});
+      const needsTicketRetirement=new Set(shadow.tickets.filter(row=>["legacy-unconfirmed","missing-receipt","malformed"].includes(row.disposition)).map(row=>`contact:${row.id}`));
+      for(const row of legacy.filter(row=>row.state==="uncertain")){
+        const delivery=box.get(row.id);if(!delivery||needsTicketRetirement.has(delivery.sourceKey))continue;
+        out.push({id:`legacy-uncertain:${row.id}:${box.requestContextLegacyAcknowledgementImage(row.id)}`,kind:"legacy",labels:[`${label(row.source)} → ${label(row.target)}`],action:"acknowledge"});
+      }
       const busy=[...this.daemons].filter(([name,daemon])=>{const row=daemon.requestContextLaunchObservation();return row.observation.processStatus!=="running"||row.observation.executionState!=="idle"||row.pendingCalls||row.responseWaiters||row.queuedInputs||row.transcriptOpen||row.starting||row.stopping||this.requestContextPendingWork.count(name);}).map(([name])=>name);
       for(const row of WindowsAgents.requestContextOwnersOnDisk(this.dataDir)){
         const daemon=row.instance?this.daemons.get(row.instance):undefined;
@@ -7055,7 +7061,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       for(const row of inventory.deliveries)out.push({id:`delivery:${row.id}`,kind:"work",labels:[`${label(row.source)} → ${label(row.target)}`],action:["queued","retry_wait"].includes(row.state)?"withdraw":"inspect"});
       if(this.requestContextModes)for(const root of box.requestContextInstallation().drainRoots()){
         const view=this.requestContextModes.drain.inspectWork(root),projected=projectRequestContextWork(view.blockers);
-        if(!projected.families.length)continue;
+        const recoveryIds=new Set(inventory.recoveries.filter(row=>row.root===root).map(row=>`recovery:${requestContextDigest(row.pointer)}`));
+        if(!projected.families.length){
+          if(view.blockers.some(value=>value!=="recovery-pointer"))for(const row of out)if(recoveryIds.has(row.id))row.action="inspect";
+          continue;
+        }
+        // One root action names the whole stop. Do not show a second pointer-only
+        // action that could stop the owner and then fail on its human receipt.
+        for(let index=out.length-1;index>=0;index--)if(recoveryIds.has(out[index].id))out.splice(index,1);
         const context=box.requestContext(root),names=new Set<string>(context?[context.source.instance]:[]);
         for(const row of inventory.recoveries)if(row.root===root)names.add(row.instance);
         for(const [name,daemon]of this.daemons)if(daemon.requestContextTurnSnapshot()?.context.ref.rootContextId===root)names.add(name);
@@ -7159,7 +7172,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     },500);this.requestContextDrainTimer.unref?.();
   }
   private async resolveRequestContextBlocker(blocker:Readonly<RequestContextBlocker>,actor:RequestContextControlPrincipal,current:()=>boolean):Promise<void>{
-    const box=this.deliveryOutbox,modes=this.requestContextModes,state=box?.requestContextInstallation().read();if(!box||!modes?.current()||state?.mode!=="draining"||!current())throw Error("stale");
+    const box=this.deliveryOutbox,modes=this.requestContextModes,state=box?.requestContextInstallation().read();
+    if(box&&!state&&blocker.id.startsWith("legacy-uncertain:")&&blocker.action==="acknowledge"){
+      const match=/^legacy-uncertain:([A-Za-z0-9._:-]{1,128}):([a-f0-9]{64})$/.exec(blocker.id);if(!match||!actor.verified||!actor.execution||!current())throw Error("stale");
+      actor.execution.mutate(()=>box.acknowledgeRequestContextLegacyDelivery(match[1],match[2],actor.binding,current));return;
+    }
+    if(!box||!modes?.current()||state?.mode!=="draining"||!current())throw Error("stale");
     const inventory=box.requestContextControlInventory(box.requestContextInstallation().drainRoots());
     if(blocker.id.startsWith("ticket:")){
       if(!actor.person||!this.requestContactCardsPort)throw Error("owner-required");const id=blocker.id.slice(7),principal={person:actor.person,binding:actor.binding,verified:true,current};
@@ -7172,20 +7190,41 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.scheduleDeliveryOutboxPump();
     }else if(blocker.id.startsWith("work:")){
       const match=/^work:([a-f0-9-]{36}):([a-f0-9]{64})$/.exec(blocker.id);if(!match||blocker.action!=="stop-work")throw Error("stale");
+      const update=this.requestContextActivationLease();if(!update)throw Error("unavailable");
+      try{
+      const decisionCurrent=()=>current()&&update.current();if(!decisionCurrent())throw Error("stale");
+      const stopOffer=captureRequestContextEnableOffer(this.dataDir);
       const root=match[1],view=modes.drain.inspectWork(root),receipts=box.requestContextUncertainHumanImages(root),pointers=inventory.recoveries.filter(row=>row.root===root).map(row=>row.pointer);
       if(!projectRequestContextWork(view.blockers).stoppable||requestContextDigest({root,blockers:view.blockers,revisions:[...view.revisions],receipts,pointers})!==match[2])throw Error("stale");
       const saved=modes.drain.retainedEpoch(root);
       // A prior crash can leave the root fence durable. Rotate its epoch under
       // this owned coordinator before re-running the positive stop proof.
       let epoch:string;actor.execution!.mutate(()=>{epoch=saved?modes.drain.resume(root,saved):modes.drain.fence(root);});
-      const retired=await this.stopRequestContextWork(root,actor,current);
-      actor.execution!.mutate(()=>box.resolveRequestContextStoppedWork(root,epoch!,{ownerBinding:actor.binding,blockerSha256:match[2],receipts,pointers},modes.drain,retired,current));
+      const retired=await this.stopRequestContextWork(root,actor,decisionCurrent);
+      actor.execution!.mutate(()=>box.resolveRequestContextStoppedWork(root,epoch!,{ownerBinding:actor.binding,blockerSha256:match[2],receipts,pointers},modes.drain,retired,decisionCurrent));
+      this.cacheStoppedWorkGoBack(stopOffer.invalidates);
+      }finally{update.release();}
     }else if(blocker.id.startsWith("recovery:")){
       const row=inventory.recoveries.find(value=>`recovery:${requestContextDigest(value.pointer)}`===blocker.id);if(!row)throw Error("stale");
-      await this.stopRequestContextWork(row.root,actor,current);
-      actor.execution!.mutate(()=>box.requestContextRecovery.clear(row.pointer,()=>current()&&modes.drain.inspectWork(row.root).blockers.every(value=>value==="recovery-pointer")));
+      const update=this.requestContextActivationLease();if(!update)throw Error("unavailable");
+      try{
+        const decisionCurrent=()=>current()&&update.current();if(!decisionCurrent())throw Error("stale");
+        const stopOffer=captureRequestContextEnableOffer(this.dataDir);
+        const saved=modes.drain.retainedEpoch(row.root);let epoch:string;
+        actor.execution!.mutate(()=>{epoch=saved?modes.drain.resume(row.root,saved):modes.drain.fence(row.root);});
+        const retired=await this.stopRequestContextWork(row.root,actor,decisionCurrent);
+        actor.execution!.mutate(()=>box.resolveRequestContextStoppedWork(row.root,epoch!,{ownerBinding:actor.binding,blockerSha256:requestContextDigest(blocker),receipts:[],pointers:[row.pointer]},modes.drain,retired,decisionCurrent));
+        this.cacheStoppedWorkGoBack(stopOffer.invalidates);
+      }finally{update.release();}
     }else throw Error("invalid-request");
     this.scheduleRequestContextDrain();
+  }
+  /** Projection only, after the authoritative root COMMIT. A crash here cannot permit a restore. */
+  private cacheStoppedWorkGoBack(attempts:readonly string[]):void {
+    for(const id of attempts)try{
+      const cached=cacheRetainedUnavailable(this.dataDir,id,t("request_context_control.goBackStopped"));
+      if(!cached.ok)this.logger.warn({reason:cached.reason},"Could not refresh stopped-work Go back availability");
+    }catch(err){this.logger.warn({err},"Could not refresh stopped-work Go back availability");}
   }
   private async stopRequestContextWork(root:string,actor:RequestContextControlPrincipal,current:()=>boolean):Promise<()=>boolean>{
     const modes=this.requestContextModes;if(!modes?.current()||!current())throw Error("stale");
