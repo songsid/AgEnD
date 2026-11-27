@@ -365,15 +365,19 @@ describe("M-3770 2.5: Go back review (Fable #4547)", () => {
   });
 });
 
-it("M-3896 the updater's real guard port cannot restore a snapshot from before an explicit Stop",()=>{
+it.each(["stop","retire"] as const)("M-3896 the updater's real guard port cannot restore before an explicit %s",kind=>{
  const w=committed({},db=>{
+  if(kind!=="stop")return;
   db.exec("CREATE TABLE deliveries(id TEXT);CREATE TABLE delivery_attempts(id TEXT)");registerRequestContextDispatcher(db,1);
   new RequestContextInstallationStore(db).activate({epoch:"already-active",owner:"fleet",activatedAt:1,invalidates:[],offeredLatestDeadline:null},{owner:"fleet",current:()=>true},{current:()=>true,release(){}},()=>true,0);
  });
  const path=join(w.home,"delivery-outbox.db"),live=new Database(path);registerRequestContextDispatcher(live,1);
- const rootId=randomUUID(),fenceEpoch=randomUUID();live.exec("CREATE TABLE request_context_drain_v1(root_id TEXT PRIMARY KEY,epoch TEXT NOT NULL,owner TEXT NOT NULL)");
- live.prepare("INSERT INTO request_context_drain_v1 VALUES (?,?,?)").run(rootId,fenceEpoch,"fleet");
- live.transaction(()=>writeRequestContextResolution(live,{version:1,rootId,fenceEpoch,owner:"fleet",ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),closedAt:2,receipts:[]}))();live.close();
+ if(kind==="stop"){
+  const rootId=randomUUID(),fenceEpoch=randomUUID();live.exec("CREATE TABLE request_context_drain_v1(root_id TEXT PRIMARY KEY,epoch TEXT NOT NULL,owner TEXT NOT NULL)");
+  live.prepare("INSERT INTO request_context_drain_v1 VALUES (?,?,?)").run(rootId,fenceEpoch,"fleet");
+  live.transaction(()=>writeRequestContextResolution(live,{version:1,rootId,fenceEpoch,owner:"fleet",ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),closedAt:2,receipts:[]}))();
+ }else{live.exec("CREATE TABLE contact_auth_retirements(ticket_id TEXT,ticket_sha256 TEXT,disposition TEXT)");live.prepare("INSERT INTO contact_auth_retirements VALUES (?,?,?)").run("R-synthetic","a".repeat(64),"missing-receipt");}
+ live.close();
  const offer=readGoBackOffer(w.home);expect(offer.eligible.map(entry=>entry.attemptId),JSON.stringify(offer.unavailable)).toContain(ID);
  let guardCalls=0;
  const guard:GoBackGuard=(livePath,id,at,snapshotPath)=>{
@@ -385,5 +389,5 @@ it("M-3896 the updater's real guard port cannot restore a snapshot from before a
  expect(result).toMatchObject({ok:false,outcome:"refused"});expect(guardCalls).toBe(1);
  if(!result.ok)expect(result.reason).toMatch(/request-based contact approvals/);
  expect(readCurrent(w.home).state).toBe("none");
- const after=new Database(path,{readonly:true});try{expect(after.prepare("SELECT count(*) n FROM request_context_drain_v1 WHERE resolution_json IS NOT NULL").get()).toEqual({n:1});}finally{after.close();}
+ const after=new Database(path,{readonly:true});try{expect(after.prepare(kind==="stop"?"SELECT count(*) n FROM request_context_drain_v1 WHERE resolution_json IS NOT NULL":"SELECT count(*) n FROM contact_auth_retirements").get()).toEqual({n:1});}finally{after.close();}
 });

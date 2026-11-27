@@ -23,6 +23,19 @@ function rig() {
   const value: RequestContextActivationRecord = { epoch: "epoch-1", owner: "fleet-fixture", activatedAt: 2000, invalidates: [id], offeredLatestDeadline: 9000 };
   return { db, id, value, lease: { current: () => true, release() {} } };
 }
+it.each([false,true])("ticket retirement history is preserved by Go back before/after On: active=%s",active=>{
+ const r=rig();if(active)commitRequestContextActivation(r.db,{...r.value,invalidates:[],offeredLatestDeadline:null},r.lease,()=>true);
+ const before=snapshot(r.db);
+ r.db.exec("CREATE TABLE contact_auth_retirements(ticket_id TEXT,ticket_sha256 TEXT,disposition TEXT)");
+ r.db.prepare("INSERT INTO contact_auth_retirements VALUES (?,?,?)").run("R-synthetic","a".repeat(64),"missing-receipt");
+ expect(requestContextGoBackAllowed(r.db,r.id,1000,before)).toBe(false);
+ expect(requestContextGoBackAllowed(r.db,r.id,1000)).toBe(false);
+ expect(requestContextGoBackAllowed(r.db,r.id,1000,snapshot(r.db))).toBe(true);
+ expect(requestContextGoBackAllowed(r.db,r.id,1000,snapshot(r.db,false))).toBe(false);
+ const newer=snapshot(r.db);r.db.prepare("INSERT INTO contact_auth_retirements VALUES (?,?,?)").run("R-other","b".repeat(64),"malformed");
+ expect(requestContextGoBackAllowed(r.db,r.id,1000,newer)).toBe(false);
+ expect(requestContextGoBackAllowed(before,r.id,1000,snapshot(r.db))).toBe(false);
+});
 it("floor, activation and Go back invalidation commit together without a retained.json cache write", () => {
   const r = rig(); expect(readRequestContextActivations(r.db)).toEqual([]);
   commitRequestContextActivation(r.db, r.value, r.lease, () => true);

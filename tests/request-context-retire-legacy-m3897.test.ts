@@ -188,6 +188,8 @@ describe("M-3897 (Fable #4600): retiring an unconfirmed ticket acknowledges exac
     expect(r.shadow().blockers.map(b => b.id)).not.toContain(t.id);
     expect(ack(r, t.own)).toEqual({ state: "uncertain", acked: 1, acknowledged_by: "Demo admin" });
     expect(ack(r, t.other)).toEqual({ state: "uncertain", acked: 0, acknowledged_by: null });
+    expect(r.box.requestContextControlInventory().deliveries.map(row=>row.id)).not.toContain(t.own);
+    expect(r.box.requestContextControlInventory().deliveries.map(row=>row.id)).toContain(t.other);
   });
   it("a delivery that moved since the page showed it refuses the whole retirement (nothing written)", () => {
     const r = rig(), t = uncertainTicket(r), e = r.entry(t.id);

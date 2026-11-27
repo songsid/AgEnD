@@ -208,6 +208,11 @@ source, target, operation, terminal state and finished time, and rechecks the
 current owner inside the acknowledgement transaction. A changed row refuses.
 A ticket retirement acknowledges exactly its own matching unscoped uncertain
 delivery in the same transaction, so one owner decision settles both blockers.
+The same Go back predicate also compares `contactRetirementImage` exactly in
+both directions. This applies before first On, when activation history is still
+empty; a missing or older snapshot cannot undo a retired legacy ticket. An
+update taken after retirement may go back only when its verified snapshot
+preserves that same retirement image.
 
 
 ## Stop and final Off share the durable fence
