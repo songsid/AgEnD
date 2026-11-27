@@ -10,15 +10,16 @@ import { createHubCanonicalPolicyReader } from "./read.js";
 import { parseHubRoleCutoverMarker } from "./cutover-marker.js";
 export interface HubRoleClockOptions {
   db: Database.Database; hubId: string; realm: string; generation: string; root: PersonKey;
-  transport: Pick<HubTransportStore, "read">; current(): boolean; now?: () => number;
+  transport: Pick<HubTransportStore, "read"> & Partial<Pick<HubTransportStore, "readVersion">>; current(): boolean; now?: () => number;
   /** Internal composition: the exact old policy only during its synchronous owned directory decision. */
   policy?(): HubCanonicalPolicy;
 }
 export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
   const { db, transport, current, realm } = options, hubId = validated(uuid, options.hubId), root = validated(person, options.root);
-  const readTransport = transport.read, readState = readTransport.bind(transport), now = options.now ?? Date.now;
+  const readTransport = transport.read, readVersion = transport.readVersion;
+  const readState = readVersion ? readVersion.bind(transport) : readTransport.bind(transport), now = options.now ?? Date.now;
   let closed = false;
-  const live = () => !closed && current() === true && root.realm === realm && transport.read === readTransport;
+  const live = () => !closed && current() === true && root.realm === realm && transport.read === readTransport && transport.readVersion === readVersion;
   const read = options.policy ?? createHubCanonicalPolicyReader({ ...options, current: live });
   const rawMarker = () => {
     const rows = readHubSqlRows(db, "SELECT singleton,body FROM hub_role_cutover") as { singleton: number; body: string }[];
