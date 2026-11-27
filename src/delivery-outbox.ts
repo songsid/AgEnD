@@ -2317,7 +2317,10 @@ export class DeliveryOutbox extends EventEmitter {
   private insertFailureNotice(parent: OutboxRow, outcome: "failed" | "uncertain", reason: string, now: string): void {
     // post_restart_outcome_notice: no longer written (#2802), but a row from before may still be queued.
     if (parent.kind === "delivery_outcome_notice" || parent.kind === "post_restart_outcome_notice"
-      || parent.kind === REPLY_OBLIGATION_NOTICE_KIND || parent.kind === SYSTEM_NOTICE_KIND || parent.kind === WORKING_RECOVERY_KIND) return;
+      || parent.kind === REPLY_OBLIGATION_NOTICE_KIND || parent.kind === SYSTEM_NOTICE_KIND || parent.kind === WORKING_RECOVERY_KIND
+      // M-3770 §2.6: a held turn replayed after an abandon (update-quiescence's UPDATE_HANDBACK_COPY_KIND) has no sending
+      // agent — its source isn't an instance — so a notice would be a row nobody drains. The person sees it in Needs you.
+      || parent.kind === "update_handback_copy") return;
     // A self-scheduled silent heartbeat has no other sender to inform. Keep
     // its terminal state/evidence and fleet log without creating a new turn.
     if (parent.source_instance === parent.target_instance

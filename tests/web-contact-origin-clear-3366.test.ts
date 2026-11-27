@@ -97,3 +97,17 @@ it("conflict refreshes rather than clearing newer input, and origin-only SSE/mes
   await r.frame("message", { instance: "worker" });
   expect(r.calls.map(call => call.method)).toEqual(["GET", "POST", "GET", "GET", "GET"]);
 });
+// M-3830: only a restricted room records the people who talk in it, so the Clear confirmation says what restricts the
+// agent again: new non-admin requests for a room; inherited work for a fleet agent.
+it.each(["en", "zh-TW"] as const)("M-3830 %s: the Clear confirmation says what restricts a fleet agent, and a room, again", async locale => {
+  const { setLang } = await import("/assets/app-i18n.js") as any;
+  setLang(locale, { store: false });
+  try {
+    const agent = await rig(fixture("mixed")); await agent.click();
+    expect(agent.confirms[0]).toContain(locale === "en" ? "Work it later receives from a restricted room or an agent that needs approval will need approval again." : "之後從受限房間或需要核准的 Agent 接手的工作，仍會再次需要核准。");
+    expect(agent.confirms[0]).not.toContain(locale === "en" ? "New non-admin requests" : "新的非管理員請求");
+    const roomData = fixture("mixed"); roomData.classicRoom = true;
+    const room = await rig(roomData); await room.click();
+    expect(room.confirms[0]).toContain(locale === "en" ? "New non-admin requests will require approval again." : "新的非管理員請求仍會再次需要核准。");
+  } finally { setLang("en", { store: false }); }
+});

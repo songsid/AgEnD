@@ -19,9 +19,16 @@ export const retainedPath = (home: string) => join(journalDir(home), RETAINED_FI
 
 export interface RetainedEntry {
   attemptId: string;
-  /** The version the commit made current, and the one Go back returns to. */
+  /** The version the commit made current. */
   version: string;
+  /** The version Go back returns to. */
   from: string;
+  /** The transaction protocol the attempt was opened with — by the `from` version's updater (rev 16); null: unknown. */
+  txProtocol: number | null;
+  /** A go-back that reached committed consumed this entry: never offered again. */
+  used?: { by: string; at: string };
+  /** A cached refusal (the S-230 guard, a missing artifact): projection only — never permission on its own. */
+  unavailable?: { reason: string; at: string };
   committedAt: string;
   expiresAt: string;
   /** The attempt's directory: its snapshot (`snapshot/` + manifest) and, with a service, `unit.preimage`. */
@@ -39,7 +46,10 @@ const isEntry = (e: unknown): e is RetainedEntry => {
   return !!v && typeof v.attemptId === "string" && typeof v.version === "string" && typeof v.from === "string"
     && typeof v.committedAt === "string" && typeof v.expiresAt === "string" && typeof v.snapshotDir === "string"
     && !!v.preimage && typeof v.preimage.dir === "string" && typeof v.preimage.manifestSha256 === "string"
-    && (v.unitPreimage === null || typeof v.unitPreimage === "string") && typeof v.kit === "string";
+    && (v.unitPreimage === null || typeof v.unitPreimage === "string") && typeof v.kit === "string"
+    && (v.txProtocol === undefined || v.txProtocol === null || Number.isSafeInteger(v.txProtocol))
+    && (v.used === undefined || (!!v.used && typeof v.used.by === "string" && typeof v.used.at === "string"))
+    && (v.unavailable === undefined || (!!v.unavailable && typeof v.unavailable.reason === "string" && typeof v.unavailable.at === "string"));
 };
 
 /** The retained entries; absent reads as none. An unreadable or malformed file is reported, never treated as empty. */
@@ -71,10 +81,34 @@ export function recordRetained(home: string, attempt: AttemptRecord, io: Journal
     preimage: { dir: intent.preimage.dir, manifestSha256: intent.preimage.manifestSha256 },
     unitPreimage: id.ownership.service ? unitPreimagePath(home, attempt.id) : null,
     kit: kitDir(home, attempt.id),
+    txProtocol: Number.isSafeInteger(attempt.txProtocol) ? attempt.txProtocol as number : null,
   };
   const kept = read.entries.find(e => e.attemptId === attempt.id);
   if (kept) return { ok: true, entry: kept };                                     // a retry: the first record stands
-  const body = JSON.stringify({ schema: 1, entries: [...read.entries, entry] }, null, 2) + "\n";
+  const written = writeRetained(home, [...read.entries, entry], io);
+  return written.ok ? { ok: true, entry } : written;
+}
+
+/** Change one entry (the caller holds the home lock). An absent entry is refused; the rest are written back as read. */
+function changeEntry(home: string, attemptId: string, change: (e: RetainedEntry) => RetainedEntry, io: JournalIo): { ok: true } | { ok: false; reason: string } {
+  const read = readRetained(home, io);
+  if (!read.ok) return read;
+  if (!read.entries.some(e => e.attemptId === attemptId)) return { ok: false, reason: `no retained entry for ${attemptId}` };
+  return writeRetained(home, read.entries.map(e => (e.attemptId === attemptId ? change(e) : e)), io);
+}
+
+/** §5.7: a go-back that reached committed consumed the entry it returned to (rev 16). Idempotent. */
+export function markRetainedUsed(home: string, attemptId: string, by: string, io: JournalIo = defaultJournalIo): { ok: true } | { ok: false; reason: string } {
+  return changeEntry(home, attemptId, e => (e.used ? e : { ...e, used: { by, at: io.now().toISOString() } }), io);
+}
+
+/** §5.7: cache why Go back is unavailable for an entry (projection only; S-230's own record stays authoritative). */
+export function cacheRetainedUnavailable(home: string, attemptId: string, reason: string, io: JournalIo = defaultJournalIo): { ok: true } | { ok: false; reason: string } {
+  return changeEntry(home, attemptId, e => ({ ...e, unavailable: { reason, at: io.now().toISOString() } }), io);
+}
+
+function writeRetained(home: string, entries: RetainedEntry[], io: JournalIo): { ok: true } | { ok: false; reason: string } {
+  const body = JSON.stringify({ schema: 1, entries }, null, 2) + "\n";
   const path = retainedPath(home), tmp = `${path}.tmp`;
   try {
     try { io.unlink(tmp); } catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }   // a crashed write's own tmp
@@ -82,5 +116,5 @@ export function recordRetained(home: string, attempt: AttemptRecord, io: Journal
     io.rename(tmp, path); io.step(`rename:${RETAINED_FILE}`);
     io.fsyncDir(journalDir(home)); io.step("fsync-dir:.update-journal");
   } catch (err) { return { ok: false, reason: `${path} can't be written (${(err as Error).message})` }; }
-  return { ok: true, entry };
+  return { ok: true };
 }

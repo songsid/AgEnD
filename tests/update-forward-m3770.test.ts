@@ -13,6 +13,7 @@ import { abandonAttempt, commitAttempt, resumeCommitting, runUpdate, type Update
 import { fleetStartGate, ownerState } from "../src/update-journal.js";
 import { preStartDecision } from "../src/update-recovery/pre-start.js";
 import { runRecovery, type RecoveryHands } from "../src/update-recovery/runner.js";
+import { handbackDue } from "../src/update-quiescence.js";
 import { listHandback, markHandback, readAttemptRecord, writeInboxItem } from "../src/update-journal.js";
 import { readRetained } from "../src/update-retained.js";
 import { dropInPath } from "../src/update-recovery/route.js";
@@ -353,7 +354,7 @@ describe("M-3770 2.5: the recovery runner resumes an abandon (S-252 part 4)", ()
 
   it("an item the old fleet hasn't acknowledged yet: retryable, and the next run finishes once it is, without a second restart", () => {
     const w = world();
-    writeInboxItem(w.home, ID, 1, "adapter", { kind: "copy", body: { text: "held during the barrier" } });
+    writeInboxItem(w.home, ID, 1, "adapter", { kind: "copy", body: { text: "held during the barrier" }, target: "worker" });
     diedInStopping(w);
     const first = runner(w, 7951, { waitHandedBack: done => done() });
     expect(first.code).toBe(1);
@@ -423,6 +424,24 @@ describe("M-3770 2.5: the recovery runner resumes an abandon (S-252 part 4)", ()
     expect(second.code).toBe(1);
     expect(second.err.join("\n")).toMatch(/runs without holding fleet\.lock/);
     expect(w.calls.filter(c => c === "start:old")).toHaveLength(1);
+  });
+
+  it("handbackDue is pinned to the abandon driver's real journal: the running old fleet walks while the runner waits; after a re-restart only the new one does; after hand-back nobody", () => {
+    const w = world();
+    diedInStopping(w);
+    const seen: Record<string, boolean>[] = [];
+    const due = (own: { nonce: string; pid: number }) => { const r = readCurrent(w.home); return r.state === "open" && handbackDue(r.attempt, own); };
+    const holder = () => { const r = readFleetLockRecord(w.home)!; return { nonce: r.nonce, pid: r.pid }; };
+    // First pass: the old fleet restarted; restart-old recorded; it is due while the runner waits.
+    runner(w, 7962, { waitHandedBack: () => { seen.push({ first: due(holder()) }); return false; } });
+    const firstFleet = holder();
+    w.alive.delete(firstFleet.pid);                                                                  // it dies before acking
+    // Second pass: a new old generation with a new nonce: due for it, never again for the dead one.
+    runner(w, 7963, { waitHandedBack: done => { seen.push({ second: due(holder()), dead: due(firstFleet) }); return done(); } });
+    expect(seen).toEqual([{ first: true }, { second: true, dead: false }]);
+    const end = readAttemptRecord(w.home, ID)!;
+    expect(end.stage).toBe("abandoned");
+    expect(handbackDue(end, holder())).toBe(false);                                                   // closed: nobody walks
   });
 
   it("no service manager given: refused, nothing changed", () => {

@@ -28,9 +28,12 @@ history or prove that its contents have disappeared. New inbound work merges
 its real origin again. No idle, restart, later administrator message or compaction
 ever invokes this action automatically.
 
-Confirmation copy:
-- EN: "Clear this agent's retained origin? You accept its current conversation as your own work. Earlier text is not erased. New non-admin requests will require approval again. Other agents, existing tickets and grants are unchanged."
-- zh-TW: 「清除此 Agent 保留的來源？這表示你接受目前對話作為自己的工作，先前文字不會刪除。新的非管理員請求仍會再次需要核准。其他 Agent、既有申請與授權都不變。」
+Confirmation copy (M-3830: a restricted ClassicBot room and a fleet agent differ in one sentence, because only a
+restricted room records the people who talk in it):
+- Restricted ClassicBot room, EN: "Clear this agent's retained origin? You accept its current conversation as your own work. Earlier text is not erased. New non-admin requests will require approval again. Other agents, existing tickets and grants are unchanged."
+- Restricted ClassicBot room, zh-TW: 「清除此 Agent 保留的來源？這表示你接受目前對話作為自己的工作，先前文字不會刪除。新的非管理員請求仍會再次需要核准。其他 Agent、既有申請與授權都不變。」
+- Fleet agent, EN: "Clear this agent's retained origin? You accept its current conversation as your own work. Earlier text is not erased. Work it later receives from a restricted room or an agent that needs approval will need approval again. Other agents, existing tickets and grants are unchanged."
+- Fleet agent, zh-TW: 「清除此 Agent 保留的來源？這表示你接受目前對話作為自己的工作，先前文字不會刪除。之後從受限房間或需要核准的 Agent 接手的工作，仍會再次需要核准。其他 Agent、既有申請與授權都不變。」
 
 The request carries the observed policy revision and a separate monotonic origin
 revision. The server rechecks the verified actor, target incarnation and both

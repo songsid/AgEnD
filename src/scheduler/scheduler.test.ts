@@ -42,6 +42,24 @@ describe("Scheduler", () => {
     expect(scheduler.list()).toHaveLength(1);
   });
 
+  it("M-3770 hand-back: a deferred occurrence runs once with its own run id; disabled, deleted or orphaned ones are skipped and logged; an interrupted one is only recorded", () => {
+    const params = { cron: "0 7 * * *", message: "hello", source: "proj-a", target: "proj-a", reply_chat_id: "1", reply_thread_id: null };
+    const s = scheduler.create(params);
+    expect(scheduler.runDeferredOccurrence(s.id, "2026-11-26T07:00:00.000Z", () => true)).toBe("ran");
+    expect(triggered.map(t => t.id)).toEqual([s.id]);
+    expect(scheduler.runDeferredOccurrence(s.id, "2026-11-26T08:00:00.000Z", name => name !== "proj-a")).toBe("skipped");
+    expect(scheduler.getRuns(s.id).map(r => [r.status, r.detail])).toContainEqual(["skipped", "deferred run 2026-11-26T08:00:00.000Z not run after the update: its target proj-a no longer exists"]);
+    scheduler.update(s.id, { enabled: false });
+    expect(scheduler.runDeferredOccurrence(s.id, "2026-11-26T09:00:00.000Z", () => true)).toBe("skipped");
+    expect(scheduler.getRuns(s.id).map(r => r.detail)).toContainEqual("deferred run 2026-11-26T09:00:00.000Z not run after the update: the schedule is disabled");
+    scheduler.recordInterruptedOccurrence(s.id, "2026-11-26T06:00:00.000Z");
+    expect(scheduler.getRuns(s.id).map(r => [r.status, r.detail])).toContainEqual(["interrupted", "run 2026-11-26T06:00:00.000Z was interrupted by an update and is not run again"]);
+    expect(triggered).toHaveLength(1);                                                                // nothing ran again
+    scheduler.delete(s.id);
+    expect(scheduler.runDeferredOccurrence(s.id, "2026-11-26T10:00:00.000Z", () => true)).toBe("skipped");
+    expect(() => scheduler.recordInterruptedOccurrence(s.id, "x")).not.toThrow();
+  });
+
   it("rejects invalid cron expression", () => {
     expect(() =>
       scheduler.create({
