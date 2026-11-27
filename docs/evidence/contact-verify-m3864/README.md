@@ -2,7 +2,7 @@
 
 These are real-app captures from the 2.4.0 release tip 9a934f4ef, packed as 2.4.0-beta.2701 and run as the user's systemd service in a scratch container with mock agents. The dashboard was loaded in a headless browser.
 
-- **This PR's code.** Three changed modules (`contact-auth-strings.js`, `contact-authorizations.js`, `contact-permissions.js`, from b393d4568) are served in place of the shipped ones, and this PR's `.contact-verify` rules are appended to the shipped `app.css`.
+- **This PR's code.** Four changed modules (`contact-auth-strings.js`, `contact-authorizations.js`, `contact-permissions.js`, and `web-authorize.js` with the localized "Not verified: {0}" / 「未驗證：{0}」) are served in place of the shipped ones, and this PR's `.contact-verify` rules are appended to the shipped `app.css`.
 - **Session.** The page uses a sign-in code from the AgEnD computer, so the browser has no chat identity.
   - **No chat identity** (`*-no-account-*`): the server's real answer.
   - **Authorize button available** (`*-authorize-button-*`): the same session, with only `GET /ui/authorization` answering `{ state: "not_verified", reason: "not_authorized" }`.
