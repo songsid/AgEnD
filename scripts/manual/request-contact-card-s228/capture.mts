@@ -157,6 +157,8 @@ async function walk(c: any) {
     check(`${tag} 4: the guest's (new-model) request says Continue's scope`, (await cardText(page, B.id)).includes(W(zh, "Continue = this request and its follow-up contacts only.", "繼續＝只放行這筆請求和它後續的聯絡。")), await cardText(page, B.id));
     check(`${tag} 4: no Clear retained origin anywhere`, !(await page.evaluate(`document.body.innerText`) as string).includes(W(zh, "Clear retained origin", "清除保留的來源")), null);
     if (phone) check(`${tag} 4: 44 px buttons`, (await taps(page)).every((h) => h >= 44), await taps(page));
+    const clipped = await page.evaluate(`[...document.querySelectorAll(".rc-decide .btn")].filter((b) => b.scrollWidth > b.clientWidth + 1).map((b) => b.innerText.trim())`) as string[];
+    check(`${tag} 4: no decision button clips its words (the row wraps instead)`, clipped.length === 0, clipped);
     const sc5 = await scroll(page); check(`${tag} 4: no sideways scroll`, sc5.s <= sc5.w, sc5);
     await shot(page, `${tag}-4-authorizations`);
     await page.locator(`.rc-card[data-ticket="${C.id}"] details.rc-more summary`).click(); await page.waitForTimeout(300);
@@ -175,6 +177,10 @@ async function walk(c: any) {
       const save = [...d.querySelectorAll(".dlg-actions button")].pop();
       return { boundaryInView: b.top >= body.top && b.bottom <= body.bottom, saveOff: save.disabled, save: save.innerText.trim(), native: d.querySelectorAll('input[type="datetime-local"], input[type="date"], input[type="time"]').length,
         selects: d.querySelectorAll(".contact-until select").length, day: d.querySelector(".contact-until select").selectedOptions[0].innerText }; })()`) as any;
+    const tail = await page.evaluate(`(() => { const d = document.querySelector("dialog.contact-grant-dialog"); const body = d.querySelector(".dlg-body"); body.scrollTop = body.scrollHeight;
+      const last = [...body.children].filter((e) => e.getBoundingClientRect().height).pop().getBoundingClientRect(), foot = d.querySelector(".dlg-actions").getBoundingClientRect();
+      const r = { lastBottom: Math.round(last.bottom), footTop: Math.round(foot.top) }; body.scrollTop = 0; return r; })()`) as any;
+    check(`${tag} 5: scrolled to its end, the body's last line clears the footer`, tail.lastBottom <= tail.footTop, tail);
     check(`${tag} 5: the boundary is in view (not behind the footer), and plain`, ed.boundaryInView && dlg.includes(W(zh, "This only decides whether a message is forwarded", "這只決定訊息能不能轉交")), ed);
     check(`${tag} 5: save is off until someone is ticked, and says why`, ed.saveOff && ed.save === W(zh, "Approve this one and allow from now on", "核准這筆，並設為常用轉交") && dlg.includes(W(zh, "Tick at least one person to save a rule.", "至少勾選一個人，才能儲存規則。")), ed);
     check(`${tag} 5: the expiry is a day and a 24-hour time in the page's language`, ed.native === 0 && ed.selects === 3 && (!zh || !/AM|PM|上午|下午/.test(dlg)) && (zh ? /[年月日]/.test(ed.day) : /[A-Z][a-z]{2}/.test(ed.day)), ed);
