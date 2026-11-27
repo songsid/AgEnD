@@ -134,3 +134,8 @@ CREATE TABLE hub_room_votes(set_id TEXT NOT NULL REFERENCES hub_room_buttons(id)
 CREATE TABLE hub_room_button_operations(room_id TEXT NOT NULL,member_id TEXT NOT NULL,idempotency_key TEXT NOT NULL,set_id TEXT NOT NULL,digest TEXT NOT NULL,
   PRIMARY KEY(room_id,member_id,idempotency_key));`);
 } });
+
+/** S-258: existing rooms retain manager-only additions until explicitly enabled. */
+export const HUB_ROOM_MEMBER_AGENTS_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-member-agents", version: 1, up(db: Database.Database) {
+  db.exec("ALTER TABLE hub_group_rooms ADD COLUMN members_add_own_agents INTEGER NOT NULL DEFAULT 0 CHECK(members_add_own_agents IN (0,1))");
+} });
