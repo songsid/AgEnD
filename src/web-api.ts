@@ -4370,7 +4370,9 @@ export function handleWebRequest(
         const read = shown(board.detail(ref, scope, ctx.dispatcherGone));
         // Each comment says whether it is the viewer's (two people who are both "web-user" are told apart by their key, not their name).
         const mine = viewer && viewer.kind === "person" ? board.commentsWrittenBy(ref, viewer) : null;
-        json(res, 200, { ...read, ...(mine ? { comments: read.comments.map((e) => ({ ...e, mine: mine.has(e.id) })), viewer: { name: viewer!.name, kind: viewer!.kind } } : {}),
+        // And which reactions are theirs: by the same key, so two people with one name do not press each other's chip.
+        const reacted = viewer && viewer.kind === "person" ? board.reactedBy(ref, viewer) : null;
+        json(res, 200, { ...read, ...(mine ? { comments: read.comments.map((e) => ({ ...e, mine: mine.has(e.id), ...(e.reactions ? { reactions: e.reactions.map((r) => ({ ...r, mine: !!reacted?.has(`${e.id}|${r.emoji}`) })) } : {}) })), viewer: { name: viewer!.name, kind: viewer!.kind } } : {}),
           ...(board.isArchived(found, archiveDays) ? { archived: true, archiveAfterDays: archiveDays } : {}) });
         return true;
       }

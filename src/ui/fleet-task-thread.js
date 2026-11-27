@@ -21,7 +21,8 @@ register("taskthread", {
     replyingTo: "Replying to {0}", replyTo: "Reply to {0}", replyHint: "Reply — @ names an instance (Ctrl+Enter sends)",
     resolved: "Resolved thread", resolvedBy: "Resolved by {0}", replyCount: "{0} replies", replyOne: "1 reply", showThread: "Show the thread", hideThread: "Hide the thread",
     toNobody: "No agent notified", toSend: "{0} · starts when sent", toLabel: "Who this comment is for", toTip: "Who is woken when you send this comment. An @name in the text still wakes that instance too.",
-    toNobodyTip: "Nobody is woken (an @name in the text still is)", groupAssignee: "Assignee", groupDispatcher: "Handed out by", groupWatchers: "Watching the card",
+    toNobodyTip: "Nobody is woken (an @name in the text still is)", toWaits: "{0} · won't wake until the card is ready",
+    toWaitsTip: "This card still waits for another card, so a plain comment does not wake {0} yet (it reads the card when it can start). Choose {0} in the list to wake it now; an @name wakes it too.", groupAssignee: "Assignee", groupDispatcher: "Handed out by", groupWatchers: "Watching the card",
     groupLead: "Project lead", groupLeadBoard: "Board leader", groupOthers: "Other instances", boardOff: "{0} (task board off)",
   },
   "zh-TW": {
@@ -33,7 +34,8 @@ register("taskthread", {
     replyingTo: "回覆 {0}", replyTo: "回覆 {0}", replyHint: "回覆 — 輸入 @ 可選 Agent（Ctrl+Enter 送出）",
     resolved: "已解決的討論串", resolvedBy: "由 {0} 解決", replyCount: "{0} 則回覆", replyOne: "1 則回覆", showThread: "展開討論串", hideThread: "收合討論串",
     toNobody: "不通知 agent", toSend: "{0} · 送出後開始處理", toLabel: "這則留言要給誰", toTip: "送出時叫醒誰。文字裡的 @名稱照樣會叫醒該 Agent。",
-    toNobodyTip: "不叫醒任何人（文字裡的 @名稱照樣會）", groupAssignee: "負責人", groupDispatcher: "派工者", groupWatchers: "關注這張卡的",
+    toNobodyTip: "不叫醒任何人（文字裡的 @名稱照樣會）", toWaits: "{0} · 卡片可以開始前不會叫醒",
+    toWaitsTip: "這張卡還在等別張卡，所以一般留言暫時不會叫醒 {0}（它能開始時會讀到這張卡）。要現在叫醒它，請在清單裡選 {0}；寫 @名稱 也會叫醒。", groupAssignee: "負責人", groupDispatcher: "派工者", groupWatchers: "關注這張卡的",
     groupLead: "專案 leader", groupLeadBoard: "任務板 leader", groupOthers: "其他 Agent", boardOff: "{0}（任務板關閉）",
   },
 });
@@ -75,8 +77,11 @@ export function threadize(entries, all) {
 /** A reaction as its chip says it: the emoji, the number, whether it is the viewer's, and who (the tooltip). */
 export function reactionView(reaction, viewer) {
   const by = Array.isArray(reaction.by) ? reaction.by : [];
-  const mine = !!viewer && by.some((b) => b.name === viewer.name && b.kind === viewer.kind);
-  const others = by.filter((b) => !(viewer && b.name === viewer.name && b.kind === viewer.kind)).map((b) => b.name);
+  // The host says whether the chip is the viewer's (by their key); a host that does not, by name and kind as before.
+  const mine = typeof reaction.mine === "boolean" ? reaction.mine : !!viewer && by.some((b) => b.name === viewer.name && b.kind === viewer.kind);
+  // The viewer's own entry is "You"; another account with the same name still reads as that name.
+  let skipped = false;
+  const others = by.filter((b) => { if (mine && !skipped && viewer && b.name === viewer.name && b.kind === viewer.kind) { skipped = true; return false; } return true; }).map((b) => b.name);
   const who = [...(mine ? [t("taskthread.reactedYou")] : []), ...others].slice(0, 3);
   const rest = by.length - who.length;
   const list = rest > 0 ? t("taskthread.reactedMore", who.join(", "), rest) : who.join(", ");
@@ -125,6 +130,7 @@ export function recipientGroups({ card, detail, fleet }) {
  * Who the comment box starts with (null: nobody is notified). A reply: the author of the comment it answers, when that is an
  * instance the board can wake. Otherwise the card's assignee, when it is an instance the board can wake and the card is not
  * finished (a finished card's talk is rarely an order; choosing someone still wakes them). A person or no assignee: nobody.
+ * On a card that still waits on another card the assignee is the chip's name but `holdsRecipient` says it is not woken yet.
  */
 export function defaultRecipient({ card, reply = null, fleet }) {
   const live = (name) => !!name && (fleet || []).some((n) => n.name === name && !n.off);
@@ -134,11 +140,21 @@ export function defaultRecipient({ card, reply = null, fleet }) {
   return null;
 }
 
+/**
+ * Whether the chip's starting name is held back: a new comment (not a reply) on an open card that still waits on another card, whose
+ * assignee is the name the chip starts with. The comment then goes with no recipient list, as #4367's rule has it: the assignee reads it
+ * when the card can start, and is not woken now. Choosing it in the list is asking for it by name — that sends it and wakes it.
+ */
+export function holdsRecipient({ card, reply = null, initial }) {
+  if (reply || !initial || initial !== card.assignee) return false;
+  return card.status === "open" && ((card.unmetDeps || []).length > 0 || card.hiddenUnmet > 0);
+}
+
 // ── The recipient chip ─────────────────────────────────────
 
-/** The chip under the comment box: who this comment is for ("dev · starts when sent"); a click lists the others. */
-export function RecipientChip({ groups, value, onChange, disabled = false }) {
-  const label = value ? t("taskthread.toSend", value) : t("taskthread.toNobody");
+/** The chip under the comment box: who this comment is for ("dev · starts when sent"); a click lists the others. `held`: the name is the card's assignee, not woken until the card is ready. */
+export function RecipientChip({ groups, value, onChange, disabled = false, held = false }) {
+  const label = value ? t(held ? "taskthread.toWaits" : "taskthread.toSend", value) : t("taskthread.toNobody");
   const items = [];
   for (const g of groups) {
     items.push({ key: `h-${g.key}`, heading: true, label: t(g.title) });
@@ -146,7 +162,7 @@ export function RecipientChip({ groups, value, onChange, disabled = false }) {
   }
   items.push({ key: "nobody", label: t("taskthread.toNobody"), checked: value === null, title: t("taskthread.toNobodyTip"), onSelect: () => onChange(null) });
   return html`<${Menu} cls="tc-to-menu" label=${t("taskthread.toLabel")} fit disabled=${disabled} items=${items} triggerClass="tc-to"
-    trigger=${html`<${Icon} name=${value ? "bot" : "bell"} size=${14} /><span class="tc-to-text" title=${value ? t("taskthread.toTip") : t("taskthread.toNobodyTip")}>${label}</span><${Icon} name="chevron" size=${14} />`} />`;
+    trigger=${html`<${Icon} name=${value ? "bot" : "bell"} size=${14} /><span class="tc-to-text" title=${value ? (held ? t("taskthread.toWaitsTip", value) : t("taskthread.toTip")) : t("taskthread.toNobodyTip")}>${label}</span><${Icon} name="chevron" size=${14} />`} />`;
 }
 
 // ── A comment's tools ──────────────────────────────────────

@@ -435,7 +435,12 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tl-reacts button.react-chip:focus-visible, .tl-pick .react-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .tl-pick { margin-left: 36px; }
 .tl-pick .react-opt { width: 36px; height: 36px; padding: 0; justify-content: center; font-family: var(--font-emoji); font-size: var(--fs-xl); line-height: 1; }
-@media (pointer: coarse) { .tl-reacts .react-chip { min-height: 32px; min-width: 40px; } .tl-pick .react-opt { width: 44px; height: 44px; } }
+/* On a touch screen or a phone every control a person presses is a 44px box (style guide §7): a reaction chip you can press, the quick set's choices, and the thread's text button. */
+@media (pointer: coarse), (max-width: 899px) {
+  .tl-reacts button.react-chip { min-height: var(--tap); min-width: var(--tap); }
+  .tl-pick .react-opt { width: var(--tap); height: var(--tap); }
+  .tl-resolved-note .tb-link { display: inline-flex; align-items: center; min-height: var(--tap); }
+}
 
 /* The quick create: a title, three chips, the rest folded away (fleet-task-create.js). */
 .tb-qc-title { width: 100%; min-height: 40px; padding: 0 var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: var(--fs-md); font-weight: var(--fw-semibold); }

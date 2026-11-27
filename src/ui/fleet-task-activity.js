@@ -331,9 +331,11 @@ export function Timeline({ detail, describe, cards = [], lead = null, thread = n
  * The comment box: Ctrl+Enter or Send posts it; typing `@` offers the instance names (arrows and Enter or Tab choose, Esc
  * closes the list, not the box). `names`: [{ name, off }] — an instance with the task board off is listed, not choosable; one the
  * comment would reach (the chosen recipient, an @name in the text) with the board off is named under the box, with where to turn it on.
- * `recipients` { groups, initial }: the chip under the box says whom the comment is for ("dev · starts when sent", or "No agent
- * notified") and lists the others; it starts as `initial` and follows it until the person chooses. `onSend(text, to)` resolves "ok"
- * for the text to clear; `to` is the chosen instance's name or null. `variant: "reply"`: the box under a thread (Cancel, focused).
+ * `recipients` { groups, initial, held }: the chip under the box says whom the comment is for ("dev · starts when sent", or "No agent
+ * notified") and lists the others; it starts as `initial` and follows it until the person chooses. `held`: `initial` is the assignee of a
+ * card that still waits on another card, so the chip says it is not woken until the card is ready, and nothing is sent about recipients
+ * until the person chooses. `onSend(text, to, held)` resolves "ok" for the text to clear; `to` is the chosen instance's name or null,
+ * `held` true when the person did not choose and the chip is held (send no recipient list). `variant: "reply"`: the box under a thread (Cancel, focused).
  */
 export function Composer({ placeholder, names, assignee, onSend, recipients = null, variant = "", autoFocus = false, onCancel = null }) {
   const [text, setText] = useState("");
@@ -346,6 +348,7 @@ export function Composer({ placeholder, names, assignee, onSend, recipients = nu
   const box = useRef(null);
   const pending = useRef(null);   // where the caret goes once the inserted name is in the box
   const to = recipients ? (chosen ? chosen.name : recipients.initial) : undefined;
+  const held = !!recipients && !chosen && !!recipients.held;
   const m = hidden ? null : mentionAt(text, caret);
   const found = m ? mentionMatches(names.map((n) => n.name), m.query).map((n) => names.find((x) => x.name === n)) : [];
   const open = found.length > 0;
@@ -369,7 +372,7 @@ export function Composer({ placeholder, names, assignee, onSend, recipients = nu
     if (!text.trim() || busy.current) return;
     busy.current = true;
     setSending(true);
-    try { if ((await onSend(text.trim(), to === undefined ? undefined : to)) === "ok") { setText(""); setCaret(0); } } finally { setSending(false); busy.current = false; }
+    try { if ((await onSend(text.trim(), to === undefined ? undefined : to, held)) === "ok") { setText(""); setCaret(0); } } finally { setSending(false); busy.current = false; }
   }
   function onKey(e) {
     if (open && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setActive((i) => (i + (e.key === "ArrowDown" ? 1 : found.length - 1)) % found.length); return; }
@@ -394,7 +397,7 @@ export function Composer({ placeholder, names, assignee, onSend, recipients = nu
         onKeyDown=${onKey}></textarea>
     </div>
     <div class="tc-compose-foot">
-      ${recipients ? html`<${RecipientChip} groups=${recipients.groups} value=${to} onChange=${(name) => setChosen({ name })} />` : null}
+      ${recipients ? html`<${RecipientChip} groups=${recipients.groups} value=${to} held=${held} onChange=${(name) => setChosen({ name })} />` : null}
       <span class="tc-compose-actions">
         ${onCancel ? html`<button type="button" class="btn btn-sm" onClick=${onCancel}>${t("taskthread.cancel")}</button>` : null}
         <button type="button" class="btn btn-primary btn-sm" disabled=${sending || !text.trim()} onClick=${send}>${t("taskcard.send")}</button></span>

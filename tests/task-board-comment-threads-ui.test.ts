@@ -14,6 +14,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 let p: AppPage;
 let app: any, nav: any, fleet: any, thread: any, activity: any;
@@ -146,6 +148,13 @@ describe("1. what is computed", () => {
     expect(thread.reactionView({ emoji: "👍", by: [{ name: "Ann", kind: "instance" }] }, ANN).mine).toBe(false);
   });
 
+  it("a reaction's chip is the viewer's when the host says so (by key): another account with the viewer's name is not 'You'", () => {
+    const by = [{ name: "Ann", kind: "person" }, { name: "Ann", kind: "person" }];
+    expect(thread.reactionView({ emoji: "👍", by, mine: false }, ANN)).toMatchObject({ count: 2, mine: false, label: "Ann, Ann reacted with 👍" });
+    expect(thread.reactionView({ emoji: "👍", by, mine: true }, ANN)).toMatchObject({ count: 2, mine: true, label: "You, Ann reacted with 👍" });
+    expect(thread.reactionView({ emoji: "👍", by: [{ name: "Ann", kind: "person" }] }, ANN).mine, "a host that says nothing: by name and kind, as before").toBe(true);
+  });
+
   it("a comment's address is the card's with its anchor; an address names a comment only in that form", () => {
     expect(thread.commentUrl("http://127.0.0.1:19280/ui/fleet?tp=1#c3", "M-12", 42)).toBe("http://127.0.0.1:19280/ui/fleet?tp=1&card=M-12#c42");
     expect(thread.commentInHash("#c42")).toBe(42);
@@ -176,6 +185,16 @@ describe("1. what is computed", () => {
     expect(d({ assignee: "alpha" }, { by: "person", who: "Ann" }), "a person's comment: the card's default").toBe("alpha");
     expect(d({ assignee: "alpha" }, { by: "instance", who: "quiet" }), "the one it answers cannot be woken: the card's default").toBe("alpha");
     expect(d({ assignee: "alpha", status: "done" }, { by: "instance", who: "beta" })).toBe("beta");
+  });
+
+  it("holdsRecipient: only a new comment on an open card that waits on another card, whose assignee is the chip's name", () => {
+    const hold = (over: Record<string, unknown>, reply: unknown = null) => { const c = card(over); const initial = thread.defaultRecipient({ card: c, reply, fleet: fleet3 }); return thread.holdsRecipient({ card: c, reply, initial }); };
+    expect(hold({ status: "open", unmetDeps: ["M-0"] })).toBe(true);
+    expect(hold({ status: "open", unmetDeps: [], hiddenUnmet: 2 })).toBe(true);
+    expect(hold({ status: "open", unmetDeps: [] })).toBe(false);
+    expect(hold({ status: "claimed", unmetDeps: ["M-0"] })).toBe(false);
+    expect(hold({ status: "open", unmetDeps: ["M-0"], assignee: "Ann" }), "a person's card: nobody to hold").toBe(false);
+    expect(hold({ status: "open", unmetDeps: ["M-0"] }, { by: "instance", who: "beta" }), "a reply goes to the one it answers").toBe(false);
   });
 
   it("the ⋯ menu: each kind of viewer is offered what the board would let them do", () => {
@@ -379,6 +398,49 @@ describe("3. the recipient chip", () => {
     }
   });
 
+  it("a card that still waits on another card: the chip names the assignee but says it is not woken until the card is ready, and Send carries no recipient list — #4367's rule; choosing the assignee asks for it by name", async () => {
+    detail = detailOf({ card: card({ status: "open", unmetDeps: ["M-0"] }) });
+    await open();
+    expect(chipText()).toBe("alpha · won't wake until the card is ready");
+    expect(q(".tc-composer .tc-to-text").getAttribute("title")).toContain("does not wake alpha yet");
+    await send(q(".tc-composer textarea"), "heads up");
+    expect(posts().map((x) => x.body), "no `to`: the board's old rule holds the comment until the card can start").toEqual([{ comment: "heads up" }]);
+    // Choosing the assignee in the list is asking for it by name: the chip says it starts when sent, and `to` is sent.
+    calls.length = 0;
+    await chipItems();
+    fire(qa(".tc-composer .menu-list button").find((b) => text(b) === "alpha"), "click"); await settle(6);
+    expect(chipText()).toBe("alpha · starts when sent");
+    await send(q(".tc-composer textarea"), "now please");
+    expect(posts().map((x) => x.body)).toEqual([{ comment: "now please", to: ["alpha"] }]);
+  });
+
+  it("on a waiting card another choice, or nobody, is sent as chosen; a card that waits on a card hidden from the viewer holds the name too", async () => {
+    detail = detailOf({ card: card({ status: "open", unmetDeps: [], hiddenUnmet: 1 }) });
+    await open();
+    expect(chipText()).toBe("alpha · won't wake until the card is ready");
+    await chipItems();
+    fire(qa(".tc-composer .menu-list button").find((b) => text(b) === "beta"), "click"); await settle(6);
+    expect(chipText()).toBe("beta · starts when sent");
+    await send(q(".tc-composer textarea"), "to beta");
+    expect(posts().map((x) => x.body)).toEqual([{ comment: "to beta", to: ["beta"] }]);
+    calls.length = 0;
+    await chipItems();
+    fire(qa(".tc-composer .menu-list button").find((b) => text(b) === "No agent notified"), "click"); await settle(6);
+    await send(q(".tc-composer textarea"), "nobody");
+    expect(posts().map((x) => x.body)).toEqual([{ comment: "nobody", to: [] }]);
+  });
+
+  it("a card that is open with nothing left to wait for, or in progress, starts at the assignee as before", async () => {
+    for (const over of [{ status: "open", unmetDeps: [] }, { status: "claimed", unmetDeps: [] }]) {
+      detail = detailOf({ card: card(over) });
+      await open();
+      expect(chipText(), JSON.stringify(over)).toBe("alpha · starts when sent");
+      calls.length = 0;
+      await send(q(".tc-composer textarea"), "go");
+      expect(posts().map((x) => x.body), JSON.stringify(over)).toEqual([{ comment: "go", to: ["alpha"] }]);
+    }
+  });
+
   it("an instance with the task board off, chosen by name in the words, is said under the box as before", async () => {
     await open();
     await typeInto(q(".tc-composer textarea"), "hello @quiet");
@@ -483,5 +545,20 @@ describe("5. read only, and what a comment says", () => {
     expect(q("#c12 .tl-reacts i")).toBeNull();
     expect(text(q("#c12 .tl-reacts .e")), "the text is the text").toBe("<b>x</b>");
     expect((globalThis as any).__xss).toBeUndefined();
+  });
+});
+
+describe("6. what a finger presses on a touch screen or a phone is a 44px box", () => {
+  const css = readFileSync(fileURLToPath(new URL("../src/ui/shared/task-board.css", import.meta.url)), "utf8");
+  const TOUCH = "@media (pointer: coarse), (max-width: 899px) {";
+  it("a reaction chip you can press, the quick set's choices and the thread's text button take --tap; a chip that cannot be pressed stays as it was", () => {
+    const at = css.indexOf(`${TOUCH}\n  .tl-reacts button.react-chip`);
+    expect(at, "a touch / narrow block for the thread").toBeGreaterThan(0);
+    const block = css.slice(at, css.indexOf("\n}\n", at));
+    expect(block).toMatch(/\.tl-reacts button\.react-chip \{ min-height: var\(--tap\); min-width: var\(--tap\); \}/);
+    expect(block).toMatch(/\.tl-pick \.react-opt \{ width: var\(--tap\); height: var\(--tap\); \}/);
+    expect(block).toMatch(/\.tl-resolved-note \.tb-link \{[^}]*min-height: var\(--tap\)/);
+    expect(block, "the chip that is not a button (a read-only page) is not in it").not.toMatch(/span\.react-chip/);
+    expect(css, "no 32px chip left").not.toMatch(/\.tl-reacts \.react-chip \{ min-height: 32px/);
   });
 });

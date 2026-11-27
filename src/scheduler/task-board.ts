@@ -300,6 +300,8 @@ export type EntryKind = "log" | "comment" | "reject" | "approve";
 export interface Reaction {
   emoji: string;
   by: Array<{ name: string; kind: Actor["kind"] }>;
+  /** Added by the dashboard's read, for the viewer: whether this chip is theirs (by their key, not their name). */
+  mine?: boolean;
 }
 export interface Entry {
   id: number;
@@ -410,6 +412,12 @@ export interface Wake {
   /** The comment a reason's words answer (its number, author and a short excerpt of its words): a reply says what it replies to. */
   replies?: Partial<Record<WakeReason, { id: number; author: string; text: string }>>;
   /**
+   * The comment (its entry number) whose words a reason quotes, for a comment, a mention, an answer: the words are read from it again when
+   * the notice goes out, so an edit or a deletion made meanwhile is what is told (wakeHolds), and a notice already queued is found by it (the
+   * waker's key names these numbers).
+   */
+  entries?: Partial<Record<WakeReason, number>>;
+  /**
    * Set by the waker, never the board: how many comments (or mentions) earlier than the one in `texts` it merged into
    * this wake while gathering — the notice quotes the last and says there are more.
    */
@@ -444,6 +452,8 @@ export interface BoardChange {
   wakes: Wake[];
   /** #2801: the cards whose status or assignee this write changed (an older notice about them no longer stands). */
   changed: string[];
+  /** The comments this write edited or deleted: a notice still waiting that quotes one no longer says what it says. */
+  recalled?: Array<{ uuid: string; entry: number; deleted: boolean }>;
 }
 
 export interface CardDetail {
@@ -928,8 +938,9 @@ export class TaskBoard {
         emoji       TEXT NOT NULL,
         by          TEXT NOT NULL,
         by_kind     TEXT NOT NULL,
+        who         TEXT NOT NULL,
         at          TEXT NOT NULL,
-        PRIMARY KEY (entry_id, emoji, by, by_kind)
+        PRIMARY KEY (entry_id, emoji, who, by_kind)
       );
     `);
     // #2352: a project's lead instance, added in place (null: its waiting cards' buttons stay in General).
@@ -2034,14 +2045,28 @@ export class TaskBoard {
   }
 
   /**
-   * Who wrote a comment: the same kind (a person, an instance or a script) and — when the comment kept its writer's key and the actor
-   * has one — the same key, whatever name each uses now (a person who renamed themselves is still the author; two people with one name
-   * are not each other); otherwise the same name.
+   * Who wrote a comment: the same kind (a person, an instance or a script) and, for a comment that kept its writer's key, the same key —
+   * whatever name each uses now (a person who renamed themselves is still the author; two people with one name are not each other, and a
+   * session with no key is not a keyed comment's author). Only a comment with no key (one written before keys were kept, an instance's, a
+   * script's) falls back to the name, and then to its original author's kind and name alone: it cannot tell two same-named sessions apart.
    */
   private wroteComment(row: Row, actor: Actor): boolean {
     if (row.author_kind !== actor.kind) return false;
-    if (typeof row.author_key === "string" && row.author_key && actor.key) return row.author_key === actor.key;
+    if (typeof row.author_key === "string" && row.author_key) return !!actor.key && row.author_key === actor.key;
     return row.author === actor.name;
+  }
+
+  /** Who a reaction is by, as stored: a person's key when the session has one, else the name — the name alone never stands in for a key. */
+  private reactor(actor: Actor): string {
+    return actor.kind === "person" && actor.key ? `key:${actor.key}` : `name:${actor.name}`;
+  }
+
+  /** The reactions `actor` made on a card's comments, as `<comment number>|<emoji>` (the dashboard marks those chips the viewer's). */
+  reactedBy(ref: string, actor: Actor): Set<string> {
+    const card = this.getCard(ref);
+    const rows = this.db.prepare(`SELECT r.entry_id AS id, r.emoji AS emoji FROM task_entry_reactions r JOIN task_entries e ON e.id = r.entry_id WHERE e.task_id = ? AND r.who = ? AND r.by_kind = ?`)
+      .all(card.uuid, this.reactor(actor), actor.kind) as Array<{ id: number; emoji: string }>;
+    return new Set(rows.map((r) => `${r.id}|${r.emoji}`));
   }
 
   /** The numbers of the comments on a card that `actor` wrote (the dashboard marks them `mine`: those are theirs to edit). */
@@ -2053,17 +2078,24 @@ export class TaskBoard {
 
   /**
    * The history's "commented" event keeps the comment's words (`data.text`); when the comment changes or goes, so does that
-   * copy. Events written since the thread work name their entry; older ones are found by who wrote it and what it said.
+   * copy. An event written since the thread work names its entry. An older one (it names none) is the comment's own when it was
+   * written at the same time by the same author with the same words: of those, the one closest in time to the comment — exactly
+   * one, so deleting one "ok" never blanks the card's other "ok" lines.
    */
   private rewriteCommentEvents(card: Card, row: Row, to: string): void {
-    const events = this.db.prepare("SELECT id, actor, actor_kind, data FROM task_events WHERE task_id = ? AND type = 'commented'").all(card.uuid) as Array<{ id: number; actor: string; actor_kind: string; data: string }>;
+    const events = this.db.prepare("SELECT id, at, actor, actor_kind, data FROM task_events WHERE task_id = ? AND type = 'commented'").all(card.uuid) as Array<{ id: number; at: string; actor: string; actor_kind: string; data: string }>;
     const update = this.db.prepare("UPDATE task_events SET data = ? WHERE id = ?");
+    const wrote = Date.parse(String(row.at));
+    let legacy: { id: number; data: Record<string, unknown>; gap: number } | null = null;
     for (const e of events) {
       let data: Record<string, unknown>;
       try { data = JSON.parse(e.data) as Record<string, unknown>; } catch { continue; }
-      const ours = data.entry !== undefined ? data.entry === Number(row.id) : e.actor === row.author && e.actor_kind === row.author_kind && data.text === row.text;
-      if (ours) update.run(JSON.stringify({ ...data, text: to }), e.id);
+      if (data.entry !== undefined) { if (data.entry === Number(row.id)) update.run(JSON.stringify({ ...data, text: to }), e.id); continue; }
+      if (e.actor !== row.author || e.actor_kind !== row.author_kind || data.text !== row.text) continue;
+      const gap = Math.abs((Date.parse(e.at) || 0) - (Number.isFinite(wrote) ? wrote : 0));
+      if (!legacy || gap < legacy.gap || (gap === legacy.gap && e.id < legacy.id)) legacy = { id: e.id, data, gap };
     }
+    if (legacy) update.run(JSON.stringify({ ...legacy.data, text: to }), legacy.id);
   }
 
   /**
@@ -2130,9 +2162,9 @@ export class TaskBoard {
       if (on) {
         const kinds = this.db.prepare("SELECT COUNT(DISTINCT emoji) AS n, MAX(emoji = ?) AS has FROM task_entry_reactions WHERE entry_id = ?").get(mark, id) as { n: number; has: number | null };
         if (!kinds.has && kinds.n >= MAX_REACTION_KINDS) throw new TaskBoardError("too_long", `comment c${id} already has ${MAX_REACTION_KINDS} different reactions`, "reaction_limit", [`c${id}`, MAX_REACTION_KINDS]);
-        changed = this.db.prepare("INSERT OR IGNORE INTO task_entry_reactions (entry_id, emoji, by, by_kind, at) VALUES (?, ?, ?, ?, ?)").run(id, mark, actor.name, actor.kind, this.nowIso()).changes > 0;
+        changed = this.db.prepare("INSERT OR IGNORE INTO task_entry_reactions (entry_id, emoji, by, by_kind, who, at) VALUES (?, ?, ?, ?, ?, ?)").run(id, mark, actor.name, actor.kind, this.reactor(actor), this.nowIso()).changes > 0;
       } else {
-        changed = this.db.prepare("DELETE FROM task_entry_reactions WHERE entry_id = ? AND emoji = ? AND by = ? AND by_kind = ?").run(id, mark, actor.name, actor.kind).changes > 0;
+        changed = this.db.prepare("DELETE FROM task_entry_reactions WHERE entry_id = ? AND emoji = ? AND who = ? AND by_kind = ?").run(id, mark, this.reactor(actor), actor.kind).changes > 0;
       }
       if (changed) this.signal(actor, card, "comment_reacted", { entry: id, emoji: mark, on });
       return { card, notes: changed ? [] : ["no change"], said: [], entry: this.commentOf(card, id) };
@@ -2144,6 +2176,7 @@ export class TaskBoard {
     return this.tx(() => {
       const card = this.getCard(ref);
       const row = this.commentRow(card, id);
+      if (typeof row.deleted_at === "string") throw new TaskBoardError("invalid", `comment c${id} on ${card.code} was deleted`, "comment_deleted", [`c${id}`]);
       if (row.parent_id !== null && row.parent_id !== undefined) throw new TaskBoardError("invalid", `c${id} is a reply: resolve the thread by its first comment`, "resolve_root_only", [`c${id}`]);
       if ((typeof row.resolved_at === "string") === resolved) return { card, notes: ["no change"], said: [], entry: this.commentOf(card, id) };
       if (resolved) this.db.prepare("UPDATE task_entries SET resolved_at = ?, resolved_by = ? WHERE id = ?").run(this.nowIso(), actor.name, id);
@@ -2893,7 +2926,7 @@ export class TaskBoard {
    */
   private settleWakes(events: TaskBoard["pending"]): Wake[] {
     const out = new Map<string, Wake>();
-    const add = (card: Card, instance: string | null | undefined, reason: WakeReason, by: Actor, text?: string, news?: ProgressNews, reply?: { id: number; author: string; text: string }) => {
+    const add = (card: Card, instance: string | null | undefined, reason: WakeReason, by: Actor, text?: string, news?: ProgressNews, reply?: { id: number; author: string; text: string }, entry?: number) => {
       // Never its own write — but a person's `@name` is not the instance of that name's own write.
       if (!instance || (instance === by.name && !(reason === "mention" && isPerson(by)))) return;
       const key = `${instance}\u0000${card.uuid}`;
@@ -2905,6 +2938,7 @@ export class TaskBoard {
         w.texts[reason] = text;
         // The words answer a comment: the notice says which. A later comment that answers none drops the earlier one's.
         if (reply) (w.replies ??= {})[reason] = reply; else if (w.replies) delete w.replies[reason];
+        if (entry !== undefined) (w.entries ??= {})[reason] = entry; else if (w.entries) delete w.entries[reason];
       }
       if (news) w.news = news;
       w.by[reason] = by.name;
@@ -2913,11 +2947,12 @@ export class TaskBoard {
       out.set(key, w);
     };
     // The answer to a blocked question is the comment that came with it (#2801: a comment alone wakes nobody).
-    const comments = new Map<string, string>();
-    for (const e of events) if (e.type === "commented") comments.set(e.uuid, String(e.data.text ?? ""));
+    const comments = new Map<string, { text: string; entry?: number }>();
+    const entryOf = (e: TaskBoard["pending"][number]) => (typeof e.data.entry === "number" ? e.data.entry : undefined);
+    for (const e of events) if (e.type === "commented") comments.set(e.uuid, { text: String(e.data.text ?? ""), entry: entryOf(e) });
     for (const e of events) {
       const card = e.type === "commented" && e.data.kept === true ? this.byUuid(e.uuid) : undefined;
-      if (card) add(card, card.assignee, "answer_kept", e.actor, String(e.data.text ?? ""));
+      if (card) add(card, card.assignee, "answer_kept", e.actor, String(e.data.text ?? ""), undefined, undefined, entryOf(e));
     }
     for (const e of events) {
       const card = this.byUuid(e.uuid);
@@ -2949,7 +2984,7 @@ export class TaskBoard {
           continue;
         }
         if (d.from === "open" && d.to === "claimed") add(card, card.assignee, "start", e.actor);
-        else if (d.from === "blocked" && d.to === "claimed") add(card, card.assignee, "answered", e.actor, comments.get(card.uuid));
+        else if (d.from === "blocked" && d.to === "claimed") add(card, card.assignee, "answered", e.actor, comments.get(card.uuid)?.text, undefined, undefined, comments.get(card.uuid)?.entry);
         else if (d.from === "review" && (d.to === "claimed" || d.to === "open")) add(card, card.assignee, "sent_back", e.actor, d.reason);
         if (d.to === "blocked" && !isPerson(e.actor)) add(card, dispatcherOf(), "decide", e.actor, d.reason);
       }
@@ -2962,10 +2997,11 @@ export class TaskBoard {
       const card = this.byUuid(e.uuid);
       if (!card) continue;
       const text = String(e.data.text ?? "");
-      for (const name of e.audience.mentions) add(card, name, "mention", e.actor, text, undefined, e.audience.reply);
+      const entry = entryOf(e);
+      for (const name of e.audience.mentions) add(card, name, "mention", e.actor, text, undefined, e.audience.reply, entry);
       const held = card.assignee ? out.get(`${card.assignee}\u0000${card.uuid}`) : undefined;
       if (e.audience.assignee && card.assignee && !e.audience.mentions.includes(card.assignee) && !held?.reasons.some((r) => r === "answered" || r === "answer_kept")) {
-        add(card, card.assignee, "comment", e.actor, text, undefined, e.audience.reply);
+        add(card, card.assignee, "comment", e.actor, text, undefined, e.audience.reply, entry);
       }
     }
     this.settleProgress(events, add);
@@ -3037,7 +3073,14 @@ export class TaskBoard {
     const handedOut = card.dispatcher?.kind === "instance" && card.dispatcher.name === wake.instance;
     const own = card.assignee === wake.instance;
     const waiting = this.unmetDeps(card).length > 0;
+    // The words a reason quotes are the comment's as it stands now (an edit made since is what is told), and a comment that was deleted is not told.
+    const quoted = (id: number | undefined): { text: string; gone: boolean } | null => {
+      if (id === undefined) return null;
+      const row = this.db.prepare("SELECT text, deleted_at FROM task_entries WHERE id = ?").get(id) as { text: string; deleted_at: string | null } | undefined;
+      return !row || row.deleted_at ? { text: "", gone: true } : { text: row.text, gone: false };
+    };
     let reasons = wake.reasons.filter((r) => {
+      if ((r === "comment" || r === "mention") && quoted(wake.entries?.[r])?.gone) return false;
       if (r === "cancelled") return card.status === "cancelled" && own;
       // A mention was asked for by name: it holds whatever state the card is in, finished too.
       if (r === "mention") return true;
@@ -3071,6 +3114,23 @@ export class TaskBoard {
     const keep = <T>(o: Partial<Record<WakeReason, T>>) => Object.fromEntries(Object.entries(o).filter(([r]) => reasons.includes(r as WakeReason))) as Partial<Record<WakeReason, T>>;
     const held: Wake = { ...wake, title: card.title, reasons, texts: keep(wake.texts), by: keep(wake.by) };
     if (wake.replies) { const replies = keep(wake.replies); if (Object.keys(replies).length) held.replies = replies; else delete held.replies; }
+    if (wake.entries) {
+      const entries = keep(wake.entries);
+      if (Object.keys(entries).length) held.entries = entries; else delete held.entries;
+      for (const r of Object.keys(entries) as WakeReason[]) {
+        const now = quoted(entries[r]);
+        if (!now) continue;
+        if (now.gone) delete held.texts[r]; else held.texts[r] = now.text;
+      }
+    }
+    // What a reply quotes of the comment it answers is that comment's words now; one that has since been deleted is not quoted.
+    if (held.replies) {
+      for (const r of Object.keys(held.replies) as WakeReason[]) {
+        const to = held.replies[r]!, now = quoted(to.id);
+        if (now?.gone) delete held.replies[r]; else if (now && now.text !== to.text) held.replies[r] = { ...to, text: now.text };
+      }
+      if (!Object.keys(held.replies).length) delete held.replies;
+    }
     if (!reasons.includes("progress")) delete held.news;
     if (!reasons.some((r) => WORD_REASONS.includes(r))) { delete held.principals; delete held.origins; }
     return held;
@@ -3111,7 +3171,9 @@ export class TaskBoard {
       const projects = this.projectsChanged;
       if (touched.length || projects) {
         const changed = [...new Set(touched.filter((e) => e.type === "moved" || e.type === "assigned").map((e) => e.uuid))];
-        const change: BoardChange = { rev: this.revision(), ids: [...new Set(touched.map((e) => e.code))], actors: [...new Set(touched.map((e) => e.actor.name))], projects, wakes, changed };
+        const recalled = touched.filter((e) => (e.type === "comment_edited" || e.type === "comment_deleted") && typeof e.data.entry === "number")
+          .map((e) => ({ uuid: e.uuid, entry: e.data.entry as number, deleted: e.type === "comment_deleted" }));
+        const change: BoardChange = { rev: this.revision(), ids: [...new Set(touched.map((e) => e.code))], actors: [...new Set(touched.map((e) => e.actor.name))], projects, wakes, changed, ...(recalled.length ? { recalled } : {}) };
         for (const listener of this.listeners) {
           try { listener(change); } catch { /* a listener must not break a write that already committed */ }
         }

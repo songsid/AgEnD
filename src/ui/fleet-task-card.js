@@ -19,7 +19,7 @@ import { ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, errorTe
 import { StepButtons, movesFor } from "./fleet-task-menu.js";
 import { Checklist, EditableText, InlineTitle, PropChip, QuickAdd } from "./fleet-task-edit.js";
 import { Composer, Timeline } from "./fleet-task-activity.js";
-import { defaultRecipient, recipientGroups } from "./fleet-task-thread.js";
+import { defaultRecipient, holdsRecipient, recipientGroups } from "./fleet-task-thread.js";
 import { FilesField } from "./fleet-task-files.js";
 import { AgentRun } from "./fleet-task-run.js";
 import { LeaderRow, WatchersRow } from "./fleet-task-follow.js";
@@ -177,6 +177,11 @@ export function dispatcherItems(card, names, act) {
 /** The value the page sends for a dispatcher choice. */
 export const dispatcherValue = (v) => (v === "\u0000none" ? null : v === "\u0000me" ? { kind: "person" } : { kind: "instance", name: v });
 
+/** The comment box's recipient chip for a card: the groups to list, the name it starts with, and whether that name is held back (the card still waits on another card). */
+const recipientsOf = (card, detail, fleet) => {
+  const initial = defaultRecipient({ card, fleet });
+  return { groups: recipientGroups({ card, detail, fleet }), initial, held: holdsRecipient({ card, initial }) };
+};
 const radioItems = (list, current, label, act) => list.map((v) => ({ key: String(v), label: label(v), checked: current === v, onSelect: () => act(v) }));
 
 // ── The page ──────────────────────────────────────────────
@@ -445,8 +450,8 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
       <div class="tp-activity">
         <${Timeline} detail=${detail} describe=${describeRow} cards=${cards} lead=${((projects || []).find((x) => x.id === card.projectId) || {}).leadInstance || null} names=${mentionNames} thread=${thread} />
         ${can ? html`<${Composer} names=${mentionNames} assignee=${card.assignee} placeholder=${card.assignee ? t("taskcard.commentTo", card.assignee) : t("taskcard.commentHint")}
-          recipients=${{ groups: recipientGroups({ card, detail, fleet: mentionNames }), initial: defaultRecipient({ card, fleet: mentionNames }) }}
-          onSend=${(text, to) => run(() => boardApi.update(card.id, { comment: text, to: to ? [to] : [] }))} />` : null}
+          recipients=${recipientsOf(card, detail, mentionNames)}
+          onSend=${(text, to, held) => run(() => boardApi.update(card.id, { comment: text, ...(held ? {} : { to: to ? [to] : [] }) }))} />` : null}
       </div>
     </div>
   </div>`;

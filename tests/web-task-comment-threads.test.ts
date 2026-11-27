@@ -127,6 +127,23 @@ describe("1. an admin session works a card's comments", () => {
     expect(JSON.stringify((await read("a")))).not.toContain("acct:a");
   });
 
+  it("each reaction says whether it is the viewer's, by the key: two accounts named alike each press and take back their own", async () => {
+    const db = scratchDb();
+    const c = seed(db);
+    db.board.updateCard(DEV, c.code, { comment: "shipped" });
+    const id = comments(db)[0]!.id;
+    const react = (owner: string, on: boolean) => call(db, "POST", `/ui/tasks/cards/${c.code}/comments/${id}/react`, { emoji: "👍", on }, { ...local, owner });
+    const read = async (owner: string) => (await call(db, "GET", `/ui/tasks/cards/${c.code}`, undefined, { ...local, owner })).body.comments[0].reactions;
+    expect((await react("a", true)).status).toBe(200);
+    expect((await react("b", true)).status).toBe(200);
+    expect(await read("a")).toEqual([{ emoji: "👍", by: [{ name: "web-user", kind: "person" }, { name: "web-user", kind: "person" }], mine: true }]);
+    expect(await read("b")).toEqual([{ emoji: "👍", by: [{ name: "web-user", kind: "person" }, { name: "web-user", kind: "person" }], mine: true }]);
+    expect((await react("b", false)).status).toBe(200);                 // b takes theirs back: a's stays, and is still a's
+    expect(await read("a")).toEqual([{ emoji: "👍", by: [{ name: "web-user", kind: "person" }], mine: true }]);
+    expect(await read("b")).toEqual([{ emoji: "👍", by: [{ name: "web-user", kind: "person" }], mine: false }]);
+    expect(JSON.stringify(await read("a")), "no key in a read").not.toContain("acct:");
+  });
+
   it("with no people kept (every session is the operator) the viewer's comments are every web-user comment, as before", async () => {
     const db = scratchDb();
     const c = seed(db);

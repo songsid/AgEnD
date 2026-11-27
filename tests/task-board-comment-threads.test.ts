@@ -386,6 +386,12 @@ describe("7. who is woken", () => {
     r.take();
     r.board.updateCard(ANN, waiting.code, { comment: "heads up", to: ["dev-a"] });
     expect(woken(r.take())).toEqual(["dev-a:mention"]);
+    // No recipient chosen on a waiting card (what the page sends while its chip says "won't wake until the card is ready"): #4367's rule —
+    // the assignee reads the comment when the card can start and is not woken now; an `@` still wakes it, and so does choosing it.
+    r.board.updateCard(ANN, waiting.code, { comment: "no rush" });
+    expect(woken(r.take())).toEqual([]);
+    r.board.updateCard(ANN, waiting.code, { comment: "@dev-a when you can" });
+    expect(woken(r.take())).toEqual(["dev-a:mention"]);
   });
 
   it("`to: []` notifies no agent; an `@name` in the words still does", () => {
@@ -538,6 +544,58 @@ describe("7. who is woken", () => {
   });
 });
 
+describe("7b. a notice quotes a comment as it stands when it goes out", () => {
+  it("the wake names the comment it quotes; an edit or a deletion before it goes out is what the notice says (wakeHolds)", () => {
+    const r = rig();
+    const c = card(r.board, ANN, { assignee: "dev-a" });
+    r.board.moveCard(DEV, c.code, "claimed");
+    r.take();
+    const said = say(r.board, c.code, ANN, "use the old endpoint");
+    const heard = r.take();
+    expect(woken(heard)).toEqual(["dev-a:comment"]);
+    const wake = heard[0]!.wake;
+    expect(wake.entries).toEqual({ comment: said.id });
+    expect(r.board.wakeHolds(wake)!.texts.comment).toBe("use the old endpoint");
+    r.board.editComment(ANN, c.code, said.id, "use the new endpoint");
+    expect(r.board.wakeHolds(wake)!.texts.comment, "the edited words").toBe("use the new endpoint");
+    r.board.deleteComment(ANN, c.code, said.id);
+    expect(r.board.wakeHolds(wake), "a deleted comment is nothing to tell").toBeNull();
+  });
+
+  it("a mention, a reply's excerpt of the comment it answers, and an answer to a blocked question read the comment again too", () => {
+    const r = rig();
+    const c = card(r.board, ANN, { assignee: "dev-a" });
+    r.board.moveCard(DEV, c.code, "claimed");
+    const question = say(r.board, c.code, DEV, "which endpoint?");
+    r.take();
+    const reply = say(r.board, c.code, ANN, "@dev-b take a look", { replyTo: question.id });
+    const mention = r.take().find((h) => h.reasons.includes("mention"))!.wake;
+    expect(mention.entries).toEqual({ mention: reply.id });
+    expect(mention.replies!.mention).toMatchObject({ id: question.id, text: "which endpoint?" });
+    r.board.editComment(DEV, c.code, question.id, "which of the two endpoints?");
+    expect(r.board.wakeHolds(mention)!.replies!.mention!.text, "the answered comment's words now").toBe("which of the two endpoints?");
+    r.board.deleteComment(DEV, c.code, question.id);
+    expect(r.board.wakeHolds(mention)!.replies, "a deleted comment is not quoted").toBeUndefined();
+    r.board.editComment(ANN, c.code, reply.id, "@dev-b never mind");
+    expect(r.board.wakeHolds(mention)!.texts.mention).toBe("@dev-b never mind");
+    r.board.deleteComment(ANN, c.code, reply.id);
+    expect(r.board.wakeHolds(mention), "a deleted mention is not told").toBeNull();
+  });
+
+  it("an edit or a deletion is announced as recalled, with the comment's number, for the fleet's waker", () => {
+    const r = rig();
+    const c = card(r.board, ANN, { assignee: "dev-a" });
+    const seen: Array<Array<{ uuid: string; entry: number; deleted: boolean }>> = [];
+    r.board.onChange((ch) => { if (ch.recalled) seen.push(ch.recalled); });
+    const e = say(r.board, c.code, ANN, "first words");
+    expect(seen).toEqual([]);
+    r.board.editComment(ANN, c.code, e.id, "second words");
+    r.board.react(ANN, c.code, e.id, "👍", true);
+    r.board.deleteComment(ANN, c.code, e.id);
+    expect(seen).toEqual([[{ uuid: c.uuid, entry: e.id, deleted: false }], [{ uuid: c.uuid, entry: e.id, deleted: true }]]);
+  });
+});
+
 describe("8. the loop guard counts a recipient no `@` named", () => {
   it("two agents answering each other by recipient and reply alone are stopped after the same number of turns as by `@`", () => {
     const r = rig();
@@ -634,7 +692,7 @@ describe("9. compatibility", () => {
     try {
       raw.prepare("UPDATE tasks SET updated_at = '2020-01-01T00:00:00.000Z', done_at = '2020-01-01T00:00:00.000Z'").run();
       // what an older release's prune leaves: reactions of a comment that is gone
-      raw.prepare("INSERT INTO task_entry_reactions (entry_id, emoji, by, by_kind, at) VALUES (9999, '🎉', 'Ann', 'person', '2026-01-01T00:00:00.000Z')").run();
+      raw.prepare("INSERT INTO task_entry_reactions (entry_id, emoji, by, by_kind, who, at) VALUES (9999, '🎉', 'Ann', 'person', 'name:Ann', '2026-01-01T00:00:00.000Z')").run();
     } finally { raw.close(); }
     await r.db.pruneOldTasks(30);
     const check = new Database(r.path, { readonly: true });
@@ -853,14 +911,74 @@ describe("12. who wrote a comment: the writer's key, then the name", () => {
     expect(errorOf(() => r.board.editComment({ kind: "script", name: "web-user", key: "acct:a" }, c.code, mine.id, "x"))).toMatchObject({ key: "comment_not_yours" });
   });
 
-  it("without a key on either side the name decides, as it did: a comment written before keys, or an actor with none", () => {
+  it("a comment with no key (written before keys) is its name's, and only a person of that name and kind: a session sharing the name with another kind, or no name, is not", () => {
     const r = rig();
     const c = card(r.board, ANN);
     const old = say(r.board, c.code, { kind: "person", name: "Ann" }, "no key kept");
     expect(r.board.editComment({ kind: "person", name: "Ann", key: "acct:ann" }, c.code, old.id, "edited").entry.text).toBe("edited");   // the comment has no key: the name decides
     expect(errorOf(() => r.board.editComment({ kind: "person", name: "Bob", key: "acct:bob" }, c.code, old.id, "x"))).toMatchObject({ key: "comment_not_yours" });
+    expect(errorOf(() => r.board.editComment({ kind: "script", name: "Ann" }, c.code, old.id, "x")), "the kind is part of it").toMatchObject({ key: "comment_not_yours" });
+    expect(errorOf(() => r.board.editComment({ kind: "instance", name: "Ann" }, c.code, old.id, "x"))).toMatchObject({ key: "comment_not_yours" });
+  });
+
+  it("a comment that kept its writer's key is theirs by the key alone: a session with the same name and no key (or another key) cannot edit it, nor delete it unless it is a person's", () => {
+    const r = rig();
+    const c = card(r.board, ANN);
     const keyed = say(r.board, c.code, SESSION_A, "keyed");
-    expect(r.board.editComment({ kind: "person", name: "web-user" }, c.code, keyed.id, "no key given").entry.text).toBe("no key given");   // the actor has no key: the name decides
+    expect(errorOf(() => r.board.editComment({ kind: "person", name: "web-user" }, c.code, keyed.id, "no key given")), "same name, no key: not the author").toMatchObject({ key: "comment_not_yours" });
+    expect(errorOf(() => r.board.editComment({ kind: "person", name: "web-user", key: "acct:b" }, c.code, keyed.id, "other key"))).toMatchObject({ key: "comment_not_yours" });
+    expect(r.board.editComment(SESSION_A, c.code, keyed.id, "its author").entry.text).toBe("its author");
+    expect([...r.board.commentsWrittenBy(c.code, { kind: "person", name: "web-user" })], "the page's `mine`").toEqual([]);
+    expect([...r.board.commentsWrittenBy(c.code, SESSION_A)]).toEqual([keyed.id]);
+  });
+
+  it("a reaction is its person's by the key: two accounts with one name each have their own, neither can take the other's back; a keyless actor is by name", () => {
+    const r = rig();
+    const c = card(r.board, ANN);
+    const e = say(r.board, c.code, DEV, "ship it");
+    const A: Actor = { kind: "person", name: "web-user", key: "acct:a" }, B: Actor = { kind: "person", name: "web-user", key: "acct:b" };
+    r.board.react(A, c.code, e.id, "👍", true);
+    r.board.react(B, c.code, e.id, "👍", true);
+    expect(r.board.detail(c.code).comments.find((x) => x.id === e.id)!.reactions).toEqual([{ emoji: "👍", by: [{ name: "web-user", kind: "person" }, { name: "web-user", kind: "person" }] }]);
+    expect([...r.board.reactedBy(c.code, A)], "A's").toEqual([`${e.id}|👍`]);
+    r.board.react(B, c.code, e.id, "👍", false);                       // B takes theirs back: A's stays
+    expect(r.board.detail(c.code).comments.find((x) => x.id === e.id)!.reactions).toEqual([{ emoji: "👍", by: [{ name: "web-user", kind: "person" }] }]);
+    expect([...r.board.reactedBy(c.code, A)]).toEqual([`${e.id}|👍`]);
+    expect([...r.board.reactedBy(c.code, B)]).toEqual([]);
+    expect(r.board.react(B, c.code, e.id, "👍", false).notes, "nothing of A's to take back").toContain("no change");
+    // An instance reacts by its name; a person with no key by theirs, and the key of a person with the same name is another reaction.
+    r.board.react(DEV_B, c.code, e.id, "🎉", true);
+    r.board.react({ kind: "person", name: "Ann" }, c.code, e.id, "🎉", true);
+    r.board.react({ kind: "person", name: "Ann", key: "acct:ann" }, c.code, e.id, "🎉", true);
+    expect(r.board.detail(c.code).comments.find((x) => x.id === e.id)!.reactions!.find((x) => x.emoji === "🎉")!.by).toHaveLength(3);
+  });
+
+  it("resolving or reopening a thread whose first comment was deleted is refused", () => {
+    const r = rig();
+    const c = card(r.board, ANN);
+    const root = say(r.board, c.code, ANN, "a question");
+    say(r.board, c.code, DEV, "an answer", { replyTo: root.id });
+    r.board.deleteComment(ANN, c.code, root.id);
+    expect(errorOf(() => r.board.resolveThread(ANN, c.code, root.id, true))).toMatchObject({ key: "comment_deleted" });
+    expect(errorOf(() => r.board.resolveThread(ANN, c.code, root.id, false))).toMatchObject({ key: "comment_deleted" });
+  });
+
+  it("deleting or editing a comment rewrites its own history line only: an older line is found by its author, its words and the time, and of identical ones the closest", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const r = rig();
+    const c = card(r.board, ANN);
+    vi.setSystemTime(new Date("2026-11-02T10:00:00.000Z")); const first = say(r.board, c.code, ANN, "ok");
+    vi.setSystemTime(new Date("2026-11-02T10:05:00.000Z")); const second = say(r.board, c.code, ANN, "ok");
+    vi.setSystemTime(new Date("2026-11-02T10:09:00.000Z")); say(r.board, c.code, BOB, "ok");
+    const raw = (r.board as unknown as { db: { prepare(s: string): { all(): Array<{ id: number; data: string }>; run(...a: unknown[]): unknown } } }).db;
+    const lines = () => raw.prepare("SELECT id, actor, data FROM task_events WHERE type = 'commented' ORDER BY id").all().map((e) => ({ actor: (e as unknown as { actor: string }).actor, text: JSON.parse(e.data).text as string }));
+    // Written since the thread work, each line names its entry: only the deleted comment's own goes.
+    r.board.deleteComment(ANN, c.code, second.id);
+    expect(lines()).toEqual([{ actor: "Ann", text: "ok" }, { actor: "Ann", text: "" }, { actor: "Bob", text: "ok" }]);
+    // From before: no entry named. Ann's two identical "ok" lines are told apart by the time; Bob's is never taken for Ann's.
+    for (const e of raw.prepare("SELECT id, data FROM task_events WHERE type = 'commented'").all()) { const d = JSON.parse(e.data); delete d.entry; d.text = d.text || "ok"; raw.prepare("UPDATE task_events SET data = ? WHERE id = ?").run(JSON.stringify(d), e.id); }
+    r.board.editComment(ANN, c.code, first.id, "ok, thanks");
+    expect(lines(), "only the first comment's own line is rewritten").toEqual([{ actor: "Ann", text: "ok, thanks" }, { actor: "Ann", text: "ok" }, { actor: "Bob", text: "ok" }]);
   });
 
   it("the key is stored for a person's comment only, and is not in what a read returns", () => {

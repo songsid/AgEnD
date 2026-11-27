@@ -5,7 +5,9 @@
  * when it goes out (wakeHolds), and hands it to the fleet as a notice from AgEnD: the delivery outbox holds it until
  * the instance can take it, across a restart too. What is gathered but not yet handed over is lost on a stop; the card
  * keeps the news (`task mine`, the comments new to its assignee). #2801: a notice still waiting when one of its cards
- * changes status or assignee again is withdrawn once every card on it has (its key names them).
+ * changes status or assignee again is withdrawn once every card on it has (its key names them). A notice that quotes a comment which
+ * is then edited or deleted is withdrawn too while it still waits (its key names the comments it quotes), and what of it still stands
+ * is told anew with the comment's words as they are now; delivered, it cannot be called back.
  *
  * What an agent does to a card is told the way what a person does is — after the gather, no later. The board
  * used to hold an agent's change for up to two minutes (#2785 (c), #2801) and drop the line when that agent had sent the
@@ -50,6 +52,8 @@ export interface TaskBoardWakerDeps {
    * delivery outbox's withdrawWaitingNotices); returns how many. Absent: a waiting notice is delivered as it is.
    */
   withdraw?(prefix: string, stale: (key: string, createdAt: string) => boolean, reason: string): number;
+  /** The state of the notice with this key in the delivery outbox (`cancelled` once withdrawn), or null. Absent: no replacement is sent for a withdrawn notice. */
+  noticeState?(key: string): string | null;
   /** #2801: when a card's status or assignee last changed (ISO; TaskBoard.lastChangeAt). */
   changedAt?(uuid: string): string | null;
   log(level: "info" | "warn", message: string, extra?: Record<string, unknown>): void;
@@ -61,6 +65,14 @@ export interface TaskBoardWakerDeps {
 /** The start of a task board notice's key; `:cards=` and the card uuids end it (#2801). */
 const KEY_PREFIX = "task-board:";
 const cardsOfKey = (key: string) => { const at = key.lastIndexOf(":cards="); return at < 0 ? [] : key.slice(at + 7).split(",").filter(Boolean); };
+/** The comments (entry numbers) a notice quotes: `:comments=12,15` before its `:cards=`. */
+const commentsOfKey = (key: string): number[] => {
+  const m = /:comments=([\d,]*):cards=/.exec(key);
+  return m ? m[1]!.split(",").filter(Boolean).map(Number) : [];
+};
+/** The notices handed over whose wakes are kept for a replacement (one that quotes a comment), at most this many, for this long. */
+const KEPT_NOTICES = 200;
+const KEPT_MS = 60 * 60_000;
 
 /** More assignments than this in one message are told as a count, not a line each. */
 const MANY_ASSIGNED = 3;
@@ -229,6 +241,8 @@ function mergePerson(had: Wake, w: Wake): Partial<Record<WakeReason, true>> {
 
 export class TaskBoardWaker {
   private readonly gathering = new Map<string, { wakes: Map<string, Wake>; timer: unknown }>();
+  /** The wakes of each notice handed over that quotes a comment, by its key: what replaces it if the comment is edited or deleted while it waits. */
+  private readonly kept = new Map<string, { at: number; wakes: Wake[] }>();
   private stopped = false;
   private seq = 0;
   private readonly timers: NonNullable<TaskBoardWakerDeps["timers"]>;
@@ -253,8 +267,8 @@ export class TaskBoardWaker {
       // A second comment on the card in the same window: the notice quotes the last and counts the ones before it.
       const earlier = (had?.earlier ?? 0) + (had && hasCommentNews(had) && hasCommentNews(w) ? 1 : 0);
       batch.wakes.set(w.uuid, had
-        ? { ...had, title: w.title, reasons: [...new Set([...had.reasons, ...w.reasons])], by: { ...had.by, ...w.by }, texts: { ...had.texts, ...w.texts }, ...(had.byPerson || w.byPerson ? { byPerson: mergePerson(had, w) } : {}), ...(w.news ?? had.news ? { news: w.news ?? had.news } : {}), ...(earlier ? { earlier } : {}), ...mergePrincipals(had, w), ...mergeReplies(had, w) }
-        : { ...w, reasons: [...w.reasons], by: { ...w.by }, texts: { ...w.texts }, ...(w.byPerson ? { byPerson: { ...w.byPerson } } : {}), ...(w.news ? { news: { ...w.news } } : {}), ...(w.replies ? { replies: { ...w.replies } } : {}), ...mergePrincipals(undefined, w) });
+        ? { ...had, title: w.title, reasons: [...new Set([...had.reasons, ...w.reasons])], by: { ...had.by, ...w.by }, texts: { ...had.texts, ...w.texts }, ...(had.entries || w.entries ? { entries: { ...had.entries, ...w.entries } } : {}), ...(had.byPerson || w.byPerson ? { byPerson: mergePerson(had, w) } : {}), ...(w.news ?? had.news ? { news: w.news ?? had.news } : {}), ...(earlier ? { earlier } : {}), ...mergePrincipals(had, w), ...mergeReplies(had, w) }
+        : { ...w, reasons: [...w.reasons], by: { ...w.by }, texts: { ...w.texts }, ...(w.entries ? { entries: { ...w.entries } } : {}), ...(w.byPerson ? { byPerson: { ...w.byPerson } } : {}), ...(w.news ? { news: { ...w.news } } : {}), ...(w.replies ? { replies: { ...w.replies } } : {}), ...mergePrincipals(undefined, w) });
     }
   }
 
@@ -278,11 +292,42 @@ export class TaskBoardWaker {
     }
   }
 
+  /**
+   * These comments were edited or deleted. News still gathering reads the comment again as it goes out (holds), so it says the new
+   * words, or leaves a deleted one out. A notice already handed over and still waiting is withdrawn, and — when this waker still has its
+   * wakes (not after a restart) — what of it still stands is told anew, so the instance gets one notice with the words as they are now.
+   * One already delivered cannot be called back.
+   */
+  recalled(items: ReadonlyArray<{ uuid: string; entry: number; deleted: boolean }>): void {
+    if (this.stopped || !items.length || !this.deps.withdraw) return;
+    const ids = new Set(items.map((i) => i.entry));
+    const picked: string[] = [];
+    const stale = (key: string) => {
+      if (!commentsOfKey(key).some((n) => ids.has(n))) return false;
+      picked.push(key);
+      return true;
+    };
+    try {
+      const n = this.deps.withdraw(KEY_PREFIX, stale, "superseded: a comment it quotes was edited or deleted");
+      if (!n) return;
+      this.deps.log("info", "Task board notices withdrawn: a comment they quote was edited or deleted", { count: n });
+      for (const key of picked) {
+        if (this.deps.noticeState && this.deps.noticeState(key) !== "cancelled") continue;
+        const had = this.kept.get(key);
+        this.kept.delete(key);
+        if (had) this.note(had.wakes.map((w) => structuredClone(w)));
+      }
+    } catch (err) {
+      this.deps.log("warn", "Task board could not withdraw notices that quote a changed comment", { err: (err as Error).message });
+    }
+  }
+
   /** Nothing more is sent (the fleet is stopping); news still gathering is dropped — the cards keep it. */
   stop(): void {
     this.stopped = true;
     for (const b of this.gathering.values()) this.timers.clear(b.timer);
     this.gathering.clear();
+    this.kept.clear();
   }
 
   /**
@@ -306,6 +351,14 @@ export class TaskBoardWaker {
     return out;
   }
 
+  /** Remembers the wakes of a notice that quotes a comment, for a replacement (bounded: the newest, an hour). */
+  private keep(key: string, wakes: readonly Wake[]): void {
+    const now = (this.deps.now ?? Date.now)();
+    for (const [k, v] of this.kept) if (now - v.at > KEPT_MS) this.kept.delete(k);
+    this.kept.set(key, { at: now, wakes: wakes.map((w) => structuredClone(w)) });
+    while (this.kept.size > KEPT_NOTICES) { const oldest = this.kept.keys().next().value; if (oldest === undefined) break; this.kept.delete(oldest); }
+  }
+
   private flush(instance: string): void {
     const batch = this.gathering.get(instance);
     this.gathering.delete(instance);
@@ -319,12 +372,14 @@ export class TaskBoardWaker {
     const origins: Record<string, unknown[]> = {};
     for (const w of wakes) for (const p of w.principals ?? []) origins[p] = unionOrigins(origins[p], w.origins?.[p]);
     const codes = wakes.map((w) => w.code);
-    const key = `${KEY_PREFIX}${instance}:${(this.deps.now ?? Date.now)()}:${++this.seq}:cards=${wakes.map((w) => w.uuid).join(",")}`;
+    const quoting = [...new Set(wakes.flatMap((w) => Object.values(w.entries ?? {})))].sort((a, b) => a - b);
+    const key = `${KEY_PREFIX}${instance}:${(this.deps.now ?? Date.now)()}:${++this.seq}${quoting.length ? `:comments=${quoting.join(",")}` : ""}:cards=${wakes.map((w) => w.uuid).join(",")}`;
     let taken = false;
     try { taken = this.deps.deliver(instance, wakeMessage(wakes, (uuid) => this.deps.card(uuid), (w) => this.deps.buttonsHere?.(instance, w.uuid) === true), key, origins); } catch (err) {
       this.deps.log("warn", "Task board wake failed", { instance, codes, err: (err as Error).message });
       return;
     }
+    if (taken && quoting.length) this.keep(key, wakes);
     if (taken) this.deps.log("info", "Task board wake handed to delivery", { instance, codes });
     else this.deps.log("warn", "Task board wake not taken; the cards keep the news", { instance, codes });
   }
