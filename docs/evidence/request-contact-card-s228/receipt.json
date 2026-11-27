@@ -1,5 +1,5 @@
 {
-  "sourceHead": "4fc5671b6f96173e018db3fdf5b076928c7e3854",
+  "sourceHead": "fa06a7bb6041e44e89c05a66739c1182768ef2bf",
   "dirty": [],
   "checks": [
     {
@@ -687,6 +687,14 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW 5b: scrolled to its end, the last line is fully above the footer",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-5b-always-allow-end: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW: no page errors",
       "ok": true
     }
@@ -694,100 +702,104 @@
   "pictures": [
     {
       "path": "s228-desk-light-en-1-needs-unverified.png",
-      "sha256": "0c7576d9ea486c9a104204b69578a6dfbafbbdc578df4a03f68290c0d24a72fb"
+      "sha256": "bff689de4bac1777eea8a58ac17e601e6279ffad225292037fd22872327a6038"
     },
     {
       "path": "s228-desk-light-en-2-verified.png",
-      "sha256": "febd6a0082cf2cba85efcc0ea20ca8a06fc0eabe40ea39cc6a0764686cf6599c"
+      "sha256": "faa5baaa9b4551a4d149fd5b9f8071d88054d0f36c147cfc219f05f482e6fc3e"
     },
     {
       "path": "s228-desk-light-en-3-continued.png",
-      "sha256": "08c990effc68a69fdad3d332c04b4cafc5a0efcc991fa0056ef3db8ca8329b47"
+      "sha256": "f5a0184e03c905795282fe940517f1679a570b211a9dd4d34e5aeb85a69d5b54"
     },
     {
       "path": "s228-desk-light-en-4-authorizations.png",
-      "sha256": "81967ffe133ca97fbfacc351a6179079294209e0511f7a6ee1ea2f75bd01d5c4"
+      "sha256": "91d2157a0da697538dc219a2048a9d54f2c15d9ec4f454a4287d6a9375b4d49c"
     },
     {
       "path": "s228-desk-light-en-4b-details.png",
-      "sha256": "d391bf52c29eec750ee183677b98e76621d4322c626bf6ce1f8acb3f23e84764"
+      "sha256": "156233225f040133f33f7e1f6e2502e39ed0df376ee5b6184ce7977a86b6297d"
     },
     {
       "path": "s228-desk-light-en-5-always-allow.png",
-      "sha256": "d22fd209c15b7bd2b144c68d3f8427668848112e3c84d750f83ec17cc5dbb615"
+      "sha256": "f681cb5cec34b093bdc2d96ec9fc652ebb23f33f13543193197cb4affa48f960"
     },
     {
       "path": "s228-desk-dark-zh-TW-1-needs-unverified.png",
-      "sha256": "1c5d27933718a2510ce0c6a3a3a454187a3b5c1448d24395808db210fc6104c5"
+      "sha256": "8e85bbcff33a7ef6d2a8fa9527bbab5d0d1d2d47fbbafb645f6f0707bafdd5aa"
     },
     {
       "path": "s228-desk-dark-zh-TW-2-verified.png",
-      "sha256": "5cc8a71a9c9c0d20e44d922283af8aadb24a6009f9f42910fa53c255c8af0d5c"
+      "sha256": "45987141bad6abd8b82bfb58a7d6c3adace7ee44cd976268cfa1a17c025627a8"
     },
     {
       "path": "s228-desk-dark-zh-TW-3-continued.png",
-      "sha256": "a5cbc007f166798476447df8cc295139e6852ca969b308289b37f9dde4fce3af"
+      "sha256": "c6dfe92d28133fac726a22c2c0e8fdc38f52c60fb46f0466f0ad20d16b81c826"
     },
     {
       "path": "s228-desk-dark-zh-TW-4-authorizations.png",
-      "sha256": "2fc2572fe1e3ed08eb8e9bedf8dd707406e6ac824c40b571cbcdb02aa8d3dbca"
+      "sha256": "a955e6a3f1880922817fe7fc89f8d07a1e8071a9abe88e9dbf17fc8304ccab6f"
     },
     {
       "path": "s228-desk-dark-zh-TW-4b-details.png",
-      "sha256": "ab31a5853f694c118e9f34ba1f23136d130db70f619737a541133d51fa0d759e"
+      "sha256": "d83f5d6ab35a040bcf621693c7f64a2dac754ac65548047e9e2ad67ef3a90db7"
     },
     {
       "path": "s228-desk-dark-zh-TW-5-always-allow.png",
-      "sha256": "406544b1fa5d543f5fb7434371d907c07c0eb4afb487648a37f2f503ab104f60"
+      "sha256": "094b95191667e27ff3b30acd41ac81675700fb31a1de1d696ca88427af59c71d"
     },
     {
       "path": "s228-phone-light-en-1-needs-unverified.png",
-      "sha256": "ae5bb2c50f63c9ec86b4eabb8e4a4c5e2a9fdb8f402133087dcd81dd618e6780"
+      "sha256": "ab6381043fe53ebc1d87c4ca9e398ae52fe7cd77a7e5e5ded70005e51e100711"
     },
     {
       "path": "s228-phone-light-en-2-verified.png",
-      "sha256": "cc4c0180423aa8548fe6abb4ae392ef3d5aec0908ff04e0efa62a9773267058d"
+      "sha256": "c4790da5a8c5c70eb9c7e0c85955780cd5c10f63d4b7830b3e65197feb488c00"
     },
     {
       "path": "s228-phone-light-en-3-continued.png",
-      "sha256": "669a5c08ee7359a24d4abb21cc938cf5995cad9f8e80712a6b95b43a24b76b9d"
+      "sha256": "609d70824094b689f41d187d3ec5784fe45b39fb4e2ee1a559655b11c4f27b23"
     },
     {
       "path": "s228-phone-light-en-4-authorizations.png",
-      "sha256": "6bf00b4c3f206eb7fbb65dd64465d900ec039c9552fc3d2e4e420fb817ca3986"
+      "sha256": "28c35e1bcad4b40e8225addde9166d7e19eae91723bd58e101e84619ee3ba657"
     },
     {
       "path": "s228-phone-light-en-4b-details.png",
-      "sha256": "dfd82e03e6747cbd258142bfbdbd073a9869ad71c604859dce3d0ac47b7957e0"
+      "sha256": "04a730bcc07eb82a84c22f0cd00ba9cfd6a8b8e642aeeca5aeeb3cc19cfcc107"
     },
     {
       "path": "s228-phone-light-en-5-always-allow.png",
-      "sha256": "3c52031321c273535d36a899252e695d4fbbc321b3ca6c13b315f7b288ef4322"
+      "sha256": "0554aae863b14ba4739b662b3f29ca099f62c6106d48f69b7ec40ca84f3635a6"
     },
     {
       "path": "s228-phone-dark-zh-TW-1-needs-unverified.png",
-      "sha256": "0b9e10f6ed7287623a1a39c069958cc458369c530a58941f5d385a45a1e05d24"
+      "sha256": "bb74e228836b074bc0f9ac99dfc5995fea566144ee4d3fe87ea699f8cef23278"
     },
     {
       "path": "s228-phone-dark-zh-TW-2-verified.png",
-      "sha256": "38041a92617d47dfaf18d3a4eccfda71eef76dd7ad440cfa6a712da6d58c4cb2"
+      "sha256": "7f044a4c53cafa320413a2fb843ee3a63a84d1e3ebb2422e97063f1000e7bbb0"
     },
     {
       "path": "s228-phone-dark-zh-TW-3-continued.png",
-      "sha256": "fb5904036420a8211ae1e0ad20f123b1bbfd1e0e81df6fcd25ed129682fcc039"
+      "sha256": "f7272072689c692f168b267a35b6373b1bde196574fb507311cedd6d0ab9e2ad"
     },
     {
       "path": "s228-phone-dark-zh-TW-4-authorizations.png",
-      "sha256": "a470c28c6b50f28f344c10e4bb681257ddf89f7c0183feedc58545f8c1d786d8"
+      "sha256": "3f09511797edd5a2561817635bfc25f34370cb155b2a9aa4cb7b89893edf42aa"
     },
     {
       "path": "s228-phone-dark-zh-TW-4b-details.png",
-      "sha256": "dbfde59542e140dd50f8f43e658977d703615fcd2bb6021073eaa07c70e930ea"
+      "sha256": "72c6f33afef50a4970539aa70fc0c0cc94f8dd251d2b564f02bda9823b2df1ff"
     },
     {
       "path": "s228-phone-dark-zh-TW-5-always-allow.png",
-      "sha256": "f4de33074585beda5371005109766c489ad325060879747b90a9cde727bf07f5"
+      "sha256": "626dca39cef473a446caba05252dee2c5d1eb8fc72acc73a8a51d039fbd6c40b"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-5b-always-allow-end.png",
+      "sha256": "95dfe16d6484ac1adb099ae721353ed00f085146f53f4a2d92ffd96597548ad7"
     }
   ],
-  "summary": "172/172"
+  "summary": "174/174"
 }
