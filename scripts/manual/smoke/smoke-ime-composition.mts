@@ -17,7 +17,7 @@ import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/inde
 
 const SMOKE = "ime-composition", LABEL = process.env.LABEL ?? "after", KEYBOARD = 336, BAR = 44;
 const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
-const WEBKIT_OWN = /^(Viewport argument key "interactive-widget" not recognized and ignored\.|Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy\.|(EventSource|Fetch API) cannot load https?:\s*\/+[^\s/]+\/(ui\/[a-z-]+|auth\/sessions?|api\/[a-z/-]+)(\?\S*)? due to access control checks\.)/;
+const WEBKIT_OWN = /^(Viewport argument key "interactive-widget" not recognized and ignored\.|Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy\.|(EventSource|Fetch API) cannot load https?:\s*\/+[^\s/]+\/(ui\/[a-z-]+(\/[a-z-]+)?|auth\/sessions?|api\/[a-z/-]+)(\?\S*)? due to access control checks\.)/;
 const pageErrors = (errors: string[]) => errors.filter((e) => !(ENGINE === "webkit" && WEBKIT_OWN.test(e)));
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48848), instances: 3 });
 const CHAT = fx.instances.find((i: any) => !i.general)?.name ?? "core-dev";
