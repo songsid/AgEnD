@@ -136,7 +136,12 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const summary = [line(suffix, keys[suffix])];
     if (input.action === "enable") {
       summary.push(line("floor", "floorBefore"));
-      if (view.data.goBack) summary.push(line("goBack", "goBack", new Intl.DateTimeFormat(getLocale(), { dateStyle: "medium", timeStyle: "short", timeZone: view.data.goBack.timeZone }).format(new Date(view.data.goBack.availableUntil))));
+      if (view.data.goBack) {
+        const options: Intl.DateTimeFormatOptions = getLocale() === "zh-TW"
+          ? { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: view.data.goBack.timeZone }
+          : { dateStyle: "medium", timeStyle: "short", timeZone: view.data.goBack.timeZone };
+        summary.push(line("goBack", "goBack", new Intl.DateTimeFormat(getLocale(), options).format(new Date(view.data.goBack.availableUntil))));
+      }
       if (view.data.restartCount) summary.push(line("restart", "restart", view.data.restartCount));
     } else if (input.action === "disable") summary.push(line("offBody", "confirmBody"));
     else if (input.action === "resolve" && input.resolution === "stop-work") summary.push(line("stopBody", "stopBody"));

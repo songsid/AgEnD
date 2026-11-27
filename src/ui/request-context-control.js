@@ -1,6 +1,7 @@
+import { clockFormat } from "/assets/clock-text.js";
 // S-230: the owner switch. Status comes from the host, never from a browser preference or an agent argument.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
-import { lang, register, t } from "/assets/app-i18n.js";
+import { register, t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { confirmedWrite } from "./settings-confirm.js";
@@ -125,7 +126,7 @@ export function RequestContextSettings() {
     if (writing.current || failed || !state || action !== "check" && !state.canChange) return;
     writing.current = true; setBusy(true); setFailed(false);
     try {
-      if (action === "enable" && !await confirmDialog({ title: requestContextControlText("enableTitle"), message: requestContextControlText("floorBefore") + (state.goBack ? "\n\n" + requestContextControlText("goBack", new Intl.DateTimeFormat(lang() === "zh-TW" ? "zh-TW" : "en", { dateStyle: "medium", timeStyle: "short", timeZone: state.goBack.timeZone }).format(new Date(state.goBack.availableUntil))) : "") + (state.restartCount ? "\n\n" + requestContextControlText("restart", state.restartCount) : ""), confirmLabel: requestContextControlText("enable"), danger: true })) return;
+      if (action === "enable" && !await confirmDialog({ title: requestContextControlText("enableTitle"), message: requestContextControlText("floorBefore") + (state.goBack ? "\n\n" + requestContextControlText("goBack", clockFormat({ dateStyle: "medium", timeStyle: "short", timeZone: state.goBack.timeZone }, "en").format(new Date(state.goBack.availableUntil))) : "") + (state.restartCount ? "\n\n" + requestContextControlText("restart", state.restartCount) : ""), confirmLabel: requestContextControlText("enable"), danger: true })) return;
       if (["stop-work", "stop-waiting"].includes(blocker?.action) && !await confirmStopWork(blocker.action)) return;
       if (action === "disable" && !await confirmDialog({ title: requestContextControlText("confirmTitle"), message: requestContextControlText("confirmBody"), confirmLabel: requestContextControlText("confirm"), danger: false })) return;
       if (!lease.current()) return;

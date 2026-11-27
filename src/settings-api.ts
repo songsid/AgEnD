@@ -650,7 +650,7 @@ export function handleSettingsRequest(
 ): boolean {
   const path = url.pathname;
   if (!isSettingsPath(path)) return false;
-  if (handleRequestContextControlApi(req, res, url, ctx.requestContextControl)) return true;
+  if (path === "/api/settings/request-context" && handleRequestContextControlApi(req, res, url, ctx.requestContextControl)) return true;
   // #2667: validated with the ClassicBot rooms there are now — a guest grant naming one is not an unknown name.
   const validateFleet = (config: unknown) => validateFleetConfig(config, { rooms: ctx.classicRoomNames?.() ?? [] });
   const method = req.method ?? "GET";

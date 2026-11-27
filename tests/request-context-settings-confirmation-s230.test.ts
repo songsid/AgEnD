@@ -1,3 +1,4 @@
+import {setLocale} from "../src/locale.js";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
@@ -79,4 +80,11 @@ it("the real bounded baseline captures the control offer consistently with its c
  const first=await baseline.read();expect(first.fingerprint).toBe(baseline.captureCommitted());r.view.revision++;expect((await baseline.read()).fingerprint).not.toBe(first.fingerprint);
  let reads=0;const changed=new SettingsBaselines({dataDir:root,configPath:()=>null,config:()=>null,current:()=>1,requestContextControl:()=>({...r.view,revision:reads++})});
  await expect(changed.read()).rejects.toThrow("settings_changed");
+});
+
+it("the server's zh-TW pending deadline also uses a 24-hour clock",()=>{
+ const r=rig();setLocale("zh-TW");try{
+  const summary=prepareSettingsEffect("POST",path,{revision:4,action:"enable"},{config:null,classic:{},requestContextControl:()=>r.view}).diff!.summary.join(" ");
+  expect(summary).not.toMatch(/上午|下午|凌晨|晚上/);expect(summary).toMatch(/\d{2}:\d{2}/);
+ }finally{setLocale("en");}
 });
