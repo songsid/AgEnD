@@ -23,11 +23,13 @@ probe. The existing usage request timeout is unchanged.
 
 Included-plan spend excludes separately reported overage. Overage capacity and
 charges are separate. Active trial and bonus balances carry expiry timestamps;
-expiry is never represented as a billing reset. A response containing bonus
+expiry is never represented as a billing reset. A response containing ACTIVE bonus
 balances does not establish an included-plan gauge: its hint says that split is
 not measurable. Negative, nonnumeric, zero-limit and relationally impossible
 plan readings are not turned into a quota percentage. A missing or implausible
-reset stays unknown. Neither enabled overage nor HTTP 401/403 means unlimited.
+reset stays unknown. Neither enabled overage nor HTTP 401/403 means unlimited. HTTP 401 also advises
+running `kiro-cli` to sign in again; that advice does not execute a refresh.
+Expired historical bonus entries do not suppress the current plan gauge.
 
 Validation is offline: synthetic SQLite stores and intercepted HTTP responses.
 The matrix includes five response plan titles with each authentication flow,
@@ -67,8 +69,9 @@ Main integration
 
 This is the standalone main twin, based on main 3a00d3ed. The complete Kiro
 collector block and identity reader are byte-identical to release implementation
-a8bebb806. Main's other provider, locale and account UI changes are preserved by
-applying only the feature patch. Seven named offline suites pass 121 tests on
-main, and source and test typechecks pass. The original release bindings remain
+c05bb408f after the R1 correction. Main's other provider, locale and account UI changes are preserved by
+applying only the feature patch. The initial integration ran seven named offline suites: 121 tests passed on
+main. The R1 correction adds the expired-bonus and actionable-401 controls: the
+current matrix/localization run passes 41 tests, and both typechecks pass. The original release bindings remain
 in release-verification.json; verification.json binds this main integration.
 The same release HOLD applies. No additional vendor or browser probe was used.

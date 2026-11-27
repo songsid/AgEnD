@@ -1,7 +1,7 @@
 {
   "scope": "Standalone main integration, not stacked on the release branch",
   "base": "3a00d3edba0032f8fe34b56d02dfa186dc517c48",
-  "release_implementation": "a8bebb8063d32c8dafc53d7300a698b80bfe12fc",
+  "release_implementation": "c05bb408fab9dfed4ca3d61c9f53a5043150a768",
   "collector_block_equal": true,
   "identity_reader_equal": true,
   "whole_file_equal_to_release": [
@@ -14,7 +14,8 @@
   ],
   "offline_integration": {
     "files": 7,
-    "passes": 121
+    "passes": 121,
+    "scope": "Historical initial main integration, outside R1 correction"
   },
   "source_types": {
     "errors": 0
@@ -29,23 +30,23 @@
     },
     {
       "path": "src/usage/providers.ts",
-      "sha256": "2380b77a23b716b47814a134a37da845b284176a4ac514368f4038e02873627b"
+      "sha256": "eaf67cdda278e58f4c43f806eedb017adac23935f00b4f6c5951f6eb9d0d25c0"
     },
     {
       "path": "src/usage/i18n-keys.ts",
-      "sha256": "98066ed96a75fdd11bd8befa512e10b182b2114f3f1aa2d8a69d9d04cef489c2"
+      "sha256": "a3037a729e798c9c3dfac1ca1c6fe3a65836a3dfb94c1f48425e59abc781508a"
     },
     {
       "path": "src/locale.ts",
-      "sha256": "577dc6ac8813bbb7947c761c62d3ae36a88bad4d1e80c0903536cb67578de7b3"
+      "sha256": "7aa0d33180dc796cb795981059bfdc49630cff738558341811e6850b972bc486"
     },
     {
       "path": "src/ui/shared/view-strings.js",
-      "sha256": "941863ec1d6040c23ab23b66721749a0ed668dba33ba951413cdc8c777037194"
+      "sha256": "3b8cfa2fa82882b3ee5b726c0358ee4ddca59ab4e0b3575ecded4bf1da74acdb"
     },
     {
       "path": "tests/kiro-entitlements-m3863.test.ts",
-      "sha256": "a449ffef70ac5942d276b0330726ea4167b13dc003f35212b880a5e494d877e6"
+      "sha256": "61857b399795bf95648c26266034ad9b5eef1dcd6c77ee857f0739c0e2214ca1"
     },
     {
       "path": "tests/kiro-usage-auth-kind.test.ts",
@@ -73,5 +74,15 @@
     "Release proof retained separately as historical evidence",
     "No native/browser campaign",
     "Same HOLD for 2.4.0 cut; source review only"
-  ]
+  ],
+  "pre_r1_commit": "e335d9b89004066c2cc10cd0860b7e21d091094e",
+  "r1": {
+    "files": 2,
+    "passes": 41,
+    "matrix_controls": 36,
+    "source_types_errors": 0,
+    "test_types_errors": 0,
+    "unrelated_provider_prefix_equal": true,
+    "scope": "Same ACTIVE bonus and HTTP401 correction as release; baseline 2 assertion failures there."
+  }
 }
