@@ -7,7 +7,7 @@
  * update; the retained entry it returned to is then marked used. A go-back is not itself go-back-able.
  *
  * Offered (`readGoBackOffer`) only for a committed, unexpired, unused entry whose `from` version speaks this transaction
- * (`txProtocol`), whose artifacts are present and verify, on a systemd or detached install (launchd: S-260). retained.json
+ * (`txProtocol`), whose artifacts are present and verify, on a systemd, launchd or detached install. retained.json
  * is never permission on its own: S-230's guard (`requestContextGoBackAllowed`, injected until #4519 lands) is asked
  * under the locks before the attempt opens, and again at snapshotted → installing against the fresh snapshot.
  */
@@ -67,7 +67,6 @@ function unavailableReason(home: string, e: RetainedEntry, now: number, io: Jour
   if (!record || record.stage !== "committed") return `the update to ${e.version} isn't recorded as committed`;
   const id = identityOf(record);
   if (!id) return "the update's recorded ownership is missing or malformed";
-  if (id.ownership.service?.kind === "launchd") return "Go back isn't available on macOS service installs yet";
   if (!readManifest(e.snapshotDir)) return "the snapshot from before the update is missing or unreadable";
   const pre = readAttemptPreimage(e.preimage.dir, e.preimage.manifestSha256);
   if (!pre.ok) return `the package from before the update doesn't verify: ${pre.reason}`;

@@ -159,6 +159,13 @@ export function removeRecoveryRoute(home: string, attempt: AttemptRecord, deps: 
   try { current = readFileSync(service.fragmentPath, "utf8"); }
   catch (err) { return { ok: false, reason: `${service.fragmentPath} can't be read (${(err as Error).message}); the wrapper stays` }; }
   // Only this route's own wrapper is taken off (Fable #4517 F3); the preimage already in place is done.
+  // S-260 (Fable #4565): the candidate is bound to the attempt's outcome. A Go back that is committing or committed ends
+  // on the definition it returned to (restoreUnit's preimageOf wrote it inside this attempt's wrapper); every other
+  // outcome (rolled back, abandoned, resolved) ends on this attempt's own preimage. Exactly that one, or nothing.
+  if (attempt.kind === "go-back" && attempt.goBackOf && (attempt.stage === "committing" || attempt.stage === "committed")) {
+    try { kept = readFileSync(unitPreimagePath(home, attempt.goBackOf)); }
+    catch (err) { return { ok: false, reason: `the definition Go back returns to can't be read (${(err as Error).message}); the wrapper stays` }; }
+  }
   if (current === kept.toString("utf8")) return { ok: true, path: service.fragmentPath };
   const wrapped = wrappedFromPreimage(home, attempt.id, kept.toString("utf8"), deps.plistArgs);
   if (!wrapped.ok || current !== wrapped.xml) return { ok: false, reason: `${service.fragmentPath} isn't this route's wrapper any more; it is left as it is` };
@@ -187,10 +194,13 @@ export function unwrapRecoveryRoute(argv: string[], home: string, deps: { verify
   if (!deps.verifyKit(id)) return null;
   const own = readAttemptRecord(home, id, io);
   if (!own || !TERMINAL.has(own.stage) || own.stage === "manual-recovery") return null;
+  // S-260: a COMMITTED Go back's job wraps the definition it returned to (the committed attempt's preimage); any other
+  // attempt's wraps its own preimage.
+  const preimageId = own.kind === "go-back" && own.stage === "committed" && own.goBackOf ? own.goBackOf : id;
   const read = readCurrent(home, io);
   if (read.state === "unknown" || read.state === "open" || read.state === "manual") return null;
   let preimage: string;
-  try { preimage = readFileSync(unitPreimagePath(home, id), "utf8"); } catch { return null; }
+  try { preimage = readFileSync(unitPreimagePath(home, preimageId), "utf8"); } catch { return null; }
   const original = deps.plistArgs(preimage);
   const tail = argv.slice(8);
   if (!original || original.length !== tail.length || original.some((w, i) => w !== tail[i])) return null;

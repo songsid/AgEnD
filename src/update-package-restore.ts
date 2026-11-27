@@ -189,11 +189,13 @@ function isLink(p: string): boolean { try { return lstatSync(p).isSymbolicLink()
  * plist reload with no start job in progress — the caller's).
  */
 export function restoreUnit(home: string, attempt: AttemptRecord, opts: { keepRoute: boolean; plistArgs(xml: string): string[] | null; reload(): boolean;
-  /** §5.7 Go back (rev 16): the committed attempt whose unit preimage is written (read only); the route stays this attempt's. systemd only. */
+  /**
+   * §5.7 Go back (rev 16): the committed attempt whose unit preimage is written (read only); the route stays this
+   * attempt's. On launchd (S-260) that is the committed preimage's arguments inside THIS attempt's wrapper.
+   */
   preimageOf?: string }, steps: Substeps): StepResult {
   const service = identityOf(attempt)?.ownership.service;
   if (!service) return { ok: false, manual: true, reason: "the attempt records no service" };
-  if (opts.preimageOf && service.kind !== "systemd") return { ok: false, manual: true, reason: "Go back restores a systemd unit only" };
   let preimage: Buffer;
   try { preimage = readFileSync(unitPreimagePath(home, opts.preimageOf ?? attempt.id)); }
   catch (err) { return { ok: false, manual: true, reason: `the unit's preimage can't be read (${(err as Error).message})` }; }
