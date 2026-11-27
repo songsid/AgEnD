@@ -1184,7 +1184,9 @@ const UPDATE_CHAT_CARD_FILE = "update-chat-card.json";
 /** The chat card's buttons live a week (Not now's own length); a newer card replaces them sooner. */
 const UPDATE_CHAT_CARD_MS = 7 * 24 * 60 * 60_000;
 /** `actions`: the buttons it was posted with (M-3864 R1; absent on an older record: all three). `refused`: its last press was refused, and its text says why. */
-interface UpdateChatCardRecord { version: string; state: string; nonce: string | null; messageId: string; chatId: string; threadId?: string; adapterId: string; at: number; actions?: string; refused?: boolean }
+interface UpdateChatCardRecord { version: string; state: string; nonce: string | null; messageId: string; chatId: string; threadId?: string; adapterId: string; at: number; actions?: string; refused?: boolean;
+  /** Prism #4584 (2): the reason it named for not updating here, if any: a different reason posts it again. */
+  blocking?: string }
 type UpdateChatCardAction = "when-idle" | "tonight" | "not-now";
 const UPDATE_CHAT_CARD_ALL: readonly UpdateChatCardAction[] = ["when-idle", "tonight", "not-now"];
 const HUB_SHARING_CALLBACK_PREFIX = "hub-share:";
@@ -2912,6 +2914,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private updateChatCardVersion = new Map<string, string>();
   /** #4485 review 2: an answer that came while its card was still being posted (the post records it when it returns). */
   private updateChatCardAnswered = new Map<string, string>();
+  /** Prism #4584 (1): a press refused while its card was still being posted (the post records it, so it isn't relabelled expired). */
+  private updateChatCardRefused = new Set<string>();
   private updateChatCardTimer: ReturnType<typeof setInterval> | null = null;
   private readUpdateChatCard(): UpdateChatCardRecord | null {
     try { const r = JSON.parse(readFileSync(join(this.dataDir, UPDATE_CHAT_CARD_FILE), "utf8")); return r && typeof r.messageId === "string" ? r as UpdateChatCardRecord : null; }
@@ -2986,7 +2990,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const live = !!posted?.nonce && this.pendingNonceButtons.get(posted.nonce)?.prefix === UPDATE_CARD_CALLBACK_PREFIX;
       // M-3864 R1: a card whose buttons the machine no longer allows (or newly allows) is posted again with the right ones.
       const actions = this.updateChatCardActions(), actionsKey = actions.join(",");
-      const sameActions = (posted?.actions ?? UPDATE_CHAT_CARD_ALL.join(",")) === actionsKey;
+      // Prism #4584 (2): and the reason it gives for not updating here (another stop keeps Not now only but must say so).
+      const blockingCheck = this.updatePreflight ? preflightBlocking(this.updatePreflight) : null;
+      const blockingKey = blockingCheck ? preflightWords(blockingCheck, (key, ...args) => t(key, ...args)) : "";
+      const sameActions = (posted?.actions ?? UPDATE_CHAT_CARD_ALL.join(",")) === actionsKey && (posted?.blocking ?? "") === blockingKey;
       if (view && state === "offered" && view.installable && (!posted || posted.version !== view.version || posted.state !== "offered" || !live || !sameActions)) {
         const place = this.updateChatCardPlace();
         if (!place) return;
@@ -3022,12 +3029,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const sent = this.updateChatCardSent.get(nonce);
         const answered = this.updateChatCardAnswered.get(nonce);
         this.updateChatCardAnswered.delete(nonce);
-        this.writeUpdateChatCard({ version, state: answered ?? "offered", nonce: answered ? null : nonce, messageId: sent?.messageId ?? "",
+        const refused = this.updateChatCardRefused.delete(nonce);
+        this.writeUpdateChatCard({ version, state: answered ?? "offered", nonce: answered || refused ? null : nonce, messageId: sent?.messageId ?? "",
           chatId: sent?.chatId ?? place.chatId, ...((sent?.threadId ?? place.threadId) ? { threadId: sent?.threadId ?? place.threadId } : {}),
-          adapterId: place.adapterId, at: Date.now(), actions: actionsKey });
-        // The card may have moved on while this was being posted (a newer version, an answer on the web): sync again.
+          adapterId: place.adapterId, at: Date.now(), actions: actionsKey, ...(blockingKey ? { blocking: blockingKey } : {}), ...(refused ? { refused: true } : {}) });
+        // The card may have moved on while this was being posted (a newer version, an answer on the web), or a press on it
+        // was refused (the machine changed): sync again.
         const after = this.updateOfferView();
-        if (!answered && (after?.version !== version || (after?.state ?? "none") !== "offered")) this.updateChatCardAgain = true;
+        if (refused || !answered && (after?.version !== version || (after?.state ?? "none") !== "offered")) this.updateChatCardAgain = true;
         return;
       }
       if (posted && posted.state !== state) {
@@ -3100,6 +3109,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (r.ok) {
         // The card is still being posted (its record is written when the post returns): it records this answer then.
         this.updateChatCardAnswered.set(nonce, nextState);
+      } else {
+        // Prism #4584 (1): a refusal too, so that post records its text as what the message says (not expired).
+        this.updateChatCardRefused.add(nonce);
       }
     } catch (err) {
       text = t("update.chatcard.refused", (err as Error).message);

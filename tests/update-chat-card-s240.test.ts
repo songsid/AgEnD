@@ -371,6 +371,45 @@ describe("M-3864 R1: the chat card offers what this machine allows, and says why
       expect(g.edits.join("|")).not.toMatch(/expired/);
     } finally { await f.stop(); }
   });
+  it("Prism #4584 (1): a press refused while its card is still being posted keeps its words; the next card follows the machine", async () => {
+    setLocale("en");
+    const f = await fleet();
+    try {
+      const g = await general(f);
+      vi.spyOn(f.fm, "refreshUpdatePreflight").mockResolvedValue(undefined);
+      let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+      g.adapter.notifyAlert.mockImplementationOnce(async (_c: string, alert: any) => { g.alerts.push(alert); await gate; return { chatId: "-100", threadId: "7", messageId: "m-real" }; });
+      offer(f); await vi.waitFor(() => expect(g.alerts).toHaveLength(1));
+      f.fm.updatePreflight = STOP;
+      const id = g.alerts[0].choices.find((c: any) => c.id.endsWith(":when-idle")).id as string;
+      await f.fm.handleUpdateCardCallback({ callbackData: id, userId: "1", username: "Example owner", chatId: "-100", threadId: "7", messageId: "m-real", ack: vi.fn() }, "tg", g.adapter);
+      expect(g.retired.at(-1)).toBe("This machine can't be updated from here: AgEnD runs in a container; update the image. Nothing was changed.");
+      const before = g.retired.length;
+      release();
+      await vi.waitFor(() => expect(g.alerts).toHaveLength(2));                           // posted again, with what the machine allows
+      expect(g.alerts[1].choices.map((c: any) => c.label)).toEqual(["Not now"]);
+      expect(g.retired.slice(before)).toEqual([]);
+      expect(g.edits.join("|")).not.toMatch(/expired/);
+    } finally { await f.stop(); }
+  });
+  it("Prism #4584 (2): another reason it can't update here (same Not now only) posts the card again with the new reason", async () => {
+    setLocale("en");
+    const f = await fleet();
+    try {
+      const g = await general(f);
+      vi.spyOn(f.fm, "refreshUpdatePreflight").mockResolvedValue(undefined);
+      f.fm.updatePreflight = STOP;
+      offer(f); await vi.waitFor(() => expect(g.alerts).toHaveLength(1)); await settle();
+      f.fm.updatePreflight = { class: "stop", checkedAt: 1, pressHere: false, checks: [{ id: "P8", ok: false, code: "update-running", detail: { path: "another-update" } }] };
+      await f.fm.syncUpdateChatCard();
+      await vi.waitFor(() => expect(g.alerts).toHaveLength(2));
+      expect(g.alerts[1].choices.map((c: any) => c.label)).toEqual(["Not now"]);
+      expect(JSON.stringify(g.alerts[1])).toContain("another AgEnD update is running here (another-update); wait for it to finish.");
+      expect(g.retired.at(-1)).toBe("A newer card replaced this one (2.3.5-beta.3).");
+      await settle(); await f.fm.syncUpdateChatCard();
+      expect(g.alerts).toHaveLength(2);
+    } finally { await f.stop(); }
+  });
   it("a fresh pre-flight result brings the card in line by itself", async () => {
     setLocale("en");
     const f = await fleet();
