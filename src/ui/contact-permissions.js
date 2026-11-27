@@ -21,6 +21,7 @@ import { REASONS } from "./contact-authorizations.js";
 import { groupWouldDisable } from "./contact-tool-groups.js";
 import { dateTimeText } from "/assets/clock-text.js";
 import { register, t } from "/assets/app-i18n.js";
+import { AuthorizeChip } from "/assets/web-authorize.js";
 // M-3736 J (S-228, design #4456 §6): once the same-card host is installed, Clear retained origin is no longer a way out —
 // each request is judged on its own card — so its button and the notes that point to it go; what it did stays as history.
 import { sameCardState } from "./request-contact-client.js";
@@ -127,7 +128,9 @@ export function ContactPermissionsPanel({ name }) {
   const p = perm.data;
   useEffect(() => { setEditing(null); }, [name, p?.revision]);
   if (!p && perm.loading !== false && !perm.error) return html`<${Skeleton} lines=${5} label=${ca("loading")} />`;
-  if (!p) return perm.error === "verification-required" ? html`<p class="note contact-verify">${ca("verifyFirst")}</p>`
+  // M-3864 R6: the way to authorize, or why this browser can't be and where to fix that (a code sign-in: /web from the chat).
+  if (!p) return perm.error === "verification-required" ? html`<div class="contact-verify"><p class="note">${ca("verifyFirst")}</p><${AuthorizeChip} />
+      <button type="button" class="btn btn-sm" onClick=${() => void perm.read()}>${ca("retry")}</button></div>`
     : perm.error === "forbidden" ? html`<p class="note contact-forbidden">${ca("forbidden")}</p>`
     : html`<${ErrorState} message=${ca(perm.error === "unavailable" ? "unavailable" : "loadFailed")} onRetry=${() => void perm.read()} />`;
   // Who may change what (the server says; Sentinel's seam): the source room's admins its mode and tools (canSetMode); the

@@ -83,8 +83,8 @@ describe("the pages say to verify, in en and zh-TW", () => {
     await settle(6);
     return text(pg.root);
   }
-  const VERIFY = { en: "Permissions and contact requests need a verified administrator. Verify your identity in Sign-in status (Authorize this browser), then try again.",
-    "zh-TW": "權限和聯絡申請需要已驗證的管理員。請先在「登入狀態」按「授權這個瀏覽器」驗證身分，再試一次。" } as const;
+  const VERIFY = { en: "Permissions and contact requests need a verified administrator. Authorize this browser, then try again.",
+    "zh-TW": "權限和聯絡申請需要已驗證的管理員。請先授權這個瀏覽器，再試一次。" } as const;
   it.each([["list", "en"], ["list", "zh-TW"], ["agent", "en"], ["agent", "zh-TW"]] as const)("%s page, %s: verification-required says where to verify", async (which, language) => {
     const said = await show(which, language, { status: 403, body: { error: "verification-required" } });
     expect(said).toContain(VERIFY[language]);
