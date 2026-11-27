@@ -5674,3 +5674,5 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* One neutral viewport for Hub startup, before any workspace identity is drawn. */
 .session-loading-page { display: grid; place-items: center; min-height: 100dvh; box-sizing: border-box; margin: 0; padding: var(--s-4); background: var(--bg); color: var(--text-2); }
+/* Like .sk-boot, the initial frame is visible immediately, without content's anti-flash delay. */
+.session-loading-page .skeleton { opacity: 1; animation: none; }
