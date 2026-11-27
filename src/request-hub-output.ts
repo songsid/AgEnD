@@ -20,3 +20,12 @@ export function requestHubRoomMatches(scope:RequestHubOutputScope|undefined,hubI
  return !!c&&!!a&&c.ingress==="hub"&&"platform"in a&&a.platform==="hub"&&a.hubId===hubId
   &&["hub","room"].includes(c.sourceAudience.kind)&&c.sourceAudience.ref===room&&scope.current();
 }
+
+/** A sensitive room read is bound to the original group audience, never a 1:1 or later return target. */
+export function requestHubHistoryMatches(scope:RequestHubOutputScope|undefined,hubId:string|undefined,room:string):boolean {
+ if(!scope)return false; // Off has no current-ask lease here: retained asks/generation are not a tool-call binding.
+ const c=scope.context;if(!c||!scope.current())return false;
+ if(c.ingress!=="hub")return true;
+ const a=c.initiatingActor;
+ return "platform"in a&&a.platform==="hub"&&a.hubId===hubId&&c.sourceAudience.kind==="room"&&c.sourceAudience.ref===room;
+}

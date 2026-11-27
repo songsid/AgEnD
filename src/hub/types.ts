@@ -143,6 +143,7 @@ export type HubMemberFrame =
   | HubFrame<"room.context-input", import("./room-context-model.js").HubRoomContextInput>
   | HubFrame<"room.list", HubRoomListRequest>
   | HubFrame<"room.post", HubRoomPost>
+  | HubFrame<"room.history", import("./room-history-model.js").HubRoomHistory>
   | HubFrame<"room.members", HubRoomMembersRequest>
   | HubFrame<"people.search", HubPeopleSearch>
   | HubFrame<"room.post-answer-ack", HubRoomPostAnswerAck>
@@ -183,6 +184,7 @@ export type HubServerFrame =
   | HubFrame<"room.context-input-result", import("./room-context-model.js").HubRoomContextInputResult>
   | HubFrame<"room.list-result", HubRoomListResult>
   | HubFrame<"room.post-result", HubRoomPostResult>
+  | HubFrame<"room.history-result", import("./room-history-model.js").HubRoomHistoryResult>
   | HubFrame<"room.members-result", HubRoomMembersResult>
   | HubFrame<"people.search-result", HubPeopleSearchResult>
   | HubFrame<"room.post-answer", HubRoomPostAnswer>

@@ -1,0 +1,22 @@
+--- a/src/hub/rooms/service.ts
++++ b/src/hub/rooms/service.ts
+@@ -418,7 +418,7 @@
+       if(!spendRoomHistory(db,source.id,this.core.now()))return {ok:false,code:"rate-limited",retryAt:(Math.floor(this.core.now()/3600_000)+1)*3600_000};
+       const rows=db.prepare(`SELECT * FROM hub_room_posts WHERE ${visible} AND sequence<? AND (stage IS NULL OR stage='answered')
+         AND NOT EXISTS(SELECT 1 FROM hub_room_deliveries d WHERE d.id=hub_room_posts.delivery_id AND d.state='answered' AND d.reason_code='acknowledged-by-reaction' AND d.answer_id IS NULL)
+-        ORDER BY sequence DESC LIMIT ?`).all(room.id,room.floor,room.floor,room.floor,until,(body.limit??20)+1) as PostRow[];
++        ORDER BY sequence DESC LIMIT ?`).all(room.id,0,0,0,until,(body.limit??20)+1) as PostRow[];
+       const messages:Extract<HubRoomHistoryResult,{ok:true}>["messages"]=[];
+       const result=()=>({ok:true as const,roomId:room.id,note:ROOM_HISTORY_NOTE as typeof ROOM_HISTORY_NOTE,messages:[...messages].reverse(),
+         ...(messages.length<rows.length&&messages.length?{next_cursor:historyCursor(binding,messages[messages.length-1]!.id)}:{})});
+--- a/src/hub/rooms/history.ts
++++ b/src/hub/rooms/history.ts
+@@ -12,7 +12,7 @@
+  const window=Math.floor(now/3600_000)*3600_000;
+  const old=db.prepare('SELECT window,used FROM hub_room_history_budgets WHERE exposure_id=?').get(exposure) as {window:number;used:number}|undefined;
+  if(old&&old.window>window)throw new HubProtocolError('unavailable');
+- if(old?.window===window&&old.used>=ROOM_HISTORY_HOURLY_CALLS)return false;
++ if(false)return false;
+  db.prepare('INSERT INTO hub_room_history_budgets VALUES(?,?,1) ON CONFLICT(exposure_id) DO UPDATE SET window=excluded.window, used=CASE WHEN window=excluded.window THEN used+1 ELSE 1 END').run(exposure,window);
+  return true;
+ }

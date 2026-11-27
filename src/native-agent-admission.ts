@@ -30,6 +30,12 @@ export function nativeAgentAdmissionContext(ctx: AgentEndpointContext, input: {
         return Reflect.apply(value, target, [{ ...original, ...(requestScope?{requestScope}:{}), callerCurrent: () => input.current()
           && (!input.requestContext || input.requestContext.current()) && (typeof previous !== "function" || previous()) }, ...args.slice(1)]);
       };
+      if(ctx.requestContextPolicy&&key==="hubRoomHistory"&&typeof value==="function")return (...args:unknown[])=>{
+        assert();policy("hub_room_history",{...(object(args[2])?args[2]:{}),room:args[1]});
+        if(!object(args[0])||args[0].agent!==input.instance)throw Error("Invalid scoped Hub caller");
+        const previous=args[0].current,historyPolicy=ctx.requestContextPolicy;
+        return Reflect.apply(value,target,[{...args[0],requestScope:captureRequestHubOutput(admission),current:()=>ctx.requestContextPolicy===historyPolicy&&input.current()&&(!input.requestContext||input.requestContext.current())&&(typeof previous!=="function"||previous())},...args.slice(1)]);
+      };
       if(ctx.requestContextPolicy&&key==="hubRoomPost"&&typeof value==="function")return (...args:unknown[])=>{assert();policy("hub_room_post",object(args[1])?{...args[1],receiptId:args[1].receiptId}:{});if(!object(args[0])||args[0].agent!==input.instance)throw Error("Invalid scoped Hub caller");return Reflect.apply(value,target,[{...args[0],requestScope:captureRequestHubOutput(admission)},...args.slice(1)]);};
       if (key === "admitDurableDelivery" && typeof value === "function") return (...args: unknown[]) => {
         assert();

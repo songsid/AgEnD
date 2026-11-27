@@ -1,3 +1,4 @@
+import {HUB_ROOM_HISTORY_MIGRATION} from "../rooms/history.js";
 import { HUB_ROOM_AGENT_DISCOVERY_MIGRATION } from "../room-agent-discovery-model.js";
 import { HUB_LAPSE_EVIDENCE_MIGRATION } from "../lapse-carry.js";
 import {HUB_ROOM_PURPOSE_MIGRATION} from "../rooms/purpose.js";
@@ -129,6 +130,7 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   } }),
   HUB_ROOMS_MIGRATION,
   HUB_ROOM_MEMBER_AGENTS_MIGRATION,
+  HUB_ROOM_HISTORY_MIGRATION,
   HUB_ROOM_PURPOSE_MIGRATION,
   HUB_ROOM_AGENTS_MIGRATION,
   HUB_SHARING_WITHDRAWAL_MIGRATION,
