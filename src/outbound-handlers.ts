@@ -1565,6 +1565,19 @@ const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
     } catch (err) { respond(null, err instanceof Error ? err.message : WINDOWS_CONFIG_REFUSED); }
     return;
   }
+  // M-3694 (S-263): effort, as the agent's Settings page and /effort set it (FleetManager.applyEffort: clamped to what
+  // its CLI takes, saved, switched in the session or restarted). With a backend switch it rides the switch's own launch
+  // check; with anything else it is its own call. Never the caller itself: a restart would end the turn asking.
+  if (v.data.config.effort !== undefined && v.data.config.backend === undefined) {
+    const others = Object.entries(v.data.config).filter(([key, value]) => key !== "effort" && value !== undefined);
+    if (others.length) { respond(null, "Set effort in its own update_instance_config call (or together with a backend switch)."); return; }
+    if (selfTarget) { respond(null, "Not changed: an agent doesn't set its own effort (a restart would end this turn). The person sets it in Settings, or with /effort in its topic."); return; }
+    const fm = ctx as unknown as { applyEffort?(n: string, level: string): Promise<string> };
+    if (!fm.applyEffort) { respond(null, "Effort can't be set here"); return; }
+    try { respond({ success: true, name: v.data.name, effort: v.data.config.effort, result: await fm.applyEffort(v.data.name, v.data.config.effort) }); }
+    catch (err) { respond(null, `Failed to set effort: ${(err as Error).message}`); }
+    return;
+  }
   applyInstanceConfigPatch(ctx, v.data.name, v.data.config, respond);
 };
 
@@ -1602,10 +1615,10 @@ async function updateClassicRoomProfile(ctx: OutboundContext, name: string, rawC
 
 /**
  * What update_instance_config merges into an instance — and, in-process only, what chat `/backend` (#1806) needs on
- * top: `effort`, and `null` for `model`/`effort` meaning "back to the inherited value". The MCP schema stays as it is,
- * so an agent can do neither.
+ * top: `null` for `model`/`effort` meaning "back to the inherited value", which no agent can send. An agent's `effort`
+ * (M-3694) is a level only: alone it goes through applyEffort, with a backend switch through this write.
  */
-export type InstanceConfigPatch = Omit<z.infer<typeof UpdateInstanceConfigArgs>["config"], "model">
+export type InstanceConfigPatch = Omit<z.infer<typeof UpdateInstanceConfigArgs>["config"], "model" | "effort">
   & { model?: string | null; effort?: string | null };
 
 /**
