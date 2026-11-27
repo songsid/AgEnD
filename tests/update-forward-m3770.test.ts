@@ -147,6 +147,24 @@ describe("M-3770 2.5: the update, forward to committed", () => {
     expect(endState(w)).toEqual(COMMITTED);
   });
 
+  it("between the clean stop and the fresh fence a foreign fleet takes fleet.lock (Restart=, a manual start): refused, never overwritten (Fable)", () => {
+    const w = world();
+    const base = w.deps();
+    const FOREIGN = 7777;
+    const foreign = JSON.stringify({ pid: FOREIGN, nonce: "c".repeat(32), createdAt: new Date().toISOString(), role: "fleet" }) + "\n";
+    const r = runUpdate(w.home, w.attempt, PLAN, w.deps({ manager: { ...base.manager, stop: () => {
+      const ok = base.manager.stop();
+      w.alive.add(FOREIGN);
+      writeFileSync(join(w.home, "fleet.lock"), foreign);                                            // it lands right after the stop
+      return ok;
+    } } }));
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.reason).toMatch(/pid 7777/);
+    expect(readFileSync(join(w.home, "fleet.lock"), "utf8")).toBe(foreign);                           // untouched
+    expect(w.alive.has(FOREIGN)).toBe(true);
+    expect(w.calls).not.toContain("install");
+  });
+
   it("the barrier is asked while the attempt is still opened (the old fleet's barrier.arm is valid only there); the stage records it after", () => {
     const w = world();
     const seen: string[] = [];

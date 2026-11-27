@@ -9,7 +9,7 @@ import { appendFileSync, chmodSync, existsSync, openSync, mkdirSync, mkdtempSync
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { readFleetLockRecord } from "../src/fleet-lock.js";
 import { readCurrent, readAttemptRecord } from "../src/update-journal.js";
 import { realHostEnv, type HostEnv } from "../src/update-host.js";
@@ -19,11 +19,22 @@ import { selectUpdatePhase } from "../src/update-phase.js";
 const REPO = join(import.meta.dirname, "..");
 const STAND_IN = join(REPO, "tests", "support", "update-rig-fleet.ts");
 const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null; exists(pid: number): boolean };
-const children: ChildProcess[] = [], dirs: string[] = [];
-afterEach(() => {
-  for (const c of children.splice(0)) { try { c.kill("SIGKILL"); } catch { /* gone */ } }
+const children: ChildProcess[] = [], dirs: string[] = [], everyPid: number[] = [];
+/** Alive and not a zombie (a stand-in this test started is reaped only when the event loop runs). */
+const standInAlive = (pid: number) => {
+  try { process.kill(pid, 0); } catch { return false; }
+  try { return !/^\d+ \(.*\) Z /s.test(readFileSync(`/proc/${pid}/stat`, "utf8")); } catch { return false; }
+};
+// Fable (part 7): every stand-in is killed by its recorded pid — after each test, pass or fail — and its scratch home
+// and prefix removed by this test's own paths; at the end none may be alive (a detached one left behind would keep a
+// lock file and its poll running on the host or a CI runner).
+afterEach(async () => {
+  for (const c of children.splice(0)) { if (c.pid) { try { process.kill(c.pid, "SIGKILL"); } catch { /* gone */ } } }
+  const end = Date.now() + 5000;
+  while (everyPid.some(standInAlive) && Date.now() < end) await new Promise(r => setTimeout(r, 50));
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
+afterAll(() => { expect(everyPid.filter(standInAlive)).toEqual([]); });
 const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const until = (ok: () => boolean, ms = 15_000) => { const end = Date.now() + ms; while (!ok()) { if (Date.now() > end) throw new Error("rig: timed out"); sleepSync(50); } };
 
@@ -53,7 +64,7 @@ function rig(o: { busy?: boolean; unhealthy?: boolean } = {}) {
     const err = openSync(join(root, `${label}.stderr`), "a");
     const child = spawn(process.execPath, ["--import", "tsx", STAND_IN, home, label], { cwd: REPO, detached: true, stdio: ["ignore", err, err],
       env: { ...process.env, ...env, ...(label === "trial" && o.unhealthy ? { RIG_UNHEALTHY: "1" } : {}), ...(o.busy ? { RIG_BUSY: "1" } : {}) } });
-    child.unref(); children.push(child);
+    child.unref(); children.push(child); if (child.pid) everyPid.push(child.pid);
     return child;
   };
   const events = () => { try { return readFileSync(join(home, "rig-events.log"), "utf8").trim().split("\n").map(l => l.split(" ").filter((_, i) => i !== 1).join(" ")); } catch { return []; } };
