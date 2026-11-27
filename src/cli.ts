@@ -20,7 +20,7 @@ checkNodeVersion();
 
 import { Command, Option } from "commander";
 import { registerBugReportCommand } from "./bug-report-cli.js";
-import { join, dirname } from "node:path";
+import { join, dirname, parse } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
 import { Cron } from "croner";
 import {
@@ -62,7 +62,7 @@ import {
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, readUpdateProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
 import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
-import { dropUpdateNpmBounds, withoutUpdateNpmBounds } from "./update-npm-env.js";
+import { dropUpdateNpmBounds, npmGlobalPrefix, withoutUpdateNpmBounds } from "./update-npm-env.js";
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { fleetServiceOwner } from "./fleet-service-owner.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
@@ -1568,7 +1568,7 @@ program
           { pkg: `@songsid/agend@${pkgVersion}`, targetVersion: pkgVersion, viaNvm: false, nvmSh },
           {
             run: (command, args, options = {}) => {
-              const result = spawnSync(command, args, { encoding: "utf-8", timeout: options.timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
+              const result = spawnSync(command, args, { encoding: "utf-8", timeout: options.timeoutMs, stdio: ["ignore", "pipe", "pipe"], ...(options.cwd ? { cwd: options.cwd } : {}) });
               return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
             },
             log: message => console.log(message),
@@ -1631,7 +1631,16 @@ program
     // ── Check if npm global needs sudo (read-only; decides the nvm path the preflight judges) ──
     let needsSudo = false;
     try {
-      const prefix = execSync("npm config get prefix", { encoding: "utf-8" }).trim();
+      // M-3806: for a UUID in the path, `npm config get prefix` refuses (npm 10–12): read `npm prefix -g`, which npm
+      // 11/12 print with `***`; that is asked the way npm tells a child, from the filesystem root (Fable #4526 F2).
+      // No answer at all: as before, assume no sudo.
+      const quiet = { encoding: "utf-8" as const, stdio: ["ignore", "pipe", "ignore"] as Array<"ignore" | "pipe"> };
+      const said = (command: string, cwd?: string) => { try { return execSync(command, cwd ? { ...quiet, cwd } : quiet); } catch { return ""; } };
+      let configured = said("npm config get prefix");
+      if (!npmGlobalPrefix.lastLine(configured) || npmGlobalPrefix.masked(configured)) configured = said("npm prefix -g");
+      const prefix = npmGlobalPrefix.resolve(configured, undefined,
+        () => said(`npm ${npmGlobalPrefix.ASK.slice(0, 2).join(" ")} "${npmGlobalPrefix.ASK[2]}"`, npmGlobalPrefix.neutralCwd())).prefix;
+      if (!prefix) throw new Error("npm did not say where it installs global packages");
       const { accessSync, constants } = await import("node:fs");
       try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
     } catch { /* assume no sudo needed */ }
@@ -1683,8 +1692,11 @@ program
       markUpdateInProgress(DATA_DIR);
       setUpdateProgressStage(DATA_DIR, "downloading", { version: targetVersion! });
       // AGEND_UPDATE_OWNER_PID: the marker this process just wrote is the installer's to carry on (and no one else's).
+      // M-3812: from the filesystem (drive) root, never the folder `agend update` was started in. Inside a project npm
+      // exec puts its node_modules/.bin first on PATH, and the installer would run on that project's own `node`. `pkg`
+      // is a registry spec (an exact version), so it does not depend on the folder.
       const installer = spawnSync("npm", ["exec", "--yes", "--package", pkg, "--", "agend-install", "--upgrade", "--target", targetVersion!], {
-        stdio: "inherit", env: { ...withOrigin("agend-update"), AGEND_UPDATE_OWNER_PID: String(process.pid) },
+        stdio: "inherit", cwd: parse(process.cwd()).root, env: { ...withOrigin("agend-update"), AGEND_UPDATE_OWNER_PID: String(process.pid) },
       });
       if (installer.status === 0 || installer.status === 75) { process.exitCode = installer.status ?? 0; return; }
       // The installer records its own failure; one that never started (npm could not fetch it) is recorded here.
@@ -1771,6 +1783,7 @@ program
             timeout: options.timeoutMs,
             stdio: options.inherit ? "inherit" : ["ignore", "pipe", "pipe"],
             ...(options.env ? { env: { ...process.env, ...options.env } } : {}),
+            ...(options.cwd ? { cwd: options.cwd } : {}),
           });
           return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
         },
