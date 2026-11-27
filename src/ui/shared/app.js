@@ -217,6 +217,8 @@ installSwipe({
   isOpen: () => shellStore.get().drawer, open: openDrawer, close: closeDrawer,
 });
 
+// Replace only the Hub's static boot placeholder in this same synchronous mount.
+if (hubPage) document.getElementById("app")?.replaceChildren();
 render(hubPage
   ? html`<${Outlet} route=${{ panel: "hub" }} seq=${0} panels=${hubStartup} loading=${html`<${SessionLoading} />`} />`
   : html`<${Shell} panels=${panels} onNewInstance=${onNewInstance} viewOnly=${mode === "view-only"} />`, document.getElementById("app"));

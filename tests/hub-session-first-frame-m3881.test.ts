@@ -14,6 +14,8 @@ async function boot(path = "/ui/hub", oldModule = false) {
   vi.resetModules();
   const dom = installDom({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1", agend_lang: "en" } });
   const app = dom.document.createElement("div"); app.id = "app"; dom.document.body.appendChild(app);
+  // The real HTML ships a boot placeholder before any module executes.
+  app.innerHTML = '<div class="sk-boot"><div class="sk-boot-side" aria-hidden="true"></div></div>';
   for (const [key, value] of Object.entries({ "data-mode": "full", "data-hub": "hub", "data-hub-name": "Fixture Hub", "data-web-transport": "none" })) dom.document.body.setAttribute(key, value);
   let release!: (value: unknown) => void;
   const pending = new Promise(resolve => { release = resolve; });
@@ -41,6 +43,7 @@ it("shows no workspace or Hub name while the session is pending, then only sign-
   expect(p.app.querySelector("#sidebar")).toBeNull();
   expect(p.app.textContent).not.toContain("Fixture Hub");
   expect(p.app.querySelector(".session-loading-page")).not.toBeNull();
+  expect(p.app.querySelector(".sk-boot")).toBeNull();
   expect(p.reads.filter(path => path.startsWith("GET /hub/"))).toEqual(["GET /hub/v1/session"]);
   p.release({ signedIn: false });
   await vi.waitFor(() => expect(p.app.querySelector("#hubLogin")).not.toBeNull());

@@ -22,7 +22,8 @@ export function Skeleton({ lines = 3, variant = "lines", label }) {
 
 /** A neutral first frame, shared by module loading and the initial session read. */
 export function SessionLoading() {
-  return html`<main id="main" class="session-loading-page" role="status" aria-busy="true">${t("app.loading")}</main>`;
+  loadingStyles();
+  return html`<main id="main" class="session-loading-page" role="status" aria-busy="true" aria-label=${t("app.loading")}><div class="skeleton sk-inline" aria-hidden="true"><div class="sk-line"></div></div></main>`;
 }
 
 export function Empty({ icon = "info", title, hint, action }) {
