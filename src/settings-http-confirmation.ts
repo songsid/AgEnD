@@ -9,6 +9,7 @@ import { SettingsExecution, settingsFingerprint } from "./settings-transaction.j
 import { gatewayRequestContext } from "./web-request-context.js";
 import {basename} from "node:path";
 import { prepareRequestContextControlReplay, type RequestContextControlHost } from "./request-context-control-api.js";
+import { REQUEST_CONTEXT_BLOCKED } from "./settings-confirmation.js";
 import {sanitizeInstanceName} from "./instance-names.js";
 
 export interface SettingsPrincipal {
@@ -218,6 +219,10 @@ export class SettingsHttpConfirmation {
           throw new Error(why ? `apply_rejected: ${why}` : "apply_rejected");
         }
         if (response.body.job_id && (!this.options.job || !await this.options.job(response.body.job_id))) throw new Error("apply_job_failed");
+        // M-3864 R4: a turn-on of request-based approvals that ended waiting (blocked) did not turn anything on: it is not
+        // "Change applied". The section in Settings says what it waits for.
+        if (control && (body as { action?: unknown })?.action === "enable" && response.body?.enabled !== true && response.body?.phase === "blocked")
+          throw new Error(REQUEST_CONTEXT_BLOCKED);
         await this.options.applied?.(url.pathname, response.body, execution);
         return response.body;
       }, discard: () => { payload.body.fill(0); effect.proof?.discard(); },
