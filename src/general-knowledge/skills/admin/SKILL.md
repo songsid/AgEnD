@@ -17,7 +17,7 @@ roles: [general]
 |---|---|---|
 | Agents | create, delete, replace, start, stop, pause, wake, restart | Tool (`create_instance` … `restart_instance`); see instance-lifecycle |
 | Agents | backend, model, tool set, auto-pause, name, description | Tool `update_instance_config` (a change restarts the agent) |
-| Agents | reasoning effort | Read with `get_effort`; the person sets it on the agent's Settings page (row ⋯ → Settings) |
+| Agents | reasoning effort | Tool `update_instance_config` {effort}, after `get_effort` shows the levels it takes; your own effort is the person's (Settings, or /effort) |
 | Accounts | move an agent to another account | Tool `update_instance_config` (credential profile), once that account exists; see credential-profiles |
 | Accounts | add or sign in an account | The person: `/login`, or Settings → AI accounts (a browser sign-in) |
 | Fleet defaults | default backend, model, auto-pause, message size | Tool `update_fleet_defaults`. Check `get_fleet_config` first: an agent with its own value keeps it |

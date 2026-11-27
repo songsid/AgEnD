@@ -663,16 +663,19 @@ describe("the web chat", () => {
   });
 });
 
-describe("the MCP tool is unchanged", () => {
-  it("an agent's update_instance_config can neither set an effort nor clear a model: that is /backend's, in-process", async () => {
+describe("the MCP tool", () => {
+  // M-3694 (S-263): an effort is now settable through update_instance_config, but only alone (applyEffort, as /effort)
+  // or with a backend switch — never folded into another write; clearing a model stays /backend's, in-process.
+  it("an agent's update_instance_config can't clear a model, nor fold an effort into another write", async () => {
     const { outboundHandlers } = await import("../src/outbound-handlers.js");
     const f = fleet();
     const call = (config: unknown) => new Promise<{ result: unknown; error?: string }>(resolve => {
       void outboundHandlers.get("update_instance_config")!(f.fm as never, { name: "worker", config } as never, (result, error) => resolve({ result, error }), {} as never);
     });
     expect((await call({ model: null })).error).toBeTruthy();
-    await call({ effort: "low", display_name: "W" });
-    expect(f.worker()).toMatchObject({ model: "opus", effort: "max", display_name: "W" });
+    expect((await call({ effort: "low", display_name: "W" })).error).toBe("Set effort in its own update_instance_config call (or together with a backend switch).");
+    expect(f.worker()).toMatchObject({ model: "opus", effort: "max" });
+    expect(f.worker()).not.toHaveProperty("display_name", "W");
   });
 });
 

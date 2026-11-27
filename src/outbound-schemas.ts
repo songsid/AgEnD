@@ -529,15 +529,16 @@ const WritableToolSet = z.enum(["full", "standard", "worker", "coordinator", "mi
 export const UpdateInstanceConfigArgs = z.object({
   name: NonEmptyString.describe("Instance name to update"),
   config: z.object({
-    tool_set: WritableToolSet.optional().describe("AgEnD tool profile. Only General may set another agent's profile directly; self-targets and other callers are refused (#804/#814)."),
-    backend: z.string().optional().describe("CLI backend. A switch restarts a running instance in a fresh session (a stopped or paused one stays so, and starts on it next time), and drops the instance's own model and effort: give `model` here for the new backend, or it inherits the fleet default, else that backend's own default."),
+    tool_set: WritableToolSet.optional().describe("AgEnD tool profile: General only, never its own (#804/#814)."),
+    backend: z.string().optional().describe("CLI backend. A switch restarts a running instance in a fresh session (a stopped or paused one starts on it next time) and drops its own model and effort: give `model` here for the new backend, or it inherits the fleet default, else the backend's own."),
     model: z.string().optional().describe("Model override. With a backend switch: a model the new backend takes, else the switch is refused."),
+    effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional().describe("Reasoning effort, as /effort sets it; alone or with a backend switch; not your own"),
     resume_interrupted_work: z.boolean().optional().describe("Automatically continue known interrupted work after a stable restart"),
     auto_pause_after: z.number().optional().describe("Minutes idle before auto-pause (0 = disabled)"),
     display_name: z.string().optional().describe("Display name"),
     description: z.string().optional().describe("Role description"),
     backend_options: z.record(z.string(), z.record(z.string(), z.unknown())).optional().describe(
-      "Backend-specific options keyed by backend name. Use { \"kiro-cli\": { \"credential_profile\": \"work\" } } to move this agent to another subscription — the instance is restarted so the new login takes effect.",
+      "Per-backend options, e.g. { \"kiro-cli\": { \"credential_profile\": \"work\" } } moves it to another account (it restarts on the new login).",
     ),
   }).describe("Fields to merge-patch into the instance config"),
 });

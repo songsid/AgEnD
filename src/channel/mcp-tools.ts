@@ -169,7 +169,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["contact_state", schemas.ContactStateArgs,
     "General only, read-only: held messages (ticket_id, short_id, from, to, who decides), grants (grant_id), ClassicBot room modes, and agents held by a retained origin. `agent` narrows it."],
   ["update_instance_config", schemas.UpdateInstanceConfigArgs,
-    "Update a specific instance's config (backend, model, auto_pause_after, display_name, description, backend_options). Saves to fleet.yaml. General alone may also set another portable/local agent's tool_set directly, without confirmation; self-targets are refused. skipPermissions is refused for everyone. backend_options merges per backend; null or \"\" drops a key; a change restarts the instance. A ClassicBot room takes only backend_options.<backend>.credential_profile (classicBot.yaml); the answer names the profile it relaunched on."],
+    "Update an instance's config (saved to fleet.yaml). General alone may also set another portable/local agent's tool_set directly, without confirmation; self-targets are refused. skipPermissions is refused for everyone. backend_options merges per backend; null or \"\" drops a key; a change restarts the instance. A ClassicBot room takes only backend_options.<backend>.credential_profile; the answer names the profile it relaunched on."],
   ["update_fleet_defaults", schemas.UpdateFleetDefaultsArgs,
     "Update fleet-wide defaults (backend, model, auto_pause_after, max_cross_instance_message_bytes). Saves to fleet.yaml."],
   ["create_instance", schemas.CreateInstanceToolArgs,
