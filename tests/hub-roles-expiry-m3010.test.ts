@@ -35,6 +35,15 @@ function fixture(){
  return {db,root,owner,admin,policy,saved,store,audit,append,eligibility,reads,snapshot,prepare,commit,advance,refresh,options,settlement,time:(n:number)=>{time+=n;},elapsed:(n:number)=>{elapsed+=n;},stop:()=>{live=false;},ordinary:()=>{ordinary++;}};
 }
 describe("inactive role expiry settlement",()=>{
+ it("plans only unsettled terms and rereads changed or removed deadlines",async()=>{
+  const w=fixture();expect(w.settlement.nextExpiry()).toBe(200);
+  const p=w.saved();p.assignments[0]!.expiresAt=300;
+  w.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(p));expect(w.settlement.nextExpiry()).toBe(300);
+  w.time(200);expect(await w.settlement.settle()).toEqual({ok:true,settled:1});expect(w.settlement.nextExpiry()).toBeNull();
+  p.assignments[0]!.expiresAt=400;w.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(p));expect(w.settlement.nextExpiry()).toBe(400);
+  p.assignments=[];w.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(p));expect(w.settlement.nextExpiry()).toBeNull();
+  w.settlement.close();expect(()=>w.settlement.nextExpiry()).toThrow();
+ });
  it("settles each exact term once, preserves history and advances one epoch with required audit",async()=>{
   const w=fixture(),before=w.saved();expect(await w.settlement.settle()).toEqual({ok:true,settled:0});expect(w.prepare).not.toHaveBeenCalled();expect(w.eligibility).not.toHaveBeenCalled();const admission=vi.spyOn(w.reads,"withDirectoryRead");w.time(100);
   expect(await w.settlement.settle()).toEqual({ok:true,settled:1});expect(w.saved()).toEqual(before);expect(admission).toHaveBeenCalledWith(w.root,expect.any(Function));expect(w.advance).toHaveBeenCalledOnce();expect(w.refresh).toHaveBeenCalledOnce();

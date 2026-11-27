@@ -21,6 +21,7 @@ import {createHubRoleWriter} from "../roles/writer.js";
 import {createHubRoleResourceEffects} from "../roles/resource-effects.js";
 import {createHubRoleExpiryEffects} from "../roles/expiry-effects.js";
 import {createHubRoleExpirySettlement} from "../roles/expiry.js";
+import {scheduleHubRoleExpiry} from "../roles/expiry-schedule.js";
 import {createHubRoleAdminControl} from "../roles/admin-control.js";
 import {createHubRoleAllowedListControl} from "../roles/allowed-list-control.js";
 import {parseRolePolicy} from "../roles/model.js";
@@ -521,6 +522,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       let roleAdmin:ReturnType<typeof createHubRoleAdminControl>|undefined;
       let effectiveGroupControl:import("../group-policy/admin-dto.js").HubGroupAdminControl=groupControl;
       if(rolesMounted){
+        let expirySchedule:ReturnType<typeof scheduleHubRoleExpiry>|undefined;
+        const refreshRoleAuthorization=()=>{memberServer?.refreshAuthorization();expirySchedule?.replan();};
         const advanceAuthorization=(database:Database.Database)=>{
           if(database!==db||!db.inTransaction)throw new HubStateError("service-unavailable","the role policy transaction is unavailable");
           const next=readHubOperationalPolicy(policy());companyJoin.policyUpdated(next);
@@ -530,17 +533,15 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           });
         };
         const shared={db,root:settings.administrator,transport:store,policy:policy(),audit,current:live,now};
-        const writer=createHubRoleWriter({db,hubId:settings.hubId,realm:resolvedDirectory.realm,generation:groupGeneration,root:settings.administrator,audit,directory,reads:directoryReads,effects:createHubRoleResourceEffects(shared),current:live,version:()=>store.read().revocationVersion,advanceAuthorization,refreshAuthorization:()=>memberServer?.refreshAuthorization(),now});
+        const writer=createHubRoleWriter({db,hubId:settings.hubId,realm:resolvedDirectory.realm,generation:groupGeneration,root:settings.administrator,audit,directory,reads:directoryReads,effects:createHubRoleResourceEffects(shared),current:live,version:()=>store.read().revocationVersion,advanceAuthorization,refreshAuthorization:refreshRoleAuthorization,now});
         teardown.add("role writer",()=>writer.close());
         roleAdmin=createHubRoleAdminControl({db,root:settings.administrator,directory,reads:directoryReads,management,writer,audit,policy:()=>parseRolePolicy(readHubOperationalPolicy(policy())),current:live,now});
         const admin=roleAdmin;teardown.add("role administration",()=>admin.close());
         const shortcut=createHubRoleAllowedListControl({db,root:settings.administrator,directory,policy:policy(),legacy:groupControl,management,roleAdmin,writer,inventory:createHubGroupAdminInventory({db,transport:store,realm:resolvedDirectory.realm}),authorization:groups,current:live,now,version:()=>store.read().revocationVersion});
         effectiveGroupControl=shortcut;teardown.add("role allowed-list shortcut",()=>shortcut.close());
         const expiry=createHubRoleExpirySettlement({db,hubId:settings.hubId,realm:resolvedDirectory.realm,generation:groupGeneration,root:settings.administrator,audit,directory,reads:directoryReads,effects:createHubRoleExpiryEffects({...shared,directory,reads:directoryReads}),current:live,version:()=>store.read().revocationVersion,advanceAuthorization,refreshAuthorization:()=>memberServer?.refreshAuthorization(),now});
-        let settling:ReturnType<typeof expiry.settle>|null=null;
-        const settle=()=>{if(settling||!live())return;settling=expiry.settle();void settling.then(result=>{if(!result.ok&&live())options.log("warn","Hub role expiry is held",{code:result.code});},()=>{if(live())options.log("warn","Hub role expiry is held",{code:"unavailable"});}).finally(()=>{settling=null;});};
-        const timer=setInterval(settle,30_000);timer.unref();settle();
-        teardown.add("role expiry",async()=>{clearInterval(timer);expiry.close();await settling;});
+        expirySchedule=scheduleHubRoleExpiry({expiry,current:live,now,held:code=>options.log("warn","Hub role expiry is held",{code})});
+        teardown.add("role expiry",()=>expirySchedule!.close());
       }
 
       const groupWelcome = createHubGroupWelcome({ policy, readiness: () => {
