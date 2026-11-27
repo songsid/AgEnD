@@ -164,7 +164,7 @@ export function RequestContextSettings() {
       ${!state.enabled && state.enableUnavailable ? html`<p role="status">${requestContextControlText("enableUnavailable")}</p>` : null}
       ${failed ? html`<p role="status">${requestContextControlText("unknown")}</p>` : ["blocked", "draining"].includes(state.phase) ? html`<${RequestContextBlocked} state=${state} busy=${busy || failed} onCheck=${() => change("check")} onResolve=${state.canChange ? blocker => change("resolve", blocker) : null} />`
         : html`<p role="status">${requestContextControlText(state.phase === "off" && !state.everActivated ? "offBefore" : state.phase)}</p>`}
-      ${!state.enabled && state.enableUnavailable ? null : html`<p class="notice warn">${requestContextControlText(state.everActivated ? "floor" : "floorBefore")}</p>`}
+      ${!state.everActivated && !state.enabled && state.enableUnavailable ? null : html`<p class="notice warn">${requestContextControlText(state.everActivated ? "floor" : "floorBefore")}</p>`}
       ${!state.canChange ? html`<${AuthorizeChip} />` : null}` : !failed ? html`<p>${requestContextControlText("loading")}</p>` : null}
     ${failed ? html`<p class="notice warn" role="alert">${requestContextControlText(state ? "failed" : "error")}</p><button class="btn btn-sm" type="button" disabled=${busy} onClick=${load}>${requestContextControlText("check")}</button>` : null}
   </section>`;

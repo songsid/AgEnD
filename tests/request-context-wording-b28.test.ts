@@ -1,7 +1,7 @@
 /**
  * Beta.28 wording pass (the leader's capture notes): Settings → Access and security's request-based approvals card.
- * - While turning it on isn't available (enableUnavailable, #4597) the off switch shows no "can't downgrade after turning
- *   it on" warning; an already-on owner (everActivated) still sees the downgrade note.
+ * - While turning it on isn't available (enableUnavailable, #4597) a never-activated off switch shows no prospective "can't
+ *   downgrade after turning it on" warning; once activated (on, off or draining) the permanent downgrade note stays.
  * - The words: EN blocked "aren't on yet" (matches zh 「尚未開啟」); zh ownersWork asks to wait for the work, not end it;
  *   the server's blocked result names the path as 「設定 → 存取與安全」.
  */
@@ -22,6 +22,10 @@ it.each(["en", "zh-TW"])("while On isn't available, the off switch shows no down
   expect(p.root.querySelector(".request-context-control .notice.warn")).toBeNull();
   expect(p.root.textContent).not.toContain(ui.requestContextControlText("floorBefore"));
   expect(p.root.textContent).toContain(ui.requestContextControlText("enableUnavailable"));
+});
+it.each([["en", "off"], ["zh-TW", "off"], ["en", "draining"], ["zh-TW", "draining"]])("once activated, the permanent downgrade note stays while On isn't available (%s, %s) (#4599 review)", async (language, phase) => {
+  const { p, ui } = await mount({ revision: 4, enabled: false, everActivated: true, attempted: true, phase, canChange: true, blockers: [], enableUnavailable: true }, language);
+  expect(p.root.querySelector(".request-context-control .notice.warn")?.textContent).toBe(ui.requestContextControlText("floor"));
 });
 it("an already-on owner still sees the downgrade note", async () => {
   const on = await mount({ revision: 2, enabled: true, everActivated: true, attempted: true, phase: "on", canChange: true, blockers: [], enableUnavailable: true });
