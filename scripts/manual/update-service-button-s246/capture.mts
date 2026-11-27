@@ -5,7 +5,8 @@
  * (`startServiceInstall`, which would run `agend install`) is stubbed before the first press, and every update launch too.
  *   1 not a service: the line, Install as a service, and How to fix · 2 pressed: the confirmation (what happens to the
  *   Agents) · 3 Cancel: nothing sent · 4 confirmed, refused: says why, and that AgEnD keeps running · 5 confirmed, the
- *   hand-over: Restarting…, AgEnD gone for a moment (the browser's own requests fail), back as a service: ✓ and its toast.
+ *   hand-over: Restarting… (said in the check's block), AgEnD gone for a moment (the browser's own requests fail), back as a
+ *   service: ✓ and its toast. A refusal and the restart are said in the block, never a toast over the page (#4557 look).
  * Desk light en and phone dark zh-TW.
  *   CHROME=<chromium> PW_DIR=<playwright-core> REPO=<checkout> OUT=<dir> npx tsx scripts/manual/update-service-button-s246/capture.mts
  */
@@ -120,12 +121,14 @@ async function walk(c: any) {
     // 4 confirmed, refused
     await press(page, IT);
     await page.locator("dialog.dlg[open] button", { hasText: GO }).click();
-    await waitFor(page, `document.querySelectorAll(".toasts .toast.err").length > 0`);
+    await waitFor(page, `!!document.querySelector("#settings-update .uc-fix-refused")`);
     await page.waitForTimeout(300);
     check(`${tag} 4: one POST, with the page's confirmation`, posts.length === sent + 1 && JSON.stringify(posts.at(-1).body) === JSON.stringify({ fix: "service", confirm: "restart-as-service" }), posts);
-    check(`${tag} 4: says why, and that AgEnD keeps running, in full`, await toastWhole(page, W(zh, `AgEnD couldn't install the service: ${REFUSAL} AgEnD keeps running as before.`, `AgEnD 無法安裝服務：${REFUSAL} AgEnD 仍照原本的方式執行。`)), await toasts(page));
+    m = await machine(page);
+    check(`${tag} 4: the block says why, and that AgEnD keeps running`, m.includes(W(zh, `AgEnD couldn't install the service: ${REFUSAL} AgEnD keeps running as before.`, `AgEnD 無法安裝服務：${REFUSAL} AgEnD 仍照原本的方式執行。`)), m);
+    check(`${tag} 4: no toast over the page`, (await toasts(page)).length === 0, await toasts(page));
     b = await buttons(page);
-    check(`${tag} 4: the line stays, and the button can be pressed again`, (await machine(page)).includes("◐") && b.length === 1 && b[0]!.t === IT && !b[0]!.disabled, b);
+    check(`${tag} 4: the line stays with How to fix; the button is gone (pressing again is not the next step)`, m.includes("◐") && b.length === 0 && m.includes(W(zh, "How to fix", "修正方式")), { m, b });
     await shot(page, `${tag}-4-refused`);
     // 5 confirmed, the hand-over: AgEnD answers, then is gone for a moment (two requests fail), then is back as a service
     await openSettings(page);
@@ -135,11 +138,12 @@ async function walk(c: any) {
     await page.route("**/ui/update", async (route: any) => (Date.now() < goneUntil ? route.abort("connectionrefused") : route.continue()));
     await press(page, IT);
     await page.locator("dialog.dlg[open] button", { hasText: GO }).click();
-    await waitFor(page, `[...document.querySelectorAll(".toasts .toast")].some((e) => e.classList.contains("ok"))`);
+    await waitFor(page, `!!document.querySelector("#settings-update .uc-fix-refused")`);
     await page.waitForTimeout(300);
-    b = await buttons(page);
-    check(`${tag} 5: says AgEnD is restarting, in full; the button says Restarting… and can't be pressed`, await toastWhole(page, W(zh, "AgEnD is restarting as a service. This page reconnects when it's back.", "AgEnD 正在改以服務方式重新啟動，回來後這個頁面會自動重新連線。"))
-      && b.length === 1 && b[0]!.t === W(zh, "Restarting…", "重新啟動中…") && b[0]!.disabled, { b, t: await toasts(page) });
+    b = await buttons(page); m = await machine(page);
+    check(`${tag} 5: the block says AgEnD is restarting; the button says Restarting… and can't be pressed`, m.includes(W(zh, "AgEnD is restarting as a service. This page reconnects when it's back.", "AgEnD 正在改以服務方式重新啟動，回來後這個頁面會自動重新連線。"))
+      && b.length === 1 && b[0]!.t === W(zh, "Restarting…", "重新啟動中…") && b[0]!.disabled, { b, m });
+    check(`${tag} 5: no toast over the page`, (await toasts(page)).length === 0, await toasts(page));
     await shot(page, `${tag}-5-restarting`);
     goneUntil = Date.now() + 4000; setPreflight(SERVICE);                     // the new fleet: a service now
     const back = await waitFor(page, `[...document.querySelectorAll(".toasts .toast")].some((e) => e.innerText.includes(${JSON.stringify(W(zh, "running as a service", "以服務方式執行"))}))`, 20000);
@@ -147,8 +151,10 @@ async function walk(c: any) {
     m = await machine(page);
     check(`${tag} 5b: back: says so, in full; the line is ✓ and its button gone`, back && await toastWhole(page, W(zh, "AgEnD is back, running as a service.", "AgEnD 回來了，現在以服務方式執行。"))
       && m.includes("✓") && (await buttons(page)).length === 0, { m, t: await toasts(page) });
-    check(`${tag} 5b: the restarting toast is gone`, !(await toasts(page)).some((t) => t.includes(W(zh, "restarting as a service", "重新啟動，回來後"))), await toasts(page));
+    check(`${tag} 5b: the restarting line is gone`, !m.includes(W(zh, "restarting as a service", "重新啟動，回來後")), m);
     await page.unroute("**/ui/update");
+    // A phone's toast sits over the page's top: the frame is taken once it has gone (its words are checked above).
+    if (phone) { const gone = await waitFor(page, `document.querySelectorAll(".toasts .toast").length === 0`, 20000); check(`${tag} 5b: the toast has gone before the frame`, gone, await toasts(page)); }
     await shot(page, `${tag}-5b-back`);
     check(`${tag}: no page errors`, errors.length === 0, errors);
   } finally { await ctx.close(); }

@@ -66,7 +66,7 @@ describe("S-246: Install as a service", () => {
     expect(serviceButton().disabled).toBe(false);
   });
 
-  it("confirmed: one POST with the confirmation and a key; a refusal says why, and that AgEnD keeps running", async () => {
+  it("confirmed: one POST with the confirmation and a key; a refusal says why in the check's block (no toast), and that AgEnD keeps running", async () => {
     await mount(() => ({ status: 422, body: { error: "fix_failed", reason: "the user's service manager isn't running", preflight: NOT_SERVICE } }));
     const before = shown().length;
     serviceButton().click(); await settle(6);
@@ -74,8 +74,10 @@ describe("S-246: Install as a service", () => {
     await vi.waitFor(() => expect(fixes().length).toBe(1)); await settle(10);
     expect(fixes()[0]).toMatchObject({ method: "POST", body: { fix: "service", confirm: "restart-as-service" } });
     expect(fixes()[0]!.key).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
-    expect(shown().slice(before)).toEqual([["AgEnD couldn't install the service: the user's service manager isn't running AgEnD keeps running as before.", false]]);
-    expect(serviceButton().disabled).toBe(false);
+    expect(shown().slice(before)).toEqual([]);
+    expect(machine()!.querySelector(".uc-fix-refused")?.textContent).toBe("AgEnD couldn't install the service: the user's service manager isn't running. AgEnD keeps running as before.");
+    expect(serviceButton()).toBeUndefined();                                                          // pressing again is not the next step
+    expect(machine()!.querySelector("details.uc-how")).not.toBeNull();                               // How to fix stays
   });
 
   it("the hand-over: restarting → AgEnD gone → back; it looks again and says it is a service now", async () => {
@@ -97,13 +99,15 @@ describe("S-246: Install as a service", () => {
     const deps = upd.cardDeps, before = shown().length;
     const sleeps: number[] = [];
     let during: unknown[] = [];
-    const out = await uc.fixCheck("service", { id: "P3", ok: false, code: "not-service" }, deps, { sleep: async (ms: number) => { if (!sleeps.length) { await settle(2); during = shown().slice(before); } sleeps.push(ms); }, tries: 10 });
+    const said: string[] = [];
+    const out = await uc.fixCheck("service", { id: "P3", ok: false, code: "not-service" }, deps, { onStatus: (t: string) => said.push(t), sleep: async (ms: number) => { if (!sleeps.length) { await settle(2); during = shown().slice(before); } sleeps.push(ms); }, tries: 10 });
     await settle(6);
-    expect(out).toEqual({ ok: true });
+    expect(out).toEqual({ ok: true, refused: false });
+    expect(said).toEqual(["AgEnD is restarting as a service. This page reconnects when it's back."]);   // in the check's block
     expect(sleeps.every(ms => ms === 3000)).toBe(true);
     expect(reqs.map(r => `${r.method} ${r.url}`)).toEqual(["POST /ui/update/fixes", "GET /ui/update", "GET /ui/update", "GET /ui/update", "POST /ui/update/check", "GET /ui/update"]);
-    expect(during).toEqual([["AgEnD is restarting as a service. This page reconnects when it's back.", true]]);
-    expect(shown().slice(before)).toEqual([["AgEnD is back, running as a service.", true]]);   // "restarting" taken down
+    expect(during).toEqual([]);                                                                      // no toast over the page while it restarts
+    expect(shown().slice(before)).toEqual([["AgEnD is back, running as a service.", true]]);
     expect(upd.updateStore.get().info.preflight).toEqual(SERVICE);
   });
 
@@ -112,10 +116,12 @@ describe("S-246: Install as a service", () => {
     await p.mount(h("div", {}, h(Toasts, {}))); await settle(4);
     upd.updateStore.set({ info: ADMIN(NOT_SERVICE) });
     const before = shown().length;
-    const out = await uc.fixCheck("service", { id: "P3", ok: false, code: "not-service" }, upd.cardDeps, { sleep: async () => {}, tries: 3 });
+    const said: string[] = [];
+    const out = await uc.fixCheck("service", { id: "P3", ok: false, code: "not-service" }, upd.cardDeps, { onStatus: (t: string) => said.push(t), sleep: async () => {}, tries: 3 });
     await settle(6);
-    expect(out).toEqual({ ok: false });
-    expect(shown().slice(before)).toEqual([["AgEnD isn't running as a service yet. What happened is in service-install.log in the AgEnD folder.", false]]);
+    expect(out).toEqual({ ok: false, refused: true });
+    expect(said).toEqual(["AgEnD is restarting as a service. This page reconnects when it's back.", "AgEnD isn't running as a service yet. What happened is in service-install.log in the AgEnD folder."]);
+    expect(shown().slice(before)).toEqual([]);
   });
 
   it("the words in English and zh-TW: every key, the same placeholders; zh says 「Agent」", async () => {

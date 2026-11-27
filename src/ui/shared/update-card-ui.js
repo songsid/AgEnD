@@ -162,7 +162,7 @@ const stillNotService = (info) => failedChecks(info && info.preflight).some((c) 
  * S-246: the hand-over has begun. Wait for AgEnD to answer again after it was gone (every 3 s, up to 6 minutes), then
  * have it look again and say whether it is a service now. A fleet that never went away is judged at the end.
  */
-export async function waitForService(deps, { sleep = pause, tries = 120, restarting = null } = {}) {
+export async function waitForService(deps, { sleep = pause, tries = 120 } = {}) {
   let gone = false;
   for (let i = 0; i < tries; i++) {
     await sleep(3000);
@@ -174,9 +174,8 @@ export async function waitForService(deps, { sleep = pause, tries = 120, restart
   try { await fetch("/ui/update/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); } catch { /* judged on what it has */ }
   const info = (await deps.refresh()) || deps.getInfo();
   const still = !info || stillNotService(info);
-  // The "restarting" toast goes first (an older ui-toast.js returns nothing: then it times out as before).
-  if (typeof restarting === "function") restarting();
-  toast(tc(still ? "serviceStill" : "serviceBack"), !still, { detail: true });
+  // Back as a service: the check's line is gone, so a toast says so. Still not one: the check's own block says where to look.
+  if (!still) toast(tc("serviceBack"), true, { detail: true });
   return { service: !still };
 }
 /**
@@ -196,12 +195,20 @@ export async function fixCheck(fix, check, deps, opts = {}) {
   if (out && out.preflight && info) setInfo({ ...info, preflight: out.preflight });
   if (fix === "service") {
     // 202: the hand-over began. No answer at all: AgEnD stopped before it could answer — the same.
+    // Said in the check's own block, never a toast over the page (#4557 look): restarting, refused, or still not a service.
+    const say = typeof opts.onStatus === "function" ? opts.onStatus : () => {};
     if (!res || res.status === 202) {
-      const restarting = toast(tc("serviceRestarting"), true, { detail: true });
-      return { ok: (await waitForService(deps, { ...opts, restarting })).service };
+      say(tc("serviceRestarting"));
+      const { service } = await waitForService(deps, opts);
+      if (!service) say(tc("serviceStill"));
+      return { ok: service, refused: !service };
     }
-    if (res.status === 422) { toast(tc("serviceFailed", (out && out.reason) || ""), false, { detail: true }); return { ok: false }; }
-    if (res.ok) return { ok: (await waitForService(deps, { ...opts, tries: 0 })).service };
+    if (res.status === 422) {
+      const reason = String((out && out.reason) || "").trim();
+      say(tc("serviceFailed", reason && !/[.!?。！？]$/.test(reason) ? `${reason}.` : reason));
+      return { ok: false, refused: true };
+    }
+    if (res.ok) { const { service } = await waitForService(deps, { ...opts, tries: 0 }); if (!service) say(tc("serviceStill")); return { ok: service, refused: !service }; }
   }
   const user = check && check.detail && check.detail.user ? String(check.detail.user) : "";
   // Shown in full (a phone's toast is otherwise one line, cut): it names the user, and the failure says what to do.
@@ -219,16 +226,18 @@ export async function fixCheck(fix, check, deps, opts = {}) {
 function CheckItem({ check, version, deps }) {
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState(false);
+  const [note, setNote] = useState("");
   const fix = deps ? fixFor(check) : null;
   const press = async () => {
     // S-246: every agent stops briefly — asked first; Cancel sends nothing.
     if (fix === "service" && !(await confirmDialog({ title: tc("serviceTitle"), message: tc("serviceAsk"), confirmLabel: tc("serviceGo") }))) return;
-    setBusy(true);
-    try { if ((await fixCheck(fix, check, deps)).refused) setRefused(true); } finally { setBusy(false); }
+    setBusy(true); setNote("");
+    try { if ((await fixCheck(fix, check, deps, { onStatus: setNote })).refused) setRefused(true); } finally { setBusy(false); }
   };
   const label = fix === "service" ? tc(busy ? "serviceBusy" : "serviceIt") : tc(busy ? "fixing" : "fixIt");
+  const line = note || (refused && fix === "linger" ? tc("fixFailed") : "");
   return html`<li>${checkRich(check, version)}
-    ${fix && refused ? html`<p class="uc-fix-refused" role="status">${tc("fixFailed")}</p>` : null}
+    ${fix && line ? html`<p class="uc-fix-refused" role="status">${line}</p>` : null}
     ${fix && !refused ? html`<div class="uc-fix"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${press}>${label}</button>
       ${fix === "linger" ? html`<span class="uc-fix-hint muted">${tc("fixHint")}</span>` : null}</div>` : null}
     ${check.code === "not-service" ? html`<details class="uc-how"><summary>${tc("howToFix")}</summary><p>${richText(tc("serviceHow"))}</p></details>` : null}
