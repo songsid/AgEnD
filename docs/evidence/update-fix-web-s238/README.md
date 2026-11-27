@@ -4,7 +4,7 @@ These are captures of Settings → Version and update → "Updates on this machi
 
 The script drives the real route (`POST /ui/update/fixes`) and the real FleetManager method behind it: the checks run again, the fix runs only while they still ask for it, and they run once more after it. Nothing changes on the capturing host. The fix itself (`runUpdateFix`, which would run `loginctl enable-linger`) is stubbed before the first press, and so is every update launch.
 
-Script: `scripts/manual/update-fix-web-s238/capture.mts`. It ran at `a07932b8e` (`src` clean) and passed 39 of 39 checks. `receipt.json` lists the commit, every check, and each PNG's sha256.
+Script: `scripts/manual/update-fix-web-s238/capture.mts`. It ran at `a4429a999` (`src` clean) and passed 39 of 39 checks. `receipt.json` lists the commit, every check, and each PNG's sha256.
 
 | Frame | What it shows |
 |---|---|
