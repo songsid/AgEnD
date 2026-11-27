@@ -3803,7 +3803,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hubRoomList(caller: import("./hub/member/room-post.js").RoomCaller) {
     return this.hubAgentRooms?.rooms(caller) ?? Promise.resolve({ok:false as const,code:"unavailable"});
   }
-  hubRoomHistory(caller:import("./hub/member/room-post.js").RoomCaller,room:string,options?:import("./hub/room-history-model.js").RoomHistoryOptions){return this.hubAgentRooms?.history(caller,room,options)??Promise.resolve({ok:false as const,code:"unavailable" as const});}
+  hubRoomHistory(caller:import("./hub/member/room-post.js").RoomCaller,room:string,options?:import("./hub/room-history-model.js").RoomHistoryOptions){
+    const policy=this.requestContextPolicy;
+    if(!policy)return Promise.resolve({ok:false as const,code:"denied" as const});
+    return this.hubAgentRooms?.history({...caller,current:()=>this.requestContextPolicy===policy&&caller.current()},room,options)??Promise.resolve({ok:false as const,code:"unavailable" as const});
+  }
   hubRoomMembers(caller: import("./hub/member/room-post.js").RoomCaller, room:string,options?:import("./hub/room-members-model.js").RoomMemberOptions) {
     return this.hubAgentRooms?.members(caller,room,options)??Promise.resolve({ok:false as const,code:"unavailable" as const});
   }

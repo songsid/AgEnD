@@ -23,7 +23,7 @@ export function requestHubRoomMatches(scope:RequestHubOutputScope|undefined,hubI
 
 /** A sensitive room read is bound to the original group audience, never a 1:1 or later return target. */
 export function requestHubHistoryMatches(scope:RequestHubOutputScope|undefined,hubId:string|undefined,room:string):boolean {
- if(!scope)return true; // With request-context Off, the documented no-relay rule is guidance only.
+ if(!scope)return false; // Off has no current-ask lease here: retained asks/generation are not a tool-call binding.
  const c=scope.context;if(!c||!scope.current())return false;
  if(c.ingress!=="hub")return true;
  const a=c.initiatingActor;

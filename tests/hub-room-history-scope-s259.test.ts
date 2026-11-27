@@ -24,7 +24,7 @@ function world(mode:'room'|'direct'|'owner'|'off'|'uncovered'='room',issuer='fix
  const lease=captureRequestContextCall({token:randomUUID(),inputId:'admitted',context,wireSha256:requestContextDigest('input'),owner:{instance:'agent-A',incarnation:'v1',workGeneration:'work',daemonBootId:'boot',spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0}},()=>live);
  const base:any={...(mode==='off'?{}:{requestContextPolicy:{assert:assertRequestContextOperation}}),hubRoomHistory:(caller:any,room:string)=>adapter.history(caller,room)};
  const proxy=nativeAgentAdmissionContext(base,{instance:'agent-A',current:()=>true,taskAllowed:()=>false,...(mode==='uncovered'?{}:{requestContext:lease})});
- return {a,b,history,local,adapter,stop:()=>{live=false;},call:async(room:string)=>proxy.hubRoomHistory!({agent:'agent-A',current:()=>true},room)};
+ return {a,b,history,local,adapter,disablePolicy:()=>{delete base.requestContextPolicy;},stop:()=>{live=false;},call:async(room:string)=>proxy.hubRoomHistory!({agent:'agent-A',current:()=>true},room)};
 }
 it('Hub request A can read A only, even when the return audience is B; direct/uncovered requests cannot read group history',async()=>{
  const w=world();await expect(w.call(w.b)).rejects.toMatchObject({reason:'room'});expect(w.history).not.toHaveBeenCalled();
@@ -32,13 +32,20 @@ it('Hub request A can read A only, even when the return audience is B; direct/un
  const direct=world('direct');await expect(direct.call(direct.a)).rejects.toMatchObject({reason:'room'});expect(direct.history).not.toHaveBeenCalled();
  const uncovered=world('uncovered');await expect(uncovered.call(uncovered.a)).rejects.toMatchObject({reason:'uncovered'});expect(uncovered.history).not.toHaveBeenCalled();
 });
-it('owner turns remain ordinary; Off has membership guards but no machine request/audience boundary',async()=>{
+it('owner turns with On remain ordinary; Off refuses history without a reliable active ask lease',async()=>{
  const owner=world('owner');expect(await owner.call(owner.b)).toMatchObject({ok:true});
- const off=world('off');expect(await off.call(off.b)).toMatchObject({ok:true});
+ const off=world('off');expect(await off.call(off.b)).toMatchObject({ok:false,code:'denied'});expect(off.history).not.toHaveBeenCalled();
 });
 it('binds the original Hub and retires held history when the captured lease ends',async()=>{
  const wrong=world('room','other-hub');expect(await wrong.call(wrong.a)).toEqual({ok:false,code:'denied'});expect(wrong.history).not.toHaveBeenCalled();
  const w=world();let finish!:(v:Awaited<ReturnType<typeof w.history>>)=>void;
  w.history.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
  const pending=w.call(w.a);w.stop();finish({ok:true,roomId:w.a,note:ROOM_HISTORY_NOTE,messages:[]});expect(await pending).toEqual({ok:false,code:'stale'});
+});
+
+it('discards a held result when request-context is turned Off rather than keeping an old On scope',async()=>{
+ const w=world('owner');let finish!:(v:Awaited<ReturnType<typeof w.history>>)=>void;
+ w.history.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const pending=w.call(w.b);w.disablePolicy();finish({ok:true,roomId:w.b,note:ROOM_HISTORY_NOTE,messages:[]});
+ expect(await pending).toEqual({ok:false,code:'stale'});
 });

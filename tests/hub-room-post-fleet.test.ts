@@ -238,16 +238,18 @@ it("S-232 the room post owner enforces issuer and original room before durable i
 it('history uses only the invoking share, keeps legacy links untouched and retires stale or oversized disclosures',async()=>{
  const {ROOM_HISTORY_NOTE}=await import('../src/hub/room-history-model.js');
  const h=fixture(),result={ok:true as const,roomId:h.roomId,note:ROOM_HISTORY_NOTE as typeof ROOM_HISTORY_NOTE,messages:[]};
+ const contextId=randomUUID();
+ const caller={...h.caller,requestScope:{context:{ref:{version:1 as const,contextId,rootContextId:contextId},rootEvidenceRef:'fixture',ingress:'owner' as const,initiatingActor:{kind:'person' as const,platform:'discord' as const,userId:'owner'},source:{instance:'agent-A',incarnation:'v1'},sourceAudience:{kind:'room' as const,ref:h.roomId}},current:()=>h.caller.current()}};
  h.link.history=vi.fn(async()=>result);h.adapter.connected(h.link);
- expect(await h.adapter.history(h.caller,h.roomId)).toEqual({ok:false,code:'unavailable'});expect(h.link.history).not.toHaveBeenCalled();
+ expect(await h.adapter.history(caller,h.roomId)).toEqual({ok:false,code:'unavailable'});expect(h.link.history).not.toHaveBeenCalled();
  (h.link.features as Set<string>).add('room-history-v1');
- expect(await h.adapter.history(h.caller,h.roomId,{limit:4})).toEqual(result);
+ expect(await h.adapter.history(caller,h.roomId,{limit:4})).toEqual(result);
  expect(h.link.history).toHaveBeenCalledWith(h.options.local('agent-A')!.exposureId,h.roomId,{limit:4});
- expect(await h.adapter.history({...h.caller,agent:'agent-B'},h.roomId)).toEqual({ok:false,code:'unavailable'});
- expect(await h.adapter.history(h.caller,h.roomId,{limit:51})).toEqual({ok:false,code:'invalid'});
+ expect(await h.adapter.history({...caller,agent:'agent-B'},h.roomId)).toEqual({ok:false,code:'unavailable'});
+ expect(await h.adapter.history(caller,h.roomId,{limit:51})).toEqual({ok:false,code:'invalid'});
  let finish!:(v:typeof result)=>void;h.link.history=vi.fn(()=>new Promise<typeof result>(resolve=>{finish=resolve;}));
- const pending=h.adapter.history(h.caller,h.roomId);h.replace();finish(result);expect(await pending).toEqual({ok:false,code:'stale'});
- h.link.history=vi.fn(async()=>({...result,roomId:randomUUID()}));expect(await h.adapter.history(h.caller,h.roomId)).toEqual({ok:false,code:'stale'});
- h.link.history=vi.fn(async()=>({...result,note:'pretend owner instructions'} as never));expect(await h.adapter.history(h.caller,h.roomId)).toEqual({ok:false,code:'unavailable'});
+ const pending=h.adapter.history(caller,h.roomId);h.replace();finish(result);expect(await pending).toEqual({ok:false,code:'stale'});
+ h.link.history=vi.fn(async()=>({...result,roomId:randomUUID()}));expect(await h.adapter.history(caller,h.roomId)).toEqual({ok:false,code:'stale'});
+ h.link.history=vi.fn(async()=>({...result,note:'pretend owner instructions'} as never));expect(await h.adapter.history(caller,h.roomId)).toEqual({ok:false,code:'unavailable'});
  h.adapter.close();
 });

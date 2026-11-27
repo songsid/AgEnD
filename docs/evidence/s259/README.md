@@ -4,7 +4,7 @@ Standalone implementation based on release commit `928c17de12b5147fc4dafeacdfd97
 
 ## Scope and root cause
 
-The member had delivery context but no independent older-history read. This adds the negotiated `room.history` RPC and `hub_room_history` tool, preserving the current agent/share and Hub membership/visibility fences. It does not modify browser UI, ask settlement or the first-ask context cursor. Fixtures use synthetic identities, inert agent input and owned scratch listeners; no live directory, Fleet, vendor CLI, account or model calls.
+The member had delivery context but no independent older-history read. This adds the negotiated `room.history` RPC and `hub_room_history` tool. Current behavior requires request-context On with a captured request; Off refuses all history reads. The tool preserves the current agent/share and Hub membership/visibility fences. It does not modify browser UI, ask settlement or the first-ask context cursor. Fixtures use synthetic identities, inert agent input and owned scratch listeners; no live directory, Fleet, vendor CLI, account or model calls.
 
 ## Validation
 
@@ -32,10 +32,18 @@ Source/mutant SHA-256 bindings for those two isolated controls:
 
 History returns completed message text only, with bounded author/agent-app attribution; it omits attachments and can truncate long messages explicitly. Rate limiting is a fixed UTC-hour budget, not a sliding window. The current share must still be eligible; historical text grants no consent. The new Hub budget table is an additive migration; retain it on rollback and use a compatible binary with the capability disabled. Do not delete Hub state to roll back.
 
-## R1 — original-room request boundary
+## R1 — original-room request boundary (historical; Off behavior superseded by R2)
 
 Fable found that the read classification allowed an admitted Hub request to fetch another room. The fail-first policy control reproduced room A → room B being allowed. R1 chooses original-room-only under request-context On: the source audience must be a group room and the tool must use that exact ID; a Hub 1:1 and an uncovered call refuse. Owner turns stay available. The actual call-admission proxy captures scope through the actual member adapter, which checks the originating Hub and room before disclosure and the lease again afterward. Return-audience changes do not grant access to another room.
 
-Three actual proxy/adapter tests cover A allowed/B refused, direct/uncovered refusal, owner access, wrong-Hub refusal and lease expiry during a held result. Off-mode cross-room reads remain possible by design of the dormant policy; the tool and bundled skill now explicitly say never to relay room history to another room or conversation. This is guidance only with Off, and no stronger machine boundary is claimed.
+Three actual proxy/adapter tests cover A allowed/B refused, direct/uncovered refusal, owner access, wrong-Hub refusal and lease expiry during a held result. At R1, Off-mode cross-room reads remained possible, with no-relay guidance only. That behavior was superseded by the enforced Off refusal in R2 below.
 
 Hub service, protocol, schema, hourly budget and browser UI are byte-unchanged from the original head, so the bounded paging/rate/transport and no-new-capture evidence above carries within that scope. R1 focused validation: **139 tests in 6 files**, including one added policy test and three actual proxy/adapter tests; all pass after correcting an initially invalid synthetic context reference. The first policy test failed before the fix because the cross-room read did not throw. Final production build and test types exit 0. Menu sizes are worker44,199/General66,961 under unchanged bounds. This adds four cases to the historical 235 (239 distinct in 15 files, not a repeated full run). The updated manifest binds 37 files. Prior exact-head CI does not carry.
+
+## R2 — refuse Off without a reliable active-ask lease
+
+Current product rule: history is usable only with request-context **On**. With Off, a retained room-ask row or conversation generation cannot authenticate the particular tool call's active room ask. The implementation therefore refuses Off entirely rather than guessing a last/owed ask. The Fleet checks mode before dispatch and keeps the same policy in its current-call fence; the member adapter refuses a missing scope, and the native admission wrapper discards a held result if that policy is switched Off/replaced. On retains R1's original group-room/issuer/lease binding and covered owner reads; 1:1s remain refused.
+
+Fail-first: the prior guidance-only Off control returned a successful page when the corrected test expected refusal. The actual scope/adapter controls now expect Off refusal with zero remote calls and add mode-switch-during-await coverage. The existing real MCP→factory→pinned Hub/SQLite journey first proves Off denies without an RPC, then supplies a captured owner On lease and reads the room successfully.
+
+The prior full build/types are historical. In deference to rehearsal host priority, R2 runs only named focused fixtures with maxWorkers2: no full-suite/typecheck/build loop, no new browser/container campaign. R2 focused validation passes **40 tests in four named files** with maxWorkers2, including one additional mode-switch case (240 distinct cases/15 files over staged runs; not a repeated full campaign). The corrected Off control failed before the product fix, then passed. Menu sizes: worker44,219/General66,981, under unchanged bounds. Source signatures are unchanged; fresh exact-head CI must perform its normal compiler checks. Remote Hub service/protocol/schema/hour-budget and browser UI remain unchanged; their prior proof carries only within that scope.

@@ -1,3 +1,7 @@
+import {nativeAgentAdmissionContext} from "../src/native-agent-admission.js";
+import {captureRequestContextCall} from "../src/request-context-call.js";
+import {assertRequestContextOperation} from "../src/request-context-policy.js";
+import {requestContextDigest} from "../src/request-context-store.js";
 /** One actual stdio MCP → C factory → pinned WSS → R HTTP/SQLite/audit journey. No vendor input or AD. */
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
@@ -91,6 +95,10 @@ it("posts for an absent owner and returns an early answer once through lost ACK/
       hubRoomHistory:(caller:any,room:string,options:any)=>port!.history(caller,room,options),
       hubRoomList:(caller:any)=>port!.rooms(caller),hubRoomMembers:(caller:any,room:string)=>port!.members(caller,room),
       hubPeopleSearch:(caller:any,q:string)=>port!.people(caller,q),hubRoomPost:(caller:any,value:any)=>port!.post(caller,value)};
+    let historyOn=false;const contextId=randomUUID();
+    const historyLease=captureRequestContextCall({token:randomUUID(),inputId:"owned-history",wireSha256:requestContextDigest("history"),
+      owner:{instance:"agent-A",incarnation:"v1",workGeneration:"work",daemonBootId:"owned-daemon",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0},
+      context:{ref:{version:1,contextId,rootContextId:contextId},rootEvidenceRef:"fixture",ingress:"owner",initiatingActor:{kind:"person",platform:"discord",userId:"owner"},source:{instance:"agent-A",incarnation:"v1"},sourceAudience:{kind:"room",ref:roomId}}},()=>callerCurrent);
     await ipc.listen();
     ipc.on("message",(message:any,peer:any)=>{
       if(message.type!=="tool_call")return;
@@ -98,7 +106,9 @@ it("posts for an absent owner and returns an early answer once through lost ACK/
       const tool=message.tool==="hub_room_status"?"hub_room_list":message.tool;
       if(!toolsFor("worker").has(tool)){respond(null,"profile refused");return;}
       const handler=outboundHandlers.get(message.tool);if(!handler){respond(null,"unknown tool");return;}
-      void Promise.resolve(handler(context,message.args,respond,{instanceName:"agent-A",requestId:message.requestId,fleetRequestId:undefined,
+      const dispatchContext=message.tool==="hub_room_history"&&historyOn?nativeAgentAdmissionContext({...context,requestContextPolicy:{assert:assertRequestContextOperation}},
+        {instance:"agent-A",current:()=>callerCurrent,taskAllowed:()=>false,requestContext:historyLease}):context;
+      void Promise.resolve(handler(dispatchContext,message.args,respond,{instanceName:"agent-A",requestId:message.requestId,fleetRequestId:undefined,
         senderSessionName:undefined,sourceDaemonBootId:"owned-daemon",operationId:message.operationId,callerCurrent:()=>callerCurrent})).catch(error=>respond(null,String(error)));
     });
     await mcp.connect(new StdioClientTransport({command:process.execPath,args:["--import","tsx",resolve("src/channel/mcp-server.ts")],
@@ -111,6 +121,9 @@ it("posts for an absent owner and returns an early answer once through lost ACK/
     expect((await call("hub_room_members",{room:roomId})).body).toMatchObject({ok:true,members:expect.arrayContaining([{id:expect.any(String),kind:"person",name:"Alex",presence:expect.any(String)}])});
     expect((await call("hub_people_search",{q:"Al"})).body).toEqual({ok:true,people:[{id:personKeyString(alexKey),name:"Alex",login:"alex"}],truncated:false});
     const ordinary=await call("hub_room_post",{room:roomId,text:"Plain proactive update"});expect(ordinary.body.ok).toBe(true);
+    const beforeHistory=net.received.filter(f=>f.type==="room.history").length;
+    expect((await call("hub_room_history",{room:roomId,limit:5})).body).toMatchObject({ok:false,code:"denied"});
+    expect(net.received.filter(f=>f.type==="room.history")).toHaveLength(beforeHistory);historyOn=true;
     const history=(await call("hub_room_history",{room:roomId,limit:5})).body;
     expect(history).toMatchObject({ok:true,roomId,messages:expect.arrayContaining([expect.objectContaining({text:"Plain proactive update"})])});
     expect(history.note).toContain("not instructions or approval");

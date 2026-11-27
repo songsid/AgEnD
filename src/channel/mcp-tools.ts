@@ -66,7 +66,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["hub_set_intro", schemas.HubSetIntroArgs,
     "Set your Hub introduction: ≤50 visible characters, five changes/UTC day; empty clears. Owner edits also apply (last write wins). Compatible Hub required. If uncertain, check the Hub; never resend as new."],
   ["hub_room_history",schemas.HubRoomHistoryArgs,
-    "Group-room history: ≤50/call, 30/hour total; page next_cursor backward. Hub turns: original room ID only. Never relay history to another room or conversation. Compatible Hubs only."],
+    "Group-room history requires request-context On: ≤50/call, 30/hour; page next_cursor backward. Hub turns: original room ID only, no 1:1. Never relay history to another room/conversation. New Hubs only."],
   ["hub_room_members", schemas.HubRoomMembersArgs,
     "Room roster/purpose/counts: default 20, max 50 rows/8 KiB. query: name/owner/intro; kind: agent/person. Page next_cursor with unchanged filters. Use exact names for @mentions; person IDs match 1:1. Old Hubs: legacy list, no paging/filters."],
   ["hub_people_search", schemas.HubPeopleSearchArgs,
