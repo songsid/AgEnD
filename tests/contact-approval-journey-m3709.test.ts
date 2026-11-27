@@ -264,3 +264,20 @@ describe("2. where the request shows, and each way to decide it", () => {
     });
   });
 });
+
+describe("M-3864 R7: Clear retained origin names the admin who cleared it", () => {
+  it("the cleared origin and its history say the admin's name (their chat account's), not the bare account id", async () => {
+    const w = world();
+    w.setOrigin("lead", { kind: "unknown", people: [], receiptIds: ["r1"], chain: ["lead"] });
+    w.fm.noteWebSignIn({ adapterId: "a", userId: "admin-a", username: "Example admin" });
+    const b = w.browser(ADMIN_A);
+    const read = await b.request("GET", "/ui/api/instances/lead/contact-permissions");
+    expect(read.status).toBe(200);
+    const p = read.body;
+    const cleared = await b.request("POST", "/ui/api/instances/lead/contact-permissions/origin-clear",
+      { revision: p.revision, originRevision: p.originState.revision, generation: p.originState.generation });
+    expect(cleared.status).toBe(200);
+    expect(w.store.origin("lead")).toMatchObject({ kind: "human", people: [{ adapterId: "a", userId: "admin-a", label: "Example admin" }] });
+    expect(cleared.body.originState).toMatchObject({ people: [{ userId: "admin-a", label: "Example admin" }], lastCleared: { actor: { userId: "admin-a", label: "Example admin" } } });
+  });
+});

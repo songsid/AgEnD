@@ -11,12 +11,41 @@ const working = { id: "busy", kind: "owners", ownerCause: "work", labels: ["m1",
 describe("M-3864 R3: the turn-on's blockers name their agents", () => {
   it("in each language, with its own list separator", () => {
     setLang("en");
-    expect(requestContextBlockerText(working)).toBe("Finish the current work for these agents first: m1, m2.");
+    expect(requestContextBlockerText(working)).toBe("Finish the current work for these agents first: m1, m2. Wait for them to finish, or restart an agent that stays busy.");
     setLang("zh-TW");
     expect(requestContextBlockerText(working)).toContain("m1、m2");
     setLang("en");
   });
 
+  it("S-272: before the first attempt the section says what an On would wait for (it showed nothing)", async () => {
+    setLang("en");
+    const p = page();
+    await p.mount(h(RequestContextBlocked, { state: { phase: "blocked", attempted: false, everActivated: false, blockers: [working] }, onCheck: () => {} }));
+    expect(p.root.textContent).toContain("Turning this on has to wait for these first:");
+    expect(p.root.textContent).toContain("Wait for them to finish, or restart an agent that stays busy.");
+    await p.unmount();
+    await p.mount(h(RequestContextBlocked, { state: { phase: "blocked", attempted: false, everActivated: false, blockers: [{ id: "legacy-pending", kind: "legacy", labels: ["R1"], action: "inspect" }, working] }, onCheck: () => {} }));
+    expect(p.root.querySelectorAll('a[href="/ui/fleet/authorizations"]').length).toBe(1);   // one link, for the earlier requests only
+    await p.unmount();
+    await p.mount(h(RequestContextBlocked, { state: { phase: "blocked", attempted: false, everActivated: false, blockers: [working] }, onCheck: () => {} }));
+    expect(p.root.querySelectorAll('a[href="/ui/fleet/authorizations"]').length).toBe(0);   // busy agents: their own links, not Authorizations
+    await p.unmount();
+    await p.mount(h(RequestContextBlocked, { state: { phase: "off", attempted: false, everActivated: false, blockers: [] }, onCheck: () => {} }));
+    expect(p.root.textContent).toBe("");                                                   // nothing in the way: nothing shown
+    await p.unmount();
+  });
+  it("S-272: each earlier-ticket blocker says what settles it, in both languages; an older server's plain legacy keeps its line", () => {
+    setLang("en");
+    expect(requestContextBlockerText({ id: "legacy-pending", kind: "legacy", labels: ["R1"] })).toBe("Decide these earlier contact requests first, in Fleet → Authorizations: R1.");
+    expect(requestContextBlockerText({ id: "legacy-inflight", kind: "legacy", labels: ["R2"] })).toMatch(/^These earlier approved messages are still being delivered: R2\. This clears by itself/);
+    expect(requestContextBlockerText({ id: "legacy-unsettled", kind: "legacy", labels: ["R4", "R5"] })).toMatch(/can't tell whether they happened: R4, R5\. They can't be settled from this page yet/);
+    expect(requestContextBlockerText({ id: "legacy-deliveries", kind: "legacy", labels: ["lead → worker"] })).toMatch(/^These earlier messages are still waiting to be delivered: lead → worker\./);
+    expect(requestContextBlockerText({ id: "legacy", kind: "legacy", labels: ["R9"] })).toBe("Resolve these earlier held messages first: R9.");
+    setLang("zh-TW");
+    expect(requestContextBlockerText({ id: "legacy-unsettled", kind: "legacy", labels: ["R4", "R5"] })).toContain("R4、R5");
+    expect(requestContextBlockerText({ id: "legacy-pending", kind: "legacy", labels: ["R1"] })).toBe("請先在「Fleet → 授權」決定這些先前的聯絡申請：R1。");
+    setLang("en");
+  });
   it("the blocked section renders them (it was blank)", async () => {
     setLang("en");
     const p = page();

@@ -1,3 +1,4 @@
+import { readHubSqlRow, readHubSqlRows } from "../read-statement.js";
 /** Read-only persisted clock fence. No resource effects, timers, migration registration or operation permit. */
 import type Database from "better-sqlite3";
 import type { HubTransportStore } from "../store.js";
@@ -20,16 +21,16 @@ export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
   const live = () => !closed && current() === true && root.realm === realm && transport.read === readTransport;
   const read = options.policy ?? createHubCanonicalPolicyReader({ ...options, current: live });
   const rawMarker = () => {
-    const rows = db.prepare("SELECT singleton,body FROM hub_role_cutover").all() as { singleton: number; body: string }[];
+    const rows = readHubSqlRows(db, "SELECT singleton,body FROM hub_role_cutover") as { singleton: number; body: string }[];
     if (rows.length !== 1 || rows[0]!.singleton !== 1) throw new HubProtocolError("unavailable");
     return rows[0]!.body;
   };
   const floor = () => {
-    const row = db.prepare("SELECT MAX(settled_at) AS at FROM hub_role_expiry_terms").get() as { at: number | null };
+    const row = readHubSqlRow(db, "SELECT MAX(settled_at) AS at FROM hub_role_expiry_terms") as { at: number | null };
     return row.at === null ? 0 : validated(epoch, row.at);
   };
   const registry = () => {
-    const rows = db.prepare("SELECT component,version FROM hub_schema WHERE component IN ('roles-cutover','roles-expiry','roles-writer') ORDER BY component").all();
+    const rows = readHubSqlRows(db, "SELECT component,version FROM hub_schema WHERE component IN ('roles-cutover','roles-expiry','roles-writer') ORDER BY component");
     if (JSON.stringify(rows) !== JSON.stringify([
       { component: "roles-cutover", version: 1 }, { component: "roles-expiry", version: 1 }, { component: "roles-writer", version: 1 },
     ])) throw new HubProtocolError("unavailable");
@@ -41,7 +42,7 @@ export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
         if (policy.kind !== "roles") throw new HubProtocolError("unavailable");
         registry();
         const raw = rawMarker(), { marker } = parseHubRoleCutoverMarker(raw, hubId), settled = floor();
-        const owner = db.prepare("SELECT hub_id FROM hub_instance WHERE singleton=1").get() as { hub_id: string } | undefined;
+        const owner = readHubSqlRow(db, "SELECT hub_id FROM hub_instance WHERE singleton=1") as { hub_id: string } | undefined;
         const state = readState(), at = validated(epoch, now()); // The real transport reader includes its independent floor.
         if (owner?.hub_id !== hubId || personKeyString(marker.root) !== personKeyString(root)
           || marker.realm !== realm || policy.policy.revision < marker.fromRevision
@@ -49,7 +50,7 @@ export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
           || validated(epoch, state.revocationVersion) < marker.authorizationVersion
           || at < marker.at || at < settled) throw new HubProtocolError("unavailable");
         // The callbacks above cannot replace the image this clock check just established.
-        const confirmed = readState(), confirmedOwner = db.prepare("SELECT hub_id FROM hub_instance WHERE singleton=1").get() as { hub_id: string } | undefined;
+        const confirmed = readState(), confirmedOwner = readHubSqlRow(db, "SELECT hub_id FROM hub_instance WHERE singleton=1") as { hub_id: string } | undefined;
         if (!live() || confirmedOwner?.hub_id !== hubId || confirmed.revision !== state.revision || confirmed.revocationVersion !== state.revocationVersion
           || read().raw !== policy.raw || rawMarker() !== raw || floor() !== settled) throw new HubProtocolError("unavailable");
         registry();

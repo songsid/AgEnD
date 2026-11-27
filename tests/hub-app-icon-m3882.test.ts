@@ -80,6 +80,6 @@ describe("M-3882: the Hub's own app icon", () => {
   });
   it("the Hub listener and the Hub's page shell use the Hub flavor", () => {
     expect(readFileSync(join(process.cwd(), "src", "hub", "http", "compose.ts"), "utf8")).toContain('handleWebIconRequest(req, res, path, "hub")');
-    expect(readFileSync(join(process.cwd(), "src", "web-api.ts"), "utf8")).toContain('withAppIconLinks(html, "hub").replace("<body>", body)');
+    expect(readFileSync(join(process.cwd(), "src", "web-api.ts"), "utf8")).toContain('withAppIconLinks(page, "hub").replace("<body>", body)');
   });
 });

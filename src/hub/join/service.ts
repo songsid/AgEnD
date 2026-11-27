@@ -84,7 +84,18 @@ export class HubCompanyJoin {
   }
   /** Display facts from this composed Hub's own provenance/audit; retention never becomes an invented date. */
   fleetDisplay(id: string) {
-    this.check(); validated(uuid, id);
+    this.check();
+    return this.fleetDisplayRow(id);
+  }
+  /** One synchronous display batch; no credential or joining authority is returned. */
+  fleetDisplays(ids: readonly string[]) {
+    this.check();
+    const out = new Map(ids.map(id => [id, this.fleetDisplayRow(id)]));
+    this.check();
+    return out;
+  }
+  private fleetDisplayRow(id: string) {
+    validated(uuid, id);
     const row = this.options.db.prepare("SELECT source FROM hub_group_resources WHERE resource_key=?").get(JSON.stringify(["fleet", id, 1])) as
       { source: "group" | "manual" | "code" } | undefined;
     const issued = this.options.db.prepare("SELECT at FROM hub_audit WHERE fleet_id=? AND action IN('pairing.claimed','company-join.group-approved','company-join.admin-approved','company-join.code-approved') AND result='allowed' ORDER BY sequence LIMIT 1")

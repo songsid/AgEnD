@@ -1,3 +1,4 @@
+import { readHubSqlRow } from "./read-statement.js";
 /** #3425: browser authority is separate from the member transport's revocationVersion. No I/O on import. */
 import type Database from "better-sqlite3";
 import { HubProtocolError } from "./validation.js";
@@ -21,7 +22,7 @@ export const HUB_SESSION_EPOCH_MIGRATION = Object.freeze({
 
 export function readHubSessionEpoch(db: Database.Database): number {
   try {
-    const row = db.prepare("SELECT epoch FROM hub_directory_epoch WHERE singleton=1").get() as { epoch: number } | undefined;
+    const row = readHubSqlRow(db, "SELECT epoch FROM hub_directory_epoch WHERE singleton=1") as { epoch: number } | undefined;
     if (!row || !Number.isSafeInteger(row.epoch) || row.epoch < 0) throw new HubProtocolError("uncertain");
     return row.epoch;
   } catch { throw new HubProtocolError("uncertain"); }
