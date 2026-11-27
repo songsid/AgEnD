@@ -38,9 +38,9 @@ fm.launchInstalledUpdate = async (origin: string) => { launches.push(origin); re
 fm.startWebUpdate = async () => { launches.push("web"); return { ok: false, status: 503, error: "capture_no_install" }; };
 const { summarize } = await import(REPO + "/src/update-readiness.ts");
 const pre = (checks: any[]) => summarize(checks, Date.now());
-const SELF = pre([{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P5", ok: true }, { id: "P9", ok: true }]);
-const LINGER_OFF = pre([{ id: "P1", ok: true }, { id: "P3", ok: false, code: "linger-off", detail: { user: "example" } }, { id: "P4", ok: true }, { id: "P9", ok: true }]);
-const NOT_SERVICE = pre([{ id: "P1", ok: true }, { id: "P3", ok: false, code: "not-service" }, { id: "P4", ok: true }, { id: "P9", ok: true }]);
+const SELF = pre([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P5", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }]);
+const LINGER_OFF = pre([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: false, code: "linger-off", detail: { user: "example" } }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }]);
+const NOT_SERVICE = pre([{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: false, code: "not-service" }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }]);
 const setPreflight = (p: any) => { fm.updatePreflight = p; fm.probeUpdatePreflight = async () => p; };
 let fixTakes = true;
 fm.runUpdateFix = async (fix: string) => { fixes.push(fix); if (!fixTakes) return { ok: false }; setPreflight(SELF); return { ok: true }; };

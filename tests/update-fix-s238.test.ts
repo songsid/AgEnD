@@ -21,7 +21,7 @@ vi.mock("../src/update-readiness.js", async importOriginal => {
   return { ...real, runUpdatePreflight: vi.fn(async (opts: { target?: string | null; localOnly?: boolean } = {}) => {
     preflight.calls.push(opts);
     if (preflight.hold) await preflight.hold;
-    const local = preflight.checks ?? [{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }];
+    const local = preflight.checks ?? [{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }];
     return real.summarize(local as never, Date.now(), { install: "/home/u/.npm-global/bin/agend" });
   }) };
 });
@@ -50,8 +50,8 @@ function raw(port: number, method: string, path: string, headers: Record<string,
   });
 }
 
-const LINGER_OFF = [{ id: "P1", ok: true }, { id: "P3", ok: false, code: "linger-off", detail: { user: "example" } }, { id: "P4", ok: true }, { id: "P9", ok: true }];
-const FIXED = [{ id: "P1", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P9", ok: true }];
+const LINGER_OFF = [{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: false, code: "linger-off", detail: { user: "example" } }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }];
+const FIXED = [{ id: "P1", ok: true }, { id: "P2", ok: true }, { id: "P3", ok: true }, { id: "P4", ok: true }, { id: "P8", ok: true }, { id: "P9", ok: true }];
 const LINGER = JSON.stringify({ fix: "linger" });
 
 async function fleet() {
