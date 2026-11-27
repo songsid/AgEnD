@@ -34,6 +34,7 @@ export const HUB_TRANSPORT_MIGRATION = Object.freeze({ component: "s1-transport"
 /** No file opening or migration on import/construction; initialization is explicit and belongs to S5. */
 export class HubTransportStore {
   private failed = false;
+  private decoded?: { raw: string; template: HubTransportState };
   constructor(private readonly db: Database.Database, private readonly options: HubTransportStoreOptions) {}
   initialize(): void {
     if (this.db.prepare("SELECT 1 FROM hub_transport_state WHERE singleton=1").get()) throw new HubProtocolError("conflict");
@@ -46,10 +47,15 @@ export class HubTransportStore {
     try {
       const row = this.db.prepare("SELECT state FROM hub_transport_state WHERE singleton=1").get() as { state: string } | undefined;
       if (!row) throw new HubProtocolError("uncertain");
-      const state = validated(stateSchema, parseStrictJson(row.state, 2 * 1024 * 1024)), floor = this.options.floor.read();
+      // Cache decoding only. The SQL image and independent private floor are still
+      // read on every call; returned state never aliases the retained template.
+      const known = this.decoded?.raw === row.state ? this.decoded : undefined;
+      const state = known ? structuredClone(known.template) : validated(stateSchema, parseStrictJson(row.state, 2 * 1024 * 1024));
+      const floor = this.options.floor.read();
       if (!Number.isSafeInteger(floor) || floor < 0 || floor !== state.revision
         || new Set(state.pairings.map(x => x.id)).size !== state.pairings.length
         || new Set(state.fleets.map(x => x.id)).size !== state.fleets.length) throw new HubProtocolError("uncertain");
+      if (!known) this.decoded = { raw: row.state, template: structuredClone(state) };
       return state;
     } catch { this.failed = true; throw new HubProtocolError("uncertain"); }
   }

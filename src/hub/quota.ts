@@ -44,8 +44,9 @@ export class HubQuotaService {
     });
   }
   /** Called only after the caller's room/catalog authorization. Hidden always omits the whole value. */
-  projection(exposureId: string): { quota?: HubQuota } {
-    return this.core.atomic(db => {
+  projection(exposureId: string, batchDb?: import("better-sqlite3").Database): { quota?: HubQuota } {
+    const read = <T>(work: (db: import("better-sqlite3").Database) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    return read(db => {
       const setting = db.prepare("SELECT visible FROM hub_quota_preferences WHERE exposure_id=?").get(exposureId) as { visible: number } | undefined;
       if (setting?.visible === 0) return {};
       const e = readExposure(db, exposureId), value = this.values.get(exposureId);
@@ -57,8 +58,9 @@ export class HubQuotaService {
       return { quota: structuredClone(value.quota) };
     });
   }
-  visible(exposureId: string): boolean {
-    return this.core.atomic(db => (db.prepare("SELECT visible FROM hub_quota_preferences WHERE exposure_id=?").get(exposureId) as { visible: number } | undefined)?.visible !== 0);
+  visible(exposureId: string, batchDb?: import("better-sqlite3").Database): boolean {
+    const read = <T>(work: (db: import("better-sqlite3").Database) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    return read(db => (db.prepare("SELECT visible FROM hub_quota_preferences WHERE exposure_id=?").get(exposureId) as { visible: number } | undefined)?.visible !== 0);
   }
   roomProjection(room: HubRoom, proof?: HubGrantSubjectProof): { quota?: HubQuota } {
     const allowed = this.core.atomic(db => {
