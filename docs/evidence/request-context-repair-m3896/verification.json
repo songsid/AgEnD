@@ -1,64 +1,37 @@
 {
-  "scope": "Implementation checkpoint; release enable guard retained; fresh full-mode rig and visible-copy review pending",
+  "coreRigHead": "9aa550fe022e0d302a415a89d56a3e6488605038",
+  "uiSourceHead": "1b4080ede5de5289eb725460e7a448ffb17bd39d",
+  "fixturePackage": "2.4.0-beta.2802 (local pack only)",
+  "baseline": "2.4.0-beta.26",
+  "provider": "Claude Code 2.1.325 on an inert Anthropic API",
+  "installedOnlyEnableBypass": true,
+  "productionEnableFreezeRetained": true,
+  "results": {
+    "firstOn": true,
+    "firstAndNextReply": true,
+    "adapterRefusalThenNextReply": true,
+    "offThenReplyAndRestart": true,
+    "interruptedTurnNamedStop": true,
+    "stopOutcomeApplied": true,
+    "resolutionCanonicalDigestAndPermanentGuard": true,
+    "guardedRestartAndReply": true,
+    "fleet.yaml": true,
+    "classicBot.yaml": true,
+    "claudeConversationResumed": true
+  },
+  "uncertainHumanReceiptCoverage": "Actual SQLite integration and image/revocation mutants; not injected in the container.",
   "focusedTests": {
-    "files": 15,
-    "passed": 292,
-    "maxWorkers": 2,
-    "log": "m3896-final-focused.log"
+    "files": 10,
+    "passed": 137
   },
-  "typecheck": {
-    "command": "NODE_OPTIONS=--max-old-space-size=8192 npm run typecheck:tests",
-    "result": "passed",
-    "dependencies": "Private worktree npm ci from package-lock.json; shared dependency tree unchanged"
+  "captures": {
+    "count": 56,
+    "devices": 2,
+    "themes": 2,
+    "locales": 2,
+    "states": 7,
+    "lifecycleOrChangeCalls": 0
   },
-  "mutationControls": [
-    {
-      "mutant": "pending-confirm",
-      "killed": true,
-      "exit": 1
-    },
-    {
-      "mutant": "pending-key-token",
-      "killed": true,
-      "exit": 1
-    },
-    {
-      "mutant": "native-parent",
-      "killed": true,
-      "exit": 1
-    },
-    {
-      "mutant": "native-session",
-      "killed": true,
-      "exit": 1
-    },
-    {
-      "mutant": "native-launch",
-      "killed": true,
-      "exit": 1
-    },
-    {
-      "mutant": "positive-retirement",
-      "killed": true,
-      "exit": 1
-    },
-    {
-      "mutant": "final-revisions",
-      "killed": true,
-      "exit": 1
-    },
-    {
-      "mutant": "receipt-images",
-      "killed": true,
-      "exit": 1
-    }
-  ],
-  "oldReaderProof": {
-    "package": "@songsid/agend@2.4.0-beta.27",
-    "fixture": "tests/fixtures/request-context-resolution-m3896/beta27-reader.mjs",
-    "neverAbandoned": "opens unchanged seven-artifact v1",
-    "abandoned": "refuses eighth guard"
-  },
-  "productionChanges": false,
-  "enableGuardRemoved": false
+  "visualCheck": "All 56 PNGs inspected; no clipping, private data or copy mismatch.",
+  "hold": "User look and exact-head Fable review; keep draft and release guard until those gates."
 }
