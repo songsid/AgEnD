@@ -119,13 +119,14 @@ export function prepareContactChange(raw: unknown, host: ContactChangeHost): Pre
   } else {
     if (input.revision !== undefined && input.revision !== policy.revision) throw Error("conflict");
     if (input.kind === "origin-clear") {
-      // Only an origin that holds the agent (unknown or mixed — what contact_state lists); a human one holds nothing.
+      // Only an origin that holds the agent, by the contact gate's own rule (#4555 F1: one non-admin person holds it too).
       const origin = store.origin(target);
-      if (!origin || origin.kind === "human") throw Error("contact-proposal-no-origin");
+      if (!origin || !host.service.needsApplication(target)) throw Error("contact-proposal-no-origin");
       payload = { revision: policy.revision, originRevision, generation: targetGeneration };
       const people = origin.people.map(personName).join(getLocale() === "zh-TW" ? "、" : ", ");
+      // #4555 F2: what the Permissions tab says, for a room or an agent (src/ui/contact-auth-strings.js originClearConfirm*).
       summary.push(t("contactProposal.originNow", t(`contactProposal.origin_${origin.kind}`), people || t("contactProposal.originNobody")),
-        t("contactProposal.originClear"), t("contactProposal.originBoundary"));
+        t(mode ? "contactProposal.originClearRoom" : "contactProposal.originClearAgent"), t("contactProposal.originBoundary"));
     } else if (input.kind === "mode") {
       if (!mode) throw Error("contact-proposal-not-room");
       payload = { revision: policy.revision, mode: input.mode };

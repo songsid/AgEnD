@@ -19,7 +19,7 @@ afterEach(() => { for (const r of rigs.splice(0)) { for (const e of r.fm.pending
 function rig() {
   const db = new Database(":memory:"), store = new ContactAuthStore(db);
   const gen = new Map([["general", "g1"], ["worker", "w1"]]);
-  const service = new ContactAuthService({ store, restricted: () => true, adminOf: () => false, defaultApprovers: () => [admin], generation: n => gen.get(n)!,
+  const service = new ContactAuthService({ store, restricted: () => true, adminOf: (_n, p) => p.userId === admin.userId, defaultApprovers: () => [admin], generation: n => gen.get(n)!,
     hubRestricted: () => false, delivered: () => false, admit: vi.fn(() => "delivery-1"), changed: vi.fn() });
   const adapter: any = { id: "demo", type: "discord", getBotUserId: () => "fake-bot", notifyAlert: vi.fn(async () => ({ chatId: "channel", messageId: "prompt", threadId: "thread" })),
     editMessageRemoveButtons: vi.fn(async () => {}) };
@@ -57,7 +57,9 @@ it("proposing writes nothing; the card says what is retained and what the clear 
   const card = r.adapter.notifyAlert.mock.calls[0]![1] as { message?: string; text?: string };
   const text = JSON.stringify(card);
   expect(text).toContain("Its retained origin: mixed (Demo person (Discord)).");
-  expect(text).toContain("as when you clear it on its Permissions tab");
+  // #4555 F2: the Permissions tab's own words, for an agent (not a room).
+  expect(text).toContain("accepts its current conversation as your own work. Earlier text is not erased. Work it later receives from a restricted room or an agent that needs approval will need approval again.");
+  expect(text).toContain("its rules and the messages already held stay as they are");
   await r.click(e, other.userId);                                                                    // not a managing admin
   expect(r.clear).not.toHaveBeenCalled();
   await r.click(e);
@@ -81,20 +83,43 @@ it("a stale card never clears: the origin changed after the proposal (a new rest
   }
 });
 
-it("nothing to clear: no origin, or a human one (it holds nothing) — refused with a sentence, no card", async () => {
+it("#4555 F1: one non-admin person's origin holds the agent too — listed and clearable, by the gate's own rule", async () => {
+  const r = rig();
+  r.store.inheritOrigin("worker", { kind: "human", people: [person], receiptIds: [], chain: ["room", "worker"] });
+  expect(r.service.needsApplication("worker")).toBe(true);
+  const e = await r.post();
+  await r.click(e);
+  expect(r.clear).toHaveBeenCalledOnce();
+  expect(r.store.origin("worker")).toMatchObject({ kind: "human", people: [admin] });
+});
+
+it("nothing to clear: no origin, or one an admin's (it holds nothing) — refused with a sentence, no card", async () => {
   const r = rig();
   await expect(r.fm.requestContactChange("general", { kind: "origin-clear", target: "worker" }, () => true)).rejects.toThrow("contact-proposal-no-origin");
   r.store.inheritOrigin("worker", { kind: "human", people: [admin], receiptIds: [], chain: ["worker"] });
   expect(() => prepareContactChange({ kind: "origin-clear", target: "worker" }, { service: r.service, generation: n => r.gen.get(n)!, mode: () => undefined, modeAdmin: () => false,
     write: vi.fn(), decide: vi.fn(), clearOrigin: vi.fn() })).toThrow("contact-proposal-no-origin");
   expect(r.adapter.notifyAlert).not.toHaveBeenCalled();
-  expect(contactProposalRefusal(new Error("contact-proposal-no-origin"))).toBe("Not proposed: that agent has no retained origin holding it (contact_state lists the agents that have one).");
+  expect(contactProposalRefusal(new Error("contact-proposal-no-origin"))).toBe("Not proposed: that agent's origin doesn't hold it (contact_state lists the agents whose origin does).");
 });
 
-it("contact_state names each held agent's target and says how to propose the clear", () => {
+it("contact_state names each held agent's target (by the gate's rule: a mixed origin, or one non-admin person — never an admin's) and says how to propose the clear", () => {
   const r = rig();
   r.held();
-  const view = contactStateView({ store: r.store, names: () => ["general", "worker"], now: () => Date.now(), generation: n => r.gen.get(n)!, label: n => (n === "worker" ? "Demo worker" : n), roomMode: () => undefined });
-  expect(view.retained_origins).toEqual([{ agent: "Demo worker (worker)", target: "worker", kind: "mixed", people: [expect.any(String)], chain: ["room", "Demo worker (worker)"] }]);
+  r.gen.set("helper", "h1"); r.gen.set("solo", "s1");
+  r.store.inheritOrigin("helper", { kind: "human", people: [admin], receiptIds: [], chain: ["helper"] });
+  r.store.inheritOrigin("solo", { kind: "human", people: [person], receiptIds: [], chain: ["solo"] });
+  const view = contactStateView({ store: r.store, names: () => ["general", "worker", "helper", "solo"], now: () => Date.now(), generation: n => r.gen.get(n)!,
+    label: n => (n === "worker" ? "Demo worker" : n), roomMode: () => undefined, restricts: n => r.service.needsApplication(n) });
+  expect(view.retained_origins.map(o => [o.target, o.kind])).toEqual([["worker", "mixed"], ["solo", "human"]]);
+  expect(view.retained_origins[0]).toEqual({ agent: "Demo worker (worker)", target: "worker", kind: "mixed", people: [expect.any(String)], chain: ["room", "Demo worker (worker)"] });
   expect(view.how_to.some(l => l.includes("kind: 'origin-clear', target"))).toBe(true);
+});
+
+it("#4555 F2: a ClassicBot room's card says the room's words (new non-admin requests need approval again)", () => {
+  const r = rig();
+  r.held();
+  const plan = prepareContactChange({ kind: "origin-clear", target: "worker" }, { service: r.service, generation: n => r.gen.get(n)!, mode: () => "restricted",
+    modeAdmin: () => false, write: vi.fn(), decide: vi.fn(), clearOrigin: vi.fn() });
+  expect(plan.summary.join("\n")).toContain("accepts its current conversation as your own work. Earlier text is not erased. New non-admin requests will require approval again.");
 });

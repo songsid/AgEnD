@@ -168,7 +168,7 @@ const DEFS: Array<[string, ZodType, string]> = [
     + "- origin-clear {target} (retained_origins)\n"
     + "A refusal says what to do next."],
   ["contact_state", schemas.ContactStateArgs,
-    "General only, read-only: held messages (ticket_id, short_id, from, to, who decides), grants (grant_id), ClassicBot room modes, and agents held by a retained origin. `agent` narrows it."],
+    "General only, read-only: held messages (ticket_id, short_id, from, to, who decides), grants (grant_id), room modes, retained origins. `agent` narrows it."],
   ["update_instance_config", schemas.UpdateInstanceConfigArgs,
     "Update a specific instance's config (backend, model, auto_pause_after, display_name, description, backend_options). Saves to fleet.yaml. General alone may also set another portable/local agent's tool_set directly, without confirmation; self-targets are refused. skipPermissions is refused for everyone. backend_options merges per backend; null or \"\" drops a key; a change restarts the instance. A ClassicBot room takes only backend_options.<backend>.credential_profile (classicBot.yaml); the answer names the profile it relaunched on."],
   ["update_fleet_defaults", schemas.UpdateFleetDefaultsArgs,

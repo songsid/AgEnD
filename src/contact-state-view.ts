@@ -18,6 +18,11 @@ export interface ContactStateHost {
   /** Every agent and ClassicBot room this fleet knows. */
   names(): string[];
   label(name: string): string;
+  /**
+   * #4555 F1: does this agent's retained origin hold it — the contact gate's own rule (ContactAuthService.needsApplication):
+   * an unknown or mixed origin, or a single person who isn't an admin, on anything but an unrestricted room.
+   */
+  restricts(name: string): boolean;
   /** A ClassicBot room's mode (restricted, or stored as "legacy": unrestricted); undefined for an agent. */
   roomMode(name: string): "restricted" | "legacy" | undefined;
   /** The agent's current incarnation: a rule or ticket for an earlier one no longer applies. */
@@ -63,10 +68,10 @@ export function contactStateView(host: ContactStateHost, filter: { agent?: strin
     return mode ? [{ room: label(name), mode: mode === "restricted" ? "restricted" : "unrestricted", stored_as: mode, revision: host.store.policy(name).revision }] : [];
   });
 
-  // Only origins that restrict: an unknown or mixed origin holds the agent's messages for approval until it is cleared.
+  // Only origins that restrict, by the gate's own rule (#4555 F1): one non-admin person holds the agent too.
   const retained_origins = names.flatMap(name => {
     const origin = host.store.origin(name);
-    return origin && origin.kind !== "human" ? [{ agent: label(name), target: name, kind: origin.kind, people: origin.people.map(person), chain: origin.chain.map(label) }] : [];
+    return origin && host.restricts(name) ? [{ agent: label(name), target: name, kind: origin.kind, people: origin.people.map(person), chain: origin.chain.map(label) }] : [];
   });
 
   return {
