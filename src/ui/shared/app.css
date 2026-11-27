@@ -2273,6 +2273,25 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
   .update-text { flex: 1 1 100%; }
   .update-actions.indent { margin-left: 26px; }
 }
+/* S-241 (Lumen's point 8): an answered update card (waiting for idle, scheduled) is one line on a phone — its short words
+   and Change; Change opens the full line. The desk never shows the short words or Change. "A phone" is the app's own
+   phone layout (the shell's narrow condition: up to 899 px, or a landscape touch screen), not the banner's 700 px. */
+.uc-answered { display: contents; }
+.uc-short, .uc-fold { display: none; }
+.uc-fold { gap: 4px; align-items: center; }
+.uc-answered.open .uc-fold svg { transform: rotate(180deg); }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .uc-fold { display: inline-flex; }
+  .uc-answered.open .update-actions { flex: 1 1 100%; flex-wrap: wrap; }   /* four buttons may need a second row */
+  .uc-answered:not(.open) .update-line { flex-wrap: nowrap; }
+  .uc-answered:not(.open) .update-text { flex: 1 1 auto; align-items: center; }
+  .uc-answered:not(.open) :is(.update-icon, .update-spinner) { margin-top: 0; }
+  .uc-answered:not(.open) .update-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .uc-answered:not(.open) .uc-long, .uc-answered:not(.open) .update-sub,
+  .uc-answered:not(.open) .update-actions .btn:not(.uc-fold) { display: none; }
+  .uc-answered:not(.open) .uc-short { display: inline; }
+  .uc-answered:not(.open) .update-actions.indent { margin-left: 0; }
+}
 /* M-2738: Settings → Advanced → Version and update */
 /* M-3770 1.4: the update card's Settings part — its state, "Updates on this machine", and the controls (pause windows;
    Advanced: pin, longest wait). Phone: every control a 44 px box, the day ticks wrap. */

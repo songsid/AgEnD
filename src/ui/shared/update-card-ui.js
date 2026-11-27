@@ -9,6 +9,7 @@ import { register, t } from "./app-i18n.js";
 import { confirmDialog } from "./ui-confirm.js";
 import { Dialog } from "./ui-dialog.js";
 import { toast } from "./ui-toast.js";
+import { Icon } from "./ui-icons.js";
 import { dateTimeText } from "./clock-text.js";
 
 register("updatecard", {
@@ -21,6 +22,7 @@ register("updatecard", {
     whenIdle: "Update when idle", pickTime: "Pick a time", notNow: "Not now", updateNow: "Update now", cancel: "Cancel",
     waiting: "Updating to {0} as soon as your agents are idle.", waitingFor: "Waiting for: {0}", waitingSince: "Waiting since {0}",
     scheduled: "Updating to {0} at {1}, when your agents are idle.", notNowUntil: "You chose Not now. The card comes back on {0}.",
+    waitingShort: "AgEnD updates when idle", scheduledShort: "AgEnD updates {0}", foldOpen: "Change", foldClose: "Hide",
     starting: "Starting the update to {0}…", cantTitle: "AgEnD can't update itself on this machine.",
     nowTitle: "Update now?", nowBody: "{0} agents are working. They stop for a few minutes while AgEnD restarts, then pick up where they were.",
     nowBodyIdle: "AgEnD restarts for a few minutes; your agents pick up where they were.", nowGo: "Update now",
@@ -70,6 +72,7 @@ register("updatecard", {
     whenIdle: "閒置時更新", pickTime: "選個時間", notNow: "先不要", updateNow: "立即更新", cancel: "取消",
     waiting: "Agent 一閒置就更新到 {0}。", waitingFor: "正在等：{0}", waitingSince: "從 {0} 開始等",
     scheduled: "排定在 {1}，等 Agent 閒置後更新到 {0}。", notNowUntil: "你選了「先不要」，{0} 會再提醒。",
+    waitingShort: "AgEnD 閒置時更新", scheduledShort: "AgEnD {0} 更新", foldOpen: "變更", foldClose: "收起",
     starting: "正在開始更新到 {0}…", cantTitle: "AgEnD 無法在這台機器上自行更新。",
     nowTitle: "立即更新？", nowBody: "有 {0} 個 Agent 正在工作。AgEnD 重新啟動時會停下幾分鐘，之後從原處繼續。",
     nowBodyIdle: "AgEnD 會重新啟動幾分鐘，Agent 之後從原處繼續。", nowGo: "立即更新",
@@ -155,6 +158,8 @@ export function namesShown(names, max = 2) {
 
 // M-3730: through the shared clock helper (24-hour in zh-TW); English is 24-hour here too, as the leader asked for this card.
 const fmtTime = (ms) => dateTimeText(ms, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+/** The phone's one-line time: weekday and 24-hour time ("Thu 02:00"); the full time is in the opened line. */
+const fmtShort = (ms) => dateTimeText(ms, { weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const fmtDay = (ms) => dateTimeText(ms, { weekday: "short", month: "short", day: "numeric" }).replace(/\s*\d{1,2}:\d{2}(:\d{2})?$/, "");
 /** "HH:MM" every `step` minutes of a day: the 24-hour choices (never the browser's own time input, which shows AM/PM). */
 export function dayTimes(step = 15) { const out = []; for (let m = 0; m < 24 * 60; m += step) out.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`); return out; }
@@ -282,11 +287,27 @@ export function cardLine(info, { Line, busy, deps }) {
   }
   if (c.state === "waiting-idle") {
     const names = Array.isArray(c.waitingFor) && c.waitingFor.length ? tc("waitingFor", namesShown(c.waitingFor)) : null;
-    return html`<${Line} spinner title=${tc("waiting", c.version)} sub=${[names]}>${buttons}</${Line}>`;
+    return html`<${AnsweredLine} key="waiting-idle" Line=${Line} spinner title=${tc("waiting", c.version)} short=${tc("waitingShort")} sub=${[names]} buttons=${buttons} />`;
   }
-  if (c.state === "scheduled") return html`<${Line} icon="clock" title=${tc("scheduled", c.version, fmtTime(c.scheduledAt))}>${buttons}</${Line}>`;
+  if (c.state === "scheduled") return html`<${AnsweredLine} key="scheduled" Line=${Line} icon="clock" title=${tc("scheduled", c.version, fmtTime(c.scheduledAt))}
+    short=${tc("scheduledShort", fmtShort(c.scheduledAt))} buttons=${buttons} />`;
   if (c.state === "updating" && !(info.progress && info.progress.stage)) return html`<${Line} spinner title=${tc("starting", c.version)} />`;
   return null;
+}
+
+/**
+ * S-241 (Lumen's point 8): once the admin has answered (waiting for idle, scheduled), a phone shows the banner as one line —
+ * the short words and Change, which opens the full line (its words, who it waits for, and the buttons). The desk is
+ * unchanged: the short words and Change are never shown there (app.css: the shell's own phone query, as app-shell.js
+ * narrow() asks it, which includes a landscape touch screen). A new state starts closed.
+ * The wrapper is `display: contents`, so the line lays out exactly as before.
+ */
+function AnsweredLine({ Line, spinner, icon, title, short, sub = [], buttons }) {
+  const [open, setOpen] = useState(false);
+  const words = html`<span class="uc-long">${title}</span><span class="uc-short">${short}</span>`;
+  const fold = html`<button type="button" key="fold" class="btn btn-sm uc-fold" aria-expanded=${open ? "true" : "false"}
+    onClick=${() => setOpen(!open)}>${tc(open ? "foldClose" : "foldOpen")}<${Icon} name="chevron" size=${14} /></button>`;
+  return html`<div class=${`uc-answered${open ? " open" : ""}`}><${Line} spinner=${spinner} icon=${icon} title=${words} sub=${sub}>${buttons}${fold}</${Line}></div>`;
 }
 
 /** Settings → Version and update: the card's state, the pre-flight result, and the controls (two + Advanced). */
