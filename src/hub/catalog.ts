@@ -289,10 +289,10 @@ export class HubCatalogService {
     return this.withVisible(ctx, view => view);
   }
   /** A synchronous use of the picker/catalog view, within its current permission transaction. */
-  async withRoomVisible<T>(ctx: HubRequestContext, use: (view: HubCatalogView) => T): Promise<T> {
+  async withRoomVisible<T>(ctx: HubRequestContext, use: (view: HubCatalogView, db: Database.Database) => T): Promise<T> {
     return this.withVisible(ctx, use, true);
   }
-  async withVisible<T>(ctx: HubRequestContext, use: (view: HubCatalogView) => T, roomDiscovery = false): Promise<T> {
+  async withVisible<T>(ctx: HubRequestContext, use: (view: HubCatalogView, db: Database.Database) => T, roomDiscovery = false): Promise<T> {
     const person = await ctx.requirePerson(), me = personKeyString(person), now = this.core.now();
     const initial = this.core.atomic((db) => {
       const names = (id: string) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined;
@@ -372,10 +372,12 @@ export class HubCatalogService {
     for (const proof of proofs) proof.assertCurrent();
     // Recheck ordinary grants after all asynchronous group reads too. A person row witnesses successful Hub
     // sign-in permanently; directory eligibility checks and ended sessions cannot manufacture or erase it.
-    return this.core.atomic(db => use({ mine: mine.filter(candidate => {
+    return this.core.atomic(db => {
+      const fleets = this.core.deps.store.read().fleets;
+      return use({ mine: mine.filter(candidate => {
       const row = readExposure(db, candidate.id);
       return row && row.owner === me && row.state !== "withdrawn" && row.revision === candidate.revision
-        && this.core.deps.store.read().fleets.find(f => f.id === row.fleet_id)?.status !== "revoked";
+        && fleets.find(f => f.id === row.fleet_id)?.status !== "revoked";
     }).map(exposure => ({ ...exposure, grants: exposure.grants.filter(grant => {
       const row = readGrant(db, grant.id);
       return row && row.revision === grant.revision && row.state === "active" && row.expires_at > this.core.now();
@@ -384,7 +386,7 @@ export class HubCatalogService {
       return e && g && exposureOf(e).state === "published" && grantOf(g).revision === candidate.grant.revision
         && grantApplies(grantOf(g), exposureOf(e), person, this.core.now(), subjectProof);
     }), me), ...(roomDiscovery ? { findable: discovered.filter(candidate => !askable.some(a => a.exposure.id === candidate.exposure.id))
-      .map(({ exposure, ownerName }) => ({ exposure, ownerName })) } : {}) }), { assertCurrent: () => { for (const proof of proofs) proof.assertCurrent(); } });
+      .map(({ exposure, ownerName }) => ({ exposure, ownerName })) } : {}) }, db); }, { assertCurrent: () => { for (const proof of proofs) proof.assertCurrent(); } });
   }
 
   /** Owner-selected person or immutable AD security group; suggestions and labels never grant authority. */

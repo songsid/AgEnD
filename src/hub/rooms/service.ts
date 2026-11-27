@@ -122,7 +122,7 @@ export class HubGroupRooms {
    * M-3533 R2a: a Fleet's shared agents' looks (exposure id → colour, emoji) from its owner's agent catalog, set by the
    * composition (agent-catalog.ts); none: the room office draws no look.
    */
-  looks: ((fleetId: string) => Map<string, RoomOfficeLook> | null) | null = null;
+  looks: ((fleetId: string, batchDb?: DB, state?: ReturnType<HubCore["deps"]["store"]["read"]>) => Map<string, RoomOfficeLook> | null) | null = null;
   /** M-3533 R2b: a held picture's bytes by its hash (agent-pictures.ts), set by the composition; none: no picture is served. */
   pictureFile: ((sha256: string) => { mime: string; bytes: Buffer } | null) | null = null;
   /** M-3533 R2b: a room agent's disc or portrait, for the room's members only — the hash the room shows for it now. */
@@ -573,7 +573,7 @@ export class HubGroupRooms {
       AND (p.author_kind<>'person' OR p.author_subject<>?) AND j.value IN (?,?) LIMIT 1`).get(room.id, floor, floor, member.read_sequence, member.subject, member.id, member.subject);
     const online = (db.prepare(`SELECT COUNT(*) AS n FROM hub_room_members m WHERE m.room_id=? AND m.kind='person' AND EXISTS
       (SELECT 1 FROM hub_sessions s WHERE s.person=m.subject AND s.state='active' AND s.expires_at>?)`).get(room.id, this.core.now()) as { n: number }).n;
-    const projected = last ? this.projection(last) : undefined;
+    const projected = last ? this.projection(last, db) : undefined;
     const summary = { id: room.id, kind: "group" as const, name: room.name, purpose:room.purpose??"", people: counts.find(c => c.kind === "person")?.n ?? 0,
       agents: counts.find(c => c.kind === "agent")?.n ?? 0, online, unread, lastAt: last?.created_at ?? room.created_at,
       lastText: projected?.text.slice(0, 240) ?? "", ...(projected?.system ? { lastSystem: projected.system } : {}), lastAuthor: last?.author_name ?? "", mentioned, archived: room.archived === 1 };
@@ -739,15 +739,16 @@ export class HubGroupRooms {
       const own = this.member(db, id, me), room = this.room(db, id);
       // M-3533 R2a: each shared agent's look (its owner's catalog colour and emoji), each Fleet's catalog read once.
       const catalogs = new Map<string, Map<string, RoomOfficeLook> | null>();
+      const transportState = this.core.deps.store.read();
       const lookOf = (fleetId: string, exposureId: string) => {
-        if (!catalogs.has(fleetId)) catalogs.set(fleetId, this.looks ? this.looks(fleetId) : null);
+        if (!catalogs.has(fleetId)) catalogs.set(fleetId, this.looks ? this.looks(fleetId, db, transportState) : null);
         return catalogs.get(fleetId)?.get(exposureId) ?? null;
       };
       const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id").all(id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", role: m.role, presence: this.assistant.presence(id) };
         if (m.kind === "agent") { const e = readExposure(db, m.subject), look = memberLook(e?.fleet_id ? lookOf(e.fleet_id, m.subject) : null); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, ...(look ? { look } : {}), ...agentIntro(db,m.subject), role: m.role,
           ...(e ? { agentKind: e.source_kind === "personal" ? "personal" as const : "fleet" as const } : {}),
-          ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? ""), ...(m.owner_at_join ? { id: m.owner_at_join } : {}), ...(m.owner_at_join === me ? { mine: true } : {}) }, ...this.agents.presence(m.subject), canAsk: canAsk.has(m.subject) }; }
+          ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? ""), ...(m.owner_at_join ? { id: m.owner_at_join } : {}), ...(m.owner_at_join === me ? { mine: true } : {}) }, ...this.agents.presence(m.subject, db), canAsk: canAsk.has(m.subject) }; }
         return { id: m.id, kind: m.kind, name: this.name(db, m.subject), role: m.role,
           signedIn: !!db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(m.subject),
           presence: db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject, this.core.now()) ? "online" : "offline" };
@@ -997,8 +998,9 @@ export class HubGroupRooms {
       const answering = this.agents.answering(db, id);
       // R2a: each Fleet's catalog read once (it is the owner's latest, kept by the Hub: there when the Fleet is offline).
       const catalogs = new Map<string, Map<string, RoomOfficeLook> | null>();
+      const transportState = this.core.deps.store.read();
       const lookOf = (fleetId: string, exposureId: string) => {
-        if (!catalogs.has(fleetId)) catalogs.set(fleetId, this.looks ? this.looks(fleetId) : null);
+        if (!catalogs.has(fleetId)) catalogs.set(fleetId, this.looks ? this.looks(fleetId, db, transportState) : null);
         return catalogs.get(fleetId)?.get(exposureId) ?? null;
       };
       const agents = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind IN ('agent','assistant') ORDER BY kind,id").all(id) as MemberRow[]).map(m => {

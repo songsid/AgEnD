@@ -93,9 +93,10 @@ export class HubVersionRecommendations {
     this.wake(); return result;
   }
   ready(link: HubLinkContext): void { if (link.current() && link.features.has(HUB_RECOMMENDATION_CAPABILITY)) { this.links.set(link.fleetId, link); this.wake(); } }
-  notifiedAt(fleetId: string, setting: HubRecommendationSetting): number | null {
+  notifiedAt(fleetId: string, setting: HubRecommendationSetting, batchDb?: import("better-sqlite3").Database): number | null {
     if (!setting.recommendedVersion) return null;
-    return this.core.atomic(db => (db.prepare("SELECT notified_at FROM hub_version_recommendation_receipts WHERE fleet_id=? AND revision=? AND version=? AND acked=1")
+    const read = <T>(work: (db: import("better-sqlite3").Database) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    return read(db => (db.prepare("SELECT notified_at FROM hub_version_recommendation_receipts WHERE fleet_id=? AND revision=? AND version=? AND acked=1")
       .get(fleetId, setting.revision, setting.recommendedVersion) as { notified_at: number | null } | undefined)?.notified_at ?? null);
   }
   acknowledge(value: unknown, link: HubLinkContext): void {
