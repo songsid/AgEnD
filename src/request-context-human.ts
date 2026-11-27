@@ -1,3 +1,4 @@
+import {readRequestContextResolution} from "./request-context-resolution.js";
 /** Accepted human ingress is retained separately from the strict receipt format, before input intent. */
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -107,10 +108,14 @@ export function requestHumanInputBlockers(db:Database.Database,rootId:string):st
  if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(TABLE))return [];
  const rows=db.prepare(`SELECT receipt_id FROM ${TABLE} WHERE root_id=? OR json_extract(image_json,'$.steer.rootContextId')=? LIMIT 65`).all(rootId,rootId) as Array<{receipt_id:string}>;
  const store=new RequestHumanInputStore(db,()=>{throw Error("Read-only human input inspection");});
+ const resolution=readRequestContextResolution(db,rootId);
  return rows.flatMap(row=>{
   const input=store.read(row.receipt_id),receipt=getHumanReceipt(db,row.receipt_id);
   if(!input||!receipt)throw Error("Accepted human input evidence is unavailable");
-  return receipt.state==="delivered"?[]:[`human-input:${receipt.message_id}`];
+  const closure=resolution?.receipts.find(value=>value.receiptId===row.receipt_id);
+  const image=closure?db.prepare(`SELECT image_sha256 FROM ${TABLE} WHERE receipt_id=?`).get(row.receipt_id) as {image_sha256:string}:null;
+  const abandoned=receipt.state==="uncertain"&&closure&&closure.receiptSha256===requestContextDigest(receipt)&&closure.inputSha256===image?.image_sha256;
+  return receipt.state==="delivered"||abandoned?[]:[`human-input:${receipt.message_id}`];
  });
 }
 
@@ -132,4 +137,18 @@ export function requestUnstartedHumanRoots(db:Database.Database):ReadonlySet<str
   roots.add(root);
  }
  return roots;
+}
+
+/** Exact uncertain images only. Queued ingress is neither delivered nor abandoned. */
+export function requestUncertainHumanImages(db:Database.Database,rootId:string):Array<{receiptId:string;inputSha256:string;receiptSha256:string}>{
+ z.uuid().parse(rootId);
+ if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(TABLE))return [];
+ const rows=db.prepare(`SELECT receipt_id,image_sha256 FROM ${TABLE} WHERE root_id=? OR json_extract(image_json,'$.steer.rootContextId')=? ORDER BY receipt_id LIMIT 65`).all(rootId,rootId) as Array<{receipt_id:string;image_sha256:string}>;
+ if(rows.length>64)throw Error("Human abandonment image exceeds its bound");
+ const store=new RequestHumanInputStore(db,()=>{throw Error("Read-only human input inspection");});
+ return rows.flatMap(row=>{
+  if(!store.read(row.receipt_id))throw Error("Accepted human input evidence is unavailable");
+  const receipt=getHumanReceipt(db,row.receipt_id);if(!receipt)throw Error("Accepted human receipt is unavailable");
+  return receipt.state==="uncertain"?[{receiptId:row.receipt_id,inputSha256:row.image_sha256,receiptSha256:requestContextDigest(receipt)}]:[];
+ });
 }

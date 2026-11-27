@@ -1,3 +1,4 @@
+import {requestUncertainHumanImages} from "./request-context-human.js";
 import {labelHubRequest} from "./request-hub-context.js";
 import {labelUnprovedRequest} from "./request-context-unproved-label.js";
 import {labelOutsideRequest} from "./request-context-outside-label.js";
@@ -1249,6 +1250,23 @@ export class DeliveryOutbox extends EventEmitter {
   /** L owns activation and drain intent on this same connection; constructing it installs no schema. */
   requestContextInstallation(): RequestContextInstallationStore { return new RequestContextInstallationStore(this.db); }
 
+  requestContextUncertainHumanImages(root:string){return requestUncertainHumanImages(this.db,root);}
+  /** Exact owned stop only. No receipt is marked delivered and no uncertain effect is discarded. */
+  resolveRequestContextStoppedWork(root:string,epoch:string,confirmed:Readonly<{ownerBinding:string;blockerSha256:string;receipts:import("./request-context-resolution.js").RequestContextResolution["receipts"];pointers:ReadonlyArray<import("./request-context-turns.js").RequestContextRecoveryPointer>}>,
+    drain:import("./request-context-drain.js").RequestContextDrain,retired:()=>boolean,current:()=>boolean):void {
+    this.db.transaction(()=>{
+      const check=()=>{if(!current()||!retired())throw Error("Stopped work owner changed");};check();
+      const selected=new Set(confirmed.receipts.map(row=>`human-input:hmsg-${row.receiptId}`));
+      const clearable=()=>{check();return drain.inspect(root,epoch).blockers.every(value=>value==="recovery-pointer"||selected.has(value));};
+      for(const pointer of confirmed.pointers){
+        const context=this.requestContext(pointer.contextId);if(context?.ref.rootContextId!==root)throw Error("Stopped work pointer changed");
+        this.requestContextRecovery.clear(pointer,clearable);
+      }
+      if(confirmed.receipts.length)drain.abandonHumanInputs(root,epoch,confirmed,retired,current);
+      else if(drain.inspect(root,epoch).blockers.length)throw Error("Stopped work remains referenced");
+      check();
+    })();
+  }
   /** Bounded read-only controller inventory. These rows are evidence, never input/approval authority. */
   requestContextControlInventory(roots?:ReadonlySet<string>){
     const has=(name:string)=>hasTable(this.db,name),limit=10001;

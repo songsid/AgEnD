@@ -136,3 +136,28 @@ on the capable bridge and keeps all records; an older binary or a guessed legacy
 fallback is not a rollback. No closure may weaken another root's policy or
 approval. Any new durable closure record must fail closed on an older capable
 reader and must never be used as D1 or contact-grant evidence.
+
+## Closure proof accepted at the implementation seam
+
+Extend F's existing `request_context_drain_v1` root fence with bounded, strictly
+versioned `resolution_json` and its digest. Do not add a parallel retirement
+journal. The owner confirms the exact blocker image; persist the root fence;
+stop its exact owners through `stopRequestContextWork` and prove launch, IPC and
+native retirement. One root transaction rechecks owner, fence, every F family
+and revision, writes abandonment of only the selected uncertain-human receipt
+images, then rechecks. Receipts and history stay unchanged. This never proves
+delivery, absence of effects, D1, permission, replay or a new admission.
+
+Install a lazy eighth `agend_rc_v1_` guard in that transaction, scoped to writes
+of the drain table and a new connection-local capability function. The guard
+stays permanently after the first abandonment, including after resolution rows
+are collected. Such a home cannot return to a v1-only capable reader: an older
+binary is not a rollback. A never-abandoned home retains the seven-artifact v1
+shape. A functionless connection can still read and back up the database.
+Unknown resolution versions, oversized images, changed digests or guards refuse.
+
+Prove both cases using the published beta.27 reader's own code. Test restart
+between stop and write, and between write and fence release, as idempotent
+retries of the same confirmed image. Empty runtime families after restart count
+only behind the held capable recovery fence; a registration racing the root
+fence refuses. All other uncertain effects and deliveries remain blockers.

@@ -1,4 +1,5 @@
-import {requestHumanInputBlockers} from "./request-context-human.js";
+import {readRequestContextResolution,writeRequestContextResolution,type RequestContextResolution} from "./request-context-resolution.js";
+import {requestHumanInputBlockers,requestUncertainHumanImages} from "./request-context-human.js";
 import {requestContextReturnBlockers} from "./request-context-returns.js";
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
@@ -41,8 +42,15 @@ export class RequestContextDrain {
       if(!owner||!context||context.ref.rootContextId!==rootId||context.ref.parentContextId)throw Error("request-context drain root unavailable");
       this.db.exec("CREATE TABLE IF NOT EXISTS request_context_drain_v1(root_id TEXT PRIMARY KEY,epoch TEXT NOT NULL,owner TEXT NOT NULL)");
       if(this.db.prepare("SELECT 1 FROM request_context_drain_v1 WHERE root_id=?").get(rootId))throw Error("request-context root already fenced");
-      const epoch=randomUUID();this.db.prepare("INSERT INTO request_context_drain_v1 VALUES (?,?,?)").run(rootId,epoch,owner);return epoch;
+      const epoch=randomUUID();this.db.prepare("INSERT INTO request_context_drain_v1(root_id,epoch,owner) VALUES (?,?,?)").run(rootId,epoch,owner);return epoch;
     })();
+  }
+  retainedEpoch(rootId:string):string|null {
+    ROOT.parse(rootId);this.ready();
+    if(!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_context_drain_v1'").get())return null;
+    const row=this.db.prepare("SELECT epoch,owner FROM request_context_drain_v1 WHERE root_id=?").get(rootId) as {epoch:string;owner:string}|undefined;
+    if(!row)return null;
+    if(row.owner!==this.owner())throw Error("Request-context fence owner changed");return ROOT.parse(row.epoch);
   }
   /** owner() is the durable Fleet identity while its exclusive coordinator lease is current.
    * A fresh process must explicitly rotate the retained epoch; a retired tombstone cannot resume. */
@@ -61,6 +69,7 @@ export class RequestContextDrain {
       const context=new RequestContextStore(this.db).context(rootId);
       // A retired root keeps its tombstone; a stale input can never recreate it after collection.
       if(!context||context.ref.rootContextId!==rootId)throw Error("request-context retired root cannot reopen");
+      if(readRequestContextResolution(this.db,rootId))throw Error("Resolved request-context root cannot reopen");
       if(this.db.prepare("DELETE FROM request_context_drain_v1 WHERE root_id=? AND epoch=? AND owner=?").run(rootId,epoch,this.owner()).changes!==1)throw Error("request-context drain owner changed");
     })();
   }
@@ -107,6 +116,27 @@ export class RequestContextDrain {
     const view=this.inspectRegistries(rootId,false),owner=this.owner();
     if(!owner||!this.fenced(rootId,epoch,owner))view.blockers.push("drain-owner-or-fence");
     return view;
+  }
+  /** The caller already owns the confirmed blocker image and positive stop proof.
+   * The root fence remains: no new input can resurrect explicitly abandoned work. */
+  abandonHumanInputs(rootId:string,epoch:string,confirmed:Readonly<{ownerBinding:string;blockerSha256:string;receipts:RequestContextResolution["receipts"]}>,retired:()=>boolean,current:()=>boolean):void {
+    ROOT.parse(rootId);ROOT.parse(epoch);this.ready();
+    this.db.transaction(()=>{
+      const owner=this.owner();
+      const assertOwner=()=>{if(!owner||this.owner()!==owner||!this.fenced(rootId,epoch,owner)||!current()||!retired())throw Error("Human abandonment owner or retirement changed");};
+      assertOwner();
+      if(requestContextDigest(requestUncertainHumanImages(this.db,rootId))!==requestContextDigest(confirmed.receipts))throw Error("Human abandonment images changed");
+      const before=this.inspect(rootId,epoch),selected=new Set(confirmed.receipts.map(row=>`human-input:hmsg-${row.receiptId}`));
+      if(!selected.size||before.blockers.some(value=>!selected.has(value)))throw Error("Other request-context work still blocks abandonment");
+      const existing=readRequestContextResolution(this.db,rootId);
+      if(existing && (existing.ownerBinding!==confirmed.ownerBinding||existing.blockerSha256!==confirmed.blockerSha256
+        ||requestContextDigest(existing.receipts)!==requestContextDigest(confirmed.receipts)))throw Error("Human abandonment confirmation changed");
+      writeRequestContextResolution(this.db,existing??{version:1,rootId,fenceEpoch:epoch,owner:owner!,ownerBinding:confirmed.ownerBinding,blockerSha256:confirmed.blockerSha256,closedAt:Date.now(),receipts:[...confirmed.receipts]});
+      assertOwner();
+      const after=this.inspect(rootId,epoch);
+      if(after.blockers.length||requestContextDigest([...before.revisions])!==requestContextDigest([...after.revisions])
+        ||requestContextDigest(requestUncertainHumanImages(this.db,rootId))!==requestContextDigest(confirmed.receipts))throw Error("Human abandonment participants changed");
+    })();
   }
   /** Final installation Off, under the global input fence. It does not retire or relabel any root. */
   proveOff(installation:RequestContextInstallationStore,globalFence:()=>boolean):RequestContextOffProof {
