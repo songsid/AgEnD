@@ -2672,7 +2672,7 @@ export class Daemon extends EventEmitter {
 
   /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
   private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string }; newWork?: (reason: "fresh") => void; replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null; continuation?:(inputId:string|null,recovery?:{inputId:string;parent:RequestContextTurnSnapshot;current:()=>boolean})=>RequestContextContinuation|undefined };
-  private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean };
+  private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean; unknownEnd?: "interrupt" | "reset" | "capacity" };
   requestContextPolicy?:RequestContextPolicyPort;
   bindRequestContextPolicy(policy:RequestContextPolicyPort):void {if(this.requestContextPolicy||!this.requestContextLifecycle)throw Error("request-context policy requires its owned turn binding");this.requestContextPolicy=policy;}
   private readonly requestContextCalls = new RequestContextReferenceMap<string, RequestContextLocalCall>(call=>call.admission.coverage==="covered"?call.admission.lease.snapshot.context.ref.rootContextId:null,call=>`local-call:${call.id}`);
@@ -2714,8 +2714,16 @@ export class Daemon extends EventEmitter {
   requestContextCallsRequired(): boolean { return this.requestContextLifecycle !== undefined; }
   get requestContextCallDrainRevision():string{return this.requestContextCalls.revision;}
   requestContextCallDrainView(rootId:string){return this.requestContextCalls.view(rootId);}
-  requestContextTurnDrainView(rootId:string){return this.requestContextLifecycle?.turns.drainView(rootId)??null;}
-  get requestContextTurnDrainRevision():string{return this.requestContextLifecycle?.turns.drainRevision??"unavailable";}
+  requestContextTurnDrainView(rootId:string){
+    const view=this.requestContextLifecycle?.turns.drainView(rootId);if(!view)return null;
+    const write=this.requestContextWrite;
+    return {...view,revision:this.requestContextTurnDrainRevision,references:[...view.references,
+      ...(write?.unknownEnd && write.snapshot.context.ref.rootContextId===rootId
+        ? [`unknown-end:${this.name}:${write.unknownEnd}`] : [])]};
+  }
+  get requestContextTurnDrainRevision():string{return JSON.stringify([
+    this.requestContextLifecycle?.turns.drainRevision??"unavailable",
+    this.requestContextWrite?.unknownEnd??null]);}
 
   private handleOwnedToolCall(message: Record<string, unknown>, socket: import("node:net").Socket): void {
     let call: RequestContextLocalCall | undefined;
@@ -2904,7 +2912,7 @@ export class Daemon extends EventEmitter {
   }
   private settleRequestContextFromTranscript(): void {
     const write = this.requestContextWrite, owner = this.requestContextOwner();
-    if (!write || !write.endAnchor || !owner || !this.requestContextLifecycle!.turns.isCurrent(write.snapshot, owner)) return;
+    if (!write || write.unknownEnd || !write.endAnchor || !owner || !this.requestContextLifecycle!.turns.isCurrent(write.snapshot, owner)) return;
     const verdict = write.ledger.verdict(write.text, write.at);
     if (verdict === "ended" || verdict === "aborted" || verdict === "error") {
       if (verdict !== "ended") this.requestContextInterruptedLaunch = this.requestContextLaunch();
@@ -2925,6 +2933,18 @@ export class Daemon extends EventEmitter {
 
   constructor(
     private name: string,
+  /** A reset withdraws proof; it never silently retires C or admits the next root. */
+  private observeRequestContextTranscript(events: readonly TranscriptTurnEvent[]): void {
+    const write=this.requestContextWrite;if(!write)return;
+    for(const event of events){
+      if(event.kind!=="retract")continue;
+      // Ask before withdrawing the row. A foreign transcript turn cannot turn
+      // this owned input into an unknown-end blocker.
+      if(write.ledger.matchesInputTurn(event.turnId,write.text,write.at))write.unknownEnd=event.reason??"reset";
+    }
+    write.ledger.observe(events,performance.now());
+    this.settleRequestContextFromTranscript();
+  }
     private config: InstanceConfig,
     private instanceDir: string,
     private topicMode = false,
@@ -7768,7 +7788,7 @@ export class Daemon extends EventEmitter {
     this.followLog.reset();
     this.replyDraft.reset();
     const modelLaunch = this.backend?.modelObservationLaunch?.();
-    const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source, () => modelLaunch);
+    const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source, () => modelLaunch, !!this.requestContextLifecycle);
     let savedModel: unknown;
     try { const path = join(this.instanceDir, "claude-model-observation.json"); if (statSync(path).size < 1_000_000) savedModel = JSON.parse(readFileSync(path, "utf-8")); } catch { /* No checkpoint. */ }
     const nativeModel = !!source && source === this.nativeTranscriptSource && !!source.modelObservationSession;
@@ -7818,7 +7838,10 @@ export class Daemon extends EventEmitter {
       }
     });
     for (const event of ["reset", "workspace_reset", "context_reset"] as const) monitor.on(event, () => {
-      if (this.transcriptMonitor === monitor) this.replyDraft.reset();
+      if (this.transcriptMonitor === monitor) {
+        this.replyDraft.reset();
+        if(event!=="workspace_reset" && this.requestContextWrite)this.requestContextWrite.unknownEnd="reset";
+      }
     });
     this.transcriptTurns.reset();
     this.transcriptActivityAt = 0;
@@ -7827,8 +7850,7 @@ export class Daemon extends EventEmitter {
     monitor.on("turns", (turns: TranscriptTurnEvent[]) => {
       this.transcriptTurns.observe(turns, performance.now()); touch();
       if (this.transcriptMonitor === monitor && owner === launchIdentity(this.interactionOwner())) {
-        this.requestContextWrite?.ledger.observe(turns, performance.now());
-        this.settleRequestContextFromTranscript();
+        this.observeRequestContextTranscript(turns);
       }
     });
     // #3160: the files this turn reads, edits and searches, for the Files & changes panel's Follow (a few string checks;

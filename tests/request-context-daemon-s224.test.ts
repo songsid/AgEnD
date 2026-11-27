@@ -230,3 +230,17 @@ it("the direct daemon adapter sink keeps a threadless target even when lastChat 
  f.daemon.handleOwnedToolCall({type:"tool_call",tool:"reply",args:{text:"answer"},requestId:24},f.socket);
  await vi.waitFor(()=>expect(sendText).toHaveBeenCalled());expect(sendText.mock.calls[0]).toMatchObject(["guest-a","answer",{threadId:undefined}]);expect(f.frames).toEqual([]);expect(f.daemon.requestContextTurnCurrent(snapshot)).toBe(true);f.clearTimers();
 });
+
+it("M-3896 keeps a retracted owned turn as a named drain blocker, without accepting a late duration",()=>{
+ const f=rig(),snapshot=f.bind("unknown-end"),write=f.daemon.requestContextWrite;
+ f.daemon.observeRequestContextTranscript([{kind:"start",turnId:"ours"},{kind:"user",turnId:"ours",text:write.text,at:write.at}]);
+ const before=f.daemon.requestContextTurnDrainRevision;
+ f.daemon.observeRequestContextTranscript([{kind:"retract",turnId:"foreign",reason:"interrupt"}]);
+ expect(f.daemon.requestContextTurnDrainRevision).toBe(before);
+ f.daemon.observeRequestContextTranscript([{kind:"retract",turnId:"ours",reason:"interrupt"}]);
+ expect(f.daemon.requestContextTurnDrainRevision).not.toBe(before);
+ expect(f.daemon.requestContextTurnDrainView(snapshot.context.ref.rootContextId).references).toContain("unknown-end:worker:interrupt");
+ f.daemon.observeRequestContextTranscript([{kind:"end",turnId:"ours",end:"complete"}]);
+ expect(f.daemon.requestContextTurnSnapshot().token).toBe(snapshot.token);
+ expect(()=>f.bind("next")).toThrow();
+});

@@ -1,3 +1,4 @@
+import { ClaudeTurnBoundaries, type ClaudeTurnBinding } from "./claude-turn-boundaries.js";
 import { parseClaudeRequestObservation } from "./claude-request-observation.js";
 import { claudeTranscriptRecord, claudeTranscriptLongHead } from "./transcript-records.js";
 import { readStartupTailRecords } from "./log-steps.js";
@@ -39,6 +40,7 @@ export class TranscriptMonitor extends EventEmitter {
   private polling = false; // reentry guard for pollIncrement
   private generation = 0;
   private modelResetAt = 0;
+  private readonly claudeTurns = new ClaudeTurnBoundaries();
 
   /**
    * #2834: since when a transcript counts as this run's own (read from its start): when this monitor began, moved to each
@@ -60,6 +62,7 @@ export class TranscriptMonitor extends EventEmitter {
     private logger: Logger,
     private source: TranscriptSource | null = null,
     private modelLaunch?: () => ClaudeModelLaunch | undefined,
+    private requestContextTurnEvents = false,
   ) {
     super();
     this.attachBoundary = Date.now();
@@ -226,6 +229,7 @@ export class TranscriptMonitor extends EventEmitter {
     const current = await this.resolveTranscriptPath();
     if (generation !== this.generation) return;
     if (current && current !== this.transcriptPath) {
+      this.resetClaudeTurns();
       const replacedKnownTranscript = this.transcriptPath !== null;
       const fromStart = !replacedKnownTranscript && this.createdThisRun(current);
       let initialOffset = 0;
@@ -264,7 +268,7 @@ export class TranscriptMonitor extends EventEmitter {
               let line = typeof item.record === "string" ? item.record : null;
               if (line === null && typeof item.record !== "string") line = await readWholeLine(current, item.at, item.record.bytes);
               if (generation !== this.generation || this.transcriptPath !== current) return;
-              if (line !== null) { try { this.processModelEntry(JSON.parse(line)); } catch { /* Malformed record. */ } }
+              if (line !== null) { try { const entry = JSON.parse(line); this.processModelEntry(entry); this.processClaudeTurnEntry(entry); } catch { /* Malformed record. */ } }
             }
           }
 
@@ -342,7 +346,7 @@ export class TranscriptMonitor extends EventEmitter {
     // M-3791: private same-turn draft evidence; history is never a new answer.
     if (!history && Number.isFinite(at)) this.emit("reply_draft_record", entry);
     this.processModelEntry(entry);
-    if(!history)this.processCredentialEntry(entry);
+    if(!history) { this.processCredentialEntry(entry); this.processClaudeTurnEntry(entry); }
     claudeTranscriptRecord(entry, (...event) => {
       // A copied record with no timestamp cannot prove that its file activity belongs to this launch.
       if (event[0] === "workspace_follow" && this.historyBefore > 0 && !Number.isFinite(at)) return;
@@ -353,6 +357,34 @@ export class TranscriptMonitor extends EventEmitter {
       }
       this.emit(event[0], ...event.slice(1));
     });
+  }
+
+  private resetClaudeTurns(): void {
+    if (!this.requestContextTurnEvents) return;
+    const events = this.claudeTurns.reset();
+    if (events.length) this.emit("turns", events);
+  }
+  private claudeTurnBinding(): ClaudeTurnBinding | null {
+    const launch = this.modelLaunch?.();
+    if (!launch || !this.transcriptPath) return null;
+    try {
+      const path = join(this.instanceDir, "statusline.json");
+      if (statSync(path).size > 65536) return null;
+      const hook = JSON.parse(readFileSync(path, "utf8"));
+      if (hook._agendLaunchId !== launch.id || typeof hook.session_id !== "string"
+        || typeof hook.transcript_path !== "string" || hook.transcript_path !== this.transcriptPath
+        || basename(hook.transcript_path) !== `${hook.session_id}.jsonl` || /[\\/]subagents[\\/]/.test(hook.transcript_path)) return null;
+      return { launchId: launch.id, startedAt: launch.startedAt, sessionId: hook.session_id, transcriptPath: hook.transcript_path };
+    } catch { return null; }
+  }
+  private processClaudeTurnEntry(entry: unknown): void {
+    if (!this.requestContextTurnEvents) return;
+    const binding = this.claudeTurnBinding();
+    if (!binding) { this.resetClaudeTurns(); return; }
+    const at = typeof (entry as { timestamp?: unknown })?.timestamp === "string" ? Date.parse((entry as { timestamp: string }).timestamp) : NaN;
+    if (Number.isFinite(at) && at <= this.modelResetAt) return;
+    const events = this.claudeTurns.observe(entry, binding, Date.now());
+    if (events.length) this.emit("turns", events);
   }
 
   private processCredentialEntry(entry:any):void {
@@ -391,6 +423,7 @@ export class TranscriptMonitor extends EventEmitter {
   async initialize(): Promise<void> { await this.source?.initialize?.(); }
 
   stop(): void {
+    this.resetClaudeTurns();
     this.generation++;
     this.emit("workspace_reset");
     if (this.pollTimer) {
@@ -426,6 +459,7 @@ export class TranscriptMonitor extends EventEmitter {
   }
 
   resetOffset(): void {
+    this.resetClaudeTurns();
     this.generation++;
     this.modelResetAt = Date.now();
     this.attachBoundary = Date.now();
