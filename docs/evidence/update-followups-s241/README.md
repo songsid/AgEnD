@@ -2,7 +2,7 @@
 
 Real-app captures from the owned web fixture (`scripts/manual/smoke-fixture`) in headless Chromium, driven through the real server objects (the update card and its answer route). Nothing installs: every launch path is stubbed before the first press.
 
-Script: `scripts/manual/update-followups-s241/capture.mts`. It ran at `45d8358d8` (`src` clean) and passed 53 of 53 checks. `receipt.json` lists every check, each PNG's sha256 and the banner's height in each state.
+Script: `scripts/manual/update-followups-s241/capture.mts`. It ran at `1fbbd95da` (`src` clean) and passed 53 of 53 checks. `receipt.json` lists every check, each PNG's sha256 and the banner's height in each state.
 
 ## Point 8: an answered banner is one line on a phone
 
