@@ -1,12 +1,12 @@
 import {REQUEST_CONTEXT_DRAIN_FAMILIES} from "./request-context-drain.js";
-export const REQUEST_CONTEXT_BLOCKER_FAMILIES=[...REQUEST_CONTEXT_DRAIN_FAMILIES,"human-input","unknown"] as const;
+export const REQUEST_CONTEXT_BLOCKER_FAMILIES=[...REQUEST_CONTEXT_DRAIN_FAMILIES,"human-input","pending-stop","unknown"] as const;
 export type RequestContextBlockerFamily=typeof REQUEST_CONTEXT_BLOCKER_FAMILIES[number];
 /** F owns these references. Body text and tool arguments never enter this projection. */
 export function projectRequestContextWork(blockers:readonly string[]):{families:RequestContextBlockerFamily[];unknownEnd:boolean;stoppable:boolean} {
  const families=new Set<RequestContextBlockerFamily>();let unknownEnd=false,stoppable=true;
  for(const blocker of blockers){
   if(blocker==="recovery-pointer")continue;
-  if(blocker==="pending-root-fence"){families.add("registered-work");continue;}
+  if(blocker==="pending-root-fence"){families.add("pending-stop");continue;}
   if(/^(?:delivery|held|return):/.test(blocker)){stoppable=false;continue;}
   if(blocker.startsWith("human-input:")){families.add("human-input");continue;}
   try{

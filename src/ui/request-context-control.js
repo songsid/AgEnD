@@ -40,7 +40,7 @@ register("requestContextControl", {
     workFamilies: "Waiting on {0}: {1}.", unknownEnd: "The conversation's end isn't confirmed.",
     "family-turns": "an active conversation", "family-daemon-calls": "agent tool calls", "family-fleet-calls": "pending tool results",
     "family-native-exec": "work on a connected computer", "family-native-grants": "active tool connections", "family-pane-proofs": "an agent window still in use",
-    "family-pane-ledgers": "an agent window awaiting confirmation", "family-registered-work": "queued or scheduled input", "family-human-input": "a message whose delivery isn't confirmed", "family-unknown": "work that needs inspection",
+    "family-pane-ledgers": "an agent window awaiting confirmation", "family-registered-work": "queued or scheduled input", "family-human-input": "a message whose delivery isn't confirmed", "family-pending-stop": "work whose stop isn't confirmed", "family-unknown": "work that needs inspection",
     "stop-waiting": "End this wait", decline: "Decline", withdraw: "Withdraw", "stop-work": "Stop this work",
   },
   "zh-TW": {
@@ -73,7 +73,7 @@ register("requestContextControl", {
     workFamilies: "正在等候 {0}：{1}。", unknownEnd: "無法確認這次對話是否已結束。",
     "family-turns": "尚未結束的對話", "family-daemon-calls": "Agent 的工具操作", "family-fleet-calls": "尚未回傳的操作結果",
     "family-native-exec": "連線電腦上執行的工作", "family-native-grants": "仍在使用的工具連線", "family-pane-proofs": "仍在使用的 Agent 視窗",
-    "family-pane-ledgers": "等待確認的 Agent 視窗", "family-registered-work": "等待執行或排程的訊息", "family-human-input": "無法確認是否送達的訊息", "family-unknown": "需要檢查的工作",
+    "family-pane-ledgers": "等待確認的 Agent 視窗", "family-registered-work": "等待執行或排程的訊息", "family-human-input": "無法確認是否送達的訊息", "family-pending-stop": "還沒確認已停止的工作", "family-unknown": "需要檢查的工作",
     "stop-waiting": "結束這次等候", decline: "拒絕", withdraw: "撤回", "stop-work": "結束這項工作",
   },
 });

@@ -258,7 +258,7 @@ it("M-3896 Off waits for a pending durable Stop even after all runtime families 
  const state=box.requestContextInstallation().read(),waiting=r.m.requestContextModes.off.advance(state.revision);
  expect(waiting.state.mode).toBe("draining");expect(waiting.blockers).toContain(`${root}:pending-root-fence`);
  person=actor();const view=host.read(person),blocker=view.blockers.find((row:any)=>row.id.startsWith(`work:${root}:`));
- expect(blocker).toMatchObject({families:["registered-work"],action:"stop-work"});expect(readRequestContextResolution(db,root)).toBeNull();
+ expect(blocker).toMatchObject({families:["pending-stop"],action:"stop-work"});expect(readRequestContextResolution(db,root)).toBeNull();
  await host.change({revision:view.revision,action:"resolve",blockerId:blocker.id,resolution:"stop-work"},person);
  expect(readRequestContextResolution(db,root)?.receipts).toEqual([]);
  const stillWaiting=r.m.requestContextModes.off.advance(box.requestContextInstallation().read().revision);

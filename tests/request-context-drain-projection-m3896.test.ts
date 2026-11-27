@@ -1,7 +1,7 @@
 import {expect,it} from "vitest";
 import {projectRequestContextWork} from "../src/request-context-drain-projection.js";
 it("an owned pending root fence keeps the saved-work Stop action after its runtime is gone",()=>{
- expect(projectRequestContextWork(["pending-root-fence"])).toEqual({families:["registered-work"],unknownEnd:false,stoppable:true});
+ expect(projectRequestContextWork(["pending-root-fence"])).toEqual({families:["pending-stop"],unknownEnd:false,stoppable:true});
 });
 it("names the actual F family and retains unknown-end evidence",()=>{
  expect(projectRequestContextWork(['["turns","fleet"]:worker:unknown-end:worker:interrupt','["fleet-calls","fleet"]:call:a','human-input:hmsg-a','recovery-pointer']))

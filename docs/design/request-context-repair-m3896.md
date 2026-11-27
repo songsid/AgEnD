@@ -228,7 +228,7 @@ only that captured receipt's currency; C's work identity is already disposed.
 A different root owner, launch or replacement daemon refuses the Stop.
 
 A retained root fence without a resolution blocks final Off even when every
-runtime family is empty. It remains named as saved registered work, with the
+runtime family is empty. It remains named as work whose stop is not confirmed, with the
 same Stop action, after a failed action, budget expiry or restart. Retry rotates
 the owned fence epoch and must complete the same positive retirement and atomic
 resolution checks. Only a committed resolution or independently proven root
