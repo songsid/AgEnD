@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { dirname, resolve, basename } from "node:path";
 import { realpathSync } from "node:fs";
 import { performance } from "node:perf_hooks";
+import type { SettingsStopOperation } from "./settings-route-lifetime.js";
 
 export const SETTINGS_OPERATION_MS = 60_000;
 export class SettingsExecutionError extends Error {
@@ -106,7 +107,7 @@ export class SettingsExecution {
     current(): boolean; snapshot(): unknown; now?: () => number; expectedFingerprint?: string;
     progress?(phase: "queued" | "running" | "cleanup", reason?: string): void;
     /** Server-created actor capability, never a payload/header or a global epoch exemption. */
-    followStop?(name: string, begin: () => Promise<unknown>): Promise<void>;
+    followStop?(name: string, begin: SettingsStopOperation): Promise<void>;
   }) {
     this.expected = options.expectedFingerprint ?? settingsFingerprint(options.snapshot()); this.deadline = this.now() + SETTINGS_OPERATION_MS;
     this.timer = setTimeout(() => { this.cancelled = true; options.progress?.("cleanup", "operation_timed_out"); }, SETTINGS_OPERATION_MS);
@@ -119,7 +120,7 @@ export class SettingsExecution {
   }
   assert(): void { if (!this.current()) throw new SettingsExecutionError("settings_execution_stale"); }
   /** Keep only this confirmation alive across its one operation-owned stop. */
-  async stopTarget(name: string, begin: () => Promise<unknown>): Promise<void> {
+  async stopTarget(name: string, begin: SettingsStopOperation): Promise<void> {
     this.assert();
     if (this.options.followStop) await this.options.followStop(name, begin); else await begin();
     this.assert();

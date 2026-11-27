@@ -1738,8 +1738,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       for(const row of rows){
         if(!current()||!fence.current()||!durableDrained()||!row.idle.current())throw failed(row.name);
         execution?.assert();row.stopped=true;
-        let stopped=false;const stop=async()=>{stopped=await this.lifecycle.stopIfCurrent(row.name,row.daemon);};
-        if(execution)await execution.stopTarget(row.name,stop);else await stop();
+        let stopped=false;
+        if(execution)await execution.stopTarget(row.name,async advance=>{stopped=await this.lifecycle.stopIfCurrent(row.name,row.daemon,advance);});
+        else stopped=await this.lifecycle.stopIfCurrent(row.name,row.daemon);
         if(!stopped)throw failed(row.name);
         if(!current()||!await row.retirement.retired()||!current())throw failed(row.name);
       }
@@ -7025,6 +7026,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
           this.postFleetSecurityNotice(requestContextEnabledNotice(getLocale()),`request-context:${box.requestContextInstallation().read()!.epoch}`);
         }catch(error){
+          this.logger?.warn?.({err:error},"Request-context enable did not finish");
           if(stage&&box.requestContextInstallation().read()===null)await stage.rollback();
           const detail=error as {code?:string;agent?:string};if(box.requestContextInstallation().read()===null&&detail.code?.startsWith("request-context-")){
             this.requestContextCutoverErrors=[{id:"preparation",kind:detail.code.includes("transport")?"peers":"owners",labels:detail.agent?[detail.agent]:detail.code.includes("transport")?preparingPeerLabels:[],...(detail.agent?{agents:[{id:detail.agent,label:detail.agent}]}:{}),ownerCause:"update",action:"inspect"}];return;
@@ -7107,7 +7109,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for(const stop of nativeStops){if(!current())throw Error("stale");actor.execution!.mutate(()=>stop.stop(current));}
     for(const [name,daemon]of [...this.daemons]){if(daemon.requestContextTurnSnapshot()?.context.ref.rootContextId!==root)continue;
       const retirement=await daemon.captureRequestContextRetirement();if(!current()||this.daemons.get(name)!==daemon)throw Error("stale");
-      await actor.execution!.stopTarget(name,()=>this.lifecycle.stopIfCurrent(name,daemon));if(!current()||!await retirement.retired())throw Error("unavailable");
+      await actor.execution!.stopTarget(name,advance=>this.lifecycle.stopIfCurrent(name,daemon,advance));if(!current()||!await retirement.retired())throw Error("unavailable");
       // The future-start factory keeps the stored work/context; it removes only this positively retired live owner.
       if(!this.requestContextRetireOwner)throw Error("unavailable");await this.requestContextRetireOwner(name,daemon,retirement.retired);
     }
@@ -22256,7 +22258,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   needsYouItems(): WebNeedsItem[] {
     const items = this.needsYou?.webItems?.() ?? [];
     const cutover = this.requestContextControl?.snapshot();
-    if (cutover && (cutover.attempted || cutover.everActivated) && (cutover.phase === "draining" || cutover.blockers.length > 0)) {
+    if (cutover && (cutover.attempted || cutover.everActivated) && (cutover.phase === "draining" || cutover.enableFailed === true || cutover.blockers.length > 0)) {
       this.requestContextAttentionSince ??= Date.now();
       return [...items, { id: "request-context-cutover", type: "config", instance: "", reason: "request_context_cutover",
         detail: "", since: this.requestContextAttentionSince, requestContextCutover: cutover }];

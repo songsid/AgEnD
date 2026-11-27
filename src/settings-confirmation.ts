@@ -6,6 +6,8 @@ import { t } from "./locale.js";
 import { copySettingsSummary, type SettingsSummaryPresentation } from "./settings-summary.js";
 
 export const SETTINGS_CONFIRMATION_TTL_MS = 5 * 60_000;
+/** M-3864 R4: a confirmed turn-on of request-based approvals that ended waiting: nothing was turned on (not "applied"). */
+export const REQUEST_CONTEXT_BLOCKED = "request_context_blocked";
 const RETAIN_TERMINAL_MS = 10 * 60_000;
 const MAX_PENDING = 64;
 const MAX_PER_SESSION = 8;
@@ -309,6 +311,10 @@ export class SettingsConfirmationStore {
       // S-35: the real reason (a Windows relay that did not start, an agent limit, a startup race…) was swallowed here and the
       // person only ever read "could not be applied". Keep the localized message; carry the reason beside it and in the audit.
       const detail = applyErrorDetail(error);
+      if (entry.view.state === "applying" && !this.closed && this.now() < entry.deadline && (error as Error)?.message === REQUEST_CONTEXT_BLOCKED) {
+        this.finish(entry, "failed", "request_context_blocked", t("settings_confirm.result.request_context_blocked"), actor.label);
+        return this.snapshot(entry);
+      }
       if (entry.view.state === "applying") this.finish(entry, this.closed ? "stale" : this.now() >= entry.deadline ? "expired" : "failed", this.closed ? "fleet_stopped" : this.now() >= entry.deadline ? "expired" : "apply_failed", t("settings_confirm.result.apply_failed"), actor.label, undefined, detail);
     }
     return this.snapshot(entry);

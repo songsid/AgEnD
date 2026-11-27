@@ -11,6 +11,8 @@ export const RequestContextControlViewSchema = z.strictObject({
   restartCount: z.number().int().positive().max(1000).optional(),
   goBack: z.strictObject({ attemptIds: z.array(z.string().regex(/^\d{8}T\d{6}Z-[a-f0-9]{8}$/)).min(1).max(1024), availableUntil: z.iso.datetime(), timeZone: label }).optional(),
   phase: z.enum(["on", "off", "draining", "blocked"]), canChange: z.boolean(),
+  /** A failed confirmed On remains explanatory after rollback, SSE refresh or page reload. Never raw diagnostics. */
+  enableFailed: z.boolean().optional(),
   blockers: z.array(z.strictObject({ id: label, kind: z.enum(["legacy", "peers", "owners", "recovery", "update", "returns", "tickets", "work"]),
     labels: z.array(label).max(64), ownerCause: z.enum(["work", "update"]).optional(),
     agents: z.array(z.strictObject({ id: label, label })).max(64).optional(), action: z.enum(["inspect", "stop-waiting", "decline", "withdraw", "stop-work"]).optional() })).max(128),

@@ -1,7 +1,7 @@
 import { clockFormat } from "/assets/clock-text.js";
 // S-230: the owner switch. Status comes from the host, never from a browser preference or an agent argument.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
-import { register, t } from "/assets/app-i18n.js";
+import { lang, register, t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { confirmedWrite } from "./settings-confirm.js";
@@ -56,6 +56,7 @@ export function RequestContextBlocked({ state, onCheck, onResolve, busy = false,
   const ownerAgents = [...new Map((state.blockers || []).filter(b => b.kind === "owners").flatMap(b => b.agents || []).map(a => [a.id, a])).values()];
   return html`<div class="request-context-blocked">
     <p>${requestContextControlText(state.phase === "draining" ? "draining" : state.everActivated ? "recoveryBlocked" : "blocked")}</p>
+    ${state.enableFailed ? html`<p class="notice warn" role="alert">${requestContextControlText("failed")}</p>` : null}
     ${(state.blockers || []).map(blocker => html`<div key=${blocker.id}><p>${requestContextBlockerText(blocker)}</p>
       ${blocker.action === "stop-waiting" ? html`<p>${requestContextControlText("waitBody")}</p>` : null}</div>`)}
     ${!state.everActivated ? html`<p class="note">${requestContextControlText("previous")}</p>` : null}
