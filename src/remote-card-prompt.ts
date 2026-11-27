@@ -58,6 +58,10 @@ export function remoteCardPrompt(instance: string, card: RemoteCard, agent = ins
       webInput: null,
     };
   }
+  if (card.policyRecourse && handedOff) return {
+    message: [t("codex.policy_recourse.handed"), t("codex.policy_recourse.agent", agent)].join("\n"),
+    choices: [], webInput: null,
+  };
   const policy = card.policyRecourse ? policyRecourseChoices(card.options.map(o => o.title)) : null;
   const range = policy && policy.count > 1 ? `1–${policy.count}` : "1";
   const listed = card.options.map(o => {

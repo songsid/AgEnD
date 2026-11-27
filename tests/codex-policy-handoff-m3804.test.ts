@@ -27,7 +27,7 @@ describe("M-3804 explicit policy handoff", () => {
     r.states.clear(); const restarted = new LivenessLedger(r.db);
     expect(handoffPolicyRecourse({ ...r.deps, ledger: restarted }, "reviewer", identity, 2).done).toEqual(["M-100"]);
     expect(r.deliver).toHaveBeenCalledTimes(1);
-    expect(policyHandoffStatus([card()], restarted, "reviewer", identity)).toEqual({ done: 1, total: 1 });
+    expect(policyHandoffStatus([card()], restarted, "reviewer", identity)).toEqual({ done: 1, total: 1, at: 10 });
     expect(policyHandoffStatus([card()], restarted, "reviewer", `selection:${"b".repeat(64)}`)).toEqual({ done: 0, total: 1 });
   });
   it.each(["rejected", "exception", "no durable row"])("%s never marks success", mode => {

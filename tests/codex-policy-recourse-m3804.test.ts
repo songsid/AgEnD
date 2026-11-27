@@ -95,7 +95,7 @@ it("R1 binds every actual choice, not the cursor or a code-owned replacement see
       setLocale(locale);
       const prompt = remoteCardPrompt("reviewer", card, "Review helper");
       expect(prompt.message).toContain(locale === "en" ? "Codex's safety check blocked this turn" : "Codex 的安全檢查擋下了這一輪");
-      expect(prompt.message).toContain(locale === "en" ? "Recommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue." : "建議交給派工的人處理；也可以選一個 Codex 建議的改寫繼續。");
+      expect(prompt.message).toContain(locale === "en" ? "Recommended: hand it to the dispatcher (the agent that assigned this work). Or pick one of Codex's rewordings to continue." : "建議交給派工的人（指派這件工作的 Agent）處理；也可以選一個 Codex 建議的改寫繼續。");
       expect(prompt.message).toContain("Review helper");
       expect(prompt.choices.filter(c => /^opt-/.test(c.action)).map(c => c.webLabel)).toEqual(card.options.map(o => `${o.n}. ${o.title}`));
       expect(prompt.choices.map(c => c.action)).toEqual(["handoff", "opt-1", "opt-2", "opt-3", "opt-4"]);
@@ -159,7 +159,7 @@ it("R1 keeps a native wrapped option as one exact button and one immutable reque
 });
 
 
-it("R3 actual authorized handoff posts a durable notice and marks it without any CLI answer", async () => {
+it.each([false, true])("actual authorized handoff is scoped or fails closed (request-context On=%s)", async (on) => {
   const dir = mkdtempSync(join(tmpdir(), "policy-handoff-fleet-")), db = new Database(":memory:");
   const fm = new FleetManager(dir) as any, ledger = new LivenessLedger(db), outbox = new DeliveryOutbox(join(dir, "outbox.db"));
   const card = codexPolicyRecourseCard(frames[0]!)!;
@@ -172,6 +172,7 @@ it("R3 actual authorized handoff posts a durable notice and marks it without any
   fm.livenessCards = () => [{ uuid: "one", code: "M-100", title: "Review change", assignee: "reviewer", dispatcher: { kind: "instance", name: "leader" }, claimedAt: 1, updatedAt: 1 }];
   fm.scheduler = { db: { liveness: ledger } };
   fm.deliveryOutbox = outbox;
+  fm.requestContextPolicy = on ? { installed: () => true } : undefined;
   const deliver = vi.fn((_to: string, _message: string, key: string) => { outbox.admitSystemNotice(_to, key, _message, new Date()); return true; });
   fm.admitTaskBoardNotice = deliver;
   try {
@@ -184,7 +185,15 @@ it("R3 actual authorized handoff posts a durable notice and marks it without any
     expect((await fm.clickWebPrompt("reviewer", prompt.nonce, "handoff", undefined, true)).status).toBe(409);
     expect(ledger.get("one")).toBeNull(); expect(answer).not.toHaveBeenCalled();
     await fm.postRemoteCard("reviewer", card); [prompt] = fm.needsYouPrompts(); fm.admitTaskBoardNotice = deliver;
-    expect((await fm.clickWebPrompt("reviewer", prompt.nonce, "handoff", undefined, true)).status).toBe(200);
+    const response = await fm.clickWebPrompt("reviewer", prompt.nonce, "handoff", undefined, true);
+    if (on) {
+      expect(response.status).toBe(409);
+      expect(deliver).not.toHaveBeenCalled();
+      expect(ledger.get("one")).toBeNull();
+      expect(answer).not.toHaveBeenCalled();
+      return;
+    }
+    expect(response.status).toBe(200);
     expect((await fm.clickWebPrompt("reviewer", prompt.nonce, "handoff", undefined, true)).status).toBe(409);
     expect(deliver).toHaveBeenCalledOnce(); expect(deliver.mock.calls[0]![0]).toBe("leader");
     expect(outbox.noticeStateByKey(deliver.mock.calls[0]![2])).toBe("queued");
@@ -193,7 +202,22 @@ it("R3 actual authorized handoff posts a durable notice and marks it without any
     expect(ledger.get("one")!.policyHandoff).toBe(card.identity);
     await fm.postRemoteCard("reviewer", card);
     expect(fm.needsYouPrompts()[0].actions.some((a: any) => a.id === "handoff")).toBe(false);
-    expect(fm.needsYouPrompts()[0].actions.filter((a: any) => /^opt-/.test(a.id))).toHaveLength(4);
+    expect(fm.needsYouPrompts()[0].actions).toHaveLength(0);
+    expect([400, 403, 404, 409]).toContain((await fm.clickWebPrompt("reviewer", fm.needsYouPrompts()[0].nonce, "opt-1", undefined, true)).status);
     expect(deliver).toHaveBeenCalledOnce(); expect(answer).not.toHaveBeenCalled();
   } finally { fm.retireRemoteCard("reviewer", null, "test closed"); outbox.close(); db.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.each(["en", "zh-TW"] as const)("handed policy card offers no more pane choices (%s)", locale => {
+  try {
+    setLocale(locale);
+    const card = codexPolicyRecourseCard(frames[0]!)!;
+    const prompt = remoteCardPrompt("reviewer", card, "Review helper", true);
+    expect(prompt.choices).toEqual([]);
+    expect(prompt.webInput).toBeNull();
+    expect(prompt.message).toContain(locale === "en" ? "Handed to the dispatcher" : "已交給派工的人");
+    expect(prompt.message).not.toContain(locale === "en" ? "Recommended:" : "建議交給");
+    expect(prompt.message).not.toContain("Explain the topic");
+    expect(prompt.message).not.toContain(locale === "en" ? "blocked this turn" : "擋下了這一輪");
+  } finally { setLocale("en"); }
 });

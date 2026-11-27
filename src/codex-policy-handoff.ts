@@ -18,11 +18,12 @@ export interface PolicyHandoffDeps {
 }
 export function policyHandoffStatus(cards: LivenessCard[], ledger: LivenessLedger, assignee: string, identity?: string | null, noticeState: (key: string) => string | null = () => null) {
   const owned = cards.filter(c => c.assignee === assignee);
-  return { done: owned.filter(c => {
+  const handed = owned.flatMap(c => {
     const row = ledger.get(c.uuid);
-    return !!row?.policyHandoff && row.kind === "prompt" && row.detail === "codex_policy_recourse" && (!identity || row.policyHandoff === identity) && row.assignee === assignee && row.dispatcher === c.dispatcher?.name
-      && (!row.noticeKey || !["failed", "cancelled"].includes(noticeState(row.noticeKey) ?? ""));
-  }).length, total: owned.length };
+    return row?.policyHandoff && row.kind === "prompt" && row.detail === "codex_policy_recourse" && (!identity || row.policyHandoff === identity) && row.assignee === assignee && row.dispatcher === c.dispatcher?.name
+      && (!row.noticeKey || !["failed", "cancelled"].includes(noticeState(row.noticeKey) ?? "")) ? [row] : [];
+  });
+  return { done: handed.length, total: owned.length, ...(handed.length ? { at: Math.max(...handed.map(row => row.notifiedAt)) } : {}) };
 }
 export function handoffPolicyRecourse(d: PolicyHandoffDeps, assignee: string, identity: string, since: number) {
   const result = { done: [] as string[], failed: [] as string[] };

@@ -25,3 +25,7 @@ R4 supersedes the earlier documented blanket liveness suppression; handoff does 
 ## Current release refresh
 
 [Current merge and capture scope](refresh-release.md) records the single import-list conflict (keep both), unchanged normalized author source/test patch,213 focused cases/7 files and passing production build/assets. All10 current images are refreshed from the merged app; the before8 stay historical controlled fallback views. New user look and head-specific source/delta review remain pending.
+
+## Completed handoff follow-up
+
+[Completed status and integration scope](handed-followup.md) supersedes the old actionable handed-state presentation: completed cards show admission time, no recommendation and no native choices. Dispatcher is defined once; Chinese provider suggestions say 原文. With request-context On the manual handoff refuses before queue admission rather than sending an unscoped notice;Off remains unchanged.125 focused cases/6 files plus2 overlapping final actual-nonce cases and production build pass. All10 current frames are refreshed; historical native/mutation scope stays unchanged.

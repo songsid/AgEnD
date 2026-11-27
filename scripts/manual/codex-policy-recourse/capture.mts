@@ -18,7 +18,7 @@ try {
   for (const stage of (process.env.STAGES ?? "before,after").split(",")) {
     fx.fm.needsYouItems = () => deriveNeedsYou({ prompts: stage === "after" ? fx.fm.needsYouPrompts() : [], instances: [{ name, state: "awaiting_input",
       interaction: { kind: stage === "after" ? "policy_recourse" : "dialog", owner: "fixture", episode: 1, since },
-      interactionSummary: "", ...(process.env.STATE === "handed" ? { policyHandoff: { done: 1, total: 1 } } : {}), policyTasks: ["M-100 — Review the proposed change"],
+      interactionSummary: "", ...(process.env.STATE === "handed" ? { policyHandoff: { done: 1, total: 1, at: Date.now() - 60_000 } } : {}), policyTasks: ["M-100 — Review the proposed change"],
     }], deliveries: [], ownerOf: () => undefined });
     for (const c of matrix(process.env.MATRIX ?? "full")) {
       setLocale(c.lang);
@@ -33,7 +33,7 @@ try {
       try {
         fx.fm.emitSseEvent("needs", { items: fx.fm.needsYouItems() });
         const expected = stage === "before" ? (c.lang === "en" ? "Waiting at a dialog" : "停在對話框")
-          : (c.lang === "en" ? "Codex's safety check blocked this turn" : "Codex 的安全檢查擋下了這一輪");
+          : process.env.STATE === "handed" ? (c.lang === "en" ? "Handed to the dispatcher" : "已交給派工的人處理") : (c.lang === "en" ? "Codex's safety check blocked this turn" : "Codex 的安全檢查擋下了這一輪");
         await page.getByText(expected, { exact: false }).first().waitFor({ timeout: 12000 });
         await page.evaluate(() => document.fonts.ready);
         const card = page.locator(".n-item").first();
@@ -47,9 +47,18 @@ try {
           if (process.env.STATE === "handed") {
             if (labels.includes(handoff) || !text.includes(c.lang === "en" ? "Handed to the dispatcher" : "已交給派工的人處理")) throw Error("handoff status missing");
           } else if (labels[0] !== handoff || !await card.locator("button").first().evaluate((el: Element) => el.classList.contains("btn-primary"))) throw Error("primary handoff action missing");
-          if (!text.includes(c.lang === "en" ? "1–3 are rewordings Codex suggests" : "範圍可能變小") || !text.includes(c.lang === "en" ? "doesn't continue the work" : "不會繼續工作")) throw Error("localized choice explanation missing");
-          if (!["1. Explain the topic", "2. Describe safe practices", "3. Explain the risks", "4. Give feedback"].every(label => labels.includes(label))) throw Error("CLI choices missing: " + JSON.stringify(labels));
-          if (!text.includes(c.lang === "en" ? "Recommended: hand it to the dispatcher." : "建議交給派工的人處理")) throw Error("next step missing");
+          if (process.env.STATE === "handed") {
+            if (labels.length || text.includes(c.lang === "en" ? "Recommended:" : "建議交給") || text.includes(c.lang === "en" ? "blocked this turn" : "擋下了這一輪")) throw Error("handed card is still actionable");
+            const title = await card.locator(".n-title strong").innerText();
+            if (title !== (c.lang === "en" ? "Handed to the dispatcher" : "已交給派工的人處理")) throw Error("missing completed title");
+            const age = await card.locator(".n-age").innerText();
+            if (["just now", "剛剛"].includes(age)) throw Error("handoff time was reset by projection");
+          } else {
+            if (!text.includes(c.lang === "en" ? "1–3 are rewordings Codex suggests" : "範圍可能變小") || !text.includes(c.lang === "en" ? "doesn't continue the work" : "不會繼續工作")) throw Error("localized choice explanation missing");
+            if (!["1. Explain the topic", "2. Describe safe practices", "3. Explain the risks", "4. Give feedback"].every(label => labels.includes(label))) throw Error("CLI choices missing: " + JSON.stringify(labels));
+            if (!text.includes(c.lang === "en" ? "the dispatcher (the agent that assigned this work)" : "派工的人（指派這件工作的 Agent）")) throw Error("dispatcher definition missing");
+            if (c.lang === "zh-TW" && !text.includes("Codex 的建議（原文）")) throw Error("original text label missing");
+          }
         }
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
         if (overflow || errors.length) throw Error(JSON.stringify({ overflow, errors }));

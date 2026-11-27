@@ -1,0 +1,13 @@
+# Completed handoff and clearer choice copy
+
+After all claimed tasks are handed off, Needs you now shows the completed handoff title with the persisted notice-admission time. The recommendation, explanation, suggestions heading and native-choice chips are hidden. Chat remote-card messages also become status-only with zero choices. The timestamp is the latest admitted notice's existing notifiedAt, not a repost's createdAt; no ledger migration was added. Partial handoffs keep their existing incomplete flow.
+
+The next-step sentence defines dispatcher once as the agent that assigned this work; the Chinese section label is「Codex 的建議（原文）」. Original English provider choices remain untouched before handoff. Liveness suppression/retirement rules and native refusal handling are unchanged.
+
+Request-context On integration (#4519): this system notice has no clicking-person parent context. The manual handoff refuses before queue admission while request-context is installed, using the existing localized handoff-failed result; it never starts an unscoped wake. Off keeps the existing durable-admission path. No owner context or lease is invented.
+
+Four actual fail-first controls fail at1b9dabe3: Off completed handoff still exposing choices, On handoff still admitting, and EN/zh completed messages still offering pane actions. Corrected focused fixtures pass125/6; a final actual-nonce follow-up passes2 selected cases, including a direct native-choice click on the completed card being refused without pane input. The two-case run overlaps the first suite, not an additional distinct count. The existing persisted-ledger test pins notifiedAt10 rather than prompt since1. Production compiler/build/assets pass; no broad/native/CLI/account/model campaign repeated.
+
+All10 changed originals were retaken:8 choice views with the new definition/section label, and2 completed-status views. Driver checks verify no recommendation/blocked heading/buttons in completed cards, non-reset time, original live-choice labels,44px phone buttons and no overflow/page errors. Handed metadata remains explicitly view-injected for visual proof; actual durable admission/failure is covered by tests. Before8 historical controls are unchanged. All scratch browser contexts/listeners/homes close. Individual builtin image review is recorded before push. User-look HOLD remains.
+
+All10 current originals were individually inspected with the builtin image viewer: completed status/time and absence of choices/recommendation in handed views, original-text label/dispatcher definition in all live views, readable phone controls and no visible privacy/clipping finding.

@@ -259,6 +259,7 @@ export function NeedsPanel({ navKey }) {
 
 function NeedsItem({ item, nowMs, owner, agentName }) {
   const c = useStore(claims);
+  const policyHanded = item.reason === "codex_policy_recourse" && item.policyHandoff?.total > 0 && item.policyHandoff.done === item.policyHandoff.total;
   // A prompt: the page's chat store holds the one claim (Chat and Needs you, any panel, any render).
   const p = item.type === "prompt" && item.nonce && owner ? owner.state.prompts[item.nonce] : null;
   const fallback = item.nonce ? c.prompts[item.nonce] : undefined;
@@ -359,8 +360,8 @@ function NeedsItem({ item, nowMs, owner, agentName }) {
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}${item.reason === "codex_policy_recourse" ? " n-policy-recourse" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
-      <div class="n-title"><strong>${item.type==='host'?hostAlertName(item.hostAlert):itemReason(item)}</strong><span class="n-age">${item.type==='host'?hostAlertText('started')+age(item.since, nowMs):age(item.since, nowMs)}</span></div>
-      ${item.reason === "codex_policy_recourse" ? html`<p class="n-detail">${t("app.needs_policy_recourse_next")}</p><p class="n-detail">${t("app.needs_policy_recourse_agent", agentName || item.instance)}</p>` : null}
+      <div class="n-title"><strong>${policyHanded ? t("app.needs_policy_recourse_handed") : item.type==='host'?hostAlertName(item.hostAlert):itemReason(item)}</strong><span class="n-age">${item.type==='host'?hostAlertText('started')+age(item.since, nowMs):age(policyHanded ? item.policyHandoff.at ?? item.since : item.since, nowMs)}</span></div>
+      ${item.reason === "codex_policy_recourse" ? html`${!policyHanded ? html`<p class="n-detail">${t("app.needs_policy_recourse_next")}</p>` : null}<p class="n-detail">${t("app.needs_policy_recourse_agent", agentName || item.instance)}</p>` : null}
       ${item.type==='host'&&item.hostAlert?html`<p class="n-detail">${hostAlertText(item.hostAlert.level)} · ${hostAlertDescription(item.hostAlert)}</p>`:item.type==='host'?html`<p class="n-detail">${hostAlertText('failed')}</p>`:detailOf(item)?html`<p class="n-detail">${detailOf(item)}</p>`:null}
       ${item.type === "hub" && item.hubClose ? html`<p class="n-detail">${tn("hubCloseDetail")}</p>` : null}
       ${item.type === "hub" && item.hubRetry ? html`<p class="n-detail">${tn("hubHoldDetail")}</p>` : null}
@@ -368,13 +369,13 @@ function NeedsItem({ item, nowMs, owner, agentName }) {
       ${item.generalLocation ? html`<${GeneralLocation} name=${item.instance} attentionOnly=${true} />` : null}
       ${item.type==='host'?(item.hostAlert?html`<${HostAlertActions} record=${item.hostAlert}/>`:html`<a class="btn btn-sm" href=${fleetPath('host-health')}>${hostAlertText('open')}</a>`):null}
       ${item.reason === "codex_policy_recourse" ? html`
-        ${item.policyOptionCount ? html`<p class="n-detail">${t("app.needs_policy_recourse_explain", item.policyOptionCount > 1 ? `1–${item.policyOptionCount}` : "1")}${item.policyFeedback ? " " + t("app.needs_policy_recourse_feedback") : ""}</p>` : null}
-        ${item.policyHandoff?.done ? html`<p class="n-detail" role="status">${t("app.needs_policy_recourse_handed")}${item.policyHandoff.done < item.policyHandoff.total ? ` (${item.policyHandoff.done}/${item.policyHandoff.total})` : ""}</p>` : null}
+        ${!policyHanded && item.policyOptionCount ? html`<p class="n-detail">${t("app.needs_policy_recourse_explain", item.policyOptionCount > 1 ? `1–${item.policyOptionCount}` : "1")}${item.policyFeedback ? " " + t("app.needs_policy_recourse_feedback") : ""}</p>` : null}
+        ${!policyHanded && item.policyHandoff?.done ? html`<p class="n-detail" role="status">${t("app.needs_policy_recourse_handed")}${item.policyHandoff.done < item.policyHandoff.total ? ` (${item.policyHandoff.done}/${item.policyHandoff.total})` : ""}</p>` : null}
         ${item.type === "prompt" && item.actions?.some(a => a.id === "handoff") && !(item.policyHandoff?.total > 0 && item.policyHandoff.done === item.policyHandoff.total) ? html`<div class="n-actions"><button type="button" class="btn btn-sm btn-primary" disabled=${promptBusy} onClick=${() => answer("handoff")}>${t("app.needs_policy_recourse_handoff")}</button></div>` : null}
-        ${item.actions?.some(a => /^opt-/.test(a.id)) ? html`<p class="muted">${t("app.needs_policy_recourse_suggestions")}</p>` : null}
+        ${!policyHanded && item.actions?.some(a => /^opt-/.test(a.id)) ? html`<p class="muted">${t("app.needs_policy_recourse_suggestions")}</p>` : null}
       ` : null}
       <div class="n-actions">
-        ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input && !(item.reason === "codex_policy_recourse" && a.id === "handoff")).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
+        ${!policyHanded && item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input && !(item.reason === "codex_policy_recourse" && a.id === "handoff")).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy && !p.confirming : fallback === "busy") ? tn("answering") : a.label}${a.hint ? html`<span class="btn-hint">${a.hint}</span>` : null}</button>`) : null}
         ${item.type === "hub" && item.hubRetry ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!!hubAck || !!closeAck} onClick=${retryHub}>
             <${Icon} name="restart" size=${14} />${hubAck === "busy" ? tn("hubRetrying") : tn("hubRetry")}</button>` : null}

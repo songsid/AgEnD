@@ -24,7 +24,7 @@ export interface NeedsYouItem {
   /** Which kind of wait, for the title (localized by the renderer, not here). */
   reason: NeedsYouReason;
   modelSwitch?: ModelSwitch;
-  policyHandoff?: { done: number; total: number };
+  policyHandoff?: { done: number; total: number; at?: number };
   policyOptionCount?: number;
   policyFeedback?: boolean;
   hostAlert?: import('./host-monitoring-alert-policy.js').HostAlertRecord;
@@ -145,7 +145,7 @@ export interface InstanceInput {
   interactionSummary?: string | null;
   /** Only code/title metadata from the board, never terminal text or generated rewrites. */
   policyTasks?: string[];
-  policyHandoff?: { done: number; total: number };
+  policyHandoff?: { done: number; total: number; at?: number };
   /** The pause marker's reason, for a paused instance; and when it was paused. */
   pauseReason?: string | null;
   /** Process-local login hold, including General/busy agents before a pause completes. */

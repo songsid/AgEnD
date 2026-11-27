@@ -24797,7 +24797,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           isInstance: name => this.fleetConfig?.instances?.[name] != null || this.isClassicInstance(name),
           boardOff: name => taskBoardOffIn(this.fleetConfig, name),
           noticeState: key => this.deliveryOutbox?.isOpen ? this.deliveryOutbox.noticeStateByKey(key) : null,
-          deliver: (target, message, key) => this.admitTaskBoardNotice(target, message, key),
+          // This notice has no clicking-person request context; On must refuse before an unscoped wake is queued.
+          deliver: (target, message, key) => !requestContextPolicyInstalled(this.requestContextPolicy) && this.admitTaskBoardNotice(target, message, key),
           withdraw: key => { this.deliveryOutbox?.withdrawWaitingNotices(key, candidate => candidate === key, "replaced by explicit human handoff"); },
           message: card => t("codex.policy_recourse.handoff_notice", this.shownInstanceName(entry.instanceName), card.code, card.title.replace(/\s+/g, " ").slice(0, 160)),
           now: Date.now }, entry.instanceName, identity, this.instancePresentation(entry.instanceName).interaction?.since ?? Date.now());
