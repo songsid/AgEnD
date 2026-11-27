@@ -21,3 +21,4 @@ tests/website-notes.test.ts
 tests/zh-admin-word-2820.test.ts
 tests/zh-tw-glossary-m3666.test.ts
 tests/zh-clock-m3730.test.ts
+tests/update-docs-s239.test.ts
