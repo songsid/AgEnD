@@ -5605,7 +5605,7 @@ export function serveHubWorkspaceShell(res: ServerResponse, hub: { name: string;
       + (preview.previewOrigin && preview.bootId ? ` data-preview-origin="${attr(preview.previewOrigin)}" data-preview-boot="${attr(preview.bootId)}"`
         : ` data-preview-reason-code="${attr(preview.reasonCode ?? "notOffered")}" data-preview-reason="${attr(preview.reason ?? "")}"`) : "";
     const body = `<body data-mode="full" data-web-transport="none" data-usage-panel="0" data-log-tab="0" data-hub="hub"${name ? ` data-hub-name="${attr(name)}"` : ""}${hub.loginWithoutAt ? ` data-hub-login="no-at"` : ""}${previewAttrs}>`;
-    sendPanelHtml(res, withAppIconLinks(html).replace("<body>", body), 200, { "Cache-Control": "no-store" }, { mediaSrc: "'none'", ...(preview?.previewOrigin ? { frameSrc: `${preview.previewOrigin}/frame` } : {}) });
+    sendPanelHtml(res, withAppIconLinks(html, "hub").replace("<body>", body), 200, { "Cache-Control": "no-store" }, { mediaSrc: "'none'", ...(preview?.previewOrigin ? { frameSrc: `${preview.previewOrigin}/frame` } : {}) });
   } catch {
     json(res, 500, { error: "app.html not found" });
   }
