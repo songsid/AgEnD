@@ -7145,7 +7145,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if(verdict.kind!=="allow"||verdict.via!=="session"||verdict.session.tier!=="admin")return null;
       const identity=this.webSessionIdentity(verdict.session);if(!identity)return null;
       const authority=this.webAuthority({session:verdict.session,gateway:!!gatewayRequestContext(req),peer:gatewayRequestContext(req)?gatewayRequestContext(req)!.named?"named_link":"quick_link":classifyWebPeer(req)}).authority;
-      const action=this.contactActor(req,url),person:ContactPerson={platform:identity.platform,adapterId:identity.adapter_id,userId:identity.user_id,label:identity.user_id};
+      const action=this.contactActor(req,url),person:ContactPerson={platform:identity.platform,adapterId:identity.adapter_id,userId:identity.user_id,label:this.contactPersonLabel(identity.adapter_id,identity.user_id)};
       const verified=!!action&&sameContactPerson(action,person);
       const binding=JSON.stringify([identity.session_handle,authority.authority_epoch,authority.kind==="web-verified"?authority.session?.authorized_at:null]);
       return {person,binding,verified};
@@ -7374,7 +7374,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (actor.adapter_id === "host" && actor.user_id === "operator") return { platform: "host", adapterId: "host", userId: "operator", label: "Operator" };
     const adapter = this.adapters.get(actor.adapter_id);
     if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return null;
-    return { platform: adapter.type, adapterId: actor.adapter_id, userId: actor.user_id, label: actor.user_id };
+    return { platform: adapter.type, adapterId: actor.adapter_id, userId: actor.user_id, label: this.contactPersonLabel(actor.adapter_id, actor.user_id) };
+  }
+  /**
+   * M-3864 R7: what Permissions and the history call a web-verified admin. That is their name as the rest of the dashboard
+   * says it (their own, else their chat account's), never the bare account id. Display only: a person is matched by
+   * platform and id (sameContactPerson).
+   */
+  private contactPersonLabel(adapterId: string, userId: string): string {
+    try { const name = this.webPerson({ adapterId, userId }).name; return name && name !== WEB_NAME_FALLBACK ? name : userId; }
+    catch { return userId; }
   }
 
   writeContactPermissions(name: string, raw: ContactPermissionsWrite, actor: ContactPerson): ContactPermissions {
