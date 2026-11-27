@@ -424,7 +424,7 @@ import { QuiescenceBarrier, stripHumanReceipt, UPDATE_HANDBACK_COPY_KIND, UPDATE
 import { readCurrent as readUpdateJournal, type AttemptRecord as UpdateAttemptRecord } from "./update-journal.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateAnswerLabel, updateOfferReply, type UpdateCardView } from "./update-card.js";
-import { preflightAllows } from "./update-readiness.js";
+import { preflightAllows, preflightBlocking, preflightRefusal, preflightWords, type UpdatePreflight } from "./update-readiness.js";
 import { inUpdatePause, resolveUpdates } from "./update-settings.js";
 import { resolveInstalledAgend, npmForRunningInstall } from "./update-dispatch.js";
 import { HUB_UPDATE_NOTICE_FILE, HUB_UPDATE_REMIND_MS, hubNoticeDue, hubNoticeKey, readHubNoticeState, writeHubNoticeState } from "./hub-update-notice.js";
@@ -1183,7 +1183,10 @@ const UPDATE_CARD_CALLBACK_PREFIX = "update-card:";
 const UPDATE_CHAT_CARD_FILE = "update-chat-card.json";
 /** The chat card's buttons live a week (Not now's own length); a newer card replaces them sooner. */
 const UPDATE_CHAT_CARD_MS = 7 * 24 * 60 * 60_000;
-interface UpdateChatCardRecord { version: string; state: string; nonce: string | null; messageId: string; chatId: string; threadId?: string; adapterId: string; at: number }
+/** `actions`: the buttons it was posted with (M-3864 R1; absent on an older record: all three). `refused`: its last press was refused, and its text says why. */
+interface UpdateChatCardRecord { version: string; state: string; nonce: string | null; messageId: string; chatId: string; threadId?: string; adapterId: string; at: number; actions?: string; refused?: boolean }
+type UpdateChatCardAction = "when-idle" | "tonight" | "not-now";
+const UPDATE_CHAT_CARD_ALL: readonly UpdateChatCardAction[] = ["when-idle", "tonight", "not-now"];
 const HUB_SHARING_CALLBACK_PREFIX = "hub-share:";
 /** M-3680: a held contact request's card in General ("contact-ticket:" + 32 hex + ":approve" = 55 bytes, under Telegram's 64). */
 const CONTACT_TICKET_PREFIX = "contact-ticket:";
@@ -2922,7 +2925,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private updateChatCardText(view: UpdateCardView | null, current: string | null): string {
     if (view && view.state === "offered") {
       // M-3770 1.2's cached pre-flight, when this build has it (#4483): the second sentence only where it is true.
-      const pre = (this as unknown as { updatePreflight?: { checks: Array<{ id: string; ok: boolean }> } | null }).updatePreflight;
+      const pre = this.updatePreflight;
+      // M-3864 R1: a machine where even an admin's press can't start it says why, as the web does (its card offers Not now only).
+      const blocking = pre ? preflightBlocking(pre) : null;
+      if (blocking) return `${t("update.chatcard.offer", view.version)}\n${t("update.chatcard.cant", preflightWords(blocking, (key, ...args) => t(key, ...args)))}`;
       const p3 = pre?.checks.find(c => c.id === "P3");
       // The leader's copy pass (S-237): a title and one line, as on the web.
       const line = !p3 ? t("update.chatcard.continues") : p3.ok ? t("update.chatcard.back", current ?? "?") : t("update.chatcard.noWayBack");
@@ -2938,6 +2944,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (view?.state === "failed") return t("update.chatcard.state_failed", view.version, current ?? "?");
     const reply = updateOfferReply(view, current, !!resolveUpdates(this.fleetConfig?.updates).pin);
     return t(reply.key, ...reply.args);
+  }
+  /**
+   * M-3864 R1: the buttons General's card offers on this machine, by the same rule the web's card and the server use: an
+   * admin's press (Update when idle) needs pressHere, a picked time (Tonight) a machine that updates itself. No pre-flight
+   * result yet: all three (the launch decides, as on the web).
+   */
+  private updateChatCardActions(pre: UpdatePreflight | null = this.updatePreflight): UpdateChatCardAction[] {
+    if (!pre) return [...UPDATE_CHAT_CARD_ALL];
+    return UPDATE_CHAT_CARD_ALL.filter(a => a === "not-now" || preflightAllows(pre, a === "tonight" ? "unattended" : "press"));
   }
   /** General's chat place for the card, or null (no General, no chat: a web-only fleet's banner says it). */
   private updateChatCardPlace(): { general: string; adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string } | null {
@@ -2969,11 +2984,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #4485 review 1: an offered card whose buttons are gone (a restart empties the nonce map; they also expire) is not
       // a usable card: it is marked expired and one with live buttons is posted.
       const live = !!posted?.nonce && this.pendingNonceButtons.get(posted.nonce)?.prefix === UPDATE_CARD_CALLBACK_PREFIX;
-      if (view && state === "offered" && view.installable && (!posted || posted.version !== view.version || posted.state !== "offered" || !live)) {
+      // M-3864 R1: a card whose buttons the machine no longer allows (or newly allows) is posted again with the right ones.
+      const actions = this.updateChatCardActions(), actionsKey = actions.join(",");
+      const sameActions = (posted?.actions ?? UPDATE_CHAT_CARD_ALL.join(",")) === actionsKey;
+      if (view && state === "offered" && view.installable && (!posted || posted.version !== view.version || posted.state !== "offered" || !live || !sameActions)) {
         const place = this.updateChatCardPlace();
         if (!place) return;
-        if (posted) {
+        // A refused press already edited its card to say why; that text stays (it is not called expired).
+        if (posted && !(posted.refused && posted.version === view.version && !live)) {
           const old = posted.state === "offered" && posted.version === view.version && !live ? t("update.chatcard.expired")
+            : posted.state === "offered" && posted.version === view.version && !sameActions ? t("update.chatcard.replaced", view.version)
             : posted.version === view.version ? t("update.chatcard.cancelled", posted.version) : t("update.chatcard.replaced", view.version);
           await this.editUpdateChatCard(posted, old);
         }
@@ -2982,7 +3002,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           prefix: UPDATE_CARD_CALLBACK_PREFIX, alertType: "tip", instanceName: place.general, adapter: place.adapter, adapterId: place.adapterId,
           chatId: place.chatId, ...(place.threadId ? { threadId: place.threadId } : {}),
           message: this.updateChatCardText(view, current),
-          choices: [{ action: "when-idle", label: t("update.chatcard.when_idle") }, { action: "tonight", label: t("update.chatcard.tonight") }, { action: "not-now", label: t("update.chatcard.not_now") }],
+          choices: actions.map(action => ({ action, label: t(action === "when-idle" ? "update.chatcard.when_idle" : action === "tonight" ? "update.chatcard.tonight" : "update.chatcard.not_now") })),
           expiredText: t("update.chatcard.expired"),
           timeoutMs: UPDATE_CHAT_CARD_MS,
           // #4485 review 2: the provider's own delivery address, kept per nonce as it is sent — a click may consume the
@@ -3004,7 +3024,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.updateChatCardAnswered.delete(nonce);
         this.writeUpdateChatCard({ version, state: answered ?? "offered", nonce: answered ? null : nonce, messageId: sent?.messageId ?? "",
           chatId: sent?.chatId ?? place.chatId, ...((sent?.threadId ?? place.threadId) ? { threadId: sent?.threadId ?? place.threadId } : {}),
-          adapterId: place.adapterId, at: Date.now() });
+          adapterId: place.adapterId, at: Date.now(), actions: actionsKey });
         // The card may have moved on while this was being posted (a newer version, an answer on the web): sync again.
         const after = this.updateOfferView();
         if (!answered && (after?.version !== version || (after?.state ?? "none") !== "offered")) this.updateChatCardAgain = true;
@@ -3068,12 +3088,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       let current: string | null = null;
       try { current = this.runningAgendVersion(); } catch { /* unknown */ }
       const why = r.ok ? "" : ("key" in r.body && r.body.key !== "preflight" ? r.body.key : "error" in r.body ? r.body.error : r.body.key);
-      text = r.ok ? t("update.chatcard.by", this.updateChatCardText(view, current), by) : t("update.chatcard.refused", why || String(r.status));
+      // M-3864 R1: the machine's pre-flight refused it: the reason in words (as the web and /update say it), never the key.
+      const preflight = !r.ok && "key" in r.body && r.body.key === "preflight" ? r.body.preflight as UpdatePreflight : null;
+      const refusal = preflight ? preflightRefusal(preflight, action === "tonight" ? "unattended" : "press", (key, ...args) => t(key, ...args)) : null;
+      text = r.ok ? t("update.chatcard.by", this.updateChatCardText(view, current), by) : refusal ?? t("update.chatcard.refused", why || String(r.status));
       const posted = this.readUpdateChatCard();
       const nextState = view?.state ?? "none";
       if (posted && posted.nonce === nonce) {
         // The press carries the message's own id where the post's record has none yet.
-        this.writeUpdateChatCard({ ...posted, state: nextState, nonce: null, messageId: posted.messageId || sent?.messageId || String(messageId ?? "") });
+        this.writeUpdateChatCard({ ...posted, state: nextState, nonce: null, messageId: posted.messageId || sent?.messageId || String(messageId ?? ""), ...(r.ok ? {} : { refused: true }) });
       } else if (r.ok) {
         // The card is still being posted (its record is written when the post returns): it records this answer then.
         this.updateChatCardAnswered.set(nonce, nextState);
@@ -33820,6 +33843,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const now = this.updateCheckState?.offer?.version ?? null;
         if (now !== target) continue;                                     // the offer changed: judge the new one
         this.updatePreflight = mergePreflight(this.updatePreflight, fresh, now);
+        void this.syncUpdateChatCard();                                  // M-3864 R1: the chat card's buttons follow it
         return;
       }
     })().finally(() => { if (this.updatePreflightRunning === running) this.updatePreflightRunning = null; });
