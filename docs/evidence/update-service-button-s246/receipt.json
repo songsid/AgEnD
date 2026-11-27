@@ -1,5 +1,5 @@
 {
-  "sourceHead": "e610d031564888959639a81114244287e9de29e6",
+  "sourceHead": "4315f5fb0fe6785154a69cc6315ebe541044bfec",
   "dirty": [],
   "checks": [
     {
@@ -8,6 +8,10 @@
     },
     {
       "name": "desk-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-1-not-service: no host path outside the masked fleet.yaml",
       "ok": true
     },
     {
@@ -23,6 +27,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-en-2-confirm: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "desk-light-en 3: Cancel sends nothing and runs nothing",
       "ok": true
     },
@@ -31,15 +39,31 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 4: says why, and that AgEnD keeps running, in full",
+      "name": "desk-light-en 4: the block says why, and that AgEnD keeps running",
       "ok": true
     },
     {
-      "name": "desk-light-en 4: the line stays, and the button can be pressed again",
+      "name": "desk-light-en 4: no toast over the page",
       "ok": true
     },
     {
-      "name": "desk-light-en 5: says AgEnD is restarting, in full; the button says Restarting… and can't be pressed",
+      "name": "desk-light-en 4: the line stays with How to fix; the button is gone (pressing again is not the next step)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-4-refused: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the block says AgEnD is restarting; the button says Restarting… and can't be pressed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: no toast over the page",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-5-restarting: no host path outside the masked fleet.yaml",
       "ok": true
     },
     {
@@ -47,7 +71,11 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 5b: the restarting toast is gone",
+      "name": "desk-light-en 5b: the restarting line is gone",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-5b-back: no host path outside the masked fleet.yaml",
       "ok": true
     },
     {
@@ -64,6 +92,10 @@
     },
     {
       "name": "phone-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-1-not-service: no host path outside the masked fleet.yaml",
       "ok": true
     },
     {
@@ -95,6 +127,10 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW-2-confirm: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 3: Cancel sends nothing and runs nothing",
       "ok": true
     },
@@ -103,15 +139,31 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 4: says why, and that AgEnD keeps running, in full",
+      "name": "phone-dark-zh-TW 4: the block says why, and that AgEnD keeps running",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 4: the line stays, and the button can be pressed again",
+      "name": "phone-dark-zh-TW 4: no toast over the page",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 5: says AgEnD is restarting, in full; the button says Restarting… and can't be pressed",
+      "name": "phone-dark-zh-TW 4: the line stays with How to fix; the button is gone (pressing again is not the next step)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-4-refused: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the block says AgEnD is restarting; the button says Restarting… and can't be pressed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: no toast over the page",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-5-restarting: no host path outside the masked fleet.yaml",
       "ok": true
     },
     {
@@ -119,7 +171,15 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 5b: the restarting toast is gone",
+      "name": "phone-dark-zh-TW 5b: the restarting line is gone",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5b: the toast has gone before the frame",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-5b-back: no host path outside the masked fleet.yaml",
       "ok": true
     },
     {
@@ -142,44 +202,44 @@
   "pictures": [
     {
       "path": "s246-desk-light-en-1-not-service.png",
-      "sha256": "4ea5a55bccf2e98c0f5b7cc6427c2b2e7d8c51245d71e4c8851c9fd9ba3c6440"
+      "sha256": "39ed79362559c6ba18a002d0e8c03d243a059a3997dac385a075defb5eb244a5"
     },
     {
       "path": "s246-desk-light-en-2-confirm.png",
-      "sha256": "7dc4243a4908487edb4e9c0fb39f1b298f1797642439e4f2148c1d1683a42693"
+      "sha256": "48a18d9987f6397d9415281aa28469465462383fc5680583696926a0be09067e"
     },
     {
       "path": "s246-desk-light-en-4-refused.png",
-      "sha256": "61766b0211d29a749e101a089ff3648889f86bc67be3127569f4b4129f2fef47"
+      "sha256": "e891b32e3ca2e0a3f8d3055726c88414a2c618414a8399e4ddf6c6cebc95f79e"
     },
     {
       "path": "s246-desk-light-en-5-restarting.png",
-      "sha256": "2a4a3738905c9b26e2501f3227b970d8c18392b178d68da5b94b847c866306bb"
+      "sha256": "11b016c297ac45171399dbede0cf80c434310f11ba79283469c95d76c488b553"
     },
     {
       "path": "s246-desk-light-en-5b-back.png",
-      "sha256": "c57192827f2d083c27bbbb0fd25920a98fd8b6ca7cdf2bf8ecb429c8242567a8"
+      "sha256": "29c3f20ad9e235544014fa56a868252443657371840b4cc5a0b6ac8840371adc"
     },
     {
       "path": "s246-phone-dark-zh-TW-1-not-service.png",
-      "sha256": "05312b1c6f848845074d3be93670ce97da72f0e6601309a8e0e1d45fa65809cd"
+      "sha256": "82f8b7826fa43dda1c56853afa4ca6b9bad2a32dbaca9266e9aef9396658b2ed"
     },
     {
       "path": "s246-phone-dark-zh-TW-2-confirm.png",
-      "sha256": "62186185a973fad2320c6f0e082c13bbd3a7172d3e87e029af6528967f16f06a"
+      "sha256": "c8fcc8bc8042b3731db5ddd654bf4c751a1ba99214a75a1f20831a9f4220d4db"
     },
     {
       "path": "s246-phone-dark-zh-TW-4-refused.png",
-      "sha256": "772430566138d026436bd3e42f47cfe669e37cbb961912fc553390a942a6cc94"
+      "sha256": "1502a33f8f34c7b84b3ecb6272c77e5f8caa1770f8d11fa5254d1ad2a298b643"
     },
     {
       "path": "s246-phone-dark-zh-TW-5-restarting.png",
-      "sha256": "b6a9d21b4c01baf4d421d226d86cbe6f405f53fdb06e67e31daeaaf6d90f7c7f"
+      "sha256": "7fb2794a24185077d2566bac2f7938469c78d03a23ec10df7e93e80ac43a01b7"
     },
     {
       "path": "s246-phone-dark-zh-TW-5b-back.png",
-      "sha256": "b83963aca524b0c4331341856fdfa262cf6542e98094526b2e518183790e6c11"
+      "sha256": "afdc0e75efddc468bc722fedcce6d5e73cf9466457ac0beb8e0a46bb0a26109a"
     }
   ],
-  "summary": "34/34"
+  "summary": "49/49"
 }
