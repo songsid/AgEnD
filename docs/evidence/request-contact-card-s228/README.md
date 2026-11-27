@@ -14,7 +14,7 @@ Two seams are stubbed:
 - **The principal.** The fixture signs in with a host code, which has no chat identity on a chat fleet, so the request's person is one fixed, recognized managing admin. It is unverified or verified per frame.
 - **`GET` / `POST /ui/authorization` in the browser.** "Authorize this browser" goes from not verified to waiting to verified without a Discord DM.
 
-Script: `scripts/manual/request-contact-card-s228/capture.mts`. It ran at `35c4394bc` (`src` clean) and passed 164 of 164 checks. `receipt.json` lists the commit, every check, and each PNG's sha256.
+Script: `scripts/manual/request-contact-card-s228/capture.mts`. It ran at `4fc5671b6` (`src` clean) and passed 172 of 172 checks. `receipt.json` lists the commit, every check, and each PNG's sha256.
 
 | Frame | What it shows |
 |---|---|
@@ -30,3 +30,5 @@ The matrix is desk light en, desk dark zh-TW, phone light en and phone dark zh-T
 Not captured: Permissions with Clear retained origin shown as history. The fixture's agents have no retained origin, so that section isn't drawn. `tests/web-request-contact-card-s228.test.ts` covers it for the on, off and unknown host states.
 
 After the leader's capture check (#4497): **Continue (with follow-ups)** (「繼續（含後續聯絡）」) is a new request's decision, and **Approve once** an older request's, so they keep different words. The grant button, **Set allowed contacts…** (「設定常用轉交…」), shares the editor's name: "Set allowed contacts for these people" or "for this person". Disabled buttons use the app's shared disabled style; the UI style guide sets no contrast rule for disabled controls.
+
+After the leader's recheck (phone): the card's decision row wraps to a second line instead of clipping a button (a check fails if any button's words overflow), and the grant editor's body scrolls between its head and footer, so its last line clears the footer buttons (checked by scrolling to the end).

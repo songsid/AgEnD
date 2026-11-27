@@ -1,5 +1,5 @@
 {
-  "sourceHead": "35c4394bc9c8c23368e8c051e27da67c02ed9bec",
+  "sourceHead": "4fc5671b6f96173e018db3fdf5b076928c7e3854",
   "dirty": [],
   "checks": [
     {
@@ -111,6 +111,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-en 4: no decision button clips its words (the row wraps instead)",
+      "ok": true
+    },
+    {
       "name": "desk-light-en 4: no sideways scroll",
       "ok": true
     },
@@ -140,6 +144,10 @@
     },
     {
       "name": "desk-light-en 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: scrolled to its end, the body's last line clears the footer",
       "ok": true
     },
     {
@@ -271,6 +279,10 @@
       "ok": true
     },
     {
+      "name": "desk-dark-zh-TW 4: no decision button clips its words (the row wraps instead)",
+      "ok": true
+    },
+    {
       "name": "desk-dark-zh-TW 4: no sideways scroll",
       "ok": true
     },
@@ -300,6 +312,10 @@
     },
     {
       "name": "desk-dark-zh-TW 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: scrolled to its end, the body's last line clears the footer",
       "ok": true
     },
     {
@@ -439,6 +455,10 @@
       "ok": true
     },
     {
+      "name": "phone-light-en 4: no decision button clips its words (the row wraps instead)",
+      "ok": true
+    },
+    {
       "name": "phone-light-en 4: no sideways scroll",
       "ok": true
     },
@@ -468,6 +488,10 @@
     },
     {
       "name": "phone-light-en 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: scrolled to its end, the body's last line clears the footer",
       "ok": true
     },
     {
@@ -607,6 +631,10 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW 4: no decision button clips its words (the row wraps instead)",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 4: no sideways scroll",
       "ok": true
     },
@@ -639,6 +667,10 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW 5: scrolled to its end, the body's last line clears the footer",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 5: the boundary is in view (not behind the footer), and plain",
       "ok": true
     },
@@ -662,71 +694,71 @@
   "pictures": [
     {
       "path": "s228-desk-light-en-1-needs-unverified.png",
-      "sha256": "23e70871d53817f7174c2f26880ceb0353b00150a8bff796ca1331cbaf26dd50"
+      "sha256": "0c7576d9ea486c9a104204b69578a6dfbafbbdc578df4a03f68290c0d24a72fb"
     },
     {
       "path": "s228-desk-light-en-2-verified.png",
-      "sha256": "7ffc21ae4c67a1f382dac89a36988b42b40abdabd39a464c55f70d3dc4d5e4a9"
+      "sha256": "febd6a0082cf2cba85efcc0ea20ca8a06fc0eabe40ea39cc6a0764686cf6599c"
     },
     {
       "path": "s228-desk-light-en-3-continued.png",
-      "sha256": "b7bbd09a2079d0f6925e5cd6d14c3eacfe6f44dfa649987eb06d0fd60d8ac96a"
+      "sha256": "08c990effc68a69fdad3d332c04b4cafc5a0efcc991fa0056ef3db8ca8329b47"
     },
     {
       "path": "s228-desk-light-en-4-authorizations.png",
-      "sha256": "b11d107d54bf87ec853eaa26f6a496f88c6f5b4daf56b5cfc4c57ca2b6ff5656"
+      "sha256": "81967ffe133ca97fbfacc351a6179079294209e0511f7a6ee1ea2f75bd01d5c4"
     },
     {
       "path": "s228-desk-light-en-4b-details.png",
-      "sha256": "3c223556abafa7f9751f8d175e9bbe02433fec8e6ff5a92d52726d99efa0e6a8"
+      "sha256": "d391bf52c29eec750ee183677b98e76621d4322c626bf6ce1f8acb3f23e84764"
     },
     {
       "path": "s228-desk-light-en-5-always-allow.png",
-      "sha256": "0cfc91a80a7d32a65b4444b553554fe5270362bf6d027559b45bec540324d087"
+      "sha256": "d22fd209c15b7bd2b144c68d3f8427668848112e3c84d750f83ec17cc5dbb615"
     },
     {
       "path": "s228-desk-dark-zh-TW-1-needs-unverified.png",
-      "sha256": "1f0b298be431c904e9eb9f26dbd343d7609c5ed5c5c48cc6ed3f6ccfcfddcde7"
+      "sha256": "1c5d27933718a2510ce0c6a3a3a454187a3b5c1448d24395808db210fc6104c5"
     },
     {
       "path": "s228-desk-dark-zh-TW-2-verified.png",
-      "sha256": "214b0aaa492f8337a3e8b1fec4b0f8dc09899eafadc9bb84486ab86ea78c31fd"
+      "sha256": "5cc8a71a9c9c0d20e44d922283af8aadb24a6009f9f42910fa53c255c8af0d5c"
     },
     {
       "path": "s228-desk-dark-zh-TW-3-continued.png",
-      "sha256": "75d43954795afd14fcfaa4f3fbcea73d89dc291f2200d446c500e572c0ca9746"
+      "sha256": "a5cbc007f166798476447df8cc295139e6852ca969b308289b37f9dde4fce3af"
     },
     {
       "path": "s228-desk-dark-zh-TW-4-authorizations.png",
-      "sha256": "9e5169b08b2be37511877e739b0ee4d8674c1b203446807b3fa58a7b3e16798d"
+      "sha256": "2fc2572fe1e3ed08eb8e9bedf8dd707406e6ac824c40b571cbcdb02aa8d3dbca"
     },
     {
       "path": "s228-desk-dark-zh-TW-4b-details.png",
-      "sha256": "6ace5a0898540e28714363a265152b5adc39461e1ccbb523d025f3f44c2dff75"
+      "sha256": "ab31a5853f694c118e9f34ba1f23136d130db70f619737a541133d51fa0d759e"
     },
     {
       "path": "s228-desk-dark-zh-TW-5-always-allow.png",
-      "sha256": "9e0ed973b08dca027193b1a633e7838653a71b3965bc85ce0dbd6f7422c0c2ef"
+      "sha256": "406544b1fa5d543f5fb7434371d907c07c0eb4afb487648a37f2f503ab104f60"
     },
     {
       "path": "s228-phone-light-en-1-needs-unverified.png",
-      "sha256": "bde1c9f2179ed42cb7c240b0a39b8efb333e0de78892ee74cc400ddac0c3a543"
+      "sha256": "ae5bb2c50f63c9ec86b4eabb8e4a4c5e2a9fdb8f402133087dcd81dd618e6780"
     },
     {
       "path": "s228-phone-light-en-2-verified.png",
-      "sha256": "a4011fd2c6aa2ca2b06f6649581da77f90b47738027bbe4df520c01dc5acf0f8"
+      "sha256": "cc4c0180423aa8548fe6abb4ae392ef3d5aec0908ff04e0efa62a9773267058d"
     },
     {
       "path": "s228-phone-light-en-3-continued.png",
-      "sha256": "ea1dc53a78a6ec2bfde47a5f69b336133f81306876a4f6b61c19d0341fe18dc4"
+      "sha256": "669a5c08ee7359a24d4abb21cc938cf5995cad9f8e80712a6b95b43a24b76b9d"
     },
     {
       "path": "s228-phone-light-en-4-authorizations.png",
-      "sha256": "d847c425c157832d74f3538d8f9c51f32735b8b9295da6cd6ebdf827a447caa3"
+      "sha256": "6bf00b4c3f206eb7fbb65dd64465d900ec039c9552fc3d2e4e420fb817ca3986"
     },
     {
       "path": "s228-phone-light-en-4b-details.png",
-      "sha256": "d7357960ee81262fa16889ab759a21aa99392c2b43c70662e3533417ffa581ec"
+      "sha256": "dfd82e03e6747cbd258142bfbdbd073a9869ad71c604859dce3d0ac47b7957e0"
     },
     {
       "path": "s228-phone-light-en-5-always-allow.png",
@@ -734,28 +766,28 @@
     },
     {
       "path": "s228-phone-dark-zh-TW-1-needs-unverified.png",
-      "sha256": "b58c271c0989c9115cccb30bd26475013973d3a19bffe087f77b7aad5c281e6c"
+      "sha256": "0b9e10f6ed7287623a1a39c069958cc458369c530a58941f5d385a45a1e05d24"
     },
     {
       "path": "s228-phone-dark-zh-TW-2-verified.png",
-      "sha256": "6416c833e06dab5af972c48656f24924a77916c96818fbc58cf57298c9d6dc4c"
+      "sha256": "38041a92617d47dfaf18d3a4eccfda71eef76dd7ad440cfa6a712da6d58c4cb2"
     },
     {
       "path": "s228-phone-dark-zh-TW-3-continued.png",
-      "sha256": "a4f159af3100da489e10150034d07d6516a6b8c757e1193ef5e3dc99fcc9c7cd"
+      "sha256": "fb5904036420a8211ae1e0ad20f123b1bbfd1e0e81df6fcd25ed129682fcc039"
     },
     {
       "path": "s228-phone-dark-zh-TW-4-authorizations.png",
-      "sha256": "1a6e06dad9a57eca79caf1935b8ac7032f4428349746443d649fafec3114e5af"
+      "sha256": "a470c28c6b50f28f344c10e4bb681257ddf89f7c0183feedc58545f8c1d786d8"
     },
     {
       "path": "s228-phone-dark-zh-TW-4b-details.png",
-      "sha256": "f10ff87d354609796d354601abd68046e0e01c3e4eb1b0be1a85c0b30f1c14ae"
+      "sha256": "dbfde59542e140dd50f8f43e658977d703615fcd2bb6021073eaa07c70e930ea"
     },
     {
       "path": "s228-phone-dark-zh-TW-5-always-allow.png",
-      "sha256": "25ff7727b7b1665bbadcd95d18ca08159984b0f112308da1c8b967f9e9799068"
+      "sha256": "f4de33074585beda5371005109766c489ad325060879747b90a9cde727bf07f5"
     }
   ],
-  "summary": "164/164"
+  "summary": "172/172"
 }
