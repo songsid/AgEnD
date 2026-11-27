@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { contactRetirementImage } from "../src/contact-auth-store.js";
 import type { RequestMigrationHost } from "../src/request-context-migration.js";
-import type { ContactPerson, ContactRequest } from "../src/contact-auth-types.js";
+import type { ContactPerson } from "../src/contact-auth-types.js";
+import type { ContactRequest } from "../src/contact-auth-store.js";
 
 const cleanup: Array<() => void> = [];
 afterEach(() => { for (const fn of cleanup.splice(0).reverse()) fn(); });
