@@ -1495,6 +1495,11 @@ img.amb-p { object-fit: contain; }
 .webauth-chip .btn-sm { min-height: 24px; }
 /* M-3710 (#4447 review): Needs you's Authorize this browser is a full touch target on a phone. */
 @media (pointer: coarse), (max-width: 479px) { .contact-verify-need .webauth-chip .btn-sm { min-height: var(--tap); min-width: var(--tap); } }
+/* M-3864 R6 (#4583): Permissions / Authorizations when a verified administrator is needed: the line, this browser's
+   authorize line, then Try again, stacked with room between them; touch-sized on a phone as the Needs you line is. */
+.contact-verify { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; }
+.contact-verify > .note { margin: 0; }
+@media (pointer: coarse), (max-width: 479px) { .contact-verify .btn-sm { min-height: var(--tap); min-width: var(--tap); } }
 /* #1939 S2a: Settings → Web → Web authority. */
 .s-web-authority .s-va-sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .s-web-authority .s-va-sessions li { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); overflow-wrap: anywhere; }
