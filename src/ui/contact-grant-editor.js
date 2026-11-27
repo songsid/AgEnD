@@ -2,10 +2,30 @@
 import { html, useState } from "/assets/app-html.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { ca, contactPlatformLabel, contactPersonLabel, contactWhen } from "./contact-auth-strings.js";
-import { lang } from "/assets/app-i18n.js";
+import { lang, register, t } from "/assets/app-i18n.js";
 import { dateTimeText } from "/assets/clock-text.js";
 import { personKey } from "./contact-auth-client.js";
 export const CONTACT_VERBS = ["send_to_instance", "delegate_task", "request_information", "broadcast", "report_result"];
+
+// M-3783: this editor's own words, in its own namespace (#4581 review): a tab that still holds an older
+// contact-auth-strings.js reads them all the same, and an older editor keeps the shared, unchanged grantBoundary.
+register("cgrant", {
+  en: {
+    boundary: "Until it expires, these people's requests of this type are forwarded to this agent without asking.",
+    moreTitle: "What this allows",
+    boundaryMore: "Only from this source to this agent, for this request type. It only decides whether a message is forwarded; what the receiving agent does with it still follows that agent's own permissions. To undo it, remove the rule in the agent's Permissions.",
+    allOrigins: "Several people's words are in this conversation: tick each person the rule is for.",
+    allOriginsMore: "A later request skips approval only when every person whose words it carries has a matching rule.",
+  },
+  "zh-TW": {
+    boundary: "到期前，這些人的這類請求會直接轉交給這個 Agent，不再詢問。",
+    moreTitle: "這會允許什麼",
+    boundaryMore: "只限從這個來源發給這個 Agent、這個請求類型。這只決定訊息能不能轉交；接收的 Agent 收到後要做什麼，仍照它自己的權限。要撤銷，到這個 Agent 的「權限」移除規則。",
+    allOrigins: "這個對話裡有多人的話：請勾選這條規則適用的每個人。",
+    allOriginsMore: "之後的請求，只有在它帶有的每個人都有符合的規則時，才會直接轉交。",
+  },
+});
+const cg = (key) => t(`cgrant.${key}`);
 const localTime = date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 const afterDays = days => localTime(new Date(Date.now() + days * 86400000));
 const pad2 = n => String(n).padStart(2, "0");
@@ -57,13 +77,15 @@ export function ContactGrantEditor({ people, source, target, verb, grant = null,
   return html`<${Dialog} title=${title || ca(grant ? "grantEdit" : people.length === 1 ? "allowPersonTitle" : "allowPeopleTitle")} busy=${busy} cls="contact-grant-dialog" onClose=${onClose}
     actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${ca("cancel")}</button><button type="button" class="btn btn-primary" disabled=${busy || !valid} onClick=${save}>${ca(busy ? "saving" : grant ? "grantSave" : "allowAndApprove")}</button>`}>
     <p>${ca("grantRoute", source, target)}</p>
-    <p class="note contact-grant-boundary">${ca("grantBoundary")}</p>
+    <p class="note contact-grant-boundary">${cg("boundary")}</p>
+    <details class="contact-grant-more"><summary>${cg("moreTitle")}</summary><p class="note">${cg("boundaryMore")}</p>
+      ${!grant && people.length > 1 ? html`<p class="note">${cg("allOriginsMore")}</p>` : null}</details>
     <section class="s-group" aria-label=${ca("grantPeople")}><h3>${ca("grantPeople")}</h3><div class="s-checks">
       ${people.map(person => html`<label class="check"><input type="checkbox" checked=${selected.includes(keyOf(person))} disabled=${busy || !!grant}
         onChange=${e => setSelected(toggle(selected, keyOf(person), e.currentTarget.checked))} /><span>${contactPersonLabel(person)} · ${contactPlatformLabel(person.platform)}</span></label>`)}
     </div></section>
     ${!grant && !selected.length ? html`<p class="note contact-grant-pick">${ca("grantPickSomeone")}</p>` : null}
-    ${!grant && people.length > 1 ? html`<p class="note">${ca("grantAllOrigins")}</p>` : null}
+    ${!grant && people.length > 1 ? html`<p class="note">${cg("allOrigins")}</p>` : null}
     ${grant ? html`<section class="s-group" aria-label=${ca("grantTypes")}><h3>${ca("grantTypes")}</h3><div class="s-checks">${CONTACT_VERBS.map(v => html`<label class="check"><input type="checkbox" checked=${verbs.includes(v)} disabled=${busy}
       onChange=${e => setVerbs(toggle(verbs, v, e.currentTarget.checked))} /><span>${ca(`verb_${v}`)}</span></label>`)}</div></section>` : html`<p>${ca("grantType", ca(`verb_${verb}`))}</p>`}
     <div class="contact-grant-when"><label class="field"><span>${ca("grantDuration")}</span><select class="input" value=${preset} disabled=${busy} onChange=${e => { const value = e.currentTarget.value; setPreset(value); if (value !== "custom") setUntil(afterDays(Number(value))); }}>
