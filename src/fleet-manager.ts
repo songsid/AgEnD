@@ -32455,8 +32455,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await local();
       if (result.kind === "pending") return { status: 202, body: { pending: true, preflight: this.updatePreflight } };
       if (result.kind !== "failed") return { status: 200, body: { preflight: this.updatePreflight } };
-      const { serviceInstallCause } = await import("./update-fix.js");
-      return { status: 422, body: { error: "fix_failed", reason: result.reason, cause: serviceInstallCause(result.reason), preflight: this.updatePreflight } };
+      const [{ serviceInstallCause }, { installRunsOnWsl }] = await Promise.all([import("./update-fix.js"), import("./install-user-systemd.js")]);
+      const cause = serviceInstallCause(result.reason);
+      // On WSL the user-manager cause has its own known fix (wsl --update); elsewhere the page names the generic check (#4564 look).
+      const where = cause === "user-manager" && installRunsOnWsl() ? "wsl" : null;
+      return { status: 422, body: { error: "fix_failed", reason: result.reason, cause, ...(where ? { where } : {}), preflight: this.updatePreflight } };
     }
     let ok = false;
     try { ok = (await this.runUpdateFix(fix)).ok; } catch (err) { this.logger.warn({ err, fix }, "Update pre-flight fix failed"); }

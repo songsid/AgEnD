@@ -150,6 +150,7 @@ async function walk(c: any) {
       && b.length === 1 && b[0]!.t === W(zh, "Installing…", "安裝中…") && b[0]!.disabled, { b, m });
     const rowOn = await page.evaluate(`[...document.querySelectorAll("#settings-update button")].filter((x) => !x.closest(".uc-machine") && !x.disabled && /${W(zh, "Update when idle|Check for updates|Pick a time|Not now", "閒置時更新|檢查更新|選個時間|先不要")}/.test(x.innerText)).map((x) => x.innerText.trim())`) as string[];
     check(`${tag} 5: the card's other buttons are off meanwhile`, rowOn.length === 0, rowOn);
+    check(`${tag} 5: no How to fix while its agend install runs`, !m.includes(W(zh, "How to fix", "修正方式")), m);
     check(`${tag} 5: no toast over the page`, (await toasts(page)).length === 0, await toasts(page));
     await shot(page, `${tag}-5-restarting`);
     goneUntil = Date.now() + 4000; setPreflight(SERVICE);                     // the new fleet: a service now

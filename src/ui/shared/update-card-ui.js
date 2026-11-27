@@ -71,7 +71,8 @@ register("updatecard", {
     "serviceFailed_user-manager": "AgEnD couldn't install the service: this computer's user service manager can't be reached. AgEnD keeps running as before.",
     serviceFailed_other: "AgEnD couldn't install the service. AgEnD keeps running as before.",
     serviceDetails: "Details: `{0}`",
-    "serviceNext_user-manager": "On WSL this is a known issue before version 2.6.0: run `wsl --update` in Windows, then reopen WSL. Then press Check for updates; the Install as a service button comes back once the check finds the service manager.",
+    "serviceNext_user-manager-wsl": "On WSL this is a known issue before version 2.6.0: run `wsl --update` in Windows, then reopen WSL. Then press Check for updates; the Install as a service button comes back once the check finds the service manager.",
+    "serviceNext_user-manager": "Check that this user's service manager is running (`systemctl --user status`), then press Check for updates; the Install as a service button comes back once the check finds it.",
     serviceNext_other: "What happened is in service-install.log in the AgEnD folder. Press Check for updates to try again.",
     servicePending: "AgEnD is still setting up the service. Check again in a minute: once it has gone through, this line turns ✓.",
     serviceStill: "AgEnD isn't running as a service yet. What happened is in service-install.log in the AgEnD folder.",
@@ -135,7 +136,8 @@ register("updatecard", {
     "serviceFailed_user-manager": "AgEnD 無法安裝服務：這台電腦的使用者服務管理員無法連線。AgEnD 仍照原本的方式執行。",
     serviceFailed_other: "AgEnD 無法安裝服務。AgEnD 仍照原本的方式執行。",
     serviceDetails: "詳細訊息：`{0}`",
-    "serviceNext_user-manager": "在 WSL 上，這是 2.6.0 以前版本的已知問題：在 Windows 執行 `wsl --update`，再重新開啟 WSL。之後按「檢查更新」，檢查找到服務管理員後，「安裝成服務」按鈕就會回來。",
+    "serviceNext_user-manager-wsl": "在 WSL 上，這是 2.6.0 以前版本的已知問題：在 Windows 執行 `wsl --update`，再重新開啟 WSL。之後按「檢查更新」，檢查找到服務管理員後，「安裝成服務」按鈕就會回來。",
+    "serviceNext_user-manager": "請確認這個使用者的服務管理員有在執行（`systemctl --user status`），再按「檢查更新」；檢查找到服務管理員後，「安裝成服務」按鈕就會回來。",
     serviceNext_other: "詳細情形記錄在 AgEnD 資料夾的 service-install.log。按「檢查更新」可以再試一次。",
     servicePending: "AgEnD 還在設定服務。過一分鐘再檢查一次：完成後，這一行會變成 ✓。",
     serviceStill: "AgEnD 還不是以服務方式執行。詳細情形記錄在 AgEnD 資料夾的 service-install.log。",
@@ -226,7 +228,8 @@ export async function fixCheck(fix, check, deps, opts = {}) {
       const cause = out && out.cause === "user-manager" ? "user-manager" : "other";
       const raw = String((out && out.reason) || "").replace(/`/g, "").trim();
       const failed = tc(`serviceFailed_${cause}`), sep = /[。！？]$/.test(failed) ? "" : " ";   // no space after a zh full stop
-      say([`${failed}${raw ? `${sep}${tc("serviceDetails", raw)}` : ""}`, tc(`serviceNext_${cause}`)]);
+      const next = cause === "user-manager" && out && out.where === "wsl" ? "user-manager-wsl" : cause;
+      say([`${failed}${raw ? `${sep}${tc("serviceDetails", raw)}` : ""}`, tc(`serviceNext_${next}`)]);
       return { ok: false, refused: true };
     }
     if (res.ok) { const { service } = await waitForService(deps, { ...opts, tries: 0 }); if (!service) say(tc("serviceStill")); return { ok: service, refused: !service }; }
@@ -268,7 +271,7 @@ function CheckItem({ check, version, deps, checkedAt = null }) {
     ${fix && lines.length ? lines.map((l, i) => html`<p class=${i ? "uc-fix-next" : "uc-fix-refused"} role=${i ? undefined : "status"}>${richText(l)}</p>`) : null}
     ${fix && !refused ? html`<div class="uc-fix"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${press}>${label}</button>
       ${fix === "linger" ? html`<span class="uc-fix-hint muted">${tc("fixHint")}</span>` : null}</div>` : null}
-    ${check.code === "not-service" && !(fix === "service" && refused) ? html`<details class="uc-how"><summary>${tc("howToFix")}</summary><p>${richText(tc("serviceHow"))}</p></details>` : null}
+    ${check.code === "not-service" && !(fix === "service" && (refused || busy)) ? html`<details class="uc-how"><summary>${tc("howToFix")}</summary><p>${richText(tc("serviceHow"))}</p></details>` : null}
   </li>`;
 }
 /** The checks that did not pass, in P-order (absent checks are not failures: they were not run). */

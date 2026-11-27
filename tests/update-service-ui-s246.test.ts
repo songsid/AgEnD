@@ -67,7 +67,7 @@ describe("S-246: Install as a service", () => {
   });
 
   it("confirmed: one POST with the confirmation and a key; a refusal says why in the check's block (no toast), and that AgEnD keeps running", async () => {
-    await mount(() => ({ status: 422, body: { error: "fix_failed", reason: "Failed to connect to bus: No medium found", cause: "user-manager", preflight: NOT_SERVICE } }));
+    await mount(() => ({ status: 422, body: { error: "fix_failed", reason: "Failed to connect to bus: No medium found", cause: "user-manager", where: "wsl", preflight: NOT_SERVICE } }));
     const before = shown().length;
     serviceButton().click(); await settle(6);
     confirm.answerConfirm(asked()[0].id, true);
@@ -145,9 +145,18 @@ describe("S-246: Install as a service", () => {
     expect(serviceButton()).toBeUndefined();
     expect(reqs.filter(r => r.url === "/ui/update").length).toBeLessThanOrEqual(2);                    // no restart wait loop
   });
+  it("the same cause off WSL: the generic check, not the WSL step (#4564 look)", async () => {
+    await mount(() => ({ status: 422, body: { error: "fix_failed", reason: "Failed to connect to bus: No medium found", cause: "user-manager", preflight: NOT_SERVICE } }));
+    serviceButton().click(); await settle(6);
+    confirm.answerConfirm(asked()[0].id, true);
+    await vi.waitFor(() => expect(fixes().length).toBe(1)); await settle(10);
+    const next = machine()!.querySelector(".uc-fix-next")?.textContent ?? "";
+    expect(next).toContain("systemctl --user status");
+    expect(next).not.toContain("WSL");
+  });
   it("the words in English and zh-TW: every key, the same placeholders; zh says 「Agent」", async () => {
     const i18n = await import("/assets/app-i18n.js");
-    const keys = ["serviceIt", "serviceBusy", "serviceTitle", "serviceAsk", "serviceGo", "serviceRestarting", "serviceBack", "serviceFailed_user-manager", "serviceFailed_other", "serviceDetails", "serviceNext_user-manager", "serviceNext_other", "serviceStill", "servicePending"];
+    const keys = ["serviceIt", "serviceBusy", "serviceTitle", "serviceAsk", "serviceGo", "serviceRestarting", "serviceBack", "serviceFailed_user-manager", "serviceFailed_other", "serviceDetails", "serviceNext_user-manager-wsl", "serviceNext_user-manager", "serviceNext_other", "serviceStill", "servicePending"];
     for (const k of keys) {
       const en = i18n.tIn("en", `updatecard.${k}`), zh = i18n.tIn("zh-TW", `updatecard.${k}`);
       expect(en, k).not.toBe(`updatecard.${k}`);
