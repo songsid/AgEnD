@@ -16,4 +16,4 @@ Every successful page, even an empty one, labels member text as quoted data, not
 
 A separate durable bucket permits 30 calls per fixed UTC hour per exposure across all rooms, reconnects and Hub restarts. Clock rollback into a previously spent older window fails closed. The existing owner-wide 30/minute read throttle also applies. Invalid room/cursor requests disclose no content. The additive `s3-room-history` migration stores only exposure ID, window and count, no message text; older binaries may refuse a newer schema. Rollback should disable the offered capability/tool with a compatible binary, retaining the database and budget records.
 
-No browser UI changes are included. Shorter existing Hub tool descriptions retain their rules in the bundled Hub skill and keep the unchanged tool-menu byte budgets.
+No browser layout or copy changes are included. The existing permissions summary classifies this tool under AgEnD Hub tools, rather than the AI tool's own tools. Shorter existing Hub tool descriptions retain their rules in the bundled Hub skill and keep the unchanged tool-menu byte budgets.

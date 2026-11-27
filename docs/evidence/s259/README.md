@@ -4,7 +4,7 @@ Standalone implementation based on release commit `928c17de12b5147fc4dafeacdfd97
 
 ## Scope and root cause
 
-The member had delivery context but no independent older-history read. This adds the negotiated `room.history` RPC and `hub_room_history` tool. Current behavior requires request-context On with a captured request; Off refuses all history reads. The tool preserves the current agent/share and Hub membership/visibility fences. It does not modify browser UI, ask settlement or the first-ask context cursor. Fixtures use synthetic identities, inert agent input and owned scratch listeners; no live directory, Fleet, vendor CLI, account or model calls.
+The member had delivery context but no independent older-history read. This adds the negotiated `room.history` RPC and `hub_room_history` tool. Current behavior requires request-context On with a captured request; Off refuses all history reads. The tool preserves the current agent/share and Hub membership/visibility fences. It does not modify browser layout/copy or ask settlement or the first-ask context cursor. Fixtures use synthetic identities, inert agent input and owned scratch listeners; no live directory, Fleet, vendor CLI, account or model calls.
 
 ## Validation
 
@@ -47,3 +47,9 @@ Current product rule: history is usable only with request-context **On**. With O
 Fail-first: the prior guidance-only Off control returned a successful page when the corrected test expected refusal. The actual scope/adapter controls now expect Off refusal with zero remote calls and add mode-switch-during-await coverage. The existing real MCP→factory→pinned Hub/SQLite journey first proves Off denies without an RPC, then supplies a captured owner On lease and reads the room successfully.
 
 The prior full build/types are historical. In deference to rehearsal host priority, R2 runs only named focused fixtures with maxWorkers2: no full-suite/typecheck/build loop, no new browser/container campaign. R2 focused validation passes **40 tests in four named files** with maxWorkers2, including one additional mode-switch case (240 distinct cases/15 files over staged runs; not a repeated full campaign). The corrected Off control failed before the product fix, then passed. Menu sizes: worker44,219/General66,981, under unchanged bounds. Source signatures are unchanged; fresh exact-head CI must perform its normal compiler checks. Remote Hub service/protocol/schema/hour-budget and browser UI remain unchanged; their prior proof carries only within that scope.
+
+## R3 — permissions tool-family registry
+
+Exact R2 CI run45925102656 failed ui-gate3 at the existing M-3387 restricted-switch smoke. The summary treated the new tool as AI-owned rather than AgEnD-owned in both EN desktop and zh-TW phone: the Hub family lacked its registry entry. R3 adds only that identifier to the existing Hub family in contact-tool-groups.js; no labels, layout, history policy, backend or permissions enforcement change.
+
+The existing mounted contact-tool-groups test reproduced three failures before correction (missing coverage and the two locale summaries). After correction, all five tests in that one named file pass with maxWorkers2, including exact registry coverage, layer separation and both rendered summaries. No browser campaign was run; the existing exact-head UI smoke must verify its real-app frames in CI. Earlier240 cases carry only for unchanged slices; these five add245 distinct cases/16 files over staged runs. Prior build/type results remain historical; no full loop was repeated. Updated source/evidence manifest:38 bindings.

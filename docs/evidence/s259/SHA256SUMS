@@ -1,5 +1,5 @@
-a3a4bbc9a6c192d29a03475aab5615575dbbeced5448ad6a2b32de259c164a1c  docs/design/hub-room-history-s259.md
-95af37ff3ecf1b889a2124a82ab8e4a8a36e88106f8210f30495c58db8b2dc07  docs/evidence/s259/README.md
+12adf4186c4a0bc620edad9d91ea75b0ac6a0591e7adbd4dc60723c4ee3873a1  docs/design/hub-room-history-s259.md
+6d500830df0bd43bcf7f40085a4df7b4d8d7c8fe9bb8aa9ac61fcbefee1459cc  docs/evidence/s259/README.md
 f497269a20988caa22bc063e9b3a925dd8b13f16cf55d2e088eb1b01741b41d9  docs/evidence/s259/negative-controls.patch
 93bfefd41adaa98f2de2f4b8d7ec828faf31fe199eaddeeeb0971b531e9536e0  src/agent-endpoint.ts
 e041cdab08b5e38d2b27912fec3c7aae3d500af02e087683371a49c1e5223104  src/channel/mcp-tools.ts
@@ -25,6 +25,7 @@ ac11fee2abe5e80004ad931c4d680f96be5e917fe24a83db7472e0d53e620523  src/outbound-s
 97991288e0e6cacdcb1d1545ed07e62c18ad12a036626994bd5bb13948604ee7  src/request-context-policy.ts
 dcdcb94a2f27796d4a3b6bfd037e4ff3f273eff1aba4826c67f2110c2ae07efb  src/request-hub-output.ts
 18f7347f4f23c2b6ca27ff61f3defb39cc2045b7e63b87abc54a3691348cb093  src/tool-permissions.ts
+b21db59e441ae82706bd8cf44fa913008c443e7f436913ccfca5d9c320679ca2  src/ui/contact-tool-groups.js
 badcef6f0a398010db9562674904d1480ee3dbd8a30819abd24a6654842220f3  tests/hub-groups-mount-s89.test.ts
 94fd569b00dbe0b6a34551178b9799a20a0483e7d2cbade596c56cc75f2d0433  tests/hub-room-history-s259.test.ts
 803a1f0d2ef62ac135ae9aec107685ebf84eed13ca1da2f86f8ba54c6f37023e  tests/hub-room-history-scope-s259.test.ts
