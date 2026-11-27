@@ -150,7 +150,7 @@ register("hubRoom", {
     // §12 unread: unreadN is the list-row count tooltip; mentionedYou is the row's @ mark.
     unreadPrefix: "({0})", unreadN: "{0} unread", mentionMark: "@", mentionedYou: "Mentioned you",
     // §12 desktop notification (opt-in, like the Fleet's Notify me): the header toggle and one ping per kind.
-    notifyTitle: "Notify me on this device", notifyOn: "Notifications are on while a Hub tab is open.",
+    notifyTitle: "Notify me on this device", notifyOn: "Notifications are on while a Hub tab or the AgEnD app is open, even in the background.",
     notifyOff: "Get a desktop notification when someone @mentions you, an agent answers, or a new invitation arrives.",
     notifyDenied: "This browser blocked notifications. Allow them in the site settings to turn this on.",
     notifyUnavailable: "This browser cannot show notifications here.",
@@ -295,7 +295,7 @@ register("hubRoom", {
     noContent: "這裡看不到任何房間的內容。",
     joinAsManager: "加入自己成為房間管理",
     unreadPrefix: "({0})", unreadN: "{0} 則未讀", mentionMark: "@", mentionedYou: "有人 @ 你",
-    notifyTitle: "在這個裝置上通知我", notifyOn: "Hub 分頁開著時會收到通知。",
+    notifyTitle: "在這個裝置上通知我", notifyOn: "Hub 分頁或 AgEnD 應用程式開著時（在背景也可以）會收到通知。",
     notifyOff: "有人 @ 你、Agent 回答或有新邀請時，收到桌面通知。",
     notifyDenied: "這個瀏覽器封鎖了通知。請在網站設定中允許，才能開啟。",
     notifyUnavailable: "這個瀏覽器在這裡無法顯示通知。",
