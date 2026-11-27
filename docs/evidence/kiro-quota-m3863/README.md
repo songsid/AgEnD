@@ -23,11 +23,13 @@ probe. The existing usage request timeout is unchanged.
 
 Included-plan spend excludes separately reported overage. Overage capacity and
 charges are separate. Active trial and bonus balances carry expiry timestamps;
-expiry is never represented as a billing reset. A response containing bonus
+expiry is never represented as a billing reset. A response containing ACTIVE bonus
 balances does not establish an included-plan gauge: its hint says that split is
 not measurable. Negative, nonnumeric, zero-limit and relationally impossible
 plan readings are not turned into a quota percentage. A missing or implausible
-reset stays unknown. Neither enabled overage nor HTTP 401/403 means unlimited.
+reset stays unknown. Neither enabled overage nor HTTP 401/403 means unlimited. HTTP 401 also advises
+running `kiro-cli` to sign in again; that advice does not execute a refresh.
+Expired historical bonus entries do not suppress the current plan gauge.
 
 Validation is offline: synthetic SQLite stores and intercepted HTTP responses.
 The matrix includes five response plan titles with each authentication flow,

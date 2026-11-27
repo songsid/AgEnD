@@ -87,3 +87,12 @@ it('does not retry a vendor outage or reinterpret it as unlimited capacity',asyn
  seed({'kirocli:odic:token':token()},{arn:arn()});status=503;
  const r=await fetchKiroUsage();expect(calls).toHaveLength(1);expect(r.status).toBe('error');expect(r.metrics).toEqual([]);expect(r.unlimited).not.toBe(true);
 });
+it('keeps the monthly plan gauge when only an expired historical bonus remains',async()=>{
+ seed({'kirocli:odic:token':token()},{arn:arn()});
+ (response as any).usageBreakdownList[0].bonuses=[{status:'EXPIRED',currentUsage:5,usageLimit:10,expiresAt:1000000000}];
+ const r=await fetchKiroUsage();expect(r.metrics.find(m=>m.type==='percent')).toMatchObject({used:10});expect(r.hint).toBeUndefined();expect(r.metrics.some(m=>/bonus/i.test(m.label))).toBe(false);
+});
+it('gives an actionable sign-in hint on HTTP 401 without trying to refresh',async()=>{
+ seed({'kirocli:odic:token':token()},{arn:arn()});status=401;
+ const r=await fetchKiroUsage();expect(calls).toHaveLength(1);expect(r.hint).toMatch(/kiro-cli.*sign in/i);expect(r.metrics).toEqual([]);expect(r.unlimited).not.toBe(true);
+});

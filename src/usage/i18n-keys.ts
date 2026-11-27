@@ -9,6 +9,7 @@ export const USAGE_I18N_KEYS = [
   "usage.hint.kiro_region_unknown",
   "usage.hint.kiro_quota_unknown",
   "usage.hint.kiro_bonus_unknown",
+  "usage.hint.kiro_unauthorized",
   "usage.hint.kiro_rejected",
   "usage.metric.kiro_trial",
   "usage.metric.kiro_overage",

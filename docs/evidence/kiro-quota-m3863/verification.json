@@ -6,7 +6,7 @@
     "passes": 5
   },
   "final_matrix": {
-    "passes": 34
+    "passes": 36
   },
   "related_suites": {
     "files": 6,
@@ -32,23 +32,23 @@
     },
     {
       "path": "src/usage/providers.ts",
-      "sha256": "80de37a58f2e7e54fc5f3f15ef27f7421396141377232153d6bfd41d1092343d"
+      "sha256": "cadcf5b4f9f92cd49315629f31e997be19c62c37b880700b5337f7ef4bbc7798"
     },
     {
       "path": "src/usage/i18n-keys.ts",
-      "sha256": "ab52fb2c3044b637a61b67aa1140dbeb5ab590f2eabc13933cff1ac7c89ac66d"
+      "sha256": "b2cfcab5e1ebb612adfcdeeb7bb6c7dd188d69dc86f6efff34659c33ea268949"
     },
     {
       "path": "src/locale.ts",
-      "sha256": "ab563f8684a41e50751876ccc6bce09cd1460dbe335ef14fd598c9a19aaceb4b"
+      "sha256": "7801720cd621680af7602b838d2d6a400b9760d5ac20bebc6aafc61692882e11"
     },
     {
       "path": "src/ui/shared/view-strings.js",
-      "sha256": "4522ecefbedd2a4eaa2ab91edd4fbd5278d87eeac25a3cef287585ca47fe39a6"
+      "sha256": "d983222bd544bbb0b843888c527b2a1174e765c223c4ece7b9378837360a9fb3"
     },
     {
       "path": "tests/kiro-entitlements-m3863.test.ts",
-      "sha256": "a449ffef70ac5942d276b0330726ea4167b13dc003f35212b880a5e494d877e6"
+      "sha256": "61857b399795bf95648c26266034ad9b5eef1dcd6c77ee857f0739c0e2214ca1"
     },
     {
       "path": "tests/kiro-usage-auth-kind.test.ts",
@@ -79,5 +79,16 @@
     "No migration or credential changes",
     "Main twin is separate",
     "HOLD for 2.4.0 cut"
-  ]
+  ],
+  "pre_r1_commit": "a8bebb8063d32c8dafc53d7300a698b80bfe12fc",
+  "r1": {
+    "baseline_assertion_failures": 2,
+    "files": 2,
+    "passes": 41,
+    "source_types_errors": 0,
+    "test_types_errors": 0,
+    "unrelated_provider_prefix_equal": true,
+    "identity_reader_unchanged": true,
+    "scope": "ACTIVE bonus only; HTTP401 manual sign-in guidance. Other proof runs are historical outside this delta."
+  }
 }

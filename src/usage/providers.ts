@@ -1579,7 +1579,10 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
   } catch {
     return { status: "error", error: `Could not reach ${new URL(endpoint).hostname}.`, errorI18n: i18n("usage.error.unreachable", new URL(endpoint).hostname), metrics: [] };
   }
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 401) {
+    return { status: "ok", plan: "Kiro", hint: "Not measurable — login was rejected (HTTP 401). Run `kiro-cli` to sign in again.", hintI18n: i18n("usage.hint.kiro_unauthorized"), metrics: [] };
+  }
+  if (res.status === 403) {
     return { status: "ok", plan: "Kiro", hint: `Not measurable — usage access was rejected (HTTP ${res.status}).`, hintI18n: i18n("usage.hint.kiro_rejected", res.status), metrics: [] };
   }
   if (!res.ok) return { status: "error", error: `Usage request failed (HTTP ${res.status}).`, errorI18n: i18n("usage.error.http", res.status), metrics: [] };
@@ -1622,8 +1625,9 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
     const used = ub.currentUsageWithPrecision ?? ub.currentUsage;
     const limit = ub.usageLimitWithPrecision ?? ub.usageLimit;
     const overage = ub.currentOveragesWithPrecision ?? ub.currentOverages ?? 0;
-    const bonuses = Array.isArray(ub.bonuses) ? ub.bonuses : [];
-    // The response does not specify which plan spend includes bonus consumption.
+    const bonuses = Array.isArray(ub.bonuses) ? ub.bonuses.filter(bonus => bonus?.status === "ACTIVE") : [];
+    // Active bonus spend is not separated from plan consumption. Historical
+    // expired codes alone must not suppress the current monthly gauge forever.
     if (bonuses.length) ambiguousBonus = true;
     else if (finite(used) && finite(overage) && overage <= used) {
       addPool(`${displayName} (monthly)`, "usage.metric.named_monthly", used - overage, limit);
