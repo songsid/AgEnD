@@ -1,7 +1,7 @@
 import { clockFormat } from "/assets/clock-text.js";
 // S-230: the owner switch. Status comes from the host, never from a browser preference or an agent argument.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
-import { register, t } from "/assets/app-i18n.js";
+import { lang, register, t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { confirmedWrite } from "./settings-confirm.js";
