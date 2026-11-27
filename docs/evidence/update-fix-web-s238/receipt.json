@@ -1,5 +1,5 @@
 {
-  "sourceHead": "55cf3366e99ee057f07516136d7e0c6a8cf765bc",
+  "sourceHead": "c1a3a0ae879b489031507d857d47b67644f6114d",
   "dirty": [],
   "checks": [
     {
@@ -7,7 +7,7 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 1: one fix button, Turn it on for me",
+      "name": "desk-light-en 1: one fix button, Keep AgEnD running after sign-out",
       "ok": true
     },
     {
@@ -91,7 +91,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 1: one fix button, Turn it on for me",
+      "name": "phone-dark-zh-TW 1: one fix button, Keep AgEnD running after sign-out",
       "ok": true
     },
     {
@@ -214,35 +214,35 @@
   "pictures": [
     {
       "path": "s238-desk-light-en-1-linger.png",
-      "sha256": "d454cdeeb3fb661395a8fdfb62832d1752de68b8d696bc609392f5e65300fb60"
+      "sha256": "3e8f7f2ae2b2c7a6da75106908e94695c0db78e3c6b10b4b75c6023886945a2b"
     },
     {
       "path": "s238-desk-light-en-2-fixed.png",
-      "sha256": "b32506ae044820aca9758363d649fe51e6a2bb8f07d0c52d43ac2346bb62466f"
+      "sha256": "f23b2e3e0bff1f207278ad7713e50bbc13312902120095f81a905b221a0b1b87"
     },
     {
       "path": "s238-desk-light-en-3-failed.png",
-      "sha256": "44cd0d69ac0bfaf9faa936af88a427fe5e0ae1fc5122591d0d2b55c35fbf1e08"
+      "sha256": "330a614cdc8f979741271bd5892d9fce344ee0bc0fee90191f07a741c0ea769a"
     },
     {
       "path": "s238-desk-light-en-4-not-service.png",
-      "sha256": "5d9e7a464e02d4dd683bf19517503a77ab58257063191c1a77561b370ab8127f"
+      "sha256": "d4f4a272215db5ecd46f46fa2c592106925c2693f174d77e015088e1c2f01340"
     },
     {
       "path": "s238-phone-dark-zh-TW-1-linger.png",
-      "sha256": "07bca209417958e094007a18b6915336db1644112d3f622b42ea5b44c4df369f"
+      "sha256": "65b7588c247e8382479cb7c16ccc9990d841c2af3c05f8d1c2448ae6a1497ec1"
     },
     {
       "path": "s238-phone-dark-zh-TW-2-fixed.png",
-      "sha256": "bd9711d567929589c44149337a8a0f50090704f87e158c36257191a2a6996d80"
+      "sha256": "347a955c5e0ecdd3943643867d89ec5b0612a2c3cd4759a144740104ff2ad69f"
     },
     {
       "path": "s238-phone-dark-zh-TW-3-failed.png",
-      "sha256": "a2383949313afb7b850b3bae094ae6c2f186d9d194c339aa9fc51b83cf8f097b"
+      "sha256": "3fecd3fb510ca56db26b4ef28fd60b1e8c2381512dc394bf617b1a7561982221"
     },
     {
       "path": "s238-phone-dark-zh-TW-4-not-service.png",
-      "sha256": "4f61fef2054cf40eaec8ccb3f8da1151e54df1faee58ef180feb386e3f4c7717"
+      "sha256": "4bcf302f865a4c36b4b1c4872b1253c3b3d84152657ae1341f7c00c8c4e2abac"
     }
   ],
   "summary": "52/52"

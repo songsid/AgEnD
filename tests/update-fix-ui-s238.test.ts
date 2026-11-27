@@ -38,7 +38,7 @@ beforeEach(async () => {
   upd.updateStore.set({ info: null, loadedVersion: null, skew: 0, starting: false, later: null, dismissed: null, reloadDismissed: null, log: null });
 });
 const machine = () => p.root.querySelector(".uc-machine");
-const fixButton = () => ([...(machine()?.querySelectorAll("button") ?? [])] as any[]).find((b) => b.textContent === "Turn it on for me");
+const fixButton = () => ([...(machine()?.querySelectorAll("button") ?? [])] as any[]).find((b) => b.textContent === "Keep AgEnD running after sign-out");
 const mount = async (preflight: unknown, fix?: (r: Req) => { status?: number; body?: unknown }) => {
   answer = r => (r.url === "/ui/update" ? { body: ADMIN(preflight) } : r.url === "/api/settings/fleet" ? { body: {} } : r.url === "/ui/update/fixes" && fix ? fix(r) : undefined);
   const { UpdateSection } = await import("/ui/js/settings-update.js");
@@ -49,7 +49,7 @@ const fixes = () => reqs.filter(r => r.url === "/ui/update/fixes");
 const shown = () => [...p.root.querySelectorAll(".toasts .toast")].map((e: any) => [e.textContent, e.classList.contains("ok"), e.classList.contains("toast-detail")]);
 
 describe("M-3770 1.6: the fix buttons", () => {
-  it("lingering off: Turn it on for me → one POST with a key; the fresh pre-flight replaces the page's and the line goes", async () => {
+  it("lingering off: Keep AgEnD running after sign-out → one POST with a key; the fresh pre-flight replaces the page's and the line goes", async () => {
     await mount(LINGER_OFF, () => ({ body: { preflight: FIXED } }));
     expect(machine()?.textContent).toContain("AgEnD stops when the example account signs out");
     expect(fixButton()).toBeDefined();
