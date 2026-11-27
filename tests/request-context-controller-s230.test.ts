@@ -15,3 +15,13 @@ it("offer or state changes invalidate old tabs before an effect",async()=>{const
 it("polling during preparation preserves the offered decision and forbids concurrent changes",async()=>{const r=rig();let finish!:()=>void;r.ports.enable.mockImplementation(async(_a:any,_o:any,current:()=>boolean)=>{await new Promise<void>(resolve=>finish=resolve);expect(current()).toBe(true);});const view=r.host.read(r.actor),pending=r.host.change({action:"enable",revision:view.revision},r.actor);await Promise.resolve();r.state({revision:1,epoch:"e",owner:"fleet",mode:"active"});expect(r.host.read(r.actor).canChange).toBe(false);await expect(r.host.change({action:"enable",revision:view.revision},r.actor)).rejects.toThrow("stale");finish();expect((await pending).enabled).toBe(true);});
 it("a failed effect refreshes actual recovery state, never caches a fake legacy success",async()=>{const r=rig(),view=r.host.read(r.actor);r.ports.enable.mockImplementation(async()=>{r.state({revision:1,epoch:"e",owner:"fleet",mode:"active"});r.blocks([{id:"recovery",kind:"owners",labels:[],action:"inspect"}]);throw Error("fixture publication failed");});await expect(r.host.change({action:"enable",revision:view.revision},r.actor)).rejects.toThrow(/publication/);expect(r.host.snapshot()).toMatchObject({everActivated:true,phase:"blocked"});});
 it("a stale blocker choice does not resolve a replacement operation",async()=>{const r=rig();r.state({revision:2,epoch:"e",owner:"fleet",mode:"draining"});r.blocks([{id:"one",kind:"returns",labels:[],action:"stop-waiting"}]);const view=r.host.read(r.actor);r.blocks([{id:"two",kind:"returns",labels:[],action:"stop-waiting"}]);await expect(r.host.change({revision:view.revision,action:"resolve",blockerId:"one",resolution:"stop-waiting"},r.actor)).rejects.toThrow("stale");expect(r.ports.resolve).not.toHaveBeenCalled();});
+it("retains a bounded failed-On explanation through passive refresh and clears it only on explicit recheck",async()=>{
+ const r=rig(),view=r.host.read(r.actor);
+ r.ports.enable.mockRejectedValueOnce(Error("PRIVATE_PREPARATION_FAILURE"));
+ await expect(r.host.change({action:"enable",revision:view.revision},r.actor)).rejects.toThrow("PRIVATE_PREPARATION_FAILURE");
+ expect(r.host.read(r.actor)).toMatchObject({enabled:false,everActivated:false,attempted:true,phase:"blocked",enableFailed:true,blockers:[]});
+ r.host.changed();expect(r.host.snapshot()).toMatchObject({enableFailed:true,phase:"blocked"});
+ expect(JSON.stringify(r.host.snapshot())).not.toContain("PRIVATE");
+ expect(r.host.recheck(r.actor)).toMatchObject({enabled:false,phase:"off"});expect(r.host.snapshot()).not.toHaveProperty("enableFailed");
+ expect(r.ports.enable).toHaveBeenCalledOnce();
+});

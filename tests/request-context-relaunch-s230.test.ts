@@ -6,6 +6,8 @@ import {tmpdir} from "node:os";
 import {randomUUID} from "node:crypto";
 import {DeliveryOutbox} from "../src/delivery-outbox.js";
 import {FleetManager} from "../src/fleet-manager.js";
+import {InstanceLifecycle} from "../src/instance-lifecycle.js";
+import {SettingsRouteLifetime} from "../src/settings-route-lifetime.js";
 import {SettingsExecution} from "../src/settings-transaction.js";
 import {RequestContextPreparedWork} from "../src/request-context-work.js";
 import {RequestContextPendingWork} from "../src/request-context-pending-work.js";
@@ -101,5 +103,19 @@ it("a confirmed Settings restart follows each exact stopped route and carries it
   expect(r.m.startInstance.mock.calls.every((call:any[])=>call[6]===execution)).toBe(true);
   execution.cancel();await stage.rollback(); // Cleanup does not depend on an expired decision.
   expect(r.events).toContain("start:one:legacy:fleet-topic:true");
+ }finally{execution.close();}
+});
+
+it("first-On relaunch follows General through the real lifecycle queue without borrowing another card",async()=>{
+ const r=rig(),lifecycle=new InstanceLifecycle({setTopicIcon:vi.fn(),ipcStoppingInstances:new Set(),instanceIpcClients:new Map(),sessionRegistry:new Map()} as any);
+ Object.assign(lifecycle,{daemons:r.map});r.m.lifecycle=lifecycle;
+ const route=new SettingsRouteLifetime("one",()=>true,()=>lifecycle.epochOf("one"),()=>false);
+ const other=new SettingsRouteLifetime("one",()=>true,()=>lifecycle.epochOf("one"),()=>false);
+ const execution=new SettingsExecution({current:route.current,snapshot:()=>"same settings",followStop:route.followStop.bind(route)});
+ try{
+  const stage=await r.m.prepareRequestContextPersistentRelaunch(r.policy,r.registration,r.fence,()=>true,undefined,execution);
+  expect(stage.ready()).toBe(true);expect(lifecycle.epochOf("one")).toBe(2);expect(lifecycle.epochOf("two")).toBe(2);
+  expect(route.current()).toBe(true);expect(other.current()).toBe(false);expect(r.box.requestContextInstallation().read()).toBeNull();
+  await stage.rollback();
  }finally{execution.close();}
 });

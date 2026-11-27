@@ -135,3 +135,13 @@ it.each(["owner","free-room","restricted-room","guest","hub"] as const)("confirm
  const nextLease=captureRequestContextCall(received,value=>receiver.isCurrent(value,owner("b")));expect(send(received.context,"c",nextLease).state).toBe("queued");
  turns.ended(snapshot,owner("a"));expect(()=>send(context,"d")).toThrow();
 });
+it("an unmapped first-On failure remains visible after rollback and logs its private cause only to the daemon",async()=>{
+ const r=rig(),host=r.m.requestContextControl,actor=r.actor(),view=host.read(actor),cause=Error("PRIVATE_STOP_FAILURE");
+ r.m.prepareRequestContextFirstOnAssembly=vi.fn().mockRejectedValueOnce(cause);
+ await expect(host.change({revision:view.revision,action:"enable"},actor)).rejects.toBe(cause);
+ expect(host.read(r.actor())).toMatchObject({enabled:false,everActivated:false,phase:"blocked",enableFailed:true});
+ expect(r.m.needsYouItems()).toContainEqual(expect.objectContaining({reason:"request_context_cutover",requestContextCutover:expect.objectContaining({enableFailed:true})}));
+ expect(r.m.logger.warn).toHaveBeenCalledWith({err:cause},"Request-context enable did not finish");
+ expect(JSON.stringify(host.snapshot())).not.toContain("PRIVATE_STOP_FAILURE");expect(r.m.deliveryOutbox.requestContextInstallation().read()).toBeNull();
+ expect(r.m.postFleetSecurityNotice).not.toHaveBeenCalled();
+});

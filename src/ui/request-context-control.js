@@ -56,6 +56,7 @@ export function RequestContextBlocked({ state, onCheck, onResolve, busy = false,
   const ownerAgents = [...new Map((state.blockers || []).filter(b => b.kind === "owners").flatMap(b => b.agents || []).map(a => [a.id, a])).values()];
   return html`<div class="request-context-blocked">
     <p>${requestContextControlText(state.phase === "draining" ? "draining" : state.everActivated ? "recoveryBlocked" : "blocked")}</p>
+    ${state.enableFailed ? html`<p class="notice warn" role="alert">${requestContextControlText("failed")}</p>` : null}
     ${(state.blockers || []).map(blocker => html`<div key=${blocker.id}><p>${requestContextBlockerText(blocker)}</p>
       ${blocker.action === "stop-waiting" ? html`<p>${requestContextControlText("waitBody")}</p>` : null}</div>`)}
     ${!state.everActivated ? html`<p class="note">${requestContextControlText("previous")}</p>` : null}
