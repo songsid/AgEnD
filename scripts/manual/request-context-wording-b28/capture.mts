@@ -53,6 +53,8 @@ try {
         check(`${tag}: blocked says it isn't on yet`, card.includes(zh ? "依請求核准聯絡尚未開啟。" : "Request-based approvals aren't on yet."), card);
         check(`${tag}: the agents' work line asks to wait, not to end it`, zh ? card.includes("請先等這些 Agent 完成目前的工作：Demo worker。") && !card.includes("結束") : card.includes("Finish the current work for these agents first: Demo worker."), card);
       }
+      const wb = await page.evaluate(`[...document.querySelectorAll("#request-context p")].map((e) => getComputedStyle(e).wordBreak)`) as string[];
+      check(`${tag}: the card keeps zh words whole`, wb.length > 0 && wb.every((w) => w === "keep-all"), wb);
       const shot = `b28-${tag}.png`;
       await page.screenshot({ path: join(OUT, shot) });
       receipt.pictures.push({ path: shot, sha256: createHash("sha256").update(readFileSync(join(OUT, shot))).digest("hex") });
