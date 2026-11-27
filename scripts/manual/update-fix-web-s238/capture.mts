@@ -4,7 +4,8 @@
  * (POST /ui/update/fixes) and the real FleetManager method behind it. Nothing changes on this host: the fix itself
  * (`runUpdateFix`, which would run `loginctl enable-linger`) is stubbed before the first press, and every update launch too.
  *   1 lingering off: the line, its command, and Fix it for me · 2 after the press: the fresh pre-flight (✓) and its toast ·
- *   3 a fix that doesn't take: says so, the line and its command stay · 4 not a service: How to fix folds out
+ *   3 a fix that doesn't take: the block says so in place of the button (no toast), the line and its command stay ·
+ *   4 not a service: How to fix folds out
  *   `agend install` as code, with no button.
  * Desk light en and phone dark zh-TW.
  *   CHROME=<chromium> PW_DIR=<playwright-core> REPO=<checkout> OUT=<dir> npx tsx scripts/manual/update-fix-web-s238/capture.mts
@@ -83,6 +84,7 @@ async function walk(c: any) {
     let m = await machine(page), b = await fixButtons(page);
     check(`${tag} 1: lingering off: the line names the user, with its command as code`, m.includes("◐") && m.includes("example") && (await cmds(page)).join("|") === "sudo loginctl enable-linger example", m);
     check(`${tag} 1: one fix button, Fix it for me`, b.length === 1 && b[0]!.t === FIX, b);
+    check(`${tag} 1: the button's line says what it does`, m.includes(W(zh, "AgEnD turns it on for you; nothing restarts and your agents keep working. If this computer doesn't allow it, run the command yourself.", "AgEnD 會替你開啟；不會重新啟動，Agent 照常工作。若這台電腦不允許，請自己執行上面的指令。")), m);
     if (phone) check(`${tag} 1: the button is 44 px`, b.every((x) => x.h >= 44), b);
     check(`${tag} 1: the command on one line`, (await oneLine(page)).every((n) => n === 1), await oneLine(page));
     const sc = await scroll(page);
@@ -102,12 +104,14 @@ async function walk(c: any) {
     setPreflight(LINGER_OFF); fixTakes = false;
     await openSettings(page);
     await page.locator("#settings-update .uc-machine button").click();
-    await waitFor(page, `document.querySelectorAll(".toasts .toast.err").length > 0`);
+    await waitFor(page, `!!document.querySelector("#settings-update .uc-fix-refused")`);
     await page.waitForTimeout(300);
     m = await machine(page); b = await fixButtons(page);
-    check(`${tag} 3: says AgEnD couldn't, and to run the command, in full`, await toastWhole(page, W(zh, "AgEnD couldn't fix it by itself. Run the command above in a terminal on that computer.", "AgEnD 無法自行修正。請在那台電腦的終端機執行上面的指令。")), await toasts(page));
-    check(`${tag} 3: the line and its command stay; the button can be pressed again`, m.includes("example") && (await cmds(page)).join("|") === "sudo loginctl enable-linger example" && b.length === 1 && b[0]!.t === FIX, { m, b });
-    if (zh) for (const w of ["上面", "終端機", "執行"]) check(`${tag} 3: the toast keeps 「${w}」 whole`, await unsplit(page, w, ".toasts") === true, await unsplit(page, w, ".toasts"));
+    check(`${tag} 3: the block says AgEnD couldn't, and to run the command`, m.includes(W(zh, "AgEnD couldn't turn it on by itself. Run the command above in a terminal on the computer AgEnD runs on.", "AgEnD 無法自行開啟。請在執行 AgEnD 的那台電腦上，用終端機執行上面的指令。")), m);
+    const errToasts = await page.evaluate(`document.querySelectorAll(".toasts .toast.err").length`) as number;
+    check(`${tag} 3: no error toast over the page`, errToasts === 0, await toasts(page));
+    check(`${tag} 3: the line and its command stay; the button and its hint are gone`, m.includes("example") && (await cmds(page)).join("|") === "sudo loginctl enable-linger example" && b.length === 0 && !m.includes(W(zh, "nothing restarts", "不會重新啟動")), { m, b });
+    if (zh) for (const w of ["上面", "終端機", "執行"]) check(`${tag} 3: the line keeps 「${w}」 whole`, await unsplit(page, w) === true, await unsplit(page, w));
     await shot(page, `${tag}-3-failed`);
     // 4 not a service: How to fix, no button
     setPreflight(NOT_SERVICE);
@@ -116,7 +120,7 @@ async function walk(c: any) {
     await page.locator("#settings-update .uc-machine details.uc-how summary").click(); await page.waitForTimeout(300);
     m = await machine(page);
     check(`${tag} 4: How to fix folds out agend install, as code, and says what it does`, (await cmds(page)).join("|") === "agend install"
-      && m.includes(W(zh, "AgEnD restarts as a service: every Agent stops briefly and comes back on its own.", "AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。")), m);
+      && m.includes(W(zh, "as the same user (no sudo). AgEnD restarts as a service: every agent stops briefly and comes back on its own.", "（不需要 sudo）。AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。")), m);
     check(`${tag} 4: the command on one line`, (await oneLine(page)).every((n) => n === 1), await oneLine(page));
     if (zh) for (const w of ["回來", "服務方式", "執行"]) check(`${tag} 4: 「${w}」 kept whole`, await unsplit(page, w) === true, await unsplit(page, w));
     const indent = await page.evaluate(`(() => { const s = document.querySelector("#settings-update .uc-checks .uc-how summary").getBoundingClientRect(), p = document.querySelector("#settings-update .uc-checks .uc-how > p"); return Math.round(p.getBoundingClientRect().left + parseFloat(getComputedStyle(p).paddingLeft) - s.left); })()`) as number;

@@ -53,6 +53,8 @@ describe("M-3770 1.6: the fix buttons", () => {
     await mount(LINGER_OFF, () => ({ body: { preflight: FIXED } }));
     expect(machine()?.textContent).toContain("AgEnD stops when the user example signs out");
     expect(fixButton()).toBeDefined();
+    // The button's line says what it does (#4557 UX look): no restart, the agents keep working, else run it yourself.
+    expect(machine()!.querySelector(".uc-fix .uc-fix-hint")?.textContent).toBe("AgEnD turns it on for you; nothing restarts and your agents keep working. If this computer doesn't allow it, run the command yourself.");
     const before = shown().length;
     fixButton().click();
     await vi.waitFor(() => expect(fixes().length).toBe(1)); await settle(10);
@@ -65,14 +67,16 @@ describe("M-3770 1.6: the fix buttons", () => {
     expect(shown().slice(before)).toEqual([["Done: AgEnD keeps running after example signs out.", true, true]]);
   });
 
-  it("a fix that doesn't take: says so, keeps the line and its command; already fixed: says so", async () => {
+  it("a fix that doesn't take: the block says so in place of the button (no toast), keeps the line and its command; already fixed: says so", async () => {
     await mount(LINGER_OFF, () => ({ status: 422, body: { error: "fix_failed", preflight: LINGER_OFF } }));
     const before = shown().length;
     fixButton().click();
     await vi.waitFor(() => expect(fixes().length).toBe(1)); await settle(10);
-    expect(shown().slice(before)).toEqual([["AgEnD couldn't fix it by itself. Run the command above in a terminal on that computer.", false, true]]);
+    expect(shown().slice(before)).toEqual([]);
+    expect(machine()!.querySelector(".uc-fix-refused")?.textContent).toBe("AgEnD couldn't turn it on by itself. Run the command above in a terminal on the computer AgEnD runs on.");
     expect([...machine()!.querySelectorAll(".uc-cmd")].map((e: any) => e.textContent)).toEqual(["sudo loginctl enable-linger example"]);
-    expect(fixButton()?.disabled).toBe(false);
+    expect(fixButton()).toBeUndefined();
+    expect(machine()!.querySelector(".uc-fix-hint")).toBeNull();
     await p.unmount(); reqs = [];
     await mount(LINGER_OFF, () => ({ status: 409, body: { error: "not_needed", preflight: FIXED } }));
     const before2 = shown().length;
@@ -89,7 +93,7 @@ describe("M-3770 1.6: the fix buttons", () => {
     const how = machine()!.querySelector("details.uc-how") as any;
     expect(how?.querySelector("summary")?.textContent).toBe("How to fix");
     expect([...how.querySelectorAll(".uc-cmd")].map((e: any) => e.textContent)).toEqual(["agend install"]);
-    expect(how.textContent).toContain("AgEnD restarts as a service: every Agent stops briefly and comes back on its own.");
+    expect(how.textContent).toContain("In a terminal on the computer AgEnD runs on, run agend install as the same user (no sudo). AgEnD restarts as a service: every agent stops briefly and comes back on its own.");
     expect(machine()!.querySelectorAll("details.uc-how").length).toBe(1);
     expect(uc.fixFor({ id: "P3", ok: false, code: "linger-off" })).toBe("linger");
     expect(uc.fixFor({ id: "P3", ok: false, code: "not-service" })).toBeNull();
@@ -97,7 +101,7 @@ describe("M-3770 1.6: the fix buttons", () => {
 
   it("the words in English and zh-TW, the same placeholders", async () => {
     const i18n = await import("/assets/app-i18n.js");
-    const keys = ["fixIt", "fixing", "fixedLinger", "fixFailed", "fixNotNeeded", "howToFix", "serviceHow"];
+    const keys = ["fixIt", "fixing", "fixedLinger", "fixHint", "fixFailed", "fixNotNeeded", "howToFix", "serviceHow"];
     const words: Record<string, Record<string, string>> = {};
     for (const lang of ["en", "zh-TW"]) words[lang] = Object.fromEntries(keys.map(k => [k, i18n.tIn(lang, `updatecard.${k}`)]));
     for (const k of keys) {

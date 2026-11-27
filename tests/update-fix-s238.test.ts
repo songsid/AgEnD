@@ -74,9 +74,9 @@ async function fleet() {
   fm.initializeWebAuthTokens(); fm.startHealthServer(0);
   await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
   const port = ((fm.healthServer as Server).address() as { port: number }).port, origin = `http://127.0.0.1:${port}`;
-  const session = (tier: "admin" | "read" | "guest" = "admin") => {
+  const session = (tier: "admin" | "read" | "guest" = "admin", userId = tier === "guest" ? "7" : "1") => {
     const { sessionId } = fm.webSessions.create({ tier, surface: "local", label: "t", tokenEpoch: tokenEpoch(fm.webToken),
-      owner: { adapterId: "discord", userId: tier === "guest" ? "7" : "1" } });
+      owner: { adapterId: "discord", userId } });
     const cookie = `agend_session=${sessionId}`;
     return { id: sessionId, write: (key?: string) => ({ cookie, origin, "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json", ...(key ? { "idempotency-key": key } : {}) }) };
   };
@@ -164,6 +164,21 @@ describe("M-3770 1.6: POST /ui/update/fixes", () => {
       const r = await pending;
       expect(r.status).toBe(403);
       expect(f.runUpdateFix).not.toHaveBeenCalled();
+    } finally { await f.stop(); }
+  });
+
+  it("the same key from another admin is that admin's own request, never the first one's answer (#4557 review)", async () => {
+    preflight.checks = LINGER_OFF;
+    const f = await fleet();
+    try {
+      const first = await f.post(f.session("admin", "1"), "fix-key-0060");
+      expect(first.status).toBe(200);
+      const other = await f.post(f.session("admin", "2"), "fix-key-0060");
+      expect([other.status, other.body.error]).toEqual([409, "not_needed"]);              // checked afresh: nothing left to fix
+      expect(f.runUpdateFix).toHaveBeenCalledTimes(1);
+      expect(preflight.calls.length).toBe(3);                                                  // before + after the fix, then the other's check
+      const again = await f.post(f.session("admin", "1"), "fix-key-0060");                  // the first admin's key: its own answer
+      expect([again.status, again.body]).toEqual([200, first.body]);
     } finally { await f.stop(); }
   });
 

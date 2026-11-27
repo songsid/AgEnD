@@ -4144,7 +4144,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** M-3770 (#4480 §4): the last pre-flight — a diagnostic for the page; every launch proves its local checks again. */
   private updatePreflight: import("./update-readiness.js").UpdatePreflight | null = null;
   private updatePreflightRunning: Promise<void> | null = null;
-  /** M-3770 1.6: the fix buttons' answers by Idempotency-Key (the last 32), and the one fix running at a time. */
+  /** M-3770 1.6: the fix buttons' answers by person, fix and Idempotency-Key (the last 32), and the one fix running at a time. */
   private readonly updateFixAnswers = new Map<string, Promise<{ status: number; body: Record<string, unknown> }>>();
   private updateFixChain: Promise<void> = Promise.resolve();
   /** M-2738: a web start's Idempotency-Key → its answer (a retried request never starts a second update). */
@@ -32386,11 +32386,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * session is asked again right before it runs; the checks run once more after it, and the page gets that result.
    */
   private fixUpdateOnce(key: string, person: string, fix: import("./update-fix.js").UpdateFix, stillAllowed: () => boolean): Promise<{ status: number; body: Record<string, unknown> }> {
-    const seen = this.updateFixAnswers.get(key);
+    // Scoped to the person and the fix (#4557 review): one admin's key never replays another's answer.
+    const slot = JSON.stringify([person, fix, key]);
+    const seen = this.updateFixAnswers.get(slot);
     if (seen) return seen;
     const answer = this.updateFixChain.then(() => this.fixUpdateNow(person, fix, stillAllowed));
     this.updateFixChain = answer.then(() => undefined, () => undefined);
-    this.updateFixAnswers.set(key, answer);
+    this.updateFixAnswers.set(slot, answer);
     if (this.updateFixAnswers.size > 32) this.updateFixAnswers.delete(this.updateFixAnswers.keys().next().value!);
     return answer;
   }

@@ -2285,7 +2285,9 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 /* M-3770 1.6: a check's words break only at spaces and punctuation, as the banner's (no 「回 / 來」); its fix button
    under it; How to fix's steps indented under their summary. */
 .uc-checks li { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
-.uc-checks .uc-fix { margin: var(--s-1) 0 var(--s-2); }
+.uc-checks .uc-fix { margin: var(--s-1) 0 var(--s-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); }
+.uc-checks .uc-fix-hint { font-size: var(--fs-sm); word-break: keep-all; overflow-wrap: anywhere; }
+.uc-checks .uc-fix-refused { margin: var(--s-1) 0 var(--s-2); font-weight: var(--fw-semibold); word-break: keep-all; overflow-wrap: anywhere; }
 .uc-checks .uc-how { font-size: inherit; }
 .uc-checks .uc-how > p { padding-left: var(--s-3); border-left: 2px solid var(--border); }
 .uc-controls { display: flex; flex-direction: column; gap: var(--s-3); }

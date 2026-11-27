@@ -98,7 +98,7 @@ describe("M-3770 1.4: the card on the banner", () => {
     expect(button("Pick a time")).toBeUndefined();
     expect(text()).toContain("AgEnD can't update itself on this machine; update it by hand.");
     expect(p.root.querySelector(".update-line details.uc-how summary")?.textContent).toBe("How to update");
-    expect(p.root.querySelector(".update-line details.uc-how")?.textContent).toContain("Run sudo agend update in a terminal on that computer");
+    expect(p.root.querySelector(".update-line details.uc-how")?.textContent).toContain("Run sudo agend update in a terminal on the computer AgEnD runs on");
     expect(!!button("Not now")).toBe(true);
   });
   it("a pin (card null) hides the offer — the old per-browser line never comes back on a card server", async () => {
@@ -293,7 +293,7 @@ describe("M-3770 1.4: Settings → Version and update", () => {
 describe("M-3770 1.4: the words", () => {
   it("a check's sentence fills its detail; an unknown code is still words, never raw; absent checks aren't failures", () => {
     expect(uc.checkSentence({ id: "P10", ok: false, code: "node-too-old", detail: { node: "20.11", needs: ">=22.14" } }, "2.5.0")).toBe("AgEnD 2.5.0 needs Node >=22.14; this machine has 20.11.");
-    expect(uc.checkText({ id: "P4", ok: false, code: "no-write", detail: { path: "/opt/x" } })).toBe("Updating needs write access to /opt/x. Run sudo agend update in a terminal on that computer, or reinstall with the one-line installer.");
+    expect(uc.checkText({ id: "P4", ok: false, code: "no-write", detail: { path: "/opt/x" } })).toBe("Updating needs write access to /opt/x. Run sudo agend update in a terminal on the computer AgEnD runs on, or reinstall with the one-line installer.");
     expect(uc.checkSentence({ id: "P3", ok: false, code: "linger-off", detail: { user: "a`b" } })).toBe("AgEnD stops when the user a'b signs out, so it can't restart itself. To fix it, run `sudo loginctl enable-linger a'b`.");
     expect(uc.checkSentence({ id: "P1", ok: false, code: "brand-new-code" })).toBe("A check didn't pass (brand-new-code).");
     expect(uc.failedChecks({ checks: [{ id: "P10", ok: false, code: "node-too-old" }, { id: "P2", ok: false, code: "shared-home" }, { id: "P1", ok: true }] }).map((c: any) => c.id)).toEqual(["P2", "P10"]);

@@ -49,7 +49,7 @@ register("updatecard", {
     c_linger_off: "AgEnD stops when the user {user} signs out, so it can't restart itself. To fix it, run `sudo loginctl enable-linger {user}`.",
     c_system_unit_not_root: "AgEnD runs as a system service; updating it needs root.",
     c_unit_reload_pending: "The service definition changed and hasn't been reloaded. Run `systemctl --user daemon-reload`.",
-    c_no_write: "Updating needs write access to {path}. Run `sudo agend update` in a terminal on that computer, or reinstall with the one-line installer.",
+    c_no_write: "Updating needs write access to {path}. Run `sudo agend update` in a terminal on the computer AgEnD runs on, or reinstall with the one-line installer.",
     c_linked: "This AgEnD is linked from a development folder ({path}); an update replaces the link.",
     c_vendored: "This AgEnD sits inside another project ({path}).",
     c_low_disk: "Updating needs about {need} free on {path}; there's {have}.",
@@ -61,8 +61,9 @@ register("updatecard", {
     c_node_too_old: "AgEnD {0} needs Node {needs}; this machine has {node}.",
     c_other: "A check didn't pass ({0}).",
     fixIt: "Fix it for me", fixing: "Fixing…", fixedLinger: "Done: AgEnD keeps running after {0} signs out.",
-    fixFailed: "AgEnD couldn't fix it by itself. Run the command above in a terminal on that computer.", fixNotNeeded: "That's already fixed.",
-    howToFix: "How to fix", serviceHow: "In a terminal on that computer, run `agend install`. AgEnD restarts as a service: every Agent stops briefly and comes back on its own.",
+    fixHint: "AgEnD turns it on for you; nothing restarts and your agents keep working. If this computer doesn't allow it, run the command yourself.",
+    fixFailed: "AgEnD couldn't turn it on by itself. Run the command above in a terminal on the computer AgEnD runs on.", fixNotNeeded: "That's already fixed.",
+    howToFix: "How to fix", serviceHow: "In a terminal on the computer AgEnD runs on, run `agend install` as the same user (no sudo). AgEnD restarts as a service: every agent stops briefly and comes back on its own.",
   },
   "zh-TW": {
     ready: "AgEnD {0} 可以更新了。",
@@ -101,7 +102,7 @@ register("updatecard", {
     c_linger_off: "使用者 {user} 登出後 AgEnD 會停止，所以無法自行重新啟動。修正方式：執行 `sudo loginctl enable-linger {user}`。",
     c_system_unit_not_root: "AgEnD 以系統服務執行，更新需要 root。",
     c_unit_reload_pending: "服務定義已變更但尚未重新載入。請執行 `systemctl --user daemon-reload`。",
-    c_no_write: "更新需要 {path} 的寫入權限。請在那台電腦的終端機執行 `sudo agend update`，或用單行安裝指令重新安裝。",
+    c_no_write: "更新需要 {path} 的寫入權限。請在執行 AgEnD 的那台電腦上，用終端機執行 `sudo agend update`，或用單行安裝指令重新安裝。",
     c_linked: "這份 AgEnD 是從開發資料夾連結的（{path}），更新會取代這個連結。",
     c_vendored: "這份 AgEnD 位於另一個專案裡（{path}）。",
     c_low_disk: "更新需要 {path} 約 {need} 的可用空間，目前只有 {have}。",
@@ -113,8 +114,9 @@ register("updatecard", {
     c_node_too_old: "AgEnD {0} 需要 Node {needs}，這台機器是 {node}。",
     c_other: "有一項檢查沒有通過（{0}）。",
     fixIt: "幫我修正", fixing: "修正中…", fixedLinger: "完成：使用者 {0} 登出後，AgEnD 仍會繼續執行。",
-    fixFailed: "AgEnD 無法自行修正。請在那台電腦的終端機執行上面的指令。", fixNotNeeded: "這項已經修正了。",
-    howToFix: "修正方式", serviceHow: "在那台電腦的終端機執行 `agend install`。AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。",
+    fixHint: "AgEnD 會替你開啟；不會重新啟動，Agent 照常工作。若這台電腦不允許，請自己執行上面的指令。",
+    fixFailed: "AgEnD 無法自行開啟。請在執行 AgEnD 的那台電腦上，用終端機執行上面的指令。", fixNotNeeded: "這項已經修正了。",
+    howToFix: "修正方式", serviceHow: "在執行 AgEnD 的那台電腦上，用同一個使用者在終端機執行 `agend install`（不需要 sudo）。AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。",
   },
 });
 const tc = (key, ...a) => t(`updatecard.${key}`, ...a);
@@ -155,17 +157,23 @@ export async function fixCheck(fix, check, { refresh, setInfo, getInfo }) {
   // Shown in full (a phone's toast is otherwise one line, cut): it names the user, and the failure says what to do.
   if (res && res.ok) toast(tc("fixedLinger", user), true, { detail: true });
   else if (res && res.status === 409 && out && out.error === "not_needed") toast(tc("fixNotNeeded"));
-  else if (res && res.status === 422) toast(tc("fixFailed"), false, { detail: true });
+  else if (res && res.status === 422) { /* no toast: the check's own block says so and drops the button (#4557 UX look) */ }
   else { toast(tc("failedAnswer", (out && out.error) || (res ? String(res.status) : "network")), false); await refresh(); }
-  return { ok: !!(res && res.ok) };
+  return { ok: !!(res && res.ok), refused: !!(res && res.status === 422) };
 }
-/** One check that did not pass: its sentence, and its fix — a button where AgEnD can make it, else how to (not a service). */
+/**
+ * One check that did not pass: its sentence, and its fix — a button where AgEnD can make it, with a line saying what it
+ * does, else how to (not a service). Once the host refused the fix, the button goes and one line says to run the command.
+ */
 function CheckItem({ check, version, deps }) {
   const [busy, setBusy] = useState(false);
+  const [refused, setRefused] = useState(false);
   const fix = deps ? fixFor(check) : null;
-  const press = async () => { setBusy(true); try { await fixCheck(fix, check, deps); } finally { setBusy(false); } };
+  const press = async () => { setBusy(true); try { if ((await fixCheck(fix, check, deps)).refused) setRefused(true); } finally { setBusy(false); } };
   return html`<li>${checkRich(check, version)}
-    ${fix ? html`<div class="uc-fix"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${press}>${busy ? tc("fixing") : tc("fixIt")}</button></div>` : null}
+    ${fix && refused ? html`<p class="uc-fix-refused" role="status">${tc("fixFailed")}</p>` : null}
+    ${fix && !refused ? html`<div class="uc-fix"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${press}>${busy ? tc("fixing") : tc("fixIt")}</button>
+      <span class="uc-fix-hint muted">${tc("fixHint")}</span></div>` : null}
     ${check.code === "not-service" ? html`<details class="uc-how"><summary>${tc("howToFix")}</summary><p>${richText(tc("serviceHow"))}</p></details>` : null}
   </li>`;
 }
