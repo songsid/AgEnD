@@ -263,3 +263,31 @@ it("M-3896 a first-hop reply waits independently for its own accepted delivery a
  expect(dispatched[0]).toBe(call);expect(call.replyRoute.target).toEqual(target);expect(call.replyRoute.current()).toBe(true);
  f.daemon.requestContextCalls.delete(call.id);
 });
+it("M-3896 full and duplicate pending scheduling never prevent the real pre-paste path",async()=>{
+ const f=rig(),d=f.daemon,snapshot=f.bind("human:hmsg-main");
+ // C has accepted these inputs on the same open turn. Only physical pane work
+ // and readiness probes are stubbed; deliverMessage and its pre-write callback run.
+ vi.spyOn(d,"bindRequestContextWrite").mockImplementation(()=>{});
+ vi.spyOn(d,"getWindowId").mockReturnValue("@fixture");
+ vi.spyOn(d,"waitForSpawnToSettle").mockResolvedValue(true);
+ vi.spyOn(d,"refuseBlockedDelivery").mockReturnValue(false);
+ vi.spyOn(d,"waitForPaneReadyForDelivery").mockResolvedValue("ready");
+ vi.spyOn(d,"waitForInputTransientToClear").mockResolvedValue(true);
+ vi.spyOn(d,"hasPositiveDeliveryInput").mockResolvedValue(true);
+ vi.spyOn(d,"clearRestoredInputDraft").mockResolvedValue("clear");
+ vi.spyOn(d,"deliveryBlockingDialogs").mockReturnValue([]);
+ let pasted=0;
+ vi.spyOn(d,"writeMessageToPane").mockImplementation(async(...args:any[])=>{
+  args[10](String(args[0]));pasted++;return true;
+ });
+ const verdicts:any[]=[];
+ for(let n=0;n<130;n++){
+  const verdict={};verdicts.push(verdict);
+  expect(await d.deliverMessage("Synthetic input",undefined,{requestContextInputId:`human:hmsg-${n}`,verdict})).toBe(true);
+ }
+ expect(pasted).toBe(130);expect(verdicts[127].pendingReply).toBeDefined();expect(verdicts[128].pendingReply).toBeUndefined();
+ const old=verdicts[0].pendingReply,waiting=old.wait(100);
+ const duplicate:any={};expect(await d.deliverMessage("Synthetic input",undefined,{requestContextInputId:"human:hmsg-0",verdict:duplicate})).toBe(true);
+ expect(pasted).toBe(131);expect(duplicate.pendingReply).toBeUndefined();expect(await waiting).toBeUndefined();
+ expect(d.requestContextTurnSnapshot().token).toBe(snapshot.token);d.requestContextPendingReplies.clear();
+});

@@ -5679,3 +5679,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* Beta.28 wording pass: the request-based approvals card keeps zh words whole (「關閉」, never 「關 / 閉」); a word too long still breaks. */
 .request-context-control p { word-break: keep-all; overflow-wrap: anywhere; }
+
+/* Keep Traditional Chinese clauses together in the same card on Needs you. */
+:lang(zh) .request-context-need p { word-break: keep-all; overflow-wrap: anywhere; }

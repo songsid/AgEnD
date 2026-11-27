@@ -14,9 +14,13 @@ const key=(snapshot:RequestContextTurnSnapshot,inputId:string,wireSha256:string)
 /** A call captures this exact delivery before waiting. A later steer cannot retarget it. */
 export class RequestContextPendingReplies {
   private readonly entries=new Map<string,PendingReplyDelivery>();
-  stage(snapshot:RequestContextTurnSnapshot,inputId:string,wireSha256:string,current:()=>boolean):PendingReplyDelivery {
+  stage(snapshot:RequestContextTurnSnapshot,inputId:string,wireSha256:string,current:()=>boolean):PendingReplyDelivery|undefined {
     const id=key(snapshot,inputId,wireSha256);
-    if(this.entries.has(id)||this.entries.size>=128)throw Error("Pending reply delivery unavailable");
+    // Optional scheduling must never fail an otherwise admitted input write.
+    // A duplicate cannot replace an earlier waiter or lend it a new route.
+    const previous=this.entries.get(id);
+    if(previous){previous.refuse();return undefined;}
+    if(this.entries.size>=128)return undefined;
     let confirmed=false,route:TurnReplyRouteLease|undefined,refused=false;
     const waiters=new Set<(route:TurnReplyRouteLease|undefined)=>void>();
     const live=()=>{try{return current()===true;}catch{return false;}};
@@ -29,7 +33,7 @@ export class RequestContextPendingReplies {
         if(next.binding!==snapshot.token||!live()){record.refuse();return;}
         route=next;notify();
       },
-      refuse:()=>{refused=true;route=undefined;this.entries.delete(id);notify();},
+      refuse:()=>{refused=true;route=undefined;if(this.entries.get(id)===record)this.entries.delete(id);notify();},
       wait:(budgetMs:number)=>new Promise<TurnReplyRouteLease|undefined>(resolve=>{
         const value=ready();if(value||refused||!live()){resolve(value);return;}
         let timer:ReturnType<typeof setTimeout>;

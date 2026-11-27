@@ -9853,7 +9853,7 @@ export class Daemon extends EventEmitter {
             if(after && inputId && (/^human:hmsg-/.test(inputId)||/^delivery:/.test(inputId))){
               verdict.pendingReply=this.requestContextPendingReplies.stage(after,inputId,deliveryContentDigest(wireText),()=>this.requestContextTurnCurrent(after));
               const humanId=opts?.humanMeta?.human_receipt_id;
-              if(humanId)this.requestContextHumanReplies.set(humanId,{pending:verdict.pendingReply,accepted:false});
+              if(humanId && verdict.pendingReply)this.requestContextHumanReplies.set(humanId,{pending:verdict.pendingReply,accepted:false});
             }
             if (!handingOffToNativeQueue) this.hubAnswerTurnBegins(opts?.hubQuestion, opts?.hubContactLimit !== false);
             opts?.beforePaneWrite?.();

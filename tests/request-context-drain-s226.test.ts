@@ -219,3 +219,23 @@ it("M-3896 an empty-list root stop changes no human receipt or history",()=>{
  expect(gate.retireRoot(root)).toBe(1);
  expect(f.db.prepare("SELECT resolution_json FROM request_context_drain_v1 WHERE root_id=?").get(root)).toBeTruthy();
 });
+it.each(["first-On stage","capable reopen","boot recovery"])("M-3896 %s can rotate a drain epoch after the permanent resolution guard exists",async path=>{
+ const {readRequestContextResolution}=await import("../src/request-context-resolution.js");
+ const f=rig(path!=="first-On stage");
+ const stage=path==="first-On stage"?f.box.stageRequestContextConnection({current:()=>true}):null;
+ if(stage)f.box.activateRequestContextBarrier();
+ const i=f.admit(),root=i.c.ref.rootContextId;f.terminal(i.result.delivery.deliveryId);
+ const first=stage?stage.drain(()=>"coordinator-a"):f.drain();participants(first);
+ const epoch=first.fence(root);
+ first.recordStoppedWork(root,epoch,{ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),receipts:[]},()=>true,()=>true);
+ expect(readRequestContextResolution(f.db,root)).not.toBeNull();
+ let next=stage?stage.drain(()=>"coordinator-a"):f.drain();
+ if(!stage){
+  const reopened=new DeliveryOutbox(f.db.name,"next-boot",{requestContextDispatchVersion:1});cleanup.push(()=>reopened.close());
+  if(path==="boot recovery")reopened.recoverForBoot("next-boot");
+  next=reopened.requestContextDrain(()=>"coordinator-a");
+ }
+ const rotated=next.resume(root,epoch);expect(rotated).not.toBe(epoch);
+ expect(next.retainedEpoch(root)).toBe(rotated);
+ expect(readRequestContextResolution(f.db,root)).not.toBeNull();
+});

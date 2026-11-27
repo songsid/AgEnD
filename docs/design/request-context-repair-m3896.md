@@ -166,7 +166,7 @@ fence refuses. All other uncertain effects and deliveries remain blockers.
 ## Go back preserves a committed Stop
 
 The Leader chose to preserve explicit Stop decisions. The Stop confirmation adds
-“Stopping this work also ends Go back for this update.” / 「停止這項工作後，這次更新就不能再退回。」 when an update window is offered. Both the web dialog and native/shared
+“After you stop this work, this update can no longer be rolled back with Go back.” / 「結束這項工作後，這次更新就不能再退回。」 when an update window is offered. Both the web dialog and native/shared
 Settings summary disclose it before the decision; the new line gets a user look.
 
 Every root Stop, including one with no uncertain receipt, writes the same F-row
@@ -234,3 +234,24 @@ the owned fence epoch and must complete the same positive retirement and atomic
 resolution checks. Only a committed resolution or independently proven root
 collection removes that blocker. No timer supplies completion evidence. The
 existing update exclusion and SHARED state lease cover fence through COMMIT.
+
+
+## Bounded observation and connection coverage
+
+The Claude boundary observer retains at most 4,096 records for an open turn.
+Reaching that bound makes the end unknown and exposes the existing named Stop
+action; it never supplies completion evidence. Pending reply scheduling is also
+bounded: a full map skips scheduling, and an exact duplicate refuses the old
+waiter without replacing it. Neither condition may fail an admitted input write.
+An early call without a pending route keeps the existing no-destination refusal.
+
+Both production constructors of RequestContextDrain are owned by DeliveryOutbox:
+the first-On connection stage and requestContextDrain on the capable connection.
+The constructor and stage both call registerRequestContextDispatcher, which
+registers the resolution capability as well as the dispatch capability on that
+exact connection. Boot recovery reuses that constructor connection. Tests reopen
+and rotate a retained epoch after a resolution exists for both paths and recovery.
+CLI delivery status, search and Go back inspect through read-only handles; none
+constructs a drain or rotates epochs. Snapshot checkpointing writes only SQLite
+checkpoint metadata and never updates drain rows. Functionless backup/read
+connections remain supported; a functionless drain update must refuse.
