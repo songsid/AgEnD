@@ -1,6 +1,6 @@
 # Hub: people can delete their own messages (M-3885)
 
-Status: design for the owner; no code; build after 2.4.0. Written 2026-11-27 against the dev tip `0aff702d8`.
+Status: design accepted by the owner on 2026-11-27; no code; build after 2.4.0 (cards D1 to D4). Written 2026-11-27 against the dev tip `0aff702d8`.
 The facts about today's behaviour are the rooms builder's reading of the code (file and line given to me on the
 card's thread); I did not re-read them.
 
@@ -129,6 +129,9 @@ An answer's author in the data is the shared agent, with the person who owned it
 in section 1 means that person, or the agent's owner now.
 
 ## Questions for the owner
+
+**Answered by the owner on 2026-11-27: all five as recommended** (relayed by the leader). The recommendation
+column below is the decision.
 
 | # | Question | Recommendation |
 |---|---|---|
