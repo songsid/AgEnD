@@ -60,10 +60,10 @@ describe("M-3882: the Hub's own app icon", () => {
     expect([ico.readUInt16LE(2), ico.readUInt16LE(4)]).toEqual([1, 3]);
     expect([0, 1, 2].map((i) => ico.readUInt8(6 + 16 * i))).toEqual([16, 32, 64]);
   });
-  it("the Hub's mark is the dashboard's inverted (navy tile, light Ag) with the hub badge: told apart at 16 px by colour", () => {
+  it("the Hub's mark is the dashboard's inverted (a blue tile, light Ag) with the hub badge: told apart at 16 px by colour", () => {
     const hub = file("hub-favicon.svg").toString(), fleet = file("favicon.svg").toString();
     expect(fleet).toContain('fill="#e5eaf0" stroke="#617386"');                        // the dashboard's light tile
-    expect(hub).toContain('rx="12" fill="#14273d"');                                    // the Hub's navy tile
+    expect(hub).toContain('rx="12" fill="#1d5fae"');                                    // the Hub's blue tile, clear on light and dark
     expect(hub).toMatch(/<g fill="#e5eaf0" fill-rule="evenodd">/);                     // the same Ag, light
     expect(hub).toMatch(/<circle cx="51" cy="7.5"/);                                    // the badge
   });

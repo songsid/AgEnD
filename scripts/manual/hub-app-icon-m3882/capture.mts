@@ -27,7 +27,7 @@ check("the dashboard's manifest is AgEnD; the Hub's is AgEnD Hub", names.fleet =
 const browser = await chromium.launch({ executablePath: process.env.CHROME });
 try {
   for (const theme of ["light", "dark"] as const) {
-    const page = await browser.newPage({ viewport: { width: 760, height: 360 }, deviceScaleFactor: 2, colorScheme: theme });
+    const page = await browser.newPage({ viewport: { width: 900, height: 380 }, deviceScaleFactor: 2, colorScheme: theme });
     const bg = theme === "dark" ? "#212121" : "#ffffff", fg = theme === "dark" ? "#ececec" : "#0d0d0d", line = theme === "dark" ? "#3d3d3d" : "#e5e5e5";
     const col = (o: { base: string }, name: string) => `<div class="app"><h2>${name}</h2><div class="row"><span>16</span><img src="${o.base}/favicon.ico" width="16" height="16"><span>32</span><img src="${o.base}/favicon.ico" width="32" height="32"><span>192</span><img src="${o.base}/icon-192.png" width="192" height="192"></div><code>${o.base.replace(/:\d+$/, "")} · ${name === "AgEnD" ? "dashboard" : "Hub"}</code></div>`;
     await page.setContent(`<html><body style="margin:0;padding:20px;background:${bg};color:${fg};font:14px system-ui,sans-serif">

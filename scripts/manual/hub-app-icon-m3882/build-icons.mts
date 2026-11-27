@@ -13,7 +13,7 @@ const page = await browser.newPage({ deviceScaleFactor: 1 });
 async function render(svg: string, size: number, opaque: boolean): Promise<Buffer> {
   const src = "data:image/svg+xml;base64," + readFileSync(join(ICONS, svg)).toString("base64");
   await page.setViewportSize({ width: size, height: size });
-  await page.setContent(`<html><body style="margin:0;background:${opaque ? "#14273d" : "transparent"}"><img src="${src}" width="${size}" height="${size}" style="display:block"></body></html>`);
+  await page.setContent(`<html><body style="margin:0;background:${opaque ? "#1d5fae" : "transparent"}"><img src="${src}" width="${size}" height="${size}" style="display:block"></body></html>`);
   await page.waitForFunction(() => document.querySelector("img")!.complete);
   return page.screenshot({ omitBackground: !opaque, clip: { x: 0, y: 0, width: size, height: size } });
 }
