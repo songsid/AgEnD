@@ -87,6 +87,29 @@ describe("what the page says", () => {
   });
 });
 
+describe("iOS installation prerequisites", () => {
+  const ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1";
+  it("shows the certificate refusal instead of Safari installation advice", async () => {
+    const m = await import("/assets/app-install.js") as any;
+    const w = fakeWindow({ ua, register: async () => { throw Object.assign(Error("untrusted"), { name: "SecurityError" }); } });
+    m.startInstall(w.env); await flush(); expect(m.installStore.get().state).toBe("untrusted");
+  });
+  it("shows the insecure-address refusal before Safari advice when the worker API is hidden", async () => {
+    const m = await import("/assets/app-install.js") as any;
+    const w = fakeWindow({ ua, secure: false, noWorker: true });
+    m.startInstall(w.env); await flush(); expect(m.installStore.get().state).toBe("insecure");
+    expect(w.register).not.toHaveBeenCalled();
+  });
+  it("does not replace an installed app with a late certificate failure", async () => {
+    const m = await import("/assets/app-install.js") as any;
+    let reject!: (e: unknown) => void;
+    const w = fakeWindow({ ua, register: () => new Promise((_resolve, fail) => { reject = fail; }) });
+    m.startInstall(w.env); w.emit("appinstalled", {});
+    reject(Object.assign(Error("untrusted"), { name: "SecurityError" })); await flush();
+    expect(m.installStore.get().state).toBe("installed");
+  });
+});
+
 describe("the hint", () => {
   async function mount(state: string, which: "section" | "button", locale = "en") {
     const pg = page(); pages.push(pg);
