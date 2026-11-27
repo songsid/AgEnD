@@ -207,7 +207,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     ${compact ? compactList() : html`<section><h4>${heads.member}</h4>
       <ul>${people.map(person)}</ul>
     </section>
-    ${agents.length ? null : html`<section class="hub-room-no-agents"><h4>${hm("agents")}</h4><p class="note">${hm("noAgents")}</p></section>`}
+    ${agents.length ? null : html`<section class="hub-room-no-agents"><h4>${hm("agents")}</h4><p class="note">${!manager && detail.settings?.membersCanAddOwnAgents === true ? hs("noAgentsMember") : hm("noAgents")}</p></section>`}
     ${agents.length ? html`<section><h4>${heads.agent}</h4>
       <ul>${shown.map(agentItem)}</ul>
       ${fold.rest ? html`<button type="button" class="btn btn-link hub-members-more" onClick=${() => setExpanded(!expanded)}>${expanded ? hm("fewer") : hroom("moreN", fold.rest)}</button>` : null}

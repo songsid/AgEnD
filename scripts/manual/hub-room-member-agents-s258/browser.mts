@@ -55,6 +55,9 @@ try {
       await candidate.click(); await page.locator("#hubRoomOwnAgents").waitFor({ state: "detached" });
       const detail = await r.call(manager, "GET", `/hub/v1/rooms/${roomId}`);
       check(tag + ": real membership persisted", detail.json.members.some((m: any) => m.id === exposure.id));
+      // The member entry closes the phone sheet. Reopen after a fresh page read; do not claim an immediate list counter refresh.
+      await page.reload(); await page.locator(".hub-room-rail-toggle").waitFor();
+      if (!await page.locator('.hub-member-agent .hub-member-open').filter({ hasText: "Example Helper" }).isVisible()) await page.locator(".hub-room-rail-toggle").click();
       const row = page.locator('.hub-member-agent .hub-member-open').filter({ hasText: "Example Helper" }); await row.waitFor(); await shot("member-added", row);
       check(tag + ": manager removes member-added agent", (await r.call(manager, "DELETE", `/hub/v1/rooms/${roomId}/members/${exposure.id}`)).status === 200);
       check(tag + ": audit retained", (r.db.prepare("SELECT COUNT(*) n FROM hub_audit WHERE action='room.agent-added' AND room_id=?").get(roomId) as { n: number }).n === 1);

@@ -22,7 +22,7 @@ it.each([false, true])("member add entry follows opt-in=%s without exposing mana
   const pg = await mount(members.RoomMembersPanel, { compact: false, client: { roomOwnAgentCandidates: async () => ({ ok: true, candidates: [] }) }, roomId: "room-one", detail: detail(on), onAddAgents: () => opened++ });
   expect(pg.root.querySelector(".hub-room-settings-link")).toBeNull();
   const button = pg.root.querySelector(".hub-room-own-agents-link"); expect(!!button).toBe(on);
-  if (button) { fire(button, "click"); expect(opened).toBe(1); }
+  if (button) { expect(pg.root.textContent).toContain("Add an agent you own"); fire(button, "click"); expect(opened).toBe(1); }
 });
 it("scopes member search to the room and adds its owned candidate through the existing endpoint", async () => {
   const calls: unknown[] = []; let changed = 0, closed = 0;
