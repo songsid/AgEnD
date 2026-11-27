@@ -493,12 +493,23 @@ describe("J: the reason, by its stable code", () => {
     ["guest-request", "This was sent while Front desk was working on a request from Alex, a guest.", "這是 Front desk 處理訪客 Alex 的請求時送出的。"],
     ["hub-request", "This was sent while Front desk was working on Alex's request from the Hub.", "這是 Front desk 處理 Alex 從 Hub 提出的請求時送出的。"],
     ["unproved-recovery", "Front desk resumed work whose requester couldn't be proven, so this contact needs approval.", "Front desk 接續的工作無法證明是誰提出的，因此這次聯絡需要核准。"],
+    ["interrupted-launch", "This agent was interrupted; this contact needs one approval.", "這個 Agent 曾中斷；這次聯絡需要核准一次。"],
     ["unknown-origin", "Front desk's retained history has an unknown origin, so this contact needs approval.", "Front desk 保留的歷史來源不明，因此這次聯絡需要核准。"],
     ["something-new", "This contact needs an admin's approval.", "這次聯絡需要管理員核准。"],
   ] as const)("%s", (reason, en, zh) => {
     expect(cardMod.reasonText(card({ reason }))).toBe(en);
     i18n.setLang("zh-TW");
     expect(cardMod.reasonText(card({ reason }))).toBe(zh);
+  });
+  it("interrupted-launch (S-249): the requester stays unknown and no grant is offered — Continue or Decline only", async () => {
+    api({ "GET /ui/authorization": () => ({ body: VERIFIED }) });
+    const pg = await mountWith(cardMod.RequestContactCard, { card: card({ reason: "interrupted-launch", requester: null, grantCandidates: [],
+      actions: { canDecide: true, canGrant: false, requiresVerification: false } }) });
+    expect(text(pg.root.querySelector(".rc-reason"))).toContain("This agent was interrupted; this contact needs one approval.");
+    expect(text(pg.root.querySelector(".rc-requester"))).toBe("Can't tell who asked");
+    expect(choice(pg.root, "always").disabled).toBe(true);
+    expect(choice(pg.root, "continue").disabled).toBe(false);
+    expect(pg.root.querySelector(".rc-no-grant")).toBeTruthy();
   });
   it("names the requester by a verified display name, else the identity; an unknown one is \"someone\", never invented", () => {
     expect(cardMod.reasonText(card({ reason: "hub-request", requester: { kind: "person", platform: "hub", hubId: "h1", id: "u7" } }))).toBe("This was sent while Front desk was working on u7's request from the Hub.");
