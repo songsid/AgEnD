@@ -12,7 +12,7 @@ const check=(name:string,ok:unknown)=>{receipt.checks.push({name,ok:!!ok});if(!o
 const selected=new Set((process.env.STATES??"settings-pending,destination-refusal,stop-waiting-outcome").split(","));
 const fx=await bootFixture({port:0,classic:false,host:true,roster:[{name:"general",displayName:"General",backend:"claude-code",general:true},{name:"worker",displayName:"Demo worker",backend:"codex"}]});
 const {setLocale}=await import(repo+"/src/locale.ts"),{prepareSettingsEffect}=await import(repo+"/src/settings-effect.ts"),{captureRequestContextCall}=await import(repo+"/src/request-context-call.ts");
-fx.fm.currentVersion="2.4.0-beta.25";fx.fm.currentBuild=null;
+Object.defineProperty(fx.fm,"currentVersion",{get:()=>"2.4.0-beta.25",configurable:true});Object.defineProperty(fx.fm,"currentBuild",{get:()=>null,configurable:true});
 const view:any={revision:1,enabled:false,everActivated:false,attempted:false,phase:"off",canChange:true,blockers:[],restartCount:2,
  goBack:{attemptIds:["20261126T010203Z-0a1b2c3d"],availableUntil:"2026-12-03T02:30:00Z",timeZone:"Asia/Taipei"}};
 const never=()=>{throw Error("Capture cannot activate, deliver or launch");};
