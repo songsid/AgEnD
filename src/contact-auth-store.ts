@@ -258,10 +258,25 @@ export class ContactAuthStore {
    * the image the page showed (`expectedSha256`), in one transaction; appends the retirement and changes nothing else.
    * It never says the request happened or didn't, never grants a receipt, and fences its replay (hold, approvedReturn).
    */
-  retireLegacy(id: string, expectedSha256: string, disposition: string, actor: ContactPerson, current: () => boolean): void {
+  retireLegacy(id: string, expectedSha256: string, disposition: string, actor: ContactPerson, current: () => boolean,
+    acknowledge?: (deliveryId: string, by: string) => boolean): void {
     this.db.transaction(() => {
       if (!RETIRABLE_LEGACY_DISPOSITIONS.includes(disposition)) throw Error("invalid-request");
       if (this.legacyImage(id) !== expectedSha256 || current() !== true) throw Error("stale");
+      // Fable #4600 (with Sentinel): an unconfirmed ticket's own delivery ended uncertain. The same owner acknowledges
+      // exactly that delivery, re-matched as the shadow matches it, in this transaction (the outbox's own CAS); the
+      // inventory leaves acknowledged ones out. A row that moved since the page showed it refuses the whole retirement.
+      if (disposition === "legacy-unconfirmed") {
+        const row = this.db.prepare("SELECT request_json,ticket_json FROM contact_auth_tickets WHERE id=?").get(id) as { request_json: string; ticket_json: string };
+        const request = JSON.parse(row.request_json), ticket = JSON.parse(row.ticket_json);
+        const delivery = typeof ticket.deliveryId === "string" && ticket.deliveryId ? this.db.prepare("SELECT state,source_instance,target_instance,operation_id,acknowledged_at FROM deliveries WHERE delivery_id=?").get(ticket.deliveryId) as
+          { state: string; source_instance: string; target_instance: string; operation_id: string; acknowledged_at: string | null } | undefined : undefined;
+        if (!delivery || delivery.source_instance !== request.source || delivery.target_instance !== request.target || delivery.operation_id !== request.operationId) throw Error("stale");
+        // Only an unscoped (pre-L) delivery: one bound to a request is never acknowledged from here.
+        if (this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_context_operations_v1'").get()
+          && this.db.prepare("SELECT 1 FROM request_context_operations_v1 WHERE delivery_id=?").get(ticket.deliveryId)) throw Error("stale");
+        if (delivery.state === "uncertain" && !delivery.acknowledged_at && acknowledge?.(ticket.deliveryId, actor.label || actor.userId) !== true) throw Error("stale");
+      }
       this.db.prepare("INSERT OR IGNORE INTO contact_auth_retirements VALUES (?,?,?,?,?)")
         .run(id, expectedSha256, disposition, this.now(), JSON.stringify(actor));
     })();

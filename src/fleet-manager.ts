@@ -7168,12 +7168,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private resolveLegacyBlocker(blocker:Readonly<RequestContextBlocker>,actor:RequestContextControlPrincipal,current:()=>boolean):void{
     const box=this.deliveryOutbox;
     if(!box||box.requestContextInstallation().read()!==null||!current())throw Error("stale");
+    // Sentinel's Go back contract: the same home-update exclusion the first On and Stop hold, so a retirement or a
+    // withdrawal can never land between Go back's check and its restore.
+    const update=this.requestContextActivationLease();if(!update)throw Error("update-lock");
+    try{this.resolveLegacyBlockerHeld(blocker,actor,()=>current()&&update.current());}finally{update.release();}
+  }
+  private resolveLegacyBlockerHeld(blocker:Readonly<RequestContextBlocker>,actor:RequestContextControlPrincipal,current:()=>boolean):void{
+    const box=this.deliveryOutbox!;
     if(blocker.id.startsWith("legacy-retire:")){
       if(!actor.person)throw Error("owner-required");
       const id=blocker.id.slice("legacy-retire:".length),entry=this.requestContextShadow().tickets.find(row=>row.id===id);
       if(!entry?.sha256||!RETIRABLE_LEGACY_DISPOSITIONS.includes(entry.disposition))throw Error("stale");
       const person=actor.person,image=entry.sha256,disposition=entry.disposition;
-      actor.execution!.mutate(()=>box.contactAuthorizations.retireLegacy(id,image,disposition,person,current));
+      actor.execution!.mutate(()=>box.contactAuthorizations.retireLegacy(id,image,disposition,person,current,(deliveryId,by)=>box.acknowledge(deliveryId,by)));
       return;
     }
     const id=blocker.id.slice("legacy-withdraw:".length),row=box.get(id);

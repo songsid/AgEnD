@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { contactRetirementImage } from "../src/contact-auth-store.js";
 import type { RequestMigrationHost } from "../src/request-context-migration.js";
@@ -15,6 +15,8 @@ import type { ContactPerson } from "../src/contact-auth-types.js";
 import type { ContactRequest } from "../src/contact-auth-store.js";
 
 const cleanup: Array<() => void> = [];
+// fleet-manager is a large module: import it once, with room, before the cases that call its methods.
+beforeAll(async () => { await import("../src/fleet-manager.js"); }, 120_000);
 afterEach(() => { for (const fn of cleanup.splice(0).reverse()) fn(); });
 const admin: ContactPerson = { platform: "discord", adapterId: "fixture", userId: "demo-admin", label: "Demo admin" };
 function rig() {
@@ -109,16 +111,19 @@ describe("M-3897: retiring an earlier ticket nothing can settle", () => {
 describe("M-3897: the owner's Retire / Withdraw before the first On (resolveLegacyBlocker)", () => {
   async function host(r: ReturnType<typeof rig>) {
     const { FleetManager } = await import("../src/fleet-manager.js");
-    const self = { deliveryOutbox: r.box, requestContextShadow: () => r.shadow() };
+    const lease = { held: 0, released: 0 };
+    const self = Object.assign(Object.create(FleetManager.prototype), { deliveryOutbox: r.box, requestContextShadow: () => r.shadow(),
+      requestContextActivationLease: () => { lease.held++; return { current: () => true, release: () => { lease.released++; } }; } });
     const mutated: string[] = [];
     const actor = { person: admin, execution: { mutate: (fn: () => void) => { mutated.push("mutate"); fn(); } } };
     const resolve = (blocker: any, current = () => true) => (FleetManager.prototype as any).resolveLegacyBlocker.call(self, blocker, actor, current);
-    return { resolve, mutated };
+    return { resolve, mutated, lease };
   }
-  it("Retire: the shadow's exact image is retired through the decision's execution; then nothing blocks", async () => {
+  it("Retire: the shadow's exact image is retired through the decision's execution, under the home-update exclusion; then nothing blocks", async () => {
     const r = rig(), { id } = r.approvedMissing(), h = await host(r);
     h.resolve({ id: `legacy-retire:${id}`, kind: "legacy", labels: [id], action: "retire" });
     expect(h.mutated).toEqual(["mutate"]);
+    expect(h.lease).toEqual({ held: 1, released: 1 });
     expect(r.entry(id).disposition).toBe("retired-unknown");
     expect(() => h.resolve({ id: "legacy-retire:R-not-there", kind: "legacy", labels: [], action: "retire" })).toThrow("stale");
   });
@@ -129,11 +134,22 @@ describe("M-3897: the owner's Retire / Withdraw before the first On (resolveLega
     expect(() => h.resolve({ id: `legacy-retire:${id}`, kind: "legacy", labels: [], action: "retire" }, () => false)).toThrow("stale");
     expect(r.entry(id).disposition).toBe("missing-receipt");
   });
+  it("Sentinel's Go back contract: no home-update exclusion, no retirement; and one lost mid-way refuses it", async () => {
+    const r = rig(), { id } = r.approvedMissing();
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const actor = { person: admin, execution: { mutate: (fn: () => void) => fn() } };
+    const make = (lease: unknown) => Object.assign(Object.create(FleetManager.prototype), { deliveryOutbox: r.box, requestContextShadow: () => r.shadow(), requestContextActivationLease: () => lease });
+    expect(() => make(null).resolveLegacyBlocker({ id: `legacy-retire:${id}`, kind: "legacy", labels: [], action: "retire" }, actor, () => true)).toThrow("update-lock");
+    let released = false;
+    expect(() => make({ current: () => false, release: () => { released = true; } }).resolveLegacyBlocker({ id: `legacy-retire:${id}`, kind: "legacy", labels: [], action: "retire" }, actor, () => true)).toThrow("stale");
+    expect(released).toBe(true);
+    expect(r.entry(id).disposition).toBe("missing-receipt");
+  });
   it("never after activation: once request-based approvals were turned on, these are the drain's, not this path's", async () => {
     const r = rig(), { id } = r.approvedMissing();
     const { FleetManager } = await import("../src/fleet-manager.js");
     const active = Object.assign(Object.create(r.box), { requestContextInstallation: () => ({ read: () => ({ mode: "active" }) }) });
-    const self = { deliveryOutbox: active, requestContextShadow: () => r.shadow() };
+    const self = Object.assign(Object.create(FleetManager.prototype), { deliveryOutbox: active, requestContextShadow: () => r.shadow(), requestContextActivationLease: () => ({ current: () => true, release: () => {} }) });
     const actor = { person: admin, execution: { mutate: (fn: () => void) => fn() } };
     expect(() => (FleetManager.prototype as any).resolveLegacyBlocker.call(self, { id: `legacy-retire:${id}`, kind: "legacy", labels: [], action: "retire" }, actor, () => true)).toThrow("stale");
     expect(r.entry(id).disposition).toBe("missing-receipt");
@@ -148,5 +164,39 @@ describe("M-3897: the owner's Retire / Withdraw before the first On (resolveLega
       kind: "fleet_inbound", payload: { type: "fleet_inbound", content: "hi", meta: {} } } as any).delivery;
     r.db.prepare("UPDATE deliveries SET state='delivering' WHERE delivery_id=?").run(sent.deliveryId);
     expect(() => h.resolve({ id: `legacy-withdraw:${sent.deliveryId}`, kind: "legacy", labels: [], action: "withdraw" })).toThrow("stale");
+  });
+});
+
+describe("M-3897 (Fable #4600): retiring an unconfirmed ticket acknowledges exactly its own uncertain delivery", () => {
+  function uncertainTicket(r: ReturnType<typeof rig>) {
+    const input = r.request(), ticket = r.store.hold(input);
+    const admit = (operationId: string, key: string) => r.box.admit({ operationId, sourceKey: key, sourceInstance: "source", sourceDaemonBootId: "sb", targetInstance: "target",
+      kind: "fleet_inbound", payload: { type: "fleet_inbound", content: "hi", meta: {} } } as any).delivery.deliveryId;
+    const own = admit(input.operationId, "legacy:own"), other = admit("op-other", "legacy:other");
+    r.db.prepare("UPDATE deliveries SET state='uncertain' WHERE delivery_id IN (?,?)").run(own, other);
+    const row = r.db.prepare("SELECT ticket_json FROM contact_auth_tickets WHERE id=?").get(ticket.id) as { ticket_json: string };
+    r.db.prepare("UPDATE contact_auth_tickets SET ticket_json=? WHERE id=?").run(JSON.stringify({ ...JSON.parse(row.ticket_json), state: "approved", deliveryId: own }), ticket.id);
+    return { id: ticket.id, own, other };
+  }
+  const ack = (r: ReturnType<typeof rig>, id: string) => r.db.prepare("SELECT state,acknowledged_at IS NOT NULL AS acked,acknowledged_by FROM deliveries WHERE delivery_id=?").get(id);
+  it("one click: the ticket is retired and exactly its delivery acknowledged by the same owner (state unchanged); the other one is not", async () => {
+    const r = rig(), { FleetManager } = await import("../src/fleet-manager.js"), t = uncertainTicket(r);
+    expect(r.entry(t.id).disposition).toBe("legacy-unconfirmed");
+    const resolver = Object.assign(Object.create(FleetManager.prototype), { deliveryOutbox: r.box, requestContextShadow: () => r.shadow(), requestContextActivationLease: () => ({ current: () => true, release: () => {} }) });
+    resolver.resolveLegacyBlocker({ id: `legacy-retire:${t.id}`, kind: "legacy", labels: [], action: "retire" }, { person: admin, execution: { mutate: (fn: () => void) => fn() } }, () => true);
+    expect(r.entry(t.id).disposition).toBe("retired-unknown");
+    expect(r.shadow().blockers.map(b => b.id)).not.toContain(t.id);
+    expect(ack(r, t.own)).toEqual({ state: "uncertain", acked: 1, acknowledged_by: "Demo admin" });
+    expect(ack(r, t.other)).toEqual({ state: "uncertain", acked: 0, acknowledged_by: null });
+  });
+  it("a delivery that moved since the page showed it refuses the whole retirement (nothing written)", () => {
+    const r = rig(), t = uncertainTicket(r), e = r.entry(t.id);
+    r.db.prepare("UPDATE deliveries SET operation_id='op-changed' WHERE delivery_id=?").run(t.own);
+    expect(() => r.store.retireLegacy(t.id, e.sha256!, e.disposition, admin, () => true, (d, by) => r.box.acknowledge(d, by))).toThrow("stale");
+    expect(r.db.prepare("SELECT count(*) AS n FROM contact_auth_retirements").get()).toEqual({ n: 0 });
+    expect(ack(r, t.own)).toMatchObject({ acked: 0 });
+    // No acknowledger at all (a caller that can't acknowledge): an uncertain delivery refuses rather than leaving it blocking.
+    const r2 = rig(), t2 = uncertainTicket(r2), e2 = r2.entry(t2.id);
+    expect(() => r2.store.retireLegacy(t2.id, e2.sha256!, e2.disposition, admin, () => true)).toThrow("stale");
   });
 });
