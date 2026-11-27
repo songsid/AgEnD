@@ -85,7 +85,12 @@ Split by role while keeping one writer:
 - **What web workers get.** Read access to `hub.sqlite`, **read-only** access to the floor files (they check them; they never raise them), the browser TLS key and the session secret derivation.
 - **What they don't get.** The issuer key, the member key, `content.key`, and write access to the floors.
 - **Encrypted content.** Room questions, answers and attachments are encrypted with `content.key` (the audit and attachment stores both take it). Web workers therefore cannot decrypt them. Core decrypts and projects content for an authorised request over the RPC, and web never holds the key.
-- **Floor checks.** Readers verify the transport floor against the database revision on every read, and a mismatch refuses (`uncertain`), as today. One new risk: a reader can see a revision that core has committed but whose floor file it read earlier. The read order must stay database-then-floor, with an equality check, as the transport store does now.
+- **Floor checks need a new coordinated protocol. This is a prerequisite of option 2, not a detail.** Core raises the floor file to R+1 *before* it commits revision R+1 (`store.ts`). Today that window is invisible, because the only reader runs in the same synchronous process. With WAL, a web reader in another process can read the committed revision R while the floor already says R+1 during a perfectly healthy write. A two-connection probe shows database/floor = 0/1 before the commit and 1/1 after it. The current equality check would then mark that reader `uncertain` permanently, and no read order fixes that across processes.
+
+  Option 2 must therefore define a coordinated read/write protocol before it is built. One way: core records an explicit in-flight write (R → R+1) that readers can see. A reader that observes floor = revision + 1 waits briefly or asks core over RPC for the confirmed revision, and refuses only when core confirms no write is in flight. A floor more than one ahead, or a floor ahead with no in-flight write, keeps refusing as today, which is the crash/restore case. The protocol ships with three regressions:
+  - a reader during a healthy in-flight write must not freeze;
+  - a crash between the floor raise and the commit is resolved by core's recovery, and readers stay refused until core confirms;
+  - an old database under a newer floor keeps refusing permanently.
 
 **Cost:** medium. It needs an RPC layer, an event bus and request admission in core. **Ceiling:** writes stay single-threaded, which is fine for a team Hub. Reads and SSE scale with cores.
 
@@ -266,13 +271,13 @@ One command, `curl …/install-hub.sh | sh` or the same script from the release 
 
 ### What the load test says (M-3901)
 
-The run used 30 concurrent users with Outline-like usage, on a release build (`a47bd28f`) in a 2-CPU, 1 GiB VM-matched fixture:
+**Scope of the run.** It was a short, seeded, read-mostly synthetic run: 30 simulated users following an Outline-like usage script with dwell times between actions, over a bounded observation window, on a release build (`a47bd28f`) in a 2-CPU, 1 GiB VM-matched fixture. The report says it did **not** establish a finite sustainable maximum. "Page latency" below is the time to complete a page's **basket of API requests**, not browser render time.
 
 | Measure | Result |
 |---|---|
 | Errors | 0 |
 | API latency p50 / p95 / p99 | 120 / 554 / 976 ms |
-| Page latency p95 | 1.37 s; it first exceeds 1 s at 10 users |
+| Page request-basket latency p95 | 1.37 s; it first exceeds 1 s at 10 users |
 | Main thread | 35% of one core on average |
 | Memory (RSS) | 181 MiB |
 
@@ -286,15 +291,15 @@ Top self-time:
 | statement prepare | 6.5% |
 | `structuredClone` | 5.0% |
 
-The load tester's profile-based estimates (not measured):
+The load tester's profile-based estimates are conditional upper bounds, derived from the profile without prototypes. None of them has a proven safe lower bound:
 
-| Change | Estimated effect |
+| Change | Estimated effect (if the profile's assumptions hold) |
 |---|---|
-| Guard frame | 7–11% of CPU work |
-| Floor-file watch | at most 1.48× ceiling |
-| Two processes | 1.30–1.43× throughput ceiling |
+| Guard frame | up to 7–11% of CPU work |
+| Floor-file watch | at most a 1.48× ceiling |
+| Two processes | at most a 1.30–1.43× throughput ceiling |
 
-**Reading:** one process serves 30 users without errors, and it is far from saturated: 35% of one core on average. The problem is **tail latency, not capacity**. A page is several API calls, each doing synchronous checking work (path checks, transactions, row decoding). Their sum, plus short bursts queued behind each other on one event loop, gives a page p95 above 1 s from 10 users up. A second process would raise the throughput ceiling by about 1.3–1.4×. It would not shorten one request's synchronous work, and that work is what the user waits for. So the next step is to cut the per-request cost, not to split processes.
+**Reading, within that scope.** For this read-mostly workload, one process completed the run with no errors at 35% of one core on average. That is not evidence of headroom for heavier or write-heavy use. The observed problem is the page request-basket tail. A page makes several API calls, each doing synchronous checking work (path checks, transactions, row decoding), and on one event loop those calls also queue behind each other's bursts. Splitting processes *might* lift the throughput ceiling within the conditional bound above. It would not shorten any single request's synchronous work. Cutting per-request cost is therefore the cheaper next **experiment**, and each step is measurable on the same fixture. It is not a demonstrated capacity conclusion.
 
 ### Recommendation
 
@@ -304,17 +309,17 @@ The load tester's profile-based estimates (not measured):
    - batching the remaining per-row reads on the page routes;
    - a floor-file watch, only as an early-invalidation hint.
 
-   Each step must show a page-p95 improvement on the same fixture before the next one starts. The target is page p95 under 1 s at 30 users.
-3. **Keep option 2 as a prepared, not scheduled, step.** The core/web split in §2 stays the design if a later load test shows the event loop above about 70% of a core at the target, or p95 still over budget after step 2. The container package already allows it (one image, a second `web` service), so building it later does not change packaging.
-4. **Do not plan option 3.** Postgres and Redis would add two stateful services, their credentials and backups, and force a redesign of floors and atomicity, all for capacity we don't need at team scale.
+   Each step must show a page-basket p95 improvement on the same fixture before the next one starts. The working target is page-basket p95 under 1 s at 30 users on that fixture. Add a longer, write-including run before drawing any capacity conclusion.
+3. **Keep option 2 as a prepared, not scheduled, step.** The core/web split in §2 stays the design if a later, broader load test shows the event loop above about 70% of a core at the target, or p95 still over budget after step 2. Its coordinated floor protocol and tests (§2) are prerequisites. The container package already allows it (one image, a second `web` service), so building it later does not change packaging.
+4. **Do not plan option 3.** Postgres and Redis would add two stateful services, their credentials and backups, and force a redesign of floors and atomicity. Nothing measured so far calls for that at team scale.
 
 ### Build slices after 2.4.0
 
 Each slice is its own reviewed PR:
 1. A supported zero-agent, no-tmux Hub start branch; the Hub-only image, compose file and `agend-hub health`; and the declared assistant/execution variant.
 2. The nested-volume layout, image-prepared ownership, `fix-ownership`, the start checks, and `cert import` over stdin.
-3. `install-hub.sh` with steps 1–11 and the in-container DNS and LDAPS checks.
-4. Matched-set `backup` and `restore`; `upgrade`; the three rollback cases, including `export` and the fenced `rollback --restore`.
+3. Matched-set `backup` and `restore`; `upgrade`; the three rollback cases, including `export` and the fenced `rollback --restore`.
+4. `install-hub.sh` with steps 1–11 and the in-container DNS and LDAPS checks. It depends on slice 3 for step 11's first backup.
 5. `import` from a native home: autostart fencing, retiring the owned redirect, resealing, and preserving the CA and bind reference. Rehearsed on a copy of the pilot Hub, with the §6 step-10 acceptance.
 6. The Mac test Hub on the same image.
 7. The check-once frame, measured against page p95 on the M-3901 fixture.
