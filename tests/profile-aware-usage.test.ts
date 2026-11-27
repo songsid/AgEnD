@@ -269,7 +269,7 @@ describe("the active-row filter follows the profile", () => {
 
 describe("the real kiro reader against a real store", () => {
   /** A kiro store on disk. `login: null` writes the schema with nobody in it. */
-  function makeStore(dir: string, login: { accessToken: string; qPro: boolean } | null): string {
+  function makeStore(dir: string, login: { accessToken: string; idc: boolean } | null): string {
     mkdirSync(dir, { recursive: true });
     const db = new Database(join(dir, "data.sqlite3"));
     db.exec("CREATE TABLE auth_kv (key TEXT PRIMARY KEY, value TEXT)");
@@ -280,9 +280,9 @@ describe("the real kiro reader against a real store", () => {
           access_token: login.accessToken,
           expires_at: new Date(Date.now() + 3_600_000).toISOString(),
           region: "us-east-1",
-          // A Q Developer Pro login reports its plan without any network call,
-          // which is what keeps this test offline and deterministic.
-          ...(login.qPro ? { start_url: "https://view.awsapps.com/start" } : {}),
+          // A selected IAM profile is read only; the quota request is stubbed below.
+          profile_arn: "arn:aws:codewhisperer:us-east-1:000000000000:profile/fixture",
+          ...(login.idc ? { start_url: "https://view.awsapps.com/start" } : {}),
         }),
       );
     }
@@ -294,13 +294,18 @@ describe("the real kiro reader against a real store", () => {
     // Both stores are real and readable, and they answer differently — so this
     // fails if the argument is ignored, rather than only if the fallback is
     // absent from the machine.
-    const profileStore = makeStore(join(tempDir(), "kiro-cli"), { accessToken: "work-token", qPro: true });
+    const profileStore = makeStore(join(tempDir(), "kiro-cli"), { accessToken: "work-token", idc: true });
     process.env.KIRO_CLI_HOME = makeStore(join(tempDir(), "kiro-cli"), null);
     const before = statSync(join(profileStore, "data.sqlite3"));
 
+    const quotaFetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      subscriptionInfo: {subscriptionTitle: "KIRO POWER"},
+      usageBreakdownList: [{currentUsage: 1, usageLimit: 100}],
+    })));
     const usage = await fetchKiroUsage(profileStore);
 
-    expect(usage.plan).toBe("Q Developer Pro");
+    expect(usage.plan).toBe("Kiro Power");
+    expect(new Headers(quotaFetch.mock.calls[0][1]?.headers).get("Authorization")).toBe("Bearer work-token");
     // The shared store's answer, which a dropped argument would return instead.
     expect((await fetchKiroUsage()).plan).toBe("Kiro");
     const after = statSync(join(profileStore, "data.sqlite3"));

@@ -1,0 +1,77 @@
+{
+  "scope": "Standalone main integration, not stacked on the release branch",
+  "base": "3a00d3edba0032f8fe34b56d02dfa186dc517c48",
+  "release_implementation": "a8bebb8063d32c8dafc53d7300a698b80bfe12fc",
+  "collector_block_equal": true,
+  "identity_reader_equal": true,
+  "whole_file_equal_to_release": [
+    "src/backend/kiro-auth-store.ts",
+    "tests/kiro-entitlements-m3863.test.ts",
+    "tests/kiro-always-show-usage.test.ts",
+    "tests/profile-aware-usage.test.ts",
+    "tests/usage-ticket-expiry-1244.test.ts",
+    "tests/usage-slash-mcp.test.ts"
+  ],
+  "offline_integration": {
+    "files": 7,
+    "passes": 121
+  },
+  "source_types": {
+    "errors": 0
+  },
+  "test_types": {
+    "errors": 0
+  },
+  "files": [
+    {
+      "path": "src/backend/kiro-auth-store.ts",
+      "sha256": "82b29ad769d5c0eecc42c41a93f3c4b7111339abf74a88e4640c659bb73e293d"
+    },
+    {
+      "path": "src/usage/providers.ts",
+      "sha256": "2380b77a23b716b47814a134a37da845b284176a4ac514368f4038e02873627b"
+    },
+    {
+      "path": "src/usage/i18n-keys.ts",
+      "sha256": "98066ed96a75fdd11bd8befa512e10b182b2114f3f1aa2d8a69d9d04cef489c2"
+    },
+    {
+      "path": "src/locale.ts",
+      "sha256": "577dc6ac8813bbb7947c761c62d3ae36a88bad4d1e80c0903536cb67578de7b3"
+    },
+    {
+      "path": "src/ui/shared/view-strings.js",
+      "sha256": "941863ec1d6040c23ab23b66721749a0ed668dba33ba951413cdc8c777037194"
+    },
+    {
+      "path": "tests/kiro-entitlements-m3863.test.ts",
+      "sha256": "a449ffef70ac5942d276b0330726ea4167b13dc003f35212b880a5e494d877e6"
+    },
+    {
+      "path": "tests/kiro-usage-auth-kind.test.ts",
+      "sha256": "0074f9c095df50f381d64771b3e5e20732fadb98dfbd369124ecc6b2fc5daf9d"
+    },
+    {
+      "path": "tests/kiro-always-show-usage.test.ts",
+      "sha256": "a13abe9ffead39af7964d3a7f2b97d140526f70ef38483dbd3bff516b5467ad4"
+    },
+    {
+      "path": "tests/profile-aware-usage.test.ts",
+      "sha256": "d32cacd641ad201d703049e7a6bfc96cd6e94a24f6f87b63c6d28c0bfe5ddcbc"
+    },
+    {
+      "path": "tests/usage-ticket-expiry-1244.test.ts",
+      "sha256": "0278a82bdfc24edd0e94edf0f106e193fd1bb4844adfaee0c1c406fea2e7a7f8"
+    },
+    {
+      "path": "tests/usage-slash-mcp.test.ts",
+      "sha256": "7361b6223648e169eff2b9296fddc6aabc1c089906c6f074191c0783f365b72a"
+    }
+  ],
+  "limits": [
+    "All HTTP responses intercepted; no new vendor calls",
+    "Release proof retained separately as historical evidence",
+    "No native/browser campaign",
+    "Same HOLD for 2.4.0 cut; source review only"
+  ]
+}

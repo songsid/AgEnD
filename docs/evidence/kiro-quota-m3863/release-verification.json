@@ -1,0 +1,83 @@
+{
+  "base": "9a934f4efdf4f266e7bd3dee869b2fbcf609dddb",
+  "scope": "release implementation; all HTTP intercepted, no live calls",
+  "baseline_matrix": {
+    "assertion_failures": 19,
+    "passes": 5
+  },
+  "final_matrix": {
+    "passes": 34
+  },
+  "related_suites": {
+    "files": 6,
+    "passes": 85,
+    "scope": "first implementation, includes 24 original matrix cases"
+  },
+  "final_delta": {
+    "files": 3,
+    "passes": 80,
+    "scope": "final 34-case matrix, profile isolation and slash/MCP rendering; overlaps related run"
+  },
+  "source_types": {
+    "errors": 0
+  },
+  "test_types": {
+    "errors": 0
+  },
+  "changelog_fragments": 886,
+  "files": [
+    {
+      "path": "src/backend/kiro-auth-store.ts",
+      "sha256": "82b29ad769d5c0eecc42c41a93f3c4b7111339abf74a88e4640c659bb73e293d"
+    },
+    {
+      "path": "src/usage/providers.ts",
+      "sha256": "80de37a58f2e7e54fc5f3f15ef27f7421396141377232153d6bfd41d1092343d"
+    },
+    {
+      "path": "src/usage/i18n-keys.ts",
+      "sha256": "ab52fb2c3044b637a61b67aa1140dbeb5ab590f2eabc13933cff1ac7c89ac66d"
+    },
+    {
+      "path": "src/locale.ts",
+      "sha256": "ab563f8684a41e50751876ccc6bce09cd1460dbe335ef14fd598c9a19aaceb4b"
+    },
+    {
+      "path": "src/ui/shared/view-strings.js",
+      "sha256": "4522ecefbedd2a4eaa2ab91edd4fbd5278d87eeac25a3cef287585ca47fe39a6"
+    },
+    {
+      "path": "tests/kiro-entitlements-m3863.test.ts",
+      "sha256": "a449ffef70ac5942d276b0330726ea4167b13dc003f35212b880a5e494d877e6"
+    },
+    {
+      "path": "tests/kiro-usage-auth-kind.test.ts",
+      "sha256": "8b67dd0621873d5effa0578f9b5a526a426b8628fb7b1ee8d412d28ba7947776"
+    },
+    {
+      "path": "tests/kiro-always-show-usage.test.ts",
+      "sha256": "a13abe9ffead39af7964d3a7f2b97d140526f70ef38483dbd3bff516b5467ad4"
+    },
+    {
+      "path": "tests/profile-aware-usage.test.ts",
+      "sha256": "d32cacd641ad201d703049e7a6bfc96cd6e94a24f6f87b63c6d28c0bfe5ddcbc"
+    },
+    {
+      "path": "tests/usage-ticket-expiry-1244.test.ts",
+      "sha256": "0278a82bdfc24edd0e94edf0f106e193fd1bb4844adfaee0c1c406fea2e7a7f8"
+    },
+    {
+      "path": "tests/usage-slash-mcp.test.ts",
+      "sha256": "7361b6223648e169eff2b9296fddc6aabc1c089906c6f074191c0783f365b72a"
+    }
+  ],
+  "limits": [
+    "No new live vendor calls",
+    "No successful live entitlement response claimed",
+    "No browser/native client/credential refresh",
+    "Known endpoint allowlist only; unsupported regions unknown",
+    "No migration or credential changes",
+    "Main twin is separate",
+    "HOLD for 2.4.0 cut"
+  ]
+}

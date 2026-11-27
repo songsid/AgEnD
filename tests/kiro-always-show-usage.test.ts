@@ -68,9 +68,10 @@ describe("Kiro stays on the panel unless kiro-cli is absent", () => {
       expires_at: new Date(Date.now() + 3_600_000).toISOString(),
     }]]);
     const r = await fetchKiroUsage();
-    // Recognised as an Identity Center (Q Pro) login — no network call made.
+    // Recognised as a login, but no profile means no safe usage request.
     expect(r.status).toBe("ok");
-    expect(r.plan).toBe("Q Developer Pro");
+    expect(r.plan).toBe("Kiro");
+    expect(r.hint).toMatch(/not measurable.*profile/i);
   });
 
   it("ignores rows that are not parseable tokens", async () => {
