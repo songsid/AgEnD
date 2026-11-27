@@ -22,7 +22,7 @@ register("updatecard", {
     whenIdle: "Update when idle", pickTime: "Pick a time", notNow: "Not now", updateNow: "Update now", cancel: "Cancel",
     waiting: "Updating to {0} as soon as your agents are idle.", waitingFor: "Waiting for: {0}", waitingSince: "Waiting since {0}",
     scheduled: "Updating to {0} at {1}, when your agents are idle.", notNowUntil: "You chose Not now. The card comes back on {0}.",
-    waitingShort: "AgEnD updates when idle", scheduledShort: "AgEnD updates {0}", foldOpen: "Change", foldClose: "Close",
+    waitingShort: "AgEnD updates when idle", scheduledShort: "AgEnD updates {0}", foldOpen: "Change", foldClose: "Hide",
     starting: "Starting the update to {0}…", cantTitle: "AgEnD can't update itself on this machine.",
     nowTitle: "Update now?", nowBody: "{0} agents are working. They stop for a few minutes while AgEnD restarts, then pick up where they were.",
     nowBodyIdle: "AgEnD restarts for a few minutes; your agents pick up where they were.", nowGo: "Update now",
@@ -298,7 +298,8 @@ export function cardLine(info, { Line, busy, deps }) {
 /**
  * S-241 (Lumen's point 8): once the admin has answered (waiting for idle, scheduled), a phone shows the banner as one line —
  * the short words and Change, which opens the full line (its words, who it waits for, and the buttons). The desk is
- * unchanged: the short words and Change are never shown there (app.css, max-width 700px). A new state starts closed.
+ * unchanged: the short words and Change are never shown there (app.css: the shell's phone condition, max-width 899px or a
+ * landscape touch screen). A new state starts closed.
  * The wrapper is `display: contents`, so the line lays out exactly as before.
  */
 function AnsweredLine({ Line, spinner, icon, title, short, sub = [], buttons }) {

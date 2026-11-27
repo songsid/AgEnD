@@ -1028,6 +1028,10 @@ the update. Reloading fixes it; nothing saved is lost.
 It stays on the install's line: an alpha install updates to the newest alpha, a stable one to stable. Going from alpha
 back to stable is `agend rollback <version>` on the host, never offered here ("Updating from the web stays on the
 Alpha preview line"). Guests and agents can't update.
+Once the admin has answered the update card (waiting for idle, or a picked time), a phone or a narrow window shows it as
+one line: **AgEnD updates when idle** / **AgEnD updates Thu 22:00** (「AgEnD 閒置時更新」 / 「AgEnD 週四 22:00 更新」) and
+**Change** (「變更」), which opens the full words and buttons; **Hide** (「收起」) folds it again. Opening or hiding it
+decides nothing: only Update now, Pick a time or Cancel change the update. A desk window always shows the full line.
 
 ## Look
 

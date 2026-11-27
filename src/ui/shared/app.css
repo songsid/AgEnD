@@ -2274,12 +2274,13 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
   .update-actions.indent { margin-left: 26px; }
 }
 /* S-241 (Lumen's point 8): an answered update card (waiting for idle, scheduled) is one line on a phone — its short words
-   and Change; Change opens the full line. The desk never shows the short words or Change. */
+   and Change; Change opens the full line. The desk never shows the short words or Change. "A phone" is the app's own
+   phone layout (the shell's narrow condition: up to 899 px, or a landscape touch screen), not the banner's 700 px. */
 .uc-answered { display: contents; }
 .uc-short, .uc-fold { display: none; }
 .uc-fold { gap: 4px; align-items: center; }
 .uc-answered.open .uc-fold svg { transform: rotate(180deg); }
-@media (max-width: 700px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .uc-fold { display: inline-flex; }
   .uc-answered.open .update-actions { flex: 1 1 100%; flex-wrap: wrap; }   /* four buttons may need a second row */
   .uc-answered:not(.open) .update-line { flex-wrap: nowrap; }

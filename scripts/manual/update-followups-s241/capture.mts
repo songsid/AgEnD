@@ -66,7 +66,7 @@ async function walk(c: any) {
   await reset();
   const { page, ctx } = await fx.page(c, { path: "/ui/needs" });
   const errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
-  const change = W(zh, "Change", "變更"), close = W(zh, "Close", "收起");
+  const change = W(zh, "Change", "變更"), close = W(zh, "Hide", "收起");
   try {
     await page.goto(fx.base + "/ui/needs"); check(`${tag}: mounted`, await mounted(page, 30000));
     await page.waitForSelector(".update-line", { timeout: 20000 });
@@ -84,6 +84,11 @@ async function walk(c: any) {
       check(`${tag} 1: the banner is one 44 px button high plus its padding: at most 66 px (was ${offered.h} px offered)`, g.h <= 66, g);
       check(`${tag} 1: Change is a 44 px button, on the screen`, g.taps.every((x) => x >= 44) && g.inside, g);
       await shot(page, `${tag}-1-waiting`);
+      // A phone held sideways (a landscape touch screen) is still the app's phone layout: still one line (#4558 review).
+      await page.setViewportSize({ width: 844, height: 390 }); await page.waitForTimeout(400);
+      const side = await geom(page);
+      check(`${tag} 1: sideways (844×390, touch): still one line with Change`, JSON.stringify(side.drawn) === JSON.stringify([change]) && side.sub === 0 && side.h <= 66, side);
+      await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(400);
       await click(page, change);
       g = await geom(page); t = await lineText(page);
       check(`${tag} 1b: Change opens the full line: the words, who it waits for, Update now / Pick a time / Cancel / Close`,
@@ -97,6 +102,16 @@ async function walk(c: any) {
         t.includes(W(zh, `Updating to ${NEXT} as soon as your agents are idle.`, `Agent 一閒置就更新到 ${NEXT}。`)) && g.sub === 1 && !g.drawn.includes(change)
         && !t.includes(W(zh, "AgEnD updates when idle", "AgEnD 閒置時更新")) && [W(zh, "Update now", "立即更新"), W(zh, "Cancel", "取消")].every((x) => g.drawn.includes(x)), { t, g });
       await shot(page, `${tag}-1-waiting`);
+      // 701–899 px is the app's phone layout too (the shell's narrow condition): one line there, the full line from 900 (#4558 review).
+      for (const w of [701, 800, 899]) {
+        await page.setViewportSize({ width: w, height: 900 }); await page.waitForTimeout(400);
+        const n = await geom(page);
+        check(`${tag} 1: ${w} px wide (the app's phone layout): one line with Change`, JSON.stringify(n.drawn) === JSON.stringify([change]) && n.sub === 0 && n.h <= 66, n);
+      }
+      await page.setViewportSize({ width: 900, height: 900 }); await page.waitForTimeout(400);
+      const wide = await geom(page);
+      check(`${tag} 1: 900 px wide (the desk layout): the full line, no Change`, !wide.drawn.includes(change) && wide.sub === 1, wide);
+      await page.setViewportSize({ width: 1366, height: 900 }); await page.waitForTimeout(400);
     }
     check(`${tag} 1: opening it decided nothing`, card()?.state === "waiting-idle", card());
     // 2 Cancel → offered; Pick a time → Tonight → scheduled

@@ -65,7 +65,7 @@ describe("S-241 point 8: an answered card is one line on a phone", () => {
     expect(["Update now", "Pick a time", "Cancel"].every((b) => !!button(b))).toBe(true);   // still there; the phone hides them closed
     fold().click(); await settle(4);
     expect(q(".uc-answered").className).toBe("uc-answered open");
-    expect([fold().textContent, fold().getAttribute("aria-expanded")]).toEqual(["Close", "true"]);
+    expect([fold().textContent, fold().getAttribute("aria-expanded")]).toEqual(["Hide", "true"]);
     fold().click(); await settle(4);
     expect(q(".uc-answered").className).toBe("uc-answered");
     expect(reqs.filter((r) => r.method === "POST")).toEqual([]);           // opening and closing decide nothing
@@ -104,12 +104,28 @@ describe("S-241 point 8: an answered card is one line on a phone", () => {
       expect([i18n.t("updatecard.foldOpen"), i18n.t("updatecard.foldClose")]).toEqual(["變更", "收起"]);
     } finally { i18n.setLang("en", { store: false }); }
   });
+  it("the built-in web-dashboard skill names the folded line's words and toggle as the page shows them (#4558 review)", () => {
+    const skill = readFileSync(new URL("../src/general-knowledge/skills/web-dashboard/SKILL.md", import.meta.url), "utf8").replace(/\s+/g, " ");
+    const words: string[] = [];
+    for (const lang of ["en", "zh-TW"]) {
+      i18n.setLang(lang, { store: false });
+      try { words.push(i18n.t("updatecard.waitingShort"), i18n.t("updatecard.scheduledShort", lang === "en" ? "Thu 22:00" : "週四 22:00"), i18n.t("updatecard.foldOpen"), i18n.t("updatecard.foldClose")); }
+      finally { i18n.setLang("en", { store: false }); }
+    }
+    for (const w of words) expect(skill, w).toContain(w);
+    expect(skill).toContain("Opening or hiding it decides nothing");
+  });
   it("the stylesheet: the desk never shows the short words or Change; a closed phone line shows only them", () => {
     const css = readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8").replace(/\s+/g, " ");
     expect(css).toContain(".uc-answered { display: contents; }");
     expect(css).toContain(".uc-short, .uc-fold { display: none; }");
     const phone = css.slice(css.indexOf("S-241 (Lumen's point 8)"));
-    const block = phone.slice(phone.indexOf("@media (max-width: 700px)"), phone.indexOf("} }", phone.indexOf("@media (max-width: 700px)")) + 3);
+    // The app's own phone condition (app-shell.js narrow(): 899 px, or a landscape touch screen), never the banner's 700 px (#4558 review).
+    const media = "@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {";
+    const shell = readFileSync(new URL("../src/ui/shared/app-shell.js", import.meta.url), "utf8");
+    expect(shell).toContain('matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)")');
+    expect(phone.indexOf(media), "the compact rules use the shell's phone condition").toBeGreaterThan(-1);
+    const block = phone.slice(phone.indexOf(media), phone.indexOf("} }", phone.indexOf(media)) + 3);
     expect(block).toContain(".uc-fold { display: inline-flex; }");
     expect(block).toContain(".uc-answered:not(.open) .update-line { flex-wrap: nowrap; }");
     expect(block).toContain(".uc-answered:not(.open) .uc-long, .uc-answered:not(.open) .update-sub, .uc-answered:not(.open) .update-actions .btn:not(.uc-fold) { display: none; }");
