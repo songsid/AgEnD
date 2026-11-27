@@ -58,6 +58,8 @@ export function ContactGrantEditor({ people, source, target, verb, grant = null,
     actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${ca("cancel")}</button><button type="button" class="btn btn-primary" disabled=${busy || !valid} onClick=${save}>${ca(busy ? "saving" : grant ? "grantSave" : "allowAndApprove")}</button>`}>
     <p>${ca("grantRoute", source, target)}</p>
     <p class="note contact-grant-boundary">${ca("grantBoundary")}</p>
+    <details class="contact-grant-more"><summary>${ca("grantMoreTitle")}</summary><p class="note">${ca("grantBoundaryMore")}</p>
+      ${!grant && people.length > 1 ? html`<p class="note">${ca("grantAllOriginsMore")}</p>` : null}</details>
     <section class="s-group" aria-label=${ca("grantPeople")}><h3>${ca("grantPeople")}</h3><div class="s-checks">
       ${people.map(person => html`<label class="check"><input type="checkbox" checked=${selected.includes(keyOf(person))} disabled=${busy || !!grant}
         onChange=${e => setSelected(toggle(selected, keyOf(person), e.currentTarget.checked))} /><span>${contactPersonLabel(person)} · ${contactPlatformLabel(person.platform)}</span></label>`)}
