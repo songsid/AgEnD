@@ -1300,8 +1300,10 @@ function LazyDirectory({ session }) {
  * when first shown; nothing while it loads or if this Hub does not serve it.
  */
 function LazyRoomPart({ load, name, props = {} }) {
-  const [C, setC] = useState(null);
-  useEffect(() => { let live = true; load().then((m) => { if (live && typeof m[name] === "function") setC(() => m[name]); }, () => {}); return () => { live = false; }; }, []);
+  const [loaded, setLoaded] = useState(null);
+  // Inline loaders change identity on render; the requested component name identifies the page.
+  useEffect(() => { let live = true; load().then((m) => { if (live && typeof m[name] === "function") setLoaded({ name, Component: m[name] }); }, () => {}); return () => { live = false; }; }, [name]);
+  const C = loaded?.name === name ? loaded.Component : null;
   return C ? html`<${C} ...${props} />` : null;
 }
 const teamsLive = () => { const c = hubClient(); return typeof c.teamsLive === "function" && c.teamsLive() === true; };
