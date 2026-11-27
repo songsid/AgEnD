@@ -202,7 +202,10 @@ async function walk(c: any) {
         body.scrollTop = body.scrollHeight; const last = [...body.children].filter((e) => e.getBoundingClientRect().height).pop().getBoundingClientRect();
         const r2 = { lastBottom: Math.round(last.bottom), footTop: Math.round(d.querySelector(".dlg-actions").getBoundingClientRect().top), footBottom: Math.round(foot.bottom), vh: innerHeight };
         more.scrollIntoView({ block: "start" }); return { ...r1, ...r2 }; })()`) as any;
-      check(`${tag} 5c: What this allows opens and is readable; the body still ends above the fixed footer`, open.open && open.moreBottom <= open.footTop && open.lastBottom <= open.footTop && open.footBottom <= open.vh, open);
+      const ui = await page.evaluate(`(() => { const d = document.querySelector("dialog.contact-grant-dialog"); const sum = d.querySelector("details.contact-grant-more summary"); const save = [...d.querySelectorAll(".dlg-actions button")].pop();
+        return { marker: getComputedStyle(sum).display === "list-item", tap: Math.round(sum.getBoundingClientRect().height), saveWordBreak: getComputedStyle(save).wordBreak }; })()`) as any;
+      check(`${tag} 5c: the fold keeps its marker and a full tap height; the footer keeps zh words whole`, ui.marker && ui.tap >= 44 && ui.saveWordBreak === "keep-all", ui);
+    check(`${tag} 5c: What this allows opens and is readable; the body still ends above the fixed footer`, open.open && open.moreBottom <= open.footTop && open.lastBottom <= open.footTop && open.footBottom <= open.vh, open);
       await page.waitForTimeout(300);
       await shot(page, `${tag}-5c-always-allow-more`);
     }
