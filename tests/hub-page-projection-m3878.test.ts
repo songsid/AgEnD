@@ -45,7 +45,7 @@ it.each([
 it("refuses the whole Fleet overview when its mount retires during projection", async () => {
   const w = await world(8), original = HubFleetVersions.prototype.view;
   let projected = 0;
-  vi.spyOn(HubFleetVersions.prototype, "view").mockImplementation(function (...args) {
+  vi.spyOn(HubFleetVersions.prototype, "view").mockImplementation(function (this: HubFleetVersions, ...args) {
     const value = original.apply(this, args); if (++projected === 2) r!.disable(); return value;
   });
   const result = await r!.call(w.admin, "GET", "/hub/v1/admin/overview");
