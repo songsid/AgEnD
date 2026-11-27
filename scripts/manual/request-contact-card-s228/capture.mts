@@ -185,6 +185,16 @@ async function walk(c: any) {
     check(`${tag} 5: save is off until someone is ticked, and says why`, ed.saveOff && ed.save === W(zh, "Approve this one and allow from now on", "核准這筆，並設為常用轉交") && dlg.includes(W(zh, "Tick at least one person to save a rule.", "至少勾選一個人，才能儲存規則。")), ed);
     check(`${tag} 5: the expiry is a day and a 24-hour time in the page's language`, ed.native === 0 && ed.selects === 3 && (!zh || !/AM|PM|上午|下午/.test(dlg)) && (zh ? /[年月日]/.test(ed.day) : /[A-Z][a-z]{2}/.test(ed.day)), ed);
     await shot(page, `${tag}-5-always-allow`);
+    // 5b (phone, zh dark): the same editor scrolled to its end — its last line sits fully above the footer (the leader's
+    // recheck: the unscrolled frame cuts the time-zone line at the footer edge, so the user sees it scrolls clear).
+    if (phone && zh) {
+      const end = await page.evaluate(`(() => { const d = document.querySelector("dialog.contact-grant-dialog"); const body = d.querySelector(".dlg-body"); body.scrollTop = body.scrollHeight;
+        const last = [...body.children].filter((e) => e.getBoundingClientRect().height).pop().getBoundingClientRect(), foot = d.querySelector(".dlg-actions").getBoundingClientRect();
+        return { lastBottom: Math.round(last.bottom), footTop: Math.round(foot.top), scrolled: body.scrollTop > 0 }; })()`) as any;
+      await page.waitForTimeout(300);
+      check(`${tag} 5b: scrolled to its end, the last line is fully above the footer`, end.scrolled && end.lastBottom <= end.footTop, end);
+      await shot(page, `${tag}-5b-always-allow-end`);
+    }
     check(`${tag}: no page errors`, errors.length === 0, errors);
   } finally {
     await ctx.close();
