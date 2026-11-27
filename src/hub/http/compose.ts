@@ -708,6 +708,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method !== "GET") throw new HttpError(405, "method");
       signedIn(); return send(res, 200, await guard(() => groupRooms.search(ctx, query.get("q") ?? "", query.get("limit") ?? "20", query.get("cursor"))));
     }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/own-agent-candidates$/))) {
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn(); return send(res, 200, { candidates: await guard(() => groupRooms.ownAgentCandidates(ctx, uuid(r![1]), query.get("q") ?? "")) });
+    }
     if (path === "/hub/v1/rooms/candidates") {
       if (method !== "GET") throw new HttpError(405, "method");
       signedIn(); return send(res, 200, { candidates: await guard(() => groupRooms.candidates(ctx, query.get("q") ?? "", query.get("kind") ?? "person", !!roomDiscovery && query.get("discovery") === "1")) });

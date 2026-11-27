@@ -39,7 +39,7 @@ type DB = Database.Database;
 export const ROOM_CREATION_HINT_MS = 60_000;
 const ROOM_CREATION_HINT_LIMIT = 256;
 interface RoomCreationHint { wall: number; elapsed: number; provider: HubCore["deps"]["roomCreation"]; value: Promise<boolean> }
-interface RoomRow { id: string; name: string; purpose:string; created_by: string; created_at: number; archived: number; all_mention: number; history_for_new: "since-join" | "all"; assistant_for: string | null; office_enabled: number | null; office_style: string }
+interface RoomRow { id: string; name: string; purpose:string; created_by: string; created_at: number; archived: number; all_mention: number; members_add_own_agents: number; history_for_new: "since-join" | "all"; assistant_for: string | null; office_enabled: number | null; office_style: string }
 interface MemberRow { id: string; room_id: string; kind: "person" | "agent" | "assistant"; subject: string; role: "manager" | "member"; joined_sequence: number; read_sequence: number; owner_at_join: string | null }
 type PostRow = RoomPostRow;
 const label = plain(120).transform(s => s.trim()).refine(s => s.length > 0 && !/[\u0000-\u001f\u007f]/.test(s));
@@ -89,7 +89,7 @@ export function validRoomEmoji(s: unknown): s is string {
   if (!/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(s)) return false;
   return [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(s)].length === 1;
 }
-const patchSchema = z.strictObject({ name: label.optional(), purpose:purpose.optional(), allMention: z.boolean().optional(), historyForNew: z.enum(["since-join", "all"]).optional(), archived: z.boolean().optional(), assistant: z.boolean().optional(),
+const patchSchema = z.strictObject({ name: label.optional(), purpose:purpose.optional(), allMention: z.boolean().optional(), membersCanAddOwnAgents: z.boolean().optional(), historyForNew: z.enum(["since-join", "all"]).optional(), archived: z.boolean().optional(), assistant: z.boolean().optional(),
   office: z.strictObject({ enabled: z.boolean().optional(), style: z.enum(ROOM_OFFICE_STYLES).optional() }).optional() });
 
 export class HubRoomRefusal extends Error {
@@ -709,7 +709,7 @@ export class HubGroupRooms {
       });
       // M-3125: the room takes people's files when this Hub stores files (the 1:1 chat's own attachments-v1 mark).
       return { room: { ...this.summary(db, room, own), ...(this.filesStore() ? { features: ["attachments-v1"] } : {}) }, me: { id: own.id, role: own.role }, members,
-        settings: { allMention: room.all_mention === 1, historyForNew: room.history_for_new,
+        settings: { allMention: room.all_mention === 1, membersCanAddOwnAgents: room.members_add_own_agents === 1, historyForNew: room.history_for_new,
           ...(this.appPosts?{aiApps:(db.prepare("SELECT enabled FROM hub_mcp_room_policy WHERE room_id=?").get(id) as {enabled:number}|undefined)?.enabled!==0}:{}),
           ...(members.some(m => m.kind === "assistant") ? { assistant: true } : {}),
           ...(this.office ? { office: { enabled: officeOn(room.office_enabled), style: room.office_style } } : {}) }, invited: [] };
@@ -725,8 +725,8 @@ export class HubGroupRooms {
       else if (body.assistant === false) db.prepare("DELETE FROM hub_room_members WHERE room_id=? AND kind='assistant'").run(id);
       const was = officeOn(row.office_enabled), office = body.office?.enabled === undefined ? row.office_enabled : Number(body.office.enabled);
       const style = body.office?.style ?? row.office_style;
-      db.prepare("UPDATE hub_group_rooms SET name=?,purpose=?,all_mention=?,history_for_new=?,archived=?,office_enabled=?,office_style=? WHERE id=?")
-        .run(body.name ?? row.name, body.purpose??row.purpose, body.allMention === undefined ? row.all_mention : Number(body.allMention), body.historyForNew ?? row.history_for_new, body.archived === undefined ? row.archived : Number(body.archived), office, style, id);
+      db.prepare("UPDATE hub_group_rooms SET name=?,purpose=?,all_mention=?,history_for_new=?,archived=?,office_enabled=?,office_style=?,members_add_own_agents=? WHERE id=?")
+        .run(body.name ?? row.name, body.purpose??row.purpose, body.allMention === undefined ? row.all_mention : Number(body.allMention), body.historyForNew ?? row.history_for_new, body.archived === undefined ? row.archived : Number(body.archived), office, style, body.membersCanAddOwnAgents === undefined ? row.members_add_own_agents : Number(body.membersCanAddOwnAgents), id);
       const changed:PostRow[]=[];
       if(body.purpose!==undefined&&body.purpose!==row.purpose)changed.push(this.recordPurpose(db,tx,id,me,body.purpose,ctx.requestId));
       if(body.office?.enabled!==undefined&&body.office.enabled!==was)changed.push(this.recordOffice(db,tx,id,me,body.office.enabled,ctx.requestId));
@@ -744,11 +744,12 @@ export class HubGroupRooms {
       z.strictObject({ kind: z.literal("team"), id: uuid }), z.strictObject({ kind: z.literal("group"), id: uuid }), z.strictObject({ kind: z.literal("assistant") })]), input), me = await this.who(ctx);
     if (body.kind === "assistant") return this.patch(ctx, id, { assistant: true });
     if (body.kind === "agent") {
-      this.core.atomic(db => { this.member(db, id, me, true); }, this.fence(ctx));
+      this.core.atomic(db => { this.memberAgentAddition(db, id, me); }, this.fence(ctx));
       const permit = await this.core.groupExposure(body.id, null, this.core.groupContext(ctx));
       this.core.atomic((db, tx) => {
-        this.member(db, id, me, true); this.addAgentMember(db, tx, id, body.id, me);
+        this.memberAgentAddition(db, id, me); this.addAgentMember(db, tx, id, body.id, me);
         this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.agent-added", result: "completed", roomId: id, exposureId: body.id });
+        this.memberAgentAddition(db, id, me);
       }, { assertCurrent: () => { this.fence(ctx).assertCurrent(); permit.assertCurrent(); } });
       this.emit({ type: "member.changed", roomId: id, data: { roomId: id } }); return { ok: true };
     }
@@ -786,6 +787,24 @@ export class HubGroupRooms {
     }, this.fence(ctx));
     this.emit({ type: "room.changed", roomId: id, data: { roomId: id } });
     this.emit({ type: "member.changed", roomId: id, data: { roomId: id } }); return { ok: true };
+  }
+  /** Member authority is local to this room and never permits people, assistants or another owner's agents. */
+  private memberAgentAddition(db: DB, id: string, me: string): void {
+    const member = this.member(db, id, me), room = this.room(db, id);
+    if (room.assistant_for || (member.role !== "manager" && room.members_add_own_agents !== 1)) throw new HubRoomRefusal(403, "denied");
+    if (room.archived) throw new HubRoomRefusal(409, "archived");
+  }
+  async ownAgentCandidates(ctx: HubRequestContext, id: string, q: string) {
+    if (q.length > 64 || /[\u0000-\u001f\u007f]/.test(q)) throw new HubProtocolError("invalid");
+    const me = await this.who(ctx);
+    const check = () => this.core.atomic(db => this.memberAgentAddition(db, id, me), this.fence(ctx));
+    check();
+    return new HubCatalogService(this.core).withVisible(ctx, view => {
+      check();
+      return view.mine.filter(e => e.state === "published" && e.displayName.toLowerCase().startsWith(q.trim().toLowerCase()))
+        .slice(0, 20).map(e => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: true,
+          owner: { name: this.core.atomic(db => this.name(db, me)) } }));
+    });
   }
   /** C invitation acceptance calls this only inside its guarded exact-invitation transaction. */
   addAgentMember(db: DB, tx: HubTx, roomId: string, exposureId: string, owner: string): void {
