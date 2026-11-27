@@ -1,7 +1,7 @@
 // Shared, explicit contact-only scope editor. Identity/room/target are frozen from the ticket or existing row.
 import { html, useState } from "/assets/app-html.js";
 import { Dialog } from "/assets/ui-dialog.js";
-import { ca, contactPlatformLabel, contactPersonLabel, contactWhen } from "./contact-auth-strings.js";
+import { ca, contactPlatformLabel, contactPersonLabel } from "./contact-auth-strings.js";
 import { lang, register, t } from "/assets/app-i18n.js";
 import { dateTimeText } from "/assets/clock-text.js";
 import { personKey } from "./contact-auth-client.js";
@@ -26,6 +26,15 @@ register("cgrant", {
   },
 });
 const cg = (key) => t(`cgrant.${key}`);
+/**
+ * The expiry the selects describe, as one line: the long date and a 24-hour time in both languages, as the hour select
+ * (00–23) shows it, never "上午8:18" (#4581 follow-up). The editor's own format: it doesn't depend on the page's lang
+ * attribute, which the shared clock helpers read.
+ */
+const untilText = (v) => {
+  const d = new Date(v);
+  return Number.isFinite(d.getTime()) ? d.toLocaleString(lang() === "zh-TW" ? "zh-TW" : "en", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "";
+};
 const localTime = date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 const afterDays = days => localTime(new Date(Date.now() + days * 86400000));
 const pad2 = n => String(n).padStart(2, "0");
@@ -91,7 +100,7 @@ export function ContactGrantEditor({ people, source, target, verb, grant = null,
     <div class="contact-grant-when"><label class="field"><span>${ca("grantDuration")}</span><select class="input" value=${preset} disabled=${busy} onChange=${e => { const value = e.currentTarget.value; setPreset(value); if (value !== "custom") setUntil(afterDays(Number(value))); }}>
       ${[1, 7, 30].map(n => html`<option value=${String(n)}>${n === 1 ? ca("grantOneDay") : ca("grantDays", n)}</option>`)}<option value="custom">${ca("grantCustom")}</option></select></label>
       <div class="field"><span>${ca("alsoAllowUntil")}</span><${UntilPicker} value=${until} disabled=${busy} onChange=${v => { setPreset("custom"); setUntil(v); }} /></div></div>
-    ${validUntil ? html`<p class="note contact-grant-expiry">${ca("grantExpires", contactWhen(until))}</p>` : null}
+    ${validUntil ? html`<p class="note contact-grant-expiry">${ca("grantExpires", untilText(until))}</p>` : null}
     <p class="note">${ca("grantZone", Intl.DateTimeFormat().resolvedOptions().timeZone)}</p>
     <details open=${grant?.remainingUses === 0}><summary>${ca("grantAdvanced")}</summary><label class="field"><span>${ca("alsoAllowUses")}</span><input class="input" type="number" min="1" max="10000" inputmode="numeric" value=${uses} disabled=${busy} onInput=${e => setUses(e.currentTarget.value)} /></label></details>
     ${!validUntil ? html`<p class="err">${ca("grantFutureExpiry")}</p>` : !validUses ? html`<p class="err">${ca("grantValidUses")}</p>` : null}
