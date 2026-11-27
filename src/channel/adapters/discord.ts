@@ -548,7 +548,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       // A human author on a system event (for example a thread title) is not
       // proof of authored consent. Keep ordinary routing separate from receipts.
       const humanOrigin = msg.system === false && (msg.type === MessageType.Default || msg.type === MessageType.Reply)
-        ? nativeHumanOrigin("discord", this.id, userId, username, msg.author.bot, messageId) : undefined;
+        ? nativeHumanOrigin("discord", this.id, userId, username, msg.author.bot, messageId, undefined, {kind:"guild",id:msg.guildId,roomId:msg.channelId}) : undefined;
       let text = msg.content;
 
       // Handle forwarded messages (messageSnapshots) and embeds.
@@ -788,7 +788,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           }
           this.emitFromClient(client, generation, "callback_query", {
             humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, interaction.user.username, interaction.user.bot, null,
-              { anchor: interaction.message.id, event: interaction.id }),
+              { anchor: interaction.message.id, event: interaction.id }, interaction.guildId?{kind:"guild",id:interaction.guildId,roomId:interaction.channelId??""}:undefined),
             callbackData: interaction.customId,
             chatId: interaction.guildId ? this.guildId : interaction.channelId,
             threadId: interaction.guildId ? interaction.channelId : undefined,
@@ -862,7 +862,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               guildId: interaction.guildId ?? undefined,
               userId: interaction.user.id,
               username,
-              humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, username, interaction.user.bot, null, { anchor: "", event: interaction.id }),
+              humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, username, interaction.user.bot, null, { anchor: "", event: interaction.id }, interaction.guildId?{kind:"guild",id:interaction.guildId,roomId:interaction.channelId??""}:undefined),
               text,
               respond: async (reply: string) => { try { const m = await interaction.editReply(reply); return m.id; } catch { return undefined; } },
             });
@@ -879,7 +879,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               guildId: interaction.guildId ?? undefined,
               userId: interaction.user.id,
               username,
-              humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, username, interaction.user.bot, null, { anchor: "", event: interaction.id }),
+              humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, username, interaction.user.bot, null, { anchor: "", event: interaction.id }, interaction.guildId?{kind:"guild",id:interaction.guildId,roomId:interaction.channelId??""}:undefined),
               options,
               respond: async (reply: string) => { try { return await this._editReplyLong(interaction, reply); } catch { return undefined; } },
               dismissResponse: async () => {

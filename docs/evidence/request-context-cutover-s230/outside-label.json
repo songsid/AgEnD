@@ -1,0 +1,65 @@
+{
+  "sourceCommit": "20d4937493868ff20c38326b0b7dfa02da52d3a4",
+  "scope": "Bake known outside requester and audience into the immutable relay payload before admission; keep approval message presentation free of wire metadata.",
+  "checks": {
+    "restored": {
+      "files": 6,
+      "passed": 155,
+      "failed": 0
+    },
+    "mutants": [
+      {
+        "mutation": "known-label-removed",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "approval-card-wire-leak",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "label-cap-removed",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "body-label-guessed",
+        "red": true,
+        "exit": 1
+      }
+    ],
+    "typecheckTests": "passed",
+    "gitleaks": "passed; no leaks",
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "Known guest, Restricted and Free room scopes keep actor, ingress, original and return audiences, with authority none, in an escaped canonical header.",
+    "The actual relay, hold, Continue and onward D1 retain the label and hash the complete admitted payload. No lifetime origin is read or copied.",
+    "The existing approval card retains the original message body; stripping requires the exact validated context prefix. Header-looking body text is preserved.",
+    "Both header dialects count label and envelope overhead toward the assembled cap.",
+    "Component proof only. Production assembly and full mode remain unfinished; no live activation."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "src/request-contact-gate.ts",
+      "sha256": "e766ccaa482c6976bea588485e774d82af8c640c3c7e6fc856f7ccc100e59fef"
+    },
+    {
+      "path": "src/request-context-outside-label.ts",
+      "sha256": "07f7f0f61733327bce65469d889b35c395f71bc47f59e1268abeab4b6b31e1d4"
+    },
+    {
+      "path": "src/request-context-relay.ts",
+      "sha256": "a0633b8291557296e8d4a1ad853f8643830fedd26450e6ca9ca4a8a08fca17da"
+    },
+    {
+      "path": "tests/request-context-outside-label-s230.test.ts",
+      "sha256": "39efdce46a48680cb09909a63ef91bb98209b07db94218e34a152ae2f0e3bd54"
+    },
+    {
+      "path": "tests/request-context-relay-s232.test.ts",
+      "sha256": "c2e911131bd47cd9c9444af130e985b9c33ea767a2442689a919aa58bb90bb80"
+    }
+  ]
+}

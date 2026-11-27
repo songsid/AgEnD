@@ -556,7 +556,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
           timestamp: new Date(msg.date * 1000),
           isBotMessage: msg.from?.is_bot ?? false,
           humanOriginalBody: text,
-          humanOrigin: nativeHumanOrigin("telegram", this.id, String(userId), msg.from?.username, msg.from?.is_bot, messageId),
+          humanOrigin: nativeHumanOrigin("telegram", this.id, String(userId), msg.from?.username, msg.from?.is_bot, messageId, undefined, {kind:msg.chat.type==="private"?"user":"group",id:msg.chat.type==="private"?String(userId):String(msg.chat.id),roomId:String(msg.chat.id)}),
         });
         return; // Don't call next — we handled it
       }
@@ -615,7 +615,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         timestamp: new Date(msg.date * 1000),
         isBotMessage: msg.from?.is_bot ?? false,
         humanOriginalBody: text,
-        humanOrigin: nativeHumanOrigin("telegram", this.id, String(userId), msg.from?.username, msg.from?.is_bot, messageId),
+        humanOrigin: nativeHumanOrigin("telegram", this.id, String(userId), msg.from?.username, msg.from?.is_bot, messageId, undefined, {kind:msg.chat.type==="private"?"user":"group",id:msg.chat.type==="private"?String(userId):String(msg.chat.id),roomId:String(msg.chat.id)}),
         attachments: attachments.length > 0 ? attachments : undefined,
         replyTo: msg.reply_to_message?.message_id != null
           ? String(msg.reply_to_message.message_id)
@@ -652,7 +652,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         userId: String(ctx.callbackQuery.from.id),
         username: ctx.callbackQuery.from.username ?? ctx.callbackQuery.from.first_name,
         humanOrigin: nativeHumanOrigin("telegram", this.id, String(ctx.callbackQuery.from.id), ctx.callbackQuery.from.username, ctx.callbackQuery.from.is_bot, null,
-          { anchor: String(ctx.callbackQuery.message?.message_id ?? ""), event: ctx.callbackQuery.id }),
+          { anchor: String(ctx.callbackQuery.message?.message_id ?? ""), event: ctx.callbackQuery.id }, ctx.callbackQuery.message?{kind:ctx.callbackQuery.message.chat.type==="private"?"user":"group",id:ctx.callbackQuery.message.chat.type==="private"?String(ctx.callbackQuery.from.id):String(ctx.callbackQuery.message.chat.id),roomId:String(ctx.callbackQuery.message.chat.id)}:undefined),
         ack: answer,
       });
     });

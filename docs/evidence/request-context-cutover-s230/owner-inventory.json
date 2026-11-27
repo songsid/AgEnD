@@ -1,0 +1,69 @@
+{
+  "sourceCommit": "da670db9a3bcc03908c3da45585ae257ac448a9b",
+  "scope": "Real daemon pane-idle proof and Fleet persistent-owner inventory; no relaunch/activation initiated.",
+  "checks": {
+    "neighbors": {
+      "files": 6,
+      "passed": 76,
+      "failed": 0
+    },
+    "postMutationRestoration": {
+      "files": 2,
+      "passed": 20,
+      "failed": 0
+    },
+    "typecheckTests": "passed",
+    "mutants": [
+      {
+        "mutation": "pane-idle-not-checked",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "late-handler-forgotten",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "roster-adopts-replacement",
+        "exit": 1,
+        "red": true
+      }
+    ],
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "requires actual held shared admission fence and exact process Fleet lease",
+    "captures owner before pane-write-lock await; reads actual authoritative pane idle",
+    "handler revision change invalidates even when work later finishes",
+    "does not adopt replaced daemon, IPC, changed config or respawn",
+    "closed original IPC after startup abort counts only with exact server retirement and process/window disappearance",
+    "durable drain, exec owners and transport readiness remain separate mandatory checks"
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "6705f9cdf2ad224509ad6bfe2b8068d51e4a2600f76baa4f51d97487ff33f581"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "073e60effbb428c638bcb784b6e22f340b12980c181c24a218cc71af322e18a3"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "2c3cdf06ab4fc4b40559c414ee8acece98939d875fc2b022161fb58a3e1c61e5"
+    },
+    {
+      "path": "src/request-context-retirement.ts",
+      "sha256": "5f377a7b910610d700daba2830fe7dfb9e186ee87f16fa2ea67bea99de13413f"
+    },
+    {
+      "path": "tests/request-context-boot-s230.test.ts",
+      "sha256": "29f6b7aadd155063963c857e6b9a8371a775ddfe69af7e755a27b802920936a0"
+    },
+    {
+      "path": "tests/request-context-retirement-s230.test.ts",
+      "sha256": "cdb90028638c05f77c2d7d4ad6d50ce4c19a2e7e218f4e46e6584208fbb3fa5d"
+    }
+  ]
+}

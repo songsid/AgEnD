@@ -51,3 +51,31 @@ it("delayed approval and a matching standing grant register expected answers onl
 it("directory bidi controls cannot reorder the visible requester label",()=>{
  const f=fixture(),context={...f.context,initiatingActor:{...f.context.initiatingActor,displayName:"Demo\u202eowner"}},lease=captureRequestContextCall({...f.lease.snapshot,context},()=>true),op={...f.operation(),admission:{coverage:"covered"as const,lease}},result=f.relay.admit(f.image(),op,()=>true),name=requestDeliveryView(f.box,result.deliveryId)!.view.displayName!;expect(name).not.toContain("\u202e");expect(name).toContain("202e");
 });
+
+it.each(["guest","restricted-room"]as const)("%s label survives the actual hold/Continue admission and onward D1",ingress=>{
+ const f=fixture(),id=randomUUID(),context:RequestContextV1={...f.context,ref:{version:1,contextId:id,rootContextId:id},ingress,initiatingActor:{kind:"person",platform:"discord",userId:"demo-guest",displayName:"Demo requester"},sourceAudience:{kind:"room",ref:randomUUID()},returnAudience:{kind:"web",ref:randomUUID()}},lease=captureRequestContextCall({...f.lease.snapshot,context},()=>true),op={...f.operation(),admission:{coverage:"covered"as const,lease}},input=f.image();
+ const manager={platform:"host"as const,adapterId:"host",userId:"operator",label:"Demo manager"};let ticket:any;
+ try{f.relay.admit(input,op,()=>true);}catch(e){if(!(e instanceof ContactHeldError))throw e;ticket=f.box.contactAuthorizations.get(e.result.authorization_id)!;}
+ expect(ticket).toBeTruthy();expect(ticket.message).toBe(input.payload.content);const gate=f.box.requestHubContactGate(f.host),snapshot=gate.snapshot(ticket.id);
+ expect(String(snapshot.image.delivery.payload.content)).toContain('"kind":"outside-request"');
+ gate.decide(ticket.id,{revision:ticket.revision,decision:"approve-once"},manager,f.box.contactAuthorizations.policy(ticket.target,ticket.targetGeneration).revision,snapshot.imageSha256);
+ const first=f.relay.admit(input,op,()=>true),next=f.relay.admit(f.image(),op,()=>true);
+ for(const result of [first,next]){const delivery=f.box.get(result.deliveryId)!;expect(delivery.payload.content).toContain('"authority":"none"');expect(delivery.payload.content).toContain('"ingress":"'+ingress+'"');expect(f.box.requestContextForDelivery(result.deliveryId)!.binding.payloadSha256).toBe(requestContextDigest(delivery.payload));}
+ expect(f.box.contactAuthorizations.origin("target")).toBeUndefined();
+});
+it("unknown Hub recovery creates its own card and local audience, and Continue never releases the earlier Hub root",()=>{
+ const f=fixture(),oldId=randomUUID(),oldContext={...f.context,ref:{version:1 as const,contextId:oldId,rootContextId:oldId}},oldLease=captureRequestContextCall({...f.lease.snapshot,context:oldContext},()=>true),oldInput=f.image(),gate=f.box.requestContactGate(f.host);
+ // An older Hub request's pending ticket must remain distinct from recovery's approval.
+ const oldPayload={...oldInput,sourceKey:oldInput.operationId,payload:{...oldInput.payload,content:labelHubRequest(oldContext,oldInput.payload.content,oldInput.payload.meta).content}},oldBinding={version:1 as const,operationId:oldInput.operationId,contextId:oldId,rootContextId:oldId,source:oldContext.source,target:{instance:"target",incarnation:"v1"},verb:"request_information",payloadSha256:requestContextDigest(oldPayload.payload)};
+ let oldTicket:any;try{gate.admit(oldPayload,oldContext,oldBinding);}catch(e){if(!(e instanceof ContactHeldError))throw e;oldTicket=f.box.contactAuthorizations.get(e.result.authorization_id)!;}
+ expect(oldTicket).toBeTruthy();
+ const id=randomUUID(),recovery:RequestContextV1={...f.context,ref:{version:1,contextId:id,rootContextId:id},rootEvidenceRef:`unproved-recovery:${id}`,initiatingActor:{kind:"unknown",reason:"unproved-recovery"},sourceAudience:{kind:"instance",ref:id},returnAudience:{kind:"instance",ref:id}},lease=captureRequestContextCall({...f.lease.snapshot,context:recovery},()=>true),op={...f.operation(),admission:{coverage:"covered"as const,lease}},input=f.image();let ticket:any;
+ try{f.relay.admit(input,op,()=>true);}catch(e){if(!(e instanceof ContactHeldError))throw e;ticket=f.box.contactAuthorizations.get(e.result.authorization_id)!;}
+ expect(ticket).toBeTruthy();expect(ticket.id).not.toBe(oldTicket.id);expect(ticket.message).toBe(input.payload.content);expect(f.box.listPending()).toHaveLength(0);
+ const held=f.box.requestHubContactGate(f.host).snapshot(ticket.id);expect(held.image.delivery.payload.content).toContain('"kind":"unproved-request"');expect(held.image.delivery.payload.content).not.toContain("On behalf of Hub");expect(held.image.delivery.payload.content).toContain("Keep the result local");
+ const manager={platform:"host"as const,adapterId:"host",userId:"operator",label:"Demo manager"};f.box.requestHubContactGate(f.host).decide(ticket.id,{revision:ticket.revision,decision:"approve-once"},manager,f.box.contactAuthorizations.policy(ticket.target,ticket.targetGeneration).revision,held.imageSha256);
+ expect(f.relay.admit(input,op,()=>true).deliveryId).toBeTruthy();expect(f.relay.admit(f.image(),op,()=>true).deliveryId).toBeTruthy();expect(f.box.contactAuthorizations.get(oldTicket.id)?.state).toBe("pending");
+ const image=structuredClone(held.image);image.delivery.operationId=randomUUID();image.delivery.sourceKey=randomUUID();const changedBinding={...image.binding,operationId:image.delivery.operationId};image.delivery.forwards=["earlier-owner-receipt"];
+ expect(()=>f.box.requestHubContactGate(f.host).admit(image.delivery,image.context,changedBinding)).toThrow(/forward/);
+ expect(()=>f.relay.admit(f.image(),op,()=>false)).toThrow(/current/);f.host.incarnation=()=>"replacement";expect(()=>f.relay.admit(f.image(),op,()=>true)).toThrow(/current/);
+});

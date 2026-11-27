@@ -1,3 +1,5 @@
+import {validateNativeExecContextReference,nativeExecContextInputKey,nativeExecContextReferenceDigest,type NativeExecContextReference} from "./native-exec-context.js";
+import {nativeExecInputRequestDigest,validateNativeExecInputClaim,validateNativeExecInputProof,type NativeExecInputClaim,type NativeExecInputProof} from "./native-exec-input.js";
 import type { NativePaneRecovery } from "./native-pane-recovery.js";
 /** Named Windows CLI conversations; independent of Linux/tmux instances. Local administrator only. */
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
@@ -6,10 +8,10 @@ import { dirname, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { maxAgentsPerMachine } from "./runtime-switches.js";
 import { getAgendHome } from "./paths.js";
-import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker.js";
+import { validWindowsAgentId, validWindowsDirectory, type NativeTaskInput } from "./windows-cli-worker.js";
 import { validNativeSessionId } from "./windows-cli-providers.js";
 import { validateRuntimePaneSnapshot, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
-import { windowsBridgeFor, type WindowsCliExecutor, type WindowsCliTask } from "./windows-cli.js";
+import { windowsBridgeFor, type WindowsCliExecutor, type WindowsCliTask, type WindowsRunOptions } from "./windows-cli.js";
 import { isNativeProviderId, nativeProvider, validateNativeModel, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
 
 export interface WindowsTurn { id: string; prompt: string; output: string; status: string; startedAt: number; finishedAt?: number; error?: string }
@@ -38,11 +40,27 @@ export class MachineSlotLimitError extends Error {
   }
 }
 export interface WindowsAgentPatch { name?: string; cwd?: string; description?: string; instructions?: string; sandbox?: WindowsAgent["sandbox"]; cli?: NativeProviderId; model?: string }
-export interface WindowsAgentSendOptions { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; credentialProfile?: string }
-interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<string, { agentId: string; digest: string }> }
+export interface WindowsAgentSendOptions extends Pick<WindowsRunOptions,"execInput"|"onInputWritten"> { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; credentialProfile?: string; requestContextInputKey?:string;requestContextReference?:Readonly<NativeExecContextReference> }
+interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<string, { agentId: string; digest: string; execInput?:Readonly<NativeExecInputClaim>;execOptionsSha256?:string;requestContextInputKey?:string;requestContextReference?:Readonly<NativeExecContextReference>;requestContextReferenceSha256?:string;execCompletion?:{confirmed:true;proof:Readonly<NativeExecInputProof>;resultSha256:string} }> }
+/** The preview and actual bridge invocation share one formatter; no second instruction/context composition. */
+export function windowsAgentExecutionTask(agent:Pick<WindowsAgent,"cli"|"cwd"|"sandbox"|"model"|"instructions">,requestId:string,prompt:string):NativeTaskInput {
+ return {requestId,cli:agent.cli,...(agent.model?{model:agent.model}:{}),cwd:agent.cwd,sandbox:agent.sandbox,
+  prompt:agent.instructions?`Agent instructions:\n${agent.instructions}\n\nUser task:\n${prompt}`:prompt};
+}
+const execOptionsDigest=(options:WindowsAgentSendOptions)=>createHash("sha256").update(JSON.stringify([options.context??null,options.credentialProfile??null])).digest("hex");
 const idPattern = /^[a-f0-9-]{36}$/i;
 const shortText = (value: unknown, limit: number): value is string => typeof value === "string" && value.length <= limit && !value.includes("\0");
 export class WindowsAgents {
+  /** Existing ownership journal only. No cached executor is adopted and no physical port can be invoked. */
+  static requestContextOwnersOnDisk(home:string):Array<{agentId:string;instance?:string;requestId:string;kind:"pane"|"exec"}>{
+    const unavailable=():never=>{throw Error("Read-only native ownership inspection cannot execute");};
+    const view=new WindowsAgents(home,{probe:unavailable,prepareWorkspace:unavailable,start:unavailable,get:unavailable,list:unavailable,hasActiveTask:unavailable,cancel:unavailable,releaseUnknown:unavailable,close:unavailable});
+    for(const agent of view.data.agents){
+      if(!agent||!idPattern.test(agent.id)||[agent.activeId,agent.paneLaunchId].some(id=>id!==undefined&&(typeof id!=="string"||!idPattern.test(id)))||agent.paneLaunchId!==undefined&&agent.activeId!==agent.paneLaunchId)throw Error("Native ownership journal is invalid");
+      if(agent.activeId&&!agent.paneLaunchId&&(!Object.hasOwn(view.data.requests,agent.activeId)||view.data.requests[agent.activeId]?.agentId!==agent.id||!agent.turns.some(turn=>turn.id===agent.activeId)))throw Error("Native ownership journal is incomplete");
+    }
+    return view.data.agents.filter(agent=>agent.activeId||agent.paneLaunchId).map(agent=>({agentId:agent.id,...(agent.fleet_instance?{instance:agent.fleet_instance}:{}),requestId:agent.activeId??agent.paneLaunchId!,kind:agent.paneLaunchId?"pane":"exec"}));
+  }
   private drainSerial=0;
   get requestContextDrainRevision():string{return String(this.drainSerial);}
   requestContextPaneLaunches(){return this.data.agents.filter(agent=>agent.paneLaunchId).map(agent=>({agentId:agent.id,launchId:agent.paneLaunchId!,instance:agent.fleet_instance,machineId:agent.machineId??"local"}));}
@@ -58,9 +76,28 @@ export class WindowsAgents {
       const value = JSON.parse(readFileSync(this.file, "utf8"));
       if (value.version !== 1 || !Array.isArray(value.agents) || !value.requests || typeof value.requests !== "object") throw new Error("Invalid Windows agent store");
       this.data = value;
+      for(const [id,request]of Object.entries(this.data.requests))if(request.execInput!==undefined){
+        if(validateNativeExecInputClaim(request.execInput).requestId!==id||typeof request.execOptionsSha256!=="string"||!/^[a-f0-9]{64}$/.test(request.execOptionsSha256)||request.requestContextInputKey!==undefined&&!/^[a-f0-9]{64}$/.test(request.requestContextInputKey))throw Error("Invalid native exec input identity");
+      }
+      for(const request of Object.values(this.data.requests))if(request.requestContextReference!==undefined){
+        const ref=validateNativeExecContextReference(request.requestContextReference);
+        if(!request.execInput||nativeExecContextInputKey(ref)!==request.requestContextInputKey||nativeExecContextReferenceDigest(ref)!==request.requestContextReferenceSha256)throw Error("Native context reference differs");
+      }
       // Version 1 profiles created before provider selection were all Codex conversations.
       for (const agent of this.data.agents) { agent.cli ??= "codex"; if (!isNativeProviderId(agent.cli)) throw new Error("Invalid Windows agent CLI"); }
+      for(const [requestId,row]of Object.entries(this.data.requests))if(row.execCompletion)this.requestExecCompletion(row.agentId,requestId);
     }
+  }
+  private completionDigest(requestId:string,turn:WindowsTurn,proof:Readonly<NativeExecInputProof>):string {
+    return createHash("sha256").update(JSON.stringify([requestId,turn.output,turn.status,turn.startedAt,turn.finishedAt??null,turn.error??null,proof])).digest("hex");
+  }
+  /** Called only inside the existing atomic request/turn journal write. No finishedAt-only upgrade. */
+  private retainExecCompletion(requestId:string,turn:WindowsTurn,task:WindowsCliTask):void {
+    const row=this.data.requests[requestId];if(!row?.execInput||task.outcomeConfirmed!==true||!task.execInputProof||!task.finishedAt||!["completed","failed","cancelled"].includes(task.status))return;
+    if(task.id!==requestId)throw Error("Native completion belongs to another run");
+    const proof=validateNativeExecInputProof(task.execInputProof,row.execInput),resultSha256=this.completionDigest(requestId,turn,proof);
+    if(row.execCompletion&&row.execCompletion.resultSha256!==resultSha256)throw Error("Native completion changed after confirmation");
+    row.execCompletion={confirmed:true,proof,resultSha256};
   }
   private change<T>(fn: () => T): T {
     const before = JSON.stringify(this.data);
@@ -81,6 +118,29 @@ export class WindowsAgents {
     return agent;
   }
   useExecutor(executor: WindowsCliExecutor): void { this.bridge = executor; }
+  /** Read only this conversation's immutable claim; a retry never mints or adopts another scope. */
+  requestExecInput(id:string,requestId:string,expectedInputKey?:string):Readonly<NativeExecInputClaim>|null {
+    this.find(id);const row=Object.hasOwn(this.data.requests,requestId)?this.data.requests[requestId]:null;
+    if(!row||row.agentId!==id||!row.execInput)return null;
+    if(expectedInputKey!==undefined&&row.requestContextInputKey!==expectedInputKey)throw Error("Native run belongs to another admitted input");
+    return validateNativeExecInputClaim(row.execInput);
+  }
+  requestExecContext(id:string,requestId:string):Readonly<NativeExecContextReference>|null {
+    this.find(id);const row=Object.hasOwn(this.data.requests,requestId)?this.data.requests[requestId]:null;
+    if(!row||row.agentId!==id||!row.requestContextReference)return null;
+    const ref=validateNativeExecContextReference(row.requestContextReference);
+    if(!row.execInput||nativeExecContextInputKey(ref)!==row.requestContextInputKey||nativeExecContextReferenceDigest(ref)!==row.requestContextReferenceSha256)throw Error("Native context reference differs");
+    return ref;
+  }
+  /** Restore only a positively proven, confirmed journal result. Visible terminal history alone grants nothing. */
+  requestExecCompletion(id:string,requestId:string):WindowsCliTask|null {
+    const agent=this.find(id),row=this.data.requests[requestId],turn=agent.turns.find(value=>value.id===requestId),saved=row?.execCompletion;
+    if(!row||row.agentId!==id||!saved||!turn)return null;
+    if(!row.execInput||saved.confirmed!==true||Object.keys(saved).sort().join(",")!=="confirmed,proof,resultSha256"||!turn.finishedAt||!["completed","failed","cancelled"].includes(turn.status))throw Error("Native completion is invalid");
+    const proof=validateNativeExecInputProof(saved.proof,row.execInput);
+    if(this.completionDigest(requestId,turn,proof)!==saved.resultSha256)throw Error("Native completion differs");
+    return {id:requestId,cli:agent.cli,cwd:agent.cwd,sandbox:agent.sandbox,status:turn.status as WindowsCliTask["status"],startedAt:turn.startedAt,finishedAt:turn.finishedAt,output:turn.output,...(turn.error?{error:turn.error}:{}),outcomeConfirmed:true,execInputProof:proof};
+  }
   get(id: string): WindowsAgent & { blocked: boolean } {
     // A paired runtime can finish while the coordinator is restarting. Reconcile its durable result before
     // interpreting a saved active turn as an orphan; provider session IDs still belong to the same machine.
@@ -88,7 +148,7 @@ export class WindowsAgents {
     if (saved.activeId && !saved.paneLaunchId && recovered?.finishedAt && recovered.outcomeConfirmed === true) {
       this.change(() => {
         const turn = saved.turns.find(row => row.id === saved.activeId);
-        if (turn) Object.assign(turn,{output:recovered.output,status:recovered.status,finishedAt:recovered.finishedAt,error:recovered.error});
+        if (turn) {Object.assign(turn,{output:recovered.output,status:recovered.status,finishedAt:recovered.finishedAt,error:recovered.error});this.retainExecCompletion(saved.activeId!,turn,recovered);}
         if (recovered.threadId) saved.threadId = recovered.threadId;
         delete saved.activeId;
       });
@@ -300,13 +360,21 @@ export class WindowsAgents {
       || typeof v.requestId !== "string" || !idPattern.test(v.requestId) || !shortText(v.prompt, 8000) || !v.prompt.trim()) throw new Error("Invalid Windows agent message");
     const requestId = v.requestId, prompt = v.prompt;
     const digest = createHash("sha256").update(prompt).digest("hex");
+    const execInput=options.execInput===undefined?undefined:validateNativeExecInputClaim(options.execInput);
+    if(options.requestContextInputKey!==undefined&&(!execInput||!/^[a-f0-9]{64}$/.test(options.requestContextInputKey)))throw Error("Native admitted input key is invalid");
+    const contextReference=options.requestContextReference===undefined?undefined:validateNativeExecContextReference(options.requestContextReference);
+    if(contextReference&&(!execInput||nativeExecContextInputKey(contextReference)!==options.requestContextInputKey))throw Error("Native context reference differs");
+    if(execInput&&!options.onInputWritten||!execInput&&options.onInputWritten)throw Error("Native exec input claim is unavailable");
     const old = Object.hasOwn(this.data.requests, requestId) ? this.data.requests[requestId] : null;
     if (old) {
+      if(JSON.stringify(old.execInput??null)!==JSON.stringify(execInput??null)||execInput&&(old.execOptionsSha256!==execOptionsDigest(options)||old.requestContextInputKey!==options.requestContextInputKey||JSON.stringify(old.requestContextReference??null)!==JSON.stringify(contextReference??null)))throw Error("requestId belongs to a different native input claim");
       if (old.agentId !== id || old.digest !== digest) throw new Error("requestId belongs to a different message");
       const turn = this.get(id).turns.find(t => t.id === requestId);
       if (!turn) throw new Error("This message was already sent; its visible history has expired");
       return turn;
     }
+    const executionTask=windowsAgentExecutionTask(agent,requestId,prompt);
+    if(execInput&&(execInput.requestId!==requestId||execInput.requestSha256!==nativeExecInputRequestDigest(executionTask,{...options,resumeSessionId:agent.threadId})))throw Error("Native exec input composition changed");
     if (agent.paneLaunchId) throw new Error("This Windows profile is reserved by its persistent pane");
     if (agent.activeId) throw new Error(this.get(id).blocked ? "Check Windows processes and unlock this agent before continuing" : "This Windows agent is still working");
     if (agent.paused) throw new Error("This Windows agent is paused; resume it before sending work");
@@ -317,15 +385,20 @@ export class WindowsAgents {
       agent.activeId = requestId;
       agent.turns.push({ id: requestId, prompt, output: "", status: "starting", startedAt: Date.now() });
       if (agent.turns.length > 10) agent.turns.shift();
-      this.data.requests[requestId] = { agentId: id, digest };
+      this.data.requests[requestId] = { agentId: id, digest,...(execInput?{execInput,execOptionsSha256:execOptionsDigest(options),...(options.requestContextInputKey?{requestContextInputKey:options.requestContextInputKey}:{}),...(contextReference?{requestContextReference:contextReference,requestContextReferenceSha256:nativeExecContextReferenceDigest(contextReference)}:{})}:{}) };
     }); } catch(error) { this.launching.delete(requestId); throw error; }
+    let inputWritten=false;
     try {
-      return this.bridge.start({ requestId, cli: agent.cli, ...(agent.model ? { model: agent.model } : {}), cwd: agent.cwd, sandbox: agent.sandbox,
-        prompt: agent.instructions ? `Agent instructions:\n${agent.instructions}\n\nUser task:\n${prompt}` : prompt }, authorized, {
+      return this.bridge.start(executionTask, authorized, {
         resumeSessionId: agent.threadId,
         ...(agent.machineId ? {machineId:agent.machineId} : {}),
         ...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),
         ...(options.credentialProfile ? {credentialProfile:options.credentialProfile} : {}),
+        ...(execInput?{execInput,onInputWritten:(value:import("./native-exec-input.js").NativeExecInputProof)=>{
+          const proof=validateNativeExecInputProof(value,execInput),current=this.find(id),request=this.data.requests[requestId];
+          if(current.activeId!==requestId||request?.agentId!==id||request.digest!==digest||JSON.stringify(request.execInput)!==JSON.stringify(execInput))throw Error("Native exec input owner changed");
+          if(inputWritten)return;inputWritten=true;options.onInputWritten!(proof);
+        }}:{}),
         onSettled: task => { try { this.change(() => {
           const current = this.find(id), turn = current.turns.find(t => t.id === requestId)!;
           Object.assign(turn, { output: task.output, status: task.status, finishedAt: task.finishedAt, error: task.error });
@@ -334,6 +407,7 @@ export class WindowsAgents {
             turn.status = "failed";
             turn.error = "CLI returned no conversation id. The next message will start a new conversation.";
           }
+          this.retainExecCompletion(requestId,turn,task);
           if (task.outcomeConfirmed) delete current.activeId;
         }); } catch (error) { options.onSettled?.({ ...task,status:"failed",error:`Could not save Windows conversation: ${error instanceof Error ? error.message : error}` }); throw error; }
           const saved = this.find(id).turns.find(turn => turn.id === requestId);

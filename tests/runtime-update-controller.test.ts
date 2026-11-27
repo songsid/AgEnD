@@ -139,6 +139,7 @@ it("registers ownership before any client starts and keeps an unmanaged pairing 
 it("downloads only the paired fixed endpoints, stages verified code and leaves a busy Runtime connected", async () => {
   const f = await fixture(), controller = (await f.open())!; await controller.start(); await controller.checkNow();
   expect(f.requests).toEqual(["/runtime/v1/bundle/windows.json", "/runtime/v1/bundle/windows.zip"]);
+  expect(f.clients[0].options.requestContextProtocol).toBe(1); // Advertise support; only the server's negotiated welcome enables it.
   expect(f.clients[0].prepare).toHaveBeenCalledOnce(); expect(f.clients[0].stops).toBe(0); expect(f.clients[0].online()).toBe(true);
   expect(f.selected()).toEqual(f.program); expect(f.children).toEqual([]); expect(f.journal().read().attempt).toBeUndefined();
   expect(f.reports.join(" ")).toMatch(/pending.*Waiting for idle/);

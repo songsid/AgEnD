@@ -145,3 +145,11 @@ describe("remote runtime joins the same Fleet agent and conversation flow", () =
     await expect(store.create({ name: "Unavailable remote", machineId: randomUUID(), cli: "codex", sandbox: "read-only" })).rejects.toThrow(/not enabled/);
   });
 });
+
+it("S-230 retires an idle bridge permanently without reviving old local or remote admission",async()=>{
+ const local=new FixtureBridge("inert"),start=vi.spyOn(local,"start");let idle=false,retired=false;
+ (local as any).idleForRequestContext=()=>idle;(local as any).retireForRequestContext=()=>{retired=true;};
+ const router=new RuntimeWindowsBridge({},()=>null,local);routers.push(router);
+ expect(()=>router.retireForRequestContext()).toThrow("not physically idle");expect(retired).toBe(false);idle=true;router.retireForRequestContext();
+ expect(retired).toBe(true);expect(()=>router.start({})).toThrow("bridge is retired");await expect(router.probe({force:true})).rejects.toThrow("bridge is retired");expect(start).not.toHaveBeenCalled();
+});

@@ -1,5 +1,10 @@
+import { RequestContextHelperAdmission } from "./request-context-helper.js";
+import {requestContextDigest} from "./request-context-store.js";
+import type { RequestContextAdmissionPort,RequestContextContinuation } from "./request-context-admission.js";
+import { RequestContextPendingWork } from "./request-context-pending-work.js";
+import { requestContextProcessGroupGone, type RequestContextLaunchRetirement, type RequestContextLaunchIdle } from "./request-context-retirement.js";
 import { ReplyDraft } from "./reply-draft.js";
-import {requireRequestContextPolicy,type RequestContextPolicyPort} from "./request-context-policy.js";
+import {requireRequestContextPolicy,requestContextInstructionMode,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { RequestContextReferenceMap } from "./request-context-fence.js";
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { managedClaudeBinding } from "./claude-credential-launch.js";
@@ -85,7 +90,7 @@ import { answerRemoteCard, type RemoteCardAction, type RemoteCardOutcome } from 
 import type { Pane, PaneHost, PaneObservation, PaneOutputEvent, PaneOutputEventName } from "./pane-port.js";
 import { tmuxPaneHost } from "./tmux-pane-host.js";
 import { buildFleetInstructions, INBOUND_HEADER_RULE } from "./instructions.js";
-import { formatHumanInboundMessage, prepareDeliveryWire, steerInboundEnvelope, BTW_INBOUND_PREFIX,
+import { formatHumanInboundMessage, prepareDeliveryWire, steerInboundEnvelope, btwInboundEnvelope,
   humanBodyHash, humanOwnerObjectId, type HumanReceiptAttempt, type HumanWriteMode, type HumanPositiveTag } from "./human-delivery-receipts.js";
 import type { FleetInstructionsParams } from "./instructions.js";
 import {
@@ -1534,6 +1539,13 @@ export class Daemon extends EventEmitter {
   }
   private guardian: ContextGuardian | null = null;
   private adapter: ChannelAdapter | null = null;
+  private requestContextAdmission?: RequestContextAdmissionPort;
+  /** Input fencing may attach to a legacy owner; it does not bind C or reinterpret an existing turn. */
+  setRequestContextAdmission(port: RequestContextAdmissionPort): void {
+    if (this.requestContextAdmission && this.requestContextAdmission !== port) throw Error("Request-context admission owner differs");
+    this.requestContextAdmission = port;
+  }
+  readonly requestContextPendingWork = new RequestContextPendingWork();
   private pendingIpcRequests = new Map<string, (msg: Record<string, unknown>) => void>();
   /**
    * Daemon-global request sequence. MCP request ids are only process-local:
@@ -2559,6 +2571,7 @@ export class Daemon extends EventEmitter {
       guardGeneration: turn?.generation ?? null, guardPhase: turn?.phase ?? null }, "Native pane tool operation failed");
   }
   nativePaneCurrent(): boolean { return this.nativePaneLifecycle?.current() ?? false; }
+  nativePaneRequestContextTransportCurrent():boolean{return this.nativePaneLifecycle?.requestContextTransportCurrent?.()===true;}
   private nativeEnterHold: { key: string; since: number; spawn: number; fence: number } | null = null;
   /** Per-launch attention for a native delivery whose bounded input attempts were refused or uncertain, including non-outbox input. */
   nativeDeliveryHold(): { key: string; since: number } | null {
@@ -2658,11 +2671,14 @@ export class Daemon extends EventEmitter {
   }
 
   /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
-  private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string } };
+  private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string }; newWork?: (reason: "fresh") => void; replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null; continuation?:(inputId:string|null,recovery?:{inputId:string;parent:RequestContextTurnSnapshot;current:()=>boolean})=>RequestContextContinuation|undefined };
   private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean };
   requestContextPolicy?:RequestContextPolicyPort;
   bindRequestContextPolicy(policy:RequestContextPolicyPort):void {if(this.requestContextPolicy||!this.requestContextLifecycle)throw Error("request-context policy requires its owned turn binding");this.requestContextPolicy=policy;}
   private readonly requestContextCalls = new RequestContextReferenceMap<string, RequestContextLocalCall>(call=>call.admission.coverage==="covered"?call.admission.lease.snapshot.context.ref.rootContextId:null,call=>`local-call:${call.id}`);
+  private readonly requestContextQueuedWork = new RequestContextReferenceMap<string,{root:string}>(row=>row.root,(_row,id)=>`queued-recovery:${id}`);
+  get requestContextQueuedWorkDrainRevision():string{return this.requestContextQueuedWork.revision;}
+  requestContextQueuedWorkDrainView(rootId:string){return this.requestContextQueuedWork.view(rootId);}
   private requestContextInterruptedLaunch: string | undefined;
   private requestContextLaunch(): string { return JSON.stringify([this.bootId, this.spawnGeneration, this.nativePaneLifecycle?.snapshot?.()?.launchId ?? null]); }
   /** First local owned hop only. No lookup at a later Fleet receipt may retag this call. */
@@ -2676,9 +2692,19 @@ export class Daemon extends EventEmitter {
       ? { coverage: "covered" as const, lease: captureRequestContextCall(snapshot, captured => this.requestContextTurnCurrent(captured)) }
       : { coverage: "not-covered" as const, reason };
     const call: RequestContextLocalCall = Object.freeze({ id: randomUUID(), admission: Object.freeze(admission),
+      ...(admission.coverage==="covered"?{replyRoute:this.captureRequestContextReplyRoute(admission.lease.snapshot)}:{}),
       current: () => !this.deliveryWritesStopping && this.requestContextLaunch() === launch
         && (admission.coverage !== "covered" || admission.lease.current()) });
     this.requestContextCalls.set(call.id, call); return call;
+  }
+  /** Bind the original call to a delivered target, with the original human admission rechecked at commit. */
+  private captureRequestContextReplyRoute(snapshot:RequestContextTurnSnapshot):import("./turn-reply-guard.js").TurnReplyRouteLease|undefined {
+    const route=this.turnReplyGuard?.captureReplyRoute(snapshot.token);if(!route)return;
+    const current=()=>{
+      try{return route.current()&&this.requestContextTurnCurrent(snapshot)
+        &&requestContextDigest(this.requestContextLifecycle?.replyTarget?.(snapshot))===requestContextDigest(route.target);}catch{return false;}
+    };
+    return current()?Object.freeze({...route,current}):undefined;
   }
   /** Internal Fleet accessor, paired with the current daemon/IPC connection; returns original scope or nothing. */
   requestContextCall(callId: string): RequestContextLocalCall | null {
@@ -2699,15 +2725,150 @@ export class Daemon extends EventEmitter {
       this.ipcServer?.send(socket, { requestId: message.requestId, result: null, error: "Request context call admission is unavailable" });
     }
   }
-  setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }): void {
+  /** New replacement only; an old launch never acquires C by reseeding its counters. */
+  seedRequestContextReplacement(previous: { spawnGeneration: number; launchFenceEpoch: number }): void {
+    if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle
+      || ![previous.spawnGeneration, previous.launchFenceEpoch].every(n => Number.isSafeInteger(n) && n >= 0 && n < Number.MAX_SAFE_INTEGER)) {
+      throw Error("Request-context replacement must be prepared before startup");
+    }
+    this.spawnGeneration = previous.spawnGeneration + 1;
+    this.launchFenceEpoch = previous.launchFenceEpoch + 1;
+  }
+  /** Read-only first-On inventory. Idle alone is never a legacy-work drain proof. */
+  requestContextLaunchObservation() {
+    return Object.freeze({ daemonBootId: this.bootId, spawnGeneration: this.spawnGeneration,
+      launchFenceEpoch: this.launchFenceEpoch, observation: this.getWorkingStateObservation(),
+      pendingCalls: this.requestContextPendingWork.count(this.name), responseWaiters: this.pendingIpcRequests.size,
+      paneWriteBusy: this.paneWriteLock.isBusy, queuedInputs: this.pasteQueueDepth,
+      transcriptOpen: this.transcriptTurns.openSince() !== null,
+      starting: this.spawning, stopping: this.deliveryWritesStopping || this.startupAborted,
+      replacementRequired: !this.requestContextLifecycle || this.requestContextInterruptedLaunch === this.requestContextLaunch() });
+  }
+  private requestContextHelper?:RequestContextHelperAdmission;
+  private requestContextStartupResources?: {
+    pending:number; unknown:boolean;
+    windows:Array<{session:string;window:string;pid:number}>;
+    ipc:Set<IpcServer>;
+    native:Array<{owner:NativePaneLifecycle;identity:string}>;
+  };
+  /** Candidate-only physical resource receipt, installed before startup. Used even when startup rejects.
+   * No stop result, timeout, removed metadata or empty supervisor map proves retirement.
+   */
+  prepareRequestContextStartupRetirement():{retired():Promise<boolean>}{
+    if(this.tmux||this.ipcServer||this.nativePaneLifecycle||this.requestContextStartupResources)throw Error("Request startup retirement must precede launch");
+    const resources={pending:0,unknown:false,windows:[] as Array<{session:string;window:string;pid:number}>,ipc:new Set<IpcServer>(),native:[] as Array<{owner:NativePaneLifecycle;identity:string}>};
+    this.requestContextStartupResources=resources;
+    return Object.freeze({retired:async()=>{
+      try{
+        if(this.requestContextStartupResources!==resources||!this.startupAborted&&!this.deliveryWritesStopping||this.spawning
+          ||resources.pending||resources.unknown||[...resources.ipc].some(ipc=>!ipc.retired()))return false;
+        for(const row of resources.native){const snapshot=row.owner.snapshot?.();
+          if(!snapshot||snapshot.state!=="exited"||JSON.stringify([snapshot.hostBootId,snapshot.paneId,snapshot.launchId,snapshot.agentId,snapshot.instance])!==row.identity)return false;
+        }
+        for(const row of resources.windows){
+          const windows=await TmuxManager.listWindowsStrict(row.session);
+          if(resources.pending||resources.unknown||windows.some(window=>window.id===row.window)||!requestContextProcessGroupGone(row.pid))return false;
+        }
+        return this.requestContextStartupResources===resources&&!resources.pending&&!resources.unknown&&[...resources.ipc].every(ipc=>ipc.retired());
+      }catch{return false;}
+    }});
+  }
+  requestContextHelperReadiness():Readonly<{version:1;generation:string;ready:boolean}>|null {
+    if(!this.requestContextLifecycle)return null;
+    if(this.nativePaneLifecycle){
+      const snapshot=this.nativePaneLifecycle.snapshot?.();if(!snapshot)return null;
+      // Output/sequence changes are observations, not a new admitting launch. Bind the actual owner tuple.
+      return {version:1,generation:JSON.stringify([this.bootId,this.spawnGeneration,this.launchFenceEpoch,snapshot.hostBootId,snapshot.paneId,snapshot.launchId,snapshot.agentId]),
+        ready:snapshot.state==="running"&&this.nativePaneLifecycle.requestContextTransportCurrent?.()===true};
+    }
+    return this.requestContextHelper?{version:1,generation:`${this.bootId}:${this.requestContextHelper.revision}`,ready:this.requestContextHelper.ready()}:null;
+  }
+  getRequestContextLaunchSpec():Readonly<{config:InstanceConfig;topicMode:boolean;kind:"fleet-topic"|"classic"}>{
+    const kind=this.runtimeIdentity?.kind;
+    if(kind!=="classic"&&kind!=="fleet-topic")throw Error("Request launch kind unavailable");
+    return Object.freeze({config:this.getConfigSnapshot(),topicMode:this.topicMode,kind});
+  }
+  /** First-On uses a real bounded pane read, not the cached idle badge; admission must already be fenced. */
+  async captureRequestContextIdle(): Promise<RequestContextLaunchIdle | null> {
+    const admission = this.requestContextAdmission;
+    if (!admission || admission.available()) return null;
+    // Capture before waiting for the write lock: a replaced/respawned owner cannot inherit this request.
+    const tmux = this.tmux, ipc = this.ipcServer, owner = JSON.stringify(this.interactionOwner());
+    const daemonBootId = this.bootId, spawnGeneration = this.spawnGeneration, launchFenceEpoch = this.launchFenceEpoch, deliveryEpoch = this.deliveryEpoch;
+    const pendingRevision = this.requestContextPendingWork.revision, turn = this.turnReplyGuard.snapshot();
+    return this.paneWriteLock.run(async () => {
+      const stable = () => {
+        const observed = this.requestContextLaunchObservation(), now = this.turnReplyGuard.snapshot();
+        return this.requestContextAdmission === admission && !admission.available()
+          && this.tmux === tmux && this.ipcServer === ipc && JSON.stringify(this.interactionOwner()) === owner
+          && this.deliveryEpoch === deliveryEpoch && this.requestContextPendingWork.revision === pendingRevision
+          && observed.pendingCalls === 0 && observed.responseWaiters === 0 && observed.queuedInputs === 0
+          && !observed.transcriptOpen && !observed.starting && !observed.stopping && !this.runtimeMonitorsFrozen
+          && observed.observation.processStatus === "running" && observed.observation.executionState === "idle"
+          && (!this.backend?.backgroundWorkRunning || observed.observation.backgroundWork !== true)
+          && now?.generation === turn?.generation
+          && (!now || now.cancelledByUser || now.completionDelivered);
+      };
+      if (!tmux || !stable()) return null;
+      let pane: string;
+      try { pane = await tmux.capturePane(2000); } catch { return null; }
+      if (!stable() || !this.paneAuthoritativelyIdle(pane) || this.inputTransientInPane(pane)
+        || this.backend?.backgroundWorkRunning && this.backend.backgroundWorkRunning(pane) !== false) return null;
+      // The owning gate still checks its durable rows and producer revision. A late handler, queue, turn,
+      // IPC replacement or owner change invalidates this proof even if it later looks idle again.
+      return Object.freeze({ daemonBootId, spawnGeneration, launchFenceEpoch, deliveryEpoch,
+        current: () => !this.paneWriteLock.isBusy && stable() });
+    });
+  }
+
+  /** Capture the exact old resources BEFORE stop removes metadata; this proof never kills or signals anything. */
+  async captureRequestContextRetirement(): Promise<RequestContextLaunchRetirement> {
+    const tmux = this.tmux, windowId = tmux?.getWindowId(), native = this.nativePaneLifecycle, ipc = this.ipcServer;
+    const spawnGeneration = this.spawnGeneration, launchFenceEpoch = this.launchFenceEpoch, daemonBootId = this.bootId;
+    if (!tmux || !windowId) throw Error("Owned launch unavailable for retirement");
+    const owned = () => this.bootId === daemonBootId && this.spawnGeneration === spawnGeneration
+      && this.tmux === tmux && tmux.getWindowId() === windowId && this.nativePaneLifecycle === native
+      && (this.ipcServer === ipc || this.ipcServer === null && ipc?.retired() === true);
+    const captured = native?.snapshot?.();
+    const panePid = native ? null : await this.paneHost.getPanePid(this.tmuxSessionName, windowId);
+    if (!owned() || !native && (!panePid || !Number.isSafeInteger(panePid) || panePid <= 1)
+      || native && (!captured || captured.instance !== this.name || captured.paneId !== windowId)) throw Error("Owned launch changed during retirement capture");
+    return Object.freeze({ daemonBootId, spawnGeneration, launchFenceEpoch, windowId, panePid, retired: async () => {
+      try {
+        if (!owned() || ipc && !ipc.retired()) return false;
+        if (native) {
+          const now = native.snapshot?.();
+          return !!now && now.state === "exited" && (["hostBootId", "paneId", "launchId", "agentId", "instance"] as const).every(k => now[k] === captured![k]) && owned();
+        }
+        const windows = await TmuxManager.listWindowsStrict(this.tmuxSessionName);
+        return owned() && (!ipc || ipc.retired()) && !windows.some(w => w.id === windowId) && requestContextProcessGroupGone(panePid!);
+      } catch { return false; }
+    } });
+  }
+  setRequestContextLocalLifecycle(turns: RequestContextLocalTurns, identity: () => { incarnation: string; workGeneration: string }, newWork?: (reason: "fresh") => void, replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null,continuation?:NonNullable<Daemon["requestContextLifecycle"]>["continuation"]): void {
     if (this.tmux || this.ipcServer || this.requestContextLifecycle || this.nativePaneLifecycle && !this.nativePaneLifecycle.requestContextAvailable?.()) throw Error("Request context must be bound before a supported daemon startup");
     this.requestContextCalls.installRegistration(turns.registrationGate??undefined);
-    this.requestContextLifecycle = { turns, identity };
+    this.requestContextQueuedWork.installRegistration(turns.registrationGate??undefined);
+    this.requestContextHelper=new RequestContextHelperAdmission();
+    this.requestContextLifecycle = { turns, identity, newWork, replyTarget,continuation };
+  }
+  /** Authoritative fresh-launch boundary only; session discovery and a merely written clear command do not prove it. */
+  private requestContextNewWork(reason: "fresh"): void {
+    const lifecycle = this.requestContextLifecycle;
+    if (!lifecycle?.newWork) return;
+    const owner = this.requestContextOwner(), previous = owner ? lifecycle.turns.current(owner) : null;
+    lifecycle.newWork(reason);
+    if (owner && previous) lifecycle.turns.ended(previous, owner);
+    this.requestContextWrite = undefined;
   }
   private requestContextOwner(): RequestContextRuntimeOwner | null {
     const lifecycle = this.requestContextLifecycle;
     return lifecycle ? { ...lifecycle.identity(), instance: this.name, daemonBootId: this.bootId,
       spawnGeneration: this.spawnGeneration, launchFenceEpoch: this.launchFenceEpoch, deliveryEpoch: this.deliveryEpoch } : null;
+  }
+  /** Trusted installer/resolver observation only; no turn token or authority is granted. */
+  captureRequestContextOwner():Readonly<RequestContextRuntimeOwner>|null {
+    const owner=this.requestContextOwner();return owner?Object.freeze(owner):null;
   }
   requestContextTurnSnapshot(): RequestContextTurnSnapshot | null {
     const owner = this.requestContextOwner();
@@ -2736,6 +2897,7 @@ export class Daemon extends EventEmitter {
       const endAnchor = !!humanId && /^[A-Za-z0-9_-]+$/.test(humanId) && text.split("\n").some(line =>
         line.startsWith(`[hid:${humanId}]`) || line.startsWith(`[agend-human-id:${humanId}]`))
         || !!deliveryId && text.startsWith(`[agend-delivery-id:${deliveryId}]\n`)
+        || /^hub-input:[a-f0-9-]{36}$/.test(id) && /^\[agend-room-input:hub-room-[a-f0-9-]{36}\]\n/.test(text)
         || /^[A-Za-z0-9:_-]+$/.test(id) && text.startsWith(`[agend-request-input:${id}]\n`);
       this.requestContextWrite = { snapshot, text, at: Date.now(), ledger: new TranscriptTurnLedger(), endAnchor };
     }
@@ -2754,6 +2916,11 @@ export class Daemon extends EventEmitter {
   setNativePaneLifecycle(native: NativePaneLifecycle): void {
     if (this.tmux || this.ipcServer || this.nativePaneLifecycle || this.requestContextLifecycle && !native.requestContextAvailable?.()) throw Error("Native pane adapter must be bound before daemon startup with a supported request-context producer");
     this.nativePaneLifecycle = native; this.backend = native.backend; this.paneTransport = native.host; this.controlClient = native.observation;
+    if(this.requestContextStartupResources){
+      const snapshot=native.snapshot?.();
+      if(!snapshot)this.requestContextStartupResources.unknown=true;
+      else this.requestContextStartupResources.native.push({owner:native,identity:JSON.stringify([snapshot.hostBootId,snapshot.paneId,snapshot.launchId,snapshot.agentId,snapshot.instance])});
+    }
   }
 
   constructor(
@@ -2879,6 +3046,7 @@ export class Daemon extends EventEmitter {
   fenceDeliveryWritesForStop(): void {
     if (this.deliveryWritesStopping) return;
     this.deliveryWritesStopping = true;
+    this.requestContextAdmission?.changed();
     this.deliveryEpoch++;
     this.replyDraft.reset();
     this.requestContextLifecycle?.turns.fence();
@@ -3575,6 +3743,12 @@ export class Daemon extends EventEmitter {
     // 1. IPC server — bridge between MCP server (Claude's child) and daemon
     const sockPath = join(this.instanceDir, "channel.sock");
     this.ipcServer = new IpcServer(sockPath, this.logger);
+    this.requestContextStartupResources?.ipc.add(this.ipcServer);
+    if(this.requestContextHelper)this.ipcServer.setMessageAdmission((message,socket)=>{
+      const admitted=this.requestContextHelper!.admit(message,socket);
+      if(!admitted)this.logger.warn({instance:this.name},"old_launch_helper_refused");
+      return admitted;
+    });
     // Forward IPC server errors as daemon events (prevents unhandled 'error' crash).
     // Guard: only forward post-listen errors — startup errors are handled by listen() rejection.
     let ipcListening = false;
@@ -3633,6 +3807,10 @@ export class Daemon extends EventEmitter {
         // bounded dialog/readiness scan as local startup. An already-running reattachment may be busy: do not
         // wait for that work to finish or inject a startup key into it.
         if (acquired.disposition === "reattached") {
+          // A surviving process predates this daemon's first-hop binding. Its queued helper bytes
+          // cannot prove a turn, even after a later input installs a new proof on that launch.
+          // Keep the one-contact approval fallback until a genuinely new process is launched.
+          if (this.requestContextLifecycle) this.requestContextInterruptedLaunch = this.requestContextLaunch();
           if (this.backend?.binaryName === "codex") {
             const native = this.nativePaneLifecycle, spawn = this.spawnGeneration, fence = this.launchFenceEpoch, attempt = this.launchAttempt;
             try { const pane = await acquired.pane.capturePane(); this.startupAdmission?.();
@@ -3697,6 +3875,7 @@ export class Daemon extends EventEmitter {
 
     }
     if (nativeDisposition) this.isNewSession = nativeDisposition === "fresh";
+    if (nativeDisposition === "fresh") this.requestContextNewWork("fresh");
     this.resetRoomConversation(nativeDisposition === "reattached");
     this.settleHubAnswerTurnAtLaunch(nativeDisposition === "reattached");
 
@@ -6109,6 +6288,7 @@ export class Daemon extends EventEmitter {
     this.logger.info("Stopping daemon instance");
     this.clearQuitRelaunchWatch();
     this.fenceDeliveryWritesForStop();
+    this.requestContextHelper?.revoke();
     this.turnReplyGuard.reset();
     this.clearReplyGuardConfirm();
     this.sawBlockedInput = false;
@@ -6128,6 +6308,7 @@ export class Daemon extends EventEmitter {
     if (this.nativePaneLifecycle) {
       this.healthCheckPaused = true; this.saveSessionId();
       await this.nativePaneLifecycle.release(options.nativePane ?? "detach");
+      await this.ipcServer?.close();
       try { unlinkSync(join(this.instanceDir, "daemon.pid")); } catch { /* metadata only */ }
       return;
     }
@@ -6304,13 +6485,16 @@ export class Daemon extends EventEmitter {
   /** Local system work: no user turn, channel reply target, wake or replay of an original request. */
   async deliverWorkingRecovery(content: string, delivery: { deliveryId: string; attemptNo: number }, admitted: () => boolean): Promise<void> {
     const tmux = this.tmux, owner = JSON.stringify(this.interactionOwner()), epoch = this.deliveryEpoch;
-    const current = (): boolean => this.tmux === tmux && owner === JSON.stringify(this.interactionOwner())
+    let begun = false;
+    const current = (): boolean => (begun || !this.requestContextAdmission || this.requestContextAdmission.available()) && this.tmux === tmux && owner === JSON.stringify(this.interactionOwner())
       && this.deliveryEpoch === epoch && !this.deliveryWritesStopping && !this.runtimeMonitorsFrozen
       && !this.spawning && !this.startupAborted && !this.isPaused && !this.healthCheckPaused
       && this.processStatus === "running" && this.pasteQueueDepth === 0
       && (this.workingRecoveryInputOwner === owner || this.instanceState === "idle" && !this.recoveryNativeWork)
       && this.recoveryBootSettled && !this.recoveryCancelled && !this.isSessionOomStopped() && admitted();
-    let begun = false;
+    const heldCurrent = () => this.tmux === tmux && owner === JSON.stringify(this.interactionOwner())
+      && this.deliveryEpoch === epoch && !this.deliveryWritesStopping && !this.startupAborted && admitted();
+    if (this.requestContextAdmission && !await this.requestContextAdmission.wait(heldCurrent)) return;
     try {
       await this.paneWriteLock.run(async () => {
         if (!tmux || !current()) return;
@@ -6501,7 +6685,9 @@ export class Daemon extends EventEmitter {
       const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
       void this.wake().then(() => {
         if (!current()) { this.deferDurableDelivery(meta, "native channel owner changed before pane submission"); return; }
-        this.pushChannelMessage(msg.content as string, meta, targetSession, deliveryEpoch);
+        const inputId=this.requestContextLifecycle&&isHubQuestionMeta(meta)&&typeof msg.request_context_input_id==="string"?msg.request_context_input_id:undefined;
+        if(inputId)this.pushChannelMessage(msg.content as string,meta,targetSession,deliveryEpoch,inputId);
+        else this.pushChannelMessage(msg.content as string,meta,targetSession,deliveryEpoch);
       }).catch(err => {
         this.deferDurableDelivery(meta, `target wake failed before pane submission: ${(err as Error).message}`);
         this.logger.error({ err: (err as Error).message }, "Wake failed for inbound delivery");
@@ -7047,7 +7233,9 @@ export class Daemon extends EventEmitter {
     // chat platform has no chat_id (its reply goes to the web chat through the
     // fleet's web-only sink), but it is a person waiting for an answer all the
     // same: the guard arms for it (alpha.2).
-    if (!turnExpectsPersonReply(meta)) {
+    const requestContext = this.requestContextTurnSnapshot();
+    const ownedReplyTarget=requestContext?this.requestContextLifecycle?.replyTarget?.(requestContext):null;
+    if (!turnExpectsPersonReply(meta) && !ownedReplyTarget) {
       this.logger.debug({
         source: meta.source || null,
         user: meta.user || null,
@@ -7067,13 +7255,13 @@ export class Daemon extends EventEmitter {
       threadId: meta.thread_id || undefined,
       messageId: meta.message_id || undefined,
       correlationId: meta.correlation_id || undefined,
+      ...(ownedReplyTarget??{}),
       inboundMarker,
       deliveredText,
       deliveredAt,
-    }, this.pendingWork.lastInboundTimestamp());
+    }, this.pendingWork.lastInboundTimestamp(), requestContext&&ownedReplyTarget?{binding:requestContext.token,target:ownedReplyTarget}:undefined);
     const armed = this.turnReplyGuard.snapshot()!;
     this.workingTurnDelivery = { generation: armed.generation, deliveryId: meta.delivery_id || null };
-    const requestContext = this.requestContextTurnSnapshot();
     this.workingTurnRequestContext = requestContext ? { generation: armed.generation, snapshot: requestContext } : null;
     this.publishWorkingState("turn_started");
     // #1209: persist the in-flight turn with a seam checkpoint. A marker
@@ -7757,6 +7945,12 @@ export class Daemon extends EventEmitter {
     const deliveryEpoch = this.deliveryEpoch;
     const parent = this.workingTurnRequestContext?.generation === turn.generation ? this.workingTurnRequestContext.snapshot : null;
     const recoveryInputId = `reply-recovery:${this.bootId}:${turn.generation}:${deliveryEpoch}`;
+    const registered=parent&&this.requestContextLifecycle?{root:parent.context.ref.rootContextId}:null;
+    if(registered){
+      if(this.requestContextQueuedWork.has(recoveryInputId))return;
+      try{this.requestContextQueuedWork.set(recoveryInputId,registered);}
+      catch{this.turnReplyGuard.complete(turn.generation);this.reportUnrecoveredReplyDrop(turn,"recovery_prompt_delivery_failed");return;}
+    }
     this.pasteQueueDepth++;
     this.pasteLock = this.pasteLock.then(async () => {
       try {
@@ -7793,7 +7987,7 @@ export class Daemon extends EventEmitter {
       if (!this.currentReplyRecovery(turn.generation, deliveryEpoch)) return;
       this.turnReplyGuard.complete(turn.generation);
       this.reportUnrecoveredReplyDrop(turn, "recovery_prompt_delivery_failed");
-    });
+    }).finally(()=>{if(registered&&this.requestContextQueuedWork.get(recoveryInputId)===registered)this.requestContextQueuedWork.delete(recoveryInputId);});
   }
 
   /** Recheck after queue waits and IO; cancellation must not become a failure notice. */
@@ -7894,6 +8088,9 @@ export class Daemon extends EventEmitter {
     logLabel: string,
     target?: TurnReplyTarget,
   ): Promise<boolean> {
+    // System proxy text has no originating call lease. Until its final-output generation proof is
+    // installed, it cannot borrow a live turn or lastChat; proven-parent model recovery uses C instead.
+    if(this.requestContextLifecycle)return Promise.resolve(false);
     const args: Record<string, unknown> = { text: body };
     const chatId = target?.chatId ?? this.lastChatId;
     const threadId = target?.threadId ?? this.lastThreadId;
@@ -8477,6 +8674,7 @@ export class Daemon extends EventEmitter {
     this.cancelCapacityNudge("the instance was stopped, paused or respawned");
     this.runtimeMonitorsFrozen = true;
     this.launchFenceEpoch++;
+    this.requestContextAdmission?.changed();
     this.interactionObservation.reset(this.interactionOwner());
     this.clearInteractionConfirmation();
     if (this.healthCheckTimer) { clearTimeout(this.healthCheckTimer); this.healthCheckTimer = null; }
@@ -8817,7 +9015,7 @@ export class Daemon extends EventEmitter {
           ? formatHumanInboundMessage(content, meta, this.agentMode(), presentation) : this.formatInboundMessage(content, meta);
     if (presentation?.compatibilityNotice) wire = withWhatsNew(wire, presentation.compatibilityNotice);
     if (kind === "steer") wire = Daemon.steerEnvelope(wire);
-    else if (kind === "btw") wire = BTW_INBOUND_PREFIX + wire;
+    else if (kind === "btw") wire = btwInboundEnvelope(wire, meta.delivery_id);
     return prepareDeliveryWire(wire, kind === "raw_paste");
   }
 
@@ -9037,28 +9235,67 @@ export class Daemon extends EventEmitter {
     this.pendingWork.recordInbound();
     this.recordRecentUserMessage(content, meta);
 
-    const formatted = BTW_INBOUND_PREFIX + this.formatInboundMessage(content, meta);
+    const formatted = btwInboundEnvelope(this.formatInboundMessage(content, meta), meta.delivery_id);
     const status = channelStatus(meta);
 
+    const durableAttempt = this.durableDeliveryAttempt(meta, content);
+    if (durableAttempt === false) {
+      this.deferDurableDelivery(meta, "invalid durable delivery attempt metadata");
+      return;
+    }
+
     this.steerLock = this.steerLock.then(async () => {
-      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); this.noteCancelledHuman(meta); return; }
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.deferDurableDelivery(meta, "delivery epoch changed before steer began");
+        this.noteCancelledHuman(meta);
+        return;
+      }
       await this.wake();
-      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); this.noteCancelledHuman(meta); return; }
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.deferDurableDelivery(meta, "delivery epoch changed while waking for steer");
+        this.noteCancelledHuman(meta);
+        return;
+      }
       const verdict: DeliveryVerdict = { reached: false, humanReceipt: this.humanReceiptAttempt(meta, formatted) };
       let delivered = false;
       try {
-        if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id,
-          ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}), verdict })) {
+        if (await this.deliverMessage(formatted, status, {
+          steer: true,
+          deliveryEpoch,
+          submissionId: meta.message_id,
+          ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}),
+          verdict,
+          durableAttempt: durableAttempt || undefined,
+        })) {
           delivered = true;
+          this.finishDurableSubmission(durableAttempt, verdict);
           this.markTurnStarted(meta, formatted, deliveryEpoch);
+        } else if (durableAttempt && verdict.paneWriteStarted) {
+          this.finishDurableDelivery(durableAttempt, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
+        } else if (durableAttempt && verdict.durableBeginCommitted) {
+          this.abortDurableDelivery(durableAttempt, `${verdict.phase ?? "delivery"}:${verdict.proof ?? "no-pane-write"}`);
+        } else if (durableAttempt) {
+          this.retryDurableDeliveryBeforeBegin(durableAttempt, `${verdict.phase ?? "delivery"}:${verdict.proof ?? "deferred"}`);
+        } else if (verdict.reached && this.isDeliveryEpochCurrent(deliveryEpoch)) {
+          // Legacy non-outbox path retains its existing failure surface.
+          this.reportCrossInstanceDeliveryFailure(meta, verdict);
         }
+      } catch (err) {
+        // The verdict goes along: a write that started and then threw is still a hand-off the CLI may consume (#1201).
+        if (durableAttempt && verdict.paneWriteStarted) this.finishDurableDelivery(durableAttempt, "uncertain", (err as Error).message, verdict);
+        else if (durableAttempt && verdict.durableBeginCommitted) this.abortDurableDelivery(durableAttempt, (err as Error).message);
+        else if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, (err as Error).message);
+        throw err;
       } finally {
         this.finishHumanReceipt(meta, verdict);
         if (!delivered && !verdict.paneWriteStarted && !this.isDeliveryEpochCurrent(deliveryEpoch)) this.noteCancelledHuman(meta);
       }
     }).catch(err => {
-      this.finishHumanReceipt(meta, { reached: false });
+      this.deferDurableDelivery(meta, `target wake/side-question failed before pane submission: ${(err as Error).message}`);
       this.logger.warn({ err: (err as Error).message }, "btw delivery error");
+      if (!durableAttempt && this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.reportCrossInstanceDeliveryFailure(meta, undefined, (err as Error).message);
+      }
     });
   }
 
@@ -9072,7 +9309,9 @@ export class Daemon extends EventEmitter {
     meta: Record<string, string>,
     _targetSession?: string,
     deliveryEpoch = this.deliveryEpoch,
+    requestContextInputId?:string,
   ): void {
+    if(requestContextInputId&&!/^hub-input:[a-f0-9-]{36}$/.test(requestContextInputId))throw Error("Hub request input id is unavailable");
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
       this.logger.info("Pending channel delivery dropped by user cancel");
       this.deferDurableDelivery(meta, "delivery epoch changed before queue admission");
@@ -9157,7 +9396,8 @@ export class Daemon extends EventEmitter {
           ? this.currentWhatsNew(this.pendingWhatsNew) : null;
         const body = whatsNew ? withWhatsNew(formatted, whatsNew.notice) : formatted;
         const roomMarker = roomContextInputMarker(meta);
-        const pasted = roomMarker ? `${roomMarker}\n${body}` : body;
+        const unmarked = roomMarker ? `${roomMarker}\n${body}` : body;
+        const pasted = requestContextInputId&&!roomMarker?`[agend-request-input:${requestContextInputId}]\n${unmarked}`:unmarked;
         const status = channelStatus(meta);
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
@@ -9189,6 +9429,7 @@ export class Daemon extends EventEmitter {
           sent = await this.deliverMessage(pasted, status, {
             deliveryEpoch,
             submissionId: meta.message_id,
+            ...(requestContextInputId?{requestContextInputId}:{}),
             ...(isHubQuestionMeta(meta) ? { hubQuestion: meta.correlation_id, hubContactLimit: meta.hub_contact_limit !== "off" } : {}),
             ...(meta.hub_room_context_generation ? { roomContextGeneration: meta.hub_room_context_generation } : {}),
             ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}),
@@ -9303,6 +9544,19 @@ export class Daemon extends EventEmitter {
     const cancelled = () => (opts?.deliveryEpoch !== undefined && !this.isDeliveryEpochCurrent(opts.deliveryEpoch))
       || (!!opts?.roomContextGeneration && opts.roomContextGeneration !== this.roomConversationGeneration());
     if (cancelled() || this.stormWindow?.isStopped()) return false;
+    const admittedReceiptId=opts?.humanMeta?.verification_id??opts?.humanVerificationId;
+    const admittedInputId=opts?.requestContextInputId??(admittedReceiptId?`human:${admittedReceiptId}`:opts?.durableAttempt?`delivery:${opts.durableAttempt.deliveryId}:${opts.durableAttempt.attemptNo}`:null);
+    // Captured once for this input, before waiting. An ended steer never turns into a fresh owner root.
+    const continuation=this.requestContextLifecycle?.continuation?.(admittedInputId,opts?.requestContextRecovery);
+    let heldOwner: string | undefined;
+    const admissionCurrent = () => !cancelled() && !this.deliveryWritesStopping && !this.startupAborted
+      && (heldOwner === undefined || heldOwner === JSON.stringify(this.interactionOwner()));
+    const waitAdmission = async () => {
+      const port = this.requestContextAdmission!;
+      if (!port.available(continuation)) heldOwner ??= JSON.stringify(this.interactionOwner());
+      return await port.wait(admissionCurrent,continuation) && admissionCurrent();
+    };
+    if (this.requestContextAdmission && !await waitAdmission()) return false;
     formatted = prepareDeliveryWire(formatted, opts?.preserveExactBytes);
 
     // Direct paths such as /steer, /btw, /raw and schedules do not pass the
@@ -9456,8 +9710,9 @@ export class Daemon extends EventEmitter {
     // what makes progress. The one under-lock wait below is explicitly passive:
     // it clears by itself and closes a repaint race immediately before paste.
     for (let round = 0; ; round++) {
-      const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog" | "spawn-started" | KiroPendingDelivery> => {
+      const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog" | "spawn-started" | "request-context-held" | KiroPendingDelivery> => {
         if (cancelled()) return false;
+        if (this.requestContextAdmission && !this.requestContextAdmission.available(continuation) && !verdict.paneWriteStarted && !verdict.durableBeginCommitted) return "request-context-held";
         // A spawn that started after the settle wait above invalidates the
         // window id and every readiness verdict since: the pane about to be
         // written may already belong to a replacement process. The same holds
@@ -9495,13 +9750,15 @@ export class Daemon extends EventEmitter {
         // same process, a pause/stop/respawn is not (launchFenceEpoch moves even
         // when a failed pause resumes the monitors).
         const writeCurrent = () => !cancelled()
+          && (!this.requestContextAdmission || admissionCurrent() && (this.requestContextAdmission.available(continuation) || !!verdict.paneWriteStarted || !!verdict.durableBeginCommitted))
           && !this.staleAuthIssue()
           && !this.deliveryWritesStopping
           && !this.runtimeMonitorsFrozen
           && !this.spawning
           && settleGeneration === this.spawnGeneration
           && settleFence === this.launchFenceEpoch;
-        const stale = () => (this.spawning || settleGeneration !== this.spawnGeneration ? "spawn-started" as const : false);
+        const stale = () => this.requestContextAdmission && !this.requestContextAdmission.available(continuation) && !verdict.paneWriteStarted && !verdict.durableBeginCommitted
+          ? "request-context-held" as const : this.spawning || settleGeneration !== this.spawnGeneration ? "spawn-started" as const : false;
         const residue = await this.clearRestoredInputDraft(handingOffToNativeQueue, writeCurrent);
         if (residue === "stale") return stale();
         if (residue !== "clear") return this.failDelivery(verdict, status, "input-residue", residue);
@@ -9542,9 +9799,15 @@ export class Daemon extends EventEmitter {
         if (written === "handoff-box-unread") return "dialog";
         // M-2267: the pane is in a tmux mode: nothing written — wait for readiness (it holds while the mode lasts), retry.
         if (written === "pane-in-mode") return "dialog";
+        // A publication fence before input keeps this attempt at its producer; never turn the wait into failure.
+        if (written === false && this.requestContextAdmission && !this.requestContextAdmission.available(continuation) && !verdict.paneWriteStarted && !verdict.durableBeginCommitted) return "request-context-held";
         // Fenced before its first write: not attempted — redo after a spawn, else drop without a ❌.
         return written === false && verdict.fenced ? stale() : written;
       });
+      if (outcome === "request-context-held") {
+        if (!this.requestContextAdmission || !await waitAdmission()) return false;
+        round--; continue; // Waiting on admission consumes neither a dialog retry nor any input intent.
+      }
       if (outcome === "spawn-started") {
         // The pane changed under this delivery: its queued paste must not land
         // in the replacement process's first screen. Redo the whole delivery
@@ -11519,10 +11782,22 @@ export class Daemon extends EventEmitter {
     verdict.roomInputQueued = handingOffToNativeQueue || steer;
     const humanMode: HumanWriteMode = rawPaste ? "raw_paste" : steer ? "steer"
       : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
-    if (humanAttempt && signature.unique && signature.value === humanReceiptMarker(humanAttempt.verificationId, humanDialect).slice(1, -1)
+    // Retained controls lead with the delivery marker for strict transcript/restart proof. That marker is
+    // usable for a human receipt only through the outbox's exact control/receipt/owner/wire join, never text lookup.
+    const controlMarker = durableAttempt ? `[agend-delivery-id:${durableAttempt.deliveryId}]` : null;
+    const ownsControlReceipt = () => !!humanAttempt && !!durableAttempt && !rawPaste
+      && this.deliveryOutbox?.ownsHumanControlReceipt?.(durableAttempt.deliveryId, this.bootId, durableAttempt.attemptNo,
+        humanAttempt.receiptId, humanAttempt.ownerKey, humanAttempt.expectedWireHash) === true;
+    const controlAlias = !!controlMarker && !!humanAttempt
+      && [`${controlMarker}\n${humanAttempt.marker}\n`,
+        Daemon.steerEnvelope(`${controlMarker}\n${humanAttempt.marker}\n`),
+        btwInboundEnvelope(`${controlMarker}\n${humanAttempt.marker}\n`, durableAttempt!.deliveryId)].some(prefix => formatted.startsWith(prefix))
+      && ownsControlReceipt();
+    if (controlAlias) { signature.value = controlMarker!.slice(1, -1); signature.takenMarker = controlMarker!; }
+    if (humanAttempt && signature.unique && (controlAlias || signature.value === humanReceiptMarker(humanAttempt.verificationId, humanDialect).slice(1, -1))
       && humanBodyHash(formatted) === humanAttempt.expectedWireHash) {
       signature.humanPositive = tag => {
-        if (!humanAttempt.current() || (stillCurrent && !stillCurrent())) return;
+        if (!humanAttempt.current() || (stillCurrent && !stillCurrent()) || controlAlias && !ownsControlReceipt()) return;
         humanAttempt.proof = {
           receipt_id: humanAttempt.receiptId, verification_id: humanAttempt.verificationId,
           wire_sha256: humanBodyHash(formatted), owner_key: humanAttempt.ownerKey,
@@ -11778,7 +12053,7 @@ export class Daemon extends EventEmitter {
         if (before?.mode !== "text") return this.failDelivery(verdict, status, "steer-paste", before === null ? "box-unread" : `box-still-${before.mode}`);
         if (!this.steerPasteIsOurs(before.pane, formatted)) return this.failDelivery(verdict, status, "steer-paste", "box-not-this-paste");
         const shown = this.backend?.readSteerComposerText?.(before.pane)?.replace(/\s+/g, " ").trim();
-        humanComposerOwned = !!humanAttempt && shown === (humanAttempt.marker ?? "[agend-human-id:" + humanAttempt.verificationId + "]");
+        humanComposerOwned = !!humanAttempt && shown === (controlAlias ? controlMarker : humanAttempt.marker ?? "[agend-human-id:" + humanAttempt.verificationId + "]");
         // …and so is the Enter: the key is sent only while the reading is still within it.
         steerEnterDeadline = deadline;
       }
@@ -12518,6 +12793,7 @@ export class Daemon extends EventEmitter {
     //    Grok cuts an echo to three rows, so the trailing message_id never shows after Enter; the marker always does.
     //    Placed after the strand checks: text of ours still in the box (or its collapsed paste) outranks it.
     if (signature.takenMarker && after.inputReadable && this.backend?.readTakenMarkers?.(pane).includes(signature.takenMarker)) {
+      signature.humanPositive?.("unique-id-pane");
       return this.submittedProof();
     }
 
@@ -12931,7 +13207,7 @@ export class Daemon extends EventEmitter {
       const timer = setTimeout(() => finish({ result: null, error: "Pane tool result is unconfirmed; inspect its operation before retrying" }), daemonBudgetMs(input.tool) + 1000);
       timer.unref?.();
       try {
-        call = lease.requestContext ? Object.freeze({ id: randomUUID(), admission: lease.requestContext, current }) : undefined;
+        call = lease.requestContext ? Object.freeze({ id: randomUUID(), admission: lease.requestContext, ...(lease.requestContext.coverage==="covered"?{replyRoute:this.captureRequestContextReplyRoute(lease.requestContext.lease.snapshot)}:{}), current }) : undefined;
         if (call) this.requestContextCalls.set(call.id, call);
         this.handleToolCall({ ...input, requestId: ++this.fleetRequestSeq }, undefined, {
           current,
@@ -12957,6 +13233,12 @@ export class Daemon extends EventEmitter {
   }
 
   private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }, originatingCall?: RequestContextLocalCall): void {
+    const finish = this.requestContextPendingWork?.begin(this.name);
+    try { Daemon.prototype.handleTrackedToolCall.call(this, msg, socket, peer, originatingCall, finish); }
+    catch (error) { finish?.(); throw error; }
+  }
+  private handleTrackedToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }, originatingCall?: RequestContextLocalCall, finish?: () => void): void {
+    const runLocal = <T>(work: () => Promise<T>): Promise<T> => this.requestContextPendingWork ? this.requestContextPendingWork.run(this.name, work) : work();
     const tool = msg.tool as string;
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number;
@@ -12981,6 +13263,7 @@ export class Daemon extends EventEmitter {
 
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
     const respond = (result: unknown, error?: string, errorCode?: string | number) => {
+      try {
       if (originatingCall && !originatingCall.current()) { result = null; error = `Tool outcome is unconfirmed. ${operationId ? `Inspect operation ${operationId}` : "Inspect the tool operation status"}; do not repeat it.`; }
       if (originatingCall) this.requestContextCalls.delete(originatingCall.id);
       // A message that verifiably went out stands down the dead-MCP proxy reply
@@ -13030,6 +13313,7 @@ export class Daemon extends EventEmitter {
       } else if (operationId) {
         this.emit("mcp_tool_response_written", { operationId, daemonBootId: this.bootId });
       }
+      } finally { finish?.(); }
     };
 
     const sendFleet = (message: Record<string, unknown>): void => {
@@ -13042,7 +13326,7 @@ export class Daemon extends EventEmitter {
       }
       this.broadcastFleetMessage(originatingCall ? { ...message, requestContextCallId: originatingCall.id, sourceDaemonBootId: this.bootId } : message);
     };
-    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,this.name,tool,args,originatingCall?.admission);}catch(error){respond(null,(error as Error).message);return;}
+    try{if(this.requestContextPolicy)requireRequestContextPolicy(this,this.name,tool,args,originatingCall?.admission,originatingCall?.replyRoute);}catch(error){respond(null,(error as Error).message);return;}
     if (this.requestContextLifecycle && !peer && !originatingCall || originatingCall && !originatingCall.current()) {
       respond(null, "Originating request context is unavailable"); return;
     }
@@ -13056,11 +13340,11 @@ export class Daemon extends EventEmitter {
 
     // Repo checkout — handled locally in daemon (no fleet-manager)
     if (tool === "checkout_repo") {
-      this.handleCheckoutRepo(args, respond);
+      void runLocal(() => this.handleCheckoutRepo(args, respond));
       return;
     }
     if (tool === "release_repo") {
-      this.handleReleaseRepo(args, respond);
+      void runLocal(() => this.handleReleaseRepo(args, respond));
       return;
     }
 
@@ -13111,7 +13395,7 @@ export class Daemon extends EventEmitter {
         });
         sendFleet({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
       });
-      void (async () => {
+      void runLocal(async () => {
         if (tool === "preview_web_appearance") {
           // The fleet builds the SVGs (whole, or in parts); they are written here, in the working directory.
           const first = await ask({ ...(args.modes !== undefined ? { modes: args.modes } : {}) });
@@ -13149,7 +13433,7 @@ export class Daemon extends EventEmitter {
           return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
         });
         reply(failed ? null : answer, failed);
-      })().catch((err: unknown) => reply(null, `${tool} failed: ${err instanceof Error ? err.message : "error"}`));
+      }).catch((err: unknown) => reply(null, `${tool} failed: ${err instanceof Error ? err.message : "error"}`));
       return;
     }
 
@@ -13174,10 +13458,10 @@ export class Daemon extends EventEmitter {
       });
       // files named in `attach` are read HERE, on the agent's side (its working directory, no symlink, size-capped),
       // and staged on the fleet in parts; the write itself then carries their ids. The fleet never opens a workspace path.
-      void (async () => {
+      void runLocal(async () => {
         const sent = await sendTaskWrite(args, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name }, askTask);
         if (sent.staging) respond(null, sent.error); else respond(sent.answer.result, sent.answer.error);
-      })().catch((err: unknown) => respond(null, `task failed: ${err instanceof Error ? err.message : "error"}`));
+      }).catch((err: unknown) => respond(null, `task failed: ${err instanceof Error ? err.message : "error"}`));
       return;
     }
 
@@ -13275,7 +13559,13 @@ export class Daemon extends EventEmitter {
     // Context-bound routing: reply/react/edit_message always use the daemon's last known context.
     // chat_id and thread_id are not exposed in the tool schema — daemon is solely responsible for routing.
     // Must run before IPC forwarding so topic-mode (fleet manager) also receives the correct chat_id.
-    if (["reply", "react", "edit_message"].includes(tool)) {
+    const ownedReplyRoute=this.requestContextPolicy&&["reply","react","edit_message"].includes(tool)?originatingCall?.replyRoute:undefined;
+    if(ownedReplyRoute){
+      if(!ownedReplyRoute.current()){respond(null,"Originating request context is no longer current");return;}
+      args.chat_id=ownedReplyRoute.target.chatId;
+      if(ownedReplyRoute.target.threadId)args.thread_id=ownedReplyRoute.target.threadId;else delete args.thread_id;
+    }
+    if (!ownedReplyRoute && ["reply", "react", "edit_message"].includes(tool)) {
       const adapters = this.messageBus.getAllAdapters();
       const isTopicMode = adapters.length === 0;
       if (!this.lastChatId && !isTopicMode) {
@@ -13326,16 +13616,17 @@ export class Daemon extends EventEmitter {
         // Preserve the exact adapter world that supplied the chat context. An
         // instance binding is only a fallback: persisted/runtime context can be
         // from a secondary world, and message ids are not portable across bots.
-        adapterId: this.lastAdapterId,
+        adapterId: ownedReplyRoute?ownedReplyRoute.target.adapterId:this.lastAdapterId,
       });
       return;
     }
 
     // Same rule as deliverDaemonReply: one adapter is unambiguous, several with
     // no bound world is a routing failure rather than a first-wins guess.
-    const adapter = this.lastAdapterId
-      ? this.messageBus.getAdapter(this.lastAdapterId) ?? (adapters.length === 1 ? adapters[0] : undefined)
-      : (adapters.length === 1 ? adapters[0] : undefined);
+    const selectedAdapter=ownedReplyRoute?ownedReplyRoute.target.adapterId:this.lastAdapterId;
+    const adapter = selectedAdapter
+      ? this.messageBus.getAdapter(selectedAdapter) ?? (!ownedReplyRoute&&adapters.length === 1 ? adapters[0] : undefined)
+      : (!ownedReplyRoute&&adapters.length === 1 ? adapters[0] : undefined);
     if (!adapter) {
       respond(null, "No channel world bound to this chat context — awaiting an inbound message to establish it");
       return;
@@ -13350,7 +13641,7 @@ export class Daemon extends EventEmitter {
       if (args.poll !== undefined && args.poll !== null) { respond(null, "reply: a poll needs AgEnD's fleet; send the question without poll"); return; }
       if (buttons) { routed = { ...args, text: `${String(args.text)}\n\n${replyButtonsFallbackText(buttons.buttons)}` }; delete routed.buttons; }
     }
-    if (!routeToolCall(adapter, tool, routed, this.lastThreadId, respond)) {
+    if (!routeToolCall(adapter, tool, routed, ownedReplyRoute?ownedReplyRoute.target.threadId:this.lastThreadId, respond, ownedReplyRoute?{beforeSend:()=>{if(!originatingCall?.current()||!ownedReplyRoute.current()||!selectedAdapter||this.messageBus.getAdapter(selectedAdapter)!==adapter)throw Error("Originating request context is no longer current");}}:{})) {
       respond(null, `Unknown tool: ${tool}`);
     }
   }
@@ -13457,6 +13748,8 @@ export class Daemon extends EventEmitter {
       : resolveToolSet(this.config, this.name);
     mcpEnv.AGEND_TOOL_SET = toolSet;
     if (this.classicRestriction) mcpEnv.AGEND_CLASSIC_ALLOWED_TOOLS = JSON.stringify(this.classicRestriction.allowedAgendTools);
+    const helperLaunch=this.requestContextHelper?.environment();
+    if(helperLaunch)mcpEnv.AGEND_LAUNCH_TOKEN=helperLaunch;
     // The dashboard features the person switched off: out of the tool menu from this start (the fleet refuses them
     // at once, whatever the menu still shows).
     const dashboardOff = dashboardFeaturesOff(dashboardAccessOf(this.config));
@@ -13484,6 +13777,8 @@ export class Daemon extends EventEmitter {
         }
       } catch { /* fallback to empty */ }
       instructions = buildFleetInstructions({
+        ...(requestContextInstructionMode(this.requestContextPolicy) !== null && this.requestContextLifecycle && (!this.nativePaneLifecycle || this.nativePaneLifecycle.requestContextAvailable?.() === true)
+          ? { requestContextPolicyInstalled: true } : {}),
         instanceName: this.name,
         taskBoard: !dashboardOff.includes("task_board"),
         workingDirectory: this.config.working_directory,
@@ -13500,6 +13795,8 @@ export class Daemon extends EventEmitter {
       });
     } else {
       instructions = buildFleetInstructions({
+        ...(requestContextInstructionMode(this.requestContextPolicy) !== null && this.requestContextLifecycle && (!this.nativePaneLifecycle || this.nativePaneLifecycle.requestContextAvailable?.() === true)
+          ? { requestContextPolicyInstalled: true } : {}),
         instanceName: this.name,
         taskBoard: !dashboardOff.includes("task_board"),
         workingDirectory: this.config.working_directory,
@@ -13630,6 +13927,7 @@ export class Daemon extends EventEmitter {
       this.humanPreparations?.clear(); this.humanReminderAttempts?.clear();
       this.cliOomObservation = null;
       this.spawnGeneration++;
+      this.requestContextAdmission?.changed();
       this.interactionObservation.reset(this.interactionOwner());
       this.clearInteractionConfirmation();
       this.inputTransientGuardGeneration = (this.backend?.getInputUnavailableTransients?.().length ?? 0) > 0
@@ -13980,6 +14278,7 @@ export class Daemon extends EventEmitter {
     } finally {
       this.endSpawn();
     }
+    if (!resumedSuccessfully) this.requestContextNewWork("fresh");
     return resumedSuccessfully;
   }
 
@@ -14353,6 +14652,7 @@ export class Daemon extends EventEmitter {
   async abortStartup(): Promise<void> {
     if (this.startupAborted) return;
     this.startupAborted = true;
+    this.requestContextHelper?.revoke();
     this.freezeRuntimeMonitors();
     this.pendingIpcRequests.clear();
     if (this.museUsageRelay) {
@@ -14710,6 +15010,7 @@ export class Daemon extends EventEmitter {
     this.assertSessionOomAdmission();
     admit();
     const launchFence = this.launchFenceEpoch;
+    const helperLaunch=this.requestContextHelper?.begin();
     const backendConfig = this.buildBackendConfig(true);
     if (this.classicRestrictionFailed) throw Error("Restricted room policy is unavailable");
 
@@ -14834,6 +15135,9 @@ export class Daemon extends EventEmitter {
     admit();
     let windowId: string;
     this.assertSessionOomAdmission();
+    const retirementResources=this.requestContextStartupResources;
+    if(retirementResources)retirementResources.pending++;
+    try {
     if (reuseWindow) {
       this.controlClient?.unregisterWindow(this.tmux!.getWindowId());
       await this.tmux!.respawnWindow(cmd, resolvedCwd, repairAdmission ? admit : undefined);
@@ -14845,7 +15149,15 @@ export class Daemon extends EventEmitter {
       windowId = await this.tmux!.createWindow(cmd, resolvedCwd, this.name);
       if (retired && retired !== windowId) this.controlClient?.unregisterWindow(retired);
     }
+    if(retirementResources){
+      const pid=await this.paneHost.getPanePid(this.tmuxSessionName,windowId);
+      if(!pid||!Number.isSafeInteger(pid)||pid<=1)throw Error("Request startup process identity unavailable");
+      retirementResources.windows.push({session:this.tmuxSessionName,window:windowId,pid});
+    }
+    }catch(error){if(retirementResources)retirementResources.unknown=true;throw error;}
+    finally{if(retirementResources)retirementResources.pending--;}
     admit();
+    if(helperLaunch)this.requestContextHelper!.confirm(helperLaunch);
     this.writeWindowId(windowId);
 
     // Enable remain-on-exit to capture exit codes on crash

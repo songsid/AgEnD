@@ -52,7 +52,10 @@ const warnedOpenParents = new Set<string>();
 export class IpcServer extends EventEmitter {
   private sockPath: string;
   private server: Server | null = null;
+  private closeCompleted = false;
+  private closePromise: Promise<void> | null = null;
   private clients: Set<Socket> = new Set();
+  private messageAdmission?: (message: unknown, socket: Socket) => boolean;
   private logger?: { warn(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void };
 
   constructor(sockPath: string, logger?: { warn(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void }) {
@@ -61,7 +64,16 @@ export class IpcServer extends EventEmitter {
     this.logger = logger;
   }
 
+  /** Installed by an owned daemon before listen; rejection happens before any message listener/call capture. */
+  setMessageAdmission(admit:(message:unknown,socket:Socket)=>boolean):void {
+    if(this.server||this.messageAdmission)throw Error("IPC admission must precede listen");
+    this.messageAdmission=admit;
+  }
+
   async listen(): Promise<void> {
+    if (this.closePromise) { await this.closePromise; if (!this.closeCompleted) throw Error("Previous IPC close is unconfirmed"); }
+    this.closePromise = null;
+    this.closeCompleted = false;
     // Fail fast if socket path exceeds OS limit (macOS: 104, Linux: 108)
     const pathLen = Buffer.byteLength(this.sockPath, "utf-8");
     if (pathLen >= UNIX_SOCKET_PATH_MAX) {
@@ -138,6 +150,11 @@ export class IpcServer extends EventEmitter {
   private acceptClient(socket: Socket): void {
     this.clients.add(socket);
     const parse = makeLineParser((msg) => {
+      if(socket.destroyed)return;
+      if(this.messageAdmission){
+        let accepted=false;try{accepted=this.messageAdmission(msg,socket);}catch{/* Unavailable admission refuses. */}
+        if(!accepted){socket.destroy();return;}
+      }
       this.emit("message", msg, socket);
     }, () => {
       this.logger?.warn("IPC buffer overflow, dropping client");
@@ -187,28 +204,22 @@ export class IpcServer extends EventEmitter {
   }
 
   async close(): Promise<void> {
-    for (const client of this.clients) {
-      client.destroy();
-    }
+    if (this.closePromise) return this.closePromise;
+    this.closeCompleted = false;
+    for (const client of this.clients) client.destroy();
     this.clients.clear();
-
-    return new Promise((resolve) => {
-      if (!this.server) {
-        resolve();
-        return;
-      }
-      this.server.close(() => {
-        try {
-          if (existsSync(this.sockPath)) {
-            unlinkSync(this.sockPath);
-          }
-        } catch {
-          // Best-effort socket file cleanup on shutdown
-        }
+    this.closePromise = new Promise((resolve) => {
+      if (!this.server) { this.closeCompleted = true; resolve(); return; }
+      this.server.close((error?: Error) => {
+        this.closeCompleted = !error || (error as NodeJS.ErrnoException).code === "ERR_SERVER_NOT_RUNNING";
+        if (!error) try { if (existsSync(this.sockPath)) unlinkSync(this.sockPath); } catch { /* refusal proof keeps the path visible */ }
         resolve();
       });
     });
+    return this.closePromise;
   }
+  /** Exact server object closed its listener/clients, and its socket path is no longer present. */
+  retired(): boolean { return this.closeCompleted && !this.server?.listening && this.clients.size === 0 && !existsSync(this.sockPath); }
 }
 
 export class IpcClient extends EventEmitter {

@@ -1,0 +1,120 @@
+{
+  "sourceCommit": "7cb49b85ab5b14f338f79edecd50ba7e8a8ebcb1",
+  "scope": "Separate pre-handoff and final Hub input currency across real adapter/IPC/pane stages, retaining existing room receipt proofs.",
+  "checks": {
+    "restored": {
+      "files": 5,
+      "passed": 174,
+      "failed": 0
+    },
+    "mutants": [
+      {
+        "mutation": "final-uses-dispatch-fence",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "missing-final-owner-proof",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "question-terminal-state-ignored",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "wrong-dispatch-selector",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "old-direct-link-reused",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "old-room-link-reused",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "closed-dispatch-reads-db",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "closed-direct-final-reads-db",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "closed-room-final-reads-db",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "room-consumed-marker-displaced",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "room-end-anchor-lost",
+        "red": true,
+        "exit": 1
+      }
+    ],
+    "typecheckTests": "passed",
+    "gitleaks": "passed; no leaks",
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "The direct representative becomes delivered after IPC acceptance; a room clears its dispatch-flight map. Neither earlier callback can authorize the later asynchronous pane write.",
+    "Each actual adapter supplies a separate final-input callback after durable intent, bound to the exact question/dispatch, source link, consent and agent lifecycle. Missing proof and answered/stale/replaced resources refuse.",
+    "The real signed representative, final resolver, B store and C bind succeed after the pre-send fence ends. Closed owners return false without touching a closed database or retaining dead references.",
+    "Room input keeps its original leading consumed marker and that marker also anchors C. Existing consumed-reader grammar stays valid.",
+    "The complete installer, controlled owner/transport relaunch and full mode remain unfinished. No live activation."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "4894a03a58bef0b6cf8a5717d21b84c4782f8692d4f8dda885af1d9767f4c622"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "0a13d37ed83456824c351e6b74e3dbb40dbf15b522641e916766f6c8b339829b"
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "sha256": "fb1b27d6a0954e54f3bd130c560deee60596e4b8e4a4cdc9be82a9e15264e74e"
+    },
+    {
+      "path": "src/hub/representative.ts",
+      "sha256": "b2479455f64c1ed44bc024291b229cc623005bff0179678cc5b94805e590f84e"
+    },
+    {
+      "path": "src/request-context-hub-resolver.ts",
+      "sha256": "e3c5c4fd80a16c746c0eea1f100349403102b0b72f64e4ae8770106a26330e8d"
+    },
+    {
+      "path": "src/request-hub-context.ts",
+      "sha256": "11fd63575dc82cf57b4c60c318f9f159626ee7512aaacef22d277b2a911afe30"
+    },
+    {
+      "path": "tests/hub-representative.test.ts",
+      "sha256": "5b8d0ec5b93a428d3edbbcdcea746d5ad252b9475dbfe9f90bd0e47a07d08b56"
+    },
+    {
+      "path": "tests/hub-room-ask-track-c.test.ts",
+      "sha256": "2f389bbb56af23d273218c323f0f4423deebd023b2832f6e259da1b85726a036"
+    },
+    {
+      "path": "tests/request-context-daemon-s223.test.ts",
+      "sha256": "e0ebb52193f36b569de7a83b2121aac7e3674e397c53c13abc48bf807bd23350"
+    },
+    {
+      "path": "tests/request-hub-context-s231.test.ts",
+      "sha256": "44e9b19760d443bb403b3aac13c868574ed52270c9ace780106781e0f5396d58"
+    }
+  ]
+}

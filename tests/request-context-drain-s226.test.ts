@@ -137,3 +137,14 @@ it("R1 a fresh coordinator resumes the durable Fleet's fence with a new epoch",(
 it("R1 no-context rows are no reference; malformed inventory stays unknown",()=>{
  const rows=new RequestContextReferenceMap<string,string|null|undefined>(v=>v,(_,id)=>id),root=randomUUID();rows.set("unbound",null);expect(rows.view(root)).toMatchObject({unknown:false,references:[]});rows.set("unreadable",undefined);expect(rows.view(root).unknown).toBe(true);
 });
+
+it("installation drain status is read-only and does not root-fence the continuations it observes",()=>{
+ const f=rig(),i=f.admit(),root=i.c.ref.rootContextId,d=f.drain(),p=participants(d),before=f.db.prepare("SELECT total_changes() AS n").get();
+ expect(d.inspectWork(root).blockers).toContain(`delivery:${i.result.delivery.deliveryId}`);
+ expect(f.db.prepare("SELECT total_changes() AS n").get()).toEqual(before);
+ expect(f.db.prepare("SELECT 1 FROM sqlite_master WHERE name='request_context_drain_v1'").get()).toBeUndefined();
+ f.terminal(i.result.delivery.deliveryId);expect(d.inspectWork(root).blockers).toEqual([]);
+ expect(()=>p.maps.get("turns")!.set("validated-return",root)).not.toThrow();
+ expect(d.inspectWork(root).blockers.some(b=>b.includes("validated-return"))).toBe(true);
+ expect(d.inspectWork(randomUUID()).blockers).toContain("context-unavailable");
+});

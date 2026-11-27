@@ -1,4 +1,5 @@
 import { HostMonitoringSettings } from "./settings-host-monitoring.js";
+import { RequestContextSettings } from "./request-context-control.js";
 import { SettingsBuildVersion } from "./settings-build-version.js";
 // #1408 step 3: the Settings panel (/settings[/<section>]) — agents, connections, ClassicBot rooms, general defaults,
 // the developer YAML. Behind the session gate (/ui/js/), loaded the first time it is opened.
@@ -465,7 +466,7 @@ export function SettingsPanel({ route, navKey }) {
         <div id="classicbot" class="s-anchor s-classic-area"><section class="card s-chat-classic"><h2 class="s-ap-group">ClassicBot</h2><${Classic} ctx=${ctx} search=${search} openDialog=${toDialog} /></section>
           <details class="s-ui-disclosure s-classic-defaults"><summary>${layoutText("classicDefaults")}</summary><div class="s-disclosure-body"><${General} key=${formKey} ctx=${ctx} part="classic" /></div></details></div>`
     : section === "web-dashboard" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="dashboard" /><${AppearanceSection} ...${you} part="dashboard" />`
-    : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
+    : section === "access" ? html`<${RequestContextSettings} /><${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
     // alpha.6 feedback (#2): the Hub cards have their own section (they were under Access & security, unfound by search).
     : section === "hub" ? html`<${HubSection} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />`
     : html`<${UpdateSection} /><${AdvancedSettings} ctx=${ctx} staged=${staged} formKey=${formKey} draftEpoch=${draftEpoch} />`;

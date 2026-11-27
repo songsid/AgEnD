@@ -106,6 +106,7 @@ describe("this browser", () => {
     const c = await card(view({ can_self_confirm: true }), { state: "verified", until: Date.now() + 3600_000 }, "en",
       { [`/api/settings/pending/${ID}/confirm`]: { __status: 202, ok: true, result: "pending_confirmation", pending_change: applying } });
     expect(c.text()).toContain("You are signed in as an admin, so you can apply it here.");
+    expect(c.text()).not.toContain("press Confirm on the card in General");
     expect(c.button("Authorize this browser"), "verified: nothing to authorize").toBe(undefined);
     fire(c.button("Apply now"), "click"); await settle(4);
     expect(c.calls.filter(([m, u]) => m === "POST" && u === `/api/settings/pending/${ID}/confirm`)).toHaveLength(1);
@@ -489,5 +490,25 @@ describe("a remote page: no host command; the change details are folded", () => 
     const c = await card(view({ confirmation: NOCHAT, summary: ["web.verified\\_authority.loopback\\_only: false → true"] }));
     const d = c.p.root.querySelector(".pending-card details.pending-details") as any;
     expect([d.querySelector("summary").textContent, d.open ?? false, d.querySelector("li").textContent]).toEqual(["Change details", false, "web.verified_authority.loopback_only: false → true"]);
+  });
+});
+
+describe("the irreversible request-context On consequence", () => {
+  const enable = (extra: Record<string, unknown> = {}) => view({ summary: ["Enable request approvals", "Downgrade warning"],
+    summary_i18n: [{ v: 1, fallback: "Enable request approvals", parts: [{ key: "requestContextControl.enableTitle", args: [] }] },
+      { v: 1, fallback: "Downgrade warning", parts: [{ key: "requestContextControl.floorBefore", args: [] }] }], ...extra });
+  it.each(["en", "zh-TW"])("keeps its plain warning above the collapsed details in %s", async lang => {
+    const c = await card(enable({ can_self_confirm: true }), { state: "verified", until: Date.now() + 3600_000 }, lang);
+    const warning=c.p.root.querySelector(".pending-card .notice.warn")!;
+    expect(warning?.textContent).toBe(lang === "en" ? "Once on, AgEnD can't go back to an older version." : "開啟後就不能再降回舊版 AgEnD。");
+    const details=c.p.root.querySelector("details.pending-details")!;expect(details.contains(warning)).toBe(false);
+    expect(c.text().indexOf(warning.textContent!)).toBeLessThan(c.text().indexOf(lang === "en" ? "Change details" : "變更明細"));
+    expect(c.text()).not.toContain(lang === "en" ? "press Confirm on the card in General" : "請到 Discord");
+    expect(c.button(lang === "en" ? "Apply now" : "立即套用")).toBeDefined();
+  });
+  it("does not label unrelated, Off, or mismatched summaries as irreversible On", async () => {
+    for (const value of [view(), enable({ section: "channel" }), enable({ summary: ["Different change", "Downgrade warning"] }), enable({ summary_i18n: [null, { v: 1, fallback: "Downgrade warning", parts: [{ key: "requestContextControl.floorBefore", args: [] }] }] })]) {
+      const c=await card(value);expect(c.p.root.querySelector(".pending-card .notice.warn")).toBe(null);
+    }
   });
 });

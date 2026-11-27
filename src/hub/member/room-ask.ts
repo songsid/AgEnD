@@ -330,6 +330,7 @@ export class HubRoomAskAdapter {
         ...(acceptedHubRequest?{acceptedHubRequest}:{}),
         ...(verifiedHubAsker ? {verifiedHubAsker,roomAskerMessageId:id,roomAskerDestination:Object.freeze(this.accepted(saved).destination)} : {}),
         text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, { maxContextBytes: this.options.maxCrossInstanceMessageBytes?.(), react: !!source.features?.has(HUB_ROOM_REACT_CAPABILITY) && typeof source.sendReact === "function", reactAck: !!source.features?.has(HUB_ROOM_REACT_ACK_CAPABILITY), fileLines }), stillCurrent: current,
+        inputCurrent:()=>{if(this.closed)return false;const latest=this.row(id);return !!latest&&["input","delivered"].includes(latest.state)&&this.read(latest).cid===saved.cid&&this.usable(source)&&this.current(saved)&&this.provenanceReady(saved);},
         beforeInput: async () => {
           if (!current() || this.row(id)?.state !== "dispatching" || this.options.updateHeld?.()) return false;
           // Durable first-input intent BEFORE handing bytes to the ordinary Fleet delivery path.

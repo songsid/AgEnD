@@ -43,22 +43,39 @@ export interface HumanOrigin {
   web_identity?: WebSessionIdentity;
 }
 
+export interface NativeHumanAdmissionBasis {readonly kind:"guild"|"group"|"user";readonly id:string;readonly roomId:string}
+const nativeIngress=new WeakMap<HumanOrigin,Readonly<NativeHumanAdmissionBasis>>();
+export function admittedNativeHumanIngress(origin:HumanOrigin):Readonly<NativeHumanAdmissionBasis>|null{return nativeIngress.get(origin)??null;}
+
 /** Called only by trusted SDK event producers, never on text/agent metadata. */
 export function nativeHumanOrigin(platform: "telegram" | "discord", adapterId: string, userId: string,
   username: string | undefined, isBot: boolean | undefined, messageId: string | null,
-  action?: { anchor: string; event: string }): HumanOrigin | undefined {
+  action?: { anchor: string; event: string }, admission?:NativeHumanAdmissionBasis): HumanOrigin | undefined {
   if (isBot !== false || !adapterId || !userId) return undefined;
-  return {
+  const origin:HumanOrigin={
     platform, adapter_id: adapterId, user_id: userId, username: username ?? null,
     platform_message_id: action ? null : messageId, ingress: action ? "action" : "message",
     ...(action ? { anchor_message_id: action.anchor, event_id: action.event } : {}),
   };
+  if(admission&&["guild","group","user"].includes(admission.kind)&&[admission.id,admission.roomId].every(value=>typeof value==="string"&&value.length>0&&value.length<=256&&!/[\x00-\x1f\x7f]/.test(value)))
+    nativeIngress.set(origin,Object.freeze({kind:admission.kind,id:admission.id,roomId:admission.roomId}));
+  return origin;
 }
 
+/** Ephemeral ingress evidence stays out of the strict stored origin and cannot be supplied by body/meta text. */
+const webIngress = new WeakMap<HumanOrigin, Readonly<{guest:boolean;sessionHandle?:string}>>();
+export function admittedHumanWebIngress(origin:HumanOrigin):Readonly<{guest:boolean;sessionHandle?:string}>|null {
+  return webIngress.get(origin)??null;
+}
 /** Platform actor fields stay null. Independent session recognition never grants web-verified authority. */
-export function webHumanOrigin(action = false, authority?: HumanAuthority, identity?: WebSessionIdentity): HumanOrigin {
-  return { platform: "web", adapter_id: null, user_id: null, username: null,
+export function webHumanOrigin(action = false, authority?: HumanAuthority, identity?: WebSessionIdentity, guest?: boolean, sessionHandle?: string): HumanOrigin {
+  const origin:HumanOrigin={ platform: "web", adapter_id: null, user_id: null, username: null,
     platform_message_id: null, ingress: action ? "action" : "web", ...(authority ? { authority } : {}), ...(identity ? { web_identity: { ...identity } } : {}) };
+  // The admitted route is not account recognition or authority, and never enters the receipt's origin JSON.
+  // An invalid/mismatched private fact supplies no scoped-ingress proof; legacy receipt rendering stays unchanged.
+  if(guest!==undefined&&(sessionHandle===undefined||/^[a-f0-9]{16}$/.test(sessionHandle)&&(!identity||identity.session_handle===sessionHandle)))
+    webIngress.set(origin,Object.freeze({guest,...(sessionHandle?{sessionHandle}:{})}));
+  return origin;
 }
 
 export type HumanWriteMode = "idle_submit" | "native_queue_handoff" | "steer" | "raw_paste";
@@ -119,8 +136,8 @@ export interface HumanReceiptRow {
   owner_key: string | null;
   input_kind: string;
   state: "queued" | "delivered" | "uncertain";
-  proof_tag: HumanPositiveTag | null;
-  proof_mode: HumanWriteMode | null;
+  proof_tag: HumanPositiveTag | "owned-native-exec" | null;
+  proof_mode: HumanWriteMode | "native_exec" | null;
   created_at: string;
   updated_at: string;
   delivered_at: string | null;
@@ -200,7 +217,8 @@ export function settleHumanReceipt(db: Database.Database, id: string, target: st
   proof: unknown, currentOwnerKey: string | null): boolean {
   return db.transaction(() => {
     const row = getHumanReceipt(db, id);
-    if (!row || row.target_instance !== target || row.owner_key !== ownerKey || row.state === "delivered") return false;
+    if (!row || row.target_instance !== target || row.owner_key !== ownerKey || row.state === "delivered"
+      || row.owner_key?.startsWith('["native-exec-v1",')) return false;
     let positive: HumanReceiptProof | null = null;
     if (isHumanPositiveProof(proof)) {
       const modeMatches = row.input_kind === "steer" || row.input_kind === "btw"
@@ -303,6 +321,12 @@ export function steerInboundEnvelope(inbound: string): string {
 }
 
 export const BTW_INBOUND_PREFIX = "[BTW — side question from the user. Answer it separately without changing or interrupting the CURRENT work.]\n";
+/** A retained side question keeps its durable marker leading for strict restart proof. Ordinary BTW bytes stay unchanged. */
+export function btwInboundEnvelope(inbound: string, deliveryId?: string): string {
+  const lead = deliveryId ? `[agend-delivery-id:${deliveryId}]\n` : null;
+  return lead && inbound.startsWith(lead) ? lead + BTW_INBOUND_PREFIX + inbound.slice(lead.length) : BTW_INBOUND_PREFIX + inbound;
+}
+
 
 /** One formatter for human wire bytes and their immutable evidence snapshot. */
 export function formatHumanInboundMessage(content: string, meta: Record<string, string>, mode: AgentMode, presentation: HumanPresentation = {}): string {

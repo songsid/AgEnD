@@ -1,5 +1,7 @@
 /** Exact channel destination captured when a human-facing turn is delivered. */
 export interface TurnReplyTarget {
+  /** Server-owned admitted browser destination; independent of account identity or authority. */
+  webRoute?: Readonly<{sessionHandle:string}>;
   adapterId?: string;
   chatId: string;
   threadId?: string;
@@ -76,7 +78,17 @@ export interface TurnReplySnapshot {
   lastBusyAt: number;
 }
 
+export interface TurnReplyRouteLease {
+  readonly binding:string;
+  readonly generation:number;
+  readonly target:Readonly<TurnReplyTarget>;
+  current():boolean;
+}
+function copyTarget(target:TurnReplyTarget):TurnReplyTarget {
+  return {...target,...(target.webRoute?{webRoute:Object.freeze({...target.webRoute})}:{})};
+}
 interface ActiveTurn {
+  scopedTarget?:Readonly<{binding:string;target:Readonly<TurnReplyTarget>}>;
   generation: number;
   phase: TurnReplyPhase;
   cancelledByUser: boolean;
@@ -133,7 +145,9 @@ export class TurnReplyGuard {
    */
   onComplete: (() => void) | undefined;
 
-  arm(target: TurnReplyTarget, ingressAt = Date.now()): number {
+  arm(target: TurnReplyTarget, ingressAt = Date.now(), scope?:Readonly<{binding:string;target:TurnReplyTarget}>): number {
+    target=copyTarget(target);
+    const scopedTarget=scope?Object.freeze({binding:scope.binding,target:Object.freeze(copyTarget(scope.target))}):undefined;
     if (!this.active || this.active.cancelledByUser) {
       const carried = this.pendingActivityAt >= ingressAt ? this.pendingActivityAt : 0;
       this.pendingActivityAt = 0;
@@ -141,6 +155,7 @@ export class TurnReplyGuard {
       this.pendingTool = null;
       this.active = {
         generation: ++this.generation,
+        scopedTarget,
         phase: "awaiting",
         cancelledByUser: false,
         target,
@@ -160,9 +175,20 @@ export class TurnReplyGuard {
     }
     this.pendingActivityAt = 0;
     this.pendingTool = null;
+    // An admin steer can add a completion obligation without changing the outside request's destination.
+    if(!scopedTarget||this.active.scopedTarget?.binding!==scopedTarget.binding)this.active.scopedTarget=scopedTarget;
     this.active.latestObligation++;
     this.active.target = target;
     return this.active.generation;
+  }
+
+  /** Capture only an actually delivered, current turn's owned route. Pre-arm evidence never authorises routing. */
+  captureReplyRoute(binding:string):TurnReplyRouteLease|null {
+    const active=this.active,route=active?.scopedTarget;
+    if(!active||active.cancelledByUser||!route||route.binding!==binding)return null;
+    const generation=active.generation;
+    return Object.freeze({binding,generation,target:route.target,current:()=>this.active===active
+      &&!active.cancelledByUser&&active.generation===generation&&active.scopedTarget===route});
   }
 
   /**
@@ -278,7 +304,7 @@ export class TurnReplyGuard {
       generation: active.generation,
       phase: active.phase,
       cancelledByUser: active.cancelledByUser,
-      target: { ...active.target },
+      target: copyTarget(active.target),
       replyAttempted: active.replyAttemptedAt >= active.latestObligation,
       replyAttemptFailed: active.replyAttemptFailedAt >= active.latestObligation,
       replyDelivered: active.replyDeliveredAt >= active.latestObligation,

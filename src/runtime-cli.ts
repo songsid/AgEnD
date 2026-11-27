@@ -395,7 +395,7 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   }
   const runHere = async (report: (text: string) => void, control?: { onStopAttempt: (attempt: () => Promise<void>) => void }): Promise<void> => {
     if (!personalAgent && await runRuntimeWithUpdates({ store, report, ...(control ? { onStopAttempt: control.onStopAttempt } : {}) })) return;
-    const client = new RuntimeClient({ store, ...(personalAgent ? { personalAgent } : { credentialProfilesRoot: credentialRoot, updateStatus: { state: "manual" as const, reason: "unmanaged" as const } }), report });
+    const client = new RuntimeClient({ store, requestContextProtocol:1, ...(personalAgent ? { personalAgent } : { credentialProfilesRoot: credentialRoot, updateStatus: { state: "manual" as const, reason: "unmanaged" as const } }), report });
     // One attempt at a time: a signal or a stop request that arrives while one is in flight joins it. An account process that was not confirmed ended leaves the Runtime up
     // holding its lock, so the next Ctrl+C or `agend-runtime stop` tries again.
     let attempting: Promise<void> | undefined;

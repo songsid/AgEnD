@@ -38,7 +38,7 @@ export interface FleetInstructionsParams {
    * so its prompt keeps the full web-chat receipt checks, as a ClassicBot room's does. Default: published.
    */
   receivesSkills?: boolean;
-  /** L-owned internal switch: set only with installed request-context policy/transport. Never read from agent config. */
+  /** Rendering-only marker from the owner-bound instruction mode (including fenced candidates), never serving authority or agent config. */
   requestContextPolicyInstalled?: boolean;
 }
 

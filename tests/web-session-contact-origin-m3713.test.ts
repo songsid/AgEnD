@@ -9,7 +9,7 @@ import { ReplyButtonStore } from "../src/reply-buttons.js";
 import { ReplyButtonsController } from "../src/reply-buttons-controller.js";
 import { handleWebRequest } from "../src/web-api.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
-import { webHumanOrigin, queryHumanReceipt, isWebSessionIdentity } from "../src/human-delivery-receipts.js";
+import { admittedHumanWebIngress, webHumanOrigin, queryHumanReceipt, isWebSessionIdentity } from "../src/human-delivery-receipts.js";
 import { noAuthority } from "../src/authority/web-authority.js";
 const cleanup:Array<()=>void>=[], token="d".repeat(48),base="http://127.0.0.1:19280";
 afterEach(()=>{cleanup.splice(0).forEach(f=>f());});
@@ -126,4 +126,25 @@ it("an ordinary agent's existing admin origin survives that admin's unverified w
  const r=rig();r.fm.contactRoom=()=>undefined;
  r.outbox.contactAuthorizations.inheritOrigin("worker",{kind:"human",people:[{platform:"discord",adapterId:"demo-bot",userId:"demo-admin",label:"Demo admin"}],receiptIds:[],chain:["worker"]});
  expect((await r.click()).status).toBe(200);expect(r.outbox.contactAuthorizations.origin("worker")).toMatchObject({kind:"human",people:[{userId:"demo-admin"}]});
+});
+
+// The route belongs to admission, not recognition, voter/body fields or a later browser.
+it.each([true,false])("a button captures its admitted browser even with account recognition=%s",known=>{
+ return (async()=>{
+ const r=rig(known),original=r.fm.humanReceiptPayload.bind(r.fm);let captured:any;
+ r.fm.humanReceiptPayload=(name:string,payload:any,origin:any,body:string)=>{captured=origin;return original(name,payload,origin,body);};
+ expect((await r.click({spoof:true,body:undefined})).status).toBe(200);
+ expect(admittedHumanWebIngress(captured)).toEqual({guest:false,sessionHandle:r.session.record.handle});
+ expect(captured.web_identity===undefined).toBe(!known);expect(captured).not.toHaveProperty("sessionHandle");
+ expect(admittedHumanWebIngress({...captured,sessionHandle:"f".repeat(16)})).toBeNull();
+ })();
+});
+it("plain chat and commands carry the current unbound session without inventing identity or authority",async()=>{
+ const r=rig(false);let captured:any;
+ r.ctx.deliverHumanToInstance=async(_name:string,_payload:any,origin:any)=>{captured=origin;return true;};
+ expect((await r.click({path:"/ui/send",body:{instance:"worker",message:"Hello"}})).status).toBe(200);
+ expect(admittedHumanWebIngress(captured)).toEqual({guest:false,sessionHandle:r.session.record.handle});expect(captured.web_identity).toBeUndefined();expect(captured.authority.kind).toBe("none");
+ const run=vi.fn(async(..._args:any[])=>({status:200,body:{ok:true}}));r.ctx.webCommand=run;
+ expect((await r.click({path:"/ui/command",body:{instance:"worker",command:"steer",args:"Hello"}})).status).toBe(200);
+ expect(run.mock.calls[0]?.[1]).toMatchObject({sessionHandle:r.session.record.handle,authority:{kind:"none"}});expect(run.mock.calls[0]?.[1].identity).toBeUndefined();
 });

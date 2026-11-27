@@ -1,0 +1,181 @@
+{
+  "scope": "Actual production controller and assembly; private SQLite and inert physical/provider boundaries only",
+  "sourceCore": "9d56aa485bb84e092ef05bd3efffc812ed2d96d9",
+  "liveFleetStart": false,
+  "providerExecutions": false,
+  "activationInLiveHome": false,
+  "checks": [
+    {
+      "command": "npx vitest run tests/request-context*.test.ts tests/request-contact*.test.ts tests/contact-outcome-notices-3372.test.ts tests/contact-held-outcome-m3716.test.ts tests/fleet-windows-runtime.test.ts tests/update-goback-m3770.test.ts --maxWorkers=2",
+      "files": 68,
+      "passed": 992,
+      "failed": 0
+    },
+    {
+      "scope": "Neighbouring prototype-built Fleet, outbound/typed IPC, lifecycle and task/schedule handlers",
+      "files": 116,
+      "initialPassed": 2968,
+      "initialFailed": 1,
+      "skipped": 1,
+      "repair": "Restore the legacy four-argument pushChannelMessage call when no Hub input id is present. The native-pane file and two scoped neighbours pass 113/113 in three files after repair."
+    },
+    {
+      "command": "npm run typecheck:tests",
+      "passed": true
+    },
+    {
+      "command": "npm run build",
+      "passed": true
+    },
+    {
+      "scope": "Controller, exact runtime snapshot, native run and real Settings static dependency closure mutation negatives",
+      "mutants": [
+        {
+          "name": "unverified-controller",
+          "test": "tests/request-context-controller-s230.test.ts",
+          "killed": true
+        },
+        {
+          "name": "runtime-snapshot",
+          "test": "tests/request-context-runtime-set-s230.test.ts",
+          "killed": true
+        },
+        {
+          "name": "native-newer-run",
+          "test": "tests/request-context-native-stop-s230.test.ts",
+          "killed": true
+        },
+        {
+          "name": "settings-module-closure",
+          "test": "tests/web-app-modules-1408.test.ts",
+          "killed": true
+        }
+      ]
+    },
+    {
+      "command": "npx vitest run tests/web-app-modules-1408.test.ts --maxWorkers=1",
+      "files": 1,
+      "passed": 40,
+      "failed": 0
+    },
+    {
+      "command": "npx vitest run tests/web-app-modules-1408.test.ts tests/request-context-settings-confirmation-s230.test.ts tests/request-context-controller-fleet-s230.test.ts --maxWorkers=2",
+      "files": 3,
+      "passed": 64,
+      "failed": 0,
+      "scope": "Restored real UI dependency closure and confirmed server control after the private-module import repair; overlaps prior runs."
+    }
+  ],
+  "fullMode": [
+    "Explicit confirmed controller On, with no default-Off metadata or nag",
+    "owner, Free room, restricted room, guest and Hub roots: actual C binding, E/I approval when needed, B delivery, receiving C and same-root onward release",
+    "Five Hub-private reads refused; stale originating C token cannot send",
+    "Exact-source scoped outcome queued once by the approval sweep",
+    "Draining to capable Off without a lifetime-origin fallback",
+    "Failed publication recovery in same process and a fresh boot",
+    "Failure before cold Modes assignment can retry its unstarted graph and turn Off",
+    "Same-manager stop/start reconstructs the durable mode with a new serving graph",
+    "Ordinary positive Stop retires only the live inventory entry and preserves work",
+    "Root retirement requires complete current F proof plus E retention transaction",
+    "Exact return closure and scoped requester outcome commit atomically",
+    "Native cancellation acceptance alone cannot clear recovery; a replaced run cannot be cancelled",
+    "Go back availability observes the committed live activation marker without a cache write"
+  ],
+  "sourceSha256": [
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "9ee637d294d0516474a94c3e7904a1dc799e36d58bedd3648aded9fba6997aa2"
+    },
+    {
+      "path": "src/request-context-controller.ts",
+      "sha256": "4112922c22187734c817d850f60fe3cf1e62006d0d04ce98b82b717ee0d302c2"
+    },
+    {
+      "path": "src/request-context-off.ts",
+      "sha256": "ca81cfe7efc5db54f5252041da888bf42468c6fd4be3cfa9edfd38f70d2f48ef"
+    },
+    {
+      "path": "src/request-context-installation.ts",
+      "sha256": "b40309c16ca1b088a8b79ce601c7521c66c7e57e0c789892be229e186ec42395"
+    },
+    {
+      "path": "src/request-context-go-back-view.ts",
+      "sha256": "947eee441b9ecc8e6c1e77c157e1616037165d0ef15907fff4ac5cdc21d69cce"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "dccc3f9d91ef6cca701799df6df10c25dfbb0b62370524ca3f11de4de136b4ce"
+    },
+    {
+      "path": "src/instance-lifecycle.ts",
+      "sha256": "af8eeebea65df9addcaf6abeb37e2d38cf9b7c838aeb35fd5244ecd46b23ac89"
+    },
+    {
+      "path": "src/fleet-windows-runtime.ts",
+      "sha256": "55105bfa1fbd54678162f3213b3f28111069596acc883c7fc04793fd385a4621"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "c144ccbd7d026f370ab945fa64b2f11b22037952fbdda50ff73868ee55719251"
+    },
+    {
+      "path": "src/ui/request-context-control.js",
+      "sha256": "444425414021034e093ee7be716e1a33429c1d26b878ea53f07436012e9c4ee2"
+    },
+    {
+      "path": "src/ui/shared/app-shell.js",
+      "sha256": "c6d2bf9494c01c853de2add9f8beff82c383cd4f6b23c4c318beac168b9d7b3d"
+    }
+  ],
+  "remainingGates": [
+    "S-249 web interrupted-launch reason remains open on the task board; S-250 native twin is done",
+    "Fable implementation review and exact-head CI",
+    "Final supplemental real-app captures and Leader/user lift",
+    "Draft/HOLD stays in place; no live activation is authorized by fixture results"
+  ],
+  "assemblyCore": "f13944ff521aba49ff05d53c8b87dc35433638dc",
+  "visibleLayoutOrCopyChanged": true,
+  "uiModuleLoadingFix": "The real-app capture found a non-existent /assets/settings-confirm.js import. The control now imports the owned private Settings module; the authenticated Settings/Needs static-closure test catches the regression.",
+  "pendingCardRevision": {
+    "sourceCore": "c2634ac3b",
+    "captureSource": "1f847ade2693e734494162b99283778eee245bb9",
+    "changes": [
+      "Plain irreversible-version lead before collapsed details, identified only from the canonical enable summary",
+      "General directions are conditional on this viewer lacking Apply now; execution/authority unchanged",
+      "Fixture-only version2.4.0-beta.25; real package version unchanged"
+    ],
+    "tests": {
+      "files": 3,
+      "passed": 118,
+      "failed": 0
+    },
+    "typecheck": true,
+    "build": true,
+    "changedFrames": 8,
+    "acceptedChatFramesUnchanged": 16,
+    "captureSourceByLanguage": {
+      "en": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+      "zh-TW": "1f847ade2693e734494162b99283778eee245bb9"
+    },
+    "finalWordingTests": {
+      "files": 1,
+      "passed": 68,
+      "failed": 0
+    }
+  },
+  "ciRepair": {
+    "sourceCore": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "tests": {
+      "files": 5,
+      "passed": 73,
+      "failed": 0
+    },
+    "typecheck": true,
+    "build": true,
+    "repairs": [
+      "Control host is read only on its exact route; bounded owner-app metadata surface unchanged",
+      "Go back deadlines use shared clock helper; Traditional Chinese is24h in browser confirmation and server pending summary",
+      "Reservation-expiry fixture uses injected clock and one-hour code; old today fixture reproduced404 at midnight; Hub production source unchanged"
+    ]
+  }
+}

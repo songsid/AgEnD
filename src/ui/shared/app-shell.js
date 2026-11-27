@@ -866,6 +866,13 @@ function pendingSummaryLine(line, descriptor) {
   }
   return legacyPendingSummaryLine(line);
 }
+/** Presentation only: the server's canonical On summary identifies this irreversible consequence. */
+function pendingRequestContextEnable(p) {
+  if (p.section !== "access" || !Array.isArray(p.summary) || !Array.isArray(p.summary_i18n) || p.summary.length !== p.summary_i18n.length) return false;
+  const keys = p.summary_i18n.flatMap((line, index) => line?.v === 1 && line.fallback === p.summary[index] && Array.isArray(line.parts)
+    ? line.parts.filter(part => part && typeof part === "object" && Array.isArray(part.args) && part.args.length === 0).map(part => part.key) : []);
+  return keys.includes("requestContextControl.enableTitle") && keys.includes("requestContextControl.floorBefore");
+}
 export function PendingChanges({ inline = false } = {}) {
   const { pendingChanges } = useStore(appStore);
   const list = pendingChanges || [];
@@ -890,6 +897,7 @@ export function PendingChanges({ inline = false } = {}) {
       ${p.state === "pending" ? html`<span class="pending-left">${t("app.pendingLeft", mmss(p.deadline - NOW()))}</span>` : null}
       ${p.dismiss ? html`<button type="button" class="icon-btn" aria-label=${t("app.close")} title=${t("app.close")} onClick=${p.dismiss}><${Icon} name="close" size=${14} /></button>` : null}</div>
     ${p.label ? html`<div class="pending-label">${p.label}</div>` : null}
+    ${pendingRequestContextEnable(p) ? html`<p class="notice warn">${t("pendingHost.requestContextFloor")}</p>` : null}
     ${Array.isArray(p.summary) && p.summary.length ? html`<details class="pending-details" open=${Array.isArray(p.summary_i18n)&&p.summary_i18n.some(line=>line?.v===1&&Array.isArray(line.parts)&&line.parts.some(part=>part&&typeof part==="object"&&part.key==="hub.exposure.summary.classicRoom"))}><summary>${t("pendingHost.details")}</summary><ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${String(pendingSummaryLine(line, Array.isArray(p.summary_i18n) && p.summary_i18n.length === p.summary.length ? p.summary_i18n[i] : null)).replace(/\\([\\`*_~[\]()<>|])/g, "$1")}</li>`)}</ul></details>` : null}
     ${p.state === "pending" ? html`<${PendingHow} p=${p} />` : null}
     ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
@@ -931,6 +939,7 @@ function whereText(where) {
 // would let it through — never "type this command on the host". The host's command stays folded under Advanced, a last resort.
 register("pendingHost", {
   en: {
+    requestContextFloor: "Once on, AgEnD can't go back to an older version.",
     no_chat: "This fleet has no chat app connected, so there is no General to send the confirm card to.",
     no_chat_do: "To confirm from Discord or Telegram instead, connect one in Settings → Chat & connections.",
     cross_platform: "This change affects chat apps on more than one platform, so no single General can confirm it.",
@@ -963,6 +972,7 @@ register("pendingHost", {
     moreHost: "On the computer running AgEnD, open AgEnD in its own browser and press Apply now on this card.",
   },
   "zh-TW": {
+    requestContextFloor: "開啟後就不能再降回舊版 AgEnD。",
     no_chat: "這個 Fleet 沒有連接聊天平台，所以沒有 General 可以接收確認卡。",
     no_chat_do: "若要改從 Discord 或 Telegram 確認，請到「設定 → 聊天與連線」連接其中一個。",
     cross_platform: "這項變更涉及多個聊天平台，沒有單一的 General 可以確認。",
@@ -1075,7 +1085,7 @@ function PendingHow({ p }) {
   const mode = p.applyNow ? "apply" : p.confirmWithCode ? "code" : p.totpNotSetUp ? "setup" : p.onHost ? "link" : p.hostOnly ? "hostOnly" : "none";
   if (!cli && (mode === "none" || mode === "apply")) {
     const lead = c.kind === "posting" ? t("app.pendingPosting") : t("app.pendingChatWhere", whereText(c.where));
-    return html`<p class="note">${lead}</p>
+    return html`${!p.applyNow ? html`<p class="note">${lead}</p>` : null}
       ${p.applyNow ? html`<div class="pending-self"><span class="note">${t("app.pendingSelf")}</span>
         <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>` : null}
       ${refused && !p.applyNow ? html`<p class="note" role="status">${t("app.pendingApplyRefused")}</p>` : null}

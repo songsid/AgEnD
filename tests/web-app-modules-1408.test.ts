@@ -91,6 +91,27 @@ describe("module admission (#1408 §4)", () => {
     } finally { await h.stop(); }
   }, 30_000);
 
+  it("Settings and Needs you load their whole static closure through real public assets and shipped private modules", async () => {
+    const h = await listener();
+    try {
+      const seen = new Set<string>(), queue = ["/ui/js/panel-settings.js", "/ui/js/panel-needs.js"];
+      while (queue.length) {
+        const path = queue.shift()!; if (seen.has(path)) continue; seen.add(path);
+        let source: string;
+        if (path.startsWith("/assets/")) {
+          const response = await get(h.port, path);
+          expect(response.status, path).toBe(200); expect(response.type, path).toContain("javascript"); source = response.body;
+        } else {
+          expect(path, path).toMatch(/^\/ui\/js\/[a-z0-9._-]+\.js$/);
+          source = readFileSync(join(process.cwd(), "src/ui", path.slice("/ui/js/".length)), "utf8");
+        }
+        for (const spec of staticImports(source)) queue.push(new URL(spec, `http://fixture${path}`).pathname);
+      }
+      expect(seen.has("/ui/js/request-context-control.js")).toBe(true);
+      expect(seen.has("/ui/js/settings-confirm.js")).toBe(true);
+    } finally { await h.stop(); }
+  }, 30_000);
+
   it("the public modules reach private ones only by dynamic import(), and never statically", () => {
     const shared = join(process.cwd(), "src", "ui", "shared");
     for (const name of ["app.js", "app-shell.js", "app-needs.js", "app-nav.js", "app-stream.js", "app-store.js", "app-ctx.js", "app-route.js", "app-i18n.js", "app-session.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js", "app-html.js"]) {

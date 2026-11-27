@@ -1,3 +1,5 @@
+import { getLocale, t } from "./locale.js";
+import { RequestContextControlDecisionSchema, RequestContextControlViewSchema, type RequestContextControlView } from "./request-context-control-api.js";
 import {parseHostAlertSettings,type HostAlertSettings} from './host-monitoring-alert-settings.js';
 import { applyUpdatesPatch } from "./update-settings.js";
 import { monitoringConfig, parseMonitoringSettings } from "./host-monitoring-config.js";
@@ -36,7 +38,7 @@ import { settingsFingerprint } from "./settings-transaction.js";
 import { parseHubBrowserCertificateApply, type HubBrowserCertificateProposal } from "./hub-browser-certificate-policy.js";
 import { parseHubRetention } from "./hub-retention-policy.js";
 import { parseHubMembership } from "./hub-membership-settings.js";
-import { settingsSummary, translatedSummary, type SettingsSummaryPresentation } from "./settings-summary.js";
+import { settingsSummary, summaryLine, summaryMessage, translatedSummary, type SettingsSummaryPresentation } from "./settings-summary.js";
 import { hostUpdateAckError, hostUpdatePlan } from "./web-host-install.js";
 import { LATEST_ACK_FIELD } from "./cli-audited.js";
 import { runtimeFacts } from "./cli-registry.js";
@@ -51,6 +53,7 @@ export interface SettingsSecretProof {
 }
 export interface SettingsEffectContext {
   config: FleetConfig | null; classic: Record<string, any>;
+  requestContextControl?(): RequestContextControlView | null;
   hostMonitoringAvailable?(): boolean;
   hostMonitoringDrive?(): string | undefined;
   hostAlertSettings?():HostAlertSettings;
@@ -78,6 +81,7 @@ export const isRuntimeCliInstallPath = (path: string): boolean => RUNTIME_CLI_IN
 /** Any dashboard route that installs or updates an AI CLI somewhere (the AgEnD computer, or a paired one): only a signed-in local administrator proposes it, never over the public link. */
 export const isCliInstallPath = (path: string): boolean => HOST_CLI_PATHS.has(path) || isRuntimeCliInstallPath(path);
 export function isSettingsMutation(method: string, path: string): boolean {
+  if (method === "POST" && path === "/api/settings/request-context") return true;
   if (method === "POST" && /^\/api\/hub\/member\/company-join\/(start|resume|repair-trust|reconnect|remove)$/.test(path)) return true;
   if (method === "PUT" && (path === "/api/settings/hub/membership" || path === "/api/settings/hub/pilot-trust" || path === "/api/settings/hub/share-from-hub")) return true;
   if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
@@ -117,6 +121,35 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
 } {
   const cfg = context.config, before: any = { fleet: structuredClone(cfg), classic: structuredClone(context.classic) }, after = structuredClone(before);
   const operation = `${method} ${path}`;
+  if (path === "/api/settings/request-context") {
+    const parsed = RequestContextControlDecisionSchema.safeParse(body);
+    if (method !== "POST" || !parsed.success) throw new SettingsConfirmationError(400, "invalid-request");
+    const input = parsed.data;
+    if (input.action === "check") return { diff: null };
+    const view = RequestContextControlViewSchema.safeParse(context.requestContextControl?.());
+    if (!view.success) throw new SettingsConfirmationError(503, "unavailable");
+    if (input.revision !== view.data.revision || input.action === "resolve" && !view.data.blockers.some(b => b.id === input.blockerId && b.action === input.resolution))
+      throw new SettingsConfirmationError(409, "stale");
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    const suffix = input.action === "resolve" ? input.resolution : input.action;
+    const keys = { enable: "enableTitle", disable: "confirmTitle", "stop-waiting": "waitTitle", "stop-work": "stopTitle", decline: "decline", withdraw: "withdraw" } as const;
+    const line = (backend: string, ui: string, ...args: (string | number)[]) => summaryLine(t(`request_context_control.${backend}`, ...args), summaryMessage(`requestContextControl.${ui}`, ...args));
+    const summary = [line(suffix, keys[suffix])];
+    if (input.action === "enable") {
+      summary.push(line("floor", "floorBefore"));
+      if (view.data.goBack) {
+        const options: Intl.DateTimeFormatOptions = getLocale() === "zh-TW"
+          ? { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: view.data.goBack.timeZone }
+          : { dateStyle: "medium", timeStyle: "short", timeZone: view.data.goBack.timeZone };
+        summary.push(line("goBack", "goBack", new Intl.DateTimeFormat(getLocale(), options).format(new Date(view.data.goBack.availableUntil))));
+      }
+      if (view.data.restartCount) summary.push(line("restart", "restart", view.data.restartCount));
+    } else if (input.action === "disable") summary.push(line("offBody", "confirmBody"));
+    else if (input.action === "resolve" && input.resolution === "stop-work") summary.push(line("stopBody", "stopBody"));
+    else if (input.action === "resolve" && input.resolution === "stop-waiting") summary.push(line("waitBody", "waitBody"));
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input, view.data]),
+      ...settingsSummary(summary), affectedConnections: [], authority: HUB_AUTHORITY } };
+  }
   if(path==='/api/settings/fleet/host-alerts'){
     if(method!=='PUT'||!context.hostAlertSettings)throw new SettingsConfirmationError(503,'host_alert_unavailable');
     let next:HostAlertSettings,previous:HostAlertSettings;

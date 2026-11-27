@@ -19,6 +19,15 @@ vi.mock("../src/delivery-outbox.js", async importOriginal => {
     }
   } };
 });
+// Startup now inspects the live DB before its writable constructor. Inject driver/open failures at that
+// earlier boundary too; the real corrupt/unopenable cases below still exercise the actual reader.
+vi.mock("../src/request-context-boot.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../src/request-context-boot.js")>();
+  return { ...actual, readRequestContextBootState: (...args: Parameters<typeof actual.readRequestContextBootState>) => {
+    if (fake.openError) throw fake.openError;
+    return actual.readRequestContextBootState(...args);
+  } };
+});
 const roots: string[] = [];
 const stores: DeliveryOutbox[] = [];
 const managers: FleetManager[] = [];

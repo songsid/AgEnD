@@ -21,6 +21,7 @@ const L = (en, zh) => ({ en, "zh-TW": zh });
 const CLI_WORDS = Object.keys(CLI_CAPS).flatMap((id) => [id, id.split("-")[0]]);
 /** [id, section, target, labelKey | label, config key, words en, words zh] */
 const ROWS = [
+  ["request.context", "access", "#request-context", null, null, ["contact", "approval", "request", "permissions"], ["聯絡", "核准", "請求", "權限"], L("Request-based contact approvals", "依請求核准聯絡")],
   ["host.monitoring", "notifications", "#host-monitoring", null, "monitoring.enabled", ["host", "health", "monitoring", "disk", "memory", "cpu", "agent footprint"], ["主機", "監測", "磁碟", "記憶體", "資源用量"], L("Host monitoring", "主機監測")],
   ["general.location", "agent-defaults", "#general-location", null, null, ["general", "windows", "paired PC", "host", "location"], ["General", "Windows", "電腦", "主機", "執行位置"], L("Run General on", "General 執行位置")],
   // alpha.6 feedback (#2): "hub" found nothing — Settings → Hub's cards. Connect to a Hub is drawn once membership is on.
@@ -169,6 +170,7 @@ export function searchSettings(query, schema = null) {
   const scored = [];
   for (const entry of SETTINGS_REGISTRY) {
     if (entry.id === "host.monitoring" && !hostMonitoringVisible(schema)) continue;
+    if (entry.id === "request.context" && schema?.request_context_control !== true) continue;
     const names = [settingLabel(entry, "en"), settingLabel(entry, "zh-TW")].map(fold);
     const keys = fold(entry.key || "");
     const words = [...(entry.words.en || []), ...(entry.words["zh-TW"] || [])].map(fold);

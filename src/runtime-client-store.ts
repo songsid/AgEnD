@@ -1,3 +1,4 @@
+import {validateNativeExecInputProof} from "./native-exec-input.js";
 /** Private, bounded state for a standalone runtime. Input prompts and provider login credentials have no journal fields. */
 import { existsSync, lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -123,6 +124,7 @@ export class RuntimeClientStore {
       if (!ID.test(id) || !object(value) || !Number.isSafeInteger(value.seq) || (value.seq as number) < 1
         || typeof value.uncertain !== "boolean" || !object(value.task) || value.task.id !== id || value.digest !== raw.used[id]
         || typeof value.task.output !== "string" || value.task.output.length > 65_536) throw new Error("Invalid runtime job snapshot");
+      if(value.task.execInputProof!==undefined&&validateNativeExecInputProof(value.task.execInputProof).requestId!==id)throw Error("Native exec input proof belongs to another run");
     }
     return raw as unknown as Ledger;
   }
@@ -196,8 +198,10 @@ export class RuntimeClientStore {
     const old = this.data.jobs[task.id]; if (!old) throw new Error("Runtime execution was not durably accepted");
     if (old.task.cli !== task.cli || old.task.cwd !== task.cwd || old.task.sandbox !== task.sandbox || old.task.model !== task.model)
       throw new Error("Runtime execution identity changed");
+    const proof=task.execInputProof===undefined?undefined:validateNativeExecInputProof(task.execInputProof);
+    if(proof&&proof.requestId!==task.id||old.task.execInputProof&&proof&&JSON.stringify(old.task.execInputProof)!==JSON.stringify(proof))throw Error("Native exec input proof changed");
     const before = structuredClone(old);
-    old.task = { ...task, output: task.output.slice(-65_536), ...(task.error ? { error: task.error.slice(0, 8192) } : {}) };
+    old.task = { ...task, ...(proof||old.task.execInputProof?{execInputProof:proof??old.task.execInputProof}:{}), output: task.output.slice(-65_536), ...(task.error ? { error: task.error.slice(0, 8192) } : {}) };
     old.uncertain = task.outcomeConfirmed === false;
     old.seq++;
     try { this.save(); } catch (error) { this.data.jobs[task.id] = before; throw error; }

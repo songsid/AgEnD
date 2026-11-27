@@ -1,0 +1,114 @@
+{
+  "sourceCommit": "94050c4b2207e810c8ed92cab5c605c8ba4cd058",
+  "scope": "Accepted human ingress companion, atomic receipt/root capture, explicit installed facade and durable drain/retention guards.",
+  "checks": {
+    "restoredNeighborsBeforeIndexedSchema": {
+      "files": 14,
+      "passed": 427,
+      "failed": 0
+    },
+    "indexedSchemaAndFinalRetirementChecks": {
+      "files": 4,
+      "passed": 99,
+      "failed": 0
+    },
+    "typecheckTests": "passed",
+    "mutants": [
+      {
+        "mutation": "guest-scope-dropped",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "late-capture-allowed",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "drain-reference-dropped",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "lifetime-shadow-written",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "receipt-created-outside-transaction",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "pending-input-aged-away",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "retirement-recheck-removed",
+        "exit": 1,
+        "red": true
+      }
+    ],
+    "baselineDiagnostic": {
+      "priorSource": "3a40f27d347452bcdc0be8c08816643044c984b0",
+      "test": "tests/web-guest-trusted-2855.test.ts",
+      "sameFailuresOnPriorAndNewSource": 4,
+      "repair": "Private mocked process/pane tests use inert /bin/true as the tmux executable path; no runtime or real pane is started."
+    },
+    "gitleaks": "35 commits; no leaks",
+    "changelog": "860 fragments OK",
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "Owned web producers provide an explicit ephemeral guest tier; strict stored receipt shape is unchanged. Missing fact and copied/serialized lookalikes refuse capture.",
+    "Plain recognized account identity grants no approval; guest precedence and unknown ingress stay outside.",
+    "Actual Fleet facade chooses the explicit factory only through the installed policy predicate and then never reads/copies lifetime origin. Missing installed owner refuses legacy fallback.",
+    "Receipt and immutable root/audience companion commit together; a previously bound legacy receipt cannot be backfilled after input.",
+    "Indexed pending human references block F and E retirement, survive age pruning and use correct FK deletion order.",
+    "Privileged current-admin checks also cover Free/restricted and guest contexts; a guest cannot borrow current native admin authority. Ordinary contact semantics remain unchanged.",
+    "Final-write registration, Classic SDK admission-basis capture/current-access factory, controlled relaunch and full-mode installation remain unfinished. No live activation."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "src/request-context-human.ts",
+      "sha256": "27f0a6989873b72de521b5d3f406108cb896e28bd9c555ced2e18f6ef27ed619"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "60c5fb2425dd8f84f5ae3061bce748b007b5ed53644dcd97c7c510ff4789417c"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "16bd1ca1e2e59c8e14df4727a32b5b8e7b855c3f7ee5b857b96b031133ffd1cc"
+    },
+    {
+      "path": "src/human-delivery-receipts.ts",
+      "sha256": "b79f11a434daf144a029cae8e2496ccd550bb5c63a4365ee5568a812683fa826"
+    },
+    {
+      "path": "src/reply-buttons-controller.ts",
+      "sha256": "e7bf6cbfa5cd47c484795bdbda3c343cc367d9c71ce28127dbfa3c1707155aa8"
+    },
+    {
+      "path": "src/request-context-drain.ts",
+      "sha256": "a084ae481648dbfcb518254a7f791db7952c2a561c05bf8f65faead0cf00ea8c"
+    },
+    {
+      "path": "src/web-api.ts",
+      "sha256": "aa2378f1f190c54147cc78aa502161357778b8f6e67ac9ebf8eda062c2fc71c4"
+    },
+    {
+      "path": "tests/request-context-human-s230.test.ts",
+      "sha256": "78f411b757201ea87f33aa2040fcf57b9f08a3a9d9f132722eaebda09bda151a"
+    },
+    {
+      "path": "tests/request-context-policy-s232.test.ts",
+      "sha256": "12d5b211208a3603eaef6f01acc678048ae3a478f8d8e14fe35f20432b483d42"
+    },
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "d51c862340cccd4efe5f3fb069472c263f261cd09d942e8870407822ee00831c"
+    }
+  ]
+}

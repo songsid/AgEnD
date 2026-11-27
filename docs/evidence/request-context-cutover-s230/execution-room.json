@@ -1,0 +1,75 @@
+{
+  "sourceCommit": "434e49b3d38158c17064595933ee0ad3394ff6cb",
+  "scope": "Covered execution continues under admission fences; current accepted-room mode determines contact without changing provenance.",
+  "checks": {
+    "restored": {
+      "files": 4,
+      "passed": 103,
+      "failed": 0
+    },
+    "mutants": [
+      {
+        "mutation": "covered-admission-fenced",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "execution-post-check",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "unknown-borrows-free",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "free-policy-ignored",
+        "exit": 1,
+        "red": true
+      }
+    ],
+    "typecheckTests": "passed",
+    "gitleaks": "passed; no leaks",
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "Execution port and original call currency are rechecked after policy validation. Readiness and admission fences still refuse new uncovered calls.",
+    "Only validated accepted-room evidence can override current room permission. Unknown recovery cannot borrow a current Free room.",
+    "Component proof only; production owner/transport assembly and full mode remain unfinished. No live activation."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "eb1cc8ad7affeea5d9071f5a32ddbd44aff417bccf314b67c805db1865026b25"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "21f5bf91a275ade93d704077012326a7ed8491821d7fec7ec9165a4f924f7351"
+    },
+    {
+      "path": "src/request-contact-gate.ts",
+      "sha256": "12cc2cf813ea0439017d1fc9933662dd6c8b23c141189ed2b0c18cb980b333bf"
+    },
+    {
+      "path": "src/request-context-boot.ts",
+      "sha256": "854aba0f7991698c0f1e34ed53ae6e45cced49920149e387db2e2f8cdd11a9af"
+    },
+    {
+      "path": "src/request-context-installation.ts",
+      "sha256": "a7980a20cd5de8a2b240fb3836917ad33608429abb95a2a7f296e75f843ccde0"
+    },
+    {
+      "path": "tests/request-contact-gate-s225.test.ts",
+      "sha256": "448927daff89ae81f36dbe06fa303cf80cbb3730a235db9caf26401e0b29bc82"
+    },
+    {
+      "path": "tests/request-context-boot-s230.test.ts",
+      "sha256": "109c6d40820f53482cee8d76dd10127c7f9d260a641e5bdad0b1b56f06460d22"
+    },
+    {
+      "path": "tests/request-context-human-s230.test.ts",
+      "sha256": "d91cbbd8b76f2e9edb330294fc2fc4df5c14d0536c25b5c817aa5455ad690295"
+    }
+  ]
+}

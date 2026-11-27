@@ -57,6 +57,7 @@ import { redactInlineSecrets, restoreRedactedSecrets } from "./settings-redactio
  * written; warnings are non-blocking and returned alongside the result.
  */
 import { serveAppShell, type AppShellContext } from "./web-api.js";
+import { handleRequestContextControlApi, type RequestContextControlHost } from "./request-context-control-api.js";
 import { authorizeExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { isSettingsPage } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -131,6 +132,7 @@ export interface ChatArchiveFilesControl {
 const GIB = 1024 ** 3;
 
 export interface SettingsApiContext extends AppShellContext {
+  requestContextControl?: RequestContextControlHost;
   chatArchiveFiles?(): ChatArchiveFilesControl | null;
   hubFleetUpdates?(): import("./hub/member/updates.js").HubMemberUpdates | null;
   hubWebAddress?():Promise<import("./hub/settings-web-address-control.js").HubWebAddressControl>;
@@ -649,6 +651,7 @@ export function handleSettingsRequest(
 ): boolean {
   const path = url.pathname;
   if (!isSettingsPath(path)) return false;
+  if (path === "/api/settings/request-context" && handleRequestContextControlApi(req, res, url, ctx.requestContextControl)) return true;
   // #2667: validated with the ClassicBot rooms there are now — a guest grant naming one is not an unknown name.
   const validateFleet = (config: unknown) => validateFleetConfig(config, { rooms: ctx.classicRoomNames?.() ?? [] });
   const method = req.method ?? "GET";
@@ -755,6 +758,7 @@ export function handleSettingsRequest(
       fleet_signature_mismatch: ctx.fleetSignatureMismatchKeys?.() ?? null,
       // Whether the provider-secret routes exist on this fleet: the page reads them only then (no 404 on every load).
       provider_secrets: ctx.providerSecretsEnabled?.() === true,
+      request_context_control: !!ctx.requestContextControl,
       // #2346: a new connection starts without a restart while another one runs (#1519 P6); the first one needs one.
       connections_start_live: ctx.connectionsStartLive?.() === true,
     });

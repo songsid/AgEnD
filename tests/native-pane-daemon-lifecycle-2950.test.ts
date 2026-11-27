@@ -81,3 +81,25 @@ it('#4019: execution-idle with a restored draft is not permission to close the n
   expect(await f.daemon.nativePauseReady()).toBe(false);expect(f.native.release).not.toHaveBeenCalled();
  }finally{await f.daemon.stop();}
 });
+
+
+it.each(['fresh','resumed','reattached'] as const)('scoped native %s startup never certifies inherited helper bytes as a new turn',async disposition=>{
+ const f=fixture();f.native.acquire.mockResolvedValueOnce({pane:f.pane,source:f.source,disposition} as never);
+ vi.spyOn(f.daemon,'finishStartupScan').mockResolvedValue(true);
+ // This test observes only the launch boundary. No input, turn, provider or tool call is run.
+ f.daemon.requestContextLifecycle={turns:{},identity:()=>({incarnation:'fixture',workGeneration:'fixture'})};
+ await f.daemon.start();
+ expect(f.daemon.requestContextInterruptedLaunch===f.daemon.requestContextLaunch()).toBe(disposition==='reattached');
+ expect(f.forbidden).not.toHaveBeenCalled();
+});
+
+it('native helper readiness binds the admitting launch, without treating output observations as new owners',()=>{
+ const f=fixture();f.daemon.requestContextLifecycle={};let connected=true;Object.assign(f.native,{requestContextAvailable:()=>true,requestContextTransportCurrent:()=>connected});
+ const snapshot={state:"running",hostBootId:randomUUID(),paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),seq:1,outputAt:1};f.native.snapshot.mockReturnValue(snapshot);
+ const first=f.daemon.requestContextHelperReadiness();expect(first?.ready).toBe(true);
+ f.native.snapshot.mockReturnValue({...snapshot,seq:2,outputAt:100});expect(f.daemon.requestContextHelperReadiness()?.generation).toBe(first.generation);
+ f.native.snapshot.mockReturnValue({...snapshot,launchId:randomUUID()});expect(f.daemon.requestContextHelperReadiness()?.generation).not.toBe(first.generation);
+ connected=false;expect(f.daemon.requestContextHelperReadiness()?.ready).toBe(false);connected=true;
+ f.native.snapshot.mockReturnValue({...snapshot,state:"exited"});expect(f.daemon.requestContextHelperReadiness()?.ready).toBe(false);
+ f.native.snapshot.mockReturnValue(null);expect(f.daemon.requestContextHelperReadiness()).toBeNull();expect(f.forbidden).not.toHaveBeenCalled();
+});

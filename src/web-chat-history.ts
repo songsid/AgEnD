@@ -390,6 +390,8 @@ function nativeHistoryMessageId(value: unknown, role: WebChatRole): value is str
 }
 
 export interface NativeHistoryMessage {
+  replyTo?:WebChatReplyRef;
+  requestProvenance?:RequestProvenanceView;
   messageId: string;
   role: WebChatRole;
   sender: string;

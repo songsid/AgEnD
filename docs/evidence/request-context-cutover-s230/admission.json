@@ -1,0 +1,137 @@
+{
+  "sourceCommit": "42a8f7ea1badfc202fc19666dae148d6d18789a5",
+  "stage": "Shared admission integration; actual installation/control host, relaunch and full mode remain incomplete",
+  "restoredVerification": {
+    "combined": {
+      "files": 20,
+      "passed": 423,
+      "failed": 0
+    },
+    "isolatedCrashSuite": {
+      "path": "src/delivery-outbox.test.ts",
+      "passed": 16,
+      "failed": 0
+    },
+    "typecheckTests": "pass"
+  },
+  "initialFailuresResolved": [
+    "Update quiescence source audit now follows the extracted actual IPC commit method, retaining no-await/hold-before-send checks",
+    "Two child-loader crash-fixture timeouts passed in the isolated unchanged suite; no timeout or assertion was relaxed"
+  ],
+  "boundaries": [
+    "Fleet facade before choosing a daemon or exec owner",
+    "Hub begin/input intent and final IPC handoff without repeating begin",
+    "Both pump/queue-worker claims",
+    "Daemon pre-write guard and direct working recovery, waiting outside the pane lock",
+    "Native deliver and execute before claim/journaling",
+    "Synchronous controls commit their unchanged payload/receipt to the outbox before acknowledgement"
+  ],
+  "arrivalObservation": "Raw and scoped outbox insertion observed after complete admission image; duplicates do not notify. An outer transaction rollback conservatively invalidates preparation. Notifications grant no authority.",
+  "rollbackBoundary": "An arrival invalidates preparation but not the same exclusive fence ownership; abort may resume legacy only before any durable activation.",
+  "mutations": [
+    {
+      "mutation": "helper-skips-fence",
+      "tests": [
+        "tests/request-context-admission-s230.test.ts",
+        "tests/fleet-windows-runtime.test.ts"
+      ],
+      "filter": null,
+      "exit": 1,
+      "red": true
+    },
+    {
+      "mutation": "daemon-skips-final-fence",
+      "tests": [
+        "tests/request-context-admission-s230.test.ts"
+      ],
+      "filter": "a fence closing during a daemon",
+      "exit": 1,
+      "red": true
+    },
+    {
+      "mutation": "pump-claims-while-held",
+      "tests": [
+        "tests/request-context-admission-s230.test.ts"
+      ],
+      "filter": "both actual pump owners",
+      "exit": 1,
+      "red": true
+    },
+    {
+      "mutation": "ack-before-durable-control",
+      "tests": [
+        "tests/request-context-admission-s230.test.ts"
+      ],
+      "filter": "synchronous",
+      "exit": 1,
+      "red": true
+    },
+    {
+      "mutation": "scoped-insert-unobserved",
+      "tests": [
+        "tests/request-context-store-s222.test.ts"
+      ],
+      "filter": "S-230 observes",
+      "exit": 1,
+      "red": true
+    },
+    {
+      "mutation": "held-input-borrows-new-launch",
+      "tests": [
+        "tests/request-context-admission-s230.test.ts"
+      ],
+      "filter": "held daemon input never",
+      "exit": 1,
+      "red": true
+    }
+  ],
+  "uiCopyAndPictures": "unchanged from 3ed88798fcc1bf33a8c432682b90bb8f90ca867d",
+  "liveOperations": false,
+  "remaining": [
+    "Capable production startup recovery and actual owner control host",
+    "Controlled owner relaunch/rollback and candidate instruction/skill staging",
+    "Trusted per-input context assembly and full-mode/failed-install Off proof"
+  ],
+  "sourceAndTests": [
+    {
+      "path": "src/request-context-admission.ts",
+      "sha256": "7e7e5da27666672e7877a4958acf377bb52f3c47079744299e6035534cf80f62"
+    },
+    {
+      "path": "src/request-context-installation.ts",
+      "sha256": "62ac3b485b55bf43a8265f93bbe2bb68cbcfb21aa7f49704b975c4d50be54bc5"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "05f9772a5c147bed0e68f4a1b31877e5975ed206f31d2a2f9d5e88a4764e4360"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "5a8f797dc0ed4f68d2e78f68bd3b58d356726c3e8cb6c571cb25075d8a69b47c"
+    },
+    {
+      "path": "src/fleet-windows-runtime.ts",
+      "sha256": "646a1c0aefff83e5af13dfbaa3c83c0df4b424c264351bf9adeb148b538207b9"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "4434d2a8bd64078c1dbc8f7efa31117d059ef995ba0ef6f998e3eca81e5873b9"
+    },
+    {
+      "path": "tests/request-context-admission-s230.test.ts",
+      "sha256": "1c2429e2753f2645b2dca8f80ae5b172c6803eecd9a3e74ffc07a0a98c9f57f1"
+    },
+    {
+      "path": "tests/fleet-windows-runtime.test.ts",
+      "sha256": "823cfe792df1b701f37bb5f88f9c6b06deb57ad2e8cbc01268a993671a9ab305"
+    },
+    {
+      "path": "tests/request-context-store-s222.test.ts",
+      "sha256": "7ae54ff4e218b499c54cdeb0b81766de9fed4a2316bf9a73de42666a65f5d903"
+    },
+    {
+      "path": "tests/update-quiescence-s244.test.ts",
+      "sha256": "46acc08b2e7e112f3ff5bab98d9fce6fd9e8d7c71a0a387b3c1655b3c18370e5"
+    }
+  ]
+}

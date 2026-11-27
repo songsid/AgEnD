@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { WindowsAgents } from "../src/windows-agents.js";
+import {claimNativeExecInput,NativeExecInputWitness,nativeExecInputBytes} from "../src/native-exec-input.js";
+import { WindowsAgents, windowsAgentExecutionTask } from "../src/windows-agents.js";
 import { codexTaskArgs, type NativeTaskInput } from "../src/windows-cli-worker.js";
 import type { WindowsCliBridge, WindowsCliTask, WindowsRunOptions } from "../src/windows-cli.js";
 const dirs: string[] = [];
@@ -205,4 +206,31 @@ it('pins the native conversation monotonically and releases only its exact posit
  for(const extra of [{state:'running'},{launchId:randomUUID()},{agentId:randomUUID()},{instance:'other'},{sessionId:randomUUID()}])expect(()=>f.store.releasePane(agent.id,{...snapshot,...extra}as RuntimePaneSnapshot)).toThrow('identity');
  expect(new WindowsAgents(f.dir,f.bridge).get(agent.id).activeId).toBe(launchId);f.store.releasePane(agent.id,snapshot);expect(f.store.get(agent.id)).toMatchObject({threadId:sessionId,blocked:false});expect(f.store.get(agent.id).activeId).toBeUndefined();
  f.store.send(agent.id,{requestId:first,prompt:'explicit rollback after owned exit'},()=>true);expect(f.start.mock.calls[0][2].resumeSessionId).toBe(sessionId);
+});
+
+describe("S-230 native input invocation binding",()=>{
+ it("binds the actual instruction wrapper/context and forwards positive input once through the owned request",async()=>{
+  const f=fixture(),agent=await f.store.create(input),prompt="Exact human task",task=windowsAgentExecutionTask(agent,first,prompt),options={context:"Exact request scope"},claim=claimNativeExecInput(task,options),written=vi.fn();
+  f.store.send(agent.id,{requestId:first,prompt},()=>true,{...options,execInput:claim,onInputWritten:written});
+  expect(f.start.mock.calls[0][0]).toEqual(task);expect(task.prompt).toBe("Agent instructions:\nUse Windows tools\n\nUser task:\nExact human task");
+  const run=f.start.mock.calls[0][2],witness=new NativeExecInputWitness(claim,task,options,"stdin-text",nativeExecInputBytes(task,options),proof=>{run.onInputWritten!(proof);run.onInputWritten!(proof);});
+  witness.spawnedMain();expect(written).not.toHaveBeenCalled();witness.stdinFinished();expect(written).toHaveBeenCalledOnce();
+  const reloaded=new WindowsAgents(f.dir,f.bridge);expect(reloaded.send(agent.id,{requestId:first,prompt},()=>true,{...options,execInput:claim,onInputWritten:written}).id).toBe(first);expect(f.start).toHaveBeenCalledOnce();
+  expect(()=>reloaded.send(agent.id,{requestId:first,prompt},()=>true,{...options,context:"Another scope",execInput:claim,onInputWritten:written})).toThrow("different native input claim");
+  expect(()=>reloaded.send(agent.id,{requestId:first,prompt},()=>true)).toThrow("different native input claim");
+ });
+ it("an instruction change between preparation and claim refuses before the request is journaled or started",async()=>{
+  const f=fixture(),agent=await f.store.create(input),prompt="Exact task",task=windowsAgentExecutionTask(agent,first,prompt),claim=claimNativeExecInput(task,{});
+  f.store.update(agent.id,{instructions:"Changed after preparation"},()=>true);
+  expect(()=>f.store.send(agent.id,{requestId:first,prompt},()=>true,{execInput:claim,onInputWritten:()=>{}})).toThrow("composition changed");expect(f.start).not.toHaveBeenCalled();
+  expect(f.store.get(agent.id).turns).toEqual([]);expect(JSON.parse(readFileSync(join(f.dir,"windows-agents.json"),"utf8")).requests[first]).toBeUndefined();
+ });
+ it("legacy native request ids cannot acquire a scoped claim, and a retired run cannot deliver a late proof",async()=>{
+  const f=fixture(),agent=await f.store.create(input),prompt="Exact task",task=windowsAgentExecutionTask(agent,first,prompt),claim=claimNativeExecInput(task,{}),written=vi.fn();
+  f.store.send(agent.id,{requestId:first,prompt},()=>true);expect(()=>f.store.send(agent.id,{requestId:first,prompt},()=>true,{execInput:claim,onInputWritten:written})).toThrow("different native input claim");
+  f.start.mock.calls[0][2].onSettled!({...f.start.mock.results[0].value,status:"failed",finishedAt:2,outcomeConfirmed:true});
+  const nextTask=windowsAgentExecutionTask(agent,second,prompt),nextClaim=claimNativeExecInput(nextTask,{});f.store.send(agent.id,{requestId:second,prompt},()=>true,{execInput:nextClaim,onInputWritten:written});const run=f.start.mock.calls[1][2];
+  run.onSettled!({...f.start.mock.results[1].value,status:"failed",finishedAt:3,outcomeConfirmed:true});
+  const witness=new NativeExecInputWitness(nextClaim,nextTask,{},"stdin-text",nativeExecInputBytes(nextTask,{}),proof=>expect(()=>run.onInputWritten!(proof)).toThrow("owner changed"));witness.spawnedMain();witness.stdinFinished();expect(written).not.toHaveBeenCalled();
+ });
 });

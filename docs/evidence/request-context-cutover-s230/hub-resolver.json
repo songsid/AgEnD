@@ -1,0 +1,98 @@
+{
+  "sourceCommit": "980079c6479578e62bf0bf7bcb8357d00144000f",
+  "scope": "Accepted Hub snapshot through real Fleet admission and daemon final input, with owned turn waiting before begin.",
+  "checks": {
+    "restored": {
+      "files": 7,
+      "passed": 180,
+      "failed": 0
+    },
+    "postMutation": {
+      "files": 3,
+      "passed": 51,
+      "failed": 0
+    },
+    "mutants": [
+      {
+        "mutation": "active-turn-borrowed",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "wire-substitution",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "accepted-image-replaced",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "runtime-owner-ignored",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "dead-input-reference",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "begin-before-owned-turn",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "input-key-dropped",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "anchor-dropped",
+        "red": true,
+        "exit": 1
+      }
+    ],
+    "typecheckTests": "passed",
+    "gitleaks": "passed; no leaks",
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "Authenticated accepted snapshot only. Stable message root survives dispatch correlation and directory-name changes. Missing proof, altered image, changed wire or runtime owner refuses.",
+    "The actual Fleet beforeInput waits for owned C turn completion before begin. Poll time proves nothing and withdrawal ends the wait. No input intent is spent while another turn is active.",
+    "The actual daemon IPC and queue formatter carry the server key and leading transcript anchor to C. B retains identity after the question journal is unreadable.",
+    "Captured inputs are bounded revision-counted drain references. Settled/withdrawn inputs release their ephemeral reference, not their historical B context.",
+    "Factories remain unpublished until the complete installer. Owner/transport assembly, full mode and Off proof are unfinished. No live activation."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "5305e30f822a5d063cdc73026d84c034d30870f864fd21c107d1c9a09f00ae89"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "11c18752481c77c50fa6a27706d14bae4959c3128b198999b5751d173737959c"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "452d2aa587b3e2a7c9b69e9372bedeba95227a78044e50ea0b88a8082c8ddaee"
+    },
+    {
+      "path": "src/request-context-hub-resolver.ts",
+      "sha256": "c37e08aa2a504d624dec17398f40df06de786f964430d5139d5909854d76825d"
+    },
+    {
+      "path": "tests/hub-representative-fleet.test.ts",
+      "sha256": "39bd14877d8b5230624c6c35f68ed51a47ff03789bf77ddb61db2bf253336c2b"
+    },
+    {
+      "path": "tests/request-context-daemon-s223.test.ts",
+      "sha256": "de26aa106b47f3cf25c6fc44a6ca67086930e33d312985247cfae4a4c1d43c6e"
+    },
+    {
+      "path": "tests/request-hub-context-s231.test.ts",
+      "sha256": "0a15b0190daaaee31b803ff7deba99d989be10c638700714128ca7ae4c6633fd"
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "sourceCommit": "4dc6eaad92e21a78764e9ac0a4a7e3a0e5a88e26",
+  "priorOutputSource": "f5840a7f3",
+  "scope": "Native output/import projection and exact native factory retirement seam; not controlled activation or a complete installer.",
+  "checks": [
+    {
+      "command": "npx vitest run tests/fleet-windows-runtime.test.ts tests/request-context-native-human-s230.test.ts tests/windows-agents.test.ts tests/request-context-native-result-s230.test.ts --maxWorkers=1",
+      "files": 4,
+      "passed": 103
+    },
+    {
+      "command": "npx vitest run tests/native-mcp.test.ts tests/windows-cli.test.ts tests/local-pane-relay-2950.test.ts tests/runtime-coordinator.test.ts tests/fleet-windows-runtime.test.ts tests/request-context-native-graph-s230.test.ts tests/native-pane-manager-2950.test.ts tests/remote-runtime-fleet.test.ts --maxWorkers=1",
+      "files": 8,
+      "passed": 255
+    },
+    {
+      "command": "npx vitest run tests/request-context-native-graph-s230.test.ts tests/fleet-windows-runtime.test.ts tests/windows-agents.test.ts --maxWorkers=1",
+      "files": 3,
+      "passed": 97
+    },
+    {
+      "command": "NODE_OPTIONS=--max-old-space-size=8192 npm run typecheck:tests",
+      "result": "passed"
+    },
+    {
+      "command": "Pinned gitleaks 8.24.3 complete source range",
+      "result": "70 commits, no leaks"
+    },
+    {
+      "command": "check-public --diff 0e60f7780 HEAD",
+      "result": "clean"
+    }
+  ],
+  "controls": [
+    "Live completion and restart import use the same exact input/context reference; terminal history alone supplies no proof.",
+    "Confirmed proof and output digest survive an inert native-store reopen; altered context, token or output refuses.",
+    "A later guest does not replace the original admitted quote/destination. Existing account/channel/own-room/admin visibility is unchanged.",
+    "No new account marker for agent rows; channel is never claimed without a platform post.",
+    "Legacy first-hop MCP body/handler remains physically counted after revoking its grant.",
+    "A worker terminal line is insufficient until its owned child closes.",
+    "Local relay detach waits for the observed child close; coordinator retirement awaits exact WebSocket/server closure.",
+    "Busy preparations, native profiles, pane reservations and cold on-disk ownership refuse before revocation.",
+    "Retired old objects cannot admit new work, and an old retirement cannot clear a successor cache.",
+    "Tests use fully mocked physical/provider ports or localhost protocol peers; no live Fleet, provider, service or paired computer was operated."
+  ],
+  "limits": [
+    "Check counts overlap and are not summed. No new heavy/mutation campaign.",
+    "Controlled candidate reconstruction/rollback, complete owner publication, new-incarnation registration and full-mode proof remain unfinished.",
+    "Default On control host remains unbound; no activation, final formal review or user-look completion claimed.",
+    "No UI/copy/PNG edits or captures. Final user look still needs the pending Settings card and any changed integration frames."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "src/native-exec-context.ts",
+      "sha256": "c4f43edba5ab747efea38a797dc740387bdf99f150a2dca05d047c3c7a253c57"
+    },
+    {
+      "path": "src/request-context-native-output.ts",
+      "sha256": "95082d0bf7315fd7c11937e7b324c3b2254d3cdf8c42e33ab0d9b1c44a528dc0"
+    },
+    {
+      "path": "src/fleet-windows-runtime.ts",
+      "sha256": "0e6d6b0fcddc9b2eda2c7df31091f1fd89695f2096dc19f8266dfdc76996baac"
+    },
+    {
+      "path": "src/windows-agents.ts",
+      "sha256": "f944ae4970256fd72a0862341d80e0d52f08bf9bfc3d051d1a709707d02972c8"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "2c16eafba58e390ea04189a4f81ba566610a37e58484d7e5672bcebbe9a600f6"
+    },
+    {
+      "path": "src/windows-cli.ts",
+      "sha256": "15bd5630c49eba164744d36490d1a11654e68028cab094d8f2bcb9a3aef4af3a"
+    },
+    {
+      "path": "src/runtime-windows-bridge.ts",
+      "sha256": "354408c740b02642984e3fb49cc31b92d1a6986436e5618990f65a7d15b02a00"
+    },
+    {
+      "path": "src/runtime-coordinator.ts",
+      "sha256": "ec763db4d283f9ffff4e7384a3b42ddf41286029c3e8122b0bbe6e5a618d7300"
+    },
+    {
+      "path": "src/native-mcp.ts",
+      "sha256": "748bae41e7102dd352fa31f47a4925342c1c23278b2095261e85d43d2e399cd3"
+    },
+    {
+      "path": "src/local-pane-endpoint.ts",
+      "sha256": "026494bd8a5ca8c9f0b6b41c4ad6b984b3f118a2b3e72867bef6dfbfc105bd36"
+    },
+    {
+      "path": "src/native-pane-manager.ts",
+      "sha256": "84a02ca2a724056d7a468d2eadcc61404f8257b2b324b0020453617ada9a18d8"
+    },
+    {
+      "path": "src/web-chat-history.ts",
+      "sha256": "45cce4b504e864097024cd09d825397bef22af325acba0b14c737a216615a3e0"
+    },
+    {
+      "path": "tests/request-context-native-human-s230.test.ts",
+      "sha256": "fae527288f18e632d90e300df759d55d2b90d9e15e229880fa4b8055b7bc7215"
+    },
+    {
+      "path": "tests/fleet-windows-runtime.test.ts",
+      "sha256": "9c877521cc2b774401b18b34f6bbe0d076edf35149d658b4c56070f09723004c"
+    },
+    {
+      "path": "tests/request-context-native-graph-s230.test.ts",
+      "sha256": "8da6b5fd33c498a3c5e8f0e616b3a4a7401fbfc5fc80468f5281ae9990b4c847"
+    },
+    {
+      "path": "tests/runtime-coordinator.test.ts",
+      "sha256": "6861681c911fd270b9e08ed5fe0c7fa91c3031c36064ac17a6eb847c0ec347f9"
+    },
+    {
+      "path": "tests/native-mcp.test.ts",
+      "sha256": "c8712a5a13e5019e24649b75dfa8355160b543f178f30d92def6290cbef79898"
+    },
+    {
+      "path": "tests/local-pane-relay-2950.test.ts",
+      "sha256": "f28cb639534327fac5fc40c46ede4393ea4cbb3c6bb844e4bfdc1a932502726c"
+    }
+  ]
+}

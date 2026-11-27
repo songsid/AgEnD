@@ -1,0 +1,101 @@
+{
+  "sourceHead": "1f847ade2693e734494162b99283778eee245bb9",
+  "individuallyOpened": [
+    "desk-light-en-settings-pending.png",
+    "desk-light-en-destination-refusal.png",
+    "desk-light-en-stop-waiting-outcome.png",
+    "desk-light-zh-TW-settings-pending.png",
+    "desk-light-zh-TW-destination-refusal.png",
+    "desk-light-zh-TW-stop-waiting-outcome.png",
+    "desk-dark-en-settings-pending.png",
+    "desk-dark-en-destination-refusal.png",
+    "desk-dark-en-stop-waiting-outcome.png",
+    "desk-dark-zh-TW-settings-pending.png",
+    "desk-dark-zh-TW-destination-refusal.png",
+    "desk-dark-zh-TW-stop-waiting-outcome.png",
+    "phone-light-en-settings-pending.png",
+    "phone-light-en-destination-refusal.png",
+    "phone-light-en-stop-waiting-outcome.png",
+    "phone-light-zh-TW-settings-pending.png",
+    "phone-light-zh-TW-destination-refusal.png",
+    "phone-light-zh-TW-stop-waiting-outcome.png",
+    "phone-dark-en-settings-pending.png",
+    "phone-dark-en-destination-refusal.png",
+    "phone-dark-en-stop-waiting-outcome.png",
+    "phone-dark-zh-TW-settings-pending.png",
+    "phone-dark-zh-TW-destination-refusal.png",
+    "phone-dark-zh-TW-stop-waiting-outcome.png"
+  ],
+  "visualBlockers": [],
+  "checks": [
+    "Complete expanded warning/details and usable buttons",
+    "Both themes readable",
+    "No clipping, overflow, tofu or private values",
+    "Version badge is fixture-only2.4.0-beta.25 on the replacement Settings frames"
+  ],
+  "existingStyleCaveats": [
+    "Ordinary status notices omit the sender label; timestamp and grey quote rule remain. Sender attribution is asserted in the server payload/tests, not visually proven by these screenshots.",
+    "Phone ordinary status notices retain their existing standalone copy icons."
+  ],
+  "cssOrCopyChanged": true,
+  "carriedChatSourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+  "sourceByFile": {
+    "desk-light-en-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "desk-light-en-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "desk-light-en-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "desk-light-zh-TW-settings-pending.png": "1f847ade2693e734494162b99283778eee245bb9",
+    "desk-light-zh-TW-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "desk-light-zh-TW-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "desk-dark-en-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "desk-dark-en-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "desk-dark-en-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "desk-dark-zh-TW-settings-pending.png": "1f847ade2693e734494162b99283778eee245bb9",
+    "desk-dark-zh-TW-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "desk-dark-zh-TW-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "phone-light-en-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "phone-light-en-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "phone-light-en-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "phone-light-zh-TW-settings-pending.png": "1f847ade2693e734494162b99283778eee245bb9",
+    "phone-light-zh-TW-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "phone-light-zh-TW-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "phone-dark-en-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "phone-dark-en-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "phone-dark-en-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "phone-dark-zh-TW-settings-pending.png": "1f847ade2693e734494162b99283778eee245bb9",
+    "phone-dark-zh-TW-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
+    "phone-dark-zh-TW-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
+  },
+  "pendingR1": {
+    "individuallyOpened": [
+      "desk-light-en-settings-pending.png",
+      "desk-light-zh-TW-settings-pending.png",
+      "desk-dark-en-settings-pending.png",
+      "desk-dark-zh-TW-settings-pending.png",
+      "phone-light-en-settings-pending.png",
+      "phone-light-zh-TW-settings-pending.png",
+      "phone-dark-en-settings-pending.png",
+      "phone-dark-zh-TW-settings-pending.png"
+    ],
+    "visualBlockers": [],
+    "checks": [
+      "Short irreversible-version lead is visible above details",
+      "Complete warning, Go back deadline and restart details remain readable",
+      "Apply now has no contradictory General direction",
+      "Buttons fit; dark contrast clear; no overflow, tofu or private values",
+      "Fixture badge2.4.0-beta.25; existing narrow-phone ellipsis treatment",
+      "Final0d2 originals individually opened; zh deadline24h10:30; no visual blocker"
+    ],
+    "acceptedChatFramesReopened": false
+  },
+  "pendingZhFinal": {
+    "sourceHead": "1f847ade2693e734494162b99283778eee245bb9",
+    "individuallyOpened": [
+      "desk-light-zh-TW-settings-pending.png",
+      "desk-dark-zh-TW-settings-pending.png",
+      "phone-light-zh-TW-settings-pending.png",
+      "phone-dark-zh-TW-settings-pending.png"
+    ],
+    "visualBlockers": [],
+    "reason": "Leader requested downgrade terminology in four zh pending frames only; other20images carried unchanged"
+  }
+}

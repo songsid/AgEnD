@@ -34,6 +34,7 @@ import { GeneralLocation } from "./general-location.js";
 import { runtimeUpdateText } from "./runtime-update-status.js";
 import { ContactNeedsItem, ContactSuggestionsGroup, isRestrictedSuggestion } from "./contact-needs.js";
 import { ContactVerifyNeed, contactVerifyCount, isContactVerify } from "./contact-verify-need.js";
+import { RequestContextNeed } from "./request-context-control.js";
 import { HostDirectoryNotices, hostDirectoryNoticesOffered } from "./hub-host-security-notices.js";
 // M-3770 1.4: AgEnD's own update in Needs you — only a failure or "can't update here" (design §3.1).
 import { UpdateNeedsItem, updateAttention } from "/assets/update-card-ui.js";
@@ -245,7 +246,7 @@ export function NeedsPanel({ navKey }) {
         : !items.length && !asks.length && !decidedHere.length ? updateNeed ? null : hostDirectoryNoticesOffered() ? html`<p class="muted">${tn("otherEmpty")}</p>` : html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
         : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config",g.items[0]?.type === 'host', !!g.items[0]?.runtimeUpdate])} class="n-group" aria-label=${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance}>
           <h2 class="n-group-head">${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type==='host'?hostAlertText('title'):g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
-          ${g.items.map((item) => item.type === "contact"
+          ${g.items.map((item) => item.reason === "request_context_cutover" ? html`<${RequestContextNeed} key=${item.id} item=${item} />` : item.type === "contact"
             // M-3339: a contact request or the restricted-mode suggestion — its own card (contact-needs.js; references only).
             ? html`<${ContactNeedsItem} key=${item.id} item=${item} />`
             : html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}

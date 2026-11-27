@@ -1,0 +1,100 @@
+{
+  "sourceCommit": "d68205cba0d7b041a3802faf7a8511bae645000a",
+  "scope": "Native C/input/receipt composition, original grant input-ready fence and exact B expected-return completion; production installer and On remain unbound.",
+  "checks": [
+    {
+      "command": "npx vitest run tests/fleet-windows-runtime.test.ts tests/request-context-native-result-s230.test.ts tests/request-context-returns-s232.test.ts tests/request-context-native-human-s230.test.ts --maxWorkers=1",
+      "files": 4,
+      "passed": 81
+    },
+    {
+      "command": "npx vitest run tests/request-context-native-result-s230.test.ts tests/fleet-windows-runtime.test.ts tests/windows-agents.test.ts --maxWorkers=1",
+      "files": 3,
+      "passed": 85
+    },
+    {
+      "command": "npx vitest run tests/fleet-windows-runtime.test.ts tests/request-context-native-human-s230.test.ts tests/request-context-native-graph-s230.test.ts --maxWorkers=1",
+      "files": 3,
+      "passed": 70
+    },
+    {
+      "command": "NODE_OPTIONS=--max-old-space-size=8192 npm run typecheck:tests",
+      "result": "passed"
+    }
+  ],
+  "controls": [
+    "Actual composed provider bytes and transport match the claimed worker input.",
+    "Tools wait on their original grant; preparation/grant/spawn alone never supplies positive input evidence.",
+    "Human receipt identity and authority stay unchanged; pane IPC cannot settle the native namespace.",
+    "Lost/changed token, owner, manager, incarnation and composed input refuse.",
+    "Exact retries reuse the original run; legacy rows cannot acquire a claim.",
+    "A native request journal key binds the physical delivery attempt; a different attempt cannot borrow cached proof.",
+    "Unconfirmed completion keeps C/drain state until exact confirmed recovery.",
+    "Automatic reports preserve the retained receiving child and exact expected return after C ends; closed or answered obligations do not create another request.",
+    "Missing proof, wrong token/run/owner or unconfirmed outcome does not report.",
+    "No live Fleet, provider, worker, service or paired runtime was started."
+  ],
+  "limits": [
+    "Counts overlap and are not summed. Focused regressions only; no new mutation/heavy campaign.",
+    "Scoped original human output audience/import history, native physical replacement and capable installer/control publication remain unfinished.",
+    "No activation, final full-mode claim or formal review request. UI/copy/captures unchanged."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "src/native-exec-input.ts",
+      "sha256": "1dc9dcc0cf0ed654bf1c5e3805262db3c8d7b33708cdcd62ea94ad220ac36aa1"
+    },
+    {
+      "path": "src/request-context-native-human.ts",
+      "sha256": "615548824d47a59d5bc4e726add74f57b5752cf4888ce2ac4d27041695c9ee78"
+    },
+    {
+      "path": "src/request-context-exec-owner.ts",
+      "sha256": "5bcbd9d6a1700bbb2882033e005e7ebb25c7a795de316c849ed499b321ee10f0"
+    },
+    {
+      "path": "src/request-context-native-result.ts",
+      "sha256": "5f936574e1dfc0b13ce5ecfe43b1e0c93742ffc63514f3fd5b9a651d1e30e0f1"
+    },
+    {
+      "path": "src/fleet-windows-runtime.ts",
+      "sha256": "1d2d38fbfa06adc84c83257be249c8262217d8214adeeb930893b9c3b2ce9fc5"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "e3fc0f99c13132ac4366cde9cc0b543632068253f8a8ed9bb2842978daaddf3f"
+    },
+    {
+      "path": "src/windows-agents.ts",
+      "sha256": "9769dbf8890ae5fc553d429d198b908e42577ded884b75354f2425da44f7d2e7"
+    },
+    {
+      "path": "src/native-mcp.ts",
+      "sha256": "238a5b682ccf4dc4dc14acd28d964d695c2f914466ac5685a5cf00bf530b6a38"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "fccd9fd3fb519a15fe71224b2754fda6f04445573688df0fbed7e4d22cf40386"
+    },
+    {
+      "path": "src/human-delivery-receipts.ts",
+      "sha256": "eeca714e42ff8a1a65b2e83cc8c43ab2d03bba4d8aa970675630b3192474e52c"
+    },
+    {
+      "path": "tests/request-context-native-human-s230.test.ts",
+      "sha256": "b0d2a893d7bf9c6c697f1deb75a80e198bf8b7e8d4fe60b9604185712e17d3c5"
+    },
+    {
+      "path": "tests/request-context-native-result-s230.test.ts",
+      "sha256": "66e0f52ba99f9f4d42be2e48715e24e1c35b89a2787a5eeb416a96595173ac27"
+    },
+    {
+      "path": "tests/request-context-returns-s232.test.ts",
+      "sha256": "e40fa4dc3fe30e9cdf62e38624c94107e9fd5ed5dfa2b894cf19e1238ccc0c13"
+    },
+    {
+      "path": "tests/fleet-windows-runtime.test.ts",
+      "sha256": "e4a15dffcaf93c00d9bc5f339b27fbd51545eedb6218308ab0113ca101d0b425"
+    }
+  ]
+}

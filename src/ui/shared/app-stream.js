@@ -164,6 +164,7 @@ export function createStream(opts) {
         if (Array.isArray(d.reply_buttons)) for (const u of d.reply_buttons) emit("reply_buttons", u);   // #1266
         if (Array.isArray(d.reactions)) for (const u of d.reactions) emit("reactions", u);               // #2305
         if (Array.isArray(d.needs)) emit("needs", { items: d.needs });
+        if (Object.hasOwn(d, "requestContextCutover")) emit("request-context-control", d.requestContextCutover);
         return true;
       } catch { return false; /* the next tick, or the catch-up's retry, tries again */ }
     })();

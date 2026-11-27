@@ -1,0 +1,28 @@
+{
+  "sourceHead": "3930920b36d71ab7ccdfcd64a6b8b41b2ba3bf22",
+  "fixture": "Real web server, settings/needs/chat renderers and control route; synthetic installer states, not activation or full-mode proof.",
+  "pictures": [
+    {
+      "name": "desk-dark-zh-TW-general-notice.png",
+      "sha256": "756de81cbccff94ccb50103c2b2f91ba4da4a285b0ebb5150d1d31db974c501a"
+    }
+  ],
+  "checks": [
+    {
+      "name": "desk-dark-zh-TW-general-notice: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-general-notice: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-general-notice: CSP",
+      "ok": true
+    },
+    {
+      "name": "only deliberate synthetic unknown-result writes occurred",
+      "ok": true
+    }
+  ]
+}

@@ -90,6 +90,8 @@ export interface HubRepresentativeDelivery {
   roomAskerDestination?: import("./room-asker-identity-model.js").RoomAskerDestination;
   /** Run by the fleet immediately before the IPC hand-off; false sends nothing. */
   beforeInput(): Promise<boolean>;
+  /** Final owned input may run after IPC handoff; this is distinct from the pre-handoff dispatch fence. */
+  inputCurrent?():boolean;
   /** The fleet's own fence through wake/idle/hand-off. */
   stillCurrent(): boolean;
 }
@@ -338,15 +340,16 @@ export class HubRepresentativeExecution {
       question.text,
       ...(fileLines.length ? ["", ...fileLines] : []),
     ].join("\n");
-    let handed = false;
+    let handed = false,inputLink:HubRepresentativeLink|null=null;
     try {
       handed = await this.options.deliver({
         agent: row.agent, correlationId: cid, text,
         ...(acceptedHubRequest?{acceptedHubRequest}:{}),
         contactLimit: this.options.localExposure(row.exposure_id)?.contactLimit !== false,
         // The live fence through wake/idle/reconnect: the row's state as stored now, and its consent/lifecycle/binding.
-        stillCurrent: () => { const st = this.refresh(row); return (st === "dispatching" || st === "input") && this.currentFor(row); },
-        beforeInput: () => this.beforeInput(row),
+        stillCurrent: () => { if(this.closed)return false;const st = this.refresh(row); return (st === "dispatching" || st === "input") && this.currentFor(row); },
+        inputCurrent:()=>{if(this.closed)return false;const latest=this.row("id",row.id);return !!inputLink&&this.options.link()===inputLink&&inputLink.current()&&!!latest&&latest.cid===cid&&["input","delivered"].includes(latest.state)&&this.currentFor(latest);},
+        beforeInput: () => this.beforeInput(row,()=>{inputLink=this.options.link();}),
       });
     } catch (err) {
       this.options.log("warn", "Hub question hand-off failed", { messageId: row.message_id, err: String(err) });
@@ -369,7 +372,7 @@ export class HubRepresentativeExecution {
   }
 
   /** The fleet's last step before input (at the connected hand-off): consent and lifecycle again, the begin lease, spent at once. */
-  private async beforeInput(row: Row): Promise<boolean> {
+  private async beforeInput(row: Row,entered?:()=>void): Promise<boolean> {
     try {
       if (this.options.updateHeld?.()) return false;
       if (this.refresh(row) !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return false; }
@@ -382,6 +385,7 @@ export class HubRepresentativeExecution {
       this.options.journal.markInputIntent(row.message_id, request, lease, this.fenceOf(row));
       if (!this.setState(row, "input", ["dispatching"])) throw new HubProtocolError("uncertain");
       this.forgetRetry(row.id);
+      entered?.();
       return true;
     } catch (err) {
       // After the intent was written, a failed transition is uncertain (never re-queued); before it, a plain hold.

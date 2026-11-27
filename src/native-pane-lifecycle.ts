@@ -17,6 +17,7 @@ import type { RequestContextPaneProofs } from "./request-context-pane.js";
 export interface NativePaneAcquisition { pane: Pane; source: TranscriptSource; disposition: "reattached" | "resumed" | "fresh" }
 export interface NativePaneLifecycle {
   requestContextAvailable?(): boolean;
+  requestContextTransportCurrent?():boolean;
   stageRequestContext?(snapshot: RequestContextTurnSnapshot, wireSha256: string, current: () => boolean, interrupted: boolean): void;
   lastInputWasNotSent?(): boolean;
   bindDaemon?(daemon: import("./daemon.js").Daemon): void;
@@ -77,6 +78,8 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
       cwd: options.launch.cwd, contextPercentage: null, statusLineItems: ["context-remaining"], resumes: !!options.launch.sessionId || !!this.port.ownedSnapshot()?.sessionId }), { contextlessResume: !!options.launch.sessionId });
   }
   requestContextAvailable(): boolean { return !!this.options.requestContexts; }
+  /** Both the owned proof registry and this actual open port must be current and negotiated. */
+  requestContextTransportCurrent():boolean{return !!this.options.requestContexts&&this.current()&&this.port.requestContextSupported();}
   lastInputWasNotSent(): boolean { return this.port.lastInputWasNotSent(); }
   stageRequestContext(snapshot: RequestContextTurnSnapshot, wireSha256: string, current: () => boolean, interrupted: boolean): void {
     const pane = this.port.ownedSnapshot(), proofs = this.options.requestContexts;

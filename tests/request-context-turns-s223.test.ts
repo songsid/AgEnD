@@ -170,3 +170,10 @@ it("S-224 never binds ordinary queued input; a current permitted steer keeps A's
   r.admin(false);expect(()=>r.turns.beforeQueuedSteer("steer",digest,owner)).toThrow(/permitted/);
   expect(r.turns.current(owner)).toBe(a);
 });
+it.each(["free-room","hub"]as const)("unproved %s recovery keeps restrictions but starts local work with no earlier audience or release",ingress=>{
+ const r=rig(),original={...context(),ingress,initiatingActor:ingress==="hub"?{kind:"person"as const,platform:"hub"as const,hubId:"demo-hub",id:"demo-asker"}:context().initiatingActor,sourceAudience:{kind:ingress==="hub"?"hub"as const:"room"as const,ref:OTHER},returnAudience:{kind:"room"as const,ref:OTHER}};
+ const first=r.turns.beforeWrite("outside",r.prepare("outside",original),owner);r.turns.ended(first,owner);
+ const restarted=new RequestContextLocalTurns(r.ports),next=restarted.beforeWrite(null,wireDigest("unmapped recovery"),{...owner,daemonBootId:"restarted"});
+ expect(next.context.ingress).toBe(ingress);expect(next.context.initiatingActor).toEqual({kind:"unknown",reason:"unproved-recovery"});expect(next.context.ref.rootContextId).not.toBe(original.ref.rootContextId);expect(next.context.ref.parentContextId).toBeUndefined();
+ expect(next.context.sourceAudience).toEqual({kind:"instance",ref:next.context.ref.contextId});expect(next.context.returnAudience).toEqual(next.context.sourceAudience);expect(next.unprovedRecoveryFrom).toBe(original.ref.contextId);
+});

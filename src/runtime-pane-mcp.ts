@@ -59,8 +59,14 @@ function readPaneMcpLedger(file:string,machineId:string,acceptOwner:(owner:PaneM
   return {ledger:raw,sha256:createHash("sha256").update(text).digest("hex")};
 }
 export function readRetainedPaneMcpRoots(file:string,machineId:string,expected:Omit<PaneMcpOwner,"hostBootId">):{sha256:string;roots:Array<{rootId:string;operationId:string}>} {
+  return retainedPaneMcpWork(file,machineId,expected,false);
+}
+export function readRetainedPaneMcpOffWork(file:string,machineId:string,expected:Omit<PaneMcpOwner,"hostBootId">):{sha256:string;roots:Array<{rootId:string;operationId:string}>} {
+  return retainedPaneMcpWork(file,machineId,expected,true);
+}
+function retainedPaneMcpWork(file:string,machineId:string,expected:Omit<PaneMcpOwner,"hostBootId">,off:boolean){
   const {ledger,sha256}=readPaneMcpLedger(file,machineId,owner=>owner.agentId===expected.agentId&&owner.paneId===expected.paneId&&owner.instance===expected.instance&&owner.launchId===expected.launchId);
-  return {sha256,roots:Object.values(ledger.calls).flatMap(row=>row.requestContext?.coverage==="covered"?[{rootId:row.requestContext.rootContextId!,operationId:row.operationId}]:[])};
+  return {sha256,roots:Object.values(ledger.calls).flatMap(row=>row.requestContext?.coverage==="covered"&&(!off||row.state!=="written")?[{rootId:row.requestContext.rootContextId!,operationId:row.operationId}]:[])};
 }
 const errorResult = (text: string): Record<string, unknown> => ({ content: [{ type: "text", text }], isError: true });
 /** One ledger per exact pane launch; no plaintext arguments, result, provider credential or user input is persisted. */
@@ -89,6 +95,15 @@ export class PaneMcpAuthorityLease {
       else if(row.requestContext?.coverage==="covered"&&row.requestContext.rootContextId===rootId)references.push(`pane-ledger:${this.authority.owner.launchId}:${row.operationId}`);
     }
     return {registration:this.authority.registration??null,revision:this.drainRevision,references,unknown};
+  }
+  get offRevision():string{return `${this.drainSerial}:${[...this.inFlight.keys()].sort().join(",")}`;}
+  offView(rootId:string):RequestContextDrainView {
+    const references:string[]=[];let unknown=false;
+    if(!this.retired)for(const [key,row]of Object.entries(this.ledger.calls)){
+      if(!["prepared","done","written"].includes(row.state)||row.requestContext!==undefined&&!validCallContext(row.requestContext))unknown=true;
+      else if(row.requestContext?.coverage==="covered"&&row.requestContext.rootContextId===rootId&&(row.state!=="written"||this.inFlight.has(key)))references.push(`pane-ledger:${this.authority.owner.launchId}:${row.operationId}`);
+    }
+    return {registration:this.authority.registration??null,revision:this.offRevision,references,unknown};
   }
   retire(raw:RuntimePaneSnapshot):void {
     const exit=validateRuntimePaneSnapshot(raw),owner=this.authority.owner;
@@ -196,7 +211,7 @@ export class PaneMcpAuthorityLease {
       this.results.set(key, response);
       if (!allowed()) throw Error("Pane tool lease expired before returning its result");
       return { result: response, responseId: call.responseId };
-    }).finally(() => { this.inFlight.delete(key); });
+    }).finally(() => { if(this.inFlight.delete(key))this.drainSerial++; });
     this.inFlight.set(key, run);
     return run;
   }

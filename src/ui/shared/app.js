@@ -76,6 +76,7 @@ if (hubPage) {
   appStore.set({ retryHydration: () => stream.catchUp() });
   appStore.set({ needsLoaded: false });
   stream.on("needs", (d) => appStore.set({ needsLoaded: true, needs: Array.isArray(d && d.items) ? d.items : [] }));
+  stream.on("request-context-control", (d) => appStore.set({ requestContextCutover: d }));
   // #1218: a panel's way to hear one stream event (the Log's steps_tick), unsubscribed by its lease.
   appStore.set({ streamOn: (name, fn) => stream.on(name, fn) });
   appStore.set({ connection: stream.connection() });

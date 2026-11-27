@@ -1,0 +1,61 @@
+{
+  "sourceCommit": "7a06b0e2d4ae778bbc7e60dc72ed89a7f46a39c1",
+  "scope": "Final physical peer-delivery input resolver for B-owned operation lineage and expected answers.",
+  "checks": {
+    "restored": {
+      "files": 4,
+      "passed": 76,
+      "failed": 0
+    },
+    "mutants": [
+      {
+        "mutation": "manager-ignored",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "attempt-ignored",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "terminal-reused",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "consent-ignored",
+        "red": true,
+        "exit": 1
+      },
+      {
+        "mutation": "late-owner-ignored",
+        "red": true,
+        "exit": 1
+      }
+    ],
+    "typecheckTests": "passed",
+    "gitleaks": "passed; no leaks",
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "Current manager boot, target daemon boot, runtime owner, exact attempt number, target and delivering/submission-started state are required at the final write.",
+    "The injected current-consumption check runs inside B preparation before and after retaining the deterministic receiving child. Replacement rolls it back.",
+    "Only validated B operation and return rows supply the peer and parent. A correlation or displayed sender cannot supply lineage.",
+    "Explicit pre-start Fleet factory only; production owner installation and full mode remain unfinished. No live activation."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "acd4fe20fe10c6573b2fee97b0ad7e824f5c8cab44e2757fc50d722f1b83fdfd"
+    },
+    {
+      "path": "src/request-context-delivery-resolver.ts",
+      "sha256": "21ce00ad6bb7182a5d67bb8a797ea6a66d5637f3a22e828cc608d9e0c4b2cf71"
+    },
+    {
+      "path": "tests/request-context-returns-s232.test.ts",
+      "sha256": "05e1c64cbad8be510649f991527c4bef06c151490d65ee016d18dbef9c568707"
+    }
+  ]
+}

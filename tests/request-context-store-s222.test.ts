@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -165,4 +165,17 @@ it("a competing SQLite writer cannot leave partial provenance, and a retry after
   const first = contender.admitWithRequestContext(input(), context(), binding());
   expect(first.inserted).toBe(true); expect(owner.admitWithRequestContext(input(), context(), binding()).inserted).toBe(false);
   expect(owner.listPending()).toHaveLength(1);
+});
+
+
+it("S-230 observes raw and scoped inserts once, after their complete owned admission image exists", () => {
+  const legacy = open(path(), false), raw = vi.fn(); legacy.on("request_context_admitted", raw);
+  legacy.admit(input()); legacy.admit(input()); expect(raw).toHaveBeenCalledTimes(1);
+  const scoped = open(), observed = vi.fn(() => {
+    const operation = scoped.requestContextOperation("source", input().operationId);
+    expect(operation).toBeTruthy(); expect(scoped.get(operation!.deliveryId)?.payload).toEqual(input().payload);
+  });
+  scoped.on("request_context_admitted", observed);
+  scoped.admitWithRequestContext(input(), context(), binding()); scoped.admitWithRequestContext(input(), context(), binding());
+  expect(observed).toHaveBeenCalledTimes(1);
 });

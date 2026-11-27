@@ -173,7 +173,7 @@ export class RuntimeUpdateController {
   }
   private newClient(trialId?: string): RuntimeClient {
     this.authentication = undefined; this.trialPending = !!trialId;
-    return (this.options.makeClient ?? (value => new RuntimeClient(value)))({ store: this.options.store, credentialProfilesRoot: credentialProfilesRoot(this.options.store.directory), report: this.report, updateStatus: this.initialStatus(),
+    return (this.options.makeClient ?? (value => new RuntimeClient(value)))({ store: this.options.store, requestContextProtocol:1, credentialProfilesRoot: credentialProfilesRoot(this.options.store.directory), report: this.report, updateStatus: this.initialStatus(),
       managedUpdate: { ...(trialId ? { trialId } : {}), authenticated: value => { this.authentication = structuredClone(value); if (!this.trialPending) this.checkSoon(); } } });
   }
   private ownLifecycle(job: () => Promise<void>): Promise<void> {

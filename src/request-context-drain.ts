@@ -1,9 +1,11 @@
+import {requestHumanInputBlockers} from "./request-context-human.js";
 import {requestContextReturnBlockers} from "./request-context-returns.js";
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { assertRequestContextRootOpen, type RequestContextDrainView, type RequestContextRegistrationGate } from "./request-context-fence.js";
-import { RequestContextStore } from "./request-context-store.js";
+import type {RequestContextInstallationStore,RequestContextOffProof} from "./request-context-installation.js";
+import { RequestContextStore,requestContextDigest } from "./request-context-store.js";
 const ROOT=z.uuid();
 export const REQUEST_CONTEXT_DRAIN_FAMILIES=["turns","daemon-calls","fleet-calls","native-exec","native-grants","pane-proofs","pane-ledgers","registered-work"]as const;
 export type RequestContextDrainFamily=typeof REQUEST_CONTEXT_DRAIN_FAMILIES[number];
@@ -11,6 +13,8 @@ export interface RequestContextDrainParticipant {
   registration:RequestContextRegistrationGate;
   revision():string;
   inspect(rootId:string):RequestContextDrainView;
+  offRevision?():string;
+  inspectOff?(rootId:string):RequestContextDrainView;
 }
 export interface RequestContextRetirementProof { rootId:string; epoch:string; current():boolean }
 /** Owner assembly only. No production constructor or tool/API route installs this before cutover. */
@@ -64,7 +68,7 @@ export class RequestContextDrain {
     return !!this.db.prepare("SELECT 1 FROM request_context_drain_v1 WHERE root_id=? AND epoch=? AND owner=?").get(rootId,epoch,owner);
   }
   private durable(rootId:string):string[] {
-    const blockers:string[]=[...requestContextReturnBlockers(this.db,rootId)];
+    const blockers:string[]=[...requestContextReturnBlockers(this.db,rootId),...requestHumanInputBlockers(this.db,rootId)];
     const exists=(table:string)=>!!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
     if(!exists("request_contexts_v1"))return ["context-store-unavailable"];
     const contexts="SELECT context_id FROM request_contexts_v1 WHERE json_extract(context_json,'$.ref.rootContextId')=?";
@@ -79,19 +83,67 @@ export class RequestContextDrain {
     if(exists("request_context_recovery_v1")&&this.db.prepare(`SELECT 1 FROM request_context_recovery_v1 WHERE json_extract(pointer_json,'$.contextId') IN (${contexts}) LIMIT 1`).get(rootId))blockers.push("recovery-pointer");
     return blockers;
   }
-  inspect(rootId:string,epoch:string):{blockers:string[];revisions:Map<string,string>} {
+  /** Read-only installation status. Unlike root retirement, this does not fence continuations still finishing. */
+  inspectWork(rootId:string):{blockers:string[];revisions:Map<string,string>} {return this.inspectRegistries(rootId,true);}
+  private inspectRegistries(rootId:string,off:boolean):{blockers:string[];revisions:Map<string,string>} {
     ROOT.parse(rootId);this.ready();const owner=this.owner(),blockers=this.durable(rootId),revisions=new Map<string,string>();
-    if(!owner||!this.fenced(rootId,epoch,owner))blockers.push("drain-owner-or-fence");
+    const context=new RequestContextStore(this.db).context(rootId);
+    if(!context||context.ref.rootContextId!==rootId||context.ref.parentContextId)blockers.push("context-unavailable");
+    if(!owner)blockers.push("drain-owner-unavailable");
     for(const registration of this.usedRegistrations)if(![...this.participants.values()].some(row=>row.value.registration===registration))blockers.push("unregistered-producer");
     for(const family of REQUEST_CONTEXT_DRAIN_FAMILIES)if(![...this.participants.values()].some(row=>row.family===family))blockers.push(`missing:${family}`);
     for(const [id,row]of this.participants){
       try{
-        const before=row.value.revision(),view=row.value.inspect(rootId),after=row.value.revision();
+        if(off&&!!row.value.offRevision!==!!row.value.inspectOff)throw Error("Incomplete installation drain view");
+        const revision=()=>off&&row.value.offRevision?row.value.offRevision():row.value.revision();
+        const before=revision(),view=off&&row.value.inspectOff?row.value.inspectOff(rootId):row.value.inspect(rootId),after=revision();
         if(!before||before!==after||view.revision!==after||view.registration!==row.value.registration||view.unknown)blockers.push(`unknown:${id}`);
         else{revisions.set(id,after);blockers.push(...view.references.slice(0,65).map(ref=>`${id}:${ref}`));}
       }catch{blockers.push(`unavailable:${id}`);}
     }
     return {blockers,revisions};
+  }
+  inspect(rootId:string,epoch:string):{blockers:string[];revisions:Map<string,string>} {
+    const view=this.inspectRegistries(rootId,false),owner=this.owner();
+    if(!owner||!this.fenced(rootId,epoch,owner))view.blockers.push("drain-owner-or-fence");
+    return view;
+  }
+  /** Final installation Off, under the global input fence. It does not retire or relabel any root. */
+  proveOff(installation:RequestContextInstallationStore,globalFence:()=>boolean):RequestContextOffProof {
+    const state=installation.read(),owner=this.owner(),membership=this.membership;
+    if(!state||state.mode!=="draining"||state.owner!==owner||!globalFence())throw Error("Installation drain owner changed");
+    const roots=[...installation.drainRoots()].sort(),rootsImage=requestContextDigest(roots);
+    // Even an empty snapshot must prove the full family inventory; no missing registry is treated as empty.
+    let empty=randomUUID();while(roots.includes(empty))empty=randomUUID();
+    const inspect=()=>{
+      const revisions=new Map<string,string>(),blockers:string[]=[];
+      for(const root of roots.length?roots:[empty]){
+        const view=this.inspectWork(root);
+        for(const blocker of view.blockers){
+          if(blocker==="context-unavailable"&&(!roots.length||this.retiredForOff(root,owner!)))continue;
+          if(blocker==="context-store-unavailable"&&!roots.length&&!new RequestContextStore(this.db).context(root))continue;
+          blockers.push(`${root}:${blocker}`);
+        }
+        for(const [key,value]of view.revisions){if(revisions.has(key)&&revisions.get(key)!==value)blockers.push(`changed:${key}`);revisions.set(key,value);}
+      }
+      return {blockers,revisions};
+    };
+    const first=inspect();if(first.blockers.length)throw Error(`Installation work remains: ${first.blockers.join(", ").slice(0,2000)}`);
+    const current=()=>{try{
+      this.ready();const now=installation.read();
+      if(!globalFence()||this.owner()!==owner||this.membership!==membership||!now||now.owner!==state.owner||now.epoch!==state.epoch
+        ||!(now.mode==="draining"&&now.revision===state.revision||now.mode==="off"&&now.revision===state.revision+1)
+        ||requestContextDigest([...installation.drainRoots()].sort())!==rootsImage)return false;
+      const next=inspect();return next.blockers.length===0&&requestContextDigest([...next.revisions])===requestContextDigest([...first.revisions]);
+    }catch{return false;}};
+    if(!current())throw Error("Installation drain changed while proving");
+    return Object.freeze({epoch:state.epoch,revision:state.revision,current});
+  }
+  /** A snapshotted root collected by E keeps its owned F tombstone. An unexplained missing root refuses. */
+  private retiredForOff(root:string,owner:string):boolean {
+    if(!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_context_drain_v1'").get())return false;
+    const row=this.db.prepare("SELECT epoch,owner FROM request_context_drain_v1 WHERE root_id=?").get(root) as {epoch:string;owner:string}|undefined;
+    return !!row&&row.owner===owner&&z.uuid().safeParse(row.epoch).success&&!new RequestContextStore(this.db).context(root);
   }
   prove(rootId:string,epoch:string):RequestContextRetirementProof {
     const owner=this.owner(),membership=this.membership,inspected=this.inspect(rootId,epoch);
