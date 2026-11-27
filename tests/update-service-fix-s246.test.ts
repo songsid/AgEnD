@@ -92,7 +92,7 @@ describe("S-246: POST /ui/update/fixes { fix: service }", () => {
     } finally { await f.stop(); }
   });
 
-  it("the hand-over began: 202 { restarting } (also while the command still runs); the same key is the same answer", async () => {
+  it("the hand-over began: 202 { restarting }; the same key is the same answer; still running after the wait: 202 { pending } with the fresh pre-flight", async () => {
     preflight.checks = NOT_SERVICE;
     const f = await fleet(async () => ({ kind: "restarting" }));
     try {
@@ -103,7 +103,9 @@ describe("S-246: POST /ui/update/fixes { fix: service }", () => {
       expect((await f.post(admin, "svc-key-0010")).status).toBe(202);
       expect(f.start).toHaveBeenCalledTimes(1);
       f.start!.mockImplementation(async () => ({ kind: "pending" }));
-      expect((await f.post(admin, "svc-key-0011")).body).toEqual({ restarting: true });
+      const pending = await f.post(admin, "svc-key-0011");
+      expect([pending.status, pending.body.pending, pending.body.restarting]).toEqual([202, true, undefined]);   // never claims a restart
+      expect(pending.body.preflight).toBeTruthy();                                                              // looked again
     } finally { await f.stop(); }
   });
 

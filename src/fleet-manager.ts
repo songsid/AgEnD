@@ -32443,14 +32443,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!fixOffered(before, fix)) return { status: 409, body: { error: "not_needed", preflight: this.updatePreflight } };
     if (this.shuttingDown || !stillAllowed()) return { status: 403, body: { error: "update_needs_an_admin_session" } };
     if (fix === "service") {
-      // S-246: the hand-over to the service manager. 202 once this fleet begins to stop (or the command still runs);
-      // 422 with the command's own words when it refused (nothing was stopped) or failed (the fleet was started again).
+      // S-246: the hand-over to the service manager. 202 { restarting } once this fleet begins to stop; 202 { pending } when
+      // the command still runs after the wait (nothing may have stopped yet, and it can still refuse: the page says so and
+      // looks again, never claiming a restart — #4564 review); 422 with the command's own words when it refused (nothing was
+      // stopped) or failed (the fleet was started again).
       let result: import("./update-fix.js").ServiceInstallResult;
       try { result = await this.startServiceInstall(); }
       catch (err) { this.logger.warn({ err }, "Install as a service could not start"); result = { kind: "failed", reason: "agend install could not start" }; }
       this.logger.info({ person, fix, result: result.kind }, "web: update pre-flight fix");
-      if (result.kind === "restarting" || result.kind === "pending") return { status: 202, body: { restarting: true } };
+      if (result.kind === "restarting") return { status: 202, body: { restarting: true } };
       await local();
+      if (result.kind === "pending") return { status: 202, body: { pending: true, preflight: this.updatePreflight } };
       if (result.kind !== "failed") return { status: 200, body: { preflight: this.updatePreflight } };
       return { status: 422, body: { error: "fix_failed", reason: result.reason, preflight: this.updatePreflight } };
     }

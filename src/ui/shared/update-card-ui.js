@@ -68,6 +68,7 @@ register("updatecard", {
     serviceAsk: "AgEnD restarts as a service: every agent stops briefly and comes back on its own.\n\nAfter that, AgEnD can bring itself back after an update.",
     serviceGo: "Restart as a service", serviceRestarting: "AgEnD is restarting as a service. This page reconnects when it's back.",
     serviceBack: "AgEnD is back, running as a service.", serviceFailed: "AgEnD couldn't install the service: {0} AgEnD keeps running as before.",
+    servicePending: "AgEnD is still setting up the service. Check again in a minute: once it has gone through, this line turns ✓.",
     serviceStill: "AgEnD isn't running as a service yet. What happened is in service-install.log in the AgEnD folder.",
   },
   "zh-TW": {
@@ -126,6 +127,7 @@ register("updatecard", {
     serviceAsk: "AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。\n\n之後每次更新完，AgEnD 都能自己重新啟動。",
     serviceGo: "改以服務方式重新啟動", serviceRestarting: "AgEnD 正在改以服務方式重新啟動，回來後這個頁面會自動重新連線。",
     serviceBack: "AgEnD 回來了，現在以服務方式執行。", serviceFailed: "AgEnD 無法安裝服務：{0} AgEnD 仍照原本的方式執行。",
+    servicePending: "AgEnD 還在設定服務。過一分鐘再檢查一次：完成後，這一行會變成 ✓。",
     serviceStill: "AgEnD 還不是以服務方式執行。詳細情形記錄在 AgEnD 資料夾的 service-install.log。",
   },
 });
@@ -197,6 +199,8 @@ export async function fixCheck(fix, check, deps, opts = {}) {
     // 202: the hand-over began. No answer at all: AgEnD stopped before it could answer — the same.
     // Said in the check's own block, never a toast over the page (#4557 look): restarting, refused, or still not a service.
     const say = typeof opts.onStatus === "function" ? opts.onStatus : () => {};
+    // Still running after the server's wait: nothing may have stopped yet, and it can still refuse (#4564 review).
+    if (res && res.status === 202 && out && out.pending) { say(tc("servicePending")); return { ok: false, refused: true }; }
     if (!res || res.status === 202) {
       say(tc("serviceRestarting"));
       const { service } = await waitForService(deps, opts);

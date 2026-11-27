@@ -124,9 +124,21 @@ describe("S-246: Install as a service", () => {
     expect(shown().slice(before)).toEqual([]);
   });
 
+  it("still running after the server's wait (202 pending): says to check again, never \"restarting\"; no toast, no second press (#4564 review)", async () => {
+    await mount(() => ({ status: 202, body: { pending: true, preflight: NOT_SERVICE } }));
+    const before = shown().length;
+    serviceButton().click(); await settle(6);
+    confirm.answerConfirm(asked()[0].id, true);
+    await vi.waitFor(() => expect(fixes().length).toBe(1)); await settle(10);
+    expect(machine()!.querySelector(".uc-fix-refused")?.textContent).toBe("AgEnD is still setting up the service. Check again in a minute: once it has gone through, this line turns ✓.");
+    expect(machine()!.textContent).not.toContain("restarting as a service");
+    expect(shown().slice(before)).toEqual([]);
+    expect(serviceButton()).toBeUndefined();
+    expect(reqs.filter(r => r.url === "/ui/update").length).toBeLessThanOrEqual(2);                    // no restart wait loop
+  });
   it("the words in English and zh-TW: every key, the same placeholders; zh says 「Agent」", async () => {
     const i18n = await import("/assets/app-i18n.js");
-    const keys = ["serviceIt", "serviceBusy", "serviceTitle", "serviceAsk", "serviceGo", "serviceRestarting", "serviceBack", "serviceFailed", "serviceStill"];
+    const keys = ["serviceIt", "serviceBusy", "serviceTitle", "serviceAsk", "serviceGo", "serviceRestarting", "serviceBack", "serviceFailed", "serviceStill", "servicePending"];
     for (const k of keys) {
       const en = i18n.tIn("en", `updatecard.${k}`), zh = i18n.tIn("zh-TW", `updatecard.${k}`);
       expect(en, k).not.toBe(`updatecard.${k}`);
