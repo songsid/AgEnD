@@ -1,0 +1,179 @@
+/** Role navigation/presentation. Every mutation still uses the server's single checked policy proposal. */
+import {html,useEffect,useRef,useState} from "/assets/app-html.js";
+import {Dialog} from "/assets/ui-dialog.js";
+import {hr,linkRoleCss} from "./hub-roles-strings.js";
+import {lang} from "/assets/app-i18n.js";
+import {RoleWizard,PermissionSections,Review} from "./hub-role-forms.js";
+import {RoleAudit} from "./hub-role-audit.js";
+import {personKey,personName,roleName,roleDescription,assignedSubjects,assignmentCount,subjectId,roleError,permissionGroups,management} from "./hub-role-view.js";
+import { dateTimeText } from "/assets/clock-text.js";
+const copy=value=>structuredClone(value);
+function Tabs({items,value,onChange,disabled=false,label}){
+ return html`<div class="hub-role-tabs" role="tablist" aria-label=${label}>${items.map(item=>html`<button key=${item.key} type="button" role="tab" tabindex=${item.key===value?0:-1} onKeyDown=${e=>{const at=items.findIndex(row=>row.key===value),keys={ArrowRight:(at+1)%items.length,ArrowLeft:(at+items.length-1)%items.length,Home:0,End:items.length-1};if(Object.hasOwn(keys,e.key)){e.preventDefault();const next=keys[e.key];onChange(items[next].key);(e.currentTarget||e.target).parentNode.querySelectorAll('[role="tab"]')[next]?.focus();}}} aria-selected=${item.key===value} class=${item.key===value?"is-active":""} disabled=${disabled} onClick=${()=>onChange(item.key)}>${item.label}</button>`)}</div>`;
+}
+
+// ── M-3883 prototype: matrix list, member tables with selection, one picker for people and AD groups ────────────────
+const L=(en,zh)=>lang()==="zh-TW"?zh:en;
+const cn=dn=>{const m=/^cn=((?:\\.|[^,])+)/i.exec(dn||"");return m?m[1].replace(/\\(.)/g,"$1"):dn||"";};
+const subjectLabel=(view,s)=>s.kind==="person"?personName(view,s.person):cn(s.dn);
+const scopeLabel=s=>s?.kind==="group"?cn(s.dn??s.name):hr("wholeHub");
+const kindText=role=>hr(role.kind==="custom"?"custom":role.kind==="carried-over"?"carried":"builtin");
+const shown=()=>allGroups().flatMap(g=>g.permissions),held=role=>role.permissions.filter(p=>shown().includes(p)).length;
+const allGroups=()=>permissionGroups.map(g=>g.key==="runningHub"?{...g,permissions:[...g.permissions,"hub.admin"]}:g);
+const dateOnly=at=>new Date(at).toLocaleDateString(lang()==="zh-TW"?"zh-TW":"en-GB",{year:"numeric",month:"short",day:"numeric"});
+function RoleMatrix({view,busy,canEdit,onOpen,onCreate}){
+ const roles=view.policy.roles,groups=allGroups(),total=groups.reduce((n,g)=>n+g.permissions.length,0);
+ return html`<section class="hub-rm"><div class="hub-rm-head"><h2>${hr("roles")}</h2>${canEdit?html`<button type="button" class="btn btn-primary" disabled=${busy} onClick=${onCreate}>${hr("newRole")}</button>`:null}</div>
+  <div class="hub-rm-wide"><table class="hub-rm-table"><thead><tr><th scope="col" class="hub-rm-corner">${L("What each role can do","各角色可以做什麼")}</th>${roles.map(role=>html`<th scope="col" key=${role.id}>
+    <button type="button" class="hub-rm-role" disabled=${busy} onClick=${()=>onOpen(role.id)}>${roleName(role,view)}</button>
+    <span class="hub-rm-sub">${kindText(role)}</span><button type="button" class="hub-rm-count" disabled=${busy} onClick=${()=>onOpen(role.id)}>${assignmentCount(view,role)}</button></th>`)}</tr></thead>
+   ${groups.map(group=>html`<tbody key=${group.key}><tr class="hub-rm-group"><th scope="colgroup" colspan=${roles.length+1}>${hr(group.key)}</th></tr>
+    ${group.permissions.map(p=>html`<tr key=${p}><th scope="row" title=${hr("description_"+p)}>${hr(p)}</th>${roles.map(role=>{const on=role.permissions.includes(p);return html`<td key=${role.id} class=${on?"is-on":"is-off"} aria-label=${`${roleName(role,view)}: ${on?L("yes","可以"):L("no","不行")}`}>${on?"✓":"–"}</td>`;})}</tr>`)}</tbody>`)}
+   <tfoot><tr><th scope="row">${hr("quota")}</th>${roles.map(role=>html`<td key=${role.id}>${role.defaultMaxFleets}</td>`)}</tr></tfoot></table></div>
+  <ul class="hub-rm-narrow">${roles.map(role=>html`<li key=${role.id}><button type="button" class="hub-rm-row" disabled=${busy} onClick=${()=>onOpen(role.id)}>
+    <span class="hub-rm-row-main"><strong>${roleName(role,view)}</strong><span class="hub-rm-sub">${kindText(role)} · ${assignmentCount(view,role)}</span>
+     <span class="hub-rm-sub">${L(`${held(role)} of ${total} permissions`,`${held(role)}／${total} 項權限`)} · ${L("Fleet limit","Fleet 上限")} ${role.defaultMaxFleets}</span></span><span aria-hidden="true" class="hub-rm-chev">›</span></button></li>`)}</ul></section>`;
+}
+/** A table of assignments with row checkboxes, select all, and one bulk action. */
+function Members({view,roleId,busy,canAssign,onAdd,onEdit,onRemoveMany}){
+ const rows=view.policy.assignments.filter(a=>a.roleId===roleId),fixed=roleId==="builtin:admin";
+ const mine=a=>a.subject.kind==="person"&&personKey(a.subject.person)===personKey(view.actor);
+ const pickable=rows.filter(a=>!mine(a)).map(a=>a.id),[selected,setSelected]=useState(()=>new Set());
+ const all=pickable.length>0&&pickable.every(id=>selected.has(id)),some=selected.size>0&&!all;
+ const toggle=id=>setSelected(old=>{const next=new Set(old);next.has(id)?next.delete(id):next.add(id);return next;});
+ return html`<section class="hub-mb"><div class="hub-mb-bar">${canAssign&&pickable.length?html`<label class="hub-mb-all"><input type="checkbox" checked=${all} indeterminate=${some} disabled=${busy} onChange=${e=>setSelected(e.target.checked?new Set(pickable):new Set())}/>${L("Select all","全選")}</label>`:null}${selected.size&&canAssign?html`<span class="hub-mb-count" role="status">${L(`${selected.size} selected`,`已選 ${selected.size} 項`)}</span>
+    <button type="button" class="btn danger" disabled=${busy} onClick=${()=>onRemoveMany(rows.filter(a=>selected.has(a.id)))}>${L("Remove from this role","從這個角色移除")}</button>
+    <button type="button" class="hub-link" disabled=${busy} onClick=${()=>setSelected(new Set())}>${L("Clear selection","取消選取")}</button>`
+   :html`<span class="hub-mb-count">${L(`${rows.length+(fixed?1:0)} assigned`,`已指派 ${rows.length+(fixed?1:0)} 項`)}</span>${canAssign?html`<button type="button" class="btn btn-primary" disabled=${busy} onClick=${onAdd}>${L("Add people or AD groups","新增人員或 AD 群組")}</button>`:null}`}</div>
+  <table class="hub-mb-table"><thead><tr>${canAssign?html`<th class="hub-mb-check"><input type="checkbox" aria-label=${L("Select all","全選")} checked=${all} indeterminate=${some} disabled=${busy||!pickable.length} onChange=${e=>setSelected(e.target.checked?new Set(pickable):new Set())}/></th>`:null}
+    <th>${L("Name","名稱")}</th><th>${L("Type","類型")}</th><th>${hr("appliesTo")}</th><th>${hr("ends")}</th></tr></thead><tbody>
+   ${fixed?html`<tr class="is-fixed">${canAssign?html`<td class="hub-mb-check"></td>`:null}<td data-label=${L("Name","名稱")}><strong>${personName(view,view.root)}</strong>${personKey(view.root)===personKey(view.actor)?html`<span class="hub-mb-you">（${hr("you")}）</span>`:null}<small>${hr("firstAdminHelp")}</small></td><td data-label=${L("Type","類型")}>${hr("people")}</td><td data-label=${hr("appliesTo")}>${hr("wholeHub")}</td><td data-label=${hr("ends")}>${hr("noEnd")}</td></tr>`:null}
+   ${rows.map(a=>html`<tr key=${a.id} class=${selected.has(a.id)?"is-selected":""}>${canAssign?html`<td class="hub-mb-check"><input type="checkbox" aria-label=${L("Select ","選取 ")+subjectLabel(view,a.subject)} checked=${selected.has(a.id)} disabled=${busy||mine(a)} onChange=${()=>toggle(a.id)}/></td>`:null}
+    <td data-label=${L("Name","名稱")}><button type="button" class="hub-link hub-mb-name" disabled=${busy||!canAssign||mine(a)} onClick=${()=>onEdit(a)}>${subjectLabel(view,a.subject)}</button>${mine(a)?html`<span class="hub-mb-you">（${hr("you")}）</span>`:null}</td>
+    <td data-label=${L("Type","類型")}>${hr(a.subject.kind==="person"?"people":"groups")}</td><td data-label=${hr("appliesTo")}>${scopeLabel(a.scope)}</td><td data-label=${hr("ends")}>${a.expiresAt?dateOnly(a.expiresAt):hr("noEnd")}</td></tr>`)}
+   ${!rows.length&&!fixed?html`<tr><td colspan="5" class="hub-mb-empty">${hr("nobodyAssigned")}</td></tr>`:null}</tbody></table></section>`;
+}
+function PeopleTable({view,busy,onOpen}){
+ const [filter,setFilter]=useState("all"),[q,setQ]=useState(""),rows=assignedSubjects(view).map(row=>({...row,label:row.subject.kind==="person"?row.name:cn(row.subject.dn)})).filter(row=>(filter==="all"||row.subject.kind===filter)&&(!q.trim()||row.label.toLowerCase().includes(q.trim().toLowerCase())));
+ return html`<section class="hub-mb"><div class="hub-mb-bar"><input type="search" class="hub-mb-search" placeholder=${L("Filter by name","以名稱篩選")} aria-label=${L("Filter by name","以名稱篩選")} value=${q} onInput=${e=>setQ(e.target.value)}/>
+   <div class="hub-seg" role="group" aria-label=${L("Type","類型")}>${[["all",hr("all")],["person",hr("people")],["group",hr("groups")]].map(([key,label])=>html`<button type="button" key=${key} aria-pressed=${filter===key} class=${filter===key?"is-on":""} onClick=${()=>setFilter(key)}>${label}</button>`)}</div></div>
+  <table class="hub-mb-table"><thead><tr><th>${L("Name","名稱")}</th><th>${L("Type","類型")}</th><th>${hr("roles")}</th><th>${hr("appliesTo")}</th></tr></thead><tbody>${rows.map(row=>html`<tr key=${row.id}>
+    <td data-label=${L("Name","名稱")}><button type="button" class="hub-link hub-mb-name" disabled=${busy} onClick=${()=>onOpen(row.subject)}>${row.label}</button>${row.subject.kind==="person"&&personKey(row.subject.person)===personKey(view.actor)?html`<span class="hub-mb-you">（${hr("you")}）</span>`:null}</td>
+    <td data-label=${L("Type","類型")}>${hr(row.subject.kind==="person"?"people":"groups")}</td>
+    <td data-label=${hr("roles")}>${[...(row.fixed?[hr("admin")]:[]),...new Set(row.assignments.map(a=>roleName(view.policy.roles.find(r=>r.id===a.roleId),view)))].filter((v,i,a)=>a.indexOf(v)===i).join(L(", ","、"))}</td>
+    <td data-label=${hr("appliesTo")}>${row.fixed&&!row.assignments.length?hr("wholeHub"):[...new Set(row.assignments.map(a=>scopeLabel(a.scope)))].join(L(", ","、"))}</td></tr>`)}
+   ${!rows.length?html`<tr><td colspan="4" class="hub-mb-empty">${hr("nobodyAssigned")}</td></tr>`:null}</tbody></table></section>`;
+}
+function PersonRoles({view,subject,busy,onBack,onEdit,onRemove}){
+ const row=assignedSubjects(view).find(row=>row.id===subjectId(subject)),own=subject.kind==="person"&&personKey(subject.person)===personKey(view.actor),canAssign=view.management.includes("roles.assign");
+ return html`<section class="hub-role-detail"><button type="button" class="hub-link hub-back" disabled=${busy} onClick=${onBack}>‹ ${hr("people")}</button><h2 class="hub-role-h">${row?(subject.kind==="person"?row.name:cn(subject.dn)):hr("unknownPerson")}${own?html`<span class="hub-mb-you">（${hr("you")}）</span>`:null}</h2>${own?html`<p class="note">${hr("selfHelp")}</p>`:null}
+  <table class="hub-mb-table"><thead><tr><th>${hr("role")}</th><th>${hr("appliesTo")}</th><th>${hr("ends")}</th><th></th></tr></thead><tbody>
+   ${row?.fixed?html`<tr class="is-fixed"><td><strong>${hr("admin")}</strong><small>${hr("firstAdminHelp")}</small></td><td>${hr("wholeHub")}</td><td>${hr("noEnd")}</td><td></td></tr>`:null}
+   ${row?.assignments.map(a=>html`<tr key=${a.id}><td data-label=${hr("role")}><strong>${roleName(view.policy.roles.find(r=>r.id===a.roleId),view)}</strong></td><td data-label=${hr("appliesTo")}>${scopeLabel(a.scope)}</td><td data-label=${hr("ends")}>${a.expiresAt?dateOnly(a.expiresAt):hr("noEnd")}</td>
+    <td class="hub-mb-actions">${canAssign&&!own?html`<button type="button" class="hub-link" disabled=${busy} onClick=${()=>onEdit(a)}>${hr("edit")}</button><button type="button" class="hub-link danger" disabled=${busy} onClick=${()=>onRemove(a)}>${hr("remove")}</button>`:null}</td></tr>`)}</tbody></table></section>`;
+}
+function RolePage({view,role,busy,canEdit,canAssign,onBack,onAssign,onEdit,onDelete,onEditAssignment,onRemoveMany}){
+ const [tab,setTab]=useState("people"),editable=canEdit&&!["admin","carried-over"].includes(role.kind)&&!role.id.startsWith("root-self:");
+ const count=assignedSubjects(view,role.id).length;
+ return html`<section class="hub-role-detail"><button type="button" class="hub-link hub-back" disabled=${busy} onClick=${onBack}>‹ ${hr("roles")}</button>
+  <div class="hub-role-titlebar"><div><h2 class="hub-role-h">${roleName(role,view)}</h2><p class="hub-role-meta">${kindText(role)} · ${hr("quota")} ${role.defaultMaxFleets}</p></div>
+   ${editable&&role.kind==="custom"?html`<button type="button" class="hub-link danger" disabled=${busy} onClick=${onDelete}>${L("Delete role","刪除角色")}</button>`:null}</div>
+  <p class="hub-role-desc">${roleDescription(role,view)}</p>
+  <${Tabs} label=${roleName(role,view)} items=${[{key:"people",label:L("Members","成員")+" · "+count},{key:"permissions",label:hr("permissions")+" · "+hr("permissionCount",held(role),shown().length)}]} value=${tab} disabled=${busy} onChange=${setTab}/>
+  ${tab==="people"?html`<${Members} key=${role.id} view=${view} roleId=${role.id} busy=${busy} canAssign=${canAssign} onAdd=${onAssign} onEdit=${onEditAssignment} onRemoveMany=${onRemoveMany}/>`
+   :html`<section class="hub-pl">${role.kind==="admin"?html`<p class="note">${hr("adminFixed")}</p>`:null}${editable?html`<div class="hub-mb-bar"><span></span><button type="button" class="btn" disabled=${busy} onClick=${onEdit}>${hr("editPermissions")}</button></div>`:null}
+    ${allGroups().map(group=>html`<div class="hub-pl-group" key=${group.key}><h3>${hr(group.key)}<span>${hr("permissionCount",group.permissions.filter(p=>role.permissions.includes(p)).length,group.permissions.length)}</span></h3>
+     <ul>${group.permissions.map(p=>{const on=role.permissions.includes(p);return html`<li key=${p} class=${on?"is-on":"is-off"}><span class="hub-pl-mark" aria-hidden="true">${on?"✓":"–"}</span><span><strong>${hr(p)}</strong><small>${hr("description_"+p)}</small></span></li>`;})}</ul></div>`)}</section>`}</section>`;
+}
+/** One picker for people and AD groups: search, tick several, see the selection as a list, choose the scope, review. */
+function AssignDrawer({view,client,roleId:initialRole,assignment,checked,busy,failure,onReload,onCheck,onApply,onBack,onClose,onRemember}){
+ const key0=assignment?(assignment.subject.kind==="person"?assignment.subject.person:assignment.subject.group):null;
+ const [roleId,setRoleId]=useState(assignment?.roleId||initialRole||view.policy.roles[0]?.id),[q,setQ]=useState(""),[hits,setHits]=useState(null),[searching,setSearching]=useState(false);
+ const [selected,setSelected]=useState(()=>assignment?[{kind:assignment.subject.kind,key:key0,name:subjectLabel(view,assignment.subject),dn:assignment.subject.dn}]:[]);
+ const [whole,setWhole]=useState(assignment?assignment.scope.kind==="hub":false),[scope,setScope]=useState(assignment?.scope.kind==="group"?{key:assignment.scope.group,dn:assignment.scope.dn,name:cn(assignment.scope.dn)}:null),[sq,setSq]=useState(""),[shits,setShits]=useState(null);
+ const [end,setEnd]=useState(assignment?.expiresAt?new Date(assignment.expiresAt-new Date(assignment.expiresAt).getTimezoneOffset()*60000).toISOString().slice(0,10):""),[limit,setLimit]=useState(assignment?.maxFleets==null?"":String(assignment.maxFleets));
+ const role=view.policy.roles.find(r=>r.id===roleId),adminRole=role.permissions.some(p=>management.includes(p)),teamRole=role.permissions.some(p=>p.startsWith("team."))&&!adminRole,canWhole=view.management.includes("hub.admin");
+ const same=(a,b)=>a.kind===b.kind&&personKey(a.key)===personKey(b.key),has=row=>selected.some(s=>same(s,row));
+ useEffect(()=>{const text=q.trim();if(text.length<2){setHits(null);return;}let live=true;setSearching(true);const timer=setTimeout(async()=>{
+   const [people,groups]=await Promise.all([client.roleSearch("person",text).catch(()=>({ok:false})),adminRole?Promise.resolve({ok:true,candidates:[]}):client.roleSearch("group",text).catch(()=>({ok:false}))]);
+   if(!live)return;setSearching(false);setHits([...(people.ok?people.candidates:[]),...(groups.ok?groups.candidates:[])]);},300);return()=>{live=false;clearTimeout(timer);};},[q,adminRole,client]);
+ useEffect(()=>{const text=sq.trim();if(text.length<2){setShits(null);return;}let live=true;const timer=setTimeout(async()=>{const out=await client.roleSearch("group",text).catch(()=>({ok:false}));if(live)setShits(out.ok?out.candidates:[]);},300);return()=>{live=false;clearTimeout(timer);};},[sq,client]);
+ const toggle=row=>{if(assignment){setSelected([row]);return;}setSelected(old=>old.some(s=>same(s,row))?old.filter(s=>!same(s,row)):[...old,row]);if(row.kind==="person")onRemember(row);};
+ const endAt=end?new Date(end+"T23:59:00").getTime():null;
+ const valid=selected.length>0&&selected.length<=50&&(!adminRole||selected.every(s=>s.kind==="person"))&&(!teamRole||(whole&&canWhole)||scope)&&(endAt===null||endAt>Date.now())&&(limit===""||Number.isInteger(Number(limit))&&Number(limit)>=0&&Number(limit)<=8);
+ const check=()=>{if(!valid||busy)return;const policy=structuredClone(view.policy);
+  for(const subject of selected){const next={id:assignment?.id||`assignment:${crypto.randomUUID()}`,roleId,subject:subject.kind==="person"?{kind:"person",person:subject.key}:{kind:"group",group:subject.key,dn:subject.dn},scope:!teamRole||whole?{kind:"hub"}:{kind:"group",group:scope.key,dn:scope.dn},startsAt:assignment?.startsAt||0,expiresAt:endAt,maxFleets:limit===""?null:Number(limit),assignedBy:assignment?.assignedBy||view.actor,assignedAt:assignment?.assignedAt||0};
+   if(assignment)policy.assignments=policy.assignments.map(row=>row.id===assignment.id?next:row);else policy.assignments.push(next);}
+  onCheck(policy);};
+ const missing=!selected.length?L("Choose who gets the role.","請先選擇對象。"):adminRole&&selected.some(s=>s.kind!=="person")?hr("personOnly"):teamRole&&!((whole&&canWhole)||scope)?L("Choose the AD group this role applies to.","請選擇這個角色適用的 AD 群組。"):endAt!==null&&endAt<=Date.now()?L("The end date must be in the future.","結束日期必須是未來的日期。"):!valid?L("Check the Fleet limit (0 to 8).","請檢查 Fleet 上限（0 到 8）。"):"";
+ const actions=checked?html`<button type="button" class="btn" disabled=${busy} onClick=${onBack}>${hr("back")}</button><button type="button" class="btn btn-primary" disabled=${busy} onClick=${onApply}>${hr(busy?"saving":"apply")}</button>`
+  :html`<span class="hub-as-summary" role="status">${missing||L(`${selected.length} selected`,`已選 ${selected.length} 項`)}</span><button type="button" class="btn" disabled=${busy} onClick=${onClose}>${hr("cancel")}</button><button type="button" class="btn btn-primary" disabled=${busy||!valid} onClick=${check}>${hr("review")}</button>`;
+ const title=checked?hr("review"):assignment?L(`Change ${selected[0]?.name||""} in “${roleName(role,view)}”`,`變更「${roleName(role,view)}」的 ${selected[0]?.name||""}`):L(`Add to “${roleName(role,view)}”`,`新增到「${roleName(role,view)}」`);
+ return html`<${Dialog} title=${title} drawer=${true} wide=${true} cls="hub-role-panel hub-as" busy=${busy} onClose=${onClose} actions=${actions}>
+  ${failure?html`<p class="err" role="alert">${failure}</p><button type="button" class="btn" disabled=${busy} onClick=${onReload}>${hr("reloadRoles")}</button>`:null}
+  ${checked?html`<${Review} view=${view} checked=${checked}/>`:html`<div class="hub-as-body">
+   ${!initialRole&&!assignment?html`<label class="field"><span>${hr("role")}</span><select value=${roleId} disabled=${busy} onChange=${e=>{setRoleId(e.target.value);setSelected([]);}}>${view.policy.roles.map(r=>html`<option key=${r.id} value=${r.id}>${roleName(r,view)}</option>`)}</select></label>`:null}
+   ${!assignment?html`<section class="hub-as-step"><h3>${L("1. Who","1. 對象")}</h3>
+    <input type="search" id="hubRoleSubject" class="hub-as-search" placeholder=${adminRole?L("Search people by name or sign-in name","以姓名或登入帳號搜尋人員"):L("Search people and AD groups","搜尋人員和 AD 群組")} aria-label=${L("Search people and AD groups","搜尋人員和 AD 群組")} value=${q} disabled=${busy} onInput=${e=>setQ(e.target.value)}/>
+    ${adminRole?html`<p class="note">${hr("personOnly")}</p>`:null}
+    ${hits===null?html`<p class="note">${q.trim().length<2?L("Type at least 2 characters.","請輸入至少 2 個字。"):L("Searching…","搜尋中…")}</p>`:hits.length?html`<ul class="hub-as-hits" aria-label=${L("Results","搜尋結果")}>${hits.map(row=>html`<li key=${row.kind+personKey(row.key)}><label><input type="checkbox" checked=${has(row)} disabled=${busy||(!has(row)&&selected.length>=50)} onChange=${()=>toggle(row)}/>
+      <span class="hub-as-name"><strong>${row.kind==="group"?row.name:row.name}</strong><small>${row.kind==="group"?L("AD group","AD 群組"):row.login}</small></span></label></li>`)}</ul>`:html`<p class="note">${L("No match.","找不到符合的人員或群組。")}</p>`}
+    ${selected.length?html`<div class="hub-as-picked"><h4>${L(`${selected.length} selected`,`已選 ${selected.length} 項`)}</h4><ul>${selected.map(s=>html`<li key=${s.kind+personKey(s.key)}><span class="hub-as-name"><strong>${s.name}</strong><small>${s.kind==="group"?L("AD group","AD 群組"):s.login||hr("people")}</small></span>
+      <button type="button" class="hub-link" disabled=${busy} aria-label=${hr("removeSelection",s.name)} onClick=${()=>setSelected(old=>old.filter(row=>!same(row,s)))}>${hr("remove")}</button></li>`)}</ul>
+      ${selected.some(s=>s.kind==="group")?html`<p class="note">${hr("groupCost")}</p>`:null}</div>`:null}</section>`:null}
+   <section class="hub-as-step"><h3>${assignment?hr("appliesTo"):L("2. Applies to","2. 適用範圍")}</h3>
+    ${teamRole?html`<div class="hub-as-radios" role="radiogroup" aria-label=${hr("appliesTo")}>
+      <label><input type="radio" name="hubRoleScope" checked=${!whole} disabled=${busy} onChange=${()=>setWhole(false)}/><span><strong>${hr("scopeGroup")}</strong><small>${L("The role covers the people of one AD group.","角色只管一個 AD 群組裡的人。")}</small></span></label>
+      ${!whole?scope?html`<div class="hub-as-scope"><span>${scope.name}</span><button type="button" class="hub-link" disabled=${busy} onClick=${()=>setScope(null)}>${L("Change","更換")}</button></div>`
+       :html`<div class="hub-as-scope-pick"><input type="search" id="hubRoleScope" placeholder=${L("Search AD groups","搜尋 AD 群組")} aria-label=${L("Search AD groups","搜尋 AD 群組")} value=${sq} disabled=${busy} onInput=${e=>setSq(e.target.value)}/>
+        ${shits?.length?html`<ul class="hub-as-hits">${shits.map(row=>html`<li key=${personKey(row.key)}><button type="button" class="hub-as-hit" onClick=${()=>{setScope({key:row.key,dn:row.dn,name:row.name});setSq("");}}>${row.name}</button></li>`)}</ul>`:null}</div>`:null}
+      <label><input type="radio" name="hubRoleScope" checked=${whole} disabled=${busy||!canWhole} onChange=${()=>setWhole(true)}/><span><strong>${hr("wholeHub")}</strong><small>${L("The role covers everyone in this Hub.","角色涵蓋這個 Hub 的所有人。")}</small></span></label></div>`
+     :html`<p class="hub-as-static">${hr("wholeHub")}<small>${L("This role has no team permissions, so it always applies to the whole Hub.","這個角色沒有團隊權限，所以一律適用整個 Hub。")}</small></p>`}</section>
+   <details class="hub-as-more" open=${!!assignment&&(!!assignment.expiresAt||assignment.maxFleets!=null)}><summary>${L("Optional: end date and Fleet limit","選填：結束日期與 Fleet 上限")}</summary>
+    <label class="field"><span>${L("Ends on","結束日期")}</span><input type="date" value=${end} disabled=${busy} onInput=${e=>setEnd(e.target.value)}/></label>
+    ${role.permissions.includes("pair_fleet")?html`<label class="field"><span>${hr("limitPeople")}（${L("role default","角色預設")} ${role.defaultMaxFleets}）</span><input type="number" class="hub-as-num" min="0" max="8" step="1" value=${limit} disabled=${busy} onInput=${e=>setLimit(e.target.value)}/></label>`:null}</details>
+  </div>`}</${Dialog}>`;
+}
+export function HubRoles({client}){
+ const [styled,setStyled]=useState(null),[styleRetry,setStyleRetry]=useState(0),[view,setView]=useState(null),[failure,setFailure]=useState(null),[busy,setBusy]=useState(false),[saved,setSaved]=useState(false),[reload,setReload]=useState(0),[tab,setTab]=useState("roles"),[page,setPage]=useState(null),[wizard,setWizard]=useState(null),[assign,setAssign]=useState(null),[settings,setSettings]=useState(false),[checked,setChecked]=useState(null);
+ const epoch=useRef(0),writing=useRef(false);
+ useEffect(()=>{let live=true;linkRoleCss().then(out=>{if(live)setStyled(out);});return()=>{live=false;};},[styleRetry]);
+ useEffect(()=>{let live=true;const mine=++epoch.current;setView(null);setChecked(null);setWizard(null);setAssign(null);setSettings(false);
+  Promise.resolve().then(()=>client.roles()).then(out=>{if(!live||mine!==epoch.current)return;if(out.ok){setView(out.view);setFailure(null);if(!out.view.policy)setTab(out.view.management.includes("audit.view")?"audit":"roles");}else setFailure(roleError(out));},()=>{if(live&&mine===epoch.current)setFailure(hr("failed"));});
+  const end=client.onSignedOut?.(()=>{epoch.current++;writing.current=false;setView(null);setChecked(null);setWizard(null);setAssign(null);setSettings(false);setBusy(false);setFailure(hr("denied"));});return()=>{live=false;epoch.current++;end?.();};
+ },[client,reload]);
+ const preview=async(policy,origin="page",rootSelf=false)=>{
+  if(writing.current)return;writing.current=true;setBusy(true);setFailure(null);setSaved(false);setChecked(null);const mine=++epoch.current;let out;try{out=rootSelf?await client.roleRootPreview():await client.rolePreview(policy);}catch{out={ok:false};}
+  if(mine!==epoch.current)return;writing.current=false;setBusy(false);if(out.ok)setChecked({policy,rootSelf,origin,...out});else setFailure(roleError(out,true));
+ };
+ const apply=async()=>{
+  if(!checked||writing.current)return;writing.current=true;setBusy(true);setFailure(null);const selected=checked,mine=++epoch.current;let out;try{out=selected.rootSelf?await client.roleRootApply(selected.previewDigest):await client.roleApply(selected.policy,selected.previewDigest);}catch{out={ok:false};}
+  if(mine!==epoch.current)return;writing.current=false;setBusy(false);setChecked(null);
+  if(out.ok){if(wizard)setPage({kind:"role",id:wizard.id});setWizard(null);setAssign(null);setSettings(false);setSaved(true);setReload(n=>n+1);}else setFailure(roleError(out,true));
+ };
+ const remember=row=>setView(previous=>({...previous,personLabels:[...(previous.personLabels||[]).filter(p=>p.id!==personKey(row.key)),{id:personKey(row.key),name:row.name}]}));
+ const close=()=>{if(busy)return;setChecked(null);setFailure(null);setWizard(null);setAssign(null);setSettings(false);};
+ const openAssign=(roleId,assignment=null)=>{setChecked(null);setFailure(null);setAssign({roleId,assignment});};
+ const refresh=()=>{setWizard(null);setAssign(null);setSettings(false);setChecked(null);setPage(null);setReload(n=>n+1);};
+ const remove=a=>{const next=copy(view.policy);next.assignments=next.assignments.filter(row=>row.id!==a.id);void preview(next);};
+ const root=view&&personKey(view.root)===personKey(view.actor),canEdit=!!view?.management.includes("hub.admin"),canAssign=!!view?.management.includes("roles.assign"),selectedRole=view?.policy?.roles.find(r=>r.id===page?.id);
+ if(styled!==true)return html`<section class="card"><p role="status">${hr(styled===false?"styleFailed":"styleLoading")}</p>${styled===false?html`<button type="button" class="btn" onClick=${()=>{setStyled(null);setStyleRetry(n=>n+1);}}>${hr("retry")}</button>`:null}</section>`;
+ return html`<div class="hub-roles">
+  ${failure&&!assign&&!settings?html`<p class="err" role="alert">${failure}</p><button type="button" class="btn" disabled=${busy} onClick=${refresh}>${hr("reloadRoles")}</button>`:null}${saved?html`<p role="status">${hr("saved")}</p>`:null}${!view&&!failure?html`<p role="status">${hr("loading")}</p>`:null}
+  ${view&&root&&!view.rootSelfUsed&&!wizard&&!checked?html`<aside class="hub-callout" role="note"><div><strong>${L("You can’t chat, share agents or connect a Fleet yet","你自己還不能對話、分享 Agent 或連接 Fleet")}</strong><p>${L("Moving to roles gave the first administrator no member permissions. Apply the new defaults for yourself once (it is checked first; Fleet limit 8).","改用角色後，第一位管理員沒有自動取得成員的權限。請為自己套用一次新的預設（會先檢查；Fleet 上限 8 台）。")}</p></div><button type="button" class="btn" disabled=${busy} onClick=${()=>preview(null,"page",true)}>${hr("rootDefaults")}</button></aside>`:null}
+  ${view?html`<div class="hub-role-top"><${Tabs} label=${hr("title")} items=${[...(view.policy?[{key:"roles",label:hr("roles")},{key:"people",label:hr("people")}]:[]),...(view.management.includes("audit.view")?[{key:"audit",label:hr("audit")}]:[])]} value=${tab} disabled=${busy} onChange=${key=>{setTab(key);setPage(null);setWizard(null);setChecked(null);setFailure(null);}}/>
+   ${canEdit?html`<button type="button" class="hub-link hub-role-settings" disabled=${busy} onClick=${()=>{setSettings(true);setChecked(null);setFailure(null);}}>${hr("rolesSettings")}</button>`:null}</div>
+   ${checked?.origin==="page"?html`<section class="card"><h2>${hr("review")}</h2><${Review} view=${view} checked=${checked}/><div class="hub-role-actions"><button type="button" class="btn" disabled=${busy} onClick=${()=>setChecked(null)}>${hr("back")}</button><button type="button" class=${`btn ${checked.policy?.roles.length<view.policy.roles.length?"danger":"btn-primary"}`} disabled=${busy} onClick=${apply}>${hr(busy?"saving":checked.policy?.roles.length<view.policy.roles.length?"delete":"apply")}</button></div></section>`:
+    wizard?html`<${RoleWizard} key=${wizard.id} view=${view} role=${wizard} checked=${checked?.origin==="wizard"?checked:null} busy=${busy} onCheck=${policy=>preview(policy,"wizard")} onApply=${apply} onBack=${()=>setChecked(null)} onCancel=${close}/>`:
+    tab==="audit"?html`<${RoleAudit} key=${reload} client=${client}/>`:
+    page?.kind==="person"?html`<${PersonRoles} view=${view} subject=${page.subject} busy=${busy} onBack=${()=>setPage(null)} onEdit=${a=>openAssign(a.roleId,a)} onRemove=${remove}/>`:
+    selectedRole?html`<${RolePage} key=${selectedRole.id} view=${view} role=${selectedRole} busy=${busy} canEdit=${canEdit} canAssign=${canAssign} onBack=${()=>setPage(null)} onAssign=${()=>openAssign(selectedRole.id)} onEditAssignment=${a=>openAssign(a.roleId,a)} onRemoveMany=${list=>{const ids=new Set(list.map(a=>a.id)),next=copy(view.policy);next.assignments=next.assignments.filter(a=>!ids.has(a.id));void preview(next);}} onEdit=${()=>{setChecked(null);setWizard(selectedRole);}} onDelete=${()=>{const next=copy(view.policy);next.roles=next.roles.filter(r=>r.id!==selectedRole.id);next.assignments=next.assignments.filter(a=>a.roleId!==selectedRole.id);preview(next);}}/>`:
+    tab==="people"?html`<${PeopleTable} view=${view} busy=${busy} onOpen=${subject=>setPage({kind:"person",subject})}/>`:
+    view.policy?html`<${RoleMatrix} view=${view} busy=${busy} canEdit=${canEdit} onOpen=${id=>setPage({kind:"role",id})} onCreate=${()=>{setFailure(null);setWizard({id:"custom:"+crypto.randomUUID(),kind:"custom",name:"",description:"",permissions:[],defaultMaxFleets:0});}}/>`:html`<p class="note">${hr("noPolicy")}</p>`}
+   
+   ${assign?html`<${AssignDrawer} key=${(assign.roleId||"")+(assign.assignment?.id||"")} view=${view} client=${client} roleId=${assign.roleId} assignment=${assign.assignment} checked=${checked?.origin==="assign"?checked:null} busy=${busy} failure=${failure} onReload=${refresh} onCheck=${policy=>preview(policy,"assign")} onApply=${apply} onBack=${()=>setChecked(null)} onClose=${close} onRemember=${remember}/>`:null}
+   ${settings?html`<${Dialog} title=${checked?hr("review"):hr("rolesSettings")} busy=${busy} onClose=${close} wide=${true} cls="hub-role-panel" actions=${checked?html`<button type="button" class="btn" disabled=${busy} onClick=${()=>setChecked(null)}>${hr("back")}</button><button type="button" class="btn btn-primary" disabled=${busy} onClick=${apply}>${hr("apply")}</button>`:null}>
+    ${failure?html`<p class="err" role="alert">${failure}</p><button type="button" class="btn" disabled=${busy} onClick=${refresh}>${hr("reloadRoles")}</button>`:null}${checked?html`<${Review} view=${view} checked=${checked}/>`:html`<div class="hub-role-status"><p><span class=${`tag ${view.policy.rolesActive?"ok":"warn"}`}>${hr(view.policy.rolesActive?"on":"off")}</span></p><p>${hr("offHelp")}</p>${view.policy.state==="never-enabled"?html`<p class="s-info">${hr("selfLegacy")}</p>`:view.policy.state==="suspended"?html`<p class="s-info">${hr("selfPaused")}</p>`:null}<button type="button" class="btn" disabled=${busy} onClick=${()=>{const next=copy(view.policy);next.rolesActive=!next.rolesActive;preview(next,"settings");}}>${hr(view.policy.rolesActive?"turnOff":"turnOn")}</button>
+     <h3>${hr("firstAdmin")}</h3><p>${personName(view,view.root)}</p><p class="note">${hr("firstAdminHelp")}</p><a class="btn" href="/ui/hub/admin?view=allowed-list">${hr("openAllowedList")}</a></div>`}</${Dialog}>`:null}`:null}
+ </div>`;
+}

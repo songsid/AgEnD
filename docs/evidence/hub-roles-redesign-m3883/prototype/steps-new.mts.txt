@@ -1,0 +1,27 @@
+/** The prototype roles page. */
+export async function run({page,shot,note,lang,device}:any){
+ const T=(en:string,zh:string)=>lang==="en"?en:zh;
+ await page.locator(".hub-rm").waitFor();
+ note("pills-list",await page.locator(".hub-roles .tag").count());
+ await shot("1-matrix");
+ const open=device==="phone"?page.locator(".hub-rm-row",{hasText:T("Manager","主管")}).first():page.locator(".hub-rm-role",{hasText:T("Manager","主管")}).first();
+ await open.click();await page.locator(".hub-role-detail").waitFor();await shot("2-role-members");
+ const boxes=page.locator(".hub-mb-table tbody input[type=checkbox]:not([disabled])");
+ await boxes.nth(0).check();await page.waitForTimeout(200);await shot("2b-members-selected");
+ await page.locator(".hub-mb-table thead input[type=checkbox]").check().catch(()=>{});await page.waitForTimeout(200);note("selected-all",await page.locator(".hub-mb-table tbody input:checked").count());
+ await page.locator(".hub-mb-bar .hub-link").click();await page.waitForTimeout(200);
+ await page.locator(".hub-role-detail [role=tab]").nth(1).click();await page.waitForTimeout(300);await shot("3-role-permissions");
+ await page.locator(".hub-role-detail [role=tab]").nth(0).click();await page.waitForTimeout(200);
+ await page.locator(".hub-mb-bar .btn-primary").click();await page.locator(".hub-as-body").waitFor();await shot("4-add-empty",{fullPage:false});
+ await page.locator("#hubRoleSubject").fill("ex");await page.locator(".hub-as-hits li").first().waitFor();await page.waitForTimeout(300);
+ await page.locator("#hubRoleSubject").fill("an");await page.waitForTimeout(900);
+ const tick=async(text:string)=>{const row=page.locator(".hub-as-hits li",{hasText:text}).first();if(await row.count())await row.locator("input").check();};
+ await tick("Jordan");await tick("Morgan");
+ await page.locator("#hubRoleSubject").fill("Example");await page.waitForTimeout(900);await tick("Example Design");await page.waitForTimeout(200);await shot("4b-add-picked",{fullPage:false});
+ await page.locator("#hubRoleScope").fill("Example");await page.waitForTimeout(900);await page.locator(".hub-as-scope-pick .hub-as-hit").first().click().catch(()=>{});await page.waitForTimeout(300);
+ await page.locator(".hub-as .dlg-body").evaluate((e:Element)=>e.scrollTo(0,e.scrollHeight)).catch(()=>{});await shot("4c-add-scope",{fullPage:false});
+ note("review-enabled",await page.locator(".hub-as .dlg-actions .btn-primary").isEnabled());
+ await page.locator(".hub-as .dlg-actions .btn-primary").click();await page.locator("[data-role-review]").waitFor();await shot("4d-add-review",{fullPage:false});
+ await page.locator(".hub-as .dlg-x").click();await page.waitForTimeout(300);
+ await page.locator(".hub-role-top [role=tab]").nth(1).click();await page.waitForTimeout(400);note("pills-people",await page.locator(".hub-roles .tag").count());await shot("5-people");
+}

@@ -1,0 +1,80 @@
+/** Separate real initialized Hub servers, production runtime/HTTPS/UI/SQLite; inert AD, no Fleet or vendor CLI. */
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { createServer } from "node:net";
+import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+const repo=process.env.REPO??process.cwd(),out=process.env.OUT!,mode=process.env.MODE??"after",current=mode!=="before";
+if(!out)throw Error("OUT is required");
+if(!readFileSync("/proc/version","utf8").toLowerCase().includes("microsoft"))throw Error("Run headless inside WSL only");
+mkdirSync(out,{recursive:true});mkdirSync(join(repo,".artifacts"),{recursive:true});
+const home=mkdtempSync(join(repo,".artifacts/roles-browser-"));process.env.AGEND_HOME=home;
+const load=(file:string)=>import(join(repo,file));
+const git=(...args:string[])=>execFileSync("git",["-C",repo,...args],{encoding:"utf8"}).trim();
+const hash=(value:string|Buffer)=>createHash("sha256").update(value).digest("hex");
+const receipt:any={mode,head:git("rev-parse","HEAD"),tree:git("rev-parse","HEAD^{tree}"),dirty:git("status","--porcelain","--untracked-files=no"),checks:[],screens:[],errors:[],scope:"Separate initialized production Hub runtime/HTTPS/SQLite and assets from REPO. Synthetic AD people/groups; no real credentials, Fleet or model process. Headless Chromium inside WSL."};
+const check=(label:string,value:unknown)=>{receipt.checks.push({label,pass:!!value});if(!value)throw Error(label);};
+const port=async()=>{const server=createServer();await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));const value=(server.address() as any).port;await new Promise<void>(resolve=>server.close(()=>resolve()));return value;};
+let runtime:any,browser:any,certs:any;
+try{
+ const [{createHubInitializer},{hubIdentityProvider},{makeTestCerts,ADMIN},{HubRuntime},{default:yaml}]=await Promise.all([load("src/hub/init/initializer.ts"),load("src/hub/init/identity.ts"),load("tests/support/hub-init-fixtures.ts"),load("src/hub/runtime.ts"),import("js-yaml")]);
+ certs=makeTestCerts();const webPort=await port();let memberPort=await port();while(memberPort===webPort)memberPort=await port();
+ const origin=`https://hub.example.test:${webPort}`;
+ const mk=(n:number,login:string,displayName:string)=>({key:{realm:"corp",objectId:`${String(n).repeat(8)}-${String(n).repeat(4)}-4${String(n).repeat(3)}-8${String(n).repeat(3)}-${String(n).repeat(12)}`},login,displayName,dn:`uid=${login},dc=example,dc=test`,groups:[]});
+ const alex=mk(1,"alex","Alex Chen · 陳同仁"),staff=[alex,mk(2,"casey","Casey Lin · 林主任"),mk(3,"jordan","Jordan Wu · 吳工程師"),mk(4,"morgan","Morgan Hsu · 許設計師"),mk(5,"riley","Riley Tsai · 蔡專員"),mk(6,"taylor","Taylor Yang · 楊經理")];
+ const adGroups=[{objectId:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",cn:"Example Engineering",dn:"cn=Example Engineering,ou=groups,dc=example,dc=test"},{objectId:"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",cn:"Example Design",dn:"cn=Example Design,ou=groups,dc=example,dc=test"},{objectId:"cccccccc-cccc-4ccc-8ccc-cccccccccccc",cn:"Example Operations",dn:"cn=Example Operations,ou=groups,dc=example,dc=test"}];
+ const people=[{...ADMIN,displayName:"Avery Chen · 陳管理員",groups:[]},...staff];
+ const plan={name:"Example company",webOrigin:origin,memberOrigin:`https://hub.example.test:${memberPort}`,webListen:{host:"127.0.0.1",port:webPort},memberListen:{host:"127.0.0.1",port:memberPort},webTls:{certFile:certs.cert,keyFile:certs.key},directory:{realm:"corp",url:"ldaps://directory.example.test",baseDn:"dc=example,dc=test",bindDn:"cn=reader,dc=example,dc=test",profile:"openldap"},bindPasswordRef:"file:hub/secrets/directory-bind",administrator:ADMIN.key,retention:{contentDays:30,eventDays:180},coexistence:"dedicated"};
+ const init=createHubInitializer({home,identity:hubIdentityProvider(),probe:{pidAlive:()=>false}}),confirmation=await init.prepareConfirmation(plan,{bindPassword:"Synthetic-bind-password-only"});await init.commit(plan,confirmation.reference);
+ const config=yaml.load(readFileSync(join(home,"fleet.yaml"),"utf8"));
+ runtime=new HubRuntime({home,readConfig:()=>config,log:(level:string,message:string,meta:any)=>{receipt.runtimeLog??=[];receipt.runtimeLog.push({level,message,meta});},createDirectory:()=>({realm:"corp",groupPolicy:"ad-direct-guid",close:async()=>{},signIn:async(login:string,password:string)=>{const p=people.find(p=>p.login===login);return p&&password==="Synthetic-browser-only"?{ok:true,person:p}:{ok:false,reason:"invalid-credentials"};},checkEligibility:async(key:any)=>{const p=people.find(p=>p.key.objectId===key.objectId&&p.key.realm===key.realm);return p?{eligible:true,person:p}:{eligible:false,reason:"disabled"};},searchGrantPeople:async(q:string)=>({ok:true,people:staff.filter(p=>!q||(p.displayName+p.login).toLowerCase().includes(String(q).toLowerCase())).map(p=>({person:p.key,displayName:p.displayName,login:p.login})),truncated:false}),resolvePolicyGroup:async(dn:string)=>{const g=adGroups.find(g=>g.dn===dn);return g?{ok:true,group:{key:{realm:"corp",objectId:g.objectId},dn:g.dn}}:{ok:false,reason:"not-found"};},searchPolicyGroups:async(q:string)=>({ok:true,groups:adGroups.filter(g=>!q||g.cn.toLowerCase().includes(String(q).toLowerCase())),truncated:false}),readPolicyGroups:async(key:any)=>({kind:"complete",person:key,groups:[],observedAt:Date.now()})})});
+ await runtime.apply(config);check("production Hub ready",runtime.serverHealth(config.hub)==="ready");
+ const pw=createRequire(join(process.cwd(),"package.json"))("playwright-core");
+ browser=await pw.chromium.launch({headless:true,args:["--no-sandbox","--host-resolver-rules=MAP hub.example.test 127.0.0.1"]});receipt.browser=browser.version();
+ const {existsSync}=await import("node:fs");
+ const PROTO=process.env.PROTO==="1",protoDir=process.env.PROTO_DIR??"";
+ const steps=await import(process.env.STEPS!);
+ const cases=(process.env.CASES??"desk-light-zh-TW,desk-light-en,phone-dark-zh-TW,phone-light-en").split(",");
+ let seeded=false;
+ for(const c of cases){
+  const [device,theme,...rest]=c.split("-"),lang=rest.join("-"),tag=`${PROTO?"new":"now"}-${c}`;
+  const ctx=await browser.newContext({ignoreHTTPSErrors:true,viewport:device==="phone"?{width:390,height:844}:{width:1440,height:1200},isMobile:device==="phone",hasTouch:device==="phone",locale:lang,colorScheme:theme});
+  try{
+   await ctx.addInitScript("window.__name=fn=>fn;");await ctx.addInitScript(({theme,lang}:any)=>{localStorage.setItem("agend_theme",theme);localStorage.setItem("agend_lang",lang);localStorage.setItem("agend_tour_done","1");localStorage.setItem("agend_firstrun_dismissed","1");},{theme,lang});
+   if(PROTO)await ctx.route(/\/(hub-role[a-z-]*\.js|hub-roles\.css)(\?.*)?$/,(route:any)=>{const name=new URL(route.request().url()).pathname.split("/").pop()!,file=join(protoDir,name);if(existsSync(file))route.fulfill({status:200,contentType:name.endsWith(".css")?"text/css":"text/javascript",body:readFileSync(file,"utf8")});else route.continue();});
+   const page=await ctx.newPage();page.setDefaultTimeout(12000);page.on("pageerror",(e:any)=>receipt.errors.push({tag,error:e.message}));page.on("console",(m:any)=>{if(m.type()==="error")receipt.errors.push({tag,console:m.text().slice(0,300)});});
+   await page.goto(origin+"/ui/hub/admin?view=groups");await page.locator("#hubLogin").fill(ADMIN.login);await page.locator("#hubPassword").fill("Synthetic-browser-only");await page.locator("#hubPassword").press("Enter");
+   await page.locator(".hub-roles").waitFor();
+   if(!seeded){
+    const out=await page.evaluate(async({staff,adGroups,roleLabel}:any)=>{
+     const s=await(await fetch("/hub/v1/session")).json(),view=(await(await fetch("/hub/v1/roles")).json()).view,policy=structuredClone(view.policy);
+     const post=async(path:string,body:any)=>{const r=await fetch(path,{method:"POST",headers:{"content-type":"application/json","X-AgEnD-Hub-CSRF":s.csrf},body:JSON.stringify(body)});return{status:r.status,json:await r.json().catch(()=>null)};};
+     const P=(n:number)=>({kind:"person",person:staff[n].key}),G=(n:number)=>({kind:"group",group:{realm:"corp",objectId:adGroups[n].objectId},dn:adGroups[n].dn});
+     const hub={kind:"hub"},gs=(n:number)=>({kind:"group",group:{realm:"corp",objectId:adGroups[n].objectId},dn:adGroups[n].dn});
+     const A=(roleId:string,subject:any,scope:any,extra:any={})=>({id:"assignment:"+crypto.randomUUID(),roleId,subject,scope,maxFleets:null,startsAt:0,expiresAt:null,assignedBy:view.actor,assignedAt:0,...extra});
+     policy.roles.push({id:"custom:"+crypto.randomUUID(),kind:"custom",name:roleLabel[0],description:roleLabel[1],permissions:["ask_agents","publish_agents","pair_fleet","rooms.create"],defaultMaxFleets:1});
+     const host=policy.roles.at(-1).id;
+     policy.assignments.push(A("builtin:admin",P(5),hub),A("builtin:manager",P(1),gs(0)),A("builtin:manager",G(0),gs(0)),A("builtin:member",G(1),hub),A("builtin:member",G(2),hub),A("builtin:member",P(2),hub),A("builtin:member",P(3),hub,{expiresAt:Date.now()+30*86400000}),A(host,P(4),hub),A(host,P(0),hub));
+     const tries:any={};const base=structuredClone(view.policy);
+     if(false){const mk=(extraRoles:any[],as:any[])=>{const p=structuredClone(base);p.roles.push(...extraRoles);p.assignments.push(...as);return p;};const role=policy.roles.at(-1),all=policy.assignments;
+      tries.role=(await post("/hub/v1/roles/preview",{policy:mk([role],[])})).json;
+      for(let i=0;i<all.length;i++)tries["a"+i]=(await post("/hub/v1/roles/preview",{policy:mk([role],[all[i]])})).json?.code??"ok";
+      tries.noop=(await post("/hub/v1/roles/preview",{policy:base})).json?.code??"ok";}
+     const pre=await post("/hub/v1/roles/preview",{policy});if(!pre.json?.ok)return{step:"preview",pre,tries};
+     const app=await post("/hub/v1/roles/apply",{policy,previewDigest:pre.json.previewDigest});return{step:"apply",status:app.status,ok:app.json?.ok,code:app.json?.code};
+    },{staff,adGroups,roleLabel:(process.env.CASES??"zh-TW").includes("zh-TW")?["房間主持人","也可以開群組房間的成員。"]:["Room host","Members who may also open group rooms."]});
+    receipt.seed=out;check("seeded roles and assignments",out.ok===true);seeded=true;await page.evaluate(async()=>{for(const q of ["alex","casey","jordan","morgan","riley","taylor"])await fetch("/hub/v1/roles/search?"+new URLSearchParams({kind:"person",q}));});await page.reload();await page.locator(".hub-roles").waitFor();
+   }
+   await page.evaluate(()=>document.fonts.ready);
+   const shot=async(name:string,opt:any={})=>{const file=`${tag}-${name}.png`;await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(250);await page.screenshot({path:join(out,file),fullPage:opt.fullPage!==false});receipt.screens.push({tag:`${tag}-${name}`,file,sha256:hash(readFileSync(join(out,file))),height:await page.evaluate(()=>document.documentElement.scrollHeight)});};
+   const note=(k:string,v:any)=>{(receipt.notes??={})[`${tag}:${k}`]=v;};
+   try{await steps.run({page,shot,note,lang,device,theme,origin});}catch(e:any){receipt.errors.push({tag,step:String(e?.message||e).slice(0,400)});await shot("ERROR").catch(()=>{});}
+   note("overflow",await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth));
+   await page.close();
+  }finally{await ctx.close();}
+ }
+ receipt.status="PASS";
+}catch(error:any){receipt.status="FAIL";receipt.error=error.stack;throw error;}
+finally{await browser?.close();await runtime?.close();rmSync(home,{recursive:true,force:true});if(certs)rmSync(certs.dir,{recursive:true,force:true});receipt.cleaned=true;writeFileSync(join(out,"receipt.json"),JSON.stringify(receipt,null,2));}
+console.log(JSON.stringify({status:receipt.status,mode,checks:receipt.checks.length,screens:receipt.screens.length,out}));

@@ -1,0 +1,21 @@
+/** The current roles page, walked for a baseline. */
+export async function run({page,shot,note,lang,device}:any){
+ const T=(en:string,zh:string)=>lang==="en"?en:zh;
+ await page.locator(".hub-role-list").first().waitFor();
+ note("pills-list",await page.locator(".hub-roles .tag").count());
+ await shot("1-list");
+ await page.locator(".hub-role-row-open",{hasText:T("Manager","主管")}).first().click();
+ await page.locator(".hub-role-detail").waitFor();note("pills-role",await page.locator(".hub-roles .tag").count());await shot("2-role-people");
+ await page.locator(".hub-role-detail [role=tab]").nth(1).click();await page.waitForTimeout(300);await shot("3-role-permissions");
+ await page.locator(".hub-role-detail .btn-sm").first().click();await page.locator(".hub-role-list").first().waitFor();
+ await page.locator(".hub-role-list .btn-sm").nth(1).click();await page.locator(".hub-role-assignment").waitFor();await shot("4-assign-empty",{fullPage:false});
+ const input=page.locator(".hub-role-assignment input[type=search], .hub-role-assignment input[type=text], #hubRoleSubject").first();
+ await input.fill("Jo");await input.press("Enter").catch(()=>{});await page.waitForTimeout(900);await shot("4b-assign-search",{fullPage:false});
+ const pick=page.locator(".hub-role-assignment").getByRole("button",{name:T("Choose","選擇")}).first();
+ if(await pick.count()){await pick.click();await page.waitForTimeout(400);}
+ else{const opt=page.locator(".hub-role-assignment [role=option], .hub-role-assignment li button").first();if(await opt.count())await opt.click();}
+ await page.waitForTimeout(400);note("assign-buttons",await page.locator(".dlg button, [role=dialog] button").allInnerTexts());await shot("4c-assign-picked",{fullPage:false});
+ await page.keyboard.press("Escape");await page.waitForTimeout(300);
+ const close=page.locator("[role=dialog] button[aria-label]").first();if(await page.locator(".hub-role-assignment").count()&&await close.count())await close.click().catch(()=>{});
+ await page.locator(".hub-role-top [role=tab]").nth(1).click();await page.waitForTimeout(400);note("pills-people",await page.locator(".hub-roles .tag").count());await shot("5-people");
+}

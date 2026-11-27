@@ -1,0 +1,354 @@
+{
+ "en-new": {
+  "head": "0aff702d8cd640e5a0ae29ebddb97e190671f934",
+  "status": "PASS",
+  "screens": [
+   {
+    "file": "new-desk-light-en-1-matrix.png",
+    "sha256": "bfae082c45926ead41aebbe0dc5d6b8f1798b90182be30e028c21ccec0a987ea"
+   },
+   {
+    "file": "new-desk-light-en-2-role-members.png",
+    "sha256": "033006b261c73bef1948a1dde535383f68207d70002390e4309d0cd41743a94c"
+   },
+   {
+    "file": "new-desk-light-en-2b-members-selected.png",
+    "sha256": "961484d9c3a7a49b158dffac73636d6a1d187fcaa6dbbe4106186dc412e99680"
+   },
+   {
+    "file": "new-desk-light-en-3-role-permissions.png",
+    "sha256": "622e869e2a435f529c9df2bd7f007afcdc834aaf37e755f28341b6ace6e56dd5"
+   },
+   {
+    "file": "new-desk-light-en-4-add-empty.png",
+    "sha256": "340b6e8f3a72ec730b8f8b595c848b1c6b5359f77e41b5387914d2335d4fccc9"
+   },
+   {
+    "file": "new-desk-light-en-4b-add-picked.png",
+    "sha256": "e16f3879c4473bee7d83a113823b25e166fd1a4a4b693afaad517dcb6eb62b69"
+   },
+   {
+    "file": "new-desk-light-en-4c-add-scope.png",
+    "sha256": "8229ba4759b4de5850002a7fa0a1c5cc30754e614be0b348acbf024ed3efcfbc"
+   },
+   {
+    "file": "new-desk-light-en-4d-add-review.png",
+    "sha256": "1ab5ddcffa3b64e2439b15783edd51f16cb92a75aa6e2dab66136fe2d7c16103"
+   },
+   {
+    "file": "new-desk-light-en-5-people.png",
+    "sha256": "a1808f4d40e3ba2f7718ba4a224eabd5b0a361b2c8ac215d14042137b0c636e0"
+   },
+   {
+    "file": "new-phone-light-en-1-matrix.png",
+    "sha256": "dff8d0e390a69b4ec2fcd051857a1e58e94f29ec5f1e42fdfd83a7bbe59ed734"
+   },
+   {
+    "file": "new-phone-light-en-2-role-members.png",
+    "sha256": "2c32bf57fabb4e255fc103b1bcda8105f824f9e5a44600e9911603b932cb3c13"
+   },
+   {
+    "file": "new-phone-light-en-2b-members-selected.png",
+    "sha256": "97dfec2b36835ab5c550f141ded6b417319d66f3eeec0cc4da827099b1de81de"
+   },
+   {
+    "file": "new-phone-light-en-3-role-permissions.png",
+    "sha256": "14bf6287a764ce655f4d06407daff934284cdd5b5c9334a847cb2d4b540afcd4"
+   },
+   {
+    "file": "new-phone-light-en-4-add-empty.png",
+    "sha256": "6f5fb2c8f5c88281f83dd23a2229668696f967f838580cfa683bdcb93dff5aaf"
+   },
+   {
+    "file": "new-phone-light-en-4b-add-picked.png",
+    "sha256": "e37a2b071af687b9e3808e13b1a088307ae89819ccfa962d70c60ff294634f47"
+   },
+   {
+    "file": "new-phone-light-en-4c-add-scope.png",
+    "sha256": "224330e61e0a4f539143c676d99fdfacf12ff0f42c2d452a90dd36af5129f726"
+   },
+   {
+    "file": "new-phone-light-en-4d-add-review.png",
+    "sha256": "5433b7ab6acb154eb686bd9826fe5868a6a34ab184cfe5f854ac76e40b4c347e"
+   },
+   {
+    "file": "new-phone-light-en-5-people.png",
+    "sha256": "52db69edd440eab4d5d3c09abc316856fe2cc8b70b7a8e8a3671c05daa0d99a9"
+   }
+  ],
+  "notes": {
+   "new-desk-light-en:pills-list": 0,
+   "new-desk-light-en:selected-all": 2,
+   "new-desk-light-en:review-enabled": true,
+   "new-desk-light-en:pills-people": 0,
+   "new-desk-light-en:overflow": 0,
+   "new-phone-light-en:pills-list": 0,
+   "new-phone-light-en:selected-all": 1,
+   "new-phone-light-en:review-enabled": true,
+   "new-phone-light-en:pills-people": 0,
+   "new-phone-light-en:overflow": 0
+  },
+  "errors": []
+ },
+ "en-now": {
+  "head": "0aff702d8cd640e5a0ae29ebddb97e190671f934",
+  "status": "PASS",
+  "screens": [
+   {
+    "file": "now-desk-light-en-1-list.png",
+    "sha256": "bceca1a32de15354ad38825a8d9212ab33973b1a9d067b6dde014b8e4ab10d48"
+   },
+   {
+    "file": "now-desk-light-en-2-role-people.png",
+    "sha256": "c3a1ce23934067ce31a5c3cbec90da54d6bebffa761725010178729b3bedce84"
+   },
+   {
+    "file": "now-desk-light-en-3-role-permissions.png",
+    "sha256": "70923b58624a0cbb8bf199533bec93259faf319de5847d6a175140a1ff6cc7bf"
+   },
+   {
+    "file": "now-desk-light-en-4-assign-empty.png",
+    "sha256": "0cb7766548e524f87fcfdfa60f993b607b9720fcfe2f706a2ded772aea3c3358"
+   },
+   {
+    "file": "now-desk-light-en-4b-assign-search.png",
+    "sha256": "3a85a25e5ffa58e56397a2eabc1f11aaca104cda47d869ca4e0afd622f2737ca"
+   },
+   {
+    "file": "now-desk-light-en-4c-assign-picked.png",
+    "sha256": "2e4e290e4cbf17633d7ac1a30260b502c998778256fa753b5d9a485091118b07"
+   },
+   {
+    "file": "now-desk-light-en-5-people.png",
+    "sha256": "c35d8569bd37a06fa31530e01c70f632488764046f00a893b35978bd3b7ba61d"
+   },
+   {
+    "file": "now-phone-light-en-1-list.png",
+    "sha256": "8e2a44e4b2e9d2c8833ee7336a90c307d44feba828248d0a00863ee4d5bb38ba"
+   },
+   {
+    "file": "now-phone-light-en-2-role-people.png",
+    "sha256": "2bf1ba3d243595df6e06c59e1087a04d71a07707a887db25de97008e2365de27"
+   },
+   {
+    "file": "now-phone-light-en-3-role-permissions.png",
+    "sha256": "78c039a78ac81a54f3d95f1b0006bcd99080e3615edeccde9d2e93a1ce7c4e85"
+   },
+   {
+    "file": "now-phone-light-en-4-assign-empty.png",
+    "sha256": "7d3365b6fb7a9fbbb7dd86d44290e36c4a30f5c5d40fd88fcd8aaad69071e713"
+   },
+   {
+    "file": "now-phone-light-en-4b-assign-search.png",
+    "sha256": "8033082c1c17f56891f4ef05ab7af327dfbb7650aca80168f54add873f2cebaf"
+   },
+   {
+    "file": "now-phone-light-en-4c-assign-picked.png",
+    "sha256": "2590168d1cb67cb9dbd8d3c615414f766dd39ed4b745f060da5fda0931a677b7"
+   },
+   {
+    "file": "now-phone-light-en-5-people.png",
+    "sha256": "f8294e00d179663610b8ff0e01a405bb9cc518362899baeb08579e2b6c116b9f"
+   }
+  ],
+  "notes": {
+   "now-desk-light-en:pills-list": 4,
+   "now-desk-light-en:pills-role": 3,
+   "now-desk-light-en:assign-buttons": [
+    "",
+    "×",
+    "Cancel",
+    "Review"
+   ],
+   "now-desk-light-en:pills-people": 11,
+   "now-desk-light-en:overflow": 0,
+   "now-phone-light-en:pills-list": 4,
+   "now-phone-light-en:pills-role": 3,
+   "now-phone-light-en:assign-buttons": [
+    "",
+    "×",
+    "Cancel",
+    "Review"
+   ],
+   "now-phone-light-en:pills-people": 11,
+   "now-phone-light-en:overflow": 0
+  },
+  "errors": []
+ },
+ "zh-new": {
+  "head": "0aff702d8cd640e5a0ae29ebddb97e190671f934",
+  "status": "PASS",
+  "screens": [
+   {
+    "file": "new-desk-light-zh-TW-1-matrix.png",
+    "sha256": "e81b607f49989aeea4ac2646608c1ed998d537ae67b90a07032f553530aa8b7f"
+   },
+   {
+    "file": "new-desk-light-zh-TW-2-role-members.png",
+    "sha256": "93a393cd195bc25b4f574786b0eaccd6d01fbdcbf0f59b43d570df67bcc1f902"
+   },
+   {
+    "file": "new-desk-light-zh-TW-2b-members-selected.png",
+    "sha256": "c0387858b515d194e06b48ad8dd01ee16e8d90a801968c7bc5183e0c007e3def"
+   },
+   {
+    "file": "new-desk-light-zh-TW-3-role-permissions.png",
+    "sha256": "40c8de300652ce5b4af4a15ab9da3696bd45f8ede9d6af062c5241efee4059cd"
+   },
+   {
+    "file": "new-desk-light-zh-TW-4-add-empty.png",
+    "sha256": "b4667bb91aefec2c2a55146899871dc1529e34bffd91feee6d7134261b25d6c3"
+   },
+   {
+    "file": "new-desk-light-zh-TW-4b-add-picked.png",
+    "sha256": "9ecfb4e23c3230a783feefec3f2c40c3b636aeccff93d3715f60db28bfd7bba2"
+   },
+   {
+    "file": "new-desk-light-zh-TW-4c-add-scope.png",
+    "sha256": "7fe6c9c8401c54901f8e0de39c6c8bd080e0bfa973dd6fcfa9c52d40cf949b74"
+   },
+   {
+    "file": "new-desk-light-zh-TW-4d-add-review.png",
+    "sha256": "54435d1260ffae2d22080bfd25dba980f6399c870b7cc45e5d5adf2522f722c6"
+   },
+   {
+    "file": "new-desk-light-zh-TW-5-people.png",
+    "sha256": "af0f731c711ef3d8dcbada3e4bcc27b44b602310a24573ce5770ea35b6f50f25"
+   },
+   {
+    "file": "new-phone-dark-zh-TW-1-matrix.png",
+    "sha256": "04d24422805bad2d6c47dc306403e4f800bda34b53ee43938502cf99417e0ded"
+   },
+   {
+    "file": "new-phone-dark-zh-TW-2-role-members.png",
+    "sha256": "04c318f626e13c7c00026968f5607ef6660044377a302bba08d4608b99751b7f"
+   },
+   {
+    "file": "new-phone-dark-zh-TW-2b-members-selected.png",
+    "sha256": "8c40a6e1bb410e2025cf564b591bc5ee3ccb7b669f62e79480af91d9a352da42"
+   },
+   {
+    "file": "new-phone-dark-zh-TW-3-role-permissions.png",
+    "sha256": "c6eb4ff9d8efb40d10d125ed93ac3d626d08e14588b2c32a631487746f9ede4c"
+   },
+   {
+    "file": "new-phone-dark-zh-TW-4-add-empty.png",
+    "sha256": "3b8c0c24318904a6d97b4b39a598dcda63e1569d56389df65fda0b2653fee2a3"
+   },
+   {
+    "file": "new-phone-dark-zh-TW-4b-add-picked.png",
+    "sha256": "0fa141e14e240acdc6a23dda2abe98d250756dd318d588b47f81ff5383785dd7"
+   },
+   {
+    "file": "new-phone-dark-zh-TW-4c-add-scope.png",
+    "sha256": "82678be1ffd8b612fbb0e8271193526106739cec6cf6b7228fbac1303695befe"
+   },
+   {
+    "file": "new-phone-dark-zh-TW-4d-add-review.png",
+    "sha256": "445f8f170157d14dc79aee69dc772caf47b1f474084aa670b3922a793c1172aa"
+   },
+   {
+    "file": "new-phone-dark-zh-TW-5-people.png",
+    "sha256": "c0004f0c873fb1823b8fae10e08984f45f03088a6a86ee388c3923ec9b72d9f9"
+   }
+  ],
+  "notes": {
+   "new-desk-light-zh-TW:pills-list": 0,
+   "new-desk-light-zh-TW:selected-all": 2,
+   "new-desk-light-zh-TW:review-enabled": true,
+   "new-desk-light-zh-TW:pills-people": 0,
+   "new-desk-light-zh-TW:overflow": 0,
+   "new-phone-dark-zh-TW:pills-list": 0,
+   "new-phone-dark-zh-TW:selected-all": 1,
+   "new-phone-dark-zh-TW:review-enabled": true,
+   "new-phone-dark-zh-TW:pills-people": 0,
+   "new-phone-dark-zh-TW:overflow": 0
+  },
+  "errors": []
+ },
+ "zh-now": {
+  "head": "0aff702d8cd640e5a0ae29ebddb97e190671f934",
+  "status": "PASS",
+  "screens": [
+   {
+    "file": "now-desk-light-zh-TW-1-list.png",
+    "sha256": "593e1f4f14c2dd1a31de89a3a5e0aca9b6a676a6f20d1fbf75a9b9f1b6bec99e"
+   },
+   {
+    "file": "now-desk-light-zh-TW-2-role-people.png",
+    "sha256": "76cb847b7eb6ef1f8359ed9e4f33d2f544615eca95a9289df8a770954e9aec6a"
+   },
+   {
+    "file": "now-desk-light-zh-TW-3-role-permissions.png",
+    "sha256": "386561651db25584ba77fe83b1c49066795d8d7ca7b4dcdfc5541fed1c99e24c"
+   },
+   {
+    "file": "now-desk-light-zh-TW-4-assign-empty.png",
+    "sha256": "43ed603aca7f80eae02e61b42fe8d3bf1da11a802f3411d584bd419e0249fa51"
+   },
+   {
+    "file": "now-desk-light-zh-TW-4b-assign-search.png",
+    "sha256": "b6295160320de9de0e74c259f7f76c840e6520125cb2c5eec662009a3f9224a0"
+   },
+   {
+    "file": "now-desk-light-zh-TW-4c-assign-picked.png",
+    "sha256": "2baf556d3a7a304adbdd5c5c548ba4125d88185133ae96e82f863f91ad33f071"
+   },
+   {
+    "file": "now-desk-light-zh-TW-5-people.png",
+    "sha256": "ea3b9fc2a3fd94782283d6d3e53dc0f7e9bbbc473671c2db990436707409a7cd"
+   },
+   {
+    "file": "now-phone-dark-zh-TW-1-list.png",
+    "sha256": "f62095b6b1e6e74e5bc297cb17764b899707ab7d58ae35abca887223cf28fc2e"
+   },
+   {
+    "file": "now-phone-dark-zh-TW-2-role-people.png",
+    "sha256": "399c1e7c1fd5bf8aedbd7607921c121991a3c3470587a02bc8a486d1f0318c2c"
+   },
+   {
+    "file": "now-phone-dark-zh-TW-3-role-permissions.png",
+    "sha256": "2fe5149a7361285e39c82e3442ab8823b7651ef0fe3189f362fd1434d9d9dba1"
+   },
+   {
+    "file": "now-phone-dark-zh-TW-4-assign-empty.png",
+    "sha256": "b6ea314527a53c42b6291c1ecd5ae3e57e5145fd8fbd8f987f9178e7d7f00c64"
+   },
+   {
+    "file": "now-phone-dark-zh-TW-4b-assign-search.png",
+    "sha256": "06647d6162f31bd61d1466bf794fcfa47433490750a0a1366820a60fc3b6c1b2"
+   },
+   {
+    "file": "now-phone-dark-zh-TW-4c-assign-picked.png",
+    "sha256": "811abfa0c77dd229e48f06f869ec3249f29b5fc8640bd662d7aeaad0ad3ceabc"
+   },
+   {
+    "file": "now-phone-dark-zh-TW-5-people.png",
+    "sha256": "440c9bfdee0305c0eab23d7837738969251fbc00a50e6e64715b32d87304a883"
+   }
+  ],
+  "notes": {
+   "now-desk-light-zh-TW:pills-list": 4,
+   "now-desk-light-zh-TW:pills-role": 3,
+   "now-desk-light-zh-TW:assign-buttons": [
+    "",
+    "×",
+    "取消",
+    "檢查變更"
+   ],
+   "now-desk-light-zh-TW:pills-people": 11,
+   "now-desk-light-zh-TW:overflow": 0,
+   "now-phone-dark-zh-TW:pills-list": 4,
+   "now-phone-dark-zh-TW:pills-role": 3,
+   "now-phone-dark-zh-TW:assign-buttons": [
+    "",
+    "×",
+    "取消",
+    "檢查變更"
+   ],
+   "now-phone-dark-zh-TW:pills-people": 11,
+   "now-phone-dark-zh-TW:overflow": 0
+  },
+  "errors": []
+ }
+}
