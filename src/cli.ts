@@ -272,6 +272,7 @@ async function resolveOrRecover(opts: { resolve?: boolean; clear?: string; recov
     process.exitCode = 1;
     return;
   }
+  const { spawnSync } = await import("node:child_process");
   const [resolve, { randomBytes }, { createRequire }, { plistProgramArguments }, { realHostEnv }, { serviceManager }] = await Promise.all([
     import("./update-resolve.js"), import("node:crypto"), import("node:module"), import("./plist-args.js"), import("./update-host.js"), import("./update-recovery/service-manager.js")]);
   const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null; exists(pid: number): boolean };
@@ -282,15 +283,20 @@ async function resolveOrRecover(opts: { resolve?: boolean; clear?: string; recov
     liveness, uid, plistArgs: plistProgramArguments,
     lockDeps: { ...liveness, pid: process.pid, newToken: () => randomBytes(16).toString("hex"), now: () => new Date(), log: (message: string) => console.log(message) },
     reload: (service: import("./install-ownership.js").OwnedService) => serviceManager(service, { run: (c, a) => host.run(c, a), uid, sleep: host.sleep, now: host.now }).reload(),
+    // This user's bus at its own runtime directory, named explicitly (never the caller's environment): reachable or not.
+    userBus: () => {
+      const env = { PATH: "/usr/local/bin:/usr/bin:/bin", XDG_RUNTIME_DIR: `/run/user/${uid}` };
+      const r = spawnSync("busctl", ["--user", "status"], { encoding: "utf-8", timeout: 10_000, env, stdio: ["ignore", "ignore", "pipe"] });
+      return r.status === 0 ? { ok: true as const, env } : { ok: false as const, reason: (r.stderr || `busctl exited ${r.status ?? r.signal}`).trim().split("\n")[0]! };
+    },
   };
   const say = (said: { lines: string[]; exitCode: number }) => { for (const line of said.lines) (said.exitCode ? console.error : console.log)(line); process.exitCode = said.exitCode; };
   if (opts.resolve) { say(opts.clear !== undefined ? resolve.resolveClear(DATA_DIR, opts.clear, d) : resolve.resolveReport(DATA_DIR, d)); return; }
   const plan = resolve.recoverAttempt(DATA_DIR, d);
   if (plan.kind === "said") { say(plan.said); return; }
   // The runner beside the service (systemd-run --wait --pipe): its output here, its exit status ours; never a child
-  // fleet of this terminal.
-  const { spawnSync } = await import("node:child_process");
-  const ran = spawnSync(plan.command, plan.args, { stdio: "inherit" });
+  // fleet of this terminal, and only the environment named for it.
+  const ran = spawnSync(plan.command, plan.args, { stdio: "inherit", ...(plan.env ? { env: plan.env } : {}) });
   process.exitCode = ran.status ?? 1;
 }
 

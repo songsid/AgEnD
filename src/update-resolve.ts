@@ -30,6 +30,12 @@ export interface ResolveDeps {
   /** The attempt's service manager reload, with this caller's rights (false: it couldn't). */
   reload(service: { kind: "systemd" | "launchd"; unit: string; fragmentPath: string }): boolean;
   plistArgs(xml: string): string[] | null;
+  /**
+   * Fable part 6: a user unit's runner is started with `systemd-run --user`, which needs this user's bus — absent under
+   * `sudo -u`, some ssh sessions, or without lingering. The environment that reaches it (XDG_RUNTIME_DIR named
+   * explicitly, never the caller's), or why it can't be reached.
+   */
+  userBus?(): { ok: true; env: Record<string, string> } | { ok: false; reason: string };
   io?: JournalIo;
 }
 export interface Said { lines: string[]; exitCode: number }
@@ -123,7 +129,7 @@ export function resolveClear(home: string, value: string, d: ResolveDeps): Said 
 }
 
 export type RecoverPlan =
-  | { kind: "run"; command: string; args: string[] }
+  | { kind: "run"; command: string; args: string[]; env?: Record<string, string> }
   | { kind: "said"; said: Said };
 
 /**
@@ -168,5 +174,13 @@ export function recoverAttempt(home: string, d: ResolveDeps): RecoverPlan {
   }
   // systemd: waited on, its output piped here; the runner's own starts go through the service manager.
   const args = launch.command === "systemd-run" ? [...launch.args.slice(0, launch.args.indexOf("--collect")), "--wait", "--pipe", ...launch.args.slice(launch.args.indexOf("--collect"))] : launch.args;
+  if (launch.command === "systemd-run" && launch.args[0] === "--user") {
+    const bus = d.userBus?.() ?? { ok: false as const, reason: "this user's bus wasn't looked for" };
+    if (!bus.ok) {
+      return { kind: "said", said: { lines: [`  ✗ Not recovered from here: this user's systemd bus can't be reached (${bus.reason}).`,
+        `  Run it from a login session of uid ${d.uid} (not sudo -u): agend update --recover`, `  Or the runner itself, in that session: ${operatorCommand(home, a.id)}`], exitCode: 1 } };
+    }
+    return { kind: "run", command: launch.command, args, env: bus.env };
+  }
   return { kind: "run", command: launch.command, args };
 }

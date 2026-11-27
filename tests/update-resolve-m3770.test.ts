@@ -35,14 +35,15 @@ function world(stage: Stage, o: { service?: boolean; uid?: number } = {}) {
   if (route) { mkdirSync(join(route, ".."), { recursive: true }); writeFileSync(route, "[Service]\nExecStartPre=/kit/recover.cjs\n"); }
   return { root, home, attempt: a, route };
 }
-function deps(o: { updater?: "live" | "gone" | "unknown"; uid?: number; reload?: boolean } = {}): ResolveDeps & { reloads: string[] } {
+function deps(o: { updater?: "live" | "gone" | "unknown"; uid?: number; reload?: boolean; bus?: boolean } = {}): ResolveDeps & { reloads: string[] } {
   const reloads: string[] = [];
   const state = o.updater ?? "gone";
   const liveness = { exists: (pid: number) => pid !== UPDATER || state !== "gone", processStart: (pid: number) => (pid === UPDATER ? (state === "live" ? "x" : null) : pid === process.pid ? "self" : null),
     startTicks: () => null, bootId: () => null };
   return { liveness, uid: o.uid ?? 1000, plistArgs: () => null, reloads,
     lockDeps: { ...liveness, pid: process.pid, newToken: () => "f".repeat(32), now: () => new Date(), log: () => {} },
-    reload: s => { reloads.push(s.unit); return o.reload !== false; } };
+    reload: s => { reloads.push(s.unit); return o.reload !== false; },
+    userBus: () => (o.bus === false ? { ok: false, reason: "Failed to connect to bus: No medium found" } : { ok: true, env: { XDG_RUNTIME_DIR: "/run/user/1000", PATH: "/usr/bin:/bin" } }) };
 }
 
 describe("M-3770 2.5 wiring part 6: agend update --resolve", () => {
@@ -125,7 +126,12 @@ describe("M-3770 2.5 wiring part 6: agend update --recover", () => {
     const sha = (t: string) => createHash("sha256").update(t).digest("hex");
     writeFileSync(join(kit, "kit.json"), JSON.stringify({ schema: 1, attemptId: ID, home: s.home, node: { source: "/n", sha256: sha("node") }, recover: { sha256: sha("recover") } }));
     expect(recoverAttempt(s.home, deps())).toEqual({ kind: "run", command: "systemd-run",
-      args: ["--user", `--unit=agend-update-recovery-${ID}`, "--wait", "--pipe", "--collect", "--property=KillMode=process", join(kit, "node"), join(kit, "recover.cjs"), "--home", s.home, "--attempt", ID, "--run"] });
+      args: ["--user", `--unit=agend-update-recovery-${ID}`, "--wait", "--pipe", "--collect", "--property=KillMode=process", join(kit, "node"), join(kit, "recover.cjs"), "--home", s.home, "--attempt", ID, "--run"],
+      env: { XDG_RUNTIME_DIR: "/run/user/1000", PATH: "/usr/bin:/bin" } });
+    // This user's bus unreachable (sudo -u, an ssh session without it): refused with the reason and what to run instead.
+    const nobus = recoverAttempt(s.home, deps({ bus: false }));
+    expect(nobus).toMatchObject({ kind: "said", said: { exitCode: 1, lines: ["  ✗ Not recovered from here: this user's systemd bus can't be reached (Failed to connect to bus: No medium found).",
+      "  Run it from a login session of uid 1000 (not sudo -u): agend update --recover", expect.stringMatching(/^  Or the runner itself, in that session: /)] } });
     const det = world("snapshotted", { service: false });
     const dk = kitDir(det.home, ID); mkdirSync(dk, { recursive: true });
     writeFileSync(join(dk, "node"), "node"); writeFileSync(join(dk, "recover.cjs"), "recover");
@@ -144,3 +150,20 @@ describe("M-3770 2.5 wiring part 6: agend update --recover", () => {
     expect(recoverAttempt(c.home, d)).toMatchObject({ kind: "said", said: { exitCode: 0 } });           // nothing more to do
   });
 });
+
+describe("M-3770 2.5 wiring part 6 (Fable): no lock token is ever printed", () => {
+  it("--resolve, --clear and --recover say nothing that holds a 32-hex token (the output goes into chats and bug reports)", () => {
+    const lines: string[] = [];
+    for (const stage of ["manual-recovery", "snapshotted", "committing"] as const) {
+      const w = world(stage);
+      // A live service-lock and home-lock record with tokens, as an updater leaves them.
+      for (const f of [".service.lock", ".update.lock"]) writeFileSync(join(w.home, f), JSON.stringify({ pid: 4343, processStart: "x", prefix: w.home, targetSpec: `attempt:${ID}`, agendHome: w.home, token: "9".repeat(32), createdAt: new Date().toISOString() }) + "\n");
+      lines.push(...resolveReport(w.home, deps()).lines, ...resolveClear(w.home, ID, deps()).lines);
+      const r = recoverAttempt(w.home, deps());
+      if (r.kind === "said") lines.push(...r.said.lines);
+    }
+    expect(lines.length).toBeGreaterThan(5);
+    expect(lines.filter(l => /[0-9a-f]{32}/i.test(l))).toEqual([]);
+  });
+});
+
