@@ -60,7 +60,7 @@ describe("S-246: Install as a service", () => {
     serviceButton().click(); await settle(6);
     expect(asked()).toHaveLength(1);
     expect(asked()[0]).toMatchObject({ title: "Install AgEnD as a service?", confirmLabel: "Install and restart",
-      message: "AgEnD restarts as a service: every agent stops briefly and comes back on its own.\n\nAfter that, AgEnD can bring itself back after an update. To go back, run agend uninstall." });
+      message: "AgEnD restarts as a service: every agent stops briefly, then picks up its conversations again, and this page reconnects by itself.\n\nAfter that, AgEnD can bring itself back after an update. To go back, run agend uninstall." });
     confirm.answerConfirm(asked()[0].id, false); await settle(6);
     expect(fixes()).toEqual([]);
     expect(serviceButton().disabled).toBe(false);

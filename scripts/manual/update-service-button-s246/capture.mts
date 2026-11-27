@@ -107,7 +107,7 @@ async function walk(c: any) {
     await press(page, IT);
     const d = await dialog(page);
     check(`${tag} 2: asks first: the title, what happens to every Agent, and after`, !!d && d.text.includes(W(zh, "Install AgEnD as a service?", "要把 AgEnD 安裝成服務嗎？"))
-      && d.text.includes(W(zh, "every agent stops briefly and comes back on its own.", "每個 Agent 會短暫停止，之後自動回來。"))
+      && d.text.includes(W(zh, "every agent stops briefly, then picks up its conversations again, and this page reconnects by itself.", "每個 Agent 會短暫停止，之後接著原本的對話繼續，這個頁面也會自動重新連線。"))
       && d.text.includes(W(zh, "AgEnD can bring itself back after an update.", "AgEnD 都能自己重新啟動。")) && d.text.includes("agend uninstall"), d);
     check(`${tag} 2: Install and restart, and Cancel`, !!d && [GO, CANCEL].every((t) => d.buttons.some((x: any) => x.t === t)), d);
     check(`${tag} 2: nothing sent yet`, posts.length === sent, posts);
