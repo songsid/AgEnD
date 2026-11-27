@@ -33,3 +33,31 @@ describe("M-3694 S-266: get_fleet_config scope 'settings'", () => {
     expect((await call({ scope: "instance", name: "dev-a" }, "dev-a")).result).toEqual({ name: "dev-a", config: { working_directory: "/w" } });
   });
 });
+
+describe("#4561 F1: what an agent reads is redacted by shape too (webhooks, headers, URL userinfo and queries)", () => {
+  const secretFleet = () => ({
+    defaults: { backend: "claude-code", webhooks: [{ url: "https://discord.com/api/webhooks/123/fake-webhook-secret", events: ["crash"], headers: { Authorization: "Bearer fake-bearer-secret" } }] },
+    web: { proxy: "https://fake-user:fake-pass@proxy.example.com:8443/path", callback: "https://hooks.example.com/notify?token=fake-query-secret", docs: "https://example.com/docs" },
+    instances: { general: { general_topic: true }, worker: { mcp_url: "https://u:fake-instance-pass@mcp.example.com/" } },
+  });
+  const read = (args: Record<string, unknown>) => new Promise<{ result: any; error?: string }>(resolve => {
+    void outboundHandlers.get("get_fleet_config")!({ fleetConfig: secretFleet() } as never, args as never, (result, error) => resolve({ result, error }), { instanceName: "general" } as never);
+  });
+  const SECRETS = ["fake-webhook-secret", "fake-bearer-secret", "fake-user", "fake-pass", "fake-query-secret", "fake-instance-pass", "/api/webhooks/123"];
+
+  it("scope settings: none of the secret parts appear; the rest still reads", async () => {
+    const { result } = await read({ scope: "settings" });
+    const text = JSON.stringify(result);
+    for (const secret of SECRETS) expect(text, secret).not.toContain(secret);
+    expect(result.settings.defaults.webhooks).toEqual([{ url: "https://discord.com/[redacted]", events: ["crash"], headers: { Authorization: "[redacted]" } }]);
+    expect(result.settings.web).toEqual({ proxy: "https://[redacted]@proxy.example.com:8443/path", callback: "https://hooks.example.com/notify?[redacted]", docs: "https://example.com/docs" });
+  });
+
+  it("the defaults and instance scopes too (they carried webhooks and URLs before this)", async () => {
+    for (const args of [{}, { scope: "instance", name: "worker" }]) {
+      const text = JSON.stringify((await read(args)).result);
+      for (const secret of SECRETS) expect(text, `${JSON.stringify(args)} ${secret}`).not.toContain(secret);
+    }
+  });
+});
+

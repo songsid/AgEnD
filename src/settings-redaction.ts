@@ -54,3 +54,33 @@ export function restoreRedactedSecrets<T>(next: T, previous: unknown): { value: 
   };
   return walk(next, previous, undefined, "") as { value: T } | { path: string };
 }
+
+const REDACTED = "[redacted]";
+/** A URL's secret parts gone: its userinfo and query, and — for a webhook, whose path is its secret — everything after the host. */
+function redactUrl(text: string, wholePath: boolean): string {
+  let url: URL;
+  try { url = new URL(text); } catch { return text; }
+  if (wholePath) return `${url.protocol}//${url.host}/${REDACTED}`;
+  if (!url.username && !url.password && !url.search) return text;
+  return `${url.protocol}//${url.username || url.password ? `${REDACTED}@` : ""}${url.host}${url.pathname}${url.search ? `?${REDACTED}` : ""}`;
+}
+
+/**
+ * M-3694 (S-266; Fable #4561 F1): what an AGENT may read of the configuration. Settings' own key-name redaction
+ * (redactInlineSecrets), then by shape, so a key added later can't leak: every header value (an `Authorization:
+ * Bearer …`), every webhook URL past its host (Discord's and Slack's carry their secret in the path), and any other URL's
+ * userinfo (`user:pass@`) and query (a `?token=`).
+ */
+export function redactForAgent<T>(value: T): T {
+  const walk = (v: unknown, key: string | undefined, inWebhook: boolean): unknown => {
+    if (typeof v === "string") return /^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? redactUrl(v, inWebhook && key === "url") : v;
+    if (Array.isArray(v)) return v.map(item => walk(item, undefined, inWebhook || key === "webhooks"));
+    if (!record(v)) return v;
+    const out: Record<string, unknown> = {};
+    for (const [k, child] of Object.entries(v)) {
+      own(out, k, k === "headers" && record(child) ? Object.fromEntries(Object.keys(child).map(h => [h, REDACTED])) : walk(child, k, inWebhook));
+    }
+    return out;
+  };
+  return walk(redactInlineSecrets(value), undefined, false) as T;
+}
