@@ -532,25 +532,27 @@ export const UpdateInstanceConfigArgs = z.object({
     tool_set: WritableToolSet.optional().describe("AgEnD tool profile. Only General may set another agent's profile directly; self-targets and other callers are refused (#804/#814)."),
     backend: z.string().optional().describe("CLI backend. A switch restarts a running instance in a fresh session (a stopped or paused one stays so, and starts on it next time), and drops the instance's own model and effort: give `model` here for the new backend, or it inherits the fleet default, else that backend's own default."),
     model: z.string().optional().describe("Model override. With a backend switch: a model the new backend takes, else the switch is refused."),
-    resume_interrupted_work: z.boolean().optional().describe("Automatically continue known interrupted work after a stable restart"),
-    auto_pause_after: z.number().optional().describe("Minutes idle before auto-pause (0 = disabled)"),
+    resume_interrupted_work: z.boolean().optional().describe("Resume known interrupted work after a restart"),
+    auto_pause_after: z.number().optional().describe("Idle minutes to auto-pause (0: off)"),
     display_name: z.string().optional().describe("Display name"),
     description: z.string().optional().describe("Role description"),
     backend_options: z.record(z.string(), z.record(z.string(), z.unknown())).optional().describe(
       "Backend-specific options keyed by backend name. Use { \"kiro-cli\": { \"credential_profile\": \"work\" } } to move this agent to another subscription — the instance is restarted so the new login takes effect.",
     ),
-  }).describe("Fields to merge-patch into the instance config"),
+  }).describe("Fields to merge-patch"),
 });
 
 export const UpdateFleetDefaultsArgs = z.object({
   defaults: z.object({
     backend: z.string().optional().describe("Default CLI backend"),
     model: z.string().optional().describe("Default model"),
-    resume_interrupted_work: z.boolean().optional().describe("Automatically continue known interrupted work after a stable restart"),
-    auto_pause_after: z.number().optional().describe("Default auto-pause minutes (0 = disabled)"),
+    resume_interrupted_work: z.boolean().optional().describe("Resume known interrupted work after a restart"),
+    auto_pause_after: z.number().optional().describe("Auto-pause minutes (0: off)"),
     max_cross_instance_message_bytes: z.number().int().positive().optional()
-      .describe("Maximum UTF-8 byte size of one cross-instance message body (default 12288)"),
-  }).describe("Fields to merge-patch into fleet defaults"),
+      .describe("Max bytes of one cross-instance message (default 12288)"),
+    task_board_on: z.boolean().optional().describe("Task board for all agents"),
+    task_board_leader: z.string().min(1).nullable().optional().describe("Leader of cards with no project lead; null: none"),
+  }).describe("Fields to merge-patch"),
 });
 
 export const DeleteInstanceArgs = z.object({
