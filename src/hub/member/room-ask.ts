@@ -1,3 +1,7 @@
+import { HUB_ROOM_REACT_ACK_CAPABILITY } from "../room-react-ack-model.js";
+import { RoomReactionAcks } from "./room-reaction-acks.js";
+import {requestHubQuestionMatches} from "../../request-hub-output.js";
+import {freezeHubRequestSnapshot,type HubRequestSnapshotV1} from "../../request-hub-context.js";
 import {tForLocale} from "../../locale.js";
 import {HubRoomAskerClockError} from "../room-asker-identity.js";
 import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY,type RoomAskerDestination,type VerifiedHubAsker,type HubRoomAskerIdentity} from "../room-asker-identity-model.js";
@@ -49,7 +53,7 @@ export interface RoomAskLink {
   readonly linkEpoch?: number;
   sendAnswer(answer: RoomAnswer): Promise<void>;
   /** M-3127 (agent reactions, on room-answer-buttons-v1): the agent's reaction to the room question it was asked (absent: an older link). */
-  sendReact?(react: { messageId: string; roomId: string; exposureId: string; emoji: string }): Promise<void>;
+  sendReact?(react: import("../types.js").HubRoomReact): Promise<import("../types.js").HubRoomReactResult | void>;
   /** M-3125 (room files): pull one chunk of an ask's file / push one chunk of an answer's file (attachment.get / .put). */
   fetchFile?(id: string, offset: number): Promise<HubAttachmentChunk>;
   putFile?(chunk: HubAttachmentChunk): Promise<void>;
@@ -57,6 +61,7 @@ export interface RoomAskLink {
   contextInput?(value: HubRoomContextInput): Promise<HubRoomContextInputResult>;
 }
 export interface RoomAskOptions {
+  hubId?:string;
   db: Database.Database;
   /** Optional separately encrypted provenance; never changes the strict legacy row. */
   askerStore?: HubRoomAskerStore;
@@ -69,6 +74,8 @@ export interface RoomAskOptions {
   /** Only a published, owner-consented mapping with the agent's current lifecycle token. */
   localExposure(id: string): RoomExposure | null;
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
+  /** S-244: while an update barrier is up, a queued ask stays queued. */
+  updateHeld?: () => boolean;
   locale?: "en" | "zh-TW";
   /** Read current Fleet defaults when each question is rendered, including after configuration reload. */
   maxCrossInstanceMessageBytes?(): number | undefined;
@@ -146,6 +153,7 @@ export class HubRoomAskAdapter {
   private link: RoomAskLink | null = null;
   private readonly binding: string;
   private readonly key: Buffer;
+  private readonly reactionAcks: RoomReactionAcks;
   private readonly admitted = new Map<string, RoomAskLink>();
   private readonly running = new Map<string, Promise<void>>();
   private readonly sending = new Map<string, { link: RoomAskLink; work: Promise<void> }>();
@@ -159,6 +167,11 @@ export class HubRoomAskAdapter {
     this.binding = createHash("sha256").update(options.bindingKey).digest("hex");
     // Authenticate the whole retained set before changing any recovery state. Never replace corrupt history.
     const retained = this.rows().map(row => ({ row, saved: this.read(row) }));
+    this.reactionAcks = new RoomReactionAcks(options.db, this.binding, this.key);
+    for (const id of this.reactionAcks.ids()) {
+      const row=this.row(id);if(!row)throw new HubProtocolError("uncertain");
+      this.reactionSettled(this.read(row));
+    }
     options.askerStore?.recover(id => {const row=this.row(id);return row?this.accepted(this.read(row)):null;});
     options.db.transaction(() => {
       for (const { row, saved } of retained) {
@@ -176,11 +189,12 @@ export class HubRoomAskAdapter {
     const row = this.options.db.prepare("SELECT * FROM hub_room_asks WHERE cid=?").get(correlationId) as Row | undefined;
     if (!row) return null;
     try { if (this.read(row).local.agent !== agent) return null; } catch { return null; }
-    return row.state === "answered" || row.state === "acked";
+    return row.state === "answered" || row.state === "acked" || this.reactionSettled(this.read(row));
   }
   hasOpenQuestion(agent:string):boolean {
-    return !this.closed&&this.rows().some(row=>["input","delivered"].includes(row.state)&&this.read(row).local.agent===agent);
+    return !this.closed&&this.rows().some(row=>["input","delivered"].includes(row.state)&&this.read(row).local.agent===agent&&!this.reactionSettled(this.read(row)));
   }
+  private reactionSettled(saved: Saved): boolean { return this.reactionAcks.has(saved.ask.messageId,this.accepted(saved).journalDigest); }
   private rows(state?: State): Row[] {
     return (state ? this.options.db.prepare("SELECT * FROM hub_room_asks WHERE state=? ORDER BY rowid").all(state)
       : this.options.db.prepare("SELECT * FROM hub_room_asks ORDER BY rowid").all()) as Row[];
@@ -288,7 +302,7 @@ export class HubRoomAskAdapter {
   }
   private async dispatch(id: string): Promise<void> {
     const row = this.row(id), source = this.admitted.get(id);
-    if (!row || row.state !== "queued" || !source || !this.usable(source)) return;
+    if (!row || row.state !== "queued" || !source || !this.usable(source) || this.options.updateHeld?.()) return;
     const saved = this.read(row);
     if (!this.current(saved)||!this.provenanceReady(saved)) return;
     this.save(id, "dispatching", saved);
@@ -305,24 +319,33 @@ export class HubRoomAskAdapter {
           ? await store.receive(saved.local.agent, saved.ask.messageId, files, (fid, offset) => fetch(fid, offset)).catch(() => files.map(f => `(${f.name}: could not be fetched)`))
           : files.map(f => `(${f.name}: not available on this Fleet)`);
       }
-      const verifiedHubAsker=this.options.askerStore?.get(id,this.accepted(saved));
+      const currentLocal=this.options.localExposure(saved.ask.exposureId),currentGeneration=currentLocal?this.options.generation?.(currentLocal.agent):undefined;
+      const currentDestination=currentLocal?{agent:currentLocal.agent,exposureId:saved.ask.exposureId,incarnation:createHash("sha256").update(JSON.stringify([currentLocal.token,currentGeneration??null])).digest("hex")}:null;
+      const verifiedHubAsker=currentDestination?this.verifiedAsker(id,currentDestination):null;
+      let acceptedHubRequest:HubRequestSnapshotV1|undefined;
+      if(verifiedHubAsker)try{const accepted=this.accepted(saved);acceptedHubRequest=freezeHubRequestSnapshot({version:1,kind:"room",messageId:id,roomId:saved.ask.roomId,exposureId:saved.ask.exposureId,
+        actor:{...verifiedHubAsker,platform:"hub"},destination:accepted.destination,questionSha256:accepted.journalDigest});}catch{/* no schema-compatible accepted capture */}
       const delivered = await this.options.deliver({ agent: saved.local.agent, correlationId: saved.cid, contactLimit: this.options.localExposure(saved.ask.exposureId)?.contactLimit !== false,
         ...(saved.generation ? {roomContextGeneration:saved.generation} : {}),
+        ...(acceptedHubRequest?{acceptedHubRequest}:{}),
         ...(verifiedHubAsker ? {verifiedHubAsker,roomAskerMessageId:id,roomAskerDestination:Object.freeze(this.accepted(saved).destination)} : {}),
-        text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, { maxContextBytes: this.options.maxCrossInstanceMessageBytes?.(), react: !!source.features?.has(HUB_ROOM_REACT_CAPABILITY) && typeof source.sendReact === "function", fileLines }), stillCurrent: current,
+        text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, { maxContextBytes: this.options.maxCrossInstanceMessageBytes?.(), react: !!source.features?.has(HUB_ROOM_REACT_CAPABILITY) && typeof source.sendReact === "function", reactAck: !!source.features?.has(HUB_ROOM_REACT_ACK_CAPABILITY), fileLines }), stillCurrent: current,
         beforeInput: async () => {
-          if (!current() || this.row(id)?.state !== "dispatching") return false;
+          if (!current() || this.row(id)?.state !== "dispatching" || this.options.updateHeld?.()) return false;
           // Durable first-input intent BEFORE handing bytes to the ordinary Fleet delivery path.
           this.save(id, "input", saved); return current();
         } });
       if (this.closed) return;
       const latest = this.row(id);
-      if (latest?.state === "input") this.save(id, delivered ? "delivered" : "held", this.read(latest));
+      // A fence that rose during the hand-off refused the send. Nothing reached the agent: queue it again.
+      if (latest?.state === "input" && !delivered && this.options.updateHeld?.()) this.save(id, "queued", this.read(latest));
+      else if (latest?.state === "input") this.save(id, delivered ? "delivered" : "held", this.read(latest));
       else if (latest?.state === "dispatching") this.save(id, "queued", this.read(latest));
     } catch {
       if (this.closed) return;
       const latest = this.row(id);
-      if (latest?.state === "input") this.save(id, "held", this.read(latest));
+      if (latest?.state === "input" && this.options.updateHeld?.()) this.save(id, "queued", this.read(latest));
+      else if (latest?.state === "input") this.save(id, "held", this.read(latest));
       else if (latest?.state === "dispatching") this.save(id, "queued", this.read(latest));
     } finally { this.admitted.delete(id); }
   }
@@ -408,13 +431,14 @@ export class HubRoomAskAdapter {
   }
   private obligations(agent?:string):Array<{row:Row;saved:Saved}>{
     return (this.options.db.prepare("SELECT * FROM hub_room_asks WHERE state IN ('input','delivered','held') ORDER BY rowid").all() as Row[]).map(row=>({row,saved:this.read(row)}))
-      .filter(({row,saved})=>(!agent||saved.local.agent===agent)&&!saved.answer&&this.current(saved)&&(saved.inputConfirmed||row.state==="delivered"&&!saved.generation));
+      .filter(({row,saved})=>(!agent||saved.local.agent===agent)&&!saved.answer&&!this.reactionSettled(saved)&&this.current(saved)&&(saved.inputConfirmed||row.state==="delivered"&&!saved.generation));
   }
   private owedText(saved:Saved,sent=false):string{
     const zh=this.options.locale==="zh-TW",age=Math.max(0,Math.floor((Date.now()-(saved.inputAt??Date.now()))/60000)),q=JSON.stringify;
     const body=zh?`你還沒有回答 Hub 房間 ${q(saved.ask.roomName)} 的提問（${q(saved.ask.asker.name)}，${age} 分鐘前）。請用 report_result 回答，target_instance="agend-hub"，correlation_id="${saved.cid}"。如果剛才那則就是你的回答，請現在用這個方式再送一次相同的內容。`:
       `You still owe an answer in Hub room ${q(saved.ask.roomName)} (asked by ${q(saved.ask.asker.name)}, ${age}m ago). Send it with report_result, target_instance="agend-hub", correlation_id="${saved.cid}". If this reply was your answer, send the same text that way now.`;
-    return (sent?(zh?"已傳到你自己的頻道，沒有傳到 Hub。":"Sent to your own chat, not to the Hub. "):(zh?"Hub 房間回答提醒：":"Hub room answer reminder: "))+body;
+    const ack = this.link?.features?.has(HUB_ROOM_REACT_ACK_CAPABILITY) ? (zh ? ` 如果只是確認或道謝，也可以用 react，message_id="${saved.cid}"；Hub 接受後就完成回應，不再提醒。需要工作結論仍請用 report_result。` : ` For an acknowledgement or thanks only, react with message_id="${saved.cid}" instead; once accepted by the Hub it completes this ask and stops reminders. Work needing a conclusion still needs report_result.`) : "";
+    return (sent?(zh?"已傳到你自己的頻道，沒有傳到 Hub。":"Sent to your own chat, not to the Hub. "):(zh?"Hub 房間回答提醒：":"Hub room answer reminder: "))+body+ack;
   }
   replyWarning(agent:string):string|undefined{const first=this.obligations(agent)[0];return first?this.owedText(first.saved,true):undefined;}
   async turnEnded(agent:string,generation:string,turn:string):Promise<void>{
@@ -426,15 +450,16 @@ export class HubRoomAskAdapter {
     }
     await this.flush();
   }
+  private readonly reacting=new Set<string>();
   private readonly owedFlights=new Set<string>();
   private async flushOwed(link:RoomAskLink):Promise<void>{
     for(const {row,saved} of this.obligations()){
-      if(!saved.owed||this.owedFlights.has(row.message_id)||!this.usable(link)||!this.current(saved))continue;
+      if(!saved.owed||this.owedFlights.has(row.message_id)||!this.usable(link)||!this.current(saved)||this.options.updateHeld?.())continue;
       this.owedFlights.add(row.message_id);
       try{
         if(saved.owed.phase===1&&!saved.owed.reminderInput&&this.options.remind){
-          await this.options.remind({agent:saved.local.agent,id:row.message_id,kind:"answer-reminder",text:this.owedText(saved),stillCurrent:()=>{const now=this.row(row.message_id);return !!now&&this.current(saved)&&!this.read(now).answer;},
-            beforeInput:async()=>{const latest=this.row(row.message_id);if(!latest||!this.current(saved))return false;const now=this.read(latest);if(now.answer||!now.owed||now.owed.reminderInput)return false;this.save(latest.message_id,latest.state,{...now,owed:{...now.owed,reminderInput:true}});return true;}});
+          await this.options.remind({agent:saved.local.agent,id:row.message_id,kind:"answer-reminder",text:this.owedText(saved),stillCurrent:()=>{const now=this.row(row.message_id);return !!now&&this.current(saved)&&!this.read(now).answer&&!this.reactionSettled(this.read(now));},
+            beforeInput:async()=>{const latest=this.row(row.message_id);if(!latest||!this.current(saved))return false;const now=this.read(latest);if(now.answer||this.reactionSettled(now)||!now.owed||now.owed.reminderInput)return false;this.save(latest.message_id,latest.state,{...now,owed:{...now.owed,reminderInput:true}});return true;}});
         }else if(saved.owed.phase===2&&!saved.owed.markerAcked&&saved.owed.markerId&&link.features?.has(HUB_ROOM_ANSWER_STATUS_CAPABILITY)){
           await link.sendAnswer({messageId:saved.ask.messageId,roomId:saved.ask.roomId,exposureId:saved.ask.exposureId,answerId:saved.owed.markerId,text:"",notAnswered:"finished-without-answer"});
         }
@@ -442,15 +467,16 @@ export class HubRoomAskAdapter {
       finally{this.owedFlights.delete(row.message_id);}
     }
   }
-  private send(saved: Saved, source: RoomAskLink): Promise<void> {
+  private send(saved: Saved, source: RoomAskLink, outputCurrent:()=>boolean=()=>true): Promise<void> {
     const id = saved.ask.messageId, existing = this.sending.get(id);
     if (existing?.link === source) return existing.work;
     const work = Promise.resolve().then(async () => {
-      if (!this.usable(source) || !this.current(saved, false) || this.row(id)?.state !== "answered") return;
+      if (!outputCurrent() || !this.usable(source) || !this.current(saved, false) || this.row(id)?.state !== "answered") return;
       try {
         // M-3125: an answer's files are staged before its frame on every send (staging expires); the bytes must still be the
         // frozen refs' bytes, or the answer stays unsent rather than naming other content.
-        if (saved.answer!.attachments) await this.stageFiles(saved, source);
+        if (saved.answer!.attachments) await this.stageFiles(saved, source, outputCurrent);
+        if(!outputCurrent() || !this.current(saved,false) || !this.usable(source))return;
         await source.sendAnswer(structuredClone(saved.answer!));
       } catch { /* The frozen row remains retryable until an exact ACK. */ }
     });
@@ -461,38 +487,56 @@ export class HubRoomAskAdapter {
   /**
    * M-3127: the agent's `react` with message_id = this room question's correlation id → its reaction in the room, under
    * the question (one per agent; "" is not a reaction here — the Fleet's react always names one). null: not a room question
-   * of this agent's (the ordinary react takes it). Sent once, not retried: a reaction is a gesture, not an answer.
+   * of this agent's (the ordinary react takes it). A negotiated acknowledgement settles only after a matching Hub receipt; older peers keep gesture semantics.
    */
-  react(input: { correlationId: string; caller: string; emoji: string; callerCurrent?: () => boolean }): Promise<HubReportOutcome> | null {
+  react(input: { correlationId: string; caller: string; emoji: string; callerCurrent?: () => boolean; requestScope?:import("../../request-hub-output.js").RequestHubOutputScope }): Promise<HubReportOutcome> | null {
     if (this.closed || !input.correlationId.startsWith("hub-room-")) return null;
     const row = this.options.db.prepare("SELECT * FROM hub_room_asks WHERE cid=?").get(input.correlationId) as Row | undefined;
     if (!row) return null;
     const saved = this.read(row);
     if (saved.local.agent !== input.caller) return null;
+    const scopeCurrent=()=>requestHubQuestionMatches(input.requestScope,this.options.hubId,saved.ask.messageId,saved.local.agent);
+    if(!scopeCurrent())return Promise.resolve({ok:false,message:"Not sent: this reply must stay in its original Hub conversation."});
     const no = (message: string) => Promise.resolve<HubReportOutcome>({ ok: false, message });
     if (!this.current(saved) || input.callerCurrent?.() === false) return no("Not sent: this room question is no longer current.");
     const emoji = String(input.emoji || "");
     if (!emoji || emoji.length > 16) return no("Not sent: name one emoji to react with.");
     const link = this.link;
     if (!this.usable(link) || !link!.features?.has(HUB_ROOM_REACT_CAPABILITY) || typeof link!.sendReact !== "function") return no("Not sent: this Hub does not take reactions in rooms yet. Answer with report_result instead.");
-    return link!.sendReact({ messageId: saved.ask.messageId, roomId: saved.ask.roomId, exposureId: saved.ask.exposureId, emoji })
-      .then(() => ({ ok: true, message: "Reacted in the Hub room." }), () => ({ ok: false, message: "Not sent: the Hub link dropped. Try again." }));
+    const acknowledge = link.features?.has(HUB_ROOM_REACT_ACK_CAPABILITY) && !saved.answer && !this.reactionSettled(saved);
+    if (acknowledge && this.reacting.has(saved.ask.messageId)) return no("Not confirmed: a reaction acknowledgement is still pending for this ask.");
+    if (acknowledge) this.reacting.add(saved.ask.messageId);
+    return Promise.resolve().then(() => link.sendReact!({ messageId: saved.ask.messageId, roomId: saved.ask.roomId, exposureId: saved.ask.exposureId, emoji, ...(acknowledge ? {acknowledge:true as const} : {}) }))
+      .then(result => {
+        if (!this.usable(link) || !this.current(saved) || input.callerCurrent?.() === false || !scopeCurrent()) return {ok:false,message:"Not confirmed: this room question is no longer current."};
+        if (result && (result.messageId!==saved.ask.messageId || !result.ok)) return {ok:false,message:"Not sent: the Hub refused this reaction."};
+        if (acknowledge) {
+          if(!result?.acknowledged)return {ok:false,message:"Not confirmed: the Hub has not acknowledged this room ask. Answer with report_result if it needs a conclusion."};
+          this.reactionAcks.record(saved.ask.messageId,this.accepted(saved).journalDigest,emoji,this.options.now?.()??Date.now());
+          return {ok:true,message:"Acknowledged in the Hub room."};
+        }
+        return {ok:true,message:"Reacted in the Hub room."};
+      }, () => ({ ok: false, message: "Not confirmed: the Hub link dropped. Check the room before trying again." })).finally(() => { if (acknowledge) this.reacting.delete(saved.ask.messageId); });
   }
-  private async stageFiles(saved: Saved, source: RoomAskLink): Promise<void> {
+  private async stageFiles(saved: Saved, source: RoomAskLink, outputCurrent:()=>boolean=()=>true): Promise<void> {
     const store = this.options.files, put = source.putFile, refs = saved.answer!.attachments!;
     if (!store || !put || !saved.answerFiles || !roomFilesNegotiated(source.features)) throw new HubProtocolError("incompatible");
     const prepared = await store.prepare(saved.local.agent, saved.answerFiles);
     if (prepared.length !== refs.length || prepared.some((p, i) => p.ref.sha256 !== refs[i]!.sha256 || p.ref.size !== refs[i]!.size || p.ref.name !== refs[i]!.name)) throw new HubProtocolError("conflict");
-    for (const [i, file] of prepared.entries()) await store.send({ ref: refs[i]!, bytes: file.bytes }, chunk => put(chunk));
+    for (const [i, file] of prepared.entries()) await store.send({ ref: refs[i]!, bytes: file.bytes }, chunk => {if(!outputCurrent() || !this.current(saved,false) || !this.usable(source))throw new HubProtocolError("stale");return put(chunk);});
   }
-  report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null {
+  report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean; requestScope?:import("../../request-hub-output.js").RequestHubOutputScope; extras?: HubReportExtras }): Promise<HubReportOutcome> | null {
     if (this.closed || !input.correlationId.startsWith("hub-room-")) return null;
     const row = this.options.db.prepare("SELECT * FROM hub_room_asks WHERE cid=?").get(input.correlationId) as Row | undefined;
     if (!row) return null;
     const saved = this.read(row);
     if (saved.local.agent !== input.caller) return null;
+    const scopeCurrent=()=>requestHubQuestionMatches(input.requestScope,this.options.hubId,saved.ask.messageId,saved.local.agent);
+    if(!scopeCurrent())return Promise.resolve({ok:false,message:"Not sent: this reply must stay in its original Hub conversation."});
     const no = (message: string) => Promise.resolve<HubReportOutcome>({ ok: false, message });
     if (!this.current(saved) || input.callerCurrent?.() === false) return no("Not sent: this room question is no longer current.");
+    if (this.reacting.has(saved.ask.messageId)) return no("A reaction acknowledgement is still pending for this ask. Wait for its result before answering.");
+    if (this.reactionSettled(saved)) return no("This room ask was already acknowledged by reaction. Send additional information as a new room message.");
     // M-3127: the reply's buttons or poll ride along when this Hub takes them (room-answer-buttons-v1); M-3125: its files
     // when it takes room files (roomFilesNegotiated; the agent's own paths, read now and again on every send).
     const files = input.extras?.files?.length ? [...input.extras.files] : [];
@@ -506,26 +550,27 @@ export class HubRoomAskAdapter {
     if (saved.answer) {
       if (saved.answer.text !== input.text || wantsButtons !== !!saved.answer.buttons || JSON.stringify(saved.answerFiles ?? []) !== JSON.stringify(files))
         return no("Not sent: this question already has a different saved answer.");
-      return this.finish(row, saved);
+      return this.finish(row, saved,()=>scopeCurrent() && input.callerCurrent?.()!==false);
     }
     if (!["input", "delivered", "held"].includes(row.state)) return no("Not sent: the question has not reached the agent.");
     const prepared = files.length ? this.options.files!.prepare(saved.local.agent, files) : Promise.resolve([]);
     return prepared.then(list => {
       const latest = this.row(row.message_id);
-      if (!latest || this.closed || !this.current(saved)) return { ok: false, message: "Not sent: this room question is no longer current." };
+      if (!latest || this.closed || !this.current(saved) || !scopeCurrent() || input.callerCurrent?.() === false) return { ok: false, message: "Not sent: this room question is no longer current." };
       const now = this.read(latest);
+      if (this.reacting.has(saved.ask.messageId) || this.reactionSettled(now)) return {ok:false,message:"This room ask is being acknowledged by reaction; no text answer was sent."};
       if (now.answer) return { ok: false, message: "Not sent: this question already has a saved answer." };
       now.answer = { messageId: now.ask.messageId, roomId: now.ask.roomId, exposureId: now.ask.exposureId, answerId: randomUUID(), text: input.text,
         ...(buttons ? { buttons: { id: buttons.id, labels: [...buttons.labels], ...(buttons.values ? { values: [...buttons.values] } : {}), ...(buttons.poll ? { poll: { ...buttons.poll } } : {}) } } : {}),
         ...(list.length ? { attachments: list.map(p => p.ref) } : {}) };
       if (files.length) now.answerFiles = files;
       this.save(latest.message_id, "answered", now);
-      return this.finish(this.row(latest.message_id)!, now);
+      return this.finish(this.row(latest.message_id)!, now,()=>scopeCurrent() && input.callerCurrent?.()!==false);
     }, e => ({ ok: false, message: e instanceof HubFileRefusal ? `Not sent: ${e.message}` : "Not sent: a file could not be read." }));
   }
-  private finish(row: Row, saved: Saved): Promise<HubReportOutcome> {
+  private finish(row: Row, saved: Saved, outputCurrent:()=>boolean=()=>true): Promise<HubReportOutcome> {
     const link = this.link;
-    const sent = row.state !== "acked" && this.usable(link) ? this.send(saved, link) : Promise.resolve();
+    const sent = row.state !== "acked" && this.usable(link) ? this.send(saved, link, outputCurrent) : Promise.resolve();
     return sent.then(() => ({ ok: true, message: !this.closed && this.row(row.message_id)?.state === "acked"
       ? "Delivered to the Hub room." : "Saved for the Hub room; waiting for acknowledgement." }));
   }
@@ -558,7 +603,7 @@ export class HubRoomAskAdapter {
   close(): void { this.closed = true; this.link = null; this.admitted.clear();this.clockHolds.clear(); }
 }
 
-export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale: "en" | "zh-TW" = "en", { react = false, fileLines = [], maxContextBytes }: { react?: boolean; fileLines?: readonly string[]; maxContextBytes?: number } = {}): string {
+export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale: "en" | "zh-TW" = "en", { react = false, reactAck = false, fileLines = [], maxContextBytes }: { react?: boolean; reactAck?: boolean; fileLines?: readonly string[]; maxContextBytes?: number } = {}): string {
   const zh = locale === "zh-TW";
   const bounded=budgetRoomContext(ask.context,maxContextBytes);
   const data = JSON.stringify({ ...(bounded.context!==undefined?{context:bounded.context}:{}), question: { asker: ask.asker.name, text: ask.text } }, null, 2);
@@ -572,8 +617,10 @@ export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale:
     zh ? `請用 report_result，指定 target_instance="agend-hub" 和 correlation_id="${correlationId}"，把完整的純文字回答寫在 summary 裡送回這個房間——房間顯示的就是 summary 的內容，它不是標題。`
       : `Use report_result with target_instance="agend-hub" and correlation_id="${correlationId}", with your whole text answer in summary — the room shows summary as your answer; it is not a title.`,
     // M-3127 (agent reactions, on room-answer-buttons-v1): a reaction under the question (the Fleet chat's minimal reply) — only where the Hub takes it.
-    ...(react ? [zh ? `要對這個問題表示回應（例如 👍），可以用 react，message_id="${correlationId}"；它會出現在問題下方，但不代替回答。`
-      : `To react to the question (e.g. 👍), use react with message_id="${correlationId}"; it shows under the question but does not replace your answer.`] : []),
+    ...(react ? [reactAck ? (zh ? `如果這則訊息只是確認或道謝，用 react，message_id="${correlationId}"（例如 👍）就能完成回應；Hub 接受後會顯示在原訊息下方，不再提醒。需要工作結論的提問仍請用 report_result 回答。`
+      : `For a message that only acknowledges or thanks, use react with message_id="${correlationId}" (e.g. 👍). Once accepted by the Hub it completes this ask, appears under the original message and stops reminders. Work needing a conclusion still needs report_result.`)
+      : (zh ? `要對這個問題表示回應（例如 👍），可以用 react，message_id="${correlationId}"；這個較舊的 Hub 連線不會把表情符號算成回答，仍請用 report_result。`
+      : `To react to the question (e.g. 👍), use react with message_id="${correlationId}"; this older Hub connection does not count reactions as answers, so still answer with report_result.`)] : []),
     ...(ask.brief?[formatRoomBrief(ask.brief,locale)]:[]),
     ...(bounded.omitted?[zh?`還有 ${bounded.omitted} 則較早的訊息沒有顯示。`:`${bounded.omitted} earlier messages are not shown.`]:[]),
     `${zh ? "房間對話（由舊到新）與問題" : "Room conversation (oldest first) and question"}:\n\`\`\`json\n${data}\n\`\`\``,

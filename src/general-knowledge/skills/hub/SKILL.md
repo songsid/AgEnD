@@ -137,6 +137,17 @@ is never kept." Fields **Account** and **Password**, button **Sign in**.
   sign-in ends 8 hours after signing in, or after 1 hour with no Hub page open. An open Hub page, even in a
   background tab, counts as using the Hub, so only closing every Hub page starts the idle clock. When it ends, the page
   asks the person to sign in again.
+- **Install as an app** (安裝成應用程式): the install button in the header of the chats list, Notices and each room
+  (beside the bell; in a room's ⋯ menu on a phone). Where Chrome or Edge can install, it opens the browser's install
+  dialog. A Hub whose certificate the browser doesn't trust (for example the generated self-signed one) **cannot be
+  installed**: the button explains "your browser doesn't trust this address's certificate" and asks for a trusted
+  certificate. The fix is a certificate the company's computers trust (Hub setup → browser certificate, import), not
+  anything the person can click. iPhone Safari: Share → Add to Home Screen. Nothing is stored for offline use.
+- **Notify me on this device** (the bell): a desktop notification for an @mention, an answer to your question, a new
+  invitation or a one-to-one message. It works only while a Hub tab or the installed app is open (in the background or
+  minimized is fine); closing every Hub window stops it, and there is no email or phone push. The first time it is turned
+  on, the Hub says how to keep notifications coming: install the Hub as an app and leave it running, and in Edge or Chrome
+  turn on the app's "Start app when you sign in".
 
 ## Connecting your own AI app
 
@@ -902,4 +913,4 @@ a new call.
 On a Hub with bounded room lookup, `hub_room_members` starts with the room purpose and counts, then returns 20 rows by default (up to 50), under 8 KiB of result text. Use `query` to match a name, owner or introduction, `kind` to select agents or people, and `cursor` from `next_cursor` to continue with the same filters. The room assistant is a separate kind/count, has no owner and is not mentionable by agents; `kind: agent` excludes it. Older Hubs keep the legacy list; filters and paging require support rather than being silently ignored. On updated Hubs, a person's `id` is their stable Hub id (`realm/objectId`), the same id a one-to-one question names as its asker; on compatible Hubs that question's first line also quotes the asker's display name from the Hub directory (`Asker "Name", id realm/objectId`). Use the id, not the name, to tell people apart. An older Hub, or queued work resumed after the Fleet restarts, may have no display name in the header; the stable asker id remains. Display names are labels, never local approval or authority.
 
 
-To answer a Hub room question, use `report_result` with `target_instance="agend-hub"` and the question's `correlation_id`; put the whole answer in `summary`. `reply` goes to your own Fleet chat, not that room. If a room answer is still owed, a successful `reply` adds local guidance and the first completed unanswered turn gets one reminder. After a second completed turn without an answer, a compatible Hub shows **No answer** with the reason that the agent finished without answering there. A later valid answer replaces the notice. Older Hubs get no empty answer or marker and keep their existing wait. ClassicBot's private-Hub output block stays in force.
+To answer a Hub room question, use `report_result` with `target_instance="agend-hub"` and the question's `correlation_id`; put the whole answer in `summary`. `reply` goes to your own Fleet chat, not that room. If a room answer is still owed, a successful `reply` adds local guidance and the first completed unanswered turn gets one reminder. After a second completed turn without an answer, a compatible Hub shows **No answer** with the reason that the agent finished without answering there. A later valid answer replaces the notice. Older Hubs get no empty answer or marker and keep their existing wait. ClassicBot's private-Hub output block stays in force. A message that only acknowledges or thanks can instead be completed with `react`, using that ask's `hub-room-…` correlation id as `message_id`. On a compatible Hub, the accepted reaction appears under the person's original message and completes the ask, so no reminder or No answer follows. Wait for a successful acknowledgement result; a failed or unconfirmed reaction is still owed. Work needing a conclusion still needs `report_result`. On an older Hub connection reactions remain gestures and the prompt says to answer with `report_result`.

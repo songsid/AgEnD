@@ -1,3 +1,6 @@
+import {randomUUID} from "node:crypto";
+import {captureRequestContextCall} from "../src/request-context-call.js";
+import {assertRequestContextOperation} from "../src/request-context-policy.js";
 import { PassThrough } from "node:stream";
 import { mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -225,4 +228,10 @@ describe("native MCP dispatch, stable calls and result tracking",()=>{
 });
 it("S-226 R1 an unscoped legacy grant and its calls have no root reference",async()=>{
  const f=fixture(),root="00000000-0000-4000-8000-000000000099";expect(f.manager.drainView(root)).toMatchObject({unknown:false,references:[]});await invoke(f,call("legacy-read")).done();expect(f.manager.drainView(root)).toMatchObject({unknown:false,references:[]});
+});
+
+it("S-232 actual exec HTTP tool entry refuses a Hub derivative before its task owner",async()=>{
+ const f=fixture();f.lease.close();const id=randomUUID(),scope=captureRequestContextCall({token:randomUUID(),inputId:"input",wireSha256:"a".repeat(64),owner:{instance:name,incarnation:"v1",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0},context:{ref:{version:1,contextId:id,rootContextId:id},rootEvidenceRef:"fixture",ingress:"hub",initiatingActor:{kind:"person",platform:"hub",hubId:"demo-hub",id:"directory/demo-person"},source:{instance:name,incarnation:"v1"},sourceAudience:{kind:"hub",ref:randomUUID()}}},()=>true);
+ f.ctx.requestContextPolicy={assert:assertRequestContextOperation};f.lease=f.manager.grant({instance:name,requestId,sandbox:"workspace-write",endpoint:"http://127.0.0.1:19280/agent",stillCurrent:()=>true,requestContext:scope});
+ const answer=await invoke(f,call("hub-create","task",{action:"create",title:"must not write"})).done();expect(answer.value.isError).toBe(true);expect(JSON.stringify(answer.value)).toContain("task cards");expect(f.ctx.handleTaskCrudHttp).not.toHaveBeenCalled();
 });

@@ -4,6 +4,7 @@ import {normalizeRoomPurpose} from "./purpose.js";
 import { ROOM_OFFICE_STYLES, newRoomOffice, officeAgent, officeOn, roomOfficeView, withLook, memberLook, type RoomOfficeLook, type RoomPresence } from "./office.js";
 import { agentIntro } from "../agent-intro.js";
 import { countChainStop } from "../admin-dashboard.js";
+import { performance } from "node:perf_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -11,7 +12,7 @@ import { HubCatalogService, exposureOf, readExposure } from "../catalog.js";
 import { RoomPostReplies } from "./post-replies.js";
 import { HubGrantSearch } from "../grant-search.js";
 import { HubRoomAssistant } from "./assistant.js";
-import { canCreateRoom } from "./admin.js";
+import { canCreateRoom, prepareRoomCreation } from "./admin.js";
 import { HubRoomAgents, type RoomPostRow } from "./agents.js";
 import { personKeyString } from "../identity.js";
 import { HubCore, personFromString, type HubOperationPermit } from "../http/core.js";
@@ -35,6 +36,9 @@ import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-mod
 import {personalMentionRefusals,recordPersonalMentionRefusals} from "../personal/refusals.js";
 
 type DB = Database.Database;
+export const ROOM_CREATION_HINT_MS = 60_000;
+const ROOM_CREATION_HINT_LIMIT = 256;
+interface RoomCreationHint { wall: number; elapsed: number; provider: HubCore["deps"]["roomCreation"]; value: Promise<boolean> }
 interface RoomRow { id: string; name: string; purpose:string; created_by: string; created_at: number; archived: number; all_mention: number; history_for_new: "since-join" | "all"; assistant_for: string | null; office_enabled: number | null; office_style: string }
 interface MemberRow { id: string; room_id: string; kind: "person" | "agent" | "assistant"; subject: string; role: "manager" | "member"; joined_sequence: number; read_sequence: number; owner_at_join: string | null }
 type PostRow = RoomPostRow;
@@ -94,6 +98,8 @@ export class HubRoomRefusal extends Error {
 /** People chat first; direct agent conversations remain in HubRoomsService. No timers or I/O on import. */
 export class HubGroupRooms {
   private readonly appPosts: boolean;
+  /** Display hints only: never retain or reuse an operation permit. */
+  private readonly creationHints = new Map<string, RoomCreationHint>();
   private listeners = new Set<(event: RoomEvent) => void>();
   readonly agents: HubRoomAgents;
   readonly assistant: HubRoomAssistant;
@@ -173,7 +179,7 @@ export class HubGroupRooms {
     if (event.removedPerson) return event.removedPerson === person;
     return this.core.atomic(db => !!db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(event.roomId, person));
   }
-  async close(): Promise<void> { this.buttonsClosed = true; if (this.buttonsTimer) clearTimeout(this.buttonsTimer); this.buttonsTimer = null; this.listeners.clear(); this.directory.close(); this.agentSearch.close(); this.agentReadBuckets.clear(); this.assistant.close(); await this.agents.close(); await this.postReplies.close(); }
+  async close(): Promise<void> { this.buttonsClosed = true; if (this.buttonsTimer) clearTimeout(this.buttonsTimer); this.buttonsTimer = null; this.listeners.clear(); this.creationHints.clear(); this.directory.close(); this.agentSearch.close(); this.agentReadBuckets.clear(); this.assistant.close(); await this.agents.close(); await this.postReplies.close(); }
   /** The direct-chat receiver shares this stream without changing its grant-backed delivery path. */
   publish(event: RoomEvent): void { this.emit(event); }
   /** C owns invitation checks; these synchronous effects remain on its current SQL transaction. */
@@ -266,8 +272,9 @@ export class HubGroupRooms {
         const stopped = row.delivery_id && row.stage === "not-answered" ? db.prepare("SELECT 1 FROM hub_room_deliveries WHERE id=? AND reason_code='owner-stopped-sharing'").get(row.delivery_id) : null;
         const missing=row.delivery_id&&row.stage==="not-answered"?db.prepare("SELECT 1 FROM hub_room_deliveries WHERE id=? AND reason_code='finished-without-answer'").get(row.delivery_id):null;
         const lapsed = row.delivery_id && row.stage === "not-answered" ? db.prepare("SELECT 1 FROM hub_room_deliveries WHERE id=? AND reason_code='share-needs-reshare'").get(row.delivery_id) : null;
+        const reactionAck = row.delivery_id && row.stage === "answered" ? db.prepare("SELECT 1 FROM hub_room_deliveries WHERE id=? AND state='answered' AND reason_code='acknowledged-by-reaction' AND answer_id IS NULL").get(row.delivery_id) : null;
         const reactions = this.reactions(db, row.id), buttons = row.author_kind === "agent" ? this.buttons.view(db, row.id, id => this.memberName(db, id)) : undefined;
-        return { ...(lapsed ? {reasonCode:"share-needs-reshare" as const} : {}), ...(missing?{reasonCode:"finished-without-answer" as const}:{}),...(stopped ? { reasonCode: "owner-stopped-sharing" as const } : {}), ...(ask ? { ask } : {}), ...(asker ? { askedBy: asker.id } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}), ...(reactions.length ? { reactions } : {}), ...(buttons ? { buttons } : {}) }; }) };
+        return { ...(reactionAck ? {acknowledgedByReaction:true as const} : {}), ...(lapsed ? {reasonCode:"share-needs-reshare" as const} : {}), ...(missing?{reasonCode:"finished-without-answer" as const}:{}),...(stopped ? { reasonCode: "owner-stopped-sharing" as const } : {}), ...(ask ? { ask } : {}), ...(asker ? { askedBy: asker.id } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}), ...(reactions.length ? { reactions } : {}), ...(buttons ? { buttons } : {}) }; }) };
   }
   /** M-3127: a post's reactions, each emoji in the order it first appeared, its members in the order they reacted. */
   private reactions(db: DB, postId: string): NonNullable<RoomMessage["reactions"]> {
@@ -539,20 +546,54 @@ export class HubGroupRooms {
     db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence) VALUES(?,?,'person',?,'member',0)").run(randomUUID(), id, me);
     this.addAssistant(db, id);
   }
+  private async creationHint(ctx: HubRequestContext, me: string): Promise<boolean> {
+    const provider = this.core.deps.roomCreation;
+    if (!provider || this.core.atomic(db => canCreateRoom(this.core, db, me))) return false;
+    const actor = await ctx.current();
+    if (actor.kind !== "directory" || personKeyString(actor.person) !== me) return false;
+    const assertSession = () => {
+      this.fence(ctx).assertCurrent();
+      if (ctx.isIdentityCurrent?.(actor.person, actor.sessionId) !== true) throw new HubProtocolError("revoked");
+    };
+    assertSession();
+    const wall = this.core.now(), elapsed = performance.now();
+    const valid = (hint: RoomCreationHint) => hint.provider === provider && wall >= hint.wall && wall < hint.wall + ROOM_CREATION_HINT_MS
+      && elapsed >= hint.elapsed && elapsed < hint.elapsed + ROOM_CREATION_HINT_MS;
+    for (const [key, hint] of this.creationHints) if (!valid(hint)) this.creationHints.delete(key);
+    const key = JSON.stringify([me, actor.sessionId, ctx.application?.id ?? null]);
+    let hint = this.creationHints.get(key);
+    if (!hint) {
+      const value = (async () => {
+        try { const access = await prepareRoomCreation(this.core, ctx, me); return this.core.atomic(db => access.allows(db)); }
+        catch { return false; } // An unavailable display hint never narrows membership reads.
+      })();
+      hint = { wall, elapsed, provider, value };
+      if (this.creationHints.size >= ROOM_CREATION_HINT_LIMIT) this.creationHints.delete(this.creationHints.keys().next().value!);
+      this.creationHints.set(key, hint);
+    }
+    const result = await hint.value;
+    assertSession(); return result;
+  }
   async list(ctx: HubRequestContext) {
-    const me = await this.who(ctx); this.agents.sweep();
+    const me = await this.who(ctx);
+    let roleHint = false;
+    try { roleHint = await this.creationHint(ctx, me); } catch { /* Membership/session read retains its own fence. */ }
+    this.agents.sweep();
     return this.core.atomic(db => {
       if(!ctx.application)this.assistantRoom(db, me);
+      let canCreateRooms = canCreateRoom(this.core, db, me);
+      canCreateRooms ||= roleHint;
       return { rooms: (db.prepare("SELECT * FROM hub_room_members WHERE kind='person' AND subject=?").all(me) as MemberRow[])
         .map(m => this.summary(db, this.room(db, m.room_id), m)).sort((a, b) => b.lastAt - a.lastAt),
-        me: { canCreateRooms: canCreateRoom(this.core, db, me), assistant: this.assistant.availability()?.enabled === true }, invitations: 0 };
+        me: { canCreateRooms, assistant: this.assistant.availability()?.enabled === true }, invitations: 0 };
     }, this.fence(ctx));
   }
   async candidates(ctx: HubRequestContext, q: string, kind: string, discovery = false) {
     if (q.length > 64 || /[\u0000-\u001f\u007f]/.test(q) || !["person", "team", "group", "agent"].includes(kind)) throw new HubProtocolError("invalid");
-    const me = await this.who(ctx);
-    const allowed = (db: DB) => canCreateRoom(this.core, db, me) || !!db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
-      WHERE m.kind='person' AND m.subject=? AND m.role='manager' AND r.archived=0`).get(me);
+    const me = await this.who(ctx), access = await prepareRoomCreation(this.core, ctx, me,
+      db => !!db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
+        WHERE m.kind='person' AND m.subject=? AND m.role='manager' AND r.archived=0`).get(me));
+    const allowed = access.allows;
     if (kind === "agent") {
       this.core.atomic(db => { if (!allowed(db)) throw new HubRoomRefusal(403, "denied"); }, this.fence(ctx));
       const catalog = new HubCatalogService(this.core);
@@ -585,14 +626,15 @@ export class HubGroupRooms {
       return kind === "team" ? (this.core.deps.roomTeamCandidates?.(db, q.trim()) ?? []).slice(0, 20).map(row => ({ kind: "team", ...row })) : roomPersonLabels(hits);
     }, this.fence(ctx));
   }
-  private candidateAllowed(ctx: HubRequestContext, me: string): void {
-    this.core.atomic(db => {
-      if (!canCreateRoom(this.core, db, me) && !db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
-        WHERE m.kind='person' AND m.subject=? AND m.role='manager' AND r.archived=0 AND r.assistant_for IS NULL`).get(me)) throw new HubRoomRefusal(403, "denied");
-    }, this.fence(ctx));
+  private candidateAccess(ctx: HubRequestContext, me: string) {
+    return prepareRoomCreation(this.core, ctx, me, db => !!db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
+      WHERE m.kind='person' AND m.subject=? AND m.role='manager' AND r.archived=0 AND r.assistant_for IS NULL`).get(me));
   }
-  private async groupSelection(ctx: HubRequestContext, me: string, id: string) {
-    try { return await this.directory.roster(ctx, me, id, () => this.candidateAllowed(ctx, me)); }
+  private async groupSelection(ctx: HubRequestContext, me: string, id: string,
+    prepared?: Awaited<ReturnType<typeof prepareRoomCreation>>) {
+    const access = prepared ?? await this.candidateAccess(ctx, me);
+    const assertCurrent = () => { this.fence(ctx).assertCurrent(); access.assertCurrent(); };
+    try { return await this.directory.roster(ctx, me, id, assertCurrent); }
     catch (e) {
       if (e instanceof HubRoomRefusal || e instanceof HubProtocolError && ["revoked", "denied", "backpressure"].includes(e.code)) throw e;
       throw new HubRoomRefusal(503, "group-unavailable", { group: id });
@@ -603,8 +645,8 @@ export class HubGroupRooms {
     return { kind: "group", id, name: selection.name, people: selection.people.length };
   }
   async create(ctx: HubRequestContext, input: unknown) {
-    const body = validated(createSchema, input), me = await this.who(ctx);
-    this.core.atomic(db => { if (!canCreateRoom(this.core, db, me)) throw new HubRoomRefusal(403, "denied"); }, this.fence(ctx));
+    const body = validated(createSchema, input), me = await this.who(ctx), access = await prepareRoomCreation(this.core, ctx, me);
+    access.assertCurrent();
     const teams = this.core.deps.roomTeams;
     const expansion = (db: DB) => {
       if (!body.teams.length) return { teams: [], people: [], missing: [] };
@@ -613,7 +655,7 @@ export class HubGroupRooms {
     };
     const selected = this.core.atomic(expansion), image = JSON.stringify(selected);
     const groupPeople: string[] = [];
-    for (const group of new Set(body.groups)) groupPeople.push(...(await this.groupSelection(ctx, me, group)).people.map(p => p.id));
+    for (const group of new Set(body.groups)) groupPeople.push(...(await this.groupSelection(ctx, me, group, access)).people.map(p => p.id));
     const people = [...new Set([me, ...body.people, ...selected.people, ...groupPeople])];
     if (people.length > 100) throw new HubRoomRefusal(409, "people-limit", { people: people.length, limit: 100 });
     const selectedPeople: RoomPersonSelection[] = [];
@@ -624,7 +666,7 @@ export class HubGroupRooms {
     const room = this.core.atomic((db, tx) => {
       for (const permit of permits) permit.assertCurrent();
       if (JSON.stringify(expansion(db)) !== image) throw new HubProtocolError("conflict");
-      if (!canCreateRoom(this.core, db, me)) throw new HubRoomRefusal(403, "denied");
+      if (!access.allows(db)) throw new HubRoomRefusal(403, "denied");
       rememberRoomPeople(db, selectedPeople, this.core.now());
       const id = randomUUID(); db.prepare("INSERT INTO hub_group_rooms(id,name,purpose,created_by,created_at,office_enabled) VALUES(?,?,?,?,?,?)").run(id, body.name, body.purpose, me, this.core.now(), newRoomOffice());
       for (const person of people) db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence) VALUES(?,?,'person',?,?,0)").run(randomUUID(), id, person, person === me ? "manager" : "member");
@@ -634,7 +676,7 @@ export class HubGroupRooms {
       if(body.purpose)this.recordPurpose(db,tx,id,me,body.purpose,ctx.requestId);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.created", result: "completed", roomId: id });
       return this.summary(db, this.room(db, id), this.member(db, id, me));
-    }, { assertCurrent: () => { this.fence(ctx).assertCurrent(); for (const permit of permits) permit.assertCurrent(); } });
+    }, { assertCurrent: () => { this.fence(ctx).assertCurrent(); access.assertCurrent(); for (const permit of permits) permit.assertCurrent(); } });
     this.emit({ type: "room.changed", roomId: room.id, data: { roomId: room.id } }); return { room };
   }
   async detail(ctx: HubRequestContext, id: string) {
@@ -1073,7 +1115,7 @@ export class HubGroupRooms {
     const body = validated(roomReactSchema, input);
     if (body.emoji !== "" && !validRoomEmoji(body.emoji)) throw new HubProtocolError("invalid");
     if (!link.current() || !link.features.has(HUB_ROOM_REACT_CAPABILITY)) throw new HubProtocolError("revoked");
-    const done = this.core.atomic(db => {
+    const apply = (db: Database.Database) => {
       const d = db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(body.messageId) as { room_id: string; parent_id: string; exposure_id: string; fleet_id: string; owner: string; agent_member: string } | undefined;
       if (!d || d.fleet_id !== link.fleetId || d.owner !== personKeyString(link.owner) || d.room_id !== body.roomId || d.exposure_id !== body.exposureId) throw new HubProtocolError("denied");
       const room = this.room(db, d.room_id);
@@ -1091,10 +1133,11 @@ export class HubGroupRooms {
       db.prepare("DELETE FROM hub_room_reactions WHERE post_id=? AND member_id=?").run(post.id, who);
       if (body.emoji) db.prepare("INSERT INTO hub_room_reactions(room_id,post_id,member_id,emoji,created_at) VALUES(?,?,?,?,?)").run(d.room_id, post.id, who, body.emoji, this.core.now());
       return { post, changed: true };
-    });
+    };
+    const done = body.acknowledge ? await this.agents.acknowledgeReaction(body, link, apply) : this.core.atomic(apply);
     if ("archived" in done) return { messageId: body.messageId, ok: false, code: "archived" };
     if (done.changed && done.post) this.emit({ type: "message.updated", roomId: done.post.room_id, data: { roomId: done.post.room_id, message: this.projection(done.post) }, sequence: done.post.sequence });
-    return { messageId: body.messageId, ok: true };
+    return { messageId: body.messageId, ok: true, ...(body.acknowledge ? { acknowledged: true as const } : {}) };
   }
   /** A read or a press first closes what is already due (a suspended host's timer may be late): never a stale open poll. */
   private settleButtons(): void {

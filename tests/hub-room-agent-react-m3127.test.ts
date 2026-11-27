@@ -38,7 +38,7 @@ describe("A. the Hub takes an agent's reaction (room.react)", () => {
     const question = async () => (await r!.call(a, "GET", `/hub/v1/rooms/${id}/messages`)).json.messages.find((m: any) => m.id === q.id);
     const agentMember = (await r.call(admin, "GET", `/hub/v1/rooms/${id}`)).json.members.find((m: any) => m.kind === "agent").id as string;
     const reactVia = (l: any, emoji: string) => r!.http.receive(r!.frame("room.react", { messageId: ask.messageId, roomId: id, exposureId: e.id, emoji }, l) as never, l);
-    return { a, admin, e, id, q, react, reactVia, question, agentMember, fleetId, alex };
+    return { a, admin, e, id, q, react, reactVia, question, agentMember, fleetId, alex, link };
   }
   it("shows under the question as the agent's; a later one replaces it; \"\" takes it back", async () => {
     const w = await world();
@@ -81,6 +81,60 @@ describe("A. the Hub takes an agent's reaction (room.react)", () => {
     const w = await world(["welcome-caps-v1", "room-ask-v1"]);
     expect(await w.react("👍")).toMatchObject({ payload: { ok: false, code: "revoked" } });
   });
+  it("S254 an accepted reaction answers the exact delivery and clears missing-answer presentation without a text post", async () => {
+    const w = await world([...CAPS, "room-react-ack-v1", "room-answer-status-v1"]);
+    const delivery = r!.db.prepare("SELECT * FROM hub_room_deliveries").get() as any;
+
+    // Exercise recovery from an already displayed no-answer marker without manufacturing another answer.
+    r!.db.prepare("UPDATE hub_room_deliveries SET reason_code='finished-without-answer' WHERE id=?").run(delivery.id);
+    r!.db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(delivery.reply_id);
+    const count = (r!.db.prepare("SELECT COUNT(*) n FROM hub_room_posts").get() as any).n;
+    expect(await w.react("👍", {acknowledge:true})).toMatchObject({type:"room.react-result",payload:{ok:true,acknowledged:true}});
+    expect((await w.question()).reactions).toEqual([{emoji:"👍",count:1,members:[w.agentMember]}]);
+    expect((await w.question()).ask).toEqual({total:1,answered:1,working:0,later:0});
+    expect(r!.db.prepare("SELECT state,reason_code,answer_id FROM hub_room_deliveries WHERE id=?").get(delivery.id)).toEqual({state:"answered",reason_code:"acknowledged-by-reaction",answer_id:null});
+    const messages=(await r!.call(w.a,"GET",`/hub/v1/rooms/${w.id}/messages`)).json.messages;
+    expect(messages.find((m:any)=>m.id===delivery.reply_id)).toMatchObject({stage:"answered",acknowledgedByReaction:true});
+    expect((r!.db.prepare("SELECT COUNT(*) n FROM hub_room_posts").get() as any).n).toBe(count);
+    expect(await w.react("👍", {acknowledge:true})).toMatchObject({payload:{ok:true,acknowledged:true}});
+    expect((await w.question()).ask.answered).toBe(1);
+    await r!.restartHttp();
+    const reopened=(await r!.call(w.a,"GET",`/hub/v1/rooms/${w.id}/messages`)).json.messages;
+    expect(reopened.find((m:any)=>m.id===delivery.reply_id)).toMatchObject({stage:"answered",acknowledgedByReaction:true});
+  });
+  it("S254 stores a real report after the Hub commits acknowledgement but its result is lost", async () => {
+    const w=await world([...CAPS,"room-react-ack-v1","room-answer-status-v1"]);
+    const ask=r!.sent.find(x=>x.frame.type==="room.ask")!.frame.payload as HubRoomAsk;
+    const db=new Database(":memory:");migrateRoomAsks(db);const inputs:any[]=[],reminders:any[]=[],generation=randomUUID();
+    const link:RoomAskLink={current:()=>true,features:new Set([...CAPS,"room-react-ack-v1","room-answer-status-v1"]),sendReact:async payload=>{expect(await w.react(payload.emoji,{acknowledge:true})).toMatchObject({payload:{acknowledged:true}});throw Error("lost result");},sendAnswer:async payload=>{const response=await r!.http.receive(r!.frame("room.answer",payload,w.link) as never,w.link);if(response?.type!=="room.answer-ack")throw Error("not acknowledged");}};
+    const adapter=new HubRoomAskAdapter({db,bindingKey:"s254-lost",encryptionKey:randomBytes(32),current:()=>true,generation:()=>generation,localExposure:()=>({agent:"Notes",consentId:"owned",revision:1,token:"owned"}),deliver:async input=>{if(!await input.beforeInput())return false;inputs.push(input);return true;},remind:async input=>{reminders.push(input);return true;}});
+    try{adapter.connected(link);adapter.accept(ask,link);await adapter.settled();const cid=inputs[0].correlationId;adapter.inputHandoff(cid,"Notes",generation);
+      expect(await adapter.react({caller:"Notes",correlationId:cid,emoji:"👍"})).toMatchObject({ok:false});expect(adapter.questionSettled(cid,"Notes")).toBe(false);
+      await adapter.turnEnded("Notes",generation,"one");expect(reminders).toHaveLength(1);
+      expect(await adapter.report({caller:"Notes",correlationId:cid,text:"The substantive answer"})).toMatchObject({ok:true});
+      const messages=(await r!.call(w.a,"GET",`/hub/v1/rooms/${w.id}/messages`)).json.messages;
+      expect(messages.find((m:any)=>m.answerTo===w.q.id)).toMatchObject({text:"The substantive answer",stage:"answered"});expect((await w.question()).reactions[0].emoji).toBe("👍");
+    }finally{adapter.close();db.close();}
+  });
+  it("S254 an expired reaction-completed ask never success-acks discarded follow-up text",async()=>{
+    const w=await world([...CAPS,"room-react-ack-v1"]);await w.react("👍",{acknowledge:true});
+    const d=r!.db.prepare("SELECT * FROM hub_room_deliveries").get() as any;r!.db.prepare("UPDATE hub_room_deliveries SET expires_at=1").run();
+    const answer={messageId:d.id,roomId:w.id,exposureId:w.e.id,answerId:randomUUID(),text:"Late substantive answer"};
+    expect(await r!.http.receive(r!.frame("room.answer",answer,w.link) as never,w.link)).toBeUndefined();
+    expect(r!.db.prepare("SELECT state,answer_id,reason_code FROM hub_room_deliveries").get()).toEqual({state:"answered",answer_id:null,reason_code:"acknowledged-by-reaction"});
+  });
+  it("S254 a gesture without the new acknowledgement flag keeps the delivery owed", async () => {
+    const w=await world([...CAPS,"room-react-ack-v1"]);
+    expect(await w.react("👍")).toMatchObject({payload:{ok:true}});
+    expect((await w.question()).ask.answered).toBe(0);
+  });
+  it("S254 refuses expired acknowledgements atomically without adding the reaction", async () => {
+    const w=await world([...CAPS,"room-react-ack-v1"]);
+    r!.db.prepare("UPDATE hub_room_deliveries SET expires_at=1").run();
+    expect(await w.react("👍",{acknowledge:true})).toMatchObject({payload:{ok:false}});
+    expect(await w.question()).not.toHaveProperty("reactions");
+    expect((r!.db.prepare("SELECT state FROM hub_room_deliveries").get() as any).state).not.toBe("answered");
+  });
 });
 
 describe("the member hello's capability list (Fable #3935 info)", () => {
@@ -98,6 +152,7 @@ describe("the member hello's capability list (Fable #3935 info)", () => {
     expect(memberFrameSchema.safeParse(future).success).toBe(true);
     expect(() => encodeMemberFrame(future)).not.toThrow(); // phase3 has a bounded legacy retry for older Hubs
   });
+
 });
 
 describe("B. the Fleet member's room adapter", () => {

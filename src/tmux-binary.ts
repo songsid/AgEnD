@@ -84,7 +84,7 @@ function bundledBinary(deps: TmuxResolveDeps, home: string): TmuxResolution {
   const req = createRequire(join(pkgDir, "package.json"));
   const bundle = req("./launcher/tmux-bundle.cjs") as Bundle;
   const hostId = deps.hostId ?? `${process.platform}-${process.arch}`;
-  const reinstall = `Reinstall AgEnD (npm install -g @songsid/agend), or set ${TMUX_BIN_ENV} to a tmux 3.6a or newer.`;
+  const reinstall = `Reinstall AgEnD (npm install -g --allow-scripts=@songsid/agend @songsid/agend), or set ${TMUX_BIN_ENV} to a tmux 3.6a or newer.`;
   let manifest: unknown = null;
   try { manifest = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8")); } catch { /* refused below */ }
   const pin = bundle.pinnedTmux(manifest, { id: hostId });

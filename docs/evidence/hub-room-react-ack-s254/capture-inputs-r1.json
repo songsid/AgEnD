@@ -1,0 +1,25 @@
+{
+  "scope": "R1 capture inputs before the later F1 lost-result text-answer fix. Only agents.ts changes afterward for F1; reaction settlement/projection/UI behavior is unchanged. Not a claim that every captured runtime byte equals the final head.",
+  "inputs": [
+    {
+      "path": "src/hub/rooms/agents.ts",
+      "sha256": "c4529f3f98738cef2aa2147068dec09fe78b3931bb5a604e7c754be8f6a2d349"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "a2f13929ea5489e47a4175ed77704ebc201053dd54a6f9b30596a108fc5b6f43"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "sha256": "715a52e0835da50b55a20209e7c08cc11e53acd9bf2a3b6ce8d074ccbcbbcaf6"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "b1d86f15aed0a45c9b08eddd5cdf08240c0b6fd555f70eecd310d907be37bc32"
+    },
+    {
+      "path": "scripts/manual/hub-room-react-ack-s254/capture.mts",
+      "sha256": "fb85be5890bd76b9aa93ff58baf9e53f3a71000f41e56bba401a6f6284c0622a"
+    }
+  ]
+}

@@ -124,6 +124,8 @@ const ROWS = [
   ["access.terminal-ttl", "access", "#webTerminalTtl", "settings.webTerminalTtl", "web_terminal.ttl_minutes", ["terminal minutes", "terminal", "ttl"], ["終端機", "分鐘"]],
   ["access.public-link", "access", "#publicWebLink", "settings.publicLink", "web.public_link.allow_public", ["public link", "share", "tunnel", "cloudflare", "trycloudflare"], ["公開連結", "分享", "tunnel"]],
   ["access.hostname", "access", "#publicWebHostname", "settings.namedHostname", "web.public_link.hostname", ["fixed address", "domain", "hostname", "named tunnel", "https"], ["固定網址", "網域", "主機名稱", "具名 tunnel"]],
+  // M-3814: shown with a fixed hostname (or while it is set).
+  ["access.preview-address", "access", "#publicWebPreviewHostname", null, "web.public_link.preview_hostname", ["preview address", "preview", "html preview", "fixed address", "429"], ["預覽網址", "預覽", "固定網址"], L("Preview address", "預覽網址")],
   ["access.origin-port", "access", "#publicWebOriginPort", "settings.namedOriginPort", "web.public_link.origin_port", ["port", "origin port", "fixed address"], ["連接埠", "port", "固定網址"]],
   ["access.public-ttl", "access", "#publicWebTtl", "settings.publicTtl", "web.public_link.ttl_minutes", ["public link minutes", "how long", "ttl", "no expiry", "expire"], ["公開連結", "分鐘", "多久", "不過期", "到期"]],
   // Shown with a fixed hostname (a named tunnel), or while it is set.

@@ -49,7 +49,7 @@ process.stderr.write(
   (pinned ? "  " + support.reason + ", so AgEnD's bundled Node cannot be used here either.\n" : "") +
   "\n" +
   "  Update Node to a compatible version, then retry:\n" +
-  "    npm install -g @songsid/agend\n" +
+  "    npm install -g --allow-scripts=@songsid/agend @songsid/agend\n" +
   "\n"
 );
 process.exit(1);

@@ -1,0 +1,284 @@
+{
+  "version": 1,
+  "sourceCommit": "236cd79fc140575b8902b51328d6235cc6010737",
+  "baseCommit": "e9e85ea7bd4d48b096ca5fc57819dd2c48a20f39",
+  "integratedReleaseTip": "21310889df55446ddb4e9bdb3cd92b01fcf649b1",
+  "flow": "OFF: accepted internal snapshots only; no installed input port, contact exception, renderer, native posting or new advertised capability.",
+  "scope": "Synthetic SQLite, signed fixtures, actual Hub adapters and B/C owners. No live fleet, account, vendor, native CLI or model calls.",
+  "sourceAndTestSha256": [
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "sha256": "2287056454a382ad3cc63fafcc8eb187234ae873f1e86d82c20b1e56c1ec2cbe"
+    },
+    {
+      "path": "src/hub/representative.ts",
+      "sha256": "b218222f4717876fd31ad04613bf79c9d6baf6ae48e32535e63a79a1b252b7ed"
+    },
+    {
+      "path": "src/request-hub-context.ts",
+      "sha256": "40a79b8e82a4128491029f8639b10ddb604db163bd14f49114fca9fbf3378de6"
+    },
+    {
+      "path": "tests/hub-representative.test.ts",
+      "sha256": "62de0f7160e69c3e477658b784792af60635bfb3573b31072fa4cd982e4338a5"
+    },
+    {
+      "path": "tests/hub-room-asker-adapter-m3664.test.ts",
+      "sha256": "b608eed30c27e22fd7228e766bbd29a6a169aa2f660895b35300faf9212cb76c"
+    },
+    {
+      "path": "tests/request-hub-context-s231.test.ts",
+      "sha256": "c0480e3a4495a3a40487bf834a0770c4ddd287c125dc2afdefeae73c99a24f0b"
+    }
+  ],
+  "checks": [
+    {
+      "name": "affected Hub and request-context neighbours",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "--maxWorkers",
+        "2",
+        "tests/cli-footers-1650.test.ts",
+        "tests/cross-instance-envelope.test.ts",
+        "tests/hub-asker-identity-m3594.test.ts",
+        "tests/hub-code-member-link-a2.test.ts",
+        "tests/hub-company-join-recovery.test.ts",
+        "tests/hub-compose-member.test.ts",
+        "tests/hub-contact-limit-3160.test.ts",
+        "tests/hub-contact-window-settles-m3660.test.ts",
+        "tests/hub-display-name-m3172.test.ts",
+        "tests/hub-login-token-paste-m3313.test.ts",
+        "tests/hub-member-journal.test.ts",
+        "tests/hub-member-repair-3823.test.ts",
+        "tests/hub-member-restore-3415.test.ts",
+        "tests/hub-member-upgrade-3878.test.ts",
+        "tests/hub-representative.test.ts",
+        "tests/hub-restore-revocation-floor-m3205.test.ts",
+        "tests/hub-room-agent-react-m3127.test.ts",
+        "tests/hub-room-ask-track-c.test.ts",
+        "tests/hub-room-asker-adapter-m3664.test.ts",
+        "tests/hub-room-brief-budget-m3300.test.ts",
+        "tests/hub-room-brief-h4.test.ts",
+        "tests/hub-room-buttons-m3127.test.ts",
+        "tests/hub-room-compose-track-c.test.ts",
+        "tests/hub-room-context-budget-m3300.test.ts",
+        "tests/hub-room-context-link-m3122.test.ts",
+        "tests/hub-room-context-member-m3122.test.ts",
+        "tests/hub-room-files-member-3125.test.ts",
+        "tests/hub-room-files-negotiation-3125.test.ts",
+        "tests/hub-room-owed-h6.test.ts",
+        "tests/hub-room-post-rc-integration-3118.test.ts",
+        "tests/hub-room-rc-integration-r3.test.ts",
+        "tests/hub-share-link-m3294.test.ts",
+        "tests/hub-share-refused-m3007.test.ts",
+        "tests/hub-share-request-link-m3294.test.ts",
+        "tests/hub-sharing-pause-m3015.test.ts",
+        "tests/hub-update-factory-m3144.test.ts",
+        "tests/inbound-headers-3074.test.ts",
+        "tests/request-contact-api-s227.test.ts",
+        "tests/request-contact-card-s227.test.ts",
+        "tests/request-contact-gate-s225.test.ts",
+        "tests/request-contact-web-s227.test.ts",
+        "tests/request-context-barrier-s221.test.ts",
+        "tests/request-context-call-s224.test.ts",
+        "tests/request-context-commit-s224.test.ts",
+        "tests/request-context-daemon-s223.test.ts",
+        "tests/request-context-daemon-s224.test.ts",
+        "tests/request-context-drain-s226.test.ts",
+        "tests/request-context-legacy-guard-s226.test.ts",
+        "tests/request-context-migration-s226.test.ts",
+        "tests/request-context-pane-s224.test.ts",
+        "tests/request-context-protocol-s221.test.ts",
+        "tests/request-context-recovery-s223.test.ts",
+        "tests/request-context-store-s222.test.ts",
+        "tests/request-context-turns-s223.test.ts",
+        "tests/request-hub-context-s231.test.ts"
+      ],
+      "passed": 716,
+      "files": 55,
+      "limit": "Before the final optional-name fallback, room audience warning and additional UTF-8 assertion. Final focused run below covers these changes."
+    },
+    {
+      "name": "restored final source",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-hub-context-s231.test.ts",
+        "tests/hub-representative.test.ts",
+        "tests/hub-room-asker-adapter-m3664.test.ts",
+        "--maxWorkers",
+        "2"
+      ],
+      "passed": 97,
+      "files": 3
+    },
+    {
+      "name": "test typecheck",
+      "command": "npm run typecheck:tests",
+      "exitCode": 0
+    },
+    {
+      "name": "build",
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "name": "changelog",
+      "command": "node scripts/changelog-assemble.mjs --check",
+      "fragments": 852,
+      "exitCode": 0
+    },
+    {
+      "name": "base sync",
+      "result": "Plain merge; only incoming docs/design/update-transaction-m3770.md changed. No product conflict or duplicate declarations."
+    }
+  ],
+  "guardReversals": [
+    {
+      "name": "stable-root",
+      "path": "src/request-hub-context.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-representative.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "transient begin retry has"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "capture-direct",
+      "path": "src/hub/representative.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-representative.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "captures signed asker"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "asker-not-owner",
+      "path": "src/hub/representative.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-representative.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "captures signed asker"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "room-current-destination",
+      "path": "src/hub/member/room-ask.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-room-asker-adapter-m3664.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "generation change during"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "peer-cap",
+      "path": "src/request-hub-context.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-hub-context-s231.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "16000-byte"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "return-warning",
+      "path": "src/request-hub-context.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-hub-context-s231.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "canonical field"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "retained-actor",
+      "path": "src/request-hub-context.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-hub-context-s231.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "retained accepted root"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "preflight-defer",
+      "path": "src/request-hub-context.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-representative.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "preflight waits"
+      ],
+      "exitCode": 1,
+      "killed": true
+    },
+    {
+      "name": "utf8-bytes",
+      "path": "src/request-hub-context.ts",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/request-hub-context-s231.test.ts",
+        "--maxWorkers",
+        "2",
+        "-t",
+        "16000-byte"
+      ],
+      "exitCode": 1,
+      "killed": true
+    }
+  ],
+  "proofBoundaries": [
+    "1:1 snapshot comes from actual digest-checked journal question before input intent; actor is the signed asker, never sharing owner/body.",
+    "Room snapshot uses authenticated companion plus expected destination recomputed from current local exposure/token/generation after awaits. Legacy/expired/mismatched identity yields no new capture.",
+    "Deterministic UUIDv8 root/input excludes dispatch correlation and directory name. B reuses identical retained context; evidence/actor drift conflicts.",
+    "G preflight calls trusted C.current before beforeInput. The representative fixture holds dispatching/no begin until independent work ends. This proves the port contract, not an installed production L queue.",
+    "The peer payload contains canonical structured authority-none provenance and disclosure warning. Group audience is the room, including its participants. Human receipt authority is untouched.",
+    "16000 bytes applies to peer formatted envelopes in MCP/CLI modes, including UTF-8/routing metadata. Original 64KiB Hub question delivery stays unchanged.",
+    "No receiver relay/return/tool exceptions or instructions installed; H owns them. H also owns visible evidence/user look. L installs production ports and capabilities."
+  ],
+  "riskAndRollback": "Before L, ordinary revert with flow OFF; no new production DB schema/state. After activation retain startup barrier and follow parent drain/downgrade order. Provenance is not a sandbox."
+}

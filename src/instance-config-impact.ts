@@ -130,6 +130,8 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "web.public_link.hostname": "now",
   "web.public_link.tunnel_token_env": "now",
   "web.public_link.origin_port": "now",
+  // M-3814: read per request (the listener's Host, the page's frame) and when a link's preview starts.
+  "web.public_link.preview_hostname": "now",
   // #named-link-ttl: read once, after the fleet starts.
   "web.public_link.auto_open": "fleet",
   // #1620: read at every session check, and by /login when it starts a terminal.

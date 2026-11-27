@@ -261,7 +261,7 @@ describe("#2481 auto-restore: the whole act", () => {
     writeFileSync(join(home, ATTEMPTS_FILE), JSON.stringify({ version: "2.3.1", attempts: [new Date(1000).toISOString(), new Date(2000).toISOString(), new Date(3000).toISOString()] }));
     expect(restoreFailedNoticeText(home, readAttempts(home)!, 4000, "2.2.6", "EXDEV").split("\n")).toEqual([
       "⚠ AgEnD v2.3.1 fails to start (3 start attempts in the last 10 minutes, none completed). Restoring v2.2.6 automatically did not work: EXDEV",
-      "To go back to v2.2.6: npm install -g @songsid/agend@2.2.6 && agend restart",
+      "To go back to v2.2.6: npm install -g --allow-scripts=@songsid/agend @songsid/agend@2.2.6 && agend restart",
       `The error is at the end of ${join(home, "fleet.log")}. Please report it (agend doctor shows what to include): https://github.com/songsid/AgEnD/issues/new`,
     ]);
   });

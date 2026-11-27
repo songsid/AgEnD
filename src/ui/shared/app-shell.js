@@ -314,7 +314,8 @@ export function setTitle(text) { titleBase = text || ""; drawTitle(); }
 const needsWeight = (i) => (i?.type === "contact" && i.reason === "contact_verify_needed" ? Math.max(1, Math.floor(Number(i.contactVerify?.count) || 1)) : 1);
 const needsTotal = (needs) => needs.reduce((n, i) => n + needsWeight(i), 0);
 appStore.subscribe((s) => {
-  const n = Array.isArray(s.needs) ? needsTotal(s.needs) : 0;
+  // #4487 review P3: AgEnD's own update item (app-update.js keeps it in appStore) counts in the tab's title too.
+  const n = (Array.isArray(s.needs) ? needsTotal(s.needs) : 0) + (s.updateNeeds ? 1 : 0);
   if (n !== titleCount) { titleCount = n; drawTitle(); }
 });
 
@@ -573,7 +574,8 @@ register("phoneNav", {
 export function needsCount(app) {
   const needs = Array.isArray(app.needs) ? app.needs : [], proposals = Array.isArray(app.proposals) ? app.proposals : [];
   const suggestions = needs.filter(i => i?.type === "contact" && i.reason === "contact_restricted_suggestion").length;
-  return needsTotal(needs) - suggestions + (suggestions ? 1 : 0) + proposals.length;
+  // #4487 review P2: AgEnD's own update item (app-update.js keeps it in appStore), counted once.
+  return needsTotal(needs) - suggestions + (suggestions ? 1 : 0) + proposals.length + (app.updateNeeds ? 1 : 0);
 }
 
 export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions, back = null }) {

@@ -13,8 +13,8 @@ function policy(patch: Partial<HubRolePolicy> = {}): HubRolePolicy {
     roles: builtinRoles(), assignments: [], denies: [], ...patch };
 }
 describe("inactive Hub role model", () => {
-  it("fixes twelve permissions, excludes content/cost and uses D7 defaults without delegated ask approval", () => {
-    expect(ROLE_PERMISSIONS).toHaveLength(12); expect(new Set(ROLE_PERMISSIONS).size).toBe(12);
+  it("adds opt-in room creation to twelve existing permissions, excludes content/cost and uses D7 defaults without delegated ask approval", () => {
+    expect(ROLE_PERMISSIONS).toHaveLength(13); expect(new Set(ROLE_PERMISSIONS).size).toBe(13);
     expect(Object.isFrozen(ROLE_PERMISSIONS)).toBe(true); expect(Object.isFrozen(MANAGEMENT_PERMISSIONS)).toBe(true);
     const roles = builtinRoles(); expect(roles.map(r => r.defaultMaxFleets)).toEqual([8, 2, 1]);
     expect(roles[0]!.permissions).toHaveLength(10); expect(roles[1]!.permissions).toHaveLength(5);

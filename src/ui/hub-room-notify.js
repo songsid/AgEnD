@@ -4,6 +4,7 @@ import { notifyOn, notifySupport, notifyStore, refreshNotify, setNotify } from "
 import { html, useEffect } from "/assets/app-html.js";
 import { useStore } from "/assets/app-store.js";
 import { Icon } from "/assets/ui-icons.js";
+import { setHubNotify } from "./hub-notify-keep.js";
 import { counts, shouldNotify } from "./hub-room-unread.js";
 import { hroom } from "./hub-room-strings.js";
 
@@ -157,5 +158,5 @@ export function HubNotifyToggle() {
     return html`<span class="icon-btn hub-notify" aria-disabled="true" title=${title} aria-label=${title}><${Icon} name="bell" size=${16} /></span>`;
   }
   return html`<button type="button" class="icon-btn hub-notify" aria-pressed=${on ? "true" : "false"} aria-label=${label} title=${title}
-    disabled=${asking} onClick=${() => { void setNotify(!on); }}><${Icon} name="bell" size=${16} /></button>`;
+    disabled=${asking} onClick=${() => { void setHubNotify(!on); }}><${Icon} name="bell" size=${16} /></button>`;
 }

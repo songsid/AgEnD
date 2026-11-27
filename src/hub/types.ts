@@ -68,8 +68,8 @@ export interface HubRoomAnswer { notAnswered?:"finished-without-answer";messageI
   buttons?: HubAnswerButtons; attachments?: HubAttachmentRef[]; mentionFeedback?: true }
 export interface HubRoomAnswerAck { messageId: MessageId; answerId: string; mentionRefusals?: import("./room-mention-feedback-model.js").HubRoomMentionFeedback }
 /** M-3127 (agent reactions, on room-answer-buttons-v1): the agent's reaction to the room question it was asked ("" takes it back). */
-export interface HubRoomReact { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; emoji: string }
-export interface HubRoomReactResult { messageId: MessageId; ok: boolean; code?: "invalid" | "denied" | "not-found" | "archived" | "revoked" }
+export interface HubRoomReact { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; emoji: string; acknowledge?: true }
+export interface HubRoomReactResult { messageId: MessageId; ok: boolean; acknowledged?: true; code?: "invalid" | "denied" | "not-found" | "archived" | "revoked" }
 /** Proactive group-room messages are scoped by the authenticated link and its own published exposure. */
 export type HubRoomPostRefusalCode = "invalid" | "denied" | "revoked" | "not-found" | "archived" | "ambiguous-room" | "rate-limited" | "conflict" | "unavailable" | "stale" | "backpressure";
 export interface HubRoomListRequest { exposureId: ExposureId }

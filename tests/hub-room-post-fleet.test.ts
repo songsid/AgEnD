@@ -229,3 +229,9 @@ it.each(["caller","consent"])("M-3639 R1: a retired %s cannot send another chunk
  if(kind==="caller")h.retireCaller();else h.replace();release();
  expect(await result).toMatchObject({ok:false});expect(putFile).toHaveBeenCalledTimes(1);expect(link.post).not.toHaveBeenCalled();a.close();
 });
+
+it("S-232 the room post owner enforces issuer and original room before durable intent",async()=>{
+ const f=fixture(),hubId=randomUUID(),adapter=new HubRoomPostAdapter({...f.options,hubId});adapter.connected(f.link);const id=randomUUID(),context:any={ref:{version:1,contextId:id,rootContextId:id},rootEvidenceRef:"accepted",ingress:"hub",initiatingActor:{kind:"person",platform:"hub",hubId,id:"directory/demo-person"},source:{instance:"agent-A",incarnation:"v1"},sourceAudience:{kind:"room",ref:f.roomId}},scope={context,current:()=>true};
+ expect(await adapter.post({...f.caller,requestScope:scope},{room:randomUUID(),text:"No",operationId:randomUUID()})).toMatchObject({ok:false,code:"denied"});expect(await adapter.post({...f.caller,requestScope:{context:{...context,initiatingActor:{...context.initiatingActor,hubId:randomUUID()}},current:()=>true}},{room:f.roomId,text:"No",operationId:randomUUID()})).toMatchObject({ok:false,code:"denied"});
+ expect(f.db.prepare("SELECT COUNT(*) n FROM hub_room_posts").get()).toEqual({n:0});expect(await adapter.post({...f.caller,requestScope:scope},{room:f.roomId,text:"Right audience",operationId:randomUUID()})).toMatchObject({ok:true});expect(f.received).toHaveLength(1);adapter.close();
+});

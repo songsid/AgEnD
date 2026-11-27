@@ -1,0 +1,218 @@
+[
+  {
+    "path": "docs/design/hub-room-react-ack-s254.md",
+    "sha256": "5a895d39c4eedc45324609f5d80816f4407bfed36734ca9be530d06e1408da0c"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/README.md",
+    "sha256": "1e5dd7b2be7215bdf2686c3219ded3c215ca8e53bdfa5bddcc798f4f941e23c8"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/after-desk-dark-en.png",
+    "sha256": "81ac0e5436fb363da032a0b546a5d49f05b46d435259deaaa8fa14232ceeba26"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/after-desk-dark-zh-TW.png",
+    "sha256": "bba43c5216519fce381495739c8def376e0b757ffbe55d3fc4fc27f4d78ebae1"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/after-desk-light-en.png",
+    "sha256": "73e41d9884e217df817e7d7c6f4e6b04f65657ed1c932ab47143626d78958318"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/after-desk-light-zh-TW.png",
+    "sha256": "0f8fb438af28ddd5cf02cb66c015182489b029dc2ddbf5803462117ec8299f3c"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/after-phone-dark-en.png",
+    "sha256": "d592efb9600620b73fd00ba383277424fed7ef3bbb5a4418752171fa7ef2438b"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/after-phone-dark-zh-TW.png",
+    "sha256": "a53881d383c1a288e5432dc19d071ec0db5710eb5e108bc600e104ee967fb31d"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/after-phone-light-en.png",
+    "sha256": "d6d12ffda20f6f3823507a4efb950d89ac4dad6d0036f42a642d84b113ec2e03"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/after-phone-light-zh-TW.png",
+    "sha256": "f2b99395827c37e75c30d5c30bbecda0d122ec7c53a4191d53468450c1117cd6"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/before-desk-light-en.png",
+    "sha256": "b7b2bb35a2592d0029416cc74aa831f7db4f859bc91fe6ff6c523b0bf73600cd"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/before-phone-dark-zh-TW.png",
+    "sha256": "14caff029b75e38145b0f644ec3e6e4eaf26b967acd1bd51e12e5e518bf50aeb"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/capture-checks.json",
+    "sha256": "69f838907953cbcbb71fa4bf3a5d2a029505eebc4abe638fbd409e2e506750b6"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/capture-inputs-r1.json",
+    "sha256": "947156b0c6490f18d73f98bb227b7f5ce0b2520354fa4372ebe41b8db5c24464"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/affected-tests.log",
+    "sha256": "a38cc4f1f966e4107662e5b324074a55e4c4a020025d9e5e88d7e4340c333f8f"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/baseline-to-final.patch.json",
+    "sha256": "801a0c05605503550a9f9b9a4068ed1a3d923c16bdbc339c22b7b55e0e12e496"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/build.log",
+    "sha256": "1fa0a505b9836de79bced4e95526ed572af4b8d6ba9790c79c3f27a0a3d5e50b"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/completion-failfirst-final.log",
+    "sha256": "34431ae357852c51f179a85943fae25d6ccd72c626ec31721838106062481a64"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/completion-restored-final.log",
+    "sha256": "e25b3cb5aa07f1a02aadcb3e7e93fa1a9c65abf259026c819004c1918cc78ab5"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/link-final.log",
+    "sha256": "f65d104982de8d7b8e42eb728b5fe2c42986daa82483c5a333a9262bebc0443d"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/r1-build-green.log",
+    "sha256": "1fa0a505b9836de79bced4e95526ed572af4b8d6ba9790c79c3f27a0a3d5e50b"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/r1-controls-red.log",
+    "sha256": "4706c50c0cc2a0232f905051bf9fa1facb5be2904093703a968fe982fa4b689d"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/r1-prodtypes-green.log",
+    "sha256": "aa268e46f818d58516536fcec326656a48c29a59710ec60601bab337d2d47994"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/r1-terminal-green.log",
+    "sha256": "eff742078562ef030f51b530286c28d61a5bb90207732e0029a4f67d1d13d14c"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/r1-testtypes-green.log",
+    "sha256": "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/r2-ci-failfirst.log",
+    "sha256": "46ef1ce0aecd10fc5bce9975af5b6bcf03b111c056f82f8216ae9cc63303a35d"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/r2-ci-green.log",
+    "sha256": "e170c9d9301230e6a2cb100a49192cfae9b580c9ea85b886e4a9dd69e82b60d0"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/r2-menu-bytes.json",
+    "sha256": "3c97b6c8f23c5b3ab8fa7fe70308f81b3605b45b1c75fda0ae8b4d9d9662bca4"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/test-types-final.log",
+    "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/checks/types-final.log",
+    "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+  },
+  {
+    "path": "docs/evidence/hub-room-react-ack-s254/gallery.html",
+    "sha256": "740cdb9cbd5f4ed54a0be2ca9c453bd248611049f4c729ecaf28c754a5abf290"
+  },
+  {
+    "path": "scripts/manual/hub-room-react-ack-s254/capture.mts",
+    "sha256": "fb85be5890bd76b9aa93ff58baf9e53f3a71000f41e56bba401a6f6284c0622a"
+  },
+  {
+    "path": "src/channel/mcp-tools.ts",
+    "sha256": "9d5aaf5c5259ea58fb6ccc4ba15a616d2fff89a1995305ee43eee0467667ffaf"
+  },
+  {
+    "path": "src/general-knowledge/skills/cross-instance-messaging/SKILL.md",
+    "sha256": "705727d6111a61bd502fae0c7f54c81e59430c189c1f7aaa409e3d5a80001c01"
+  },
+  {
+    "path": "src/general-knowledge/skills/hub/SKILL.md",
+    "sha256": "d300af913a9beb9677d0775f84f43fd54c0b05a9f64a9bf514bbf95d55b7ce1f"
+  },
+  {
+    "path": "src/hub/client.ts",
+    "sha256": "efb5e0a39af299a57273939e23f4e73daa3c0d4f611bef56f19094bd5e1fad99"
+  },
+  {
+    "path": "src/hub/compose/member.ts",
+    "sha256": "5acadf4dd20a7a0f1202ab90b8cff19fa2e2be39ebeb19aa8509502994142aee"
+  },
+  {
+    "path": "src/hub/compose/server.ts",
+    "sha256": "4f81fbd97bd5e82bd76ebc92e1353e918f32d2aaa4c1c4c45fc1614bc59f9a5a"
+  },
+  {
+    "path": "src/hub/http/compose.ts",
+    "sha256": "fa017c0d2c55c547be9cd86279eb349f88f9163af0f366c76e0f4ebb08c0e267"
+  },
+  {
+    "path": "src/hub/member/room-ask.ts",
+    "sha256": "673bc4322e439256f2df5451bd6f1e09f532cb526fd3c35caee828c19047ea01"
+  },
+  {
+    "path": "src/hub/member/room-reaction-acks.ts",
+    "sha256": "894a070d69e4e7875a3c1b01492be1df3f6141ab7252fea646e31cba429fd894"
+  },
+  {
+    "path": "src/hub/protocol.ts",
+    "sha256": "26c3a8e54963d2e524d9b5afca5aeb29a7b5bd6258a1220251dd12a106db6406"
+  },
+  {
+    "path": "src/hub/room-react-ack-model.ts",
+    "sha256": "ce3b5590dbe9c941f738645f5d828141c87fa4fe14e309acb991f85a8f6d5bdf"
+  },
+  {
+    "path": "src/hub/rooms/agents.ts",
+    "sha256": "1a171c8d28e343dc945ed1bf04fc2f24d216705e0c0b8d985212708d8a6c75fc"
+  },
+  {
+    "path": "src/hub/rooms/service.ts",
+    "sha256": "a2f13929ea5489e47a4175ed77704ebc201053dd54a6f9b30596a108fc5b6f43"
+  },
+  {
+    "path": "src/hub/rooms/types.ts",
+    "sha256": "715a52e0835da50b55a20209e7c08cc11e53acd9bf2a3b6ce8d074ccbcbbcaf6"
+  },
+  {
+    "path": "src/hub/server.ts",
+    "sha256": "4a8e8034a5aa5456ac9d9ff78c0639a98018cc8a507d1dd956d6e29386c58b6d"
+  },
+  {
+    "path": "src/hub/types.ts",
+    "sha256": "d893dee74ce34a2dccf635e76f4309256b75a79cc2bb148a67ad865e10a3c4fd"
+  },
+  {
+    "path": "src/ui/hub-room-thread.js",
+    "sha256": "b1d86f15aed0a45c9b08eddd5cdf08240c0b6fd555f70eecd310d907be37bc32"
+  },
+  {
+    "path": "tests/hub-groups-mount-s89.test.ts",
+    "sha256": "6c78e8a5c5968f38ed1dfe542e0c5a09e2ef774d2041c055ab0545fbe8273bd9"
+  },
+  {
+    "path": "tests/hub-room-agent-react-m3127.test.ts",
+    "sha256": "67c1db6c374ddd564a73491c6428f2dd9e7bae781c64c24d24c3e5e12acf85be"
+  },
+  {
+    "path": "tests/hub-room-react-ack-link-s254.test.ts",
+    "sha256": "721fdd9ab5b2e9a15e693e93a6ff8b8f7cb1a291daebda8362b814236f2de537"
+  },
+  {
+    "path": "tests/hub-room-react-ack-s254.test.ts",
+    "sha256": "4a10bb8e36ce3727c45a5b3353df34fd60a176bb52484fa4b0a2301d50b36e49"
+  },
+  {
+    "path": "tests/hub-room-reactions-ui-m3127.test.ts",
+    "sha256": "8f509deac23bf874416db0643545c4cb64647da6bc242c31a3eede401fa4e56c"
+  }
+]

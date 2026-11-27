@@ -22,6 +22,8 @@ export interface RequestContactGateHost {
   canManage(target: string, person: ContactPerson): boolean;
   /** F/I lifecycle must prove no live turn, input, derivative work or native call ledger references. Uninstalled before cutover. */
   rootRetired?(rootId: string): boolean;
+  /** H static constraints and unendorsed Hub exception; absent keeps the existing hold policy. */
+  hubRelayAllowed?(context:RequestContextV1,binding:RequestOperationBindingV1,delivery:NewOutboxDelivery):boolean;
 }
 export interface RequestContactGatePorts {
   ready(): void;
@@ -87,6 +89,7 @@ export class RequestContactGate {
   }
   private requireCurrent(image: Image): void {
     assertRequestContextRootOpen(this.db,image.context.ref.rootContextId);
+    if(image.context.ingress==="hub")this.host.hubRelayAllowed?.(image.context,image.binding,image.delivery);
     if (!this.host.current(image.context, image.binding, image.delivery)) throw Error("request-context contact is no longer current");
   }
   private admitImage(image: Image): {delivery:OutboxDelivery;inserted:boolean} {
@@ -162,7 +165,8 @@ export class RequestContactGate {
       const person = root ? this.person(root) : null;
       const normal = context.ingress === "owner" || context.ingress === "free-room"
         || context.ingress === "restricted-room" && !!root && !!person && this.host.adminOf(root.source.instance, person);
-      if (release || normal) return { admitted: this.admitImage(image) };
+      const hub=context.ingress==="hub"&&this.host.hubRelayAllowed?.(context,binding,delivery)===true;
+      if (release || normal || hub) return { admitted: this.admitImage(image) };
       const request=this.request(image),ticket = this.tickets.hold(request);
       this.db.prepare(`INSERT INTO ${TABLE} (source_instance,operation_id,source_key,root_id,ticket_id,image_json,image_sha256,request_sha256) VALUES (?,?,?,?,?,?,?,?)`).run(delivery.sourceInstance, delivery.operationId, delivery.sourceKey,
         context.ref.rootContextId, ticket.id, requestContextJson(image), requestContextDigest(image),requestContextDigest(request));

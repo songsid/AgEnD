@@ -2,7 +2,7 @@
 import type { PersonKey } from "../types.js";
 import { epoch, person, validated } from "../validation.js";
 import { snapshotRolePersonFacts, type RolePersonFacts } from "./evaluate.js";
-import { parseRolePolicy, SELF_PERMISSIONS, TEAM_PERMISSIONS, type HubRoleAssignment, type HubRolePolicy, type RolePermission } from "./model.js";
+import { parseRolePolicy, SELF_PERMISSIONS, MEMBER_PERMISSIONS, TEAM_PERMISSIONS, type HubRoleAssignment, type HubRolePolicy, type RolePermission } from "./model.js";
 import type { RoleChangePlan } from "./change.js";
 export interface HeldRoleGrant { readonly permission: RolePermission; readonly scope: HubRoleAssignment["scope"]; readonly maxFleets: number; readonly startsAt: number; readonly expiresAt: number | null }
 export interface HeldRoleBundle {
@@ -39,7 +39,7 @@ export function heldRoleBundle(input: HubRolePolicy, actor: PersonKey, facts: Ro
       if (!groups.includes(a.subject.group.objectId)) continue;
     }
     const r = roles.get(a.roleId)!;
-    for (const permission of r.permissions) grants.push({ permission, scope: self(permission) ? { kind: "hub" } : a.scope,
+    for (const permission of r.permissions) grants.push({ permission, scope: self(permission) || (MEMBER_PERMISSIONS as readonly string[]).includes(permission) ? { kind: "hub" } : a.scope,
       maxFleets: a.maxFleets ?? r.defaultMaxFleets, startsAt: a.startsAt, expiresAt: a.expiresAt });
   }
   const administrator = same(who, configuredRoot) || (p.rolesActive && grants.some(g => g.permission === "hub.admin"));

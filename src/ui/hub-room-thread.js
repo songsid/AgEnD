@@ -27,8 +27,10 @@ import {ha} from "./hub-ai-apps-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
 import { TextSizeButton, TEXT_SIZES, setTextSize, textSizeStore } from "/assets/header-tools.js";
 import { useStore } from "/assets/app-store.js";
-import { notifyStore, notifySupport, setNotify } from "/assets/app-needs.js";
+import { notifyStore, notifySupport } from "/assets/app-needs.js";
 import { HubNotifyToggle } from "./hub-room-notify.js";
+import { setHubNotify } from "./hub-notify-keep.js";
+import { InstallAppButton, installLabel, installOffered, installStore, runInstall } from "/assets/app-install.js";
 import { createHubButtonActions } from "./hub-button-actions.js";
 import { linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { directStatus, workingLine } from "./hub-room-working.js";
@@ -182,6 +184,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
   const num = (id) => { if (!ids.has(id)) ids.set(id, ids.size * 2 + 2); return ids.get(id); };
   for (const m of ordered) {
     if (!m || typeof m.id !== "string") continue;
+    if (m.answerTo && m.acknowledgedByReaction === true) continue;
     const author = m.author || {}, kind = author.kind;
     // An answer still to come (queued, or being worked on: the working bar says who) is never an empty bubble.
     if (m.answerTo && !m.text && (m.stage === "queued" || m.stage === "working")) continue;
@@ -602,7 +605,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   }
   // M-3311 (3): the header's menu — a group room's Room settings and Leave, and on a desk the Fleet chat's 「全寬」 for any room.
   const [fullWidth, setFullWidth] = useState(hubChatWide);
-  const textSize = useStore(textSizeStore), notify = useStore(notifyStore), narrow = useNarrowScreen();
+  const textSize = useStore(textSizeStore), notify = useStore(notifyStore), install = useStore(installStore), narrow = useNarrowScreen();
   const [muteBusy,setMuteBusy]=useState(false);
   async function toggleDirectMute(){
     if(muteBusy)return;setMuteBusy(true);
@@ -624,7 +627,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     // move into ⋯ there (hub-chat.css hides the two buttons at the same width).
     ...(narrow ? [
       { key: "textSize", label: t("app.textSize", t(`app.textSize_${textSize.size}`)), icon: "type", onSelect: () => setTextSize(TEXT_SIZES[(TEXT_SIZES.indexOf(textSize.size) + 1) % TEXT_SIZES.length]) },
-      ...(notifySupport() === "ok" ? [{ key: "notify", checkbox: true, checked: notify.state === "on", disabled: notify.asking, label: hroom("notifyTitle"), onSelect: () => { void setNotify(notify.state !== "on"); } }] : []),
+      ...(notifySupport() === "ok" ? [{ key: "notify", checkbox: true, checked: notify.state === "on", disabled: notify.asking, label: hroom("notifyTitle"), onSelect: () => { void setHubNotify(notify.state !== "on"); } }] : []),
+      // S-255: Install as an app sits by the bell, so on a phone it moves into ⋯ with it.
+      ...(installOffered(install.state) ? [{ key: "install", label: installLabel(), icon: "install", onSelect: () => runInstall(install.state) }] : []),
     ] : []),
   ].filter(Boolean);
   const line2 = narrow && inOffice ? hroom("tabOffice") : group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
@@ -679,7 +684,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
           const label = hroom(v === "chat" ? "tabChat" : "tabOffice"), on = (v === "office") === inOffice;
           return html`<a key=${v} class=${`seg-item${on ? " active" : ""}`} href=${officeHref(v)} aria-current=${on ? "page" : undefined} data-label=${label}
             onClick=${(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button > 0) return; e.preventDefault(); onView(v); }}>${label}</a>`; })}</nav>` : null}
-        <span class="hub-head-tools"><${RoomPinsButton} count=${pinCount} onOpen=${() => setPinsOpen(true)} /><${TextSizeButton} /><${HubNotifyToggle} /></span>
+        <span class="hub-head-tools"><${RoomPinsButton} count=${pinCount} onOpen=${() => setPinsOpen(true)} /><${TextSizeButton} /><${InstallAppButton} /><${HubNotifyToggle} /></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? showRail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => { if (!wide) { setSheet(true); return; } if (panelOpen && !inOffice) { closePanel(); setRail(true); return; } setRail(!rail); }}><${Icon} name="team" size=${18} /></button>` : null}
         ${menuItems.length ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${menuItems} />` : null}

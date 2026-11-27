@@ -32,7 +32,7 @@ it("offers person and AD group selection inside the current owner grant dialog",
   expect(p.root.querySelector("[data-grant-picker]")).not.toBeNull();
   expect(p.root.textContent).toContain("Find a person");
   const select = p.root.querySelector("[data-grant-kind]") as any; select.value = "group"; fire(select, "change"); await settle(10);
-  expect(p.root.textContent).toContain("Find a group"); expect(p.root.textContent).toContain("Direct members");
+  expect(p.root.textContent).toContain("Find an AD group"); expect(p.root.textContent).toContain("Direct members");
   expect(p.root.textContent).toContain("90 days");
 });
 it("loads the picker's own served stylesheet once, without depending on the shell's cached app.css", async () => {

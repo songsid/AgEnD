@@ -274,6 +274,8 @@ export class OfficeActs {
       const vs = officeSpots(o, pack).vehicles, v = vs.find(x => x.id === a.ride);
       if (!v) return refuse("ride", vs.length ? `ride: "${a.ride}" is not a vehicle of ${o.id}; office_view lists them.` : `ride: ${o.id} has no vehicles (its style "${o.skin}").`);
       if (!v.seats || !v.platforms.length) return refuse("ride", `ride: "${a.ride}" has no seats or no stop to board at.`);
+      // #4503: a seat with a worker is theirs alone.
+      if (!(pack?.vehicles ?? []).some(x => x.id === v.id && x.seats.some(s => !s.worker || s.worker === instance))) return refuse("ride", `ride: every seat of "${a.ride}" is another agent's workplace.`);
       ride = v.id;
     }
     const since = this.now(), seconds = a.seconds ?? (ride ? OFFICE_ACT_LIMITS.rideDefaultSeconds : OFFICE_ACT_LIMITS.defaultSeconds);

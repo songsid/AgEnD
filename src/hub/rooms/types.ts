@@ -17,6 +17,8 @@ export interface RoomMessage {
   warning?: "assistant-unavailable";
   ask?: { total: number; answered: number; working: number; later: number; failed?: number; blocked?: number; reason?: "share-needs-reshare" | "finished-without-answer" | "owner-stopped-sharing" | "expired" | "retired" | "unavailable" | "interrupted" | "unknown" };
   answerTo?: string;
+  /** A completed reaction has no text bubble and is never a pending worker. */
+  acknowledgedByReaction?: true;
   /** The immediate question's person-member id (same identity as room.me.id), never an agent owner's id. */
   askedBy?: string;
   reasonCode?: "owner-declined" | "finished-without-answer" | "owner-stopped-sharing" | "share-needs-reshare";

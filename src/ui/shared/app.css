@@ -1106,6 +1106,20 @@ html.lb-open .scroller { overflow: hidden; }
 .pv-label { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--text-2); margin-right: auto; font-family: var(--font-mono); }
 .pv-note { font-size: var(--fs-xs); color: var(--text-3); margin-top: 6px; }
 .pv-note:empty { display: none; }
+/* M-3814: the 429 notice's link to the fixed preview address (Settings → Access). */
+.pv-note .pv-fix { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+/* Chinese wraps between words, not inside one (建立, 查得到, 使用). */
+:lang(zh) .pv-note, :lang(zh) .fixed-preview, :lang(zh) .s-public-entry .note { word-break: keep-all; overflow-wrap: anywhere; }
+/* M-3814: the fixed preview address's Cloudflare step, under the fixed hostname. */
+.fixed-preview { margin-top: var(--s-3); }
+/* No fixed public hostname yet: why there is no preview field — body-size, set apart (the 429 link lands here). */
+.fixed-preview-needs { margin: var(--s-2) 0; padding: 8px var(--s-3) 8px calc(var(--s-3) + 3px); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); --lbar-color: var(--accent); }   /* the bar: .lbar (#2330) */
+:lang(zh) .fixed-preview-needs { word-break: keep-all; overflow-wrap: anywhere; }
+.fixed-preview-steps { margin: var(--s-2) 0; }
+.fixed-preview-steps summary { cursor: pointer; padding: 6px 0; }
+.fixed-preview-steps ol { margin: var(--s-1) 0 0; padding-left: 1.6em; list-style: decimal; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.fixed-preview-steps li + li { margin-top: 4px; }
+.fixed-preview .save-row .fixed-preview-why { margin: 0 0 0 var(--s-2); align-self: center; }
 .pv-banner { margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); font-size: var(--fs-xs); background: var(--warn-bg); border: 1px solid var(--warn-line);
   display: flex; align-items: flex-start; gap: var(--s-2); }
 .pv-banner[hidden] { display: none; }
@@ -1136,7 +1150,7 @@ html.lb-open .scroller { overflow: hidden; }
 .p-chat > .panel-head { --bg: var(--chrome-bg); --surface: var(--chrome-surface); --text: var(--chrome-text); --text-2: var(--chrome-text-2); --accent: var(--chrome-accent); background: var(--bg); color: var(--text); }
 .p-chat.th { background: var(--bg); color: var(--text); }
 .p-chat.th .msg.user .body { border-radius: var(--bubble-radius, var(--r-xl)); }
-.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea, .p-chat.th-font-system .composer-ph { font-family: system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }
+.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea, .p-chat.th-font-system .composer-ph { font-family: "AgEnD Emoji", system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }
 .p-chat.th-font-mono .thread, .p-chat.th-font-mono .composer textarea, .p-chat.th-font-mono .composer-ph { font-family: var(--font-mono); }
 .p-chat.th-bubble-thin .msg.user .body { box-shadow: inset 0 0 0 1px var(--border); }
 .p-chat.th-bubble-accent .msg.user .body { box-shadow: inset 0 0 0 1px var(--accent); }
@@ -2236,6 +2250,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .update-text { display: flex; align-items: flex-start; gap: var(--s-2); min-width: 0; }
 .update-icon { display: inline-flex; flex: none; margin-top: 1px; }
 .update-words { min-width: 0; }
+/* M-3770 1.4 (capture check): zh banner words break at spaces and punctuation, never inside a word (「閒置時」), as the credits card's. */
+.update-words :is(.update-title, .update-sub) { word-break: keep-all; overflow-wrap: anywhere; text-wrap: balance; }
 .update-title { font-weight: 600; }
 .update-sub { font-size: var(--fs-xs); color: var(--text-2); }
 .update-line.bad .update-sub, .update-line.ok .update-sub { color: var(--text-2); }
@@ -2258,6 +2274,47 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
   .update-actions.indent { margin-left: 26px; }
 }
 /* M-2738: Settings → Advanced → Version and update */
+/* M-3770 1.4: the update card's Settings part — its state, "Updates on this machine", and the controls (pause windows;
+   Advanced: pin, longest wait). Phone: every control a 44 px box, the day ticks wrap. */
+.uc-settings { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-3); border-top: 1px solid var(--border); padding-top: var(--s-3); }
+.uc-status { margin: 0; font-size: var(--fs-sm); }
+.uc-machine { font-size: var(--fs-sm); }
+.uc-machine .uc-mark { font-weight: var(--fw-semibold); margin: 0 2px; }
+.uc-self .uc-mark { color: var(--ok); } .uc-admin-only .uc-mark { color: var(--warn); } .uc-stop .uc-mark { color: var(--danger); }
+.uc-checks { margin: var(--s-1) 0 0; padding-left: var(--s-4); color: var(--text-2); }
+.uc-controls { display: flex; flex-direction: column; gap: var(--s-3); }
+.uc-pause { border: 0; padding: 0; margin: 0; min-width: 0; }
+.uc-pause legend { font-weight: var(--fw-semibold); font-size: var(--fs-sm); padding: 0; }
+.uc-hint { margin: 2px 0 var(--s-2); font-size: var(--fs-xs); }
+.uc-pause-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding: var(--s-2) 0; border-bottom: 1px solid var(--border); }
+.uc-days { display: flex; flex-wrap: wrap; gap: 2px var(--s-2); }
+.uc-day { font-size: var(--fs-sm); }
+.uc-time { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-sm); color: var(--text-2); }
+.uc-time .input { width: auto; }
+.uc-row-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+.uc-advanced .field { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--s-2); max-width: 320px; }
+.uc-pick { display: flex; flex-direction: column; gap: var(--s-2); }
+.uc-pick-row { font-size: var(--fs-sm); }
+.uc-pick-frame { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.uc-pick-frame { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); }
+.uc-pick-field { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-2); }
+.uc-pick-field .input { width: auto; min-width: 7em; }
+.uc-how { margin-top: 2px; font-size: var(--fs-md); }
+.uc-how summary { cursor: pointer; color: var(--accent); }
+.uc-how p { margin: var(--s-1) 0 0; color: var(--text); overflow-wrap: anywhere; }
+/* #4487 UX look: a command in a check's sentence is code to copy (one tap selects it all); the banner's secondary buttons
+   keep a visible outline on any banner colour (先不要 on the phone's dark press-only banner). */
+.uc-cmd { font-family: var(--font-mono); font-size: 0.92em; padding: 1px 5px; border-radius: var(--r-sm); background: var(--surface);
+  border: 1px solid var(--border); user-select: all; display: inline-block; max-width: 100%; white-space: nowrap; overflow-x: auto;
+  vertical-align: bottom; }   /* a command stays on one line (never "sudo agen / d update"); a long one scrolls in its box */
+.update-actions .btn:not(.btn-primary):not(.update-x) { border-color: var(--border-strong); }
+.uc-needs .n-item { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
+@media (max-width: 899px), (pointer: coarse) {
+  .uc-settings :is(.btn, .input, .uc-day, .uc-pick-row), .uc-needs .btn, .update-line .update-actions .btn { min-height: var(--tap); }
+  .uc-day, .uc-pick-row { display: inline-flex; align-items: center; }
+  .uc-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); width: 100%; }   /* the week on one row */
+  .uc-day { justify-content: center; gap: 2px; }
+}
 .s-update dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px var(--s-4); margin: 0 0 var(--s-3); font-size: var(--fs-sm); }
 .s-update dt { color: var(--text-2); }
 .s-update dd { margin: 0; }
@@ -2718,6 +2775,13 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card.sheet .oo-card-close { width: var(--tap); height: var(--tap); margin: -6px -8px 0 0; }
 .oo-card.sheet .oo-card-actions .btn { flex: 1; min-height: var(--tap); justify-content: center; }
 .oo-card.sheet .oo-card-actions { flex-wrap: wrap; }
+/* #4504: the card's pose preview — a labelled picker and Replay (a small button) on one row: the picker shrinks, Replay keeps its size. */
+.oo-card-preview { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
+.oo-card-preview label { display: flex; align-items: center; gap: var(--s-1); flex: 1; min-width: 0; }
+.oo-card-preview select { flex: 1; min-width: 0; }
+.oo-card-preview .btn { flex: none; }
+/* #4508 review: on the sheet, a fingertip's 44 px like the actions row; the select keeps 16 px text from the coarse-pointer rule at the top. */
+.oo-card.sheet .oo-card-preview select, .oo-card.sheet .oo-card-preview .btn { min-height: var(--tap); }
 .oo-card-grip { width: 36px; height: 4px; margin: 0 auto var(--s-2); border-radius: var(--r-full); background: var(--surface-2); }
 /* M-3633: a sheet whose content scrolls scrolls natively (pan-y); its grip is then the handle that closes it — kept at
    its top, a fingertip tall (the bar drawn in the middle of it), never taken by the browser (touch-action none). */
@@ -5525,3 +5589,18 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* M-3678: the new owner stop action follows the phone tap target. */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .n-actions .hub-close { min-height: var(--tap); min-width: var(--tap); } }
+
+/* H: provenance stays outside the collapsible message, with the existing flat notice disclosure. */
+.request-provenance { color: var(--text-2); margin-bottom: var(--s-2); overflow-wrap: anywhere; }
+.request-provenance strong { color: var(--text); font-size: inherit; font-weight: 600; }
+.request-provenance p { margin: var(--s-1) 0; }
+.request-provenance .n-raw { margin: var(--s-1) 0; }
+.request-provenance summary { cursor: pointer; list-style: disclosure-closed inside; }
+.request-provenance details[open] > summary { list-style-type: disclosure-open; }
+.request-provenance .msg-tools { opacity: 1; }
+.request-provenance .n-raw-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .request-provenance summary { min-height: var(--tap); display: list-item; padding-block: var(--s-3); }
+  .request-provenance .msg-tools button { min-height: var(--tap); min-width: var(--tap); }
+}

@@ -13,6 +13,7 @@ const ICONS = {
   "/icon-192.png": { file: "icon-192.png", type: "image/png", custom: "icon-192.png" },
   "/icon-512.png": { file: "icon-512.png", type: "image/png", custom: "icon-512.png" },
   "/manifest.webmanifest": { file: null, type: "application/manifest+json", custom: null },
+  "/sw.js": { file: null, type: "text/javascript; charset=utf-8", custom: null },
 } as const satisfies Record<string, { file: string | null; type: string; custom: AppIconFile | null }>;
 type IconPath = keyof typeof ICONS;
 const bodies = new Map<string, Buffer>();
@@ -27,6 +28,18 @@ export function useAppIconStore(s: Pick<AppIconStore, "current" | "file"> | null
 export function appIconVersion(): string {
   try { return store?.current()?.version ?? "default"; } catch { return "default"; }
 }
+
+/**
+ * S-255: the service worker that makes the page an app (installed window, and later closed-tab notifications). It has
+ * no fetch handler and opens no cache: nothing the dashboard or the Hub serves — API answers, chat, files — is ever
+ * stored or answered by it, so signing out, a revoked session or a changed page behave exactly as without it.
+ */
+export const SERVICE_WORKER = [
+  "// AgEnD: no fetch handler and no cache. The pages and every API call go to the server as before.",
+  "self.addEventListener(\"install\", () => { self.skipWaiting(); });",
+  "self.addEventListener(\"activate\", (event) => { event.waitUntil(self.clients.claim()); });",
+  "",
+].join("\n");
 
 /** The page colour a browser paints around the app (tokens.css --bg, dark and light). */
 const THEME = { dark: "#212121" };
@@ -94,10 +107,10 @@ export function handleWebIconRequest(req: IncomingMessage, res: ServerResponse, 
   const asked = new URL(req.url ?? "/", "http://localhost").searchParams.get("v");
   const version = appIconVersion();
   // The version in force, asked for by name, never changes: cached for good. Anything else is checked each time.
-  const cache = asked !== null && asked === version ? "public, max-age=31536000, immutable" : "no-cache";
+  const cache = path !== "/sw.js" && asked !== null && asked === version ? "public, max-age=31536000, immutable" : "no-cache";
   try {
     let body: Buffer | null = null;
-    if (icon.file === null) body = Buffer.from(appManifest());
+    if (icon.file === null) body = Buffer.from(path === "/sw.js" ? SERVICE_WORKER : appManifest());
     else if (icon.custom && version !== "default") body = store?.file(icon.custom, version) ?? null;
     body ??= icon.file === null ? null : bundled(icon.file);
     if (!body) throw new Error("no icon");
