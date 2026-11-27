@@ -2787,10 +2787,11 @@ export class TaskBoard {
   /**
    * What of a wake still stands now (at the end of its write, and again when the fleet sends it): a finished card is
    * news only as a cancel; a card that is no longer the instance's is not; a question only while the card is blocked
-   * and the instance still handed it out; a wrap-up only while the main task is in review or done and still lacks something; and an assignment only once the
-   * card can start (its "ready" wakes it then). What asks the instance to act holds only while it still can (#2303
-   * review): "ready" while the card is open with nothing left to wait for, "start" and "answered" while it is in
-   * progress, "sent back" while it is back with the instance. null when nothing is left.
+   * and the instance still handed it out; a wrap-up only while the main task still lacks something and is in review, or
+   * done with nobody to confirm it; and an assignment only once the card can start (its "ready" wakes it then). What
+   * asks the instance to act holds only while it still can (#2303 review): "ready" while the card is open with nothing
+   * left to wait for, "start" and "answered" while it is in progress, "sent back" while it is back with the instance.
+   * null when nothing is left.
    */
   wakeHolds(wake: Wake): Wake | null {
     const card = this.byUuid(wake.uuid);
@@ -2804,8 +2805,10 @@ export class TaskBoard {
       if (r === "mention") return true;
       // A follower is told how the card moved on while it still stands there (finished too), and while it still follows it.
       if (r === "progress") return !!wake.news && this.followersOf(card).has(wake.instance) && this.progressStands(card, wake.news);
-      // A main task that finished by itself stays its owner's to wrap up, in review or done, while something is still missing.
-      if (r === "wrap_up") return own && card.kind === "main" && (card.status === "review" || card.status === "done") && wrapUpGap(card) !== null;
+      // A main task that finished by itself stays its owner's to wrap up while something is still missing: in review, or done
+      // when nobody had to confirm it. One confirmed since (done after review) was accepted as it is: nothing left to wrap up.
+      if (r === "wrap_up") return own && card.kind === "main" && wrapUpGap(card) !== null
+        && (card.status === "review" || (card.status === "done" && !requiresReview(card)));
       if (isFinished(card)) return false;
       if (r === "decide") return handedOut && card.status === "blocked";
       // #2341 review: and still waiting for the person — its confirmation not switched off during the gather.

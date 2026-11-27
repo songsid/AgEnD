@@ -6,8 +6,9 @@
  *   1. A main task nobody confirms goes straight to done when its last sub task does; its owner is sent the wrap-up notice
  *      (what was missing: unticked items, no result), as one that went to review already was. Not when nothing is missing,
  *      and not for the writer itself (its own answer says so instead).
- *   2. The notice holds while the card is in review or done and still lacks something; it drops once the owner filled it in or
- *      the card was reopened. `get` says a done main task "finished without a wrap-up" until then.
+ *   2. The notice holds while the card still lacks something and is in review, or done with nobody to confirm it; it drops
+ *      once the owner filled it in, the card was reopened, or someone confirmed it (accepted as it is). `get` says a done
+ *      main task "finished without a wrap-up" until then. The board's own catch-up to done wakes nobody.
  *   3. The owner can wrap a done main task up (check, result, comment) in one update.
  *   4. The default instructions and the task-board skill tell an agent to do it.
  *
@@ -17,6 +18,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import Database from "better-sqlite3";
 import { SchedulerDb } from "../src/scheduler/db.js";
 import type { Actor, TaskBoard, Wake } from "../src/scheduler/task-board.js";
 import { cardText } from "../src/scheduler/task-board-text.js";
@@ -33,12 +35,14 @@ afterEach(() => {
   for (const db of dbs.splice(0)) { try { db.close(); } catch { /* closed */ } }
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
-function open(): TaskBoard {
+function openAt(): { board: TaskBoard; path: string } {
   const d = mkdtempSync(join(tmpdir(), "task-board-wrap-up-")); dirs.push(d);
-  const db = new SchedulerDb(join(d, "scheduler.db")); dbs.push(db);
+  const path = join(d, "scheduler.db");
+  const db = new SchedulerDb(path); dbs.push(db);
   db.board.setCommentRouting({ instances: () => INSTANCES, enabled: () => true });
-  return db.board;
+  return { board: db.board, path };
 }
+function open(): TaskBoard { return openAt().board; }
 /** What each write woke, as the fleet's waker would be handed it. */
 function heard(board: TaskBoard) {
   const wakes: Wake[] = [];
@@ -234,6 +238,46 @@ describe("2. the notice holds while something is missing", () => {
     expect(board.wakeHolds(wrap)).toBeNull();
   });
 
+  it("a main task the person confirms: confirmed before the notice goes out, it was accepted as it is — the wrap-up is dropped", () => {
+    const board = open(), w = heard(board);
+    const p = plan(board, { needsReview: true });
+    finishBoth(board, p);
+    expect(board.getCard(p.main.code).status).toBe("review");
+    const wake = w.take().find((x) => x.instance === "lead" && x.code === p.main.code)!;
+    expect(wake.reasons).toEqual(["confirm_own", "wrap_up"]);
+    expect(board.wakeHolds(wake)?.reasons).toEqual(["confirm_own", "wrap_up"]);
+    board.moveCard(ANN, p.main.code, "done");
+    const main = board.getCard(p.main.code);
+    expect(main.status).toBe("done");
+    expect(main.needsReview).toBe(true);
+    expect(main.acceptance.every((a) => !a.done)).toBe(true);           // still unticked: the person took it as it is
+    expect(board.wakeHolds(wake)).toBeNull();
+    expect(w.take().filter((x) => x.code === p.main.code && x.reasons.includes("wrap_up"))).toEqual([]);
+  });
+
+  it("the board's own catch-up (a main task read behind its sub tasks) moves it to done and wakes nobody", () => {
+    const { board, path } = openAt(), w = heard(board);
+    const p = plan(board);
+    board.moveCard(DEV, p.draft.code, "claimed");
+    board.moveCard(DEV, p.draft.code, "done", { result: "drafted" });
+    // The last sub task finished by a release without the board: nothing derived the main task.
+    const raw = new Database(path);
+    raw.prepare("UPDATE tasks SET status = 'done' WHERE id = ?").run(p.review.uuid);
+    raw.close();
+    expect(board.getCard(p.main.code).status).toBe("claimed");
+    w.take();
+    const changes: Array<{ moved: boolean }> = [];
+    board.onChange((c) => { changes.push({ moved: c.ids.includes(p.main.code) }); });
+    board.reconcile();
+    const main = board.getCard(p.main.code);
+    expect(main.status).toBe("done");
+    expect(main.result).toBeFalsy();
+    expect(changes.some((c) => c.moved)).toBe(true);                    // the catch-up was written and announced
+    expect(w.take().filter((x) => x.code === p.main.code)).toEqual([]);
+    // `get` still says what is missing, for whoever reads it.
+    expect(cardText(board, main)).toContain("finished without a wrap-up");
+  });
+
   it("`get` says a done main task finished without a wrap-up, until it is wrapped up; a sub task never does", () => {
     const board = open();
     const p = plan(board);
@@ -290,14 +334,36 @@ describe("4. through the fleet's waker", () => {
     const filled = run(true);
     expect(filled.sent.map((x) => x.message).join("\n")).not.toContain("wrap it up with update");
   });
+
+  it("a main task the person confirms during the gather is not sent to its owner to wrap up", () => {
+    const board = open();
+    const sent: Array<{ instance: string; message: string }> = [];
+    const timers: Array<{ fn: () => void; live: boolean }> = [];
+    const waker = new TaskBoardWaker({
+      deliver: (instance, message) => { sent.push({ instance, message }); return true; },
+      isInstance: (n) => INSTANCES.includes(n),
+      holds: (x) => board.wakeHolds(x),
+      card: (uuid) => board.findCard(uuid),
+      log: () => {},
+      timers: { set: (fn) => { const t = { fn, live: true }; timers.push(t); return t; }, clear: (h) => { (h as { live: boolean }).live = false; } },
+    });
+    board.onChange((c) => waker.note(c.wakes));
+    const p = plan(board, { needsReview: true });
+    finishBoth(board, p);
+    board.moveCard(ANN, p.main.code, "done");
+    for (const t of timers.splice(0)) if (t.live) t.fn();
+    const toLead = sent.filter((x) => x.instance === "lead").map((x) => x.message).join("\n");
+    expect(toLead).not.toContain("wrap it up with update");
+    expect(toLead).not.toContain(`${p.main.code} "Publish the report"`);
+  });
 });
 
 describe("5. the instructions tell an agent to wrap a main task up", () => {
   const read = (rel: string) => readFileSync(new URL(`../${rel}`, import.meta.url), "utf8");
   it("the default instructions: it finishes by itself; check, result and a comment; the notice", () => {
     const text = read("src/workflow-templates/default.md");
-    expect(text).toContain("A main task you own finishes by itself when its last sub task does");
-    expect(text).toContain("`check` for the definition-of-done items that are met, a `result` summary, and a `comment` for the person");
+    expect(text).toContain("A main task you own finishes by itself with its last sub task (to `review` if someone confirms it, else `done`)");
+    expect(text).toContain("then `update` it — `check` the met definition-of-done items, a `result`, and a `comment` for the person");
     expect(text).toContain("a main task of yours finished and still to wrap up");
   });
   it("the task-board skill: the same, with the numbers `get` shows, and not only at the end", () => {
