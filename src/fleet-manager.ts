@@ -27827,8 +27827,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       changedAt: (uuid) => db.board.lastChangeAt(uuid),
       // The comment status: what became of a card's news for an instance — handed to delivery (its key), or not sent — is kept with
       // the comments it carried, and the open card pages read it again (the card numbers only: never who or why).
-      settled: ({ uuid, instance, key, skip }) => {
-        const touched = key ? db.board.wakeHanded(uuid, instance, key) : skip ? db.board.wakeDropped(uuid, instance, skip) : [];
+      settled: ({ uuid, instance, key, skip, replaces }) => {
+        const touched = key ? db.board.wakeHanded(uuid, instance, key, replaces) : skip ? db.board.wakeDropped(uuid, instance, skip) : [];
         this.emitTaskWakes(touched);
       },
       holds: (wake) => db.board.wakeHolds(wake),

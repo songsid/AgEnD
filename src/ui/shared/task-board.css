@@ -434,6 +434,11 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tl-wake { display: inline-flex; align-items: center; gap: var(--s-1); max-width: 100%; font-size: var(--fs-xs); line-height: var(--lh-xs); color: var(--text-2); }
 .tl-wake > svg { flex: none; }
 .tl-wake .tb-link { font-size: inherit; text-align: start; color: inherit; }
+/* On a touch screen or a phone what a finger presses is a 44px box (style guide §7): the link to an agent's reply, and a card's title in the unread strip (grown by padding, given back by margin). */
+@media (pointer: coarse), (max-width: 899px) {
+  .tl-wake .tb-link { display: inline-flex; align-items: center; min-height: var(--tap); }
+  .tb-unread-row .tb-wait-title { --grow: max(0px, calc((var(--tap) - 1lh) / 2)); padding-block: var(--grow); margin-block: calc(-1 * var(--grow)); }
+}
 .tl-wake.wk-ok, .tl-wake.wk-done { color: var(--ok); }
 .tl-wake.wk-busy { color: var(--accent); }
 .tl-wake.wk-bad { color: var(--danger); }

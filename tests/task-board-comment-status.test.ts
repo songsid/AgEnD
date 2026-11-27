@@ -470,6 +470,66 @@ describe("4. the person's unread", () => {
     expect(board.unreadFor("Ann").total).toBe(1);                                  // a new comment on the same card is
   });
 
+  it("the 30 days are in the query: the range of comment numbers it reads starts at the first comment inside the window, found by an index", () => {
+    const r = rig();
+    const raw = (r.board as unknown as { db: { prepare(s: string): { all(...a: unknown[]): Array<Record<string, unknown>> } } }).db;
+    const plan = raw.prepare("EXPLAIN QUERY PLAN SELECT MIN(id) AS id FROM task_entries INDEXED BY idx_task_entries_at WHERE at >= ?").all("2026-01-01T00:00:00.000Z").map((x) => String(x.detail)).join(" | ");
+    expect(plan, "the window's first comment is an index search, not a scan of the comments").toMatch(/USING (COVERING )?INDEX idx_task_entries_at/);
+    // And the comments older than it, whatever number they hold, are never read: an old comment under the floor's reach stays unread-free.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const t0 = Date.parse("2026-09-01T09:00:00Z");
+    vi.setSystemTime(t0);
+    const c = card(r.board, LEAD, { assignee: "dev-a" });
+    r.board.unreadFor("Ann");
+    r.board.updateCard(ANN, c.code, { comment: "an old question" });
+    r.board.updateCard(DEV, c.code, { comment: "an old answer" });
+    vi.setSystemTime(t0 + (UNREAD_WINDOW_DAYS + 5) * 86_400_000);
+    expect(r.board.unreadFor("Ann").total).toBe(0);
+    r.board.updateCard(ANN, c.code, { comment: "a new question" });
+    r.board.updateCard(DEV, c.code, { comment: "a new answer" });
+    expect(r.board.unreadFor("Ann").cards[0]).toMatchObject({ n: 1, reasons: ["answer"] });
+  });
+
+  it("two accounts that are both \"web-user\" do not share what they have read, or each other's words: marks, floors and replies go by the key", () => {
+    const r = rig();
+    const A: Actor = { kind: "person", name: "web-user", key: "acct:a" }, B: Actor = { kind: "person", name: "web-user", key: "acct:b" };
+    const c = card(r.board, LEAD, { assignee: "dev-a" });
+    r.board.unreadFor(A); r.board.unreadFor(B);                                      // each has a floor of their own
+    const raw = (r.board as unknown as { db: { prepare(s: string): { all(): Array<Record<string, unknown>> } } }).db;
+    expect(raw.prepare("SELECT person FROM task_reads_floor ORDER BY person").all().map((x) => x.person)).toEqual(["key:acct:a", "key:acct:b"]);
+    r.board.updateCard(A, c.code, { comment: "a's question", to: [] });                 // (no agent is asked: the replies are what is news)
+    const a1 = lastEntry(r.board, c.code);
+    r.board.updateCard(B, c.code, { comment: "b's question", to: [] });
+    const b1 = lastEntry(r.board, c.code);
+    r.board.updateCard(DEV, c.code, { comment: "to a", replyTo: a1 });
+    expect(r.board.unreadFor(A).cards.map((u) => [u.id, u.reasons]), "a reply under a's comment is a's news").toEqual([[c.code, ["reply"]]]);
+    expect(r.board.unreadFor(B).total, "…and not b's, though the name is the same").toBe(0);
+    r.board.updateCard(DEV, c.code, { comment: "to b", replyTo: b1 });
+    expect(r.board.unreadFor(B).total).toBe(1);
+    r.board.markRead(A, c.code);
+    expect(r.board.unreadFor(A).total, "a has read it").toBe(0);
+    expect(r.board.unreadFor(B).total, "b's mark is b's").toBe(1);
+    r.board.markRead(B, c.code);
+    expect(r.board.unreadFor(B).total).toBe(0);
+    expect(raw.prepare("SELECT person FROM task_card_reads ORDER BY person").all().map((x) => x.person)).toEqual(["key:acct:a", "key:acct:b"]);
+    // Another account's comment is not "their own words": a's mention of the name is news to b (b did not write it), and a comment b wrote is not b's news.
+    r.board.updateCard(A, c.code, { comment: "@web-user from a" });
+    expect(r.board.unreadFor(B).cards[0]!.reasons).toEqual(["mention"]);
+    expect(r.board.unreadFor(A).total, "a's own words are never news to a").toBe(0);
+  });
+
+  it("a session with no key is read by its name (the name alone, kept apart from every key's marks)", () => {
+    const r = rig();
+    const c = card(r.board, LEAD, { assignee: "dev-a" });
+    r.board.unreadFor("Ann");
+    r.board.updateCard(ANN, c.code, { comment: "a question" });
+    r.board.updateCard(DEV, c.code, { comment: "an answer" });
+    expect(r.board.unreadFor("Ann").total).toBe(1);
+    expect(r.board.unreadFor({ name: "Ann", key: "acct:ann" }).total, "another reader (a key) has a floor of its own: nothing before it is news").toBe(0);
+    const raw = (r.board as unknown as { db: { prepare(s: string): { all(): Array<Record<string, unknown>> } } }).db;
+    expect(raw.prepare("SELECT person FROM task_reads_floor ORDER BY person").all().map((x) => x.person)).toEqual(["key:acct:ann", "name:Ann"]);
+  });
+
   it("a cancelled card is not looked at; a finished one still is (an agent often answers as it finishes)", () => {
     const { board, c } = asked();
     board.updateCard(DEV, c.code, { comment: "going well" });

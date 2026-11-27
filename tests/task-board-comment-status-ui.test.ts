@@ -13,6 +13,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 let p: AppPage;
 let app: any, nav: any, fleet: any, wake: any, unreadUi: any, unreadStore: any, run: any;
@@ -360,5 +362,33 @@ describe("4. the sidebar's number", () => {
     await p.unmount();
     await shell({ loaded: true, enabled: false, total: 4, cards: {} });
     expect(qa("#sidebar .task-unread-count")).toHaveLength(0);
+  });
+});
+
+describe("3b. a read that cannot start is a failed read", () => {
+  it("with no `fetch` (a page torn down while its debounce timer was still running) the read answers false and nothing is thrown", async () => {
+    const real = (globalThis as any).fetch;
+    delete (globalThis as any).fetch;
+    try {
+      let thrown: unknown = null;
+      const hear = (e: unknown) => { thrown = e; };
+      process.once("uncaughtException", hear);
+      expect(await unreadStore.refreshTaskUnread()).toBe(false);
+      await new Promise((r) => setTimeout(r, 20));
+      process.off("uncaughtException", hear);
+      expect(thrown).toBeNull();
+    } finally { (globalThis as any).fetch = real; }
+    expect(await unreadStore.refreshTaskUnread(), "and the next read, with fetch back, works").toBe(true);
+  });
+});
+
+describe("4. what a finger presses on a touch screen or a phone is a 44px box", () => {
+  const css = readFileSync(fileURLToPath(new URL("../src/ui/shared/task-board.css", import.meta.url)), "utf8");
+  it("the link to an agent's reply and a card's title in the unread strip take --tap", () => {
+    const at = css.indexOf("@media (pointer: coarse), (max-width: 899px) {\n  .tl-wake .tb-link");
+    expect(at, "a touch / narrow block for the status line").toBeGreaterThan(0);
+    const block = css.slice(at, css.indexOf("\n}\n", at));
+    expect(block).toMatch(/\.tl-wake \.tb-link \{[^}]*min-height: var\(--tap\)/);
+    expect(block).toMatch(/\.tb-unread-row \.tb-wait-title \{ --grow: max\(0px, calc\(\(var\(--tap\) - 1lh\) \/ 2\)\); padding-block: var\(--grow\); margin-block: calc\(-1 \* var\(--grow\)\); \}/);
   });
 });

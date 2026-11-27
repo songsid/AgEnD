@@ -14,6 +14,11 @@
  *
  * A fresh start does not make the whole history unread: the first time a person is asked, the newest comment and event numbers
  * are written as their floor (`task_reads_floor`), and only what comes after it can be unread.
+ *
+ * Who "the person" is: a reader is a name and, when the session has one, the person's stable key. The mark and the floor are kept
+ * under the key (`key:…`; the name alone — `name:…` — only for a session with none), so two accounts that are both "web-user" do not
+ * share what they have read; and a comment is the person's own words, or the parent of a reply to them, by the key it kept when it was
+ * written (a comment with no key — written before keys, an instance's — by the name).
  */
 import type Database from "better-sqlite3";
 import { parseMentions } from "./task-board-mentions.js";
@@ -54,34 +59,49 @@ export interface Unread {
 /** A card that waits for the person, as the board knows it (TaskBoard.waitingFor). */
 export interface WaitingCard { uuid: string; code: string; status: "review" | "blocked" }
 
-interface Candidate { id: number; task_id: string; author: string; author_kind: string; text: string; at: string; parent_id: number | null }
+/** Who is asking: the person's name and, when the session has one, their stable dashboard key. */
+export interface Reader { name: string; key?: string }
+
+interface Candidate { id: number; task_id: string; author: string; author_kind: string; author_key: string | null; text: string; at: string; parent_id: number | null }
+
+/** What the person's marks are kept under: their key when they have one, else their name (a name alone never stands in for a key). */
+export const markOf = (who: Reader): string => (who.key ? `key:${who.key}` : `name:${who.name}`);
 
 /** The floor of a person: the newest comment and event numbers when they were first asked (written then, once). */
-function floorOf(db: Database.Database, person: string, now: string): { entry: number; event: number } {
-  const read = () => db.prepare("SELECT entry_floor AS entry, event_floor AS event FROM task_reads_floor WHERE person = ?").get(person) as { entry: number; event: number } | undefined;
+function floorOf(db: Database.Database, mark: string, now: string): { entry: number; event: number } {
+  const read = () => db.prepare("SELECT entry_floor AS entry, event_floor AS event FROM task_reads_floor WHERE person = ?").get(mark) as { entry: number; event: number } | undefined;
   const had = read();
   if (had) return had;
   db.prepare(`INSERT OR IGNORE INTO task_reads_floor (person, entry_floor, event_floor, at)
-    VALUES (?, (SELECT COALESCE(MAX(id), 0) FROM task_entries), (SELECT COALESCE(MAX(id), 0) FROM task_events), ?)`).run(person, now);
+    VALUES (?, (SELECT COALESCE(MAX(id), 0) FROM task_entries), (SELECT COALESCE(MAX(id), 0) FROM task_events), ?)`).run(mark, now);
   return read() ?? { entry: 0, event: 0 };
 }
 
-/** Whether `by` (a name and a kind) is the person: a person of that name (an instance of the same name is someone else). */
-const isThem = (person: string, name: string, kind: string) => name === person && kind === "person";
+/**
+ * Whether the author of a row is the person: a person (an instance of the same name is someone else) and, for a row that kept its
+ * writer's key, the same key — another account with the same name is someone else, and so is a session with no key; a row with no key
+ * (written before keys) is the name's.
+ */
+const isThem = (who: Reader, name: string, kind: string, key: string | null | undefined): boolean =>
+  kind === "person" && (key ? !!who.key && key === who.key : name === who.name);
 
-export function unreadFor(db: Database.Database, person: string, waiting: readonly WaitingCard[], now: string): Unread {
-  const floor = floorOf(db, person, now);
-  const rows = db.prepare(`
-    SELECT e.id, e.task_id, e.author, e.author_kind, e.text, e.at, e.parent_id
+export function unreadFor(db: Database.Database, person: Reader, waiting: readonly WaitingCard[], now: string): Unread {
+  const mark = markOf(person);
+  const floor = floorOf(db, mark, now);
+  const since = new Date(Date.parse(now) - UNREAD_WINDOW_DAYS * 86_400_000).toISOString();
+  // The window is in the query: the first comment inside it (found by idx_task_entries_at) starts the range of numbers read, so a poll
+  // never walks what is older than it — a card nobody opens does not make every poll slower for ever.
+  const first = (db.prepare("SELECT MIN(id) AS id FROM task_entries INDEXED BY idx_task_entries_at WHERE at >= ?").get(since) as { id: number | null }).id;
+  const rows = first === null ? [] : (db.prepare(`
+    SELECT e.id, e.task_id, e.author, e.author_kind, e.author_key, e.text, e.at, e.parent_id
     FROM task_entries e
     LEFT JOIN task_card_reads r ON r.person = ? AND r.task_id = e.task_id
-    WHERE e.kind = 'comment' AND e.deleted_at IS NULL AND e.id > ? AND e.id > COALESCE(r.seen_entry, 0)
+    WHERE e.kind = 'comment' AND e.deleted_at IS NULL AND e.id >= ? AND e.id > ? AND e.id > COALESCE(r.seen_entry, 0)
       AND e.at >= ?
-      AND NOT (e.author = ? AND e.author_kind = 'person')
       AND e.task_id IN (SELECT id FROM tasks WHERE status <> 'cancelled')
-    ORDER BY e.id`).all(person, floor.entry, new Date(Date.parse(now) - UNREAD_WINDOW_DAYS * 86_400_000).toISOString(), person) as Candidate[];
-  const parentOf = db.prepare("SELECT author, author_kind FROM task_entries WHERE id = ?");
-  const myEarlier = db.prepare("SELECT id, wakes FROM task_entries WHERE task_id = ? AND author = ? AND author_kind = 'person' AND id < ? AND deleted_at IS NULL AND wakes IS NOT NULL ORDER BY id DESC");
+    ORDER BY e.id`).all(mark, first, floor.entry, since) as Candidate[]).filter((e) => !isThem(person, e.author, e.author_kind, e.author_key));
+  const parentOf = db.prepare("SELECT author, author_kind, author_key FROM task_entries WHERE id = ?");
+  const myEarlier = db.prepare("SELECT id, wakes, author, author_key FROM task_entries WHERE task_id = ? AND author_kind = 'person' AND id < ? AND deleted_at IS NULL AND wakes IS NOT NULL ORDER BY id DESC");
   const answeredAlready = db.prepare("SELECT 1 FROM task_entries WHERE task_id = ? AND author = ? AND author_kind = ? AND kind = 'comment' AND deleted_at IS NULL AND id > ? AND id < ? LIMIT 1");
   const codeOf = db.prepare("SELECT code FROM tasks WHERE id = ?");
 
@@ -108,14 +128,14 @@ export function unreadFor(db: Database.Database, person: string, waiting: readon
   for (const e of rows) {
     // Under one of the person's own comments.
     if (e.parent_id !== null) {
-      const parent = parentOf.get(e.parent_id) as { author: string; author_kind: string } | undefined;
-      if (parent && isThem(person, parent.author, parent.author_kind)) { note(e.task_id, "reply", e.at, e.author, e.id); continue; }
+      const parent = parentOf.get(e.parent_id) as { author: string; author_kind: string; author_key: string | null } | undefined;
+      if (parent && isThem(person, parent.author, parent.author_kind, parent.author_key)) { note(e.task_id, "reply", e.at, e.author, e.id); continue; }
     }
     // Naming them with `@` (a name the board's `@` rules read: not in code, not part of an address).
-    if (parseMentions(e.text, [person]).names.includes(person)) { note(e.task_id, "mention", e.at, e.author, e.id); continue; }
+    if (parseMentions(e.text, [person.name]).names.includes(person.name)) { note(e.task_id, "mention", e.at, e.author, e.id); continue; }
     // The answer of the instance their comment woke: its first comment on the card after that one.
     if (e.author_kind !== "person") {
-      for (const mine of myEarlier.all(e.task_id, person, e.id) as Array<{ id: number; wakes: string }>) {
+      for (const mine of (myEarlier.all(e.task_id, e.id) as Array<{ id: number; wakes: string; author: string; author_key: string | null }>).filter((m) => isThem(person, m.author, "person", m.author_key))) {
         let list: Array<{ to?: unknown; skip?: unknown }> = [];
         try { const v = JSON.parse(mine.wakes) as unknown; if (Array.isArray(v)) list = v as typeof list; } catch { /* unreadable: no answer is known */ }
         if (!list.some((w) => w && w.to === e.author && !w.skip)) continue;
@@ -133,8 +153,9 @@ export function unreadFor(db: Database.Database, person: string, waiting: readon
     if (!move) continue;
     let to: unknown;
     try { to = (JSON.parse(move.data) as { to?: unknown }).to; } catch { continue; }
-    const beenSeen = (seen.get(person, w.uuid) as { seen_event: number } | undefined)?.seen_event ?? 0;
-    if (to !== w.status || move.id <= floor.event || move.id <= beenSeen || isThem(person, move.actor, move.actor_kind)) continue;
+    const beenSeen = (seen.get(mark, w.uuid) as { seen_event: number } | undefined)?.seen_event ?? 0;
+    // (a move's actor kept no key: the person's own move is the name's, as it is for a comment from before keys)
+    if (to !== w.status || move.id <= floor.event || move.id <= beenSeen || isThem(person, move.actor, move.actor_kind, null)) continue;
     note(w.uuid, w.status, move.at, move.actor);
   }
 
@@ -144,10 +165,11 @@ export function unreadFor(db: Database.Database, person: string, waiting: readon
 }
 
 /** The person has looked at the card: everything on it so far is read (a mark only moves forward). */
-export function markRead(db: Database.Database, person: string, uuid: string, now: string): void {
-  floorOf(db, person, now);
+export function markRead(db: Database.Database, person: Reader, uuid: string, now: string): void {
+  const mark = markOf(person);
+  floorOf(db, mark, now);
   db.prepare(`INSERT INTO task_card_reads (person, task_id, seen_entry, seen_event, at)
     VALUES (?, ?, (SELECT COALESCE(MAX(id), 0) FROM task_entries WHERE task_id = ?), (SELECT COALESCE(MAX(id), 0) FROM task_events WHERE task_id = ?), ?)
     ON CONFLICT (person, task_id) DO UPDATE SET seen_entry = MAX(seen_entry, excluded.seen_entry), seen_event = MAX(seen_event, excluded.seen_event), at = excluded.at`)
-    .run(person, uuid, uuid, uuid, now);
+    .run(mark, uuid, uuid, uuid, now);
 }

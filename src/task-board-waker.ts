@@ -61,7 +61,7 @@ export interface TaskBoardWakerDeps {
    * status"): handed to delivery under `key` (the outbox's), or not sent (`skip` says why). Told for every card's news that carries
    * a comment's words; the board marks the comments it concerns. Absent: nobody keeps it.
    */
-  settled?(event: { uuid: string; instance: string; key?: string; skip?: WakeSkip }): void;
+  settled?(event: { uuid: string; instance: string; key?: string; skip?: WakeSkip; replaces?: readonly string[] }): void;
   log(level: "info" | "warn", message: string, extra?: Record<string, unknown>): void;
   gatherMs?: number;
   timers?: { set(fn: () => void, ms: number): unknown; clear(handle: unknown): void };
@@ -276,7 +276,7 @@ export class TaskBoardWaker {
       // A second comment on the card in the same window: the notice quotes the last and counts the ones before it.
       const earlier = (had?.earlier ?? 0) + (had && hasCommentNews(had) && hasCommentNews(w) ? 1 : 0);
       batch.wakes.set(w.uuid, had
-        ? { ...had, title: w.title, reasons: [...new Set([...had.reasons, ...w.reasons])], by: { ...had.by, ...w.by }, texts: { ...had.texts, ...w.texts }, ...(had.entries || w.entries ? { entries: { ...had.entries, ...w.entries } } : {}), ...(had.byPerson || w.byPerson ? { byPerson: mergePerson(had, w) } : {}), ...(w.news ?? had.news ? { news: w.news ?? had.news } : {}), ...(earlier ? { earlier } : {}), ...mergePrincipals(had, w), ...mergeReplies(had, w) }
+        ? { ...had, title: w.title, reasons: [...new Set([...had.reasons, ...w.reasons])], by: { ...had.by, ...w.by }, texts: { ...had.texts, ...w.texts }, ...(had.entries || w.entries ? { entries: { ...had.entries, ...w.entries } } : {}), ...(had.replaces || w.replaces ? { replaces: [...new Set([...(had.replaces ?? []), ...(w.replaces ?? [])])] } : {}), ...(had.byPerson || w.byPerson ? { byPerson: mergePerson(had, w) } : {}), ...(w.news ?? had.news ? { news: w.news ?? had.news } : {}), ...(earlier ? { earlier } : {}), ...mergePrincipals(had, w), ...mergeReplies(had, w) }
         : { ...w, reasons: [...w.reasons], by: { ...w.by }, texts: { ...w.texts }, ...(w.entries ? { entries: { ...w.entries } } : {}), ...(w.byPerson ? { byPerson: { ...w.byPerson } } : {}), ...(w.news ? { news: { ...w.news } } : {}), ...(w.replies ? { replies: { ...w.replies } } : {}), ...mergePrincipals(undefined, w) });
     }
   }
@@ -324,7 +324,7 @@ export class TaskBoardWaker {
         if (this.deps.noticeState && this.deps.noticeState(key) !== "cancelled") continue;
         const had = this.kept.get(key);
         this.kept.delete(key);
-        if (had) this.note(had.wakes.map((w) => structuredClone(w)));
+        if (had) this.note(had.wakes.map((w) => ({ ...structuredClone(w), replaces: [...(w.replaces ?? []), key] })));
       }
     } catch (err) {
       this.deps.log("warn", "Task board could not withdraw notices that quote a changed comment", { err: (err as Error).message });
@@ -369,7 +369,7 @@ export class TaskBoardWaker {
   }
 
   /** Tells the board what became of a card's news for `instance` (settled), never failing the send. */
-  private settle(instance: string, w: Wake, what: { key?: string; skip?: WakeSkip }): void {
+  private settle(instance: string, w: Wake, what: { key?: string; skip?: WakeSkip; replaces?: readonly string[] }): void {
     if (!w.reasons.some(carriesWords)) return;
     try { this.deps.settled?.({ uuid: w.uuid, instance, ...what }); } catch (err) { this.deps.log("warn", "Task board could not record what became of a comment's news", { instance, code: w.code, err: (err as Error).message }); }
   }
@@ -408,7 +408,7 @@ export class TaskBoardWaker {
       return;
     }
     if (taken && quoting.length) this.keep(key, wakes);
-    for (const w of wakes) this.settle(instance, w, taken ? { key } : { skip: "not_taken" });
+    for (const w of wakes) this.settle(instance, w, taken ? { key, ...(w.replaces ? { replaces: w.replaces } : {}) } : { skip: "not_taken" });
     if (taken) this.deps.log("info", "Task board wake handed to delivery", { instance, codes });
     else this.deps.log("warn", "Task board wake not taken; the cards keep the news", { instance, codes });
   }

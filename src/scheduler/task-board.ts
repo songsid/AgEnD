@@ -16,7 +16,7 @@ import type { QuiescenceGate } from "../update-quiescence.js";
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { parseMentions } from "./task-board-mentions.js";
-import { markRead, unreadFor, type Unread } from "./task-board-unread.js";
+import { markRead, unreadFor, type Reader, type Unread } from "./task-board-unread.js";
 import { TASK_FILE_LIMITS, TaskFileError, type StagedFile, type TaskFileStore } from "./task-files.js";
 
 export const CARD_STATUSES = ["open", "claimed", "blocked", "review", "done", "cancelled"] as const;
@@ -445,6 +445,11 @@ export interface Wake {
    * waker's key names these numbers).
    */
   entries?: Partial<Record<WakeReason, number>>;
+  /**
+   * Set by the waker, never the board: the keys of the notices this news replaces — notices withdrawn because a comment they quoted was
+   * edited or deleted — so the comments those notices carried follow the replacement (wakeHanded).
+   */
+  replaces?: string[];
   /**
    * Set by the waker, never the board: how many comments (or mentions) earlier than the one in `texts` it merged into
    * this wake while gathering — the notice quotes the last and says there are more.
@@ -994,6 +999,7 @@ export class TaskBoard {
         event_floor INTEGER NOT NULL,
         at          TEXT NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS idx_task_entries_at ON task_entries(at);
     `);
     // #2352: a project's lead instance, added in place (null: its waiting cards' buttons stay in General).
     const projectCols = new Set((this.db.prepare("PRAGMA table_info(task_projects)").all() as Array<{ name: string }>).map((c) => c.name));
@@ -1713,19 +1719,20 @@ export class TaskBoard {
   }
 
   /**
-   * What is new for `person` (docs/design/task-board.md, "Unread"; task-board-unread.ts): the cards someone answered, named them on or
+   * What is new for `person` — a name, or a name and the person's key (the marks are kept under the key: two accounts of one name do not share
+   * them) (docs/design/task-board.md, "Unread"; task-board-unread.ts): the cards someone answered, named them on or
    * handed them to confirm or answer since they last opened the card. Worked out, never stored, but for the person's floor (the
    * first time they are asked: only what comes after counts). Not a board write: no revision, no event.
    */
-  unreadFor(person: string, gone?: GoneDispatcher): Unread {
+  unreadFor(person: string | Reader, gone?: GoneDispatcher): Unread {
     const waiting = this.waitingForPerson(gone).map(({ card }) => ({ uuid: card.uuid, code: card.code, status: card.status as "review" | "blocked" }));
-    return unreadFor(this.db, person, waiting, this.nowIso());
+    return unreadFor(this.db, typeof person === "string" ? { name: person } : person, waiting, this.nowIso());
   }
 
   /** `person` opened the card: all of it so far is read (a mark moves only forward). */
-  markRead(person: string, ref: string): Card {
+  markRead(person: string | Reader, ref: string): Card {
     const card = this.getCard(ref);
-    markRead(this.db, person, card.uuid, this.nowIso());
+    markRead(this.db, typeof person === "string" ? { name: person } : person, card.uuid, this.nowIso());
     return card;
   }
 
@@ -3556,8 +3563,8 @@ export class TaskBoard {
    * card waiting to be told to that instance is now carried by it. Not a board write — no revision, no event, no wake; returns the
    * card numbers it touched (none when no comment was waiting), for the live page to read again.
    */
-  wakeHanded(uuid: string, instance: string, key: string): string[] {
-    return this.settleEntryWakes(uuid, instance, (w) => { w.key = key; });
+  wakeHanded(uuid: string, instance: string, key: string, replaces?: readonly string[]): string[] {
+    return this.settleEntryWakes(uuid, instance, (w) => { w.key = key; }, replaces);
   }
 
   /** The news about `uuid` for `instance` was not sent (`skip` says why): the comments waiting to be told to it say so. */
@@ -3565,7 +3572,8 @@ export class TaskBoard {
     return this.settleEntryWakes(uuid, instance, (w) => { w.skip = skip; });
   }
 
-  private settleEntryWakes(uuid: string, instance: string, set: (w: EntryWake) => void): string[] {
+  /** `replaces`: a notice that was withdrawn and told anew — what it carried (its key) now has the new notice's. */
+  private settleEntryWakes(uuid: string, instance: string, set: (w: EntryWake) => void, replaces?: readonly string[]): string[] {
     const code = this.codeOf(uuid);
     const rows = this.db.prepare("SELECT id, wakes FROM task_entries WHERE task_id = ? AND wakes IS NOT NULL").all(uuid) as Array<{ id: number; wakes: string }>;
     const write = this.db.prepare("UPDATE task_entries SET wakes = ? WHERE id = ?");
@@ -3573,7 +3581,7 @@ export class TaskBoard {
     for (const r of rows) {
       const list = parseWakes(r.wakes);
       let changed = false;
-      for (const w of list) if (w.to === instance && !w.key && !w.skip) { set(w); changed = true; }
+      for (const w of list) if (w.to === instance && ((!w.key && !w.skip) || (replaces !== undefined && w.key !== undefined && replaces.includes(w.key)))) { set(w); changed = true; }
       if (changed) { write.run(JSON.stringify(list), r.id); touched = true; }
     }
     return touched && code ? [code] : [];

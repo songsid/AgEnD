@@ -2243,7 +2243,7 @@ export interface WakeView {
   readAt?: string;
 }
 /** The person's unread, by card number (the board's `unreadFor`), without a card the viewer may not see. */
-function unreadBody(board: TaskBoard, person: string, gone: ((name: string) => boolean) | undefined, hidden: (c: NonNullable<ReturnType<TaskBoard["findCard"]>>) => boolean): { total: number; cards: Record<string, { n: number; reasons: string[]; entries: number[]; at: string; by: string }> } {
+function unreadBody(board: TaskBoard, person: { name: string; key?: string }, gone: ((name: string) => boolean) | undefined, hidden: (c: NonNullable<ReturnType<TaskBoard["findCard"]>>) => boolean): { total: number; cards: Record<string, { n: number; reasons: string[]; entries: number[]; at: string; by: string }> } {
   const cards: Record<string, { n: number; reasons: string[]; entries: number[]; at: string; by: string }> = {};
   for (const u of board.unreadFor(person, gone).cards) {
     const card = board.findCard(u.id);
@@ -4368,14 +4368,14 @@ export function handleWebRequest(
         const reader = adminAdmissionOf(req, url, ctx) ? webPersonOf(req, url, ctx) : null;
         const who = reader ? boardActor(req, url, ctx, reader) : null;
         if (!who || who.kind !== "person") { json(res, 200, { enabled: false, total: 0, cards: {} }); return true; }
-        json(res, 200, { enabled: true, ...unreadBody(board, who.name, ctx.dispatcherGone, hidden) });
+        json(res, 200, { enabled: true, ...unreadBody(board, who, ctx.dispatcherGone, hidden) });
         return true;
       }
       if (method === "POST" && opened) {
         // They opened the card: all of it so far is read. A card kept out of sight is "no such card", as everywhere.
         const cardRef = decodeURIComponent(opened[1]!);
         if (hidden(board.getCard(cardRef))) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
-        boardWrite(req, res, url, ctx, board, CardReadSchema, (_body, person) => { board.markRead(person.name, cardRef); return { ok: true, ...unreadBody(board, person.name, ctx.dispatcherGone, hidden) }; });
+        boardWrite(req, res, url, ctx, board, CardReadSchema, (_body, person) => { board.markRead(person, cardRef); return { ok: true, ...unreadBody(board, person, ctx.dispatcherGone, hidden) }; });
         return true;
       }
       if (method === "GET" && path === "/ui/tasks/work") {

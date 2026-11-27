@@ -22,7 +22,8 @@ function keep(d) {
 /** Read it again (one read at a time; a change meanwhile reads once more). Resolves true when it was read. */
 export function refreshTaskUnread() {
   if (reading) { again = true; return reading; }
-  reading = fetch("/ui/tasks/unread", { headers: { Accept: "application/json" }, cache: "no-store" })
+  // (Started inside the chain: a page being torn down — a late timer with no `fetch` left — is a failed read, not an exception in the timer.)
+  reading = Promise.resolve().then(() => fetch("/ui/tasks/unread", { headers: { Accept: "application/json" }, cache: "no-store" }))
     .then((r) => { if (!r.ok) throw new Error(`task unread: ${r.status}`); return r.json(); })
     .then((d) => { keep(d); return true; })
     .catch(() => false)

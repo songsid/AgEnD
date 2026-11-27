@@ -44,9 +44,9 @@ function scratchDb(): SchedulerDb {
 
 type Progress = Map<string, NoticeProgress>;
 /** One request as an admin or read-only session, on the local page or over the temporary public link. */
-function call(db: SchedulerDb, method: string, path: string, body?: unknown, opts: { local?: boolean; tier?: "admin" | "read"; progress?: Progress; name?: string } = {}) {
+function call(db: SchedulerDb, method: string, path: string, body?: unknown, opts: { local?: boolean; tier?: "admin" | "read"; progress?: Progress; name?: string; owner?: string } = {}) {
   const sessions = new WebSessionStore(), exposureId = "a".repeat(32), pub = "https://sample.trycloudflare.com", local = "http://127.0.0.1:19280";
-  const s = sessions.create({ tier: opts.tier ?? "admin", surface: opts.local ? "local" : "gateway", exposureId: opts.local ? undefined : exposureId, label: "t", tokenEpoch: tokenEpoch(TOKEN) } as never);
+  const s = sessions.create({ tier: opts.tier ?? "admin", surface: opts.local ? "local" : "gateway", exposureId: opts.local ? undefined : exposureId, label: "t", tokenEpoch: tokenEpoch(TOKEN), ...(opts.owner ? { owner: { adapterId: "owner", userId: opts.owner } } : {}) } as never);
   const origin = opts.local ? local : pub;
   const headers: Record<string, string> = { host: new URL(origin).host, cookie: `${opts.local ? "" : "__Host-"}agend_session=${s.sessionId}`, origin, "sec-fetch-site": "same-origin",
     "x-agend-csrf": csrfTokenFor(s.sessionId), "content-type": "application/json" };
@@ -56,8 +56,10 @@ function call(db: SchedulerDb, method: string, path: string, body?: unknown, opt
     let status = 0;
     const res = Object.assign(new EventEmitter(), { headersSent: false, destroyed: false, setHeader() {}, writeHead: (c: number) => { status = c; },
       end: (t = "") => resolve({ status, raw: String(t), body: t ? JSON.parse(String(t)) : null }) });
+    // People kept (`owner`): each signed-in account is someone, whatever its name — two that set none are both "web-user".
+    const webPerson = (owner?: { userId: string }) => ({ key: `acct:${owner?.userId ?? "operator"}`, bound: !!owner, userId: owner?.userId ?? "web-user", voterKey: `owner:${owner?.userId}`, name: "web-user", set: false });
     handleWebRequest(req as never, res as never, new URL(path, origin), { webToken: TOKEN, webSessions: sessions, scheduler: { db },
-      fleetConfig: FLEET, logger: { debug() {}, info() {}, warn() {}, error() {} },
+      fleetConfig: FLEET, logger: { debug() {}, info() {}, warn() {}, error() {} }, ...(opts.owner ? { webPerson } : {}),
       taskWakeProgress: (keys: readonly string[]) => new Map([...(opts.progress ?? new Map())].filter(([k]) => keys.includes(k))),
       getUiStatus: () => ({ instances: [] }), listWebPrompts: () => [], needsYouItems: () => [] } as never);
     if (body !== undefined) { req.emit("data", Buffer.from(JSON.stringify(body))); req.emit("end"); } else { req.emit("end"); }
@@ -192,11 +194,31 @@ describe("2. the person's unread", () => {
     const db = scratchDb();
     const c = await asked(db);
     db.board.updateCard(DEV, c.code, { comment: "going well" });
-    // The page's person is "web-user" (no names are kept): what is theirs is theirs; a mark moves only theirs.
+    // The page's person is "web-user" (no names are kept), read by the session's key: what is theirs is theirs; a mark moves only theirs.
+    const unread = async () => (await call(db, "GET", "/ui/tasks/unread", undefined, local)).body.total;
     expect(db.board.unreadFor("Ann").total).toBe(0);
-    expect(db.board.unreadFor(WEB.name).total).toBe(1);
+    expect(await unread()).toBe(1);
     await call(db, "POST", `/ui/tasks/cards/${c.code}/read`, {}, local);
-    expect(db.board.unreadFor(WEB.name).total).toBe(0);
+    expect(await unread()).toBe(0);
+  });
+
+  it("two accounts that are both web-user keep their own unread: a reply under one's comment is only that one's news, and a read by one does not clear the other's", async () => {
+    const db = scratchDb();
+    const c = seed(db);
+    const asA = { ...local, owner: "a" }, asB = { ...local, owner: "b" };
+    const unread = async (who: typeof asA) => (await call(db, "GET", "/ui/tasks/unread", undefined, who)).body;
+    expect((await unread(asA)).total + (await unread(asB)).total).toBe(0);               // each has a floor
+    await call(db, "POST", `/ui/tasks/cards/${c.code}`, { comment: "a's question", to: [] }, asA);
+    const ida = db.board.detail(c.code).comments.at(-1)!.id;
+    await call(db, "POST", `/ui/tasks/cards/${c.code}`, { comment: "b's question", to: [] }, asB);
+    const idb = db.board.detail(c.code).comments.at(-1)!.id;
+    db.board.updateCard(DEV, c.code, { comment: "to a", replyTo: ida });
+    db.board.updateCard(DEV, c.code, { comment: "to b", replyTo: idb });
+    expect((await unread(asA)).cards[c.code]).toMatchObject({ n: 1, entries: [ida + 2] });
+    expect((await unread(asB)).cards[c.code]).toMatchObject({ n: 1, entries: [idb + 2] });
+    await call(db, "POST", `/ui/tasks/cards/${c.code}/read`, {}, asA);
+    expect((await unread(asA)).total, "a has read the card").toBe(0);
+    expect((await unread(asB)).total, "b's mark is b's").toBe(1);
   });
 
   it("the first GET writes the person's floor, so comments that were already there are never unread — only what comes after is", async () => {
