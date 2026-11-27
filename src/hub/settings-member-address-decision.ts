@@ -110,7 +110,7 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
   // Only the closed expected schema is persisted. issuerPublicKey is checked by readHubMemberTls, not duplicated.
   const snapshot = () => expectedSchema.parse(inspect());
   const api = {
-    hubId, inspect: snapshot, affected: () => structuredClone(stateFleets()), head: () => { transport.read(); return readHubMemberAddressHead(db); },
+    hubId, inspect: snapshot, affected: () => structuredClone(stateFleets()), head: () => { transport.readVersion(); return readHubMemberAddressHead(db); },
     /** #3429 B: set by the mounted Hub once its member listener exists; null for a recovery decision. */
     relocator: null as HubMemberRelocator | null,
     /** #3429 B: the generation and credential binding a Fleet has now (what a kept proof is bound to), or null. */
