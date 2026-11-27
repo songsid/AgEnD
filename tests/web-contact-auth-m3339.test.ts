@@ -281,13 +281,18 @@ describe("Fleet → Authorizations", () => {
     expect(card.querySelector('input[type="checkbox"]')).toBeNull();
     fire(button(card, "Allow this person to contact this agent…"), "click"); await settle(3);
     const dialog = pg.document.querySelector("dialog") as any;
-    const until = dialog.querySelector('input[type="datetime-local"]') as any;
+    // The expiry is a day and a 24-hour time from selects (#4497): the fifth day from today, 10:00.
+    const [day, hour, minute] = [...dialog.querySelectorAll(".contact-until select")] as any[];
+    const pick = day.querySelectorAll("option")[5].value;
+    day.value = pick; fire(day, "change"); await settle(1);
+    hour.value = "10"; fire(hour, "change"); await settle(1); minute.value = "00"; fire(minute, "change");
     const uses = dialog.querySelector('input[type="number"]') as any;
-    until.value = "2026-12-01T10:00"; fire(until, "input"); uses.value = "5"; fire(uses, "input"); await settle(2);
+    uses.value = "5"; fire(uses, "input"); await settle(2);
+    expect(dialog.querySelector('input[type="datetime-local"]')).toBeNull();
     expect(calls.some(c => c.method === "POST")).toBe(false);
-    fire(button(dialog, "Approve once and save rules"), "click"); await settle(6);
+    fire(button(dialog, "Approve this one and allow from now on"), "click"); await settle(6);
     const body = calls.find((c) => c.method === "POST")!.body;
-    expect([body.decision, body.grant.remainingUses, body.grant.expiresAt, body.grant.personKeys]).toEqual(["approve-once", 5, new Date("2026-12-01T10:00").toISOString(), [JSON.stringify([ALEX.platform, ALEX.userId])]]);
+    expect([body.decision, body.grant.remainingUses, body.grant.expiresAt, body.grant.personKeys]).toEqual(["approve-once", 5, new Date(`${pick}T10:00`).toISOString(), [JSON.stringify([ALEX.platform, ALEX.userId])]]);
   });
   it("decided elsewhere (409 already-decided): said, and the request read again", async () => {
     let reads = 0;

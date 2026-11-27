@@ -1,0 +1,119 @@
+{
+  "currentTestedSource": "b522c0e4b2d06b6575877054ce41732463ad9705",
+  "retainedCardSource": "7a9d2b3e9c0d39eca41994861aa75269ef27ee53",
+  "strictBlocksUnchangedFromRetainedSource": {
+    "strictCreate": "68380b7940fd8d56d75f0947ea0b5ed393a7b5b7e31e9d4e76633b0a2a1844d8",
+    "strictCandidates": "499364aad1a1baf68c968119f1c69e8c052f8a04d0922efbdd1422b155b2fa40"
+  },
+  "base": "f9532de65c8fae8dfbf2ed262c287ddc9796eb34",
+  "paths": {
+    "changes/3828-room-create-role.md": {
+      "sha256": "feace5ace3dbe1635489e78bc840c3d0f887b7b319b470975c206aa638411424",
+      "gitBlob": "0262dbdca07f011e16e811d3c22f1675ff93b5ee"
+    },
+    "changes/3828-room-create-role.zh-TW.md": {
+      "sha256": "59d1f275318655507a2f967538b363ffb1ce69c656dfaf45de4ff1043fb3648a",
+      "gitBlob": "cfe3d96a4245c757d195364c3451cd85f4d4ef64"
+    },
+    "scripts/manual/hub-room-create-role-s256/browser.mts": {
+      "sha256": "6927cd37bea7cf4d883dc00da0cca90cc096588c231652d6a841a2f433106b68",
+      "gitBlob": "5bb53464a5a2c335864b2d331d0084e42ca85e7c"
+    },
+    "src/hub/compose/server.ts": {
+      "sha256": "1979970420b814a8e62ddfa14049a2129501c62d8fd6f3039703de7eecf5b341",
+      "gitBlob": "93306b936b84338ff3f2db496aaa96514856aa28"
+    },
+    "src/hub/http/deps.ts": {
+      "sha256": "9d8239e0bb528c05a384ea980c57dc17721fb56f6990deea01a7b7bf79d4f320",
+      "gitBlob": "34111da6f06923190d7526a4e3a427869cb594b4"
+    },
+    "src/hub/roles/audit-details.ts": {
+      "sha256": "c4860bd24ba25416eaf2fb710e4f45d9c612dd3a48442ec1a88c317d4f3f680e",
+      "gitBlob": "7586e0c6ae8e5f41d808bbae9fca37680130e197"
+    },
+    "src/hub/roles/authority.ts": {
+      "sha256": "86df2fa2e2acc8dd8d4b7075adb75f44f5717d1656e8c23d0a8a3b2357579401",
+      "gitBlob": "8b32ee18b533e69219b9262961aa7423242be975"
+    },
+    "src/hub/roles/delegation.ts": {
+      "sha256": "2405e5b0ae71e43d6469000486917f499b4d48aae04ae71c44ded8d4c5337e07",
+      "gitBlob": "6b58f7a824ecabe51252f8490c2ed9292aa884b3"
+    },
+    "src/hub/roles/model.ts": {
+      "sha256": "dce1aef1b74b9f9c23c349e89d6e59bed46445d85b6e1b5053ca356e495569e4",
+      "gitBlob": "3047789cf61c3355dfbf048ab2ce8493354ccf2c"
+    },
+    "src/hub/roles/review.ts": {
+      "sha256": "0dcc0ff06acd14bf3b77e8d658f57844bfa139a440b73abe1c3faadd6aec4608",
+      "gitBlob": "7ed36d4c3dd575b4bbbcae242e4f7504a41efcb0"
+    },
+    "src/hub/rooms/admin.ts": {
+      "sha256": "5aa341a521a50ee4795e7619b9945e2314dd3febb72da7cb92932ae69477606e",
+      "gitBlob": "c75055b08f7f3253efd3caf1a891ef7e29d890f1"
+    },
+    "src/hub/rooms/service.ts": {
+      "sha256": "3603602e2675776155683b76ee703e3880a00b1794dfb508ebe4940265b8f26a",
+      "gitBlob": "4079842c409cde69d7469eede197bbf4de2713d0"
+    },
+    "src/ui/hub-admin-rooms-strings.js": {
+      "sha256": "154b421a63a1932cc85732b45c536d612d24327b6559fa93e82fb61a8d7dc761",
+      "gitBlob": "6b7989ce7d0ca0b7a0db4adda0fc72d5efa7a8fa"
+    },
+    "src/ui/hub-admin-rooms.js": {
+      "sha256": "891d54c3950dfc4ea4419cc0398676416bfe6dc1a528c5e5efcb18f6386932b2",
+      "gitBlob": "b406ff87fc1281ee8bf37363393c98f27eb3e2ec"
+    },
+    "src/ui/hub-group-search.js": {
+      "sha256": "1544d43538beba78ef1317f2091671e2951f864395b03bc485de2cbae5a6132e",
+      "gitBlob": "acd9d88e8093cc6a31792ef52dd193bee350db0a"
+    },
+    "src/ui/hub-role-view.js": {
+      "sha256": "28c6dd908c298eb00c35b6d421cae1570b067781010f1666320a8727ea9167aa",
+      "gitBlob": "d7dd89b4abeb4b4780f33dff20c6a29585d5a69e"
+    },
+    "src/ui/hub-roles-strings.js": {
+      "sha256": "ecfc1250876eec03e1e607a7d2e826d46bb016c5faf65ce838ddeb4a46988e56",
+      "gitBlob": "d0fb70f83b21f22b64cf022f56e4df3944cab565"
+    },
+    "src/ui/hub-roles.js": {
+      "sha256": "1959688e65c16898965d69ae72327df1a4d79910f149386ffadc5b1e4403a954",
+      "gitBlob": "4f5bdb9c50ba827184fc7bce65d0a011380c772d"
+    },
+    "src/ui/hub-room-strings.js": {
+      "sha256": "6bf70b6378b04172fe40f92580234cce29af79cae29f7beb7c0226fbbfd57f02",
+      "gitBlob": "6ed94f290bba63ba669aa66b68b6c2ecef29fb54"
+    },
+    "tests/fixtures/hub-room-create-role-s256/legacy-model.ts": {
+      "sha256": "c3f357dd59d9524622839e41cacc0123821811a3cc2680799626f02d7a83fe32",
+      "gitBlob": "4fe7647827574fd92901247677de4d180706241e"
+    },
+    "tests/hub-admin-rooms.test.ts": {
+      "sha256": "6862a678247dc917117c460ce3504558db1ae3ec04d6956c64bc7bb0bbfe695a",
+      "gitBlob": "bdde33845b7f19f62ce99e542a54ff0234abd6c4"
+    },
+    "tests/hub-grant-picker-m3016.test.ts": {
+      "sha256": "7749f3c89d17b0c301359b75ff5a6005fec12198018329e7a1f6bf260bce3cd1",
+      "gitBlob": "1627867f747e0b26eb3c85c9e31f4b816aa9d54a"
+    },
+    "tests/hub-role-admin-3223.test.ts": {
+      "sha256": "26b11e05f4b868eb886bfa4f8d2262045d649ca67b2187f13a18887eea7140c8",
+      "gitBlob": "acb15e8e8770e771b177f283e8e2f614931034c2"
+    },
+    "tests/hub-role-ui-3223.test.ts": {
+      "sha256": "adac7e2fc63e9140be73b6bbed9d09503ced73ed99f56d8481ad370b15fe6142",
+      "gitBlob": "8465fe2cd04289eebba9a36bdd1296d77caad411"
+    },
+    "tests/hub-roles-model-m3010.test.ts": {
+      "sha256": "1e0bb91d7e03103642c2b4cea9a46a522f4657b7a85088d1d30d2de85163a48c",
+      "gitBlob": "e7b60ac7732ba6f07375db5c5cf958a6b15d77ae"
+    },
+    "tests/hub-room-create-role-s256.test.ts": {
+      "sha256": "a87c4a4ca6d1e59bdbf91da493da9d49c5eb18c569882fe7c3aa0d09c3c15531",
+      "gitBlob": "8efcc31ee466df3d5831f4c9da808b55e3176951"
+    },
+    "tests/hub-room-strings.test.ts": {
+      "sha256": "46b21dd0df7a9e538b1d1316cdc2378a2a909368a3c57d184f2bb7b081c6f5ef",
+      "gitBlob": "4c6226939f6935a608717e48108c878984db5a93"
+    }
+  }
+}

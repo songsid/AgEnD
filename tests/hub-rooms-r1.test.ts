@@ -25,7 +25,7 @@ it("creates a group room with the creator as manager and lists it only for its m
   expect((await r!.call(w.a, "GET", "/hub/v1/rooms")).json).toEqual({ rooms: [] }); // cached direct renderer
   const detail = await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.id}`);
   expect(detail.json.members.find((m: any) => m.id === detail.json.me.id)).toMatchObject({ name: "Hub Admin", role: "manager", kind: "person" });
-  expect(detail.json.settings).toEqual({ allMention: true, historyForNew: "since-join", aiApps: true });
+  expect(detail.json.settings).toEqual({ allMention: true, membersCanAddOwnAgents: false, historyForNew: "since-join", aiApps: true });
   expect((await r!.call(w.c, "GET", `/hub/v1/rooms/${w.id}`)).status).toBe(403);
   expect((await r!.call(w.a, "POST", "/hub/v1/rooms", { name: "No privilege" })).status).toBe(403);
   expect((await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind=person&q=Al")).json.candidates).toEqual([{ kind: "person", id: personKeyString(w.alex), name: "Alex", detail: "alex" }]);

@@ -13,7 +13,7 @@ function upgradeToCurrent(db: Database.Database): void {
 }
 
 it("migrates once, preserves direct-room bytes and refuses an older migration registry", () => {
-  const db = new Database(":memory:"), older = prePersonal.filter(m => m.component !== "s3-room-context" && !["s3-admin-dashboard", "s3-room-agent-posts", "s3-rooms", "s3-room-purpose", "s3-room-agents", "s3-sharing-withdrawal", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory", "s3-room-office"].includes(m.component));
+  const db = new Database(":memory:"), older = prePersonal.filter(m => m.component !== "s3-room-context" && !["s3-admin-dashboard", "s3-room-agent-posts", "s3-rooms", "s3-room-purpose", "s3-room-member-agents", "s3-room-agents", "s3-sharing-withdrawal", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory", "s3-room-office"].includes(m.component));
   try {
     applyHubMigrations(db, older);
     const id = randomUUID(), grant = randomUUID(), owner = `corp/${randomUUID()}`, asker = `corp/${randomUUID()}`, exposure = randomUUID();

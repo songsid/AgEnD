@@ -1648,7 +1648,7 @@ img.amb-p { object-fit: contain; }
   .dlg-actions { padding-bottom: max(var(--s-5), env(safe-area-inset-bottom)); }
   .dlg-actions .btn { flex: 1; min-height: var(--tap); }
   .dlg-head .dlg-x { min-width: var(--tap); min-height: var(--tap); }
-  .row-item .btn, .s-row .btn, .n-actions .btn { min-height: var(--tap); }
+  .row-item .btn, .s-row .btn, .n-actions .btn, .rc-verify .btn, .rc-read-failed .btn { min-height: var(--tap); }
   /* Settings buttons share one phone target, including compact card actions. */
   .p-settings .btn { min-width: var(--tap); min-height: var(--tap); }
   /* Grow the clickable label around its text without moving the surrounding layout. */
@@ -2272,6 +2272,25 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
   .update-line { justify-content: flex-start; }
   .update-text { flex: 1 1 100%; }
   .update-actions.indent { margin-left: 26px; }
+}
+/* S-241 (Lumen's point 8): an answered update card (waiting for idle, scheduled) is one line on a phone — its short words
+   and Change; Change opens the full line. The desk never shows the short words or Change. "A phone" is the app's own
+   phone layout (the shell's narrow condition: up to 899 px, or a landscape touch screen), not the banner's 700 px. */
+.uc-answered { display: contents; }
+.uc-short, .uc-fold { display: none; }
+.uc-fold { gap: 4px; align-items: center; }
+.uc-answered.open .uc-fold svg { transform: rotate(180deg); }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .uc-fold { display: inline-flex; }
+  .uc-answered.open .update-actions { flex: 1 1 100%; flex-wrap: wrap; }   /* four buttons may need a second row */
+  .uc-answered:not(.open) .update-line { flex-wrap: nowrap; }
+  .uc-answered:not(.open) .update-text { flex: 1 1 auto; align-items: center; }
+  .uc-answered:not(.open) :is(.update-icon, .update-spinner) { margin-top: 0; }
+  .uc-answered:not(.open) .update-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .uc-answered:not(.open) .uc-long, .uc-answered:not(.open) .update-sub,
+  .uc-answered:not(.open) .update-actions .btn:not(.uc-fold) { display: none; }
+  .uc-answered:not(.open) .uc-short { display: inline; }
+  .uc-answered:not(.open) .update-actions.indent { margin-left: 0; }
 }
 /* M-2738: Settings → Advanced → Version and update */
 /* M-3770 1.4: the update card's Settings part — its state, "Updates on this machine", and the controls (pause windows;
@@ -5404,6 +5423,19 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .contact-time-item { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .contact-decide { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-3); border-top: 1px solid var(--border); font-size: var(--fs-sm); }
 .contact-decide-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-4); }
+/* M-3736 J (S-228): the one card — Authorize this browser inline while unverified; the choice made before verification
+   marked (a ring, not focus: focus stays where it was); a host whose state isn't known says why. */
+/* The credits card's layout (the user's approved one-card style): a standard .n-item; the verify line is one row. */
+.rc-verify { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); margin-top: var(--s-1); font-size: var(--fs-sm); color: var(--text-2); }
+.rc-verify > *, .rc-auth > *, .rc-more > p { margin: 0; }
+.rc-auth { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.rc-more > p { margin-top: var(--s-1); }
+.rc-card .rc-reason .rc-state { margin-right: var(--s-1); }
+.rc-card :is(.rc-reason, .rc-verify > span) { word-break: keep-all; overflow-wrap: anywhere; }
+/* The scope phrase wraps as a whole (never "繼續＝ / 只放行…"), onto its own line when the reason leaves no room. */
+.rc-card .rc-scope { display: inline-block; max-width: 100%; }
+.rc-unknown { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
+.rc-unknown > * { margin: 0; }
 .contact-allow .field { flex: 1; min-width: 10em; }
 .contact-person-filter { max-width: 100%; min-width: 0; }
 .contact-person-filter > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -5572,6 +5604,20 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* Scoped grant metadata wraps as whole phrases; disabled decisions stay readable. */
 .contact-grant-meta { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
 .contact-grant-dialog .btn-primary:disabled { opacity: 1; background: var(--surface-2); color: var(--text-2); border-color: var(--border); }
+/* #4497: the expiry as a day and a 24-hour time from selects; they wrap as a group on a narrow sheet. */
+.contact-grant-when { display: flex; flex-direction: column; gap: var(--s-2); }
+.contact-until { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); }
+.contact-until > select { flex: 1 1 12rem; min-width: 0; }
+.contact-until-time { display: inline-flex; align-items: center; gap: var(--s-1); white-space: nowrap; }
+.contact-grant-dialog .dlg-body :is(p, .check span) { word-break: keep-all; overflow-wrap: anywhere; }   /* zh words whole */
+/* #4497 recheck: the body scrolls between the head and the footer (a flex child's min-height: auto let it run under the
+   footer buttons on a phone), with room after its last line so that line scrolls clear of them. */
+.contact-grant-dialog .dlg-body { min-height: 0; padding-bottom: var(--s-6); }
+/* #4497: the save button's two-part label wraps inside the button on a phone instead of widening the dialog (m3409's overflow
+   check), as the Hub directory editor's footer does. */
+.contact-grant-dialog .dlg-actions .btn { white-space: normal; overflow-wrap: anywhere; text-align: center; padding-block: var(--s-2); }
+/* #4497 recheck: the card's decision buttons keep their whole words; the row wraps to a second line instead of clipping. */
+.rc-card .rc-decide > .btn { flex: 0 0 auto; max-width: 100%; }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .contact-grant-dialog :is(input:not([type=checkbox]), select, .check) { min-height: var(--tap); }
 }

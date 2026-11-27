@@ -18,23 +18,43 @@ import { ca } from "./contact-auth-strings.js";
 import { getPermissions, getTicket, putPermissions, dismissSuggestion } from "./contact-auth-client.js";
 import { TicketCard } from "./contact-authorizations.js";
 import { notCovered, wouldDisableMore, wouldDisableText } from "./contact-permissions.js";
+// M-3736 J (S-228): where the same-card host is installed, a request's item is its one card (Sentinel, #4492: the item is
+// an ordinary contact_request for every recognized managing admin, verified or not; no count-only line).
+import { getCard, RC_ID, sameCardState } from "./request-contact-client.js";
+import { RequestContactCard } from "./request-contact-card.js";
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 function RequestNeed({ item }) {
   const ref = item.contactTicket || {};
   const [tk, setTk] = useState(null);
+  const [host, setHost] = useState(null), [rc, setRc] = useState(null);
   // M-3680: the agents by the names the page shows them (the request card below does the same).
   const { instances } = useStore(appStore);
   const agent = (name) => (name ? labelOf((instances || []).find((i) => i.name === name) || { name }) : "");
   useEffect(() => {
     let live = true;
-    if (ID.test(String(ref.id || ""))) void getTicket(ref.id).then((r) => { if (live && r.ok) setTk(r.data); });
+    // Today's scoped ticket read only where the host is known to be off; installed → the one card; not known → neither.
+    void sameCardState().then((s) => {
+      if (!live) return;
+      setHost(s);
+      if (s === "on" && RC_ID.test(String(ref.id || ""))) void getCard(ref.id).then((r) => { if (live && r.ok) setRc(r.data); });
+      else if (s === "off" && ID.test(String(ref.id || ""))) void getTicket(ref.id).then((r) => { if (live && r.ok) setTk(r.data); });
+    });
     return () => { live = false; };
   }, [ref.id]);
-  return html`<div class="n-title"><strong>${ca("needsTitle", agent(ref.source), agent(ref.target))}</strong></div>
-    ${tk ? html`<${TicketCard} ticket=${tk} onChange=${setTk} />` : null}
-    <div class="n-actions">${ID.test(String(ref.id || "")) ? html`<a class="btn btn-sm btn-ghost" href=${`/ui/fleet/authorizations?ticket=${encodeURIComponent(ref.id)}`}>${ca("needsOpen")}</a>` : null}</div>`;
+  const open = ID.test(String(ref.id || "")) ? `/ui/fleet/authorizations?ticket=${encodeURIComponent(ref.id)}` : null;
+  // The same-card host: the item IS the one card (its own standard Needs-you layout, with Open in Authorizations).
+  if (host === "on" && rc) return html`<${RequestContactCard} card=${rc} onChange=${setRc} openHref=${open} />`;
+  return html`<${NeedShell} reason=${item.reason}><div class="n-title"><strong>${ca("needsTitle", agent(ref.source), agent(ref.target))}</strong></div>
+    ${host === "off" && tk ? html`<${TicketCard} ticket=${tk} onChange=${setTk} />` : null}
+    <div class="n-actions">${open ? html`<a class="btn btn-sm btn-ghost" href=${open}>${ca("needsOpen")}</a>` : null}</div></${NeedShell}>`;
+}
+
+/** A contact item's standard Needs-you frame (the key icon, then its body). */
+function NeedShell({ reason, children }) {
+  return html`<article data-trust="permission" class="n-item contact-need" data-reason=${reason}>
+    <span class="n-icon"><${Icon} name="key" size=${18} /></span><div class="n-body">${children}</div></article>`;
 }
 
 function SuggestionNeed({ item }) {
@@ -98,8 +118,7 @@ export function ContactSuggestionsGroup({ items }) {
 
 /** One contact item of Needs you (item.type "contact"); null for a reason this page doesn't know. */
 export function ContactNeedsItem({ item }) {
-  const body = item.reason === "contact_request" ? html`<${RequestNeed} item=${item} />` : item.reason === "contact_restricted_suggestion" ? html`<${SuggestionNeed} item=${item} />` : null;
-  if (!body) return null;
-  return html`<article data-trust="permission" class="n-item contact-need" data-reason=${item.reason}>
-    <span class="n-icon"><${Icon} name="key" size=${18} /></span><div class="n-body">${body}</div></article>`;
+  if (item.reason === "contact_request") return html`<${RequestNeed} item=${item} />`;          // its own frame (or the one card)
+  if (item.reason !== "contact_restricted_suggestion") return null;
+  return html`<${NeedShell} reason=${item.reason}><${SuggestionNeed} item=${item} /></${NeedShell}>`;
 }

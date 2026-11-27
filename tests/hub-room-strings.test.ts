@@ -60,7 +60,7 @@ describe("hub-room-strings.js", () => {
     expect(byKey.agree).toBe("Agree");                        // §8
     expect(byKey.whoSeesDirect).toMatch(/Only you see this chat/); // §9
     expect(byKey.askSummarise).toMatch(/summarise/);          // §10
-    expect(byKey.whoCanCreate).toBe("Who can start rooms");   // §11
+    expect(byKey.whoCanCreate).toBe("Who can create rooms");   // §11
     expect(byKey.unreadPrefix).toBe("({0})");                 // §12
     expect(byKey.unreadN).toBe("{0} unread");
     expect(byKey.mentionedYou).toBe("Mentioned you");
