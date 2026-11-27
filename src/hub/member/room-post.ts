@@ -1,3 +1,4 @@
+import {HUB_ROOM_HISTORY_CAPABILITY,roomHistorySchema,roomHistoryResultSchema,type RoomHistoryOptions,type HubRoomHistoryResult} from "../room-history-model.js";
 import {requestHubRoomMatches,type RequestHubOutputScope} from "../../request-hub-output.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY,type RoomMemberOptions} from "../room-members-model.js";
 import type Database from "better-sqlite3";
@@ -35,6 +36,7 @@ export type RoomPostResult = HubRoomPostResult | { ok:false; code:"uncertain" }
 export interface RoomPostLink {
   features: ReadonlySet<string>; current(): boolean;
   list(exposureId: string): Promise<HubRoomListResult>;
+  history?(exposureId:string,room:string,options?:RoomHistoryOptions):Promise<HubRoomHistoryResult>;
   members?(exposureId: string, room: string,options?:RoomMemberOptions&{v2?:true}): Promise<HubRoomMembersResult>;
   people?(exposureId: string, q: string): Promise<HubPeopleSearchResult>;
   ack?(id: string): void | Promise<void>;
@@ -44,6 +46,7 @@ export interface RoomPostLink {
 export interface AgentRoomPort {
   available(): boolean;
   rooms(caller: RoomCaller): Promise<RoomListResult>;
+  history(caller:RoomCaller,room:string,options?:RoomHistoryOptions):Promise<HubRoomHistoryResult|ShareLapsed>;
   members(caller: RoomCaller, room: string,options?:RoomMemberOptions): Promise<HubRoomMembersResult | ShareLapsed>;
   people(caller: RoomCaller, q: string): Promise<HubPeopleSearchResult | ShareLapsed>;
   post(caller: RoomCaller, value: { room: string; text: string; operationId: string; receiptId?: string; files?:string[] }): Promise<RoomPostResult>;
@@ -157,6 +160,19 @@ export class HubRoomPostAdapter implements AgentRoomPort {
       if(result.ok){if(result.rooms.some(r=>r.kind)&&!link.features.has(HUB_DIRECT_POST_CAPABILITY))throw Error("Unnegotiated direct room");for(const r of result.rooms)if(r.kind==="direct"){this.options.rememberDirectRoom?.(r.id,local);this.directRooms.add(`${local.exposureId}:${local.token}:${r.id}`);while(this.directRooms.size>1024)this.directRooms.delete(this.directRooms.values().next().value!);}}
       return result;
     } catch { return { ok: false, code: "unavailable" }; }
+  }
+  async history(caller:RoomCaller,room:string,options:RoomHistoryOptions={}):Promise<HubRoomHistoryResult|ShareLapsed>{
+    const lapsed=this.lapse(caller);if(lapsed)return lapsed;
+    const link=this.link,local=this.local(caller.agent);
+    if(!link?.history||!link.features.has(HUB_ROOM_HISTORY_CAPABILITY)||!local||!this.current(caller,local,link))return {ok:false,code:"unavailable"};
+    if(!roomHistorySchema.safeParse({exposureId:local.exposureId,room,...options}).success)return {ok:false,code:"invalid"};
+    try{
+      const result=roomHistoryResultSchema.parse(await link.history(local.exposureId,room,options));
+      if(!this.current(caller,local,link))return {ok:false,code:"stale"};
+      // IDs are authoritative; a name selection is resolved and membership checked by the Hub.
+      if(result.ok&&UUID.test(room)&&result.roomId!==room)return {ok:false,code:"stale"};
+      return result;
+    }catch{return {ok:false,code:"unavailable"};}
   }
   async members(caller: RoomCaller, room: string,options:RoomMemberOptions={}): Promise<HubRoomMembersResult | ShareLapsed> {
     const lapsed = this.lapse(caller); if (lapsed) return lapsed;

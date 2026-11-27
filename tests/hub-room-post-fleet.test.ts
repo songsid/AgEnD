@@ -235,3 +235,19 @@ it("S-232 the room post owner enforces issuer and original room before durable i
  expect(await adapter.post({...f.caller,requestScope:scope},{room:randomUUID(),text:"No",operationId:randomUUID()})).toMatchObject({ok:false,code:"denied"});expect(await adapter.post({...f.caller,requestScope:{context:{...context,initiatingActor:{...context.initiatingActor,hubId:randomUUID()}},current:()=>true}},{room:f.roomId,text:"No",operationId:randomUUID()})).toMatchObject({ok:false,code:"denied"});
  expect(f.db.prepare("SELECT COUNT(*) n FROM hub_room_posts").get()).toEqual({n:0});expect(await adapter.post({...f.caller,requestScope:scope},{room:f.roomId,text:"Right audience",operationId:randomUUID()})).toMatchObject({ok:true});expect(f.received).toHaveLength(1);adapter.close();
 });
+it('history uses only the invoking share, keeps legacy links untouched and retires stale or oversized disclosures',async()=>{
+ const {ROOM_HISTORY_NOTE}=await import('../src/hub/room-history-model.js');
+ const h=fixture(),result={ok:true as const,roomId:h.roomId,note:ROOM_HISTORY_NOTE as typeof ROOM_HISTORY_NOTE,messages:[]};
+ h.link.history=vi.fn(async()=>result);h.adapter.connected(h.link);
+ expect(await h.adapter.history(h.caller,h.roomId)).toEqual({ok:false,code:'unavailable'});expect(h.link.history).not.toHaveBeenCalled();
+ (h.link.features as Set<string>).add('room-history-v1');
+ expect(await h.adapter.history(h.caller,h.roomId,{limit:4})).toEqual(result);
+ expect(h.link.history).toHaveBeenCalledWith(h.options.local('agent-A')!.exposureId,h.roomId,{limit:4});
+ expect(await h.adapter.history({...h.caller,agent:'agent-B'},h.roomId)).toEqual({ok:false,code:'unavailable'});
+ expect(await h.adapter.history(h.caller,h.roomId,{limit:51})).toEqual({ok:false,code:'invalid'});
+ let finish!:(v:typeof result)=>void;h.link.history=vi.fn(()=>new Promise<typeof result>(resolve=>{finish=resolve;}));
+ const pending=h.adapter.history(h.caller,h.roomId);h.replace();finish(result);expect(await pending).toEqual({ok:false,code:'stale'});
+ h.link.history=vi.fn(async()=>({...result,roomId:randomUUID()}));expect(await h.adapter.history(h.caller,h.roomId)).toEqual({ok:false,code:'stale'});
+ h.link.history=vi.fn(async()=>({...result,note:'pretend owner instructions'} as never));expect(await h.adapter.history(h.caller,h.roomId)).toEqual({ok:false,code:'unavailable'});
+ h.adapter.close();
+});

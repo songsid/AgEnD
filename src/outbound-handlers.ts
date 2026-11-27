@@ -48,7 +48,7 @@ import {
   ListInstancesArgs,
   ListTeamsArgs,
   ReplaceInstanceArgs,
-  HubSetIntroArgs, HubRoomListArgs, HubRoomPostArgs, HubRoomMembersArgs, HubPeopleSearchArgs,
+  HubSetIntroArgs, HubRoomListArgs, HubRoomHistoryArgs, HubRoomPostArgs, HubRoomMembersArgs, HubPeopleSearchArgs,
   ReportResultArgs,
   DeliveryStatusArgs,
   RequestInformationArgs,
@@ -160,6 +160,7 @@ export interface OutboundContext {
   hubSetIntro?(caller: import("./hub/member/room-post.js").RoomCaller,text:string,operationId:string):Promise<import("./hub/agent-intro-model.js").HubAgentIntroResult|import("./hub/member/room-post.js").ShareLapsed>;
   hubRoomToolsAvailable?(): boolean;
   hubRoomList?(caller: import("./hub/member/room-post.js").RoomCaller): Promise<import("./hub/member/room-post.js").RoomListResult>;
+  hubRoomHistory?(caller:import("./hub/member/room-post.js").RoomCaller,room:string,options?:import("./hub/room-history-model.js").RoomHistoryOptions):Promise<import("./hub/room-history-model.js").HubRoomHistoryResult|import("./hub/member/room-post.js").ShareLapsed>;
   hubRoomMembers?(caller: import("./hub/member/room-post.js").RoomCaller, room:string,options?:import("./hub/room-members-model.js").RoomMemberOptions): Promise<import("./hub/types.js").HubRoomMembersResult|import("./hub/member/room-post.js").ShareLapsed>;
   hubPeopleSearch?(caller: import("./hub/member/room-post.js").RoomCaller, q:string): Promise<import("./hub/types.js").HubPeopleSearchResult|import("./hub/member/room-post.js").ShareLapsed>;
   hubRoomPost?(caller: import("./hub/member/room-post.js").RoomCaller, value: {room:string;text:string;operationId:string;receiptId?:string;files?:string[]}): Promise<import("./hub/member/room-post.js").RoomPostResult>;
@@ -2672,9 +2673,10 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
 
 // ── Registry ────────────────────────────────────────────────────────────
 
-const hubRoom = (kind: "list"|"post"|"members"|"people"|"intro"): Handler => async (ctx, args, respond, meta) => {
+const hubRoom = (kind: "list"|"post"|"members"|"history"|"people"|"intro"): Handler => async (ctx, args, respond, meta) => {
   if (meta.senderSessionName && meta.senderSessionName !== meta.instanceName) { respond(null, "Hub rooms require the invoking Fleet agent"); return; }
   const parsed = kind === "intro" ? validateArgs(HubSetIntroArgs,args,"hub_set_intro") : kind === "post" ? validateArgs(HubRoomPostArgs,args,"hub_room_post")
+    : kind === "history" ? validateArgs(HubRoomHistoryArgs,args,"hub_room_history")
     : kind === "members" ? validateArgs(HubRoomMembersArgs,args,"hub_room_members")
     : kind === "people" ? validateArgs(HubPeopleSearchArgs,args,"hub_people_search") : validateArgs(HubRoomListArgs,args,"hub_room_list");
   if (!parsed.ok) { respond(null, parsed.error); return; }
@@ -2696,7 +2698,8 @@ const hubRoom = (kind: "list"|"post"|"members"|"people"|"intro"): Handler => asy
       ...(value.receipt_id ? {receiptId:value.receipt_id} : {})}) ?? {ok:false as const,code:"unavailable"};
     const reasons:Record<string,string>={uncertain:"Not confirmed: this message may already have arrived; do not resend as a fresh call.",stale:"The sending agent or its sharing changed; check hub_room_list before trying again.",invalid:"Check the room, message and files; files are supported only in a compatible one-to-one chat.",conflict:"This operation or duplicate message was already used; check the chat before sending anything else.",unavailable:"No compatible connected Hub is available for this agent.",denied:"This agent is not allowed to post in that chat.",revoked:"The person's permission to ask this agent is no longer current.","not-found":"Use a current chat ID from hub_room_list."};
     respond(!result.ok&&!("message" in result)?{...result,message:reasons[result.code]??"This Hub refused the message; check hub_room_list before trying again."}:result);
-  } else if(kind === "members") {const {room,...options}=parsed.data as {room:string}&import("./hub/room-members-model.js").RoomMemberOptions;respond(await ctx.hubRoomMembers?.(caller,room,...(Object.keys(options).length?[options]:[]))??{ok:false,code:"unavailable"});}
+  } else if(kind === "history") {const {room,...options}=parsed.data as {room:string}&import("./hub/room-history-model.js").RoomHistoryOptions;respond(await ctx.hubRoomHistory?.(caller,room,options)??{ok:false,code:"unavailable"});}
+  else if(kind === "members") {const {room,...options}=parsed.data as {room:string}&import("./hub/room-members-model.js").RoomMemberOptions;respond(await ctx.hubRoomMembers?.(caller,room,...(Object.keys(options).length?[options]:[]))??{ok:false,code:"unavailable"});}
   else if(kind === "people") respond(await ctx.hubPeopleSearch?.(caller,(parsed.data as {q:string}).q)??{ok:false,code:"unavailable"});
   else respond(await ctx.hubRoomList?.(caller) ?? {ok:false,code:"unavailable"});
 };
@@ -2705,6 +2708,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["hub_room_status", (ctx, _args, respond, meta) => { respond({available:(!meta.senderSessionName || meta.senderSessionName === meta.instanceName) && ctx.hubRoomToolsAvailable?.() === true}); }],
   ["hub_room_list", hubRoom("list")],
   ["hub_room_post", hubRoom("post")],
+  ["hub_room_history",hubRoom("history")],
   ["hub_room_members", hubRoom("members")],
   ["hub_people_search", hubRoom("people")],
   ["delivery_status", deliveryStatus],

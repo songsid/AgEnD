@@ -691,6 +691,10 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             if (result.type !== "room.post-result") throw new HubProtocolError("invalid");
             return result.payload;
           },
+          history:async(exposureId,room,options)=>{
+            const result=await l.exchange({v:1,type:"room.history",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{exposureId,room,...options}},"room.history-result");
+            if(result.type!=="room.history-result")throw new HubProtocolError("invalid");return result.payload;
+          },
           members: async (exposureId,room,options) => {
             const result=await l.exchange({v:1,type:"room.members",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{exposureId,room,...options}},"room.members-result");
             if(result.type!=="room.members-result")throw new HubProtocolError("invalid");return result.payload;
