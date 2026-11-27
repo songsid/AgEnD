@@ -1,3 +1,6 @@
+import {HUB_ROOM_HISTORY_CAPABILITY,ROOM_HISTORY_BYTES,ROOM_HISTORY_NOTE,roomHistorySchema,type HubRoomHistoryResult} from "../room-history-model.js";
+import {spendRoomHistory,historyBinding,historyCursor,readHistoryCursor} from "./history.js";
+import {boundedRoomText} from "./context.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "../room-members-model.js";
 import {pageRoomMembers} from "./members-page.js";
 import {normalizeRoomPurpose} from "./purpose.js";
@@ -391,6 +394,42 @@ export class HubGroupRooms {
     const b = this.agentReadBuckets.get(owner);
     if (b ? b.count >= 30 : this.agentReadBuckets.size >= 1024) throw new HubProtocolError("backpressure");
     this.agentReadBuckets.set(owner, { at: b?.at ?? at, count: (b?.count ?? 0) + 1 });
+  }
+  async agentHistory(input:unknown,link:HubLinkContext):Promise<HubRoomHistoryResult>{
+    const body=validated(roomHistorySchema,input);
+    if(!link.features.has(HUB_ROOM_HISTORY_CAPABILITY))throw new HubProtocolError("incompatible");
+    const {source,fence}=await this.agentSource(body.exposureId,link);
+    return this.core.atomic(db=>{
+      this.agentRead(source.owner);
+      const rooms=db.prepare(`SELECT r.id,m.id AS member,m.joined_sequence AS floor FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
+        WHERE m.kind='agent' AND m.subject=? AND m.owner_at_join=? AND r.assistant_for IS NULL AND (r.id=? OR r.name=?) ORDER BY r.id LIMIT 2`).all(source.id,source.owner,body.room,body.room) as {id:string;member:string;floor:number}[];
+      const room=rooms.find(r=>r.id===body.room)??(rooms.length===1?rooms[0]:undefined);
+      if(!room)return {ok:false,code:"not-found"};
+      const binding=historyBinding(source.id,source.owner,room.id,room.member,room.floor);
+      // Exactly the member floor and inherited audience boundary, including the original question of an answer.
+      const visible=`room_id=? AND sequence>=? AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=hub_room_posts.id),sequence)>=?
+        AND (answer_to IS NULL OR EXISTS(SELECT 1 FROM hub_room_posts original WHERE original.id=hub_room_posts.answer_to AND original.room_id=hub_room_posts.room_id AND original.sequence>=?))`;
+      let until=Number.MAX_SAFE_INTEGER;
+      if(body.cursor){
+        const id=readHistoryCursor(body.cursor,binding);if(!id)return {ok:false,code:"stale"};
+        const row=db.prepare(`SELECT sequence FROM hub_room_posts WHERE id=? AND ${visible}`).get(id,room.id,room.floor,room.floor,room.floor) as {sequence:number}|undefined;
+        if(!row)return {ok:false,code:"stale"};until=row.sequence;
+      }
+      if(!spendRoomHistory(db,source.id,this.core.now()))return {ok:false,code:"rate-limited",retryAt:(Math.floor(this.core.now()/3600_000)+1)*3600_000};
+      const rows=db.prepare(`SELECT * FROM hub_room_posts WHERE ${visible} AND sequence<? AND (stage IS NULL OR stage='answered')
+        AND NOT EXISTS(SELECT 1 FROM hub_room_deliveries d WHERE d.id=hub_room_posts.delivery_id AND d.state='answered' AND d.reason_code='acknowledged-by-reaction' AND d.answer_id IS NULL)
+        ORDER BY sequence DESC LIMIT ?`).all(room.id,room.floor,room.floor,room.floor,until,(body.limit??20)+1) as PostRow[];
+      const messages:Extract<HubRoomHistoryResult,{ok:true}>["messages"]=[];
+      const result=()=>({ok:true as const,roomId:room.id,note:ROOM_HISTORY_NOTE as typeof ROOM_HISTORY_NOTE,messages:[...messages].reverse(),
+        ...(messages.length<rows.length&&messages.length?{next_cursor:historyCursor(binding,messages[messages.length-1]!.id)}:{})});
+      for(const row of rows.slice(0,body.limit??20)){
+        const raw=this.core.deps.content.get(row.content_ref)?.question??"",text=boundedRoomText(raw,2048);
+        const by=this.viaAuthor(row);
+        messages.push({id:row.id,sequence:row.sequence,at:row.created_at,author:{kind:row.author_kind,name:boundedRoomText(by.name??row.author_name,256),...(by.via?{via:{kind:by.via.kind,name:boundedRoomText(by.via.name,256)}}:{})},text,...(text!==raw?{truncated:true as const}:{})});
+        if(Buffer.byteLength(JSON.stringify(result()))>ROOM_HISTORY_BYTES){messages.pop();break;}
+      }
+      return result();
+    },fence);
   }
   async agentMembers(input: unknown, link: HubLinkContext): Promise<HubRoomMembersResult> {
     const body = validated(roomMembersSchema, input);if(body.v2&&!link.features.has(HUB_ROOM_MEMBERS_CAPABILITY))throw new HubProtocolError("incompatible");

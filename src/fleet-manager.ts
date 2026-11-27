@@ -29,7 +29,7 @@ import { runWithRequestContextAdmission, type RequestContextContinuation, type R
 import { RequestContextPendingWork } from "./request-context-pending-work.js";
 import {requestDeliveryView,requestContextDisplayView} from "./request-context-view.js";
 import {captureRequestHubOutput} from "./request-hub-output.js";
-import {assertRequestContextOperation,assertRequestHubContactImage,requireRequestContextPolicy,requestContextInstructionMode,requestContextPolicyInstalled,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
+import {assertRequestContextOperation,assertRequestHubContactImage,requireRequestContextPolicy,requestContextInstructionMode,requestContextPolicyInstalled,requestContextInstalledMode,RequestContextPolicyError,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import type { RequestContactApiHost } from "./request-contact-api.js";
 import type { RequestContactPrincipal, RequestContactSnapshotV1 } from "./request-contact-types.js";
@@ -2640,7 +2640,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (!isWindowsInstance(this.fleetConfig?.instances[target])) return { result: null, error: "Native panes can only read Windows runtime model inventories" };
           return { result: await this.listModelCatalog({ instanceName: target }) };
         }
-        const ops: Record<string, string> = { hub_set_intro:"hub-set-intro",hub_room_list:"hub-room-list",hub_room_post:"hub-room-post",hub_room_members:"hub-room-members",hub_people_search:"hub-people-search",list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
+        const ops: Record<string, string> = { hub_set_intro:"hub-set-intro",hub_room_list:"hub-room-list",hub_room_post:"hub-room-post",hub_room_history:"hub-room-history",hub_room_members:"hub-room-members",hub_people_search:"hub-people-search",list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
           delegate_task: "delegate", request_information: "ask", report_result: "report", delivery_status: "delivery-status" };
         const { nativeAgentAdmissionContext } = await import("./native-agent-admission.js");
         const { dispatchAgentOperation } = await import("./agent-endpoint.js");
@@ -4402,6 +4402,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hubRoomToolsAvailable(): boolean { return this.hubAgentRooms?.available() === true; }
   hubRoomList(caller: import("./hub/member/room-post.js").RoomCaller) {
     return this.hubAgentRooms?.rooms(caller) ?? Promise.resolve({ok:false as const,code:"unavailable"});
+  }
+  hubRoomHistory(caller:import("./hub/member/room-post.js").RoomCaller,room:string,options?:import("./hub/room-history-model.js").RoomHistoryOptions){
+    const policy=this.requestContextPolicy;
+    if(!policy||requestContextInstalledMode(policy)!=="active")return Promise.resolve({ok:false as const,code:"denied" as const});
+    return this.hubAgentRooms?.history({...caller,current:()=>this.requestContextPolicy===policy&&requestContextInstalledMode(policy)==="active"&&caller.current()},room,options)??Promise.resolve({ok:false as const,code:"unavailable" as const});
   }
   hubRoomMembers(caller: import("./hub/member/room-post.js").RoomCaller, room:string,options?:import("./hub/room-members-model.js").RoomMemberOptions) {
     return this.hubAgentRooms?.members(caller,room,options)??Promise.resolve({ok:false as const,code:"unavailable" as const});

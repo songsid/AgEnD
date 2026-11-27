@@ -169,7 +169,7 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
 });
 /** The largest picture any slot may take (a card slot's ceiling; the fleet checks the limit in force): read no more. */
 const WEB_THEME_ASSET_MAX_BYTES = ASSET_UPLOAD_MAX_BYTES;
-const CROSS_INSTANCE_TOOLS = new Set(["hub_set_intro", "hub_room_status", "hub_room_list", "hub_room_post", "hub_room_members", "hub_people_search", "send_to_instance", "broadcast", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "delivery_status", "describe_instance"]);
+const CROSS_INSTANCE_TOOLS = new Set(["hub_set_intro", "hub_room_status", "hub_room_list", "hub_room_post", "hub_room_history", "hub_room_members", "hub_people_search", "send_to_instance", "broadcast", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "delivery_status", "describe_instance"]);
 const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
 const TASK_TOOL = "task";
