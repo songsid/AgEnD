@@ -128,7 +128,7 @@ describe("J: the card", () => {
     expect(buttons(pg.root).every((b) => b.className.includes("btn-sm"))).toBe(true);
     expect(text(pg.root.querySelector(".rc-scope"))).toBe("Continue = this request and its follow-up contacts only.");
     expect(text(pg.root.querySelector("details.rc-more .rc-scope-more"))).toBe("Continue this request and its later Agent contacts. This does not approve what Agents do or authorize unrelated requests.");
-    expect(buttons(pg.root).map(text)).toEqual(["Continue (approve once)", "Always allow…", "Decline"]);
+    expect(buttons(pg.root).map(text)).toEqual(["Continue (with follow-ups)", "Allow this person to contact this agent…", "Decline"]);   // the grant editor's own name (#4497)
     expect(c).not.toContain("Clear retained origin");
   });
   it("zh-TW: the same, in its words (「Agent」, no 代理)", async () => {
@@ -137,7 +137,8 @@ describe("J: the card", () => {
     const pg = await mountWith(cardMod.RequestContactCard, { card: card() });
     expect(text(pg.root.querySelector(".rc-scope"))).toBe("繼續＝只放行這筆請求和它後續的聯絡。");
     expect(text(pg.root.querySelector(".rc-scope-more"))).toBe("繼續這筆請求及它後續的 Agent 聯絡；這不代表核准 Agent 的操作，也不會授權其他請求。");
-    expect(buttons(pg.root).map(text)).toEqual(["繼續（核准這次）", "一律允許…", "拒絕"]);
+    expect(buttons(pg.root).map(text)).toEqual(["繼續（含後續聯絡）", "允許這個人聯絡此 Agent…", "拒絕"]);
+    expect(buttons(pg.root).map(text).join("")).not.toMatch(/\s（|（\s|\s）|）\s|\(|\)/);   // full-width brackets, no padding
     expect(text(pg.root.querySelector(".rc-card"))).toContain("由 Alex 提出");
     expect(text(pg.root.querySelector(".rc-card"))).not.toMatch(/代理|艦隊|公司/);
   });
@@ -145,7 +146,7 @@ describe("J: the card", () => {
     api({ "GET /ui/authorization": () => ({ body: VERIFIED }) });
     expect(cardMod.requesterText({ kind: "person", platform: "hub", hubId: "h", id: "u7", displayName: "Sam" })).toBe("Asked by Sam (Hub)");
     expect(cardMod.requesterText({ kind: "unknown", reason: "unidentified" })).toBe("Asked by Unknown person");
-    expect(cardMod.requesterText(null)).toBe("No single known person asked");
+    expect(cardMod.requesterText(null)).toBe("Can't tell who asked");
     const pg = await mountWith(cardMod.RequestContactCard, { card: card({ engine: "legacy", approvalScope: "operation", ingress: "legacy", requester: null, returnAudience: null }) });
     expect(text(pg.root.querySelector(".rc-scope"))).toBe("Approve once = this one request only.");
     expect(text(pg.root.querySelector(".rc-scope-more"))).toBe("Approve = forward this request once.");
@@ -170,6 +171,38 @@ describe("J: deciding (a verified browser)", () => {
     choice(pg.root, "continue").click(); await settle(6);
     expect(decisions(calls).map((c) => c.body)).toEqual([{ snapshot: { ticketRevision: 3, policyRevision: 7, imageSha256: SHA }, decision: "approve-once" }]);
     expect(shown.ticket.state).toBe("approved");
+  });
+  it("after Continue the card says the outcome, not just the badge; the request id is not in the default text (#4497 capture check)", async () => {
+    api({ "GET /ui/authorization": () => ({ body: VERIFIED }) });
+    const done = card({ actions: { canDecide: false, canGrant: false, requiresVerification: false } }, { state: "approved", decidedAt: "2026-11-26T08:10:00Z" });
+    const pg = await mountWith(cardMod.RequestContactCard, { card: done });
+    expect(text(pg.root.querySelector(".rc-reason"))).toMatch(/^Continued Forwarded to Billing\. /);
+    expect(text(pg.root.querySelector(".rc-times"))).not.toContain("#");
+    expect((pg.root.querySelector(".rc-times") as any).getAttribute("title")).toBe(`#${ID}`);
+    i18n.setLang("zh-TW");
+    try {
+      const zh = await mountWith(cardMod.RequestContactCard, { card: done });
+      expect(text(zh.root.querySelector(".rc-reason"))).toMatch(/^已繼續 已轉交給 Billing。/);
+    } finally { i18n.setLang("en"); }
+  });
+  it("the grant editor's expiry is a day and a 24-hour time from selects, in the page's language (no datetime-local, no AM/PM)", async () => {
+    const { ContactGrantEditor } = await import("/ui/js/contact-grant-editor.js") as any;
+    i18n.setLang("zh-TW");
+    try {
+      const pg = await mountWith(ContactGrantEditor, { people: [{ platform: "discord", userId: "1", displayName: "Alex" }, { platform: "discord", userId: "2", displayName: "Robin" }], source: "Front desk", target: "Billing", verb: "send_to_instance", onSave: async () => true, onClose: () => {} });
+      const root = pg.document.querySelector("dialog") as any;
+      expect(root.querySelector('input[type="datetime-local"], input[type="date"], input[type="time"]')).toBeNull();
+      const [day, hour, minute] = [...root.querySelectorAll(".contact-until select")] as any[];
+      expect([...hour.querySelectorAll("option")].map((o: any) => o.value)).toEqual(Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")));
+      expect(text(day.querySelector("option"))).toMatch(/年.*月.*日/);
+      expect(text(root)).not.toMatch(/AM|PM|上午|下午/);
+      expect(minute).toBeTruthy();
+      // Nobody ticked yet: the save button is off and the dialog says why; the boundary is plain and comes first.
+      expect(([...root.querySelectorAll("button")] as any[]).find((b) => text(b) === "核准這筆，並設為常用轉交")?.disabled).toBe(true);
+      expect(text(root.querySelector(".contact-grant-pick"))).toBe("至少勾選一個人，才能儲存規則。");
+      expect(text(root.querySelector(".contact-grant-boundary"))).toContain("這只決定訊息能不能轉交");
+      expect(text(root)).not.toContain("不限制接收");
+    } finally { i18n.setLang("en"); }
   });
   it("Decline sends decline; Always allow sends the grant with the card's candidate keys only", async () => {
     const calls = api({ "GET /ui/authorization": () => ({ body: VERIFIED }), [`POST ${BASE}/${ID}/decision`]: () => ({ body: card({}, { state: "approved" }) }) });

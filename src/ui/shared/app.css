@@ -5573,6 +5573,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* Scoped grant metadata wraps as whole phrases; disabled decisions stay readable. */
 .contact-grant-meta { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
 .contact-grant-dialog .btn-primary:disabled { opacity: 1; background: var(--surface-2); color: var(--text-2); border-color: var(--border); }
+/* #4497: the expiry as a day and a 24-hour time from selects; they wrap as a group on a narrow sheet. */
+.contact-until { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1); }
+.contact-until select:first-child { flex: 1 1 12rem; }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .contact-grant-dialog :is(input:not([type=checkbox]), select, .check) { min-height: var(--tap); }
 }
