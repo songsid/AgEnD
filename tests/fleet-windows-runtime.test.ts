@@ -288,13 +288,13 @@ describe("Fleet native routing and durable lane",()=>{
 });
 
 describe("S-224 exec admitted-input capture", () => {
-  async function scoped() {
+  async function scoped(registration?:import("../src/request-context-fence.js").RequestContextRegistrationGate) {
     const close = vi.fn(), connection = { endpoint: "http://127.0.0.1:19280/agent", token: "a".repeat(64), tools: ["task"] };
     const open = vi.fn<FleetWindowsRuntimeHost["openMcp"] & Function>((_name, _id, _sandbox, _current, _scope) => ({ connection, close, reportedCorrelations: () => [] }));
     const f = fixture(open), { name, agent } = await f.create();
     const owner: RequestContextRuntimeOwner = { instance: name, incarnation: "native-generation", workGeneration: "exec-lane", daemonBootId: "coordinator-boot", spawnGeneration: 1, launchFenceEpoch: 0, deliveryEpoch: 0 };
     const inputs = new Map<string, PreparedRequestContextInput>(), contexts = new Map<string, RequestContextV1>();
-    const turns = new RequestContextLocalTurns({ input: key => inputs.get(key) ?? null, context: key => contexts.get(key) ?? null,
+    const turns = new RequestContextLocalTurns({ registration, input: key => inputs.get(key) ?? null, context: key => contexts.get(key) ?? null,
       retain: value => { contexts.set(value.ref.contextId, value); }, canManage: () => true, recovery: () => null, saveRecovery: () => {} });
     const prepare = (key: string, text = "Question") => { const root = randomUUID(); inputs.set(key, { inputId: key, wireSha256: deliveryContentDigest(text), owner,
       proof: { kind: "independent" }, context: { ref: { version: 1, contextId: root, rootContextId: root }, rootEvidenceRef: "accepted-input", ingress: "guest",
@@ -361,4 +361,14 @@ describe("S-224 exec admitted-input capture", () => {
     await expect(f.runtime.deliver(f.name, { requestId: id, content: "Question" }, { requestContextInputId: "a", beforeStart: () => { throw Error("claim revoked"); } })).rejects.toThrow("claim revoked");
     expect(f.turns.current(f.owner)).toBeNull(); expect(f.open).not.toHaveBeenCalled();
   });
+  it("S-226 unconfirmed exec remains a drain reference until actual recovery confirmation",async()=>{
+    const registration={assertRegistration:vi.fn()},f=await scoped(registration);f.prepare("a");
+    await f.runtime.deliver(f.name,{requestId:id,content:"Question"},{requestContextInputId:"a"});const root=f.inputs.get("a")!.context!.ref.rootContextId;
+    expect(f.runtime.drainView(root).references).toHaveLength(1);
+    f.settle(id,{status:"failed",outcomeConfirmed:false});
+    f.runtime.get(f.name);expect(f.runtime.drainView(root).references).toHaveLength(1);
+    f.tasks.set(id,{...(f.tasks.get(id)!),status:"completed",outcomeConfirmed:true});
+    f.runtime.get(f.name);expect(f.runtime.drainView(root).references).toEqual([]);
+  });
+
 });

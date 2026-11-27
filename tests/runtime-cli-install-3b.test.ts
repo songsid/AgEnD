@@ -275,9 +275,9 @@ describe("Antigravity: a pinned download through the server's account.request", 
   it("with the switch on: downloads the pinned file, verifies it, records it, and answers with the pinned version", async () => {
     const s = stack(), f = await fixture({ remoteAccounts: s.remoteAccounts });
     setRemoteSwitch(f.dir, "install", true, 3_600_000);
-    expect(await f.hub.callAccount(f.machineId, "cli.install", { cli: "antigravity", actor: ACTOR })).toEqual({ version: "1.5.15" });
+    expect(await f.hub.callAccount(f.machineId, "cli.install", { cli: "antigravity", actor: ACTOR })).toEqual({ version: "1.5.18" });
     expect(s.downloads).toEqual([{ url: pin.url, args: ["-NoProfile", "-NonInteractive", "-Command", DOWNLOAD_COMMAND] }]);
-    expect(managedCliExecutable(s.root, "antigravity")).toMatchObject({ version: "1.5.15" });
+    expect(managedCliExecutable(s.root, "antigravity")).toMatchObject({ version: "1.5.18" });
     expect(audit(f.dir).map(line => JSON.parse(line)).map(line => `${line.action}|${line.outcome}|${line.cli}`)).toEqual(["cli.install|started|antigravity", "cli.install|ok|antigravity"]);
   });
   it("a file whose checksum is not the pin's, or that someone else signed, is refused with the reason, and nothing is installed", async () => {

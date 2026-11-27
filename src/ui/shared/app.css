@@ -1106,6 +1106,20 @@ html.lb-open .scroller { overflow: hidden; }
 .pv-label { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--text-2); margin-right: auto; font-family: var(--font-mono); }
 .pv-note { font-size: var(--fs-xs); color: var(--text-3); margin-top: 6px; }
 .pv-note:empty { display: none; }
+/* M-3814: the 429 notice's link to the fixed preview address (Settings → Access). */
+.pv-note .pv-fix { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+/* Chinese wraps between words, not inside one (建立, 查得到, 使用). */
+:lang(zh) .pv-note, :lang(zh) .fixed-preview, :lang(zh) .s-public-entry .note { word-break: keep-all; overflow-wrap: anywhere; }
+/* M-3814: the fixed preview address's Cloudflare step, under the fixed hostname. */
+.fixed-preview { margin-top: var(--s-3); }
+/* No fixed public hostname yet: why there is no preview field — body-size, set apart (the 429 link lands here). */
+.fixed-preview-needs { margin: var(--s-2) 0; padding: 8px var(--s-3) 8px calc(var(--s-3) + 3px); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); --lbar-color: var(--accent); }   /* the bar: .lbar (#2330) */
+:lang(zh) .fixed-preview-needs { word-break: keep-all; overflow-wrap: anywhere; }
+.fixed-preview-steps { margin: var(--s-2) 0; }
+.fixed-preview-steps summary { cursor: pointer; padding: 6px 0; }
+.fixed-preview-steps ol { margin: var(--s-1) 0 0; padding-left: 1.6em; list-style: decimal; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.fixed-preview-steps li + li { margin-top: 4px; }
+.fixed-preview .save-row .fixed-preview-why { margin: 0 0 0 var(--s-2); align-self: center; }
 .pv-banner { margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); font-size: var(--fs-xs); background: var(--warn-bg); border: 1px solid var(--warn-line);
   display: flex; align-items: flex-start; gap: var(--s-2); }
 .pv-banner[hidden] { display: none; }
@@ -1136,7 +1150,7 @@ html.lb-open .scroller { overflow: hidden; }
 .p-chat > .panel-head { --bg: var(--chrome-bg); --surface: var(--chrome-surface); --text: var(--chrome-text); --text-2: var(--chrome-text-2); --accent: var(--chrome-accent); background: var(--bg); color: var(--text); }
 .p-chat.th { background: var(--bg); color: var(--text); }
 .p-chat.th .msg.user .body { border-radius: var(--bubble-radius, var(--r-xl)); }
-.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea, .p-chat.th-font-system .composer-ph { font-family: system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }
+.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea, .p-chat.th-font-system .composer-ph { font-family: "AgEnD Emoji", system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }
 .p-chat.th-font-mono .thread, .p-chat.th-font-mono .composer textarea, .p-chat.th-font-mono .composer-ph { font-family: var(--font-mono); }
 .p-chat.th-bubble-thin .msg.user .body { box-shadow: inset 0 0 0 1px var(--border); }
 .p-chat.th-bubble-accent .msg.user .body { box-shadow: inset 0 0 0 1px var(--accent); }
@@ -2761,6 +2775,13 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card.sheet .oo-card-close { width: var(--tap); height: var(--tap); margin: -6px -8px 0 0; }
 .oo-card.sheet .oo-card-actions .btn { flex: 1; min-height: var(--tap); justify-content: center; }
 .oo-card.sheet .oo-card-actions { flex-wrap: wrap; }
+/* #4504: the card's pose preview — a labelled picker and Replay (a small button) on one row: the picker shrinks, Replay keeps its size. */
+.oo-card-preview { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
+.oo-card-preview label { display: flex; align-items: center; gap: var(--s-1); flex: 1; min-width: 0; }
+.oo-card-preview select { flex: 1; min-width: 0; }
+.oo-card-preview .btn { flex: none; }
+/* #4508 review: on the sheet, a fingertip's 44 px like the actions row; the select keeps 16 px text from the coarse-pointer rule at the top. */
+.oo-card.sheet .oo-card-preview select, .oo-card.sheet .oo-card-preview .btn { min-height: var(--tap); }
 .oo-card-grip { width: 36px; height: 4px; margin: 0 auto var(--s-2); border-radius: var(--r-full); background: var(--surface-2); }
 /* M-3633: a sheet whose content scrolls scrolls natively (pan-y); its grip is then the handle that closes it — kept at
    its top, a fingertip tall (the bar drawn in the middle of it), never taken by the browser (touch-action none). */
@@ -5555,3 +5576,18 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* M-3678: the new owner stop action follows the phone tap target. */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .n-actions .hub-close { min-height: var(--tap); min-width: var(--tap); } }
+
+/* H: provenance stays outside the collapsible message, with the existing flat notice disclosure. */
+.request-provenance { color: var(--text-2); margin-bottom: var(--s-2); overflow-wrap: anywhere; }
+.request-provenance strong { color: var(--text); font-size: inherit; font-weight: 600; }
+.request-provenance p { margin: var(--s-1) 0; }
+.request-provenance .n-raw { margin: var(--s-1) 0; }
+.request-provenance summary { cursor: pointer; list-style: disclosure-closed inside; }
+.request-provenance details[open] > summary { list-style-type: disclosure-open; }
+.request-provenance .msg-tools { opacity: 1; }
+.request-provenance .n-raw-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .request-provenance summary { min-height: var(--tap); display: list-item; padding-block: var(--s-3); }
+  .request-provenance .msg-tools button { min-height: var(--tap); min-width: var(--tap); }
+}

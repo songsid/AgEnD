@@ -1,3 +1,11 @@
+import {assertRequestHubContactImage} from "./request-context-policy.js";
+import {RequestContextReturns,requestContextDeliveryChildId,requestContextReturnBlockers,registerRequestContextReturnDispatcher,assertRequestContextReturnsCompatibility,REQUEST_CONTEXT_RETURNS_TABLE} from "./request-context-returns.js";
+import type {PreparedRequestContextInput,RequestContextRuntimeOwner} from "./request-context-turns.js";
+import type { QuiescenceGate } from "./update-quiescence.js";
+import { RequestContactCards, type RequestContactCardsHost } from "./request-contact-card.js";
+import { RequestContextDrain } from "./request-context-drain.js";
+import { RequestContextMigrationShadow, type RequestMigrationHost } from "./request-context-migration.js";
+import { RequestContactGate, type RequestContactGateHost } from "./request-contact-gate.js";
 import { WorkingRecoveryStore, WORKING_RECOVERY_KIND, type RecoveryEpisode } from "./working-recovery.js";
 import { initializeSeenPeople, isSeenPerson, listSeenPeople, noteSeenPerson, pruneSeenPeople, SEEN_PEOPLE_KEEP_DAYS, type SeenPerson } from "./guest-seen-people.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
@@ -169,6 +177,7 @@ function payloadMessageId(payload: unknown): string | null {
 }
 
 export interface DeliveryStatusItem {
+  request_provenance?:import("./request-context-view.js").RequestProvenanceView;
   delivery_id: string;
   operation_id: string;
   correlation_id: string | null;
@@ -618,6 +627,9 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   readonly managerBootId: string;
+  /** S-244: while the barrier flag is up, claimNext journals references and claims nothing. Unset: today's claim. */
+  private quiescence: QuiescenceGate | null = null;
+  setQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
 
   /** Observational extension: its failure never participates in delivery admission. */
   observeWorkingState(instance: string, snapshot: Omit<WorkingStateSnapshot, "managerBootId">) {
@@ -717,16 +729,22 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   private readonly requestContextDispatchVersion: RequestContextDispatchVersion;
+  private readonly requestContextRelayVersion:0|1;
+  private requestContextReturnsOwner?:RequestContextReturns;
 
-  constructor(dbPath: string, managerBootId: string = randomUUID(), compatibility: RequestContextCompatibilityOptions = {}) {
+  constructor(dbPath: string, managerBootId: string = randomUUID(), compatibility: RequestContextCompatibilityOptions & {requestContextRelayVersion?:0|1} = {}) {
     super();
     this.managerBootId = managerBootId;
     this.requestContextDispatchVersion = compatibility.requestContextDispatchVersion ?? 0;
+    this.requestContextRelayVersion=compatibility.requestContextRelayVersion??0;
     mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
     this.db = new Database(dbPath);
     try {
       registerRequestContextDispatcher(this.db, this.requestContextDispatchVersion);
       assertRequestContextCompatibility(this.db, this.requestContextDispatchVersion);
+      registerRequestContextReturnDispatcher(this.db,this.requestContextRelayVersion);
+      assertRequestContextReturnsCompatibility(this.db,this.requestContextRelayVersion);
+      if(hasTable(this.db,REQUEST_CONTEXT_RETURNS_TABLE))this.requestContextReturnsOwner=new RequestContextReturns(this.db,()=>this.requireRequestContextRelay());
       this.initialize(dbPath);
     }
     catch (error) {
@@ -1159,6 +1177,39 @@ export class DeliveryOutbox extends EventEmitter {
     this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
+  /** Internal same-card service; no production host installs it before L. */
+  requestContactCards(host:RequestContactCardsHost):RequestContactCards {
+    return new RequestContactCards(this.db,this.contactAuthorizations,()=>this.requestContactGate(host),host);
+  }
+
+  /** Scratch/cutover assembly only; a certificate is process-bound and never persisted as authority. */
+  /** Stable Fleet identity while its exclusive coordinator lease is current; never a boot id. */
+  requestContextDrain(owner: () => string | null): RequestContextDrain {
+    const ready = (): void => { if(this.requestContextDispatchVersion!==1||assertRequestContextCompatibility(this.db,1)!=="active")throw Error("request-context dispatcher is not ready"); };
+    ready();return new RequestContextDrain(this.db,ready,owner);
+  }
+
+  /** Read-only shadow is safe before activation; never initializes contact/context artifacts. */
+  requestContextMigrationShadow(host: RequestMigrationHost): RequestContextMigrationShadow {
+    return new RequestContextMigrationShadow(this.db, host);
+  }
+
+  /** Dormant central gate; no production caller until the controlled cutover. */
+  requestContactGate(host: RequestContactGateHost): RequestContactGate {
+    const ready = (): void => {
+      if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") throw Error("request-context dispatcher is not ready");
+    };
+    ready();
+    return new RequestContactGate(this.db, this.contactAuthorizations, { ready,
+      admit: (input, context, binding) => this.admitWithRequestContext(input, context, binding),
+      retire: (root, proof) => this.retireRequestContextRoot(root, proof) }, host);
+  }
+
+  /** H owner assembly only. The ordinary E factory keeps the pre-H hold semantics. */
+  requestHubContactGate(host:RequestContactGateHost):RequestContactGate {
+    this.requireRequestContextRelay();return this.requestContactGate({...host,hubRelayAllowed:(context,binding,delivery)=>assertRequestHubContactImage(context,binding,delivery)});
+  }
+
   /** Internal future-dispatch port only; no production ingress calls this before slice L. */
   admitWithRequestContext(input: NewOutboxDelivery, context: RequestContextV1, bindingInput: RequestOperationBindingV1): { delivery: OutboxDelivery; inserted: boolean } {
     if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") {
@@ -1167,6 +1218,7 @@ export class DeliveryOutbox extends EventEmitter {
     const admitted = this.db.transaction(() => {
       const store = new RequestContextStore(this.db), binding = RequestOperationBindingV1Schema.parse(bindingInput);
       const stored = store.recordContext(context);
+      if(this.requestContextRelayVersion===1)assertRequestHubContactImage(stored,binding,input);
       if (binding.operationId !== input.operationId || binding.source.instance !== input.sourceInstance
         || binding.target.instance !== input.targetInstance || binding.contextId !== stored.ref.contextId
         || binding.rootContextId !== stored.ref.rootContextId || binding.source.instance !== stored.source.instance
@@ -1181,6 +1233,7 @@ export class DeliveryOutbox extends EventEmitter {
           || requestContextJson(prior.binding) !== requestContextJson(binding)) throw Error("request-context operation conflict");
         const delivery = this.get(prior.deliveryId);
         if (!delivery || requestContextDigest(delivery.payload) !== binding.payloadSha256) throw Error("request-context delivery unavailable");
+        if(this.requestContextRelayVersion===1)this.requestContextReturns.admitted(prior,stored,false);
         return { delivery, inserted: false };
       }
       if (this.db.prepare("SELECT 1 FROM deliveries WHERE source_key=? OR (source_instance=? AND operation_id=?) LIMIT 1")
@@ -1188,10 +1241,31 @@ export class DeliveryOutbox extends EventEmitter {
       const admitted = this.admitInternal(input, true);
       if (requestContextDigest(admitted.delivery.payload) !== binding.payloadSha256) throw Error("request-context admitted payload changed");
       store.recordOperation({ binding, sourceKey: input.sourceKey, deliveryId: admitted.delivery.deliveryId, admissionSha256 });
+      if(this.requestContextRelayVersion===1)this.requestContextReturns.admitted(store.operation(input.sourceInstance,input.operationId)!,stored,admitted.inserted);
       return admitted;
     })();
     if (admitted.inserted) this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
     return admitted;
+  }
+
+  private requireRequestContextRelay():void {
+    if(this.requestContextRelayVersion!==1||this.requestContextDispatchVersion!==1||assertRequestContextCompatibility(this.db,1)!=="active")throw Error("request-context relay dispatcher is not ready");
+  }
+  /** One dormant B-owned return manager, initialized only behind the active barrier and explicit H capability. */
+  get requestContextReturns():RequestContextReturns {this.requireRequestContextRelay();return this.requestContextReturnsOwner??=new RequestContextReturns(this.db,()=>this.requireRequestContextRelay());}
+  prepareRequestContextDeliveryInput(deliveryId:string,attemptNo:number,owner:RequestContextRuntimeOwner,wireSha256:string,currentConsumption:()=>boolean):PreparedRequestContextInput {
+    this.requireRequestContextRelay();if(!currentConsumption())throw Error("request-context delivery attempt is no longer current");if(!/^[a-f0-9]{64}$/.test(wireSha256)||!Number.isSafeInteger(attemptNo)||attemptNo<1)throw Error("request-context delivery attempt unavailable");
+    return this.db.transaction(()=>{
+      const store=new RequestContextStore(this.db),operation=store.forDelivery(deliveryId),delivery=this.get(deliveryId);
+      if(!operation||!delivery||operation.binding.target.instance!==owner.instance||operation.binding.target.incarnation!==owner.incarnation||delivery.targetSession&&delivery.targetSession!==owner.instance)throw Error("request-context delivery target unavailable");
+      const returned=this.requestContextReturns.parentForResponse(deliveryId),parent=store.context(returned?.requesterContextId??operation.binding.contextId);
+      if(!parent||parent.ref.rootContextId!==operation.binding.rootContextId)throw Error("request-context delivery parent unavailable");
+      const context:RequestContextV1={...parent,ref:{version:1,contextId:requestContextDeliveryChildId(deliveryId,operation.binding.target),rootContextId:parent.ref.rootContextId,parentContextId:parent.ref.contextId},source:{instance:owner.instance,incarnation:owner.incarnation}};
+      const retained=store.recordContext(context),sender={kind:"peer"as const,...operation.binding.source};
+      if(!currentConsumption())throw Error("request-context delivery attempt is no longer current");
+      return {inputId:`delivery:${deliveryId}:${attemptNo}`,wireSha256,owner:structuredClone(owner),context:retained,
+        proof:returned?{kind:"expected-return"as const,parentContextId:parent.ref.contextId,expectedSender:{kind:"peer"as const,...returned.responder},actualSender:sender}:{kind:"admitted-delivery"as const,parentContextId:parent.ref.contextId,deliveryId,sender}};
+    })();
   }
 
   /** Internal dormant local-turn persistence; the record alone grants no turn or authority. */
@@ -1469,6 +1543,12 @@ export class DeliveryOutbox extends EventEmitter {
     return measureSyncWork("outbox.claimNext", () => this.claimNextSync(managerBootId, targetBootIdFor, blockedTargets, eligible));
   }
   private claimNextSync(managerBootId: string, targetBootIdFor: (target: string) => string | null, blockedTargets: ReadonlySet<string>, eligible?: (delivery: OutboxDelivery) => boolean): ClaimedOutboxDelivery | undefined {
+    const gate = this.quiescence;
+    if (gate?.armed()) {
+      const held = this.db.prepare(`SELECT delivery_id, created_seq FROM deliveries WHERE state IN ('queued','retry_wait') ORDER BY created_seq`).all() as Array<{ delivery_id: string; created_seq: number }>;
+      for (const row of held) gate.holdOutboxClaim(row.delivery_id, row.created_seq);
+      return undefined;
+    }
     const now = new Date().toISOString();
     const pending = this.db.prepare(`
       SELECT * FROM deliveries WHERE state IN ('queued','retry_wait')
@@ -1506,6 +1586,24 @@ export class DeliveryOutbox extends EventEmitter {
       if (claimed) return { ...claimed, targetDaemonBootId: targetBootId };
     }
     return undefined;
+  }
+
+  /**
+   * Hand-back claims one referenced row and no other (M-3770 §2.6). The update is conditional, so a second claim
+   * does not land. A retry still inside its backoff is `ineligible` and is left queued.
+   */
+  claimExact(deliveryId: string, managerBootId: string, targetBootId: string, now = new Date().toISOString()): "claimed" | "ineligible" | "missing" | "settled" {
+    const row = this.get(deliveryId);
+    if (!row) return "missing";
+    if (row.state !== "queued" && row.state !== "retry_wait") return "settled";
+    if (row.state === "retry_wait" && row.nextAttemptAt && row.nextAttemptAt > now) return "ineligible";
+    const result = this.db.prepare(`
+      UPDATE deliveries
+      SET state='delivering', target_daemon_boot_id=?, manager_boot_id=?,
+          attempt_no=attempt_no+1, updated_at=?, last_error=NULL, next_attempt_at=NULL
+      WHERE delivery_id=? AND state IN ('queued','retry_wait')
+    `).run(targetBootId, managerBootId, now, deliveryId);
+    return result.changes === 1 ? "claimed" : "settled";
   }
 
   /**
@@ -2058,6 +2156,72 @@ export class DeliveryOutbox extends EventEmitter {
    * `delivery_status` can return "expired" for a pruned row — but only to the
    * original source or target (ownership check, #1340 P2 🔒).
    */
+  private pruneDeliveryRows(rows: Array<{ delivery_id: string; source_instance: string; target_instance: string }>, now: string): void {
+    const ids = rows.map(row => row.delivery_id); if (!ids.length) return;
+    const placeholders = ids.map(() => "?").join(",");
+        // Record (delivery_id, source, target) so delivery_status can return
+        // "expired" to the row's own source/target (ownership-gated).
+        const insertPruned = this.db.prepare(
+          "INSERT OR IGNORE INTO pruned_ids(delivery_id, source_instance, target_instance, pruned_at) VALUES (?, ?, ?, ?)",
+        );
+        for (const row of rows) insertPruned.run(row.delivery_id, row.source_instance, row.target_instance, now);
+
+        // Delete child rows first.
+        this.db.prepare(`DELETE FROM delivery_attempts WHERE delivery_id IN (${placeholders})`).run(...ids);
+        // Only closed reply_obligations (answered/expired): open ones were excluded above.
+        if (hasTable(this.db, "reply_obligations")) {
+          this.db.prepare(`
+            DELETE FROM reply_obligations
+            WHERE request_delivery_id IN (${placeholders}) AND state IN ('answered','expired')
+          `).run(...ids);
+        }
+        this.db.prepare(`DELETE FROM outcome_notices WHERE notice_delivery_id IN (${placeholders})`).run(...ids);
+        this.db.prepare(`DELETE FROM failure_notices WHERE parent_delivery_id IN (${placeholders}) OR notice_delivery_id IN (${placeholders})`).run(...ids, ...ids);
+        this.db.prepare(`DELETE FROM delivery_forward_edges WHERE reference_kind='delivery' AND reference_id IN (${placeholders})`).run(...ids);
+        this.db.prepare(`DELETE FROM deliveries WHERE delivery_id IN (${placeholders})`).run(...ids);
+  }
+
+  /** Dormant lifecycle port: only drained, terminal roots older than 30 days may retire atomically. */
+  private retireRequestContextRoot(root: string, retired: () => boolean): number {
+    if (this.requestContextDispatchVersion !== 1 || assertRequestContextCompatibility(this.db, 1) !== "active") throw Error("request-context dispatcher is not ready");
+    return this.db.transaction(() => {
+      const store = new RequestContextStore(this.db), context = store.context(root);
+      if (!context || context.ref.rootContextId !== root || context.ref.parentContextId || !retired()) throw Error("request-context root is not drained");
+      const ids = (this.db.prepare("SELECT context_id FROM request_contexts_v1 WHERE json_extract(context_json,'$.ref.rootContextId')=?").all(root) as Array<{context_id:string}>).map(row=>row.context_id);
+      const slots = "SELECT context_id FROM request_contexts_v1 WHERE json_extract(context_json,'$.ref.rootContextId')=?", cutoff = new Date(Date.now()-30*24*60*60_000).toISOString();
+      const rows = this.db.prepare(`SELECT d.delivery_id,d.source_instance,d.target_instance,d.state,COALESCE(d.finished_at,d.updated_at) AS at
+        FROM deliveries d JOIN request_context_operations_v1 o ON o.delivery_id=d.delivery_id WHERE o.context_id IN (${slots})`).all(root) as Array<{delivery_id:string;source_instance:string;target_instance:string;state:string;at:string}>;
+      if (rows.some(row=>!["delivered","failed","cancelled"].includes(row.state)||!Number.isFinite(Date.parse(row.at))||Date.parse(row.at)>=Date.parse(cutoff))) throw Error("request-context root retention not elapsed");
+      if (this.db.prepare(`SELECT 1 FROM reply_obligations WHERE state='open' AND request_delivery_id IN (SELECT delivery_id FROM request_context_operations_v1 WHERE context_id IN (${slots})) LIMIT 1`).get(root)) throw Error("request-context root has open reply");
+      if (hasTable(this.db,"request_context_recovery_v1") && this.db.prepare(`SELECT 1 FROM request_context_recovery_v1 WHERE json_extract(pointer_json,'$.contextId') IN (${slots}) LIMIT 1`).get(root)) throw Error("request-context root has recovery reference");
+      if (hasTable(this.db,"request_context_contacts_v1")) {
+        const tickets = this.db.prepare("SELECT t.id,t.ticket_json FROM contact_auth_tickets t JOIN request_context_contacts_v1 c ON c.ticket_id=t.id WHERE c.root_id=?").all(root) as Array<{id:string;ticket_json:string}>;
+        const resolved=tickets.map(row=>this.contactAuthorizations.get(row.id));
+        if (resolved.some(t=>{if(!t)return true;const at=Date.parse(t.decidedAt??t.expiresAt??t.createdAt);return !['approved','delivered','declined','expired'].includes(t.state)||!Number.isFinite(at)||at>=Date.parse(cutoff);})) throw Error("request-context root has retained ticket");
+        for (const ticket of tickets) {
+          this.db.prepare("DELETE FROM contact_auth_outcome_notices WHERE ticket_id=?").run(ticket.id);
+          this.db.prepare("DELETE FROM contact_auth_approval_notices WHERE ticket_id=?").run(ticket.id);
+        }
+        this.db.prepare("DELETE FROM request_context_contacts_v1 WHERE root_id=?").run(root);
+        for (const ticket of tickets) this.db.prepare("DELETE FROM contact_auth_tickets WHERE id=?").run(ticket.id);
+      }
+      if(hasTable(this.db,REQUEST_CONTEXT_RETURNS_TABLE)){
+        this.requestContextReturns.closeNonDelivery(root);
+        if(requestContextReturnBlockers(this.db,root).length)throw Error("request-context root has expected return");
+        this.db.prepare(`DELETE FROM ${REQUEST_CONTEXT_RETURNS_TABLE} WHERE root_context_id=?`).run(root);
+      }
+      this.db.prepare(`DELETE FROM request_context_operations_v1 WHERE context_id IN (${slots})`).run(root);
+      this.pruneDeliveryRows(rows,new Date().toISOString());
+      // Single-parent contexts are deleted leaves first; no dependent recovery/ledger/work may remain.
+      for (let left=ids.length;left>0;) {
+        const changed=this.db.prepare(`DELETE FROM request_contexts_v1 WHERE context_id IN (${slots}) AND context_id NOT IN (SELECT parent_id FROM request_contexts_v1 WHERE parent_id IS NOT NULL)`).run(root).changes;
+        if (!changed) throw Error("request-context root has external descendant"); left-=changed;
+      }
+      if (!retired()) throw Error("request-context root retirement changed");
+      return rows.length;
+    })();
+  }
+
   async prune(days: number): Promise<{ pruned: number; durationMs: number }> {
     const { performance } = await import("node:perf_hooks");
     const t0 = performance.now();
@@ -2079,6 +2243,7 @@ export class DeliveryOutbox extends EventEmitter {
         FROM deliveries
         WHERE state IN ${PRUNABLE}
           AND COALESCE(finished_at, updated_at) < ?
+          ${hasTable(this.db, "request_context_operations_v1") ? "AND delivery_id NOT IN (SELECT delivery_id FROM request_context_operations_v1)" : ""}
           AND (
             NOT EXISTS (SELECT 1 FROM reply_obligations WHERE request_delivery_id = delivery_id AND state = 'open')
           )
@@ -2088,30 +2253,8 @@ export class DeliveryOutbox extends EventEmitter {
 
       if (rows.length === 0) break;
 
-      const ids = rows.map(r => r.delivery_id);
-      const placeholders = ids.map(() => "?").join(",");
-
       this.db.transaction(() => {
-        // Record (delivery_id, source, target) so delivery_status can return
-        // "expired" to the row's own source/target (ownership-gated).
-        const insertPruned = this.db.prepare(
-          "INSERT OR IGNORE INTO pruned_ids(delivery_id, source_instance, target_instance, pruned_at) VALUES (?, ?, ?, ?)",
-        );
-        for (const row of rows) insertPruned.run(row.delivery_id, row.source_instance, row.target_instance, now);
-
-        // Delete child rows first.
-        this.db.prepare(`DELETE FROM delivery_attempts WHERE delivery_id IN (${placeholders})`).run(...ids);
-        // Only closed reply_obligations (answered/expired): open ones were excluded above.
-        if (hasTable(this.db, "reply_obligations")) {
-          this.db.prepare(`
-            DELETE FROM reply_obligations
-            WHERE request_delivery_id IN (${placeholders}) AND state IN ('answered','expired')
-          `).run(...ids);
-        }
-        this.db.prepare(`DELETE FROM outcome_notices WHERE notice_delivery_id IN (${placeholders})`).run(...ids);
-        this.db.prepare(`DELETE FROM failure_notices WHERE parent_delivery_id IN (${placeholders}) OR notice_delivery_id IN (${placeholders})`).run(...ids, ...ids);
-        this.db.prepare(`DELETE FROM delivery_forward_edges WHERE reference_kind='delivery' AND reference_id IN (${placeholders})`).run(...ids);
-        this.db.prepare(`DELETE FROM deliveries WHERE delivery_id IN (${placeholders})`).run(...ids);
+        this.pruneDeliveryRows(rows, now);
       })();
 
       total += rows.length;
@@ -2174,7 +2317,10 @@ export class DeliveryOutbox extends EventEmitter {
   private insertFailureNotice(parent: OutboxRow, outcome: "failed" | "uncertain", reason: string, now: string): void {
     // post_restart_outcome_notice: no longer written (#2802), but a row from before may still be queued.
     if (parent.kind === "delivery_outcome_notice" || parent.kind === "post_restart_outcome_notice"
-      || parent.kind === REPLY_OBLIGATION_NOTICE_KIND || parent.kind === SYSTEM_NOTICE_KIND || parent.kind === WORKING_RECOVERY_KIND) return;
+      || parent.kind === REPLY_OBLIGATION_NOTICE_KIND || parent.kind === SYSTEM_NOTICE_KIND || parent.kind === WORKING_RECOVERY_KIND
+      // M-3770 §2.6: a held turn replayed after an abandon (update-quiescence's UPDATE_HANDBACK_COPY_KIND) has no sending
+      // agent — its source isn't an instance — so a notice would be a row nobody drains. The person sees it in Needs you.
+      || parent.kind === "update_handback_copy") return;
     // A self-scheduled silent heartbeat has no other sender to inform. Keep
     // its terminal state/evidence and fleet log without creating a new turn.
     if (parent.source_instance === parent.target_instance

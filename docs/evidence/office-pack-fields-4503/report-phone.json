@@ -1,0 +1,21 @@
+{
+  "dev": "phone",
+  "cases": {
+    "phone-light-en": {
+      "errors": [],
+      "csp": []
+    },
+    "phone-light-zh-TW": {
+      "errors": [],
+      "csp": []
+    },
+    "phone-dark-en": {
+      "errors": [],
+      "csp": []
+    },
+    "phone-dark-zh-TW": {
+      "errors": [],
+      "csp": []
+    }
+  }
+}

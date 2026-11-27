@@ -47,7 +47,7 @@ export interface ScheduleRun {
   id: number;
   schedule_id: string;
   triggered_at: string;
-  status: "queued" | "delivered" | "delivered_fallback" | "retry" | "instance_offline" | "channel_dead";
+  status: "queued" | "delivered" | "delivered_fallback" | "retry" | "instance_offline" | "channel_dead" | "interrupted-by-update";
   detail: string | null;
 }
 

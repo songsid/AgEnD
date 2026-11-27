@@ -1,3 +1,4 @@
+import {assertRequestContextOperation} from "../src/request-context-policy.js";
 import { afterEach, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,28 +11,28 @@ import { deliveryContentDigest } from "../src/delivery-outbox.js";
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const logger: any = { info() {}, error() {}, warn() {}, debug() {}, child() { return logger; } };
-function rig(enabled = true) {
+function rig(enabled = true, registration?:import("../src/request-context-fence.js").RequestContextRegistrationGate) {
   const root = mkdtempSync(join(tmpdir(), "agend-s224-local-")); roots.push(root);
   const dir = join(root, "instances", "worker"); mkdirSync(dir, { recursive: true });
   const daemon: any = new Daemon("worker", { working_directory: root, log_level: "silent", backend: "claude-code" } as any, dir, true, undefined, undefined, logger);
   const inputs = new Map<string, PreparedRequestContextInput>(), contexts = new Map<string, any>();
-  const turns = new RequestContextLocalTurns({ input: id => inputs.get(id) ?? null, context: id => contexts.get(id) ?? null,
+  const turns = new RequestContextLocalTurns({ registration, input: id => inputs.get(id) ?? null, context: id => contexts.get(id) ?? null,
     retain: c => { contexts.set(c.ref.contextId, c); }, canManage: () => true, recovery: () => null, saveRecovery: () => {} });
   if (enabled) daemon.setRequestContextLocalLifecycle(turns, () => ({ incarnation: "incarnation", workGeneration: "session" }));
   daemon.ipcServer = { send: vi.fn(() => true) };
   const frames: Record<string, unknown>[] = []; vi.spyOn(daemon, "broadcastFleetMessage").mockImplementation((frame: any) => { frames.push(frame); });
   vi.spyOn(daemon, "fleetTransportAvailable").mockReturnValue(true);
   const socket = {} as any; daemon.socketSessionNames.set(socket, "worker");
-  const bind = (id: string, ingress: "owner" | "guest" = "guest") => {
+  const bind = (id: string, ingress: "owner" | "guest" | "hub" = "guest") => {
     const contextId = randomUUID(), text = `[agend-request-input:${id}]\nSynthetic question`;
     inputs.set(id, { inputId: id, wireSha256: deliveryContentDigest(text), owner: daemon.requestContextOwner(), proof: { kind: "independent" },
       context: { ref: { version: 1, contextId, rootContextId: contextId }, rootEvidenceRef: "accepted-fixture", ingress,
-        initiatingActor: { kind: "person", platform: "discord", userId: ingress === "owner" ? "demo-admin" : "demo-person" },
+        initiatingActor: ingress==="hub"?{kind:"person",platform:"hub",hubId:"demo-hub",id:"directory/demo-person"}:{ kind: "person", platform: "discord", userId: ingress === "owner" ? "demo-admin" : "demo-person" },
         source: { instance: "worker", incarnation: "incarnation" }, sourceAudience: { kind: "web", ref: randomUUID() } } });
     daemon.bindRequestContextWrite(id, text, false); return daemon.requestContextTurnSnapshot();
   };
   const call = () => { daemon.handleOwnedToolCall({ type: "tool_call", tool: "send_to_instance", args: { instance_name: "target", message: "synthetic" }, requestId: 1 }, socket); return frames.at(-1)!; };
-  const fm: any = new FleetManager(root); fm.daemons.set("worker", daemon); vi.spyOn(fm, "checkToolPermission").mockReturnValue({allowed:true}); const ipc = { send: vi.fn(() => true) }; fm.instanceIpcClients.set("worker", ipc);
+  const fm: any = new FleetManager(root); fm.daemons.set("worker", daemon); vi.spyOn(fm, "checkToolPermission").mockReturnValue({allowed:true}); const ipc = { send: vi.fn(() => true) }; if(registration)fm.setRequestContextDrainRegistration(registration);fm.instanceIpcClients.set("worker", ipc);if(registration)fm.observeRequestContextResponses("worker",ipc);
   const clearTimers = () => { for (const cb of daemon.pendingIpcRequests.values()) cb({ result: { sent: false } }); daemon.pendingIpcRequests.clear(); };
   return { daemon, turns, bind, frames, call, fm, ipc, socket, clearTimers };
 }
@@ -103,4 +104,50 @@ it("the real user-cancel path flags turn cancellation while dialog keys keep the
  f.daemon.tmux={capturePane:vi.fn(async()=>"synthetic screen"),sendSpecialKey:vi.fn(async()=>true)};
  await f.daemon.sendEscape();
  expect(f.daemon.tmux.sendSpecialKey).toHaveBeenCalledWith("Escape",undefined,{kind:"dialog",screen:"synthetic screen",cancelTurn:true});
+});
+
+it("S-226 actual daemon and Fleet indexes last until their own completion, not a turn ending",()=>{
+ const gate={assertRegistration:vi.fn()},f=rig(true,gate),snapshot=f.bind("a"),root=snapshot.context.ref.rootContextId,frame=f.call();
+ expect(f.daemon.requestContextCallDrainView(root).references).toHaveLength(1);expect(f.fm.captureRequestContextIpcCall("worker",frame,f.ipc)).toBe(true);
+ expect(f.fm.requestContextFleetDrainView(root).references).toHaveLength(1);f.turns.ended(snapshot,snapshot.owner);
+ expect(f.fm.requestContextFleetDrainView(root).references).toHaveLength(1);
+ (f.ipc.send as any)({type:"fleet_outbound_response",fleetRequestId:frame.fleetRequestId,result:{sent:false}});
+ expect(f.fm.requestContextFleetDrainView(root).references).toEqual([]);f.clearTimers();expect(f.daemon.requestContextCallDrainView(root).references).toEqual([]);
+});
+it("S-226 a fenced local call is refused before dispatch and cannot enter either index",()=>{
+ const gate={assertRegistration:vi.fn()},f=rig(true,gate),snapshot=f.bind("a"),root=snapshot.context.ref.rootContextId;
+ gate.assertRegistration.mockImplementation(()=>{throw Error("root draining");});
+ f.daemon.handleOwnedToolCall({tool:"send_to_instance",args:{instance_name:"target",message:"synthetic"},requestId:2},f.socket);
+ expect(f.frames).toEqual([]);expect(f.daemon.requestContextCallDrainView(root).references).toEqual([]);expect(f.daemon.ipcServer.send).toHaveBeenCalledWith(f.socket,expect.objectContaining({error:expect.stringContaining("unavailable")}));
+});
+it("S-226 Fleet refuses a newly fenced captured call without dropping an already active daemon call",()=>{
+ const gate={assertRegistration:vi.fn()},f=rig(true,gate),snapshot=f.bind("a"),frame=f.call();gate.assertRegistration.mockImplementation(()=>{throw Error("root draining");});
+ expect(f.fm.captureRequestContextIpcCall("worker",frame,f.ipc)).toBe(false);expect(f.fm.requestContextFleetDrainView(snapshot.context.ref.rootContextId).references).toEqual([]);f.clearTimers();
+});
+it("R1 an uncovered local and Fleet call references no retained root",()=>{
+ const gate={assertRegistration:vi.fn()},f=rig(true,gate),root=randomUUID(),frame=f.call();expect(f.daemon.requestContextCallDrainView(root)).toMatchObject({unknown:false,references:[]});
+ expect(f.fm.captureRequestContextIpcCall("worker",frame,f.ipc)).toBe(true);expect(f.fm.requestContextFleetDrainView(root)).toMatchObject({unknown:false,references:[]});f.clearTimers();
+});
+it("R1 reconnect purges the old IPC inventory and a new daemon boot can reuse its response sequence",()=>{
+ const gate={assertRegistration:vi.fn()},f=rig(true,gate),a=f.bind("a"),first=f.call();expect(f.fm.captureRequestContextIpcCall("worker",first,f.ipc)).toBe(true);
+ const oldIpc=f.ipc,newIpc={send:vi.fn(()=>true)};f.fm.instanceIpcClients.set("worker",newIpc);f.fm.purgeRequestContextIpcCalls("worker",oldIpc);expect(f.fm.requestContextFleetDrainView(a.context.ref.rootContextId).references).toEqual([]);
+ f.clearTimers();f.turns.fence();f.daemon.bootId="second-boot";f.daemon.fleetRequestSeq=0;const b=f.bind("b"),second=f.call();expect(second.fleetRequestId).toBe(first.fleetRequestId);
+ expect(f.fm.captureRequestContextIpcCall("worker",second,newIpc)).toBe(true);(f.ipc.send as any)({type:"fleet_outbound_response",fleetRequestId:first.fleetRequestId});expect(f.fm.requestContextFleetDrainView(b.context.ref.rootContextId).references).toHaveLength(1);
+ f.fm.observeRequestContextResponses("worker",newIpc);(newIpc.send as any)({type:"fleet_outbound_response",fleetRequestId:second.fleetRequestId});expect(f.fm.requestContextFleetDrainView(b.context.ref.rootContextId).references).toEqual([]);f.clearTimers();
+});
+it("R1 an empty response key is refused rather than inserted as an unknown Fleet reference",()=>{
+ const f=rig(true,{assertRegistration:vi.fn()}),a=f.bind("a"),frame=f.call();expect(f.fm.captureRequestContextIpcCall("worker",{...frame,fleetRequestId:""},f.ipc)).toBe(false);expect(f.fm.requestContextFleetDrainView(a.context.ref.rootContextId)).toMatchObject({unknown:false,references:[]});f.clearTimers();
+});
+it("R1 actual IPC replacement and disconnect retire only that connection's call inventory",async()=>{
+ const f=rig(true,{assertRegistration:vi.fn()}),a=f.bind("a"),frame=f.call();expect(f.fm.captureRequestContextIpcCall("worker",frame,f.ipc)).toBe(true);
+ Object.assign(f.ipc,{removeAllListeners:vi.fn(),close:vi.fn(async()=>{})});vi.spyOn(f.daemon,"usesNativePane").mockReturnValue(true);f.daemon.nativePaneLifecycle={};
+ await f.fm.connectIpcToInstanceInternal("worker");const current=f.fm.instanceIpcClients.get("worker");expect(current).toBeDefined();expect(current).not.toBe(f.ipc);expect(f.fm.requestContextFleetDrainView(a.context.ref.rootContextId).references).toEqual([]);
+ f.clearTimers();f.turns.fence();f.daemon.bootId="restarted-boot";f.daemon.fleetRequestSeq=0;const b=f.bind("b"),next=f.call();expect(f.fm.captureRequestContextIpcCall("worker",next,current)).toBe(true);
+ vi.spyOn(f.fm,"ipcReconnect").mockResolvedValue(undefined);current.emit("disconnect");expect(f.fm.requestContextFleetDrainView(b.context.ref.rootContextId).references).toEqual([]);expect(f.fm.instanceIpcClients.has("worker")).toBe(false);await current.close();f.clearTimers();
+});
+
+it("S-232 actual local tool entry refuses Hub task writes before the Fleet frame",()=>{
+ const f=rig();f.bind("hub","hub");f.daemon.bindRequestContextPolicy({assert:assertRequestContextOperation});
+ f.daemon.handleOwnedToolCall({type:"tool_call",tool:"task",args:{action:"create",title:"must not write"},requestId:98},f.socket);
+ expect(f.frames).toHaveLength(0);expect(f.daemon.ipcServer.send).toHaveBeenCalledWith(f.socket,expect.objectContaining({requestId:98,error:expect.stringContaining("task cards")}));expect(f.daemon.requestContextCalls.size).toBe(0);f.clearTimers();
 });

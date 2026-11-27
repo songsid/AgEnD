@@ -296,7 +296,10 @@ describe("no agent path reaches it", () => {
         "office-share-page.ts",
         // web-settings-tools.ts (#2056): General's tools change the user's Settings → Web appearance — custom CSS through
         // the store's own save (checkOwnerCss and all), keep, revert and restore (pinned below).
-        "web-settings-tools.ts"].includes(f)) continue;
+        "web-settings-tools.ts",
+        // update-snapshot-scope.ts (M-3770 §5.1): the update snapshot's writer inventory, which must name every path the
+        // code writes under the home (web-owner-css among them) — a classification table, never a tool or a route.
+        "update-snapshot-scope.ts"].includes(f)) continue;
       if (/owner[-_ ]?css/i.test(readFileSync(join(src, f), "utf8"))) hits.push(f);
     }
     expect(hits, "no tool, CLI or agent route names it").toEqual([]);

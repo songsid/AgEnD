@@ -665,11 +665,13 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
     return [
       // The account-level cap, relayed verbatim from the server ("Individual
       // quota reached. Please upgrade your subscription to increase your
-      // limits. Resets in 139h12m12s."). Listed before the generic quota
-      // pattern: the monitor fires the FIRST matching pattern, and this one's
-      // full line carries the reset time the usage overlay parses. The quota
-      // summary API cannot see this cap — its buckets read 0% used while the
-      // CLI is blocked — so this pane line is the only source of truth.
+      // limits. Resets in 139h12m12s."). Listed before the RESOURCE_EXHAUSTED
+      // backstop: the monitor fires the FIRST matching pattern, and this one's
+      // full line carries the reset time the usage overlay parses. The backstop
+      // is that error code only. The word "quota" in chat is not a quota error,
+      // and this cap line must not be reported again on the next scan (#4506).
+      // The quota summary API cannot see this cap — its buckets read 0% used
+      // while the CLI is blocked — so this pane line is the only source of truth.
       {
         pattern: /(?:Individual|Organization) quota reached[^\n]*/i,
         type: "quota",
@@ -682,7 +684,7 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
         },
         skipRecoveryWait: true,
       },
-      { pattern: /RESOURCE_EXHAUSTED|quota/i, type: "quota", action: "notify", message: "Quota exhausted", notice: () => quotaLine("Antigravity", "quota") },
+      { pattern: /\bRESOURCE_EXHAUSTED\b/i, type: "quota", action: "notify", message: "Quota exhausted", notice: () => quotaLine("Antigravity", "quota") },
       { pattern: /error.*authentication|UNAUTHENTICATED/i, type: "auth_error", action: "pause", message: "Antigravity authentication error — needs re-login" },
       // Model generation change pins the resumed session to a dead model placeholder
       // (e.g. MODEL_PLACEHOLDER_M264) → every message returns "unknown model key".

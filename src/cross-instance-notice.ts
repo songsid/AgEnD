@@ -11,7 +11,7 @@
  */
 import type { FleetConfig } from "./types.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
-import { t } from "./locale.js";
+import { t, getLocale } from "./locale.js";
 import type { XmsgVisibility } from "./search/search-docs.js";
 
 export const CROSS_INSTANCE_VISIBILITY_MODES = ["full", "summary", "hidden"] as const;
@@ -42,6 +42,7 @@ export function xmsgVisibility(fleet: Pick<FleetConfig, "defaults" | "instances"
 }
 
 const SUMMARY_PREVIEW_CHARS = 100;
+const noticeColon=(scoped?:boolean)=>scoped&&getLocale()==="zh-TW"?"：":":";
 const URL_SPLIT = /(https?:\/\/[^\s]+)/gi;
 const FORWARDS_LIST = /\bforwards:\s*\[[^\]]*\]/gi;
 const VERIFICATION_PAREN = /\(\s*verification_id\b[^)]*\)|（\s*verification_id\b[^）]*）/gi;
@@ -100,15 +101,16 @@ function tidyRemovedGaps(text: string): string {
 }
 
 /** One line: the label, then the sender's task summary or the start of the message. */
-function summaryLine(label: string, message: string, taskSummary: string | undefined): string {
+function summaryLine(label: string, message: string, taskSummary: string | undefined, scoped?:boolean): string {
   const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
   const summary = taskSummary && oneLine(taskSummary) ? oneLine(taskSummary) : oneLine(message);
-  return `${label}: ${truncatePreview(summary, SUMMARY_PREVIEW_CHARS)}`;
+  return `${label}${noticeColon(scoped)} ${truncatePreview(summary, SUMMARY_PREVIEW_CHARS)}`;
 }
 
 export interface CrossInstanceNoticeInput {
   /** "sender → target", built by the caller (#1301 owns its wording). */
   label: string;
+  requestScoped?:true;
   message: string;
   requestKind?: string;
   taskSummary?: string;
@@ -123,10 +125,10 @@ export function targetTopicNotice(mode: CrossInstanceVisibility, input: CrossIns
   if (input.requestKind === "report" || input.requestKind === "update") return null;
   const message = hideInternalMessageIds(input.message);
   const taskSummary = input.taskSummary === undefined ? undefined : hideInternalMessageIds(input.taskSummary);
-  if (mode === "summary") return summaryLine(input.label, message, taskSummary);
+  if (mode === "summary") return summaryLine(input.label, message, taskSummary,input.requestScoped);
   return input.requestKind === "task" || input.requestKind === "query"
-    ? `${input.label}:\n${message}`
-    : `${input.label}: ${taskSummary ?? truncatePreview(message, SUMMARY_PREVIEW_CHARS)}`;
+    ? `${input.label}${noticeColon(input.requestScoped)}\n${message}`
+    : `${input.label}${noticeColon(input.requestScoped)} ${taskSummary ?? truncatePreview(message, SUMMARY_PREVIEW_CHARS)}`;
 }
 
 /** The text to post in the sender's topic, or null for none. `full` shows everything the agent sent. */
@@ -134,8 +136,8 @@ export function senderTopicNotice(mode: CrossInstanceVisibility, input: CrossIns
   if (mode === "hidden") return null;
   const message = hideInternalMessageIds(input.message);
   const taskSummary = input.taskSummary === undefined ? undefined : hideInternalMessageIds(input.taskSummary);
-  if (mode === "summary") return summaryLine(input.label, message, taskSummary);
-  return `${input.label}:\n${message}`;
+  if (mode === "summary") return summaryLine(input.label, message, taskSummary,input.requestScoped);
+  return `${input.label}${noticeColon(input.requestScoped)}\n${message}`;
 }
 
 /**

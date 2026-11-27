@@ -122,8 +122,10 @@ become administrator work merely because the latest message is from an admin.
 The first slice conservatively stores this union per agent instance for ordinary
 relays without administrator endorsement. Approved or granted deliveries are
 excluded from target inheritance as described above. It is not keyed by
-conversation or work item. A later direct administrator message merges into that retained history; it
-does not clear earlier non-admin or unknown input. Approval allows the retained
+conversation or work item. In a restricted ClassicBot room, a later direct administrator message merges into that
+retained history; it does not clear earlier non-admin or unknown input. M-3830 (2.4.0): only a restricted room
+records the people who talk in it. A fleet agent's own topic is governed by its channel access (#754), so direct
+messages there neither create nor change an agent's retained origin, and a cleared agent stays clear. Approval allows the retained
 request once; it does not clear the union. Idle and compaction never clear it.
 Turning a Classic room back to legacy restores that room's outgoing behavior,
 but does not remove origins from work already handed to a worker.

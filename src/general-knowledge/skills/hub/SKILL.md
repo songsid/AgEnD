@@ -137,6 +137,12 @@ is never kept." Fields **Account** and **Password**, button **Sign in**.
   sign-in ends 8 hours after signing in, or after 1 hour with no Hub page open. An open Hub page, even in a
   background tab, counts as using the Hub, so only closing every Hub page starts the idle clock. When it ends, the page
   asks the person to sign in again.
+- **Install as an app** (安裝成應用程式): the install button in the header of the chats list, Notices and each room
+  (beside the bell; in a room's ⋯ menu on a phone). Where Chrome or Edge can install, it opens the browser's install
+  dialog. A Hub whose certificate the browser doesn't trust (for example the generated self-signed one) **cannot be
+  installed**: the button explains "your browser doesn't trust this address's certificate" and asks for a trusted
+  certificate. The fix is a certificate the company's computers trust (Hub setup → browser certificate, import), not
+  anything the person can click. iPhone Safari: Share → Add to Home Screen. Nothing is stored for offline use.
 
 ## Connecting your own AI app
 

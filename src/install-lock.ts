@@ -34,6 +34,11 @@ export interface InstallLockRecord {
   agendHome: string;
   token: string;
   createdAt: string;
+  /**
+   * M-3770 (#4480 §4.2), the home lock only: the realpath of the npm prefix whose install the holder is updating. A
+   * fleet start on this home is the update's own restart when its package is under this prefix.
+   */
+  installPrefix?: string;
 }
 
 export interface InstallLockDeps {
@@ -66,6 +71,7 @@ export function parseInstallLock(text: string): InstallLockRecord | null {
   return r && Number.isSafeInteger(r.pid) && (r.pid as number) > 0 && typeof r.processStart === "string" && r.processStart
     && typeof r.prefix === "string" && typeof r.token === "string" && /^[0-9a-f]{32,}$/.test(r.token)
     && typeof r.targetSpec === "string" && typeof r.agendHome === "string" && typeof r.createdAt === "string"
+    && (r.installPrefix === undefined || (typeof r.installPrefix === "string" && r.installPrefix !== ""))
     && ((r.startTicks === undefined && r.bootId === undefined)
       || (typeof r.startTicks === "string" && /^\d+$/.test(r.startTicks) && typeof r.bootId === "string" && /^[0-9a-f-]{36}$/.test(r.bootId)))
     ? r as InstallLockRecord : null;
@@ -109,10 +115,17 @@ export function sameStartText(recorded: string, seen: string): boolean {
 
 const readOrNull = (path: string): string | null => { try { return readFileSync(path, "utf8"); } catch { return null; } };
 
-export function acquireInstallLock(prefix: string, target: { spec: string; agendHome: string }, deps: InstallLockDeps): InstallLock {
+/**
+ * `opts.file` (M-3770): the same owned lock under another name in another directory — the home lock
+ * `<home>/.update.lock` (home-update-lock.ts). Its words name it (`opts.name`), and its record may carry the install
+ * prefix being updated (`target.installPrefix`).
+ */
+export function acquireInstallLock(prefix: string, target: { spec: string; agendHome: string; installPrefix?: string }, deps: InstallLockDeps,
+  opts: { file?: string; name?: string } = {}): InstallLock {
+  const file = opts.file ?? INSTALL_LOCK_FILE, name = opts.name ?? "install lock";
   let canonical: string;
-  try { canonical = realpathSync(prefix); } catch { return { ok: false, path: join(prefix, INSTALL_LOCK_FILE), reason: `the npm prefix ${prefix} does not exist` }; }
-  const path = join(canonical, INSTALL_LOCK_FILE);
+  try { canonical = realpathSync(prefix); } catch { return { ok: false, path: join(prefix, file), reason: `the ${opts.file ? "directory" : "npm prefix"} ${prefix} does not exist` }; }
+  const path = join(canonical, file);
   const ownStart = deps.processStart(deps.pid);
   if (!ownStart) return { ok: false, path, reason: "this process's own start time cannot be read, so its lock could not be told from a stale one" };
   const ownTicks = deps.startTicks?.(deps.pid) ?? null;
@@ -120,6 +133,7 @@ export function acquireInstallLock(prefix: string, target: { spec: string; agend
   const record: InstallLockRecord = {
     pid: deps.pid, processStart: ownStart, ...(ownTicks !== null && ownBoot !== null ? { startTicks: ownTicks, bootId: ownBoot } : {}), prefix: canonical,
     targetSpec: target.spec, agendHome: target.agendHome, token: deps.newToken(), createdAt: deps.now().toISOString(),
+    ...(target.installPrefix !== undefined ? { installPrefix: target.installPrefix } : {}),
   };
   const serialized = JSON.stringify(record) + "\n";
   const claim = (): boolean => {
@@ -131,12 +145,12 @@ export function acquireInstallLock(prefix: string, target: { spec: string; agend
   try {
     if (claim()) return ours;
   } catch (err) {
-    return { ok: false, path, reason: `the install lock ${path} could not be created (${(err as Error).message})` };
+    return { ok: false, path, reason: `the ${name} ${path} could not be created (${(err as Error).message})` };
   }
   const seen = readOrNull(path);
   if (seen === null) return { ok: false, path, reason: `another install is starting on ${canonical} (its lock ${path} appeared and went); retry` };
   const holder = parseInstallLock(seen);
-  if (!holder) return { ok: false, path, reason: `the install lock ${path} cannot be read as a lock; if no other \`agend update\` is running, remove it and retry` };
+  if (!holder) return { ok: false, path, reason: `the ${name} ${path} cannot be read as a lock; if no other \`agend update\` is running, remove it and retry` };
   const state = holderState(holder, deps);
   if (state === "live") {
     return { ok: false, path, reason: `another AgEnD install is running on ${canonical} (pid ${holder.pid}, installing ${holder.targetSpec} for ${holder.agendHome}); wait for it to finish` };
@@ -168,15 +182,15 @@ export function acquireInstallLock(prefix: string, target: { spec: string; agend
     deps.afterStaleMoved?.();
     if (readOrNull(aside) !== seen) {
       // Cannot happen under the marker; if it ever does, theirs goes back (link never overwrites) and nothing is deleted.
-      try { linkSync(aside, path); unlinkSync(aside); } catch { deps.log(`  ⚠ An install lock changed while it was being replaced; left at ${aside}.`); }
+      try { linkSync(aside, path); unlinkSync(aside); } catch { deps.log(`  ⚠ A ${name} changed while it was being replaced; left at ${aside}.`); }
       return { ok: false, path, reason: `another install is starting on ${canonical}; retry` };
     }
     try { unlinkSync(aside); } catch { /* best effort */ }
-    deps.log(`  Replaced a stale install lock (pid ${holder.pid} is gone, was installing ${holder.targetSpec}).`);
+    deps.log(`  Replaced a stale ${name} (pid ${holder.pid} is gone, was installing ${holder.targetSpec}).`);
     try {
       if (claim()) return ours;
     } catch (err) {
-      return { ok: false, path, reason: `the install lock ${path} could not be created (${(err as Error).message})` };
+      return { ok: false, path, reason: `the ${name} ${path} could not be created (${(err as Error).message})` };
     }
     return { ok: false, path, reason: `another install is starting on ${canonical}; retry` };
   } finally {

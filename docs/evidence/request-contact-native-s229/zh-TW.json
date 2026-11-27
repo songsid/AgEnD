@@ -1,0 +1,71 @@
+{
+  "provenance": "Actual FleetManager nonce posting/callback/retirement on slice I's RequestContactCards and E's gate over a real DeliveryOutbox; synthetic adapter and people, no platform connection. Ticket short ids and nonces are normalized.",
+  "cases": {
+    "held-request": {
+      "card": {
+        "type": "clear_confirm",
+        "text": "讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\nDemo person 提出 · #R1a2b3c4d · 30 分鐘後到期\n繼續＝只放行這筆請求和它後續的聯絡。",
+        "buttons": [
+          {
+            "label": "繼續",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:approve"
+          },
+          {
+            "label": "拒絕",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:decline"
+          }
+        ]
+      },
+      "afterContinue": "Demo admin 已讓這筆請求繼續。"
+    },
+    "held-legacy": {
+      "card": {
+        "type": "clear_confirm",
+        "text": "讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\nDemo person 提出 · #R1a2b3c4d · 30 分鐘後到期\n核准這一次＝只轉交這一筆請求。",
+        "buttons": [
+          {
+            "label": "核准這一次",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:approve"
+          },
+          {
+            "label": "拒絕",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:decline"
+          }
+        ]
+      }
+    },
+    "general-proposal": {
+      "card": {
+        "type": "clear_confirm",
+        "text": "General 建議：拒絕\n讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\nDemo person 提出 · #R1a2b3c4d · 30 分鐘後到期",
+        "buttons": [
+          {
+            "label": "拒絕",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:decline"
+          },
+          {
+            "label": "先不要",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:cancel"
+          }
+        ]
+      },
+      "afterNotNow": "先不處理，申請仍在等待。"
+    },
+    "interrupted-launch": {
+      "card": {
+        "type": "clear_confirm",
+        "text": "讓 Example lead 聯絡 Example worker？\n> Please run the release checklist.\n#R1a2b3c4d · 30 分鐘後到期\n這個 Agent 曾中斷；這次聯絡需要核准一次。\n繼續＝只放行這筆請求和它後續的聯絡。",
+        "buttons": [
+          {
+            "label": "繼續",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:approve"
+          },
+          {
+            "label": "拒絕",
+            "callback": "contact-ticket:<ephemeral-test-nonce>:decline"
+          }
+        ]
+      }
+    }
+  }
+}

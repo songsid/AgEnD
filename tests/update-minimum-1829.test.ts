@@ -122,11 +122,11 @@ describe("updateFixHint (#1829): a small lookup", () => {
 
   it("busless activation refusal → the one-time manual hop, with the target the updater printed", () => {
     const out = "  Updating AgEnD v2.2.0-beta.9 → v2.2.0-beta.11...\n  ✗ Restart refused: systemd does not know com.agend.fleet.service.\n";
-    expect(updateFixHint(out)).toBe("`npm i -g @songsid/agend@2.2.0-beta.11 && agend restart`");
-    expect(updateFixHint("  Updating AgEnD to beta...\n✗ systemd does not know com.agend.fleet.service")).toBe("`npm i -g @songsid/agend@beta && agend restart`");
-    expect(updateFixHint("✗ systemd does not know com.agend.fleet.service")).toBe("`npm i -g @songsid/agend@<version> && agend restart`");
+    expect(updateFixHint(out)).toBe("`npm i -g --allow-scripts=@songsid/agend @songsid/agend@2.2.0-beta.11 && agend restart`");
+    expect(updateFixHint("  Updating AgEnD to beta...\n✗ systemd does not know com.agend.fleet.service")).toBe("`npm i -g --allow-scripts=@songsid/agend @songsid/agend@beta && agend restart`");
+    expect(updateFixHint("✗ systemd does not know com.agend.fleet.service")).toBe("`npm i -g --allow-scripts=@songsid/agend @songsid/agend@<version> && agend restart`");
     // A target that is not a plain version or tag never reaches the command.
-    expect(updateFixHint("  Updating AgEnD to beta;rm...\n✗ systemd does not know x")).toBe("`npm i -g @songsid/agend@<version> && agend restart`");
+    expect(updateFixHint("  Updating AgEnD to beta;rm...\n✗ systemd does not know x")).toBe("`npm i -g --allow-scripts=@songsid/agend @songsid/agend@<version> && agend restart`");
   });
 
   it("agend gone → reinstall it, ahead of anything else in the output", () => {

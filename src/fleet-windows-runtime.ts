@@ -1,3 +1,4 @@
+import { RequestContextReferenceMap } from "./request-context-fence.js";
 /** Windows execution adapter for the ordinary Fleet instance registry and delivery facade. */
 import { OPERATIONS_MAX_CHARS } from "./instructions.js";
 import { addsSecondGeneral } from "./web-only-fleet.js";
@@ -58,12 +59,20 @@ export type NativeExecutionResult = WindowsCliTask & {reportedCorrelationIds?: r
 
 export class FleetWindowsRuntime {
   private hasClaimed = false;
-  private readonly requestContextRuns = new Map<string, { requestId: string; retire(): void }>();
+  private readonly requestContextRuns = new RequestContextReferenceMap<string, { requestId: string; rootContextId:string; retire(): void }>(run=>run.rootContextId,run=>`exec-run:${run.requestId}`);
   private requestContextLifecycle?: { turns: RequestContextLocalTurns; owner(instance: string): RequestContextRuntimeOwner };
   /** Uninstalled in production until L. The lane owner is stable across exec claims, not the new run id. */
   setRequestContextExecLifecycle(turns: RequestContextLocalTurns, owner: (instance: string) => RequestContextRuntimeOwner): void {
     if (this.requestContextLifecycle || this.hasClaimed || this.mcpLeases.size) throw Error("Native request context must be installed before claims");
+    this.requestContextRuns.installRegistration(turns.registrationGate??undefined);
     this.requestContextLifecycle = { turns, owner };
+  }
+  requestContextCallsRequired(name:string):boolean{return !!this.requestContextLifecycle&&isNativeExecInstance(this.config(name));}
+  get drainRevision():string{return `${this.requestContextRuns.revision}:${this.store.requestContextDrainRevision}`;}
+  drainView(rootId:string){
+    const view=this.requestContextRuns.view(rootId),runs=[...this.requestContextRuns.values()];
+    const unknown=this.store.requestContextActiveExecutions().some(active=>!runs.some(run=>run.requestId===active.requestId));
+    return {...view,revision:this.drainRevision,unknown:view.unknown||unknown};
   }
   private readonly mcpLeases = new Map<string,{requestId:string;lease:NativeMcpLease}>();
   private readonly store: WindowsAgents;
@@ -332,7 +341,7 @@ export class FleetWindowsRuntime {
         if (snapshot !== previous) turns.ended(snapshot, owner);
         if (this.requestContextRuns.get(name)?.requestId === requestId) this.requestContextRuns.delete(name);
       };
-      this.requestContextRuns.set(name, { requestId, retire: retireContext });
+      this.requestContextRuns.set(name, { requestId, rootContextId:snapshot.context.ref.rootContextId,retire: retireContext });
       try { requestContext = captureRequestContextCall(snapshot, captured => turns.isCurrent(captured, ownerOf(name))); }
       catch (error) { retireContext(); throw error; }
     }

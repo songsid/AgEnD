@@ -1,0 +1,270 @@
+{
+  "sourceHead": "6104d3eed08829785a049734e882ffde6063c3de",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en 1: the notice says Cloudflare limits temporary links, and to download the file",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the link \"Set up a fixed preview address\" → Settings → Access at the fixed address",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the link is the accent colour (blue), underlined, unlike the note",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: Download is offered; Preview is not",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: landed on Settings → Access → Sharing (the fixed address's tab)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: the fixed hostname, its label too, is in view",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: the preview address field is right below it, with the route step and this fleet's preview port",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: nothing saved yet → the steps are open",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: the port field is \"Port for the fixed address\" (step 3's \"not 19282\" points at it)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2b: the steps are numbered under a heading with its disclosure marker",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2b: Check is greyed and says why",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2b: the port line names both ports",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2c: no fixed hostname: no preview field, one line saying the fixed public hostname comes first",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2c: that line is set apart at body size, larger than the help notes around it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: saved through the form: web.public_link.preview_hostname = preview.agend.example.net",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: fleet.yaml has it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: still on Sharing after the reload",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: Check is on screen, nothing over it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: every step ✓, the last says it works",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: it asked https://preview.agend.example.net/frame",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no CSP violations",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the notice says Cloudflare limits temporary links, and to download the file",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the link \"設定固定的預覽網址\" → Settings → Access at the fixed address",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the link is the accent colour (blue), underlined, unlike the note",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: Download is offered; Preview is not",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: 「建立」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: 「臨時連結」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: 「下載檔案」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: landed on Settings → Access → Sharing (the fixed address's tab)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the fixed hostname, its label too, is in view",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the preview address field is right below it, with the route step and this fleet's preview port",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the port field is \"固定網址用的埠\" (step 3's \"not 19282\" points at it)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「規則」 kept whole in the fixed address's card",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「指到」 kept whole in the fixed address's card",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「下方」 kept whole in the fixed address's card",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: 「預覽網址」 kept whole in the fixed address's card",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2b: the steps are numbered under a heading with its disclosure marker",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2b: 「（傳 /web 開啟）」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2b: the port line names both ports",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the saved address is shown",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: Check is on screen, nothing over it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: every step ✓, the last says it works",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: it asked https://preview.agend.example.net/frame",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: 「查得到」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: 「連得到」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: Check is at least 32 px tall",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no CSP violations",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3814-desk-light-en-1-notice.png",
+      "sha256": "167634b8d9a908d18cde9bc88bed0eeea221bfdcf6207eb016e050e162a299da"
+    },
+    {
+      "path": "m3814-desk-light-en-2-settings-landed.png",
+      "sha256": "424122e8b68f54a58bfa81d48ffbd4c32c21590b8812ddde20cfb46e4c9b107f"
+    },
+    {
+      "path": "m3814-desk-light-en-2b-route-step.png",
+      "sha256": "7c70704f5c880e67e61580af07a71da00c68a351638cbaddee05fa40f833d3ce"
+    },
+    {
+      "path": "m3814-desk-light-en-2c-no-fixed-hostname.png",
+      "sha256": "e71ccd54ca12b2a71e4a6a124bbb372b3838386d33b1b28fb00883a1321b8baa"
+    },
+    {
+      "path": "m3814-desk-light-en-3-saved.png",
+      "sha256": "ecd14111d69d05e55fd0a55ccaea297bcc5d05c71da02a35106f9467f472767d"
+    },
+    {
+      "path": "m3814-desk-light-en-4-check.png",
+      "sha256": "ffed9ca8b36f92347c1ef8f1f7073b0d15b18b31604e2e8c8acf31a37d603040"
+    },
+    {
+      "path": "m3814-phone-dark-zh-TW-1-notice.png",
+      "sha256": "c5ad1bb1c29ccbd62af44387c9d5a0a7be9700bcfff7e9afe6048b43cdc830e9"
+    },
+    {
+      "path": "m3814-phone-dark-zh-TW-2-settings-landed.png",
+      "sha256": "6b93c80701d4aeac1c9aef3adc8a215cb436152ee7dff19868f1949701010fae"
+    },
+    {
+      "path": "m3814-phone-dark-zh-TW-2b-route-step.png",
+      "sha256": "88f8d82e0c0b23aa19f3054fc5f97a94eb8bdd684efc2dcd379b1b539843e65b"
+    },
+    {
+      "path": "m3814-phone-dark-zh-TW-4-check.png",
+      "sha256": "3ad3a8d349607befe9e0ac1b56e6578c0379dad49c7b35b04dd75b374c4a3d3a"
+    }
+  ],
+  "passed": 55,
+  "total": 55
+}

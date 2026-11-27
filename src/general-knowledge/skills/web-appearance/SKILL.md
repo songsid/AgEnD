@@ -307,6 +307,8 @@ are not in your list), you can direct your own character for a moment:
   loop of track): you walk to its platform, wait until it stops there, take a free seat and go round with it, working.
   A ride lasts its `seconds` (60..28800, default 3600); new work does not end it — `clear: true` or a new office_set
   does, and you get off at the next stop it makes. Not with `go`. A full train: you wait on the platform for the next.
+  A pack may make a seat an agent's workplace (`worker`): that agent rides there by itself while working, nobody else
+  takes the seat, and a ride on a vehicle whose seats are all other agents' workplaces is refused.
 - Each call replaces your act. It ends when its seconds are up or you begin new work (the turn you set it in, and being
   idle after, keep it; working again after that, or after setting it while idle, ends it); it is not shown while you
   need a person (needs, crashed, stuck), are paused or stopped, or are asleep at bedtime — real work always shows. At most **6 calls a minute** and **60 an hour**: a refusal says `cooldown_ms`.
@@ -347,7 +349,7 @@ tools are not in your list), you can publish them yourself instead of asking a p
 The skin-pack manifest format — every key, its ranges, multi-sheet (`src: [...]`, up to 32 sheets / 600 frames) and
 frame-list (`frames: [{ src, ms? }]`) long animations with `durations`, `once` and `loopFrom`, optional custom `snacks`
 (1–12 items) and `characters.<set>.eat` strips (#4255), a minimal example — and
-the limits (220 files, 42 MiB, a 64 Mpx decoded-pixel cap), `row`/`col` sheet cells, a pack's own `canvas: [w, h]` size (640×360 to 5120×2880; default 1280×720), the `pat`, `stand` and `walkLeft` strips and the card's `gap` and `motion` are in the Office guide:
+the limits (220 files, 42 MiB, a 64 Mpx decoded-pixel cap), `row`/`col` sheet cells, a pack's own `canvas: [w, h]` size (640×360 to 5120×2880; default 1280×720), the `pat`, `stand` and `walkLeft` strips, the card's `gap` and `motion`, standing desks (a seat's `standFacing`) and a vehicle seat's `worker` and a stop's `queue` (#4503) are in the Office guide:
 [docs/office.md → Make a skin pack](https://github.com/songsid/AgEnD/blob/main/docs/office.md#make-a-skin-pack). Point people there too when they ask how the Office works.
 
 ## Limits

@@ -1,0 +1,21 @@
+{
+  "priorHead": "377990d1b8a328a424fbbdc9f8e6f1a85ac7529b",
+  "cause": "OFF Fleet outbound dispatch resolved launch ownership unconditionally, entering unavailable methods/configuration in legacy contexts.",
+  "fix": "Resolve boot and build the native admission proxy only when originatingCall or requestContextPolicy is present. OFF passes the original Fleet context to the handler.",
+  "tests": {
+    "dispatchCallerFiles": 34,
+    "dispatchCallerTests": 1235,
+    "additionalFocusedFiles": 2,
+    "additionalFocusedTests": 93,
+    "typecheck": "pass",
+    "typecheckTests": "pass",
+    "offLookupReversal": "new OFF regression fails on the prior source; restored source passes"
+  },
+  "captureCarry": {
+    "unchangedPngBlobs": 56,
+    "uiAndRecipe": "byte-identical to prior head",
+    "recapture": "none; no rendered change"
+  },
+  "risk": "Covered-call checks remain in the existing branch. Production flow stays OFF until L; exact-head CI and user look are pending.",
+  "rollback": "Revert this bounded repair before activation; after activation retain the existing barrier and drain-before-downgrade contract."
+}

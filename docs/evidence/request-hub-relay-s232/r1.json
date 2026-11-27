@@ -1,0 +1,33 @@
+{
+  "priorHead": "848f143490d0abb008a13c43d96c6ccaf514844e",
+  "sourceHead": "6db323345037516eb435bf934b549918d7962178",
+  "scope": [
+    "Internal L-owned instruction flag; OFF golden and both bundled skills restored to release bytes.",
+    "Leader 11-26 decision: centrally refuse get_fleet_config/get_web_settings/get_instance_logs/get_usage/get_cache_report for covered Hub roots; other supported reads retain role checks.",
+    "Requester-labelled refusals, concrete action copy, shorter audience text, native disclosure arrows/tap targets, details-only Copy, scoped zh colon."
+  ],
+  "tests": {
+    "files": 52,
+    "passed": 1106,
+    "failed": 0,
+    "typecheck": true,
+    "testTypecheck": true
+  },
+  "gateReversals": [
+    {
+      "name": "unconditional-instructions",
+      "failedTests": 1,
+      "killed": true
+    },
+    {
+      "name": "remove-central-Fleet-read-refusal",
+      "failedTests": 5,
+      "killed": true
+    }
+  ],
+  "offMatrixAndSkillsEqualRelease": "113bc471083fc5f9a59070c0599f40f24900a8c2",
+  "captureSource": "6db323345037516eb435bf934b549918d7962178",
+  "captureChecks": 128,
+  "pictures": 56,
+  "authorVisualInspection": "All56 regenerated originals individually opened; current notices readable, arrows and copy placement visible; older rows may cross the phone top scroll boundary. This is author inspection, not reviewer or user approval."
+}

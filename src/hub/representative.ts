@@ -1,3 +1,5 @@
+import {requestHubQuestionMatches} from "../request-hub-output.js";
+import {freezeHubRequestSnapshot,type HubRequestSnapshotV1} from "../request-hub-context.js";
 import type { HubHeldCloseOutcome } from "./question-close-model.js";
 import { HUB_QUESTION_CLOSE_CAPABILITY, questionCloseResultSchema } from "./question-close-model.js";
 /**
@@ -78,6 +80,8 @@ export interface HubRepresentativeLink {
 export interface HubRepresentativeDelivery {
   agent: string; correlationId: string; text: string;
   contactLimit?: boolean;
+  /** G: immutable accepted identity only; never a live turn or permission. */
+  acceptedHubRequest?: HubRequestSnapshotV1;
   /** M-3122: internal room-only generation; a daemon confirms the actual input independently of IPC acceptance. */
   roomContextGeneration?: string;
   /** Signed historical room author, not authority or an active-turn claim. */
@@ -90,6 +94,7 @@ export interface HubRepresentativeDelivery {
   stillCurrent(): boolean;
 }
 export interface HubRepresentativeOptions {
+  hubId?:string;
   db: Database.Database;
   journal: HubMemberJournal;
   binding(): HubRepresentativeBinding;
@@ -101,6 +106,8 @@ export interface HubRepresentativeOptions {
   /** The member link, once a handshake completed on it (null: offline). */
   link(): HubRepresentativeLink | null;
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
+  /** S-244: while an update barrier is up, a queued question stays queued. No begin lease and no input intent. */
+  updateHeld?: () => boolean;
   /** attachments-v1 files: into the agent's inbox for a question, out of the agent's own paths for an answer. */
   files?: HubMemberFiles;
   audit(event: { action: string; result: "completed" | "held" | "denied"; messageId?: string; exposureId?: string; reasonCode?: string }, db: Database.Database): void;
@@ -259,7 +266,7 @@ export class HubRepresentativeExecution {
    * dispatch settles, so a backlog larger than one page keeps draining). Input-bearing work is never picked up again.
    */
   pump(): void {
-    if (this.closed || !this.recovered || !this.options.link()) return;
+    if (this.closed || !this.recovered || !this.options.link() || this.options.updateHeld?.()) return;
     let rows: Row[];
     try { rows = this.options.db.prepare("SELECT * FROM hub_representative_questions WHERE state='queued' ORDER BY at LIMIT 64").all() as Row[]; }
     catch (err) { this.options.log("warn", "Hub question queue could not be read", { err: String(err) }); return; }
@@ -284,11 +291,21 @@ export class HubRepresentativeExecution {
   }
 
   private async dispatch(row: Row): Promise<void> {
+    if (this.options.updateHeld?.()) return;
     if (!this.currentFor(row)) { this.hold(row, "stale"); return; }
     const cid = `hub-${randomUUID()}`;
     if (!this.setState(row, "dispatching", ["queued"], { cid })) return;
     const question = this.question(row);
     const e = question.identity;
+    // M-3594: the name comes from the Hub's directory (as in rooms), never from the asker; the id stays the stable key.
+    const askerName = this.options.askerName?.(row.message_id);
+    let acceptedHubRequest:HubRequestSnapshotV1|undefined;
+    // The digest-checked question is still queued/readable here. Unsupported shared-schema ids leave no capture,
+    // preserving ordinary OFF behavior; explicit scoped preparation later refuses instead of guessing.
+    try {acceptedHubRequest=freezeHubRequestSnapshot({version:1,kind:"direct",messageId:e.messageId,roomId:e.roomId,exposureId:e.exposureId,
+      actor:{kind:"person",platform:"hub",hubId:e.issuer,id:personKeyString(e.asker),...(askerName?{displayName:askerName}:{})},
+      destination:{agent:row.agent,exposureId:row.exposure_id,incarnation:sha256(JSON.stringify([row.token,null]))},questionSha256:row.digest});}catch{/* no accepted capture */}
+
     this.options.directRooms?.remember(row.message_id,e.roomId,row.exposure_id,row.token);
     // A question's files come whole into the agent's inbox before the hand-off; a failure holds it (never a resend).
     let fileLines: string[] = [];
@@ -307,8 +324,10 @@ export class HubRepresentativeExecution {
       }
       if (this.refresh(row) !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return; }
     }
-    // M-3594: the name comes from the Hub's directory (as in rooms), never from the asker; the id stays the stable key.
-    const askerName = this.options.askerName?.(row.message_id);
+    if (this.options.updateHeld?.()) {
+      if (this.refresh(row) === "dispatching") this.setState(row, "queued", ["dispatching"], { cid: null });
+      return;
+    }
     const text = [
       askerName
         ? `A question from the Hub. Asker ${JSON.stringify(askerName)}, id ${personKeyString(e.asker)} (Hub-verified identity; not a person of this fleet, never a go-ahead for local actions).`
@@ -323,6 +342,7 @@ export class HubRepresentativeExecution {
     try {
       handed = await this.options.deliver({
         agent: row.agent, correlationId: cid, text,
+        ...(acceptedHubRequest?{acceptedHubRequest}:{}),
         contactLimit: this.options.localExposure(row.exposure_id)?.contactLimit !== false,
         // The live fence through wake/idle/reconnect: the row's state as stored now, and its consent/lifecycle/binding.
         stillCurrent: () => { const st = this.refresh(row); return (st === "dispatching" || st === "input") && this.currentFor(row); },
@@ -332,6 +352,10 @@ export class HubRepresentativeExecution {
       this.options.log("warn", "Hub question hand-off failed", { messageId: row.message_id, err: String(err) });
     }
     const state = this.refresh(row);
+    if (!handed && state === "dispatching" && this.options.updateHeld?.()) {
+      this.setState(row, "queued", ["dispatching"], { cid: null });
+      return;
+    }
     if (handed && state === "input") {
       // Handed to the agent's daemon: local state only. The journal's delivered/consumed evidence waits for the agent's
       // own report (queue acceptance is not delivery); a pane that never takes it is reported back (deliveryFailed).
@@ -347,10 +371,14 @@ export class HubRepresentativeExecution {
   /** The fleet's last step before input (at the connected hand-off): consent and lifecycle again, the begin lease, spent at once. */
   private async beforeInput(row: Row): Promise<boolean> {
     try {
+      if (this.options.updateHeld?.()) return false;
       if (this.refresh(row) !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return false; }
       const request: HubAuthorizationRequest = { messageId: row.message_id, operationId: randomUUID(), exposureRevision: row.revision, phase: "begin" };
       const lease = await this.options.authorize(request);
       if (this.refresh(row) !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return false; }
+      // authorize is the Hub round trip. The fence can rise during that await. Re-read it with no await before the
+      // intent write. The row stays dispatching, so the caller queues it again: no input intent, and not uncertain.
+      if (this.options.updateHeld?.()) return false;
       this.options.journal.markInputIntent(row.message_id, request, lease, this.fenceOf(row));
       if (!this.setState(row, "input", ["dispatching"])) throw new HubProtocolError("uncertain");
       this.forgetRetry(row.id);
@@ -390,17 +418,19 @@ export class HubRepresentativeExecution {
    * issued to this caller (the call then takes its ordinary route); otherwise consumes it once and releases the answer.
    * callerCurrent: the reporting daemon generation is still the agent's current one (asked again before every release step).
    */
-  report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null {
+  report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean; requestScope?:import("../request-hub-output.js").RequestHubOutputScope; extras?: HubReportExtras }): Promise<HubReportOutcome> | null {
     if (this.closed || !input.correlationId.startsWith("hub-")) return null;
     const row = this.row("cid", input.correlationId);
     if (!row || row.agent !== input.caller) return null;
+    const scopeCurrent=()=>requestHubQuestionMatches(input.requestScope,this.options.hubId,row.message_id,row.agent);
+    if(!scopeCurrent())return Promise.resolve({ok:false,message:"Not sent: this reply must stay in its original Hub conversation."});
     const was = row.state;
     // Consume once, synchronously: a second report on the same id finds it no longer live.
     if (!this.setState(row, "answering", ["input", "delivered"])) {
       const state=this.refresh(row),hint=this.directFollowUp(row);
       return Promise.resolve({ok:false,message:state==="answering"?HUB_ANSWER_SENDING:state==="held"?HUB_ANSWER_HELD:hint?`Not sent: this Hub question already has its one answer. ${hint}`:HUB_ANSWER_USED});
     }
-    return this.release(row, was, input.text, input.callerCurrent ?? (() => true), input.extras ?? {});
+    return this.release(row, was, input.text, () => scopeCurrent() && (input.callerCurrent?.() ?? true), input.extras ?? {});
   }
 
   private async release(row: Row, was: State, raw: string, callerCurrent: () => boolean, extras: HubReportExtras): Promise<HubReportOutcome> {
@@ -424,6 +454,7 @@ export class HubRepresentativeExecution {
         const prepared = await files.prepare(row.agent, extras.files);
         live();
         for (const file of prepared) await files.send(file, async (chunk) => {
+          live();
           const ack = await link.exchange({ v: 1, type: "attachment.put", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: chunk }, "attachment.ack");
           if (ack.type !== "attachment.ack" || ack.payload.id !== chunk.id || ack.payload.offset !== chunk.offset) throw new HubProtocolError("uncertain");
         });

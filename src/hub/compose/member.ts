@@ -162,6 +162,8 @@ export interface HubRepresentativeHost {
   locale?: "en" | "zh-TW";
   /** Ordinary cross-instance delivery to the published agent, with beforeInput run immediately before the IPC hand-off. */
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
+  /** S-244: while an update barrier is up, Hub and room producers leave their rows queued. */
+  updateHeld?: () => boolean;
   /** The agent's current lifecycle token (null: not a deliverable agent now). */
   agentToken(agent: string): string | null;
   /** M-3632: the waits before asking the Hub again after it could not answer before input (default HUB_BEGIN_RETRY_MS). */
@@ -170,7 +172,7 @@ export interface HubRepresentativeHost {
   files?: import("../member/attachments.js").HubMemberFilesOptions;
   /** The report_result hook for HUB_REPORT_TARGET and the pane-failure hook for its correlation ids (null: detached). */
   attachReports(
-    handler: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("../../hub-report-target.js").HubReportExtras }) => Promise<HubReportOutcome> | null) | null,
+    handler: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; requestScope?:import("../../request-hub-output.js").RequestHubOutputScope; extras?: import("../../hub-report-target.js").HubReportExtras }) => Promise<HubReportOutcome> | null) | null,
     failed: ((correlationId: string, agent: string) => void) | null,
   ): void;
   /** Private Classic input may reopen room output only after its Hub work has ended and a fresh idle proof. */
@@ -178,7 +180,7 @@ export interface HubRepresentativeHost {
   /** M-3660: whether a Hub question is no longer being answered, so its contact window ends (null: detached). */
   attachQuestionSettled?(read: ((agent: string, correlationId: string) => boolean) | null): void;
   /** M-3127: the `react` hook for a room question's correlation id (null: detached). Absent: this Fleet has none. */
-  attachReacts?(handler: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<HubReportOutcome> | null) | null): void;
+  attachReacts?(handler: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean; requestScope?:import("../../request-hub-output.js").RequestHubOutputScope }) => Promise<HubReportOutcome> | null) | null): void;
 }
 
 /** Ordered cleanup that stops at the first unconfirmed step (same rules as the server factory). */
@@ -551,7 +553,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       const askerNames = new HubAskerNames();
       const directRooms = new HubDirectRooms(db);
       const service = new HubRepresentativeExecution({
-        db,
+        db,hubId,
         journal,
         askerName: (messageId) => askerNames.get(messageId),directRooms,
         binding,
@@ -560,6 +562,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         authorize: (request) => (client ? client.authorize(request) : Promise.reject(new HubStateError("service-unavailable", "not connected"))),
         link: () => (online && online.current() && links.link() === online ? online : null),
         deliver: (input) => options.representative.deliver(input),
+        ...(options.representative.updateHeld ? { updateHeld: options.representative.updateHeld } : {}),
         ...(options.representative.beginRetryMs ? { beginRetryMs: options.representative.beginRetryMs } : {}),
         ...(memberFiles ? { files: memberFiles } : {}),
         audit: (event, database) =>
@@ -594,12 +597,13 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           const local=exposures.localExposure(source.exposureId);
           return !!local&&local.agent===source.agent&&local.exposure.state==="published"&&local.exposure.revision===source.revision&&local.consentId===source.consentId
             &&options.representative.agentToken(source.agent)===source.token&&service.readiness(source.exposureId,source.revision).ok;
-        },deliver:input=>options.roomNotify?.(input)??Promise.resolve(false),held:id=>options.log("warn","Hub mention feedback delivery held",{notificationId:id})});
+        },deliver:input=>options.roomNotify?.(input)??Promise.resolve(false),held:id=>options.log("warn","Hub mention feedback delivery held",{notificationId:id}),
+        ...(options.representative.updateHeld ? { updateHeld: options.representative.updateHeld } : {})});
       const receiveFeedback=feedback.receive.bind(feedback);
       const askerStore=options.representative.readState ? new HubRoomAskerStore({home:options.home,binding:roomBinding,encryptionKey:roomKey,now,
         identity:{hubId,issuerKeyId:profile.issuerKeyId,issuerPublicKey:createPublicKey(profile.hub.issuerPublicKey),fleetId:profile.fleetId}}) : undefined;
       teardown.add("room author provenance",()=>askerStore?.close());
-      const room = new HubRoomAskAdapter({ askerStore,db,now,attentionChanged:options.pokeAttention, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
+      const room = new HubRoomAskAdapter({ hubId,askerStore,db,now,attentionChanged:options.pokeAttention, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
         locale: options.representative.locale, generation: options.roomConversationGeneration,feedback:receiveFeedback,
         maxCrossInstanceMessageBytes: options.maxCrossInstanceMessageBytes,remind:options.roomNotify,
         localExposure: id => {
@@ -610,7 +614,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (!consent || consent.agent !== local.agent || options.representative.agentToken(local.agent) !== consent.token) return null;
           return { agent: local.agent, consentId: local.consentId, revision: local.exposure.revision, token: consent.token, contactLimit: local.contactLimit !== false };
         },
-        deliver: input => options.representative.deliver(input), ...(memberFiles ? { files: memberFiles } : {}) });
+        deliver: input => options.representative.deliver(input), ...(memberFiles ? { files: memberFiles } : {}),
+        ...(options.representative.updateHeld ? { updateHeld: options.representative.updateHeld } : {}) });
       // M-3543: a published share whose consent no longer matches its agent — the agent's backend or folder changed since
       // it was shared (#3147: consent never carries over). Only this case: no share, no link or no token is not "lapsed".
       const shareLapsed = (agent: string): boolean => {
@@ -622,9 +627,10 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         } catch { return false; }
       };
       const lapsedAgents = (): string[] => exposures.list().flatMap(row => shareLapsed(row.agent) ? [row.agent] : []);
-      const posts = new HubRoomPostAdapter({db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,lapsed:shareLapsed,files:memberFiles,directRoom:(room,local)=>directRooms.has(room,local.exposureId,local.token),rememberDirectRoom:(room,local)=>directRooms.remember(`listed:${local.exposureId}:${room}`,room,local.exposureId,local.token),
+      const posts = new HubRoomPostAdapter({hubId,db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,lapsed:shareLapsed,files:memberFiles,directRoom:(room,local)=>directRooms.has(room,local.exposureId,local.token),rememberDirectRoom:(room,local)=>directRooms.remember(`listed:${local.exposureId}:${room}`,room,local.exposureId,local.token),
         receipt: options.roomReceipt,feedback:receiveFeedback,
         notify: options.roomNotify,
+        ...(options.representative.updateHeld ? { updateHeld: options.representative.updateHeld } : {}),
         held: id => options.log("warn", "Hub room reply delivery held", {notificationId:id}),
         changed: () => options.roomToolsChanged?.(),
         local: agent => {

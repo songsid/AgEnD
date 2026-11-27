@@ -346,7 +346,7 @@ describe("the launcher, end to end", () => {
     const f = fixture({ runtime: "ok" });                                     // present, never verified
     const r = run(f, ["--version"]);
     expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/AgEnD cannot start: .*\n\s+To repair: npm install -g @songsid\/agend@2\.2\.0/);
+    expect(r.stderr).toMatch(/AgEnD cannot start: .*\n\s+To repair: npm install -g --allow-scripts=@songsid\/agend @songsid\/agend@2\.2\.0/);   // M-3805: the flag npm 12 needs
   });
 
   it.skipIf(!ON_FIXTURE_HOST)("SIGTERM to the launcher reaches the spawned CLI, and the CLI's exit is the launcher's", async () => {

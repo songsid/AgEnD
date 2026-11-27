@@ -10,6 +10,7 @@
  * Every manager command goes through an injected runner, so the sequences are testable without systemd or launchd.
  */
 import type { CommandResult } from "./update-install.js";
+import { plistProgramArguments, xmlUnescape } from "./plist-args.js";
 import { systemdWords } from "./service-installer.js";
 import { readSystemdRuntime, systemdChannel, systemdRunning, systemdStopped, type SystemdRuntime } from "./systemd-runtime.js";
 import type { PeerBus } from "./systemd-peer-bus.js";
@@ -159,21 +160,10 @@ export function readLoadedUnit(run: (command: string, args: string[]) => Command
   return { ok: true, unit: { tuple: { program: exec[0][0] as string, argv: argv as string[], env }, needDaemonReload: need } };
 }
 
-/** XML character data → text: the five named entities and numeric references (EJS writes `"` as `&#34;`), in one pass. */
-const xmlUnescape = (text: string) => text.replace(/&(?:#(\d+)|#x([0-9a-fA-F]+)|(lt|gt|quot|apos|amp));/g, (whole, dec?: string, hex?: string, name?: string) => {
-  if (dec !== undefined || hex !== undefined) {
-    const code = dec !== undefined ? Number.parseInt(dec, 10) : Number.parseInt(hex!, 16);
-    return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
-  }
-  return ({ lt: "<", gt: ">", quot: "\"", apos: "'", amp: "&" } as Record<string, string>)[name!]!;
-});
-
 /** A launchd plist on disk → the tuple it would run (ProgramArguments; EnvironmentVariables). */
 export function parsePlist(xml: string): ActivationTuple | null {
-  const args = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(xml);
-  if (!args) return null;
-  const argv = [...args[1]!.matchAll(/<string>([\s\S]*?)<\/string>/g)].map(m => xmlUnescape(m[1]!));
-  if (argv.length === 0) return null;
+  const argv = plistProgramArguments(xml);
+  if (!argv) return null;
   const env: Record<string, string> = {};
   const dict = /<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(xml);
   if (dict) for (const m of dict[1]!.matchAll(/<key>([\s\S]*?)<\/key>\s*<string>([\s\S]*?)<\/string>/g)) env[xmlUnescape(m[1]!)] = xmlUnescape(m[2]!);
