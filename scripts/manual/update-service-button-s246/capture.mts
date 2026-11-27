@@ -111,7 +111,7 @@ async function walk(c: any) {
       && d.text.includes(W(zh, "AgEnD can bring itself back after an update.", "AgEnD 都能自己重新啟動。")) && d.text.includes("agend uninstall"), d);
     check(`${tag} 2: Install and restart, and Cancel`, !!d && [GO, CANCEL].every((t) => d.buttons.some((x: any) => x.t === t)), d);
     check(`${tag} 2: nothing sent yet`, posts.length === sent, posts);
-    if (zh) for (const w of ["短暫停止", "自動回來", "重新啟動"]) check(`${tag} 2: 「${w}」 kept whole`, await unsplit(page, w, "dialog.dlg[open]") === true, await unsplit(page, w, "dialog.dlg[open]"));
+    if (zh) for (const w of ["短暫停止", "重新連線", "重新啟動"]) check(`${tag} 2: 「${w}」 kept whole`, await unsplit(page, w, "dialog.dlg[open]") === true, await unsplit(page, w, "dialog.dlg[open]"));
     if (phone) check(`${tag} 2: a bottom sheet with 44 px buttons`, !!d && d.bottom <= 1 && d.left <= 1 && d.right <= 1 && d.buttons.every((x: any) => x.h >= 44), d);
     await shot(page, `${tag}-2-confirm`);
     // 3 Cancel: nothing sent, nothing ran
