@@ -129,6 +129,8 @@ async function walk(c: any) {
       m.includes(W(zh, "AgEnD couldn't install the service: this computer's user service manager can't be reached. AgEnD keeps running as before. Details:", "AgEnD 無法安裝服務：這台電腦的使用者服務管理員無法連線。AgEnD 仍照原本的方式執行。詳細訊息："))
       && m.includes("Failed to connect to bus: No medium found"), m);
     check(`${tag} 4: the next step: the WSL fix, and when the button comes back`, m.includes(W(zh, "run wsl --update in Windows", "在 Windows 執行 wsl --update")) && m.includes(W(zh, "Check for updates", "檢查更新")), m);
+    const chip = await page.evaluate(`(() => { const c = document.querySelector("#settings-update .uc-fix-refused .uc-cmd"); const box = document.querySelector("#settings-update .uc-machine").getBoundingClientRect(); return c ? { right: Math.round(c.getBoundingClientRect().right), edge: Math.round(box.right), over: c.scrollWidth > c.clientWidth + 1 } : null; })()`) as any;
+    check(`${tag} 4: the raw words' chip stays inside the block (it wraps)`, !!chip && !chip.over && chip.right <= chip.edge, chip);
     check(`${tag} 4: no toast over the page`, (await toasts(page)).length === 0, await toasts(page));
     b = await buttons(page);
     check(`${tag} 4: the line stays; the button and How to fix (its agend install just failed) are gone`, m.includes("◐") && b.length === 0 && !m.includes(W(zh, "How to fix", "修正方式")), { m, b });

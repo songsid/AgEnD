@@ -2289,6 +2289,7 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .uc-checks .uc-fix-hint { font-size: var(--fs-sm); word-break: keep-all; overflow-wrap: anywhere; }
 .uc-checks .uc-fix-refused { margin: var(--s-1) 0 var(--s-2); font-weight: var(--fw-semibold); word-break: keep-all; overflow-wrap: anywhere; }
 .uc-checks .uc-fix-next { margin: 0 0 var(--s-2); word-break: keep-all; overflow-wrap: anywhere; }   /* #4564: the next step after a refusal */
+.uc-checks .uc-fix-refused .uc-cmd { white-space: normal; overflow-wrap: anywhere; word-break: normal; }   /* a refusal's raw words wrap on a phone */
 .uc-checks .uc-how { font-size: inherit; }
 .uc-checks .uc-how > p { padding-left: var(--s-3); border-left: 2px solid var(--border); }
 .uc-controls { display: flex; flex-direction: column; gap: var(--s-3); }
