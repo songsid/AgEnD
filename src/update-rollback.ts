@@ -16,7 +16,7 @@
  * Everything that touches the service manager or waits on a process comes through `RollbackDeps`.
  */
 import { randomBytes } from "node:crypto";
-import { adoptUpdateFence, readFleetLockRecord, retakeDeadFleetLock, setFleetLockHandoff, type FleetLockHandle } from "./fleet-lock.js";
+import { adoptUpdateFence, createUpdateFence, readFleetLockRecord, retakeDeadFleetLock, setFleetLockHandoff, type FleetLockHandle } from "./fleet-lock.js";
 import { identityOf, stopTarget } from "./install-ownership.js";
 import { restoreHome, type RestoreDeps } from "./update-restore.js";
 import { restorePackage, restoreUnit } from "./update-package-restore.js";
@@ -86,6 +86,15 @@ export function ensureFence(home: string, attempt: AttemptRecord, d: Pick<Rollba
     }
     // Journaled as started and dead (stopped now, or found gone) before its record is re-taken (§4.3 rev 5).
     if (!gen.dead || gen.pid !== rec.pid) a = ackGeneration(home, a, gen.nonce, rec.pid, { dead: true }, d.io);
+    // A fleet that stopped cleanly released fleet.lock on its way out (a real fleet does, at exit): no record is left to
+    // re-take, so the fence is made afresh — createUpdateFence, never acquireFleetLock: this runs in recover.cjs too
+    // (Fable #4536 F3). Part 7's rig found it: every stopped fleet left the forward driver abandoning here.
+    if (readFleetLockRecord(home) === null) {
+      const created = createUpdateFence(home, { pid: d.self.pid, attemptId: a.id });
+      if (created.ok) return { ok: true, handle: created.handle, attempt: a };
+      if (!/appeared meanwhile/.test(created.reason)) return { ok: false, reason: created.reason, attempt: a };
+      continue;                                                                    // someone took it meanwhile: look again
+    }
     const retaken = retakeDeadFleetLock(home, { pid: d.self.pid, attemptId: a.id, nonce: rec.nonce }, { isProcessAlive: d.isProcessAlive });
     if (retaken.ok) return { ok: true, handle: retaken.handle, attempt: a };
     if (!/changed during/.test(retaken.reason)) return { ok: false, reason: retaken.reason, attempt: a };

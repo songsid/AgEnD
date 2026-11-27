@@ -58,7 +58,12 @@ export function realHostEnv(): HostEnv {
     now: () => performance.now(),
     realpath: path => { try { return realpathSync(path); } catch { return null; } },
     readFile: path => { try { return readFileSync(path, "utf8"); } catch { return null; } },
-    exists: pid => { try { process.kill(pid, 0); return true; } catch (err) { return (err as NodeJS.ErrnoException).code !== "ESRCH"; } },
+    // A zombie is gone: a fleet this updater started (a detached trial is its child) and then stopped is reaped only when
+    // this process's event loop runs, which a synchronous driver never lets it do (the rig found it).
+    exists: pid => {
+      try { process.kill(pid, 0); } catch (err) { return (err as NodeJS.ErrnoException).code !== "ESRCH"; }
+      try { return !/^\d+ \(.*\) Z /s.test(readFileSync(`/proc/${pid}/stat`, "utf8")); } catch { return true; }
+    },
     kill: (pid, signal) => { try { process.kill(pid, signal); return true; } catch { return false; } },
     spawnDetached: (command, args, env) => {
       try {
@@ -130,7 +135,8 @@ export function updaterManager(home: string, service: OwnedService | null, start
   if (service) return serviceManager(service, { run: (c, a) => { const r = x.run(c, a); return { status: r.status, stdout: r.stdout }; }, uid: x.uid(), sleep: x.sleep, now: x.now });
   const fleetPid = () => { const rec = readFleetLockRecord(home); return rec?.role === "fleet" && x.exists(rec.pid) ? rec.pid : null; };
   return {
-    mainPid: fleetPid,
+    // No service manager runs a detached fleet: it has no MainPID (stopTarget requires none — the rig found it).
+    mainPid: () => null,
     stop: () => {
       const pid = fleetPid();
       if (pid === null) return true;

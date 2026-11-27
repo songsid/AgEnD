@@ -139,6 +139,14 @@ const COMMITTED = { fleetYaml: "version: new\nmigrated: true\n", newState: true,
 const ROLLED_BACK = { fleetYaml: "version: old\n", newState: false, version: "2.4.0", unit: UNIT, dropIn: false, journal: "none", lockRole: "fleet" };
 
 describe("M-3770 2.5: the update, forward to committed", () => {
+  it("an old fleet that releases fleet.lock as it stops (a real fleet does, at exit): the fence is made afresh, and the update goes on (part 7's rig)", () => {
+    const w = world();
+    const base = w.deps();
+    const r = runUpdate(w.home, w.attempt, PLAN, w.deps({ manager: { ...base.manager, stop: () => { const ok = base.manager.stop(); rmSync(join(w.home, "fleet.lock"), { force: true }); return ok; } } }));
+    expect(r.ok, r.ok ? "" : r.reason).toBe(true);
+    expect(endState(w)).toEqual(COMMITTED);
+  });
+
   it("the barrier is asked while the attempt is still opened (the old fleet's barrier.arm is valid only there); the stage records it after", () => {
     const w = world();
     const seen: string[] = [];

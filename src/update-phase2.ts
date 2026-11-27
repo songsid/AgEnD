@@ -49,6 +49,8 @@ export interface Phase2Env {
   /** Abandon's hand-back wait (bounded) until `done()`. */
   waitHandedBack(done: () => boolean): boolean;
   takeLease?: Parameters<typeof drainHand>[2];
+  /** The proof's bound (default 90 s; the rig's is shorter). */
+  proveMs?: number;
   /**
    * The update receipt's stage (Fable part 5 (d)), in today's words: stopping (the old fleet), downloading (the
    * install), installed, starting (the trial, its proof and the commit — minutes, with the fleet's own hold notice).
@@ -120,12 +122,14 @@ export function runTransactionUpdate(i: Phase2Input, x: Phase2Env): Phase2Result
         return done;
       },
       live,
-      prove: proveHand(i.home, id, mailbox),
+      prove: proveHand(i.home, id, { ...mailbox, timeoutMs: x.proveMs }),
       commit: commitHands(i.home, id, mailbox),
       handBack: a => x.waitHandedBack(() => handedBack(i.home, a.id, io)),
       io,
     };
-    const result = runUpdate(i.home, opened.attempt, { target: { name: i.target.name, version: i.target.version, integrity: null }, command: [] }, deps);
+    const result = runUpdate(i.home, opened.attempt, { target: { name: i.target.name, version: i.target.version, integrity: null },
+      // The intent records what the install hand runs (the rig found an empty command made the intent malformed).
+      command: ["npm", "exec", "--yes", "--package", spec, "--", "agend-install", "--install-only", "--target", i.target.version] }, deps);
     // 4. Committed: the service definition from the committed install, under the locks still held.
     if (result.ok) {
       const refresh = refreshServiceDefinition({ bin, version: i.target.version, service: i.service }, { run: x.host.run, readFile: x.host.readFile, uid: x.host.uid });

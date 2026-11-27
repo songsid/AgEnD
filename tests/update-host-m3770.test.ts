@@ -59,7 +59,7 @@ describe("M-3770 2.5 wiring part 5: a detached fleet's manager", () => {
     const dir = home({ pid: 7100, nonce: "a".repeat(32) });
     writeFileSync(join(dir, "fleet.pid"), "7100\n");
     const m = updaterManager(dir, null, TUPLE, h.x);
-    expect(m.mainPid()).toBe(7100);
+    expect(m.mainPid()).toBeNull();                                                               // no service manager: no MainPID
     expect(m.stop()).toBe(true);
     expect(h.calls).toEqual(["kill 7100 SIGTERM"]);
     expect(m.reload()).toBe(true);

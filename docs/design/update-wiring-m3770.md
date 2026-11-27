@@ -288,3 +288,19 @@ It takes the home update lock first, as the recovery runner would, then drives t
   - The runner runs beside the service (`systemd-run --user? --unit=agend-update-recovery-<id> --wait --pipe --collect --property=KillMode=process …`): its output is shown here and its status is ours, but it is never a child of this terminal. Its own starts go through the service manager, and it doesn't depend on the caller's environment; `--home` is explicit.
   - A detached attempt has no service to recover beside: the runner refuses it, and `--recover` says what to do.
 - From a fleet agent's session, `--clear` and `--recover` need `--yes` (the same gate as `agend update`).
+- **This user's bus** (Fable). A user unit's runner starts with `systemd-run --user`, which needs the user bus. `--recover` looks for it at the user's own runtime directory (`XDG_RUNTIME_DIR=/run/user/<uid>`, named explicitly, never the caller's environment). When it can't be reached (`sudo -u`, some ssh sessions, no lingering), it refuses with the reason, `agend update --recover` to run from a login session, and the runner's own command.
+- **No token is printed.** No `--resolve`, `--clear` or `--recover` output carries a lock's token; a test checks for any 32-hex string.
+
+## 16. The scratch end-to-end rig (part 7)
+`tests/update-rig-e2e-m3770.test.ts` runs `runTransactionUpdate` (the real journal, locks, mailbox and hands) against a scratch home and npm prefix, with STAND-IN fleets (`tests/support/update-rig-fleet.ts`). They are real processes that take fleet.lock exactly as `claimFleetSingleton` does: `fleetStartGate`, then the handoff claim. They answer the mailbox and walk an abandon's hand-back. Never `agend fleet start`, never the host's home, no tmux, no service manager (a detached fleet). npm is a stand-in too.
+- **Cases:**
+  - success: committed, and the trial started as the tuple proved it;
+  - an unhealthy trial: rolled back, the previous package and home back, the old version restarted by its own nonce;
+  - a busy fleet: abandoned, nothing installed;
+  - launchd-shaped: S-260's baseline, selection keeps Phase 1.
+- **What it found** (each fixed, with a unit test beside it):
+  - a detached manager reported the fleet as its MainPID, which `stopTarget` refuses for a detached attempt;
+  - a stopped child fleet stayed a zombie under the synchronous driver, so `exists` now reads `/proc/<pid>/stat`;
+  - a fleet that releases fleet.lock as it stops left `ensureFence` nothing to re-take, so the fence is now made afresh (`createUpdateFence`, bundle-safe);
+  - an empty install command made the journaled intent malformed.
+- **What's left:** a real fleet's trial, commit hands and hand-back over the real mailbox, the service-manager path and a crash and recover. They need the S-261 container run.
