@@ -1,5 +1,5 @@
 {
-  "sourceHead": "a4429a999557fa41335199cb10b8ba838c4bd67b",
+  "sourceHead": "b912efc63dd922d750c90b115fde6e3f833d091b",
   "dirty": [],
   "checks": [
     {
@@ -8,6 +8,10 @@
     },
     {
       "name": "desk-light-en 1: one fix button, Fix it for me",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the button's line says what it does",
       "ok": true
     },
     {
@@ -31,11 +35,15 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 3: says AgEnD couldn't, and to run the command, in full",
+      "name": "desk-light-en 3: the block says AgEnD couldn't, and to run the command",
       "ok": true
     },
     {
-      "name": "desk-light-en 3: the line and its command stay; the button can be pressed again",
+      "name": "desk-light-en 3: no error toast over the page",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: the line and its command stay; the button and its hint are gone",
       "ok": true
     },
     {
@@ -71,6 +79,10 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW 1: the button's line says what it does",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 1: the button is 44 px",
       "ok": true
     },
@@ -99,23 +111,27 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 3: says AgEnD couldn't, and to run the command, in full",
+      "name": "phone-dark-zh-TW 3: the block says AgEnD couldn't, and to run the command",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 3: the line and its command stay; the button can be pressed again",
+      "name": "phone-dark-zh-TW 3: no error toast over the page",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 3: the toast keeps 「上面」 whole",
+      "name": "phone-dark-zh-TW 3: the line and its command stay; the button and its hint are gone",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 3: the toast keeps 「終端機」 whole",
+      "name": "phone-dark-zh-TW 3: the line keeps 「上面」 whole",
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 3: the toast keeps 「執行」 whole",
+      "name": "phone-dark-zh-TW 3: the line keeps 「終端機」 whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the line keeps 「執行」 whole",
       "ok": true
     },
     {
@@ -162,36 +178,36 @@
   "pictures": [
     {
       "path": "s238-desk-light-en-1-linger.png",
-      "sha256": "53c127ec6679f7797007a346f4f8bc2d1528a609e94f0a0e80988da55b1251d7"
+      "sha256": "f1e960eed9fe2cf8b6ae65cc3e9b1ac3a29a6c7c93efb8284e9e2b94d057ce22"
     },
     {
       "path": "s238-desk-light-en-2-fixed.png",
-      "sha256": "6b254f82ee5bd38fdc6dd34f469fe42359e117a72c1524b66f069bc0501a09db"
+      "sha256": "d9288bc61ddfd58208fa37058dbcb9b5366842417b7a159049a34d44b44fafed"
     },
     {
       "path": "s238-desk-light-en-3-failed.png",
-      "sha256": "82a526e8dc18b91ef0db6feb510350a26f115478f000d1ff1deef4104e653063"
+      "sha256": "c0502058ffb34614a83e7587774933b07deb939eb93239193757d96aec8c3b5f"
     },
     {
       "path": "s238-desk-light-en-4-not-service.png",
-      "sha256": "dbf42156a87f89fb56fce9fbf551acc36d825a74a029ba4cce7a0d2e2f92b910"
+      "sha256": "ca4e0824b600709b6703d747afb20f976685a3470c1bc38c8297ea2237c845f6"
     },
     {
       "path": "s238-phone-dark-zh-TW-1-linger.png",
-      "sha256": "a5bcf682cdaf0615940a398e4af42721e0681994ffd51922ee0e39bdabd6c866"
+      "sha256": "2abb95ed920cb5af8eceef4a0bdaad66041e5e464322830c53646ac942880da1"
     },
     {
       "path": "s238-phone-dark-zh-TW-2-fixed.png",
-      "sha256": "86b2799793d3223512fd7540c6de8053de0a2eba32ff0c2aa6f283d62b09ca73"
+      "sha256": "38374c6a03878157e4dabe3eeab0e04700fc2f5b192177eff3bf2bfd0a141f3e"
     },
     {
       "path": "s238-phone-dark-zh-TW-3-failed.png",
-      "sha256": "d6f310460c186ef3bb0eae5339de90e19ba1f698ed03a2d9be345fe0fed5afac"
+      "sha256": "ceab84bc83ab6b5c6ef1fe4974ba7d516407fdec52cbb59755707e582b672383"
     },
     {
       "path": "s238-phone-dark-zh-TW-4-not-service.png",
-      "sha256": "cd860ff9c64dec0762a0bb953c264bf304b1e6f8269c04c26dfcb2f8c9fb4d6a"
+      "sha256": "188580fb172380683ba15afb3f1990216513cbc6f71194c413fdce4678e8ab6f"
     }
   ],
-  "summary": "39/39"
+  "summary": "43/43"
 }
