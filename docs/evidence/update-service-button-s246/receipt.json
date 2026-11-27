@@ -1,5 +1,5 @@
 {
-  "sourceHead": "4315f5fb0fe6785154a69cc6315ebe541044bfec",
+  "sourceHead": "e270f2ff3357181d21bb812e51e354f4b487944a",
   "dirty": [],
   "checks": [
     {
@@ -19,7 +19,7 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 2: Restart as a service and Cancel",
+      "name": "desk-light-en 2: Install and restart, and Cancel",
       "ok": true
     },
     {
@@ -39,7 +39,15 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 4: the block says why, and that AgEnD keeps running",
+      "name": "desk-light-en 4: the block says the cause in the product's words, the command's own words as a detail, and that AgEnD keeps running",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the next step: the WSL fix, and when the button comes back",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the raw words' chip stays inside the block (it wraps)",
       "ok": true
     },
     {
@@ -47,7 +55,7 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 4: the line stays with How to fix; the button is gone (pressing again is not the next step)",
+      "name": "desk-light-en 4: the line stays; the button and How to fix (its agend install just failed) are gone",
       "ok": true
     },
     {
@@ -55,7 +63,11 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 5: the block says AgEnD is restarting; the button says Restarting… and can't be pressed",
+      "name": "desk-light-en 5: the block says AgEnD is installing and restarting; the button says Installing… and can't be pressed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the card's other buttons are off meanwhile",
       "ok": true
     },
     {
@@ -103,7 +115,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 2: Restart as a service and Cancel",
+      "name": "phone-dark-zh-TW 2: Install and restart, and Cancel",
       "ok": true
     },
     {
@@ -139,7 +151,15 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 4: the block says why, and that AgEnD keeps running",
+      "name": "phone-dark-zh-TW 4: the block says the cause in the product's words, the command's own words as a detail, and that AgEnD keeps running",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the next step: the WSL fix, and when the button comes back",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the raw words' chip stays inside the block (it wraps)",
       "ok": true
     },
     {
@@ -147,7 +167,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 4: the line stays with How to fix; the button is gone (pressing again is not the next step)",
+      "name": "phone-dark-zh-TW 4: the line stays; the button and How to fix (its agend install just failed) are gone",
       "ok": true
     },
     {
@@ -155,7 +175,11 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 5: the block says AgEnD is restarting; the button says Restarting… and can't be pressed",
+      "name": "phone-dark-zh-TW 5: the block says AgEnD is installing and restarting; the button says Installing… and can't be pressed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the card's other buttons are off meanwhile",
       "ok": true
     },
     {
@@ -202,44 +226,44 @@
   "pictures": [
     {
       "path": "s246-desk-light-en-1-not-service.png",
-      "sha256": "39ed79362559c6ba18a002d0e8c03d243a059a3997dac385a075defb5eb244a5"
+      "sha256": "80d0a8da3ec9afe1fece2e840172332411801400d0c37f0432ef402c5be24a63"
     },
     {
       "path": "s246-desk-light-en-2-confirm.png",
-      "sha256": "48a18d9987f6397d9415281aa28469465462383fc5680583696926a0be09067e"
+      "sha256": "c1d43a8a6133544ec1b78b48c477e46efbc15ca9dd8eff736aa398ef62929af1"
     },
     {
       "path": "s246-desk-light-en-4-refused.png",
-      "sha256": "e891b32e3ca2e0a3f8d3055726c88414a2c618414a8399e4ddf6c6cebc95f79e"
+      "sha256": "35502e3968cacc955c83b76761ef045e5a2d245b412c8690a62dee9859e69a01"
     },
     {
       "path": "s246-desk-light-en-5-restarting.png",
-      "sha256": "11b016c297ac45171399dbede0cf80c434310f11ba79283469c95d76c488b553"
+      "sha256": "ec3dfc49d0e110405005823ece330114f4e5230f034cf41d4bd9d7dae3b40295"
     },
     {
       "path": "s246-desk-light-en-5b-back.png",
-      "sha256": "29c3f20ad9e235544014fa56a868252443657371840b4cc5a0b6ac8840371adc"
+      "sha256": "206702fa4eeb0bd53fb0e2de358e1d184a2362053d00a0baa7f80312e66fb17d"
     },
     {
       "path": "s246-phone-dark-zh-TW-1-not-service.png",
-      "sha256": "82f8b7826fa43dda1c56853afa4ca6b9bad2a32dbaca9266e9aef9396658b2ed"
+      "sha256": "ad92515a780f7f5a591fdb60ac73ee1fc96d8fd123f960327a8d030f9ae1f022"
     },
     {
       "path": "s246-phone-dark-zh-TW-2-confirm.png",
-      "sha256": "c8fcc8bc8042b3731db5ddd654bf4c751a1ba99214a75a1f20831a9f4220d4db"
+      "sha256": "ca5ee560a38c632d56c118c513b93eac07da4a0c714f9371b0ae528bfb92165b"
     },
     {
       "path": "s246-phone-dark-zh-TW-4-refused.png",
-      "sha256": "1502a33f8f34c7b84b3ecb6272c77e5f8caa1770f8d11fa5254d1ad2a298b643"
+      "sha256": "1d72b53bc85262f118927387c885fe1769b9868d5e3dcb4dc6b330694e24427c"
     },
     {
       "path": "s246-phone-dark-zh-TW-5-restarting.png",
-      "sha256": "7fb2794a24185077d2566bac2f7938469c78d03a23ec10df7e93e80ac43a01b7"
+      "sha256": "549d73e1aec2dbf7e3c402d1aa781e7b79eb91f98c5fce9fe095edacde4eb10c"
     },
     {
       "path": "s246-phone-dark-zh-TW-5b-back.png",
-      "sha256": "afdc0e75efddc468bc722fedcce6d5e73cf9466457ac0beb8e0a46bb0a26109a"
+      "sha256": "e0f549db08c15bc77bc74903e2e4d93ce7949605463e2eb0aa64af4e5a63e962"
     }
   ],
-  "summary": "49/49"
+  "summary": "55/55"
 }
