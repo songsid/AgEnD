@@ -1,5 +1,5 @@
 {
-  "sourceHead": "fe4aa66139bae29e17e7b737610ab85a7d18870e",
+  "sourceHead": "35c4394bc9c8c23368e8c051e27da67c02ed9bec",
   "dirty": [],
   "checks": [
     {
@@ -47,6 +47,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-en-1-needs-unverified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "desk-light-en 2: read again once verified: the buttons on",
       "ok": true
     },
@@ -67,6 +71,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-en-2-verified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "desk-light-en 3: one click continues it",
       "ok": true
     },
@@ -76,6 +84,14 @@
     },
     {
       "name": "desk-light-en 3: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: says the outcome, not just the badge",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-3-continued: no host path outside a masked fleet.yaml",
       "ok": true
     },
     {
@@ -99,7 +115,19 @@
       "ok": true
     },
     {
+      "name": "desk-light-en-4-authorizations: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "desk-light-en 4b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4b: no internal request id in view",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-4b-details: no host path outside a masked fleet.yaml",
       "ok": true
     },
     {
@@ -108,6 +136,26 @@
     },
     {
       "name": "desk-light-en 5: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-5-always-allow: no host path outside a masked fleet.yaml",
       "ok": true
     },
     {
@@ -159,6 +207,10 @@
       "ok": true
     },
     {
+      "name": "desk-dark-zh-TW-1-needs-unverified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "desk-dark-zh-TW 2: read again once verified: the buttons on",
       "ok": true
     },
@@ -179,6 +231,10 @@
       "ok": true
     },
     {
+      "name": "desk-dark-zh-TW-2-verified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "desk-dark-zh-TW 3: one click continues it",
       "ok": true
     },
@@ -188,6 +244,14 @@
     },
     {
       "name": "desk-dark-zh-TW 3: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 3: says the outcome, not just the badge",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-3-continued: no host path outside a masked fleet.yaml",
       "ok": true
     },
     {
@@ -211,7 +275,19 @@
       "ok": true
     },
     {
+      "name": "desk-dark-zh-TW-4-authorizations: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "desk-dark-zh-TW 4b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4b: no internal request id in view",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-4b-details: no host path outside a masked fleet.yaml",
       "ok": true
     },
     {
@@ -220,6 +296,26 @@
     },
     {
       "name": "desk-dark-zh-TW 5: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-5-always-allow: no host path outside a masked fleet.yaml",
       "ok": true
     },
     {
@@ -275,6 +371,10 @@
       "ok": true
     },
     {
+      "name": "phone-light-en-1-needs-unverified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "phone-light-en 2: read again once verified: the buttons on",
       "ok": true
     },
@@ -295,6 +395,10 @@
       "ok": true
     },
     {
+      "name": "phone-light-en-2-verified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "phone-light-en 3: one click continues it",
       "ok": true
     },
@@ -304,6 +408,14 @@
     },
     {
       "name": "phone-light-en 3: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 3: says the outcome, not just the badge",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-3-continued: no host path outside a masked fleet.yaml",
       "ok": true
     },
     {
@@ -331,7 +443,19 @@
       "ok": true
     },
     {
+      "name": "phone-light-en-4-authorizations: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "phone-light-en 4b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4b: no internal request id in view",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-4b-details: no host path outside a masked fleet.yaml",
       "ok": true
     },
     {
@@ -340,6 +464,26 @@
     },
     {
       "name": "phone-light-en 5: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-5-always-allow: no host path outside a masked fleet.yaml",
       "ok": true
     },
     {
@@ -395,6 +539,10 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW-1-needs-unverified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 2: read again once verified: the buttons on",
       "ok": true
     },
@@ -415,6 +563,10 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW-2-verified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 3: one click continues it",
       "ok": true
     },
@@ -424,6 +576,14 @@
     },
     {
       "name": "phone-dark-zh-TW 3: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: says the outcome, not just the badge",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-3-continued: no host path outside a masked fleet.yaml",
       "ok": true
     },
     {
@@ -451,7 +611,19 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW-4-authorizations: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 4b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4b: no internal request id in view",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-4b-details: no host path outside a masked fleet.yaml",
       "ok": true
     },
     {
@@ -463,6 +635,26 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-5-always-allow: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW: no page errors",
       "ok": true
     }
@@ -470,100 +662,100 @@
   "pictures": [
     {
       "path": "s228-desk-light-en-1-needs-unverified.png",
-      "sha256": "c8a9b439105e1e73ef211142497ea8a3b30d83994e6627ee73f2f3a922f6593f"
+      "sha256": "23e70871d53817f7174c2f26880ceb0353b00150a8bff796ca1331cbaf26dd50"
     },
     {
       "path": "s228-desk-light-en-2-verified.png",
-      "sha256": "0c8c0891fdcd4aea7e9c845637bc3c5f4686008233fecaa339871d7fe49dd15e"
+      "sha256": "7ffc21ae4c67a1f382dac89a36988b42b40abdabd39a464c55f70d3dc4d5e4a9"
     },
     {
       "path": "s228-desk-light-en-3-continued.png",
-      "sha256": "a476e79637ec138ccd654028fa82adafe45021e3fc3a5c7bba5c72833c143e9e"
+      "sha256": "b7bbd09a2079d0f6925e5cd6d14c3eacfe6f44dfa649987eb06d0fd60d8ac96a"
     },
     {
       "path": "s228-desk-light-en-4-authorizations.png",
-      "sha256": "11efd977dac404905d51184f1c2cfb1f42324e4d73bfc3165b110863d4e8c824"
+      "sha256": "b11d107d54bf87ec853eaa26f6a496f88c6f5b4daf56b5cfc4c57ca2b6ff5656"
     },
     {
       "path": "s228-desk-light-en-4b-details.png",
-      "sha256": "a9245f0ce35c2fef41dd4dac3c00f3716e48fca26f6787653d867f06ee31d5a8"
+      "sha256": "3c223556abafa7f9751f8d175e9bbe02433fec8e6ff5a92d52726d99efa0e6a8"
     },
     {
       "path": "s228-desk-light-en-5-always-allow.png",
-      "sha256": "d2d6831f769a45cf05e79fc1d67d9af3e4b1f63edc047e0e1aa5a101cad493ad"
+      "sha256": "0cfc91a80a7d32a65b4444b553554fe5270362bf6d027559b45bec540324d087"
     },
     {
       "path": "s228-desk-dark-zh-TW-1-needs-unverified.png",
-      "sha256": "9393ad2455247587fa61ec136f29fa61568922cefed6c1cf9c400c980e537439"
+      "sha256": "1f0b298be431c904e9eb9f26dbd343d7609c5ed5c5c48cc6ed3f6ccfcfddcde7"
     },
     {
       "path": "s228-desk-dark-zh-TW-2-verified.png",
-      "sha256": "e9d8a508079a63e1e76a5027e520cd8bae36d70e6947fa370d4b18ce6ba4177c"
+      "sha256": "214b0aaa492f8337a3e8b1fec4b0f8dc09899eafadc9bb84486ab86ea78c31fd"
     },
     {
       "path": "s228-desk-dark-zh-TW-3-continued.png",
-      "sha256": "490fe210e6c1545ded17ae1a6a4a5e95d57f3968adc47c0f6b0a977451488626"
+      "sha256": "75d43954795afd14fcfaa4f3fbcea73d89dc291f2200d446c500e572c0ca9746"
     },
     {
       "path": "s228-desk-dark-zh-TW-4-authorizations.png",
-      "sha256": "862005fc557b12ab8daf71885e578fbf1cc984d4052ad84488c0ce468bb4b623"
+      "sha256": "9e5169b08b2be37511877e739b0ee4d8674c1b203446807b3fa58a7b3e16798d"
     },
     {
       "path": "s228-desk-dark-zh-TW-4b-details.png",
-      "sha256": "b9ab218a52366a411d4982830290776cf0ffbfc478d2f0cb5e0c3548873f9c31"
+      "sha256": "6ace5a0898540e28714363a265152b5adc39461e1ccbb523d025f3f44c2dff75"
     },
     {
       "path": "s228-desk-dark-zh-TW-5-always-allow.png",
-      "sha256": "2b1ae3182730c0edb92553484acc8589b39c8863d6d53359942b5ae597c17f00"
+      "sha256": "9e0ed973b08dca027193b1a633e7838653a71b3965bc85ce0dbd6f7422c0c2ef"
     },
     {
       "path": "s228-phone-light-en-1-needs-unverified.png",
-      "sha256": "11919401460b1006306fc8dc6fae68ab8a46d4bb58edd0303fcb60308285257b"
+      "sha256": "bde1c9f2179ed42cb7c240b0a39b8efb333e0de78892ee74cc400ddac0c3a543"
     },
     {
       "path": "s228-phone-light-en-2-verified.png",
-      "sha256": "3d082176039864453807457b558aa5eb7e4fab7df705defb8aa1c555175ec1d9"
+      "sha256": "a4011fd2c6aa2ca2b06f6649581da77f90b47738027bbe4df520c01dc5acf0f8"
     },
     {
       "path": "s228-phone-light-en-3-continued.png",
-      "sha256": "513c76531a5f094d1d5517c996d56ac65d8bbb271b7a84b3b83de777c9a5a663"
+      "sha256": "ea1dc53a78a6ec2bfde47a5f69b336133f81306876a4f6b61c19d0341fe18dc4"
     },
     {
       "path": "s228-phone-light-en-4-authorizations.png",
-      "sha256": "2f883a0ca6a9db033f89dce762626a56fecc662068dc1410d8844fe70438d4c7"
+      "sha256": "d847c425c157832d74f3538d8f9c51f32735b8b9295da6cd6ebdf827a447caa3"
     },
     {
       "path": "s228-phone-light-en-4b-details.png",
-      "sha256": "a3d7d6afd6fcf96e18678917f774bae968007f84ebb5437e141ffa3c2f8b485f"
+      "sha256": "d7357960ee81262fa16889ab759a21aa99392c2b43c70662e3533417ffa581ec"
     },
     {
       "path": "s228-phone-light-en-5-always-allow.png",
-      "sha256": "64292e4ad18bd992f056778f96a64ab7f264fb4d15401b1d6f6a3d38182567aa"
+      "sha256": "3c52031321c273535d36a899252e695d4fbbc321b3ca6c13b315f7b288ef4322"
     },
     {
       "path": "s228-phone-dark-zh-TW-1-needs-unverified.png",
-      "sha256": "d0d6d2b5706c5c85a76d884f2c8f105d42ffbe53352fd629309b6f0e49b63218"
+      "sha256": "b58c271c0989c9115cccb30bd26475013973d3a19bffe087f77b7aad5c281e6c"
     },
     {
       "path": "s228-phone-dark-zh-TW-2-verified.png",
-      "sha256": "8e13a212ce601d5fca4d0fd5d8609fdcd924092bf7775fd10b5e041749392e0c"
+      "sha256": "6416c833e06dab5af972c48656f24924a77916c96818fbc58cf57298c9d6dc4c"
     },
     {
       "path": "s228-phone-dark-zh-TW-3-continued.png",
-      "sha256": "05aef731d1717662b74995918428750103c91bd2ae2530229ab5930d5a8cf27c"
+      "sha256": "a4f159af3100da489e10150034d07d6516a6b8c757e1193ef5e3dc99fcc9c7cd"
     },
     {
       "path": "s228-phone-dark-zh-TW-4-authorizations.png",
-      "sha256": "699b31c038dc509a386ce333a1b1a26bd7dba578ca3ec69d04cd5039fe0a03e7"
+      "sha256": "1a6e06dad9a57eca79caf1935b8ac7032f4428349746443d649fafec3114e5af"
     },
     {
       "path": "s228-phone-dark-zh-TW-4b-details.png",
-      "sha256": "5f56e424764f3d9e1c06bf8f9b9d9d33274c9d86c9aa15b6094f4c9e807daf58"
+      "sha256": "f10ff87d354609796d354601abd68046e0e01c3e4eb1b0be1a85c0b30f1c14ae"
     },
     {
       "path": "s228-phone-dark-zh-TW-5-always-allow.png",
-      "sha256": "9e4b424a9ebb54f00f8b83bab1b3ed0e43ced23d63bbc7a034f49f12fa0b6420"
+      "sha256": "25ff7727b7b1665bbadcd95d18ca08159984b0f112308da1c8b967f9e9799068"
     }
   ],
-  "summary": "116/116"
+  "summary": "164/164"
 }
