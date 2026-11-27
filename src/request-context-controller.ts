@@ -1,11 +1,13 @@
 /** Stable Settings host. Readiness is explanatory; only independently confirmed changes reach its effect owner. */
 import type {RequestContextEnableOffer} from "./request-context-enable-offer.js";
 import type {RequestContextInstallationState} from "./request-context-installation.js";
-import {RequestContextControlViewSchema,type RequestContextControlView,type RequestContextControlHost,type RequestContextControlPrincipal,type RequestContextControlDecision} from "./request-context-control-api.js";
+import {REQUEST_CONTEXT_ENABLE_UNAVAILABLE,RequestContextControlViewSchema,type RequestContextControlView,type RequestContextControlHost,type RequestContextControlPrincipal,type RequestContextControlDecision} from "./request-context-control-api.js";
 import {requestContextDigest} from "./request-context-store.js";
 export type RequestContextBlocker=RequestContextControlView["blockers"][number];
 export interface RequestContextControllerPorts {
  current():boolean;
+ /** Production release guard, independent of readiness or owner confirmation. */
+ enableUnavailable?():boolean;
  principal:RequestContextControlHost["principal"];
  permitContinuation:RequestContextControlHost["permitContinuation"];
  base():{state:RequestContextInstallationState|null;offer:RequestContextEnableOffer;restartCount:number;timeZone:string};
@@ -35,6 +37,7 @@ export class RequestContextController implements RequestContextControlHost {
   const base=this.ports.base(),state=base.state,blockers=this.ports.inspect().map(row=>structuredClone(row));
   const next={enabled:state?.mode==="active",everActivated:!!state,attempted:this.attempted,phase:state?.mode==="draining"?"draining" as const:blockers.length||this.enableFailed?"blocked" as const:state?.mode==="active"?"on" as const:"off" as const,canChange:true,blockers,
    ...(this.enableFailed?{enableFailed:true}:{}),
+   ...(this.ports.enableUnavailable?.()?{enableUnavailable:true}:{}),
    ...(base.restartCount?{restartCount:base.restartCount}:{}),...(base.offer.latestDeadline!==null?{goBack:{attemptIds:[...base.offer.invalidates],availableUntil:new Date(base.offer.latestDeadline).toISOString(),timeZone:base.timeZone}}:{})};
   const image=requestContextDigest([next,base.offer.sha256,state]);
   if(image!==this.image){this.revision++;this.image=image;}
@@ -47,7 +50,9 @@ export class RequestContextController implements RequestContextControlHost {
   try{return this.read(actor);}catch(error){this.enableFailed=failed;throw error;}
  }
  async change(input:Readonly<RequestContextControlDecision>,actor:RequestContextControlPrincipal):Promise<RequestContextControlView>{
-  this.require(actor,true);if(this.busy)throw Error("stale");
+  this.require(actor,true);
+  if(input.action==="enable"&&this.ports.enableUnavailable?.())throw Error(REQUEST_CONTEXT_ENABLE_UNAVAILABLE);
+  if(this.busy)throw Error("stale");
   const view=this.refresh(),offer=this.offer!;
   if(view.revision!==input.revision)throw Error("stale");
   if(input.action==="check")return this.read(actor);

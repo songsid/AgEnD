@@ -97,3 +97,12 @@ it("the server's zh-TW pending deadline also uses a 24-hour clock",()=>{
   expect(summary).not.toMatch(/上午|下午|凌晨|晚上/);expect(summary).toMatch(/\d{2}:\d{2}/);
  }finally{setLocale("en");}
 });
+
+it("S-274: the shared General/HTTP settings proposal refuses On with the plain release reason",async()=>{
+ const r=rig();r.view.enableUnavailable=true;
+ const context={config:null,classic:{},requestContextControl:()=>r.view};
+ expect(()=>prepareSettingsEffect("POST",path,{revision:4,action:"enable"},context)).toThrow("Request-based approvals can't be turned on in this version yet.");
+ const response=await r.request("POST",path,{revision:4,action:"enable"});
+ expect(response.status).toBe(409);expect(response.body.error).toBe("Request-based approvals can't be turned on in this version yet.");
+ expect(r.writes).not.toHaveBeenCalled();expect(r.store.list("admin-session")).toHaveLength(0);
+});

@@ -1,0 +1,7 @@
+Real Settings component, synthetic never-activated status
+Language: zh-TW
+Switch: off, disabled
+依請求核准聯絡
+這一版還不能開啟依請求核准聯絡。
+尚未開啟，聯絡方式沒有變更。
+注意：開啟後就不能再降回舊版 AgEnD，之後關閉也一樣。

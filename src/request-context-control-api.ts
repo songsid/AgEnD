@@ -1,10 +1,13 @@
 /** Host-owner UI boundary. Kept independent from the installer so Off still works after a failed install. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
+import { t } from "./locale.js";
+
 import { readBoundedWebBody } from "./web-body.js";
 import { isSettingsReplay, settingsRequestExecution } from "./settings-request-capability.js";
 import type { SettingsExecution } from "./settings-transaction.js";
 
+export const REQUEST_CONTEXT_ENABLE_UNAVAILABLE = "request-context-enable-unavailable";
 const label = z.string().min(1).max(256);
 export const RequestContextControlViewSchema = z.strictObject({
   revision: z.number().int().nonnegative(), enabled: z.boolean(), everActivated: z.boolean(), attempted: z.boolean(),
@@ -13,6 +16,8 @@ export const RequestContextControlViewSchema = z.strictObject({
   phase: z.enum(["on", "off", "draining", "blocked"]), canChange: z.boolean(),
   /** A failed confirmed On remains explanatory after rollback, SSE refresh or page reload. Never raw diagnostics. */
   enableFailed: z.boolean().optional(),
+  /** Release guard: enabling is unavailable; disabling remains supported. */
+  enableUnavailable: z.boolean().optional(),
   blockers: z.array(z.strictObject({ id: label, kind: z.enum(["legacy", "peers", "owners", "recovery", "update", "returns", "tickets", "work"]),
     labels: z.array(label).max(64), ownerCause: z.enum(["work", "update"]).optional(),
     agents: z.array(z.strictObject({ id: label, label })).max(64).optional(), action: z.enum(["inspect", "stop-waiting", "decline", "withdraw", "stop-work"]).optional() })).max(128),
@@ -126,6 +131,7 @@ export function handleRequestContextControlApi(req: IncomingMessage, res: Server
         // Revision/host role/installation epoch and the offered blocker/action must also match inside the owning transaction.
         mutated = input.action !== "check";
         admitted.execution?.assert();
+        if (input.action === "enable" && (await host.read(admitted)).enableUnavailable) throw Error(REQUEST_CONTEXT_ENABLE_UNAVAILABLE);
         value = input.action === "check" ? await host.recheck(admitted) : await host.change(input, admitted);
         if (admitted.execution && !admitted.execution.completed) admitted.execution.complete();
       } else value = await host.read(first);
@@ -135,6 +141,9 @@ export function handleRequestContextControlApi(req: IncomingMessage, res: Server
       answer(res, 200, { ...view, canChange: view.canChange && after.verified });
     } catch (error) {
       const code = error instanceof Error ? error.message : "unavailable";
+      if (code === REQUEST_CONTEXT_ENABLE_UNAVAILABLE) {
+        answer(res, 409, { error: code, message: t("request_context_control.enableUnavailable") }); return;
+      }
       const known = ["owner-required", "verification-required", "stale", "unavailable", "invalid-request"].includes(code);
       answer(res, code === "stale" ? 409 : ["owner-required", "verification-required"].includes(code) ? 403 : code === "invalid-request" ? 400 : 503,
         { error: known ? code : "unavailable" });

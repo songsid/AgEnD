@@ -128,6 +128,8 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (input.action === "check") return { diff: null };
     const view = RequestContextControlViewSchema.safeParse(context.requestContextControl?.());
     if (!view.success) throw new SettingsConfirmationError(503, "unavailable");
+    if (input.action === "enable" && view.data.enableUnavailable)
+      throw new SettingsConfirmationError(409, t("request_context_control.enableUnavailable"));
     if (input.revision !== view.data.revision || input.action === "resolve" && !view.data.blockers.some(b => b.id === input.blockerId && b.action === input.resolution))
       throw new SettingsConfirmationError(409, "stale");
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
