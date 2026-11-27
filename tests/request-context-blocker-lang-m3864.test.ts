@@ -59,7 +59,7 @@ describe("M-3864 R3: the turn-on's blockers name their agents", () => {
     expect([...p.root.querySelectorAll("button")].map((b: any) => b.textContent.trim())).toEqual(["Retire", "Withdraw", "Check again"]);
     await p.unmount();
     setLang("zh-TW");
-    expect(requestContextBlockerText({ id: "legacy-retire:R4", kind: "legacy", labels: ["R4"], action: "retire" })).toBe("這筆先前的申請沒有可讀取的送出紀錄，AgEnD 無法判斷是否已經發生：R4。撤銷後就不再等候它。");
+    expect(requestContextBlockerText({ id: "legacy-retire:R4", kind: "legacy", labels: ["R4"], action: "retire" })).toBe("這筆先前的申請沒有可讀取的送出紀錄，AgEnD 無法判斷是否已經發生：R4。選「不再等候」就不會再等它。");
     setLang("en");
   });
   it("the blocked section renders them (it was blank)", async () => {

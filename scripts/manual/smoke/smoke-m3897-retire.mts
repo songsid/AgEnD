@@ -20,7 +20,7 @@ for (const c of matrix(process.env.MATRIX ?? "quick")) {
   const sec = page.locator("#request-context"); await sec.scrollIntoViewIfNeeded();
   await page.screenshot({ path: shotPath("m3897", c, "section") });
   const text = (await sec.innerText()).replace(/\s+/g, " ");
-  await sec.getByRole("button", { name: labelOf(c, { en: "Retire", zh: "撤銷" }), exact: true }).click(); await page.waitForTimeout(800);
+  await sec.getByRole("button", { name: labelOf(c, { en: "Retire", zh: "不再等候" }), exact: true }).click(); await page.waitForTimeout(800);
   await page.screenshot({ path: shotPath("m3897", c, "retire-confirm") });
   const dialog = (await page.getByRole("dialog").innerText().catch(() => "")).replace(/\s+/g, " ");
   out[caseName(c)] = { text, dialog };
