@@ -84,6 +84,8 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
   const purposeSupported=client.roomPurposeV1===true&&typeof room.purpose==="string"&&detail?.me?.role==="manager";
   const [name, setName] = useState(room.name ?? ""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [allMention, setAllMention] = useState(settings.allMention !== false), [history, setHistory] = useState(settings.historyForNew === "all" ? "all" : "since-join");
+  const [memberAgents, setMemberAgents] = useState(settings.membersCanAddOwnAgents === true);
+  useEffect(() => setMemberAgents(settings.membersCanAddOwnAgents === true), [detail]);
   const [aiApps,setAiApps]=useState(settings.aiApps!==false);
   const [aiAppsScope]=useState(()=>client.aiAppsScope?.());
   const [offered, setOffered] = useState(assistant === true), [addPeople, setAddPeople] = useState([]), [addAgents, setAddAgents] = useState([]), [peopleNote, setPeopleNote] = useState("");
@@ -170,6 +172,8 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
       ${purposeSupported?html`<form class="form hub-room-purpose-form" onSubmit=${e=>{e.preventDefault();savePurpose();}}><${RoomPurposeField} id="hubRoomSettingsPurpose" value=${purpose} onValue=${setPurpose} disabled=${busy} /><div class="field-row"><button type="submit" class="btn" disabled=${busy||purposeCount(purpose)>200||purpose===(room.purpose??"")}>${hs("save")}</button></div></form>`:null}
       <label class="check"><input id="hubRoomAllMention" class="s-ui-toggle" type="checkbox" role="switch" checked=${allMention} disabled=${busy}
         onChange=${(e) => { const v = e.target.checked; setAllMention(v); void act(() => client.updateRoom(roomId, { allMention: v }), () => setAllMention(!v)); }} /><span>${hroom("membersCanAll")}</span></label>
+      ${typeof settings.membersCanAddOwnAgents === "boolean" ? html`<div class="field"><label class="check"><input id="hubRoomMemberAgents" class="s-ui-toggle" type="checkbox" role="switch" checked=${memberAgents} disabled=${busy}
+        onChange=${e => { const v = e.target.checked; setMemberAgents(v); void act(() => client.updateRoom(roomId, { membersCanAddOwnAgents: v }), () => setMemberAgents(!v)); }} /><span>${hs("membersOwnAgents")}</span></label><p class="note">${hs("membersOwnAgentsHint")}</p></div>` : null}
       ${typeof settings.aiApps==="boolean"&&typeof client.setRoomAiApps==="function"?html`<label class="check"><input id="hubRoomAiApps" class="s-ui-toggle" type="checkbox" role="switch" checked=${aiApps} disabled=${busy}
         onChange=${e=>{const value=e.target.checked;setAiApps(value);void act(()=>client.setRoomAiApps(aiAppsScope,roomId,value),()=>setAiApps(!value));}}/><span>${ha("roomSwitch")}</span></label>`:null}
       <fieldset class="field"><legend>${hroom("newMembersSee")}</legend>
@@ -206,4 +210,32 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
   </${Dialog}>
   ${askOwner && ownerRequestsLive ? html`<${OwnerAgentRequestDialog} key=${roomId} client=${client} roomId=${roomId} roomName=${room.name}
     onClose=${() => setAskOwner(false)} onSent=${() => onChanged?.()} />` : null}`;
+}
+
+/** Members never enter the manager settings dialog; their picker is scoped to this room and their own exposures. */
+export function OwnRoomAgents({ client, roomId, detail, onClose, onChanged }) {
+  const [picked, setPicked] = useState([]), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const live = useRef(true), inFlight = useRef(false);
+  useEffect(() => () => { live.current = false; }, []);
+  const allowed = detail?.settings?.membersCanAddOwnAgents === true && detail?.room?.archived !== true;
+  const scoped = { roomCandidates: (q) => client.roomOwnAgentCandidates(roomId, q) };
+  const add = async next => {
+    setPicked([]);
+    if (!allowed || inFlight.current) return;
+    const item = next[0];
+    if (!item || item.kind !== "agent" || item.mine !== true) return;
+    inFlight.current = true; setBusy(true); setError("");
+    let result;
+    try { result = await client.addRoomMember(roomId, { kind: "agent", id: item.id }); } catch { result = null; }
+    if (!live.current) return;
+    inFlight.current = false; setBusy(false);
+    if (result?.ok) { onChanged?.(); onClose?.(); }
+    else setError(hs("saveFailed"));
+  };
+  return html`<${Dialog} title=${hs("addOwnAgents")} onClose=${onClose}>
+    <p class="note">${hs("ownAgentsHint")}</p>
+    ${error ? html`<p role="alert">${error}</p>` : null}
+    ${allowed && !busy ? html`<${RoomPicker} id="hubRoomOwnAgents" client=${scoped} kinds=${["agent"]} label=${hs("addOwnAgents")} placeholder=${hroom("addAgents")} picked=${picked} onChange=${add}
+      exclude=${(detail?.members ?? []).filter(m => m.kind === "agent").map(m => `agent:${m.id}`)} />` : null}
+  </${Dialog}>`;
 }

@@ -1,0 +1,299 @@
+{
+  "captureSource": "29bba0212187b6a27dc54b3af888f68af127f1b0",
+  "scope": "Real shipped HTTP/UI/SQLite/audit with inert synthetic people and Fleet publication. Dark Chromium desktop and phone emulation; no real AD, live Fleet, provider, native phone or OS-keyboard claim.",
+  "checks": [
+    {
+      "key": "desk-en: real room",
+      "ok": true
+    },
+    {
+      "key": "desk-en: opt-in defaults off",
+      "ok": true
+    },
+    {
+      "key": "desk-en: manager-off no page overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-en: real saved opt-in",
+      "ok": true
+    },
+    {
+      "key": "desk-en: manager-on no page overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-en: own shared candidate only",
+      "ok": true
+    },
+    {
+      "key": "desk-en: member-picker no page overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-en: real membership persisted",
+      "ok": true
+    },
+    {
+      "key": "desk-en: member-added no page overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-en: manager removes member-added agent",
+      "ok": true
+    },
+    {
+      "key": "desk-en: audit retained",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: real room",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: opt-in defaults off",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: manager-off no page overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: real saved opt-in",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: manager-on no page overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: own shared candidate only",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: member-picker no page overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: real membership persisted",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: member-added no page overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: manager removes member-added agent",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: audit retained",
+      "ok": true
+    },
+    {
+      "key": "phone-en: real room",
+      "ok": true
+    },
+    {
+      "key": "phone-en: opt-in defaults off",
+      "ok": true
+    },
+    {
+      "key": "phone-en: manager-off no page overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-en: real saved opt-in",
+      "ok": true
+    },
+    {
+      "key": "phone-en: manager-on no page overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-en: own shared candidate only",
+      "ok": true
+    },
+    {
+      "key": "phone-en: member-picker no page overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-en: real membership persisted",
+      "ok": true
+    },
+    {
+      "key": "phone-en: member-added no page overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-en: manager removes member-added agent",
+      "ok": true
+    },
+    {
+      "key": "phone-en: audit retained",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: real room",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: opt-in defaults off",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: manager-off no page overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: real saved opt-in",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: manager-on no page overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: own shared candidate only",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: member-picker no page overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: real membership persisted",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: member-added no page overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: manager removes member-added agent",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: audit retained",
+      "ok": true
+    },
+    {
+      "key": "no page errors",
+      "ok": true
+    },
+    {
+      "key": "no foreign requests",
+      "ok": true
+    }
+  ],
+  "browser": "156.0.8078.4",
+  "images": [
+    {
+      "path": "browser/desk-en-manager-off.png",
+      "sha256": "d270346b515f1f2b252460fa8fb23fe935d5a15d0f06dfea80c85715adff79b4"
+    },
+    {
+      "path": "browser/desk-en-manager-on.png",
+      "sha256": "393659d2b2a44a7016fc8df36004d8bbc531be0a28a220074efa0d97c1678476"
+    },
+    {
+      "path": "browser/desk-en-member-added.png",
+      "sha256": "25072c30fbd41da58685eeb6dc456bfa4d078da24d4f4eafe99507aa446efc9e"
+    },
+    {
+      "path": "browser/desk-en-member-picker.png",
+      "sha256": "238912fd1d47a825e7359796bdd920091c137ceacde2609fe8ba61d2689aa81d"
+    },
+    {
+      "path": "browser/desk-zh-TW-manager-off.png",
+      "sha256": "2c71380ec6f3f64e8436859aef4b368a5a20460164ebb34121ccaf0177336bde"
+    },
+    {
+      "path": "browser/desk-zh-TW-manager-on.png",
+      "sha256": "b5ff19d730b0898e7b3acc537d6384b85aa9b627af127a90cc656c929ad0b1b0"
+    },
+    {
+      "path": "browser/desk-zh-TW-member-added.png",
+      "sha256": "b536099f951c55b2e11ca01d106091196bbc383486f615d59df68ab432ea4389"
+    },
+    {
+      "path": "browser/desk-zh-TW-member-picker.png",
+      "sha256": "54d9f8322019447d9b74913aeeef20e2c12c02665dc9d7919c60387774b946c1"
+    },
+    {
+      "path": "browser/phone-en-manager-off.png",
+      "sha256": "c4850a037a158aee61cf74837c4dd69323c31102a2cb50cc49ce65fa41e01ee6"
+    },
+    {
+      "path": "browser/phone-en-manager-on.png",
+      "sha256": "c9c5f52c2689f74105000195ce106ad5d21c8e20e993e430f2cf76d4bb4a7fa8"
+    },
+    {
+      "path": "browser/phone-en-member-added.png",
+      "sha256": "62c6c357489eb229795f06bcbdab29e013e97001f81703a8be856439651a6f69"
+    },
+    {
+      "path": "browser/phone-en-member-picker.png",
+      "sha256": "ca178ddeb82070cf7ec99b245040e99d9002838630627cab19fa90d42be462ad"
+    },
+    {
+      "path": "browser/phone-zh-TW-manager-off.png",
+      "sha256": "392541f0f9606eacc462a692185de81b76d208895448a80863d558759a4511a2"
+    },
+    {
+      "path": "browser/phone-zh-TW-manager-on.png",
+      "sha256": "48b9cc5a06e6637465814d96d6cf3de94ccce52a13d35d883df1bb1296fc9b87"
+    },
+    {
+      "path": "browser/phone-zh-TW-member-added.png",
+      "sha256": "9c3b853f98a7bd3ce6380724ae9e00ee3c82f91240f6958d50e29e4e56a78f93"
+    },
+    {
+      "path": "browser/phone-zh-TW-member-picker.png",
+      "sha256": "da5e2f93e66aa1aae7b7d4d92193a87f719626d978f881936a5f4e681bd4cceb"
+    }
+  ],
+  "sourceBindings": [
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "0821f034b7929a2a0d8bfff796efb8ad794cfa543743b3ffeb0bac72fb8f30ef"
+    },
+    {
+      "path": "src/hub/rooms/schema.ts",
+      "sha256": "a1a9b69392afe636a54f0213dea1d4fffdcaee337ff6fad793bb15c2dd61a1bc"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "sha256": "d82d926380d602e8b5ac3333b84dd0ed7a82009b55447496471e95a4ffb61870"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "6f2220cb6d519086d72faefc7c8fd6b1f71481c80a80fae2df04f4f873e40b3a"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "5e6086c0f8538912e91efdb88989a7c1ccafff341ad92a189086946fb08c3d4e"
+    },
+    {
+      "path": "src/ui/hub-room-members.js",
+      "sha256": "bccafcbb2a14837527297027bad2f2d019314e295574e62e69b23020069c9923"
+    },
+    {
+      "path": "src/ui/hub-room-settings.js",
+      "sha256": "f95db93a57a7eadafad0ba9094c28e395b3e79434f9af82b9a4cbdaece32838b"
+    },
+    {
+      "path": "src/ui/hub-room-settings-strings.js",
+      "sha256": "38aa8736b5562b363280b35e0c6fa4e3d4654063b65fd58d2afe2d4c9085d166"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "e4584e317894047ed75e85fb8676606cb105e37daf736e5d750836320a63d5e9"
+    },
+    {
+      "path": "scripts/manual/hub-room-member-agents-s258/browser.mts",
+      "sha256": "0145272f9d30397f196ef7cf95d97e0b588f583edc4ed15434dd04527e77e475"
+    }
+  ]
+}
