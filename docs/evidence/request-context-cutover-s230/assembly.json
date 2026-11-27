@@ -120,7 +120,11 @@
     },
     {
       "path": "src/ui/request-context-control.js",
-      "sha256": "5414cbc8edabb7a9261e780ef688e53a08abc97255ba9a58c60561b2f41964b8"
+      "sha256": "444425414021034e093ee7be716e1a33429c1d26b878ea53f07436012e9c4ee2"
+    },
+    {
+      "path": "src/ui/shared/app-shell.js",
+      "sha256": "baef1ce6c9012505873477ddf62b6f3b625c675efe407c42b9898956aee8dacb"
     }
   ],
   "remainingGates": [
@@ -130,6 +134,39 @@
     "Draft/HOLD stays in place; no live activation is authorized by fixture results"
   ],
   "assemblyCore": "f13944ff521aba49ff05d53c8b87dc35433638dc",
-  "visibleLayoutOrCopyChanged": false,
-  "uiModuleLoadingFix": "The real-app capture found a non-existent /assets/settings-confirm.js import. The control now imports the owned private Settings module; the authenticated Settings/Needs static-closure test catches the regression."
+  "visibleLayoutOrCopyChanged": true,
+  "uiModuleLoadingFix": "The real-app capture found a non-existent /assets/settings-confirm.js import. The control now imports the owned private Settings module; the authenticated Settings/Needs static-closure test catches the regression.",
+  "pendingCardRevision": {
+    "sourceCore": "c2634ac3b",
+    "captureSource": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "changes": [
+      "Plain irreversible-version lead before collapsed details, identified only from the canonical enable summary",
+      "General directions are conditional on this viewer lacking Apply now; execution/authority unchanged",
+      "Fixture-only version2.4.0-beta.25; real package version unchanged"
+    ],
+    "tests": {
+      "files": 3,
+      "passed": 118,
+      "failed": 0
+    },
+    "typecheck": true,
+    "build": true,
+    "changedFrames": 8,
+    "acceptedChatFramesUnchanged": 16
+  },
+  "ciRepair": {
+    "sourceCore": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "tests": {
+      "files": 5,
+      "passed": 73,
+      "failed": 0
+    },
+    "typecheck": true,
+    "build": true,
+    "repairs": [
+      "Control host is read only on its exact route; bounded owner-app metadata surface unchanged",
+      "Go back deadlines use shared clock helper; Traditional Chinese is24h in browser confirmation and server pending summary",
+      "Reservation-expiry fixture uses injected clock and one-hour code; old today fixture reproduced404 at midnight; Hub production source unchanged"
+    ]
+  }
 }

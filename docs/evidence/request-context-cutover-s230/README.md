@@ -90,3 +90,17 @@ The final browser fixture caught an incorrect public-asset import of the private
 The finished offline gallery embeds the exact 24 PNGs (decoded hashes and real-browser image/filter behavior verified). It is delivered on S-230 as one HTML attachment. It is a supplemental user look, not a live enable action. Ordinary non-Hub status notices retain their established timestamp/quote-rule presentation without a visible sender heading, and the phone's ordinary copy control; no stylesheet was changed to recast that existing style.
 
 S-249 remains open on the board; S-250 is done. This receipt does not lift that prerequisite, the user look, Fable's formal gate, or draft/HOLD.
+
+### Pending-card R1 after the Leader's capture check
+
+Only the eight Settings-pending originals were re-captured at `0d2bfe847fb9a474fdd7dc3f10e093b774264783`; the sixteen accepted destination/outcome frames retain their exact original hashes. The [mixed final receipt](completion/capture.json) records each image's own source and 88 checks; [the eight-frame receipt](completion/pending-r1.json) has 48 checks. All eight replacements were individually opened and passed.
+
+A short irreversible-version consequence now sits above the pending details. It is derived only from the server's canonical On summary, remains visible with details collapsed, and adds no authority or action. The shared pending renderer shows the General directions only when this viewer has no Apply now action; revoked/refused Apply now still falls back to the existing General flow. Execution, confirmation digests, role checks and store decisions are unchanged. The badge is fixture-only `2.4.0-beta.25`, with no real package/release change. The three focused suites pass 118/118; typecheck and build pass.
+
+The finished attachment is **S-230-final-control-views-R1.html**. It supersedes the earlier gallery's eight pending frames; the accepted chat frames are unchanged.
+
+### Exact-head CI repairs
+
+The bounded owner-app metadata route no longer reads the request-context control host: that read is lazy on the exact control route. Go back deadline rendering uses the shared clock helper; Traditional Chinese now uses 24-hour time in the browser On confirmation and server pending summary. This formatting delta is included in the eight pending replacements; no additional On-confirm frames were generated. English formatting and all other approved frames are unchanged.
+
+The Hub reservation test was reproduced red when its one-minute advance crossed midnight and expired its “today” code. Its private clock now advances against a one-hour code, isolating reservation expiry. No production Hub route or source changed. The five repair suites pass73/73; test typecheck and build pass. The existing eight pending/role/page-language/summary neighbours pass266/266. These checks do not authorize live activation.

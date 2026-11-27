@@ -1,117 +1,129 @@
 {
-  "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
-  "scope": "Real Settings pending and chat/refusal renderers; synthetic session/turn, no activation or provider",
+  "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+  "scope": "Only eight Settings pending frames recaptured per Leader request. Sixteen accepted destination/outcome originals carried byte-identically. Per-image sourceHead binds this mixed supplement.",
   "pictures": [
     {
       "name": "desk-light-en-settings-pending.png",
-      "sha256": "8be231faa3669590600769616a178c4169a20f1718f96e3b0211287f76739f19"
+      "sha256": "f5ce9ebb4797eb2a23876acb1bf8a06ba614b219d3b64bbae009eecd4d28c8ae",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "desk-light-en-destination-refusal.png",
-      "sha256": "83d66fd8dc124e22078da2dfa62c77a9459b1ace45d66dd7e0949fc0e604ebb0"
+      "sha256": "83d66fd8dc124e22078da2dfa62c77a9459b1ace45d66dd7e0949fc0e604ebb0",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "desk-light-en-stop-waiting-outcome.png",
-      "sha256": "0d5169580c5c139e0526899d6a59b57caf5a9a51b44af7ff3c67e7cf9d550786"
+      "sha256": "0d5169580c5c139e0526899d6a59b57caf5a9a51b44af7ff3c67e7cf9d550786",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "desk-light-zh-TW-settings-pending.png",
-      "sha256": "25cde238af45ac1bf6ac839857ec328b41e97c2ec02c636f4fe38369c754b442"
+      "sha256": "f60c6f17eae01151ed95475fb4b8a8509da9793e415ad1070e72ea8fef046282",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "desk-light-zh-TW-destination-refusal.png",
-      "sha256": "1e72c2fc4a336521850e2ce2edde959b1ce39b0735419f21764564ffc7a8338c"
+      "sha256": "1e72c2fc4a336521850e2ce2edde959b1ce39b0735419f21764564ffc7a8338c",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "desk-light-zh-TW-stop-waiting-outcome.png",
-      "sha256": "befc1ea44f1d1ae3f43a11b3478d7c824dbcb1c18de97777f097ee12f216ce64"
+      "sha256": "befc1ea44f1d1ae3f43a11b3478d7c824dbcb1c18de97777f097ee12f216ce64",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "desk-dark-en-settings-pending.png",
-      "sha256": "ed6e7ed38a82f8f4317e1ca783fbcf9fe8028a8616c1d6b890564d573999c41e"
+      "sha256": "1cbb79931123a2b9db828c954b5920fd9eee5d7c508f25d84fd57c669fb614e0",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "desk-dark-en-destination-refusal.png",
-      "sha256": "6918ff21bb2d8209249f388cfb9689a4bf11276ca1811112e4428beac132ae99"
+      "sha256": "6918ff21bb2d8209249f388cfb9689a4bf11276ca1811112e4428beac132ae99",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "desk-dark-en-stop-waiting-outcome.png",
-      "sha256": "eea8d64e91b00946048af84b51dfd7f419310157f60376b2febf11d05096ce0e"
+      "sha256": "eea8d64e91b00946048af84b51dfd7f419310157f60376b2febf11d05096ce0e",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "desk-dark-zh-TW-settings-pending.png",
-      "sha256": "5d0ce67de294f691e37a5f7192173f1fc4760e8434153dbb3837b3f8c88be1c7"
+      "sha256": "1fe20793dbf4e6ea446d7034c82aa0797fc240335d42302fd74e190b7e957f13",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "desk-dark-zh-TW-destination-refusal.png",
-      "sha256": "bfb8b20a2949510ce69a24c13aaea78530b3ca61f169d30e5e19c47db3bbac5d"
+      "sha256": "bfb8b20a2949510ce69a24c13aaea78530b3ca61f169d30e5e19c47db3bbac5d",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "desk-dark-zh-TW-stop-waiting-outcome.png",
-      "sha256": "4c758a2fe3ed559312898739b810a1c1a44f18e91f321ca9a7cd05185a4fa8e2"
+      "sha256": "4c758a2fe3ed559312898739b810a1c1a44f18e91f321ca9a7cd05185a4fa8e2",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "phone-light-en-settings-pending.png",
-      "sha256": "d3ebd0f93f084b87881e2a0a8a22f9d42ddfda811c041b751e93e44926552015"
+      "sha256": "0d8ce764a1514219866db054b936d27d80f961640e91abe0d093f079eb488ec0",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "phone-light-en-destination-refusal.png",
-      "sha256": "18e761cd489a2e83877c77e7b15814e7fc0c49748bedf16f02fbbc96ed4ec24b"
+      "sha256": "18e761cd489a2e83877c77e7b15814e7fc0c49748bedf16f02fbbc96ed4ec24b",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "phone-light-en-stop-waiting-outcome.png",
-      "sha256": "5fb4734151534d22f64b286b410935e6d568a8dde2062aa721feca46e8d96690"
+      "sha256": "5fb4734151534d22f64b286b410935e6d568a8dde2062aa721feca46e8d96690",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "phone-light-zh-TW-settings-pending.png",
-      "sha256": "004a2ec1846f9db6731ad930804ab7e05d21c1ec3cb8840a3855edd09be1e6c8"
+      "sha256": "ebd2abfbc69778775adfab5c3b77a6614a71fe15881ac7ade9b5b9f1885e006b",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "phone-light-zh-TW-destination-refusal.png",
-      "sha256": "b7f9f051d42da9156b3206d277a0a478daef1dca29af65c86a71a108e522843e"
+      "sha256": "b7f9f051d42da9156b3206d277a0a478daef1dca29af65c86a71a108e522843e",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "phone-light-zh-TW-stop-waiting-outcome.png",
-      "sha256": "a8ba7027cc9b99b6adbff103e1b7b6ce97fe9666cfcd0a535aeda9fb98084ba1"
+      "sha256": "a8ba7027cc9b99b6adbff103e1b7b6ce97fe9666cfcd0a535aeda9fb98084ba1",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "phone-dark-en-settings-pending.png",
-      "sha256": "131d489277e33cc515fbb6faaddea5cf79beb74790e0d6344643e485898e4432"
+      "sha256": "6ce5d2cc7e8e1a89f0c2f74e51cae0e5a5800a79168c42634ac1c90335338841",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "phone-dark-en-destination-refusal.png",
-      "sha256": "18be27bcaf5e0cbac553c6c95e2fa971b0ed189160a211e9d085d0d6ba9758ad"
+      "sha256": "18be27bcaf5e0cbac553c6c95e2fa971b0ed189160a211e9d085d0d6ba9758ad",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "phone-dark-en-stop-waiting-outcome.png",
-      "sha256": "d88f09982280a8368499ed9734d36e0ab593b7d7736024b0332fd4846573ec03"
+      "sha256": "d88f09982280a8368499ed9734d36e0ab593b7d7736024b0332fd4846573ec03",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "phone-dark-zh-TW-settings-pending.png",
-      "sha256": "8325c19e13a52d9a4c3f3b5e71d468003053ff93a0a720eb838c951973cf5e86"
+      "sha256": "19d0b65425d527444a350171ea0d65124153b8e21fb0b23c1c466ee37d1b1d01",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "phone-dark-zh-TW-destination-refusal.png",
-      "sha256": "0c2e3bc720dd8959d544ae25361250a864a84203c78060e9f73a3368d08afc9d"
+      "sha256": "0c2e3bc720dd8959d544ae25361250a864a84203c78060e9f73a3368d08afc9d",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     },
     {
       "name": "phone-dark-zh-TW-stop-waiting-outcome.png",
-      "sha256": "693f68601f517083606fd76c0bef9cff3d06a143d3315df5903cd5183f864f25"
+      "sha256": "693f68601f517083606fd76c0bef9cff3d06a143d3315df5903cd5183f864f25",
+      "sourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
     }
   ],
   "checks": [
-    {
-      "name": "desk-light-en: pending summary carries irreversible effect",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-settings-pending: no overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-light-en-settings-pending: CSP",
-      "ok": true
-    },
     {
       "name": "desk-light-en: actual destination guard refused",
       "ok": true
@@ -130,18 +142,6 @@
     },
     {
       "name": "desk-light-en-stop-waiting-outcome: CSP",
-      "ok": true
-    },
-    {
-      "name": "desk-light-zh-TW: pending summary carries irreversible effect",
-      "ok": true
-    },
-    {
-      "name": "desk-light-zh-TW-settings-pending: no overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-light-zh-TW-settings-pending: CSP",
       "ok": true
     },
     {
@@ -165,18 +165,6 @@
       "ok": true
     },
     {
-      "name": "desk-dark-en: pending summary carries irreversible effect",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-en-settings-pending: no overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-en-settings-pending: CSP",
-      "ok": true
-    },
-    {
       "name": "desk-dark-en: actual destination guard refused",
       "ok": true
     },
@@ -194,18 +182,6 @@
     },
     {
       "name": "desk-dark-en-stop-waiting-outcome: CSP",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW: pending summary carries irreversible effect",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW-settings-pending: no overflow",
-      "ok": true
-    },
-    {
-      "name": "desk-dark-zh-TW-settings-pending: CSP",
       "ok": true
     },
     {
@@ -229,18 +205,6 @@
       "ok": true
     },
     {
-      "name": "phone-light-en: pending summary carries irreversible effect",
-      "ok": true
-    },
-    {
-      "name": "phone-light-en-settings-pending: no overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-light-en-settings-pending: CSP",
-      "ok": true
-    },
-    {
       "name": "phone-light-en: actual destination guard refused",
       "ok": true
     },
@@ -258,18 +222,6 @@
     },
     {
       "name": "phone-light-en-stop-waiting-outcome: CSP",
-      "ok": true
-    },
-    {
-      "name": "phone-light-zh-TW: pending summary carries irreversible effect",
-      "ok": true
-    },
-    {
-      "name": "phone-light-zh-TW-settings-pending: no overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-light-zh-TW-settings-pending: CSP",
       "ok": true
     },
     {
@@ -293,18 +245,6 @@
       "ok": true
     },
     {
-      "name": "phone-dark-en: pending summary carries irreversible effect",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-en-settings-pending: no overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-en-settings-pending: CSP",
-      "ok": true
-    },
-    {
       "name": "phone-dark-en: actual destination guard refused",
       "ok": true
     },
@@ -322,18 +262,6 @@
     },
     {
       "name": "phone-dark-en-stop-waiting-outcome: CSP",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW: pending summary carries irreversible effect",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW-settings-pending: no overflow",
-      "ok": true
-    },
-    {
-      "name": "phone-dark-zh-TW-settings-pending: CSP",
       "ok": true
     },
     {
@@ -355,6 +283,199 @@
     {
       "name": "phone-dark-zh-TW-stop-waiting-outcome: CSP",
       "ok": true
+    },
+    {
+      "name": "desk-light-en: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings-pending: CSP",
+      "ok": true
     }
-  ]
+  ],
+  "carriedChatSourceHead": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
 }
