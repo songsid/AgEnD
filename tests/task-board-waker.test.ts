@@ -263,6 +263,42 @@ describe("in the fleet: a write's wakes reach the delivery outbox as AgEnD's not
     scheduler.db.close();
   });
 
+  it("after a restart (the waker starts again over the same outbox and board): an edit leaves the waiting notice as it is, with its assignment; a delete withdraws it and nothing replaces it", async () => {
+    vi.useFakeTimers();
+    const d = mkdtempSync(join(tmpdir(), "task-board-waker-")); dirs.push(d);
+    writeFileSync(join(d, "fleet.yaml"), "defaults: {}\ninstances: {}\n");
+    const fm = new FleetManager(d) as unknown as Record<string, any>;
+    fm.fleetConfig = { defaults: {}, instances: { "dev-a": {} } };
+    const scheduler = new Scheduler(join(d, "scheduler.db"), () => {}, { max_schedules: 100, default_timezone: "UTC", retry_count: 3, retry_interval_ms: 1000 }, () => false);
+    fm.attachTaskBoard(scheduler.db);
+    const board = scheduler.db.board;
+    const ann = { kind: "person" as const, name: "Ann" };
+    const card = board.createCards({ kind: "instance", name: "lead" }, { cards: [{ title: "Leaderboard", assignee: "dev-a" }] }).cards[0]!;
+    board.updateCard(ann, card.code, { comment: "use the old endpoint" });
+    const said = board.detail(card.code).comments.at(-1)!;
+    await vi.advanceTimersByTimeAsync(10_000);                                    // one notice: the assignment and the comment, queued
+    const rows = () => {
+      const db = new Database(join(d, "delivery-outbox.db"), { readonly: true });
+      try { return db.prepare("SELECT state, source_key, payload_json FROM deliveries ORDER BY created_seq").all() as Array<{ state: string; source_key: string; payload_json: string }>; } finally { db.close(); }
+    };
+    const words = (r: { payload_json: string }) => JSON.parse(r.payload_json).content as string;
+    expect(rows().map((r) => r.state)).toEqual(["queued"]);
+    expect(words(rows()[0]!)).toContain("assigned to you");
+    fm.attachTaskBoard(scheduler.db);                                             // the restart: a new waker, no wakes kept
+    board.editComment(ann, card.code, said.id, "use the new endpoint");
+    await vi.advanceTimersByTimeAsync(10_000);
+    const afterEdit = rows();
+    expect(afterEdit.map((r) => r.state), "an edit: the notice stays, and nothing is added").toEqual(["queued"]);
+    expect(words(afterEdit[0]!)).toContain("assigned to you");
+    expect(words(afterEdit[0]!)).toContain("use the old endpoint");
+    board.deleteComment(ann, card.code, said.id);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(rows().map((r) => r.state), "a delete: withdrawn, and not replaced").toEqual(["cancelled"]);
+    fm.taskBoardWaker.stop();
+    fm.deliveryOutbox?.close?.();
+    scheduler.db.close();
+  });
+
   it("the board's cards-at-once limit is each instance's board_cards_at_once, read at every claim (#2303)", () => {
     const d = mkdtempSync(join(tmpdir(), "task-board-waker-")); dirs.push(d);
     writeFileSync(join(d, "fleet.yaml"), "defaults: {}\ninstances: {}\n");
@@ -352,7 +388,7 @@ describe("a notice that quotes a comment which is then edited or deleted", () =>
     expect(sent[2]!.message).not.toContain("new words");
   });
 
-  it("a notice about another comment is left alone; so is one already delivered; one whose wakes this waker no longer has is withdrawn and not replaced", () => {
+  it("a notice about another comment is left alone; so is one already delivered", () => {
     const outbox = fakeOutbox();
     const first = waker({ outbox, holds: holdsNow });
     comments.set(12, "one"); comments.set(15, "two");
@@ -363,13 +399,40 @@ describe("a notice that quotes a comment which is then edited or deleted", () =>
     comments.set(15, "two, edited");
     first.w.recalled([{ uuid: "u1", entry: 15, deleted: false }]);
     expect(outbox.rows.map((r) => r.state), "delivered cannot be called back").toEqual(["queued", "delivered"]);
-    // After a restart: a new waker over the same outbox has no wakes to replace the notice with.
+  });
+
+  it("after a restart (a waker with no wakes over the same outbox): an edit leaves the waiting notice as it is, with its assignment; a delete still withdraws it, and nothing replaces it", () => {
+    const outbox = fakeOutbox();
+    const before = waker({ outbox, holds: holdsNow });
+    comments.set(12, "the old words");
+    before.w.note([{ ...said("the old words"), reasons: ["assigned", "comment"], texts: { comment: "the old words" }, by: { assigned: "Ann", comment: "Ann" } }]);
+    before.fire();
+    expect(outbox.rows.map((r) => r.state)).toEqual(["queued"]);
     const after = waker({ outbox, holds: holdsNow });
-    comments.set(12, "one, edited");
+    comments.set(12, "the new words");
     after.w.recalled([{ uuid: "u1", entry: 12, deleted: false }]);
-    expect(outbox.rows.map((r) => r.state)).toEqual(["cancelled", "delivered"]);
     after.fire();
-    expect(after.sent, "withdrawn, not replaced").toEqual([]);
+    expect(outbox.rows.map((r) => r.state), "an edit: nothing to replace it with, so it is delivered as it is").toEqual(["queued"]);
+    expect(after.sent).toEqual([]);
+    expect(before.sent[0]!.message, "with the assignment, and the old words, which are harmless").toMatch(/assigned to you[\s\S]*the old words/);
+    comments.set(12, null);
+    after.w.recalled([{ uuid: "u1", entry: 12, deleted: true }]);
+    after.fire();
+    expect(outbox.rows.map((r) => r.state), "a delete: withdrawn, so the deleted words are not delivered").toEqual(["cancelled"]);
+    expect(after.sent, "and not replaced").toEqual([]);
+  });
+
+  it("after a restart, a notice that quotes an edited comment and a deleted one is withdrawn (the delete decides); one that quotes only edited comments is left", () => {
+    const outbox = fakeOutbox();
+    const before = waker({ outbox, holds: holdsNow });
+    comments.set(12, "one"); comments.set(15, "two"); comments.set(16, "three");
+    before.w.note([{ ...said("one", 12), uuid: "u1" }, { ...said("two", 15), uuid: "u2", code: "S-2" }]); before.fire();
+    before.w.note([{ ...said("three", 16), uuid: "u3", code: "S-3" }]); before.fire();
+    expect(outbox.rows.map((r) => r.key.match(/comments=([\d,]+)/)![1])).toEqual(["12,15", "16"]);
+    const after = waker({ outbox, holds: holdsNow });
+    comments.set(12, "one, edited"); comments.set(15, null); comments.set(16, "three, edited");
+    after.w.recalled([{ uuid: "u1", entry: 12, deleted: false }, { uuid: "u2", entry: 15, deleted: true }, { uuid: "u3", entry: 16, deleted: false }]);
+    expect(outbox.rows.map((r) => r.state)).toEqual(["cancelled", "queued"]);
   });
 
   it("a notice that has waited longer than an hour is still withdrawn and replaced, with what else it carried: the wakes are kept while it waits, not for a time", () => {

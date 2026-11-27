@@ -304,18 +304,28 @@ export class TaskBoardWaker {
    * words, or leaves a deleted one out. A notice already handed over and still waiting is withdrawn, however long it has waited, and —
    * when this waker still has its wakes (not after a restart) — what of it still stands is told anew, so the instance gets one notice
    * with the words as they are now. One already delivered cannot be called back.
+   *
+   * With no wakes to tell it anew from (after a restart), an edit leaves the notice as it is — the old words are harmless, and the rest of
+   * what it carries (an assignment…) is not lost; a delete still withdraws it, so the deleted words are not delivered.
    */
   recalled(items: ReadonlyArray<{ uuid: string; entry: number; deleted: boolean }>): void {
     if (this.stopped || !items.length || !this.deps.withdraw) return;
-    const ids = new Set(items.map((i) => i.entry));
+    const deleted = new Set(items.filter((i) => i.deleted).map((i) => i.entry));
+    const edited = new Set(items.filter((i) => !i.deleted).map((i) => i.entry));
     const picked: string[] = [];
+    let left = 0;
     const stale = (key: string) => {
-      if (!commentsOfKey(key).some((n) => ids.has(n))) return false;
+      const named = commentsOfKey(key);
+      if (!named.some((n) => deleted.has(n))) {
+        if (!named.some((n) => edited.has(n))) return false;
+        if (!this.kept.has(key)) { left++; return false; }           // an edit, and nothing to replace it with
+      }
       picked.push(key);
       return true;
     };
     try {
       const n = this.deps.withdraw(KEY_PREFIX, stale, "superseded: a comment it quotes was edited or deleted");
+      if (left) this.deps.log("info", "Task board notices left as they are: a comment they quote was edited and there is nothing to replace them with", { count: left });
       if (!n) return;
       this.deps.log("info", "Task board notices withdrawn: a comment they quote was edited or deleted", { count: n });
       for (const key of picked) {
