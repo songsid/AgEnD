@@ -4,6 +4,16 @@
  * locale surface before a mixed-language release can ship.
  */
 export const USAGE_I18N_KEYS = [
+  "usage.hint.kiro_account_unknown",
+  "usage.hint.kiro_profile_unknown",
+  "usage.hint.kiro_region_unknown",
+  "usage.hint.kiro_quota_unknown",
+  "usage.hint.kiro_bonus_unknown",
+  "usage.hint.kiro_unauthorized",
+  "usage.hint.kiro_rejected",
+  "usage.metric.kiro_trial",
+  "usage.metric.kiro_overage",
+
   "usage.title", "usage.title_plain", "usage.empty_active", "usage.not_logged_in", "usage.default_login", "usage.no_agents",
   "usage.error_fallback", "usage.no_data", "usage.reset.in", "usage.reset.soon",
   "usage.duration.days_hours", "usage.duration.hours_minutes", "usage.duration.minutes",

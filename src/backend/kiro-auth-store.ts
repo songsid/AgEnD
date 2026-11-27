@@ -21,9 +21,9 @@ export interface KiroStoredToken {
   expires_at?: string;
   region?: string;
   profile_arn?: string;
-  /** IAM Identity Center portal URL — present only for Q Developer Pro logins. */
+  /** IAM Identity Center portal URL — identifies the login flow, not the subscription. */
   start_url?: string;
-  /** Social login provider (google/github/…) — present only for free-tier logins. */
+  /** Social login provider (google/github/…) — does not determine the subscription tier. */
   provider?: string;
 }
 
@@ -71,4 +71,50 @@ export function readKiroAuthTokens(storeHome: string): KiroAuthRead {
 export function kiroStoreHasLogin(storeHome: string): boolean {
   const read = readKiroAuthTokens(storeHome);
   return read.kind === "tokens" && read.tokens.length > 0;
+}
+
+/** Usage must follow the CLI selection, never an unrelated token's expiry. */
+export function readKiroUsageIdentity(storeHome: string):
+  | { kind: "no-store" }
+  | { kind: "missing" }
+  | { kind: "unknown"; reason: "account" | "profile" }
+  | { kind: "selected"; token: KiroStoredToken; profileArn?: string } {
+  let db: Database.Database;
+  try { db = new Database(join(storeHome, "data.sqlite3"), { readonly: true, fileMustExist: true }); }
+  catch { return { kind: "no-store" }; }
+  try {
+    // One read transaction keeps token and profile on the same CLI selection.
+    return db.transaction(() => {
+      const rows = db.prepare("SELECT key, value FROM auth_kv WHERE key LIKE '%:token'").all() as {key: string; value: string}[];
+      const entries = rows.flatMap(row => {
+        try {
+          const token = JSON.parse(row.value) as KiroStoredToken;
+          return typeof token?.access_token === "string" && token.access_token.length ? [{key: row.key, token}] : [];
+        } catch { return []; }
+      });
+      // A present but malformed native selection cannot silently select a legacy account.
+      const nativeRow = rows.find(row => row.key === "kirocli:odic:token");
+      const native = entries.find(row => row.key === "kirocli:odic:token");
+      if (nativeRow && !native) return { kind: "unknown", reason: "account" } as const;
+      let profileArn: string | undefined;
+      const hasState = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='state'").get();
+      if (hasState) {
+        const profile = db.prepare("SELECT value FROM state WHERE key='api.codewhisperer.profile'").get() as {value: string} | undefined;
+        if (profile) {
+          try {
+            const value = JSON.parse(profile.value) as {arn?: unknown};
+            if (typeof value?.arn !== "string" || !value.arn) return { kind: "unknown", reason: "profile" } as const;
+            profileArn = value.arn;
+          } catch { return { kind: "unknown", reason: "profile" } as const; }
+        }
+      }
+      if (!entries.length) return { kind: "missing" } as const;
+      const matches = profileArn ? entries.filter(row => row.token.profile_arn === profileArn) : [];
+      const selected = native ?? (matches.length === 1 ? matches[0] : !profileArn && entries.length === 1 ? entries[0] : undefined);
+      if (!selected) return { kind: "unknown", reason: "account" } as const;
+      if (profileArn && selected.token.profile_arn && profileArn !== selected.token.profile_arn) return { kind: "unknown", reason: "profile" } as const;
+      return { kind: "selected", token: selected.token, profileArn: profileArn ?? selected.token.profile_arn } as const;
+    })();
+  } catch { return { kind: "unknown", reason: "account" } as const; }
+  finally { try { db.close(); } catch { /* read-only close */ } }
 }
