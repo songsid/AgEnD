@@ -252,7 +252,7 @@ describe("expiry ≠ reset is kept (#1233): Kiro bonus credits are still marked 
       bonuses: [{ status: "ACTIVE", currentUsage: 1, usageLimit: 10, expiresAt: sec(D) }],
     }] }), { status: 200 })));
     const r = await fetchKiroUsage();
-    expect(r.metrics.map(m => [m.label, m.resetKind])).toEqual([["Credits (monthly)", undefined], ["Bonus credits", "expiry"]]);
+    expect(r.metrics.map(m => [m.label, m.resetKind])).toEqual([["Bonus credits", "expiry"]]);
   });
 });
 

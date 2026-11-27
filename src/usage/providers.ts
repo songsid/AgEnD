@@ -38,7 +38,7 @@ import {
   listConfiguredProfiles,
 } from "../backend/credential-profile.js";
 import { claudeKeychainService } from "../backend/claude-code.js";
-import { readKiroAuthTokens, type KiroStoredToken } from "../backend/kiro-auth-store.js";
+import { readKiroUsageIdentity, type KiroStoredToken } from "../backend/kiro-auth-store.js";
 import { homedir, userInfo } from "node:os";
 import { antigravityCapKey, getProviderRateLimit } from "./provider-alerts.js";
 import { MUSE_USAGE_STALE_MS, readMuseUsageSnapshot } from "../muse-usage-relay.js";
@@ -1510,211 +1510,136 @@ async function fetchGrokUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
 }
 
 // ── Kiro (Amazon Q Developer) ────────────────────────────────────────────────
-// Original research, no OpenUsage upstream: the Kiro CLI stores its login in
-// data.sqlite3 `auth_kv` (social or Identity Center token) and usage rides on
-// the CodeWhisperer GetUsageLimits API — the exact call the CLI itself makes.
-// Read-only: the CLI refreshes its own tokens.
+// Read-only GetUsageLimits, bound to the CLI's selected identity/profile.
+// Sign-in flow is not a subscription tier. The CLI owns token refresh; this
+// collector never starts a chat or refreshes a login. See docs/evidence/kiro-quota-m3863/.
 
 const KIRO_TARGET = "AmazonCodeWhispererService.GetUsageLimits";
 
 type KiroToken = KiroStoredToken;
 
-/**
- * Which Kiro login is in use. Verified against a real kiro-cli auth store:
- * - IAM Identity Center (Amazon Q Developer Pro) tokens carry `start_url`
- *   (e.g. `https://d-xxxx.awsapps.com/start/`) and no social `provider`.
- * - Free-tier social logins (Builder ID / Google / GitHub) carry `provider`
- *   and a `profile_arn`.
- * Q Developer Pro is a seat-licensed subscription, so the credit/usage endpoint
- * that Builder ID reports against does not describe it.
- */
-export type KiroAuthKind = "q-developer-pro" | "builder-id";
-
+/** Authentication describes sign-in only. Entitlements come from GetUsageLimits. */
+export type KiroAuthKind = "identity-center" | "social";
 export function kiroAuthKind(token: KiroToken): KiroAuthKind {
-  return typeof token.start_url === "string" && token.start_url.trim().length > 0
-    ? "q-developer-pro"
-    : "builder-id";
-}
-
-/**
- * `notInstalled` means there is no kiro-cli data directory at all — the only
- * case where the provider should vanish from the panel. `missing` means kiro-cli
- * IS installed but no login we recognise is stored: a real state the user needs
- * to see, not a reason to hide the row.
- *
- * A credential profile can only ever be `missing`, never `notInstalled`: the
- * profile exists because the fleet configured it, so the CLI is demonstrably
- * here and the absent store means *this subscription* has never been logged in.
- * That is the one thing the user must see — running two subscriptions, the one
- * you still have to log into is precisely the row that must not disappear.
- */
-function readKiroToken(storeHome?: string): { token?: KiroToken; kind?: KiroAuthKind; missing?: boolean; notInstalled?: boolean } {
-  // A credential profile keeps its own store; without one this is the shared
-  // login, exactly as before.
-  const home = storeHome ?? process.env.KIRO_CLI_HOME ?? join(homedir(), ".local", "share", "kiro-cli");
-  const read = readKiroAuthTokens(home);
-  if (read.kind === "no-store") return storeHome ? { missing: true } : { notInstalled: true };
-  const candidates = read.tokens;
-  if (candidates.length === 0) return { missing: true };
-  // Switching login type leaves the old token behind, so "first key wins"
-  // could report a stale account. Prefer a token that has not expired, then
-  // the one that expires latest.
-  const expiry = (t: KiroToken) => (t.expires_at ? new Date(t.expires_at).getTime() : 0);
-  const now = Date.now();
-  const live = candidates.filter(t => expiry(t) > now);
-  const token = (live.length ? live : candidates).sort((a, b) => expiry(b) - expiry(a))[0];
-  return { token, kind: kiroAuthKind(token) };
+  return typeof token.start_url === "string" && token.start_url.trim() ? "identity-center" : "social";
 }
 
 function kiroTitleCase(s: string): string {
   return s.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
 }
-
 function kiroEpochIso(sec: unknown): string | null {
-  return typeof sec === "number" && Number.isFinite(sec) && sec > 0
-    ? new Date(sec * 1000).toISOString()
-    : null;
+  if (typeof sec !== "number" || !Number.isFinite(sec) || sec < 1_000_000_000 || sec > 4_102_444_800) return null;
+  const date = new Date(sec * 1000);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
+const KIRO_USAGE_ENDPOINTS: Readonly<Record<string, string>> = {
+  "us-east-1": "https://codewhisperer.us-east-1.amazonaws.com/",
+  "eu-central-1": "https://q.eu-central-1.amazonaws.com/",
+};
 
-/** Exported for tests: the Q-Pro and expired paths return without any network call. */
+/** Read-only quota lookup for the CLI-selected identity. No refresh or chat fallback. */
 export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderUsage, "id" | "name">> {
-  const { token, kind, missing, notInstalled } = readKiroToken(storeHome);
-  if (notInstalled) {
-    // The one case that should disappear from the panel: kiro-cli isn't here.
+  const home = storeHome ?? process.env.KIRO_CLI_HOME ?? join(homedir(), ".local", "share", "kiro-cli");
+  const identity = readKiroUsageIdentity(home);
+  if (identity.kind === "no-store" && !storeHome) {
     return { status: "no-credentials", hint: "Log in with the Kiro CLI (`kiro-cli`).", hintI18n: i18n("usage.hint.login_kiro"), metrics: [] };
   }
-  if (missing || !token) {
-    // Installed but no readable login. Previously indistinguishable from
-    // not-installed, so the whole Kiro row vanished instead of saying this.
+  if (identity.kind === "missing" || identity.kind === "no-store") {
     return { status: "ok", plan: "Kiro", hint: "Signed out — run `kiro-cli` to log in.", hintI18n: i18n("usage.hint.kiro_signed_out"), metrics: [] };
   }
+  const unknown = (reason: "account" | "profile" | "region" | "quota" | "bonus"): Omit<ProviderUsage, "id" | "name"> => ({
+    status: "ok", plan: "Kiro", metrics: [],
+    hint: `Not measurable — ${reason} information is unavailable or ambiguous.`,
+    hintI18n: i18n(`usage.hint.kiro_${reason}_unknown`),
+  });
+  if (identity.kind === "unknown") return unknown(identity.reason);
+  const {token, profileArn} = identity;
   const expiresAt = token.expires_at ? new Date(token.expires_at).getTime() : null;
-  if (expiresAt && expiresAt < Date.now()) {
-    // Not an error state: kiro-cli refreshes its own login on next use, and the
-    // panel showing a red failure for a routine token rollover is just noise.
-    // Still `ok` rather than no-credentials, so the row stays on screen with its
-    // explanation instead of the provider silently disappearing.
+  if (expiresAt !== null && (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) {
     return { status: "ok", plan: "Kiro", hint: "Token refreshing — try again in a moment.", hintI18n: i18n("usage.hint.token_refreshing"), metrics: [] };
   }
-  if (kind === "q-developer-pro") {
-    // Seat-licensed subscription: GetUsageLimits describes Builder-ID credit
-    // buckets, not this seat. Its monthly limit is known, but remaining usage
-    // is not measurable through this endpoint; never infer unlimited capacity.
-    return {
-      status: "ok",
-      plan: "Q Developer Pro",
-      hint: "Not measurable · monthly limit 10,000 requests",
-      hintI18n: i18n("usage.hint.q_developer_monthly_limit"),
-      metrics: [],
-    };
-  }
-
-  const region = token.region
-    || (typeof token.profile_arn === "string" ? token.profile_arn.split(":")[3] : "")
-    || "us-east-1";
-
+  // Profile ARN is the runtime region, not the OIDC authentication region.
+  let region = "us-east-1";
+  if (profileArn !== undefined) {
+    if (typeof profileArn !== "string") return unknown("profile");
+    const parsed = /^arn:aws:codewhisperer:([a-z0-9-]+):[0-9]{12}:profile\/[A-Za-z0-9._-]+$/.exec(profileArn);
+    if (!parsed) return unknown("profile");
+    region = parsed[1];
+  } else if (kiroAuthKind(token) === "identity-center") return unknown("profile");
+  const endpoint = KIRO_USAGE_ENDPOINTS[region];
+  if (!endpoint) return unknown("region");
   let res: Response;
   try {
-    res = await fetch(`https://codewhisperer.${region}.amazonaws.com/`, {
+    res = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-amz-json-1.0",
-        "X-Amz-Target": KIRO_TARGET,
-        Authorization: `Bearer ${token.access_token}`,
-      },
-      body: JSON.stringify(token.profile_arn ? { profileArn: token.profile_arn } : {}),
+      headers: { "Content-Type": "application/x-amz-json-1.0", "X-Amz-Target": KIRO_TARGET, Authorization: `Bearer ${token.access_token}` },
+      body: JSON.stringify(profileArn ? { profileArn } : {}),
       signal: AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS),
     });
   } catch {
-    return { status: "error", error: `Could not reach codewhisperer.${region}.amazonaws.com.`, errorI18n: i18n("usage.error.unreachable", `codewhisperer.${region}.amazonaws.com`), metrics: [] };
+    return { status: "error", error: `Could not reach ${new URL(endpoint).hostname}.`, errorI18n: i18n("usage.error.unreachable", new URL(endpoint).hostname), metrics: [] };
   }
   if (res.status === 401 || res.status === 403) {
-    return { status: "error", error: "Token rejected. Use `kiro-cli` once to refresh the login.", errorI18n: i18n("usage.error.token_rejected", "kiro-cli"), metrics: [] };
+    return { status: "ok", plan: "Kiro", hint: `Not measurable — usage access was rejected (HTTP ${res.status}).`, hintI18n: i18n("usage.hint.kiro_rejected", res.status), metrics: [] };
   }
   if (!res.ok) return { status: "error", error: `Usage request failed (HTTP ${res.status}).`, errorI18n: i18n("usage.error.http", res.status), metrics: [] };
-
-  interface KiroBreakdown {
-    displayName?: string; displayNamePlural?: string;
-    currentUsage?: number; currentUsageWithPrecision?: number;
-    usageLimit?: number; usageLimitWithPrecision?: number;
-    currentOverages?: number; currentOveragesWithPrecision?: number;
-    overageCharges?: number; nextDateReset?: number;
-    bonuses?: { status?: string; currentUsage?: number; usageLimit?: number; expiresAt?: number }[];
+  interface Pool {
+    status?: string; currentUsage?: number; currentUsageWithPrecision?: number;
+    usageLimit?: number; usageLimitWithPrecision?: number; expiresAt?: number;
+    freeTrialStatus?: string; freeTrialExpiry?: number;
   }
-  let body: {
-    nextDateReset?: number;
-    subscriptionInfo?: { subscriptionTitle?: string };
-    overageConfiguration?: { overageStatus?: string };
-    usageBreakdownList?: KiroBreakdown[];
-  };
-  try { body = await res.json() as typeof body; } catch {
+  interface Breakdown extends Pool {
+    displayName?: string; displayNamePlural?: string; resourceType?: string;
+    currentOverages?: number; currentOveragesWithPrecision?: number;
+    overageCap?: number; overageCapWithPrecision?: number;
+    overageCharges?: number; nextDateReset?: number;
+    bonuses?: Pool[]; freeTrialInfo?: Pool;
+  }
+  let body: { nextDateReset?: number; subscriptionInfo?: {subscriptionTitle?: string}; usageBreakdownList?: Breakdown[]; overageConfiguration?: {overageStatus?: string} };
+  try {
+    const value: unknown = await res.json();
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("shape");
+    body = value as typeof body;
+  } catch {
     return { status: "error", error: "Invalid response from GetUsageLimits.", errorI18n: i18n("usage.error.invalid_kiro_response"), metrics: [] };
   }
-
-  const plan = typeof body.subscriptionInfo?.subscriptionTitle === "string"
-    ? kiroTitleCase(body.subscriptionInfo.subscriptionTitle)
-    : null;
-
+  const title = body.subscriptionInfo?.subscriptionTitle;
+  const plan = typeof title === "string" && title.trim() ? kiroTitleCase(title.trim()) : "Kiro";
   const metrics: UsageMetric[] = [];
+  const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
+  let ambiguousBonus = false;
   for (const ub of Array.isArray(body.usageBreakdownList) ? body.usageBreakdownList : []) {
-    const displayName = ub.displayNamePlural || ub.displayName;
-    const unit = (displayName || "credits").toLowerCase();
-    const used = ub.currentUsageWithPrecision ?? ub.currentUsage ?? null;
-    const limit = ub.usageLimitWithPrecision ?? ub.usageLimit ?? null;
-    if (used !== null && limit !== null && limit > 0) {
-      metrics.push({
-        label: `${displayName || "Usage"} (monthly)`,
-        quotaPeriod: "monthly",
-        labelI18n: displayName
-          ? i18n("usage.metric.named_monthly", displayName)
-          : i18n("usage.metric.usage_monthly"),
-        type: "percent",
-        used: Math.min(100, (used / limit) * 100),
-        resetsAt: kiroEpochIso(ub.nextDateReset ?? body.nextDateReset),
-        note: `${+used.toFixed(1)} / ${+limit.toFixed(0)} ${unit}`,
-        noteI18n: i18n("usage.note.used_limit_unit", +used.toFixed(1), +limit.toFixed(0), unit),
-      });
+    if (!ub || typeof ub !== "object") continue;
+    const displayName = typeof ub.displayNamePlural === "string" ? ub.displayNamePlural : typeof ub.displayName === "string" ? ub.displayName : ub.resourceType === "CREDIT" ? "Credits" : "Usage";
+    const unit = displayName.toLowerCase();
+    const reset = kiroEpochIso(ub.nextDateReset ?? body.nextDateReset);
+    const addPool = (label: string, key: UsageI18nKey, used: unknown, limit: unknown, expiry?: string | null) => {
+      if (!finite(used) || !finite(limit) || limit <= 0 || used > limit) return;
+      metrics.push({ label, labelI18n: key === "usage.metric.named_monthly" ? i18n(key, displayName) : i18n(key), type: "percent", used: Math.min(100, used / limit * 100),
+        resetsAt: expiry === undefined ? reset : expiry, ...(expiry === undefined ? {quotaPeriod: "monthly" as const} : {resetKind: "expiry" as const}),
+        note: `${+used.toFixed(1)} / ${+limit.toFixed(1)} ${unit}`, noteI18n: i18n("usage.note.used_limit_unit", +used.toFixed(1), +limit.toFixed(1), unit) });
+    };
+    const used = ub.currentUsageWithPrecision ?? ub.currentUsage;
+    const limit = ub.usageLimitWithPrecision ?? ub.usageLimit;
+    const overage = ub.currentOveragesWithPrecision ?? ub.currentOverages ?? 0;
+    const bonuses = Array.isArray(ub.bonuses) ? ub.bonuses : [];
+    // The response does not specify which plan spend includes bonus consumption.
+    if (bonuses.length) ambiguousBonus = true;
+    else if (finite(used) && finite(overage) && overage <= used) {
+      addPool(`${displayName} (monthly)`, "usage.metric.named_monthly", used - overage, limit);
     }
-
-    // Bonus / gift credits (redeemed promo codes), aggregated across active codes.
-    const bonuses = (ub.bonuses ?? []).filter(b => b?.status === "ACTIVE");
-    if (bonuses.length) {
-      const bUsed = bonuses.reduce((s, b) => s + (b.currentUsage ?? 0), 0);
-      const bLimit = bonuses.reduce((s, b) => s + (b.usageLimit ?? 0), 0);
-      const expiries = bonuses.map(b => b.expiresAt).filter((e): e is number => typeof e === "number" && e > 0);
-      if (bLimit > 0) {
-        metrics.push({
-          label: "Bonus credits",
-          labelI18n: i18n("usage.metric.bonus_credits"),
-          type: "percent",
-          used: Math.min(100, (bUsed / bLimit) * 100),
-          // When the first code expires — the credits go, nothing refills.
-          resetsAt: expiries.length ? kiroEpochIso(Math.min(...expiries)) : null,
-          resetKind: "expiry",
-          note: `${+bUsed.toFixed(1)} / ${+bLimit.toFixed(0)} ${unit} · ${bonuses.length} codes`,
-          noteI18n: i18n("usage.note.bonus_codes", +bUsed.toFixed(1), +bLimit.toFixed(0), unit, bonuses.length),
-        });
-      }
+    for (const bonus of bonuses) {
+      if (bonus?.status === "ACTIVE") addPool("Bonus credits", "usage.metric.bonus_credits", bonus.currentUsageWithPrecision ?? bonus.currentUsage, bonus.usageLimitWithPrecision ?? bonus.usageLimit, kiroEpochIso(bonus.expiresAt));
     }
-
-    const overages = ub.currentOveragesWithPrecision ?? ub.currentOverages ?? 0;
-    if (overages > 0 && typeof ub.overageCharges === "number") {
-      metrics.push({ label: "Overage charges", labelI18n: i18n("usage.metric.overage_charges"), type: "dollars", used: ub.overageCharges });
-    }
+    const trial = ub.freeTrialInfo;
+    if (trial?.freeTrialStatus === "ACTIVE") addPool("Trial credits", "usage.metric.kiro_trial", trial.currentUsageWithPrecision ?? trial.currentUsage, trial.usageLimitWithPrecision ?? trial.usageLimit, kiroEpochIso(trial.freeTrialExpiry));
+    addPool("Overage credits", "usage.metric.kiro_overage", overage, ub.overageCapWithPrecision ?? ub.overageCap);
+    if (finite(overage) && overage > 0 && finite(ub.overageCharges)) metrics.push({ label: "Overage charges", labelI18n: i18n("usage.metric.overage_charges"), type: "dollars", used: ub.overageCharges });
   }
-
+  if (metrics.length === 0) return {...unknown("quota"), plan};
   const overageStatus = body.overageConfiguration?.overageStatus;
-  if (typeof overageStatus === "string") {
-    metrics.push({ label: "Pay-per-use", labelI18n: i18n("usage.metric.pay_per_use"), type: "text", value: kiroTitleCase(overageStatus.replace(/_/g, " ")) });
-  }
-
-  if (metrics.length === 0) {
-    // Amazon Q logins whose account type reports no credit buckets (#398's
-    // sibling case): an OK answer with nothing in it must say so, not render an
-    // empty row that reads like a failure.
-    return { status: "ok", plan: plan ?? "Amazon Q", hint: "No quota information available for this account type.", hintI18n: i18n("usage.hint.no_quota_account"), metrics: [] };
-  }
-  return { status: "ok", plan, metrics };
+  if (typeof overageStatus === "string") metrics.push({ label: "Pay-per-use", labelI18n: i18n("usage.metric.pay_per_use"), type: "text", value: kiroTitleCase(overageStatus.replace(/_/g, " ")) });
+  return ambiguousBonus ? {...unknown("bonus"), plan, metrics} : {status: "ok", plan, metrics};
 }
 
 // ── Registry ─────────────────────────────────────────────────────────────────
