@@ -387,7 +387,7 @@ it.each(["stop","retire"] as const)("M-3896 the updater's real guard port cannot
  };
  const result=runGoBack(w.home,ID,goBackInit(w),{...w.deps(noNpm),guard});
  expect(result).toMatchObject({ok:false,outcome:"refused"});expect(guardCalls).toBe(1);
- if(!result.ok)expect(result.reason).toMatch(/request-based contact approvals/);
+ if(!result.ok)expect(result.reason).toMatch(/a contact-approval change after this update.*stopping saved work.*retiring an earlier request.*ended its Go back/);
  expect(readCurrent(w.home).state).toBe("none");
  const after=new Database(path,{readonly:true});try{expect(after.prepare(kind==="stop"?"SELECT count(*) n FROM request_context_drain_v1 WHERE resolution_json IS NOT NULL":"SELECT count(*) n FROM contact_auth_retirements").get()).toEqual({n:1});}finally{after.close();}
 });

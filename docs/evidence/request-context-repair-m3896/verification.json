@@ -1,6 +1,6 @@
 {
   "coreRigHead": "9aa550fe022e0d302a415a89d56a3e6488605038",
-  "uiSourceHead": "1b4080ede5de5289eb725460e7a448ffb17bd39d",
+  "uiSourceHead": "39a1c20ae68a4aa01e799f755e626d4043735e18",
   "fixturePackage": "2.4.0-beta.2802 (local pack only)",
   "baseline": "2.4.0-beta.26",
   "provider": "Claude Code 2.1.325 on an inert Anthropic API",
@@ -21,8 +21,8 @@
   },
   "uncertainHumanReceiptCoverage": "Actual SQLite integration and image/revocation mutants; not injected in the container.",
   "focusedTests": {
-    "files": 10,
-    "passed": 137
+    "files": 14,
+    "passed": 196
   },
   "captures": {
     "count": 56,
@@ -32,6 +32,19 @@
     "states": 7,
     "lifecycleOrChangeCalls": 0
   },
-  "visualCheck": "All 56 PNGs inspected; no clipping, private data or copy mismatch.",
-  "hold": "User look and exact-head Fable review; keep draft and release guard until those gates."
+  "visualCheck": "All32 affected R1 PNGs inspected;24 byte-identical prior PNGs retained. No clipping, private data or copy mismatch.",
+  "hold": "User look and exact-head Fable review; keep draft and release guard until those gates.",
+  "reviewDelta": {
+    "recaptured": 32,
+    "unchanged": 24,
+    "checksPassed": 49,
+    "pendingCapacityAndDuplicate": "Nonfatal; real pre-paste130-input plus duplicate regression",
+    "resolutionConnectionCoverage": [
+      "first-On stage",
+      "capable reopen",
+      "boot recovery"
+    ],
+    "mutationControlsKilled": 3,
+    "testTypecheck": "passed on source delta before the plain release merge; exact-head CI remains required"
+  }
 }
