@@ -3950,7 +3950,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "settings_confirm.admin_label": "fleet 管理員 {0}",
     "settings_confirm.result.applied": "變更已套用。",
     "settings_confirm.result.apply_failed": "變更無法套用。請檢查設定後再試一次。",
-    "settings_confirm.result.request_context_blocked": "尚未開啟：還在等候「設定」→「存取與安全」裡列出的項目。",
+    "settings_confirm.result.request_context_blocked": "尚未開啟：還在等候「設定 → 存取與安全」裡列出的項目。",
     "settings_confirm.result.fleet_stopped": "Fleet 已停止。請重新檢查後再套用。",
     "settings_confirm.result.expired": "確認已過期。請重新檢查後再套用。",
     "settings_confirm.result.withdrawn": "變更已撤回。",

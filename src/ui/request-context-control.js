@@ -15,7 +15,7 @@ register("requestContextControl", {
     restart: "Turning this on restarts {0} agents (their conversations are kept); they can't chat for a minute or two.", goBack: "Go back for the latest update is available until {0}; turning this on ends it immediately.", viewUpdate: "View AgEnD update", viewOwners: "View these agents", waitTitle: "End this wait?", enableTitle: "Turn on request-based contact approvals?", enable: "Confirm turn on", unknown: "State unknown", inspect: "View held messages", update: "Finish or resolve the AgEnD update first, then check again.", stopTitle: "Stop this work?", stopBody: "This ends the saved work and prevents it from resuming. History stays. Other outside requests still wait for your decision.", waitBody: "A late reply will not resume this work. Other outside requests still wait for your decision.", title: "Request-based contact approvals", on: "On: approval applies only to this request.",
     off: "Off. Your own messages go through as usual; requests that came from outside wait for your decision.",
     offBefore: "Not enabled. Contacts haven't changed.",
-    draining: "Turning off. Waiting for current work to finish.", blocked: "Request-based approvals are waiting.", blockedBefore: "Turning this on has to wait for these first:",
+    draining: "Turning off. Waiting for current work to finish.", blocked: "Request-based approvals aren't on yet.", blockedBefore: "Turning this on has to wait for these first:",
     legacyPending: "Decide these earlier contact requests first, in Fleet → Authorizations: {0}.",
     legacyInflight: "These earlier approved messages are still being delivered: {0}. This clears by itself once each is delivered or fails.",
     legacyUnsettled: "These earlier requests have no readable delivery record, so AgEnD can't tell whether they happened: {0}. They can't be settled from this page yet; leave request-based approvals off for now.",
@@ -47,7 +47,7 @@ register("requestContextControl", {
     confirmTitle: "關閉依請求核准聯絡？", confirm: "確認關閉",
     confirmBody: "新的外部請求會先等候，直到目前的工作結束。之後，你自己的訊息照常；從外部來的請求會等你決定。",
     legacy: "請先處理這些先前擱置的訊息：{0}。", peers: "請在 {0} 上更新 AgEnD，完成後按「重新檢查」。",
-    owners: "這些 Agent 需要先完成準備：{0}。", ownersWork: "請先結束這些 Agent 目前的工作：{0}。請等它們完成，或重新啟動一直忙碌的 Agent。", ownersUpdate: "請先完成這些 Agent 的 AgEnD 更新：{0}。", recovery: "這項工作需要你決定：{0}。",
+    owners: "這些 Agent 需要先完成準備：{0}。", ownersWork: "請先等這些 Agent 完成目前的工作：{0}。請等它們完成，或重新啟動一直忙碌的 Agent。", ownersUpdate: "請先完成這些 Agent 的 AgEnD 更新：{0}。", recovery: "這項工作需要你決定：{0}。",
     returns: "正在等候回覆：{0}。", tickets: "請先處理這些擱置的訊息：{0}。", work: "正在等這項工作結束：{0}。",
     previous: "目前仍使用原本的規則。", floor: "已不能再降回舊版 AgEnD。",
     floorBefore: "注意：開啟後就不能再降回舊版 AgEnD，之後關閉也一樣。",
@@ -164,7 +164,7 @@ export function RequestContextSettings() {
       ${!state.enabled && state.enableUnavailable ? html`<p role="status">${requestContextControlText("enableUnavailable")}</p>` : null}
       ${failed ? html`<p role="status">${requestContextControlText("unknown")}</p>` : ["blocked", "draining"].includes(state.phase) ? html`<${RequestContextBlocked} state=${state} busy=${busy || failed} onCheck=${() => change("check")} onResolve=${state.canChange ? blocker => change("resolve", blocker) : null} />`
         : html`<p role="status">${requestContextControlText(state.phase === "off" && !state.everActivated ? "offBefore" : state.phase)}</p>`}
-      <p class="notice warn">${requestContextControlText(state.everActivated ? "floor" : "floorBefore")}</p>
+      ${!state.enabled && state.enableUnavailable ? null : html`<p class="notice warn">${requestContextControlText(state.everActivated ? "floor" : "floorBefore")}</p>`}
       ${!state.canChange ? html`<${AuthorizeChip} />` : null}` : !failed ? html`<p>${requestContextControlText("loading")}</p>` : null}
     ${failed ? html`<p class="notice warn" role="alert">${requestContextControlText(state ? "failed" : "error")}</p><button class="btn btn-sm" type="button" disabled=${busy} onClick=${load}>${requestContextControlText("check")}</button>` : null}
   </section>`;
