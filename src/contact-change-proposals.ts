@@ -3,7 +3,7 @@ import { contactPersonKey, normalizeContactPersonKey } from "./contact-auth-stor
 import { z } from "zod";
 import { ContactDecisionSchema } from "./contact-auth-policy.js";
 import type { ContactAuthService } from "./contact-auth-service.js";
-import type { ContactPermissionsWrite, ContactPerson, ContactTicket, ContactTicketDecision } from "./contact-auth-types.js";
+import type { ContactOriginClear, ContactPermissionsWrite, ContactPerson, ContactTicket, ContactTicketDecision } from "./contact-auth-types.js";
 import { t, getLocale } from "./locale.js";
 const name = z.string().min(1).max(160).regex(/^[^\x00-\x1f\x7f]+$/);
 const revision = z.number().int().nonnegative().optional();
@@ -14,11 +14,13 @@ export const ContactChangeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("grant-adjust"), target: name, revision, grant_id: name,
     expires_at: z.iso.datetime(), remaining_uses: z.number().int().min(1).max(10_000).nullable() }),
   z.strictObject({ kind: z.literal("grant-revoke"), target: name, revision, grant_id: name }),
+  // M-3694 (S-262): an agent held by a retained origin — the admin's own Permissions-tab clear, as a proposal.
+  z.strictObject({ kind: z.literal("origin-clear"), target: name, revision }),
 ]).refine(value => value.kind !== "ticket-decision" || !value.grant || value.decision === "approve-once", { message: "A grant requires approve-once", path: ["grant"] });
 // Keep the model's menu compact: conditional required fields are validated by
 // the same strict variant schema at runtime, rather than repeating every field four times.
 export const ProposeContactChangeArgs = z.strictObject({ change: z.strictObject({
-  kind: z.enum(["mode", "ticket-decision", "grant-adjust", "grant-revoke"]),
+  kind: z.enum(["mode", "ticket-decision", "grant-adjust", "grant-revoke", "origin-clear"]),
   target: z.string().optional(), ticket_id: z.string().optional(), revision: z.number().optional(),
   mode: z.string().optional(), decision: z.string().optional(),
   grant: z.strictObject({ expiresAt: z.string(), remainingUses: z.number().nullable(), personKeys: z.array(z.string()).optional() }).optional(),
@@ -37,6 +39,8 @@ export interface ContactChangeHost {
   generation(target: string): string;
   modeAdmin(target: string, person: ContactPerson): boolean;
   write(target: string, input: ContactPermissionsWrite, person: ContactPerson): unknown;
+  /** The Permissions tab's own clear (FleetManager.clearContactOrigin): the admin's identity replaces the origin. */
+  clearOrigin(target: string, input: ContactOriginClear, person: ContactPerson): unknown;
   decide(id: string, input: ContactTicketDecision, person: ContactPerson): unknown;
 }
 export interface PreparedContactChange {
@@ -66,7 +70,7 @@ export function resolvePendingTicket(store: { get(id: string): ContactTicket | u
 }
 const REFUSAL_CODES = new Set(["general-only", "hub-contact-restricted", "contact-proposal-limit", "contact-proposal-ticket-unavailable",
   "contact-proposal-ticket-ambiguous", "conflict", "stale-generation", "invalid-grant-origin", "contact-proposal-not-room", "not-found",
-  "invalid-grant", "forbidden", "contact-proposal-use-web", "contact-proposal-route-unavailable"]);
+  "invalid-grant", "forbidden", "contact-proposal-use-web", "contact-proposal-route-unavailable", "contact-proposal-no-origin"]);
 /** M-3693: a refusal General can act on — a sentence with the next step, never a bare code. */
 export function contactProposalRefusal(error: unknown): string {
   if (error instanceof z.ZodError) return t("contactProposal.err_invalid", error.issues.map(i => `${i.path.join(".") || "change"}: ${i.message}`).join("; "));
@@ -81,7 +85,8 @@ export function prepareContactChange(raw: unknown, host: ContactChangeHost): Pre
   const targetGeneration = host.generation(target), policy = structuredClone(store.policy(target, targetGeneration));
   const pins = new Map([[target, targetGeneration]]);
   const mode = host.mode(target);
-  let payload: ContactPermissionsWrite | ContactTicketDecision;
+  let payload: ContactPermissionsWrite | ContactTicketDecision | ContactOriginClear;
+  const originRevision = store.originRevision(target);
   const label = (name: string) => host.label?.(name) || name;
   const shortId = shortContactTicketId;
   // A Latin-ending name gets a space before following Chinese prose; punctuation does not.
@@ -113,7 +118,16 @@ export function prepareContactChange(raw: unknown, host: ContactChangeHost): Pre
     }
   } else {
     if (input.revision !== undefined && input.revision !== policy.revision) throw Error("conflict");
-    if (input.kind === "mode") {
+    if (input.kind === "origin-clear") {
+      // Only an origin that holds the agent, by the contact gate's own rule (#4555 F1: one non-admin person holds it too).
+      const origin = store.origin(target);
+      if (!origin || !host.service.needsApplication(target)) throw Error("contact-proposal-no-origin");
+      payload = { revision: policy.revision, originRevision, generation: targetGeneration };
+      const people = origin.people.map(personName).join(getLocale() === "zh-TW" ? "、" : ", ");
+      // #4555 F2: what the Permissions tab says, for a room or an agent (src/ui/contact-auth-strings.js originClearConfirm*).
+      summary.push(t("contactProposal.originNow", t(`contactProposal.origin_${origin.kind}`), people || t("contactProposal.originNobody")),
+        t(mode ? "contactProposal.originClearRoom" : "contactProposal.originClearAgent"), t("contactProposal.originBoundary"));
+    } else if (input.kind === "mode") {
       if (!mode) throw Error("contact-proposal-not-room");
       payload = { revision: policy.revision, mode: input.mode };
       summary.push(t("contactProposal.mode", t(`contactProposal.${mode}`), t(`contactProposal.${input.mode}`)), t("contactProposal.modeWarning"), ...(input.mode === "restricted" && mode !== "restricted" ? [t("contactProposal.historyNote")] : []), t("contactProposal.guardNote"));
@@ -139,6 +153,7 @@ export function prepareContactChange(raw: unknown, host: ContactChangeHost): Pre
   const current = (): boolean => {
     try {
       if ([...pins].some(([n, g]) => host.generation(n) !== g) || host.mode(target) !== mode || store.policy(target, targetGeneration).revision !== policy.revision) return false;
+      if (input.kind === "origin-clear" && store.originRevision(target) !== originRevision) return false;
       if (ticket) { const now = store.get(ticket.id); return !!now && now.state === "pending" && now.revision === ticket.revision && Date.parse(now.expiresAt) > Date.now(); }
       return true;
     } catch { return false; }
@@ -146,11 +161,13 @@ export function prepareContactChange(raw: unknown, host: ContactChangeHost): Pre
   const authorized = (person: ContactPerson): boolean => input.kind === "mode" ? host.modeAdmin(target, person)
     : ticket ? host.service.canDecide(target, person) : host.service.canManage(target, person);
   const success = ticket ? t(input.kind === "ticket-decision" && input.decision === "decline" ? "contactProposal.requestDeclined" : "contactProposal.requestApproved", shortId(ticket.id))
-    : t(input.kind === "grant-adjust" ? "contactProposal.ruleAdjusted" : input.kind === "grant-revoke" ? "contactProposal.ruleRevoked" : "contactProposal.applied");
+    : t(input.kind === "grant-adjust" ? "contactProposal.ruleAdjusted" : input.kind === "grant-revoke" ? "contactProposal.ruleRevoked"
+      : input.kind === "origin-clear" ? "contactProposal.originCleared" : "contactProposal.applied");
   return { target, success, summary, current, authorized, apply(person) {
     if (!current()) throw Error("conflict");
     if (!authorized(person)) throw Error("forbidden");
     if (ticket) host.decide(ticket.id, structuredClone(frozen) as ContactTicketDecision, person);
+    else if (input.kind === "origin-clear") host.clearOrigin(target, structuredClone(frozen) as ContactOriginClear, person);
     else host.write(target, structuredClone(frozen) as ContactPermissionsWrite, person);
   } };
 }

@@ -18,6 +18,11 @@ export interface ContactStateHost {
   /** Every agent and ClassicBot room this fleet knows. */
   names(): string[];
   label(name: string): string;
+  /**
+   * #4555 F1: does this agent's retained origin hold it — the contact gate's own rule (ContactAuthService.needsApplication):
+   * an unknown or mixed origin, or a single person who isn't an admin, on anything but an unrestricted room.
+   */
+  restricts(name: string): boolean;
   /** A ClassicBot room's mode (restricted, or stored as "legacy": unrestricted); undefined for an agent. */
   roomMode(name: string): "restricted" | "legacy" | undefined;
   /** The agent's current incarnation: a rule or ticket for an earlier one no longer applies. */
@@ -63,10 +68,10 @@ export function contactStateView(host: ContactStateHost, filter: { agent?: strin
     return mode ? [{ room: label(name), mode: mode === "restricted" ? "restricted" : "unrestricted", stored_as: mode, revision: host.store.policy(name).revision }] : [];
   });
 
-  // Only origins that restrict: an unknown or mixed origin holds the agent's messages for approval until it is cleared.
+  // Only origins that restrict, by the gate's own rule (#4555 F1): one non-admin person holds the agent too.
   const retained_origins = names.flatMap(name => {
     const origin = host.store.origin(name);
-    return origin && origin.kind !== "human" ? [{ agent: label(name), kind: origin.kind, people: origin.people.map(person), chain: origin.chain.map(label) }] : [];
+    return origin && host.restricts(name) ? [{ agent: label(name), target: name, kind: origin.kind, people: origin.people.map(person), chain: origin.chain.map(label) }] : [];
   });
 
   return {
@@ -76,7 +81,7 @@ export function contactStateView(host: ContactStateHost, filter: { agent?: strin
       "Approve or decline a held message: propose_contact_change { kind: 'ticket-decision', ticket_id (the short_id works), decision }. An admin confirms the card.",
       "Change or revoke a rule: propose_contact_change { kind: 'grant-adjust' | 'grant-revoke', target, grant_id }.",
       "Switch a room: propose_contact_change { kind: 'mode', target, mode: 'restricted' | 'legacy' } ('legacy' is unrestricted).",
-      "A retained origin is cleared by an admin on the agent's Permissions tab in the web dashboard; General cannot propose it.",
+      "Clear a retained origin: propose_contact_change { kind: 'origin-clear', target } (the agent's target from retained_origins). An admin confirms the card, as on the agent's Permissions tab.",
     ],
   };
 }

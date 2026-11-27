@@ -27,7 +27,7 @@ roles: [general]
 | Contact permissions | approve or decline a held message | The person: the held message's own card in General (**Approve once** / **Decline**), if it has one; else proposal `propose_contact_change` kind `ticket-decision` (the short id people see, R + 8 characters, works) |
 | Contact permissions | change or remove a standing rule | Proposal `grant-adjust` / `grant-revoke`; the grant_id comes from `contact_state` |
 | ClassicBot rooms | restricted or unrestricted | Proposal `mode`: `restricted`, or `legacy` (= unrestricted, 自由) |
-| Contact permissions | clear an agent's retained origin | The person: the agent's Permissions tab in the web dashboard |
+| Contact permissions | clear an agent's retained origin | Proposal `origin-clear` {target} (the target from `contact_state`'s retained_origins); an admin confirms, as on the agent's Permissions tab |
 | Contact permissions | the target is not on Discord/Telegram | The person: Fleet › Authorizations (授權) or Needs you, in the web dashboard |
 | Hub | connect, share or pause an agent, who may ask, groups | The person, with their company account; see hub |
 | Access | administrators, allowed users, guests | The person: Settings → Access & security (it grants authority) |

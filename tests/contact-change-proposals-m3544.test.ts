@@ -17,7 +17,8 @@ function rig() {
   let count = 0, manager = true, allowed = true, current = true, hub = false, routeCurrent = true;
   const gen = new Map([['general', 'g1'], ['room', 'r1'], ['worker', 'w1']]), modes = new Map([['room', 'legacy']]);
   const admit = vi.fn(() => `delivery-${++count}`);
-  const service = new ContactAuthService({ store, restricted: () => true, adminOf: () => false, defaultApprovers: () => manager ? [admin] : [], generation: n => gen.get(n)!, hubRestricted: () => hub, delivered: () => false, admit, changed: vi.fn() });
+  // #4555 F1: the gate's admin rule (an admin's own single-person origin holds nothing), as the fleet's contactAdminOf.
+  const service = new ContactAuthService({ store, restricted: () => true, adminOf: (_n, p) => manager && p.adapterId === admin.adapterId && p.userId === admin.userId, defaultApprovers: () => manager ? [admin] : [], generation: n => gen.get(n)!, hubRestricted: () => hub, delivered: () => false, admit, changed: vi.fn() });
   const write = vi.fn((n, input, actor) => { if (input.mode) modes.set(n, input.mode); return store.writePolicy(n, input, actor, k => gen.get(k)!); });
   const decide = vi.fn((id, input, actor) => service.decide(id, input, actor));
   const adapter: any = { id: "demo", type: "discord", getBotUserId: () => "fake-bot", notifyAlert: vi.fn(async (_chat, alert) => ({ chatId: "channel", messageId: "prompt", threadId: "thread" })), editMessageRemoveButtons: vi.fn(async () => {}) };
@@ -29,7 +30,7 @@ function rig() {
     contactGeneration: (n: string) => gen.get(n)!, contactAdminOf: (_n: string, p: ContactPerson) => manager && p.adapterId === admin.adapterId && p.userId === admin.userId,
     writeContactPermissions: write, decideContactAuthorization: decide, contactAdapter: () => adapter,
     settingsGeneralRoute: (n: string) => n === 'general' ? ({ adapterId: 'demo', adapter, chatId: 'channel', topic: 'thread', current: () => routeCurrent }) : null });
-  const host = { service, generation: (n: string) => gen.get(n)!, label: (n: string) => `Demo ${n}`, timeZone: () => "Asia/Taipei", mode: (n: string) => modes.get(n) as any, modeAdmin: fm.contactAdminOf, write, decide };
+  const host = { service, generation: (n: string) => gen.get(n)!, label: (n: string) => `Demo ${n}`, timeZone: () => "Asia/Taipei", mode: (n: string) => modes.get(n) as any, modeAdmin: fm.contactAdminOf, write, decide, clearOrigin: vi.fn() };
   const ticket = () => store.hold({ operationId: `op-${Math.random()}`, source: 'room', target: 'worker', sourceGeneration: 'r1', targetGeneration: 'w1', verb: 'send_to_instance',
     origin: { kind: 'human', people: [person], chain: ['room'], receiptIds: [] }, message: 'Synthetic public question', correlationId: 'synthetic', resultRecipient: 'room', payload: {} });
   const post = async (raw: unknown = { kind: 'mode', target: 'room', mode: 'restricted' }) => { await fm.requestContactChange('general', raw, () => current); return [...fm.pendingNonceButtons.values()].at(-1); };
@@ -296,7 +297,7 @@ it('M-3693: contact_state shows held messages (with short id and who decides), r
   const r = rig(), ticket = r.ticket();
   r.store.writePolicy('worker', { revision: 0, grants: [{ id: '', person, source: 'room', target: 'worker', verbs: ['send_to_instance' as const], expiresAt: new Date(Date.now() + 86400000).toISOString(), remainingUses: 3 }] }, admin, n => r.gen.get(n)!);
   r.store.inheritOrigin('worker', { kind: 'mixed', people: [person, other], chain: ['room', 'worker'], receiptIds: [] });
-  r.store.inheritOrigin('general', { kind: 'human', people: [admin], chain: ['general'], receiptIds: [] });   // a person's origin restricts nothing: not listed
+  r.store.inheritOrigin('general', { kind: 'human', people: [admin], chain: ['general'], receiptIds: [] });   // an admin's own origin restricts nothing: not listed
   const changes = r.db.prepare('SELECT total_changes() AS n').get() as { n: number };
   const respond = vi.fn();
   await outboundHandlers.get('contact_state')!(r.fm, {}, respond, { instanceName: 'general' } as any);

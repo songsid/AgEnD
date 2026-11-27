@@ -6439,10 +6439,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** General can propose only. The platform callback supplies the human actor. */
   /** M-3693: what contact permissions hold now, for General (read-only; no write, no identity computed here). */
   contactState(agent?: string) {
-    const store = this.contactService().host.store;
+    const service = this.contactService(), store = service.host.store;
     const names = [...new Set([...Object.keys(this.fleetConfig?.instances ?? {}), ...(this.classicChannels?.getAll?.() ?? []).map(room => room.instanceName)])];
     return contactStateView({
-      store, names: () => names, now: () => Date.now(), generation: n => this.contactGeneration(n),
+      store, names: () => names, restricts: n => service.needsApplication(n), now: () => Date.now(), generation: n => this.contactGeneration(n),
       label: n => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || n,
       roomMode: n => { const room = this.contactRoom(n); return room ? room.restrictedMode ? "restricted" : "legacy" : undefined; },
     }, agent ? { agent } : {});
@@ -6467,7 +6467,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const service = this.contactService();
     const plan = prepareContactChange(raw, { service, label: n => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || n, timeZone: () => this.usageZone(), mode: n => { const room = this.contactRoom(n); return room ? room.restrictedMode ? "restricted" : "legacy" : undefined; },
       generation: n => this.contactGeneration(n), modeAdmin: (n, p) => this.contactAdminOf(n, p),
-      write: (n, value, p) => this.writeContactPermissions(n, value, p), decide: (id, value, p) => this.decideContactAuthorization(id, value, p) });
+      write: (n, value, p) => this.writeContactPermissions(n, value, p), decide: (id, value, p) => this.decideContactAuthorization(id, value, p),
+      clearOrigin: (n, value, p) => this.clearContactOrigin(n, value, p) });
     const targetAdapter = this.contactAdapter(plan.target);
     if (!targetAdapter || !["discord", "telegram"].includes(targetAdapter.type)) throw Error("contact-proposal-use-web");
     const routes = Object.keys(this.fleetConfig?.instances ?? {}).flatMap(n => {
