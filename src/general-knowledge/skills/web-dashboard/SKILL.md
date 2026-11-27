@@ -389,8 +389,8 @@ ways, depending on whether this fleet has the same-card approval flow (M-3736; o
   verifying too — "*Agent* wants to contact *Agent*", one line with the reason and its scope ("Continue = this request
   and its follow-up contacts only." for a new request, "Approve once = this one request only." for an older one), and
   **What it asks** folded (the message, who asked, where replies go, the times). Its buttons are **Continue (with
-  follow-ups)** (or **Approve once** for an older request), **Allow this person to contact this agent…** (**Set allowed
-  contacts for these people…** when several people asked; it opens the editor of the same name), **Decline**. After a
+  follow-ups)** (or **Approve once** for an older request), **Set allowed contacts…** (it opens "Set allowed contacts for these
+  people" — or "for this person"), **Decline**. After a
   decision the line says what happened ("Continued · Forwarded to *Agent*."). Not verified: the buttons are off, with "Authorize this
   browser to decide." and **Authorize this browser**; verifying decides nothing — the card is read again and then one
   click on a button decides. A request decided elsewhere, or a decision whose answer was lost, is read again and shown

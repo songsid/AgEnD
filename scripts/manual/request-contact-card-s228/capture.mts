@@ -11,7 +11,7 @@
  *   1 Needs you, not verified: the same card, its buttons off, one line and Authorize this browser · 2 verified: the
  *   card read again, its buttons on, nothing decided · 3 one click: Continued · 4 Fleet → Authorizations (a guest's
  *   request and a legacy one, each detail line saying its scope), 4b a legacy request's details folded out ·
- *   5 Set allowed contacts for these people… on the legacy request (its people from the card's grant candidates).
+ *   5 Set allowed contacts… on the legacy request (its people from the card's grant candidates).
  * Desk light en, desk dark zh-TW, phone light en, phone dark zh-TW.
  *   CHROME=<chromium> PW_DIR=<playwright-core> REPO=<checkout> OUT=<dir> npx tsx scripts/manual/request-contact-card-s228/capture.mts
  */
@@ -165,12 +165,12 @@ async function walk(c: any) {
     check(`${tag} 4b: no internal request id in view`, !/#R[0-9a-f]/.test(folded), folded);
     await page.evaluate(`document.querySelector('.rc-card[data-ticket="${C.id}"]').scrollIntoView({ block: "start" })`);
     await shot(page, `${tag}-4b-details`);
-    // 5 Set allowed contacts for these people… on the legacy request: its people, from the card's grant candidates
+    // 5 Set allowed contacts… on the legacy request: its people, from the card's grant candidates
     await page.locator(`.rc-card[data-ticket="${C.id}"] button[data-choice="always"]`).click(); await page.waitForTimeout(500);
     const dlg = await page.evaluate(`(document.querySelector("dialog.contact-grant-dialog") || {}).innerText || ""`) as string;
     check(`${tag} 5: the rule lists the request's people`, dlg.includes("Alex") && dlg.includes("Robin"), dlg.slice(0, 300));
     check(`${tag} 5: nothing decided by opening it`, state(C.id) === "pending", state(C.id));
-    check(`${tag} 5: the button and the editor have one name`, dlg.startsWith(W(zh, "Set allowed contacts for these people", "設定這些人的常用轉交")) && (await page.locator(`.rc-card[data-ticket="${C.id}"] button[data-choice="always"]`).innerText()).trim() === W(zh, "Set allowed contacts for these people…", "設定這些人的常用轉交…"), dlg.slice(0, 120));
+    check(`${tag} 5: the button and the editor have one name`, dlg.startsWith(W(zh, "Set allowed contacts for these people", "設定這些人的常用轉交")) && (await page.locator(`.rc-card[data-ticket="${C.id}"] button[data-choice="always"]`).innerText()).trim() === W(zh, "Set allowed contacts…", "設定常用轉交…"), dlg.slice(0, 120));
     const ed = await page.evaluate(`(() => { const d = document.querySelector("dialog.contact-grant-dialog"); const body = d.querySelector(".dlg-body").getBoundingClientRect(); const b = d.querySelector(".contact-grant-boundary").getBoundingClientRect();
       const save = [...d.querySelectorAll(".dlg-actions button")].pop();
       return { boundaryInView: b.top >= body.top && b.bottom <= body.bottom, saveOff: save.disabled, save: save.innerText.trim(), native: d.querySelectorAll('input[type="datetime-local"], input[type="date"], input[type="time"]').length,

@@ -2,7 +2,7 @@
 // card — the same card in Fleet → Authorizations and Needs you, for every managing admin who may read it.
 // - What it is: the sending Agent → the exact target, who asked (the recorded initiating person, never the approver), how
 //   it came in, the message, where replies go, the reason, when it expires; a continued request says so and has no actions.
-// - Continue (with follow-ups) / the grant editor's own name (Allow this person… / Set allowed contacts…) / Decline. Continue states its D1 scope (a root request: this request and its
+// - Continue (with follow-ups) / Set allowed contacts… (the grant editor's own name) / Decline. Continue states its D1 scope (a root request: this request and its
 //   later Agent contacts, nothing else); a legacy ticket keeps its old one-request wording.
 // - Not verified yet: the same card, its buttons off, with one line and Authorize this browser inline. Once this browser
 //   is verified the card is read again and shows its buttons; one click decides. Verifying never decides anything: a
@@ -241,7 +241,7 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
   const people = candidatePeople(card);
   // Continue (a root: this request and its follow-ups) and Approve once (a legacy one-message forward) are different
   // decisions, so they keep different words. The grant button has the grant editor's own name (#4497 capture check).
-  const label = (which) => (which === "continue" ? (root ? tr("continue") : tr("approveOnce")) : which === "always" ? ca(people.length === 1 ? "allowPerson" : "allowPeople") : tr("decline"));
+  const label = (which) => (which === "continue" ? (root ? tr("continue") : tr("approveOnce")) : which === "always" ? ca("grantSet") : tr("decline"));
   const stateText = st === "approved" && root ? tr("state_approved_root") : ca(`state_${st}`);
   const outcome = st === "approved" || st === "delivered" ? `${tr("forwardedTo", card.targetLabel)} ` : "";
   const saveRule = (c) => {
@@ -276,6 +276,7 @@ export function RequestContactCard({ card, onChange, focus = false, openHref = n
         ${!grantable ? html`<p class="n-detail rc-no-grant">${tr("noGrant")}</p>` : null}` : links ? html`<div class="n-actions">${links}</div>` : null}
       ${grantOpen && grantable && canDecide ? html`<${ContactGrantEditor} key=${`${tk.id}:${card.snapshot.ticketRevision}`} people=${people} keyOf=${(p) => p.key}
         source=${card.sourceLabel} target=${card.targetLabel} verb=${tk.verb}
+        title=${ca(people.length === 1 ? "grantSetOneTitle" : "allowPeopleTitle")}
         onClose=${() => setGrantOpen(false)} onSave=${saveRule} />` : null}
     </div>
   </article>`;

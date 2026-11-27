@@ -108,7 +108,7 @@ register("contactAuth", {
     grantOneDay: "1 day", grantDuration: "Duration", grantDays: "{0} days", grantCustom: "Custom expiry", grantZone: "Time zone: {0}", grantAdvanced: "Advanced: limit uses",
     grantAllOrigins: "This conversation retains several people's input. Select each person explicitly. Future requests skip approval only when every retained person has a matching rule.",
     grantUnknown: "The complete origin is unknown. You can approve once, but cannot create an allowed contact from this request.",
-    grantBoundary: "Until it expires, these people's requests of this type, from this source to this agent, are forwarded without asking. This only decides whether a message is forwarded; what the receiving agent does with it still follows that agent's own permissions. To undo it, remove the rule in the agent's Permissions.", grantPickSomeone: "Tick at least one person to save a rule.", untilDay: "Day", untilHour: "Hour", untilMinute: "Minute",
+    grantBoundary: "Until it expires, these people's requests of this type, from this source to this agent, are forwarded without asking. This only decides whether a message is forwarded; what the receiving agent does with it still follows that agent's own permissions. To undo it, remove the rule in the agent's Permissions.", grantPickSomeone: "Tick at least one person to save a rule.", grantSet: "Set allowed contacts…", grantSetOneTitle: "Set allowed contacts for this person", untilDay: "Day", untilHour: "Hour", untilMinute: "Minute",
     grantEditScope: "This changes the displayed rule only. Previously admitted or delivered requests are not recalled.", grantFilter: "Filter by person", grantAdjust: "Adjust / extend", grantCreated: "Added by {0} · {1}",
     approveOnce: "Approve once", decline: "Decline", alsoAllowUntil: "Until", alsoAllowUses: "Uses (empty: no limit)",
     // M-3385: what the card's parts do, said where they are.
@@ -233,7 +233,7 @@ register("contactAuth", {
     grantOneDay: "1 天", grantDuration: "期限", grantDays: "{0} 天", grantCustom: "自訂到期時間", grantZone: "時區：{0}", grantAdvanced: "進階：限制次數",
     grantAllOrigins: "這個對話保留了多人的輸入，請逐人明確選擇。所有保留來源都有符合規則時，之後才會直接轉交。",
     grantUnknown: "無法確認完整來源，只能核准這一次，不會從這筆申請建立常用轉交。",
-    grantBoundary: "到期前，這些人從這個來源發給這個 Agent 的同類請求會直接轉交，不再詢問。這只決定訊息能不能轉交；接收的 Agent 收到後要做什麼，仍照它自己的權限。要撤銷，到這個 Agent 的「權限」移除規則。", grantPickSomeone: "至少勾選一個人，才能儲存規則。", untilDay: "日期", untilHour: "時", untilMinute: "分",
+    grantBoundary: "到期前，這些人從這個來源發給這個 Agent 的同類請求會直接轉交，不再詢問。這只決定訊息能不能轉交；接收的 Agent 收到後要做什麼，仍照它自己的權限。要撤銷，到這個 Agent 的「權限」移除規則。", grantPickSomeone: "至少勾選一個人，才能儲存規則。", grantSet: "設定常用轉交…", grantSetOneTitle: "設定這個人的常用轉交", untilDay: "日期", untilHour: "時", untilMinute: "分",
     grantEditScope: "只變更目前這筆規則，已准入或已送出的請求不會收回。", grantFilter: "依人員篩選", grantAdjust: "調整／延長", grantCreated: "{0} 於 {1} 建立",
     approveOnce: "核准這一次", decline: "拒絕", alsoAllowUntil: "到期時間", alsoAllowUses: "次數（留空表示不限）",
     alsoAllow: "之後同樣的請求也直接轉交",

@@ -128,7 +128,7 @@ describe("J: the card", () => {
     expect(buttons(pg.root).every((b) => b.className.includes("btn-sm"))).toBe(true);
     expect(text(pg.root.querySelector(".rc-scope"))).toBe("Continue = this request and its follow-up contacts only.");
     expect(text(pg.root.querySelector("details.rc-more .rc-scope-more"))).toBe("Continue this request and its later Agent contacts. This does not approve what Agents do or authorize unrelated requests.");
-    expect(buttons(pg.root).map(text)).toEqual(["Continue (with follow-ups)", "Allow this person to contact this agent…", "Decline"]);   // the grant editor's own name (#4497)
+    expect(buttons(pg.root).map(text)).toEqual(["Continue (with follow-ups)", "Set allowed contacts…", "Decline"]);   // the grant editor's own name (#4497)
     expect(c).not.toContain("Clear retained origin");
   });
   it("zh-TW: the same, in its words (「Agent」, no 代理)", async () => {
@@ -137,7 +137,7 @@ describe("J: the card", () => {
     const pg = await mountWith(cardMod.RequestContactCard, { card: card() });
     expect(text(pg.root.querySelector(".rc-scope"))).toBe("繼續＝只放行這筆請求和它後續的聯絡。");
     expect(text(pg.root.querySelector(".rc-scope-more"))).toBe("繼續這筆請求及它後續的 Agent 聯絡；這不代表核准 Agent 的操作，也不會授權其他請求。");
-    expect(buttons(pg.root).map(text)).toEqual(["繼續（含後續聯絡）", "允許這個人聯絡此 Agent…", "拒絕"]);
+    expect(buttons(pg.root).map(text)).toEqual(["繼續（含後續聯絡）", "設定常用轉交…", "拒絕"]);
     expect(buttons(pg.root).map(text).join("")).not.toMatch(/\s（|（\s|\s）|）\s|\(|\)/);   // full-width brackets, no padding
     expect(text(pg.root.querySelector(".rc-card"))).toContain("由 Alex 提出");
     expect(text(pg.root.querySelector(".rc-card"))).not.toMatch(/代理|艦隊|公司/);
