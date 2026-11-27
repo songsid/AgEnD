@@ -1204,7 +1204,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if (method !== "GET" && method !== "HEAD") return false;
     if (!live()) { send(res, 503, { code: "unavailable" }); return true; }
-    if (handleWebIconRequest(req, res, path)) return true;
+    if (handleWebIconRequest(req, res, path, "hub")) return true;   // M-3882: the Hub's own icon set and manifest
     if (path === "/") { res.writeHead(302, { Location: "/ui/hub", "Cache-Control": "no-store" }); res.end(); return true; }
     if (path === "/web" || path === "/ui" || path === "/ui/hub" || path === "/ui/hub/exposures" || path === "/ui/hub/admin") {
       serveHubWorkspaceShell(res, { name: deps.config.name, preview: deps.preview, loginWithoutAt: deps.config.loginWithoutAt === true });

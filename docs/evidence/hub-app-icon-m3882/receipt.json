@@ -1,0 +1,29 @@
+{
+  "sourceHead": "a9d3e1f34a104943e37a6f51c2e27faf8b548581",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "the dashboard's manifest is AgEnD; the Hub's is AgEnD Hub",
+      "ok": true
+    },
+    {
+      "name": "light: every icon loaded from its own listener",
+      "ok": true
+    },
+    {
+      "name": "dark: every icon loaded from its own listener",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3882-light-dashboard-vs-hub.png",
+      "sha256": "be4500d4cbca479e7b24770eee8c90254de22a2ad6dac40f71773c2c72280aa2"
+    },
+    {
+      "path": "m3882-dark-dashboard-vs-hub.png",
+      "sha256": "00ca804fa977f1bf3db863e5698f824852ef93ca961e5c980281ffdf3829fc6f"
+    }
+  ],
+  "summary": "3/3"
+}
