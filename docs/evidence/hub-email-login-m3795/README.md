@@ -25,3 +25,7 @@ Directory ACLs must permit the service reader to match UPN/mail. Ambiguous or di
 ## Current release refresh
 
 [Refresh scope and validation](refresh-release.md) supersedes the old current-capture count:12 current frames (8 refreshed forms plus generic refusal/signed-in key states in desktop-light EN and phone-dark zh-TW), with8 unchanged historical baseline originals. The sign-in form leaves the DOM on success.315 focused cases/6 files and production build pass after a conflict-free release merge; author production source/test delta is unchanged. USER LOOK HOLD remains pending this refreshed set.
+
+### Hint spacing follow-up
+
+[Spacing and enabled-button proof](hint-spacing.md): current form/refusal frames now have equal14px gaps around the hint. The darker previous refusal button was enabled hover styling(opacity0.88); resting enabled opacity is1. Only10 affected originals were retaken; the2 signed-in frames are unchanged. No wording or authentication change.

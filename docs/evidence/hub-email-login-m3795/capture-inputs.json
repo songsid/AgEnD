@@ -10,6 +10,9 @@
       "candidate": "53fab2aa0633a1574d9e1c321d5808e6306f35664d3a8fab856647d1aa975b0f"
     }
   },
+  "styles": {
+    "hintCssSha256": "de5330e55b62b835859c47044570c5e26a32670b4855bd5af52c33417c945aaf"
+  },
   "views": [
     {
       "file": "before-desk-light-en.png",
@@ -172,6 +175,26 @@
       "overflow": false
     },
     {
+      "file": "signed-in-desk-light-en.png",
+      "stage": "signed-in",
+      "device": "desk",
+      "lang": "en",
+      "theme": "light",
+      "errors": [],
+      "overflow": false,
+      "signInFormRemoved": true
+    },
+    {
+      "file": "signed-in-phone-dark-zh-TW.png",
+      "stage": "signed-in",
+      "device": "phone",
+      "lang": "zh-TW",
+      "theme": "dark",
+      "errors": [],
+      "overflow": false,
+      "signInFormRemoved": true
+    },
+    {
       "file": "after-desk-light-en.png",
       "stage": "after",
       "device": "desk",
@@ -179,6 +202,10 @@
       "theme": "light",
       "delivered": [],
       "errors": [],
+      "spacing": {
+        "above": 14,
+        "below": 14
+      },
       "autocomplete": "username",
       "overflow": false
     },
@@ -190,17 +217,18 @@
       "theme": "light",
       "errors": [],
       "overflow": false,
-      "passwordCleared": true
-    },
-    {
-      "file": "signed-in-desk-light-en.png",
-      "stage": "signed-in",
-      "device": "desk",
-      "lang": "en",
-      "theme": "light",
-      "errors": [],
-      "overflow": false,
-      "signInFormRemoved": true
+      "passwordCleared": true,
+      "hoverState": {
+        "disabled": false,
+        "hover": true,
+        "focused": false,
+        "opacity": "0.88"
+      },
+      "restingState": {
+        "disabled": false,
+        "hover": false,
+        "opacity": "1"
+      }
     },
     {
       "file": "after-desk-dark-en.png",
@@ -210,6 +238,10 @@
       "theme": "dark",
       "delivered": [],
       "errors": [],
+      "spacing": {
+        "above": 14,
+        "below": 14
+      },
       "autocomplete": "username",
       "overflow": false
     },
@@ -221,6 +253,10 @@
       "theme": "light",
       "delivered": [],
       "errors": [],
+      "spacing": {
+        "above": 14,
+        "below": 14
+      },
       "autocomplete": "username",
       "overflow": false
     },
@@ -232,6 +268,10 @@
       "theme": "dark",
       "delivered": [],
       "errors": [],
+      "spacing": {
+        "above": 14,
+        "below": 14
+      },
       "autocomplete": "username",
       "overflow": false
     },
@@ -243,6 +283,10 @@
       "theme": "light",
       "delivered": [],
       "errors": [],
+      "spacing": {
+        "above": 14,
+        "below": 14
+      },
       "autocomplete": "username",
       "overflow": false
     },
@@ -254,6 +298,10 @@
       "theme": "dark",
       "delivered": [],
       "errors": [],
+      "spacing": {
+        "above": 14,
+        "below": 14
+      },
       "autocomplete": "username",
       "overflow": false
     },
@@ -265,6 +313,10 @@
       "theme": "light",
       "delivered": [],
       "errors": [],
+      "spacing": {
+        "above": 14,
+        "below": 14
+      },
       "autocomplete": "username",
       "overflow": false
     },
@@ -276,6 +328,10 @@
       "theme": "dark",
       "delivered": [],
       "errors": [],
+      "spacing": {
+        "above": 14,
+        "below": 14
+      },
       "autocomplete": "username",
       "overflow": false
     },
@@ -287,17 +343,18 @@
       "theme": "dark",
       "errors": [],
       "overflow": false,
-      "passwordCleared": true
-    },
-    {
-      "file": "signed-in-phone-dark-zh-TW.png",
-      "stage": "signed-in",
-      "device": "phone",
-      "lang": "zh-TW",
-      "theme": "dark",
-      "errors": [],
-      "overflow": false,
-      "signInFormRemoved": true
+      "passwordCleared": true,
+      "hoverState": {
+        "disabled": false,
+        "hover": true,
+        "focused": false,
+        "opacity": "0.88"
+      },
+      "restingState": {
+        "disabled": false,
+        "hover": false,
+        "opacity": "1"
+      }
     }
   ]
 }
