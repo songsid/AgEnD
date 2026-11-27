@@ -1921,16 +1921,37 @@ const updateFleetDefaults: Handler = (ctx, rawArgs, respond) => {
   if (!ctx.fleetConfig) { respond(null, "No fleet config loaded"); return; }
   const defaults = ctx.fleetConfig.defaults ?? {};
   const patch = v.data.defaults;
+  // Checked before anything is touched: a refusal writes nothing, in memory either.
+  if (patch.task_board_leader !== undefined && patch.task_board_leader !== null && !Object.hasOwn(ctx.fleetConfig.instances ?? {}, patch.task_board_leader)) {
+    respond(null, `Not changed: '${patch.task_board_leader}' isn't one of this fleet's instances.`);
+    return;
+  }
   if (patch.backend !== undefined) (defaults as any).backend = patch.backend;
   if (patch.model !== undefined) (defaults as any).model = patch.model;
   if (patch.auto_pause_after !== undefined) (defaults as any).auto_pause_after = patch.auto_pause_after;
   if (patch.max_cross_instance_message_bytes !== undefined) {
     defaults.max_cross_instance_message_bytes = patch.max_cross_instance_message_bytes;
   }
+  // M-3694 (S-264): the task board for every agent (defaults.dashboard.task_board: unset is on, false is off), and its
+  // leader (defaults.task_board.leader: an instance of this fleet; null removes it). Both are read at each use.
+  const notes: string[] = [];
+  if (patch.task_board_on !== undefined) {
+    const dashboard = { ...((defaults as any).dashboard ?? {}) } as Record<string, unknown>;
+    if (patch.task_board_on) delete dashboard.task_board; else dashboard.task_board = false;
+    if (Object.keys(dashboard).length) (defaults as any).dashboard = dashboard; else delete (defaults as any).dashboard;
+    const ownOff = Object.entries(ctx.fleetConfig.instances ?? {}).filter(([, inst]) => (inst as { dashboard?: { task_board?: unknown } })?.dashboard?.task_board === false).map(([name]) => name);
+    if (patch.task_board_on && ownOff.length) notes.push(`These keep it off by their own setting: ${ownOff.join(", ")}.`);
+    notes.push("Each agent's tool menu shows the change from its next start; the board itself follows at once.");
+  }
+  if (patch.task_board_leader !== undefined) {
+    const board = { ...((defaults as any).task_board ?? {}) } as Record<string, unknown>;
+    if (patch.task_board_leader === null) delete board.leader; else board.leader = patch.task_board_leader;
+    if (Object.keys(board).length) (defaults as any).task_board = board; else delete (defaults as any).task_board;
+  }
   (ctx.fleetConfig as any).defaults = defaults;
   try {
     ctx.saveFleetConfig();
-    respond({ success: true, applied: patch });
+    respond({ success: true, applied: patch, ...(notes.length ? { notes } : {}) });
   } catch (err) {
     respond(null, `Failed to save config: ${(err as Error).message}`);
   }

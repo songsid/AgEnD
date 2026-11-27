@@ -21,7 +21,8 @@ roles: [general]
 | Accounts | move an agent to another account | Tool `update_instance_config` (credential profile), once that account exists; see credential-profiles |
 | Accounts | add or sign in an account | The person: `/login`, or Settings → AI accounts (a browser sign-in) |
 | Fleet defaults | default backend, model, auto-pause, message size | Tool `update_fleet_defaults`. Check `get_fleet_config` first: an agent with its own value keeps it |
-| Fleet settings | anything else (task board, notifications, access) | The person: Settings, then **/** to search the setting by name |
+| Task board | on or off for every agent; its leader | Tool `update_fleet_defaults` {task_board_on, task_board_leader}; an agent's own off stays off |
+| Fleet settings | anything else (notifications, access) | The person: Settings, then **/** to search the setting by name |
 | Teams, schedules, decisions, task board cards | all | Tool (`create_team`, `create_schedule`, `post_decision`, `task`) |
 | Contact permissions | what is held, and who it waits on | Tool `contact_state` (read-only) |
 | Contact permissions | approve or decline a held message | The person: the held message's own card in General (**Approve once** / **Decline**), if it has one; else proposal `propose_contact_change` kind `ticket-decision` (the short id people see, R + 8 characters, works) |
