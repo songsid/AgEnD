@@ -17,6 +17,7 @@ export interface RequestContextLocalCall {
   readonly id: string;
   readonly admission: RequestContextCallAdmission;
   readonly replyRoute?:TurnReplyRouteLease;
+  readonly waitForReplyRoute?:(budgetMs:number)=>Promise<void>;
   current(): boolean;
 }
 function freeze<T>(value: T): T {

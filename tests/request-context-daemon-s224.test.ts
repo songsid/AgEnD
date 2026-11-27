@@ -244,3 +244,22 @@ it("M-3896 keeps a retracted owned turn as a named drain blocker, without accept
  expect(f.daemon.requestContextTurnSnapshot().token).toBe(snapshot.token);
  expect(()=>f.bind("next")).toThrow();
 });
+
+it("M-3896 a first-hop reply waits independently for its own accepted delivery and arm",async()=>{
+ const f=rig(),snapshot=f.bind("human:hmsg-owned"),target={adapterId:"fixture",chatId:"original-chat",threadId:"original-thread"};
+ f.daemon.requestContextLifecycle.replyTarget=()=>target;
+ const pending=f.daemon.requestContextPendingReplies.stage(snapshot,snapshot.inputId,snapshot.wireSha256,()=>f.daemon.requestContextTurnCurrent(snapshot));
+ f.daemon.requestContextHumanReplies.set("owned",{pending,accepted:false});
+ const call=f.daemon.beginRequestContextCall(f.socket);expect(call.replyRoute).toBeUndefined();
+ const dispatched:any[]=[];
+ vi.spyOn(Daemon.prototype as any,"handleTrackedToolCall").mockImplementation((...args:any[])=>{dispatched.push(args[3]);args[4]?.();});
+ f.daemon.handleToolCall({tool:"reply",args:{text:"answer"},requestId:8},f.socket,undefined,call);
+ await Promise.resolve();expect(dispatched).toEqual([]);
+ // The existing positive-write arm can happen without returning the MCP result.
+ f.daemon.markTurnStarted({source:"channel",chat_id:"original-chat"},f.daemon.requestContextWrite.text,f.daemon.deliveryEpoch,false,{pendingReply:pending});
+ await Promise.resolve();expect(dispatched).toEqual([]);
+ f.daemon.noteHumanReceiptSettlement("owned",true);
+ await vi.waitFor(()=>expect(dispatched).toHaveLength(1));
+ expect(dispatched[0]).toBe(call);expect(call.replyRoute.target).toEqual(target);expect(call.replyRoute.current()).toBe(true);
+ f.daemon.requestContextCalls.delete(call.id);
+});
