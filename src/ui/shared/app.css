@@ -1576,7 +1576,7 @@ img.amb-p { object-fit: contain; }
 .toast { padding: 10px var(--s-4); max-width: min(420px, calc(100vw - 32px)); border-radius: var(--r-md); font-size: var(--fs-sm); font-weight: var(--fw-medium); box-shadow: var(--shadow-2); background: var(--accent-fill); color: var(--on-accent); animation: toast-in var(--t-med) var(--ease); }
 .toast.err { background: var(--danger-fill); color: var(--on-danger); }
 /* Detailed refusal messages must keep their recovery steps visible on phones too. */
-.toasts .toast.toast-detail { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; border-radius: var(--r-md); }
+.toasts .toast.toast-detail { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; border-radius: var(--r-md); word-break: keep-all; text-wrap: pretty; }   /* M-3770 1.6: zh breaks at spaces and punctuation (no 「執 / 行」); a word too long still breaks */
 @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ── #1366 tour: a card that names one thing at a time; the outline is a class (#1300) ── */
@@ -2301,6 +2301,14 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .uc-machine .uc-mark { font-weight: var(--fw-semibold); margin: 0 2px; }
 .uc-self .uc-mark { color: var(--ok); } .uc-admin-only .uc-mark { color: var(--warn); } .uc-stop .uc-mark { color: var(--danger); }
 .uc-checks { margin: var(--s-1) 0 0; padding-left: var(--s-4); color: var(--text-2); }
+/* M-3770 1.6: a check's words break only at spaces and punctuation, as the banner's (no 「回 / 來」); its fix button
+   under it; How to fix's steps indented under their summary. */
+.uc-checks li { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
+.uc-checks .uc-fix { margin: var(--s-1) 0 var(--s-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); }
+.uc-checks .uc-fix-hint { font-size: var(--fs-sm); word-break: keep-all; overflow-wrap: anywhere; }
+.uc-checks .uc-fix-refused { margin: var(--s-1) 0 var(--s-2); font-weight: var(--fw-semibold); word-break: keep-all; overflow-wrap: anywhere; }
+.uc-checks .uc-how { font-size: inherit; }
+.uc-checks .uc-how > p { padding-left: var(--s-3); border-left: 2px solid var(--border); }
 .uc-controls { display: flex; flex-direction: column; gap: var(--s-3); }
 .uc-pause { border: 0; padding: 0; margin: 0; min-width: 0; }
 .uc-pause legend { font-weight: var(--fw-semibold); font-size: var(--fs-sm); padding: 0; }

@@ -48,10 +48,10 @@ register("updatecard", {
     c_not_service: "AgEnD isn't running as a service, so it can't bring itself back after an update.",
     c_service_unknown: "AgEnD can't confirm that its service will bring it back after an update.",
     notAllChecked: "Some checks haven't run yet; they run when AgEnD starts and once a day.",
-    c_linger_off: "AgEnD stops when the user {user} signs out, so it can't restart itself. To fix it, run `sudo loginctl enable-linger {user}`.",
+    c_linger_off: "AgEnD stops when the {user} account signs out, so it can't restart itself. To fix it, run `sudo loginctl enable-linger {user}`.",
     c_system_unit_not_root: "AgEnD runs as a system service; updating it needs root.",
     c_unit_reload_pending: "The service definition changed and hasn't been reloaded. Run `systemctl --user daemon-reload`.",
-    c_no_write: "Updating needs write access to {path}. Run `sudo agend update` in a terminal on that computer, or reinstall with the one-line installer.",
+    c_no_write: "Updating needs write access to {path}. Run `sudo agend update` in a terminal on the computer AgEnD runs on, or reinstall with the one-line installer.",
     c_linked: "This AgEnD is linked from a development folder ({path}); an update replaces the link.",
     c_vendored: "This AgEnD sits inside another project ({path}).",
     c_low_disk: "Updating needs about {need} free on {path}; there's {have}.",
@@ -62,6 +62,10 @@ register("updatecard", {
     c_windows_runtime: "This computer's AgEnD Runtime updates itself.",
     c_node_too_old: "AgEnD {0} needs Node {needs}; this machine has {node}.",
     c_other: "A check didn't pass ({0}).",
+    fixIt: "Keep AgEnD running after sign-out", fixing: "Turning it on…", fixedLinger: "Done: AgEnD keeps running after the {0} account signs out.",
+    fixHint: "AgEnD turns it on for you; nothing restarts and your agents keep working. If this computer doesn't allow it, run the command yourself.",
+    fixFailed: "AgEnD couldn't turn it on by itself. Run the command above in a terminal on the computer AgEnD runs on.", fixNotNeeded: "That's already fixed.",
+    howToFix: "How to fix", serviceHow: "In a terminal on the computer AgEnD runs on, run `agend install` as the same user (no sudo). AgEnD restarts as a service: every agent stops briefly and comes back on its own.",
   },
   "zh-TW": {
     ready: "AgEnD {0} 可以更新了。",
@@ -98,10 +102,10 @@ register("updatecard", {
     c_not_service: "AgEnD 不是以服務方式執行，更新後無法自己回來。",
     c_service_unknown: "AgEnD 無法確認它的服務在更新後會讓它重新啟動。",
     notAllChecked: "有些檢查還沒跑完；AgEnD 啟動時和每天會檢查一次。",
-    c_linger_off: "使用者 {user} 登出後 AgEnD 會停止，所以無法自行重新啟動。修正方式：執行 `sudo loginctl enable-linger {user}`。",
+    c_linger_off: "{user} 這個帳號登出後 AgEnD 會停止，所以無法自行重新啟動。修正方式：執行 `sudo loginctl enable-linger {user}`。",
     c_system_unit_not_root: "AgEnD 以系統服務執行，更新需要 root。",
     c_unit_reload_pending: "服務定義已變更但尚未重新載入。請執行 `systemctl --user daemon-reload`。",
-    c_no_write: "更新需要 {path} 的寫入權限。請在那台電腦的終端機執行 `sudo agend update`，或用單行安裝指令重新安裝。",
+    c_no_write: "更新需要 {path} 的寫入權限。請在執行 AgEnD 的那台電腦上，用終端機執行 `sudo agend update`，或用單行安裝指令重新安裝。",
     c_linked: "這份 AgEnD 是從開發資料夾連結的（{path}），更新會取代這個連結。",
     c_vendored: "這份 AgEnD 位於另一個專案裡（{path}）。",
     c_low_disk: "更新需要 {path} 約 {need} 的可用空間，目前只有 {have}。",
@@ -112,6 +116,10 @@ register("updatecard", {
     c_windows_runtime: "這台電腦的 AgEnD Runtime 會自行更新。",
     c_node_too_old: "AgEnD {0} 需要 Node {needs}，這台機器是 {node}。",
     c_other: "有一項檢查沒有通過（{0}）。",
+    fixIt: "登出後讓 AgEnD 繼續執行", fixing: "開啟中…", fixedLinger: "完成：{0} 這個帳號登出後，AgEnD 仍會繼續執行。",
+    fixHint: "AgEnD 會替你開啟；不會重新啟動，Agent 照常工作。若這台電腦不允許，請自己執行上面的指令。",
+    fixFailed: "AgEnD 無法自行開啟。請在執行 AgEnD 的那台電腦上，用終端機執行上面的指令。", fixNotNeeded: "這項已經修正了。",
+    howToFix: "修正方式", serviceHow: "在執行 AgEnD 的那台電腦上，用同一個使用者在終端機執行 `agend install`（不需要 sudo）。AgEnD 會改以服務方式重新啟動：每個 Agent 會短暫停止，之後自動回來。",
   },
 });
 const tc = (key, ...a) => t(`updatecard.${key}`, ...a);
@@ -128,8 +136,49 @@ export function checkSentence(check, version = "") {
 /** A check's sentence as plain text (a toast): the command marks dropped. */
 export function checkText(check, version = "") { return checkSentence(check, version).replace(/`/g, ""); }
 /** A check's sentence for the page: a `command` in it is shown as copyable code (#4487 UX look). */
-export function checkRich(check, version = "") {
-  return checkSentence(check, version).split("`").map((part, i) => (i % 2 ? html`<code class="uc-cmd">${part}</code>` : part));
+export function checkRich(check, version = "") { return richText(checkSentence(check, version)); }
+const richText = (text) => String(text).split("`").map((part, i) => (i % 2 ? html`<code class="uc-cmd">${part}</code>` : part));
+
+/** M-3770 1.6: the fix a failing check offers here (the server's update-fix.ts `fixFor`): lingering off → "linger". */
+export function fixFor(check) {
+  return check && check.ok === false && check.id === "P3" && check.code === "linger-off" ? "linger" : null;
+}
+/**
+ * POST /ui/update/fixes: the server runs its pre-flight again, makes the fix if it is still asked for, and answers with the
+ * fresh pre-flight (which replaces the store's, so the line and its button go once the check passes).
+ */
+export async function fixCheck(fix, check, { refresh, setInfo, getInfo }) {
+  const key = `fix-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  let res = null, out = null;
+  try {
+    res = await fetch("/ui/update/fixes", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify({ fix }) });
+    try { out = await res.json(); } catch { out = null; }
+  } catch { res = null; }
+  const info = getInfo();
+  if (out && out.preflight && info) setInfo({ ...info, preflight: out.preflight });
+  const user = check && check.detail && check.detail.user ? String(check.detail.user) : "";
+  // Shown in full (a phone's toast is otherwise one line, cut): it names the user, and the failure says what to do.
+  if (res && res.ok) toast(tc("fixedLinger", user), true, { detail: true });
+  else if (res && res.status === 409 && out && out.error === "not_needed") toast(tc("fixNotNeeded"));
+  else if (res && res.status === 422) { /* no toast: the check's own block says so and drops the button (#4557 UX look) */ }
+  else { toast(tc("failedAnswer", (out && out.error) || (res ? String(res.status) : "network")), false); await refresh(); }
+  return { ok: !!(res && res.ok), refused: !!(res && res.status === 422) };
+}
+/**
+ * One check that did not pass: its sentence, and its fix — a button where AgEnD can make it, with a line saying what it
+ * does, else how to (not a service). Once the host refused the fix, the button goes and one line says to run the command.
+ */
+function CheckItem({ check, version, deps }) {
+  const [busy, setBusy] = useState(false);
+  const [refused, setRefused] = useState(false);
+  const fix = deps ? fixFor(check) : null;
+  const press = async () => { setBusy(true); try { if ((await fixCheck(fix, check, deps)).refused) setRefused(true); } finally { setBusy(false); } };
+  return html`<li>${checkRich(check, version)}
+    ${fix && refused ? html`<p class="uc-fix-refused" role="status">${tc("fixFailed")}</p>` : null}
+    ${fix && !refused ? html`<div class="uc-fix"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${press}>${busy ? tc("fixing") : tc("fixIt")}</button>
+      <span class="uc-fix-hint muted">${tc("fixHint")}</span></div>` : null}
+    ${check.code === "not-service" ? html`<details class="uc-how"><summary>${tc("howToFix")}</summary><p>${richText(tc("serviceHow"))}</p></details>` : null}
+  </li>`;
 }
 /** The checks that did not pass, in P-order (absent checks are not failures: they were not run). */
 export function failedChecks(preflight) {
@@ -315,7 +364,7 @@ export function UpdateCardSettings({ info, deps }) {
   noteCurrentVersion(info && info.current);
   return html`<div class="uc-settings">
     <${CardStatus} info=${info} deps=${deps} />
-    <${MachineLine} info=${info} />
+    <${MachineLine} info=${info} deps=${deps} />
     <${UpdatesControls} />
   </div>`;
 }
@@ -329,7 +378,7 @@ function CardStatus({ info }) {
   return line ? html`<p class="uc-status" role="status">${line}</p>` : null;
 }
 /** "Updates on this machine": ✓ / ◐ / ✗, then each check that did not pass, worded, and the ones not run yet. */
-export function MachineLine({ info }) {
+export function MachineLine({ info, deps }) {
   const pf = info && info.preflight;
   if (!pf) return html`<div class="uc-machine"><strong>${tc("machine")}</strong> <span class="muted">${tc("checking")}</span></div>`;
   const cls = pf.class === "self" ? "self" : pf.class === "admin-only" ? "admin-only" : "stop";
@@ -337,7 +386,7 @@ export function MachineLine({ info }) {
   const fails = failedChecks(pf);
   return html`<div class=${`uc-machine uc-${cls}`}>
     <div><strong>${tc("machine")}</strong> <span class="uc-mark" aria-hidden="true">${mark}</span> <span>${tc(cls === "self" ? "self" : cls === "admin-only" ? "adminOnly" : "stop")}</span></div>
-    ${fails.length ? html`<ul class="uc-checks">${fails.map((f) => html`<li key=${f.id}>${checkRich(f, info.card ? info.card.version : "")}</li>`)}</ul>`
+    ${fails.length ? html`<ul class="uc-checks">${fails.map((f) => html`<${CheckItem} key=${f.id} check=${f} version=${info.card ? info.card.version : ""} deps=${deps} />`)}</ul>`
       : cls !== "self" ? html`<p class="muted uc-checks">${tc("notAllChecked")}</p>` : null}
   </div>`;
 }

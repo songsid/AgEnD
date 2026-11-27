@@ -135,4 +135,9 @@ export interface WebUpdateHost {
   card?(): import("./update-card.js").UpdateCardView | null;
   /** POST /ui/update/answer. `by` is a display label, never an id. `stillAllowed` is the asking session, checked again at an immediate launch. */
   answerUpdate?(key: string, by: string, body: import("./update-card.js").UpdateAnswerBody, stillAllowed: () => boolean): Promise<import("./update-card.js").UpdateAnswerResult>;
+  /**
+   * M-3770 1.6: POST /ui/update/fixes — a pre-flight fix button (update-fix.ts). The same answer again for the same `key`.
+   * 200 { preflight } fixed; 409 { error: "not_needed", preflight } the check passes now; 422 { error: "fix_failed", preflight }.
+   */
+  fixUpdate?(key: string, person: string, fix: import("./update-fix.js").UpdateFix, stillAllowed: () => boolean): Promise<{ status: number; body: Record<string, unknown> }>;
 }
