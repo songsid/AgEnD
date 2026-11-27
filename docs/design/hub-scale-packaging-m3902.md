@@ -1,6 +1,6 @@
 # Hub architecture for scale and container packaging (M-3902)
 
-Status: design draft, docs only (2.4.0 freeze). Section 7, the recommendation, waits for the 30-user load test (M-3901). Co-author pass with the request-context owner after M-3896.
+Status: design draft, docs only (2.4.0 freeze). The recommendation (§7) uses the 30-user load test (M-3901). A co-author pass with the request-context owner follows M-3896.
 
 The user decided on 11-28 that we ship the Hub as **one packaged install**, and that the target packaging is **containers, like Outline: an official image plus a compose file**. Fleets stay native. Setup must become simpler than today: one package that takes a blank VM to a running Hub and checks its own prerequisites.
 
@@ -217,21 +217,61 @@ One command, `curl …/install-hub.sh | sh` or the same script from the release 
 | 10. Start | `compose up -d`; waits for the healthcheck; prints the handoff record (URLs, member pin fingerprint, how to pair a Fleet) | `agend hub handoff` |
 | 11. Backup | Takes the first matched-set backup and prints where it is | move runbook |
 
-## 7. Recommendation (pending M-3901)
+## 7. Recommendation
 
-*To be completed with the 30-user load-test numbers on the 2-vCPU matched fixture: per-route p95 latency, CPU per request, SSE stream counts and event-loop delay at 30 concurrent users.*
+### What the load test says (M-3901)
 
-The working position until then:
-- **Ship container packaging first, with option 1 inside.** That delivers the setup simplification and tag-based upgrade/rollback immediately, without touching the security model.
-- **Build option 2 only if** the load test shows one event loop saturating at the target, for example p95 or event-loop delay over budget at 30 users. M-3878 shows most of today's cost is repeated work inside one request, which option 1 removes.
-- **Option 3** stays a documented path, not a plan, unless the target grows well beyond one team Hub.
+The run used 30 concurrent users with Outline-like usage, on a release build (`a47bd28f`) in a 2-CPU, 1 GiB VM-matched fixture:
 
-Build slices after 2.4.0, each its own reviewed PR:
+| Measure | Result |
+|---|---|
+| Errors | 0 |
+| API latency p50 / p95 / p99 | 120 / 554 / 976 ms |
+| Page latency p95 | 1.37 s; it first exceeds 1 s at 10 users |
+| Main thread | 35% of one core on average |
+| Memory (RSS) | 181 MiB |
+
+Top self-time:
+
+| Cost | Share |
+|---|---|
+| `lstat` (private-path checks) | 16.8% |
+| SQLite transaction | 14.3% |
+| SQL row reads | 8.8% |
+| statement prepare | 6.5% |
+| `structuredClone` | 5.0% |
+
+The load tester's profile-based estimates (not measured):
+
+| Change | Estimated effect |
+|---|---|
+| Guard frame | 7–11% of CPU work |
+| Floor-file watch | at most 1.48× ceiling |
+| Two processes | 1.30–1.43× throughput ceiling |
+
+**Reading:** one process serves 30 users without errors, and it is far from saturated: 35% of one core on average. The problem is **tail latency, not capacity**. A page is several API calls, each doing synchronous checking work (path checks, transactions, row decoding). Their sum, plus short bursts queued behind each other on one event loop, gives a page p95 above 1 s from 10 users up. A second process would raise the throughput ceiling by about 1.3–1.4×. It would not shorten one request's synchronous work, and that work is what the user waits for. So the next step is to cut the per-request cost, not to split processes.
+
+### Recommendation
+
+1. **Ship the container package with option 1 inside: one Hub process per container.** This is the user's maintainability and packaging goal: an official image, compose, the one installer, tag-based upgrade and matched-set rollback. None of it requires multiple processes. It changes nothing in the security model, and the same image runs on the pilot Hub and the Mac test Hub.
+2. **Then attack the tail inside that one process,** in measured steps:
+   - the request-scoped check-once frame, which addresses the top `lstat` and transaction costs, under the M-3878 guard-frame conditions (fresh final check, no authority cached across requests);
+   - batching the remaining per-row reads on the page routes;
+   - a floor-file watch, only as an early-invalidation hint.
+
+   Each step must show a page-p95 improvement on the same fixture before the next one starts. The target is page p95 under 1 s at 30 users.
+3. **Keep option 2 as a prepared, not scheduled, step.** The core/web split in §2 stays the design if a later load test shows the event loop above about 70% of a core at the target, or p95 still over budget after step 2. The container package already allows it (one image, a second `web` service), so building it later does not change packaging.
+4. **Do not plan option 3.** Postgres and Redis would add two stateful services, their credentials and backups, and force a redesign of floors and atomicity, all for capacity we don't need at team scale.
+
+### Build slices after 2.4.0
+
+Each slice is its own reviewed PR:
 1. Hub-only image, compose file and `agend-hub health`.
 2. The volume init and private-file start checks.
 3. `install-hub.sh` with steps 1–11 and the in-container DNS and LDAPS checks.
 4. Matched-set `backup` and `restore`, plus `upgrade` and `rollback`.
 5. `import` from a native home, with a rehearsal on a copy of the pilot Hub.
 6. The Mac test Hub on the same image.
-7. Option 1's check-once frame, if still needed after the load test.
-8. Option 2, only if §7 says so.
+7. The check-once frame, measured against page p95 on the M-3901 fixture.
+8. Further per-request batching, measured the same way.
+9. Option 2, only if the trigger in recommendation 3 is met.
