@@ -1,0 +1,805 @@
+{
+  "sourceHead": "fa06a7bb6041e44e89c05a66739c1182768ef2bf",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the scoped card in Needs you",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the standard item: the title names both Agents",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: one detail line: the reason, then this card's scope in a few words",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no raised card (an .n-item, not .card)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: Authorize this browser, inline, in one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the buttons are off until verified",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the long scope only in the details",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the guest's request too, worded as one",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no count-only verify line under the host",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-1-needs-unverified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: read again once verified: the buttons on",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: no verify line, no marked choice",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: every card on the page read again (one Authorize serves them all)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: the scope never breaks at its 「＝」/\"=\"",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: verifying (and Enter) decided nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-2-verified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: one click continues it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: admitted once",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: says the outcome, not just the badge",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-3-continued: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the page lists the waiting ones (not the continued one)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: a legacy request's detail line says its own scope; its verb is Approve once",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the guest's (new-model) request says Continue's scope",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: no Clear retained origin anywhere",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: no decision button clips its words (the row wraps instead)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-4-authorizations: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4b: no internal request id in view",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-4b-details: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: scrolled to its end, the body's last line clears the footer",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-5-always-allow: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: the scoped card in Needs you",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: the standard item: the title names both Agents",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: one detail line: the reason, then this card's scope in a few words",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: no raised card (an .n-item, not .card)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: Authorize this browser, inline, in one line",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: the buttons are off until verified",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: the long scope only in the details",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: the guest's request too, worded as one",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: no count-only verify line under the host",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-1-needs-unverified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 2: read again once verified: the buttons on",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 2: no verify line, no marked choice",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 2: every card on the page read again (one Authorize serves them all)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 2: the scope never breaks at its 「＝」/\"=\"",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 2: verifying (and Enter) decided nothing",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-2-verified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 3: one click continues it",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 3: admitted once",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 3: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 3: says the outcome, not just the badge",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-3-continued: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4: the page lists the waiting ones (not the continued one)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4: a legacy request's detail line says its own scope; its verb is Approve once",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4: the guest's (new-model) request says Continue's scope",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4: no Clear retained origin anywhere",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4: no decision button clips its words (the row wraps instead)",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-4-authorizations: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 4b: no internal request id in view",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-4b-details: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: scrolled to its end, the body's last line clears the footer",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-5-always-allow: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: the scoped card in Needs you",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: the standard item: the title names both Agents",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: one detail line: the reason, then this card's scope in a few words",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: no raised card (an .n-item, not .card)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: Authorize this browser, inline, in one line",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: the buttons are off until verified",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: the long scope only in the details",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: the guest's request too, worded as one",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: no count-only verify line under the host",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-1-needs-unverified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: read again once verified: the buttons on",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: no verify line, no marked choice",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: every card on the page read again (one Authorize serves them all)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: the scope never breaks at its 「＝」/\"=\"",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 2: verifying (and Enter) decided nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-2-verified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 3: one click continues it",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 3: admitted once",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 3: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 3: says the outcome, not just the badge",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-3-continued: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4: the page lists the waiting ones (not the continued one)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4: a legacy request's detail line says its own scope; its verb is Approve once",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4: the guest's (new-model) request says Continue's scope",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4: no Clear retained origin anywhere",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4: 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4: no decision button clips its words (the row wraps instead)",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-4-authorizations: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 4b: no internal request id in view",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-4b-details: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: scrolled to its end, the body's last line clears the footer",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-5-always-allow: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the scoped card in Needs you",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the standard item: the title names both Agents",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: one detail line: the reason, then this card's scope in a few words",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no raised card (an .n-item, not .card)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: Authorize this browser, inline, in one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the buttons are off until verified",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the long scope only in the details",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the guest's request too, worded as one",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no count-only verify line under the host",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-1-needs-unverified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: read again once verified: the buttons on",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: no verify line, no marked choice",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: every card on the page read again (one Authorize serves them all)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the scope never breaks at its 「＝」/\"=\"",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: verifying (and Enter) decided nothing",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-2-verified: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: one click continues it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: admitted once",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: no buttons after",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: says the outcome, not just the badge",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-3-continued: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the page lists the waiting ones (not the continued one)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: a legacy request's detail line says its own scope; its verb is Approve once",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the guest's (new-model) request says Continue's scope",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: no Clear retained origin anywhere",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: no decision button clips its words (the row wraps instead)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-4-authorizations: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4b: the details: the message, who asked, the times",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4b: no internal request id in view",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-4b-details: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: scrolled to its end, the body's last line clears the footer",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-5-always-allow: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5b: scrolled to its end, the last line is fully above the footer",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-5b-always-allow-end: no host path outside a masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "s228-desk-light-en-1-needs-unverified.png",
+      "sha256": "bff689de4bac1777eea8a58ac17e601e6279ffad225292037fd22872327a6038"
+    },
+    {
+      "path": "s228-desk-light-en-2-verified.png",
+      "sha256": "faa5baaa9b4551a4d149fd5b9f8071d88054d0f36c147cfc219f05f482e6fc3e"
+    },
+    {
+      "path": "s228-desk-light-en-3-continued.png",
+      "sha256": "f5a0184e03c905795282fe940517f1679a570b211a9dd4d34e5aeb85a69d5b54"
+    },
+    {
+      "path": "s228-desk-light-en-4-authorizations.png",
+      "sha256": "91d2157a0da697538dc219a2048a9d54f2c15d9ec4f454a4287d6a9375b4d49c"
+    },
+    {
+      "path": "s228-desk-light-en-4b-details.png",
+      "sha256": "156233225f040133f33f7e1f6e2502e39ed0df376ee5b6184ce7977a86b6297d"
+    },
+    {
+      "path": "s228-desk-light-en-5-always-allow.png",
+      "sha256": "f681cb5cec34b093bdc2d96ec9fc652ebb23f33f13543193197cb4affa48f960"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-1-needs-unverified.png",
+      "sha256": "8e85bbcff33a7ef6d2a8fa9527bbab5d0d1d2d47fbbafb645f6f0707bafdd5aa"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-2-verified.png",
+      "sha256": "45987141bad6abd8b82bfb58a7d6c3adace7ee44cd976268cfa1a17c025627a8"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-3-continued.png",
+      "sha256": "c6dfe92d28133fac726a22c2c0e8fdc38f52c60fb46f0466f0ad20d16b81c826"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-4-authorizations.png",
+      "sha256": "a955e6a3f1880922817fe7fc89f8d07a1e8071a9abe88e9dbf17fc8304ccab6f"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-4b-details.png",
+      "sha256": "d83f5d6ab35a040bcf621693c7f64a2dac754ac65548047e9e2ad67ef3a90db7"
+    },
+    {
+      "path": "s228-desk-dark-zh-TW-5-always-allow.png",
+      "sha256": "094b95191667e27ff3b30acd41ac81675700fb31a1de1d696ca88427af59c71d"
+    },
+    {
+      "path": "s228-phone-light-en-1-needs-unverified.png",
+      "sha256": "ab6381043fe53ebc1d87c4ca9e398ae52fe7cd77a7e5e5ded70005e51e100711"
+    },
+    {
+      "path": "s228-phone-light-en-2-verified.png",
+      "sha256": "c4790da5a8c5c70eb9c7e0c85955780cd5c10f63d4b7830b3e65197feb488c00"
+    },
+    {
+      "path": "s228-phone-light-en-3-continued.png",
+      "sha256": "609d70824094b689f41d187d3ec5784fe45b39fb4e2ee1a559655b11c4f27b23"
+    },
+    {
+      "path": "s228-phone-light-en-4-authorizations.png",
+      "sha256": "28c35e1bcad4b40e8225addde9166d7e19eae91723bd58e101e84619ee3ba657"
+    },
+    {
+      "path": "s228-phone-light-en-4b-details.png",
+      "sha256": "04a730bcc07eb82a84c22f0cd00ba9cfd6a8b8e642aeeca5aeeb3cc19cfcc107"
+    },
+    {
+      "path": "s228-phone-light-en-5-always-allow.png",
+      "sha256": "0554aae863b14ba4739b662b3f29ca099f62c6106d48f69b7ec40ca84f3635a6"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-1-needs-unverified.png",
+      "sha256": "bb74e228836b074bc0f9ac99dfc5995fea566144ee4d3fe87ea699f8cef23278"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-2-verified.png",
+      "sha256": "7f044a4c53cafa320413a2fb843ee3a63a84d1e3ebb2422e97063f1000e7bbb0"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-3-continued.png",
+      "sha256": "f7272072689c692f168b267a35b6373b1bde196574fb507311cedd6d0ab9e2ad"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-4-authorizations.png",
+      "sha256": "3f09511797edd5a2561817635bfc25f34370cb155b2a9aa4cb7b89893edf42aa"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-4b-details.png",
+      "sha256": "72c6f33afef50a4970539aa70fc0c0cc94f8dd251d2b564f02bda9823b2df1ff"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-5-always-allow.png",
+      "sha256": "626dca39cef473a446caba05252dee2c5d1eb8fc72acc73a8a51d039fbd6c40b"
+    },
+    {
+      "path": "s228-phone-dark-zh-TW-5b-always-allow-end.png",
+      "sha256": "95dfe16d6484ac1adb099ae721353ed00f085146f53f4a2d92ffd96597548ad7"
+    }
+  ],
+  "summary": "174/174"
+}

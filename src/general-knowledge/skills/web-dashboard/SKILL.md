@@ -355,10 +355,12 @@ messages still identify the account for contact permissions. For a lost device, 
 **Sign out** or **Sign out everywhere** to end account recognition as well.
 Its messages and reply-button choices still carry no go-ahead authority until verification; a known
 account is not a verified approval. Unidentified sources remain unknown. Older retained unknown origins
-cannot be inferred from today's session: a verified managing administrator can use the sending Agent's
-**Permissions → Clear retained origin**, accepting the current conversation as their own work. This is
+cannot be inferred from today's session: on today's flow, a verified managing administrator can use the sending
+Agent's **Permissions → Clear retained origin**, accepting the current conversation as their own work. This is
 an explicit audited reset, not an automatic repair; existing contact applications are not replayed.
-Needs you's contact card and the refused contact response name this recovery path.
+Needs you's contact card and the refused contact response name this recovery path. Once the same-card flow is on, each
+request is decided on its own card instead: Clear retained origin is gone, and that section reads **Retained origin
+(history)**, with its earlier clears kept in History.
 
 ## Needs you
 
@@ -376,11 +378,25 @@ Claude Code's usage-credits prompt ("Fable 5.2 now uses usage credits", before a
 usage credits) is "Waiting at a dialog": AgEnD never answers it (its default, and Esc, switch the model), and a signed-in
 administrator picks one of its own choices on the card; a choice that may spend credits asks to be confirmed first.
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
-A held contact request (an agent or ClassicBot room asking another agent, waiting for approval) is shown only to a
-verified administrator: with **Approve once** / **Decline**. A browser not yet verified (Authorize this browser not
-done, or run out) sees one line instead — "N contact requests need a verified browser" with **Authorize this browser**
-(or why this browser can't be authorized here) — the count only, never who or what; once the account confirms in its
-DM, the requests replace the line. The same on the public link.
+A held contact request (an agent or ClassicBot room asking another agent, waiting for approval) is shown in one of two
+ways, depending on whether this fleet has the same-card approval flow (M-3736; off until it is turned on):
+- **Today's flow** (the same-card route answers 404): only a verified administrator sees the request, with **Approve
+  once** / **Decline**. A browser not yet verified (Authorize this browser not done, or run out) sees one line instead
+  — "N contact requests need a verified browser" with **Authorize this browser** (or why this browser can't be
+  authorized here) — the count only, never who or what; once the account confirms in its DM, the requests replace the
+  line.
+- **The same card** (once turned on): every recognized administrator who manages the target sees the same card, before
+  verifying too — "*Agent* wants to contact *Agent*", one line with the reason and its scope ("Continue = this request
+  and its follow-up contacts only." for a new request, "Approve once = this one request only." for an older one), and
+  **What it asks** folded (the message, who asked, where replies go, the times). Its buttons are **Continue (with
+  follow-ups)** (or **Approve once** for an older request), **Set allowed contacts…** (it opens "Set allowed contacts for these
+  people" — or "for this person"), **Decline**. After a
+  decision the line says what happened ("Continued · Forwarded to *Agent*."). Not verified: the buttons are off, with "Authorize this
+  browser to decide." and **Authorize this browser**; verifying decides nothing — the card is read again and then one
+  click on a button decides. A request decided elsewhere, or a decision whose answer was lost, is read again and shown
+  as it is now (never sent twice). Fleet → **Authorizations** lists the same cards. If the dashboard can't tell which flow
+  is on (signed out, refused, the server unavailable), it says so with **Try again** instead of falling back.
+The same on the public link.
 "Paused: AI account not connected" and "AI account needs connecting" have **Connect account** when the dashboard can run that login (#2233), in the group **AI accounts**; every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
 `needs_you.dm` (default off), `needs_you.task_board` (default off: the task board's cards waiting

@@ -144,6 +144,8 @@ describe("Needs you shows the line with Authorize this browser, in en and zh-TW"
   let reqs: Req[] = [], authState: unknown = { state: "none", reason: "not_authorized" }, recoveryTicket: any = null;
   const fetchFake = async (url: string, init: any = {}) => {
     reqs.push({ method: init.method || "GET", url });
+    // M-3736 J: a host without the same-card route (it answers 404), as every host is until slice L installs it.
+    if (url.startsWith("/ui/api/request-contact-authorizations")) return { ok: false, status: 404, json: async () => ({}) };
     const body = url === "/ui/authorization" ? (init.method === "POST" ? { ok: true, expiresInMs: 300_000 } : authState) : url === "/ui/api/contact-authorizations/Rrecovery" ? recoveryTicket : {};
     return { ok: true, status: 200, json: async () => body };
   };

@@ -72,7 +72,9 @@ describe("the pages say to verify, in en and zh-TW", () => {
   const text = (el: any) => (el?.textContent || "").replace(/\s+/g, " ").trim();
   async function show(which: "list" | "agent", language: "en" | "zh-TW", answer: { status: number; body: unknown }) {
     const pg = page({ url: "http://127.0.0.1:19280/ui/fleet/authorizations", storage: { agend_tour_done: "1" } }); mounted.push(pg);
-    g.fetch = async () => ({ ok: answer.status < 400, status: answer.status, json: async () => answer.body });
+    // M-3736 J: a host without the same-card route (it answers 404), as every host is until slice L installs it.
+    g.fetch = async (url: string) => (String(url).startsWith("/ui/api/request-contact-authorizations") ? { ok: false, status: 404, json: async () => ({}) }
+      : { ok: answer.status < 400, status: answer.status, json: async () => answer.body });
     (await import("/assets/app-i18n.js") as any).setLang(language);
     const store = await import("/assets/app-store.js") as any;
     store.appStore.set({ streamOn: () => () => {}, instances: [{ name: "agend-dev-sol" }] });
