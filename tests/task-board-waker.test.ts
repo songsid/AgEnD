@@ -366,6 +366,21 @@ describe("a notice that quotes a comment which is then edited or deleted", () =>
     expect(settled[1]).toEqual({ uuid: "u1", instance: "dev-a", key: sent[1]!.key, replaces: [sent[0]!.key] });
   });
 
+  it("after a wait of more than an hour the board still hears of the replacement and the key it replaces", () => {
+    const outbox = fakeOutbox();
+    const settled: Array<Record<string, unknown>> = [];
+    const clock = { at: Date.parse("2030-01-01T10:00:00Z") };
+    const { w, sent, fire } = waker({ outbox, holds: holdsNow, settled, clock });
+    comments.set(12, "the old words"); comments.set(15, "another");
+    w.note([said("the old words")]); fire();
+    clock.at += 61 * 60_000;
+    w.note([said("another", 15)]); fire();                            // hands over another notice that quotes a comment
+    comments.set(12, "the new words");
+    w.recalled([{ uuid: "u1", entry: 12, deleted: false }]); fire();
+    expect(sent).toHaveLength(3);
+    expect(settled[2]).toEqual({ uuid: "u1", instance: "dev-a", key: sent[2]!.key, replaces: [sent[0]!.key] });
+  });
+
   it("a notice about another comment is left alone; so is one already delivered; one whose wakes this waker no longer has is withdrawn and not replaced", () => {
     const outbox = fakeOutbox();
     const first = waker({ outbox, holds: holdsNow });
