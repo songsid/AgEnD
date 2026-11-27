@@ -42,13 +42,15 @@
 // alpha.2 (M-2300): agent_proposals — an agent's Windows request came or was decided (no details: a web-only fleet's
 // owner reads GET /ui/agent-proposals).
 // tasks — the task board changed: the card numbers a write touched (SSE only: the board reads again when it is shown).
+// task_wakes — where a comment of a card stands changed (a notice was handed to delivery, delivered, read, failed): `{ ids }`, the card
+// numbers and nothing else (SSE only: an open card reads itself again, and the unread is read again).
 // offices — the stored offices changed ({ rev }; SSE only: the Office view reads /ui/offices again).
 // office_skins — a skin pack was uploaded or deleted ({ rev }; SSE only: the Office view reads /ui/office-skins again).
 // office_acts — the agents' live acts in the Office view changed ({ acts }, #2578; a poll page reads /ui/office-acts).
 // pins — an agent's pinned messages changed ({ instance, rev }, M-3271; SSE only: its open chat reads /ui/pins again).
 // contact-auth — an agent's contact permissions or one of its contact requests changed ({ instance, ticketId?, revision },
 // M-3339; SSE only: an open Permissions tab or Authorizations page reads its own scoped route again).
-const EVENTS = ["status", "message", "agent_reply_live", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "reactions", "steps_tick", "clock", "traffic", "delegation", "backend_login", "models", "tasks", "offices", "office_skins", "office_acts", "office_pack_changes", "agent_proposals", "pins", "contact-auth", "notice"];
+const EVENTS = ["status", "message", "agent_reply_live", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "reactions", "steps_tick", "clock", "traffic", "delegation", "backend_login", "models", "tasks", "task_wakes", "offices", "office_skins", "office_acts", "office_pack_changes", "agent_proposals", "pins", "contact-auth", "notice"];
 const MAX_HELD = 1000;                    // live events held during one catch-up read; more → read again afterwards
 const RETRY_DELAYS = [1000, 2000, 4000];  // after the first failed catch-up read; then it waits for Retry
 const POLL_LIMIT_MS = 10000;              // a poll that has not answered by then counts as failed

@@ -29,6 +29,7 @@ import { RunMark, inProgressBy, runOf, useRunContext } from "./fleet-task-run.js
 import { OwnerChip, otherWorkers, quietInfo } from "./fleet-task-owner.js";
 import { InsightsDialog } from "./fleet-task-stats.js";
 import { ToSort, sortCount } from "./fleet-task-sort.js";
+import { UnreadStrip, UnreadMark, markFor, useUnreadCards } from "./fleet-task-unread.js";
 import { ArchiveDialog, ArchivedLink, ArchivedTag, DONE_PAGE, newestDone, weekLabel } from "./fleet-task-archive.js";
 
 const PROJECT_KEY = "agend_tasks_project";
@@ -344,6 +345,7 @@ function Home({ cards, projects, stats, writable, onOpenProject, onOpen, onDialo
         <${InstancesButton} onClick=${onInstances} />
         ${writable ? html`<button type="button" class="btn btn-primary" onClick=${() => onDialog({ kind: "project", project: null })}><${Icon} name="plus" size=${16} />${t("tasks.newProject")}</button>` : null}</div>
     </div>
+    <${UnreadStrip} cards=${cards} onOpen=${onOpen} />
     <${Waiting} cards=${cards} writable=${writable} onOpen=${onOpen} reload=${reload} />
     <${ToSort} cards=${cards} projects=${projects} writable=${writable} onOpen=${onOpen} onOpenNoProject=${() => onOpenProject(NO_PROJECT)} reload=${reload} />
     ${active.length || loose ? html`<div class="tb-projects">
@@ -491,6 +493,8 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
   // What each instance with a card in progress is doing, and how many cards it has — one read of the store for
   // the whole board; a tile or row says "running" only when it is the instance's one.
   const runs = useRunContext(cards);
+  // What is new for this person (their cards someone answered, named them on or handed them): the marks and the strip.
+  const unread = useUnreadCards();
   const live = cards.filter((c) => c.kind === "main" && projectKey(c) === key && c.status !== "cancelled");
   // What the filters offer: this project's main tasks and their sub tasks.
   const own = live.flatMap((c) => [c, ...(subsOf.get(c.id) || [])]);
@@ -515,7 +519,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
     : matched.flatMap((c) => [c, ...(subsOf.get(c.id) || [])]));
   const listBody = () => {
     const rows = listRows(mains, subsOf, display, filters, now, query);
-    return rows.length === 0 ? empty() : html`<${ListView} rows=${rows} display=${display} subsOf=${subsOf} byId=${byId} flashed=${flashed} now=${now} runs=${runs}
+    return rows.length === 0 ? empty() : html`<${ListView} rows=${rows} display=${display} subsOf=${subsOf} byId=${byId} flashed=${flashed} now=${now} runs=${runs} unread=${unread}
       expanded=${expanded} onToggleSubs=${toggleSubs} onOpen=${onOpen} onMore=${onMore} onOwner=${onOwner} cards=${cards} lead=${lead} writable=${writable} onDisplay=${onDisplay} scope=${String(key)} />${moreDone}`;
   };
 
@@ -650,6 +654,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
         ${archived || !writable ? null : html`<button type="button" class="btn btn-primary" onClick=${onCreate}><${Icon} name="plus" size=${16} />${t("tasks.newMain")}</button>`}
       </div>
     </div>
+    <${UnreadStrip} cards=${cards} onOpen=${onOpen} />
     <${TaskToolbar} cards=${own} display=${display} onDisplay=${onDisplay} filters=${filters} onFilters=${onFilters} query=${query} onQuery=${onQuery} archiving=${archiveDays > 0}
       scroller=${display.view === "list" ? null : { reach, by: scrollColumns }} />
     ${display.view === "list" ? listBody() : mains.length === 0 && !drag ? empty()
@@ -670,7 +675,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
           ${status === "done" && archiveDays > 0 ? html`<p class="muted tb-done-week tb-done-week-line" title=${t("tasksArchive.weekTip")}>${weekLabel(stats)}</p>` : null}
           ${cellItems(list, drag ? drag.id : null, line, (card, dragging) => {
             const lit = Math.max(flashed.get(card.id) || 0, ...(subsOf.get(card.id) || []).map((s) => flashed.get(s.id) || 0));
-            return html`<${Tile} key=${card.id} card=${card} dragging=${dragging} flash=${now - lit < 4000} subs=${subsOf.get(card.id)} runs=${runs} writable=${writable} cards=${cards} lead=${lead}
+            return html`<${Tile} key=${card.id} card=${card} dragging=${dragging} flash=${now - lit < 4000} subs=${subsOf.get(card.id)} runs=${runs} unread=${markFor(card, subsOf.get(card.id), unread)} writable=${writable} cards=${cards} lead=${lead}
               expanded=${!!expanded[card.id]} onToggleSubs=${() => toggleSubs(card.id)}
               onOpen=${onOpen} onMore=${onMore} onOwner=${onOwner} onKeyMove=${(e) => keyMove(card, e)}
               onDragStart=${(e) => { e.dataTransfer.setData("text/plain", card.id); e.dataTransfer.effectAllowed = "move"; setDrag(card); }} onDragEnd=${end} />`;
@@ -714,7 +719,7 @@ function NowLine({ now, label = true }) {
  * the counts. The tile is as tall as its content; a main task can open up its sub tasks. No coloured bar at its left edge.
  * A card whose agent is running says so with the "Running" mark in its status line (and keeps its accent edge and tint).
  */
-function Tile({ card, dragging, flash, subs = [], runs, expanded, writable, cards, lead, onToggleSubs, onOpen, onMore, onOwner, onKeyMove, onDragStart, onDragEnd }) {
+function Tile({ card, dragging, flash, subs = [], runs, unread = null, expanded, writable, cards, lead, onToggleSubs, onOpen, onMore, onOwner, onKeyMove, onDragStart, onDragEnd }) {
   const accepted = card.acceptance.filter((a) => a.done).length;
   const progress = card.progress;
   const hasSubs = !!progress && progress.total > 0;
@@ -732,11 +737,12 @@ function Tile({ card, dragging, flash, subs = [], runs, expanded, writable, card
   const toggle = (e) => { e.stopPropagation(); onToggleSubs(); };
   const toggleTitle = expanded ? t("tasks.hideSubs") : t("tasks.showSubs");
   // The tile is a group, not a button: its title is the control (keyboard, screen readers); a click anywhere opens it.
-  return html`<div class=${`tb-tile st-${card.status}${dragging ? " dragging" : ""}${flash ? " flash" : ""}${running ? " running" : ""}`} data-tile=${card.id}
+  return html`<div class=${`tb-tile st-${card.status}${dragging ? " dragging" : ""}${flash ? " flash" : ""}${running ? " running" : ""}${unread ? " has-unread" : ""}`} data-tile=${card.id}
     draggable=${writable} onDragStart=${writable ? onDragStart : undefined} onDragEnd=${writable ? onDragEnd : undefined}
     onClick=${(e) => { if (e.target && e.target.closest && e.target.closest(".tb-owner-pop")) return; onOpen(card.id); }}>
     <div class="tb-tile-top">
       <span class="tb-code">${card.id}</span>
+      <${UnreadMark} unread=${unread} />
       ${card.priority === "urgent" || card.priority === "high" ? html`<span class=${`tb-tag p-${card.priority}`}>${t(card.priority === "urgent" ? "tasks.urgentTag" : "tasks.highTag")}</span>` : null}
       <span class="tb-tile-tags">
         ${card.kind === "sub" && card.needsReview && card.status !== "done" ? html`<span class="tb-tag st-review" title=${t("tasks.needsReviewTitle")}>${t("tasks.needsReview")}</span>` : null}

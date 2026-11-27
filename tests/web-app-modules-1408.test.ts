@@ -123,7 +123,7 @@ describe("module admission (#1408 §4)", () => {
     const dynamic = [...app.matchAll(/import\(([^)]*)\)/g)].map(m => m[1]!.trim());
     // #2233: the sign-in line, on every admin page (the module is behind the session gate).
     // alpha.2 (M-2300): a web-only fleet's agent requests list, on every admin page (behind the session gate too).
-    expect(dynamic.sort()).toEqual(['"/ui/js/agent-proposals.js"', '"/ui/js/backend-signin.js"', '"/ui/js/chat-popout.js"', '"/ui/js/chat-workspace.js"', '"/ui/js/preview-popout.js"', 'retryUrl("/assets/panel-view.js", a', 'retryUrl("/ui/js/panel-chat.js", a', 'retryUrl("/ui/js/panel-details.js", a', 'retryUrl("/ui/js/panel-fleet.js", a', 'retryUrl("/ui/js/panel-hub.js", a', 'retryUrl("/ui/js/panel-log.js", a', 'retryUrl("/ui/js/panel-needs.js", a',
+    expect(dynamic.sort()).toEqual(['"/ui/js/agent-proposals.js"', '"/ui/js/backend-signin.js"', '"/ui/js/chat-popout.js"', '"/ui/js/chat-workspace.js"', '"/ui/js/preview-popout.js"', '"/ui/js/task-unread.js"', 'retryUrl("/assets/panel-view.js", a', 'retryUrl("/ui/js/panel-chat.js", a', 'retryUrl("/ui/js/panel-details.js", a', 'retryUrl("/ui/js/panel-fleet.js", a', 'retryUrl("/ui/js/panel-hub.js", a', 'retryUrl("/ui/js/panel-log.js", a', 'retryUrl("/ui/js/panel-needs.js", a',
       'retryUrl("/ui/js/panel-notices.js", a',                     // #2910 D2: a web-only fleet's Notices
       'retryUrl("/ui/js/panel-settings.js", a',
       'retryUrl("/ui/js/panel-windows-agent.js", a',              // legacy native agent links resolve behind the session gate

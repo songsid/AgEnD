@@ -9,6 +9,8 @@
 // from the same hand is one line "×3"); and a day change is a thin separator.
 // The comment box completes `@` with the fleet's instance names: it only types `@<instance name>` into the text; what an
 // @ does to that instance is the board's business (it reads the same plain text), not this box's.
+// A comment written for an instance carries its status under it (fleet-task-wake.js: sent, read, working, replied — or why not), and a
+// comment that is new for this person is tagged "New" until they leave the card (task-unread.js).
 // No style attribute anywhere (the CSP).
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { lang, t } from "/assets/app-i18n.js";
@@ -16,7 +18,9 @@ import "/assets/chat-render.js";
 import "/assets/chat-strings.js";
 import { Icon } from "/assets/ui-icons.js";
 import { BoardOffNote, boardOffTargets, relTime } from "./fleet-task-common.js";
-import { AgentTag } from "./fleet-task-run.js";
+import { AgentTag, instanceStates } from "./fleet-task-run.js";
+import { WakeStatus, wakeNames } from "./fleet-task-wake.js";
+import { appStore } from "/assets/app-store.js";
 import { WhoCard } from "./fleet-task-owner.js";
 import { insertAtTrigger, triggerAt, withoutCode } from "./trigger-complete.js";
 import { dateTimeText } from "/assets/clock-text.js";
@@ -46,7 +50,7 @@ export function timelineOf(detail) {
   // A comment also carries what the threads add (docs/design/task-board.md, "Comment threads"): its number, the comment it answers,
   // an edit, a deletion, a resolved thread and its reactions — each only when the board sent it (an older host sends none).
   for (const e of (detail && detail.comments) || []) out.push({ key: `c${e.id}`, type: "comment", id: e.id, at: e.at, who: e.author, by: e.authorKind || "", text: e.text, kind: e.kind, authorKind: e.authorKind, files: files.filter((f) => f.entryId === e.id),
-    ...(e.parentId !== undefined ? { parentId: e.parentId } : {}), ...(e.editedAt ? { editedAt: e.editedAt } : {}), ...(e.deleted ? { deleted: e.deleted } : {}), ...(e.resolved ? { resolved: e.resolved } : {}), ...(e.reactions ? { reactions: e.reactions } : {}), ...(typeof e.mine === "boolean" ? { mine: e.mine } : {}) });
+    ...(e.parentId !== undefined ? { parentId: e.parentId } : {}), ...(e.editedAt ? { editedAt: e.editedAt } : {}), ...(e.deleted ? { deleted: e.deleted } : {}), ...(e.resolved ? { resolved: e.resolved } : {}), ...(e.reactions ? { reactions: e.reactions } : {}), ...(typeof e.mine === "boolean" ? { mine: e.mine } : {}), ...(e.wakes ? { wakes: e.wakes } : {}) });
   for (const e of (detail && detail.logs) || []) out.push({ key: `l${e.id}`, type: "log", at: e.at, who: e.author, by: e.authorKind || "", text: e.text });
   for (const ev of (detail && detail.history) || []) {
     if (ev.type === "commented" || ev.type === "reordered") continue;
@@ -163,7 +167,7 @@ function Entry({ entry, describe, who, ctx = null, reply = false, root = false, 
   const author = html`<${WhoCard} name=${entry.who} kind=${kind} presence=${agent} cards=${who && who.cards} lead=${who && who.lead} />`;
   if (entry.type === "comment") {
     const here = ctx ? { ...ctx, root, resolved } : { writable: false, viewer: null, root: false };
-    const lit = here.flash === entry.id ? " tl-flash" : "";
+    const lit = (here.flash === entry.id ? " tl-flash" : "") + (here.fresh && here.fresh.has(entry.id) ? " tl-unread" : "");
     // A deleted comment stays as a line where it was, so the replies under it still hang from something.
     if (entry.deleted) {
       return html`<li id=${`c${entry.id}`} data-comment=${entry.id} class=${`tl-item tl-card tl-comment tl-deleted${reply ? " tl-reply" : ""}${lit}`}>
@@ -175,11 +179,13 @@ function Entry({ entry, describe, who, ctx = null, reply = false, root = false, 
       <div class="tl-head">${author}${agent ? html`<${AgentTag} />` : null}
         ${entry.kind === "reject" ? html`<span class="tb-tag st-blocked">${t("taskcard.rejectTag")}</span>` : null}
         ${entry.kind === "approve" ? html`<span class="tb-tag st-done">${t("taskcard.approveTag")}</span>` : null}
+        ${here.fresh && here.fresh.has(entry.id) ? html`<span class="tb-tag tl-new" title=${t("taskwake.newTip")}>${t("taskwake.newMark")}</span>` : null}
         ${time}${entry.editedAt ? html`<span class="muted tl-edited" title=${t("taskthread.editedTip", fullTime(entry.editedAt))}>${t("taskthread.edited")}</span>` : null}
         ${entry.id !== undefined && ctx ? html`<${CommentTools} entry=${entry} ctx=${here} act=${(name) => ctx.act(entry, name)} />` : null}</div>
       ${editing ? html`<${EditBox} entry=${entry} onSave=${(text) => ctx.edit(entry, text)} onCancel=${() => ctx.stop("editing")} />`
         : body ? html`<${MdBody} body=${body} />` : html`<div class="tl-body">${entry.text}</div>`}
       ${entry.files && entry.files.length ? html`<${FileList} files=${entry.files} cls="tl-files" />` : null}
+      ${ctx && here.wake && entry.wakes ? html`<${WakeStatus} entry=${entry} comments=${here.wake.comments} states=${here.wake.states} onOpen=${here.wake.open} />` : null}
       ${ctx && entry.id !== undefined ? html`<${ReactionBar} entry=${entry} ctx=${here} onReact=${(emoji, on) => ctx.react(entry, emoji, on)} />` : null}
       ${ctx && here.picking === entry.id ? html`<${ReactionPicker} onPick=${(emoji) => ctx.react(entry, emoji, true)} onClose=${() => ctx.stop("picking")} />` : null}</li>`;
   }
@@ -210,9 +216,9 @@ const brief = (text, max = 80) => { const chars = [...String(text || "").replace
  * Comment threads (docs/design/task-board.md, "Comment threads"): `thread` — { writable, viewer, send, edit, react, resolve,
  * remove } — makes each comment's ⋯ menu and reactions live; without it (an older host) comments read as they always did. A reply
  * is drawn under its thread's first comment, indented; a resolved thread folds into one line that opens again. `names`: the fleet's
- * instances [{ name, off }] for the recipient chip of an inline reply.
+ * instances [{ name, off }] for the recipient chip of an inline reply. `fresh`: the numbers of the comments that are new for this person (tagged).
  */
-export function Timeline({ detail, describe, cards = [], lead = null, thread = null, names = [] }) {
+export function Timeline({ detail, describe, cards = [], lead = null, thread = null, names = [], fresh = [] }) {
   const [filter, setFilter] = useState("all");
   const [toggled, setToggled] = useState({});
   const [ui, setUi] = useState({ replying: null, editing: null, picking: null });
@@ -258,8 +264,13 @@ export function Timeline({ detail, describe, cards = [], lead = null, thread = n
 
   const viewer = thread ? thread.viewer || null : null;
   const copy = async (text, doneKey) => toast(await copyText(text) ? t(doneKey) : t("taskthread.copyFailed"), true);
+  // Where each comment written for an instance stands (fleet-task-wake.js): the instance's state is the page's own (the card's "Running" inference);
+  // read at each draw — the card page draws again with the store.
+  const wakeStates = thread && card ? instanceStates(appStore.get(), wakeNames(detail)) : null;
+  const jump = (id) => { setFlash(id); setTimeout(() => setFlash((cur) => (cur === id ? null : cur)), 2400); };
   const ctx = thread && card ? {
-    writable: !!thread.writable, viewer, picking: ui.picking, editing: ui.editing, flash,
+    writable: !!thread.writable, viewer, picking: ui.picking, editing: ui.editing, flash, fresh: fresh.length ? new Set(fresh) : null,
+    wake: { comments, states: wakeStates, open: jump },
     stop: (key) => setUi((u) => ({ ...u, [key]: null })),
     edit: (entry, text) => thread.edit(entry, text),
     react: (entry, emoji, on) => { setUi((u) => ({ ...u, picking: null })); return thread.react(entry, emoji, on); },

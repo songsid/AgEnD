@@ -204,6 +204,13 @@ if (phase === 'create') {
     board.updateCard(person, sub.code, { comment: 'secret to delete' });
     board.deleteComment(person, sub.code, board.detail(sub.code).comments.at(-1).id);
     state.board.thread = { code: sub.code, rootId };
+    // Comment status and unread (docs/design/task-board.md): what a comment was written for (`task_entries.wakes`) and a person's read
+    // mark and floor (two tables) — a previous release neither reads nor writes them, and the comments read as they did.
+    const wakes = JSON.stringify([{ to: 'scratch-worker', why: 'assignee', at: new Date().toISOString(), key: `task-board:scratch-worker:1:1:cards=${sub.uuid}` }]);
+    const withWakes = new Database(schedulerPath);
+    try { withWakes.prepare('UPDATE task_entries SET wakes = ? WHERE id = ?').run(wakes, rootId); } finally { withWakes.close(); }
+    board.unreadFor(person.name);
+    board.markRead(person.name, sub.code);
   });
   checked('event log and reaction queue', () => {
     events.insert('scratch', 'new-event', { sentinel: 42 });

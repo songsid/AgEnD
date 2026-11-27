@@ -416,6 +416,29 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tl-resolved-btn:hover { background: var(--surface-2); color: var(--text); }
 .tl-resolved-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-resolved-note { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-xs); }
+/* What is new for this person (fleet-task-unread.js): a dot (with the number when there are several) on a card's tile and row, a strip at the top of
+   Home and a project's board, a "New" tag and a tinted edge on a comment — and where a comment stands (fleet-task-wake.js): a line of status under it. */
+.tb-unread { display: inline-flex; align-items: center; gap: 3px; margin-inline-start: var(--s-2); vertical-align: middle; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--accent); font-variant-numeric: tabular-nums; }
+.tb-unread-dot { flex: none; width: 8px; height: 8px; border-radius: var(--r-full); background: var(--accent); }
+.tb-tile.has-unread { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.tb-row.has-unread .tb-row-title { font-weight: var(--fw-semibold); }
+.tb-unread-strip { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.tb-unread-strip .tb-section-title { color: var(--accent); }
+.tb-unread-row { gap: var(--s-2) var(--s-3); }
+.tb-unread-row .tb-wait-title { flex: 1 1 240px; }
+.tb-unread-meta { font-size: var(--fs-xs); white-space: nowrap; }
+.tb-unread-more { margin: var(--s-2) 0 0; font-size: var(--fs-xs); }
+.tl-new { background: var(--accent-dim); color: var(--accent); }
+.tl-unread { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.tl-wakes { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); margin: var(--s-2) 0 0; padding: 0 0 0 36px; list-style: none; }
+.tl-wake { display: inline-flex; align-items: center; gap: var(--s-1); max-width: 100%; font-size: var(--fs-xs); line-height: var(--lh-xs); color: var(--text-2); }
+.tl-wake > svg { flex: none; }
+.tl-wake .tb-link { font-size: inherit; text-align: start; color: inherit; }
+.tl-wake.wk-ok, .tl-wake.wk-done { color: var(--ok); }
+.tl-wake.wk-busy { color: var(--accent); }
+.tl-wake.wk-bad { color: var(--danger); }
+.tl-wake.wk-muted { color: var(--text-3); }
+@media (prefers-reduced-motion: no-preference) { .wk-spin { animation: pulse 1.4s ease-in-out infinite; } }
 /* The comment the page was opened at (#c42): lit for a moment. */
 .tl-flash { border-color: var(--accent); background: var(--accent-dim); }
 @media (prefers-reduced-motion: no-preference) { .tl-card { transition: background-color 0.4s ease, border-color 0.4s ease; } }
@@ -484,7 +507,8 @@ button.tb-row-progress:hover { background: var(--surface-2); }
   .tc-to { min-height: var(--tap); }
   .tl-tools .icon-btn { width: var(--tap); height: var(--tap); }
   .tl-reply, .tl-reply-box { margin-inline-start: var(--s-4); }
-  .tl-edit, .tl-reacts { padding-left: 0; }
+  .tl-edit, .tl-reacts, .tl-wakes { padding-left: 0; }
+  .tb-unread-meta { white-space: normal; }
   .tl-pick { margin-left: 0; }
   .tl-edit-foot .btn { min-height: var(--tap); }
   .tl-resolved-btn { min-height: var(--tap); }

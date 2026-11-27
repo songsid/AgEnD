@@ -461,8 +461,11 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   // one Fleet entry ("Fleet" / "Fleet 概覽"), on the tab this device used last (the Org chart the first time); an agent's
   // View, Log and Details are its header's tabs, so the sidebar has no "Fleet" (Details) or "View" row of its own.
   const onFleet = !!route && route.panel === "fleet";
+  // The cards someone answered, named this person on or handed them (docs/design/task-board.md, "Unread"; task-unread.js): a number on
+  // the Fleet row, hidden at 0 and for a session that cannot write. A phone's drawer shows no counts (M-3166): the Tasks page says it there.
+  const taskUnread = app.taskUnread && app.taskUnread.enabled ? app.taskUnread.total | 0 : 0;
   const overview = html`<a class=${`side-row side-overview${onFleet ? " active" : ""}`} href=${fleetEntryPath(route)}
-    aria-current=${onFleet ? "page" : undefined} onClick=${closeDrawer}><${Icon} name="org" /><span class="grow">${t("app.fleetOverview")}</span></a>`;
+    aria-current=${onFleet ? "page" : undefined} aria-label=${taskUnread ? `${t("app.fleetOverview")} (${taskUnread === 1 ? t("app.taskUnreadOne") : t("app.taskUnreadCount", taskUnread)})` : undefined} onClick=${closeDrawer}><${Icon} name="org" /><span class="grow">${t("app.fleetOverview")}</span>${taskUnread ? html`<span class="nav-count task-unread-count" aria-hidden="true" title=${taskUnread === 1 ? t("app.taskUnreadOne") : t("app.taskUnreadCount", taskUnread)}>${taskUnread}</span>` : null}</a>`;
   return html`<aside id="sidebar" class=${`sidebar fleet-side${narrowDrawer ? " drawer-narrow" : ""}`} aria-label=${t("app.menu")}>
     <div class="side-head" data-trust="navigation">
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>

@@ -71,7 +71,7 @@ import { CreateInstanceArgs, CreateScheduleArgs, UpdateScheduleArgs, validateArg
 import { scheduleView } from "./web-schedules.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { Schedule, ScheduleRetry } from "./scheduler/types.js";
-import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, MAX_RECIPIENTS, TaskBoardError, archiveAfterDays, cardCode, type Actor as BoardActor, type Entry as BoardEntry, type MutationResult, type TaskBoard } from "./scheduler/task-board.js";
+import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, MAX_RECIPIENTS, TaskBoardError, archiveAfterDays, cardCode, type Actor as BoardActor, type Entry as BoardEntry, type EntryWake, type MutationResult, type TaskBoard, type WakeSkip } from "./scheduler/task-board.js";
 import { TASK_REF_SEPARATOR, cardsForRefs, taskReadWay, taskRefBlock, taskRefCodes, taskRefView } from "./chat-task-refs.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
@@ -214,6 +214,7 @@ const CommentEditSchema = z.object({ text: z.string().max(MAX_TEXT) }).strict();
 const CommentReactSchema = z.object({ emoji: z.string().min(1).max(64), on: z.boolean().optional() }).strict();
 const CommentResolveSchema = z.object({ resolved: z.boolean().optional() }).strict();
 const CommentDeleteSchema = z.object({}).strict();
+const CardReadSchema = z.object({}).strict();
 
 const CardMoveSchema = z.object({
   to: z.enum(CARD_STATUSES),
@@ -736,6 +737,8 @@ export interface WebApiContext extends ClaudeCredentialApi {
   webDeviceSignOut?(req: IncomingMessage, handle: string): { status: number; body: Record<string, unknown> };
   /** S-120 (D2a): close the open public link now (Settings → 存取與安全 → 總覽). Only closes; the route checks who asks. */
   closePublicLinkFromWeb?(): Promise<{ status: number; body: Record<string, unknown> }>;
+  /** The comment status (docs/design/task-board.md): how far the notices that carried comments got in the delivery outbox, by their keys. */
+  taskWakeProgress?(keys: readonly string[]): Map<string, import("./delivery-outbox.js").NoticeProgress>;
   /** #2910 D2: a web-only fleet's Notices (web-notices.ts); null on a fleet whose General says them. */
   webNoticesFeed?(): { view(): { items: unknown[]; seen: number; unread: number }; markSeen(id: number): number; unread(): number } | null;
   /** Answer one of them, exactly as a click on its platform button would. */
@@ -2216,6 +2219,69 @@ async function serveCardFile(
     res.writeHead(200);
     res.end(bytes);
   } catch { miss(); }
+}
+
+/** A notice that has not been handed to delivery this long after its comment is lost (the fleet stopped while it was gathering it). */
+const WAKE_LOST_MS = 2 * 60_000;
+
+/**
+ * How far a comment's news got for one instance, as the card page shows it (docs/design/task-board.md, "Comment status"): what the
+ * board kept with the comment (`wakes`) and what the delivery outbox says of the notice that carried it. `sending`: gathered, not yet
+ * handed over (10 s); `queued`: handed over, the instance has not taken it (offline, paused, busy); `delivered`: put to the
+ * instance; `read`: its transcript shows it took it up; `failed` / `uncertain` / `withdrawn`: the delivery failed, could not be
+ * confirmed, or was dropped because the card changed again; `skipped`: not sent, `skip` says why. Whether the instance is working
+ * on it or has answered is the page's to say (it has the instance's state and the comments). No text, no key, no delivery id.
+ */
+export interface WakeView {
+  to: string;
+  why: EntryWake["why"];
+  state: "sending" | "queued" | "delivered" | "read" | "failed" | "uncertain" | "withdrawn" | "skipped" | "unknown";
+  skip?: WakeSkip;
+  /** When the comment was routed. */
+  at: string;
+  /** When the instance took it up (read). */
+  readAt?: string;
+}
+/** The person's unread, by card number (the board's `unreadFor`), without a card the viewer may not see. */
+function unreadBody(board: TaskBoard, person: string, gone: ((name: string) => boolean) | undefined, hidden: (c: NonNullable<ReturnType<TaskBoard["findCard"]>>) => boolean): { total: number; cards: Record<string, { n: number; reasons: string[]; entries: number[]; at: string; by: string }> } {
+  const cards: Record<string, { n: number; reasons: string[]; entries: number[]; at: string; by: string }> = {};
+  for (const u of board.unreadFor(person, gone).cards) {
+    const card = board.findCard(u.id);
+    if (!card || hidden(card)) continue;
+    cards[u.id] = { n: u.n, reasons: u.reasons, entries: u.entries, at: u.at, by: u.by };
+  }
+  return { total: Object.keys(cards).length, cards };
+}
+
+/** A card's comments with the status of those written for instances (`wakeViews`); a comment nobody was meant to hear is as it was. */
+function withWakeViews<E extends { id: number; deleted?: unknown }>(comments: E[], stored: ReadonlyMap<number, EntryWake[]>, ctx: WebApiContext, hiddenName: (n: string) => boolean): Array<E & { wakes?: WakeView[] }> {
+  if (!stored.size) return comments;
+  const keys = [...stored.values()].flat().flatMap((w) => (w.key ? [w.key] : []));
+  const progress = keys.length ? ctx.taskWakeProgress?.(keys) ?? new Map() : new Map();
+  const now = Date.now();
+  return comments.map((e) => {
+    const list = stored.get(e.id);
+    if (!list || e.deleted) return e;
+    const views = wakeViews(list.filter((w) => !hiddenName(w.to)), progress, now);
+    return views.length ? { ...e, wakes: views } : e;
+  });
+}
+
+export function wakeViews(wakes: ReadonlyArray<EntryWake>, progress: ReadonlyMap<string, import("./delivery-outbox.js").NoticeProgress>, now: number): WakeView[] {
+  return wakes.map((w): WakeView => {
+    const base = { to: w.to, why: w.why, at: w.at };
+    if (w.skip) return { ...base, state: "skipped", skip: w.skip };
+    if (!w.key) return now - Date.parse(w.at) > WAKE_LOST_MS ? { ...base, state: "skipped", skip: "lost" } : { ...base, state: "sending" };
+    const p = progress.get(w.key);
+    if (!p) return { ...base, state: "unknown" };
+    switch (p.state) {
+      case "delivered": return p.consumedAt ? { ...base, state: "read", readAt: p.consumedAt } : { ...base, state: "delivered" };
+      case "failed": return { ...base, state: "failed" };
+      case "uncertain": return { ...base, state: "uncertain" };
+      case "cancelled": return { ...base, state: "withdrawn" };
+      default: return { ...base, state: "queued" };
+    }
+  });
 }
 
 function boardError(res: ServerResponse, err: unknown): void {
@@ -4184,7 +4250,7 @@ export function handleWebRequest(
   // ── Task board (scheduler/task-board.ts) ──────────────
   // Reads are the session's; every write is the signed-in person's, through the same rules an instance's tools use.
 
-  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/refs" || path === "/ui/tasks/work" || path === "/ui/tasks/archive" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects") || path.startsWith("/ui/tasks/files/")) {
+  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/refs" || path === "/ui/tasks/work" || path === "/ui/tasks/archive" || path === "/ui/tasks/unread" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects") || path.startsWith("/ui/tasks/files/")) {
     const board = ctx.scheduler?.db.board;
     // M-3668: how many days after it finished a main task leaves the board (defaults.task_board.archive_after_days).
     const archiveDays = archiveAfterDays(ctx.fleetConfig?.defaults?.task_board?.archive_after_days);
@@ -4259,6 +4325,7 @@ export function handleWebRequest(
     };
     const card = /^\/ui\/tasks\/cards\/([^/]+)(?:\/(move|reorder|watchers))?$/.exec(path);
     const comment = /^\/ui\/tasks\/cards\/([^/]+)\/comments\/(\d{1,12})\/(edit|react|resolve|delete)$/.exec(path);
+    const opened = /^\/ui\/tasks\/cards\/([^/]+)\/read$/.exec(path);
     const project = /^\/ui\/tasks\/projects\/(\d+)$/.exec(path);
     try {
       const ref = card ? decodeURIComponent(card[1]!) : "";
@@ -4291,6 +4358,24 @@ export function handleWebRequest(
         const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone).map(unnumbered), projects, leads, boardOff, stats: board.projectStats(ctx.dispatcherGone, archiveDays, leaveOut), archiveAfterDays: archiveDays, epoch });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
+        return true;
+      }
+      // What is new for this person (docs/design/task-board.md, "Unread"): the cards someone answered, named them on or handed them to
+      // confirm or answer. Theirs alone — an admin session's name; a read-only reader has no one, so no unread, no mark. Never cached
+      // (it moves with every comment) and never carries a hidden instance's card.
+      if (method === "GET" && path === "/ui/tasks/unread") {
+        res.setHeader("Cache-Control", "no-store");
+        const reader = adminAdmissionOf(req, url, ctx) ? webPersonOf(req, url, ctx) : null;
+        const who = reader ? boardActor(req, url, ctx, reader) : null;
+        if (!who || who.kind !== "person") { json(res, 200, { enabled: false, total: 0, cards: {} }); return true; }
+        json(res, 200, { enabled: true, ...unreadBody(board, who.name, ctx.dispatcherGone, hidden) });
+        return true;
+      }
+      if (method === "POST" && opened) {
+        // They opened the card: all of it so far is read. A card kept out of sight is "no such card", as everywhere.
+        const cardRef = decodeURIComponent(opened[1]!);
+        if (hidden(board.getCard(cardRef))) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
+        boardWrite(req, res, url, ctx, board, CardReadSchema, (_body, person) => { board.markRead(person.name, cardRef); return { ok: true, ...unreadBody(board, person.name, ctx.dispatcherGone, hidden) }; });
         return true;
       }
       if (method === "GET" && path === "/ui/tasks/work") {
@@ -4368,11 +4453,14 @@ export function handleWebRequest(
         const viewerPerson = adminAdmissionOf(req, url, ctx) ? webPersonOf(req, url, ctx) : null;
         const viewer = viewerPerson ? boardActor(req, url, ctx, viewerPerson) : null;
         const read = shown(board.detail(ref, scope, ctx.dispatcherGone));
+        // The comment status: only to a session that can write (it is the writer's feedback), and never of an instance kept out of sight.
+        const withStatus = viewer ? withWakeViews(read.comments, board.entryWakes(ref), ctx, hiddenName) : read.comments;
         // Each comment says whether it is the viewer's (two people who are both "web-user" are told apart by their key, not their name).
         const mine = viewer && viewer.kind === "person" ? board.commentsWrittenBy(ref, viewer) : null;
         // And which reactions are theirs: by the same key, so two people with one name do not press each other's chip.
         const reacted = viewer && viewer.kind === "person" ? board.reactedBy(ref, viewer) : null;
-        json(res, 200, { ...read, ...(mine ? { comments: read.comments.map((e) => ({ ...e, mine: mine.has(e.id), ...(e.reactions ? { reactions: e.reactions.map((r) => ({ ...r, mine: !!reacted?.has(`${e.id}|${r.emoji}`) })) } : {}) })), viewer: { name: viewer!.name, kind: viewer!.kind } } : {}),
+        const shownComments = mine ? withStatus.map((e) => ({ ...e, mine: mine.has(e.id), ...(e.reactions ? { reactions: e.reactions.map((r) => ({ ...r, mine: !!reacted?.has(`${e.id}|${r.emoji}`) })) } : {}) })) : withStatus;
+        json(res, 200, { ...read, comments: shownComments, ...(mine ? { viewer: { name: viewer!.name, kind: viewer!.kind } } : {}),
           ...(board.isArchived(found, archiveDays) ? { archived: true, archiveAfterDays: archiveDays } : {}) });
         return true;
       }
@@ -5697,7 +5785,7 @@ export function shellPreload(mode: AppShellMode, guest: boolean, path: string, w
     entries.push(PANEL_MODULES.chat);
     if (!guest) {
       if (panel && panel !== "chat" && panel !== "view" && PANEL_MODULES[panel]) entries.push(PANEL_MODULES[panel]);
-      entries.push("/ui/js/backend-signin.js", "/ui/js/agent-proposals.js");
+      entries.push("/ui/js/backend-signin.js", "/ui/js/agent-proposals.js", "/ui/js/task-unread.js");
       if (workspace) entries.push("/ui/js/chat-workspace.js", PANEL_MODULES.details, PANEL_MODULES.log, PANEL_MODULES.view);
     }
   }

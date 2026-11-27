@@ -22,6 +22,8 @@ import { Composer, Timeline } from "./fleet-task-activity.js";
 import { defaultRecipient, holdsRecipient, recipientGroups } from "./fleet-task-thread.js";
 import { FilesField } from "./fleet-task-files.js";
 import { AgentRun } from "./fleet-task-run.js";
+import { wakesMoving } from "./fleet-task-wake.js";
+import { openedCard } from "./task-unread.js";
 import { LeaderRow, WatchersRow } from "./fleet-task-follow.js";
 
 register("taskcard", {
@@ -97,6 +99,8 @@ register("taskcard", {
   },
 });
 
+/** While a comment's notice is on its way the page reads the card again this often (the stream's ping is the first way); a card is read this long after it is shown. */
+const WAKE_POLL_MS = 5000, READ_AFTER_MS = 1200;
 const LIMIT = { title: 100, goal: 300, scope: 600, context: 1000, state: 500, result: 1000, blockedReason: 400, acceptanceItems: 10 };
 const PRIORITY_CHOICES = ["urgent", "high", "normal", "low"];
 
@@ -193,7 +197,7 @@ const radioItems = (list, current, label, act) => list.map((v) => ({ key: String
  * Back says. `onBack` returns to the board or list. `doing`: how many cards each instance has in progress (fleet-task-run.js).
  */
 export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing = new Map(), writable = true, place = null, steps = null, where = null, back, onBack, onOpen, onStep, reloadBoard }) {
-  const { instances } = useStore(appStore);
+  const { instances, taskUnread } = useStore(appStore);
   const [detail, setDetail] = useState(null);
   const [missing, setMissing] = useState(false);
   const seq = useRef(0);
@@ -217,6 +221,40 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
     }
   }
   useEffect(() => { void load(); }, [id, tick]);
+  // Where a comment stands moved (a notice was handed to delivery, delivered, read): the stream's `task_wakes` names the card, and the
+  // page reads it again (docs/design/task-board.md, "Comment status").
+  useEffect(() => {
+    const sub = appStore.get().streamOn;
+    if (typeof sub !== "function") return undefined;
+    let timer = null;
+    const off = sub("task_wakes", (d) => {
+      if (!d || !Array.isArray(d.ids) || !d.ids.includes(id)) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; void load(); }, 150);
+    });
+    return () => { off(); if (timer) clearTimeout(timer); };
+  }, [id]);
+  // …and, while a notice is still on its way, now and then on its own: a page that polls, or one that missed the ping, still moves.
+  const onTheWay = detail ? wakesMoving(detail) : false;
+  useEffect(() => {
+    if (!onTheWay) return undefined;
+    const timer = setInterval(() => { if (!document.hidden) void load(); }, WAKE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [onTheWay, id]);
+  // What is new for this person on this card (task-unread.js): its comments are tagged "New" for as long as the card is open, and the
+  // card is read a moment after it is shown — at once if it was hidden when it came, as the tab is shown (a mark moves only forward).
+  const mine = taskUnread && taskUnread.enabled && taskUnread.cards ? taskUnread.cards[id] : null;
+  const [fresh, setFresh] = useState({ id, entries: [] });
+  const freshEntries = fresh.id === id ? fresh.entries : [];
+  useEffect(() => {
+    if (!mine) return undefined;
+    setFresh((f) => ({ id, entries: [...new Set([...(f.id === id ? f.entries : []), ...(Array.isArray(mine.entries) ? mine.entries : [])])] }));
+    const mark = () => { if (!document.hidden) void openedCard(id); };
+    const timer = setTimeout(mark, READ_AFTER_MS);
+    const onShown = () => mark();
+    document.addEventListener("visibilitychange", onShown);
+    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", onShown); };
+  }, [id, mine ? mine.n : 0, mine ? mine.at : ""]);
   // The page takes the keyboard's place from the tile or row that opened it (once per card: later reads leave the focus be).
   const head = useRef(null);
   const focused = useRef(null);
@@ -448,7 +486,7 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
       </aside>
 
       <div class="tp-activity">
-        <${Timeline} detail=${detail} describe=${describeRow} cards=${cards} lead=${((projects || []).find((x) => x.id === card.projectId) || {}).leadInstance || null} names=${mentionNames} thread=${thread} />
+        <${Timeline} detail=${detail} describe=${describeRow} cards=${cards} lead=${((projects || []).find((x) => x.id === card.projectId) || {}).leadInstance || null} names=${mentionNames} thread=${thread} fresh=${freshEntries} />
         ${can ? html`<${Composer} names=${mentionNames} assignee=${card.assignee} placeholder=${card.assignee ? t("taskcard.commentTo", card.assignee) : t("taskcard.commentHint")}
           recipients=${recipientsOf(card, detail, mentionNames)}
           onSend=${(text, to, held) => run(() => boardApi.update(card.id, { comment: text, ...(held ? {} : { to: to ? [to] : [] }) }))} />` : null}

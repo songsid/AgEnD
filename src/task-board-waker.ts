@@ -14,7 +14,7 @@
  * instance a message naming the card. A message and a notice are two things: an agent that wants to tell someone something
  * writes a comment with an @mention; the card's change is the board's own notice, and it always goes.
  */
-import type { Wake, WakeReason } from "./scheduler/task-board.js";
+import type { Wake, WakeReason, WakeSkip } from "./scheduler/task-board.js";
 import { gapText, oneLine } from "./scheduler/task-board-text.js";
 import { confirmerOf, personConfirms, WORD_REASONS, wrapUpGap, type Card } from "./scheduler/task-board.js";
 
@@ -56,6 +56,12 @@ export interface TaskBoardWakerDeps {
   noticeState?(key: string): string | null;
   /** #2801: when a card's status or assignee last changed (ISO; TaskBoard.lastChangeAt). */
   changedAt?(uuid: string): string | null;
+  /**
+   * What became of the news about a card for an instance as it went out — the comment status (docs/design/task-board.md, "Comment
+   * status"): handed to delivery under `key` (the outbox's), or not sent (`skip` says why). Told for every card's news that carries
+   * a comment's words; the board marks the comments it concerns. Absent: nobody keeps it.
+   */
+  settled?(event: { uuid: string; instance: string; key?: string; skip?: WakeSkip }): void;
   log(level: "info" | "warn", message: string, extra?: Record<string, unknown>): void;
   gatherMs?: number;
   timers?: { set(fn: () => void, ms: number): unknown; clear(handle: unknown): void };
@@ -64,7 +70,8 @@ export interface TaskBoardWakerDeps {
 
 /** The start of a task board notice's key; `:cards=` and the card uuids end it (#2801). */
 const KEY_PREFIX = "task-board:";
-const cardsOfKey = (key: string) => { const at = key.lastIndexOf(":cards="); return at < 0 ? [] : key.slice(at + 7).split(",").filter(Boolean); };
+/** The card uuids a task board notice's key names (empty for a key that is not one). */
+export const cardsOfKey = (key: string) => { if (!key.startsWith(KEY_PREFIX)) return []; const at = key.lastIndexOf(":cards="); return at < 0 ? [] : key.slice(at + 7).split(",").filter(Boolean); };
 /** The comments (entry numbers) a notice quotes: `:comments=12,15` before its `:cards=`. */
 const commentsOfKey = (key: string): number[] => {
   const m = /:comments=([\d,]*):cards=/.exec(key);
@@ -80,6 +87,8 @@ const MANY_ASSIGNED = 3;
 const ORDER: WakeReason[] = ["cancelled", "sent_back", "decide", "to_confirm", "confirm_own", "answered", "answer_kept", "wrap_up", "assigned", "start", "ready", "progress", "mention", "comment"];
 /** A comment (written by someone who is not the assignee) or an `@` mention: news only because of the words. */
 const isCommentNews = (r: WakeReason) => r === "comment" || r === "mention";
+/** News whose words are a comment's: those two, and a dispatcher's answer to a blocked question (the comment that came with it). */
+const carriesWords = (r: WakeReason) => isCommentNews(r) || r === "answered" || r === "answer_kept";
 const hasCommentNews = (w: Wake) => w.reasons.some(isCommentNews);
 
 const quote = (text: string | undefined) => (text ? `: "${oneLine(text, 160)}"` : "");
@@ -359,14 +368,32 @@ export class TaskBoardWaker {
     while (this.kept.size > KEPT_NOTICES) { const oldest = this.kept.keys().next().value; if (oldest === undefined) break; this.kept.delete(oldest); }
   }
 
+  /** Tells the board what became of a card's news for `instance` (settled), never failing the send. */
+  private settle(instance: string, w: Wake, what: { key?: string; skip?: WakeSkip }): void {
+    if (!w.reasons.some(carriesWords)) return;
+    try { this.deps.settled?.({ uuid: w.uuid, instance, ...what }); } catch (err) { this.deps.log("warn", "Task board could not record what became of a comment's news", { instance, code: w.code, err: (err as Error).message }); }
+  }
+
   private flush(instance: string): void {
     const batch = this.gathering.get(instance);
     this.gathering.delete(instance);
     if (!batch || this.stopped) return;
-    if (this.deps.boardOff?.(instance)) { this.deps.log("info", "Task board news not sent: the instance has the task board switched off", { instance }); return; }
+    if (this.deps.boardOff?.(instance)) {
+      this.deps.log("info", "Task board news not sent: the instance has the task board switched off", { instance });
+      for (const w of batch.wakes.values()) this.settle(instance, w, { skip: "board_off" });
+      return;
+    }
     // Only what still holds as it goes out: not finished meanwhile, still theirs, still waiting on them.
-    const wakes = [...batch.wakes.values()].map((w) => this.deps.holds(w)).filter((w): w is Wake => w !== null)
-      .map((w) => this.contactHolds(instance, w)).filter((w): w is Wake => w !== null);
+    const wakes: Wake[] = [];
+    for (const gathered of batch.wakes.values()) {
+      const held = this.deps.holds(gathered);
+      if (!held) { this.settle(instance, gathered, { skip: "not_waiting" }); continue; }
+      const reach = this.contactHolds(instance, held);
+      if (!reach) { this.settle(instance, held, { skip: "contact_held" }); continue; }
+      // The words are left out when their writer may not reach the instance; the card's own news still goes.
+      if (held.reasons.some(carriesWords) && !reach.reasons.some(carriesWords)) this.settle(instance, held, { skip: "contact_held" });
+      wakes.push(reach);
+    }
     if (!wakes.length) return;
     // Every card's snapshots of each writer, not the first card's only.
     const origins: Record<string, unknown[]> = {};
@@ -377,9 +404,11 @@ export class TaskBoardWaker {
     let taken = false;
     try { taken = this.deps.deliver(instance, wakeMessage(wakes, (uuid) => this.deps.card(uuid), (w) => this.deps.buttonsHere?.(instance, w.uuid) === true), key, origins); } catch (err) {
       this.deps.log("warn", "Task board wake failed", { instance, codes, err: (err as Error).message });
+      for (const w of wakes) this.settle(instance, w, { skip: "not_taken" });
       return;
     }
     if (taken && quoting.length) this.keep(key, wakes);
+    for (const w of wakes) this.settle(instance, w, taken ? { key } : { skip: "not_taken" });
     if (taken) this.deps.log("info", "Task board wake handed to delivery", { instance, codes });
     else this.deps.log("warn", "Task board wake not taken; the cards keep the news", { instance, codes });
   }

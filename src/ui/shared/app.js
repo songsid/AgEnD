@@ -143,6 +143,9 @@ if (hubPage) {
     startNeedsNotifier({ open: (instance) => navigate(chatPath(instance)) });
     // #2233: a backend sign-in running anywhere is shown on every admin page (the module lives behind the session gate).
     import("/ui/js/backend-signin.js").then((m) => m.installSignIn(), () => {});
+    // The task board's unread for this person (a card someone answered, named them on, or handed them): the sidebar's number, the
+    // board's marks (docs/design/task-board.md, "Unread"). A read-only session is told there is none.
+    import("/ui/js/task-unread.js").then((m) => m.installTaskUnread(), () => {});
     // alpha.2 (M-2300): an agent's Windows request waiting for a web-only fleet's owner — counted in Needs you everywhere.
     import("/ui/js/agent-proposals.js").then((m) => m.installProposals(), () => {});
   }
