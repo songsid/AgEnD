@@ -60,6 +60,7 @@ import {
   GetFleetStatusArgs,
   GetInstanceLogsArgs,
   GetEffortArgs,
+  ProposeUpdateArgs,
   ClosePollArgs,
   KiroEngineStatusArgs,
   MigrateKiroInstanceArgs,
@@ -1326,6 +1327,19 @@ const closePoll: Handler = async (ctx, rawArgs, respond, meta) => {
   const r = await fm.closePollEarly(instance, v.data.poll_id);
   if (r.ok) respond({ closed: true, poll_id: v.data.poll_id, voted: r.voted });
   else respond(null, `close_poll: ${r.error}`);
+};
+
+/** M-3694 (S-265): General proposes an AgEnD update; nothing changes until a fleet admin confirms the card. */
+const proposeUpdate: Handler = async (ctx, rawArgs, respond, meta) => {
+  const v = validateArgs(ProposeUpdateArgs, rawArgs, "propose_update");
+  if (!v.ok) { respond(null, v.error); return; }
+  const fm = ctx as unknown as { requestUpdateProposal?(requester: string, at?: number): Promise<{ ok: true; text: string } | { ok: false; error: string }> };
+  if (!fm.requestUpdateProposal || !meta?.instanceName) { respond(null, "propose_update is not available here"); return; }
+  const at = v.data.at === undefined ? undefined : Date.parse(v.data.at);
+  if (at !== undefined && !Number.isFinite(at)) { respond(null, "Not proposed: `at` must be an ISO date and time, e.g. 2026-11-28T03:00:00+08:00."); return; }
+  const r = await fm.requestUpdateProposal(meta.instanceName, at);
+  if (!r.ok) { respond(null, r.error); return; }
+  respond({ status: "awaiting_admin_confirmation", note: r.text });
 };
 
 const getEffort: Handler = (ctx, rawArgs, respond, meta) => {
@@ -2722,6 +2736,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["stop_instance", stopInstance],
   ["get_fleet_status", getFleetStatus],
   ["get_effort", getEffort],
+  ["propose_update", proposeUpdate],
   ["close_poll", closePoll],
   ["kiro_engine_status", kiroEngineStatusHandler],
   ["propose_contact_change", proposeContactChange],

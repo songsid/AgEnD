@@ -414,6 +414,9 @@ export const StopInstanceArgs = z.object({
 
 export const GetFleetStatusArgs = z.object({});
 
+/** M-3694 (S-265): General proposes an AgEnD update; a fleet admin confirms. */
+export const ProposeUpdateArgs = z.strictObject({ at: z.string().optional().describe("ISO time within 7 days; omitted: when idle") });
+
 export const GetEffortArgs = z.object({
   name: NonEmptyString.optional().describe("Instance to inspect. Defaults to the calling instance."),
 });

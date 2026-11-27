@@ -11,7 +11,7 @@
 /** The kinds of AgEnD tools a restricted room loses, in the order they are shown; each tool in exactly one. */
 export const TOOL_GROUPS = Object.freeze([
   { id: "fleet", tools: ["get_fleet_status", "get_fleet_config", "validate_config", "get_effort", "list_models", "kiro_engine_status",
-    "update_instance_config", "update_fleet_defaults", "migrate_kiro_instance", "reconcile_kiro_instance", "get_web_settings", "set_web_settings", "propose_contact_change", "contact_state"] },
+    "update_instance_config", "update_fleet_defaults", "migrate_kiro_instance", "reconcile_kiro_instance", "get_web_settings", "set_web_settings", "propose_contact_change", "contact_state", "propose_update"] },
   { id: "agents", tools: ["create_instance", "delete_instance", "replace_instance", "start_instance", "stop_instance", "restart_instance",
     "pause_instance", "wake_instance", "create_team", "update_team", "delete_team"] },
   { id: "usage", tools: ["get_usage", "get_usage_report", "get_cache_report", "get_instance_logs"] },

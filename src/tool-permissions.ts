@@ -84,6 +84,8 @@ const ORCHESTRATION: readonly string[] = [
   "deploy_template", "teardown_deployment",
   "create_team", "delete_team", "update_team",
   "update_fleet_defaults", "update_instance_config",
+  // M-3694 (S-265): asks only; a fleet admin's Confirm in General makes the update.
+  "propose_update",
   // #2598 B2: asks only; a fleet admin's Confirm in General makes the move.
   "migrate_kiro_instance",
   "reconcile_kiro_instance",
