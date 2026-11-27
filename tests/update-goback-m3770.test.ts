@@ -16,7 +16,7 @@ import { attemptDir, defaultJournalIo, journalDir, newAttemptId, openAttempt, re
 import { runUpdate, type UpdateDeps } from "../src/update-forward.js";
 import { goBackChanges, readGoBackOffer, runGoBack, type GoBackGuard } from "../src/update-goback.js";
 import { readRetained } from "../src/update-retained.js";
-import { dropInPath, unwrapRecoveryRoute, wrapPlist } from "../src/update-recovery/route.js";
+import { dropInPath, removeRecoveryRoute, unwrapRecoveryRoute, wrapPlist } from "../src/update-recovery/route.js";
 import { parsePlist } from "../src/service-activation.js";
 
 
@@ -317,6 +317,31 @@ describe("M-3770 2.5: Go back, end to end on a scratch world", () => {
     const wrapperOf = (args: string[]) => plistArgs(wrapPlist(plistOf(args), w.home, GB, args)!)!;
     expect(unwrapRecoveryRoute(wrapperOf(["/usr/local/bin/agend", "fleet", "start", "--since-2.4.1"]), w.home, deps)).toEqual(["/usr/local/bin/agend", "fleet", "start", "--since-2.4.1"]);
     expect(unwrapRecoveryRoute(wrapperOf(["/usr/local/bin/agend", "fleet", "start"]), w.home, deps)).toBeNull();
+  });
+
+  it("Fable #4565 (a): removing a Go back's route is bound to its outcome — committed: only the target's wrapper; otherwise only its own", () => {
+    const ARGS_240 = ["/usr/local/bin/agend", "fleet", "start"], ARGS_241 = [...ARGS_240, "--since-2.4.1"];
+    const wrapper = (home: string, args: string[]) => wrapPlist(plistOf(args), home, GB, args)!;
+    // Rolled back, the file still the wrapper around 2.4.0's (the restore of its own marked done before a crash): left as it is.
+    const r = committed({ launchd: true });
+    expect(runGoBack(r.home, ID, goBackInit(r), { ...r.deps(noNpm), guard: guardOf([true, false]).guard })).toMatchObject({ outcome: "rolled-back" });
+    const rolled = readAttemptRecord(r.home, GB)!;
+    writeFileSync(r.fragment, wrapper(r.home, ARGS_240));
+    expect(removeRecoveryRoute(r.home, rolled, { plistArgs })).toMatchObject({ ok: false, reason: expect.stringContaining("isn't this route's wrapper any more") });
+    expect(readFileSync(r.fragment, "utf8")).toBe(wrapper(r.home, ARGS_240));
+    writeFileSync(r.fragment, wrapper(r.home, ARGS_241));                                          // its own: comes off to 2.4.1's
+    expect(removeRecoveryRoute(r.home, rolled, { plistArgs })).toMatchObject({ ok: true });
+    expect(readFileSync(r.fragment, "utf8")).toBe(PLIST_241);
+    // Committed, the file the wrapper around its OWN preimage (2.4.1's): left; around the target's: comes off to 2.4.0's.
+    const c = committed({ launchd: true });
+    expect(runGoBack(c.home, ID, goBackInit(c), { ...c.deps(noNpm), guard: guardOf([true, true]).guard }).ok).toBe(true);
+    const done = readAttemptRecord(c.home, GB)!;
+    writeFileSync(c.fragment, wrapper(c.home, ARGS_241));
+    expect(removeRecoveryRoute(c.home, done, { plistArgs })).toMatchObject({ ok: false });
+    expect(readFileSync(c.fragment, "utf8")).toBe(wrapper(c.home, ARGS_241));
+    writeFileSync(c.fragment, wrapper(c.home, ARGS_240));
+    expect(removeRecoveryRoute(c.home, done, { plistArgs })).toMatchObject({ ok: true });
+    expect(readFileSync(c.fragment, "utf8")).toBe(PLIST_240);
   });
 
   it("a detached install (no service) goes back too: no unit is touched", () => {

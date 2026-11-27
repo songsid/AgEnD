@@ -159,18 +159,16 @@ export function removeRecoveryRoute(home: string, attempt: AttemptRecord, deps: 
   try { current = readFileSync(service.fragmentPath, "utf8"); }
   catch (err) { return { ok: false, reason: `${service.fragmentPath} can't be read (${(err as Error).message}); the wrapper stays` }; }
   // Only this route's own wrapper is taken off (Fable #4517 F3); the preimage already in place is done.
-  // S-260: a Go back's restore wrote the COMMITTED attempt's definition inside this attempt's wrapper (restoreUnit's
-  // preimageOf): that wrapper comes off to the committed definition. Before its restore (an abandon), it is this
-  // attempt's own wrapper and comes off to its own preimage. Exactly one of the two, or nothing.
-  const candidates: Buffer[] = [kept];
-  if (attempt.kind === "go-back" && attempt.goBackOf) {
-    try { candidates.unshift(readFileSync(unitPreimagePath(home, attempt.goBackOf))); }
+  // S-260 (Fable #4565): the candidate is bound to the attempt's outcome. A Go back that is committing or committed ends
+  // on the definition it returned to (restoreUnit's preimageOf wrote it inside this attempt's wrapper); every other
+  // outcome (rolled back, abandoned, resolved) ends on this attempt's own preimage. Exactly that one, or nothing.
+  if (attempt.kind === "go-back" && attempt.goBackOf && (attempt.stage === "committing" || attempt.stage === "committed")) {
+    try { kept = readFileSync(unitPreimagePath(home, attempt.goBackOf)); }
     catch (err) { return { ok: false, reason: `the definition Go back returns to can't be read (${(err as Error).message}); the wrapper stays` }; }
   }
-  if (candidates.some(c => current === c.toString("utf8"))) return { ok: true, path: service.fragmentPath };
-  const target = candidates.find(c => { const w = wrappedFromPreimage(home, attempt.id, c.toString("utf8"), deps.plistArgs); return w.ok && current === w.xml; });
-  if (!target) return { ok: false, reason: `${service.fragmentPath} isn't this route's wrapper any more; it is left as it is` };
-  kept = target;
+  if (current === kept.toString("utf8")) return { ok: true, path: service.fragmentPath };
+  const wrapped = wrappedFromPreimage(home, attempt.id, kept.toString("utf8"), deps.plistArgs);
+  if (!wrapped.ok || current !== wrapped.xml) return { ok: false, reason: `${service.fragmentPath} isn't this route's wrapper any more; it is left as it is` };
   try { writeDurable(service.fragmentPath, kept, io, "keep"); }
   catch (err) { return { ok: false, reason: `${service.fragmentPath} can't be written back (${(err as Error).message})` }; }
   return { ok: true, path: service.fragmentPath };
