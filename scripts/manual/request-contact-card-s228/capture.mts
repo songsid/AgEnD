@@ -11,7 +11,7 @@
  *   1 Needs you, not verified: the same card, its buttons off, one line and Authorize this browser · 2 verified: the
  *   card read again, its buttons on, nothing decided · 3 one click: Continued · 4 Fleet → Authorizations (a guest's
  *   request and a legacy one, each detail line saying its scope), 4b a legacy request's details folded out ·
- *   5 Always allow… on the legacy request (its people from the card's grant candidates).
+ *   5 Set allowed contacts for these people… on the legacy request (its people from the card's grant candidates).
  * Desk light en, desk dark zh-TW, phone light en, phone dark zh-TW.
  *   CHROME=<chromium> PW_DIR=<playwright-core> REPO=<checkout> OUT=<dir> npx tsx scripts/manual/request-contact-card-s228/capture.mts
  */
@@ -29,7 +29,10 @@ const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.
 const shot = async (page: any, name: string) => {
   await page.waitForTimeout(400);
   const path = `s228-${name}.png`;
-  await page.screenshot({ path: join(OUT, path) });
+  // No host path may show (the fixture's temporary folder); a fleet.yaml preview, if any is drawn, is masked.
+  const leaks = await page.evaluate(`(() => { const t = document.body.innerText; const y = [...document.querySelectorAll(".s-yaml")].map((e) => e.innerText).join("\\n"); return [...t.matchAll(/\\/tmp\\/[^\\s]*/g)].map((m) => m[0]).filter((x) => !y.includes(x)); })()`) as string[];
+  check(`${name}: no host path outside a masked fleet.yaml`, leaks.length === 0, leaks);
+  await page.screenshot({ path: join(OUT, path), mask: [page.locator(".s-yaml")], maskColor: "#888888" });
   receipt.pictures.push({ path, sha256: createHash("sha256").update(readFileSync(join(OUT, path))).digest("hex") });
 };
 
@@ -144,6 +147,7 @@ async function walk(c: any) {
     check(`${tag} 3: one click continues it`, await waitFor(page, `((document.querySelector('.rc-card[data-ticket="${A.id}"]') || {}).innerText || "").includes(${JSON.stringify(W(zh, "Continued", "已繼續"))})`), await cardText(page, A.id));
     check(`${tag} 3: admitted once`, state(A.id) === "approved" && box.listPending().length === base + 1, { state: state(A.id), pending: box.listPending().length });
     check(`${tag} 3: no buttons after`, (await page.locator(`.rc-card[data-ticket="${A.id}"] button[data-choice]`).count()) === 0, null);
+    check(`${tag} 3: says the outcome, not just the badge`, (await cardText(page, A.id)).includes(W(zh, "Forwarded to Billing.", "已轉交給 Billing。")), await cardText(page, A.id));
     await shot(page, `${tag}-3-continued`);
     // 4 Fleet → Authorizations: the guest's scoped request and a legacy one
     await page.goto(fx.base + "/ui/fleet/authorizations"); await mounted(page, 30000);
@@ -157,14 +161,23 @@ async function walk(c: any) {
     await shot(page, `${tag}-4-authorizations`);
     await page.locator(`.rc-card[data-ticket="${C.id}"] details.rc-more summary`).click(); await page.waitForTimeout(300);
     const folded = await cardText(page, C.id);
-    check(`${tag} 4b: the details: the message, who asked, the times`, folded.includes(W(zh, "Summarize yesterday's support tickets.", "整理昨天的客服單。")) && folded.includes(W(zh, "No single known person asked", "不是單一已知的人提出的")) && folded.includes(W(zh, "Approve = forward this request once.", "核准＝只轉交這一次。")), folded);
+    check(`${tag} 4b: the details: the message, who asked, the times`, folded.includes(W(zh, "Summarize yesterday's support tickets.", "整理昨天的客服單。")) && folded.includes(W(zh, "Can't tell who asked", "無法確認是誰提出的")) && folded.includes(W(zh, "Approve = forward this request once.", "核准＝只轉交這一次。")), folded);
+    check(`${tag} 4b: no internal request id in view`, !/#R[0-9a-f]/.test(folded), folded);
     await page.evaluate(`document.querySelector('.rc-card[data-ticket="${C.id}"]').scrollIntoView({ block: "start" })`);
     await shot(page, `${tag}-4b-details`);
-    // 5 Always allow… on the legacy request (the grant editor predates J; the leader cards its layout separately): its people, from the card's grant candidates
+    // 5 Set allowed contacts for these people… on the legacy request: its people, from the card's grant candidates
     await page.locator(`.rc-card[data-ticket="${C.id}"] button[data-choice="always"]`).click(); await page.waitForTimeout(500);
     const dlg = await page.evaluate(`(document.querySelector("dialog.contact-grant-dialog") || {}).innerText || ""`) as string;
     check(`${tag} 5: the rule lists the request's people`, dlg.includes("Alex") && dlg.includes("Robin"), dlg.slice(0, 300));
     check(`${tag} 5: nothing decided by opening it`, state(C.id) === "pending", state(C.id));
+    check(`${tag} 5: the button and the editor have one name`, dlg.startsWith(W(zh, "Set allowed contacts for these people", "設定這些人的常用轉交")) && (await page.locator(`.rc-card[data-ticket="${C.id}"] button[data-choice="always"]`).innerText()).trim() === W(zh, "Set allowed contacts for these people…", "設定這些人的常用轉交…"), dlg.slice(0, 120));
+    const ed = await page.evaluate(`(() => { const d = document.querySelector("dialog.contact-grant-dialog"); const body = d.querySelector(".dlg-body").getBoundingClientRect(); const b = d.querySelector(".contact-grant-boundary").getBoundingClientRect();
+      const save = [...d.querySelectorAll(".dlg-actions button")].pop();
+      return { boundaryInView: b.top >= body.top && b.bottom <= body.bottom, saveOff: save.disabled, save: save.innerText.trim(), native: d.querySelectorAll('input[type="datetime-local"], input[type="date"], input[type="time"]').length,
+        selects: d.querySelectorAll(".contact-until select").length, day: d.querySelector(".contact-until select").selectedOptions[0].innerText }; })()`) as any;
+    check(`${tag} 5: the boundary is in view (not behind the footer), and plain`, ed.boundaryInView && dlg.includes(W(zh, "This only decides whether a message is forwarded", "這只決定訊息能不能轉交")), ed);
+    check(`${tag} 5: save is off until someone is ticked, and says why`, ed.saveOff && ed.save === W(zh, "Approve this one and allow from now on", "核准這筆，並設為常用轉交") && dlg.includes(W(zh, "Tick at least one person to save a rule.", "至少勾選一個人，才能儲存規則。")), ed);
+    check(`${tag} 5: the expiry is a day and a 24-hour time in the page's language`, ed.native === 0 && ed.selects === 3 && !/AM|PM|上午|下午/.test(dlg) && (zh ? /[年月日]/.test(ed.day) : /[A-Z][a-z]{2}/.test(ed.day)), ed);
     await shot(page, `${tag}-5-always-allow`);
     check(`${tag}: no page errors`, errors.length === 0, errors);
   } finally {
