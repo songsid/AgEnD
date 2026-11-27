@@ -102,7 +102,7 @@ register("contactAuth", {
     grantSaved: "Request approved and contact rules saved.", grantView: "View rules in Permissions",
     cancel: "Cancel", saving: "Saving…", grantNoMatches: "No matching people.",
     allowPersonTitle: "Allow this person to contact this agent", allowPeopleTitle: "Set allowed contacts for these people", operator: "Administrator",
-    allowPerson: "Allow this person to contact this agent…", allowPeople: "Set allowed contacts for these people…", allowAndApprove: "Approve this one and allow from now on",
+    allowPerson: "Allow this person to contact this agent…", allowPeople: "Set allowed contacts for these people…", allowAndApprove: "Approve and allow from now on",
     grantEdit: "Adjust allowed contact", grantSave: "Save rule", grantSaveFailed: "The rule was not saved. Review the current permissions and try again.",
     grantPeople: "People", grantRoute: "From {0} to {1}", grantType: "Request type: {0}", grantTypes: "Request types",
     grantOneDay: "1 day", grantDuration: "Duration", grantDays: "{0} days", grantCustom: "Custom expiry", grantZone: "Time zone: {0}", grantAdvanced: "Advanced: limit uses",

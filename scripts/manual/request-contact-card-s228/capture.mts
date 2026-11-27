@@ -182,7 +182,7 @@ async function walk(c: any) {
       const r = { lastBottom: Math.round(last.bottom), footTop: Math.round(foot.top) }; body.scrollTop = 0; return r; })()`) as any;
     check(`${tag} 5: scrolled to its end, the body's last line clears the footer`, tail.lastBottom <= tail.footTop, tail);
     check(`${tag} 5: the boundary is in view (not behind the footer), and plain`, ed.boundaryInView && dlg.includes(W(zh, "Until it expires, these people's requests of this type are forwarded to this agent without asking.", "到期前，這些人的這類請求會直接轉交給這個 Agent，不再詢問。")) && dlg.includes(W(zh, "What this allows", "這會允許什麼")), ed);
-    check(`${tag} 5: save is off until someone is ticked, and says why`, ed.saveOff && ed.save === W(zh, "Approve this one and allow from now on", "核准這筆，並設為常用轉交") && dlg.includes(W(zh, "Tick at least one person to save a rule.", "至少勾選一個人，才能儲存規則。")), ed);
+    check(`${tag} 5: save is off until someone is ticked, and says why`, ed.saveOff && ed.save === W(zh, "Approve and allow from now on", "核准這筆，並設為常用轉交") && dlg.includes(W(zh, "Tick at least one person to save a rule.", "至少勾選一個人，才能儲存規則。")), ed);
     check(`${tag} 5: the expiry is a day and a 24-hour time in the page's language`, ed.native === 0 && ed.selects === 3 && (!zh || !/AM|PM|上午|下午/.test(dlg)) && (zh ? /[年月日]/.test(ed.day) : /[A-Z][a-z]{2}/.test(ed.day)), ed);
     await shot(page, `${tag}-5-always-allow`);
     // 5b (phone, zh dark): the same editor scrolled to its end — its last line sits fully above the footer (the leader's

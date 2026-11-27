@@ -5620,6 +5620,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* #4497 recheck: the body scrolls between the head and the footer (a flex child's min-height: auto let it run under the
    footer buttons on a phone), with room after its last line so that line scrolls clear of them. */
 .contact-grant-dialog .dlg-body { min-height: 0; padding-bottom: var(--s-6); }
+.contact-grant-dialog .dlg-title { text-wrap: balance; }   /* M-3783: a two-line title on a phone splits evenly, no one-word last line */
 /* M-3783: the essentials in one line; what the rule allows, folded under it. */
 .contact-grant-more summary { cursor: pointer; color: var(--accent); font-size: var(--fs-sm); }
 .contact-grant-more > p { margin: var(--s-1) 0 0; }
