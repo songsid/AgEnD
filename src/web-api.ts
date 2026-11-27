@@ -4254,7 +4254,13 @@ export function handleWebRequest(
     const board = ctx.scheduler?.db.board;
     // M-3668: how many days after it finished a main task leaves the board (defaults.task_board.archive_after_days).
     const archiveDays = archiveAfterDays(ctx.fleetConfig?.defaults?.task_board?.archive_after_days);
-    if (!board) { json(res, 503, { error: "The task board is not available", code: "unavailable", key: "unavailable" }); return true; }
+    if (!board) {
+      // The page asks for the person's unread on every admin page (task-unread.js), so a fleet with no task board answers it as it does a
+      // session that has none — nothing — and not with an error the browser logs as one.
+      if (method === "GET" && path === "/ui/tasks/unread") { res.setHeader("Cache-Control", "no-store"); json(res, 200, { enabled: false, total: 0, cards: {} }); return true; }
+      json(res, 503, { error: "The task board is not available", code: "unavailable", key: "unavailable" });
+      return true;
+    }
     // M-3278 (decision 7933bf90): an admin session changes the board over the public link too, as itself (boardActor), and
     // sees it whole; a read-only session over the link keeps the link's hiding.
     const gateway = linkRestricted(req, url, ctx);
