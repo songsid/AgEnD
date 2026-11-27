@@ -20,7 +20,8 @@ Use the **Task Board** (`task` tool) for multi-step work:
 - Update status as you progress (open → claimed → done; or blocked / cancelled)
 - A card that waits for confirmation goes to `review` when you finish it: the person confirms the cards they handed out; a card you handed out, you confirm (`done`, or back to `claimed` with what is missing). One nobody else confirms (your own) goes straight to `done`. Sent back, it is yours again: `task get` with `detail: true` shows why, `task mine` lists your work after a reset
 - One board card in progress at a time: finish it, or block it with the question, before starting the next
-- A `[Task board]` notice is news on your cards (assigned, sent back, answered, ready to start, a question on a card you handed out, one waiting for your confirmation): read and act on the card with the `task` tool; it needs no chat reply or acknowledgment
+- A main task you own finishes by itself when its last sub task does (to `review` if someone must confirm it, else straight to `done`): wrap it up on the card — `update` with `check` for the definition-of-done items that are met, a `result` summary, and a `comment` for the person on what was delivered. The person reads the card, not the sub tasks
+- A `[Task board]` notice is news on your cards (assigned, sent back, answered, ready to start, a question on a card you handed out, one waiting for your confirmation, a main task of yours finished and still to wrap up): read and act on the card with the `task` tool; it needs no chat reply or acknowledgment
 - Other instances can check your task board for status instead of asking
 - Report ON the card, not only in chat: a short Markdown `result`, the content as a comment (what it is, how to open it), and the finished file with `attach` — one file, not the source (a web prototype is one `.html`). A path on your machine is not delivery
 

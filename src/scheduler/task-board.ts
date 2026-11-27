@@ -329,7 +329,8 @@ export interface CardEvent {
  * Why an instance hears about one of its cards (step 2's wakes, task-board-waker.ts): someone else assigned it,
  * started it, sent it back, answered its blocked question, or finished the last card it waited for; it is blocked and
  * the instance handed it out (decide); it went to the person for confirmation and the instance handed it out, so it
- * tells them (to_confirm); a main task went to the person by itself before its owner wrapped it up (wrap_up); or
+ * tells them (to_confirm); a main task finished by itself — to the person (review) or, when nobody has to confirm it, straight to
+ * done — before its owner wrapped it up: its definition of done unticked, no result (wrap_up); or
  * someone else cancelled it — a main task's cancel takes its unfinished sub tasks down with it, and their assignees
  * hear (cancelled). #2801: only a change of status or assignee is news, and only to the one instance that acts on it
  * next — a confirmation (the work is finished) wakes nobody; but for the answer to its blocked question that waits on
@@ -653,6 +654,12 @@ export function wrapUpGap(card: Pick<Card, "acceptance" | "result">): { unchecke
   const unchecked = card.acceptance.filter((a) => !a.done).length;
   const noResult = !card.result.trim();
   return unchecked || noResult ? { unchecked, noResult } : null;
+}
+
+/** "3 definition-of-done items unchecked, no result": what {@link wrapUpGap} found, as an agent is told it. */
+export function gapText(gap: { unchecked: number; noResult: boolean }, main: boolean): string {
+  const items = gap.unchecked ? `${gap.unchecked} ${main ? "definition-of-done" : "acceptance"} item${gap.unchecked === 1 ? "" : "s"} unchecked` : "";
+  return [items, gap.noResult ? "no result" : ""].filter(Boolean).join(", ");
 }
 
 function parseJsonArray<T>(raw: unknown, fallback: T[]): T[] {
@@ -2437,7 +2444,13 @@ export class TaskBoard {
     this.save(main);
     this.event(actor, main, "moved", { from, to: next, auto: true });
     if (next === "review") this.say("review_waiting", [main.code, main.title], `${main.code} "${main.title}": every sub task is done; it is waiting for ${confirmerOf(main)}'s confirmation`);
-    else if (from === "done" || from === "review") this.say("back_to", [main.code, next], `${main.code} has unfinished sub tasks again; it is back to ${next}`);
+    else if (next === "done") {
+      // Nobody confirms it: it is done by itself, whatever its definition of done and result say — whoever owns it wraps it up.
+      const gap = wrapUpGap(main);
+      const owner = main.assignee && main.assignee !== actor.name ? main.assignee : null;
+      this.say("main_done", [main.code, main.title], `${main.code} "${main.title}": every sub task is done, so it is done by itself`
+        + (gap ? `, though ${gapText(gap, true)} — ${owner ? `${owner}, its owner, is told to fill that in` : "fill that in with update (check the items that are met, result: a short summary), and tell the person on the card"}` : ""));
+    } else if (from === "done" || from === "review") this.say("back_to", [main.code, next], `${main.code} has unfinished sub tasks again; it is back to ${next}`);
     if (next === "done") this.noteUnblocked(main);
   }
 
@@ -2690,8 +2703,11 @@ export class TaskBoard {
         // nobody else will confirm it, so its assignee is told it is theirs.
         if (d.to === "review" && card.assignee && confirmingInstance(card) === card.assignee) add(card, card.assignee, "confirm_own", e.actor);
         if (d.auto) {
-          // #2801: one change, one instance — the dispatcher's confirmation already says what it lacks.
-          if (d.to === "review" && card.kind === "main" && wrapUpGap(card) && !toConfirm) add(card, card.assignee, "wrap_up", e.actor);
+          // #2801: one change, one instance — the dispatcher's confirmation already says what it lacks. A main task that needs
+          // nobody's confirmation goes straight to done when its last sub task does: its owner is the only one left to tick the
+          // definition of done and sum it up (the followers hear the sub task's move, not that the whole is finished). The board's own
+          // catch-up (a main task read behind its sub tasks) wakes nobody for that.
+          if ((d.to === "review" ? !toConfirm : d.to === "done" && e.actor.kind !== "system") && card.kind === "main" && wrapUpGap(card)) add(card, card.assignee, "wrap_up", e.actor);
           continue;
         }
         if (d.from === "open" && d.to === "claimed") add(card, card.assignee, "start", e.actor);
@@ -2771,7 +2787,7 @@ export class TaskBoard {
   /**
    * What of a wake still stands now (at the end of its write, and again when the fleet sends it): a finished card is
    * news only as a cancel; a card that is no longer the instance's is not; a question only while the card is blocked
-   * and the instance still handed it out; a wrap-up only while it waits unfinished; and an assignment only once the
+   * and the instance still handed it out; a wrap-up only while the main task is in review or done and still lacks something; and an assignment only once the
    * card can start (its "ready" wakes it then). What asks the instance to act holds only while it still can (#2303
    * review): "ready" while the card is open with nothing left to wait for, "start" and "answered" while it is in
    * progress, "sent back" while it is back with the instance. null when nothing is left.
@@ -2788,6 +2804,8 @@ export class TaskBoard {
       if (r === "mention") return true;
       // A follower is told how the card moved on while it still stands there (finished too), and while it still follows it.
       if (r === "progress") return !!wake.news && this.followersOf(card).has(wake.instance) && this.progressStands(card, wake.news);
+      // A main task that finished by itself stays its owner's to wrap up, in review or done, while something is still missing.
+      if (r === "wrap_up") return own && card.kind === "main" && (card.status === "review" || card.status === "done") && wrapUpGap(card) !== null;
       if (isFinished(card)) return false;
       if (r === "decide") return handedOut && card.status === "blocked";
       // #2341 review: and still waiting for the person — its confirmation not switched off during the gather.
@@ -2797,7 +2815,6 @@ export class TaskBoard {
       // and a comment its assignee has already read — its own write since — is not told to it.
       if (r === "comment") return (card.status !== "open" || !waiting) && this.newComments(card).some((e) => e.kind === "comment");
       if (r === "confirm_own") return card.status === "review" && confirmingInstance(card) === wake.instance;
-      if (r === "wrap_up") return card.status === "review" && wrapUpGap(card) !== null;
       if (r === "assigned") return !waiting;
       if (r === "ready") return card.status === "open" && !waiting;
       if (r === "start" || r === "answered") return card.status === "claimed";
