@@ -66,7 +66,7 @@ No producer is positively covered merely by this design or by a helper advertisi
 Add a managed, launch-authenticated **input-origin observer**, separate from the MCP tool menu. It has no tool action that the model can invoke to register an origin.
 
 1. C's owned final-write path records the exact admitted input identity, complete delivery image digest, actual formatted wire image, source owner/generations and bound C snapshot. A queued input is not a consumed turn. A permitted steer keeps C's existing provenance.
-2. The managed synchronous provider hook receives the provider-native input event. It connects through a private endpoint using a launch credential supplied only to that owned hook invocation. Use a separate, role-bound observer credential: a helper bearer cannot register an input. Local sockets and Windows host-local endpoints use the same exact launch-owner check as their helper paths. A payload-provided actor, environment name, cwd or provider id never selects the owner.
+2. The managed synchronous provider hook receives the provider-native input event. It connects through a private endpoint using a role-bound launch credential. Keep observer and helper credentials separate, but do not assume either is secret from the model: the hook and model tools may share uid, environment and files. A valid observer credential binds the launch, not the truth of a registration. Local sockets and Windows host-local endpoints use the same exact launch-owner check as their helper paths. A payload-provided actor, environment name, cwd or provider id never selects the owner.
 3. A provider-specific pure codec computes the expected hook input from the admitted provider input image. It must match the complete image, not a prefix, text inside an assistant message or the newest pending input. Exactly one current eligible receipt may match. Zero or multiple matches remain uncovered.
 4. Persist an immutable association from the provider origin to that exact C token/context/input evidence before acknowledging registration. The observer may resolve only previously retained contexts. Registration alone grants no human authority, delivery receipt, end proof or side-effect permission.
 5. At tool creation, the provider attaches its own origin and native call id. The helper captures those fields from that individual MCP message before any asynchronous IPC/HTTP work. It never loads a mutable current-origin pointer.
@@ -84,11 +84,32 @@ The first codec must audit and fixture the actual interactive input transformati
 
 The diagnostic `transcript-records.ts` parser currently associates user records with an `openTurnId`. It is not the input authority for this design. Only the provider-owned hook/native admission relation qualifies; a later transcript can corroborate it without inventing the join.
 
-Repeated registration of the same origin and exact evidence is idempotent. An existing origin cannot change C token, owner, input image or lineage. A steer/additional input may join only if C already admitted it to that exact existing turn; it cannot promote an outside root to owner work. Independent inputs get their own proven origins. A conflicting, missing or ambiguous registration never attaches to a later turn.
+### Receipt consumption and adversarial registration
+
+The observer must remain safe when a model can read its credential and send registrations. Authentication alone cannot establish that the caller was the managed hook.
+
+- **One receipt, one origin:** the first accepted association consumes an admitted C input's evidence for exactly one provider session/turn. A different session/turn naming that same evidence is a conflict, is logged without plaintext input, and never creates or replaces an association.
+- **Registration window:** open only at C's owned final write of the exact input. Close at the first carried-origin call consuming it or the input's end, whichever comes first. An exact retry may read the same retained association; it cannot reopen a consumed window.
+- **Real call identity:** dispatch still requires provider-attached metadata, not an observer-supplied turn id or a model argument. An observer request never grants authority by itself.
+- **Sealed boundary:** receipt exclusivity and the window are not sufficient on their own. Positive coverage also requires the closed-boundary rule below; neither credential possession nor winning the first registration proves that the native turn belongs to the later input.
+
+Slice 1 must include the readable-key adversary: seed the observer credential in model-readable state, establish B's real association, then submit a competing registration for that receipt with another turn id. Expect a conflict and B's original association unchanged. Also test a competing first claim after an earlier hook failed; positive coverage cannot depend on first-writer timing alone.
+
+### Coverage requires a sealed boundary
+
+Before C admits an **independent** input on a launch, seal every earlier provider turn C can name: turns named by an owned native end/abort record, turns observed in carried call metadata whether covered or not, and registered turns whose execution ended. Tombstones are launch-scoped. A registration naming a sealed session/turn conflicts, is logged, and never creates or replaces an association. A later registration cannot resurrect it.
+
+If an earlier turn ended without a proven origin and no owned native end evidence names its id, the boundary is **unsealed**. A failed input hook plus an unknown A is this case: A's model process may outlive abort and compete for B's receipt with its real A id. Do not let B's registration grant positive coverage or associate that receipt to A. B's ordinary input still proceeds on the existing uncovered, per-operation contact fallback; A's delayed call cannot dispatch as B.
+
+Resume positive coverage only at the first later input admitted after a **proven clean boundary**, where every earlier turn is immutably registered or sealed. A permitted steer does not manufacture a new independent boundary or change its existing C provenance. There is no timer, fixed input count, empty-call-map test or “one fallback happened” shortcut. If an older unidentified turn still lacks the required evidence, keep the per-operation fallback until that evidence or an owned fresh launch makes the boundary provable. This changes coverage, never the agent's lifetime permissions or ordinary input admission.
+
+The normal synchronous hook runs before its input is processed, but the protocol must also handle a failed hook without relying on hook secrecy or first-writer-wins. Seal facts and the unsealed-boundary flag are retained/revision-counted with F's launch records. They survive transport/helper reconnects and retire only with that exact launch; no pending call is replayed to reconstruct them.
+
+While its registration remains eligible, an exact retry of the same origin and evidence is idempotent; a sealed origin is always refused. An existing origin cannot change C token, owner, input image or lineage. A steer/additional input may join only if C already admitted it to that exact existing turn; it cannot promote an outside root to owner work. Independent inputs get their own proven origins. A conflicting, missing or ambiguous registration never attaches to a later turn.
 
 ## Identity and transport contract
 
-Proposed internal capability: `helper-origin-v1`. It is separate from launch authentication, C/D stamp negotiation and tool permissions. Backend adapter, helper, daemon and actual remote host/coordinator must agree before a covered origin is emitted or consumed. A source version is a compatibility prerequisite, not proof of registration or readiness.
+Proposed internal capability: `helper-origin-v1`. It is separate from launch authentication, C/D stamp negotiation and tool permissions. Backend adapter, helper, daemon and actual remote host/coordinator must agree before a covered origin is emitted or consumed. A source version is a compatibility prerequisite, not proof of registration or readiness. Decode both hook payloads and MCP metadata strictly against the audited runtime schema on every relevant event. A changed shape makes that turn uncovered; it does not put the entire launch into an error state.
 
 An origin reference binds:
 
@@ -113,13 +134,15 @@ The key-to-operation-id mapping is prepared durably **before invocation**. An ex
 
 Reuse D's prepared/done/written call-record mechanism and comparison ordering. The Windows launch ledger keeps its version-1 compatibility container. Put a strictly validated optional origin reference beside the existing `requestContext` field, not inside that field's closed schema. Local calls need the same durable preparation semantics under their real local launch owner; factor the shared record mechanism rather than fabricate pane owners or build a second permission/relay engine.
 
+A resumed provider session may reuse its session id across launches. Launch identity is always part of the key: the same session/native call id on a new launch is a distinct key and never adopts an old pending row.
+
 A new logical call-key codec is namespaced and explicit. Legacy rows are never adopted as covered rows. Transport aliases bind to the original stable call, response id and origin digest. All comparisons precede cached and in-flight returns. Capacity refuses safely; it does not evict an old identity and infer a replacement from current context.
 
 A stdout response ACK is not a new operation. Match the original durable row, response id, origin reference and current launch transport. A late ACK for A may mark A written after A ends; it cannot use B's origin and need not re-resolve a current turn. Preserve D's post-commit uncertainty wording and current-role checks for actual dispatch. No retry policy is broadened for ended turns.
 
 ## Lifecycle, retention and fallback
 
-Origin associations are launch-scoped, immutable and revision-counted. They participate in F's actual drain inventory together with active calls and durable call records. A referenced context cannot be collected before its launch/call records retire. Abort/end retires execution eligibility, not the evidence needed to reject a delayed call or accept its original ACK.
+Origin associations are launch-scoped, immutable and revision-counted. They participate in F's actual drain inventory together with active calls and durable call records. A referenced context cannot be collected before its launch/call records retire. Retain origin associations and call rows with the launch records until F proves the launch and its referenced work retired; never age-prune a referenced row. Use a shared per-launch bound of 4,096 origin associations/tombstones; retain the current call-ledger bounds of 65,536 rows and 16 MiB serialized data, whichever is reached first. Refuse new covered preparation rather than evict. A long-lived launch reaching capacity stays on its existing recorded work and per-operation failure/fallback behavior, never an unbounded store or Fleet-wide lock. Abort/end retires execution eligibility, not the evidence needed to reject a delayed call or accept its original ACK.
 
 - A late A call resolves A and cannot dispatch after its currentness ends. It is not relabeled as an unproved B request.
 - A positively registered B call can be covered without clearing the launch's interruption history for untagged calls.
@@ -151,20 +174,28 @@ Every positive must exercise the actual observer → helper frame → receiver b
 | Same stable call key, changed turn/proof, files, forwards or args | Conflict before cached/in-flight response |
 | Native input text equal but image/file differs; prompt prefix copied in another message | No association from partial evidence |
 | Hook lacks auth, is asynchronous, has wrong owner/session, or matches multiple inputs | No positive coverage/current-context lookup |
+| Model-readable observer credential submits a second origin for B’s consumed receipt | Conflict; B’s first valid association remains unchanged |
+| A hook fails, A aborts without named origin evidence, and forged A races B’s registration | B remains uncovered; A cannot dispatch as B or acquire B’s receipt |
+| A sealed native session/turn is registered again | Conflict; no association or resurrection |
+| Abort has owned native end evidence, followed by a clean-boundary input | Its new registered origin can be covered; old A remains sealed |
+| Hook/MCP metadata changes from the audited schema | That turn uncovered; launch continues |
 | Fake origin in tool arguments or unregistered metadata | Never becomes native origin |
 | A stdout ACK after A ended, or B supplies A's response id | Exact original ACK accepted; mismatched one refused |
 | Demotion, incarnation change, runtime reconnect or launch retirement during await | Existing currentness/role fence refuses commit |
 | Old helper, missing metadata, unaudited producer and old peer | Existing per-operation fallback or strict refusal; no lifetime lock |
 | Downgraded ledger reader / producer disabled after restart | Loads only compatible state; no effect replay or origin adoption |
+| Resume uses the same session/native call id under a new launch | New key, no old pending-row adoption |
+| Codex binary self-updates on disk while a launch runs | Running launch keeps its fixed contract; next launch strictly decodes/renegotiates, never trusts the version string alone |
+| Referenced origin/call records age or capacity is reached | No referenced eviction; bounded refusal and launch/F retirement only |
 | A normal fresh input follows an uncovered contact | Its own admission works; no agent-wide permission mutation |
 
-Mutation controls remove the input-image join, carried-origin lookup, conflict-before-cache ordering and post-await currency independently; each must fail on an assertion. Tests remain synthetic: no provider login, model request, live Fleet, paired host or native account is started.
+Mutation controls remove the input-image join, carried-origin lookup, seal check, unsealed-boundary rule, conflict-before-cache ordering and post-await currency independently; each must fail on an assertion. Tests remain synthetic: no provider login, model request, live Fleet, paired host or native account is started.
 
 ## Three implementation slices after review
 
 | Order | Slice | Deliverable and boundary | Review / release |
 |---|---|---|---|
-| 1 | Provider origin and helper wire (M) | Codex source-pinned codec, authenticated synchronous observer, exact input association and strict immutable helper envelope; no serving publication | Fable; code PR HOLD after 2.4.0 |
+| 1 | Provider origin and helper wire (M) | Codex source-pinned codec, role-bound observer, one-receipt/one-origin window, sealed-boundary/tombstone rules and strict immutable helper envelope; no serving publication | Fable; code PR HOLD after 2.4.0 |
 | 2 | Local call consumption (M) | Daemon origin resolution, shared durable call-record semantics, exact retries/ACKs/retirement, legacy fallback fixtures | Fable; depends 1; HOLD after 2.4.0 |
 | 3 | Windows and coverage (M) | Host observer/strict paired transport, pane ledger integration, full late-A/B matrix and mixed-version/rollback proof; enable only positively covered paths | Fable; depends 1–2; HOLD after 2.4.0 |
 
@@ -175,3 +206,5 @@ Separate PRs start from the merged release tip, without stacking. No new provide
 1. Does the synchronous Codex input hook plus provider MCP metadata supply the two native facts required above, with exact normalization and launch authentication still explicit implementation gates?
 2. Is the native-call key, separate transport alias and durable comparison contract sufficient without adopting any legacy row or adding pending replay?
 3. Does the negotiated fresh-launch boundary plus the existing fallback make downgrade/unsupported paths fail closed without turning the coverage gap into an agent-wide lock?
+
+4. Slice 1 must prove the sealed-boundary branch independently of the observer credential: failed-hook competing registration, sealed-origin rejection and positive recovery after a named native end, with the seal check and unsealed-boundary rule each mutation-killed.
