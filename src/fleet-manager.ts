@@ -7065,7 +7065,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const box=this.deliveryOutbox,lease=captureProcessFleetLease(this.dataDir),manager=this.managerBootId;
     if(!box||!lease?.current()||this.requestContextControlBox===box)return;
     const current=()=>!this.shuttingDown&&lease.current()&&this.managerBootId===manager&&this.deliveryOutbox===box;
-    const controller=new RequestContextController({current,principal:(req,url)=>this.requestContextControlPrincipal(req,url),
+    const controller=new RequestContextController({current,enableUnavailable:()=>true,principal:(req,url)=>this.requestContextControlPrincipal(req,url),
       permitContinuation:(req,res)=>permitWebContinuation(req,res,{webToken:this.webToken,webSessions:this.webSessions}),
       base:()=>({state:box.requestContextInstallation().read(),offer:captureRequestContextEnableOffer(this.dataDir),restartCount:box.requestContextInstallation().read()?0:this.daemons.size,timeZone:this.usageZone()}),
       inspect:()=>this.requestContextBlockers(),

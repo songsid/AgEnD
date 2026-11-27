@@ -11,6 +11,7 @@ import { AuthorizeChip } from "/assets/web-authorize.js";
 
 register("requestContextControl", {
   en: {
+    enableUnavailable: "Request-based approvals can't be turned on in this version yet.",
     restart: "Turning this on restarts {0} agents (their conversations are kept); they can't chat for a minute or two.", goBack: "Go back for the latest update is available until {0}; turning this on ends it immediately.", viewUpdate: "View AgEnD update", viewOwners: "View these agents", waitTitle: "End this wait?", enableTitle: "Turn on request-based contact approvals?", enable: "Confirm turn on", unknown: "State unknown", inspect: "View held messages", update: "Finish or resolve the AgEnD update first, then check again.", stopTitle: "Stop this work?", stopBody: "This ends the saved work and prevents it from resuming. History stays. Other outside requests still wait for your decision.", waitBody: "A late reply will not resume this work. Other outside requests still wait for your decision.", title: "Request-based contact approvals", on: "On: approval applies only to this request.",
     off: "Off. Your own messages go through as usual; requests that came from outside wait for your decision.",
     offBefore: "Not enabled. Contacts haven't changed.",
@@ -33,6 +34,7 @@ register("requestContextControl", {
     "stop-waiting": "End this wait", decline: "Decline", withdraw: "Withdraw", "stop-work": "Stop this work",
   },
   "zh-TW": {
+    enableUnavailable: "這一版還不能開啟依請求核准聯絡。",
     restart: "開啟時會重新啟動 {0} 個 Agent（對話會保留），大約一兩分鐘內無法對話。", goBack: "最近一次更新的「退回上一版」原本可以用到 {0}，開啟後會立刻結束。", viewUpdate: "查看 AgEnD 更新", viewOwners: "查看這些 Agent", waitTitle: "結束這次等候？", enableTitle: "開啟依請求核准聯絡？", enable: "確認開啟", unknown: "狀態不明", inspect: "查看擱置的訊息", update: "請先完成或處理 AgEnD 更新，再重新檢查。", stopTitle: "結束這項工作？", stopBody: "這會結束已儲存的工作，不會再繼續執行。歷史會保留，其他外部請求仍會等你決定。", waitBody: "之後的回覆不會再繼續這項工作；其他外部請求仍會等你決定。", title: "依請求核准聯絡", on: "已開啟：核准只對這一次請求有效。",
     off: "已關閉。你自己的訊息照常；從外部來的請求會等你決定。",
     offBefore: "尚未開啟，聯絡方式沒有變更。",
@@ -139,6 +141,7 @@ export function RequestContextSettings() {
   useEffect(() => { if (pushed !== undefined && lease.current()) accept(pushed); }, [pushed, lease]);
   const change = async (action, blocker = null) => {
     if (writing.current || failed || !state || action !== "check" && !state.canChange) return;
+    if (action === "enable" && state.enableUnavailable) return;
     writing.current = true; setBusy(true); setFailed(false);
     try {
       if (action === "enable" && !await confirmDialog({ title: requestContextControlText("enableTitle"), message: requestContextControlText("floorBefore") + (state.goBack ? "\n\n" + requestContextControlText("goBack", clockFormat({ dateStyle: "medium", timeStyle: "short", timeZone: state.goBack.timeZone }, "en").format(new Date(state.goBack.availableUntil))) : "") + (state.restartCount ? "\n\n" + requestContextControlText("restart", state.restartCount) : ""), confirmLabel: requestContextControlText("enable"), danger: true })) return;
@@ -156,8 +159,9 @@ export function RequestContextSettings() {
   if (state === null) return null;
   return html`<section id="request-context" class="card request-context-control"><h2>${requestContextControlText("title")}</h2>
     ${state ? html`<label class="check request-context-toggle"><input type="checkbox" class="s-ui-toggle" ref=${toggle} aria-checked=${failed ? "mixed" : state.enabled ? "true" : "false"} checked=${!failed && state.enabled}
-      disabled=${busy || failed || !state.canChange || state.phase === "draining"} onChange=${event => { event.target.checked = state.enabled; void change(state.enabled ? "disable" : "enable"); }} />
+      disabled=${busy || failed || !state.canChange || state.phase === "draining" || !state.enabled && state.enableUnavailable} onChange=${event => { event.target.checked = state.enabled; void change(state.enabled ? "disable" : "enable"); }} />
       <span>${requestContextControlText("title")}</span></label>
+      ${!state.enabled && state.enableUnavailable ? html`<p role="status">${requestContextControlText("enableUnavailable")}</p>` : null}
       ${failed ? html`<p role="status">${requestContextControlText("unknown")}</p>` : ["blocked", "draining"].includes(state.phase) ? html`<${RequestContextBlocked} state=${state} busy=${busy || failed} onCheck=${() => change("check")} onResolve=${state.canChange ? blocker => change("resolve", blocker) : null} />`
         : html`<p role="status">${requestContextControlText(state.phase === "off" && !state.everActivated ? "offBefore" : state.phase)}</p>`}
       <p class="notice warn">${requestContextControlText(state.everActivated ? "floor" : "floorBefore")}</p>

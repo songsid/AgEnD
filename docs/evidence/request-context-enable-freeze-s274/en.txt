@@ -1,0 +1,7 @@
+Real Settings component, synthetic never-activated status
+Language: en
+Switch: off, disabled
+Request-based contact approvals
+Request-based approvals can't be turned on in this version yet.
+Not enabled. Contacts haven't changed.
+Note: once on, you can't go back to an older AgEnD, even if you turn this off later.
