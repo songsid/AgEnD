@@ -1183,6 +1183,22 @@ const UPDATE_CARD_CALLBACK_PREFIX = "update-card:";
 const UPDATE_CHAT_CARD_FILE = "update-chat-card.json";
 /** The chat card's buttons live a week (Not now's own length); a newer card replaces them sooner. */
 const UPDATE_CHAT_CARD_MS = 7 * 24 * 60 * 60_000;
+/**
+ * M-3864 R2: the chat card's Tonight: 22:00 in the fleet's zone (`defaults.scheduler.default_timezone`, else the machine's),
+ * the next one when today's is under 30 min away. Before, 22:00 on the machine's clock: on a UTC server for a Taipei fleet
+ * that was 06:00 the next morning.
+ */
+export function updateTonightAt(now: number, tz: string): number {
+  let day: string;
+  try { day = new Date(now).toLocaleString("sv-SE", { timeZone: tz, hour12: false }).slice(0, 10); }
+  catch { tz = "UTC"; day = new Date(now).toISOString().slice(0, 10); }
+  // Prism #4585: the zone's offset AT the candidate instant (twice, so it settles across a DST change that day), never
+  // the offset at the wall clock read as UTC, which can sit on the other side of the change.
+  const offsetAt = (ms: number) => Date.parse(new Date(ms).toLocaleString("sv-SE", { timeZone: tz, hour12: false }).replace(" ", "T") + "Z") - Math.floor(ms / 1000) * 1000;
+  const at = (date: string) => { const wall = Date.parse(`${date}T22:00:00Z`); const first = wall - offsetAt(wall); return wall - offsetAt(first); };
+  const today = at(day);
+  return today - now >= 30 * 60_000 ? today : at(new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10));
+}
 /** `actions`: the buttons it was posted with (M-3864 R1; absent on an older record: all three). `refused`: its last press was refused, and its text says why. */
 interface UpdateChatCardRecord { version: string; state: string; nonce: string | null; messageId: string; chatId: string; threadId?: string; adapterId: string; at: number; actions?: string; refused?: boolean;
   /** Prism #4584 (2): the reason it named for not updating here, if any: a different reason posts it again. */
@@ -2940,14 +2956,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return `${t("update.chatcard.offer", view.version)}\n${line}`;
     }
     // The card's own short lines, as on the web (the leader's copy pass); anything else in /update's words.
-    const at = (ms?: number) => { if (!ms) return ""; const d = new Date(ms), p2 = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+    // M-3864 R2: the fleet's zone with its offset, as schedules say times (the web shows the person's own zone).
+    const at = (ms?: number) => (ms ? formatFleetTime(ms, this.usageZone()) : "");
     if (view?.state === "waiting-idle") return t("update.chatcard.state_waiting", view.version);
     if (view?.state === "scheduled") return t("update.chatcard.state_scheduled", view.version, at(view.scheduledAt));
     if (view?.state === "not-now") return t("update.chatcard.state_not_now", view.version, at(view.notNowUntil));
     if (view?.state === "updating") return t("update.chatcard.state_updating", view.version);
     if (view?.state === "done") return t("update.chatcard.state_done", view.version);
     if (view?.state === "failed") return t("update.chatcard.state_failed", view.version, current ?? "?");
-    const reply = updateOfferReply(view, current, !!resolveUpdates(this.fleetConfig?.updates).pin);
+    const reply = updateOfferReply(view, current, !!resolveUpdates(this.fleetConfig?.updates).pin, this.usageZone());
     return t(reply.key, ...reply.args);
   }
   /**
@@ -3088,7 +3105,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.retireNonceButtons(entry, messageId, shownVersion && before && before.version !== shownVersion ? t("update.chatcard.replaced", before.version) : t("update.chatcard.expired"));
       return true;
     }
-    const tonight = (() => { const d = new Date(); d.setHours(22, 0, 0, 0); if (d.getTime() - Date.now() < 30 * 60_000) d.setDate(d.getDate() + 1); return d.getTime(); })();
+    const tonight = updateTonightAt(Date.now(), this.usageZone());
     const body = action === "tonight" ? { action: "pick-time" as const, at: tonight } : { action: action as "when-idle" | "not-now" };
     const by = updateAnswerLabel(data.username ?? "");
     let text: string;
@@ -34086,7 +34103,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let current: string | null = null;
     try { current = this.runningAgendVersion(); } catch { /* unknown */ }
     const pinned = !!resolveUpdates(this.fleetConfig?.updates).pin;
-    const reply = updateOfferReply(this.updateOfferView(), current, pinned);
+    const reply = updateOfferReply(this.updateOfferView(), current, pinned, this.usageZone());
     return t(reply.key, ...reply.args);
   }
 
