@@ -1,5 +1,5 @@
 {
-  "sourceHead": "b912efc63dd922d750c90b115fde6e3f833d091b",
+  "sourceHead": "55cf3366e99ee057f07516136d7e0c6a8cf765bc",
   "dirty": [],
   "checks": [
     {
@@ -7,7 +7,7 @@
       "ok": true
     },
     {
-      "name": "desk-light-en 1: one fix button, Fix it for me",
+      "name": "desk-light-en 1: one fix button, Turn it on for me",
       "ok": true
     },
     {
@@ -23,6 +23,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-en-1-linger: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "desk-light-en 2: the fix ran once",
       "ok": true
     },
@@ -35,6 +39,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-en-2-fixed: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "desk-light-en 3: the block says AgEnD couldn't, and to run the command",
       "ok": true
     },
@@ -44,6 +52,10 @@
     },
     {
       "name": "desk-light-en 3: the line and its command stay; the button and its hint are gone",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-3-failed: no host path outside the masked fleet.yaml",
       "ok": true
     },
     {
@@ -67,6 +79,10 @@
       "ok": true
     },
     {
+      "name": "desk-light-en-4-not-service: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "desk-light-en: no page errors",
       "ok": true
     },
@@ -75,7 +91,7 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW 1: one fix button, Fix it for me",
+      "name": "phone-dark-zh-TW 1: one fix button, Turn it on for me",
       "ok": true
     },
     {
@@ -95,6 +111,10 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW-1-linger: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW 2: the fix ran once",
       "ok": true
     },
@@ -108,6 +128,14 @@
     },
     {
       "name": "phone-dark-zh-TW 2: the toast keeps 「執行」 whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the toast has gone before the frame",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-2-fixed: no host path outside the masked fleet.yaml",
       "ok": true
     },
     {
@@ -132,6 +160,10 @@
     },
     {
       "name": "phone-dark-zh-TW 3: the line keeps 「執行」 whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-3-failed: no host path outside the masked fleet.yaml",
       "ok": true
     },
     {
@@ -167,6 +199,10 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW-4-not-service: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW: no page errors",
       "ok": true
     },
@@ -178,36 +214,36 @@
   "pictures": [
     {
       "path": "s238-desk-light-en-1-linger.png",
-      "sha256": "f1e960eed9fe2cf8b6ae65cc3e9b1ac3a29a6c7c93efb8284e9e2b94d057ce22"
+      "sha256": "d454cdeeb3fb661395a8fdfb62832d1752de68b8d696bc609392f5e65300fb60"
     },
     {
       "path": "s238-desk-light-en-2-fixed.png",
-      "sha256": "d9288bc61ddfd58208fa37058dbcb9b5366842417b7a159049a34d44b44fafed"
+      "sha256": "b32506ae044820aca9758363d649fe51e6a2bb8f07d0c52d43ac2346bb62466f"
     },
     {
       "path": "s238-desk-light-en-3-failed.png",
-      "sha256": "c0502058ffb34614a83e7587774933b07deb939eb93239193757d96aec8c3b5f"
+      "sha256": "44cd0d69ac0bfaf9faa936af88a427fe5e0ae1fc5122591d0d2b55c35fbf1e08"
     },
     {
       "path": "s238-desk-light-en-4-not-service.png",
-      "sha256": "ca4e0824b600709b6703d747afb20f976685a3470c1bc38c8297ea2237c845f6"
+      "sha256": "5d9e7a464e02d4dd683bf19517503a77ab58257063191c1a77561b370ab8127f"
     },
     {
       "path": "s238-phone-dark-zh-TW-1-linger.png",
-      "sha256": "2abb95ed920cb5af8eceef4a0bdaad66041e5e464322830c53646ac942880da1"
+      "sha256": "07bca209417958e094007a18b6915336db1644112d3f622b42ea5b44c4df369f"
     },
     {
       "path": "s238-phone-dark-zh-TW-2-fixed.png",
-      "sha256": "38374c6a03878157e4dabe3eeab0e04700fc2f5b192177eff3bf2bfd0a141f3e"
+      "sha256": "bd9711d567929589c44149337a8a0f50090704f87e158c36257191a2a6996d80"
     },
     {
       "path": "s238-phone-dark-zh-TW-3-failed.png",
-      "sha256": "ceab84bc83ab6b5c6ef1fe4974ba7d516407fdec52cbb59755707e582b672383"
+      "sha256": "a2383949313afb7b850b3bae094ae6c2f186d9d194c339aa9fc51b83cf8f097b"
     },
     {
       "path": "s238-phone-dark-zh-TW-4-not-service.png",
-      "sha256": "188580fb172380683ba15afb3f1990216513cbc6f71194c413fdce4678e8ab6f"
+      "sha256": "4f61fef2054cf40eaec8ccb3f8da1151e54df1faee58ef180feb386e3f4c7717"
     }
   ],
-  "summary": "43/43"
+  "summary": "52/52"
 }
