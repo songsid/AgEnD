@@ -1,0 +1,74 @@
+{
+  "sourceCommit": "0f1e3fd4fb0198c1cf7ea3ba2f7ca24e4459976d",
+  "scope": "Durable lifecycle-owned work identity and exact fresh-launch hooks; no production installer callback installed.",
+  "checks": {
+    "broadRun": {
+      "files": 38,
+      "passed": 783,
+      "failed": 44,
+      "errors": 3,
+      "failure": "tmux-control-queries fixture lacks verified bundled executable in this checkout"
+    },
+    "baselineControl": {
+      "head": "e0e98851d",
+      "sameDefaultFixture": "same first test fails before mocked spawn; not a source regression"
+    },
+    "privateTmuxFixture": {
+      "passed": 44,
+      "files": 1,
+      "errors": 0,
+      "isolation": "private home, inert /bin/true executable, all process calls mocked"
+    },
+    "restoredFinal": {
+      "files": 6,
+      "passed": 70,
+      "failed": 0
+    },
+    "typecheckTests": "passed",
+    "mutants": [
+      {
+        "mutation": "fresh-hook-missing",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "stale-rotation-adopts-latest",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "rotation-final-owner-unchecked",
+        "exit": 1,
+        "red": true
+      }
+    ],
+    "uiCopyAndPictures": "unchanged"
+  },
+  "limitations": [
+    "A written Clear is not proof of reset and does not rotate work; controlled installer still needs its exact reset/relaunch seam",
+    "Candidate work UUIDs must remain in memory until the activation outer transaction",
+    "Actual owner factories, relaunch and full-mode assembly remain unfinished"
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "471a1f407b5b70a28dfb938295fd0c12382f3910fec13ddcaeefd666a8a83447"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "5c62bd5c1946b1da07956d8d2529f9dac3809d6baca03a47966b700d7042f5da"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "b7421525a5a0942b96228d6259ffc3ab75f58853eb8749ecf1f15519af9671a4"
+    },
+    {
+      "path": "src/request-context-work.ts",
+      "sha256": "50d1c21879ffc1d0f4ac83c4f560df4d82845ed2eded7b194d232c64dbf599aa"
+    },
+    {
+      "path": "tests/request-context-work-s230.test.ts",
+      "sha256": "33db47a273e0bfc05c5317930bf18f8e0cd863cae8e1e1868a81eea6755689fc"
+    }
+  ]
+}

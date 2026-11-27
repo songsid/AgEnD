@@ -56,6 +56,8 @@ const P = {
   key: () => html`<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M17 6l3 3M14 9l2 2"/>`,
   pause: () => html`<path d="M8 5v14M16 5v14"/>`,
   download: () => html`<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>`,
+  // S-255: install as an app — a screen with an arrow down into it (not a plain download).
+  install: () => html`<rect x="3" y="3" width="18" height="13" rx="2"/><path d="M12 6.5v6M9 9.5l3 3 3-3M8 21h8M12 16v5"/>`,
   org: () => html`<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-5h14v5"/>`,
   panel: () => html`<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/>`,
   back: () => html`<path d="M19 12H5M12 19l-7-7 7-7"/>`,

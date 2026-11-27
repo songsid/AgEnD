@@ -1,73 +1,9 @@
 [
   {
-    "stage": "before",
-    "case": "desk-light-en",
-    "file": "before-desk-light-en.png",
-    "text": "Waiting at a dialog\n12 min ago\nOpen chat",
-    "overflow": false,
-    "pageErrors": 0
-  },
-  {
-    "stage": "before",
-    "case": "desk-light-zh-TW",
-    "file": "before-desk-light-zh-TW.png",
-    "text": "停在對話框\n12 分鐘前\n開啟聊天",
-    "overflow": false,
-    "pageErrors": 0
-  },
-  {
-    "stage": "before",
-    "case": "desk-dark-en",
-    "file": "before-desk-dark-en.png",
-    "text": "Waiting at a dialog\n12 min ago\nOpen chat",
-    "overflow": false,
-    "pageErrors": 0
-  },
-  {
-    "stage": "before",
-    "case": "desk-dark-zh-TW",
-    "file": "before-desk-dark-zh-TW.png",
-    "text": "停在對話框\n12 分鐘前\n開啟聊天",
-    "overflow": false,
-    "pageErrors": 0
-  },
-  {
-    "stage": "before",
-    "case": "phone-light-en",
-    "file": "before-phone-light-en.png",
-    "text": "Waiting at a dialog\n12 min ago\nOpen chat",
-    "overflow": false,
-    "pageErrors": 0
-  },
-  {
-    "stage": "before",
-    "case": "phone-light-zh-TW",
-    "file": "before-phone-light-zh-TW.png",
-    "text": "停在對話框\n12 分鐘前\n開啟聊天",
-    "overflow": false,
-    "pageErrors": 0
-  },
-  {
-    "stage": "before",
-    "case": "phone-dark-en",
-    "file": "before-phone-dark-en.png",
-    "text": "Waiting at a dialog\n12 min ago\nOpen chat",
-    "overflow": false,
-    "pageErrors": 0
-  },
-  {
-    "stage": "before",
-    "case": "phone-dark-zh-TW",
-    "file": "before-phone-dark-zh-TW.png",
-    "text": "停在對話框\n12 分鐘前\n開啟聊天",
-    "overflow": false,
-    "pageErrors": 0
-  },
-  {
     "stage": "after",
     "case": "desk-light-en",
     "file": "after-desk-light-en.png",
-    "text": "Codex's safety check blocked this turn\njust now\n\nRecommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue.\n\nAgent: Review helper\n\nM-100 — Review the proposed change\n\n1–3 are rewordings Codex suggests: picking one continues in a new chat with that narrower request. 'Give feedback' tells OpenAI the block was wrong and doesn't continue the work.\n\nHand to the dispatcher\n\nCodex's suggestions\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
+    "text": "Codex's safety check blocked this turn\njust now\n\nRecommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue.\n\nAgent: Review helper\n\nM-100 \u2014 Review the proposed change\n\n1\u20133 are rewordings Codex suggests: picking one continues in a new chat with that narrower request. 'Give feedback' tells OpenAI the block was wrong and doesn't continue the work.\n\nHand to the dispatcher\n\nCodex's suggestions\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
     "overflow": false,
     "pageErrors": 0,
     "buttonHeights": [
@@ -97,12 +33,12 @@
     "stage": "after",
     "case": "desk-light-zh-TW",
     "file": "after-desk-light-zh-TW.png",
-    "text": "Codex 的安全檢查擋下了這一輪\n剛剛\n\n建議交給派工的人處理；也可以選一個 Codex 建議的改寫繼續。\n\nAgent：Review helper\n\nM-100 — Review the proposed change\n\n前面幾個是 Codex 建議的改寫：選了會用那句話開新對話繼續，但範圍可能變小。 「Give feedback」是回報這次擋錯了，不會繼續工作。\n\n交給派工的人處理\n\nCodex 的建議\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n開啟聊天",
+    "text": "Codex \u7684\u5b89\u5168\u6aa2\u67e5\u64cb\u4e0b\u4e86\u9019\u4e00\u8f2a\n\u525b\u525b\n\n\u5efa\u8b70\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406\uff1b\u4e5f\u53ef\u4ee5\u9078\u4e00\u500b Codex \u5efa\u8b70\u7684\u6539\u5beb\u7e7c\u7e8c\u3002\n\nAgent\uff1aReview helper\n\nM-100 \u2014 Review the proposed change\n\n\u524d\u9762\u5e7e\u500b\u662f Codex \u5efa\u8b70\u7684\u6539\u5beb\uff1a\u9078\u4e86\u6703\u7528\u90a3\u53e5\u8a71\u958b\u65b0\u5c0d\u8a71\u7e7c\u7e8c\uff0c\u4f46\u7bc4\u570d\u53ef\u80fd\u8b8a\u5c0f\u3002 \u300cGive feedback\u300d\u662f\u56de\u5831\u9019\u6b21\u64cb\u932f\u4e86\uff0c\u4e0d\u6703\u7e7c\u7e8c\u5de5\u4f5c\u3002\n\n\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406\n\nCodex \u7684\u5efa\u8b70\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0,
     "buttonHeights": [
       {
-        "label": "交給派工的人處理",
+        "label": "\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406",
         "height": 30
       },
       {
@@ -127,7 +63,7 @@
     "stage": "after",
     "case": "desk-dark-en",
     "file": "after-desk-dark-en.png",
-    "text": "Codex's safety check blocked this turn\njust now\n\nRecommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue.\n\nAgent: Review helper\n\nM-100 — Review the proposed change\n\n1–3 are rewordings Codex suggests: picking one continues in a new chat with that narrower request. 'Give feedback' tells OpenAI the block was wrong and doesn't continue the work.\n\nHand to the dispatcher\n\nCodex's suggestions\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
+    "text": "Codex's safety check blocked this turn\njust now\n\nRecommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue.\n\nAgent: Review helper\n\nM-100 \u2014 Review the proposed change\n\n1\u20133 are rewordings Codex suggests: picking one continues in a new chat with that narrower request. 'Give feedback' tells OpenAI the block was wrong and doesn't continue the work.\n\nHand to the dispatcher\n\nCodex's suggestions\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
     "overflow": false,
     "pageErrors": 0,
     "buttonHeights": [
@@ -157,12 +93,12 @@
     "stage": "after",
     "case": "desk-dark-zh-TW",
     "file": "after-desk-dark-zh-TW.png",
-    "text": "Codex 的安全檢查擋下了這一輪\n剛剛\n\n建議交給派工的人處理；也可以選一個 Codex 建議的改寫繼續。\n\nAgent：Review helper\n\nM-100 — Review the proposed change\n\n前面幾個是 Codex 建議的改寫：選了會用那句話開新對話繼續，但範圍可能變小。 「Give feedback」是回報這次擋錯了，不會繼續工作。\n\n交給派工的人處理\n\nCodex 的建議\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n開啟聊天",
+    "text": "Codex \u7684\u5b89\u5168\u6aa2\u67e5\u64cb\u4e0b\u4e86\u9019\u4e00\u8f2a\n\u525b\u525b\n\n\u5efa\u8b70\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406\uff1b\u4e5f\u53ef\u4ee5\u9078\u4e00\u500b Codex \u5efa\u8b70\u7684\u6539\u5beb\u7e7c\u7e8c\u3002\n\nAgent\uff1aReview helper\n\nM-100 \u2014 Review the proposed change\n\n\u524d\u9762\u5e7e\u500b\u662f Codex \u5efa\u8b70\u7684\u6539\u5beb\uff1a\u9078\u4e86\u6703\u7528\u90a3\u53e5\u8a71\u958b\u65b0\u5c0d\u8a71\u7e7c\u7e8c\uff0c\u4f46\u7bc4\u570d\u53ef\u80fd\u8b8a\u5c0f\u3002 \u300cGive feedback\u300d\u662f\u56de\u5831\u9019\u6b21\u64cb\u932f\u4e86\uff0c\u4e0d\u6703\u7e7c\u7e8c\u5de5\u4f5c\u3002\n\n\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406\n\nCodex \u7684\u5efa\u8b70\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0,
     "buttonHeights": [
       {
-        "label": "交給派工的人處理",
+        "label": "\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406",
         "height": 30
       },
       {
@@ -187,7 +123,7 @@
     "stage": "after",
     "case": "phone-light-en",
     "file": "after-phone-light-en.png",
-    "text": "Codex's safety check blocked this turn\njust now\n\nRecommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue.\n\nAgent: Review helper\n\nM-100 — Review the proposed change\n\n1–3 are rewordings Codex suggests: picking one continues in a new chat with that narrower request. 'Give feedback' tells OpenAI the block was wrong and doesn't continue the work.\n\nHand to the dispatcher\n\nCodex's suggestions\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
+    "text": "Codex's safety check blocked this turn\njust now\n\nRecommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue.\n\nAgent: Review helper\n\nM-100 \u2014 Review the proposed change\n\n1\u20133 are rewordings Codex suggests: picking one continues in a new chat with that narrower request. 'Give feedback' tells OpenAI the block was wrong and doesn't continue the work.\n\nHand to the dispatcher\n\nCodex's suggestions\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
     "overflow": false,
     "pageErrors": 0,
     "buttonHeights": [
@@ -217,12 +153,12 @@
     "stage": "after",
     "case": "phone-light-zh-TW",
     "file": "after-phone-light-zh-TW.png",
-    "text": "Codex 的安全檢查擋下了這一輪\n剛剛\n\n建議交給派工的人處理；也可以選一個 Codex 建議的改寫繼續。\n\nAgent：Review helper\n\nM-100 — Review the proposed change\n\n前面幾個是 Codex 建議的改寫：選了會用那句話開新對話繼續，但範圍可能變小。 「Give feedback」是回報這次擋錯了，不會繼續工作。\n\n交給派工的人處理\n\nCodex 的建議\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n開啟聊天",
+    "text": "Codex \u7684\u5b89\u5168\u6aa2\u67e5\u64cb\u4e0b\u4e86\u9019\u4e00\u8f2a\n\u525b\u525b\n\n\u5efa\u8b70\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406\uff1b\u4e5f\u53ef\u4ee5\u9078\u4e00\u500b Codex \u5efa\u8b70\u7684\u6539\u5beb\u7e7c\u7e8c\u3002\n\nAgent\uff1aReview helper\n\nM-100 \u2014 Review the proposed change\n\n\u524d\u9762\u5e7e\u500b\u662f Codex \u5efa\u8b70\u7684\u6539\u5beb\uff1a\u9078\u4e86\u6703\u7528\u90a3\u53e5\u8a71\u958b\u65b0\u5c0d\u8a71\u7e7c\u7e8c\uff0c\u4f46\u7bc4\u570d\u53ef\u80fd\u8b8a\u5c0f\u3002 \u300cGive feedback\u300d\u662f\u56de\u5831\u9019\u6b21\u64cb\u932f\u4e86\uff0c\u4e0d\u6703\u7e7c\u7e8c\u5de5\u4f5c\u3002\n\n\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406\n\nCodex \u7684\u5efa\u8b70\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0,
     "buttonHeights": [
       {
-        "label": "交給派工的人處理",
+        "label": "\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406",
         "height": 44
       },
       {
@@ -247,7 +183,7 @@
     "stage": "after",
     "case": "phone-dark-en",
     "file": "after-phone-dark-en.png",
-    "text": "Codex's safety check blocked this turn\njust now\n\nRecommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue.\n\nAgent: Review helper\n\nM-100 — Review the proposed change\n\n1–3 are rewordings Codex suggests: picking one continues in a new chat with that narrower request. 'Give feedback' tells OpenAI the block was wrong and doesn't continue the work.\n\nHand to the dispatcher\n\nCodex's suggestions\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
+    "text": "Codex's safety check blocked this turn\njust now\n\nRecommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue.\n\nAgent: Review helper\n\nM-100 \u2014 Review the proposed change\n\n1\u20133 are rewordings Codex suggests: picking one continues in a new chat with that narrower request. 'Give feedback' tells OpenAI the block was wrong and doesn't continue the work.\n\nHand to the dispatcher\n\nCodex's suggestions\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
     "overflow": false,
     "pageErrors": 0,
     "buttonHeights": [
@@ -277,12 +213,12 @@
     "stage": "after",
     "case": "phone-dark-zh-TW",
     "file": "after-phone-dark-zh-TW.png",
-    "text": "Codex 的安全檢查擋下了這一輪\n剛剛\n\n建議交給派工的人處理；也可以選一個 Codex 建議的改寫繼續。\n\nAgent：Review helper\n\nM-100 — Review the proposed change\n\n前面幾個是 Codex 建議的改寫：選了會用那句話開新對話繼續，但範圍可能變小。 「Give feedback」是回報這次擋錯了，不會繼續工作。\n\n交給派工的人處理\n\nCodex 的建議\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n開啟聊天",
+    "text": "Codex \u7684\u5b89\u5168\u6aa2\u67e5\u64cb\u4e0b\u4e86\u9019\u4e00\u8f2a\n\u525b\u525b\n\n\u5efa\u8b70\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406\uff1b\u4e5f\u53ef\u4ee5\u9078\u4e00\u500b Codex \u5efa\u8b70\u7684\u6539\u5beb\u7e7c\u7e8c\u3002\n\nAgent\uff1aReview helper\n\nM-100 \u2014 Review the proposed change\n\n\u524d\u9762\u5e7e\u500b\u662f Codex \u5efa\u8b70\u7684\u6539\u5beb\uff1a\u9078\u4e86\u6703\u7528\u90a3\u53e5\u8a71\u958b\u65b0\u5c0d\u8a71\u7e7c\u7e8c\uff0c\u4f46\u7bc4\u570d\u53ef\u80fd\u8b8a\u5c0f\u3002 \u300cGive feedback\u300d\u662f\u56de\u5831\u9019\u6b21\u64cb\u932f\u4e86\uff0c\u4e0d\u6703\u7e7c\u7e8c\u5de5\u4f5c\u3002\n\n\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406\n\nCodex \u7684\u5efa\u8b70\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0,
     "buttonHeights": [
       {
-        "label": "交給派工的人處理",
+        "label": "\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406",
         "height": 44
       },
       {
@@ -307,7 +243,7 @@
     "stage": "after",
     "case": "desk-light-en",
     "file": "handed-desk-light-en.png",
-    "text": "Codex's safety check blocked this turn\njust now\n\nRecommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue.\n\nAgent: Review helper\n\nM-100 — Review the proposed change\n\n1–3 are rewordings Codex suggests: picking one continues in a new chat with that narrower request. 'Give feedback' tells OpenAI the block was wrong and doesn't continue the work.\n\nHanded to the dispatcher\n\nCodex's suggestions\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
+    "text": "Codex's safety check blocked this turn\njust now\n\nRecommended: hand it to the dispatcher. Or pick one of Codex's rewordings to continue.\n\nAgent: Review helper\n\nM-100 \u2014 Review the proposed change\n\n1\u20133 are rewordings Codex suggests: picking one continues in a new chat with that narrower request. 'Give feedback' tells OpenAI the block was wrong and doesn't continue the work.\n\nHanded to the dispatcher\n\nCodex's suggestions\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\nOpen chat",
     "overflow": false,
     "pageErrors": 0,
     "buttonHeights": [
@@ -333,7 +269,7 @@
     "stage": "after",
     "case": "phone-dark-zh-TW",
     "file": "handed-phone-dark-zh-TW.png",
-    "text": "Codex 的安全檢查擋下了這一輪\n剛剛\n\n建議交給派工的人處理；也可以選一個 Codex 建議的改寫繼續。\n\nAgent：Review helper\n\nM-100 — Review the proposed change\n\n前面幾個是 Codex 建議的改寫：選了會用那句話開新對話繼續，但範圍可能變小。 「Give feedback」是回報這次擋錯了，不會繼續工作。\n\n已交給派工的人處理\n\nCodex 的建議\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n開啟聊天",
+    "text": "Codex \u7684\u5b89\u5168\u6aa2\u67e5\u64cb\u4e0b\u4e86\u9019\u4e00\u8f2a\n\u525b\u525b\n\n\u5efa\u8b70\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406\uff1b\u4e5f\u53ef\u4ee5\u9078\u4e00\u500b Codex \u5efa\u8b70\u7684\u6539\u5beb\u7e7c\u7e8c\u3002\n\nAgent\uff1aReview helper\n\nM-100 \u2014 Review the proposed change\n\n\u524d\u9762\u5e7e\u500b\u662f Codex \u5efa\u8b70\u7684\u6539\u5beb\uff1a\u9078\u4e86\u6703\u7528\u90a3\u53e5\u8a71\u958b\u65b0\u5c0d\u8a71\u7e7c\u7e8c\uff0c\u4f46\u7bc4\u570d\u53ef\u80fd\u8b8a\u5c0f\u3002 \u300cGive feedback\u300d\u662f\u56de\u5831\u9019\u6b21\u64cb\u932f\u4e86\uff0c\u4e0d\u6703\u7e7c\u7e8c\u5de5\u4f5c\u3002\n\n\u5df2\u4ea4\u7d66\u6d3e\u5de5\u7684\u4eba\u8655\u7406\n\nCodex \u7684\u5efa\u8b70\n\n1. Explain the topic\n2. Describe safe practices\n3. Explain the risks\n4. Give feedback\n\u958b\u555f\u804a\u5929",
     "overflow": false,
     "pageErrors": 0,
     "buttonHeights": [

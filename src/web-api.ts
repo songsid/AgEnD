@@ -1,4 +1,5 @@
 import { handleRequestContactApi, type RequestContactApiHost } from "./request-contact-api.js";
+import { projectRequestContextControl, projectRequestContextNeeds, requestContextControlSnapshot, type RequestContextControlHost } from "./request-context-control-api.js";
 import { historyQuery } from './host-monitoring-history-policy.js';
 import { instructionFileSizes } from "./instruction-file-sizes.js";
 import { handleClaudeCredentials, type ClaudeCredentialApi } from "./web-claude-credentials.js";
@@ -93,6 +94,7 @@ import type { WebSessionStore, SessionRecord, WebDeviceRow } from "./web-session
 import { OPERATOR, isOwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
 import { WEB_NAME_FALLBACK, type WebAccount, webPersonKey } from "./web-profile.js";
 import { updateAnswerLabel } from "./update-card.js";
+import { isUpdateFix, SERVICE_FIX_CONFIRM } from "./update-fix.js";
 import { commitTeamCreate, commitTeamUpdate } from "./outbound-handlers.js";
 import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-mentions.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
@@ -269,6 +271,7 @@ const safeInstanceSegment = (name: string): boolean => /^[^\\/\x00]+$/.test(name
 const streamGuests = new WeakMap<ServerResponse, GuestRequest>();
 const streamContactProjection = new WeakMap<ServerResponse, (event: string, data: unknown) => unknown>();
 function contactNeedsFor(req: IncomingMessage, url: URL, ctx: WebApiContext, base: unknown[]): unknown[] {
+  base = projectRequestContextNeeds(req, url, ctx.requestContextControl, base);
   const auth=evaluateWebRequest(req as unknown as WebGateRequest,url,ctx.webToken??null,ctx.webSessions,{touch:false});
   const admin=auth.kind==='allow'&&auth.via==='session'&&auth.session.tier==='admin';
   base=admin?base:base.filter(item=>!item||typeof item!=='object'||(item as {type?:string}).type!=='host');
@@ -447,6 +450,7 @@ export interface AccountMachine { id: string; actor: string }
 export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
 
 export interface WebApiContext extends ClaudeCredentialApi {
+  requestContextControl?: RequestContextControlHost;
   /** Uninstalled until L. New API reads/decisions do not replace legacy routes while OFF. */
   requestContactApi?:RequestContactApiHost;
   hostHistoryQuery?(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult>;
@@ -666,7 +670,7 @@ export interface WebApiContext extends ClaudeCredentialApi {
   /** #2122: the usage report (Fleet → Usage); absent: not offered. */
   usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup }): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
-  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string; action?: WebModelAction }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; identity?: WebSessionIdentity; guest?: boolean }): Promise<{ status: number; body: unknown }>;
+  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string; action?: WebModelAction }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; identity?: WebSessionIdentity; sessionHandle?: string; guest?: boolean }): Promise<{ status: number; body: unknown }>;
   /** #1939 S2b: "Authorize this browser" — the Confirm card in the account's DM; and what the app shows for this browser. */
   requestSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: string; retryAfterMs?: number }>;
   webSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): { state: string; until?: number; expiresInMs?: number; reason?: string };
@@ -711,7 +715,7 @@ export interface WebApiContext extends ClaudeCredentialApi {
   webPromptNeedsHuman?(nonce: string): boolean;
   clickWebPrompt?(instance: string, nonce: string, action: string, text?: string, humanSession?: boolean): Promise<{ status: number; error?: string }>;
   /** #1266: a click on an agent reply's button. */
-  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority; identity?: WebSessionIdentity }): Promise<{ status: number; error?: string; options?: number[] }>;
+  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority; identity?: WebSessionIdentity; sessionHandle?: string }): Promise<{ status: number; error?: string; options?: number[] }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
@@ -894,6 +898,8 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
  *   POST /ui/update/check  look now (one a minute) → the GET's answer
  *   POST /ui/update/start  { confirm: "update-agend" } + Idempotency-Key → 202 { started } (the progress is the GET's)
  *   POST /ui/update/answer { action } + Idempotency-Key → 200 { card } (the one update offer)
+ *   POST /ui/update/fixes    { fix: "linger" } + Idempotency-Key → 200 { preflight } (M-3770 1.6: a pre-flight fix button);
+ *                            { fix: "service", confirm: "restart-as-service" } → 202 { restarting } (S-246), or 422 { reason }
  *   GET  /ui/update/log    { text, error } — the updater's own words, for the failure's "full log"
  * Signed-in sessions only (never the CLI's token or a guest; M-3278: the public link's sessions too, as locally); an
  * admin's for all but the version. Asked again once a body is in.
@@ -901,7 +907,7 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
 function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   const host = ctx.webUpdate;
   if (!host) { json(res, 404, { error: "not found" }); return true; }
-  const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/answer": "POST", "/ui/update/log": "GET" };
+  const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/answer": "POST", "/ui/update/fixes": "POST", "/ui/update/log": "GET" };
   if (!routes[path]) { json(res, 404, { error: "not found" }); return true; }
   if (routes[path] !== method) { res.setHeader("Allow", routes[path]!); json(res, 405, { error: "method not allowed" }); return true; }
   res.setHeader("Cache-Control", "no-store");
@@ -925,7 +931,7 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
   if (path === "/ui/update/log") { const l = host.updateLog(); json(res, 200, { text: l.text, error: l.error }); return true; }
   (async () => {
     let body: Record<string, unknown> = {};
-    try { body = await parseBody(req); } catch { if (path === "/ui/update/start" || path === "/ui/update/answer") { json(res, 400, { error: "Invalid JSON" }); return; } }
+    try { body = await parseBody(req); } catch { if (path === "/ui/update/start" || path === "/ui/update/answer" || path === "/ui/update/fixes") { json(res, 400, { error: "Invalid JSON" }); return; } }
     if (!permitWebContinuation(req, res, ctx) || res.destroyed) return;
     const now = who();
     if ("status" in now) { json(res, now.status, { error: now.error }); return; }
@@ -945,6 +951,18 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
       if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
       const answered = await host.answerUpdate(key, updateAnswerLabel(now.label), body, stillAllowed);
       json(res, answered.status, answered.ok ? { card: answered.card } : answered.body);
+      return;
+    }
+    if (path === "/ui/update/fixes") {
+      if (!host.fixUpdate) { json(res, 404, { error: "unavailable" }); return; }
+      const header = req.headers["idempotency-key"];
+      const key = typeof header === "string" ? header : "";
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
+      if (!isUpdateFix(body.fix)) { json(res, 400, { error: "fix must be one of: linger, service" }); return; }
+      // S-246: every Agent stops briefly — only once the page has asked.
+      if (body.fix === "service" && body.confirm !== SERVICE_FIX_CONFIRM) { json(res, 400, { error: `confirm must be "${SERVICE_FIX_CONFIRM}"` }); return; }
+      const fixed = await host.fixUpdate(key, now.person, body.fix, stillAllowed);
+      json(res, fixed.status, fixed.body);
       return;
     }
     const header = req.headers["idempotency-key"];
@@ -1964,6 +1982,11 @@ function webIdentityOf(req: IncomingMessage, url: URL, ctx: WebApiContext): WebS
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
   return v.kind === "allow" && v.via === "session" ? ctx.webSessionIdentity?.(v.session) : undefined;
 }
+/** Exact admitted browser route, independent of whether its account can be recognised. Never from body/headers. */
+function webSessionHandleOf(req: IncomingMessage, url: URL, ctx: WebApiContext): string | undefined {
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  return v.kind === "allow" && v.via === "session" ? v.session.handle : undefined;
+}
 /**
  * #1939 S1: whether this request carries `web-session` authority, asked as it stands now — on arrival without an instance,
  * after the body with the one it names (then confirmAfterBody joins the two). Never touches the session.
@@ -2592,6 +2615,7 @@ export function handleWebRequest(
       // #1386: "Needs you" rides the passive channels only — no endpoint of its own to poll. Over the public link,
       // without the task board's hidden cards (#2306 review).
       needs: visibleNeeds(ctx, linkRestricted(req, url, ctx), contactNeedsFor(req, url, ctx, ctx.needsYouItems?.() ?? [])),
+      requestContextCutover: requestContextControlSnapshot(req, url, ctx.requestContextControl),
       // #1577: the newest message this answer accounts for — after a restart, the last restored one until this process
       // records its own (`<boot>-0` would be after(0): the whole restored history again on every poll).
       cursor: history ? history.pollCursor() : null,
@@ -2626,6 +2650,7 @@ export function handleWebRequest(
     const guest = guestRequestOf(req);
     if (guest) { streamGuests.set(res, guest); guest.streamOpened?.(); }
     if (!guest) streamContactProjection.set(res, (event, value) => {
+      if (event === "request-context-control") return projectRequestContextControl(req, url, ctx.requestContextControl, value) ?? null;
       if (event === "needs") return { items: contactNeedsFor(req, url, ctx,
         (value && typeof value === "object" && Array.isArray((value as { items?: unknown }).items)) ? (value as { items: unknown[] }).items : []) };
       if (event === "contact-auth") {
@@ -2664,6 +2689,7 @@ export function handleWebRequest(
     if (!guest && ctx.listWebPrompts) res.write(`event: prompts\ndata: ${JSON.stringify(ctx.listWebPrompts())}\n\n`);
     // #1386: and "Needs you" as it is now; changes follow as `needs` events.
     if (!guest && ctx.needsYouItems) res.write(`event: needs\ndata: ${JSON.stringify({ items: contactNeedsFor(req, url, ctx, ctx.needsYouItems()) })}\n\n`);
+    if (!guest && ctx.requestContextControl) res.write(`event: request-context-control\ndata: ${JSON.stringify(requestContextControlSnapshot(req, url, ctx.requestContextControl) ?? null)}\n\n`);
     ctx.sseClients.add(res);
     // #1956: the heartbeat's status comes from the one build every open stream shares each tick (statusTick), with
     // this stream's own projection; this stream's checks stay its own.
@@ -3384,7 +3410,7 @@ export function handleWebRequest(
       // #1920 review: a guest's choice reaches the agent marked as a guest's, as its typed messages do.
       const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
       const identity = webIdentityOf(req, url, ctx);
-      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name, ...(guest ? { guest: true as const } : {}), authority, ...(identity ? { identity } : {}) });
+      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name, ...(guest ? { guest: true as const } : {}), authority, ...(identity ? { identity } : {}), sessionHandle: webSessionHandleOf(req, url, ctx) });
       json(res, r.status, r.status === 200 ? { answered: true, ...(r.options ? { options: r.options } : {}) } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");
@@ -3839,7 +3865,7 @@ export function handleWebRequest(
         const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined, ...(body.action ? { action: body.action as WebModelAction } : {}) },
           // M-3278 (decision 7933bf90): `publicLink` is a request over the link by anyone but an admin session — the link's
           // admin runs /save and gets /model and /backend's Sign in, as on the local dashboard.
-          { publicLink: !!gatewayRequestContext(req) && !adminAdmissionOf(req, url, ctx), person, authority, ...(identity ? { identity } : {}), ...(guest ? { guest: true } : {}) });
+          { publicLink: !!gatewayRequestContext(req) && !adminAdmissionOf(req, url, ctx), person, authority, ...(identity ? { identity } : {}), sessionHandle: webSessionHandleOf(req, url, ctx), ...(guest ? { guest: true } : {}) });
         if (!stillAuthorized(req, res, url, ctx)) return;
         json(res, r.status, r.body);
       } finally { if (guest) guestCommandsRunning.delete(account); }
@@ -4859,7 +4885,7 @@ async function handleResendMessage(req: IncomingMessage, res: ServerResponse, ct
   } };
   let handedOff = false;
   try {
-    const delivered = ctx.deliverHumanToInstance ? await ctx.deliverHumanToInstance(instance, payload, webHumanOrigin(false, authority, webIdentityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx)), row.text, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
+    const delivered = ctx.deliverHumanToInstance ? await ctx.deliverHumanToInstance(instance, payload, webHumanOrigin(false, authority, webIdentityOf(req, url, ctx), !!guest, webSessionHandleOf(req, url, ctx)), row.text, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
       : await ctx.deliverToInstance(instance, payload, { stillCurrent, ...(native ? { authorityCurrent } : {}) });
     if (delivered === false) throw new Error("delivery changed");
     handedOff = true;
@@ -5071,7 +5097,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       const reactions = ctx.pendingReactionsMeta?.(instance) ?? { meta: {}, consume: () => {} };
       try {
         const deliver = (name: string, payload: Record<string, unknown>) => ctx.deliverHumanToInstance
-          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority, webIdentityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx)), typed, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
+          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority, webIdentityOf(req, requestUrl, ctx), !!guest, webSessionHandleOf(req, requestUrl, ctx)), typed, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
           : ctx.deliverToInstance(name, payload, { stillCurrent, ...(native ? { authorityCurrent } : {}) });
         delivered = await deliver(instance, {
           type: "fleet_inbound",

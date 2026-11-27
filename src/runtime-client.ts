@@ -1,3 +1,4 @@
+import {NATIVE_EXEC_INPUT_CAPABILITY,validateNativeExecInputClaim,nativeExecInputRequestDigest,type NativeExecInputClaim} from "./native-exec-input.js";
 /** Standalone, outbound-only native runtime. Imports no Fleet, database, bot or Linux native dependency. */
 import WebSocket from "ws";
 import { readPaneSystemBootId, reusedRuntimeLockPid } from "./runtime-pane-boot.js";
@@ -119,9 +120,9 @@ const MAX_FRAME = 256 * 1024;
 const MAX_TOOL = 64 * 1024;
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function message(error: unknown): string { return error instanceof Error ? error.message.slice(0, 1000) : "Runtime operation failed"; }
-interface CheckedRun { task: NativeTaskInput; profile?: PersonalProfile; resumeSessionId?: string; context?: string; mcp?: { tools: string[] }; credentialProfile?: string }
+interface CheckedRun { execInput?:Readonly<NativeExecInputClaim>; task: NativeTaskInput; profile?: PersonalProfile; resumeSessionId?: string; context?: string; mcp?: { tools: string[] }; credentialProfile?: string }
 function checkedRun(value: unknown): CheckedRun {
-  if (!object(value) || Object.keys(value).some(key => !["task", "profile", "resumeSessionId", "context", "mcp", "credentialProfile"].includes(key))) throw new Error("Invalid runtime run payload");
+  if (!object(value) || Object.keys(value).some(key => !["task", "profile", "resumeSessionId", "context", "mcp", "credentialProfile", "execInput"].includes(key))) throw new Error("Invalid runtime run payload");
   const task = validateNativeTask(value.task);
   if (value.profile !== undefined) { if (!isPersonalProfile(value.profile)) throw Error("Unsupported personal profile"); assertPersonalTask(task, value); }
   // A name and nothing else: a path, a drive letter or a control byte is not a profile name and is refused here, not "cleaned".
@@ -131,7 +132,9 @@ function checkedRun(value: unknown): CheckedRun {
   if (value.mcp !== undefined && (!object(value.mcp) || Object.keys(value.mcp).some(key => key !== "tools")
     || !Array.isArray(value.mcp.tools) || !value.mcp.tools.length || value.mcp.tools.length > 64
     || value.mcp.tools.some(tool => typeof tool !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(tool)))) throw new Error("Invalid scoped MCP request");
-  return { task, resumeSessionId: value.resumeSessionId as string | undefined, context: value.context as string | undefined,
+  const execInput=value.execInput===undefined?undefined:validateNativeExecInputClaim(value.execInput);
+  if(execInput&&(value.profile!==undefined||execInput.requestId!==task.requestId||execInput.requestSha256!==nativeExecInputRequestDigest(task,value)))throw Error("Native exec input composition changed");
+  return { ...(execInput?{execInput}:{}),task, resumeSessionId: value.resumeSessionId as string | undefined, context: value.context as string | undefined,
     mcp: value.mcp as { tools: string[] } | undefined, ...(value.credentialProfile !== undefined ? { credentialProfile: value.credentialProfile as string } : {}), ...(value.profile ? { profile: value.profile as PersonalProfile } : {}) };
 }
 function jsonBody(req: IncomingMessage): Promise<unknown> {
@@ -244,7 +247,7 @@ export class RuntimeClient {
     // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
     const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
     this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => (name === REMOTE_SIGNIN_CAPABILITY || name === MODEL_REFRESH_CAPABILITY || runtimeSignInCapabilities().includes(name) || runtimeAccountsCapabilities().includes(name)) ? remote : (name === CLI_INSTALL_CAPABILITY || name === CLI_UPDATE_CAPABILITY) ? remote && !!(options.remoteAccounts?.installer || nativeInstallSupported()) : true) };
-    if (options.requestContextProtocol === 1 && !options.personalAgent) this.runtimeInfo = { ...this.runtimeInfo, capabilities: [...this.runtimeInfo.capabilities, REQUEST_CONTEXT_CALL_CAPABILITY] };
+    if (options.requestContextProtocol === 1 && !options.personalAgent) this.runtimeInfo = { ...this.runtimeInfo, capabilities: [...this.runtimeInfo.capabilities, REQUEST_CONTEXT_CALL_CAPABILITY, NATIVE_EXEC_INPUT_CAPABILITY] };
     if (options.personalAgent) this.runtimeInfo = { ...info, capabilities: ["exec", PERSONAL_AGENT_PROFILE, PERSONAL_AGENT_ANSWER_ONLY_PROFILE] };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE), undefined, !!options.personalAgent, options.personalAgent?.folder);
   }
@@ -737,6 +740,7 @@ export class RuntimeClient {
     }
     if (operation !== "run") throw new Error("Unknown runtime operation");
     const run = checkedRun(payload), task = run.task;
+    if(run.execInput&&!this.requestContextProtocol)throw Error("Native exec input protocol not negotiated");
     if (this.options.personalAgent) {
       if (!isPersonalProfile(run.profile) || win32.normalize(task.cwd).toLowerCase() !== win32.normalize(this.options.personalAgent.folder).toLowerCase()) throw Error("Personal task does not match the local folder binding");
     } else if (run.profile) throw Error("This Runtime has no personal-agent binding");
@@ -765,6 +769,11 @@ export class RuntimeClient {
         ...(run.profile ? { personal: true as const, ...(run.profile === PERSONAL_AGENT_ANSWER_ONLY_PROFILE ? { answerOnly: true as const } : {}) } : {}),
         ...(payload.resumeSessionId ? { resumeSessionId: payload.resumeSessionId as string } : {}),
         ...(payload.context ? { context: payload.context as string } : {}), ...(mcp ? { mcp } : {}), ...(credentialHome ? { credentialHome } : {}),
+        ...(run.execInput?{execInput:run.execInput,onInputWritten:(proof:import("./native-exec-input.js").NativeExecInputProof)=>{
+          const current=this.bridge.get(task.requestId);
+          if(!current||current.id!==task.requestId)throw Error("Native exec input owner changed");
+          this.update({...current,execInputProof:proof});
+        }}:{}),
         onSettled: settled => this.update(settled),
       });
       this.update(initial); return this.options.store.get(task.requestId)!.task;

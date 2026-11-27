@@ -1,0 +1,34 @@
+{
+  "stage": "Installation state/outbox boundary; FleetManager assembly and full-mode proof still in progress",
+  "tests": {
+    "files": 6,
+    "passed": 68,
+    "failed": 0
+  },
+  "installationRegressions": 14,
+  "typecheckTests": "pass",
+  "mutations": [
+    {
+      "mutation": "stale-admission-during-drain",
+      "suite": "tests/request-context-installation-s230.test.ts",
+      "result": "red"
+    },
+    {
+      "mutation": "skip-final-drain-proof",
+      "suite": "tests/request-context-installation-s230.test.ts",
+      "result": "red"
+    },
+    {
+      "mutation": "skip-startup-installation-fence",
+      "suite": "tests/request-context-installation-s230.test.ts",
+      "result": "red"
+    }
+  ],
+  "uiAndCapturePatch": "unchanged from e5a8da0d",
+  "liveOperations": false,
+  "limits": [
+    "No production publication or owner/control host installed",
+    "Failed-install Off uses an independent proof port; complete durable-family assessor remains to wire",
+    "Persistent first-On controlled relaunch is agreed; exact retirement and pending-work observation are present, production orchestration remains to wire"
+  ]
+}

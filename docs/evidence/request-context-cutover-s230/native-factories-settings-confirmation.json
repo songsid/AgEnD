@@ -1,0 +1,72 @@
+{
+  "sourceCommit": "330149b43386262dc7bbf7d48674a8d01c6ea564",
+  "nativeFactoryCommit": "c7791ca3c",
+  "scope": "Owned native factory selection plus the existing Settings confirmation flow for request-context controls. Neither production installer nor activation is published.",
+  "checks": {
+    "nativeFactoriesAndPrincipal": {
+      "files": 5,
+      "passed": 97,
+      "failed": 0
+    },
+    "settingsConfirmationBaselineAndAuthority": {
+      "files": 10,
+      "passed": 345,
+      "failed": 0
+    },
+    "typecheck": "typecheck:tests passed",
+    "campaigns": "Focused component/regression checks only; no new heavy or mutation campaign."
+  },
+  "limits": [
+    "Exact old native transport retirement/reconstruction remains unfinished.",
+    "Native exec admitted input and positive consumption integration remains unfinished.",
+    "Production control host and capable boot/publication remain unbound.",
+    "Standard pending-card captures and destination refusal wording still require the Leader/user-look check.",
+    "No live Fleet, provider, pane or Runtime was started."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "58096560d12811ed0387ddf5fc9c9861a0216fd461bc76472815554df7fe237a"
+    },
+    {
+      "path": "src/request-context-control-api.ts",
+      "sha256": "acff5c5c6f7e5b8d106f9ab6867360d6732777157701fc261c495fdb44610128"
+    },
+    {
+      "path": "src/settings-http-confirmation.ts",
+      "sha256": "1044539038502bb7eb6d51ecd2de8f07037d8c6845f368f47806cbd6b28d475d"
+    },
+    {
+      "path": "src/settings-effect.ts",
+      "sha256": "4a48e5302043fbc2e694339c3055dc5d262f263c93573bb1948cd06fe3fd530b"
+    },
+    {
+      "path": "src/settings-baseline.ts",
+      "sha256": "704dd3ef967f9a1df289f7e265c013a753317a047f59471666335a31b808a953"
+    },
+    {
+      "path": "src/locale.ts",
+      "sha256": "fc39eb654f29baf6a84754b558a0ee9236f6e1b233c4c6ece87625746ba640f5"
+    },
+    {
+      "path": "src/ui/request-context-control.js",
+      "sha256": "510216d331a0c2690634a91535b81d70e3884bf7041b165ac2efb95bd4949185"
+    },
+    {
+      "path": "tests/request-context-control-principal-s230.test.ts",
+      "sha256": "63f49151a335307502e261bf937bef27f6924fffb4374773e7b919d0ad399634"
+    },
+    {
+      "path": "tests/request-context-native-graph-s230.test.ts",
+      "sha256": "06815ac944291aeeb71ebf744e4baaeccb11d03298170384522bfe8874b6e8fa"
+    },
+    {
+      "path": "tests/request-context-control-api-s230.test.ts",
+      "sha256": "e448fbbdd9f9f2817e5538fa12341fbfac43244263083d1964219728fdf9eedf"
+    },
+    {
+      "path": "tests/request-context-settings-confirmation-s230.test.ts",
+      "sha256": "e5ebda17db01cd7477f08b34fe1e3079ab4955c1c5f98bdbc4a2508bf78c0135"
+    }
+  ]
+}

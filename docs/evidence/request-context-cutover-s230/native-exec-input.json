@@ -1,0 +1,91 @@
+{
+  "sourceCommit": "2405f3ea9c1057ea737558c5f46c46f1f96a3485",
+  "scope": "Owned native worker input proof and bilateral paired transport. Not a Fleet exec C/receipt binding or activation proof.",
+  "checks": {
+    "initialNativeAndLegacyBridge": {
+      "files": 2,
+      "passed": 87
+    },
+    "nativeRemoteStoreAndFleet": {
+      "files": 4,
+      "passed": 47
+    },
+    "regressionBeforeBundleRepair": {
+      "passedFiles": 7,
+      "passedTests": 179,
+      "failedFiles": 1,
+      "failedTests": 1,
+      "failure": "Standalone bundle omitted native-exec-input.js; fixed by adding the module to RUNTIME_BUNDLE_MODULES."
+    },
+    "restoredBundleBuildInfoAndCurrentNative": {
+      "files": 4,
+      "passed": 32,
+      "failed": 0
+    },
+    "typecheck": "typecheck:tests passed after the final helper/constructor changes",
+    "public": "Staged source/tests clean",
+    "gitleaks": "Pinned 8.24.3 complete source range clean",
+    "campaigns": "Focused component and affected regression checks only; no new mutation/heavy campaign. Counts overlap and are not summed."
+  },
+  "controls": [
+    "Stdin evidence needs spawn and successful actual write callback; early EPIPE/error/close never proves delivery.",
+    "Prompt-file evidence hashes the owned file bytes and uses the main-child spawn.",
+    "Preparation, starting acceptance, grants and terminal status never replace the input proof.",
+    "The main-child helper attaches before cancellation observers and writes only once.",
+    "Changed task/context/resume/personal choice or run token conflicts.",
+    "Paired transport requires actual negotiated v1 and native-exec-input-v1 capability.",
+    "Strict optional v1 metadata cannot replace or erase a prior positive proof on cancellation.",
+    "Loopback tests use mocked worker/pane ports; no live Fleet or provider was started."
+  ],
+  "unfinished": [
+    "FleetWindowsRuntime and WindowsAgents do not yet mint/consume the claim for the actual C and human receipt.",
+    "Production exec input owner, scoped automatic results and original output destination remain unfinished.",
+    "The actual installer, capable boot and final publication remain unbound."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "src/native-exec-input.ts",
+      "sha256": "d33b29d296b33fa4594fdf1987185ab732c396e1c06951a4b81682189b220728"
+    },
+    {
+      "path": "src/windows-cli-worker.ts",
+      "sha256": "313634b4ee49efcbfa43d694602a5bb0c5e7391d9e9194949b336fe4d8ffa1ca"
+    },
+    {
+      "path": "src/windows-cli.ts",
+      "sha256": "08c864537ccaaeaccacc1647d541ab4f27dd9d017d06e46dbf76a01d5c0716ea"
+    },
+    {
+      "path": "src/runtime-client.ts",
+      "sha256": "0db9b910ba9be839d688288ffba2b984b06808146aa48b7694fddee420148df5"
+    },
+    {
+      "path": "src/runtime-client-store.ts",
+      "sha256": "6e2f97a768df7cdaa28e3397378d2f6cacdb3165dc9637acb6e27e3d33fa556d"
+    },
+    {
+      "path": "src/runtime-coordinator.ts",
+      "sha256": "fbb365b017317e71842339f0680fefbb0005fcd33a77b73af970c84f3d71c028"
+    },
+    {
+      "path": "src/runtime-windows-bridge.ts",
+      "sha256": "fff9d599f04613f2c6540e08e9e0531e98352c0c1bc3ddee60ec77e15a158b5a"
+    },
+    {
+      "path": "src/runtime-protocol.ts",
+      "sha256": "84cc518a27c491203c8390be88d15a352373af44fc8a2b42c325e4ad01032a04"
+    },
+    {
+      "path": "src/runtime-build-info.ts",
+      "sha256": "169e47ff8232a82f771cbf3c9d3993409d364f7b0538d0d1d217128c61dfb2a8"
+    },
+    {
+      "path": "tests/native-exec-input-s230.test.ts",
+      "sha256": "eddff824edad9d4753296bb6217809bce7b9035e182693a43a5b4e168fcba5f7"
+    },
+    {
+      "path": "tests/native-exec-input-remote-s230.test.ts",
+      "sha256": "55a2dfbf597cc528d4c5f866ffd51bf9b4b814107fa2a04a927fbc261ab591cc"
+    }
+  ]
+}

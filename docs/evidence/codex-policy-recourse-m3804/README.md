@@ -21,3 +21,7 @@ The additive nullable scheduler-ledger column contains only a native-card digest
 The final policy-only CSS wrap guard preserves full native labels on phones. A controlled nowrap rule causes button overflow, and removing it restores a296×74 button within390px with no overflow (`long-choice-probe.json`). The first probe attempted an inline style and was correctly blocked by CSP; the completed control uses the loaded same-origin stylesheet’s CSSOM, with CSP unchanged. Standard8 and accepted-state2 captures were refreshed after the wrap guard and individually inspected.
 
 R4 supersedes the earlier documented blanket liveness suppression; handoff does not silence later problems. Current images supersede R3 frames. The prior long-label overflow control is historical R3 evidence; its wrapping rule is unchanged, with R4 only adding the44px phone minimum.
+
+## Current release refresh
+
+[Current merge and capture scope](refresh-release.md) records the single import-list conflict (keep both), unchanged normalized author source/test patch,213 focused cases/7 files and passing production build/assets. All10 current images are refreshed from the merged app; the before8 stay historical controlled fallback views. New user look and head-specific source/delta review remain pending.

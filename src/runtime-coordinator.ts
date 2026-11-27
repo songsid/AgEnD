@@ -1,3 +1,4 @@
+import {NATIVE_EXEC_INPUT_CAPABILITY,validateNativeExecInputClaim,validateNativeExecInputProof,nativeExecInputRequestDigest} from "./native-exec-input.js";
 /** Durable machine registration and outbound-client transport; never starts a remote shell. */
 import { createHash, randomBytes, randomUUID, timingSafeEqual, type KeyObject } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
@@ -11,7 +12,7 @@ import { validateNativeTask, validWindowsDirectory, type NativeTaskInput } from 
 import { isPersonalProfile, assertPersonalTask, personalTaskFailure } from "./runtime-personal-protocol.js";
 import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./windows-cli.js";
 import type { NativeCliRow } from "./windows-cli-worker.js";
-import { isNativeProviderId } from "./windows-cli-providers.js";
+import { nativeProvider, isNativeProviderId } from "./windows-cli-providers.js";
 import { assertCredentialProfileCli, assertCredentialProfileName, parseCredentialProfileReport } from "./runtime-credential-profiles.js";
 import { parseAccountIdentity } from "./claude-auth-status.js";
 import { RuntimeUpdateActivity, type RuntimeUpdateFence } from "./runtime-update-activity.js";
@@ -217,6 +218,31 @@ export interface RuntimeCoordinatorOptions {
 export type { RuntimeMachine } from "./runtime-protocol.js";
 
 export class RuntimeCoordinator {
+  /** Passive cutover inventory: never construct the coordinator to inspect a cold journal.
+   * An unresolved run is activity evidence only; it never supplies request scope or execution authority.
+   */
+  static requestContextPendingRunsOnDisk(home:string):Readonly<{revision:string;runs:ReadonlyArray<{id:string;machineId:string}>}> {
+    const path=join(home,"runtime-machines.json");let stat;
+    try{stat=lstatSync(path);}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return Object.freeze({revision:"absent",runs:Object.freeze([])});throw error;}
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>MAX_STORE_BYTES)throw Error("Runtime activity journal unavailable");
+    const bytes=readFileSync(path),state=JSON.parse(bytes.toString("utf8"));
+    if(!record(state)||state.version!==1||!Array.isArray(state.commands)||!Array.isArray(state.machines)||!Array.isArray(state.pairings))throw Error("Runtime activity journal unavailable");
+    const runs:Array<{id:string;machineId:string}>=[],seen=new Set<string>();
+    for(const row of state.commands){
+      if(!record(row)||!text(row.id,128)||seen.has(row.id)||!UUID.test(String(row.machineId))||!/^[a-f0-9]{64}$/.test(String(row.digest))
+        ||!["probe","workspace","run","cancel","reconcile","recover"].includes(String(row.operation))||!["pending","accepted","failed","uncertain"].includes(String(row.state))
+        ||!Number.isSafeInteger(row.seq)||Number(row.seq)<0)throw Error("Runtime activity command unavailable");
+      seen.add(row.id);
+      if(row.task!==undefined&&(!record(row.task)||!["queued","starting","running","cancelling","completed","failed","cancelled"].includes(String(row.task.status))
+        ||row.task.finishedAt!==undefined&&(typeof row.task.finishedAt!=="number"||!Number.isFinite(row.task.finishedAt))
+        ||row.task.outcomeConfirmed!==undefined&&typeof row.task.outcomeConfirmed!=="boolean"))throw Error("Runtime activity outcome unavailable");
+      const task=row.task as WindowsCliTask|undefined;
+      if(row.operation==="run"&&row.state!=="failed"&&(!task||!terminal(task)||task.outcomeConfirmed===false))runs.push(Object.freeze({id:row.id,machineId:String(row.machineId)}));
+    }
+    const after=lstatSync(path);if(after.ino!==stat.ino||after.dev!==stat.dev||after.size!==stat.size||after.mtimeMs!==stat.mtimeMs)throw Error("Runtime activity journal changed");
+    return Object.freeze({revision:createHash("sha256").update(bytes).digest("hex"),runs:Object.freeze(runs)});
+  }
+
   private readonly paneEpoch = randomUUID();
   private readonly path: string;
   private state: State;
@@ -233,6 +259,26 @@ export class RuntimeCoordinator {
   private readonly limits = new Map<string, { count: number; until: number }>();
   private readonly heartbeat: NodeJS.Timeout;
   private closed = false;
+  private physicalMessages=0;
+  private requestContextRetired=false;
+  private readonly transportClosed=new Promise<void>(resolve=>this.server.once("close",()=>resolve()));
+  private requestContextRetirement?:Promise<void>;
+  requestContextPhysicallyIdle():boolean {
+    return this.physicalMessages===0&&this.pending.size===0&&this.panePending.size===0&&this.accountPending.size===0&&this.paneToolPending.size===0
+      &&[...this.machineActivity.values()].every(activity=>activity.pending===0)&&[...this.connections.values()].every(connection=>connection.ws.bufferedAmount===0)&&this.state.machines.every(row=>!this.hasActiveTask(row.machine.id));
+  }
+  async retireForRequestContext():Promise<void>{
+    if(!this.requestContextPhysicallyIdle())throw Error("Runtime coordinator handlers or executions remain in flight");
+    if(!this.requestContextRetirement){
+      const sockets=[...new Set([...this.server.clients,...[...this.connections.values()].map(connection=>connection.ws)])];
+      const closed=sockets.map(ws=>ws.readyState===WebSocket.CLOSED?Promise.resolve():new Promise<void>(resolve=>ws.once("close",()=>resolve())));
+      this.close();for(const ws of sockets)if(ws.readyState!==WebSocket.CLOSED)ws.terminate();
+      this.requestContextRetirement=Promise.all([...closed,this.transportClosed]).then(()=>{});
+    }
+    await this.requestContextRetirement;
+    if(!this.requestContextPhysicallyIdle())throw Error("Runtime coordinator retirement is unconfirmed");
+    this.requestContextRetired=true;
+  }
   private identityValue?: RuntimeServerIdentity;
   /** `enroll-hello` sessions: the fresh private key made for one request, kept in memory only for two minutes and spent by its one `enroll` (or dropped). Keyed by the caller's nonce. */
   private readonly hellos = new Map<string, { privateKey: KeyObject; ephemeral: string; tid: string; expiresAt: number }>();
@@ -276,6 +322,14 @@ export class RuntimeCoordinator {
       || this.state.commands.some(row => !record(row) || !text(row.id, 128) || !UUID.test(String(row.machineId)) || !/^[a-f0-9]{64}$/.test(row.digest)
         || !["probe", "workspace", "run", "cancel", "reconcile", "recover"].includes(row.operation)
         || !["pending", "accepted", "failed", "uncertain"].includes(row.state) || !Number.isSafeInteger(row.seq) || row.seq < 0)) throw Error("Malformed runtime machine store");
+    // Additive v1 evidence is strict when present; old rows never acquire an input proof at restart.
+    for(const command of this.state.commands){
+      if(record(command.payload)&&command.payload.execInput!==undefined){
+        const claim=validateNativeExecInputClaim(command.payload.execInput),task=validateNativeTask(command.payload.task);
+        if(command.operation!=="run"||command.payload.profile!==undefined||claim.requestId!==task.requestId||claim.requestSha256!==nativeExecInputRequestDigest(task,command.payload))throw Error("Malformed native exec input claim");
+      }
+      if(command.task?.execInputProof!==undefined)this.validateTask(command,command.task);
+    }
     // A coordinator restart never grants execution authority or redelivers an in-flight command.
     for (const row of this.state.machines) {
       if (row.machine.status === "online") row.machine.status = "offline";
@@ -298,6 +352,7 @@ export class RuntimeCoordinator {
   }
   private now(): number { return this.options.now?.() ?? Date.now(); }
   private save(): void {
+    if(this.requestContextRetired)throw Error("Runtime coordinator factory is retired");
     const value = JSON.stringify(this.state);
     if (Buffer.byteLength(value) > MAX_STORE_BYTES) throw Error("Runtime machine journal limit reached");
     for (let attempt = 0; ; attempt++) {
@@ -608,11 +663,11 @@ export class RuntimeCoordinator {
     const connection: Connection = { ws, machineId: row.machine.id, generation: row.machine.generation, ready: false, alive: true, activity, helloTimer: setTimeout(() => ws.close(1008, "Runtime hello required"), 10_000) };
     connection.helloTimer.unref(); this.connections.set(row.machine.id, connection);
     ws.on("pong", () => { connection.alive = true; if (this.current(connection)) row.machine.lastSeenAt = this.now(); });
-    ws.on("message", (data, binary) => { if (binary) { ws.close(1008, "Runtime requires JSON text frames"); return; } void this.message(connection, data).catch(error => {
+    ws.on("message", (data, binary) => { if (binary) { ws.close(1008, "Runtime requires JSON text frames"); return; } this.physicalMessages++;void this.message(connection, data).catch(error => {
       // The cause (a static validation message) goes to the log and, trimmed, to the runtime so its terminal can show it.
       const reason = error instanceof RuntimeProtocolError ? `Invalid runtime message: ${error.message}`.replace(/[^ -~]/g, "?").slice(0, 120) : "Invalid runtime message";
       this.options.warn?.({ machineId: connection.machineId, code: 1008, reason, detail: error instanceof Error ? error.message : String(error) }, "Runtime connection closed because of an invalid runtime message"); ws.close(1008, reason);
-    }); });
+    }).finally(()=>{this.physicalMessages--;}); });
     ws.on("error", () => { /* close owns disconnect handling */ });
     ws.on("close", () => {
       clearTimeout(connection.helloTimer);
@@ -661,7 +716,12 @@ export class RuntimeCoordinator {
     if (value.answer !== undefined && (!personal || typeof value.answer !== "string" || !value.answer.trim() || Buffer.byteLength(value.answer) > 64 * 1024
       || value.status !== "completed" || value.outcomeConfirmed !== true) || personal && (value.output !== "" || value.status === "completed" && value.answer === undefined)
       || value.personalFailure !== undefined && (!personal || !personalTaskFailure(value.personalFailure))) throw new RuntimeProtocolError("Invalid personal task result");
-    return { id: value.id as string, cli: value.cli as WindowsCliTask["cli"], cwd: value.cwd as string, sandbox: value.sandbox as WindowsCliTask["sandbox"], ...(value.model ? { model: value.model as string } : {}),
+    const claim=command.payload.execInput===undefined?undefined:validateNativeExecInputClaim(command.payload.execInput);
+    const proof=value.execInputProof===undefined?undefined:validateNativeExecInputProof(value.execInputProof,claim);
+    if(proof&&(!claim||value.status==="starting"||!isNativeProviderId(input.cli)||proof.transport!==nativeProvider(input.cli).promptTransport))throw new RuntimeProtocolError("Unexpected native exec input proof");
+    const previous=command.task?.execInputProof;
+    if(previous&&proof&&JSON.stringify(previous)!==JSON.stringify(proof))throw new RuntimeProtocolError("Native exec input proof changed");
+    return { ...(proof||previous?{execInputProof:proof??previous}:{}),id: value.id as string, cli: value.cli as WindowsCliTask["cli"], cwd: value.cwd as string, sandbox: value.sandbox as WindowsCliTask["sandbox"], ...(value.model ? { model: value.model as string } : {}),
       status: value.status as WindowsCliTask["status"], startedAt: value.startedAt, output: value.output,
       ...(value.finishedAt !== undefined ? { finishedAt: value.finishedAt as number } : {}), ...(value.error ? { error: value.error as string } : {}), ...(value.threadId ? { threadId: value.threadId as string } : {}), ...(value.outcomeConfirmed !== undefined ? { outcomeConfirmed: value.outcomeConfirmed as boolean } : {}),
       ...(typeof value.answer === "string" ? { answer: value.answer } : {}), ...(personalTaskFailure(value.personalFailure) ? { personalFailure: value.personalFailure } : {}) };
@@ -937,6 +997,12 @@ export class RuntimeCoordinator {
     const connection = this.connections.get(machineId);
     return connection && this.admitting(connection) ? `${this.paneEpoch}:${machineId}:${connection.generation}` : null;
   }
+  /** Actual connection negotiation, captured synchronously for cutover; an advertisement alone is not readiness. */
+  requestContextReadiness(machineId:string){
+    const connection=this.connections.get(machineId),generation=this.paneTransportEpoch(machineId);
+    if(this.closed||!connection||!generation||connection.hello?.paneProtocol!==1)return null;
+    return Object.freeze({id:machineId,generation,connected:true as const,requestContextVersion:connection.requestContextProtocol?1:0});
+  }
   /** Pane input replay/sequence authority lives in its pane ledger; reads never fill the exec-task journal. */
   async callPane(machineId: string, raw: RuntimePaneRequest, maxAgents = 4): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
@@ -996,8 +1062,13 @@ export class RuntimeCoordinator {
     if (machine.status !== "online" || !connection || !this.admitting(connection)) throw Error("Runtime machine is offline or updating");
     let id = randomUUID(), normalized = payload;
     if (operation === "run") {
-      if (!record(payload) || Object.keys(payload).some(k => !["task", "profile", "resumeSessionId", "context", "mcp", "credentialProfile"].includes(k))) throw Error("Invalid runtime run payload");
+      if (!record(payload) || Object.keys(payload).some(k => !["task", "profile", "resumeSessionId", "context", "mcp", "credentialProfile", "execInput"].includes(k))) throw Error("Invalid runtime run payload");
       const task = validateNativeTask(payload.task);
+      if(payload.execInput!==undefined){
+        const claim=validateNativeExecInputClaim(payload.execInput);
+        if(!connection.requestContextProtocol||!machine.runtimeInfo?.capabilities.includes(NATIVE_EXEC_INPUT_CAPABILITY))throw Error("Native exec input protocol not negotiated");
+        if(payload.profile!==undefined||claim.requestId!==task.requestId||claim.requestSha256!==nativeExecInputRequestDigest(task,payload))throw Error("Native exec input composition changed");
+      }
       if (payload.profile !== undefined) {
         if (!isPersonalProfile(payload.profile) || !machine.runtimeInfo?.capabilities.includes(payload.profile)) throw Error("Personal-agent profile was not negotiated");
         assertPersonalTask(task, payload);

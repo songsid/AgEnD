@@ -1,7 +1,7 @@
 [
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/README.md",
-    "sha256": "3e32e5e3e447fc3556df2c79b04fd49d5aca7d462e8bbb4a1acd5752b9e93f1b"
+    "sha256": "04058a16c250c8637487668b5399d0d3d2904bf991bc9739587c7c06c044817c"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-dark-en.png",
@@ -9,15 +9,15 @@
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-dark-zh-TW.png",
-    "sha256": "1c1357792cd3c3b6461a5ce8ec93e2aab43ec6ece99be3571d5c094d0a5e0b7c"
+    "sha256": "91f385423014b943d656686a2a011a6c34e5012fc9bb1471ee6bff9b52771324"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-light-en.png",
-    "sha256": "b0b11552ccd386422d4be8b2d27a27cac6476b71c8a32c3b2a41e195c8f4e21e"
+    "sha256": "3feb6adffd9295c2983e85011c31fa748e00de50cda7376f4995cea116fdce4a"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-light-zh-TW.png",
-    "sha256": "c1ea3147b5904e7325d0b541ee9de7a8e2e9c3f299691d715ca4df9defa2c77f"
+    "sha256": "9e16b9f1b188f097034d4dfa9b2fd9d832c9d52c002b730d49430f87c115fbcf"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/after-phone-dark-en.png",
@@ -69,7 +69,7 @@
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/capture-checks.json",
-    "sha256": "28b7ce0b358ea56b0d074c5b4adb6bb8e0e728df1ed782deda9a6b5776369e66"
+    "sha256": "1ddd0503bddfe08ab9f6c0e468f6eb5c5a195a9dcbaab6fb3922338b1701e771"
   },
   {
     "path": "docs/evidence/codex-policy-recourse-m3804/checks-summary.json",
@@ -205,7 +205,7 @@
   },
   {
     "path": "src/daemon.ts",
-    "sha256": "685e5f240b537b6e332ac0f912a15479e687431f118c49ec079e7c3ec90b6a8c"
+    "sha256": "bbba38d3d93d55bbadca641acfd72375cf9ab4b58cfb956c5df43b96a4853f55"
   },
   {
     "path": "src/dispatcher-liveness.ts",
@@ -213,15 +213,15 @@
   },
   {
     "path": "src/fleet-manager.ts",
-    "sha256": "498a2d5622cd3e9c7635b1aabbe86896368265d9ea9055dff26294314a907689"
+    "sha256": "8c946fd345be99f495f87bcab11f5ebb8676926b7a6e41e6ed0285c04e4f5fbe"
   },
   {
     "path": "src/locale.ts",
-    "sha256": "98ebafd7ccead5e5c63e591185c8d4b4328ab59e37f59165ce8ae1d100010346"
+    "sha256": "4fdab6358d7e8869030f8ffd88a524896b0f997b6bd9a2624bf62941acc92585"
   },
   {
     "path": "src/needs-you.ts",
-    "sha256": "65d45df17d21efe16258db8d0c8ddf3decbf101640d091d89d9de4e9d4572079"
+    "sha256": "dd3190f97d1a14f400e35d0fb88fbaa7b7a70b5acfbd502b94d2b3413817afa3"
   },
   {
     "path": "src/remote-card-prompt.ts",
@@ -233,7 +233,7 @@
   },
   {
     "path": "src/ui/panel-needs.js",
-    "sha256": "8b25af33f40449bd56091c61c53bc08be3e1b3399be8c4e6a84830ae6abed566"
+    "sha256": "c00cb4f9c918f8b5e9aa7e8dd03994695cbc8fc030cc8f549bd795d2ad564ebf"
   },
   {
     "path": "src/ui/shared/app-i18n.js",
@@ -241,7 +241,7 @@
   },
   {
     "path": "src/ui/shared/app.css",
-    "sha256": "b6a053e958faed2349991ab7adc2e7f94fe9d36cc3808a6189e84c3358c9e7fd"
+    "sha256": "17cbaadcec402e5753f1cb4a7b53d59ae43fefa1a063991363b6b18182c52cc1"
   },
   {
     "path": "tests/cli-upstream-precheck.test.ts",
@@ -274,5 +274,9 @@
   {
     "path": "tests/web-only-dialogs-2910.test.ts",
     "sha256": "aaa784a070282d4708664e8c4a403d352c1c7857d1511bec3e7d90f95e9c0796"
+  },
+  {
+    "path": "docs/evidence/codex-policy-recourse-m3804/refresh-release.md",
+    "sha256": "8b1f1090053f7bfcb745c9198417470ec189542ea32b20ca8969dc0db1c3143e"
   }
 ]

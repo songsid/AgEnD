@@ -1,0 +1,240 @@
+{
+  "sourceHead": "1f847ade2693e734494162b99283778eee245bb9",
+  "scope": "Real Settings pending and chat/refusal renderers; synthetic session/turn, no activation or provider",
+  "pictures": [
+    {
+      "name": "desk-light-en-settings-pending.png",
+      "sha256": "f5ce9ebb4797eb2a23876acb1bf8a06ba614b219d3b64bbae009eecd4d28c8ae",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
+    },
+    {
+      "name": "desk-light-zh-TW-settings-pending.png",
+      "sha256": "3b90d362b23d1145a040bae9eda62d29ae0d5a5cb892dc6a169ad96419e0f71f",
+      "sourceHead": "1f847ade2693e734494162b99283778eee245bb9"
+    },
+    {
+      "name": "desk-dark-en-settings-pending.png",
+      "sha256": "1cbb79931123a2b9db828c954b5920fd9eee5d7c508f25d84fd57c669fb614e0",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
+    },
+    {
+      "name": "desk-dark-zh-TW-settings-pending.png",
+      "sha256": "343481a78e73ad8a8e40b2945d61cab745bb7a6c686ea90029a5e9920666b33d",
+      "sourceHead": "1f847ade2693e734494162b99283778eee245bb9"
+    },
+    {
+      "name": "phone-light-en-settings-pending.png",
+      "sha256": "0d8ce764a1514219866db054b936d27d80f961640e91abe0d093f079eb488ec0",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
+    },
+    {
+      "name": "phone-light-zh-TW-settings-pending.png",
+      "sha256": "d8b0ac44603cd4c03bd2d431e7fa00cc6fef3127aaf47f0b7cd88ea68123098e",
+      "sourceHead": "1f847ade2693e734494162b99283778eee245bb9"
+    },
+    {
+      "name": "phone-dark-en-settings-pending.png",
+      "sha256": "6ce5d2cc7e8e1a89f0c2f74e51cae0e5a5800a79168c42634ac1c90335338841",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
+    },
+    {
+      "name": "phone-dark-zh-TW-settings-pending.png",
+      "sha256": "ce308187d20d366f94ef2f6eecc169e6d980868dc632fd6c5679b31d1a35e17d",
+      "sourceHead": "1f847ade2693e734494162b99283778eee245bb9"
+    }
+  ],
+  "checks": [
+    {
+      "name": "desk-light-en: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings-pending: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: irreversible lead before details",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: Apply now has no conflicting General direction",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: fixture badge uses 2.4",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: pending summary carries irreversible effect",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings-pending: no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings-pending: CSP",
+      "ok": true
+    }
+  ]
+}

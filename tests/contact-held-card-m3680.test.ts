@@ -251,3 +251,46 @@ it("remembers a request only while it waits (and at most 512): a decided one is 
   await settle();
   expect([web.fm.heldTicketCards.size, web.fm.heldTicketCards.has("R00000599-0000-0000-0000-000000000000"), web.fm.heldTicketCards.has("R00000000-0000-0000-0000-000000000000")]).toEqual([512, true, false]);
 });
+
+// M-3820 (the user, 11-26): General filled with cards edited to "approved elsewhere". A card whose request was decided or
+// expired elsewhere is now deleted; the card a person pressed keeps its outcome; a refused delete falls back to the edit, once.
+it("M-3820: decided elsewhere, the card is deleted rather than edited; the web hears the outcome; a late click changes nothing", async () => {
+  const r = rig(), ticket = r.hold();
+  r.adapter.deleteMessage = vi.fn(async () => {});
+  r.fm.syncHeldTicketCard(ticket); await settle();
+  const card = cards(r)[0];
+  r.service.decide(ticket.id, { revision: ticket.revision, decision: "approve-once" }, admin);
+  r.fm.syncHeldTicketCard(r.store.get(ticket.id)); await settle();
+  expect(r.adapter.deleteMessage.mock.calls).toEqual([["channel", "card-1", "general-thread"]]);
+  expect([cards(r).length, r.fm.retireNonceButtons.mock.calls.length]).toEqual([0, 0]);
+  expect(r.fm.webPromptGone).toHaveBeenCalledWith(card, "Approved elsewhere (the dashboard or another card).");
+  await click(r, card, "decline");
+  expect([r.decide.mock.calls.length, r.store.get(ticket.id)!.state]).toEqual([0, "approved"]);
+});
+it("M-3820: a delete the platform refuses (no permission, too old) falls back to today's edit — one try, no retries", async () => {
+  const r = rig(), ticket = r.hold();
+  r.adapter.deleteMessage = vi.fn(async () => { throw Error("Missing Permissions"); });
+  r.fm.syncHeldTicketCard(ticket); await settle();
+  r.service.decide(ticket.id, { revision: ticket.revision, decision: "decline" }, admin);
+  r.fm.syncHeldTicketCard(r.store.get(ticket.id)); await settle();
+  expect(r.adapter.deleteMessage).toHaveBeenCalledTimes(1);
+  expect(r.fm.retireNonceButtons.mock.calls.map((c: any[]) => [c[1], c[2]])).toEqual([["card-1", "Declined elsewhere (the dashboard or another card)."]]);
+  expect(r.fm.logger.info).toHaveBeenCalledWith(expect.objectContaining({ err: "Missing Permissions" }), expect.stringContaining("editing it instead"));
+});
+it("M-3820: the card a person pressed is never deleted: it keeps the outcome line", async () => {
+  const r = rig(), ticket = r.hold();
+  r.adapter.deleteMessage = vi.fn(async () => {});
+  r.fm.syncHeldTicketCard(ticket); await settle();
+  await click(r, cards(r)[0], "approve");
+  expect(r.adapter.deleteMessage).not.toHaveBeenCalled();
+  expect(r.fm.retireNonceButtons.mock.calls.map((c: any[]) => [c[1], c[2]])).toEqual([["card-1", "Approved once by Demo admin. The message was sent."]]);
+});
+it("M-3820: decided while the card was still being posted — once posted, it is deleted; a card whose own timer ran out is still edited to say so", async () => {
+  const r = rig(), ticket = r.hold(), post = deferredPost(r);
+  r.adapter.deleteMessage = vi.fn(async () => {});
+  r.fm.syncHeldTicketCard(ticket); await settle();
+  r.service.decide(ticket.id, { revision: ticket.revision, decision: "approve-once" }, admin);
+  r.fm.syncHeldTicketCard(r.store.get(ticket.id));
+  post(); await settle(); await settle();
+  expect([r.adapter.deleteMessage.mock.calls, r.fm.retireNonceButtons.mock.calls.length]).toEqual([[["channel", "late-card", "general-thread"]], 0]);
+});

@@ -39,7 +39,7 @@ const WORKER: readonly string[] = [
   // target that already exists — it is `send_to_instance` with a correlation
   // id, and a month of real traffic showed 572 of its 574 calls coming from
   // instances this would otherwise have silenced.
-  "hub_set_intro", "hub_room_list", "hub_room_post", "hub_room_members", "hub_people_search",
+  "hub_set_intro", "hub_room_list", "hub_room_post", "hub_room_history","hub_room_members", "hub_people_search",
   "send_to_instance", "report_result", "request_information", "broadcast", "delegate_task", "delivery_status",
   // Knowing where it is and who is next to it. All read-only.
   "list_instances", "describe_instance", "list_teams", "list_models",
@@ -113,7 +113,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "get_instance_logs", "get_fleet_config", "validate_config", "list_deployments",
     // Read-only runtime status, plus General-only requests that require a separate human confirmation.
     "kiro_engine_status", "propose_contact_change", "contact_state",
-    "hub_set_intro", "hub_room_list", "hub_room_post", "hub_room_members", "hub_people_search",
+    "hub_set_intro", "hub_room_list", "hub_room_post", "hub_room_history","hub_room_members", "hub_people_search",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
     ...ORCHESTRATION,
     "task", "list_decisions", "post_decision",
@@ -139,7 +139,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
   ],
   standard: [
     "reply", "react", "edit_message", "close_poll",
-    "hub_set_intro", "hub_room_list", "hub_room_post", "hub_room_members", "hub_people_search",
+    "hub_set_intro", "hub_room_list", "hub_room_post", "hub_room_history","hub_room_members", "hub_people_search",
     "send_to_instance", "broadcast", "list_instances", "describe_instance", "delivery_status",
     "list_decisions", "post_decision", "task", "set_display_name", "set_description", "list_emojis", "set_persona_emoji", "preview_emojis",
     "list_stickers", "preview_stickers",

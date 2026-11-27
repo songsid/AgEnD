@@ -1,8 +1,13 @@
+import {DeliveryOutbox} from "../src/delivery-outbox.js";
+import {createRequestContextExecOwner} from "../src/request-context-exec-owner.js";
+import {nativeHumanOrigin,formatHumanInboundMessage as formatNativeHuman} from "../src/human-delivery-receipts.js";
+import {NativeExecInputWitness,nativeExecInputBytes,type NativeExecInputProof} from "../src/native-exec-input.js";
+import { RequestContextPublication } from "../src/request-context-installation.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FleetWindowsRuntime, type FleetWindowsRuntimeHost } from "../src/fleet-windows-runtime.js";
+import { FleetWindowsRuntime, type FleetWindowsRuntimeHost,type NativeExecutionResult } from "../src/fleet-windows-runtime.js";
 import { WindowsAgents } from "../src/windows-agents.js";
 import { nativeInstanceName } from "../src/native-instance-registry.js";
 import { WebChatHistory } from "../src/web-chat-history.js";
@@ -18,10 +23,10 @@ import type { RequestContextCallLease } from "../src/request-context-call.js";
 import { SettingsExecution } from "../src/settings-transaction.js";
 import { authorizeExplicitInstanceRemoval } from "../src/instance-removal.js";
 
-const roots:string[]=[];
+const roots:string[]=[],outboxes:DeliveryOutbox[]=[];
 const id="12345678-1234-4321-abcd-123456789012", thread="12345678-1234-4321-abcd-123456789013";
 beforeEach(()=>vi.stubEnv("AGEND_WINDOWS_CLI","1"));
-afterEach(()=>{vi.unstubAllEnvs();for(const dir of roots.splice(0)){if(!resolve(dir).startsWith(resolve(tmpdir())))throw Error("Unsafe scratch path");rmSync(dir,{recursive:true,force:true});}});
+afterEach(()=>{for(const box of outboxes.splice(0))box.close();vi.unstubAllEnvs();for(const dir of roots.splice(0)){if(!resolve(dir).startsWith(resolve(tmpdir())))throw Error("Unsafe scratch path");rmSync(dir,{recursive:true,force:true});}});
 function fixture(openMcp?:FleetWindowsRuntimeHost["openMcp"]) {
   const home=mkdtempSync(join(tmpdir(),"agend-native-runtime-"));roots.push(home);
   const tasks=new Map<string,WindowsCliTask>(), callbacks=new Map<string,WindowsRunOptions>();let active=false;
@@ -41,7 +46,7 @@ function fixture(openMcp?:FleetWindowsRuntimeHost["openMcp"]) {
   }},{store,bridge});
   const create=()=>runtime.create({name:"Windows helper",cli:"codex",sandbox:"read-only",instructions:"Use native tools",tags:["tools"]},()=>true);
   const settle=(key=id,change:Partial<WindowsCliTask>={})=>{active=false;const task={...tasks.get(key)!,status:"completed" as const,output:"native reply",threadId:thread,outcomeConfirmed:true,finishedAt:Date.now(),...change};tasks.set(key,task);callbacks.get(key)?.onSettled?.(task);return task;};
-  return {home,fleet,store,runtime,bridge,start,save,warn,removed,history,events,create,settle,tasks,stop:()=>{stopping=true;}};
+  return {home,fleet,store,runtime,bridge,start,save,warn,removed,history,events,create,settle,tasks,callbacks,stop:()=>{stopping=true;}};
 }
 
 describe("Fleet Windows runtime adapter",()=>{
@@ -288,6 +293,39 @@ describe("Fleet native routing and durable lane",()=>{
 });
 
 describe("S-224 exec admitted-input capture", () => {
+  it("S-230 keeps each exec agent's C lane independent, including an unresolved run on another agent", async () => {
+    const close = vi.fn(), connection = { endpoint: "http://127.0.0.1:19280/agent", token: "a".repeat(64), tools: ["task"] };
+    const open = vi.fn<FleetWindowsRuntimeHost["openMcp"] & Function>(() => ({ connection, close, reportedCorrelations: () => [] }));
+    const f = fixture(open), first = await f.create();
+    const second = await f.runtime.create({ name: "Second Windows helper", cli: "codex", sandbox: "read-only", instructions: "Use native tools", tags: [] }, () => true);
+    const registration = { assertRegistration() {} };
+    const lanes = new Map<string, RequestContextLocalTurns>(), contexts = new Map<string, RequestContextV1>();
+    const ownerOf = (name: string): RequestContextRuntimeOwner => ({ instance: name, incarnation: `${name}-generation`,
+      workGeneration: "exec-lane", daemonBootId: "fixture-boot", spawnGeneration: 1, launchFenceEpoch: 0, deliveryEpoch: 0 });
+    for (const { name } of [first, second]) {
+      const owner = ownerOf(name), root = randomUUID();
+      const context: RequestContextV1 = { ref: { version: 1, contextId: root, rootContextId: root },
+        rootEvidenceRef: `fixture:${name}`, ingress: "guest", initiatingActor: { kind: "unknown", reason: "unidentified" },
+        source: { instance: name, incarnation: owner.incarnation }, sourceAudience: { kind: "web", ref: randomUUID() } };
+      lanes.set(name, new RequestContextLocalTurns({ registration,
+        input: (inputId, wireSha256, actualOwner) => ({ inputId, wireSha256, owner: actualOwner, context, proof: { kind: "independent" } }),
+        context: key => contexts.get(key) ?? null, retain: value => { contexts.set(value.ref.contextId, value); },
+        canManage: () => false, recovery: () => null, saveRecovery: () => {} }));
+    }
+    let misroute = false;
+    f.runtime.setRequestContextExecLifecycles(name => lanes.get(misroute ? first.name : name)!, ownerOf, registration);
+    await f.runtime.deliver(first.name, { requestId: id, content: "Question A" }, { requestContextInputId: "input-a" });
+    f.settle(id, { outcomeConfirmed: false });
+    const a = lanes.get(first.name)!.current(ownerOf(first.name)); expect(a?.inputId).toBe("input-a");
+    misroute = true;
+    await expect(f.runtime.deliver(second.name, { requestId: thread, content: "Question B" }, { requestContextInputId: "input-b" })).rejects.toThrow(/lane differs/);
+    expect(lanes.get(first.name)!.current(ownerOf(first.name))).toBe(a);
+    misroute = false;
+    await f.runtime.deliver(second.name, { requestId: thread, content: "Question B" }, { requestContextInputId: "input-b" });
+    expect(lanes.get(first.name)!.current(ownerOf(first.name))).toBe(a);
+    expect(lanes.get(second.name)!.current(ownerOf(second.name))?.inputId).toBe("input-b");
+    expect(open.mock.calls[1][4]?.snapshot.owner.instance).toBe(second.name); f.settle(thread);
+  });
   async function scoped(registration?:import("../src/request-context-fence.js").RequestContextRegistrationGate) {
     const close = vi.fn(), connection = { endpoint: "http://127.0.0.1:19280/agent", token: "a".repeat(64), tools: ["task"] };
     const open = vi.fn<FleetWindowsRuntimeHost["openMcp"] & Function>((_name, _id, _sandbox, _current, _scope) => ({ connection, close, reportedCorrelations: () => [] }));
@@ -371,4 +409,106 @@ describe("S-224 exec admitted-input capture", () => {
     f.runtime.get(f.name);expect(f.runtime.drainView(root).references).toEqual([]);
   });
 
+});
+
+
+describe("S-230 shared admission fence", () => {
+  it.each(["deliver", "execute"] as const)("%s holds before native claim or journal and resumes once", async lane => {
+    const f = fixture(), { name, agent } = await f.create();
+    const publication = new RequestContextPublication({ owner: "fixture-fleet", current: () => true }, false), fence = publication.fence();
+    (f.runtime as any).host.requestContextAdmission = () => publication.admission;
+    const work = f.runtime[lane](name, { requestId: id, content: "synthetic held input" });
+    await Promise.resolve(); expect(f.start).not.toHaveBeenCalled(); expect(f.store.get(agent.id).turns).toHaveLength(0);
+    publication.abandon(fence, () => null);
+    await vi.waitFor(() => expect(f.start).toHaveBeenCalledTimes(1));
+    f.settle(); await work; expect(f.store.get(agent.id).turns).toHaveLength(1);
+  });
+  it("stopping while held creates no native turn and cannot become a later owner's input", async () => {
+    const f = fixture(), { name, agent } = await f.create();
+    const publication = new RequestContextPublication({ owner: "fixture-fleet", current: () => true }, false), fence = publication.fence();
+    (f.runtime as any).host.requestContextAdmission = () => publication.admission;
+    const work = f.runtime.execute(name, { requestId: id, content: "stale held input" });
+    const refused = expect(work).rejects.toThrow(/no longer current/);
+    f.stop(); publication.admission.changed(); await refused;
+    publication.abandon(fence, () => null); expect(f.start).not.toHaveBeenCalled(); expect(f.store.get(agent.id).turns).toHaveLength(0);
+  });
+});
+
+
+describe("S-230 actual exec claim and accepted human input",()=>{
+ async function prepared(){
+  const close=vi.fn(),open=vi.fn<FleetWindowsRuntimeHost["openMcp"] & Function>(()=>({connection:{endpoint:"http://127.0.0.1:19280/agent",token:"a".repeat(64),tools:["task"]},close,reportedCorrelations:()=>[]}));
+  const f=fixture(open),{name,agent}=await f.create(),box=new DeliveryOutbox(join(f.home,"outbox.db"),"manager",{requestContextDispatchVersion:1});outboxes.push(box);box.activateRequestContextBarrier();
+  const registration={assertRegistration:()=>{}},workGeneration=randomUUID();
+  const owner=createRequestContextExecOwner(box,{instance:name,managerBootId:"manager",registration,
+   work:{current:()=>true,identity:()=>({incarnation:"native-v1",workGeneration}),fresh:()=>{throw Error("Not a fresh launch");}},
+   current:()=>true,incarnation:()=>"native-v1",deliveryEpoch:()=>0,admitted:()=>true,canManage:()=>false,consumptionCurrent:()=>true});
+  f.runtime.setRequestContextExecLifecycles(()=>owner.turns,()=>owner.owner(),registration,(_name,...args)=>owner.prepare(...args));
+  const body="Original admitted question",receipt=box.createHumanReceiptWithRequestContext({targetInstance:name,originalBody:body,origin:nativeHumanOrigin("telegram","fixture","demo-person","Demo person",false,"message")!,inputKind:"fleet_inbound",managerBootId:"manager"},
+   {incarnation:"native-v1",room:null,web:null,route:{kind:"instance"},platform:()=>"telegram"}).receipt;
+  const content=formatNativeHuman(body,{source:"telegram",user:"Demo person",user_id:"demo-person",verification_id:receipt.message_id},"mcp",{dialect:"compact",replyHint:false});
+  const options={requestContextInputId:`human:${receipt.message_id}`};
+  return {...f,name,agent,box,receipt,content,options,owner,open,close};
+ }
+ it("claims the actual composed bytes, keeps its original grant waiting, and consumes once only after the main input write",async()=>{
+  const f=await prepared(),pending=f.runtime.execute(f.name,{requestId:id,content:f.content},f.options);
+  const [task,,options]=f.start.mock.calls[0];expect(options.execInput).toBeTruthy();expect(task.prompt).toContain("Agent instructions:");
+  const scope=f.open.mock.calls[0][4]!,ready=f.open.mock.calls[0][5]!;let permitted=false;void ready().then(v=>permitted=v);await Promise.resolve();expect(permitted).toBe(false);
+  expect(f.box.getHumanReceipt(f.receipt.receipt_id)?.state).toBe("queued");
+  const witness=new NativeExecInputWitness(options.execInput!,task,options,"stdin-text",nativeExecInputBytes(task,options),p=>options.onInputWritten!(p));
+  witness.spawnedMain();await Promise.resolve();expect(permitted).toBe(false);witness.stdinFinished();expect(await ready()).toBe(true);
+  expect(f.box.getHumanReceipt(f.receipt.receipt_id)?.state).toBe("delivered");expect(scope.current()).toBe(true);
+  await f.runtime.deliver(f.name,{requestId:id,content:f.content},f.options);expect(f.start).toHaveBeenCalledOnce();expect(f.open).toHaveBeenCalledOnce();
+  f.settle();await pending;expect(scope.current()).toBe(false);expect(f.owner.turns.current(f.owner.owner())).toBeNull();
+  expect(f.runtime.requestContextCompletion(f.name,id,f.options.requestContextInputId).current()).toBe(true);
+  expect(()=>f.runtime.requestContextCompletion(f.name,id,`delivery:${id}:2`)).toThrow("another admitted input");
+ });
+ it("live output and restart import use the same original projection and positively proven journal completion",async()=>{
+  const f=await prepared(),project=vi.fn((_name:string,_task:NativeExecutionResult,completion:ReturnType<FleetWindowsRuntime["requestContextCompletion"]>)=>{expect(completion.reference.inputId).toBe(f.options.requestContextInputId);return {replyTo:{boot:"a",id:1,sender:"Original person",text:"Original question"}};});
+  (f.runtime as any).host.projectRequestContextOutput=project;
+  const pending=f.runtime.execute(f.name,{requestId:id,content:f.content},f.options),[task,,options]=f.start.mock.calls[0];let proof!:NativeExecInputProof;
+  const witness=new NativeExecInputWitness(options.execInput!,task,options,"stdin-text",nativeExecInputBytes(task,options),p=>{proof=p;options.onInputWritten!(p);});witness.spawnedMain();witness.stdinFinished();
+  f.settle(id,{execInputProof:proof});await pending;
+  expect(f.history.findByMessageId(f.name,`native:${id}:reply`)?.replyTo?.sender).toBe("Original person");
+  const reopened=new WindowsAgents(f.home,{...f.bridge,get:()=>null} as any),history=new WebChatHistory(),events:any[]=[];
+  expect(reopened.requestExecCompletion(f.agent.id,id)).toMatchObject({outcomeConfirmed:true,execInputProof:proof});
+  const runtime=new FleetWindowsRuntime({owner:{dataDir:f.home},fleet:()=>f.fleet,save:()=>{},stopping:()=>false,history,projectRequestContextOutput:project,emit:(event,data)=>{events.push({event,data});if(event==="message")history.record(data as any);}}, {store:reopened,bridge:{...f.bridge,get:()=>null} as any});
+  runtime.setRequestContextExecLifecycles(()=>f.owner.turns,()=>f.owner.owner(),f.owner.turns.registrationGate!,(_name,...args)=>f.owner.prepare(...args));
+  runtime.importHistory();runtime.importHistory();expect(history.list(f.name)).toHaveLength(1);expect(history.list(f.name)[0]?.replyTo?.sender).toBe("Original person");expect(history.list(f.name)[0]?.messageId).toBe(`native:${id}:reply`);
+  expect(events.filter(e=>e.event==="message")).toHaveLength(1);expect(project).toHaveBeenCalledTimes(3);
+  const path=join(f.home,"windows-agents.json"),saved=readFileSync(path,"utf8");
+  for(const kind of ["context","proof","output"]){const data=JSON.parse(saved);
+    if(kind==="context")data.requests[id].requestContextReference.rootContextId=randomUUID();
+    else if(kind==="proof")data.requests[id].execCompletion.proof.token=randomUUID();
+    else data.agents.find((a:any)=>a.id===f.agent.id).turns[0].output="Altered stored output";
+    writeFileSync(path,JSON.stringify(data));expect(()=>new WindowsAgents(f.home,{...f.bridge,get:()=>null} as any)).toThrow();
+  }
+  writeFileSync(path,saved);
+
+ });
+ it("a failure after C binds but before the frame seal retires only that unstarted snapshot",async()=>{
+  const f=await prepared(),lifecycle=(f.runtime as any).requestContextLifecycle,prepare=lifecycle.prepare;
+  lifecycle.prepare=(...args:any[])=>{const frame=prepare(...args);return {...frame,bind:(snapshot:any)=>{frame.bind(snapshot);throw Error("Fixture final binding failed");}};};
+  await expect(f.runtime.execute(f.name,{requestId:id,content:f.content},f.options)).rejects.toThrow("final binding failed");
+  expect(f.owner.turns.current(f.owner.owner())).toBeNull();expect(f.start).not.toHaveBeenCalled();expect(f.box.getHumanReceipt(f.receipt.receipt_id)?.state).toBe("uncertain");
+ });
+ it("a missing actual MCP endpoint aborts before provider start and leaves the exact receipt uncertain",async()=>{
+  const f=await prepared();f.open.mockReturnValueOnce(null);
+  await expect(f.runtime.execute(f.name,{requestId:id,content:f.content},f.options)).rejects.toThrow("tools are unavailable");
+  expect(f.start).not.toHaveBeenCalled();expect(f.owner.turns.current(f.owner.owner())).toBeNull();expect(f.box.getHumanReceipt(f.receipt.receipt_id)?.state).toBe("uncertain");
+ });
+ it("ending without a positive write releases waiting tools as false and retains uncertain C work until confirmed recovery",async()=>{
+  const f=await prepared(),pending=f.runtime.execute(f.name,{requestId:id,content:f.content},f.options),ready=f.open.mock.calls[0][5]!,scope=f.open.mock.calls[0][4]!;
+  f.settle(id,{status:"failed",outcomeConfirmed:false});await pending;expect(await ready()).toBe(false);expect(scope.current()).toBe(true);expect(f.box.getHumanReceipt(f.receipt.receipt_id)?.state).toBe("uncertain");
+  const options=f.callbacks.get(id)!;expect(()=>options.onInputWritten!({...options.execInput!,inputSha256:options.execInput!.wireSha256} as NativeExecInputProof)).toThrow();
+  f.tasks.set(id,{...f.tasks.get(id)!,outcomeConfirmed:true});f.runtime.get(f.name);expect(scope.current()).toBe(false);
+ });
+});
+
+
+it("S-230 retired conversation factories cannot serve again, and a pending profile preparation blocks retirement",async()=>{
+ const f=fixture();(f.bridge as any).idleForRequestContext=()=>true;
+ let resume!:(cwd:string)=>void;(f.bridge as any).prepareWorkspace=()=>new Promise<string>(resolve=>resume=resolve);
+ const pending=f.create();expect(()=>f.runtime.retireForRequestContext()).toThrow("not physically retired");resume("C:\\Fixture");const {name,agent}=await pending;
+ f.runtime.retireForRequestContext();await expect(f.runtime.deliver(name,{content:"Must not start"})).rejects.toThrow("factory is retired");expect(()=>f.runtime.register()).toThrow("factory is retired");expect(f.start).not.toHaveBeenCalled();expect(f.store.get(agent.id).instructions).toBe("Use native tools");
 });

@@ -8,6 +8,7 @@ import { SettingsConfirmationStore, SettingsConfirmationError, type SettingsPend
 import { SettingsExecution, settingsFingerprint } from "./settings-transaction.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import {basename} from "node:path";
+import { prepareRequestContextControlReplay, type RequestContextControlHost } from "./request-context-control-api.js";
 import {sanitizeInstanceName} from "./instance-names.js";
 
 export interface SettingsPrincipal {
@@ -45,6 +46,8 @@ export class SettingsHttpConfirmation {
   private passed = new WeakSet<object>();
   constructor(readonly store: SettingsConfirmationStore, private readonly options: {
     principal(req: IncomingMessage): SettingsPrincipal | null;
+    /** Installed control host only; absence preserves the ordinary 404 route. */
+    requestContextControl?(): RequestContextControlHost | undefined;
     baseline(): Promise<SettingsBaseline>;
     snapshot(): unknown;
     job?(id: string): Promise<boolean>;
@@ -123,6 +126,12 @@ export class SettingsHttpConfirmation {
       return true;
     }
     if (!isSettingsMutation(method, path)) return false;
+    if (path === "/api/settings/request-context") {
+      const host = this.options.requestContextControl?.();
+      if (!host) return false;
+      if (url.searchParams.size) { json(res,400,{error:"invalid-request"}); return true; }
+      if (!host.permitContinuation(req, res)) return true;
+    }
     // M-3278 (decision 7933bf90): an install (and update) is proposed over the public link too, by its admin session (the
     // principal's localAdmin below; the same confirmation policy as anywhere off the AgEnD computer).
     const installPrincipal = isCliInstallPath(path) ? this.options.principal(req) : undefined;
@@ -143,6 +152,12 @@ export class SettingsHttpConfirmation {
     const companyStart = this.options.directCompanyJoin === true && method === "POST"
       && (url.pathname === "/api/hub/member/company-join/start" || url.pathname === "/api/hub/member/company-join/reconnect");
     const principal = this.options.principal(req);
+    const control = url.pathname === "/api/settings/request-context" ? this.options.requestContextControl?.() : undefined;
+    let bindControlReplay: ReturnType<typeof prepareRequestContextControlReplay> | undefined;
+    if (control && (body as {action?:unknown})?.action !== "check") {
+      try { bindControlReplay = prepareRequestContextControlReplay(req, url, control); }
+      catch { throw new SettingsConfirmationError(403, "verification-required"); }
+    }
     if (installPrincipal && (!installPrincipal.current() || !principal?.current())) throw new SettingsConfirmationError(401, "session_required");
     if (installPrincipal && (principal!.id !== installPrincipal.id || principal!.requester?.handle !== installPrincipal.requester?.handle))
       throw new SettingsConfirmationError(409, "install_session_changed");
@@ -186,6 +201,7 @@ export class SettingsHttpConfirmation {
         // Recheck after replay/body/queue awaits in the real handler and actual job.
         execution.assert();
         const replay = createSettingsReplay({ ...payload, confirmedCurrent }, execution);
+        if (bindControlReplay) bindControlReplay(replay, confirmedCurrent ?? (() => false));
         const response = await new Promise<{ status: number; body: any }>((yes, no) => {
           const collector = new Response(replay);
           collector.end = ((chunk: any) => {

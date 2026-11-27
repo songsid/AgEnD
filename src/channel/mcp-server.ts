@@ -42,6 +42,8 @@ try {
 // Configuration
 // ---------------------------------------------------------------------------
 
+// Captured once: a reconnect must never adopt a later launch.
+const LAUNCH_TOKEN=process.env.AGEND_LAUNCH_TOKEN;
 const SOCKET_PATH = process.env.AGEND_SOCKET_PATH ?? "";
 /** The session name announced in mcp_ready; echoed in pong so the daemon can attribute the answer. */
 let announcedSessionName: string | undefined;
@@ -173,7 +175,7 @@ async function connectIpc(): Promise<void> {
     // pid lets the daemon distinguish a replacement server from the one it just
     // saw die. Safe to trust on arrival: the pid file is written before
     // connectIpc() runs, so a re-read at this point already sees this process.
-    client.send({ type: "mcp_ready", sessionName, pid: process.pid });
+    client.send({ type: "mcp_ready", sessionName, pid: process.pid, ...(LAUNCH_TOKEN ? { launchToken: LAUNCH_TOKEN } : {}) });
     void mcp.sendToolListChanged().catch(() => {});
     process.stderr.write("agend: connected to daemon IPC\n");
   } catch (err) {

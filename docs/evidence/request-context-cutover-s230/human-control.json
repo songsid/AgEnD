@@ -1,0 +1,83 @@
+{
+  "sourceCommit": "3c9fe50aa8a2ef56dccd88138c2f75c767d548bf",
+  "scope": "Exact retained human-control ownership across restart; real facade, final formatter and pane proof.",
+  "checks": {
+    "neighbors": {
+      "files": 8,
+      "passed": 178,
+      "failed": 0
+    },
+    "postMutationRestored": {
+      "files": 2,
+      "passed": 80,
+      "failed": 0
+    },
+    "typecheckTests": "passed",
+    "mutants": [
+      {
+        "name": "no-adoption",
+        "exitCode": 1,
+        "failed": true
+      },
+      {
+        "name": "allow-begun",
+        "exitCode": 1,
+        "failed": true
+      },
+      {
+        "name": "allow-raw",
+        "exitCode": 1,
+        "failed": true
+      },
+      {
+        "name": "no-owned-alias",
+        "exitCode": 1,
+        "failed": true
+      }
+    ],
+    "gitleaks": "31 commits; no leaks",
+    "changelog": "passed",
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "Never-begun untouched receipts only; bound, begun and raw paths are not automatically adopted.",
+    "Canonical delivery-first restart grammar remains; exact typed owner/wire join required for human marker alias.",
+    "Original receipt identity and authority are preserved; no fabricated peer sender.",
+    "First neighbor run exposed BTW missing durable begin/completion; corrected and all eight suites rerun.",
+    "Production installer, accepted-ingress factory and full-mode proof remain unfinished. No live activation."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "src/daemon.ts",
+      "sha256": "9a2f60ce0cc0bd08a3abe60e279389594c30abfa8a7f4bced784721c9abeab82"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "45c8f7a71f7c61d41dedf3ab0f0a965abffd75e8e85d495a4fb60a7bd48206e0"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "ed2fe58553f7fd0b5bc9c1c28cc6731cd539c510555ba129492ef9a168dd7f6e"
+    },
+    {
+      "path": "src/human-delivery-receipts.ts",
+      "sha256": "f6b689e3bff603c4e47a3bd126ca6567d6340313bd526820440f38678582c277"
+    },
+    {
+      "path": "src/retained-human-control.ts",
+      "sha256": "954369b5eaf3a2360f91e8aa676683c62e4c567b2b2767a052a2b21eee0f7c99"
+    },
+    {
+      "path": "tests/human-receipts-1756.test.ts",
+      "sha256": "910c2478d0c1b3188f0263fff1f1a625f3f1bc9cf952a7fa78b9733018d6a2e8"
+    },
+    {
+      "path": "tests/retained-human-control-s230.test.ts",
+      "sha256": "4d2285921ae2b19d6a8d4d850e4d2eb7809e22bdcf97be56547bb82dc5f2b46c"
+    },
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "4ea54ead9e852f62c3be161cf78504c9b3e640491902e08c5afefa22f5f65ce5"
+    }
+  ]
+}

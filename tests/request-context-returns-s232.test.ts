@@ -1,3 +1,6 @@
+import {createRequestContextExecOwner} from "../src/request-context-exec-owner.js";
+import {claimNativeExecInput,NativeExecInputWitness,nativeExecInputBytes} from "../src/native-exec-input.js";
+import {makeRequestDeliveryInputResolver} from "../src/request-context-delivery-resolver.js";
 import {randomUUID} from "node:crypto";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
@@ -48,4 +51,51 @@ it("H return rows retire before B operations without an FK stall",()=>{
  f.db.prepare("UPDATE deliveries SET state='failed',finished_at=?,updated_at=? WHERE delivery_id=?").run("2000-01-01T00:00:00Z","2000-01-01T00:00:00Z",id);
  expect(requestContextReturnBlockers(f.db,root.ref.rootContextId)).toEqual([]);const gate=f.box.requestHubContactGate({current:()=>true,person:()=>null,adminOf:()=>false,canDecide:()=>true,canManage:()=>true,rootRetired:()=>true});
  gate.retireRoot(root.ref.rootContextId);expect(f.box.requestContext(root.ref.contextId)).toBeNull();expect(f.box.requestContextForDelivery(id)).toBeNull();expect(f.db.prepare(`SELECT COUNT(*) n FROM ${REQUEST_CONTEXT_RETURNS_TABLE}`).get()).toEqual({n:0});
+});
+it("final delivery resolver requires the actual current physical claim and B-owned peer, never display sender",()=>{
+ const f=fixture(),root=f.root(),request=f.admit(root,"b"),runtime=owner("b");let owned=true,consume=true;
+ const resolver=makeRequestDeliveryInputResolver(f.box,{instance:"b",managerBootId:"manager",current:()=>owned,runtimeOwner:()=>runtime,consumptionCurrent:()=>consume}),id=request.result.delivery.deliveryId,input=`delivery:${id}:1`;
+ expect(resolver.prepare("human:unrelated",wire,runtime)).toBeNull();expect(()=>resolver.prepare(input,wire,runtime)).toThrow(/current/);
+ const claimed=f.box.claimNext("manager",()=>runtime.daemonBootId,new Set())!;expect(claimed.deliveryId).toBe(id);
+ const prepared=resolver.prepare(input,wire,runtime)!;expect(prepared.proof).toMatchObject({kind:"admitted-delivery",sender:{instance:"a",incarnation:"v1"}});expect(prepared.context?.ref.rootContextId).toBe(root.ref.contextId);
+ expect(f.bind(prepared).turn.context).toEqual(prepared.context);expect(()=>resolver.prepare(`delivery:${id}:2`,wire,runtime)).toThrow(/current/);
+ consume=false;expect(()=>resolver.prepare(input,wire,runtime)).toThrow(/current/);consume=true;owned=false;expect(()=>resolver.prepare(input,wire,runtime)).toThrow(/current/);owned=true;
+ expect(()=>resolver.prepare(input,wire,{...runtime,daemonBootId:"another-boot"})).toThrow(/current/);
+ expect(f.box.begin(id,runtime.daemonBootId,1)).toBe("begun");expect(resolver.prepare(input,wire,runtime)?.context).toEqual(prepared.context);
+ f.box.complete(id,runtime.daemonBootId,1,"delivered");expect(()=>resolver.prepare(input,wire,runtime)).toThrow(/current/);
+});
+it("a foreign manager or a replacement during final delivery validation cannot retain a child",()=>{
+ const f=fixture(),request=f.admit(f.root(),"b"),runtime=owner("b"),id=request.result.delivery.deliveryId,input=`delivery:${id}:1`;f.box.claimNext("manager",()=>runtime.daemonBootId,new Set());
+ const before=f.db.prepare("SELECT COUNT(*) n FROM request_contexts_v1").get();
+ const wrong=makeRequestDeliveryInputResolver(f.box,{instance:"b",managerBootId:"another-manager",current:()=>true,runtimeOwner:()=>runtime,consumptionCurrent:()=>true});expect(()=>wrong.prepare(input,wire,runtime)).toThrow(/current/);
+ let calls=0;const replaced=makeRequestDeliveryInputResolver(f.box,{instance:"b",managerBootId:"manager",current:()=>++calls<4,runtimeOwner:()=>runtime,consumptionCurrent:()=>true});expect(()=>replaced.prepare(input,wire,runtime)).toThrow(/current/);
+ expect(f.db.prepare("SELECT COUNT(*) n FROM request_contexts_v1").get()).toEqual(before);
+});
+
+
+it("an exec peer consumes only its exact B attempt after the owned main-child input write",async()=>{
+ const f=fixture(),request=f.admit(f.root(),"b","request_information"),id=request.result.delivery.deliveryId;
+ const registration={assertRegistration:()=>{}},generation=randomUUID();
+ const stable=createRequestContextExecOwner(f.box,{instance:"b",managerBootId:"manager",registration,work:{current:()=>true,identity:()=>({incarnation:"v1",workGeneration:generation}),fresh:()=>{}},current:()=>true,incarnation:()=>"v1",deliveryEpoch:()=>0,admitted:()=>true,canManage:()=>false,consumptionCurrent:()=>true});
+ const claimed=f.box.claimNext("manager",()=>"manager",new Set())!;
+ const task={requestId:id,cli:"codex" as const,cwd:"C:\\Fixture",sandbox:"read-only" as const,prompt:String(claimed.payload.content)},options={context:"Exact native execution"},claim=claimNativeExecInput(task,options);
+ const frame=stable.prepare(`delivery:${id}:1`,task,options,claim),snapshot=stable.turns.beforeWrite(frame.inputId,frame.wireSha256,stable.owner());frame.bind(snapshot);
+ expect(snapshot.context.ref.parentContextId).toBe(request.context.ref.contextId);expect(snapshot.context.source.instance).toBe("b");expect(f.box.begin(id,"manager",1)).toBe("begun");
+ let written=false;void frame.inputReady().then(v=>written=v);
+ const proof=new NativeExecInputWitness(claim,task,options,"stdin-text",nativeExecInputBytes(task,options),p=>frame.written(p));proof.spawnedMain();await Promise.resolve();expect(written).toBe(false);expect(f.box.get(id)?.state).toBe("submission_started");
+ proof.stdinFinished();expect(await frame.inputReady()).toBe(true);expect(f.box.get(id)?.state).toBe("delivered");expect(f.box.queryStatusForInstance("b",{deliveryId:id}).items[0]?.consumed_at).toBeTruthy();expect(f.box.requestContextReturns.get(id)?.state).toBe("open");
+ // Provider completion and positive input consumption are distinct; failure cannot erase the input proof.
+ expect(f.box.complete(id,"manager",1,"failed")).toBe(false);frame.finish();expect(stable.turns.current(stable.owner())?.token).toBe(snapshot.token);
+});
+
+it("explicit stop-waiting atomically closes the exact obligation and admits one provenance-bound requester outcome",()=>{
+ const f=fixture(),root=f.root(),request=f.admit(root,"b","request_information"),id=request.result.delivery.deliveryId,row=f.box.requestContextReturns.get(id)!;
+ const before=f.box.listPending().length;let checks=0;
+ expect(()=>f.box.closeRequestContextReturn(id,requestContextDigest(row),"Stopped waiting",()=>++checks<3)).toThrow();
+ expect(f.box.requestContextReturns.get(id)?.state).toBe("open");expect(f.box.listPending()).toHaveLength(before);
+ const noticeId=f.box.closeRequestContextReturn(id,requestContextDigest(row),"Stopped waiting",()=>true),notice=f.box.get(noticeId)!;
+ expect(f.box.requestContextReturns.get(id)?.state).toBe("closed");expect(notice).toMatchObject({sourceInstance:"a",targetInstance:"a",payload:{meta:{source:"agend-system",requires_reply:"false"}}});
+ expect(f.box.requestContextForDelivery(noticeId)?.binding.rootContextId).toBe(root.ref.rootContextId);expect(notice.payload.content).toContain("Stopped waiting");
+ expect(()=>f.box.closeRequestContextReturn(id,requestContextDigest(row),"duplicate",()=>true)).toThrow(/stale/);expect(f.box.listPending()).toHaveLength(before+1);
+ const input=f.box.prepareRequestContextDeliveryInput(noticeId,1,owner("a"),wire,()=>true);expect(input.context?.initiatingActor).toEqual(root.initiatingActor);expect(input.proof.kind).toBe("admitted-delivery");
 });

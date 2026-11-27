@@ -1,8 +1,8 @@
 import { ensureAgendHome } from "./agend-home.js";
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { dirname, join } from "node:path";
+import { createHash, randomBytes } from "node:crypto";
+import { dirname, join, resolve } from "node:path";
 
 /**
  * What kind of process holds the lock.
@@ -246,6 +246,20 @@ export function setProcessFleetLock(handle: FleetLockHandle): void {
   processFleetLock = handle;
 }
 
+/** Private coordinator currentness, not an authorization for a person or an agent. Never acquires/takes over a lock. */
+export function captureProcessFleetLease(dataDir: string): Readonly<{ id: string; current(): boolean }> | null {
+  const handle = processFleetLock;
+  if (!handle || resolve(handle.path) !== resolve(dataDir, "fleet.lock") || handle.record.pid !== process.pid
+    || (handle.record.role ?? "fleet") !== "fleet") return null;
+  const serialized = handle.serialized;
+  const current = (): boolean => {
+    try { return processFleetLock === handle && handle.serialized === serialized && readFileSync(handle.path, "utf8") === serialized; }
+    catch { return false; }
+  };
+  if (!current()) return null;
+  return Object.freeze({ id: createHash("sha256").update(serialized).digest("hex"), current });
+}
+
 export function releaseProcessFleetLock(): boolean {
   const handle = processFleetLock;
   const released = releaseFleetLock(handle);
@@ -287,6 +301,117 @@ export function setFleetLockHandoff(
   renameSync(tmp, handle.path);
   fsyncDir(dirname(handle.path));
   return { path: handle.path, record, serialized };
+}
+
+/**
+ * M-3770 §4.3 rev 5: a generation the attempt started took the lock over and then died before its acknowledgement.
+ * The updater (or runner) has journaled that generation as started and dead; now it re-takes its fence. Only that exact
+ * record — role fleet, the generation's nonce — and only when its holder is proven gone (no such process; a live pid,
+ * maybe reused, is never taken). The replacement is owned: an O_EXCL reclaim marker first, the record compared again,
+ * then the update record written to a fresh tmp, fsynced and renamed over the lock, the directory fsynced, the marker
+ * removed. Returns the new fence's handle, or why not.
+ */
+export function retakeDeadFleetLock(dataDir: string, fence: { pid?: number; attemptId: string; nonce: string }, probe: Pick<FleetLockProbe, "isProcessAlive"> = {}):
+  { ok: true; handle: FleetLockHandle } | { ok: false; reason: string } {
+  return replaceDeadHolder(dataDir, fence, owner => (owner.role ?? "fleet") === "fleet" && owner.nonce === fence.nonce ? null : "fleet.lock doesn't hold that generation's record", probe);
+}
+
+/**
+ * M-3770 §6.2: the recovery runner takes over the fence of the attempt's own updater, once that updater is proven gone —
+ * the same owned replacement as above (marker, compare again, tmp + fsync + rename, directory fsync). Only an `update`
+ * record of THIS attempt; a live holder is never taken. When the fence is already this process's, it is returned as is.
+ */
+export function adoptUpdateFence(dataDir: string, fence: { pid?: number; attemptId: string }, probe: Pick<FleetLockProbe, "isProcessAlive"> = {}):
+  { ok: true; handle: FleetLockHandle } | { ok: false; reason: string } {
+  const pid = fence.pid ?? process.pid;
+  let current: string;
+  try { current = readFileSync(join(dataDir, "fleet.lock"), "utf8"); } catch (err) { return { ok: false, reason: `fleet.lock can't be read (${(err as Error).message})` }; }
+  const owner = parseRecord(current);
+  if (owner && owner.role === "update" && owner.attemptId === fence.attemptId && owner.pid === pid) {
+    clearCrashedReclaim(dataDir, fence.attemptId, pid, probe);                  // a marker our own crashed run left behind
+    return { ok: true, handle: { path: join(dataDir, "fleet.lock"), record: owner, serialized: current } };
+  }
+  return replaceDeadHolder(dataDir, { pid, attemptId: fence.attemptId }, o => (o.role === "update" && o.attemptId === fence.attemptId ? null : "fleet.lock isn't this attempt's fence"), probe);
+}
+
+/** The owned re-take's marker beside fleet.lock (one helper for every reader and writer of it). */
+const reclaimMarkerPath = (dataDir: string): string => `${join(dataDir, "fleet.lock")}.reclaim`;
+
+/**
+ * A reclaim marker left by a crash (Fable #4531 F1): the marker holds the record its taker meant to write. When that is
+ * THIS attempt's update record and its pid is proven gone, it is our own crashed reclaim — removed (the directory
+ * fsynced) so the replacement can run again. Any other marker (another attempt, a live pid, unreadable) stays.
+ */
+function clearCrashedReclaim(dataDir: string, attemptId: string, selfPid: number, probe: Pick<FleetLockProbe, "isProcessAlive">): boolean {
+  const marker = reclaimMarkerPath(dataDir);
+  let text: string;
+  try { text = readFileSync(marker, "utf8"); } catch { return false; }
+  const rec = parseRecord(text);
+  // Ours: this attempt's record, and its taker gone — or this very process (an exception mid-reclaim, not a crash).
+  if (!rec || rec.role !== "update" || rec.attemptId !== attemptId || (rec.pid !== selfPid && (probe.isProcessAlive ?? processAlive)(rec.pid))) return false;
+  try { unlinkSync(marker); fsyncDir(dataDir); return true; } catch { return false; }
+}
+
+/** The owned replacement of a dead holder's record by a fresh update fence (no handoff). `accept` returns why not, or null. */
+function replaceDeadHolder(dataDir: string, fence: { pid?: number; attemptId: string }, accept: (owner: FleetLockRecord) => string | null, probe: Pick<FleetLockProbe, "isProcessAlive">):
+  { ok: true; handle: FleetLockHandle } | { ok: false; reason: string } {
+  const lockPath = join(dataDir, "fleet.lock"), marker = reclaimMarkerPath(dataDir);
+  let observed: string;
+  try { observed = readFileSync(lockPath, "utf8"); } catch (err) { return { ok: false, reason: `fleet.lock can't be read (${(err as Error).message})` }; }
+  const owner = parseRecord(observed);
+  if (!owner) return { ok: false, reason: "fleet.lock can't be read as a record" };
+  const why = accept(owner);
+  if (why) return { ok: false, reason: why };
+  if ((probe.isProcessAlive ?? processAlive)(owner.pid)) return { ok: false, reason: `fleet.lock's holder (pid ${owner.pid}) is still a live process; it is never taken` };
+  const pid = fence.pid ?? process.pid;
+  const record: FleetLockRecord = { pid, nonce: randomBytes(16).toString("hex"), createdAt: new Date().toISOString(), role: "update", attemptId: fence.attemptId, handoff: null };
+  const serialized = JSON.stringify(record) + "\n";
+  const takeMarker = () => writeFileSync(marker, serialized, { flag: "wx", mode: 0o600 });
+  try { takeMarker(); }
+  catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") return { ok: false, reason: `the reclaim marker can't be created (${(err as Error).message})` };
+    // Our own crashed reclaim's marker (this attempt, its taker gone): cleared, then taken once more.
+    if (!clearCrashedReclaim(dataDir, fence.attemptId, fence.pid ?? process.pid, probe)) return { ok: false, reason: `a reclaim marker ${marker} is present (another reclaim, or one left by a crash); nothing is taken` };
+    try { takeMarker(); } catch (again) { return { ok: false, reason: `the reclaim marker can't be taken (${(again as Error).message})` }; }
+  }
+  try {
+    if (readFileSync(lockPath, "utf8") !== observed) return { ok: false, reason: "fleet.lock changed during the reclaim" };
+    const tmp = `${lockPath}.retake-${pid}-${randomBytes(4).toString("hex")}`;
+    const fd = openSync(tmp, "wx", 0o600);
+    try { writeSync(fd, serialized); fsyncSync(fd); } finally { closeSync(fd); }
+    renameSync(tmp, lockPath);
+    fsyncDir(dataDir);
+    return { ok: true, handle: { path: lockPath, record, serialized } };
+  } catch (err) {
+    return { ok: false, reason: `fleet.lock can't be re-taken (${(err as Error).message})` };
+  } finally {
+    try { unlinkSync(marker); fsyncDir(dataDir); } catch { /* removed, or the directory went */ }
+  }
+}
+
+/**
+ * M-3770 §4.3 (Fable #4536 F3): this attempt's `update` fence on an ABSENT fleet.lock — the recovery runner's case after
+ * the old fleet exited cleanly (its exit unlinks the lock). O_EXCL, fsynced, the directory fsynced; the record exactly
+ * `acquireFleetLock`'s update shape. Bundle-safe for recover.cjs: no `ensureAgendHome` (its lazy createRequire has no
+ * `import.meta.url` in the cjs bundle) — the runner has proven the home under its locks. A lock already there refuses.
+ */
+export function createUpdateFence(dataDir: string, fence: { pid: number; attemptId: string }): { ok: true; handle: FleetLockHandle } | { ok: false; reason: string } {
+  if (!/^\d{8}T\d{6}Z-[0-9a-f]{8}$/.test(fence.attemptId)) return { ok: false, reason: "an update fence needs its attempt id" };
+  const lockPath = join(dataDir, "fleet.lock");
+  const record: FleetLockRecord = { pid: fence.pid, nonce: randomBytes(16).toString("hex"), createdAt: new Date().toISOString(), role: "update", attemptId: fence.attemptId, handoff: null };
+  const serialized = JSON.stringify(record) + "\n";
+  let fd: number;
+  try { fd = openSync(lockPath, "wx", 0o600); }
+  catch (err) { return { ok: false, reason: (err as NodeJS.ErrnoException).code === "EEXIST" ? "fleet.lock appeared meanwhile" : `fleet.lock can't be created (${(err as Error).message})` }; }
+  try {
+    try { writeSync(fd, serialized); fsyncSync(fd); } finally { closeSync(fd); }
+    fsyncDir(dataDir);
+  } catch (err) {
+    // A partial lock of our own would refuse every later pass as "appeared meanwhile" (Fable #4536 nit): removed.
+    try { unlinkSync(lockPath); fsyncDir(dataDir); } catch { /* gone already, or the directory went */ }
+    return { ok: false, reason: `fleet.lock can't be written (${(err as Error).message})` };
+  }
+  return { ok: true, handle: { path: lockPath, record, serialized } };
 }
 
 /** The fleet lock's record as written (null: absent or unparsable). For the updater's acknowledgement of a takeover. */

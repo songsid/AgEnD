@@ -17,6 +17,7 @@ import { createStream } from "./app-stream.js";
 import { appStore, applyStatus, applyActivity, guestPage, guestTrusted, addNotice, createNoticesSync } from "./app-store.js";
 import { chatPath } from "./app-route.js";
 import { startNeedsNotifier } from "./app-needs.js";
+import { startInstall } from "./app-install.js";
 import { toast } from "./ui-toast.js";
 import { t } from "./app-i18n.js";
 import { initTextSize, initUsageRail } from "./header-tools.js";
@@ -42,6 +43,8 @@ const guest = guestPage();
 // Needs you, notices, preferences, themes or owner CSS — none of the fleet's endpoints exist at the Hub's origin, and
 // who is signed in is the Hub's own session (/hub/v1/session), read by its pages.
 const hubPage = mode === "full" && !guest && String(boot.hub || "").split(/\s+/).includes("hub");
+// S-255: install as an app (the dashboard and the Hub, signed in; never a guest's or a reader's page).
+if (mode === "full" && !guest) startInstall();
 
 // A failed load can be retried (the panel's Retry): each retry asks for a fresh URL, since a browser may keep a failed
 // module import cached under the first one. boot() runs once, whichever attempt succeeds.
@@ -73,6 +76,7 @@ if (hubPage) {
   appStore.set({ retryHydration: () => stream.catchUp() });
   appStore.set({ needsLoaded: false });
   stream.on("needs", (d) => appStore.set({ needsLoaded: true, needs: Array.isArray(d && d.items) ? d.items : [] }));
+  stream.on("request-context-control", (d) => appStore.set({ requestContextCutover: d }));
   // #1218: a panel's way to hear one stream event (the Log's steps_tick), unsubscribed by its lease.
   appStore.set({ streamOn: (name, fn) => stream.on(name, fn) });
   appStore.set({ connection: stream.connection() });

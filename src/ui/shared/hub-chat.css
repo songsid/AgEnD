@@ -132,6 +132,12 @@ a.hub-launch-pill { border: 1px solid var(--border); background: transparent; co
 @media (max-width: 899px), (pointer: coarse) {
   .hub-head-tools .hd-text, .hub-head-tools .hub-notify { min-width: var(--tap); min-height: var(--tap); }
 }
+/* S-255: Install as an app — the icon on a desktop (named by its tooltip); on a phone, its short word beside it. */
+.hub-install-label { display: none; }
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-head-tools .hub-install { width: auto; min-width: var(--tap); min-height: var(--tap); padding: 0 var(--s-2); gap: var(--s-1); }
+  .hub-install-label { display: inline; font-size: var(--fs-sm); line-height: var(--lh-sm); }
+}
 .hub-scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; position: relative; }
 /* M-3117: the thread is the Fleet chat's (.thread in app.css: its column, padding and a phone's tighter one) — no Hub copy. */
 .hub-room-empty { padding: var(--s-6) var(--s-4); }

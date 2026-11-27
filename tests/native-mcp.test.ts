@@ -20,13 +20,13 @@ afterEach(()=>{
   for(const home of homes.splice(0)){if(!resolve(home).startsWith(resolve(tmpdir())+sep))throw Error("Unsafe temporary path");rmSync(home,{recursive:true,force:true});}
   vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllEnvs();
 });
-function fixture(sandbox:"read-only"|"workspace-write"="workspace-write",configuredSandbox=sandbox) {
+function fixture(sandbox:"read-only"|"workspace-write"="workspace-write",configuredSandbox=sandbox,inputReady?:()=>Promise<boolean>) {
   const state={current:true};
   const config={runtime:"windows",native_agent_id:agentId,backend:"codex",native_sandbox:configuredSandbox,tool_set:"worker",working_directory:"C:\\Work"};
   const ctx:any={fleetConfig:{instances:{[name]:config}},dataDir:"unused",logger:{info:vi.fn(),warn:vi.fn(),debug:vi.fn(),error:vi.fn()},
     handleTaskCrudHttp:vi.fn(async(_instance:string,args:Record<string,unknown>)=>({action:args.action,items:[]}))};
   const manager=new NativeMcpSessions(ctx);managers.push(manager);ctx.nativeMcpSessions=()=>manager;
-  const lease=manager.grant({instance:name,requestId,sandbox,endpoint:"http://127.0.0.1:19280/agent",stillCurrent:()=>state.current});
+  const lease=manager.grant({instance:name,requestId,sandbox,endpoint:"http://127.0.0.1:19280/agent",stillCurrent:()=>state.current,...(inputReady?{inputReady}:{})});
   return {state,config,ctx,manager,lease};
 }
 function invoke(f:ReturnType<typeof fixture>,body:unknown,options:{headers?:Record<string,string|string[]|undefined>;remote?:string;hold?:boolean;gateway?:boolean}={}) {
@@ -44,7 +44,7 @@ describe("native MCP capabilities and live menus",()=>{
   it("grants one ephemeral child capability and exposes only the supported profile-filtered tools",async()=>{
     const f=fixture();expect(f.lease.connection.token).toMatch(/^[a-f0-9]{64}$/);expect(f.manager.hasActive(name)).toBe(true);
     const {status,value}=await invoke(f,listing).done();expect(status).toBe(200);
-    expect(value.tools.map((tool:any)=>tool.name).sort()).toEqual(["list_instances","describe_instance","task","send_to_instance","delegate_task","request_information","report_result","delivery_status","hub_room_list","hub_room_post","hub_room_members","hub_people_search","hub_set_intro"].sort());
+    expect(value.tools.map((tool:any)=>tool.name).sort()).toEqual(["list_instances","describe_instance","task","send_to_instance","delegate_task","request_information","report_result","delivery_status","hub_room_list","hub_room_post","hub_room_history","hub_room_members","hub_people_search","hub_set_intro"].sort());
     expect(f.lease.connection.tools.sort()).toEqual(value.tools.map((tool:any)=>tool.name).sort());
     expect(value.tools.find((tool:any)=>tool.name==="task").annotations.readOnlyHint).toBe(false);
     expect(value.tools.find((tool:any)=>tool.name==="delegate_task").annotations.readOnlyHint).toBe(false);
@@ -53,7 +53,7 @@ describe("native MCP capabilities and live menus",()=>{
   });
   it("restricts read-only tools and the task action schema, and rejects guessed writes",async()=>{
     const f=fixture("read-only"),{value}=await invoke(f,listing).done();
-    expect(value.tools.map((tool:any)=>tool.name).sort()).toEqual(["list_instances","describe_instance","task","delivery_status","hub_room_list","hub_room_members","hub_people_search"].sort());
+    expect(value.tools.map((tool:any)=>tool.name).sort()).toEqual(["list_instances","describe_instance","task","delivery_status","hub_room_list","hub_room_history","hub_room_members","hub_people_search"].sort());
     expect(value.tools.find((tool:any)=>tool.name==="task").inputSchema.properties.action.enum).toEqual(["list","get","mine","projects"]);
     expect(value.tools.every((tool:any)=>tool.annotations.readOnlyHint===true)).toBe(true);
     expect((await invoke(f,call("write","task",{action:"create",title:"Must not create"})).done()).status).toBe(403);
@@ -92,7 +92,7 @@ describe("Hub room native MCP scope",()=>{
   it("keeps offline/online menus static while preserving the native read-only ceiling",async()=>{
     const f=fixture();let online=false;f.ctx.hubRoomToolsAvailable=()=>online;
     const names=(await invoke(f,listing).done()).value.tools.map((t:any)=>t.name);
-    expect(names).toEqual(expect.arrayContaining(["hub_room_list","hub_room_post","hub_room_members","hub_people_search"]));
+    expect(names).toEqual(expect.arrayContaining(["hub_room_list","hub_room_post","hub_room_history","hub_room_members","hub_people_search"]));
     expect(f.lease.connection.tools).toEqual(expect.arrayContaining(names));
     online=true;expect((await invoke(f,listing).done()).value.tools.map((t:any)=>t.name)).toEqual(names);
     online=false;expect((await invoke(f,listing).done()).value.tools.map((t:any)=>t.name)).toEqual(names);
@@ -102,11 +102,11 @@ describe("Hub room native MCP scope",()=>{
   });
   it.each([
     ["hub_room_list",{}],["hub_room_post",{room:"Weekly",text:"Hello"}],
-    ["hub_room_members",{room:"Weekly"}],["hub_people_search",{q:"Alex"}],
+    ["hub_room_history",{room:"Weekly",limit:5}],["hub_room_members",{room:"Weekly"}],["hub_people_search",{q:"Alex"}],
   ])("%s remains visible offline but refuses at dispatch without a remote call",async(tool,args)=>{
     const f=fixture();let online=false;f.ctx.hubRoomToolsAvailable=()=>online;
     const remote=vi.fn(async()=>({ok:true,rows:[]}));
-    f.ctx.hubRoomList=remote;f.ctx.hubRoomPost=remote;f.ctx.hubRoomMembers=remote;f.ctx.hubPeopleSearch=remote;
+    f.ctx.hubRoomList=remote;f.ctx.hubRoomPost=remote;f.ctx.hubRoomHistory=remote;f.ctx.hubRoomMembers=remote;f.ctx.hubPeopleSearch=remote;
     const {status,value}=await invoke(f,call("offline-"+tool,tool as string,args as Record<string,unknown>)).done();
     expect(status).toBe(200);expect(JSON.parse(value.content[0].text)).toMatchObject({ok:false,code:"unavailable",message:"This Fleet isn't connected to a Hub."});
     expect(remote).not.toHaveBeenCalled();
@@ -234,4 +234,36 @@ it("S-232 actual exec HTTP tool entry refuses a Hub derivative before its task o
  const f=fixture();f.lease.close();const id=randomUUID(),scope=captureRequestContextCall({token:randomUUID(),inputId:"input",wireSha256:"a".repeat(64),owner:{instance:name,incarnation:"v1",workGeneration:"work",daemonBootId:"boot",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0},context:{ref:{version:1,contextId:id,rootContextId:id},rootEvidenceRef:"fixture",ingress:"hub",initiatingActor:{kind:"person",platform:"hub",hubId:"demo-hub",id:"directory/demo-person"},source:{instance:name,incarnation:"v1"},sourceAudience:{kind:"hub",ref:randomUUID()}}},()=>true);
  f.ctx.requestContextPolicy={assert:assertRequestContextOperation};f.lease=f.manager.grant({instance:name,requestId,sandbox:"workspace-write",endpoint:"http://127.0.0.1:19280/agent",stillCurrent:()=>true,requestContext:scope});
  const answer=await invoke(f,call("hub-create","task",{action:"create",title:"must not write"})).done();expect(answer.value.isError).toBe(true);expect(JSON.stringify(answer.value)).toContain("task cards");expect(f.ctx.handleTaskCrudHttp).not.toHaveBeenCalled();
+});
+
+describe("S-230 owned exec input boundary",()=>{
+ it("lists startup tools but coalesces the original call until positive input, with no early dispatch",async()=>{
+  let resolve!:(value:boolean)=>void;const ready=new Promise<boolean>(done=>resolve=done),f=fixture("workspace-write","workspace-write",()=>ready);
+  expect((await invoke(f,listing).done()).status).toBe(200);
+  const first=invoke(f,call("before-input")),retry=invoke(f,call("before-input"));await new Promise<void>(done=>setImmediate(done));expect(f.ctx.handleTaskCrudHttp).not.toHaveBeenCalled();
+  expect((await invoke(f,call("before-input","task",{action:"mine"})).done()).status).toBe(409);
+  resolve(true);expect((await first.done()).status).toBe(200);expect((await retry.done()).status).toBe(200);expect(f.ctx.handleTaskCrudHttp).toHaveBeenCalledOnce();
+ });
+ it.each(["failed","closed","owner-changed"])("%s input releases the waiting call without running it or borrowing a newer grant",async how=>{
+  let resolve!:(value:boolean)=>void;const ready=new Promise<boolean>(done=>resolve=done),f=fixture("workspace-write","workspace-write",()=>ready),pending=invoke(f,call("waiting"));
+  await new Promise<void>(done=>setImmediate(done));expect(f.ctx.handleTaskCrudHttp).not.toHaveBeenCalled();
+  if(how==="closed")f.lease.close();else{if(how==="owner-changed")f.state.current=false;resolve(how!=="failed");}
+  const response=await pending.done();expect(response.status).toBe(how==="failed"?200:401);expect(f.ctx.handleTaskCrudHttp).not.toHaveBeenCalled();
+  resolve(true);await new Promise<void>(done=>setImmediate(done));expect(f.ctx.handleTaskCrudHttp).not.toHaveBeenCalled();
+ });
+ it("the actual scoped factory cannot issue a grant missing the positive input boundary",()=>{
+  const f=fixture();f.manager.setRequestContextRequired(true,true);
+  expect(()=>f.manager.grant({instance:name,requestId,sandbox:"workspace-write",endpoint:f.lease.connection.endpoint,stillCurrent:()=>true,requestContext:{current:()=>true,snapshot:{owner:{instance:name}}}as any})).toThrow("owned input proof boundary");
+ });
+});
+
+describe("S-230 native factory retirement",()=>{
+ it("revoking a legacy grant is not proof that its first-hop body/handler is gone",async()=>{
+  const f=fixture(),held=invoke(f,listing,{hold:true});expect(f.manager.requestContextPhysicallyIdle()).toBe(false);
+  f.manager.closeAll();expect(()=>f.manager.retireForRequestContext()).toThrow("handlers remain");
+  held.req.end(JSON.stringify(listing));expect((await held.done()).status).toBe(401);
+  await vi.waitFor(()=>expect(f.manager.requestContextPhysicallyIdle()).toBe(true));f.manager.retireForRequestContext();
+  expect(()=>f.manager.grant({instance:name,requestId,sandbox:"workspace-write",endpoint:"http://127.0.0.1:19280/agent",stillCurrent:()=>true})).toThrow("factory is retired");
+  expect((await invoke(f,listing).done()).status).toBe(401);
+ });
 });

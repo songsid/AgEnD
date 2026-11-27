@@ -250,6 +250,29 @@ export class Scheduler {
     this.runWithLock(schedule);
   }
 
+  /**
+   * M-3770 §2.6 hand-back: run an occurrence the update barrier deferred, under the per-schedule lock, with its own run
+   * id — unless the schedule was deleted or disabled, its target instance is gone, or it is running right now. A skip is
+   * recorded in its run log. The caller journals `.started` before and `.acked` after, so a crash between them is
+   * recorded as interrupted on the next walk, never run twice.
+   */
+  runDeferredOccurrence(scheduleId: string, runId: string, targetExists: (name: string) => boolean): "ran" | "skipped" {
+    const schedule = this.db.get(scheduleId);
+    if (!schedule) return "skipped";
+    const skip = (why: string) => { this.db.recordRun(scheduleId, "skipped", `deferred run ${runId} not run after the update: ${why}`); return "skipped" as const; };
+    if (!schedule.enabled) return skip("the schedule is disabled");
+    if (!targetExists(schedule.target)) return skip(`its target ${schedule.target} no longer exists`);
+    if (this.executing.has(scheduleId)) return skip("the schedule is running");
+    this.runWithLock(schedule, runId);
+    return "ran";
+  }
+
+  /** M-3770 §2.6: a deferred occurrence whose run had started when the update interrupted it — recorded, not run again. */
+  recordInterruptedOccurrence(scheduleId: string, runId: string): void {
+    if (!this.db.get(scheduleId)) return;
+    this.db.recordRun(scheduleId, "interrupted", `run ${runId} was interrupted by an update and is not run again`);
+  }
+
   /** Invoke onTrigger while holding the per-schedule lock. Cleans up when
    * the callback returns synchronously, throws, or settles a returned Promise. */
   private runWithLock(schedule: Schedule, runId: string = randomUUID(), retry?: ScheduleRetry): void {

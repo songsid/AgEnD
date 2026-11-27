@@ -1,0 +1,90 @@
+{
+  "stage": "Selected B UI and dormant safety checkpoint; no production activation/full-mode claim",
+  "sourceHead": "0c8ad02ace309af4cdff8b0701616bb71bbda1f1",
+  "focused": {
+    "files": 21,
+    "passed": 318,
+    "failed": 0,
+    "note": "Final wording source before the additional WAL-copy regression"
+  },
+  "typecheckTests": "pass",
+  "changelog": "860 fragments OK",
+  "preparationMutations": [
+    {
+      "mutation": "missing-policy-readiness",
+      "test": "tests/request-context-readiness-s230.test.ts",
+      "result": "red"
+    },
+    {
+      "mutation": "stale-readiness-proof",
+      "test": "tests/request-context-readiness-s230.test.ts",
+      "result": "red"
+    },
+    {
+      "mutation": "adopt-later-owner",
+      "test": "tests/request-context-inputs-s230.test.ts",
+      "result": "red"
+    }
+  ],
+  "captures": {
+    "uniquePictures": 128,
+    "sources": 3,
+    "checksByReceipt": [
+      737,
+      401,
+      4,
+      469
+    ],
+    "finalDeltaPictures": 72,
+    "individualVisualInspection": "128/128 final originals; no remaining visual exception",
+    "galleryDecodedPngHashes": 128,
+    "galleryBytes": [
+      9184714,
+      3954790
+    ],
+    "localBrowserDecodeAndFilter": "pass"
+  },
+  "liveOperations": false,
+  "fullModeProof": "pending production owner assembly",
+  "newSafetyMutations": [
+    {
+      "mutation": "update-settled",
+      "test": "tests/request-context-update-guard-s230.test.ts",
+      "result": "red"
+    },
+    {
+      "mutation": "go-back-refusal",
+      "test": "tests/request-context-activation-s230.test.ts",
+      "result": "red"
+    }
+  ],
+  "neighborLimit": "update-locks-m3770 missing-home child lifetime race reproduced on prior6daa35da; author confirms test-only fix #4523cd1b8281f, not yet merged into this branch",
+  "latestAffected": {
+    "files": 5,
+    "passed": 66,
+    "failed": 0,
+    "note": "Includes WAL snapshot private-copy preservation regression; final restored helper"
+  },
+  "snapshotPreservationMutation": [
+    {
+      "mutation": "skip-snapshot-preservation",
+      "test": "tests/request-context-activation-s230.test.ts",
+      "result": "red"
+    }
+  ],
+  "restartDisclosure": {
+    "sourceHead": "c0319e5be7049b9da5339b01cf415867b91c82bc",
+    "pictures": 16,
+    "checks": 113,
+    "individualVisualInspection": "16/16 originals, no exception",
+    "galleryDecodedPngHashes": 16,
+    "galleryBytes": 2126885,
+    "browserDecode": "pass",
+    "affectedTests": {
+      "files": 2,
+      "passed": 36,
+      "failed": 0
+    },
+    "physicalRelaunchProof": "pending production owner preparation"
+  }
+}

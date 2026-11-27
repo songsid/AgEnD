@@ -10,13 +10,13 @@ import { Scheduler } from "../src/scheduler/scheduler.js";
 import { TaskBoard, TaskBoardError, type Actor } from "../src/scheduler/task-board.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "../src/scheduler/types.js";
 import {
-  advance, attemptDir, consumeCancel, defaultJournalIo, listHandback, markHandback, newAttemptId, openAttempt, readCurrent, substep,
+  ackGeneration, advance, attemptDir, consumeCancel, defaultJournalIo, listHandback, markHandback, newAttemptId, openAttempt, planGeneration, readCurrent, substep,
   type AttemptRecord, type HandbackEntry, type InboxItem, type JournalIo,
 } from "../src/update-journal.js";
 import { checkQuiet, type HostDeps } from "../src/update-readiness-host.js";
 import {
   DEFAULT_MAX_IDLE_WAIT_MS, HONOURED_CANCEL_ACTIONS, TOO_LATE_CANCEL, QuiescenceBarrier, barrierIdle,
-  cancelAllowed, cardAfterHonouredCancel, closeUnusedAttempt, isAgentTurn, serviceCommandRefusal,
+  cancelAllowed, cardAfterHonouredCancel, closeUnusedAttempt, handbackDue, isAgentTurn, serviceCommandRefusal,
   skipsAgentFence, stateWriteRefused, turnSource, usesQuiescenceBarrier, type BarrierSnapshot, type HandbackPorts,
 } from "../src/update-quiescence.js";
 
@@ -77,6 +77,16 @@ function outboxInput(operationId: string, target = "worker"): NewOutboxDelivery 
   };
 }
 
+
+/** The abandon driver's journal at the hand-back wait: abandoning, this fleet restarted as the old generation, restart-old. */
+const OWN = { nonce: "e".repeat(32), pid: 7300 };
+function toHandback(home: string, attempt: AttemptRecord): AttemptRecord {
+  let a = attempt.stage === "abandoning" ? attempt : advance(home, attempt, "abandoning", { note: "test" });
+  a = planGeneration(home, a, "old", OWN.nonce);
+  a = ackGeneration(home, a, OWN.nonce, OWN.pid);
+  return substep(home, a, "restart-old");
+}
+
 describe("S-244 class and the idle predicate", () => {
   it("runs only for a class Self transaction both versions speak", () => {
     expect(usesQuiescenceBarrier({ txClass: "Self", from: 3, to: 3, vTx: 3 })).toBe(true);
@@ -119,7 +129,7 @@ describe("S-244 wait, second check, and the close", () => {
       maxMs: 60_000, pollMs: 5, idle: () => seen,
       sleep: async () => {
         expect(barrier.armed()).toBe(false);
-        expect(barrier.commitTurn({ type: "fleet_inbound", content: "during the wait" })).toBe(false);
+        expect(barrier.commitTurn({ type: "fleet_inbound", content: "during the wait" }, "worker")).toBe(false);
         seen = true;
       },
     });
@@ -151,7 +161,7 @@ describe("S-244 wait, second check, and the close", () => {
       maxMs: 60_000, pollMs: 5, idle: () => delivered,
       sleep: async () => {
         expect(barrier.armed()).toBe(false);
-        expect(barrier.commitTurn({ type: "fleet_inbound", content: "after the close" })).toBe(false);
+        expect(barrier.commitTurn({ type: "fleet_inbound", content: "after the close" }, "worker")).toBe(false);
         delivered = true;
       },
     });
@@ -231,9 +241,9 @@ describe("S-244 holds after the flag is up", () => {
 
     const web = { type: "fleet_inbound", content: "from the web", targetSession: "worker", meta: { source: "web" } };
     const hub = { type: "fleet_inbound", content: "from the hub", targetSession: "worker", meta: { from_display: "Hub" } };
-    expect(barrier.commitTurn(web)).toBe(true);
-    expect(barrier.commitTurn(hub)).toBe(false);
-    expect(barrier.commitTurn({ type: "fleet_schedule_trigger", content: "already past the lock" })).toBe(false);
+    expect(barrier.commitTurn(web, "worker")).toBe(true);
+    expect(barrier.commitTurn(hub, "worker")).toBe(false);
+    expect(barrier.commitTurn({ type: "fleet_schedule_trigger", content: "already past the lock" }, "worker")).toBe(false);
     expect(isAgentTurn({ type: "fleet_inbound", content: "/status" })).toBe(false);
     expect(turnSource(web)).toBe("web");
     expect(turnSource(hub)).toBe("hub");
@@ -348,10 +358,10 @@ describe("S-244 hand-back", () => {
       ["c1", { state: "queued", target: "C", eligible: true }],
     ]);
     expect(barrier.secondCheck(idle({ pending: [...rows.keys()].map((id, i) => ({ deliveryId: id, createdSeq: i + 1 })) }))).toBe("held");
-    expect(barrier.runHandback(attempt, ports([], rows)).walked).toBe(false);
-    attempt = substep(home, attempt, "hand-back");
+    expect(barrier.runHandback(attempt, ports([], rows), OWN).walked).toBe(false);
+    attempt = toHandback(home, attempt);
     const claims: string[] = [];
-    barrier.runHandback(attempt, ports(claims, rows));
+    barrier.runHandback(attempt, ports(claims, rows), OWN);
     expect(claims).toEqual(["c1"]);
     const acked = new Map(listHandback(home, attempt.id).map(entry => [refOf(entry)?.deliveryId, entry.acked]));
     expect(acked.get("a1")).toBe(false);
@@ -360,7 +370,7 @@ describe("S-244 hand-back", () => {
     expect(acked.get("c1")).toBe(true);
     rows.get("a1")!.eligible = true;
     const again: string[] = [];
-    barrier.runHandback(attempt, ports(again, rows));
+    barrier.runHandback(attempt, ports(again, rows), OWN);
     expect(again).toEqual(["a1", "a2"]);
   });
 
@@ -384,13 +394,13 @@ describe("S-244 hand-back", () => {
     const again = new DeliveryOutbox(dbPath, "mgr");
     const logs: Array<{ deliveryId: string; seq: number }> = [];
     const claims: string[] = [];
-    attempt = substep(home, attempt, "hand-back");
+    attempt = toHandback(home, attempt);
     barrier.runHandback(attempt, {
       log(fields) { logs.push(fields); },
       lookup(id) { const row = again.get(id); return row ? { state: row.state, target: row.targetInstance } : null; },
       claim(id) { const result = again.claimExact(id, "mgr", "boot"); if (result === "claimed") claims.push(id); return result; },
       admitCopy() { throw new Error("no copy"); }, runDeferred() {}, recordInterrupted() {},
-    });
+    }, OWN);
     expect(logs).toEqual([{ deliveryId: gone.deliveryId, seq: 1 }]);
     expect(claims).toEqual([stays.deliveryId]);
     expect(listHandback(home, attempt.id).every(entry => entry.acked)).toBe(true);
@@ -403,7 +413,7 @@ describe("S-244 hand-back", () => {
     const barrier = new QuiescenceBarrier(home);
     barrier.bind(attempt);
     expect(barrier.secondCheck(idle())).toBe("held");
-    expect(barrier.commitTurn({ type: "fleet_inbound", content: "copied", targetSession: "worker", meta: { source: "adapter" } })).toBe(true);
+    expect(barrier.commitTurn({ type: "fleet_inbound", content: "copied", targetSession: "worker", meta: { source: "adapter" } }, "worker")).toBe(true);
     const outbox = new DeliveryOutbox(join(home, "outbox.db"), "mgr");
     const inserted: boolean[] = [];
     const claims: string[] = [];
@@ -418,17 +428,17 @@ describe("S-244 hand-back", () => {
       log() {},
       lookup(id) { const row = outbox.get(id); return row ? { state: row.state, target: row.targetInstance } : null; },
       claim(id) { const result = outbox.claimExact(id, "mgr", "boot"); if (result === "claimed") claims.push(id); return result; },
-      admitCopy(sourceKey, body) {
+      admitCopy(sourceKey, body, target) {
         const admitted = outbox.admit({
           operationId: sourceKey, sourceKey, sourceInstance: "update", sourceDaemonBootId: "updater",
-          targetInstance: "worker", kind: "fleet_inbound", correlationId: sourceKey, payload: body as Record<string, unknown>,
+          targetInstance: target, kind: "fleet_inbound", correlationId: sourceKey, payload: body as Record<string, unknown>,
         });
         inserted.push(admitted.inserted);
         return { deliveryId: admitted.delivery.deliveryId };
       },
       runDeferred() {}, recordInterrupted() {},
-    });
-    attempt = substep(home, attempt, "hand-back");
+    }, OWN);
+    attempt = toHandback(home, attempt);
     crash = true;
     expect(() => walk()).toThrow(/crash before ack/);
     expect(inserted).toEqual([true]);
@@ -440,6 +450,26 @@ describe("S-244 hand-back", () => {
     expect(claims).toHaveLength(1);
     expect(listHandback(home, attempt.id).every(entry => entry.acked)).toBe(true);
     outbox.close();
+  });
+
+  it("a copy whose target instance is gone is logged and acknowledged, with no row admitted", () => {
+    const home = scratch("s244-copy-gone-");
+    let attempt = open(home);
+    const barrier = new QuiescenceBarrier(home);
+    barrier.bind(attempt);
+    expect(barrier.secondCheck(idle())).toBe("held");
+    expect(barrier.commitTurn({ type: "user_message", content: "for a removed agent", meta: { source: "web" } }, "removed")).toBe(true);
+    expect(listHandback(home, attempt.id)).toMatchObject([{ kind: "inbox", item: { kind: "copy", target: "removed" } }]);
+    attempt = toHandback(home, attempt);
+    const logs: string[] = [], targets: string[] = [];
+    const r = barrier.runHandback(attempt, {
+      log(_f, m) { logs.push(m); }, lookup() { throw new Error("no lookup for a gone target"); }, claim() { throw new Error("no claim"); },
+      admitCopy(_k, _b, target) { targets.push(target); return null; }, runDeferred() {}, recordInterrupted() {},
+    }, OWN);
+    expect(r).toEqual({ walked: true, acked: 1 });
+    expect(targets).toEqual(["removed"]);
+    expect(logs).toEqual(["hand-back copy's target removed no longer exists; acknowledging and continuing"]);
+    expect(listHandback(home, attempt.id).every(e => e.acked)).toBe(true);
   });
 
   it("a crash after the claim and before .acked claims only once on resume", () => {
@@ -457,14 +487,14 @@ describe("S-244 hand-back", () => {
     const outbox = new DeliveryOutbox(join(home, "outbox.db"), "mgr");
     const admitted = outbox.admit(outboxInput("op-crash"));
     expect(barrier.secondCheck(idle({ pending: [{ deliveryId: admitted.delivery.deliveryId, createdSeq: admitted.delivery.createdSeq }] }))).toBe("held");
-    attempt = substep(home, attempt, "hand-back");
+    attempt = toHandback(home, attempt);
     const claims: string[] = [];
     const walk = () => barrier.runHandback(attempt, {
       log() {},
       lookup(id) { const row = outbox.get(id); return row ? { state: row.state, target: row.targetInstance } : null; },
       claim(id) { const result = outbox.claimExact(id, "mgr", "boot"); if (result === "claimed") claims.push(id); return result; },
       admitCopy() { throw new Error("reference"); }, runDeferred() {}, recordInterrupted() {},
-    });
+    }, OWN);
     crash = true;
     expect(() => walk()).toThrow(/crash before ack/);
     expect(claims).toEqual([admitted.delivery.deliveryId]);
@@ -493,7 +523,7 @@ describe("S-244 hand-back", () => {
     scheduler.trigger(oneShot.id);
     expect(scheduler.db.get(oneShot.id)).toBeTruthy();
     expect(fired).toEqual([]);
-    attempt = substep(home, attempt, "hand-back");
+    attempt = toHandback(home, attempt);
     const deferred = listHandback(home, attempt.id).find(entry => entry.kind === "deferred");
     expect(deferred && deferred.kind === "deferred").toBe(true);
     let crash = false;
@@ -506,7 +536,7 @@ describe("S-244 hand-back", () => {
         if (crash) throw new Error("crash after started");
       },
       recordInterrupted(job) { scheduler.recordRun(job.scheduleId, "interrupted-by-update", job.runId); },
-    });
+    }, OWN);
     // The run above completed and acked. Replay of a started-but-unacked entry is the next barrier.
     crash = true;
     const home2 = scratch("s244-defer-replay-");
@@ -519,7 +549,7 @@ describe("S-244 hand-back", () => {
     });
     // Journal the deferred file by hand through the armed barrier, then mark it started without acking.
     replay.holdSchedule(shot.id, "run-once");
-    second = substep(home2, second, "hand-back");
+    second = toHandback(home2, second);
     const entry = listHandback(home2, second.id).find(item => item.kind === "deferred");
     if (!entry || entry.kind !== "deferred") throw new Error("missing deferred entry");
     markHandback(entry, "started");
@@ -528,7 +558,7 @@ describe("S-244 hand-back", () => {
       log() {}, lookup() { return null; }, claim() { return "missing"; }, admitCopy() { throw new Error("no"); },
       runDeferred() { fired.push("ran-again"); },
       recordInterrupted(job) { scheduler.recordRun(job.scheduleId, "interrupted-by-update", job.runId); },
-    });
+    }, OWN);
     expect(fired.length).toBe(runsBefore);
     expect(scheduler.db.getRuns(shot.id, 5).map(run => ({ status: run.status, detail: run.detail }))).toEqual([
       { status: "interrupted-by-update", detail: "run-once" },
@@ -548,7 +578,7 @@ describe("S-244 cancel and the service lock", () => {
       expect(skipsAgentFence(kind)).toBe(true);
     }
     for (const content of ["/status", "/cancel", "/cancel@bot", "/update", "/update now", "/stop", "/restart"]) {
-      expect(barrier.commitTurn({ type: "fleet_inbound", content })).toBe(false);
+      expect(barrier.commitTurn({ type: "fleet_inbound", content }, "worker")).toBe(false);
     }
     const read = readCurrent(home);
     expect(serviceCommandRefusal(read, "stop")).toEqual({ refused: true, id: attempt.id, stage: "opened" });
@@ -562,6 +592,23 @@ describe("S-244 cancel and the service lock", () => {
     expect(existsSync(join(attemptDir(home, attempt.id), "cancel"))).toBe(false);
   });
 
+  it("handbackDue: only the abandoning attempt's consumed, live old generation with restart-old and no hand-back walks", () => {
+    const home = scratch("s244-due-");
+    const base = toHandback(home, open(home));
+    const gens = (a: AttemptRecord) => a.fleets as { gen: string; nonce: string; pid?: number; consumed?: boolean; dead?: boolean }[];
+    const withGen = (a: AttemptRecord, patch: Record<string, unknown>) => ({ ...a, fleets: gens(a).map(g => (g.nonce === OWN.nonce ? { ...g, ...patch } : g)) });
+    const withSteps = (a: AttemptRecord, keep: (s: string | undefined) => boolean) => ({ ...a, history: a.history.filter(h => h.stage !== "abandoning" || keep(h.substep)) });
+    expect(handbackDue(base, OWN)).toBe(true);
+    expect(handbackDue({ ...base, stage: "rolling-back" }, OWN)).toBe(false);                                   // not abandoning
+    expect(handbackDue(withSteps(base, s => s !== "restart-old"), OWN)).toBe(false);                           // the old fleet not restarted yet
+    expect(handbackDue({ ...base, history: [...base.history, { stage: "abandoning", at: "x", substep: "hand-back" }] }, OWN)).toBe(false);   // done
+    expect(handbackDue(base, { ...OWN, nonce: "f".repeat(32) })).toBe(false);                                 // another nonce
+    expect(handbackDue(base, { ...OWN, pid: OWN.pid + 1 })).toBe(false);                                       // another process
+    expect(handbackDue(withGen(base, { consumed: false }), OWN)).toBe(false);                                  // planned, not taken over
+    expect(handbackDue(withGen(base, { dead: true }), OWN)).toBe(false);                                       // journaled dead
+    expect(handbackDue(withGen(base, { gen: "trial" }), OWN)).toBe(false);                                     // not the old generation
+  });
+
   it("the card cancel writes the marker only while waiting or at the barrier, and the write does not abandon", () => {
     const home = scratch("s244-cancel-");
     const attempt = open(home);
@@ -571,7 +618,7 @@ describe("S-244 cancel and the service lock", () => {
     expect(readCurrent(home)).toMatchObject({ state: "open", attempt: { stage: "opened" } });
     expect(JSON.parse(readFileSync(join(attemptDir(home, attempt.id), "cancel"), "utf8"))).toMatchObject({ reason: "not now", by: "Ada" });
     expect(barrier.requestCancel(attempt, { reason: "again", by: "Bea" })).toBe(false);
-    expect(barrier.runHandback(attempt, { log() {}, lookup() { return null; }, claim() { return "missing"; }, admitCopy() { throw new Error("no"); }, runDeferred() {}, recordInterrupted() {} }).walked).toBe(false);
+    expect(barrier.runHandback(attempt, { log() {}, lookup() { return null; }, claim() { return "missing"; }, admitCopy() { throw new Error("no"); }, runDeferred() {}, recordInterrupted() {} }, OWN).walked).toBe(false);
 
     let atBarrier = advance(home, attempt, "barrier");
     expect(barrier.requestCancel(atBarrier, { reason: "still", by: "Ada" })).toBe(false);
@@ -606,9 +653,10 @@ describe("S-244 cancel and the service lock", () => {
 describe("S-244 ingress inventory", () => {
   it("names the commit points, and the installer does not call the barrier", () => {
     const fleet = FleetManager.prototype as unknown as Record<string, { toString(): string }>;
-    for (const name of ["sendWhenConnected", "handOffAfterBeforeInput", "sendAfterIpcReturns", "sendHumanControl"]) {
+    for (const name of ["sendWhenConnected", "handOffAfterBeforeInput", "sendAfterIpcReturns", "sendAdmittedHumanControl"]) {
       holdBeforeSend(fleet[name]!.toString());
     }
+    expect(fleet.sendHumanControl!.toString()).toContain("sendAdmittedHumanControl");
     const admit = fleet.admitDurableDelivery!.toString();
     expect(admit.indexOf("noteAdmission")).toBeGreaterThan(admit.indexOf("outbox.admit"));
     const claim = (DeliveryOutbox.prototype as unknown as Record<string, { toString(): string }>).claimNextSync!.toString();

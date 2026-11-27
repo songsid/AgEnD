@@ -123,7 +123,7 @@ describe("#1441 B: cross-minor beta → next beta, decided before anything is to
 
   it("a target whose bundled runtime covers this host: installed from @beta (Node 16 on PATH does not matter)", { timeout: 60_000 }, () => {
     const { installs, calls, out } = update({ manifest: { version: "2.3.0-beta.1", engines: { node: ENGINES }, optionalDependencies: pinsFor(HOST) }, pathNode: "16.20.2" });
-    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.3.0-beta.1"]);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.3.0-beta.1 --allow-scripts=@songsid/agend"]);
     expect(calls).toContain("npm view @songsid/agend@beta version");          // the channel stayed beta
     expect(calls).not.toContain("npm view @songsid/agend@latest version");
   });
@@ -150,13 +150,13 @@ describe("#1441 B: cross-minor beta → next beta, decided before anything is to
 
   it("the registry answers for another version than the one being installed: not a verdict — installs as before", { timeout: 60_000 }, () => {
     const { installs, r, out } = update({ manifest: { version: "2.2.0", engines: { node: ">=24" }, optionalDependencies: {} }, pathNode: "20.19.0" });
-    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.3.0-beta.1"]);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.3.0-beta.1 --allow-scripts=@songsid/agend"]);
     expect(r.stdout).toContain("requirements could not be read");
   });
 
   it("a range this check cannot evaluate: not a refusal — installs as before", { timeout: 60_000 }, () => {
     const { installs, r, out } = update({ manifest: { version: "2.3.0-beta.1", engines: { node: "^24.0.0-0" }, optionalDependencies: {} }, pathNode: "20.19.0" });
-    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.3.0-beta.1"]);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.3.0-beta.1 --allow-scripts=@songsid/agend"]);
     expect(r.stdout).toContain("which this check cannot evaluate");
   });
 
@@ -182,12 +182,12 @@ describe("#1441 B: cross-minor beta → next beta, decided before anything is to
       manifest: { version: "2.3.0-beta.1", engines: { node: ">=24" }, optionalDependencies: {} }, pathNode: "20.19.0",
       nvm: { node: "22.23.3", manifest: { version: "2.3.0-beta.1", engines: { node: "^22.14.0" }, optionalDependencies: {} } },
     });
-    expect(installs, out).toEqual(["nvm-npm install -g @songsid/agend@2.3.0-beta.1"]);
+    expect(installs, out).toEqual(["nvm-npm install -g @songsid/agend@2.3.0-beta.1 --allow-scripts=@songsid/agend"]);
   });
 
   it("requirements that cannot be read: installs as before (the target's own install check still applies)", { timeout: 60_000 }, () => {
     const { installs, r, out } = update({ manifest: null, pathNode: "20.19.0" });
-    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.3.0-beta.1"]);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.3.0-beta.1 --allow-scripts=@songsid/agend"]);
     expect(r.stdout).toContain("requirements could not be read");
   });
 });

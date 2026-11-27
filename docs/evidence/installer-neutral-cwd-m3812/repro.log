@@ -1,0 +1,28 @@
+
+=== versions
+npm 10.9.7 on node v22.22.2
+npm 12.2.3 on node v22.22.2
+
+=== 1. The hazard: npm 12, inside the project, `npm exec --package @songsid/agend@2.4.0-beta.24 -- agend-install`
+  [the project's own node ran: <scratch>/cache/_npx/0e0181c7f07c60d1/node_modules/.bin/agend-install --help]
+  (nothing installed at <prefix>/bin/agend)
+
+=== 2. install.sh's installer step, before, started inside the project, npm 12.2.3
+  [the project's own node ran: <scratch>/cache/_npx/0e0181c7f07c60d1/node_modules/.bin/agend-install]
+  (the step finished)
+  (nothing installed at <prefix>/bin/agend)
+
+=== 2. install.sh's installer step, after, started inside the project, npm 12.2.3
+  ✓ AgEnD v2.4.0-beta.24 is installed (<scratch>/p-after-12.2.3/bin/agend)
+  (the step finished)
+2.4.0-beta.24
+
+=== 2. install.sh's installer step, before, started inside the project, npm 10.9.7
+  [the project's own node ran: <scratch>/cache/_npx/0e0181c7f07c60d1/node_modules/.bin/agend-install]
+  (the step finished)
+  (nothing installed at <prefix>/bin/agend)
+
+=== 2. install.sh's installer step, after, started inside the project, npm 10.9.7
+  ✓ AgEnD v2.4.0-beta.24 is installed (<scratch>/p-after-10.9.7/bin/agend)
+  (the step finished)
+2.4.0-beta.24

@@ -1,0 +1,524 @@
+{
+  "sourceHead": "c0319e5be7049b9da5339b01cf415867b91c82bc",
+  "fixture": "Real web server, settings/needs/chat renderers and control route; synthetic installer states, not activation or full-mode proof.",
+  "pictures": [
+    {
+      "name": "desk-light-en-on-confirm-restart.png",
+      "sha256": "19d7d81b05c6e8f58c670559bc86884480a45e906bb0341b5432cd30dccc77c5"
+    },
+    {
+      "name": "desk-light-en-on-confirm-go-back-restart.png",
+      "sha256": "c662002c444558221b1a1f2e63f61fadde91cbcf3ede5b09d3dbbac6e3f898f9"
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-restart.png",
+      "sha256": "241a25ffeb43c796dca286a30a75c2bcb97897eec6e895e7bbca549d669f696a"
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-go-back-restart.png",
+      "sha256": "8c8bd9ff8b31d3c0d2a4a29406f762ecebe8dbf62cfc1f93b98b4bde125ec23e"
+    },
+    {
+      "name": "desk-dark-en-on-confirm-restart.png",
+      "sha256": "e5287e2a9b42fd7a565f977b7742cc2b6d1d8e111349138700a24590f3b1761f"
+    },
+    {
+      "name": "desk-dark-en-on-confirm-go-back-restart.png",
+      "sha256": "6cd155c2e159dcd56ae6e6502f641f47136bc5df8644445bf06fe001f567edd5"
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-restart.png",
+      "sha256": "4accd35ad7be9c53c0f48ab93a59beb5293c8a418d54b0eff183f9b11ae08461"
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-go-back-restart.png",
+      "sha256": "48769f42a80d37dc45844c0c3ebe78b2e32b9268a1ef2c3bafdeb589da6fcf8e"
+    },
+    {
+      "name": "phone-light-en-on-confirm-restart.png",
+      "sha256": "b105c6a9faaff86873a02424647959417bd76d559047436c136ecadd8eb78e50"
+    },
+    {
+      "name": "phone-light-en-on-confirm-go-back-restart.png",
+      "sha256": "9a41f89d7d13d705f0247e781af734bc66687dd88bc29f2796970de499c3c386"
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-restart.png",
+      "sha256": "fbf55f3f3a22e52641f03f3ca253452fc974394767124e221d5350b997dd7760"
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-go-back-restart.png",
+      "sha256": "ece73826a2cdc1c109c5b62d13dd0b37484996850164b95a8d0d748819c675ce"
+    },
+    {
+      "name": "phone-dark-en-on-confirm-restart.png",
+      "sha256": "4b633ec21b04b731cfc18beca9be8de6336f9d28d39b2c8b22894c5172175e24"
+    },
+    {
+      "name": "phone-dark-en-on-confirm-go-back-restart.png",
+      "sha256": "eb17e3ff05865a67f4c820bf97e9a50c9c3bac6e54001855ef22ba4517a24dae"
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-restart.png",
+      "sha256": "71ebf6d685b1aad213babd92cf8dce5c390b358fe1fc04bad26c9c3e293f6602"
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-go-back-restart.png",
+      "sha256": "186f2329db46cb909e32b972ecdf544df3432c1dfc5284f75adeb4bd44fa7522"
+    }
+  ],
+  "checks": [
+    {
+      "name": "desk-light-en-on-confirm-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-go-back-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-go-back-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-go-back-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-go-back-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-go-back-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-go-back-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-on-confirm-go-back-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-go-back-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-go-back-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-go-back-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-go-back-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-go-back-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-go-back-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-on-confirm-go-back-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-go-back-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-go-back-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-go-back-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-go-back-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-go-back-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-go-back-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-on-confirm-go-back-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-go-back-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-go-back-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-go-back-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-go-back-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-go-back-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-go-back-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-on-confirm-go-back-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-go-back-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-go-back-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-go-back-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-go-back-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-go-back-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-go-back-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-on-confirm-go-back-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-go-back-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-go-back-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-go-back-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-go-back-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-go-back-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-go-back-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-on-confirm-go-back-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-go-back-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-go-back-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-go-back-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-go-back-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-go-back-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-go-back-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-on-confirm-go-back-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-go-back-restart: General words match server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-go-back-restart: version warning",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-go-back-restart: no write before confirmation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-go-back-restart: restart disclosure only when needed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-go-back-restart: no old-rules promise",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-go-back-restart: no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-on-confirm-go-back-restart: CSP",
+      "ok": true
+    },
+    {
+      "name": "only deliberate synthetic unknown-result writes occurred",
+      "ok": true
+    }
+  ]
+}

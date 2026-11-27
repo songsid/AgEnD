@@ -22,7 +22,7 @@ import { Command, Option } from "commander";
 import { registerBuildInfoCommand } from "./build-provenance-cli.js";
 import { launchdServiceDomain } from "./launchd-service-domain.js";
 import { registerBugReportCommand } from "./bug-report-cli.js";
-import { join, dirname } from "node:path";
+import { join, dirname, parse } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
 import { Cron } from "croner";
 import {
@@ -72,7 +72,7 @@ import {
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, readUpdateProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
 import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
-import { dropUpdateNpmBounds, withoutUpdateNpmBounds } from "./update-npm-env.js";
+import { dropUpdateNpmBounds, npmAllowScripts, npmGlobalPrefix, withoutUpdateNpmBounds } from "./update-npm-env.js";
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { fleetServiceOwner } from "./fleet-service-owner.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
@@ -263,6 +263,10 @@ function claimFleetSingleton(): boolean {
     const liveness = { processStart: admission.processStart, startTicks: admission.startTicks, bootId: admission.bootId };
     const gate = fleetStartGate(DATA_DIR, process.env.AGEND_UPDATE_HANDOFF ?? null, liveness);
     if (!gate.ok) throw new Error(gate.reason);
+    // §7 (rev 13; Fable #4533): an interrupted commit is this start's to finish with the fleet's commit hands
+    // (`resumeCommitting`). Until those hands exist, it is refused, never admitted as a plain start that leaves the attempt
+    // committing for good. The `agend update` wiring replaces this refusal with the resumeCommitting(...) call.
+    if (gate.resumeCommitting) throw new Error(`This fleet start is refused: update attempt ${gate.resumeCommitting} is committing, and this build can't finish it yet. Run \`agend update --resolve\`.`);
     setProcessFleetLock(acquireFleetLock(DATA_DIR, {
       claimHandoff: (attemptId, nonce, pid) => {
         const processStart = admission.processStart(pid);
@@ -1463,10 +1467,16 @@ program
     // and its `npm install -g`) gives up on a silent connection instead of waiting minutes per try — set once, in this
     // process's environment, for each key nobody set (a person's .npmrc, variable or flag is kept, whatever its value).
     {
-      const { applyUpdateNpmBounds, npmConfigQuery, parseNpmConfigLs, registryStop, updateRegistry } = await import("./update-npm-env.js");
+      const { applyUpdateAllowScripts, applyUpdateNpmBounds, npmConfigQuery, parseNpmConfigLs, registryStop, scriptsIgnoredStop, updateRegistry, updateScriptsIgnored } = await import("./update-npm-env.js");
       const listed = spawnSync("npm", npmConfigQuery(), { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "ignore"] });
       const explicit = listed.status === 0 ? parseNpmConfigLs(listed.stdout ?? "") : null;
+      // M-3805: npm set to skip install scripts would install a release that cannot start: stop before anything changes.
+      if (updateScriptsIgnored(process.env, explicit)) {
+        const stop = scriptsIgnoredStop();
+        console.error(`\n${stop}\n`); setUpdateProgressStage(DATA_DIR, "failed", { error: stop.trim() }); process.exitCode = 1; return;
+      }
       applyUpdateNpmBounds(process.env, explicit);
+      applyUpdateAllowScripts(process.env, explicit);   // M-3805: npm 12 runs AgEnD's install scripts only when allowed
       // With the network gone npm answers the version lookup from its stale cache, and the install then fails as a version
       // that does not exist. Ask the registry AgEnD comes from (the @songsid scope's, never a cache) first: unreachable →
       // stop here, nothing changed. Its config unreadable: nothing is asked, the update goes on as before.
@@ -1677,14 +1687,14 @@ program
           { pkg: `@songsid/agend@${pkgVersion}`, targetVersion: pkgVersion, viaNvm: false, nvmSh },
           {
             run: (command, args, options = {}) => {
-              const result = spawnSync(command, args, { encoding: "utf-8", timeout: options.timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
+              const result = spawnSync(command, args, { encoding: "utf-8", timeout: options.timeoutMs, stdio: ["ignore", "pipe", "pipe"], ...(options.cwd ? { cwd: options.cwd } : {}) });
               return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
             },
             log: message => console.log(message),
           },
         );
         if (!verified.ok) {
-          const message = `${verified.message}\n  Not restarting the fleet onto it. Reinstall a working version: npm install -g @songsid/agend@<version>`;
+          const message = `${verified.message}\n  Not restarting the fleet onto it. Reinstall a working version: npm install -g --allow-scripts=@songsid/agend @songsid/agend@<version>`;
           console.error(message);
           setUpdateProgressStage(DATA_DIR, "failed", { error: message.trim() });
           process.exitCode = 1;
@@ -1740,7 +1750,16 @@ program
     // ── Check if npm global needs sudo (read-only; decides the nvm path the preflight judges) ──
     let needsSudo = false;
     try {
-      const prefix = execSync("npm config get prefix", { encoding: "utf-8" }).trim();
+      // M-3806: for a UUID in the path, `npm config get prefix` refuses (npm 10–12): read `npm prefix -g`, which npm
+      // 11/12 print with `***`; that is asked the way npm tells a child, from the filesystem root (Fable #4526 F2).
+      // No answer at all: as before, assume no sudo.
+      const quiet = { encoding: "utf-8" as const, stdio: ["ignore", "pipe", "ignore"] as Array<"ignore" | "pipe"> };
+      const said = (command: string, cwd?: string) => { try { return execSync(command, cwd ? { ...quiet, cwd } : quiet); } catch { return ""; } };
+      let configured = said("npm config get prefix");
+      if (!npmGlobalPrefix.lastLine(configured) || npmGlobalPrefix.masked(configured)) configured = said("npm prefix -g");
+      const prefix = npmGlobalPrefix.resolve(configured, undefined,
+        () => said(`npm ${npmGlobalPrefix.ASK.slice(0, 2).join(" ")} "${npmGlobalPrefix.ASK[2]}"`, npmGlobalPrefix.neutralCwd())).prefix;
+      if (!prefix) throw new Error("npm did not say where it installs global packages");
       const { accessSync, constants } = await import("node:fs");
       try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
     } catch { /* assume no sudo needed */ }
@@ -1792,8 +1811,11 @@ program
       markUpdateInProgress(DATA_DIR);
       setUpdateProgressStage(DATA_DIR, "downloading", { version: targetVersion! });
       // AGEND_UPDATE_OWNER_PID: the marker this process just wrote is the installer's to carry on (and no one else's).
+      // M-3812: from the filesystem (drive) root, never the folder `agend update` was started in. Inside a project npm
+      // exec puts its node_modules/.bin first on PATH, and the installer would run on that project's own `node`. `pkg`
+      // is a registry spec (an exact version), so it does not depend on the folder.
       const installer = spawnSync("npm", ["exec", "--yes", "--package", pkg, "--", "agend-install", "--upgrade", "--target", targetVersion!], {
-        stdio: "inherit", env: { ...withOrigin("agend-update"), AGEND_UPDATE_OWNER_PID: String(process.pid) },
+        stdio: "inherit", cwd: parse(process.cwd()).root, env: { ...withOrigin("agend-update"), AGEND_UPDATE_OWNER_PID: String(process.pid) },
       });
       if (installer.status === 0 || installer.status === 75) { process.exitCode = installer.status ?? 0; return; }
       // The installer records its own failure; one that never started (npm could not fetch it) is recorded here.
@@ -1890,6 +1912,7 @@ program
             timeout: options.timeoutMs,
             stdio: options.inherit ? "inherit" : ["ignore", "pipe", "pipe"],
             ...(options.env ? { env: { ...process.env, ...options.env } } : {}),
+            ...(options.cwd ? { cwd: options.cwd } : {}),
           });
           return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
         },
@@ -2022,7 +2045,36 @@ program
       const pidPath = join(DATA_DIR, "fleet.pid");
       try {
         if (isHub) activateService(svcPath, pidPath, { preservePidFile: true });
-        else activateService(svcPath, pidPath);
+        else {
+          // M-3770 S-246: a hand-started fleet hands over to the service — refused before any stop, stopped by its
+          // proof, and started again if the service can't start (service-install-handover.ts).
+          const [{ handOverToService }, stop, { prepareServiceActivation }] = await Promise.all([
+            import("./service-install-handover.js"), import("./detached-fleet-stop.js"), import("./service-installer.js")]);
+          const outcome = await handOverToService({
+            prepare: () => prepareServiceActivation(svcPath),
+            owner: () => stop.detachedFleetOwner(pidPath),
+            stop: owner => stop.stopProvenFleet(owner),
+            clear: owner => stop.clearStoppedPublication(pidPath, owner),
+            activate: () => activateService(svcPath, pidPath, { fleetStopped: true }),
+            restartHandStarted: () => {
+              const start = selfCommand(["fleet", "start"]);
+              spawn(start.command, start.args, { detached: true, stdio: "ignore", env: { ...process.env, [DIRECT_FLEET_START_ENV]: "1" } }).unref();
+            },
+            log: line => console.log(line),
+          });
+          if (!outcome.ok) {
+            if (outcome.stage === "stop" || (outcome.stage === "refused" && outcome.error === undefined)) console.error(`  ✗ ${outcome.message}`);
+            else {
+              console.error(t("install.start_failed", outcome.message));
+              const { installActivationHints } = await import("./install-user-systemd.js");
+              for (const line of installActivationHints(outcome.error ?? new Error(outcome.message), detectPlatform(), svcPath)) console.error(line);
+              if (outcome.stage === "refused") console.error("  Nothing was stopped: the fleet keeps running as it was.");
+              else if (outcome.restarted) console.error("  The fleet was started again as it ran before (not as a service).");
+            }
+            process.exitCode = 1;
+            return;
+          }
+        }
         if (isHub) { const { ht } = await import("./hub/init/text.js"); console.log(ht("service_ok")); }
         else console.log(t("install.running"));
       } catch (err) {
@@ -3951,7 +4003,7 @@ program
         }
         return false;
       },
-      async install(v) { const r = spawnSync("npm", ["install", "-g", opts.package ?? `@songsid/agend@${v}`], { stdio: "inherit" }); return { ok: r.status === 0, detail: `npm exited ${r.status ?? r.signal}` }; },
+      async install(v) { const spec = opts.package ?? `@songsid/agend@${v}`; const r = spawnSync("npm", ["install", "-g", spec, npmAllowScripts.flagFor(spec)], { stdio: "inherit" }); return { ok: r.status === 0, detail: `npm exited ${r.status ?? r.signal}` }; },
       // The newly installed version's own `agend start` (the one now on PATH), never this process's code.
       async startService() {
         if (opts.start === false) return { ok: true, detail: "skipped" };

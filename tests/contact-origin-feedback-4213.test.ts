@@ -73,8 +73,9 @@ it("ordinary admission copies origin to a non-Classic worker with a different ow
   const r = rig(); r.store.inheritOrigin("room", origin(admin)); r.admit("peer");
   expect(r.store.origin("peer")?.people).toEqual([admin]);
   expect(r.service().needsApplication("peer")).toBe(true);
+  // M-3830: a fleet agent's own topic is not recorded as contact origin; what it inherited stays, unchanged.
   r.human("peer", otherAdmin, "fake-direct-owner-input");
-  expect(r.store.origin("peer")?.kind).toBe("mixed");
+  expect(r.store.origin("peer")).toEqual(expect.objectContaining({ kind: "human", people: [admin] }));
   expect(r.service().needsApplication("peer")).toBe(true);
 });
 it("approved member work preserves a clean worker; its administrator remains unrestricted", () => {
@@ -143,4 +144,40 @@ it("M-3679 receipt retains the observing bot, while one person's contact origin 
  expect(JSON.parse(proof.origin_json)).toMatchObject({platform:"discord",adapter_id:"fake-other",user_id:admin.userId});
  expect(r.store.origin("worker")).toMatchObject({kind:"human",people:[expect.objectContaining({userId:admin.userId})]});
  expect(r.service().needsApplication("worker")).toBe(false);
+});
+
+// M-3830 (user 11-26, Fable): only a restricted ClassicBot room records the people who talk in it. A fleet agent's own
+// topic is the admin's channel access (#754): it neither creates a row nor changes one, so a cleared agent stays clear.
+const nonAdmin: ContactPerson = { ...admin, userId: "fake-teammate", label: "Teammate" };
+it("M-3830: a fleet agent holding a room-derived origin is unchanged by a non-admin's topic message, and stays held", () => {
+  const r = rig(); r.store.inheritOrigin("worker", { ...origin(), chain: ["room", "worker"] });
+  const before = r.store.origin("worker"), revision = r.store.originRevision("worker");
+  r.human("worker", nonAdmin, "fake-topic-1");
+  expect([r.store.origin("worker"), r.store.originRevision("worker")]).toEqual([before, revision]);
+  expect(r.service().needsApplication("worker")).toBe(true);
+});
+it("M-3830: a fleet agent with no origin stays without one, whoever talks in its topic", () => {
+  const r = rig();
+  r.human("worker", nonAdmin, "fake-topic-1"); r.human("worker", admin, "fake-topic-2");
+  expect(r.store.origin("worker")).toBeUndefined();
+  expect(r.service().needsApplication("worker")).toBe(false);
+});
+it("M-3830: a restricted room still records each speaker", () => {
+  const r = rig();
+  r.human("room", admin, "fake-room-1");
+  expect(r.store.origin("room")).toEqual(expect.objectContaining({ kind: "human", people: [expect.objectContaining({ userId: admin.userId })] }));
+  r.human("room", nonAdmin, "fake-room-2");
+  expect(r.store.origin("room")?.kind).toBe("mixed");
+  expect(r.store.origin("room")?.people.map(p => p.userId)).toEqual([admin.userId, nonAdmin.userId]);
+  expect(r.service().needsApplication("room")).toBe(true);
+});
+it("M-3830: the 11-26 shape — mixed through a room, cleared by its admin — stays clear after the next non-admin topic message", () => {
+  const r = rig();
+  r.store.inheritOrigin("worker", { kind: "mixed", people: [admin, nonAdmin], receiptIds: ["fake-receipt"], chain: ["room", "worker"] });
+  expect(r.service().needsApplication("worker")).toBe(true);
+  r.store.clearOrigin("worker", { revision: r.store.policy("worker", "worker-gen").revision, originRevision: r.store.originRevision("worker"), generation: "worker-gen" }, admin, () => "worker-gen");
+  expect(r.service().needsApplication("worker")).toBe(false);
+  r.human("worker", nonAdmin, "fake-topic-after-clear");
+  expect(r.store.origin("worker")).toEqual(expect.objectContaining({ kind: "human", people: [admin] }));
+  expect(r.service().needsApplication("worker")).toBe(false);
 });

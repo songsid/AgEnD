@@ -457,11 +457,17 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     // #1629 r4.1 Q3 (b): never an error — a value out of its bound is clamped, a wrong one falls back to its default.
     if (config.web.appearance !== undefined) for (const w of effectiveAppearanceLimits(config.web.appearance).warnings) warn(w.path, w.message);
     if (config.web.public_link !== undefined) {
-      if (!publicLinkPatchShape(config.web.public_link)) err("web.public_link", "expected allow_public boolean, ttl_minutes integer 1..480 (with a hostname: 0..10080, 0 = no expiry), protocol http2/quic/auto, optional named hostname/token reference/origin port, auto_open boolean");
+      if (!publicLinkPatchShape(config.web.public_link)) err("web.public_link", "expected allow_public boolean, ttl_minutes integer 1..480 (with a hostname: 0..10080, 0 = no expiry), protocol http2/quic/auto, optional named hostname/token reference/origin port/preview hostname, auto_open boolean");
       else {
         // #named-link-ttl: the longer lifetime, no expiry and auto_open belong to a fixed hostname (named tunnel) only.
         const problem = publicLinkModeProblem(config.web.public_link);
         if (problem) err(`web.public_link.${problem.key}`, problem.message);
+        // M-3814: the fixed preview address is a separate site too — never a name the dashboard answers to.
+        const preview = config.web.public_link.preview_hostname;
+        if (!problem && typeof preview === "string" && preview !== "") {
+          const clash = previewOriginProblem(`https://${preview.trim()}`, config);
+          if (clash) err("web.public_link.preview_hostname", clash);
+        }
       }
     }
     if (config.web.echo_to_channel !== undefined && typeof config.web.echo_to_channel !== "boolean") {

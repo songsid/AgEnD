@@ -193,7 +193,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // need a session stay behind the gate under /ui/js/ and are reached only by a dynamic import.
   ...Object.fromEntries([
     "app.js", "app-html.js", "app-i18n.js", "clock-text.js", "app-route.js", "app-nav.js", "app-ctx.js", "app-stream.js", "app-store.js",
-    "model-observation.js", "app-shell.js", "app-session.js", "web-authorize.js", "device-roles.js", "app-needs.js", "app-swipe.js", "text-undo.js", "composer-focus.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
+    "model-observation.js", "app-shell.js", "app-session.js", "web-authorize.js", "device-roles.js", "app-needs.js", "app-install.js", "app-swipe.js", "text-undo.js", "composer-focus.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
     // #3822: the in-place "this tab is older than AgEnD — reload" prompt the Outlet and lazy panels show (static, no data).
     "stale-tab.js",
     "module-warm.js",
@@ -222,6 +222,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "app-prefs.js",
     // M-2738: the update line and its confirmation (static code; the update state is read behind the gate).
     "app-update.js",
+    // M-3770 1.4: the update card — its line, answers, pre-flight words and Settings controls (static code; the card is read behind the gate).
+    "update-card-ui.js",
     // #2726: the setup host's words and codes in both languages (static tables, no data), for the Setup wizard and Apply.
     "setup-host-text.js",
     // #1629 r4 §3: links the signed-in person's owner CSS (static code; the stylesheet itself is session-gated).

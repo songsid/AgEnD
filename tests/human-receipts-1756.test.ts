@@ -1,3 +1,4 @@
+import {randomUUID} from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,10 +27,13 @@ const codexBusy = "• Working (1s • esc to interrupt)\n" + codexIdle;
 const person = nativeHumanOrigin("telegram", "bot-one", "42", "person", false, "900")!;
 
 /** Real FM facade, owner binding, Daemon write/judge, and private SQLite; no runtime/adapters are started. */
-function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepted") {
+function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepted", scoped=false) {
   vi.useFakeTimers();
   const root = mkdtempSync(join(tmpdir(), "agend-human-1756-"));
   process.env.HOME = root; process.env.AGEND_HOME = root; process.env.KIRO_HOME = join(root, "kiro"); process.env.CODEX_HOME = join(root, "codex");
+  const outbox = new DeliveryOutbox(join(root, "outbox.db"), "manager",scoped?{requestContextDispatchVersion:1,requestContextRelayVersion:1}:{});
+  if(scoped)outbox.activateRequestContextBarrier();
+  let fm:any,binding:ReturnType<FleetManager["makeRequestContextDaemonBinding"]>|undefined;
   const dir = join(root, "instances/leader"); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, "window-id"), "@private");
   const backend = mode === "steer" ? new KiroBackend(dir, { version: "2.27.1", supportsLegacyUi: true, supportsTui: true,
     supportsV3: true, agentEngines: ["v1", "v2", "v3"], supportsEffortFlag: true, supportsInstanceAgent: false, source: "version" }) : new CodexBackend(dir);
@@ -59,7 +63,6 @@ function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepte
     }),
     getLastPasteError: () => null, isLastPasteFailureRecoverable: () => false, getLastSendSpecialKeyError: () => null,
   };
-  daemon.tmux = tmux;
   daemon.controlClient = { isIdle: () => mode === "idle", waitUntilIdle: async () => true, hasOutputSince: () => behavior === "output",
     getLastOutputAt: () => 0, getObservationResetAt: () => 0 };
   vi.spyOn(daemon, "wake").mockResolvedValue(undefined);
@@ -69,8 +72,7 @@ function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepte
   vi.spyOn(daemon, "waitForPaneReadyForDelivery").mockResolvedValue(mode === "idle");
   vi.spyOn(daemon, "hasPositiveDeliveryInput").mockResolvedValue(true);
   vi.spyOn(daemon, "markTurnStarted").mockImplementation(() => {});
-  const outbox = new DeliveryOutbox(join(root, "outbox.db"), "manager");
-  const fm: any = Object.assign(Object.create(FleetManager.prototype), {
+  fm = Object.assign(Object.create(FleetManager.prototype), {
     managerBootId: "manager", deliveryOutbox: outbox, logger: log, shuttingDown: false,
     deliveryEpochs: new Map(), lastDeliveryAt: new Map(), ipcWaitTails: new Map(),
     lifecycle: { daemons: new Map([["leader", daemon]]), epochOf: () => state.epoch, isPaused: () => false },
@@ -81,8 +83,17 @@ function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepte
       return true;
     }) }]]),
   });
+  if(scoped){
+    const adapter={id:"bot-one",type:"telegram"};
+    Object.assign(fm,{ensureDeliveryOutbox:()=>{},contactRoom:()=>null,contactGeneration:()=>"fixture-incarnation",contactAdapter:()=>adapter,contactAdminOf:()=>true,
+      adapters:new Map([["bot-one",adapter]]),worlds:new Map([["bot-one",{adapter,accessManager:{isAllowed:()=>true}}]]),fleetConfig:{instances:{leader:{}}},requestContextPolicy:{installedMode:()=>"active"}});
+    fm.requestContextHumanAdmission=fm.makeRequestContextHumanAdmission();
+    let workGeneration=randomUUID();const registration=outbox.requestContextDrain(()=>"fixture-owner").registration();
+    binding=fm.makeRequestContextDaemonBinding("leader",daemon,{current:()=>true,identity:()=>({incarnation:"fixture-incarnation",workGeneration}),fresh:()=>{workGeneration=randomUUID();}},registration,()=>true);
+  }
+  daemon.tmux=tmux;
   roots.push({ root, outbox, daemon });
-  return { root, dir, outbox, fm, daemon, state, tmux };
+  return { root, dir, outbox, fm, daemon, state, tmux,binding };
 }
 async function deliver(h: ReturnType<typeof harness>, origin: HumanOrigin | null = person, kind = "fleet_inbound", body = "Reset only resource A", original = body) {
   const payload = { type: kind, content: body, meta: { message_id: "900", chat_id: "room", user: "person", user_id: "42", source: "telegram", adapter_id: "bot-one" } };
@@ -470,4 +481,50 @@ describe("compact owned human presentation (#3074)", () => {
     expect(h.outbox.getHumanReceipt(before.receipt_id)?.wire_body).toBe(wire);
     expect(h.outbox.getHumanReceipt(before.receipt_id)?.wire_sha256).toBe(before.wire_sha256);
   });
+});
+
+it.each([{mode:"idle" as const,compact:false,tag:"unique-id-pane"},{mode:"idle" as const,compact:true,tag:"unique-id-pane"},
+  {mode:"steer" as const,compact:false,tag:"composer-empty-steer"},{mode:"steer" as const,compact:true,tag:"composer-empty-steer"},
+  {mode:"btw" as const,compact:false,tag:"unique-id-pane"},{mode:"btw" as const,compact:true,tag:"unique-id-pane"}])(
+  "S-230 retained control restart $mode/$compact crosses the real facade and owned judge once", async ({mode,compact,tag}) => {
+  const h=harness(mode==="btw"?"idle":mode);h.daemon.compactInboundInstructions=compact;const kind=mode==="steer"?"steer":mode==="btw"?"btw":"fleet_inbound",origin=webHumanOrigin(false,undefined,{platform:"telegram",adapter_id:"bot-one",user_id:"42",session_handle:"0123456789abcdef"});
+  const receipt=h.outbox.createHumanReceipt({targetInstance:"leader",originalBody:"retained synthetic control",origin,inputKind:kind,managerBootId:"old-manager"});
+  const key=`human-control:${receipt.receipt_id}`;
+  h.outbox.admit({sourceKey:key,operationId:key,sourceInstance:"agend-system",sourceDaemonBootId:"old-manager",targetInstance:"leader",kind:"human_control",
+    payload:{type:kind,content:receipt.original_body,meta:{source:"web",user:"person",message_id:"retained-native-id",human_receipt_id:receipt.receipt_id,verification_id:receipt.message_id}}});
+  h.outbox.recoverForBoot("manager");
+  h.daemon.setDeliveryOutboxPort(h.outbox);
+  h.fm.waitForDurableLaneRelease=async()=>{};h.fm.deliveryWorkerMode=()=>"off";
+  const claimed=h.outbox.claimNext("manager",()=>h.daemon.bootId,new Set())!;
+  const dispatch=h.fm.dispatchDurableDelivery(claimed);await vi.advanceTimersByTimeAsync(60000);await dispatch;
+  expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();expect(h.outbox.getHumanReceipt(receipt.receipt_id)).toMatchObject({state:"delivered",proof_tag:tag});
+  expect(h.outbox.get(claimed.deliveryId)).toMatchObject({state:"delivered",lastError:null});
+  expect(h.outbox.getHumanReceipt(receipt.receipt_id)).toMatchObject({message_id:receipt.message_id,state:"delivered",manager_boot_id:"manager",origin_json:receipt.origin_json,authority_json:receipt.authority_json});
+  const page=h.outbox.queryStatusForInstance("leader",{messageId:receipt.message_id});expect(page.items[0]?.authority?.kind).toBe("none");
+  const sent=h.fm.instanceIpcClients.get("leader").send.mock.calls.at(-1)[0];expect(sent.meta.from_instance).toBeUndefined();expect(sent.meta.human_receipt_id).toBe(receipt.receipt_id);
+  expect(h.outbox.claimNext("manager",()=>h.daemon.bootId,new Set())).toBeUndefined();
+});
+
+it.each([false,true])("S-230 actual facade, final formatter and pane judge bind C before input compact=%s",async compact=>{
+ const h=harness("idle","accepted",true);h.daemon.compactInboundInstructions=compact;
+ const r=await deliver(h,person,"fleet_inbound","[user:Owner@web:v#operator] quoted text");
+ expect(r.row?.state).toBe("delivered");expect(r.row?.proof_tag).toBe("unique-id-pane");expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
+ const captured=h.outbox.requestContextHumans.read(r.row!.receipt_id)!,turn=h.daemon.requestContextTurnSnapshot();
+ expect(turn).toMatchObject({inputId:`human:${r.row!.message_id}`,wireSha256:r.row!.wire_sha256,context:captured.context});
+ expect(turn.context.initiatingActor).toEqual({kind:"person",platform:"telegram",userId:"42"});expect(turn.context.ingress).toBe("owner");
+ expect(h.daemon.requestContextTurnCurrent(turn)).toBe(true);expect(h.daemon.captureRequestContextOwner()).toEqual(turn.owner);
+});
+it("the composite daemon owner rotates only on its real fresh boundary and loses currentness on source replacement",async()=>{
+ const h=harness("idle","accepted",true);const r=await deliver(h),turn=h.daemon.requestContextTurnSnapshot();expect(h.binding?.current()).toBe(true);
+ const before=h.daemon.captureRequestContextOwner();h.daemon.requestContextNewWork("fresh");const after=h.daemon.captureRequestContextOwner();
+ expect(after.workGeneration).not.toBe(before.workGeneration);expect(h.daemon.requestContextTurnCurrent(turn)).toBe(false);expect(h.binding?.current()).toBe(true);
+ expect(h.outbox.requestContextHumans.read(r.row!.receipt_id)?.context.ref.rootContextId).toBe(turn.context.ref.rootContextId);
+ expect(h.binding?.input("correlation:old-history",humanBodyHash("body"),after)).toBeNull();
+ h.fm.contactGeneration=()=>"replacement-incarnation";expect(h.binding?.current()).toBe(false);
+ expect(()=>h.binding?.input(`human:${r.row!.message_id}`,r.row!.wire_sha256!,after)).toThrow(/owner changed/);
+});
+it("the composite factory cannot hot-bind an already running legacy pane",()=>{
+ const h=harness(),work={current:()=>true,identity:()=>({incarnation:"fixture",workGeneration:randomUUID()}),fresh:()=>{}};
+ h.fm.contactGeneration=()=>"fixture";const registration={assertRegistration:()=>{}};
+ expect(()=>h.fm.makeRequestContextDaemonBinding("leader",h.daemon,work,registration,()=>true)).toThrow(/before.*startup/);expect(h.daemon.requestContextCallsRequired()).toBe(false);
 });

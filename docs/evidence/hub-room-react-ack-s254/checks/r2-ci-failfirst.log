@@ -1,0 +1,50 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/instruction-diet-m2133.test.ts (11 tests | 1 failed) 1211ms
+     × the default worker menu stays inside its budget (13.9k o200k before; about 9.9k after) 5ms
+ ❯ tests/hub-groups-mount-s89.test.ts (20 tests | 1 failed) 240ms
+     × the Hub HTTP reports group permissions only when composed with them (what marks the host fleet's Settings row) 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-groups-mount-s89.test.ts > the group routes on the real Hub HTTP > the Hub HTTP reports group permissions only when composed with them (what marks the host fleet's Settings row)
+AssertionError: expected [ 'agent-intro-defaults-v1', …(17) ] to deeply equal [ 'agent-intro-defaults-v1', …(16) ]
+
+- Expected
++ Received
+
+@@ -11,9 +11,10 @@
+    "direct-posts-v1",
+    "room-context-v1",
+    "room-brief-v1",
+    "room-members-v2",
+    "room-answer-status-v1",
++   "room-react-ack-v1",
+    "person-prefs-v1",
+    "room-agent-discovery-v1",
+    "sharing-pause-v1",
+  ]
+
+ ❯ tests/hub-groups-mount-s89.test.ts:175:34
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/instruction-diet-m2133.test.ts > M-3526: shorter words, the same schemas > the default worker menu stays inside its budget (13.9k o200k before; about 9.9k after)
+AssertionError: expected 67192 to be less than 67000
+ ❯ tests/instruction-diet-m2133.test.ts:76:64
+     74|     expect(Buffer.byteLength(JSON.stringify(menu("worker")))).toBeLess…
+     75|     // 80.9 KB before; M-3693 adds 0.8 KB (contact_state and a propose…
+     76|     expect(Buffer.byteLength(JSON.stringify(menu("general")))).toBeLes…
+       |                                                                ^
+     77|   });
+     78|   it("the task tool tells an agent how to point at a card (#M-3, not a…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 29 passed (31)
+   Start at  00:59:15
+   Duration  5.22s (transform 3.92s, setup 177ms, import 5.21s, tests 1.45s, environment 0ms)

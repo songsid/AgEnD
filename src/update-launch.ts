@@ -83,7 +83,7 @@ export function updateFixHint(output: string, opts: { agendGone?: boolean } = {}
     if (ours) return t("update.failure.remove_staging", installer);
     return null;
   }
-  if (/systemd does not know /.test(output)) return `\`npm i -g @songsid/agend@${target} && agend restart\``;
+  if (/systemd does not know /.test(output)) return `\`npm i -g --allow-scripts=@songsid/agend @songsid/agend@${target} && agend restart\``;   // M-3805: npm 12
   return null;
 }
 

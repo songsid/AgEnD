@@ -22,7 +22,7 @@ export const TOOL_GROUPS = Object.freeze([
     "preview_web_appearance", "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient", "office_view", "office_set",
     "office_set_style", "office_pack_check", "office_pack_list", "office_pack_upload", "office_pack_delete", "office_pack_restore"] },
   { id: "repos", tools: ["checkout_repo", "release_repo", "deploy_template", "teardown_deployment", "list_deployments"] },
-  { id: "hub", tools: ["hub_room_list", "hub_room_post", "hub_room_members", "hub_people_search", "hub_set_intro"] },
+  { id: "hub", tools: ["hub_room_list", "hub_room_post", "hub_room_members", "hub_room_history", "hub_people_search", "hub_set_intro"] },
 ].map((g) => Object.freeze({ id: g.id, tools: Object.freeze(g.tools) })));
 
 const GROUP_OF = new Map(TOOL_GROUPS.flatMap((g) => g.tools.map((tool) => [tool, g.id])));

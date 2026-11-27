@@ -6,7 +6,8 @@ import { GROUP_CAPABILITIES, allowedTeamRule, allowedPersonRule } from "../group
 export const SELF_PERMISSIONS = Object.freeze([...GROUP_CAPABILITIES] as const);
 export const TEAM_PERMISSIONS = Object.freeze(["team.view", "team.usage", "team.approve_join", "team.approve_ask"] as const);
 export const MANAGEMENT_PERMISSIONS = Object.freeze(["fleets.manage", "join.manage", "roles.assign", "audit.view", "hub.admin"] as const);
-export const ROLE_PERMISSIONS = Object.freeze([...SELF_PERMISSIONS, ...TEAM_PERMISSIONS, ...MANAGEMENT_PERMISSIONS] as const);
+export const MEMBER_PERMISSIONS = Object.freeze(["rooms.create"] as const);
+export const ROLE_PERMISSIONS = Object.freeze([...SELF_PERMISSIONS, ...MEMBER_PERMISSIONS, ...TEAM_PERMISSIONS, ...MANAGEMENT_PERMISSIONS] as const);
 /** Catalogue entries reserved for phase 3; phase 1/2 writers must refuse them in every role. */
 export const ROLE_APPROVAL_PERMISSIONS = Object.freeze(["team.approve_join", "team.approve_ask"] as const);
 export type RolePermission = typeof ROLE_PERMISSIONS[number];
@@ -16,7 +17,7 @@ export const BUILTIN_ROLE_IDS = Object.freeze({ admin: "builtin:admin", manager:
 const label = plain(120).refine(s => s.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(s));
 const dn = z.string().min(1).max(1024).regex(/^[^\u0000-\u001f\u007f]+$/);
 const limit = z.number().int().min(0).max(8);
-const permissions = z.array(z.enum(ROLE_PERMISSIONS)).max(12).refine(a => new Set(a).size === a.length);
+const permissions = z.array(z.enum(ROLE_PERMISSIONS)).max(ROLE_PERMISSIONS.length).refine(a => new Set(a).size === a.length);
 const roleSchema = z.strictObject({ id: identifier, name: label, kind: z.enum(["admin", "manager", "member", "carried-over", "custom"]),
   description: plain(500).refine(s => !/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(s)).optional(),
   permissions, defaultMaxFleets: limit });
@@ -36,10 +37,10 @@ const policySchema = z.strictObject({ realm: person.shape.realm, generation: ide
 });
 export type HubRolePolicy = z.infer<typeof policySchema>;
 
-/** Return fresh objects: editors cannot mutate the catalogue or another policy's defaults. */
+/** Return fresh objects. New opt-in grants must not alter the persisted built-in Administrator image. */
 export function builtinRoles(): HubRole[] {
   return [
-    { id: BUILTIN_ROLE_IDS.admin, name: "Administrator", kind: "admin", permissions: ROLE_PERMISSIONS.filter(p => !(ROLE_APPROVAL_PERMISSIONS as readonly string[]).includes(p)), defaultMaxFleets: 8 },
+    { id: BUILTIN_ROLE_IDS.admin, name: "Administrator", kind: "admin", permissions: ROLE_PERMISSIONS.filter(p => p !== "rooms.create" && !(ROLE_APPROVAL_PERMISSIONS as readonly string[]).includes(p)), defaultMaxFleets: 8 },
     { id: BUILTIN_ROLE_IDS.manager, name: "Manager", kind: "manager", permissions: [...SELF_PERMISSIONS, "team.view", "team.usage"], defaultMaxFleets: 2 },
     { id: BUILTIN_ROLE_IDS.member, name: "Member", kind: "member", permissions: [...SELF_PERMISSIONS], defaultMaxFleets: 1 },
   ];

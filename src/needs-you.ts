@@ -28,6 +28,7 @@ export interface NeedsYouItem {
   policyOptionCount?: number;
   policyFeedback?: boolean;
   hostAlert?: import('./host-monitoring-alert-policy.js').HostAlertRecord;
+  requestContextCutover?: import('./request-context-control-api.js').RequestContextControlView;
   quiet?: true;
   /** One line, may be "": a prompt's text, an interaction summary, "source → target · kind". */
   detail: string;
@@ -80,6 +81,7 @@ export interface NeedsYouItem {
 }
 
 export type NeedsYouReason =
+  | "request_context_cutover"
   | "host_health"
   | "contact_request" | "contact_restricted_suggestion"
   | "hang" | "exited" | "assist" | "question"                       // prompt

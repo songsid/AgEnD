@@ -1,0 +1,84 @@
+{
+  "sourceCommit": "148b0eb1958ffaddcb2ebdece976756905daf927",
+  "scope": "Exact accepted human input resolution inside C at the actual final owned write.",
+  "checks": {
+    "restored": {
+      "files": 6,
+      "passed": 180,
+      "failed": 0
+    },
+    "mutants": [
+      {
+        "mutation": "wire-unbound",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "runtime-owner-ignored",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "ordinary-input-joins",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "guest-steer-joins",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "final-owner-check-removed",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "delivered-reused",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "receipt-owner-ignored",
+        "exit": 1,
+        "red": true
+      }
+    ],
+    "typecheckTests": "passed",
+    "gitleaks": "39 commits; no leaks",
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "Actual Fleet facade \u2192 final receipt preparation/formatter \u2192 exact human resolver \u2192 C \u2192 existing pane judge passes in both header dialects, with mocked panes and private SQLite only.",
+    "Only owned human:hmsg input ids and current receipt wire/owner/manager/incarnation/admission can select a human root. No body, correlation, reply history or formatter guessing.",
+    "An ordinary admin message defers behind active outside work; explicit permitted steer retains active provenance. Guest/demoted inputs cannot borrow that join.",
+    "Delivered/raw/missing/stale input and final owner loss refuse before C binding.",
+    "This is a component composition proof. The production owner/transport installer, full mode and Off assessment are still unfinished. No live activation."
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "src/request-context-human-resolver.ts",
+      "sha256": "36fb24c441d66c3fcf7126b06ff9e08aa0fb310f44db9438d6b5c570d3fb481d"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "ee7efeeda9ec28739d6858b6be3fe94a75b3f1296d8d3ba657b65ad018c24d28"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "d1c70287ffbd96afe06883706eaab700dbc9cb73683c802ad71b4c8b71103959"
+    },
+    {
+      "path": "tests/request-context-human-resolver-s230.test.ts",
+      "sha256": "1b5164bf983269bf947fcd5f3bcfa5022506940031c6df7f0a07f2fcdd866adf"
+    },
+    {
+      "path": "tests/human-receipts-1756.test.ts",
+      "sha256": "99db631b6c441245fb3a28c811956982e5674f33b7b66fb37a04bfec086f64d0"
+    },
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "ea3dbd383e95808234e84b664066e0abbf51ba0de23f088e47af8fb2ad296bbe"
+    }
+  ]
+}

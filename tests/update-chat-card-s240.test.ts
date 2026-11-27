@@ -107,7 +107,7 @@ describe("M-3770 1.5: the update card in General's chat", () => {
       offer(f); await vi.waitFor(() => expect(g.alerts).toHaveLength(1));
       const a = g.alerts[0];
       expect(a.message ?? a.text ?? JSON.stringify(a)).toContain("AgEnD 2.3.5-beta.3 is ready.");
-      expect(JSON.stringify(a)).toContain("Your work continues; if it won't start, AgEnD tries to roll back to 2.3.5-beta.2.");
+      expect(JSON.stringify(a)).toContain("Your work continues; if the new version won't start, AgEnD tries to roll back to 2.3.5-beta.2.");
       expect(a.choices.map((c: any) => c.label)).toEqual(["Update when idle", "Tonight", "Not now"]);
       expect(a.choices.map((c: any) => c.id)).toEqual(expect.arrayContaining([expect.stringMatching(/^update-card:[0-9a-f]{32}:when-idle$/)]));
       await f.fm.syncUpdateChatCard(); offer(f); await settle(); await f.fm.syncUpdateChatCard();
@@ -302,7 +302,7 @@ describe("M-3770 1.5: the update card in General's chat", () => {
       await general(f);
       const view = { version: "2.3.5-beta.3", state: "offered", installable: true, channel: "beta" };
       f.fm.updatePreflight = { checks: [{ id: "P3", ok: true }] };
-      expect(f.fm.updateChatCardText(view, "2.3.5-beta.2")).toBe("🆕 AgEnD 2.3.5-beta.3 is ready.\nYour work continues; if it won't start, AgEnD tries to roll back to 2.3.5-beta.2.");
+      expect(f.fm.updateChatCardText(view, "2.3.5-beta.2")).toBe("🆕 AgEnD 2.3.5-beta.3 is ready.\nYour work continues; if the new version won't start, AgEnD tries to roll back to 2.3.5-beta.2.");
       f.fm.updatePreflight = { checks: [{ id: "P3", ok: false, code: "not-service" }] };
       expect(f.fm.updateChatCardText(view, "2.3.5-beta.2")).toContain("this setup can't restart AgEnD by itself");
       f.fm.updatePreflight = null;

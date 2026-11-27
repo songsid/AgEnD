@@ -25,13 +25,16 @@ export const AUDITED_CLI_VERSIONS: Readonly<Record<CliId, readonly string[]>> = 
   // 0.165.0: native persistent-pane acceptance (#2954 / #3001 / #3219). 0.166.0: upstream watch audit. 0.167.0: tests/codex-0167-audit.test.ts. 0.169.0: tests/codex-0169-audit.test.ts (#3830).
   // 0.170.0: isolated mock-backed audit (M-3337, tests/codex-0170-audit.test.ts); no detector change.
   // 0.171.0: isolated mock-backed audit (M-3476, #4287, tests/codex-0171-audit.test.ts); no detector change.
-  codex: Object.freeze(["0.165.0", "0.166.0", "0.167.0", "0.169.0", "0.170.0", "0.171.0"]),
+  // 0.172.0: audited on the maintainer ledger; shipped mirror caught up in M-3815.
+  codex: Object.freeze(["0.165.0", "0.166.0", "0.167.0", "0.169.0", "0.170.0", "0.171.0", "0.172.0"]),
   // tests/kiro-*-audit.test.ts: 2.29.0 … 3.1.0. 3.3.0: no detector change (M-3072, #3831), on the maintainer's ledger.
   // 3.5.0: its chat.defaultModel warning is excluded from model_error (M-3398, tests/kiro-model-unavailable.test.ts).
   // 3.6.0: no detector change; it deleted the dead Classic (v1) harness (M-3752, tests/kiro-3.6.0-audit.test.ts).
-  "kiro-cli": Object.freeze(["2.29.0", "2.29.1", "2.30.0", "2.33.0", "2.34.0", "2.37.0", "3.0.0", "3.1.0", "3.3.0", "3.5.0", "3.6.0"]),
+  // 3.6.2: audited on the maintainer ledger (2026-11-26), mirrored in M-3815.
+  "kiro-cli": Object.freeze(["2.29.0", "2.29.1", "2.30.0", "2.33.0", "2.34.0", "2.37.0", "3.0.0", "3.1.0", "3.3.0", "3.5.0", "3.6.0", "3.6.2"]),
   // tests/fixtures/agy-1.3.5-audit, agy-1.3.6-audit; 1.5.3, 1.5.9, 1.5.12 and 1.5.13 on the maintainer's ledger (1.5.12/1.5.13 shipped in M-3477; 1.5.14 in M-3500; 1.5.15 in M-3550: static precheck against 1.5.14 MINOR, one more "esc to cancel" literal).
-  antigravity: Object.freeze(["1.3.5", "1.3.6", "1.5.3", "1.5.9", "1.5.12", "1.5.13", "1.5.14", "1.5.15"]),
+  // 1.5.17 / 1.5.18: both audited on the maintainer ledger, mirrored in M-3815.
+  antigravity: Object.freeze(["1.3.5", "1.3.6", "1.5.3", "1.5.9", "1.5.12", "1.5.13", "1.5.14", "1.5.15", "1.5.17", "1.5.18"]),
   // tests/grok-1.0.*-audit.test.ts: 1.0.52 … 1.0.89; 1.0.89 lands with its isolated real-binary evidence (M-3335); 1.0.92: precheck false alarm, switch rig identical (M-3500).
   grok: Object.freeze(["1.0.52", "1.0.60", "1.0.67", "1.0.70", "1.0.77", "1.0.88", "1.0.89", "1.0.92"]),
   // tests/muse-1.4.*-audit.test.ts. Keep builds for the audited 1.4.23-R8977.1 (M-3290), 1.4.24-R9131.1 (M-3396) and 1.4.25-R9361.1 (M-3550, maintainer's ledger);

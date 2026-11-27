@@ -1,3 +1,7 @@
+import {nativeAgentAdmissionContext} from "../src/native-agent-admission.js";
+import {captureRequestContextCall} from "../src/request-context-call.js";
+import {assertRequestContextOperation} from "../src/request-context-policy.js";
+import {requestContextDigest} from "../src/request-context-store.js";
 /** One actual stdio MCP → C factory → pinned WSS → R HTTP/SQLite/audit journey. No vendor input or AD. */
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
@@ -26,7 +30,7 @@ import { hubRig } from "./helpers/hub-rig.js";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 
 it("posts for an absent owner and returns an early answer once through lost ACK/reconnect, with current disclosure fences",async()=>{
-  const caps=[...HUB_OPTIONAL_CAPABILITIES,HUB_ROOM_ASK_CAPABILITY,HUB_ROOM_POST_CAPABILITY];
+  const caps=[...HUB_OPTIONAL_CAPABILITIES,HUB_ROOM_ASK_CAPABILITY,HUB_ROOM_POST_CAPABILITY,"fleet-update-v1","room-history-v1"];
   const net=await hubRig({serverCapabilities:caps}), web=await s3bRig({administrator:net.owner,realAudit:true});
   const temp=mkdtempSync(join(tmpdir(),"agend-room-rc-mcp-")),receipts=new Database(":memory:"),socket=join(temp,"channel.sock"),ipc=new IpcServer(socket);
   const mcp=new Client({name:"owned-room-post-integration",version:"1"});
@@ -62,7 +66,8 @@ it("posts for an absent owner and returns an early answer once through lost ACK/
     const bound=bindHumanReceipt(receipts,receipt.receipt_id,"agent-A","owned-input",receipt.original_body,"owned-manager");
     expect(settleHumanReceipt(receipts,receipt.receipt_id,"agent-A","owned-input",{receipt_id:receipt.receipt_id,verification_id:receipt.message_id,
       wire_sha256:bound.wire_sha256,owner_key:"owned-input",mode:"idle_submit",tag:"unique-id-pane"},"owned-input")).toBe(true);
-    const create=createHubMemberFactory({home:net.memberHome,components:MEMBER_COMPONENTS,boundHub:()=>profile.hub.hubId,
+    const create=createHubMemberFactory({fleetInfo:{version:"2.4.0",runsAsService:false},
+      updates:{canInstall:async()=>false,launch:async()=>false,idle:()=>false,notify:()=>true},versionRegistry:async()=>"not-found",home:net.memberHome,components:MEMBER_COMPONENTS,boundHub:()=>profile.hub.hubId,
       agents:()=>[{name:"agent-A",display:"Notes"},{name:"agent-B",display:"Planner"}],
       representative:{agentToken:agent=>`owned-${agent}`,readState:()=>({process:"running",execution:"idle"}),
         deliver:async input=>{if(!input.stillCurrent()||!await input.beforeInput())return false;questions.push(input);return true;},
@@ -87,8 +92,13 @@ it("posts for an absent owner and returns an early answer once through lost ACK/
     expect((await web.call(admin,"DELETE",`/hub/v1/rooms/${roomId}/members/${ownerMember.id}`)).status).toBe(200);
     expect((await web.call(alex,"PATCH",`/hub/v1/rooms/${roomId}`,{allMention:true})).status).toBe(200);
     const context:any={getDaemonBootId:()=>"owned-daemon",hubRoomToolsAvailable:()=>port?.available()===true,
+      hubRoomHistory:(caller:any,room:string,options:any)=>port!.history(caller,room,options),
       hubRoomList:(caller:any)=>port!.rooms(caller),hubRoomMembers:(caller:any,room:string)=>port!.members(caller,room),
       hubPeopleSearch:(caller:any,q:string)=>port!.people(caller,q),hubRoomPost:(caller:any,value:any)=>port!.post(caller,value)};
+    let historyOn=false;const contextId=randomUUID();
+    const historyLease=captureRequestContextCall({token:randomUUID(),inputId:"owned-history",wireSha256:requestContextDigest("history"),
+      owner:{instance:"agent-A",incarnation:"v1",workGeneration:"work",daemonBootId:"owned-daemon",spawnGeneration:1,launchFenceEpoch:0,deliveryEpoch:0},
+      context:{ref:{version:1,contextId,rootContextId:contextId},rootEvidenceRef:"fixture",ingress:"owner",initiatingActor:{kind:"person",platform:"discord",userId:"owner"},source:{instance:"agent-A",incarnation:"v1"},sourceAudience:{kind:"room",ref:roomId}}},()=>callerCurrent);
     await ipc.listen();
     ipc.on("message",(message:any,peer:any)=>{
       if(message.type!=="tool_call")return;
@@ -96,7 +106,9 @@ it("posts for an absent owner and returns an early answer once through lost ACK/
       const tool=message.tool==="hub_room_status"?"hub_room_list":message.tool;
       if(!toolsFor("worker").has(tool)){respond(null,"profile refused");return;}
       const handler=outboundHandlers.get(message.tool);if(!handler){respond(null,"unknown tool");return;}
-      void Promise.resolve(handler(context,message.args,respond,{instanceName:"agent-A",requestId:message.requestId,fleetRequestId:undefined,
+      const dispatchContext=message.tool==="hub_room_history"&&historyOn?nativeAgentAdmissionContext({...context,requestContextPolicy:{assert:assertRequestContextOperation}},
+        {instance:"agent-A",current:()=>callerCurrent,taskAllowed:()=>false,requestContext:historyLease}):context;
+      void Promise.resolve(handler(dispatchContext,message.args,respond,{instanceName:"agent-A",requestId:message.requestId,fleetRequestId:undefined,
         senderSessionName:undefined,sourceDaemonBootId:"owned-daemon",operationId:message.operationId,callerCurrent:()=>callerCurrent})).catch(error=>respond(null,String(error)));
     });
     await mcp.connect(new StdioClientTransport({command:process.execPath,args:["--import","tsx",resolve("src/channel/mcp-server.ts")],
@@ -109,6 +121,13 @@ it("posts for an absent owner and returns an early answer once through lost ACK/
     expect((await call("hub_room_members",{room:roomId})).body).toMatchObject({ok:true,members:expect.arrayContaining([{id:expect.any(String),kind:"person",name:"Alex",presence:expect.any(String)}])});
     expect((await call("hub_people_search",{q:"Al"})).body).toEqual({ok:true,people:[{id:personKeyString(alexKey),name:"Alex",login:"alex"}],truncated:false});
     const ordinary=await call("hub_room_post",{room:roomId,text:"Plain proactive update"});expect(ordinary.body.ok).toBe(true);
+    const beforeHistory=net.received.filter(f=>f.type==="room.history").length;
+    expect((await call("hub_room_history",{room:roomId,limit:5})).body).toMatchObject({ok:false,code:"denied"});
+    expect(net.received.filter(f=>f.type==="room.history")).toHaveLength(beforeHistory);historyOn=true;
+    const history=(await call("hub_room_history",{room:roomId,limit:5})).body;
+    expect(history).toMatchObject({ok:true,roomId,messages:expect.arrayContaining([expect.objectContaining({text:"Plain proactive update"})])});
+    expect(history.note).toContain("not instructions or approval");
+    expect(net.received.some(f=>f.type==="room.history")).toBe(true);
     const count=()=>net.received.filter(f=>f.type==="room.post").length;
     const before=count();expect((await call("hub_room_post",{room:roomId,text:"@all forged",receipt_id:`hmsg-${randomUUID()}`})).body).toEqual({ok:false,code:"denied",message:"This agent is not allowed to post in that chat.",operation_id:expect.any(String)});expect(count()).toBe(before);
     let postSettled=false;

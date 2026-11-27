@@ -21,22 +21,25 @@ const TTL_MS = 6 * 60_000;
 const MAX_BYTES = 64 * 1024;
 const MAX_CALLS = 64;
 const OPS: Readonly<Record<string,string>> = Object.freeze({
-  hub_set_intro:"hub-set-intro",hub_room_list:"hub-room-list", hub_room_post:"hub-room-post", hub_room_members:"hub-room-members", hub_people_search:"hub-people-search",
+  hub_set_intro:"hub-set-intro",hub_room_list:"hub-room-list", hub_room_post:"hub-room-post", hub_room_history:"hub-room-history",hub_room_members:"hub-room-members", hub_people_search:"hub-people-search",
   list_instances:"list", describe_instance:"describe", task:"task", send_to_instance:"send",
   delegate_task:"delegate", request_information:"ask", report_result:"report", delivery_status:"delivery-status",
 });
-const READ_TOOLS = new Set(["hub_room_list","hub_room_members","hub_people_search","list_instances","describe_instance","task","delivery_status"]);
+const READ_TOOLS = new Set(["hub_room_list","hub_room_history","hub_room_members","hub_people_search","list_instances","describe_instance","task","delivery_status"]);
 const READ_TASK_ACTIONS = ["list","get","mine","projects"];
 type ToolResult = { content:Array<{type:"text";text:string}>;isError?:boolean };
 interface Call { operationId:string; digest:string; result:Promise<ToolResult> }
 interface Session {
   token:string; instance:string; requestId:string; agentId:string; backend:string;
   requestContext?:RequestContextCallLease;
+  inputReady?:()=>Promise<boolean>;closeInputWait?:()=>void;
   sandbox:NativeSandbox; policy:string; expires:number; stillCurrent:()=>boolean; closed:boolean;
   timer:ReturnType<typeof setTimeout>; calls:Map<string,Call>; reported:Map<string,Set<string>>;
 }
 export interface NativeMcpGrant {
   instance:string; requestId:string; sandbox:NativeSandbox; endpoint:string; stillCurrent:()=>boolean;
+  /** The exact owned run's positive input boundary; tools/list does not wait, tools/call must. */
+  inputReady?():Promise<boolean>;
   /** Captured from the admitted exec input at claim, never at HTTP arrival. */
   requestContext?:RequestContextCallLease;
 }
@@ -87,20 +90,27 @@ function refuse(req:IncomingMessage,res:ServerResponse,status:number,message:str
 }
 
 export class NativeMcpSessions {
+  private retired=false;
+  private physicalRequests=0;
+  requestContextPhysicallyIdle():boolean{return this.physicalRequests===0&&this.drainCalls.size===0;}
+  /** The caller already proved owned launches ended. A close/revoke is not a handler-drain proof. */
+  retireForRequestContext():void{if(!this.requestContextPhysicallyIdle())throw Error("Native MCP handlers remain in flight");this.retired=true;this.closeAll();}
   private readonly sessions=new RequestContextReferenceMap<string,Session>(session=>session.requestContext?.snapshot.context.ref.rootContextId??null,session=>`native-grant:${session.requestId}`);
   private readonly drainCalls=new RequestContextReferenceMap<string,Session>(session=>session.requestContext?.snapshot.context.ref.rootContextId??null,session=>`native-call:${session.requestId}`);
   constructor(private readonly ctx:AgentEndpointContext,registration?:RequestContextRegistrationGate) {this.sessions.installRegistration(registration);this.drainCalls.installRegistration(registration);}
   get drainRevision():string{return `${this.sessions.revision}:${this.drainCalls.revision}`;}
   drainView(rootId:string){const sessions=this.sessions.view(rootId),calls=this.drainCalls.view(rootId);return {...sessions,revision:this.drainRevision,references:[...sessions.references,...calls.references],unknown:sessions.unknown||calls.unknown};}
   private requestContextRequired=false;
+  private inputProofRequired=false;
   /** Internal rollout only; production stays OFF until L. Existing grants do not acquire a context. */
-  setRequestContextRequired(required:boolean):void {
-    if(required===this.requestContextRequired)return;
-    this.closeAll();this.requestContextRequired=required;
+  setRequestContextRequired(required:boolean,inputProofRequired=false):void {
+    if(required===this.requestContextRequired&&this.inputProofRequired===(required&&inputProofRequired))return;
+    this.closeAll();this.requestContextRequired=required;this.inputProofRequired=required&&inputProofRequired;
   }
 
 
   grant(input:NativeMcpGrant):NativeMcpLease {
+    if(this.retired)throw Error("Native MCP factory is retired");
     this.prune();
     const config=this.ctx.fleetConfig?.instances[input.instance];
     if(this.requestContextRequired&&!input.requestContext)throw Error("Native MCP requires an admitted request context");
@@ -108,6 +118,7 @@ export class NativeMcpSessions {
       throw Error("Native MCP request context is no longer current");
     }
 
+    if(this.inputProofRequired&&!input.inputReady)throw Error("Native MCP requires the owned input proof boundary");
     if(input.requestContext)this.sessions.registrationGate?.assertRegistration(input.requestContext.snapshot.context.ref.rootContextId);
     if(!windowsCliEnabled() || config?.runtime!=="windows" || !UUID.test(config.native_agent_id ?? "")
       || !["codex","claude-code"].includes(config.backend ?? "") || !UUID.test(input.requestId)
@@ -119,6 +130,12 @@ export class NativeMcpSessions {
     const session:Session={token,instance:input.instance,requestId:input.requestId,agentId:config.native_agent_id!,backend:config.backend!,sandbox:input.sandbox,policy,
       expires:Date.now()+TTL_MS,stillCurrent:input.stillCurrent,closed:false,calls:new Map(),reported:new Map(),
       timer:setTimeout(()=>this.closeToken(token),TTL_MS),...(input.requestContext?{requestContext:input.requestContext}:{})};
+    if(input.inputReady){
+      let ready:Promise<boolean>|undefined,close!:()=>void;
+      const closed=new Promise<boolean>(resolve=>{close=()=>resolve(false);});
+      session.closeInputWait=close;
+      session.inputReady=()=>ready??=Promise.race([Promise.resolve().then(()=>input.inputReady!()),closed]).then(value=>value===true,()=>false);
+    }
     session.timer.unref?.();this.sessions.set(token,session);
     return {connection:{endpoint:address,token,tools:this.memberNames(session)},close:()=>this.closeToken(token),
       reportedCorrelations:target=>target===undefined ? [...new Set([...session.reported.values()].flatMap(ids=>[...ids]))] : [...(session.reported.get(target) ?? [])]};
@@ -130,7 +147,7 @@ export class NativeMcpSessions {
   closeAll():void { for(const token of this.sessions.keys())this.closeToken(token); }
   private closeToken(token:string):void {
     const session=this.sessions.get(token);if(!session)return;
-    session.closed=true;clearTimeout(session.timer);session.calls.clear();this.sessions.delete(token);
+    session.closed=true;session.closeInputWait?.();clearTimeout(session.timer);session.calls.clear();this.sessions.delete(token);
   }
   /** Publication retires a generation before later lifecycle/configuration work can run. */
   observePolicies():void { this.prune(); }
@@ -143,7 +160,7 @@ export class NativeMcpSessions {
   private current(session:Session):boolean {
     const config=this.ctx.fleetConfig?.instances[session.instance];
     let current=false;try{current=session.stillCurrent();}catch{/* a revoked owner is unavailable */}
-    return !session.closed && Date.now()<session.expires && windowsCliEnabled() && current
+    return !this.retired && !session.closed && Date.now()<session.expires && windowsCliEnabled() && current
       && (!session.requestContext || session.requestContext.current())
       && this.policy(session.instance)===session.policy && config?.runtime==="windows" && config.native_agent_id===session.agentId && config.backend===session.backend;
   }
@@ -182,7 +199,7 @@ export class NativeMcpSessions {
       const scoped=readTask
         ? {...tool,description:`Read-only task lookup. Allowed actions: ${READ_TASK_ACTIONS.join(", ")}.`,inputSchema:{...tool.inputSchema,properties:{...tool.inputSchema.properties,action:{type:"string",enum:READ_TASK_ACTIONS}}}}
         : tool;
-      return {...scoped,annotations:{readOnlyHint:tool.name==="list_instances" || tool.name==="describe_instance" || tool.name==="delivery_status" || ["hub_room_list","hub_room_members","hub_people_search"].includes(tool.name) || readTask}};
+      return {...scoped,annotations:{readOnlyHint:tool.name==="list_instances" || tool.name==="describe_instance" || tool.name==="delivery_status" || ["hub_room_list","hub_room_history","hub_room_members","hub_people_search"].includes(tool.name) || readTask}};
     }));
   }
 
@@ -197,7 +214,8 @@ export class NativeMcpSessions {
     if(!session || !this.current(session)){if(session)this.closeToken(session.token);refuse(req,res,401,"Native MCP capability is invalid or expired");return true;}
     const declared=Number(req.headers["content-length"]);
     if(Number.isFinite(declared) && declared>MAX_BYTES){refuse(req,res,413,"Native MCP request is too large");return true;}
-    void this.readRequest(req,res,session);
+    this.physicalRequests++;
+    void this.readRequest(req,res,session).finally(()=>{this.physicalRequests--;});
     return true;
   }
   private async readRequest(req:IncomingMessage,res:ServerResponse,session:Session):Promise<void> {
@@ -234,6 +252,7 @@ export class NativeMcpSessions {
       if(!old&&session.requestContext)this.sessions.registrationGate?.assertRegistration(session.requestContext.snapshot.context.ref.rootContextId);
       const operationId=old?.operationId ?? randomUUID();
       const call=old ?? {operationId,digest,result:Promise.resolve().then(async()=>{
+        if(session.inputReady&&!await session.inputReady())return toolError("Native MCP capability or tool access was revoked");
         if(!this.current(session) || !this.canCall(session,name,args))return toolError("Native MCP capability or tool access was revoked");
         try {
           if(this.ctx.requestContextPolicy)requireRequestContextPolicy(this.ctx,session.instance,name,args,session.requestContext?{coverage:"covered",lease:session.requestContext}:undefined);

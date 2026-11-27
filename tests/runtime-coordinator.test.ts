@@ -331,3 +331,14 @@ describe("M-2731 optional model refresh capability",()=>{
     const disk=readFileSync(join(homes.at(-1)!,"runtime-machines.json"),"utf8");expect(disk).not.toContain('"operation":"models.refresh"');expect(disk).not.toContain('"profile":"work"');
   });
 });
+
+it("S-230 refuses a pending owned command, then observes socket and server retirement before replacement",async()=>{
+ const h=hub(),identity=pair(h),base=await listen(h),ws=new WebSocket(base.replace("http:","ws:")+"/runtime/v1/connect",{headers:{Authorization:`Bearer ${identity.credential}`}});clients.push(ws);await once(ws,"open");let request:any;
+ ws.on("message",raw=>{const frame=JSON.parse(raw.toString());if(frame.type==="request"){if(frame.operation==="workspace")request=frame;else ws.send(JSON.stringify({v:1,type:"response",id:frame.id,ok:false,error:"Fixture probe refused"}));}});
+ const welcome=once(ws,"message");ws.send(JSON.stringify({v:1,type:"hello",bootId:"fixture-boot",inventory:{home:"C:\\Fixture",clis:[]}}));await welcome;
+ const pending=h.call(identity.machineId,"workspace",{agentId:taskInput.requestId}),refused=expect(pending).rejects.toThrow("Fixture operation refused");
+ await vi.waitFor(()=>expect(request?.operation).toBe("workspace"));await expect(h.retireForRequestContext()).rejects.toThrow("remain in flight");
+ expect(ws.readyState).toBe(WebSocket.OPEN);ws.send(JSON.stringify({v:1,type:"response",id:request.id,ok:false,error:"Fixture operation refused"}));await refused;
+ await vi.waitFor(()=>expect(h.requestContextPhysicallyIdle()).toBe(true));const closed=once(ws,"close");await h.retireForRequestContext();await closed;
+ expect(ws.readyState).toBe(WebSocket.CLOSED);await expect(h.call(identity.machineId,"probe",{})).rejects.toThrow();
+});

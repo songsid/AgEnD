@@ -73,6 +73,7 @@ const OP_MAP: Record<string, string> = {
   "hub-set-intro": "hub_set_intro",
   "hub-room-list": "hub_room_list",
   "hub-room-post": "hub_room_post",
+  "hub-room-history":"hub_room_history",
   "hub-room-members": "hub_room_members",
   "hub-people-search": "hub_people_search",
   send: "send_to_instance",
@@ -108,6 +109,7 @@ export interface AgentEndpointContext extends OutboundContext {
   /** Native Windows MCP children hold per-turn capabilities, separate from disk-based Linux instance tokens. */
   nativeMcpSessions?(): { handleRequest(req: IncomingMessage, res: ServerResponse): boolean };
   readonly agentCredentials: AgentCredentials;
+  readonly requestContextPendingWork?: import("./request-context-pending-work.js").RequestContextPendingWork;
   /** #2305: an instance's reaction to a web chat message (FleetManager.reactToWebMessage). */
   reactToWebMessage?(instance: string, messageId: string, emoji: unknown): Promise<{ ok: true; mirrored: Promise<number> } | { ok: false; error: string }>;
   /** Absolute data directory (e.g. ~/.agend). Used to locate per-instance token files. */
@@ -363,6 +365,14 @@ const durableResponseOperations = new WeakMap<object, string>();
 const COMPACT_ACK_TOOLS = new Set(["send_to_instance", "delegate_task", "request_information", "report_result", "broadcast"]);
 
 export async function dispatchAgentOperation(
+  ctx: AgentEndpointContext, instance: string, op: string, args: Record<string, unknown>,
+  trustedOperationId?: string, callerCurrent?: () => boolean,
+): Promise<unknown> {
+  const run = () => dispatchOwnedAgentOperation(ctx, instance, op, args, trustedOperationId, callerCurrent);
+  return ctx.requestContextPendingWork ? ctx.requestContextPendingWork.run(instance, run) : run();
+}
+
+async function dispatchOwnedAgentOperation(
   ctx: AgentEndpointContext,
   instance: string,
   op: string,

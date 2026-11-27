@@ -1,3 +1,4 @@
+import type {TurnReplyRouteLease} from "./turn-reply-guard.js";
 import { RequestContextV1Schema } from "./request-context-protocol.js";
 import type { RequestContextTurnSnapshot } from "./request-context-turns.js";
 import { requestContextDigest } from "./request-context-store.js";
@@ -15,6 +16,7 @@ export type RequestContextCallAdmission = { coverage: "covered"; lease: RequestC
 export interface RequestContextLocalCall {
   readonly id: string;
   readonly admission: RequestContextCallAdmission;
+  readonly replyRoute?:TurnReplyRouteLease;
   current(): boolean;
 }
 function freeze<T>(value: T): T {

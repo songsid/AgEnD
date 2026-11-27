@@ -432,3 +432,12 @@ describe.each(providerCases)("$cli task orchestration", ({ cli, model, output, s
     expect(service.get(input.requestId)).toMatchObject({ status: "completed", threadId: conversationId, output });
   });
 });
+
+describe("S-230 physical native factory retirement",()=>{
+ it("a worker's terminal line does not retire its factory before actual child close",async()=>{
+  const service=new WindowsCliBridge(launcher,DETECTED);service.start(input);await launched();
+  child.send({type:"finished",code:1});expect(()=>service.retireForRequestContext()).toThrow("not physically idle");
+  child.close();await vi.waitFor(()=>expect(service.idleForRequestContext()).toBe(true));service.retireForRequestContext();
+  expect(()=>service.start({...input,requestId:conversationId})).toThrow("factory is retired");await expect(service.probe({force:true})).rejects.toThrow("factory is retired");expect(spawn).toHaveBeenCalledOnce();
+ });
+});

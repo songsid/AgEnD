@@ -1,0 +1,80 @@
+{
+  "sourceCommit": "cc0d44a34e400da829688831b14b3c2fba3483d8",
+  "scope": "Capable startup recovery fence and first-On connection staging; actual owner installer/publication remains unfinished.",
+  "checks": {
+    "neighborRun": {
+      "files": 46,
+      "passed": 1038,
+      "failed": 3,
+      "skipped": 1,
+      "failure": "open-error fixture injected only at writable constructor; preflight now runs earlier"
+    },
+    "repairedAndExtended": {
+      "files": 3,
+      "passed": 36,
+      "failed": 0,
+      "includes": "all ten open-error checks plus boot and installation; one new WAL-only negative"
+    },
+    "typecheckTests": "passed",
+    "mutants": [
+      {
+        "mutation": "orphan-history-means-legacy",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "startup-does-not-hold-input",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "startup-uses-legacy-capability",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "stage-can-revert-after-activation",
+        "exit": 1,
+        "red": true
+      }
+    ],
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "no activation triggered by upgrade/startup",
+    "retained activation requires process Fleet lock and fenced capable recovery",
+    "unprepared owner launches are refused rather than launched legacy",
+    "first-On staging creates no persistent schema and abort preserves existing cached owners",
+    "committed activation forbids capability-zero restoration"
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "d43228ffc75eabd1262964bb346486e18a06d112d4b683fe64689a58f307a680"
+    },
+    {
+      "path": "src/delivery-outbox.ts",
+      "sha256": "476cdeb2ff4d040da9950d07dc5ed42a6e920719c79b0da17f0bda12128c757d"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "4a9d350de698eab69c5391aff36460339c2a8c6f8ce28a0b5ef693b62a829d6f"
+    },
+    {
+      "path": "src/request-context-boot.ts",
+      "sha256": "fca2003878e1925d96d4ab41748cc96bb6244709d59d36e2ece2955074349284"
+    },
+    {
+      "path": "src/request-context-installation.ts",
+      "sha256": "26e499176e09e8cb472bbf15bf4cb541c76b038d439beb4b39818dd493eed1da"
+    },
+    {
+      "path": "tests/outbox-open-errors-1490.test.ts",
+      "sha256": "e5cd58e639d0916133ffd5c10926c7cb2bf815673ff1b3315609cefd7942f6d8"
+    },
+    {
+      "path": "tests/request-context-boot-s230.test.ts",
+      "sha256": "4b5b6b188dca5e994c76f9eaae5289bd44c32a253458bcd648cee83185be8d5b"
+    }
+  ]
+}

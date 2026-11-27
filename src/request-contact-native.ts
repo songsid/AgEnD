@@ -7,6 +7,7 @@
 import type { ContactPerson } from "./contact-auth-types.js";
 import { getLocale, t } from "./locale.js";
 import type { RequestContactCardV1, RequestContactPrincipal } from "./request-contact-types.js";
+import { REQUEST_CONTEXT_POLICY_COPY } from "./request-context-policy.js";
 
 export type NativeContactAction = "approve" | "decline" | "cancel";
 export interface NativeContactCardView { message: string; choices: Array<{ action: NativeContactAction; label: string }> }
@@ -43,6 +44,9 @@ export function nativeContactCardText(card: RequestContactCardV1, opts: { now?: 
     t("contactCard.title", card.sourceLabel, card.targetLabel),
     `> ${quote.replace(/\s*\n+\s*/g, " ")}`,
     meta,
+    // S-250: a request from an agent whose launch was interrupted (H, #4500) says why it needs approval, in J's S-249
+    // words — the same sentence the agent and the web are given.
+    ...(card.reason === "interrupted-launch" ? [REQUEST_CONTEXT_POLICY_COPY[zh() ? "zh-TW" : "en"].interrupted] : []),
     // A proposal offers one decision and Not now; a scope line would describe a button that is not there.
     ...(opts.proposal ? [] : [t(root ? "contactCard.scope_root" : "contactCard.scope_once")]),
   ];

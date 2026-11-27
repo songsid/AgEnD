@@ -10,6 +10,7 @@ import { dirname, join, resolve, win32 } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { prepareNativeExecInputWrite, NativeExecInputWitness, nativeExecInputRequestDigest, validateNativeExecInputClaim } from "./native-exec-input.js";
 import { randomBytes } from "node:crypto";
 import { runtimeFacts, type RuntimeDefaultLoginCli } from "./cli-registry.js";
 import { nativeUpdateGuard, boundNativeModelOptions, buildNativeInvocation, isNativeProviderId, nativeMcpServerConfig, nativeProvider, NATIVE_PROVIDER_IDS, parseNativeAuthResult, parseNativeModels, validateNativeMcpConnection, validateNativeModel, type NativeMcpLaunch, type NativeModelOption, type NativeProviderDescriptor, type NativeProviderId } from "./windows-cli-providers.js";
@@ -669,6 +670,9 @@ async function workerMain(): Promise<void> {
       personal = request.personal === true;
       if(request.answerOnly !== undefined && (request.answerOnly !== true || !personal)) throw Error("Invalid Answer only profile");
       const answerOnly = request.answerOnly === true;
+      const execInput = request.execInput === undefined ? undefined : validateNativeExecInputClaim(request.execInput);
+      if (execInput && (execInput.requestId !== input.requestId || execInput.requestSha256 !== nativeExecInputRequestDigest(input, request)))
+        throw Error("Native exec input composition changed");
       if (personal) assertPersonalTask(input, request);
       const mcp = request.mcp === undefined ? undefined : validateNativeMcpConnection(request.mcp);
       // Set only by this computer's own Runtime after it turned a profile NAME into a folder under its profile root; AgEnD never sends it.
@@ -716,7 +720,12 @@ async function workerMain(): Promise<void> {
         const environment = answerOnly && personalStage ? answerOnlyEnvironment(profile.env,personalStage.plan.environment) : { ...profile.env, ...(personalStage?.plan.environment ?? ordinaryInvocation?.env) };
         if (personalStage && input.cli === "codex") await checkPersonalCodexPrompt(executable, personalStage.plan, environment);
         if (disconnected || stopping) throw Error("Personal task cancelled before launch");
+        // Only this main child can prove input. Setup/probe commands above never own this witness.
+        const transport = nativeProvider(input.cli).promptTransport;
+        const inputWitness = execInput ? new NativeExecInputWitness(execInput,input,request,transport,
+          transport === "file" ? readFileSync(promptFile!) : invocation.stdin, proof => emit({type:"input-written",proof})) : undefined;
         child = spawn(executable.command, [...executable.args, ...profile.args, ...invocation.args], { cwd: personalStage?.plan.cwd ?? input.cwd, env: environment, shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+        const writeInput=inputWitness?prepareNativeExecInputWrite(child,inputWitness,invocation.stdin):()=>child!.stdin!.end(invocation.stdin,"utf8");
         child.stdin!.on("error", () => stop());
         child.stdout!.on("error", () => stop());
         child.stderr!.on("error", () => stop());
@@ -731,7 +740,7 @@ async function workerMain(): Promise<void> {
         child.on("error", e => emit({ type: "error", message: personal ? "Personal agent could not start" : e.message }));
         child.on("spawn", () => { emit({ type: "started", executable: executable.path, cwd: input.cwd }); if (stopping || disconnected) stop(); });
         const closed = new Promise<number | null>(done => child!.on("close", exitCode => { completed = true; clearTimeout(timeout); done(exitCode); }));
-        child.stdin!.end(invocation.stdin, "utf8");
+        writeInput();
         code = await closed;
       } finally {
         // Only our exact prompt and empty directory; never recursively remove CLI-created files.

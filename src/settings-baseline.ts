@@ -53,6 +53,7 @@ export function readSettingsCommittedFile(path: string | null): Buffer | null {
 export class SettingsBaselines {
   constructor(private readonly options: {
     dataDir: string; configPath(): string | null; config(): FleetConfig | null;
+    requestContextControl?: SettingsEffectContext["requestContextControl"];
     current(): unknown; proof?: SettingsEffectContext["proof"];
     generalLocation?: SettingsEffectContext["generalLocation"];
     hubBrowserCertificate?: SettingsEffectContext["hubBrowserCertificate"];
@@ -73,13 +74,14 @@ export class SettingsBaselines {
     const before = settingsFingerprint(this.snapshot());
     const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env"),hostMonitoringSettingsPath(this.options.dataDir),hostAlertSettingsPath(this.options.dataDir)];
     const bytes = files.map(readSettingsCommittedFile);
-    return settingsFingerprint([before, ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]);
+    return settingsFingerprint([before, ...(this.options.requestContextControl ? [this.options.requestContextControl()] : []), ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]);
   }
   async read(): Promise<SettingsBaseline> {
     const before = settingsFingerprint(this.snapshot());
+    const control = this.options.requestContextControl?.();
     const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env"),hostMonitoringSettingsPath(this.options.dataDir),hostAlertSettingsPath(this.options.dataDir)];
     const bytes = await withinBudget(Promise.all(files.map(read)), performance.now() + 5000);
-    if (settingsFingerprint(this.snapshot()) !== before) throw new SettingsConfirmationError(409, "settings_changed");
+    if (settingsFingerprint(this.snapshot()) !== before || settingsFingerprint(this.options.requestContextControl?.()) !== settingsFingerprint(control)) throw new SettingsConfirmationError(409, "settings_changed");
     let classic: Record<string, any> = {};
     if (bytes[1]) {
       const parsed = yaml.load(bytes[1].toString("utf8"));
@@ -88,7 +90,7 @@ export class SettingsBaselines {
     }
     // Classify the raw switch from the same bounded file snapshot as the confirmation fingerprint, not cached runtime config.
     const membership = this.options.hubMembership, pilotTrust = this.options.hubPilotTrust, pageSharing = this.options.hubPageSharing;
-    return { hostAlertSettings:()=>parseHostAlertSettingsBytes(bytes[4]), hostMonitoringDrive:()=>parseHostMonitoringDrive(bytes[3]), hostMonitoringAvailable: this.options.hostMonitoringAvailable, config: structuredClone(this.options.config()), classic, proof: this.options.proof, generalLocation: this.options.generalLocation, hubBrowserCertificate: this.options.hubBrowserCertificate, hubMembership: membership ? () => membership(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPilotTrust: pilotTrust ? () => pilotTrust(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPageSharing: pageSharing ? () => pageSharing(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubExposure: this.options.hubExposure, hubPairing: this.options.hubPairing, guestDerivedScopes: this.options.guestDerivedScopes,
-      fingerprint: settingsFingerprint([before, ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]) };
+    return { requestContextControl: () => control ?? null, hostAlertSettings:()=>parseHostAlertSettingsBytes(bytes[4]), hostMonitoringDrive:()=>parseHostMonitoringDrive(bytes[3]), hostMonitoringAvailable: this.options.hostMonitoringAvailable, config: structuredClone(this.options.config()), classic, proof: this.options.proof, generalLocation: this.options.generalLocation, hubBrowserCertificate: this.options.hubBrowserCertificate, hubMembership: membership ? () => membership(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPilotTrust: pilotTrust ? () => pilotTrust(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPageSharing: pageSharing ? () => pageSharing(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubExposure: this.options.hubExposure, hubPairing: this.options.hubPairing, guestDerivedScopes: this.options.guestDerivedScopes,
+      fingerprint: settingsFingerprint([before, ...(this.options.requestContextControl ? [control] : []), ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]) };
   }
 }

@@ -215,9 +215,11 @@ describe("B1 enrolment-code protected routes and actual join", () => {
     expect(r.db.prepare("SELECT count(*) n FROM hub_enrolment_code_uses").get()).toEqual({ n: 0 });
   });
   it("expired redemption reservations release code capacity without any Fleet status poll", async () => {
-    const { r, admin } = await world(), code = await make(r, admin, { maxUses: 1 }), a = await begin(r, code.code);
+    // This tests a one-minute reservation, not the code's end-of-day expiry (CI can cross midnight).
+    const nearMidnight = new Date(); nearMidnight.setHours(23, 59, 30, 0); let now = nearMidnight.getTime();
+    const { r, admin } = await world(false, () => now), code = await make(r, admin, { maxUses: 1, expires: "1h" }), a = await begin(r, code.code);
     expect((await a.approve("carol")).status).toBe(200);
-    const approved = Date.now(); vi.spyOn(Date, "now").mockReturnValue(approved + 60001);
+    now += 60_001;
     const b = await begin(r, code.code); expect((await b.approve("dan")).status).toBe(200);
     const old = JSON.parse((r.db.prepare("SELECT body FROM hub_company_join_requests WHERE id=?").get(a.binding.requestId) as any).body);
     expect(old).toMatchObject({ stage: "ended", reason: "expired" });

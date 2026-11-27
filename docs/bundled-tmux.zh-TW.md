@@ -21,7 +21,7 @@ tmux 是四個 npm 套件之一：`@songsid/agend-tmux-<os>-<cpu>`（Linux 與 m
 
 **不會退回使用主機的 tmux。** 如果這個平台沒有對應套件，或安裝時略過了它（`npm install --omit=optional`，或 registry 鏡像沒有它），AgEnD 會拒絕啟動並說明原因。要在這種主機上仍然執行，請把 `AGEND_TMUX_BIN` 設成 tmux 3.6a 或更新版本的絕對路徑。
 
-**離線主機。** 在可連網的電腦上執行 `npm pack @songsid/agend @songsid/agend-tmux-<平台> @songsid/agend-node-<平台>`，再到離線主機上執行 `npm install -g ./*.tgz`。
+**離線主機。** 在可連網的電腦上執行 `npm pack @songsid/agend @songsid/agend-tmux-<平台> @songsid/agend-node-<平台>`，再到離線主機上執行 `npm install -g --allow-scripts="$PWD/songsid-agend-<版本>.tgz" ./*.tgz`（npm 12 只認 tarball 的絕對路徑來允許它的安裝腳本）。
 
 ## 從舊版升級
 

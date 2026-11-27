@@ -68,8 +68,8 @@ export interface HubRoomAnswer { notAnswered?:"finished-without-answer";messageI
   buttons?: HubAnswerButtons; attachments?: HubAttachmentRef[]; mentionFeedback?: true }
 export interface HubRoomAnswerAck { messageId: MessageId; answerId: string; mentionRefusals?: import("./room-mention-feedback-model.js").HubRoomMentionFeedback }
 /** M-3127 (agent reactions, on room-answer-buttons-v1): the agent's reaction to the room question it was asked ("" takes it back). */
-export interface HubRoomReact { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; emoji: string }
-export interface HubRoomReactResult { messageId: MessageId; ok: boolean; code?: "invalid" | "denied" | "not-found" | "archived" | "revoked" }
+export interface HubRoomReact { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; emoji: string; acknowledge?: true }
+export interface HubRoomReactResult { messageId: MessageId; ok: boolean; acknowledged?: true; code?: "invalid" | "denied" | "not-found" | "archived" | "revoked" }
 /** Proactive group-room messages are scoped by the authenticated link and its own published exposure. */
 export type HubRoomPostRefusalCode = "invalid" | "denied" | "revoked" | "not-found" | "archived" | "ambiguous-room" | "rate-limited" | "conflict" | "unavailable" | "stale" | "backpressure";
 export interface HubRoomListRequest { exposureId: ExposureId }
@@ -143,6 +143,7 @@ export type HubMemberFrame =
   | HubFrame<"room.context-input", import("./room-context-model.js").HubRoomContextInput>
   | HubFrame<"room.list", HubRoomListRequest>
   | HubFrame<"room.post", HubRoomPost>
+  | HubFrame<"room.history", import("./room-history-model.js").HubRoomHistory>
   | HubFrame<"room.members", HubRoomMembersRequest>
   | HubFrame<"people.search", HubPeopleSearch>
   | HubFrame<"room.post-answer-ack", HubRoomPostAnswerAck>
@@ -183,6 +184,7 @@ export type HubServerFrame =
   | HubFrame<"room.context-input-result", import("./room-context-model.js").HubRoomContextInputResult>
   | HubFrame<"room.list-result", HubRoomListResult>
   | HubFrame<"room.post-result", HubRoomPostResult>
+  | HubFrame<"room.history-result", import("./room-history-model.js").HubRoomHistoryResult>
   | HubFrame<"room.members-result", HubRoomMembersResult>
   | HubFrame<"people.search-result", HubPeopleSearchResult>
   | HubFrame<"room.post-answer", HubRoomPostAnswer>

@@ -1,0 +1,81 @@
+{
+  "sourceCommit": "854d56d772a579421e420325b002aff2936c47cc",
+  "scope": "Controlled pre-start daemon preparation, staged versus retained work identity, and synchronous actual negotiated-transport observations. These are installer components, not a complete installer or activation proof.",
+  "checks": {
+    "focused": {
+      "files": 6,
+      "passed": 85,
+      "failed": 0
+    },
+    "managedFactory": {
+      "selectedPassed": 1,
+      "unselected": 47
+    },
+    "typecheck": "typecheck:tests passed",
+    "public": "source diff and added tests clean",
+    "gitleaks": "Pinned 8.24.3 source range clean",
+    "campaigns": "No new heavy or mutation campaign; focused component controls only."
+  },
+  "sourceAndTestSha256": [
+    {
+      "path": "src/request-context-work.ts",
+      "sha256": "189c0800beabc72abd8ba595b741f087ad0838e1ef8b186aa647400ed3bbd569"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "944f08327e21ffa14b4a6c3d249016a016e6ce576ec2688c6beb0bb600028894"
+    },
+    {
+      "path": "src/runtime-coordinator.ts",
+      "sha256": "9f26b876a61112342e1080687624e407852cd483fb4920548a43d20923250e6c"
+    },
+    {
+      "path": "src/local-pane-endpoint.ts",
+      "sha256": "ff348f43452cbe3e652a000be778d732d7975f6ef0f0dba70ae6703184f1f816"
+    },
+    {
+      "path": "src/native-pane-lifecycle.ts",
+      "sha256": "ad442e9414e4c32e88e67cb04bde54f339d81017f73d71a5298d1d1b845dab13"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "6424276f448d554731ff3f8b181a1d992a1bff628fe2da46d252fe58373508dd"
+    },
+    {
+      "path": "src/runtime-cli.ts",
+      "sha256": "47ee6595f73e2ae4039a48c71a39e3a9cab4325a8d39e1372959fb0da1eb8e37"
+    },
+    {
+      "path": "src/runtime-update-controller.ts",
+      "sha256": "ab7b1cc79e3e75bade4964d94af6e45faeb1aa0ed06ed476385445a46cf71fd0"
+    },
+    {
+      "path": "tests/request-context-work-s230.test.ts",
+      "sha256": "7a7e2b38da2dc4780b4b8c9cb386c638ec9d87e582825fae32a445bab06d8ea8"
+    },
+    {
+      "path": "tests/request-context-owner-preparation-s230.test.ts",
+      "sha256": "54d680ca2496293573698da6e672e630ebda37306436674a76a6b53aa3dd2a6e"
+    },
+    {
+      "path": "tests/request-context-transport-readiness-s230.test.ts",
+      "sha256": "33dd4a3e770e5a8071636b051a6e212daa59cefe0f4fee7ab1d7fa31d18907d1"
+    },
+    {
+      "path": "tests/local-pane-relay-2950.test.ts",
+      "sha256": "6536ddcca779ada1e42061566ae7662cece00efc105a420dbda33058be869b96"
+    },
+    {
+      "path": "tests/runtime-update-controller.test.ts",
+      "sha256": "aba3ec23406326f4d94a404ebb0b652716e4fabaf75a77ee401c0f9742111622"
+    }
+  ],
+  "limits": [
+    "Candidate binding alone never asserts transport readiness or publishes ingress.",
+    "Work retention/sealing and actual physical owner retirement still have to be orchestrated by the controlled installer. Changed incarnations refuse; their explicit retired-owner transition is not guessed.",
+    "Runtime client advertisement is inert until a capable coordinator welcome; existing Off coordinators decline it. Registry presence is insufficient for native readiness.",
+    "Strict old-host teardown/reconstruction, registered grants and exec lanes, control pending-change/authenticator flow, capable startup, and full-mode proof remain unfinished.",
+    "No live Fleet, CLI, pane, runtime or provider starts. Local protocol and update tests use inert transports/processes and private scratch state.",
+    "No UI, CSS, locale or image bytes changed. Covered no-destination copy remains an explicit pending installer item from review."
+  ]
+}

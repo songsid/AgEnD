@@ -8,6 +8,8 @@ import { useStore } from "/assets/app-store.js";
 import { toast } from "/assets/ui-toast.js";
 import { checkUpdateNow, hubNeed, openHubUpdateDialog, openUpdateDialog, refreshUpdate, updateActive, updateStore } from "/assets/app-update.js";
 import { dateTimeText } from "/assets/clock-text.js";
+// M-3770 1.4: the update card's Settings part (a module of its own; its deps are passed, never imported back).
+import { UpdateCardSettings, cardActions } from "/assets/update-card-ui.js";
 
 register("supdate", {
   en: { title: "Version and update", current: "Current version", line: "Update line", latest: "Latest", checked: "Last checked",
@@ -62,10 +64,22 @@ export function UpdateSection() {
     ${offer && !offer.installable ? html`<p class="s-update-note">${t("supdate.alphaNote")}</p>` : null}
     <div class="s-update-row">
       ${need ? html`<button type="button" class="btn btn-primary" disabled=${starting || updateActive(info)} onClick=${() => { void openHubUpdateDialog(); }}>${t("update.now")}</button>`
+        : info.card !== undefined ? cardButtons(info, starting)
         : offer && offer.installable ? html`<button type="button" class="btn btn-primary" disabled=${starting || updateActive(info)} onClick=${openUpdateDialog}>${t("update.now")}</button>` : null}
-      <button type="button" class="btn" disabled=${checking || updateActive(info)} onClick=${check}>${checking ? t("supdate.checking") : t("supdate.check")}</button>
+      <button type="button" class="btn" disabled=${checking || starting || updateActive(info)} onClick=${check}>${checking ? t("supdate.checking") : t("supdate.check")}</button>
     </div>
+    ${info.card !== undefined ? html`<${UpdateCardSettings} info=${info} deps=${CARD_DEPS} />` : null}
   </section>`;
+}
+/** M-3770 1.4: what update-card-ui.js needs from app-update.js, passed in. */
+const CARD_DEPS = { refresh: () => refreshUpdate(), setInfo: (i) => updateStore.set({ info: i }), getInfo: () => updateStore.get().info,
+  setStarting: (starting) => updateStore.set({ starting }) };   // #4564: the row is off while Install as a service restarts AgEnD
+/** M-3770 1.4: with the card, the banner's answers in every state (#4487 review P2: the banner is hidden on this page, so
+ *  waiting and scheduled keep Cancel and Update now here; Pick a time only where a schedule is taken). One policy: cardActions. */
+function cardButtons(info, starting) {
+  const busy = starting || updateActive(info);
+  const actions = cardActions(info, CARD_DEPS);
+  return actions.length ? actions.map((a) => html`<button type="button" key=${a.key} class=${`btn${a.primary ? " btn-primary" : ""}`} disabled=${busy} onClick=${() => { void a.run(); }}>${a.label}</button>`) : null;
 }
 
 /** The "new version" mark beside Settings' version pill (admins, an installable offer). */

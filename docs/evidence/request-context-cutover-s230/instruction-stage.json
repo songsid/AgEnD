@@ -1,0 +1,121 @@
+{
+  "sourceCommit": "91678efddfb34c2558dab73a2e0fd0b5b7761e1d",
+  "scope": "Fenced launch instruction and managed knowledge staging only; production factory and full cutover remain unfinished.",
+  "checks": {
+    "restored": {
+      "files": 10,
+      "tests": 350,
+      "result": "passed"
+    },
+    "typecheckTests": "passed",
+    "mutationControls": [
+      {
+        "mutation": "candidate-grants-installed-mode",
+        "tests": [
+          "tests/request-context-knowledge-s230.test.ts"
+        ],
+        "filter": "candidate rendering cannot",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "candidate-rendering-ignored",
+        "tests": [
+          "tests/request-context-daemon-s224.test.ts"
+        ],
+        "filter": "candidate instruction staging",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "active-retains-legacy-union",
+        "tests": [
+          "tests/request-context-knowledge-s230.test.ts"
+        ],
+        "filter": "stages owned General knowledge",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "abort-keeps-request-rules",
+        "tests": [
+          "tests/request-context-knowledge-s230.test.ts"
+        ],
+        "filter": "worker rendering",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "start-loses-captured-policy",
+        "tests": [
+          "tests/cross-backend-skills.test.ts"
+        ],
+        "filter": "S-230 captures one candidate policy",
+        "exit": 1,
+        "red": true
+      },
+      {
+        "mutation": "render-mode-leaks-to-serving",
+        "tests": [
+          "tests/request-context-knowledge-s230.test.ts"
+        ],
+        "filter": "instructionMode reads stay",
+        "exit": 1,
+        "red": true
+      }
+    ],
+    "uiCopyAndPictures": "unchanged"
+  },
+  "boundaries": [
+    "instructionMode is rendering only; installedMode/capture retain serving authority",
+    "one captured preparation shared by startup knowledge and pre-start policy",
+    "legacy abort relaunch regenerates owned instructions and skills without staged rules",
+    "no CLI/provider/live Fleet started for this checkpoint"
+  ],
+  "sourceAndTestSha256": [
+    {
+      "path": "docs/design/request-context-cutover-s230.md",
+      "sha256": "21cfc50d45a1f3cbecd4a9ba02150c9e976bf319c15b2d0ce0324dc55aeb5b90"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "65747c165b52ca0fb4aa527a990c917544d5fd92c01be7978555200504919073"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "795797bdc61f91c1b80bf59af0ee14276e1ba1e5f5fda43dc3e26ded3118430e"
+    },
+    {
+      "path": "src/instance-lifecycle.ts",
+      "sha256": "0b754b362eb00d14432f2672ae3afdc9db23a3bead9bda364a86c051c6079c03"
+    },
+    {
+      "path": "src/instructions.ts",
+      "sha256": "20376520ada7acaf493efde7aae96486877df94cdbd1cf9a56cd8498e0af90e0"
+    },
+    {
+      "path": "src/request-context-knowledge.ts",
+      "sha256": "7c1ad8fd4015ac8e6ccd32e0a094c406e0e70bacda62d46e47b31d6b83a3f3f6"
+    },
+    {
+      "path": "src/request-context-policy.ts",
+      "sha256": "9565a8cef8e3df950170c2d156c1f85b33ff98b3418ddac51812c528a37f97e5"
+    },
+    {
+      "path": "src/request-context-start.ts",
+      "sha256": "61cad8a40c0f13634fd1908bb25b1d5acf22bf1d346f1d8f2bba32900212a31c"
+    },
+    {
+      "path": "tests/cross-backend-skills.test.ts",
+      "sha256": "77f046bc83d7d75ca570b3f58b8b96ab3640c5bd760d35a8ee44541c2c23dbc8"
+    },
+    {
+      "path": "tests/request-context-daemon-s224.test.ts",
+      "sha256": "2cf8fa6846975efe172fccb8e307ca8c6ea8513599b2acc934c64eb7b12d3d3d"
+    },
+    {
+      "path": "tests/request-context-knowledge-s230.test.ts",
+      "sha256": "0ff3bd9438bf2cac70d2163efe869ceb9bb9f82922219dd8c473c1f18e1b1661"
+    }
+  ]
+}

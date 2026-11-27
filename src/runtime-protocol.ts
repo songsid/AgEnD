@@ -1,3 +1,4 @@
+import type { NativeExecInputClaim } from "./native-exec-input.js";
 /** Versioned, bounded runtime transport. This module is safe in the standalone Windows client. */
 import type { WindowsCliProbe, WindowsCliTask } from "./windows-cli.js";
 import type { NativeTaskInput } from "./windows-cli-worker.js";
@@ -205,6 +206,7 @@ export function parseRuntimeRemotePayload<K extends RuntimeRemoteOperation>(oper
   return input as unknown as RuntimeRemotePayloads[K];
 }
 export interface RuntimeRunPayload {
+  execInput?: Readonly<NativeExecInputClaim>;
   task: NativeTaskInput;
   /** Opted-in local personal binding only; never widens the task's permissions. */
   profile?: import("./runtime-personal-protocol.js").PersonalProfile;

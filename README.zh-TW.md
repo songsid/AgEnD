@@ -125,7 +125,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/insta
 或手動安裝：
 
 ```bash
-npm install -g @songsid/agend    # 1. 安裝
+npm install -g --allow-scripts=@songsid/agend @songsid/agend    # 1. 安裝
 agend quickstart                # 2. 設定 — 預設只用網頁（bot 可選）：backend、第一個 agent，搞定
 agend start                     # 3. 啟動 fleet 🎉（quickstart 已安裝成系統服務就不用）
 ```

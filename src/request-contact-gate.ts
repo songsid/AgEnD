@@ -1,3 +1,5 @@
+import {unprovedRequestBody} from "./request-context-unproved-label.js";
+import {outsideRequestBody} from "./request-context-outside-label.js";
 import { assertRequestContextRootOpen } from "./request-context-fence.js";
 /** Dormant request-scoped contact policy. Only the outbox owns its transaction/admission ports. */
 import { t } from "./locale.js";
@@ -18,6 +20,8 @@ export interface RequestContactGateHost {
   /** Resolve native identity transport from trusted ingress evidence, never a Hub/display/body fallback. */
   person(actor: RequestContextActorV1): ContactPerson | null;
   adminOf(instance: string, person: ContactPerson): boolean;
+  /** Current policy only for a proven accepted room basis; undefined retains the original rule. Never relabel provenance. */
+  sourceRestricted?(root:RequestContextV1):boolean|undefined;
   canDecide(target: string, person: ContactPerson): boolean;
   canManage(target: string, person: ContactPerson): boolean;
   /** F/I lifecycle must prove no live turn, input, derivative work or native call ledger references. Uninstalled before cutover. */
@@ -102,7 +106,7 @@ export class RequestContactGate {
     return { operationId: image.delivery.operationId, source: image.delivery.sourceInstance, target: image.delivery.targetInstance,
       sourceGeneration: image.binding.source.incarnation, targetGeneration: image.binding.target.incarnation,
       verb: image.binding.verb as ContactVerb, origin: { kind: person ? "human" : "unknown", people: person ? [person] : [], receiptIds: [], chain: [] },
-      message: typeof payload.content === "string" ? payload.content : requestContextJson(payload),
+      message: typeof payload.content === "string" ? unprovedRequestBody(image.context,outsideRequestBody(image.context,payload.content)) : requestContextJson(payload),
       correlationId: image.delivery.correlationId ?? image.delivery.operationId, correlationExplicit: true,
       resultRecipient: image.delivery.sourceInstance, payload, forwards: image.delivery.forwards, requestContext: image.context.ref };
   }
@@ -163,8 +167,11 @@ export class RequestContactGate {
       if (this.db.prepare("SELECT 1 FROM deliveries WHERE request_context_id IS NULL AND (source_key=? OR (source_instance=? AND operation_id=?)) LIMIT 1").get(delivery.sourceKey,delivery.sourceInstance,delivery.operationId)) throw Error("request-context cannot adopt legacy operation");
       const release = this.release(context.ref.rootContextId), root = this.contexts.context(context.ref.rootContextId);
       const person = root ? this.person(root) : null;
-      const normal = context.ingress === "owner" || context.ingress === "free-room"
-        || context.ingress === "restricted-room" && !!root && !!person && this.host.adminOf(root.source.instance, person);
+      const roomIngress=context.ingress==="restricted-room"||context.ingress==="free-room";
+      const currentRoomPolicy=roomIngress&&root?this.host.sourceRestricted?.(root):undefined;
+      const currentlyRestricted=currentRoomPolicy??context.ingress==="restricted-room";
+      const normal = context.initiatingActor.kind!=="unknown"&&(context.ingress === "owner" || roomIngress&&!currentlyRestricted
+        || roomIngress&&currentlyRestricted && !!root && !!person && this.host.adminOf(root.source.instance, person));
       const hub=context.ingress==="hub"&&this.host.hubRelayAllowed?.(context,binding,delivery)===true;
       if (release || normal || hub) return { admitted: this.admitImage(image) };
       const request=this.request(image),ticket = this.tickets.hold(request);
