@@ -1,3 +1,4 @@
+import { readHubSqlRow } from "./read-statement.js";
 /** S1's metadata repository. S5 supplies an already-private SQLite DB and audit writer. */
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
@@ -45,7 +46,7 @@ export class HubTransportStore {
   read(): HubTransportState {
     if (this.failed) throw new HubProtocolError("uncertain");
     try {
-      const row = this.db.prepare("SELECT state FROM hub_transport_state WHERE singleton=1").get() as { state: string } | undefined;
+      const row = readHubSqlRow(this.db, "SELECT state FROM hub_transport_state WHERE singleton=1") as { state: string } | undefined;
       if (!row) throw new HubProtocolError("uncertain");
       // Cache decoding only. The SQL image and independent private floor are still
       // read on every call; returned state never aliases the retained template.
@@ -68,7 +69,7 @@ export class HubTransportStore {
         const state = this.read(), previous = JSON.stringify(state);
         // Schema parsing may reorder known keys. Fence the exact stored image, not a
         // serialization of the parsed value; valid unchanged rows need not share its order.
-        const previousStored = beforePublish ? (this.db.prepare("SELECT state FROM hub_transport_state WHERE singleton=1").get() as { state: string }).state : undefined;
+        const previousStored = beforePublish ? (readHubSqlRow(this.db, "SELECT state FROM hub_transport_state WHERE singleton=1") as { state: string }).state : undefined;
         const result = change(state, this.db);
         if (result && typeof (result as { then?: unknown }).then === "function") throw new HubProtocolError();
         state.revision++;
@@ -84,7 +85,7 @@ export class HubTransportStore {
         if (beforePublish) {
           // The independent floor is already raised. Inside this uncommitted transaction only, match that revision
           // while retaining the previous authorization image so captured permits can fence the last audit.
-          const readImage = () => (this.db.prepare("SELECT state FROM hub_transport_state WHERE singleton=1").get() as { state: string }).state;
+          const readImage = () => (readHubSqlRow(this.db, "SELECT state FROM hub_transport_state WHERE singleton=1") as { state: string }).state;
           if (readImage() !== previousStored) throw new HubProtocolError("uncertain");
           const staged = JSON.stringify({ ...JSON.parse(previous), revision: state.revision });
           this.db.prepare("UPDATE hub_transport_state SET state=? WHERE singleton=1").run(staged);

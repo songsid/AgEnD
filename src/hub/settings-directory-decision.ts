@@ -1,3 +1,4 @@
+import { readHubSqlRow } from "./read-statement.js";
 /**
  * #3425 directory-v2 SQL decision for settings-commit.ts, not another file writer or an HTTP authority.
  * The shared writer stages/fsyncs the exact images first. One root IMMEDIATE transaction then authorizes
@@ -79,7 +80,7 @@ function operation(db: Database.Database, id: string): HubDirectorySettingsOpera
 /** Durable head only. A mounted server must separately prove its exact installed image matches head.after. */
 export function readHubDirectorySettingsHead(db: Database.Database): { operationId: string | null; directoryEpoch: number } {
   try {
-    const row = db.prepare("SELECT operation_id, directory_epoch FROM hub_settings_head WHERE singleton=1").get() as { operation_id: string | null; directory_epoch: number } | undefined;
+    const row = readHubSqlRow(db, "SELECT operation_id, directory_epoch FROM hub_settings_head WHERE singleton=1") as { operation_id: string | null; directory_epoch: number } | undefined;
     if (!row || !Number.isSafeInteger(row.directory_epoch) || row.directory_epoch !== readHubSessionEpoch(db)
       || (row.operation_id === null ? row.directory_epoch !== 0 : !uuid.safeParse(row.operation_id).success)) throw new HubProtocolError("uncertain");
     if (row.operation_id !== null && operation(db, row.operation_id).directoryEpoch !== row.directory_epoch) throw new HubProtocolError("uncertain");
@@ -88,7 +89,7 @@ export function readHubDirectorySettingsHead(db: Database.Database): { operation
 }
 
 function policyRow(db: Database.Database) {
-  const row = db.prepare("SELECT hub_id,body FROM hub_group_policy WHERE singleton=1").get() as { hub_id: string; body: string } | undefined;
+  const row = readHubSqlRow(db, "SELECT hub_id,body FROM hub_group_policy WHERE singleton=1") as { hub_id: string; body: string } | undefined;
   if (!row) throw new HubProtocolError("uncertain");
   const document = parseCanonicalPolicy(row.body);
   return { ...row, document, policy: document.policy, sha: sha256(row.body) };
