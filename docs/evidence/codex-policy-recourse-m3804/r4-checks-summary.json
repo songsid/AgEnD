@@ -1,0 +1,28 @@
+{
+  "scope": "R4 recommendation-first next step,44px phone targets, same-policy-episode-only handoff suppression",
+  "baseHead": "592da931700b88a26216cbee9fbf3aa48df535e1",
+  "tests": {
+    "distinctCases": 76,
+    "files": 3,
+    "failFirst": {
+      "base": "592da931700b88a26216cbee9fbf3aa48df535e1",
+      "failed": 4,
+      "passed": 42,
+      "patch": "r4-liveness-failfirst.patch",
+      "reconstructedTestSha256": "7e1c24a761dea81f909f579b1d12887c54ad76948c88517b42ca78cdafe94503"
+    },
+    "finalExit": 0
+  },
+  "captureCount": 10,
+  "phoneButtonHeightsPx": [
+    44
+  ],
+  "productionTypes": 0,
+  "testTypes": 0,
+  "build": 0,
+  "priorEvidence": "R3 controls stage-bound; unchanged source carries. No new native/provider/hour campaign.",
+  "imageInspection": {
+    "count": 10,
+    "result": "All individually inspected; policy card readable/privacy clear. Separate notification partly below phone fold. Handed views inject metadata only."
+  }
+}

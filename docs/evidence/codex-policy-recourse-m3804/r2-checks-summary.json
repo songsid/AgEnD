@@ -1,0 +1,16 @@
+{
+  "scope": "test registry + evidence only",
+  "productParent": "497a3af7baa17c8d32c25de2cc8997af57236d41",
+  "before": {
+    "passed": 16,
+    "failed": 1,
+    "expected": 6,
+    "actual": 7
+  },
+  "after": {
+    "passed": 17,
+    "failed": 0
+  },
+  "testTypes": 0,
+  "runtimeUiManualFixturesImages": "byte-equal parent; no campaign repeated"
+}

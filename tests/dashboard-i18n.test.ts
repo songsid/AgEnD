@@ -44,6 +44,13 @@ describe("the app's dictionary: English and zh-TW", () => {
     for (const k of keys("en")) {
       const zh = tables["zh-TW"][k];
       expect(zh, k).toBeTruthy();
+      if (k === "app.needs_policy_recourse_explain") {
+        // M-3804 Leader wording: EN names the derived range; zh intentionally says "前面幾個".
+        // Pin that one exact translation instead of relaxing parity for other keys or hiding a missing value.
+        expect(zh).toBe("前面幾個是 Codex 建議的改寫：選了會用那句話開新對話繼續，但範圍可能變小。");
+        expect(placeholders(tables.en[k]!)).toBe("{0}");
+        continue;
+      }
       expect(placeholders(zh!), k).toBe(placeholders(tables.en[k]!));
     }
   });

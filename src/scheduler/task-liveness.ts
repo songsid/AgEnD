@@ -20,6 +20,8 @@ export interface LivenessEpisode {
   notifiedAt: number;
   /** The dispatcher is an agent that was not running when it was told: the person sees it in Needs you too. */
   needsYou?: boolean;
+  /** Explicit human policy handoff; the bound native-card digest, never generated rewrite text. */
+  policyHandoff?: string;
 }
 
 export class LivenessLedger {
@@ -38,6 +40,7 @@ export class LivenessLedger {
     )`);
     // A table made by an earlier build of this feature lacks the later column: add it (the rows keep their episodes).
     const cols = new Set((db.prepare("PRAGMA table_info(task_liveness)").all() as Array<{ name: string }>).map((c) => c.name));
+    if (!cols.has("policy_handoff")) db.exec("ALTER TABLE task_liveness ADD COLUMN policy_handoff TEXT");
     if (!cols.has("needs_you")) db.exec("ALTER TABLE task_liveness ADD COLUMN needs_you INTEGER NOT NULL DEFAULT 0");
   }
 
@@ -45,7 +48,7 @@ export class LivenessLedger {
     return { cardUuid: String(r.card_uuid), assignee: String(r.assignee), dispatcher: String(r.dispatcher),
       dispatcherKind: r.dispatcher_kind === "person" ? "person" : "instance", kind: String(r.kind) as StopKind,
       since: Number(r.since), detail: String(r.detail ?? ""), noticeKey: r.notice == null ? null : String(r.notice), notifiedAt: Number(r.notified_at),
-      needsYou: Number(r.needs_you) === 1 };
+      needsYou: Number(r.needs_you) === 1, ...(typeof r.policy_handoff === "string" ? { policyHandoff: r.policy_handoff } : {}) };
   }
 
   get(cardUuid: string): LivenessEpisode | null {
@@ -59,11 +62,11 @@ export class LivenessLedger {
 
   /** Open (or replace) the card's episode. */
   open(e: LivenessEpisode): void {
-    this.db.prepare(`INSERT INTO task_liveness (card_uuid,assignee,dispatcher,dispatcher_kind,kind,since,detail,notice,notified_at,needs_you)
-      VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(card_uuid) DO UPDATE SET assignee=excluded.assignee, dispatcher=excluded.dispatcher,
+    this.db.prepare(`INSERT INTO task_liveness (card_uuid,assignee,dispatcher,dispatcher_kind,kind,since,detail,notice,notified_at,needs_you,policy_handoff)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(card_uuid) DO UPDATE SET assignee=excluded.assignee, dispatcher=excluded.dispatcher,
       dispatcher_kind=excluded.dispatcher_kind, kind=excluded.kind, since=excluded.since, detail=excluded.detail,
-      notice=excluded.notice, notified_at=excluded.notified_at, needs_you=excluded.needs_you`)
-      .run(e.cardUuid, e.assignee, e.dispatcher, e.dispatcherKind, e.kind, e.since, e.detail, e.noticeKey, e.notifiedAt, e.needsYou ? 1 : 0);
+      notice=excluded.notice, notified_at=excluded.notified_at, needs_you=excluded.needs_you, policy_handoff=excluded.policy_handoff`)
+      .run(e.cardUuid, e.assignee, e.dispatcher, e.dispatcherKind, e.kind, e.since, e.detail, e.noticeKey, e.notifiedAt, e.needsYou ? 1 : 0, e.policyHandoff ?? null);
   }
 
   close(cardUuid: string): void { this.db.prepare("DELETE FROM task_liveness WHERE card_uuid=?").run(cardUuid); }

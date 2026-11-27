@@ -1,0 +1,12 @@
+{
+  "cli": "0.169.0",
+  "network": "unshare -rn; loopback mock only",
+  "inputTurns": 2,
+  "responsePosts": 4,
+  "keysAfterPolicyRefusal": 0,
+  "windows": [
+    "150x45 cyber",
+    "80x24 bio"
+  ],
+  "scope": "Two requests per input were observed; no claim that this count proves absence of CLI internal prewarming/retries. No selection or retry key was sent by the rig."
+}

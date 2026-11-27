@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 export type InstanceState = "idle" | "working" | "stuck";
 
 /** Interaction metadata is presentation only; execution/lifecycle gates remain three-valued. */
-export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "kiro_choice" | "suspected_terminal_input" | "safety_review";
+export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "kiro_choice" | "suspected_terminal_input" | "safety_review" | "policy_recourse";
 export interface InteractionOwner {
   bootId: string;
   spawnGeneration: number;
@@ -408,6 +408,8 @@ export interface RemoteQuestionCard {
   /** Safety decisions require a signed-in human; script-token prompt clicks cannot answer them. */
   humanOnly?: true;
   /** M-3757: the usage-credits prompt's models, for the compact card (the agent is named where the card is posted). */
+  /** Provider-policy recourse: preserve its semantic reason when the remote card folds the wait. */
+  policyRecourse?: true;
   usageCreditsPrompt?: { model: string; target: string | null; picker: boolean };
 }
 

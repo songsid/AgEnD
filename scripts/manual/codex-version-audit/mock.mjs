@@ -48,6 +48,30 @@ createServer((req, res) => {
     const headers = { "content-type": "text/event-stream", "cache-control": "no-cache", ...(m === "near" ? limitHeaders(96) : {}) };
     res.writeHead(200, headers);
     res.write(sse("response.created", { response: { id: "resp_audit" } }));
+    // M-3804: inert provider-policy recourse, distinct from context exhaustion. No real request or account.
+    if (m === "cyber-recourse" || m === "bio-recourse") {
+      const domain = m === "cyber-recourse" ? "cyber" : "bio";
+      res.write(sse("response.metadata", { metadata: { openai_chatgpt_moderation_metadata: {
+        safety_block: { schema_version: 1, domain, status: "loading" },
+      } } }));
+      res.write(sse("response.metadata", { metadata: { openai_chatgpt_moderation_metadata: {
+        safety_recourse: { schema_version: 1, domain, source: "user_request",
+          source_message: { id: "audit-message", kind: "ordinary_message", role: "user" },
+          topic: domain === "cyber" ? "risky_cybersecurity_activities" : "risky_biological_activities",
+          suggestions: [
+            { label: "Explain the topic", prompt_text: "Give a general overview." },
+            { label: "Describe safe practices", prompt_text: "Describe safe practices generally." },
+            { label: "Explain the risks", prompt_text: "Describe general risks." },
+          ],
+        },
+      } } }));
+      res.end(sse("response.failed", { response: { id: "resp_audit", status: "failed",
+        error: { code: `${domain}_policy`, message: domain === "bio"
+          ? "This request has been flagged for possible biological risk."
+          : "This content was flagged for possible cybersecurity risk." },
+      } }));
+      return;
+    }
     if (m === "capacity") {
       res.end(sse("response.failed", { response: { id: "resp_audit", error: { code: "server_is_overloaded", message: "overloaded" } } }));
       return;

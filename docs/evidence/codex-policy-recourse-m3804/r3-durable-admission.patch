@@ -1,0 +1,5 @@
+--- a/src/codex-policy-handoff.ts
++++ b/src/codex-policy-handoff.ts
+@@ -52 +52 @@
+-        if (!ACCEPTED.has(d.noticeState(key) ?? "")) { result.failed.push(card.code); continue; }
++        if (false) { result.failed.push(card.code); continue; }

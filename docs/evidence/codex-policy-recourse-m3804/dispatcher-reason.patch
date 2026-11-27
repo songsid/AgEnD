@@ -1,0 +1,5 @@
+--- a/src/dispatcher-liveness.ts
++++ b/src/dispatcher-liveness.ts
+@@ -99 +99 @@
+-  if (f.prompt && now - f.prompt.since >= s.promptMs) return { kind: "prompt", since: f.prompt.since, detail: f.prompt.reason ?? "" };
++  if (f.prompt && now - f.prompt.since >= s.promptMs) return { kind: "prompt", since: f.prompt.since, detail: "" };

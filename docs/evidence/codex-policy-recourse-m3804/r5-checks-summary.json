@@ -1,0 +1,164 @@
+{
+  "scope": "R5 only deterministic CI manifest/placeholder ratchets; no product change",
+  "parent": "1c1ae9d8ddcc89bda8384fd63266026a957be03b",
+  "failedRun": 45768170584,
+  "failures": [
+    "cli-upstream-precheck source drift",
+    "dashboard-i18n app.needs_policy_recourse_explain placeholder parity"
+  ],
+  "focused": {
+    "tests": 103,
+    "files": 2,
+    "exit": 0
+  },
+  "testTypes": 0,
+  "productionTypesAndBuild": "R4 carried; product unchanged",
+  "manifestChanges": {
+    "addedEntries": 4,
+    "removedEntries": 0,
+    "helperRegistered": true
+  },
+  "images": "All18 PNGs byte-equal R4; current gallery-r4.html remains visual artifact",
+  "unchanged": [
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-dark-en.png",
+      "sha256": "7a4da95dd807cbca6657142e808f74c20cf88b7c111ca1bdef27554c67a296d1"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-dark-zh-TW.png",
+      "sha256": "1c1357792cd3c3b6461a5ce8ec93e2aab43ec6ece99be3571d5c094d0a5e0b7c"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-light-en.png",
+      "sha256": "b0b11552ccd386422d4be8b2d27a27cac6476b71c8a32c3b2a41e195c8f4e21e"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/after-desk-light-zh-TW.png",
+      "sha256": "c1ea3147b5904e7325d0b541ee9de7a8e2e9c3f299691d715ca4df9defa2c77f"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/after-phone-dark-en.png",
+      "sha256": "bace134b3fb313f958d03d15b05437b3abbc1322786b504abb45c0430fefef4d"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/after-phone-dark-zh-TW.png",
+      "sha256": "44c23d67eb28c626728f16d23f44cb2e89a3a3d1def44f1d4e62171573156bc1"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/after-phone-light-en.png",
+      "sha256": "11ee0e034f207c991aab7017f12bc7d2a4db108b831e9c23fc39933dc583efe1"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/after-phone-light-zh-TW.png",
+      "sha256": "8bdf2067ca47b90c2a5d7d0b9d4c977aba3e470fe0d27a03d198145c0a00e17b"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/before-desk-dark-en.png",
+      "sha256": "0002ee2684c1a36e159b55ccfa9fb241f54ecf7e8faae2bfcc45bfb09f72cece"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/before-desk-dark-zh-TW.png",
+      "sha256": "3eefb794fbbf7ce1e39ac2046d14f4bf2b9bdc2182f6b8b2050dbdca7aa8c00b"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/before-desk-light-en.png",
+      "sha256": "d69bc1fe133fcc60849dcb41d4c109c583b90e99ee738dbbbb99debcf090b087"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/before-desk-light-zh-TW.png",
+      "sha256": "f62fbb0ac55ea1abc4d2081fb3492453150dee40831bdc5b0517a2f61376c8a2"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/before-phone-dark-en.png",
+      "sha256": "f043a4b906bb8813d7507bd457b120ab3f460360964b91b890a1371d9ea599e4"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/before-phone-dark-zh-TW.png",
+      "sha256": "2096947c83fc107aed93759725357fde669814d24f328f22f9b5a82c476cd9fa"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/before-phone-light-en.png",
+      "sha256": "298eacba622b1a18b76afa6dad22bae614a374e30c09bcbc0eaa8bcb321cf1a6"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/before-phone-light-zh-TW.png",
+      "sha256": "5971abb52879edaf2c8ad102fa6de560dc5bc9652d992cd1c8c213007a67ab2f"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/handed-desk-light-en.png",
+      "sha256": "7786f55aefe49594fded1d0255f8967a24c52e1703f5fc0aea4e079e9eceee3d"
+    },
+    {
+      "path": "docs/evidence/codex-policy-recourse-m3804/handed-phone-dark-zh-TW.png",
+      "sha256": "7b9a6e3ea245eac41effebd9a4f668ebaff9e5aac361043ed43d6a90d2ff7999"
+    },
+    {
+      "path": "scripts/manual/codex-policy-recourse/capture.mts",
+      "sha256": "87a55220c900c2b6335a1898f8026af1d6fa35326c542121140d9b8ce5a5d675"
+    },
+    {
+      "path": "scripts/manual/codex-policy-recourse/rig.sh",
+      "sha256": "c6ce5945d87c580d7b77cdc2a2c6c2ea5ed07bf28804524a728ab943d7bfc35b"
+    },
+    {
+      "path": "src/backend/codex-policy-recourse.ts",
+      "sha256": "9f96d20418fe8b8fe037ca3c24581096debf0da6686d6582cbd04ef47e3a4e7a"
+    },
+    {
+      "path": "src/backend/codex.ts",
+      "sha256": "482cd8fc21f914287f314bccc1f3def351926cd3cd5e174061b51bd688c8fe5d"
+    },
+    {
+      "path": "src/backend/types.ts",
+      "sha256": "6ba132e916e9ce010998a4fcf4483bf76e5a7971821570fff4d46000030a3528"
+    },
+    {
+      "path": "src/codex-policy-handoff.ts",
+      "sha256": "a7cb4aae34ba66bcad2a55c34b11e943055a954c4544173da7a815f06e00f47d"
+    },
+    {
+      "path": "src/codex-policy-recourse-copy.ts",
+      "sha256": "11cd5c22f9d8972604474f5e53a7831bac6170919834e6260bcf184fa6833485"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "685e5f240b537b6e332ac0f912a15479e687431f118c49ec079e7c3ec90b6a8c"
+    },
+    {
+      "path": "src/dispatcher-liveness.ts",
+      "sha256": "149be10071115790978432f225d4fe910a389b17bd97f6d345c28f9659a31a0d"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "498a2d5622cd3e9c7635b1aabbe86896368265d9ea9055dff26294314a907689"
+    },
+    {
+      "path": "src/locale.ts",
+      "sha256": "98ebafd7ccead5e5c63e591185c8d4b4328ab59e37f59165ce8ae1d100010346"
+    },
+    {
+      "path": "src/needs-you.ts",
+      "sha256": "65d45df17d21efe16258db8d0c8ddf3decbf101640d091d89d9de4e9d4572079"
+    },
+    {
+      "path": "src/remote-card-prompt.ts",
+      "sha256": "c3e825714605911c3149aafe69d729b9bcf629b3b705a5112a2c2cb55685b838"
+    },
+    {
+      "path": "src/scheduler/task-liveness.ts",
+      "sha256": "2db0f52f0457db49d4760e6a2a774d5471fd97cb34fc4e76ba04fa23af18b0ff"
+    },
+    {
+      "path": "src/ui/panel-needs.js",
+      "sha256": "8b25af33f40449bd56091c61c53bc08be3e1b3399be8c4e6a84830ae6abed566"
+    },
+    {
+      "path": "src/ui/shared/app-i18n.js",
+      "sha256": "440fc7433a9687930ba169b8d3f93221acdaccddfe15c2b62ed1c2a091800895"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "b6a053e958faed2349991ab7adc2e7f94fe9d36cc3808a6189e84c3358c9e7fd"
+    }
+  ]
+}

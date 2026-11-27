@@ -1,0 +1,5 @@
+--- a/src/backend/codex.ts
++++ b/src/backend/codex.ts
+@@ -1754 +1754 @@
+-      remoteCard: codexPolicyRecourseCard,
++      remoteCard: () => null,

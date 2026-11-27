@@ -1,3 +1,4 @@
+import { policyRecourseChoices } from "./codex-policy-recourse-copy.js";
 import type { ModelSwitch } from "./claude-model-observation.js";
 /**
  * #1386 "Needs you": one list of everything currently waiting on the person, derived — on demand, never stored —
@@ -23,6 +24,9 @@ export interface NeedsYouItem {
   /** Which kind of wait, for the title (localized by the renderer, not here). */
   reason: NeedsYouReason;
   modelSwitch?: ModelSwitch;
+  policyHandoff?: { done: number; total: number; at?: number };
+  policyOptionCount?: number;
+  policyFeedback?: boolean;
   hostAlert?: import('./host-monitoring-alert-policy.js').HostAlertRecord;
   requestContextCutover?: import('./request-context-control-api.js').RequestContextControlView;
   quiet?: true;
@@ -81,7 +85,7 @@ export type NeedsYouReason =
   | "host_health"
   | "contact_request" | "contact_restricted_suggestion"
   | "hang" | "exited" | "assist" | "question"                       // prompt
-  | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
+  | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input" | "codex_policy_recourse"   // awaiting_input
   | "general_windows_offline" | "general_location_hold"
   | "model_switch" | "auth_paused" | "stale_auth" | "crashed" | "usage_limit" | "native_pane_hold" | "backend_missing" | "mcp_missing"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
@@ -120,6 +124,7 @@ export interface PromptInput {
   prefix: string;
   instance: string;
   text: string;
+  policyRecourse?: true;
   actions: Array<{ id: string; label: string; hint?: string; role?: import("./backend/types.js").RemoteCardRole; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
   /** M-3757: the card's compact form. */
   view?: import("./backend/types.js").RemoteCardView;
@@ -138,6 +143,9 @@ export interface InstanceInput {
   state?: string;
   interaction?: { kind?: string | null; owner?: string | null; episode?: number | null; since?: number | null } | null;
   interactionSummary?: string | null;
+  /** Only code/title metadata from the board, never terminal text or generated rewrites. */
+  policyTasks?: string[];
+  policyHandoff?: { done: number; total: number; at?: number };
   /** The pause marker's reason, for a paused instance; and when it was paused. */
   pauseReason?: string | null;
   /** Process-local login hold, including General/busy agents before a pause completes. */
@@ -242,6 +250,7 @@ const INTERACTION_REASON: Record<string, NeedsYouReason> = {
   dialog: "dialog",
   kiro_choice: "dialog",
   safety_review: "dialog",
+  policy_recourse: "codex_policy_recourse",
   suspected_terminal_input: "terminal_input",
 };
 
@@ -259,9 +268,12 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     const reason = PROMPT_REASON[p.prefix];
     if (!reason) continue;
     items.push({
-      id: `prompt:${p.nonce}`, type: "prompt", instance: p.instance, reason,
+      id: `prompt:${p.nonce}`, type: "prompt", instance: p.instance, reason: p.policyRecourse ? "codex_policy_recourse" : reason,
       ...(p.view ? { view: p.view } : {}),
-      detail: oneLine(p.text), since: p.createdAt, nonce: p.nonce, actions: p.actions,
+      ...(p.policyRecourse ? { policyHandoff: inputs.instances.find(i => i.name === p.instance)?.policyHandoff,
+        policyOptionCount: policyRecourseChoices(p.actions.filter(a => /^opt-/.test(a.id)).map(a => a.label)).count,
+        policyFeedback: policyRecourseChoices(p.actions.filter(a => /^opt-/.test(a.id)).map(a => a.label)).feedback } : {}),
+      detail: p.policyRecourse ? (inputs.instances.find(i => i.name === p.instance)?.policyTasks ?? []).slice(0, 3).map(s => oneLine(s).slice(0, 160)).join(" · ") : oneLine(p.text), since: p.createdAt, nonce: p.nonce, actions: p.actions,
       promptAt: { adapterId: p.adapterId, chatId: p.chatId, ...(p.threadId !== undefined ? { threadId: p.threadId } : {}), ...(p.messageId ? { messageId: p.messageId } : {}) },
     });
   }
@@ -284,8 +296,9 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
         items.push({
           id: `awaiting:${inst.name}:${owner ?? "-"}:${episode ?? "-"}`, type: "awaiting_input", instance: inst.name,
           reason: INTERACTION_REASON[inst.interaction.kind ?? ""] ?? "dialog",
+          ...(inst.interaction.kind === "policy_recourse" ? { policyHandoff: inst.policyHandoff } : {}),
           ...(inst.interaction.kind === "kiro_choice" ? { kiroChoice: true as const } : {}),
-          detail: inst.interaction.kind === "kiro_choice" ? inst.interactionSummary ?? "" : oneLine(inst.interactionSummary ?? ""), since: inst.interaction.since ?? 0,
+          detail: inst.interaction.kind === "policy_recourse" ? (inst.policyTasks ?? []).slice(0, 3).map(s => oneLine(s).slice(0, 160)).join(" · ") : inst.interaction.kind === "kiro_choice" ? inst.interactionSummary ?? "" : oneLine(inst.interactionSummary ?? ""), since: inst.interaction.since ?? 0,
         });
       }
     }

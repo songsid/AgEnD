@@ -1,0 +1,26 @@
+--- a/tests/dispatcher-liveness-3647.test.ts
++++ b/tests/dispatcher-liveness-3647.test.ts
+@@ -499,3 +499,23 @@
+   r.at(T0 + 61 * MIN); await r.tick(); expect(r.ledger.get("uuid-M-100")!.policyHandoff).toBeTruthy();
+   r.cards.splice(0); r.at(T0 + 62 * MIN); await r.tick(); expect(r.ledger.get("uuid-M-100")).toBeNull(); expect(r.sent()).toHaveLength(0);
+ });
++
++
++it.each([
++  ["crashed", { process: "crashed", crashedAt: T0 + 30 * MIN }],
++  ["gone", { process: "crashed", gone: { kind: "crash_loop", reason: "supervision stopped", at: T0 + 30 * MIN } }],
++  ["quiet", { process: "running", execution: { state: "idle", since: T0 } }],
++  ["prompt", { process: "running", prompt: { since: T0 + 30 * MIN, reason: "codex_policy_recourse" } }],
++] as Array<[string, AssigneeFacts]>)("M-3804 handoff does not suppress a later %s episode", async (kind, facts) => {
++  const r = rig({ cards: [claimed("M-100", "reviewer")] });
++  r.ledger.open({ cardUuid: "uuid-M-100", assignee: "reviewer", dispatcher: "leader", dispatcherKind: "instance", kind: "prompt", since: T0,
++    detail: "codex_policy_recourse", noticeKey: "human-policy-notice", notifiedAt: T0, policyHandoff: `selection:${"a".repeat(64)}` });
++  r.outbox.set("human-policy-notice", { to: "leader", text: "human reassignment request", state: "queued" });
++  r.facts.set("reviewer", facts);
++  r.at(T0 + 90 * MIN); await r.tick();
++  expect(r.ledger.get("uuid-M-100")).toMatchObject({ kind });
++  expect(r.ledger.get("uuid-M-100")!.policyHandoff).toBeUndefined();
++  expect(r.sent()).toHaveLength(2); // keep the person's notice; independently tell the dispatcher the new problem
++  expect(r.outbox.get("human-policy-notice")!.state).toBe("queued");
++  r.at(T0 + 91 * MIN); await r.tick(); expect(r.sent()).toHaveLength(2);
++});

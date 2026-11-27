@@ -1,0 +1,7 @@
+{
+  "mutation": "dedicated dialog loses remote card again",
+  "file": "src/backend/codex.ts",
+  "inputSha256": "8b7a1154948567eedc1da624f65980589077ff6487bcaf56a07589ee4778f002",
+  "restoredSha256": "482cd8fc21f914287f314bccc1f3def351926cd3cd5e174061b51bd688c8fe5d",
+  "exit": 1
+}

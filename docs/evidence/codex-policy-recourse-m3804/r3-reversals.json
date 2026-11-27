@@ -1,0 +1,23 @@
+[
+  {
+    "name": "no-pane-action",
+    "file": "src/fleet-manager.ts",
+    "inputSha256": "56845576c6887ac12f2eb46c486fdc608578eb78653844e5721405b1ab953780",
+    "restoredSha256": "498a2d5622cd3e9c7635b1aabbe86896368265d9ea9055dff26294314a907689",
+    "exit": 1
+  },
+  {
+    "name": "durable-admission",
+    "file": "src/codex-policy-handoff.ts",
+    "inputSha256": "f3621d61a883c3201a9340d6cbca5df1684c962d2c0035e9676c62a46cf47a42",
+    "restoredSha256": "a7cb4aae34ba66bcad2a55c34b11e943055a954c4544173da7a815f06e00f47d",
+    "exit": 1
+  },
+  {
+    "name": "restart-dedup",
+    "file": "src/codex-policy-handoff.ts",
+    "inputSha256": "6b8788925e8c8ef597f9974e7b2e75d1ae4135a97963e73eac013323a7975268",
+    "restoredSha256": "a7cb4aae34ba66bcad2a55c34b11e943055a954c4544173da7a815f06e00f47d",
+    "exit": 1
+  }
+]

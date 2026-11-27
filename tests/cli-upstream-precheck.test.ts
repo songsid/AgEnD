@@ -49,6 +49,12 @@ describe("manifest.json is the detectors' source (drift)", () => {
     const l = committed().backends[b]!.literals.find((x) => x.text === text);
     expect([l?.surface, l?.kind]).toEqual([surface, "regex"]);
   });
+  it("keeps the policy picker's fixed title and footer after extracting its helper", () => {
+    const literals = committed().backends.codex!.literals;
+    for (const text of ["You can choose a rewrite to start a new chat with your earlier context:", "enter select · esc back"]) {
+      expect(literals.some(l => l.file === "src/backend/codex-policy-recourse.ts" && l.surface === "dialog" && l.text === text), text).toBe(true);
+    }
+  });
   it("never keeps AgEnD's own words: entry descriptions/messages, t() and logger arguments", () => {
     const all = Object.values(committed().backends).flatMap((v) => v.literals);
     const claude = readFileSync(join(process.cwd(), "src/backend/claude-code.ts"), "utf8");

@@ -60,7 +60,7 @@ export interface AssigneeFacts {
    */
   quietFloor?: number | null;
   /** A prompt or dialog waiting for a person at its terminal, and since when. */
-  prompt?: { since: number } | null;
+  prompt?: { since: number; reason?: "codex_policy_recourse" } | null;
   /** The instances it asked something and still waits on (an open request with a correlation id). */
   waitingOn?: string[];
   /** When it last sent a message to anyone (a reply, send_to_instance, report_result…). */
@@ -74,6 +74,7 @@ export type StopKind = "gone" | "crashed" | "auth" | "usage" | "error" | "hung" 
 /** Which episode wins when several hold: the most serious first ("will not come back" over "quiet"). */
 const RANK: Record<StopKind, number> = { gone: 8, crashed: 7, auth: 6, usage: 5, error: 4, hung: 3, prompt: 2, quiet: 1 };
 export const livenessRank = (k: StopKind): number => RANK[k] ?? 0;
+const manualPolicyHandoff = (e: LivenessEpisode): boolean => e.kind === "prompt" && e.detail === "codex_policy_recourse" && /^selection:[0-9a-f]{64}$/.test(e.policyHandoff ?? "");
 
 export interface StopVerdict { kind: StopKind; since: number; detail: string }
 
@@ -96,7 +97,7 @@ export function judgeAssignee(f: AssigneeFacts, card: CardTimes, s: LivenessSett
   if (reason === "error" || reason === "stale_auth") return { kind: "error", since: f.paused?.at ?? now, detail: "" };
   if (f.process === "stopped") return null;                          // stopped by a person (or a fleet stop): they know
   if (f.execution?.state === "stuck") return { kind: "hung", since: f.execution.since, detail: "" };
-  if (f.prompt && now - f.prompt.since >= s.promptMs) return { kind: "prompt", since: f.prompt.since, detail: "" };
+  if (f.prompt && now - f.prompt.since >= s.promptMs) return { kind: "prompt", since: f.prompt.since, detail: f.prompt.reason ?? "" };
   if (f.prompt || reason === "operator") return null;
   // Quiet: idle (or paused for being idle), nothing it asked still open, and no sign of progress for the threshold.
   const idlePaused = reason === "idle" || reason === "warm_cap";
@@ -141,8 +142,9 @@ export function spanText(ms: number): string {
 export function stoppedLine(card: { code: string; title: string }, assignee: string, v: StopVerdict, now: number): string {
   const title = card.title.replace(/\s+/g, " ").trim();
   const short = title.length > 60 ? `${title.slice(0, 59)}…` : title;
-  const what = t(`liveness.what_${v.kind}`, assignee, spanText(now - v.since), v.detail);
-  return `${card.code} "${short}" — ${what}${t("liveness.sep")}${t(`liveness.todo_${v.kind}`)}`;
+  const kind = v.kind === "prompt" && v.detail === "codex_policy_recourse" ? "policy_recourse" : v.kind;
+  const what = t(`liveness.what_${kind}`, assignee, spanText(now - v.since), v.detail);
+  return `${card.code} "${short}" — ${what}${t("liveness.sep")}${t(`liveness.todo_${kind}`)}`;
 }
 
 /** The dispatcher's notice for one sweep's new episodes (one or several cards). */
@@ -301,12 +303,13 @@ export class DispatcherLiveness {
   private async sweep(): Promise<void> {
     const d = this.deps, now = (d.now ?? Date.now)(), s = d.settings();
     if (d.plannedRestart() || now - d.startedAt() < LIVENESS_STARTUP_GRACE_MS) return;
-    const cards = s.enabled ? d.claimedCards() : [];
+    const manual = !s.enabled && d.ledger.listOpen().some(manualPolicyHandoff);
+    const cards = s.enabled || manual ? d.claimedCards() : [];
     const live = new Map(cards.map((c) => [c.uuid, c] as const));
     // Episodes whose card is no longer claimed by the same assignee for the same dispatcher end quietly.
     for (const ep of d.ledger.listOpen()) {
       const c = live.get(ep.cardUuid);
-      if (!c || c.assignee !== ep.assignee || (c.dispatcher?.name ?? null) !== ep.dispatcher) this.end(ep, false);
+      if (!c || c.assignee !== ep.assignee || (c.dispatcher?.name ?? null) !== ep.dispatcher || (!s.enabled && !manualPolicyHandoff(ep))) this.end(ep, false);
     }
     const told = new Map<string, Array<{ card: LivenessCard; v: StopVerdict }>>();
     for (const c of cards) {
@@ -315,8 +318,19 @@ export class DispatcherLiveness {
       const f = d.facts(c.assignee);
       if (!f) continue;
       const times = { claimedAt: c.claimedAt, updatedAt: c.updatedAt };
-      const open = d.ledger.get(c.uuid);
+      let open = d.ledger.get(c.uuid);
       const v = judgeAssignee(f, times, s, now);
+      if (open && manualPolicyHandoff(open)) {
+        // Suppress only this policy prompt, never a later crash, supervision loss or quiet episode.
+        // Leave the admitted human notice intact when retiring its suppression marker.
+        const samePrompt = f.process === "running" && f.prompt?.reason === "codex_policy_recourse"
+          && f.prompt.since === open.since && (!v || v.kind === "prompt");
+        if (samePrompt) continue;
+        d.ledger.close(c.uuid);
+        if (open.dispatcherKind === "person" || open.needsYou) d.personChanged?.();
+        open = null;
+      }
+      if (!s.enabled) continue;
       if (open) {
         if (stillStopped(open, f, times)) {
           if (!v || livenessRank(v.kind) <= livenessRank(open.kind)) continue;     // the same news, or less: once
