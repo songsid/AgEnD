@@ -1,0 +1,27 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-react-ack-s254.test.ts (12 tests | 1 failed | 11 skipped) 21ms
+   × accepted acknowledgement completes the ask, survives reopen and never emits reminder or missing-answer marker 20ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-react-ack-s254.test.ts > accepted acknowledgement completes the ask, survives reopen and never emits reminder or missing-answer marker
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-room-react-ack-s254.test.ts:23:51
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 11 skipped (12)
+   Start at  00:20:02
+   Duration  808ms (transform 432ms, setup 84ms, import 563ms, tests 21ms, environment 0ms)

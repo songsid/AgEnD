@@ -184,6 +184,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
   const num = (id) => { if (!ids.has(id)) ids.set(id, ids.size * 2 + 2); return ids.get(id); };
   for (const m of ordered) {
     if (!m || typeof m.id !== "string") continue;
+    if (m.answerTo && m.acknowledgedByReaction === true) continue;
     const author = m.author || {}, kind = author.kind;
     // An answer still to come (queued, or being worked on: the working bar says who) is never an empty bubble.
     if (m.answerTo && !m.text && (m.stage === "queued" || m.stage === "working")) continue;
