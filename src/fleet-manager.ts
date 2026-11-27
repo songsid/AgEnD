@@ -7230,13 +7230,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const modes=this.requestContextModes;if(!modes?.current()||!current())throw Error("stale");
     const nativeStops=this.fleetWindowsRuntime?.requestContextStops(root)??[],owners:Array<()=>boolean>=[];
     for(const stop of nativeStops){if(!current())throw Error("stale");actor.execution!.mutate(()=>stop.stop(current));}
-    for(const [name,daemon]of [...this.daemons]){if(daemon.requestContextTurnSnapshot()?.context.ref.rootContextId!==root)continue;
+    for(const [name,daemon]of [...this.daemons]){const snapshot=daemon.requestContextTurnSnapshot();if(snapshot?.context.ref.rootContextId!==root)continue;
+      const owner=daemon.captureRequestContextOwner();if(!owner||requestContextDigest(owner)!==requestContextDigest(snapshot.owner))throw Error("Request root owner changed");
       const retirement=await daemon.captureRequestContextRetirement();if(!current()||this.daemons.get(name)!==daemon)throw Error("stale");
-      await actor.execution!.stopTarget(name,advance=>this.lifecycle.stopIfCurrent(name,daemon,advance));if(!current()||!await retirement.retired())throw Error("unavailable");
+      if(retirement.daemonBootId!==owner.daemonBootId||retirement.spawnGeneration!==owner.spawnGeneration||retirement.launchFenceEpoch!==owner.launchFenceEpoch)throw Error("Request launch owner changed");
+      const sameTurn=()=>daemon.requestContextTurnSnapshot()?.token===snapshot.token;
+      if(!sameTurn())throw Error("Request root turn changed");
+      await actor.execution!.stopTarget(name,advance=>this.lifecycle.stopIfCurrent(name,daemon,(before,after)=>{
+        advance?.(before,after);if(!current()||!sameTurn())throw Error("Request root turn changed");
+      }));if(!current()||!await retirement.retired())throw Error("unavailable");
       // The future-start factory keeps the stored work/context; it removes only this positively retired live owner.
       if(!this.requestContextRetireOwner)throw Error("unavailable");await this.requestContextRetireOwner(name,daemon,retirement.retired);
-      const stopped=requestContextDigest(daemon.captureRequestContextOwner());
-      owners.push(()=>this.daemons.get(name)!==daemon&&requestContextDigest(daemon.captureRequestContextOwner())===stopped);
+      // C's identity has been disposed. Only the pre-stop physical receipt can
+      // keep its own positive retirement current; a replacement is never adopted.
+      owners.push(()=>!this.daemons.has(name)&&retirement.retiredCurrent());
     }
     // The wait bounds the HTTP action; only the owned run's positive completion can clear its pointer.
     const until=performance.now()+30_000;

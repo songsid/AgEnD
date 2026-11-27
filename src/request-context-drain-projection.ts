@@ -6,6 +6,7 @@ export function projectRequestContextWork(blockers:readonly string[]):{families:
  const families=new Set<RequestContextBlockerFamily>();let unknownEnd=false,stoppable=true;
  for(const blocker of blockers){
   if(blocker==="recovery-pointer")continue;
+  if(blocker==="pending-root-fence"){families.add("registered-work");continue;}
   if(/^(?:delivery|held|return):/.test(blocker)){stoppable=false;continue;}
   if(blocker.startsWith("human-input:")){families.add("human-input");continue;}
   try{

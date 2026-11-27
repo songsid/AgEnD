@@ -6,6 +6,8 @@ export interface RequestContextLaunchRetirement {
   readonly windowId: string;
   readonly panePid: number | null;
   retired(): Promise<boolean>;
+  /** Currency of this captured physical receipt, only after its own positive retired() observation. */
+  retiredCurrent(): boolean;
 }
 /** Includes the original process group so an MCP child outliving the root still blocks. Never sends a signal. */
 export function requestContextProcessGroupGone(pid: number, probe: (pid: number, signal: 0) => unknown = process.kill): boolean {

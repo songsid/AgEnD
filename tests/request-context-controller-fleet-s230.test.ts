@@ -210,3 +210,61 @@ it("M-3896 the owner can acknowledge a plain terminal legacy result before first
  expect(db.prepare("SELECT acknowledged_at FROM deliveries WHERE delivery_id=?").get(row.deliveryId).acknowledged_at).toBeTruthy();
  expect(box.requestContextInstallation().read()).toBeNull();
 });
+it.each([false,true])("M-3896 a disposed owner uses only its captured retirement; replacement=%s",async replacement=>{
+ const root=randomUUID(),owner={instance:"worker",incarnation:"current",workGeneration:"work",daemonBootId:"owned-boot",spawnGeneration:1,launchFenceEpoch:2,deliveryEpoch:0};let disposed=false,resourceCurrent=true;
+ const receipt={daemonBootId:owner.daemonBootId,spawnGeneration:1,launchFenceEpoch:2,retired:async()=>disposed,retiredCurrent:()=>disposed&&resourceCurrent};
+ const daemon={requestContextTurnSnapshot:()=>({token:"captured-turn",context:{ref:{rootContextId:root}},owner}),captureRequestContextRetirement:async()=>receipt,
+  captureRequestContextOwner:vi.fn(()=>{if(disposed)throw Error("Disposed work identity");return owner;})};
+ const daemons=new Map<string,any>([["worker",daemon]]);
+ const m:any=Object.assign(Object.create(FleetManager.prototype),{requestContextModes:{current:()=>true},
+  lifecycle:{daemons,stopIfCurrent:async()=>{daemons.delete("worker");disposed=true;}},requestContextRetireOwner:async()=>{if(replacement)daemons.set("worker",{});}});
+ const actor:any={execution:{mutate:(work:()=>unknown)=>work(),stopTarget:async(_name:string,stop:()=>Promise<unknown>)=>stop()}};
+ const proof=await m.stopRequestContextWork(root,actor,()=>true);
+ expect(proof()).toBe(!replacement);expect(daemon.captureRequestContextOwner).toHaveBeenCalledTimes(1);
+ resourceCurrent=false;expect(proof()).toBe(false);
+});
+it.each(["root","launch"])("M-3896 a mismatched %s owner never reaches the physical stop",async mismatch=>{
+ const root=randomUUID(),owner={instance:"worker",incarnation:"current",workGeneration:"work",daemonBootId:"owned-boot",spawnGeneration:1,launchFenceEpoch:2,deliveryEpoch:0};
+ const daemon={requestContextTurnSnapshot:()=>({context:{ref:{rootContextId:root}},owner}),
+  captureRequestContextOwner:()=>({...owner,...(mismatch==="root"?{workGeneration:"other-work"}:{})}),
+  captureRequestContextRetirement:async()=>({...owner,...(mismatch==="launch"?{spawnGeneration:2}:{}),retired:async()=>true,retiredCurrent:()=>true})};
+ const stop=vi.fn(),m:any=Object.assign(Object.create(FleetManager.prototype),{requestContextModes:{current:()=>true},lifecycle:{daemons:new Map([["worker",daemon]]),stopIfCurrent:stop}});
+ await expect(m.stopRequestContextWork(root,{execution:{stopTarget:stop}},()=>true)).rejects.toThrow(/owner changed/);
+ expect(stop).not.toHaveBeenCalled();
+});
+it("M-3896 a turn replaced while stop is queued never reaches the physical stop",async()=>{
+ const root=randomUUID(),owner={instance:"worker",incarnation:"current",workGeneration:"work",daemonBootId:"owned-boot",spawnGeneration:1,launchFenceEpoch:2,deliveryEpoch:0};let token="captured-turn",stopped=false;
+ const daemon={requestContextTurnSnapshot:()=>({token,context:{ref:{rootContextId:root}},owner}),captureRequestContextOwner:()=>owner,
+  captureRequestContextRetirement:async()=>({...owner,retired:async()=>true,retiredCurrent:()=>true})};
+ const m:any=Object.assign(Object.create(FleetManager.prototype),{requestContextModes:{current:()=>true},lifecycle:{daemons:new Map([["worker",daemon]]),
+  stopIfCurrent:async(_name:string,_daemon:unknown,advance:(before:number,after:number)=>void)=>{token="other-turn";advance(0,1);stopped=true;}}});
+ const actor:any={execution:{stopTarget:async(_name:string,stop:(advance:()=>void)=>Promise<unknown>)=>stop(()=>{})}};
+ await expect(m.stopRequestContextWork(root,actor,()=>true)).rejects.toThrow(/turn changed/);expect(stopped).toBe(false);
+});
+it("M-3896 Off waits for a pending durable Stop even after all runtime families are empty",async()=>{
+ const {nativeHumanOrigin}=await import("../src/human-delivery-receipts.js"),{readRequestContextResolution}=await import("../src/request-context-resolution.js");
+ const r=rig(),host=r.m.requestContextControl,actor=()=>({...r.actor(),binding:"a".repeat(64)});
+ let person=actor();await host.change({revision:host.read(person).revision,action:"enable"},person);
+ const box=r.m.deliveryOutbox,saved=box.createHumanReceiptWithRequestContext({targetInstance:"worker",originalBody:"Synthetic stopped input",origin:nativeHumanOrigin("discord","fixture","person","Person",false,"synthetic-message")!,inputKind:"fleet_inbound",managerBootId:r.m.managerBootId},
+  {incarnation:"current",room:null,web:null,route:{kind:"room",adapterId:"fixture",chatId:"synthetic-room"},platform:()=>"discord"});
+ const db=(box as any).db,root=saved.context.ref.rootContextId;db.prepare("UPDATE human_delivery_receipts SET state='delivered' WHERE receipt_id=?").run(saved.receipt.receipt_id);
+ const other=box.createHumanReceiptWithRequestContext({targetInstance:"other-worker",originalBody:"Synthetic other stopped input",origin:nativeHumanOrigin("discord","fixture","person","Person",false,"synthetic-message-two")!,inputKind:"fleet_inbound",managerBootId:r.m.managerBootId},
+  {incarnation:"current",room:null,web:null,route:{kind:"room",adapterId:"fixture",chatId:"synthetic-room"},platform:()=>"discord"});
+ db.prepare("UPDATE human_delivery_receipts SET state='delivered' WHERE receipt_id=?").run(other.receipt.receipt_id);
+ const otherRoot=other.context.ref.rootContextId,epoch=r.m.requestContextModes.drain.fence(root); // Crash after physical retirement, before resolution COMMIT.
+ r.m.requestContextModes.drain.fence(otherRoot);
+ expect(r.m.requestContextModes.drain.inspect(otherRoot,epoch).blockers).toContain("pending-root-fence");
+ person=actor();await host.change({revision:host.read(person).revision,action:"disable"},person);
+ const state=box.requestContextInstallation().read(),waiting=r.m.requestContextModes.off.advance(state.revision);
+ expect(waiting.state.mode).toBe("draining");expect(waiting.blockers).toContain(`${root}:pending-root-fence`);
+ person=actor();const view=host.read(person),blocker=view.blockers.find((row:any)=>row.id.startsWith(`work:${root}:`));
+ expect(blocker).toMatchObject({families:["registered-work"],action:"stop-work"});expect(readRequestContextResolution(db,root)).toBeNull();
+ await host.change({revision:view.revision,action:"resolve",blockerId:blocker.id,resolution:"stop-work"},person);
+ expect(readRequestContextResolution(db,root)?.receipts).toEqual([]);
+ const stillWaiting=r.m.requestContextModes.off.advance(box.requestContextInstallation().read().revision);
+ expect(stillWaiting.state.mode).toBe("draining");expect(stillWaiting.blockers).toContain(`${otherRoot}:pending-root-fence`);expect(readRequestContextResolution(db,otherRoot)).toBeNull();
+ person=actor();const next=host.read(person),nextBlocker=next.blockers.find((row:any)=>row.id.startsWith(`work:${otherRoot}:`));
+ await host.change({revision:next.revision,action:"resolve",blockerId:nextBlocker.id,resolution:"stop-work"},person);
+ r.m.requestContextModes.off.advance(box.requestContextInstallation().read().revision);
+ expect(host.read(actor())).toMatchObject({phase:"off",blockers:[]});
+});

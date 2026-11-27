@@ -98,6 +98,10 @@ it("acknowledged completed pane work permits Off while its retained proof and le
  await lease.handle(machineId,ack,()=>true,stamp);r.installation.beginOff(1,r.owner);
  expect(()=>r.drain.proveOff(r.installation,()=>true)).toThrow(/pane-proof/);working=false;
  const epoch=r.drain.fence(context.ref.rootContextId);expect(()=>r.drain.prove(context.ref.rootContextId,epoch)).toThrow(/pane-proof|pane-ledger/);
+ // A failed collection releases only its own probe fence. A retained unresolved
+ // fence (as after an interrupted Stop) must keep Off blocked instead.
+ expect(()=>r.drain.proveOff(r.installation,()=>true)).toThrow(/pending-root-fence/);
+ r.drain.release(context.ref.rootContextId,epoch);
  expect(r.installation.finishOff(2,r.owner,r.drain.proveOff(r.installation,()=>true)).mode).toBe("off");
  expect(proofs.drainView(context.ref.rootContextId).references).toHaveLength(1);expect(lease.drainView(context.ref.rootContextId).references).toHaveLength(1);
  await lease.handle(machineId,ack,()=>true,stamp);expect(invoked).toBe(1);expect(()=>proofs.resolve(owner,stamp)).toThrow(/stale|unavailable/);

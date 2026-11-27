@@ -2862,15 +2862,23 @@ export class Daemon extends EventEmitter {
     const panePid = native ? null : await this.paneHost.getPanePid(this.tmuxSessionName, windowId);
     if (!owned() || !native && (!panePid || !Number.isSafeInteger(panePid) || panePid <= 1)
       || native && (!captured || captured.instance !== this.name || captured.paneId !== windowId)) throw Error("Owned launch changed during retirement capture");
-    return Object.freeze({ daemonBootId, spawnGeneration, launchFenceEpoch, windowId, panePid, retired: async () => {
+    let observedRetired=false;
+    const retiredCurrent=()=>{
+      if(!observedRetired||!owned()||ipc&&!ipc.retired())return false;
+      if(native){const now=native.snapshot?.();return !!now&&now.state==="exited"&&(["hostBootId","paneId","launchId","agentId","instance"] as const).every(k=>now[k]===captured![k]);}
+      return requestContextProcessGroupGone(panePid!);
+    };
+    return Object.freeze({ daemonBootId, spawnGeneration, launchFenceEpoch, windowId, panePid, retiredCurrent, retired: async () => {
       try {
         if (!owned() || ipc && !ipc.retired()) return false;
         if (native) {
           const now = native.snapshot?.();
-          return !!now && now.state === "exited" && (["hostBootId", "paneId", "launchId", "agentId", "instance"] as const).every(k => now[k] === captured![k]) && owned();
+          const gone=!!now && now.state === "exited" && (["hostBootId", "paneId", "launchId", "agentId", "instance"] as const).every(k => now[k] === captured![k]) && owned();
+          if(gone)observedRetired=true;return gone;
         }
         const windows = await TmuxManager.listWindowsStrict(this.tmuxSessionName);
-        return owned() && (!ipc || ipc.retired()) && !windows.some(w => w.id === windowId) && requestContextProcessGroupGone(panePid!);
+        const gone=owned() && (!ipc || ipc.retired()) && !windows.some(w => w.id === windowId) && requestContextProcessGroupGone(panePid!);
+        if(gone)observedRetired=true;return gone;
       } catch { return false; }
     } });
   }

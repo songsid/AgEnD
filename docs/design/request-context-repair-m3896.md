@@ -150,7 +150,7 @@ delivery, absence of effects, D1, permission, replay or a new admission.
 
 Install a lazy eighth `agend_rc_v1_` guard in that transaction, scoped to writes
 of the drain table and a new connection-local capability function. The guard
-stays permanently after the first abandonment, including after resolution rows
+stays permanently after the first root resolution, including after resolution rows
 are collected. Such a home cannot return to a v1-only capable reader: an older
 binary is not a rollback. A never-abandoned home retains the seven-artifact v1
 shape. A functionless connection can still read and back up the database.
@@ -208,3 +208,24 @@ source, target, operation, terminal state and finished time, and rechecks the
 current owner inside the acknowledgement transaction. A changed row refuses.
 A ticket retirement acknowledges exactly its own matching unscoped uncertain
 delivery in the same transaction, so one owner decision settles both blockers.
+
+
+## Stop and final Off share the durable fence
+
+The full-mode proof caught a gap in the initial Stop assertion: an empty runtime
+inventory let Off finish even though Stop had failed before its resolution write.
+The final proof requires the applied Settings outcome and the stored resolution
+and compatibility guard, rather than an Off status alone.
+
+Capture the root's C owner before stopping it and bind the retirement receipt to
+that exact boot, spawn and launch fence. After positive physical retirement, use
+only that captured receipt's currency; C's work identity is already disposed.
+A different root owner, launch or replacement daemon refuses the Stop.
+
+A retained root fence without a resolution blocks final Off even when every
+runtime family is empty. It remains named as saved registered work, with the
+same Stop action, after a failed action, budget expiry or restart. Retry rotates
+the owned fence epoch and must complete the same positive retirement and atomic
+resolution checks. Only a committed resolution or independently proven root
+collection removes that blocker. No timer supplies completion evidence. The
+existing update exclusion and SHARED state lease cover fence through COMMIT.

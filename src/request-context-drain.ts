@@ -94,11 +94,24 @@ export class RequestContextDrain {
   }
   /** Read-only installation status. Unlike root retirement, this does not fence continuations still finishing. */
   inspectWork(rootId:string):{blockers:string[];revisions:Map<string,string>} {return this.inspectRegistries(rootId,true);}
-  private inspectRegistries(rootId:string,off:boolean):{blockers:string[];revisions:Map<string,string>} {
+  private inspectRegistries(rootId:string,off:boolean,ownFence?:Readonly<{rootId:string;epoch:string;owner:string}>):{blockers:string[];revisions:Map<string,string>} {
     ROOT.parse(rootId);this.ready();const owner=this.owner(),blockers=this.durable(rootId),revisions=new Map<string,string>();
     const context=new RequestContextStore(this.db).context(rootId);
     if(!context||context.ref.rootContextId!==rootId||context.ref.parentContextId)blockers.push("context-unavailable");
     if(!owner)blockers.push("drain-owner-unavailable");
+    // A stop may retire its last runtime before committing its durable resolution.
+    // Off must not mistake that gap (including after a crash) for finished work.
+    // Normal root collection also releases its fence or removes the retained root.
+    if(context&&this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_context_drain_v1'").get()){
+      const fence=this.db.prepare("SELECT epoch,owner FROM request_context_drain_v1 WHERE root_id=?").get(rootId) as {epoch:string;owner:string}|undefined;
+      if(fence){
+        const resolution=readRequestContextResolution(this.db,rootId);
+        const own=ownFence?.rootId===rootId&&ownFence.epoch===fence.epoch&&ownFence.owner===fence.owner;
+        if(!own)revisions.set(`root-fence:${rootId}`,requestContextDigest({fence,resolution}));
+        if(fence.owner!==owner||!ROOT.safeParse(fence.epoch).success)blockers.push("drain-owner-unavailable");
+        else if(!own&&!resolution)blockers.push("pending-root-fence");
+      }
+    }
     for(const registration of this.usedRegistrations)if(![...this.participants.values()].some(row=>row.value.registration===registration))blockers.push("unregistered-producer");
     for(const family of REQUEST_CONTEXT_DRAIN_FAMILIES)if(![...this.participants.values()].some(row=>row.family===family))blockers.push(`missing:${family}`);
     for(const [id,row]of this.participants){
@@ -113,7 +126,7 @@ export class RequestContextDrain {
     return {blockers,revisions};
   }
   inspect(rootId:string,epoch:string):{blockers:string[];revisions:Map<string,string>} {
-    const view=this.inspectRegistries(rootId,false),owner=this.owner();
+    const owner=this.owner(),view=this.inspectRegistries(rootId,false,owner?{rootId,epoch,owner}:undefined);
     if(!owner||!this.fenced(rootId,epoch,owner))view.blockers.push("drain-owner-or-fence");
     return view;
   }

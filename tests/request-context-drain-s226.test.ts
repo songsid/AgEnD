@@ -148,6 +148,16 @@ it("installation drain status is read-only and does not root-fence the continuat
  expect(d.inspectWork(root).blockers.some(b=>b.includes("validated-return"))).toBe(true);
  expect(d.inspectWork(randomUUID()).blockers).toContain("context-unavailable");
 });
+it("M-3896 a pending root fence blocks Off after runtime retirement and a coordinator restart",()=>{
+ const f=rig(),i=f.admit(),root=i.c.ref.rootContextId,d=f.drain();participants(d);f.terminal(i.result.delivery.deliveryId);
+ expect(d.inspectWork(root).blockers).toEqual([]);const epoch=d.fence(root);
+ expect(d.inspectWork(root).blockers).toEqual(["pending-root-fence"]);
+ const restarted=f.drain();participants(restarted);
+ expect(restarted.inspectWork(root).blockers).toEqual(["pending-root-fence"]);
+ const next=restarted.resume(root,epoch);
+ restarted.recordStoppedWork(root,next,{ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),receipts:[]},()=>true,()=>true);
+ expect(restarted.inspectWork(root).blockers).toEqual([]);
+});
 
 it("M-3896 abandonment keeps uncertain receipts intact and refuses a racing root registration",async()=>{
  const {nativeHumanOrigin}=await import("../src/human-delivery-receipts.js");
