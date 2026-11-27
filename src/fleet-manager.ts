@@ -1146,6 +1146,9 @@ const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
 const HUB_UPDATE_CALLBACK_PREFIX = "hub-update:";
 /** M-3770 1.5: the update card in General's chat ("update-card:" + 32 hex + ":" + its answer). */
 const UPDATE_CARD_CALLBACK_PREFIX = "update-card:";
+/** M-3694 (S-265): General's update proposal, a fleet admin's Confirm in General. "update-ask:" + 32 hex + ":confirm". */
+const UPDATE_ASK_CALLBACK_PREFIX = "update-ask:";
+const UPDATE_ASK_TIMEOUT_MS = 15 * 60_000;
 /** M-3770 1.5: where the chat card's message is (one per fleet), so later states edit it in place across a restart. */
 const UPDATE_CHAT_CARD_FILE = "update-chat-card.json";
 /** The chat card's buttons live a week (Not now's own length); a newer card replaces them sooner. */
@@ -5616,6 +5619,70 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { ok: false, error: `${t("kiro_migrate.no_general")} (${(err as Error).message})` };
     }
     return { ok: true, text: t("kiro_migrate.requested"), classic_conversation: plan.classicId };
+  }
+
+  /**
+   * M-3694 (S-265): General proposes updating AgEnD — when the agents are idle, or at a time (the card's own pick-time
+   * rule: in the future, within 7 days). Nothing changes until a fleet admin presses Confirm on the card in General; the
+   * Confirm answers the fleet's one update card (UpdateOfferCard.answer, as its own buttons and the web do), so pin,
+   * pause, preflight and the idle wait apply unchanged. Only the offer the card showed: a newer one voids it.
+   */
+  private pendingUpdateAsks = new Map<string, { version: string; body: { action: "when-idle" } | { action: "pick-time"; at: number }; requester: string }>();
+  async requestUpdateProposal(requester: string, at?: number): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+    if (this.fleetConfig?.instances[requester]?.general_topic !== true) return { ok: false, error: t("update.ask.general_only") };
+    if (resolveUpdates(this.fleetConfig?.updates).pin) return { ok: false, error: t("update.offer.pinned") };
+    const view = this.updateOfferView();
+    if (!view || !["offered", "not-now"].includes(view.state)) return { ok: false, error: t("update.ask.nothing", this.describeUpdateOffer()) };
+    if (at !== undefined && (!Number.isSafeInteger(at) || at <= Date.now() || at > Date.now() + 7 * 24 * 60 * 60_000)) return { ok: false, error: t("update.ask.bad_time") };
+    const place = this.updateChatCardPlace();
+    if (!place) return { ok: false, error: t("kiro_migrate.no_general") };
+    let current = "?";
+    try { current = this.runningAgendVersion(); } catch { /* unknown */ }
+    const stamp = (ms: number) => { try { return new Intl.DateTimeFormat(getLocale() === "zh-TW" ? "zh-TW" : "en-GB", { timeZone: this.usageZone(), weekday: "short", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(ms); } catch { return new Date(ms).toISOString(); } };
+    const when = at === undefined ? t("update.ask.when_idle") : t("update.ask.when_at", stamp(at));
+    try {
+      const nonce = await this.postNonceButtonPromptOrThrow({
+        prefix: UPDATE_ASK_CALLBACK_PREFIX, alertType: "clear_confirm", instanceName: place.general, adapter: place.adapter, adapterId: place.adapterId,
+        chatId: place.chatId, ...(place.threadId ? { threadId: place.threadId } : {}),
+        message: t("update.ask.card", view.version, current, when),
+        choices: [{ action: "confirm", label: t("update.ask.confirm") }, { action: "cancel", label: t("update.ask.cancel") }],
+        expiredText: t("update.ask.expired"), timeoutMs: UPDATE_ASK_TIMEOUT_MS,
+      });
+      this.pendingUpdateAsks.set(nonce, { version: view.version, requester, body: at === undefined ? { action: "when-idle" } : { action: "pick-time", at } });
+      const expiry = setTimeout(() => this.pendingUpdateAsks.delete(nonce), UPDATE_ASK_TIMEOUT_MS + 60_000);
+      expiry.unref?.();
+    } catch (err) {
+      return { ok: false, error: `${t("kiro_migrate.no_general")} (${(err as Error).message})` };
+    }
+    return { ok: true, text: t("update.ask.requested") };
+  }
+
+  /** A fleet admin's Confirm or Cancel on General's update proposal (the default nonce authorization: a fleet admin). */
+  private async handleUpdateAskCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(UPDATE_ASK_CALLBACK_PREFIX, /^update-ask:([0-9a-f]{32}):(confirm|cancel)$/, data, adapterId, adapter);
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const nonce = data.callbackData.slice(UPDATE_ASK_CALLBACK_PREFIX.length, UPDATE_ASK_CALLBACK_PREFIX.length + 32);
+    const ask = this.pendingUpdateAsks.get(nonce);
+    this.pendingUpdateAsks.delete(nonce);
+    const messageId = entry.messageId ?? data.messageId;
+    if (action === "cancel" || !ask) { await this.retireNonceButtons(entry, messageId, t(ask ? "update.ask.cancelled" : "update.ask.expired")); return true; }
+    // The offer the card showed, and no other: a newer version since voids the proposal (#4485 review 2's rule).
+    const now = this.updateOfferView();
+    if (!now || now.version !== ask.version) { await this.retireNonceButtons(entry, messageId, t("update.ask.expired")); return true; }
+    const by = updateAnswerLabel(data.username ?? "");
+    let text: string;
+    try {
+      const r = await this.ensureUpdateCard().answer(`general-${nonce}`, by, ask.body);
+      let current: string | null = null;
+      try { current = this.runningAgendVersion(); } catch { /* unknown */ }
+      const why = r.ok ? "" : ("key" in r.body && r.body.key !== "preflight" ? r.body.key : "error" in r.body ? r.body.error : r.body.key);
+      text = r.ok ? t("update.chatcard.by", this.updateChatCardText(this.updateOfferView(), current), by) : t("update.chatcard.refused", why || String(r.status));
+    } catch (err) { text = t("update.chatcard.refused", (err as Error).message); }
+    await this.retireNonceButtons(entry, messageId, text);
+    void this.syncUpdateChatCard();
+    return true;
   }
 
   /** A fleet admin's Confirm or Cancel on a kiro move. Any fleet admin (the default nonce authorization), in General. */
@@ -20711,6 +20778,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleHubFleetUpdateCallback(data, adapterId, adapter)) return true;
     if (await this.handleHubUpdateCallback(data, adapterId, adapter)) return true;
     if (await this.handleUpdateCardCallback(data, adapterId, adapter)) return true;   // M-3770 1.5
+    if (await this.handleUpdateAskCallback(data, adapterId, adapter)) return true;    // M-3694 S-265
     if (await this.handleKiroReconcileCallback(data, adapterId, adapter)) return true;
     if (await this.handleOfficePackCallback(data, adapterId, adapter)) return true;
     if (await this.handleDashboardCallback(data, adapterId, adapter)) return true;

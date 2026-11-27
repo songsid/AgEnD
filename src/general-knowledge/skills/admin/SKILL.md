@@ -32,7 +32,7 @@ roles: [general]
 | Hub | connect, share or pause an agent, who may ask, groups | The person, with their company account; see hub |
 | Access | administrators, allowed users, guests | The person: Settings → Access & security (it grants authority) |
 | Links | open a public link, its lifetime | The person: `/web` → Other device, or Settings → Access & security for a fixed link |
-| Updates | update now or at a time | The person: `/update` in a chat, or the update notice; see fleet-restart |
+| Updates | update when idle or at a time | Proposal `propose_update` {at?}; a fleet admin confirms the card in General. Update right now: the person (`/update now`); see fleet-restart |
 | Look, office | themes, colours, cards, effects, office styles | Tool (`set_web_settings`, `web_appearance`, `office_*`); see web-appearance |
 
 ## Contact permissions, step by step
