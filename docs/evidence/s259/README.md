@@ -61,3 +61,9 @@ GitHub reported DIRTY after release advanced. The branch merges fetched release0
 Before evidence refresh, all36 own-only files match a272353a and all32 incoming-only files match0926eb29. The normalized source/test added/deleted-line delta against each respective base is identical (SHA-2566770f0d153a6ce31415a9a6e728f84874b972d7ca9e279d31705aa37c539888b). This comparison excludes diff positions/context; it is not a claim that entire shared files are unchanged. The three shared files contain both parents' changes. Current full-file bindings were refreshed for those files and this note.
 
 One bounded integration check, tests/hub-room-history-s259.test.ts, passes7/1 against the merged migration list and actual Hub/SQLite services. No broad, browser, native, mutation or full compiler campaign was repeated. Prior source clearance carries only the unchanged author delta; terminal exact-head CI remains required.
+
+## R4 — ClassicBot exhaustive tool fixture
+
+Exact synced-head CI45928304631 failed only the exhaustive tool-sample assertion in tests/classic-outbound-address-1626.test.ts: the registered history tool had no entry in its synthetic sample table. The correction adds that one sample, preserving the exhaustive registry and channel-address checks. No production source, tool contract, policy, caps, UI or limits changed. The actual failing CI assertion is the negative control; no workflow rerun was requested.
+
+The named fixture-only command `npx vitest run tests/classic-outbound-address-1626.test.ts --maxWorkers=2` passes106 tests in one file, including actual inert ClassicBot dispatch validation for the new entry. No broad, browser, native, compiler or mutation campaign was repeated. Previous source clearances carry only for unchanged production slices; resulting-head CI must still compile and pass all checks.

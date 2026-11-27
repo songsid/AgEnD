@@ -62,6 +62,7 @@ function harness(type: "discord" | "telegram" = "discord", classic = true) {
 
 const samples: Record<string, Record<string, unknown>> = {
   hub_set_intro: { text: "I handle notes." }, hub_room_list: {}, hub_room_post: { room: "Weekly", text: "Update" },
+  hub_room_history: { room: "Weekly" },
   hub_room_members: { room: "Weekly" }, hub_people_search: { q: "Alex" },
   reply: { text: "hello" }, react: { message_id: "m", emoji: "👍" },
   edit_message: { message_id: "m", text: "edited" }, download_attachment: { file_id: "file" },

@@ -1,5 +1,5 @@
 12adf4186c4a0bc620edad9d91ea75b0ac6a0591e7adbd4dc60723c4ee3873a1  docs/design/hub-room-history-s259.md
-2cfc94673479d9b1d3c929fd78fe5ee66876002d9fac7fe6deba3eb9c12f4fdd  docs/evidence/s259/README.md
+263b0991fd2a4fdc9d1568ee7e68d14b2da4405c7060efe2fed609353d4fe0c6  docs/evidence/s259/README.md
 f497269a20988caa22bc063e9b3a925dd8b13f16cf55d2e088eb1b01741b41d9  docs/evidence/s259/negative-controls.patch
 93bfefd41adaa98f2de2f4b8d7ec828faf31fe199eaddeeeb0971b531e9536e0  src/agent-endpoint.ts
 e041cdab08b5e38d2b27912fec3c7aae3d500af02e087683371a49c1e5223104  src/channel/mcp-tools.ts
@@ -36,3 +36,4 @@ f55760632249f57d631f463579589470443e014baf1a28681d910e59832b46b8  tests/hub-room
 97b991b5a392f2b78a350f7d529c1d79700e6d8cca7e609d4151d030003b3994  tests/native-mcp.test.ts
 5b9d07369577e69419d48ac2b7dc600382ad4fa84f0a598965be30e2fa914b9f  tests/request-context-policy-s232.test.ts
 15bb5e1bbe5bff92169db3b649f4471fc81a7aab8fc85060820acadf5e1ffa88  tests/tool-permissions.test.ts
+ec58693b10f285d3277df97fb8701c02e93ee62ad7810c2fec600a66c5ab5767  tests/classic-outbound-address-1626.test.ts
