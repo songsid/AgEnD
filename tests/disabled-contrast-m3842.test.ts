@@ -23,7 +23,7 @@ function themes(): Array<{ name: string; t: Record<string, string> }> {
   const out: Array<{ name: string; t: Record<string, string> }> = [];
   for (const m of TOKENS.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const t = Object.fromEntries([...m[2]!.matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})\s*;/gi)].map(x => [x[1]!, x[2]!]));
-    if (t["text-3"] && t.bg && t.surface) out.push({ name: m[1]!.trim().replace(/\s+/g, " ").slice(0, 80), t });
+    if (t["text-3"] && t["text-2"] && t.bg && t.surface) out.push({ name: m[1]!.trim().replace(/\s+/g, " ").slice(0, 80), t });
   }
   return out;
 }
@@ -39,6 +39,10 @@ describe("M-3842: disabled buttons", () => {
     expect(APP).toMatch(/\n\.btn-send:disabled \{ background: var\(--surface-2\); color: var\(--text-3\); border-color: transparent; border-style: solid; \}/);
     expect(APP).not.toMatch(/\.btn(-[a-z]+)?:disabled \{[^}]*opacity: 0\./);           // no button faded by opacity
     expect(APP).not.toContain(".contact-grant-dialog .btn-primary:disabled");           // no per-page override left
+    // No rule fades an off button that carries .btn: the chat's reply and poll buttons (.rb-btn) included (#4576 review).
+    for (const m of APP.matchAll(/([^{}]*\.rb-btn[^{}]*:disabled[^{}]*)\{([^}]*)\}/g)) expect(m[2], m[1]!.trim()).not.toMatch(/opacity:\s*0?\.\d/);
+    expect(APP).toMatch(/\.rb-btn\.chosen, \.rb-btn\.chosen:disabled \{[^}]*border-style: solid;/);          // the chosen answer keeps its solid green edge
+    expect(APP).toMatch(/\n\.rb-row\.poll \.rb-btn:disabled:not\(\.chosen\) \{ color: var\(--text-2\); \}/);   // a closed poll's tallies stay readable
   });
   it("its text reaches 3:1 on the page and on a card, in every theme and palette", () => {
     const all = themes();
@@ -47,6 +51,9 @@ describe("M-3842: disabled buttons", () => {
       const off = mix(hex(t["text-3"]!), hex(t.bg!));
       expect(contrast(off, hex(t.bg!)), `${name} on --bg`).toBeGreaterThanOrEqual(3);
       expect(contrast(off, hex(t.surface!)), `${name} on --surface`).toBeGreaterThanOrEqual(3);
+      // a closed poll's choices (--text-2, nothing faded) on the page and a card
+      expect(contrast(hex(t["text-2"]!), hex(t.bg!)), `${name} poll on --bg`).toBeGreaterThanOrEqual(3);
+      expect(contrast(hex(t["text-2"]!), hex(t.surface!)), `${name} poll on --surface`).toBeGreaterThanOrEqual(3);
       if (t["surface-2"]) expect(contrast(hex(t["text-3"]!), hex(t["surface-2"]!)), `${name} Send's icon on --surface-2`).toBeGreaterThanOrEqual(3);
     }
   });

@@ -1318,10 +1318,10 @@ img.amb-p { object-fit: contain; }
 /* #1266: an agent reply's buttons — choices under the text; one answers for everyone. */
 .rb-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
 .rb-btn { max-width: 100%; white-space: normal; text-align: left; }
-.rb-btn.chosen, .rb-btn.chosen:disabled { border-color: var(--ok); color: var(--text); background: color-mix(in srgb, var(--ok) 14%, transparent); font-weight: var(--fw-semibold); opacity: 1; }
-.rb-btn:disabled:not(.chosen) { opacity: 0.55; }
-/* #1823: a poll — its closed buttons show the tally, so they stay readable; the time left keeps its width. */
-.rb-row.poll .rb-btn:disabled { opacity: 0.85; }
+.rb-btn.chosen, .rb-btn.chosen:disabled { border-color: var(--ok); border-style: solid; color: var(--text); background: color-mix(in srgb, var(--ok) 14%, transparent); font-weight: var(--fw-semibold); opacity: 1; }
+/* M-3842: an unchosen, answered or expired choice is the shared off button (.btn:disabled): muted, no fill, dashed; no opacity. */
+/* #1823: a poll — its closed buttons show the tally, so they stay readable (M-3842: --text-2, no opacity); the time left keeps its width. */
+.rb-row.poll .rb-btn:disabled:not(.chosen) { color: var(--text-2); }
 .rb-row.poll .poll-left { font-variant-numeric: tabular-nums; }
 .poll-voters { margin: var(--s-1) 0 0; padding-left: var(--s-4); color: var(--text-2); font-size: var(--fs-sm); }
 .rb-note { font-size: var(--fs-xs); color: var(--text-3); }
