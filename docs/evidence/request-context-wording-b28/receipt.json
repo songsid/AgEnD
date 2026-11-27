@@ -1,0 +1,57 @@
+{
+  "sourceHead": "766537d7f5f0529b063ff18774644bc8e32767cf",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en-off-unavailable: the switch is off and disabled, with its reason",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-off-unavailable: no downgrade warning under the disabled switch",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-work: blocked says it isn't on yet",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-work: the agents' work line asks to wait, not to end it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-off-unavailable: the switch is off and disabled, with its reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-off-unavailable: no downgrade warning under the disabled switch",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-work: blocked says it isn't on yet",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-work: the agents' work line asks to wait, not to end it",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "b28-desk-light-en-off-unavailable.png",
+      "sha256": "e37d1354512b36d79938f165129fb8687f20ec72ee0fd1a18a6dee97ae328c7c"
+    },
+    {
+      "path": "b28-desk-light-en-blocked-work.png",
+      "sha256": "8b6b052daeebe30ec3f767d0a34e37b4587032f2188479608176177f2688b0bd"
+    },
+    {
+      "path": "b28-phone-dark-zh-TW-off-unavailable.png",
+      "sha256": "8da1e1a183e79fda28d1be929c1097c2f7f043659128af58fec49ddd4cd684ef"
+    },
+    {
+      "path": "b28-phone-dark-zh-TW-blocked-work.png",
+      "sha256": "bc7ad2b53fd4d8cdcf1811314882ede2065f90c5ca684f0e5b077069b99a7ccd"
+    }
+  ],
+  "summary": "8/8"
+}
