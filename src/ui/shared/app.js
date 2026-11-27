@@ -8,7 +8,7 @@
 // #1665 first: the host's preferences go into this browser's cache before any module below reads its key.
 import { bootPrefs } from "./app-prefs.js";
 import { html, render } from "./app-html.js";
-import { Shell, handleKey, handleSearchKey, showDialog, closeDrawer, openDrawer, shellStore, retryable, setNewInstanceOpener, isMacLike } from "./app-shell.js";
+import { Shell, Outlet, handleKey, handleSearchKey, showDialog, closeDrawer, openDrawer, shellStore, retryable, setNewInstanceOpener, isMacLike } from "./app-shell.js";
 import { installSwipe } from "./app-swipe.js";
 import { installTextUndo } from "./text-undo.js";
 import { startRouter, navStore, navigate } from "./app-nav.js";
@@ -20,6 +20,7 @@ import { startNeedsNotifier } from "./app-needs.js";
 import { startInstall } from "./app-install.js";
 import { toast } from "./ui-toast.js";
 import { t } from "./app-i18n.js";
+import { SessionLoading } from "./ui-states.js";
 import { initTextSize, initUsageRail } from "./header-tools.js";
 import { installOwnerCss } from "./owner-css.js";
 import { startThemes } from "./app-themes.js";
@@ -54,10 +55,18 @@ const retryUrl = (path, attempt) => (attempt ? `${path}?retry=${attempt}` : (war
 const loadView = retryable((a) => import(retryUrl("/assets/panel-view.js", a)));
 const panels = new Map([["view", { load: () => loadView().then((m) => m.ViewPanel) }]]);
 let onNewInstance = null;
+const hubStartup = new Map();
 
 if (hubPage) {
   const loadHub = retryable((a) => import(retryUrl("/ui/js/panel-hub.js", a)));
   panels.set("hub", { load: () => loadHub().then((m) => m.HubPanel) });
+  // Resolve the Hub session before mounting the workspace, including its sidebar.
+  // The same lazy import serves both startup and the signed-in panel.
+  hubStartup.set("hub", { load: () => loadHub().then((m) => {
+    if (typeof m.HubWorkspace !== "function") throw new SyntaxError("Hub module does not provide the HubWorkspace export");
+    panels.get("hub").Component = m.HubPanel;
+    return () => html`<${m.HubWorkspace}><${Shell} panels=${panels} onNewInstance=${onNewInstance} /></${m.HubWorkspace}>`;
+  }) });
   appStore.set({ connection: "none" });
   if (!location.pathname.startsWith("/ui/hub")) history.replaceState(history.state, "", "/ui/hub");
 } else if (mode === "full") {
@@ -208,4 +217,8 @@ installSwipe({
   isOpen: () => shellStore.get().drawer, open: openDrawer, close: closeDrawer,
 });
 
-render(html`<${Shell} panels=${panels} onNewInstance=${onNewInstance} viewOnly=${mode === "view-only"} />`, document.getElementById("app"));
+// Replace only the Hub's static boot placeholder in this same synchronous mount.
+if (hubPage) document.getElementById("app")?.replaceChildren();
+render(hubPage
+  ? html`<${Outlet} route=${{ panel: "hub" }} seq=${0} panels=${hubStartup} loading=${html`<${SessionLoading} />`} />`
+  : html`<${Shell} panels=${panels} onNewInstance=${onNewInstance} viewOnly=${mode === "view-only"} />`, document.getElementById("app"));

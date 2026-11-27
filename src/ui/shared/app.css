@@ -1495,6 +1495,11 @@ img.amb-p { object-fit: contain; }
 .webauth-chip .btn-sm { min-height: 24px; }
 /* M-3710 (#4447 review): Needs you's Authorize this browser is a full touch target on a phone. */
 @media (pointer: coarse), (max-width: 479px) { .contact-verify-need .webauth-chip .btn-sm { min-height: var(--tap); min-width: var(--tap); } }
+/* M-3864 R6 (#4583): Permissions / Authorizations when a verified administrator is needed: the line, this browser's
+   authorize line, then Try again, stacked with room between them; touch-sized on a phone as the Needs you line is. */
+.contact-verify { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; }
+.contact-verify > .note { margin: 0; }
+@media (pointer: coarse), (max-width: 479px) { .contact-verify .btn-sm { min-height: var(--tap); min-width: var(--tap); } }
 /* #1939 S2a: Settings → Web → Web authority. */
 .s-web-authority .s-va-sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .s-web-authority .s-va-sessions li { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); overflow-wrap: anywhere; }
@@ -5623,9 +5628,16 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* #4497 recheck: the body scrolls between the head and the footer (a flex child's min-height: auto let it run under the
    footer buttons on a phone), with room after its last line so that line scrolls clear of them. */
 .contact-grant-dialog .dlg-body { min-height: 0; padding-bottom: var(--s-6); }
+.contact-grant-dialog .dlg-title { text-wrap: balance; }   /* M-3783: a two-line title on a phone splits evenly, no one-word last line */
+/* M-3783: the essentials in one line; what the rule allows, folded under it. */
+.contact-grant-more summary { cursor: pointer; color: var(--accent); font-size: var(--fs-sm); }
+.contact-grant-more > p { margin: var(--s-1) 0 0; }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .contact-grant-more summary { display: list-item; min-height: var(--tap); padding-block: var(--s-2); box-sizing: border-box; }   /* keeps its ▶ marker */
+}
 /* #4497: the save button's two-part label wraps inside the button on a phone instead of widening the dialog (m3409's overflow
    check), as the Hub directory editor's footer does. */
-.contact-grant-dialog .dlg-actions .btn { white-space: normal; overflow-wrap: anywhere; text-align: center; padding-block: var(--s-2); }
+.contact-grant-dialog .dlg-actions .btn { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; text-align: center; padding-block: var(--s-2); }   /* zh words whole: 「…並設為 / 常用轉交」, never 常 / 用 (M-3783) */
 /* #4497 recheck: the card's decision buttons keep their whole words; the row wraps to a second line instead of clipping. */
 .rc-card .rc-decide > .btn { flex: 0 0 auto; max-width: 100%; }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
@@ -5659,3 +5671,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .request-provenance summary { min-height: var(--tap); display: list-item; padding-block: var(--s-3); }
   .request-provenance .msg-tools button { min-height: var(--tap); min-width: var(--tap); }
 }
+
+/* One neutral viewport for Hub startup, before any workspace identity is drawn. */
+.session-loading-page { display: grid; place-items: center; min-height: 100dvh; box-sizing: border-box; margin: 0; padding: var(--s-4); background: var(--bg); color: var(--text-2); }
+/* Like .sk-boot, the initial frame is visible immediately, without content's anti-flash delay. */
+.session-loading-page .skeleton { opacity: 1; animation: none; }

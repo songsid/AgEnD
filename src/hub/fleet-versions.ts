@@ -58,8 +58,9 @@ export class HubFleetVersions {
         .run(info.version, info.runsAsService ? 1 : 0, this.core.now(), link.fleetId);
     });
   }
-  view(fleetId: string, recommendedVersion: string | null = null): HubFleetVersionView {
-    return this.core.atomic(db => {
+  view(fleetId: string, recommendedVersion: string | null = null, batchDb?: import("better-sqlite3").Database): HubFleetVersionView {
+    const read = <T>(work: (db: import("better-sqlite3").Database) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    return read(db => {
       const row = db.prepare("SELECT * FROM hub_fleet_versions WHERE fleet_id=?").get(fleetId) as Row | undefined;
       const connected = this.links.get(fleetId)?.current() === true;
       return { version: row?.version ?? null, runsAsService: row?.runs_as_service == null ? null : row.runs_as_service === 1,

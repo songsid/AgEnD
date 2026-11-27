@@ -130,15 +130,15 @@ describe("formatDiscordUsageActivity", () => {
     expect(text).not.toMatch(/weekly|reset|重置|\(.*d.*h.*\)/i);
   });
 
-  it("renders Q Developer Pro as unmeasurable with a monthly limit", () => {
+  it("renders rejected usage as unmeasurable without inventing a monthly limit", () => {
     const payload: UsagePayload = {
       fetchedAt: PAYLOAD.fetchedAt,
       providers: [{
-        id: "kiro", name: "Kiro", plan: "Q Developer Pro", status: "ok",
-        hint: "Not measurable · monthly limit 10,000 requests", metrics: [],
+        id: "kiro", name: "Kiro", plan: "Kiro", status: "ok",
+        hint: "Not measurable — usage access was rejected (HTTP 403).", metrics: [],
       }],
     };
-    expect(formatUsageSummary(payload)).toContain("Not measurable · monthly limit 10,000 requests");
+    expect(formatUsageSummary(payload)).toContain("Not measurable — usage access was rejected (HTTP 403).");
     expect(formatUsageSummary(payload)).not.toContain("no credit usage");
     expect(formatDiscordUsageActivity(payload)).toBe("⚡ Usage unavailable");
     expect(formatUsageSummary(payload)).not.toMatch(/unlimited|♾️/i);

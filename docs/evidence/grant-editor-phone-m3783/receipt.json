@@ -1,0 +1,178 @@
+{
+  "script": "scripts/manual/request-contact-card-s228/capture.mts",
+  "sourceHead": "61c5de308d8eb689c6c8b560f49bb595098c670f",
+  "dirty": [],
+  "summary": "182/182",
+  "grantEditorChecks": [
+    {
+      "name": "desk-light-en 5: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: scrolled to its end, the body's last line clears the footer",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: scrolled to its end, the body's last line clears the footer",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: scrolled to its end, the body's last line clears the footer",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5b: scrolled to its end, the last line is fully above the footer",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5c: the fold keeps its marker and a full tap height; the footer keeps zh words whole",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 5c: What this allows opens and is readable; the body still ends above the fixed footer",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the rule lists the request's people",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: nothing decided by opening it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the button and the editor have one name",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: scrolled to its end, the body's last line clears the footer",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the boundary is in view (not behind the footer), and plain",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: save is off until someone is ticked, and says why",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the expiry is a day and a 24-hour time in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5b: scrolled to its end, the last line is fully above the footer",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5c: the fold keeps its marker and a full tap height; the footer keeps zh words whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5c: What this allows opens and is readable; the body still ends above the fixed footer",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3783-desk-dark-zh-TW-5-always-allow.png",
+      "sha256": "aaf4b8e656f73ea2a7420f9f616c6e641a5c14b58e445080dd5f8530341d78bb"
+    },
+    {
+      "path": "m3783-desk-light-en-5-always-allow.png",
+      "sha256": "13b34f0e83eb45e72e3bc6f7644b28ae9f1943a8192798765b633b11db53a1c0"
+    },
+    {
+      "path": "m3783-phone-dark-zh-TW-5-always-allow.png",
+      "sha256": "d77c32300cff1cd6231f62571e601416226270c24f5591a978eb9252116ad8eb"
+    },
+    {
+      "path": "m3783-phone-dark-zh-TW-5b-always-allow-end.png",
+      "sha256": "e271bb982681e0ec44f98224466ed703ec7e73fbd7a75154eac2e82d3ccb0bf5"
+    },
+    {
+      "path": "m3783-phone-dark-zh-TW-5c-always-allow-more.png",
+      "sha256": "fa5f89cebfb99eb7524f274eee0b056ebaec9a7012b69738930b97ae29992789"
+    },
+    {
+      "path": "m3783-phone-light-en-5-always-allow.png",
+      "sha256": "780383f4af26a9e0eeb6c2685767ff64e2ca2f806e50f713d1e74cf50cad0bad"
+    },
+    {
+      "path": "m3783-phone-light-en-5b-always-allow-end.png",
+      "sha256": "162fb58693d075ad0a7d191f2399fed3098929243e6007d1690f45db3a77258c"
+    },
+    {
+      "path": "m3783-phone-light-en-5c-always-allow-more.png",
+      "sha256": "c4e803a7cde19a721c0ac216a1b31061d5b99478425812847d35411ba00ccd83"
+    }
+  ]
+}

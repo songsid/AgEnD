@@ -181,19 +181,33 @@ async function walk(c: any) {
       const last = [...body.children].filter((e) => e.getBoundingClientRect().height).pop().getBoundingClientRect(), foot = d.querySelector(".dlg-actions").getBoundingClientRect();
       const r = { lastBottom: Math.round(last.bottom), footTop: Math.round(foot.top) }; body.scrollTop = 0; return r; })()`) as any;
     check(`${tag} 5: scrolled to its end, the body's last line clears the footer`, tail.lastBottom <= tail.footTop, tail);
-    check(`${tag} 5: the boundary is in view (not behind the footer), and plain`, ed.boundaryInView && dlg.includes(W(zh, "This only decides whether a message is forwarded", "這只決定訊息能不能轉交")), ed);
-    check(`${tag} 5: save is off until someone is ticked, and says why`, ed.saveOff && ed.save === W(zh, "Approve this one and allow from now on", "核准這筆，並設為常用轉交") && dlg.includes(W(zh, "Tick at least one person to save a rule.", "至少勾選一個人，才能儲存規則。")), ed);
+    check(`${tag} 5: the boundary is in view (not behind the footer), and plain`, ed.boundaryInView && dlg.includes(W(zh, "Until it expires, these people's requests of this type are forwarded to this agent without asking.", "到期前，這些人的這類請求會直接轉交給這個 Agent，不再詢問。")) && dlg.includes(W(zh, "What this allows", "這會允許什麼")), ed);
+    check(`${tag} 5: save is off until someone is ticked, and says why`, ed.saveOff && ed.save === W(zh, "Approve and allow from now on", "核准這筆，並設為常用轉交") && dlg.includes(W(zh, "Tick at least one person to save a rule.", "至少勾選一個人，才能儲存規則。")), ed);
     check(`${tag} 5: the expiry is a day and a 24-hour time in the page's language`, ed.native === 0 && ed.selects === 3 && (!zh || !/AM|PM|上午|下午/.test(dlg)) && (zh ? /[年月日]/.test(ed.day) : /[A-Z][a-z]{2}/.test(ed.day)), ed);
     await shot(page, `${tag}-5-always-allow`);
     // 5b (phone, zh dark): the same editor scrolled to its end — its last line sits fully above the footer (the leader's
     // recheck: the unscrolled frame cuts the time-zone line at the footer edge, so the user sees it scrolls clear).
-    if (phone && zh) {
+    if (phone) {
       const end = await page.evaluate(`(() => { const d = document.querySelector("dialog.contact-grant-dialog"); const body = d.querySelector(".dlg-body"); body.scrollTop = body.scrollHeight;
         const last = [...body.children].filter((e) => e.getBoundingClientRect().height).pop().getBoundingClientRect(), foot = d.querySelector(".dlg-actions").getBoundingClientRect();
         return { lastBottom: Math.round(last.bottom), footTop: Math.round(foot.top), scrolled: body.scrollTop > 0 }; })()`) as any;
       await page.waitForTimeout(300);
       check(`${tag} 5b: scrolled to its end, the last line is fully above the footer`, end.scrolled && end.lastBottom <= end.footTop, end);
       await shot(page, `${tag}-5b-always-allow-end`);
+      // 5c (M-3783): "What this allows" opened; the body still scrolls with every line reachable above the fixed footer.
+      await page.locator("dialog.contact-grant-dialog details.contact-grant-more summary").click(); await page.waitForTimeout(300);
+      const open = await page.evaluate(`(() => { const d = document.querySelector("dialog.contact-grant-dialog"); const body = d.querySelector(".dlg-body"); const more = d.querySelector("details.contact-grant-more");
+        more.scrollIntoView({ block: "start" }); const m = more.getBoundingClientRect(), b = body.getBoundingClientRect(), foot = d.querySelector(".dlg-actions").getBoundingClientRect();
+        const r1 = { open: more.open, moreTop: Math.round(m.top), moreBottom: Math.round(m.bottom), bodyTop: Math.round(b.top), footTop: Math.round(foot.top) };
+        body.scrollTop = body.scrollHeight; const last = [...body.children].filter((e) => e.getBoundingClientRect().height).pop().getBoundingClientRect();
+        const r2 = { lastBottom: Math.round(last.bottom), footTop: Math.round(d.querySelector(".dlg-actions").getBoundingClientRect().top), footBottom: Math.round(foot.bottom), vh: innerHeight };
+        more.scrollIntoView({ block: "start" }); return { ...r1, ...r2 }; })()`) as any;
+      const ui = await page.evaluate(`(() => { const d = document.querySelector("dialog.contact-grant-dialog"); const sum = d.querySelector("details.contact-grant-more summary"); const save = [...d.querySelectorAll(".dlg-actions button")].pop();
+        return { marker: getComputedStyle(sum).display === "list-item", tap: Math.round(sum.getBoundingClientRect().height), saveWordBreak: getComputedStyle(save).wordBreak }; })()`) as any;
+      check(`${tag} 5c: the fold keeps its marker and a full tap height; the footer keeps zh words whole`, ui.marker && ui.tap >= 44 && ui.saveWordBreak === "keep-all", ui);
+    check(`${tag} 5c: What this allows opens and is readable; the body still ends above the fixed footer`, open.open && open.moreBottom <= open.footTop && open.lastBottom <= open.footTop && open.footBottom <= open.vh, open);
+      await page.waitForTimeout(300);
+      await shot(page, `${tag}-5c-always-allow-more`);
     }
     check(`${tag}: no page errors`, errors.length === 0, errors);
   } finally {

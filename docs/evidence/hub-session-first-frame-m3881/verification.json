@@ -1,0 +1,276 @@
+{
+  "commit": "c1349d793ea8c3579257fd76b2d82ee00d5feaf8",
+  "inputs": [
+    {
+      "path": "src/ui/shared/app.js",
+      "sha256": "51a60c5d4de3e8a766bd8c7bdc3577c00af20830b838a3972b70e3711a6a6f79"
+    },
+    {
+      "path": "src/ui/shared/app-shell.js",
+      "sha256": "6d5df217fd3b9fb9a1dd54034a0ccb3108110614e054201b21f93be28e5f59bf"
+    },
+    {
+      "path": "src/ui/shared/ui-states.js",
+      "sha256": "477a8ae5696c4ad1e294a192a71f6d038772df43de1d448461c43cabb2d6dedd"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "d99f4c812f0381644da63889fb3c6f07ac9f9e279929e592376b95a1dff10332"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "a67e9fbb6a1225a2e7aacf6cc6006ef5128e8220788537fd50f088fcd18fbc18"
+    },
+    {
+      "path": "src/ui/app.html",
+      "sha256": "5d40071238ce66520e0cf151a125e4fe30ad7c657dc14517d60bd6d6694cf4aa"
+    },
+    {
+      "path": "src/web-api.ts",
+      "sha256": "67105a8b0b392660c3ea2d5685d11631dd47eea8696641fb88dedb55d607cad3"
+    },
+    {
+      "path": "scripts/manual/hub-session-first-frame-m3881/capture.mts",
+      "sha256": "8739a94819811570bc63e2932a237f66ecd1281f969a4050317e286f40890f5d"
+    }
+  ],
+  "cases": [
+    {
+      "key": "desk-light-en",
+      "width": 1366,
+      "height": 900,
+      "theme": "light",
+      "lang": "en",
+      "phone": false,
+      "initial": {
+        "visible": true,
+        "oldBoot": false,
+        "sidebar": false,
+        "rect": [
+          0,
+          0,
+          1366,
+          900
+        ]
+      },
+      "pending": {
+        "visible": true,
+        "count": 1,
+        "label": "Loading…",
+        "sidebar": false,
+        "text": "",
+        "oldBoot": false,
+        "rect": [
+          0,
+          0,
+          1366,
+          900
+        ],
+        "busy": "true",
+        "overflow": false
+      },
+      "settled": {
+        "sidebar": false,
+        "loading": false,
+        "heading": "Sign in to the Hub",
+        "frames": [
+          "false:true:false",
+          "false:false:true"
+        ],
+        "overflow": false
+      },
+      "requests": [
+        "/hub/v1/session"
+      ],
+      "foreign": [],
+      "writes": [],
+      "failures": [],
+      "images": [
+        {
+          "path": "desk-light-en-loading.png",
+          "sha256": "53e7e3c88e208df9d19b1660fa9bc5a24c9b6aa8e3b45b941227aeef8c0bb566"
+        },
+        {
+          "path": "desk-light-en-signin.png",
+          "sha256": "e9e9da912956cfe8071ccc80484886837932ec319b608d0d9d8076c40b41b2c9"
+        }
+      ]
+    },
+    {
+      "key": "phone-dark-zh-TW",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "lang": "zh-TW",
+      "phone": true,
+      "initial": {
+        "visible": true,
+        "oldBoot": false,
+        "sidebar": false,
+        "rect": [
+          0,
+          0,
+          390,
+          844
+        ]
+      },
+      "pending": {
+        "visible": true,
+        "count": 1,
+        "label": "載入中…",
+        "sidebar": false,
+        "text": "",
+        "oldBoot": false,
+        "rect": [
+          0,
+          0,
+          390,
+          844
+        ],
+        "busy": "true",
+        "overflow": false
+      },
+      "settled": {
+        "sidebar": false,
+        "loading": false,
+        "heading": "登入 Hub",
+        "frames": [
+          "false:true:false",
+          "false:false:true"
+        ],
+        "overflow": false
+      },
+      "requests": [
+        "/hub/v1/session"
+      ],
+      "foreign": [],
+      "writes": [],
+      "failures": [],
+      "images": [
+        {
+          "path": "phone-dark-zh-TW-loading.png",
+          "sha256": "f9a2b3ae581f2271d51f9c668bba406d57c4d3856dd4d8be3f2eb3956f512e5c"
+        },
+        {
+          "path": "phone-dark-zh-TW-signin.png",
+          "sha256": "c6fba62d3f62329fa9d4b58225aa57e4e11f286df1909cfe7d7a6b804a5b2535"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "name": "desk-light-en:source-unchanged",
+      "pass": true
+    },
+    {
+      "name": "desk-light-en:load-within-bound",
+      "pass": true
+    },
+    {
+      "name": "desk-light-en:neutral-before-modules",
+      "pass": true
+    },
+    {
+      "name": "desk-light-en:pending-neutral",
+      "pass": true
+    },
+    {
+      "name": "desk-light-en:same-neutral-frame",
+      "pass": true
+    },
+    {
+      "name": "desk-light-en:one-session-read-only",
+      "pass": true
+    },
+    {
+      "name": "desk-light-en:signin-only",
+      "pass": true
+    },
+    {
+      "name": "desk-light-en:no-shell-in-recorded-commits",
+      "pass": true
+    },
+    {
+      "name": "desk-light-en:no-live-or-write-or-runtime-error",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW:source-unchanged",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW:load-within-bound",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW:neutral-before-modules",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW:pending-neutral",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW:same-neutral-frame",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW:one-session-read-only",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW:signin-only",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW:no-shell-in-recorded-commits",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW:no-live-or-write-or-runtime-error",
+      "pass": true
+    },
+    {
+      "name": "final:source-unchanged",
+      "pass": true
+    },
+    {
+      "name": "final:load-within-bound",
+      "pass": true
+    }
+  ],
+  "scope": "Actual production Hub fixture HTTPS, held actual signed-out session response; four current frames only; no live Hub, directory, Fleet or vendor operation.",
+  "cleanedUp": true,
+  "validation": {
+    "initial_base": "0aff702d8cd640e5a0ae29ebddb97e190671f934",
+    "initial_order_assertion_failures": 1,
+    "initial_positive_controls": 3,
+    "boot_layer_base": "0ed66264c3f770aecefe2542348b3bfe26dfc3cd",
+    "boot_layer_assertion_failures": 1,
+    "boot_layer_positive_controls": 4,
+    "current_entry_cases": 5,
+    "final_entry_csp_skeleton": {
+      "files": 4,
+      "passes": 40
+    },
+    "css_visibility_delta": {
+      "files": 2,
+      "passes": 24
+    },
+    "related_earlier": {
+      "files": 6,
+      "passes": 90,
+      "overlaps": true
+    },
+    "source_types_errors": 0,
+    "test_types_errors": 0,
+    "type_scope": "TS source/tests checked at7c425861; subsequent changes only CSS and capture harness, with no TS source/test change."
+  },
+  "visual": {
+    "originals_individually_inspected": 4,
+    "privacy": "Only generic fixture Team Hub, empty login fields; no personal data",
+    "layout": "Visible centered neutral indicator; sign-in complete/readable; no crop/overflow",
+    "limits": "Browser emulated phone, current frames only; no live account or latency benchmark"
+  }
+}

@@ -21,6 +21,7 @@ export class RequestContextController implements RequestContextControlHost {
  private cached:RequestContextControlView|null=null;
  private offer:RequestContextEnableOffer|null=null;
  private image="";private revision=0;private attempted=false;private busy=false;
+  private enableFailed=false;
  constructor(private readonly ports:RequestContextControllerPorts){this.principal=ports.principal;this.permitContinuation=ports.permitContinuation;}
  snapshot():RequestContextControlView|null{return this.cached?structuredClone({...this.cached,canChange:!this.busy&&this.ports.current()}):null;}
  private require(actor:RequestContextControlPrincipal,decision=false):void {
@@ -29,15 +30,22 @@ export class RequestContextController implements RequestContextControlHost {
  }
  private refresh():RequestContextControlView {
   if(!this.ports.current())throw Error("unavailable");
-  const base=this.ports.base(),state=base.state,blockers=this.attempted||state?this.ports.inspect().map(row=>structuredClone(row)):[];
-  const next={enabled:state?.mode==="active",everActivated:!!state,attempted:this.attempted,phase:state?.mode==="draining"?"draining" as const:blockers.length?"blocked" as const:state?.mode==="active"?"on" as const:"off" as const,canChange:true,blockers,
+  // S-272: the same inspection before the first attempt: Check and the page say what an On would wait for (it used to
+  // say nothing until an attempt blocked). Needs you still shows it only after an attempt (request-context-control-api.ts).
+  const base=this.ports.base(),state=base.state,blockers=this.ports.inspect().map(row=>structuredClone(row));
+  const next={enabled:state?.mode==="active",everActivated:!!state,attempted:this.attempted,phase:state?.mode==="draining"?"draining" as const:blockers.length||this.enableFailed?"blocked" as const:state?.mode==="active"?"on" as const:"off" as const,canChange:true,blockers,
+   ...(this.enableFailed?{enableFailed:true}:{}),
    ...(base.restartCount?{restartCount:base.restartCount}:{}),...(base.offer.latestDeadline!==null?{goBack:{attemptIds:[...base.offer.invalidates],availableUntil:new Date(base.offer.latestDeadline).toISOString(),timeZone:base.timeZone}}:{})};
   const image=requestContextDigest([next,base.offer.sha256,state]);
   if(image!==this.image){this.revision++;this.image=image;}
   this.offer=base.offer;this.cached=RequestContextControlViewSchema.parse({...next,revision:this.revision});return this.snapshot()!;
  }
  read(actor:RequestContextControlPrincipal):RequestContextControlView{this.require(actor);const value=this.busy?this.snapshot():this.refresh();this.require(actor);if(!value)throw Error("unavailable");return {...value,canChange:value.canChange&&actor.verified};}
- recheck(actor:RequestContextControlPrincipal):RequestContextControlView{return this.read(actor);}
+ recheck(actor:RequestContextControlPrincipal):RequestContextControlView{
+  this.require(actor);if(this.busy)return this.read(actor);
+  const failed=this.enableFailed;this.enableFailed=false;
+  try{return this.read(actor);}catch(error){this.enableFailed=failed;throw error;}
+ }
  async change(input:Readonly<RequestContextControlDecision>,actor:RequestContextControlPrincipal):Promise<RequestContextControlView>{
   this.require(actor,true);if(this.busy)throw Error("stale");
   const view=this.refresh(),offer=this.offer!;
@@ -50,12 +58,14 @@ export class RequestContextController implements RequestContextControlHost {
   this.busy=true;
   try{
    if(input.action==="enable"){
-    this.attempted=true;
+    this.attempted=true;this.enableFailed=false;
     await this.ports.enable(actor,offer,current);
    }else if(input.action==="disable")await this.ports.disable(actor,current);
    else await this.ports.resolve(Object.freeze(structuredClone(blocker!)),actor,current);
    // commit() consumes the decision, not the person or the installed process owner.
    this.require(actor);
+   this.enableFailed=false;
+  }catch(error){if(input.action==="enable")this.enableFailed=true;throw error;
   }finally{this.busy=false;try{this.refresh();}catch{this.cached=null;}this.ports.changed();}
   const result=this.snapshot();if(!result)throw Error("unavailable");return result;
  }

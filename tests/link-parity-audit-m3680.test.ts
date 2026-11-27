@@ -117,7 +117,8 @@ describe("2. Needs you's Try again on held Hub work over the link", () => {
       handleWebRequest(req as never, res as never, new URL(path, origin), { webToken: TOKEN, webSessions: sessions, fleetConfig: { defaults: {}, instances: {} },
         logger: { debug() {}, info() {}, warn() {}, error() {} }, getUiStatus: () => ({ instances: [] }), listWebPrompts: () => [], needsYouItems: () => [], retryHubHeld: retry, closeHubHeld: retry,
         contactActor: (request: unknown, address: URL) => FleetManager.prototype.contactActor.call({ webToken: TOKEN, webSessions: sessions,
-          adapters: new Map([["demo-bot", { type: "discord" }]]), webAuthority: () => ({ authority: opts.verified === false
+          adapters: new Map([["demo-bot", { type: "discord" }]]), contactPersonLabel: (_adapterId: string, userId: string) => userId,   // M-3864 R7: no web profile here: the id
+          webAuthority: () => ({ authority: opts.verified === false
             ? { kind: "none", actor: null, authority_epoch: 0 }
             : { kind: "web-verified", actor: { adapter_id: "demo-bot", user_id: "demo-admin" }, authority_epoch: 0 } }) } as never, request as never, address) } as never);
       req.emit("data", Buffer.from(JSON.stringify({ id: "hub:hold:1" }))); req.emit("end");

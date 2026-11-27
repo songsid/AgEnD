@@ -67,9 +67,10 @@ export class HubAgentCatalogs {
     assertCurrent(); return { person, actor, assertCurrent };
   }
   /** Internal owner queue view; the browser caller is checked separately and never selected from input. */
-  reportOf(fleetId: string) {
-    return this.core.atomic(db => {
-      const fleet = this.core.deps.store.read().fleets.find(row => row.id === fleetId);
+  reportOf(fleetId: string, batchDb?: Database.Database, state?: ReturnType<HubCore["deps"]["store"]["read"]>) {
+    const read = <T>(work: (db: import("better-sqlite3").Database) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    return read(db => {
+      const fleet = (state ?? this.core.deps.store.read()).fleets.find(row => row.id === fleetId);
       const row = db.prepare("SELECT * FROM hub_agent_catalogs WHERE fleet_id=?").get(fleetId) as Row | undefined;
       const link = this.links.get(fleetId);
       if (!fleet || fleet.status !== "active" || !row || row.generation !== fleet.generation || row.owner !== personKeyString(fleet.owner)) return null;
