@@ -25,8 +25,8 @@ describe("S-272: earlier tickets before the first On, by what settles them", () 
     const blockers = tickets.filter(x => !x.disposition.startsWith("preserve-") || x.disposition === "preserve-legacy-pending").map(x => ({ id: x.id, reason: "legacy" }));
     expect(blockersWith({ complete: true, tickets, blockers })).toEqual([
       { id: "legacy-pending", kind: "legacy", labels: ["R1"], action: "inspect" },
-      { id: "legacy-inflight", kind: "legacy", labels: ["R2", "R3"] },
-      { id: "legacy-unsettled", kind: "legacy", labels: ["R4", "R5"] },
+      { id: "legacy-inflight", kind: "legacy", labels: ["R2"] },
+      { id: "legacy-unsettled", kind: "legacy", labels: ["R3", "R4", "R5"] },          // Fable #4593: unconfirmed (e.g. uncertain) never clears by itself
     ]);
   });
   it("nothing earlier: no legacy blocker; an incomplete scan with nothing named still blocks as before", () => {

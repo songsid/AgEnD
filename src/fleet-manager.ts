@@ -6973,10 +6973,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if(!state){
       const shadow=this.requestContextShadow();
       // S-272 (Sentinel's settlement split): each earlier ticket by what settles it. Pending: decided on Authorizations.
-      // Approved and still being delivered: waits for that delivery's own outcome. Approved with no or a mismatched delivery
-      // record, or unreadable: nothing here can settle it (absence is never a proof of delivery), so it is named as such.
+      // Approved and still being delivered (queued … retry_wait): waits for that delivery's own outcome. Approved with a delivery
+      // that ended unconfirmed (e.g. uncertain: terminal, never changes again, Fable #4593), with no or a mismatched record, or
+      // unreadable: nothing here can settle it (absence is never a proof of delivery), so it is named as such.
       const ids=(...dispositions:string[])=>shadow.tickets.filter(row=>dispositions.includes(row.disposition)).map(row=>row.id);
-      const pending=ids("preserve-legacy-pending"),inflight=ids("legacy-inflight","legacy-unconfirmed"),unsettled=ids("missing-receipt","malformed"),named=new Set([...pending,...inflight,...unsettled]);
+      const pending=ids("preserve-legacy-pending"),inflight=ids("legacy-inflight"),unsettled=ids("legacy-unconfirmed","missing-receipt","malformed"),named=new Set([...pending,...inflight,...unsettled]);
       if(pending.length)out.push({id:"legacy-pending",kind:"legacy",labels:pending.slice(0,64),action:"inspect"});
       if(inflight.length)out.push({id:"legacy-inflight",kind:"legacy",labels:inflight.slice(0,64)});
       if(unsettled.length)out.push({id:"legacy-unsettled",kind:"legacy",labels:unsettled.slice(0,64)});
