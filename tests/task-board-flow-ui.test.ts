@@ -955,6 +955,12 @@ describe("6. a sub task's row: a shimmering title or a short label — no second
     expect([chipOf("S-3"), lineOf("S-3")]).toEqual(["等 S-2", "等 S-2"]);
   });
 
+  it("the sub task's number in the main task's block, which opens it, is a 44px box on a touch screen or a phone", () => {
+    const at = css.indexOf("@media (pointer: coarse), (max-width: 899px) { .tf-item .tf-card");
+    expect(at).toBeGreaterThan(0);
+    expect(css.slice(at, css.indexOf("}\n", css.indexOf("}", at) + 1))).toMatch(/\.tf-item \.tf-card \{[^}]*min-height: var\(--tap\)[^}]*min-width: var\(--tap\)/);
+  });
+
   it("the shimmer is in the page's own colours, moves only when motion is allowed, and the row is tinted either way", () => {
     expect(css).toContain("@keyframes tf-shimmer");
     const at = css.indexOf("@media (prefers-reduced-motion: no-preference) {\n  @supports");

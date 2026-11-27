@@ -145,6 +145,19 @@ describe("1. what the board keeps", () => {
     expect(rowsOf(r, s2)[0]!.key).toBe("task-board:dev-b:1:1:cards=" + s2.uuid);
   });
 
+  it("a notice withdrawn and told anew: the hand-over it carried follows the replacement (it names the keys it replaces); nothing else is touched", () => {
+    const r = rig();
+    const { s1, s2 } = plan(r);
+    finish(r, DEV_A, s1.code);
+    const first = "task-board:dev-b:1:1:cards=" + s2.uuid, second = "task-board:dev-b:2:2:cards=" + s2.uuid;
+    r.board.handoffHanded(s2.uuid, "dev-b", first);
+    expect(r.board.handoffHanded(s2.uuid, "dev-b", second), "no `replaces`: it already has a key").toEqual([]);
+    expect(rowsOf(r, s2)[0]!.key).toBe(first);
+    expect(r.board.handoffHanded(s2.uuid, "dev-b", second, ["task-board:dev-b:9:9:cards=other"]), "another notice's key is not this one's").toEqual([]);
+    expect(r.board.handoffHanded(s2.uuid, "dev-b", second, [first])).toEqual([s2.code, s1.parent ? r.board.findCard(s1.parent)!.code : ""]);
+    expect(rowsOf(r, s2)[0]!.key, "the replacement's key").toBe(second);
+  });
+
   it("a main task's own handoff and its sub tasks' are read by the card numbers the caller names", () => {
     const r = rig();
     const main = r.board.createCards(ANN, { project: "Game", cards: [{ title: "Lead's job", assignee: "lead", needsReview: false }] }).cards[0]!;

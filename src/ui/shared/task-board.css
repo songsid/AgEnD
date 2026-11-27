@@ -725,6 +725,8 @@ button.tb-owner-btn:hover { border-color: var(--border); background: var(--surfa
 .tf-lines { display: flex; flex-direction: column; gap: var(--s-1); margin: 0; padding: 0; list-style: none; }
 .tf-item .tf-says { flex: 0 1 auto; }
 .tf-item .tf-card { flex: none; margin-left: auto; }
+/* On a touch screen or a phone the sub task's number in the block (it opens that sub task) is a 44px box (style guide §7). */
+@media (pointer: coarse), (max-width: 899px) { .tf-item .tf-card { display: inline-flex; align-items: center; justify-content: flex-end; min-height: var(--tap); min-width: var(--tap); } }
 .tf-item.tf-k-running .tf-says { font-weight: var(--fw-semibold); }
 .tf-extra { font-size: var(--fs-xs); }
 /* A handoff in the activity stream: a thin row like the history's, but never folded away, its sentence in the text colour, where it stands under it. */

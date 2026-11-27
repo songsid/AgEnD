@@ -322,10 +322,23 @@ describe("a notice that quotes a comment which is then edited or deleted", () =>
     const { w, sent, fire } = waker({ outbox, holds: holdsNow, settled });
     comments.set(12, "the old words");
     w.note([said("the old words")]); fire();
-    expect(settled).toEqual([{ uuid: "u1", instance: "dev-a", key: sent[0]!.key }]);                  // handed over: no `replaces` for a first notice
+    expect(settled).toEqual([{ uuid: "u1", instance: "dev-a", kind: "words", key: sent[0]!.key }]);   // handed over: no `replaces` for a first notice
     comments.set(12, "the new words");
     w.recalled([{ uuid: "u1", entry: 12, deleted: false }]); fire();
-    expect(settled[1]).toEqual({ uuid: "u1", instance: "dev-a", key: sent[1]!.key, replaces: [sent[0]!.key] });
+    expect(settled[1]).toEqual({ uuid: "u1", instance: "dev-a", kind: "words", key: sent[1]!.key, replaces: [sent[0]!.key] });
+  });
+
+  it("a hand-over the withdrawn notice carried follows the replacement too (the handoff's own settle carries the keys it replaces)", () => {
+    const outbox = fakeOutbox();
+    const settled: Array<Record<string, unknown>> = [];
+    const { w, sent, fire } = waker({ outbox, holds: holdsNow, settled });
+    comments.set(12, "ship it");
+    w.note([{ ...said("ship it"), reasons: ["assigned", "comment"], texts: { comment: "ship it" }, by: { assigned: "Ann", comment: "Ann" } }]); fire();
+    expect(settled.map((e) => e.kind).sort()).toEqual(["handoff", "words"]);
+    settled.length = 0;
+    comments.set(12, "ship it, today");
+    w.recalled([{ uuid: "u1", entry: 12, deleted: false }]); fire();
+    expect(settled.map((e) => [e.kind, e.key === sent[1]!.key, e.replaces]).sort()).toEqual([["handoff", true, [sent[0]!.key]], ["words", true, [sent[0]!.key]]]);
   });
 
   it("a notice about another comment is left alone; so is one already delivered; one whose wakes this waker no longer has is withdrawn and not replaced", () => {
