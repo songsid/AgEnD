@@ -39,11 +39,27 @@ describe("M-3864 R3: the turn-on's blockers name their agents", () => {
     expect(requestContextBlockerText({ id: "legacy-pending", kind: "legacy", labels: ["R1"] })).toBe("Decide these earlier contact requests first, in Fleet → Authorizations: R1.");
     expect(requestContextBlockerText({ id: "legacy-inflight", kind: "legacy", labels: ["R2"] })).toMatch(/^These earlier approved messages are still being delivered: R2\. This clears by itself/);
     expect(requestContextBlockerText({ id: "legacy-unsettled", kind: "legacy", labels: ["R4", "R5"] })).toMatch(/can't tell whether they happened: R4, R5\. They can't be settled from this page yet/);
-    expect(requestContextBlockerText({ id: "legacy-deliveries", kind: "legacy", labels: ["lead → worker"] })).toMatch(/^These earlier messages are still waiting to be delivered: lead → worker\./);
+    expect(requestContextBlockerText({ id: "legacy-deliveries", kind: "legacy", labels: ["lead → worker"] })).toMatch(/^These earlier messages are being sent right now: lead → worker\./);
     expect(requestContextBlockerText({ id: "legacy", kind: "legacy", labels: ["R9"] })).toBe("Resolve these earlier held messages first: R9.");
     setLang("zh-TW");
     expect(requestContextBlockerText({ id: "legacy-unsettled", kind: "legacy", labels: ["R4", "R5"] })).toContain("R4、R5");
     expect(requestContextBlockerText({ id: "legacy-pending", kind: "legacy", labels: ["R1"] })).toBe("請先在「Fleet → 授權」決定這些先前的聯絡申請：R1。");
+    setLang("en");
+  });
+  it("M-3897: Retire and Withdraw each name their item; being sent waits; uncertain says it can't be settled here", async () => {
+    setLang("en");
+    expect(requestContextBlockerText({ id: "legacy-retire:R4", kind: "legacy", labels: ["R4"], action: "retire" })).toBe("This earlier request has no readable delivery record, so AgEnD can't tell whether it happened: R4. Retire it to stop waiting for it.");
+    expect(requestContextBlockerText({ id: "legacy-withdraw:d1", kind: "legacy", labels: ["lead → worker"], action: "withdraw" })).toBe("This earlier message is still waiting to be sent: lead → worker. Withdraw it, or wait until it is delivered.");
+    expect(requestContextBlockerText({ id: "legacy-deliveries", kind: "legacy", labels: ["lead → worker"] })).toMatch(/^These earlier messages are being sent right now: lead → worker\. This clears by itself/);
+    expect(requestContextBlockerText({ id: "legacy-uncertain", kind: "legacy", labels: ["lead → worker"] })).toMatch(/ended unconfirmed.*can't be settled from this page yet/);
+    const p = page();
+    await p.mount(h(RequestContextBlocked, { state: { phase: "blocked", attempted: false, everActivated: false, canChange: true,
+      blockers: [{ id: "legacy-retire:R4", kind: "legacy", labels: ["R4"], action: "retire" }, { id: "legacy-withdraw:d1", kind: "legacy", labels: ["lead → worker"], action: "withdraw" }] },
+      onCheck: () => {}, onResolve: () => {} }));
+    expect([...p.root.querySelectorAll("button")].map((b: any) => b.textContent.trim())).toEqual(["Retire", "Withdraw", "Check again"]);
+    await p.unmount();
+    setLang("zh-TW");
+    expect(requestContextBlockerText({ id: "legacy-retire:R4", kind: "legacy", labels: ["R4"], action: "retire" })).toBe("這筆先前的申請沒有可讀取的送出紀錄，AgEnD 無法判斷是否已經發生：R4。撤銷後就不再等候它。");
     setLang("en");
   });
   it("the blocked section renders them (it was blank)", async () => {
