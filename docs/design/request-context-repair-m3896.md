@@ -249,7 +249,11 @@ Both production constructors of RequestContextDrain are owned by DeliveryOutbox:
 the first-On connection stage and requestContextDrain on the capable connection.
 The constructor and stage both call registerRequestContextDispatcher, which
 registers the resolution capability as well as the dispatch capability on that
-exact connection. Boot recovery reuses that constructor connection. Tests reopen
+exact connection. The resolution function returns1 only while that connection's
+registered dispatch version is1. No F-row UPDATE runs while it is registered at
+version0: drain mutation requires the capable connection. DELETE/collection is
+not covered by the resolution UPDATE trigger, so Off's final collection remains
+safe. Boot recovery reuses that constructor connection. Tests reopen
 and rotate a retained epoch after a resolution exists for both paths and recovery.
 CLI delivery status, search and Go back inspect through read-only handles; none
 constructs a drain or rotates epochs. Snapshot checkpointing writes only SQLite
