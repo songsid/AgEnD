@@ -221,7 +221,7 @@ import { NativeDaemonClient } from "./native-daemon-client.js";
 import { usesChannelAddress, TOOLS } from "./channel/mcp-tools.js";
 import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, SendOpts, SentMessage, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
 import { ParkedNotices, PARKED_NOTICE_LEDGER_FILE } from "./parked-notices.js";
-import { formatFleetTime, localWallToUtcDb } from "./tz-utils.js";
+import { formatFleetTime } from "./tz-utils.js";
 import { createAdapter } from "./channel/factory.js";
 import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter, type MissedOfflineInbound } from "./channel/adapters/telegram.js";
@@ -1192,7 +1192,10 @@ export function updateTonightAt(now: number, tz: string): number {
   let day: string;
   try { day = new Date(now).toLocaleString("sv-SE", { timeZone: tz, hour12: false }).slice(0, 10); }
   catch { tz = "UTC"; day = new Date(now).toISOString().slice(0, 10); }
-  const at = (date: string) => Date.parse(localWallToUtcDb(`${date} 22:00:00`, tz).replace(" ", "T") + "Z");
+  // Prism #4585: the zone's offset AT the candidate instant (twice, so it settles across a DST change that day), never
+  // the offset at the wall clock read as UTC, which can sit on the other side of the change.
+  const offsetAt = (ms: number) => Date.parse(new Date(ms).toLocaleString("sv-SE", { timeZone: tz, hour12: false }).replace(" ", "T") + "Z") - Math.floor(ms / 1000) * 1000;
+  const at = (date: string) => { const wall = Date.parse(`${date}T22:00:00Z`); const first = wall - offsetAt(wall); return wall - offsetAt(first); };
   const today = at(day);
   return today - now >= 30 * 60_000 ? today : at(new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10));
 }

@@ -335,6 +335,12 @@ describe("M-3864 R2: the chat card says and picks times in the fleet's zone, not
     expect(new Date(updateTonightAt(Date.parse("2026-11-27T13:45:00Z"), "Asia/Taipei")).toISOString()).toBe("2026-11-28T14:00:00.000Z");
     expect(new Date(updateTonightAt(Date.parse("2026-11-27T13:29:00Z"), "Asia/Taipei")).toISOString()).toBe("2026-11-27T14:00:00.000Z");
     expect(new Date(updateTonightAt(now, "Not/AZone")).toISOString()).toBe("2026-11-27T22:00:00.000Z");
+    // Prism #4585: the evening before a DST change (Sydney: on 2026-10-04 02:00, off 2026-04-05 03:00) is still 22:00 there.
+    expect(new Date(updateTonightAt(Date.parse("2026-10-03T10:00:00Z"), "Australia/Sydney")).toISOString()).toBe("2026-10-03T12:00:00.000Z");
+    expect(new Date(updateTonightAt(Date.parse("2026-04-04T09:00:00Z"), "Australia/Sydney")).toISOString()).toBe("2026-04-04T11:00:00.000Z");
+    // and the evening of a change, either way (New York: on 2026-03-08, off 2026-11-01).
+    expect(new Date(updateTonightAt(Date.parse("2026-03-08T15:00:00Z"), "America/New_York")).toISOString()).toBe("2026-03-09T02:00:00.000Z");
+    expect(new Date(updateTonightAt(Date.parse("2026-11-01T15:00:00Z"), "America/New_York")).toISOString()).toBe("2026-11-02T03:00:00.000Z");
   });
   it("with defaults.scheduler.default_timezone set: Tonight schedules its 22:00, and the card and /update say the time with its offset", async () => {
     setLocale("en");
