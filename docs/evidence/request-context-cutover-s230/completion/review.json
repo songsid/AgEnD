@@ -1,5 +1,5 @@
 {
-  "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+  "sourceHead": "1f847ade2693e734494162b99283778eee245bb9",
   "individuallyOpened": [
     "desk-light-en-settings-pending.png",
     "desk-light-en-destination-refusal.png",
@@ -43,25 +43,25 @@
     "desk-light-en-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
     "desk-light-en-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
     "desk-light-en-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
-    "desk-light-zh-TW-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "desk-light-zh-TW-settings-pending.png": "1f847ade2693e734494162b99283778eee245bb9",
     "desk-light-zh-TW-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
     "desk-light-zh-TW-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
     "desk-dark-en-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
     "desk-dark-en-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
     "desk-dark-en-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
-    "desk-dark-zh-TW-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "desk-dark-zh-TW-settings-pending.png": "1f847ade2693e734494162b99283778eee245bb9",
     "desk-dark-zh-TW-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
     "desk-dark-zh-TW-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
     "phone-light-en-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
     "phone-light-en-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
     "phone-light-en-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
-    "phone-light-zh-TW-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "phone-light-zh-TW-settings-pending.png": "1f847ade2693e734494162b99283778eee245bb9",
     "phone-light-zh-TW-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
     "phone-light-zh-TW-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
     "phone-dark-en-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
     "phone-dark-en-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
     "phone-dark-en-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
-    "phone-dark-zh-TW-settings-pending.png": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "phone-dark-zh-TW-settings-pending.png": "1f847ade2693e734494162b99283778eee245bb9",
     "phone-dark-zh-TW-destination-refusal.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71",
     "phone-dark-zh-TW-stop-waiting-outcome.png": "e04ef2cf58327a8aae91c0b976e873f5070b3c71"
   },
@@ -86,5 +86,16 @@
       "Final0d2 originals individually opened; zh deadline24h10:30; no visual blocker"
     ],
     "acceptedChatFramesReopened": false
+  },
+  "pendingZhFinal": {
+    "sourceHead": "1f847ade2693e734494162b99283778eee245bb9",
+    "individuallyOpened": [
+      "desk-light-zh-TW-settings-pending.png",
+      "desk-dark-zh-TW-settings-pending.png",
+      "phone-light-zh-TW-settings-pending.png",
+      "phone-dark-zh-TW-settings-pending.png"
+    ],
+    "visualBlockers": [],
+    "reason": "Leader requested downgrade terminology in four zh pending frames only; other20images carried unchanged"
   }
 }

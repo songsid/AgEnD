@@ -1,38 +1,46 @@
 {
-  "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+  "sourceHead": "1f847ade2693e734494162b99283778eee245bb9",
   "scope": "Real Settings pending and chat/refusal renderers; synthetic session/turn, no activation or provider",
   "pictures": [
     {
       "name": "desk-light-en-settings-pending.png",
-      "sha256": "f5ce9ebb4797eb2a23876acb1bf8a06ba614b219d3b64bbae009eecd4d28c8ae"
+      "sha256": "f5ce9ebb4797eb2a23876acb1bf8a06ba614b219d3b64bbae009eecd4d28c8ae",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "desk-light-zh-TW-settings-pending.png",
-      "sha256": "f60c6f17eae01151ed95475fb4b8a8509da9793e415ad1070e72ea8fef046282"
+      "sha256": "3b90d362b23d1145a040bae9eda62d29ae0d5a5cb892dc6a169ad96419e0f71f",
+      "sourceHead": "1f847ade2693e734494162b99283778eee245bb9"
     },
     {
       "name": "desk-dark-en-settings-pending.png",
-      "sha256": "1cbb79931123a2b9db828c954b5920fd9eee5d7c508f25d84fd57c669fb614e0"
+      "sha256": "1cbb79931123a2b9db828c954b5920fd9eee5d7c508f25d84fd57c669fb614e0",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "desk-dark-zh-TW-settings-pending.png",
-      "sha256": "1fe20793dbf4e6ea446d7034c82aa0797fc240335d42302fd74e190b7e957f13"
+      "sha256": "343481a78e73ad8a8e40b2945d61cab745bb7a6c686ea90029a5e9920666b33d",
+      "sourceHead": "1f847ade2693e734494162b99283778eee245bb9"
     },
     {
       "name": "phone-light-en-settings-pending.png",
-      "sha256": "0d8ce764a1514219866db054b936d27d80f961640e91abe0d093f079eb488ec0"
+      "sha256": "0d8ce764a1514219866db054b936d27d80f961640e91abe0d093f079eb488ec0",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "phone-light-zh-TW-settings-pending.png",
-      "sha256": "ebd2abfbc69778775adfab5c3b77a6614a71fe15881ac7ade9b5b9f1885e006b"
+      "sha256": "d8b0ac44603cd4c03bd2d431e7fa00cc6fef3127aaf47f0b7cd88ea68123098e",
+      "sourceHead": "1f847ade2693e734494162b99283778eee245bb9"
     },
     {
       "name": "phone-dark-en-settings-pending.png",
-      "sha256": "6ce5d2cc7e8e1a89f0c2f74e51cae0e5a5800a79168c42634ac1c90335338841"
+      "sha256": "6ce5d2cc7e8e1a89f0c2f74e51cae0e5a5800a79168c42634ac1c90335338841",
+      "sourceHead": "0d2bfe847fb9a474fdd7dc3f10e093b774264783"
     },
     {
       "name": "phone-dark-zh-TW-settings-pending.png",
-      "sha256": "19d0b65425d527444a350171ea0d65124153b8e21fb0b23c1c466ee37d1b1d01"
+      "sha256": "ce308187d20d366f94ef2f6eecc169e6d980868dc632fd6c5679b31d1a35e17d",
+      "sourceHead": "1f847ade2693e734494162b99283778eee245bb9"
     }
   ],
   "checks": [

@@ -124,7 +124,7 @@
     },
     {
       "path": "src/ui/shared/app-shell.js",
-      "sha256": "baef1ce6c9012505873477ddf62b6f3b625c675efe407c42b9898956aee8dacb"
+      "sha256": "c6d2bf9494c01c853de2add9f8beff82c383cd4f6b23c4c318beac168b9d7b3d"
     }
   ],
   "remainingGates": [
@@ -138,7 +138,7 @@
   "uiModuleLoadingFix": "The real-app capture found a non-existent /assets/settings-confirm.js import. The control now imports the owned private Settings module; the authenticated Settings/Needs static-closure test catches the regression.",
   "pendingCardRevision": {
     "sourceCore": "c2634ac3b",
-    "captureSource": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+    "captureSource": "1f847ade2693e734494162b99283778eee245bb9",
     "changes": [
       "Plain irreversible-version lead before collapsed details, identified only from the canonical enable summary",
       "General directions are conditional on this viewer lacking Apply now; execution/authority unchanged",
@@ -152,7 +152,16 @@
     "typecheck": true,
     "build": true,
     "changedFrames": 8,
-    "acceptedChatFramesUnchanged": 16
+    "acceptedChatFramesUnchanged": 16,
+    "captureSourceByLanguage": {
+      "en": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
+      "zh-TW": "1f847ade2693e734494162b99283778eee245bb9"
+    },
+    "finalWordingTests": {
+      "files": 1,
+      "passed": 68,
+      "failed": 0
+    }
   },
   "ciRepair": {
     "sourceCore": "0d2bfe847fb9a474fdd7dc3f10e093b774264783",
