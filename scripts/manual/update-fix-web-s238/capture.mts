@@ -27,7 +27,7 @@ const shot = async (page: any, name: string) => {
   // The fleet.yaml preview shows the fixture's temporary folder (a path on the capturing host): masked in every frame.
   const leaks = await page.evaluate(`(() => { const t = document.body.innerText; const y = [...document.querySelectorAll(".s-yaml")].map((e) => e.innerText).join("\\n"); return [...t.matchAll(/\\/tmp\\/[^\\s]*/g)].map((m) => m[0]).filter((x) => !y.includes(x)); })()`) as string[];
   check(`${name}: no host path outside the masked fleet.yaml`, leaks.length === 0, leaks);
-  await page.screenshot({ path: join(OUT, path), mask: [page.locator(".s-yaml")], maskColor: "#8888" });
+  await page.screenshot({ path: join(OUT, path), mask: [page.locator(".s-yaml")], maskColor: "#888888" });
   receipt.pictures.push({ path, sha256: createHash("sha256").update(readFileSync(join(OUT, path))).digest("hex") });
 };
 
