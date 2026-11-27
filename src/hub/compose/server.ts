@@ -128,6 +128,7 @@ export interface HubHttpDeps {
   companyJoin?: HubCompanyJoin;
   groups?: HubGroupAuthorization;
   management?: Pick<import("../roles/authority.js").HubManagementAuthority, "require">;
+  roomCreation?: import("../http/deps.js").HubHttpDeps["roomCreation"];
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
   grantDirectory?: import("../http/deps.js").HubHttpDeps["grantDirectory"];
   pairingNotices?: HubPairingNotices;
@@ -570,7 +571,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         pairing,
         companyJoin,
         groups,
-        management,
+        management, roomCreation: management,
         groupHttp: { control: effectiveGroupControl, welcome: groupWelcome },
         ...(roleAdmin?{roleAdmin}:{}),
         grantDirectory: { policy, binding },

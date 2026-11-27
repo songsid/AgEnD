@@ -109,3 +109,11 @@ it("a malformed legacy actor or role event remains an unknown safe row rather th
  const page=await w.control.audit(w.ctx.ctx,{}),row=page.rows.find(row=>row.id===id);expect(row).toMatchObject({actor:{id:"unknown",name:""},summary:[]});expect(row?.details).toBeUndefined();expect((await w.control.audit(w.ctx.ctx,{person:"unknown"})).rows.some(row=>row.id===id)).toBe(true);expect(JSON.stringify(page)).not.toContain("secret raw legacy");
  await expect(w.control.audit(w.ctx.ctx,{from:200,to:100})).rejects.toMatchObject({code:"invalid"});
 });
+
+it("a Create rooms grant does not present Hub administration or role-management access",async()=>{
+ const w=await world();w.policy.roles.push({id:"room-creator",name:"Room creator",kind:"custom",permissions:["rooms.create"],defaultMaxFleets:0});
+ w.policy.assignments[0]!.roleId="room-creator";w.save(w.policy);
+ expect(await w.control.presentation(w.ctx.ctx)).toEqual({admin:false,management:[]});
+ await expect(w.control.read(w.ctx.ctx)).rejects.toMatchObject({code:"denied"});
+ expect((await w.authority.requireRoomCreation(w.ctx.ctx)).permission).toBe("rooms.create");
+});
