@@ -134,7 +134,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       throw new SettingsConfirmationError(409, "stale");
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     const suffix = input.action === "resolve" ? input.resolution : input.action;
-    const keys = { enable: "enableTitle", disable: "confirmTitle", "stop-waiting": "waitTitle", "stop-work": "stopTitle", decline: "decline", withdraw: "withdraw", acknowledge:"ackTitle" } as const;
+    const keys = { enable: "enableTitle", disable: "confirmTitle", "stop-waiting": "waitTitle", "stop-work": "stopTitle", decline: "decline", withdraw: "withdraw", acknowledge:"ackTitle", retire:"retireTitle" } as const;
     const line = (backend: string, ui: string, ...args: (string | number)[]) => summaryLine(t(`request_context_control.${backend}`, ...args), summaryMessage(`requestContextControl.${ui}`, ...args));
     const summary = [line(suffix, keys[suffix])];
     if (input.action === "enable") {
@@ -153,6 +153,16 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     }
     else if (input.action === "resolve" && input.resolution === "stop-waiting") summary.push(line("waitBody", "waitBody"));
     else if (input.action === "resolve" && input.resolution === "acknowledge")summary.push(line("ackBody","ackBody"));
+    else if (input.action === "resolve" && input.resolution === "retire") {
+      summary.push(line("retireBody", "retireBody"));
+      // M-3897 (Sentinel's Go back contract): a retirement ends Go back for the latest update; say so when it is offered.
+      if (view.data.goBack) {
+        const options: Intl.DateTimeFormatOptions = getLocale() === "zh-TW"
+          ? { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: view.data.goBack.timeZone }
+          : { dateStyle: "medium", timeStyle: "short", timeZone: view.data.goBack.timeZone };
+        summary.push(line("retireGoBack", "retireGoBack", new Intl.DateTimeFormat(getLocale(), options).format(new Date(view.data.goBack.availableUntil))));
+      }
+    }
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input, view.data]),
       ...settingsSummary(summary), affectedConnections: [], authority: HUB_AUTHORITY } };
   }

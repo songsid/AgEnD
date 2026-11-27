@@ -21,6 +21,7 @@ import type { RequestContextV1 } from "./request-context-protocol.js";
 import { markRetainedHumanControl, retainedHumanControl } from "./retained-human-control.js";
 import type { RequestContextLaunchIdle, RequestContextLaunchRetirement } from "./request-context-retirement.js";
 import { requestContextDigest } from "./request-context-store.js";
+import { RETIRABLE_LEGACY_DISPOSITIONS } from "./request-context-migration.js";
 import { RequestContextBoot, readRequestContextBootState } from "./request-context-boot.js";
 import type {RequestContextControlHost,RequestContextControlPrincipal} from "./request-context-control-api.js";
 import {RequestContextPreparedWork} from "./request-context-work.js";
@@ -7034,11 +7035,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const pending=ids("preserve-legacy-pending"),inflight=ids("legacy-inflight"),unsettled=ids("legacy-unconfirmed","missing-receipt","malformed"),named=new Set([...pending,...inflight,...unsettled]);
       if(pending.length)out.push({id:"legacy-pending",kind:"legacy",labels:pending.slice(0,64),action:"inspect"});
       if(inflight.length)out.push({id:"legacy-inflight",kind:"legacy",labels:inflight.slice(0,64)});
-      if(unsettled.length)out.push({id:"legacy-unsettled",kind:"legacy",labels:unsettled.slice(0,64)});
+      // M-3897: each one an owner can retire (its exact image is readable) gets its own blocker and Retire; an oversized one
+      // that cannot be bound to an image stays named, with no action.
+      const retirable=new Set(shadow.tickets.filter(row=>unsettled.includes(row.id)&&row.sha256).map(row=>row.id));
+      for(const id of unsettled.filter(id=>retirable.has(id)).slice(0,32))out.push({id:`legacy-retire:${id}`,kind:"legacy",labels:[id],action:"retire"});
+      const unbound=unsettled.filter(id=>!retirable.has(id));
+      if(unbound.length)out.push({id:"legacy-unsettled",kind:"legacy",labels:unbound.slice(0,64)});
       const rest=shadow.blockers.map(row=>row.id).filter(id=>!named.has(id));
       if(rest.length||!shadow.complete&&!named.size)out.push({id:"legacy",kind:"legacy",labels:rest.slice(0,64),action:"inspect"});
-      const inventory=box.requestContextControlInventory(),legacy=inventory.deliveries.filter(row=>!row.root),waiting=legacy.filter(row=>row.state!=="uncertain");
-      if(waiting.length)out.push({id:"legacy-deliveries",kind:"legacy",labels:waiting.map(row=>`${label(row.source)} → ${label(row.target)}`).slice(0,64)});
+      const inventory=box.requestContextControlInventory(),legacy=inventory.deliveries.filter(row=>!row.root);
+      // M-3897: an earlier delivery still queued (or waiting to retry) can be withdrawn by its exact image; one being sent
+      // waits for its own outcome; an uncertain one never changes by itself and is named as such (no guess, no relabel).
+      const pair=(row:{source:string;target:string})=>`${label(row.source)} → ${label(row.target)}`;
+      for(const row of legacy.filter(row=>["queued","retry_wait"].includes(row.state)).slice(0,32))out.push({id:`legacy-withdraw:${row.id}`,kind:"legacy",labels:[pair(row)],action:"withdraw"});
+      const sending=legacy.filter(row=>["delivering","submission_started"].includes(row.state));
+      if(sending.length)out.push({id:"legacy-deliveries",kind:"legacy",labels:sending.map(pair).slice(0,64)});
       const needsTicketRetirement=new Set(shadow.tickets.filter(row=>["legacy-unconfirmed","missing-receipt","malformed"].includes(row.disposition)).map(row=>`contact:${row.id}`));
       for(const row of legacy.filter(row=>row.state==="uncertain")){
         const delivery=box.get(row.id);if(!delivery||needsTicketRetirement.has(delivery.sourceKey))continue;
@@ -7171,7 +7182,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if(this.deliveryOutbox?.requestContextInstallation().read()?.mode==="draining")this.scheduleRequestContextDrain();
     },500);this.requestContextDrainTimer.unref?.();
   }
+  /**
+   * M-3897 (Sentinel's settlement split): before the first On, an owner settles an earlier ticket or delivery nothing else
+   * can. Retire: a ticket the shadow names retirable (no readable delivery record), bound to the exact image it shows;
+   * the retirement is appended and nothing is relabelled. Withdraw: an earlier delivery still queued or waiting to retry,
+   * by its exact image (withdrawRequestContextDelivery's own CAS). Never after activation: those blockers are the drain's.
+   */
+  private resolveLegacyBlocker(blocker:Readonly<RequestContextBlocker>,actor:RequestContextControlPrincipal,current:()=>boolean):void{
+    const box=this.deliveryOutbox;
+    if(!box||box.requestContextInstallation().read()!==null||!current())throw Error("stale");
+    // Sentinel's Go back contract: the same home-update exclusion the first On and Stop hold, so a retirement or a
+    // withdrawal can never land between Go back's check and its restore.
+    const update=this.requestContextActivationLease();if(!update)throw Error("update-lock");
+    try{this.resolveLegacyBlockerHeld(blocker,actor,()=>current()&&update.current());}finally{update.release();}
+  }
+  private resolveLegacyBlockerHeld(blocker:Readonly<RequestContextBlocker>,actor:RequestContextControlPrincipal,current:()=>boolean):void{
+    const box=this.deliveryOutbox!;
+    if(blocker.id.startsWith("legacy-retire:")){
+      if(!actor.person)throw Error("owner-required");
+      const id=blocker.id.slice("legacy-retire:".length),entry=this.requestContextShadow().tickets.find(row=>row.id===id);
+      if(!entry?.sha256||!RETIRABLE_LEGACY_DISPOSITIONS.includes(entry.disposition))throw Error("stale");
+      const person=actor.person,image=entry.sha256,disposition=entry.disposition;
+      actor.execution!.mutate(()=>box.contactAuthorizations.retireLegacy(id,image,disposition,person,current,(deliveryId,by)=>box.acknowledge(deliveryId,by)));
+      return;
+    }
+    const id=blocker.id.slice("legacy-withdraw:".length),row=box.get(id);
+    if(!row||!box.requestContextControlInventory().deliveries.some(value=>value.id===id&&!value.root&&["queued","retry_wait"].includes(value.state)))throw Error("stale");
+    actor.execution!.mutate(()=>box.withdrawRequestContextDelivery(id,requestContextDigest(row),current));
+  }
   private async resolveRequestContextBlocker(blocker:Readonly<RequestContextBlocker>,actor:RequestContextControlPrincipal,current:()=>boolean):Promise<void>{
+    if(blocker.id.startsWith("legacy-retire:")||blocker.id.startsWith("legacy-withdraw:")){this.resolveLegacyBlocker(blocker,actor,current);return;}
     const box=this.deliveryOutbox,modes=this.requestContextModes,state=box?.requestContextInstallation().read();
     if(box&&!state&&blocker.id.startsWith("legacy-uncertain:")&&blocker.action==="acknowledge"){
       const match=/^legacy-uncertain:([A-Za-z0-9._:-]{1,128}):([a-f0-9]{64})$/.exec(blocker.id);if(!match||!actor.verified||!actor.execution||!current())throw Error("stale");

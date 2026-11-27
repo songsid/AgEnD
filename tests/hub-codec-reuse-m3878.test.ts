@@ -1,3 +1,4 @@
+import * as codec from "../src/hub/roles/read.js";
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
@@ -76,4 +77,28 @@ it("a warm policy reader still checks SQL ownership, binding and both currency c
   current.mockReturnValueOnce(true).mockReturnValueOnce(false); expect(read).toThrow("unavailable");
   current.mockReturnValue(true); db.prepare("UPDATE hub_group_policy SET hub_id='foreign'").run(); expect(read).toThrow("unavailable");
   db.prepare("UPDATE hub_group_policy SET hub_id='hub',body=?").run(raw.replace('"g1"', '"g2"')); expect(read).toThrow("unavailable");
+});
+
+function validateBytes(raw: string): void {
+  const port = codec as typeof codec & { validateCanonicalPolicyBytes?(raw: string): void };
+  if (port.validateCanonicalPolicyBytes) return port.validateCanonicalPolicyBytes(raw);
+  // Equivalent old owning codec is the negative control, not a production fallback.
+  parseCanonicalPolicy(raw);
+}
+it.each([0, 1])("M3878 validates exact policy bytes without owning codec %i", kind => {
+  const raw = policies()[kind]!, decode = vi.spyOn(validation, "parseStrictJson"), clone = vi.spyOn(globalThis, "structuredClone");
+  expect(validateBytes(raw)).toBeUndefined(); expect(validateBytes(raw)).toBeUndefined();
+  expect(clone).not.toHaveBeenCalled(); expect(decode).toHaveBeenCalledTimes(1);
+  const first = parseCanonicalPolicy(raw); first.policy.denies.push({ person: { realm: "corp", objectId: randomUUID() }, deny: ["ask_agents"] });
+  validateBytes(raw); expect(parseCanonicalPolicy(raw).policy.denies).toEqual([]);
+});
+it("M3878 byte-only validation rejects changed malformed/duplicate images and preserves the good memo", () => {
+  const raw = policies()[0]!, decode = vi.spyOn(validation, "parseStrictJson");
+  validateBytes(raw);
+  for (const bad of ["{bad", '{"realm":"corp","realm":"corp"}']) {
+    expect(() => validateBytes(bad)).toThrow(); expect(validateBytes(raw)).toBeUndefined();
+  }
+  expect(decode).toHaveBeenCalledTimes(3);
+  const changed = raw.replace('"revision":1', '"revision":2');
+  validateBytes(changed); expect(parseCanonicalPolicy(changed).policy.revision).toBe(2);
 });

@@ -14,7 +14,7 @@ import type { HubMigration } from "./db.js";
 import type { HubTransportStore } from "./store.js";
 import { advanceHubSessionEpoch, readHubSessionEpoch } from "./session-epoch.js";
 import { canonicalArguments, sha256 } from "./identity.js";
-import { parseCanonicalPolicy, rebindCanonicalPolicy, type HubCanonicalPolicy } from "./roles/read.js";
+import { parseCanonicalPolicy, validateCanonicalPolicyBytes, rebindCanonicalPolicy, type HubCanonicalPolicy } from "./roles/read.js";
 import { epoch, hash, identifier, person, uuid, validated, parseStrictJson, HubProtocolError } from "./validation.js";
 
 const imageSchema = z.strictObject({ configDigest: hash, configSha: hash, directorySha: hash, manifestSha: hash, bindSecretSha: hash });
@@ -88,9 +88,13 @@ export function readHubDirectorySettingsHead(db: Database.Database): { operation
   } catch { throw new HubProtocolError("uncertain"); }
 }
 
-function policyRow(db: Database.Database) {
+function rawPolicyRow(db: Database.Database) {
   const row = readHubSqlRow(db, "SELECT hub_id,body FROM hub_group_policy WHERE singleton=1") as { hub_id: string; body: string } | undefined;
   if (!row) throw new HubProtocolError("uncertain");
+  return row;
+}
+function policyRow(db: Database.Database) {
+  const row = rawPolicyRow(db);
   const document = parseCanonicalPolicy(row.body);
   return { ...row, document, policy: document.policy, sha: sha256(row.body) };
 }
@@ -124,9 +128,11 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
     try { return work(); } finally { proofBasis = null; }
   }
   function inspect() {
-    const head = readHubDirectorySettingsHead(db), state = transport.read(), p = policyRow(db);
-    if (p.hub_id !== hubId) throw new HubProtocolError("uncertain");
-    return { ...head, transportRevision: state.revision, authorizationVersion: state.revocationVersion, policySha: p.sha };
+    const head = readHubDirectorySettingsHead(db), state = transport.readVersion(), row = rawPolicyRow(db);
+    validateCanonicalPolicyBytes(row.body);
+    const policySha = sha256(row.body);
+    if (row.hub_id !== hubId) throw new HubProtocolError("uncertain");
+    return { ...head, transportRevision: state.revision, authorizationVersion: state.revocationVersion, policySha };
   }
   function assertExpected(expected: z.infer<typeof expectationSchema>) {
     if (!same(inspect(), expected)) throw new HubProtocolError("conflict");

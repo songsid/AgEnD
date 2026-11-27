@@ -83,6 +83,18 @@ it("the Settings effect binds the entire offered state, exact resolution and str
  expect(()=>prepareSettingsEffect("POST",path,{revision:4,action:"enable",verified:true},context)).toThrow("invalid-request");
 });
 
+it("M-3897: Retire is a strict resolution of the exact blocker shown; its summary says what it does and that Go back ends",()=>{
+ setLocale("en");
+ const r=rig();(r.view as any).blockers=[{id:"legacy-retire:R4",kind:"legacy",labels:["R4"],action:"retire"}];
+ const context={config:null,classic:{},requestContextControl:()=>r.view};
+ const diff=prepareSettingsEffect("POST",path,{revision:4,action:"resolve",blockerId:"legacy-retire:R4",resolution:"retire"},context).diff!;
+ const text=JSON.stringify(diff);
+ expect(text).toContain("AgEnD stops waiting for this earlier request. It may already have happened; it won't be repeated, and its record stays.");
+ expect(text).toContain("Go back for the latest update (available until");
+ expect(()=>prepareSettingsEffect("POST",path,{revision:4,action:"resolve",blockerId:"legacy-retire:R4",resolution:"withdraw"},context)).toThrow("stale");
+ expect(()=>prepareSettingsEffect("POST",path,{revision:4,action:"resolve",blockerId:"legacy-retire:R9",resolution:"retire"},context)).toThrow("stale");
+});
+
 it("the real bounded baseline captures the control offer consistently with its committed fingerprint",async()=>{
  const root=mkdtempSync(join(tmpdir(),"settings-control-s230-"));roots.push(root);const r=rig();
  const baseline=new SettingsBaselines({dataDir:root,configPath:()=>null,config:()=>null,current:()=>1,requestContextControl:()=>structuredClone(r.view)});

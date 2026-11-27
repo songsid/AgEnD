@@ -43,22 +43,32 @@ export class HubTransportStore {
     const initial: HubTransportState = { v: 1, revision: 0, revocationVersion: 0, nextLinkEpoch: 0, pairings: [], fleets: [], buckets: [] };
     this.db.prepare("INSERT INTO hub_transport_state(singleton,state) VALUES(1,?)").run(JSON.stringify(initial));
   }
-  read(): HubTransportState {
+  /** Freshly checked internal image; it never escapes to a caller or callback. */
+  private checkedImage(): HubTransportState {
     if (this.failed) throw new HubProtocolError("uncertain");
     try {
       const row = readHubSqlRow(this.db, "SELECT state FROM hub_transport_state WHERE singleton=1") as { state: string } | undefined;
       if (!row) throw new HubProtocolError("uncertain");
       // Cache decoding only. The SQL image and independent private floor are still
-      // read on every call; returned state never aliases the retained template.
+      // read on every call. Only owning read() callers receive a full copy.
       const known = this.decoded?.raw === row.state ? this.decoded : undefined;
-      const state = known ? structuredClone(known.template) : validated(stateSchema, parseStrictJson(row.state, 2 * 1024 * 1024));
+      const state = known ? known.template : validated(stateSchema, parseStrictJson(row.state, 2 * 1024 * 1024));
       const floor = this.options.floor.read();
       if (!Number.isSafeInteger(floor) || floor < 0 || floor !== state.revision
         || new Set(state.pairings.map(x => x.id)).size !== state.pairings.length
         || new Set(state.fleets.map(x => x.id)).size !== state.fleets.length) throw new HubProtocolError("uncertain");
-      if (!known) this.decoded = { raw: row.state, template: structuredClone(state) };
+      if (!known) this.decoded = { raw: row.state, template: state };
       return state;
     } catch { this.failed = true; throw new HubProtocolError("uncertain"); }
+  }
+  read(): HubTransportState {
+    try { return structuredClone(this.checkedImage()); }
+    catch { this.failed = true; throw new HubProtocolError("uncertain"); }
+  }
+  /** Currentness-only consumers own two scalar values, never the retained transport graph. */
+  readVersion(): Pick<HubTransportState, "revision" | "revocationVersion"> {
+    const state = this.checkedImage();
+    return { revision: state.revision, revocationVersion: state.revocationVersion };
   }
   /** owningDb is callback-scoped, for a same-transaction participant; never stash or use it after change returns. */
   mutate<T>(event: Omit<HubAuditRecord, "id" | "sequence" | "policyVersion">, change: (state: HubTransportState, owningDb: Database.Database) => T,

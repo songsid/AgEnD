@@ -15,11 +15,14 @@ register("requestContextControl", {
     restart: "Turning this on restarts {0} agents (their conversations are kept); they can't chat for a minute or two.", goBack: "Go back for the latest update is available until {0}; turning this on ends it immediately.", viewUpdate: "View AgEnD update", viewOwners: "View these agents", waitTitle: "End this wait?", enableTitle: "Turn on request-based contact approvals?", enable: "Confirm turn on", unknown: "State unknown", inspect: "View held messages", update: "Finish or resolve the AgEnD update first, then check again.", stopTitle: "Stop this work?", stopBody: "This ends the saved work and prevents it from resuming. History stays. Other outside requests still wait for your decision.", waitBody: "A late reply will not resume this work. Other outside requests still wait for your decision.", title: "Request-based contact approvals", on: "On: approval applies only to this request.",
     off: "Off. Your own messages go through as usual; requests that came from outside wait for your decision.",
     offBefore: "Not enabled. Contacts haven't changed.",
-    draining: "Turning off. Waiting for current work to finish.", blocked: "Request-based approvals are waiting.", blockedBefore: "Turning this on has to wait for these first:",
+    draining: "Turning off. Waiting for current work to finish.", blocked: "Request-based approvals aren't on yet.", blockedBefore: "Turning this on has to wait for these first:",
     legacyPending: "Decide these earlier contact requests first, in Fleet → Authorizations: {0}.",
     legacyInflight: "These earlier approved messages are still being delivered: {0}. This clears by itself once each is delivered or fails.",
     legacyUnsettled: "These earlier requests have no readable delivery record, so AgEnD can't tell whether they happened: {0}. They can't be settled from this page yet; leave request-based approvals off for now.",
-    legacyDeliveries: "These earlier messages are still waiting to be delivered: {0}. This clears by itself once they are delivered or fail.",
+    legacyDeliveries: "These earlier messages are being sent right now: {0}. This clears by itself once each is delivered or fails.",
+    legacyRetire: "This earlier request has no readable delivery record, so AgEnD can't tell whether it happened: {0}. Retire it to stop waiting for it.",
+    legacyWithdraw: "This earlier message is still waiting to be sent: {0}. Withdraw it, or wait until it is delivered.",
+    retire: "Retire", retireGoBack: "Go back for the latest update (available until {0}) will no longer be available once you retire it.", retireTitle: "Retire this earlier request?", retireBody: "AgEnD stops waiting for this earlier request. It may already have happened; it won't be repeated, and its record stays.",
     recoveryBlocked: "Request-based approvals need your attention.",
     confirmTitle: "Turn off request-based approvals?", confirm: "Confirm turn off",
     confirmBody: "New outside requests will wait while current work finishes. Then your own messages go through as usual; outside requests wait for your decision.",
@@ -49,12 +52,15 @@ register("requestContextControl", {
     legacyPending: "請先在「Fleet → 授權」決定這些先前的聯絡申請：{0}。",
     legacyInflight: "這些先前已核准的訊息仍在送出中：{0}。每則送達或失敗後就會自動解除。",
     legacyUnsettled: "這些先前的申請沒有可讀取的送出紀錄，AgEnD 無法判斷是否已經發生：{0}。目前還無法在這一頁處理；請暫時不要開啟依請求核准聯絡。",
-    legacyDeliveries: "這些先前的訊息仍在等候送出：{0}。送達或失敗後就會自動解除。",
+    legacyDeliveries: "這些先前的訊息正在送出：{0}。每則送達或失敗後就會自動解除。",
+    legacyRetire: "這筆先前的申請沒有可讀取的送出紀錄，AgEnD 無法判斷是否已經發生：{0}。選「不再等候」就不會再等它。",
+    legacyWithdraw: "這則先前的訊息仍在等候送出：{0}。可以撤回，或等它送達。",
+    retire: "不再等候", retireGoBack: "這樣做之後，最近一次更新就不能再「退回上一版」（原本可用到 {0}）。", retireTitle: "不再等候這筆先前的申請？", retireBody: "AgEnD 會停止等候這筆先前的申請。它可能已經發生；不會再重複執行，紀錄會保留。",
     recoveryBlocked: "依請求核准聯絡需要你處理。",
     confirmTitle: "關閉依請求核准聯絡？", confirm: "確認關閉",
     confirmBody: "新的外部請求會先等候，直到目前的工作結束。之後，你自己的訊息照常；從外部來的請求會等你決定。",
     legacy: "請先處理這些先前擱置的訊息：{0}。", peers: "請在 {0} 上更新 AgEnD，完成後按「重新檢查」。",
-    owners: "這些 Agent 需要先完成準備：{0}。", ownersWork: "請先結束這些 Agent 目前的工作：{0}。請等它們完成，或重新啟動一直忙碌的 Agent。", ownersUpdate: "請先完成這些 Agent 的 AgEnD 更新：{0}。", recovery: "這項工作需要你決定：{0}。",
+    owners: "這些 Agent 需要先完成準備：{0}。", ownersWork: "請先等這些 Agent 完成目前的工作：{0}。請等它們完成，或重新啟動一直忙碌的 Agent。", ownersUpdate: "請先完成這些 Agent 的 AgEnD 更新：{0}。", recovery: "這項工作需要你決定：{0}。",
     returns: "正在等候回覆：{0}。", tickets: "請先處理這些擱置的訊息：{0}。", work: "正在等這項工作結束：{0}。",
     previous: "目前仍使用原本的規則。", floor: "已不能再降回舊版 AgEnD。",
     floorBefore: "注意：開啟後就不能再降回舊版 AgEnD，之後關閉也一樣。",
@@ -72,10 +78,12 @@ register("requestContextControl", {
   },
 });
 export const requestContextControlText = (key, ...args) => t(`requestContextControl.${key}`, ...args);
-const LEGACY_KEYS = { "legacy-pending": "legacyPending", "legacy-inflight": "legacyInflight", "legacy-unsettled": "legacyUnsettled", "legacy-deliveries": "legacyDeliveries" };
+const LEGACY_KEYS = { "legacy-pending": "legacyPending", "legacy-inflight": "legacyInflight", "legacy-unsettled": "legacyUnsettled", "legacy-deliveries": "legacyDeliveries", "legacy-uncertain": "legacyUncertain" };
+// M-3897: one blocker per earlier ticket or delivery an owner can settle (its id carries the ticket or delivery id).
+const legacyKeyOf = (id) => LEGACY_KEYS[id] || (id.startsWith("legacy-retire:") ? "legacyRetire" : id.startsWith("legacy-withdraw:") ? "legacyWithdraw" : null);
 export function requestContextBlockerText(blocker) {
   // S-272: an earlier ticket says what settles it (its own sentence by blocker id); an older server's "legacy" keeps its line.
-  const legacyKey = blocker.kind === "legacy" && (blocker.id.startsWith("legacy-uncertain:")?"legacyUncertain":LEGACY_KEYS[blocker.id]);
+  const legacyKey = blocker.kind === "legacy" && (blocker.id.startsWith("legacy-uncertain:")?"legacyUncertain":legacyKeyOf(blocker.id));
   if(blocker.kind === "work" && blocker.families?.length){
     const separator=lang()==="zh-TW"?"、":", ";
     const text=requestContextControlText("workFamilies",(blocker.labels||[]).join(separator),blocker.families.map(family=>requestContextControlText(`family-${family}`)).join(separator));
@@ -98,7 +106,7 @@ export function RequestContextBlocked({ state, onCheck, onResolve, busy = false,
       ${(state.blockers || []).some(b => b.action === "inspect" && b.kind === "legacy") ? html`<a class="btn btn-sm" href="/ui/fleet/authorizations">${requestContextControlText("inspect")}</a>` : null}
       ${(state.blockers || []).map(blocker => blocker.action === "inspect"
         ? null   // S-272: one Authorizations link, for earlier held requests only; agents and the update have their own links below
-        : state.canChange && onResolve && blocker.action ? html`<button key=${blocker.id} type="button" class=${`btn btn-sm ${["stop-work", "stop-waiting"].includes(blocker.action) ? "btn-danger" : ""}`} disabled=${busy}
+        : state.canChange && onResolve && blocker.action ? html`<button key=${blocker.id} type="button" class=${`btn btn-sm ${["stop-work", "stop-waiting", "retire"].includes(blocker.action) ? "btn-danger" : ""}`} disabled=${busy}
           title=${requestContextBlockerText(blocker)} onClick=${() => onResolve(blocker)}>${requestContextControlText(blocker.action)}${blocker.kind === "work" && blocker.families?.length && blocker.labels?.length ? ` · ${blocker.labels.join(lang() === "zh-TW" ? "、" : ", ")}` : ""}</button>` : null)}
       ${(state.blockers || []).some(b => b.kind === "update") ? html`<a class="btn btn-sm" href=${settingsPath("advanced") + "#settings-update"}>${requestContextControlText("viewUpdate")}</a>` : null}
       ${ownerAgents.map(agent => html`<a class="btn btn-sm" key=${agent.id} href=${detailsPath(agent.id)}>${requestContextControlText("viewOwners")}${ownerAgents.length > 1 ? ` · ${agent.label}` : ""}</a>`)}
@@ -123,6 +131,7 @@ export function RequestContextNeed({ item }) {
     try {
       if(blocker?.action==="acknowledge" && !await confirmDialog({title:requestContextControlText("ackTitle"),message:requestContextControlText("ackBody"),confirmLabel:requestContextControlText("acknowledge"),danger:false}))return;
       if (["stop-work", "stop-waiting"].includes(blocker?.action) && !await confirmStopWork(blocker.action, state.goBack)) return;
+      if (blocker?.action === "retire" && !await confirmRetire(state)) return;
       const input = blocker ? { revision: state.revision, action: "resolve", blockerId: blocker.id, resolution: blocker.action } : { revision: state.revision, action: "check" };
       const response = await writeControl(lease, input);
       if (!lease.current()) return;
@@ -135,6 +144,11 @@ export function RequestContextNeed({ item }) {
     ${state && !state.canChange ? html`<${AuthorizeChip} />` : null}
     ${failed ? html`<p class="notice warn" role="alert">${requestContextControlText("failed")}</p>` : null}
     </article>`;
+}
+/** M-3897: Retire says what it does, and that it ends Go back for the latest update when that is still offered (Sentinel's contract). */
+async function confirmRetire(state) {
+  const goBack = state?.goBack ? "\n\n" + requestContextControlText("retireGoBack", clockFormat({ dateStyle: "medium", timeStyle: "short", timeZone: state.goBack.timeZone }, "en").format(new Date(state.goBack.availableUntil))) : "";
+  return confirmDialog({ title: requestContextControlText("retireTitle"), message: requestContextControlText("retireBody") + goBack, confirmLabel: requestContextControlText("retire"), danger: true });
 }
 async function confirmStopWork(action, goBack) { return confirmDialog({ title: requestContextControlText(action === "stop-waiting" ? "waitTitle" : "stopTitle"), message: requestContextControlText(action === "stop-waiting" ? "waitBody" : "stopBody") + (action === "stop-work" && goBack ? "\n\n" + requestContextControlText("stopGoBack") : ""), confirmLabel: requestContextControlText(action), danger: true }); }
 export function RequestContextSettings() {
@@ -167,6 +181,7 @@ export function RequestContextSettings() {
       if (action === "enable" && !await confirmDialog({ title: requestContextControlText("enableTitle"), message: requestContextControlText("floorBefore") + (state.goBack ? "\n\n" + requestContextControlText("goBack", clockFormat({ dateStyle: "medium", timeStyle: "short", timeZone: state.goBack.timeZone }, "en").format(new Date(state.goBack.availableUntil))) : "") + (state.restartCount ? "\n\n" + requestContextControlText("restart", state.restartCount) : ""), confirmLabel: requestContextControlText("enable"), danger: true })) return;
       if(blocker?.action==="acknowledge" && !await confirmDialog({title:requestContextControlText("ackTitle"),message:requestContextControlText("ackBody"),confirmLabel:requestContextControlText("acknowledge"),danger:false}))return;
       if (["stop-work", "stop-waiting"].includes(blocker?.action) && !await confirmStopWork(blocker.action, state.goBack)) return;
+      if (blocker?.action === "retire" && !await confirmRetire(state)) return;
       if (action === "disable" && !await confirmDialog({ title: requestContextControlText("confirmTitle"), message: requestContextControlText("confirmBody"), confirmLabel: requestContextControlText("confirm"), danger: false })) return;
       if (!lease.current()) return;
       const response = await writeControl(lease, blocker ? { revision: state.revision, action: "resolve", blockerId: blocker.id, resolution: blocker.action } : { revision: state.revision, action });
@@ -185,7 +200,7 @@ export function RequestContextSettings() {
       ${!state.enabled && state.enableUnavailable ? html`<p role="status">${requestContextControlText("enableUnavailable")}</p>` : null}
       ${failed ? html`<p role="status">${requestContextControlText("unknown")}</p>` : ["blocked", "draining"].includes(state.phase) ? html`<${RequestContextBlocked} state=${state} busy=${busy || failed} onCheck=${() => change("check")} onResolve=${state.canChange ? blocker => change("resolve", blocker) : null} />`
         : html`<p role="status">${requestContextControlText(state.phase === "off" && !state.everActivated ? "offBefore" : state.phase)}</p>`}
-      <p class="notice warn">${requestContextControlText(state.everActivated ? "floor" : "floorBefore")}</p>
+      ${!state.everActivated && !state.enabled && state.enableUnavailable ? null : html`<p class="notice warn">${requestContextControlText(state.everActivated ? "floor" : "floorBefore")}</p>`}
       ${!state.canChange ? html`<${AuthorizeChip} />` : null}` : !failed ? html`<p>${requestContextControlText("loading")}</p>` : null}
     ${failed ? html`<p class="notice warn" role="alert">${requestContextControlText(state ? "failed" : "error")}</p><button class="btn btn-sm" type="button" disabled=${busy} onClick=${load}>${requestContextControlText("check")}</button>` : null}
   </section>`;

@@ -21,17 +21,25 @@ function copyPolicy(image: HubCanonicalPolicy): HubCanonicalPolicy {
   if (image.kind === "group") return Object.freeze({ kind: "group", raw: image.raw, policy: structuredClone(image.policy) });
   return Object.freeze({ kind: "roles", raw: image.raw, policy: structuredClone(image.policy) });
 }
-/** Both formats are strict. A role document is never flattened into legacy group rules. */
-export function parseCanonicalPolicy(raw: string): HubCanonicalPolicy {
-  if (typeof raw === "string" && decodedPolicy?.raw === raw) return copyPolicy(decodedPolicy);
+/** Private successful codec image only; no caller can receive this retained object. */
+function decodedPolicyImage(raw: string): HubCanonicalPolicy {
+  if (typeof raw === "string" && decodedPolicy?.raw === raw) return decodedPolicy;
   const value = parseStrictJson(raw);
-  const image: HubCanonicalPolicy = value !== null && typeof value === "object" && Object.hasOwn(value, "rolesActive")
+  return value !== null && typeof value === "object" && Object.hasOwn(value, "rolesActive")
     ? { kind: "roles", raw, policy: parseRolePolicy(value) }
     : { kind: "group", raw, policy: parseGroupPolicy(value) };
-  const out = copyPolicy(image);
-  // Exact strings and successful decodes only. A failed attempt leaves the slot alone.
+}
+/** Both formats are strict. A role document is never flattened into legacy group rules. */
+export function parseCanonicalPolicy(raw: string): HubCanonicalPolicy {
+  const image = decodedPolicyImage(raw), out = copyPolicy(image);
+  // Exact strings and successful decodes/copies only. A failed attempt leaves the slot alone.
   if (typeof raw === "string") decodedPolicy = image;
   return out;
+}
+/** Strict validation for scalar/hash-only consumers; never lends a retained policy graph. */
+export function validateCanonicalPolicyBytes(raw: string): void {
+  const image = decodedPolicyImage(raw);
+  if (typeof raw === "string") decodedPolicy = image;
 }
 
 /** Retained graph continuity, including future/expired/off assignments; display DNs are not identities. */
