@@ -11,12 +11,23 @@ const working = { id: "busy", kind: "owners", ownerCause: "work", labels: ["m1",
 describe("M-3864 R3: the turn-on's blockers name their agents", () => {
   it("in each language, with its own list separator", () => {
     setLang("en");
-    expect(requestContextBlockerText(working)).toBe("Finish the current work for these agents first: m1, m2.");
+    expect(requestContextBlockerText(working)).toBe("Finish the current work for these agents first: m1, m2. Wait for them to finish, or restart an agent that stays busy.");
     setLang("zh-TW");
     expect(requestContextBlockerText(working)).toContain("m1、m2");
     setLang("en");
   });
 
+  it("S-272: before the first attempt the section says what an On would wait for (it showed nothing)", async () => {
+    setLang("en");
+    const p = page();
+    await p.mount(h(RequestContextBlocked, { state: { phase: "blocked", attempted: false, everActivated: false, blockers: [working] }, onCheck: () => {} }));
+    expect(p.root.textContent).toContain("Turning this on has to wait for these first:");
+    expect(p.root.textContent).toContain("Wait for them to finish, or restart an agent that stays busy.");
+    await p.unmount();
+    await p.mount(h(RequestContextBlocked, { state: { phase: "off", attempted: false, everActivated: false, blockers: [] }, onCheck: () => {} }));
+    expect(p.root.textContent).toBe("");                                                   // nothing in the way: nothing shown
+    await p.unmount();
+  });
   it("the blocked section renders them (it was blank)", async () => {
     setLang("en");
     const p = page();

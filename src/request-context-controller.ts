@@ -30,7 +30,9 @@ export class RequestContextController implements RequestContextControlHost {
  }
  private refresh():RequestContextControlView {
   if(!this.ports.current())throw Error("unavailable");
-  const base=this.ports.base(),state=base.state,blockers=this.attempted||state?this.ports.inspect().map(row=>structuredClone(row)):[];
+  // S-272: the same inspection before the first attempt: Check and the page say what an On would wait for (it used to
+  // say nothing until an attempt blocked). Needs you still shows it only after an attempt (request-context-control-api.ts).
+  const base=this.ports.base(),state=base.state,blockers=this.ports.inspect().map(row=>structuredClone(row));
   const next={enabled:state?.mode==="active",everActivated:!!state,attempted:this.attempted,phase:state?.mode==="draining"?"draining" as const:blockers.length||this.enableFailed?"blocked" as const:state?.mode==="active"?"on" as const:"off" as const,canChange:true,blockers,
    ...(this.enableFailed?{enableFailed:true}:{}),
    ...(base.restartCount?{restartCount:base.restartCount}:{}),...(base.offer.latestDeadline!==null?{goBack:{attemptIds:[...base.offer.invalidates],availableUntil:new Date(base.offer.latestDeadline).toISOString(),timeZone:base.timeZone}}:{})};
