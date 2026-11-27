@@ -129,6 +129,12 @@ export function createHubRoleExpirySettlement(options: RoleExpiryOptions) {
     }
   };
   return {
+    /** Earliest unsettled term, including overdue work. Read-only; never a permit. */
+    nextExpiry(): number | null {
+      assertAuthorizationTime();
+      const deadlines = read().policy.assignments.filter(a => a.expiresAt !== null && !settled(a)).map(a => a.expiresAt!);
+      return deadlines.length ? Math.min(...deadlines) : null;
+    },
     settle(): Promise<RoleExpiryResult> {
       if (flight) return flight;
       flight = Promise.resolve().then(run).finally(() => { flight = null; }); return flight;
