@@ -125,9 +125,10 @@ target origins are not cleared. The server still retains an origin union per
 agent instance for ordinary relays without this endorsement, later turns and
 compaction. An earlier non-admin request
 can therefore require approval after an admin speaks directly to that worker.
-Only a verified managing administrator can explicitly clear retained origin in
-the agent's web Permissions tab, accepting the current conversation as their own
-work without erasing its text. The agent and peers have no clear tool. New
+Only a verified managing administrator can explicitly clear retained origin, in
+the agent's web Permissions tab or by confirming General's `origin-clear` proposal,
+accepting the current conversation as their own work without erasing its text. The
+agent and peers have no clear tool; General can only propose it. New
 non-admin input in a restricted ClassicBot room, or work inherited from one, is
 restricted again; other agents, tickets and grants are unchanged. People talking
 to a fleet agent in its own topic are not recorded as origin: who may talk there

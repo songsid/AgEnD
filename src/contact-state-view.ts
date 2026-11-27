@@ -66,7 +66,7 @@ export function contactStateView(host: ContactStateHost, filter: { agent?: strin
   // Only origins that restrict: an unknown or mixed origin holds the agent's messages for approval until it is cleared.
   const retained_origins = names.flatMap(name => {
     const origin = host.store.origin(name);
-    return origin && origin.kind !== "human" ? [{ agent: label(name), kind: origin.kind, people: origin.people.map(person), chain: origin.chain.map(label) }] : [];
+    return origin && origin.kind !== "human" ? [{ agent: label(name), target: name, kind: origin.kind, people: origin.people.map(person), chain: origin.chain.map(label) }] : [];
   });
 
   return {
@@ -76,7 +76,7 @@ export function contactStateView(host: ContactStateHost, filter: { agent?: strin
       "Approve or decline a held message: propose_contact_change { kind: 'ticket-decision', ticket_id (the short_id works), decision }. An admin confirms the card.",
       "Change or revoke a rule: propose_contact_change { kind: 'grant-adjust' | 'grant-revoke', target, grant_id }.",
       "Switch a room: propose_contact_change { kind: 'mode', target, mode: 'restricted' | 'legacy' } ('legacy' is unrestricted).",
-      "A retained origin is cleared by an admin on the agent's Permissions tab in the web dashboard; General cannot propose it.",
+      "Clear a retained origin: propose_contact_change { kind: 'origin-clear', target } (the agent's target from retained_origins). An admin confirms the card, as on the agent's Permissions tab.",
     ],
   };
 }

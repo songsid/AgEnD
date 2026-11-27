@@ -29,7 +29,7 @@ function rig() {
     contactGeneration: (n: string) => gen.get(n)!, contactAdminOf: (_n: string, p: ContactPerson) => manager && p.adapterId === admin.adapterId && p.userId === admin.userId,
     writeContactPermissions: write, decideContactAuthorization: decide, contactAdapter: () => adapter,
     settingsGeneralRoute: (n: string) => n === 'general' ? ({ adapterId: 'demo', adapter, chatId: 'channel', topic: 'thread', current: () => routeCurrent }) : null });
-  const host = { service, generation: (n: string) => gen.get(n)!, label: (n: string) => `Demo ${n}`, timeZone: () => "Asia/Taipei", mode: (n: string) => modes.get(n) as any, modeAdmin: fm.contactAdminOf, write, decide };
+  const host = { service, generation: (n: string) => gen.get(n)!, label: (n: string) => `Demo ${n}`, timeZone: () => "Asia/Taipei", mode: (n: string) => modes.get(n) as any, modeAdmin: fm.contactAdminOf, write, decide, clearOrigin: vi.fn() };
   const ticket = () => store.hold({ operationId: `op-${Math.random()}`, source: 'room', target: 'worker', sourceGeneration: 'r1', targetGeneration: 'w1', verb: 'send_to_instance',
     origin: { kind: 'human', people: [person], chain: ['room'], receiptIds: [] }, message: 'Synthetic public question', correlationId: 'synthetic', resultRecipient: 'room', payload: {} });
   const post = async (raw: unknown = { kind: 'mode', target: 'room', mode: 'restricted' }) => { await fm.requestContactChange('general', raw, () => current); return [...fm.pendingNonceButtons.values()].at(-1); };

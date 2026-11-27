@@ -6467,7 +6467,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const service = this.contactService();
     const plan = prepareContactChange(raw, { service, label: n => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || n, timeZone: () => this.usageZone(), mode: n => { const room = this.contactRoom(n); return room ? room.restrictedMode ? "restricted" : "legacy" : undefined; },
       generation: n => this.contactGeneration(n), modeAdmin: (n, p) => this.contactAdminOf(n, p),
-      write: (n, value, p) => this.writeContactPermissions(n, value, p), decide: (id, value, p) => this.decideContactAuthorization(id, value, p) });
+      write: (n, value, p) => this.writeContactPermissions(n, value, p), decide: (id, value, p) => this.decideContactAuthorization(id, value, p),
+      clearOrigin: (n, value, p) => this.clearContactOrigin(n, value, p) });
     const targetAdapter = this.contactAdapter(plan.target);
     if (!targetAdapter || !["discord", "telegram"].includes(targetAdapter.type)) throw Error("contact-proposal-use-web");
     const routes = Object.keys(this.fleetConfig?.instances ?? {}).flatMap(n => {

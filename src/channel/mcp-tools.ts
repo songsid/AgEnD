@@ -160,11 +160,12 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["get_fleet_config", schemas.GetFleetConfigArgs,
     "Read fleet configuration. scope='defaults' for fleet defaults, scope='instance' + name for a specific instance."],
   ["propose_contact_change", schemas.ProposeContactChangeArgs,
-    "General only. Proposes a contact change; an admin must press Confirm on the card posted in the target's Discord/Telegram General (5 min). Find ids with contact_state. Kinds:\n"
+    "General only. Proposes a contact change; an admin must press Confirm on the card in the target's Discord/Telegram General (5 min). Ids and targets: contact_state. Kinds:\n"
     + "- ticket-decision {ticket_id (short id ok), decision: approve-once|decline, grant?} — a held message; no target\n"
     + "- mode {target, mode: restricted|legacy} — ClassicBot room; legacy = unrestricted\n"
     + "- grant-adjust {target, grant_id, expires_at, remaining_uses}\n"
     + "- grant-revoke {target, grant_id}\n"
+    + "- origin-clear {target} (retained_origins)\n"
     + "A refusal says what to do next."],
   ["contact_state", schemas.ContactStateArgs,
     "General only, read-only: held messages (ticket_id, short_id, from, to, who decides), grants (grant_id), ClassicBot room modes, and agents held by a retained origin. `agent` narrows it."],
