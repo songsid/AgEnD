@@ -31,10 +31,10 @@ const chat = (lang: "en" | "zh-TW", key: string): string => {
 
 describe("M-3770 1.7: the web-dashboard skill's Updating AgEnD", () => {
   it("quotes the web card's own buttons and lines, en and zh-TW", () => {
-    for (const key of ["whenIdle", "pickTime", "notNow", "updateNow", "machine", "self", "fixIt", "howToFix"]) {
+    for (const key of ["whenIdle", "pickTime", "notNow", "updateNow", "machine", "self", "fixIt", "howToFix", "serviceIt", "serviceGo"]) {
       expect(UPDATING, `en ${key}`).toContain(ui("en", key));
     }
-    for (const key of ["whenIdle", "pickTime", "notNow", "updateNow", "cancel", "machine", "fixIt", "howToFix", "pauseTitle"]) {
+    for (const key of ["whenIdle", "pickTime", "notNow", "updateNow", "cancel", "machine", "fixIt", "howToFix", "pauseTitle", "serviceIt", "serviceGo"]) {
       expect(UPDATING, `zh ${key}`).toContain(ui("zh-TW", key));
     }
     expect(UPDATING).toContain(ui("en", "adminOnly"));
@@ -65,7 +65,7 @@ describe("M-3770 1.7: docs", () => {
   it("web-dashboard.md and its zh-TW twin have the section, with the UI's words", () => {
     const en = section(read("docs/web-dashboard.md"), "## Updating AgEnD", "## Reaching it from elsewhere");
     const zh = section(read("docs/web-dashboard.zh-TW.md"), "## 更新 AgEnD", "## 從別的裝置連線");
-    for (const key of ["whenIdle", "pickTime", "notNow", "updateNow", "fixIt", "howToFix"]) {
+    for (const key of ["whenIdle", "pickTime", "notNow", "updateNow", "fixIt", "howToFix", "serviceIt"]) {
       expect(en, `en ${key}`).toContain(ui("en", key));
       expect(zh, `zh ${key}`).toContain(ui("zh-TW", key));
     }
