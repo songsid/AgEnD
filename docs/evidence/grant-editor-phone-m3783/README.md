@@ -13,7 +13,7 @@ The editor is "Set allowed contacts for these people" (「設定這些人的常�
 - **The several-people line** is now just the instruction: "tick each person the rule is for".
 - **Phone polish.** The save button reads "Approve and allow from now on" (two lines on a phone), and its zh label 「核准這筆，並設為常用轉交」 breaks only at the comma. The title wraps evenly, and the fold keeps its ▶ marker with a full tap height.
 
-The script is `scripts/manual/request-contact-card-s228/capture.mts` (#4497's). It ran at `8b7f52958` (`src` clean) and passed 182 of 182 checks. `receipt.json` lists the editor's 34 checks and each PNG's sha256.
+The script is `scripts/manual/request-contact-card-s228/capture.mts` (#4497's). It ran at `61c5de308` (`src` clean) and passed 182 of 182 checks. `receipt.json` lists the editor's 34 checks and each PNG's sha256.
 
 | Frame | What it shows |
 |---|---|
@@ -22,3 +22,5 @@ The script is `scripts/manual/request-contact-card-s228/capture.mts` (#4497's). 
 | `phone-*-5c-always-allow-more` | What this allows opened, and readable. Scrolled to the end, the body still ends above the fixed footer. |
 
 The phones are captured in light en and dark zh-TW, and the desk in light en and dark zh-TW. On the desk, the editor is unchanged apart from the shorter text and the fold.
+
+The new words are registered by the editor itself (namespace `cgrant`), so a tab holding an older `contact-auth-strings.js` still reads them. The shared `grantBoundary` and `grantAllOrigins` keep their release text, so an older editor still shows the full explanation. `tests/grant-editor-skew-m3783.test.ts` covers the mixed pairings.

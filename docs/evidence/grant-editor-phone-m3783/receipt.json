@@ -1,6 +1,6 @@
 {
   "script": "scripts/manual/request-contact-card-s228/capture.mts",
-  "sourceHead": "8b7f529584251763d838736b79eef10ef725d05a",
+  "sourceHead": "61c5de308d8eb689c6c8b560f49bb595098c670f",
   "dirty": [],
   "summary": "182/182",
   "grantEditorChecks": [
@@ -144,31 +144,31 @@
   "pictures": [
     {
       "path": "m3783-desk-dark-zh-TW-5-always-allow.png",
-      "sha256": "f8964b52c833712d7388994efd2fb1dc784065b8b3ded634ed294597a8d0b36c"
+      "sha256": "aaf4b8e656f73ea2a7420f9f616c6e641a5c14b58e445080dd5f8530341d78bb"
     },
     {
       "path": "m3783-desk-light-en-5-always-allow.png",
-      "sha256": "72ca325f17ffd80c3c306a0a6805de1b36afd69a3bb3c8efdc0b1f2c45f05105"
+      "sha256": "13b34f0e83eb45e72e3bc6f7644b28ae9f1943a8192798765b633b11db53a1c0"
     },
     {
       "path": "m3783-phone-dark-zh-TW-5-always-allow.png",
-      "sha256": "f45958920d45fe6e22867c19638c526a2e316e53d33ccb419e46ab2058df5a05"
+      "sha256": "d77c32300cff1cd6231f62571e601416226270c24f5591a978eb9252116ad8eb"
     },
     {
       "path": "m3783-phone-dark-zh-TW-5b-always-allow-end.png",
-      "sha256": "349cf0507d71e390b0b32e3052087ba162a613324fcafdc3a82b320c02a442af"
+      "sha256": "e271bb982681e0ec44f98224466ed703ec7e73fbd7a75154eac2e82d3ccb0bf5"
     },
     {
       "path": "m3783-phone-dark-zh-TW-5c-always-allow-more.png",
-      "sha256": "9d8d4998a6c72594eaf44f58c4617007e4e2618fbb1a1ff165ae2024ea4f58b6"
+      "sha256": "fa5f89cebfb99eb7524f274eee0b056ebaec9a7012b69738930b97ae29992789"
     },
     {
       "path": "m3783-phone-light-en-5-always-allow.png",
-      "sha256": "5441fafa9e4233ea0915678f9f374401096355563c6d201a08fa672aa89b849f"
+      "sha256": "780383f4af26a9e0eeb6c2685767ff64e2ca2f806e50f713d1e74cf50cad0bad"
     },
     {
       "path": "m3783-phone-light-en-5b-always-allow-end.png",
-      "sha256": "220090b8e5ebee3e157836e24e757d669c74bae1727dcba321342943bcd022b3"
+      "sha256": "162fb58693d075ad0a7d191f2399fed3098929243e6007d1690f45db3a77258c"
     },
     {
       "path": "m3783-phone-light-en-5c-always-allow-more.png",
