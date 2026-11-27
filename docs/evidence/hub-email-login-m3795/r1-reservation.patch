@@ -1,0 +1,5 @@
+--- a/src/hub/sessions.ts
++++ b/src/hub/sessions.ts
+@@ -85 +85 @@
+-    if (budget.count + budget.pending >= SIGNIN_PER_LOGIN) return undefined;
++    if (budget.count >= SIGNIN_PER_LOGIN) return undefined;

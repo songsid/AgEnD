@@ -122,7 +122,7 @@ export function fakeDirectory(table: Record<string, SignInResult | { unavailable
         return { ok: false, reason: "unavailable" };
       }
       if (row.ok) return row;
-      return { ok: false, reason: row.reason === "invalid-credentials" ? "not-found" : row.reason };
+      return { ok: false, reason: row.reason === "invalid-credentials" ? "not-found" : row.reason === "backpressure" ? "unavailable" : row.reason };
     },
     async signIn(login: string, password: string): Promise<SignInResult> {
       calls.push({ bindPassword: secrets.bindPassword, login });

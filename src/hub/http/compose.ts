@@ -1196,7 +1196,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (handleWebIconRequest(req, res, path)) return true;
     if (path === "/") { res.writeHead(302, { Location: "/ui/hub", "Cache-Control": "no-store" }); res.end(); return true; }
     if (path === "/web" || path === "/ui" || path === "/ui/hub" || path === "/ui/hub/exposures" || path === "/ui/hub/admin") {
-      serveHubWorkspaceShell(res, { name: deps.config.name, preview: deps.preview, loginWithoutAt: deps.config.loginWithoutAt === true });
+      serveHubWorkspaceShell(res, { name: deps.config.name, preview: deps.preview, loginWithEmail: deps.config.loginWithEmail === true });
       return true;
     }
     if (path.startsWith("/ui/js/")) {

@@ -386,6 +386,20 @@ describe("#2906 wording (the user: never 公司 / company)", () => {
     };
     visit(ast); return out;
   };
+  const withoutApprovedHubSignIn = (file: string, source: string) => file === "src/ui/hub-strings.js"
+    // #3423 permits company sign-in wording; M-3795's Leader requested the exact company-email hint.
+    // Only each complete property line is exempt, never neighbouring copy or the whole dictionary.
+    ? source.replace(/^\s*signInLead: ".*$/gm, "")
+      .replace(/^\s*loginEmailHint: "(?:[^"\\]|\\.)*",[ \t]*$/gm, "")
+    : source;
+  it("limits the company-email hint exception to its own whole property line in the Hub dictionary", () => {
+    const hint = '    loginEmailHint: "Sign in with your company email or AD account name.",';
+    const source = 'const copy = {\n' + hint + '\n    network: "Company network",\n};';
+    expect(literalCopy(withoutApprovedHubSignIn("src/ui/hub-strings.js", source))).toEqual(["Company network"]);
+    expect(literalCopy(withoutApprovedHubSignIn("src/ui/other.js", source))).toContain("Sign in with your company email or AD account name.");
+    const inline = 'const copy = {\n' + hint + ' network: "Company network",\n};';
+    expect(literalCopy(withoutApprovedHubSignIn("src/ui/hub-strings.js", inline))).toContain("Company network");
+  });
   it("checks visible copy rather than imports or interpolation variables, and still catches network marketing copy", () => {
     const copy = literalCopy('import x from "./hub-company-join.js"; const a = html`<p>${company.message}</p>`; const b = "Company network";');
     expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
@@ -427,10 +441,9 @@ describe("#2906 wording (the user: never 公司 / company)", () => {
     ]);
     const hits = files.flatMap(f => {
       const source = readFileSync(f, "utf8").replace(/^\s*"hub\.companyJoin\.(?:confirm|repair)":.*$/gm, "")
-        .replace(/^\s*\["hub\.company-(?:address|name)".*$/gm, "")
-        // Hub UX U3 (spec 1.4: 公司帳號 / company account replaces 組織帳號): the Hub's own sign-in line is company sign-in wording (#3423).
-        .replace(f === "src/ui/hub-strings.js" ? /^\s*signInLead: ".*$/gm : /(?!)/g, "");
-      return literalCopy(source).filter(s => !(f === "src/ui/shared/app-shell.js" && hubSummary.has(s)) && (/\bcorporate\b/i.test(s) || !COMPANY_DICTIONARIES.has(f) && /公司|\bcompany\b/i.test(s))).map(s => `${f}: ${s.slice(0, 80)}`);
+        .replace(/^\s*\["hub\.company-(?:address|name)".*$/gm, "");
+      const checkedSource = withoutApprovedHubSignIn(f, source);
+      return literalCopy(checkedSource).filter(s => !(f === "src/ui/shared/app-shell.js" && hubSummary.has(s)) && (/\bcorporate\b/i.test(s) || !COMPANY_DICTIONARIES.has(f) && /公司|\bcompany\b/i.test(s))).map(s => `${f}: ${s.slice(0, 80)}`);
     });
     expect(hits).toEqual([]);
   });

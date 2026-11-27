@@ -1,0 +1,13 @@
+--- a/src/hub/directory/directory.ts
++++ b/src/hub/directory/directory.ts
+@@ -539 +539 @@
+-    async signIn(login: string, password: string, beforePasswordBind?: (person: PersonKey) => boolean): Promise<SignInResult> {
++    async signIn(login: string, password: string): Promise<SignInResult> {
+@@ -555,4 +554,0 @@
+-        // Only the caller's private rate budget sees this unauthenticated selection; no identity is returned on failure.
+-        if (beforePasswordBind && !beforePasswordBind(Object.freeze({ realm: cfg.realm, objectId }))) {
+-          return { ok: false, reason: "backpressure" };
+-        }
+@@ -586 +582 @@
+-        const SizeLimitExceededError = (await ldaptsModule?.catch(() => undefined))?.SizeLimitExceededError;
++        const { SizeLimitExceededError } = await loadLdapts();

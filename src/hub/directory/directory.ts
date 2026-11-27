@@ -309,8 +309,14 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
   type Selection = { ok: true; entry: Entry; objectId: string }
     | { ok: false; reason: "not-found" | "not-eligible" | "unavailable"; detail?: string };
   // Shared with sign-in so local designation never acquires a weaker identity/eligibility rule.
-  const selectLogin = async (service: Session, login: string): Promise<Selection> => {
-    const found = await service.search(`(&${cfg.userFilter}(${cfg.loginAttribute}=${escapeFilterValue(login)}))`, attributes, shape.binaryAttributes);
+  const selectLogin = async (service: Session, login: string, signInAliases = false): Promise<Selection> => {
+    let found = await service.search(`(&${cfg.userFilter}(${cfg.loginAttribute}=${escapeFilterValue(login)}))`, attributes, shape.binaryAttributes);
+    // AD aliases are a sign-in convenience only. Never guess from an email local-part, retry a password,
+    // or fall back after an ambiguous/disabled primary match. Keep the configured user filter and size limit.
+    if (!closed && found.length === 0 && signInAliases && cfg.profile === "ad") {
+      const literal = escapeFilterValue(login);
+      found = await service.search(`(&${cfg.userFilter}(|(userPrincipalName=${literal})(mail=${literal})))`, attributes, shape.binaryAttributes);
+    }
     if (closed) return { ok: false, reason: "unavailable" };
     if (found.length === 0) return { ok: false, reason: "not-found" };
     if (found.length !== 1) return { ok: false, reason: "unavailable", detail: "the login matches more than one entry" };
@@ -530,7 +536,7 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
       finally { clearTimeout(deadline); await service?.close(true); }
     },
 
-    async signIn(login: string, password: string): Promise<SignInResult> {
+    async signIn(login: string, password: string, beforePasswordBind?: (person: PersonKey) => boolean): Promise<SignInResult> {
       if (closed) return { ok: false, reason: "unavailable" };
       if (!validLogin(login) || !validPassword(password)) {
         report("sign-in", "bad-input");
@@ -539,13 +545,17 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
       let service: Session | undefined;
       try {
         service = await openService();
-        const selected = await selectLogin(service, login);
+        const selected = await selectLogin(service, login, true);
         if (!selected.ok) {
-          const reason = selected.reason === "not-found" ? "invalid-credentials" : selected.reason;
+          const reason = selected.reason === "not-found" || cfg.profile === "ad" && selected.detail === "the login matches more than one entry" ? "invalid-credentials" : selected.reason;
           report("sign-in", reason, selected.detail);
           return { ok: false, reason };
         }
         const { entry, objectId } = selected;
+        // Only the caller's private rate budget sees this unauthenticated selection; no identity is returned on failure.
+        if (beforePasswordBind && !beforePasswordBind(Object.freeze({ realm: cfg.realm, objectId }))) {
+          return { ok: false, reason: "backpressure" };
+        }
 
         // The password goes to the directory once, on its own connection, for the DN the service search found.
         const user = await Session.open(cfg, expectedServerFingerprint);
@@ -571,6 +581,13 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
         }
         return checked;
       } catch (err) {
+        // LDAP refuses 3+ exact matches at the bounded search limit. Ambiguity is the same public
+        // sign-in refusal as zero matches, not an infrastructure error or an account-enumeration hint.
+        const SizeLimitExceededError = (await ldaptsModule?.catch(() => undefined))?.SizeLimitExceededError;
+        if (cfg.profile === "ad" && SizeLimitExceededError && err instanceof SizeLimitExceededError) {
+          report("sign-in", "invalid-credentials");
+          return { ok: false, reason: "invalid-credentials" };
+        }
         report("sign-in", "unavailable", err);
         return { ok: false, reason: "unavailable" };
       } finally {

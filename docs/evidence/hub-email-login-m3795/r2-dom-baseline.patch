@@ -1,0 +1,20 @@
+--- a/src/ui/panel-hub.js
++++ b/src/ui/panel-hub.js
+@@ -294,3 +293,0 @@
+-    // Password managers can fill DOM values without a framework input event. Snapshot the real fields at submit.
+-    const submittedLogin = e.currentTarget?.querySelector("#hubLogin")?.value ?? form.login;
+-    const submittedPassword = e.currentTarget?.querySelector("#hubPassword")?.value ?? form.password;
+@@ -298 +295 @@
+-    if (!submittedLogin.trim() || !submittedPassword) {
++    if (!form.login.trim() || !form.password) {
+@@ -300 +297 @@
+-      doc?.getElementById(!submittedLogin.trim() ? "hubLogin" : "hubPassword")?.focus();
++      doc?.getElementById(!form.login.trim() ? "hubLogin" : "hubPassword")?.focus();
+@@ -304 +300,0 @@
+-    setForm({ login: submittedLogin, password: submittedPassword });
+@@ -306 +302 @@
+-    const r = await hubClient().signIn(submittedLogin.trim(), submittedPassword);
++    const r = await hubClient().signIn(form.login.trim(), form.password);
+@@ -311 +307 @@
+-      rememberLogin(submittedLogin, submittedPassword);
++      rememberLogin(form.login.trim(), form.password);

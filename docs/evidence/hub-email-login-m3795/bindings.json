@@ -1,0 +1,215 @@
+{
+  "base": "e05fb8189698dd4bf804e3993a914e8e03a911d9",
+  "source": [
+    {
+      "path": "src/hub/directory/directory.ts",
+      "sha256": "563621725dbc950d2b7d1dad6bc3ab60e8bc13b6e1bc84b48c3f8df94f18ef33"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "350ac0076ec93f124d9bbeb07b192ec6cb80d43f95fe90b006879c3d6f6697b0"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "3b3e6c0231acb67eaa580d8d00e99373c8149cb55fcc0720ef69ade9970fe92f"
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "sha256": "eaa25fce508d38084bd520ebe02abd3e9f08ddbae2101d08685bdfa847928faa"
+    },
+    {
+      "path": "src/web-api.ts",
+      "sha256": "600329ef4a91d9a77928df76e38658a8f8e74942ae9d95f7ebfba3c1989969f1"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "73981ba016309a9939d53c56aa5e79e48e0733ae71a42a7195d1a37d11bbbee5"
+    },
+    {
+      "path": "src/ui/hub-strings.js",
+      "sha256": "53fab2aa0633a1574d9e1c321d5808e6306f35664d3a8fab856647d1aa975b0f"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "d15315e96115d43dc7ba33f137c4ff389277c9bb74eaf06f0d212c9b49600592"
+    },
+    {
+      "path": "tests/hub-directory-email-m3795.test.ts",
+      "sha256": "7c584681e6ef8e6e4ab57f0dbd2a0fc0cd842984b29ebf97dd0956f389a04730"
+    },
+    {
+      "path": "tests/hub-compose.test.ts",
+      "sha256": "42dc2dd8cc3e80bb5c79c6f5e0762ff6c3db5b704ed2820296fdbbb266ad56b1"
+    },
+    {
+      "path": "tests/hub-ui-s3-server.test.ts",
+      "sha256": "d4a6679c59fac8d50dff6de8d5549cce521d16e23105b2d9a16de87c87d07f84"
+    },
+    {
+      "path": "tests/hub-ui-s3.test.ts",
+      "sha256": "197c0fbc10e67b434964d15b6a84dc328c1b090a9ebfc8b002be16981ddaa87e"
+    },
+    {
+      "path": "scripts/manual/hub-email-login-m3795/capture.mts",
+      "sha256": "c52a291c0087948410067b3ca92edff669c766f945f21b91db4462fb6b1759e1"
+    },
+    {
+      "path": "src/hub/sessions.ts",
+      "sha256": "e519b8214f1c8db0a5978d8f88f777af171842c523a71fe4b8a2e42e40cf448f"
+    },
+    {
+      "path": "src/hub/directory/types.ts",
+      "sha256": "973df295905f18713f2831c6ff513be26ada40ea608c628eb94884791f85aea3"
+    },
+    {
+      "path": "tests/support/hub-init-fixtures.ts",
+      "sha256": "525cd18401289b87adf9b408ec3d42d4ff6a5c47fd3a94fb779fb7e886df0c91"
+    },
+    {
+      "path": "tests/named-link-test-2906.test.ts",
+      "sha256": "b581352fd8dd0ae06c2fe91e8a8d9227ea14c59b22284f29e208ebbeb9052a18"
+    },
+    {
+      "path": "src/ui/shared/hub-signin.css",
+      "sha256": "de5330e55b62b835859c47044570c5e26a32670b4855bd5af52c33417c945aaf"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/hub-email-login-m3795/README.md",
+      "sha256": "624f04e223ef24d8931c71cb43e7856e8235d9e6cb0f111b9552328953a67c64"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/after-desk-dark-en.png",
+      "sha256": "c78d040d488be2172dd417a0e694a7bd936af23682d01a7f26286ae11fa26083"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/after-desk-dark-zh-TW.png",
+      "sha256": "2cc9b7c89555cb21bf3e1a459af6f715123583092113ccb7a47258ff104efef8"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/after-desk-light-en.png",
+      "sha256": "ca4c570cece5169e977566fde310cc6c45537afa8e99875052df6cf08e6add80"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/after-desk-light-zh-TW.png",
+      "sha256": "ba748d595391a49872af605e598bfd67cc742f5d941293a1dd41d468ea63e2b1"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/after-phone-dark-en.png",
+      "sha256": "24bcf6c4986b1fa5dccd99390dc56c3893dcd9a348a4c64a46e731f49751e644"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/after-phone-dark-zh-TW.png",
+      "sha256": "2fd349a8983de18660610975de5ce37aef57a5413de55edad16b7340770f0c81"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/after-phone-light-en.png",
+      "sha256": "561af9eb9c5efc43584eb97b6e5f8953fab01c04dfb37e6f7862dd1aee88ce02"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/after-phone-light-zh-TW.png",
+      "sha256": "b6bc62087d92aa6a50c695fad848d04debee2b310f0297d0c0d2c1d07e3f239c"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/before-desk-dark-en.png",
+      "sha256": "8476d030b169b21b1dc61cfc8c801524f5faebf39f5c27a2060df3aed64cab1b"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/before-desk-dark-zh-TW.png",
+      "sha256": "3d3c2cc7a1f6f88d6a5f257154af409da5e6dcd2c0164bcc473a89d3e92694d5"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/before-desk-light-en.png",
+      "sha256": "a67e31eb745f639fa6da43ecf9a720364c082ee898bc11a5c761d6e6058ee09b"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/before-desk-light-zh-TW.png",
+      "sha256": "062fca9552637d0a95765036935063790fa11d633a2623f04ff69da141f6885d"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/before-phone-dark-en.png",
+      "sha256": "b669b6f0c680b9770c2dbb56c94a39eb796d5dfd413696f2a9b4c4321b3dccf2"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/before-phone-dark-zh-TW.png",
+      "sha256": "9136d360333834a23a2ba96de1f90cb5d35238144e1bd7b9cb496c8be80b862f"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/before-phone-light-en.png",
+      "sha256": "e4c737e69ee42939b147ffffbe5571c524bf153ecfaf0018d9f02a0a9e51a92b"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/before-phone-light-zh-TW.png",
+      "sha256": "bffe7f1d23aa958223b5fe3532f8c2ca21c8d23e385d597d642fbbca60061847"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/capture-inputs.json",
+      "sha256": "f5c4db5d3bdaa8c0b11f550202421241ee9c24c2cbb8e006e8f89b43cd4c5b29"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/mutation-baseline.patch",
+      "sha256": "e626db540bbc8217cc6e40ba4f9403fd8607609ba84fb145143aa0cede60be90"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/mutations.json",
+      "sha256": "7e46e6fbb7afd05f48e31e01a18e26eef6db2d55e14c33edf20126281ac5aaae"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/r1-mutation.json",
+      "sha256": "c270a2d87b3acc57295818ed56b15325f83be9436ac3f5ea2791a0441f56e588"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/r1-reservation.patch",
+      "sha256": "8c41ceb15b6786dd8f104a54a5ae27f76f0c4ade7a7c786ce723b0169214a045"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/r2-dom-baseline.patch",
+      "sha256": "b606261b4cfbcf2a46494b0a9467841c72d9925d6305ea8b4e9da12a57fdcd35"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/r2-inputs.json",
+      "sha256": "38d376cfbda16e3f423b5c7d1cdff26b04f281b206da0692fe2e5acff8000a28"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/r3-copy-bindings.json",
+      "sha256": "097c5821c6bbe8df4204037b2465d4f13013f91d6bb3567fe7aaf695446b8096"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/review-r1.md",
+      "sha256": "a91d391d7cc54955a38204611e71df417860beae9c6403b16bac0984b60191ee"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/review-r2.md",
+      "sha256": "beece2b957c95b797dfa108ddbdcca566ef5091c2a245f2144b63e640f1d5e48"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/review-r3.md",
+      "sha256": "43aa6fea833cd291ccad5ffed4a400e1cc174b48a1b4e5b4d3352d31ee204d4c"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/refused-desk-light-en.png",
+      "sha256": "58ded2261f0c18e82d8279cf083f9885261b00d3b21371e98c71f1ae3762a242"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/signed-in-desk-light-en.png",
+      "sha256": "b740e0175c4e9d1cc6ea46872407a9a4b468a7042f9fb8532a5c15dc4f2375cc"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/refused-phone-dark-zh-TW.png",
+      "sha256": "e86ec52f5507f1c0edb4f4b1eee80ca7b2ac54f1d92750029a03d9b5717f8421"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/signed-in-phone-dark-zh-TW.png",
+      "sha256": "af8fc07afec6cf8b626eae77220e992f538e57aecef4427464046b8439512e2e"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/refresh-release.md",
+      "sha256": "6ce5e8a15bfb614dc18d7da4b4b2b66902c119a19764ed01cc088f54fadcd0f6"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/hint-spacing.md",
+      "sha256": "b8a23ae34178d420645b8099b60108861dd3aa089fd42675d87b5eb33a5fdcda"
+    }
+  ]
+}

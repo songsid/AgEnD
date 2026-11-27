@@ -61,9 +61,30 @@ export function hubClearCookie(hubId: string): string {
 interface SessionRow { id: string; person: string; realm: string; object_id: string; display_name: string; login_label: string; created_at: number; seen_at: number; expires_at: number; state: string; directory_epoch: number }
 export interface HubSessionView { sessionId: string; person: PersonKey; displayName: string; login: string; admin: boolean; csrf: string }
 
+interface AccountAttemptBudget { since: number; count: number; pending: number }
+
 export class HubSessions {
   private readonly failures = new Map<string, { since: number; count: number }>();
+  private readonly accountFailures = new Map<string, AccountAttemptBudget>();
   private signingIn = 0;
+
+  /** Aliases share one bounded, private password-attempt budget. Pending binds reserve capacity too. */
+  private reserveAccount(person: PersonKey): { key: string; budget: AccountAttemptBudget } | undefined {
+    const key = digest(personKeyString(person)), now = this.core.now();
+    let budget = this.accountFailures.get(key);
+    if (budget && now - budget.since >= SIGNIN_WINDOW) { budget.since = now; budget.count = 0; }
+    if (!budget) {
+      if (this.accountFailures.size >= 4096) {
+        for (const [id, item] of this.accountFailures) {
+          if (!item.pending && now - item.since >= SIGNIN_WINDOW) this.accountFailures.delete(id);
+        }
+        if (this.accountFailures.size >= 4096) return undefined;
+      }
+      budget = { since: now, count: 0, pending: 0 }; this.accountFailures.set(key, budget);
+    }
+    if (budget.count + budget.pending >= SIGNIN_PER_LOGIN) return undefined;
+    budget.pending++; return { key, budget };
+  }
   constructor(private readonly core: HubCore) {}
   private get hubId() { return this.core.deps.config.hubId; }
   isAdmin(person: PersonKey): boolean { return personKeyString(person) === personKeyString(this.core.deps.config.administrator); }
@@ -79,11 +100,27 @@ export class HubSessions {
     if (f && now - f.since < SIGNIN_WINDOW && f.count >= SIGNIN_PER_LOGIN) throw new HubProtocolError("backpressure");
     if (this.signingIn >= SIGNIN_INFLIGHT) throw new HubProtocolError("backpressure");
     this.signingIn++;
-    let result;
-    try { result = await this.core.directoryLogin(label, () => this.core.deps.directory.signIn(label, password)); } finally { this.signingIn--; }
+    let result: Awaited<ReturnType<typeof this.core.deps.directory.signIn>> | undefined;
+    let account: ReturnType<HubSessions["reserveAccount"]>;
+    try {
+      result = await this.core.directoryLogin(label, () => this.core.deps.directory.signIn(label, password, person => {
+        if (account) return false; // a driver cannot reserve twice for one attempt
+        account = this.reserveAccount(person); return account !== undefined;
+      }));
+    } finally {
+      this.signingIn--;
+      if (account) {
+        const { key: accountKey, budget } = account;
+        budget.pending--;
+        if (result?.ok) budget.count = 0;
+        else if (result && result.reason !== "unavailable" && result.reason !== "backpressure") budget.count++;
+        if (!budget.pending && !budget.count) this.accountFailures.delete(accountKey);
+      }
+    }
     this.core.atomic(() => undefined); // held old-directory results cannot mint a new-epoch session
     if (!result.ok) {
       if (result.reason === "unavailable") throw new HubProtocolError("unavailable");
+      if (result.reason === "backpressure") throw new HubProtocolError("backpressure");
       const cur = this.failures.get(key);
       if (!cur || now - cur.since >= SIGNIN_WINDOW) this.failures.set(key, { since: now, count: 1 }); else cur.count++;
       if (this.failures.size > 4096) for (const [k, v] of this.failures) if (now - v.since >= SIGNIN_WINDOW) this.failures.delete(k);

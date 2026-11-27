@@ -1,0 +1,7 @@
+# Narrow company sign-in copy check — R3
+
+Exact-head CI at df7298b7 failed named-link-test-2906: the network-copy rule found the two approved company-email hints. The policy already permits company sign-in wording under #3423 but exempted only signInLead. The local targeted test reproduced the assertion failure before this correction.
+
+The two loginEmailHint properties now occupy their own complete lines (same exact EN/zh values). The test helper exempts only that whole property line in src/ui/hub-strings.js, next to the existing signInLead permission, with #3423 and the Leader's M-3795 wording decision cited. The banned-word regex and whole-file inspection remain unchanged. Controls retain adjacent network copy, the same hint in another file, and extra inline properties. All77 cases in named-link-test-2906, dashboard-i18n and i18n-ui-literals-2390 pass. Types/runtime assets are checked separately. No runtime, backend, credential, DOM handler, visual copy or layout change, so prior source and captures carry with their staged bindings; no browser/directory campaign repeated.
+
+Fable's whitespace suggestion was non-blocking. The offer retains the exact native field identifier requested in the Leader's Chrome follow-up; only the API request normalizes surrounding whitespace. The R2 DOM regression pins that behavior, including the full email when the server returns the account name. Native Chrome save/update UI remains outside the claimed fixture proof. USER LOOK HOLD remains until verified release.

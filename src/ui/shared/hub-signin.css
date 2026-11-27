@@ -14,6 +14,8 @@ body.hub-signed-out #sidebar, body.hub-signed-out nav.tabs { visibility: hidden;
 /* M-3108: the Preview line under the lead, with the same gap before the form. */
 .hub-signin-preview { margin: -8px 0 18px; }
 .hub-signin-form { display: flex; flex-direction: column; }
+/* Keep a field hint separated from the next label by the same gap as the inputs. */
+.hub-signin-form .note { margin: 0 0 14px; }
 .hub-signin-form label { display: block; margin: 0 0 6px; font-size: var(--fs-sm); color: var(--text-2); font-weight: var(--fw-medium); }
 .hub-signin-form input { width: 100%; box-sizing: border-box; margin: 0 0 14px; padding: 11px 12px; font: inherit; background: var(--bg); color: var(--text);
   border: 1px solid var(--border-strong); border-radius: var(--r-sm); }
